@@ -1,0 +1,12 @@
+#
+# Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+#
+
+# Default rules.
+*.o
+bin/*
+doc/*
+
+# Exceptions.
+!bin/.gitignore
+!doc/*.pdf
