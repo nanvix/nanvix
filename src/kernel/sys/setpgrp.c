@@ -14,7 +14,7 @@
 PUBLIC pid_t sys_setpgrp()
 {
 	/* Set process group ID. */
-	if (curr_proc->pid != curr_proc->leader)
+	if (curr_proc->pid != curr_proc->pgrp)
 		curr_proc->pgrp = curr_proc->pid;
 	
 	return (curr_proc->pgrp);

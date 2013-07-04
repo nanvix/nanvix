@@ -11,6 +11,7 @@
 	#include <nanvix/config.h>
 	#include <nanvix/const.h>
 	#include <nanvix/region.h>
+	#include <nanvix/int.h>
 	#include <sys/types.h>
 	#include <signal.h>
 	
@@ -27,25 +28,26 @@
 	
 	/* Process flags. */
 	#define PROC_FREE 1 /* Process is free. */
+	#define PROC_NEW  2 /* Process is new.  */
 
 	/* Process states. */
 	#define PROC_DEAD     0 /* Dead.                      */
-	#define PROC_NEW      1 /* New.                       */
-	#define PROC_ZOMBIE   2 /* Zombie.                    */
-	#define PROC_RUNNING  3 /* Running.       	          */
-	#define PROC_READY    4 /* Ready to execute.          */
-	#define PROC_WAITING  5 /* Waiting (interruptible).   */
-	#define PROC_SLEEPING 6 /* Waiting (uninterruptible). */
-	#define PROC_STOPPED  7 /* Stopped.                   */
+	#define PROC_ZOMBIE   1 /* Zombie.                    */
+	#define PROC_RUNNING  2 /* Running.       	          */
+	#define PROC_READY    3 /* Ready to execute.          */
+	#define PROC_WAITING  4 /* Waiting (interruptible).   */
+	#define PROC_SLEEPING 5 /* Waiting (uninterruptible). */
+	#define PROC_STOPPED  6 /* Stopped.                   */
 
 	/* Offsets to the process structure. */
 	#define PROC_KESP      0 /* Kernel stack pointer.   */
 	#define PROC_CR3       4 /* Page directory pointer. */
 	#define PROC_INTLVL    8 /* Interrupt level.        */
-	#define PROC_FLAGS    12 /* Process flags.          */
-	#define PROC_RECEIVED 16 /* Received signasl.       */
-	#define PROC_KSTACK   20 /* Kernel stack base.      */
-	#define PROC_HANDLERS 24 /* Signals handlers.       */
+	#define PROC_REGS     12 /* Saved registers.        */
+	#define PROC_FLAGS    16 /* Process flags.          */
+	#define PROC_RECEIVED 20 /* Received signasl.       */
+	#define PROC_KSTACK   24 /* Kernel stack base.      */
+	#define PROC_HANDLERS 28 /* Signals handlers.       */
 	
 	/* Clock frequency (in hertz). */
 	#define CLOCK_FREQ 100
@@ -67,13 +69,14 @@
 	struct process
 	{
 		/* Hardcoded fields. */
-    	dword_t kesp;              /* Kernel stack poiner.      */
-    	dword_t cr3;               /* Page directory pointer.   */
-		dword_t intlvl;            /* Interrupt level.          */
-		int flags;                 /* Processflags (see above). */
-    	int received;              /* Received signals.         */
-    	void *kstack;              /* Kernel stack.             */
-		sighandler_t handlers[32]; /* Signal handlers.          */
+    	dword_t kesp;              /* Kernel stack poiner.       */
+    	dword_t cr3;               /* Page directory pointer.    */
+		dword_t intlvl;            /* Interrupt level.           */
+		struct registers *regs;    /* Saved registers.           */
+		int flags;                 /* Process flags (see above). */
+    	int received;              /* Received signals.          */
+    	void *kstack;              /* Kernel stack.              */
+		sighandler_t handlers[32]; /* Signal handlers.           */
 		
     	/* Memory information. */
 		struct pte *pgdir;                 /* Page directory.         */
@@ -90,9 +93,6 @@
     	pid_t pid;    /* Process ID.          */
     	pid_t father; /* Father's process ID. */
     	pid_t pgrp;   /* Process group ID.    */
-    	id_t session; /* Session ID.          */
-    	pid_t leader; /* Session leader.      */
-    	int tty;      /* Attached tty.        */
     	
     	/* Timing information. */
     	int utime; /* User time.   */
@@ -142,6 +142,9 @@
 	
 	/*  Current running process. */
 	EXTERN struct process *curr_proc;
+	
+	/* Next available PID. */
+	EXTERN pid_t next_pid;
 	
 	/*  init process. */
 	#define INIT (&proctab[0])

@@ -11,5 +11,5 @@
  * System calls table.
  */
 PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
-	(void (*)(void))&sys_fork
+	(void (*)(void))&sys_getpid
 };

@@ -15,13 +15,13 @@
     type name(void)                                                 \
     {                                                               \
         type ret;                                                   \
-        __asm__ volatile ("int $0x80" : "=a" (ret) : "0" (num_##name)); \
+        __asm__ volatile ("int $0x80" : "=a" (ret) : "0" (NR_##name)); \
         if (ret >= 0)  return ret;                                  \
         return -1;                                                  \
     }
 
 
-syscall0(pid_t, fork)
+syscall0(pid_t, getpid)
 
 PUBLIC void kmain()
 {		
@@ -29,21 +29,8 @@ PUBLIC void kmain()
 	dev_init();
 	pm_init();
 	
-	if (fork())
-	{
-		while(1)
-		{
-			kprintf("iam the father");
-			yield();
-		}
-	}
+	kprintf("process ID %d", getpid());
 	
-	else
-	{
-		while(1)
-		{
-			kprintf("iam the child");
-			yield();
-		}
-	}
+	while(1)
+		kprintf("ok");
 }

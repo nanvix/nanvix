@@ -13,11 +13,11 @@
 /*
  * Asserts if the process p1 is authorized to send a signal to the process p2.
  */
-#define AUTHORIZED(p1, p2, s)                             \
-	((IS_SUPERUSER(p1)) ||                                \
-	 ((s == SIGCONT) && (p1->session == p2->session)) ||  \
-	 (p1->uid == p2->uid)  || (p1->euid == p2->uid) ||    \
-	 (p1->uid == p2->suid) || (p1->euid == p2->suid))     \
+#define AUTHORIZED(p1, p2, s)                          \
+	((IS_SUPERUSER(p1)) ||                             \
+	 ((s == SIGCONT) && (p1->pgrp == p2->pgrp)) ||     \
+	 (p1->uid == p2->uid)  || (p1->euid == p2->uid) || \
+	 (p1->uid == p2->suid) || (p1->euid == p2->suid))  \
 
 /*
  * Sends a signal to a process or a process group.

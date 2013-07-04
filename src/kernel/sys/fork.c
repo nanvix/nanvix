@@ -11,9 +11,6 @@
 #include <sys/types.h>
 #include <errno.h>
 
-/* Next available PID. */
-PRIVATE pid_t next_pid = 1;
-
 /*
  * Forks the process memory.
  */ 
@@ -88,7 +85,6 @@ PUBLIC pid_t sys_fork()
 	int err;
 	struct process *proc;
 
-	kpanic("fork");	
 	/* Search for dead process. */
 	for (proc = FIRST_PROC; proc <= LAST_PROC; proc++)
 	{
@@ -104,8 +100,7 @@ PUBLIC pid_t sys_fork()
 found:
 
 	/* Mark process as beeing created. */
-	proc->flags &= ~PROC_FREE;
-	proc->state = PROC_NEW;
+	proc->flags = PROC_NEW & ~PROC_FREE;
 
 	err = fork_mem(proc);
 	
@@ -113,9 +108,10 @@ found:
 	if (err)
 		goto err0;
 
+	proc->intlvl = curr_proc->intlvl;
+	proc->received = 0;
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = SIG_DFL;
-	proc->received = 0;
 	proc->uid = curr_proc->uid;
 	proc->euid = curr_proc->euid;
 	proc->suid = curr_proc->suid;
@@ -125,16 +121,9 @@ found:
 	proc->pid = next_pid++;
 	proc->father = curr_proc->pid;
 	proc->pgrp = curr_proc->pgrp;
-	proc->session = curr_proc->session;
-	proc->leader = curr_proc->leader;
-	proc->tty = curr_proc->tty;
-	proc->utime = 0;
-	proc->ktime = 0;
 	proc->priority = curr_proc->priority;
 	proc->nice = curr_proc->nice;
 	proc->alarm = curr_proc->alarm;
-	proc->next = NULL;
-	proc->chain = NULL;
 	
 	sched(proc);
 	
@@ -142,6 +131,5 @@ found:
 
 err0:
 	proc->flags = PROC_FREE;
-	err = PROC_DEAD;
 	return (-ENOMEM);
 }

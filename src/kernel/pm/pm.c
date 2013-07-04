@@ -12,6 +12,8 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <signal.h>
+#include <limits.h>
 
 /* init kstack. */
 EXTERN dword_t init_kstack[KSTACK_SIZE/DWORD_SIZE];
@@ -25,30 +27,75 @@ PUBLIC struct process proctab[PROC_MAX];
 /* Current running process. */
 PUBLIC struct process *curr_proc = INIT;
 
+/* Next available PID. */
+PUBLIC pid_t next_pid = 0;
+
+/*
+ * Resets a process to the 'dead' state.
+ */
+PUBLIC void reset(struct process *proc)
+{
+	int i;
+	
+	/* Reset process. */
+	proc->flags = PROC_FREE;
+	for (i = 0; i < NR_PREGIONS; i++)
+		proc->pregs[i].type = PREGION_UNUSED;
+	proc->size = 0;
+	proc->utime = 0;
+	proc->ktime = 0;
+	proc->state = PROC_DEAD;
+	proc->next = NULL;
+	proc->chain = NULL;
+}
+
 /*
  * Initializes the process manager.
  */
 PUBLIC void pm_init()
 {	
+	int i;
 	struct process *p;
 	
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
-	{
-		p->flags = PROC_FREE;
-		p->state = PROC_DEAD;
-	}
+		reset(p);
 		
 	/* Handcraft init process. */
-	INIT->kesp = (dword_t)init_kstack + KSTACK_SIZE;
+	INIT->kesp = 0;
 	INIT->cr3 = (dword_t)init_pgdir;
 	INIT->intlvl = 1;
+	INIT->flags = 0;
+	INIT->received = 0;
 	INIT->kstack = init_kstack;
+	for (i = 0; i < NR_SIGNALS; i++)
+		INIT->handlers[i] = SIG_DFL;
 	INIT->pgdir = init_pgdir;
+	for (i = 0; i < NR_PREGIONS; i++)
+	{
+		INIT->pregs[i].type = PREGION_UNUSED;
+		INIT->pregs[i].start = 0;
+		INIT->pregs[i].reg = NULL;
+	}
+	INIT->size = 0;
+	INIT->uid = SUPERUSER;
+	INIT->euid = SUPERUSER;
+	INIT->suid = SUPERUSER;
+	INIT->gid = SUPERGROUP;
+	INIT->egid = SUPERGROUP;
+	INIT->sgid = SUPERGROUP;
+	INIT->pid = next_pid++;
+	INIT->father = -1;
+	INIT->pgrp = INIT->pid;
+	INIT->utime = 0;
+	INIT->ktime = 0;
 	INIT->state = PROC_RUNNING;
+	INIT->counter = PROC_QUANTUM;
 	INIT->priority = PRIO_INIT;
-	INIT->nice = -100;
+	INIT->nice = NZERO;
+	INIT->alarm = 0;
 	INIT->next = NULL;
+	INIT->chain = NULL;
 	
 	clock_init(CLOCK_FREQ);
 	

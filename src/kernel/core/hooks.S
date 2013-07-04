@@ -11,6 +11,7 @@
 #include <nanvix/int.h>
 #include <nanvix/pm.h>
 #include <nanvix/syscall.h>
+#include <errno.h>
 
 /* Exported symbols. */
 .globl swint0
@@ -81,10 +82,15 @@
 
     /* Increment interrupt level. */
     incl PROC_INTLVL(%ebx)
+    
+    /* Save interrupt stack. */
+    pushl PROC_REGS(%ebx)
+    movl %esp, PROC_REGS(%ebx)
+    
 .endm
 
 /*----------------------------------------------------------------------------*
- *                           leave() and  restore()                           *
+ *                                leave()                                     *
  *----------------------------------------------------------------------------*/
 
 /*
@@ -93,13 +99,12 @@
 leave:
 	movl $curr_proc, %ebx
 
+	/* Restore interrupt stack. */
+	popl PROC_REGS(%ebx)
+
 	/* Decrement interrupt level. */
     decl PROC_INTLVL(%ebx)
 
-/*
- * Switches to old data segment and restore registers.
- */ 
-restore:
 	/* Reolad data segment. */
 	popl %eax
 	mov %ax, %ds
@@ -205,16 +210,11 @@ _do_page_fault:
  * System call hook.
  */
 syscall:
-	/* Save registers. */
 	save
+	enter
 	
-	/* Increment interrupt level. */
-    movl curr_proc, %eax
-    incl PROC_INTLVL(%eax)
-
 	/* Leave critical region. */
 	sti
-	xchg %bx, %bx
 	
 	/* Get system call parameters. */
 	movl EAX(%esp), %eax
@@ -224,7 +224,7 @@ syscall:
 	
 	cmpl $NR_SYSCALLS, %eax
 	jl good_syscall
-		movl %eax, -1
+		movl %eax, -ENOSYS
 	jmp bad_syscall
 	
 	good_syscall:	
@@ -247,11 +247,7 @@ syscall:
 	/* Enter critical region. */
 	cli	
 	
-	/* Decrement interrupt level. */
-	movl curr_proc, %eax
-	decl EAX(%eax)
-	
-	jmp restore
+	jmp leave
 
 /*----------------------------------------------------------------------------*
  *                                   hwint()                                  *

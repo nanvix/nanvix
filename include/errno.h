@@ -22,6 +22,9 @@
 	/* Not enough space. */
 	#define ENOMEM 5
 	
+	/* Function not supported. */
+	#define ENOSYS 6
+	
 	/* Operation not permitted. */
 	#define EPERM 6
 	
