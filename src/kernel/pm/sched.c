@@ -14,9 +14,9 @@
 /*
  * Handles a signal by stoping the process
  */
-PUBLIC void stop(struct process *proc)
+PUBLIC void stop()
 {
-	proc->state = PROC_STOPPED;
+	curr_proc->state = PROC_STOPPED;
 	
 	yield();
 }
@@ -26,7 +26,7 @@ PUBLIC void stop(struct process *proc)
  */
 PUBLIC void resume(struct process *proc)
 {	
-	/* Resume only if process is stopped. */
+	/* Resume only if process has stopped. */
 	if (proc->state == PROC_STOPPED)
 		sched(proc);
 }

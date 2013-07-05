@@ -110,13 +110,15 @@
 	
 	EXTERN void wakeup(struct process **chain);
 
-	EXTERN void terminate(struct process *proc, int err);
+	EXTERN void terminate(int err);
 
-	EXTERN void stop(struct process *proc);	
+	EXTERN void stop();	
 	
 	EXTERN void resume(struct process *proc);
 	
-	EXTERN void abort(struct process *proc);	
+	EXTERN void abort();
+	
+	EXTERN void die();
 	
 	EXTERN void sndsig(struct process *proc, int sig);
 	

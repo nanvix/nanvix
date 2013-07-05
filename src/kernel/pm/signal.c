@@ -5,7 +5,6 @@
  */
 
 #include <nanvix/const.h>
-#include <nanvix/klib.h>
 #include <nanvix/pm.h>
 #include <signal.h>
 

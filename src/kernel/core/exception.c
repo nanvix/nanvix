@@ -18,7 +18,11 @@ PUBLIC void do_##name(int err, struct intstack r ) \
 {                                                  \
 	/* Die. */                                     \
 	if (KERNEL_RUNNING(curr_proc))                 \
-		die(&r, err, msg);                         \
+	{                                              \
+		kprintf("%s: %x", msg, err & 0xffff);      \
+		dumpstack(&r);                             \
+		die();                                     \
+	}                                              \
 	                                               \
 	/* Send signal. */                             \
 	else                                           \
@@ -28,16 +32,14 @@ PUBLIC void do_##name(int err, struct intstack r ) \
 /*
  * Kills process.
  */
-PRIVATE void die(struct intstack *regs, int err, const char * msg)
+PRIVATE void dumpstack(struct intstack *regs)
 {
 	/* Dump registers. */
-	kprintf("%s: %x", msg, err & 0xffff);
 	kprintf("  [eax: %x] [ebx:    %x]", regs->eax, regs->ebx);
 	kprintf("  [ecx: %x] [edx:    %x]", regs->ecx, regs->edx);
 	kprintf("  [esi: %x] [edi:    %x]", regs->esi, regs->edi);
 	kprintf("  [ebp: %x]", regs->ebp);
 	kprintf("  [eip: %x] [eflags: %x]", regs->eip, regs->eflags);
-	kpanic(msg);
 }
 
 /* Easy-to-handle exceptions. */

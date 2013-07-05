@@ -82,27 +82,3 @@ PUBLIC void pm_init()
 	
 	kprintf("init process spawned %x %x", curr_proc->kstack, curr_proc->pgdir);
 }
-
-/*
- * Terminates a process.
- */
-PUBLIC void terminate(struct process *proc, int err)
-{
-	kprintf("terminating process %d with error code %d", proc->pid, err);
-	
-	while (1)
-		yield();
-}
-
-/*
- * Aborts the execution of a process.
- */
-PUBLIC void abort(struct process *proc)
-{
-	UNUSED(proc);
-	
-	kprintf("aborting process %d", proc->pid);
-	
-	while (1)
-		yield();
-}

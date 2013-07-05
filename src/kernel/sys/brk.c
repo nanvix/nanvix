@@ -17,10 +17,10 @@
  */
 PUBLIC int sys_brk(void *addr)
 {
-	int err;
+	int ret;
 	struct pregion *preg;
 	
-	err = 0;
+	ret = 0;
 	
 	preg = findreg(curr_proc, ALIGN(addr, PGTAB_SIZE));
 	
@@ -34,9 +34,9 @@ PUBLIC int sys_brk(void *addr)
 	
 	lockreg(preg->reg);
 	
-	err = growreg(curr_proc, preg, (ssize_t)((addr_t)(addr) - preg->start));
+	ret = growreg(curr_proc, preg, (ssize_t)((addr_t)(addr) - preg->start));
 	
 	unlockreg(preg->reg);
 	
-	return (err);
+	return (ret);
 }
