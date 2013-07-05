@@ -9,6 +9,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/dev.h>
 #include <nanvix/pm.h>
+#include <nanvix/region.h>
 #include <nanvix/syscall.h>
 
 #define syscall0(type, name)                                    \
@@ -21,16 +22,17 @@
     }
 
 
-syscall0(pid_t, getpid)
+syscall0(pid_t, fork)
 
 PUBLIC void kmain()
 {		
 	/* Initialize system modules. */
 	dev_init();
+	initreg();
 	pm_init();
 	
-	kprintf("process ID %d", getpid());
-	
 	while(1)
-		kprintf("ok");
+	{
+		yield();
+	}
 }

@@ -11,7 +11,6 @@
 	#include <nanvix/config.h>
 	#include <nanvix/const.h>
 	#include <nanvix/region.h>
-	#include <nanvix/int.h>
 	#include <sys/types.h>
 	#include <signal.h>
 	
@@ -43,11 +42,10 @@
 	#define PROC_KESP      0 /* Kernel stack pointer.   */
 	#define PROC_CR3       4 /* Page directory pointer. */
 	#define PROC_INTLVL    8 /* Interrupt level.        */
-	#define PROC_REGS     12 /* Saved registers.        */
-	#define PROC_FLAGS    16 /* Process flags.          */
-	#define PROC_RECEIVED 20 /* Received signasl.       */
-	#define PROC_KSTACK   24 /* Kernel stack base.      */
-	#define PROC_HANDLERS 28 /* Signals handlers.       */
+	#define PROC_FLAGS    12 /* Process flags.          */
+	#define PROC_RECEIVED 16 /* Received signasl.       */
+	#define PROC_KSTACK   20 /* Kernel stack base.      */
+	#define PROC_HANDLERS 24 /* Signals handlers.       */
 	
 	/* Clock frequency (in hertz). */
 	#define CLOCK_FREQ 100
@@ -72,7 +70,6 @@
     	dword_t kesp;              /* Kernel stack poiner.       */
     	dword_t cr3;               /* Page directory pointer.    */
 		dword_t intlvl;            /* Interrupt level.           */
-		struct registers *regs;    /* Saved registers.           */
 		int flags;                 /* Process flags (see above). */
     	int received;              /* Received signals.          */
     	void *kstack;              /* Kernel stack.              */

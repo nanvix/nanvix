@@ -49,6 +49,7 @@
 .globl hwint13
 .globl hwint14
 .globl hwint15
+.globl leave
 
 /*----------------------------------------------------------------------------*
  *                                  save()                                    *
@@ -58,8 +59,13 @@
  * Saves registers.
  */
 .macro save
-	/* Save registers. */
-	pushal
+	pushl %eax
+	pushl %ecx
+	pushl %edx
+	pushl %ebx
+	pushl %ebp
+	pushl %esi
+	pushl %edi
 	
 	/* Save data segment. */
 	movw %ds, %ax
@@ -78,14 +84,14 @@
 	movw $KERNEL_DS, %bx
 	movw %bx, %ds
 
-	movl $curr_proc, %ebx
+	movl curr_proc, %ebx
 
     /* Increment interrupt level. */
     incl PROC_INTLVL(%ebx)
     
     /* Save interrupt stack. */
-    pushl PROC_REGS(%ebx)
-    movl %esp, PROC_REGS(%ebx)
+    pushl PROC_KESP(%ebx)
+    movl %esp, PROC_KESP(%ebx)
     
 .endm
 
@@ -97,10 +103,10 @@
  * Leaves kernel.
  */
 leave:
-	movl $curr_proc, %ebx
+	movl curr_proc, %ebx
 
 	/* Restore interrupt stack. */
-	popl PROC_REGS(%ebx)
+	popl PROC_KESP(%ebx)
 
 	/* Decrement interrupt level. */
     decl PROC_INTLVL(%ebx)
@@ -110,7 +116,14 @@ leave:
 	mov %ax, %ds
 	
 	/* Load registers. */
-	popal
+	popl %edi
+	popl %esi
+	popl %ebp
+	popl %ebx
+	popl %edx
+	popl %ecx
+	popl %eax
+	
 	iret
 
 /*----------------------------------------------------------------------------*

@@ -14,7 +14,7 @@
 	#define NR_SYSCALLS 1
 	
 	/* System call numbers. */
-	#define NR_getpid 0
+	#define NR_fork 0
 
 #ifndef _ASM_FILE_
 	

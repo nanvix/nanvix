@@ -8,6 +8,7 @@
 #include <i386/i386.h>
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
+#include <nanvix/int.h>
 #include <nanvix/mm.h>
 #include <nanvix/paging.h>
 #include <nanvix/region.h>
@@ -212,6 +213,7 @@ PUBLIC int crtpgdir(struct process *proc)
 {
 	void *kstack;
 	struct pte *pgdir;
+	struct intstack *s1, *s2;
 	
 	pgdir = getkpg();
 	
@@ -226,16 +228,25 @@ PUBLIC int crtpgdir(struct process *proc)
 		goto err1;
 
 	/* Build page directory. */
+	pgdir[0] = curr_proc->pgdir[0];
 	pgdir[PGTAB(KBASE_VIRT)] = curr_proc->pgdir[PGTAB(KBASE_VIRT)];
 	pgdir[PGTAB(KPOOL_VIRT)] = curr_proc->pgdir[PGTAB(KPOOL_VIRT)];
 	
 	/* Clone kernel stack. */
 	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
 	
+	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
 	proc->cr3 = (addr_t)pgdir - KBASE_VIRT;
-	proc->kstack = kstack;
 	proc->pgdir = pgdir;
-
+	proc->kstack = kstack;
+	
+	if (KERNEL_RUNNING(curr_proc))
+	{
+		s1 = (struct intstack *) curr_proc->kesp;
+		s2 = (struct intstack *) proc->kesp;
+		
+		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+	}
 	return (0);
 
 err1:

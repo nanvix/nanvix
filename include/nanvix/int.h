@@ -20,27 +20,26 @@
 	#define EDI      8
 	#define ESI     12
 	#define EBP     16
-	#define ESP     20
-	#define EBX     24
-	#define EDX     28
-	#define ECX     32
-	#define EAX     36
-	#define EIP     40
-	#define CS      44
-	#define EFLAGS  48
-	#define USERESP 52
-	#define SS      56
+	#define EBX     20
+	#define EDX     24
+	#define ECX     28
+	#define EAX     32
+	#define EIP     36
+	#define CS      40
+	#define EFLAGS  44
+	#define USERESP 48
+	#define SS      52
 
 #ifndef _ASM_FILE_
 
 	/*
 	 * Saved registers durint interrupt/exception.
 	 */
-	struct registers
+	struct intstack
 	{   
-		struct registers *last;
+		dword_t old_kesp;
         dword_t ds;
-        dword_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
+        dword_t edi, esi, ebp, ebx, edx, ecx, eax;
         dword_t eip, cs, eflags, useresp, ss;	
 	};
 

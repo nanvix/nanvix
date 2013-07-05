@@ -9,7 +9,7 @@
 #include <nanvix/pm.h>
 #include <nanvix/clock.h>
 #include <signal.h>
-
+#include <nanvix/klib.h>
 
 /*
  * Handles a signal by stoping the process
@@ -49,7 +49,7 @@ PUBLIC void yield()
 	int eprio;
 	struct process *p;
 	struct process *next;
-	
+
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING)
 		sched(curr_proc);
@@ -68,23 +68,26 @@ PUBLIC void yield()
 
 	/* Choose a process to execute. */
 	next = INIT;
-	eprio = next->priority + p->nice + p->counter;
+	eprio = next->priority + next->nice - next->counter;
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
 		/* Ready process. */
 		if (p->state == PROC_READY)
 		{
 			/* Process with higher priority found. */
-			if ((p->priority + p->nice + p->counter) < eprio)
+			if ((p->priority + p->nice - p->counter) < eprio)
 			{
+				next->counter++;
 				next = p;
-				eprio = next->priority + p->nice + p->counter;
+				eprio = next->priority + next->nice - next->counter;
 			}
 			/* Increment age of process. */
 			else
 				p->counter++;
 		}
 	}
+	
+	kprintf("%d ---> %d", curr_proc->pid, next->pid);
 	
 	/* Switch to process. */
 	p->state = PROC_RUNNING;

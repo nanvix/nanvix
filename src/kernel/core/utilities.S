@@ -8,6 +8,7 @@
 #define _ASM_FILE_
 
 #include <i386/i386.h>
+#include <nanvix/int.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 
@@ -158,6 +159,7 @@ switch_to:
 	pushfl
 	pushl %ebx
 	pushl %ebp
+	pushl PROC_KESP(%eax)
 	movl %esp, PROC_KESP(%eax)
 	
 	/* Switch processes. */
@@ -172,8 +174,24 @@ switch_to:
 	
 	/* Load process context. */
 	movl PROC_KESP(%ecx), %esp
+	
+	movl PROC_FLAGS(%ecx), %eax
+	andl $PROC_NEW, %eax
+	jnz fork_return
+	
+	popl PROC_KESP(%ecx)
+	
 	popl %ebp
 	popl %ecx
 	popfl
 	
 	ret
+
+/*
+ * Returns from fork.
+ */
+fork_return:
+	notl %eax
+	andl %eax, PROC_FLAGS(%ecx)
+	movl $0, EAX(%ecx)
+	jmp leave

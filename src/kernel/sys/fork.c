@@ -26,7 +26,7 @@ PRIVATE int fork_mem(struct process *proc)
 	/* Failed to create process page directory. */
 	if (err)
 		goto err0;
-	
+		
 	/* Duplicate attached regions. */
 	for (i = 0; i < NR_PREGIONS; i++)
 	{
@@ -57,6 +57,7 @@ PRIVATE int fork_mem(struct process *proc)
 	}
 	
 	return (0);
+	
 err1:
 	/* Detach attached regions. */
 	while (--i >= 0)
@@ -98,7 +99,7 @@ PUBLIC pid_t sys_fork()
 	return (-EAGAIN);
 
 found:
-
+	
 	/* Mark process as beeing created. */
 	proc->flags = PROC_NEW & ~PROC_FREE;
 
@@ -107,7 +108,7 @@ found:
 	/* Failed to fork process memory. */
 	if (err)
 		goto err0;
-
+		
 	proc->intlvl = curr_proc->intlvl;
 	proc->received = 0;
 	for (i = 0; i < NR_SIGNALS; i++)
@@ -124,7 +125,6 @@ found:
 	proc->priority = curr_proc->priority;
 	proc->nice = curr_proc->nice;
 	proc->alarm = curr_proc->alarm;
-	
 	sched(proc);
 	
 	return (proc->pid);

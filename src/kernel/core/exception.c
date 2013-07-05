@@ -14,7 +14,7 @@
  * Exception handler.
  */
 #define EXCEPTION(name, sig, msg)                  \
-PUBLIC void do_##name(int err, struct registers r) \
+PUBLIC void do_##name(int err, struct intstack r ) \
 {                                                  \
 	/* Die. */                                     \
 	if (KERNEL_RUNNING(curr_proc))                 \
@@ -28,15 +28,15 @@ PUBLIC void do_##name(int err, struct registers r) \
 /*
  * Kills process.
  */
-PRIVATE void die(struct registers *regs, int err, const char * msg)
+PRIVATE void die(struct intstack *regs, int err, const char * msg)
 {
 	/* Dump registers. */
 	kprintf("%s: %x", msg, err & 0xffff);
 	kprintf("  [eax: %x] [ebx:    %x]", regs->eax, regs->ebx);
 	kprintf("  [ecx: %x] [edx:    %x]", regs->ecx, regs->edx);
-	kprintf("  [edi: %x] [esi:    %x]", regs->edi, regs->esi);
-	kprintf("  [esp: %x] [eip:    %x]", regs->esp, regs->eip);
-	kprintf("  [ebp: %x] [eflags: %x]", regs->ebp, regs->eflags);
+	kprintf("  [esi: %x] [edi:    %x]", regs->esi, regs->edi);
+	kprintf("  [ebp: %x]", regs->ebp);
+	kprintf("  [eip: %x] [eflags: %x]", regs->eip, regs->eflags);
 	kpanic(msg);
 }
 
