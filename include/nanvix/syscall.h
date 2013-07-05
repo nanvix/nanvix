@@ -11,10 +11,27 @@
 	#include <sys/types.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 1
+	#define NR_SYSCALLS 18
 	
 	/* System call numbers. */
-	#define NR_fork 0
+	#define NR_alarm    0 /* alarm()   */
+	#define NR_brk      1 /* brk()     */
+	#define NR_fork     2 /* fork()    */
+	#define NR_getegid  3 /* getegid() */
+	#define NR_geteuid  4 /* geteuid() */
+	#define NR_getgid   5 /* getgid()  */
+	#define NR_getgrp   6 /* getpgrp() */
+	#define NR_getpid   7 /* getpid()  */
+	#define NR_getppid  8 /* getppid() */
+	#define NR_getuid   9 /* getuid()  */
+	#define NR_kill    10 /* kill()    */
+	#define NR_nice    11 /* nice()    */
+	#define NR_pause   12 /* pause()   */
+	#define NR_setegid 13 /* setegid() */
+	#define NR_seteuid 14 /* seteuid() */
+	#define NR_setgid  15 /* setgid()  */
+	#define NR_setpgrp 16 /* setpgrp() */
+	#define NR_setuid  17 /* setuid()  */
 
 #ifndef _ASM_FILE_
 	

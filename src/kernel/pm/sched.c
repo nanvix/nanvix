@@ -87,10 +87,8 @@ PUBLIC void yield()
 		}
 	}
 	
-	kprintf("%d ---> %d", curr_proc->pid, next->pid);
-	
 	/* Switch to process. */
-	p->state = PROC_RUNNING;
-	p->counter = PROC_QUANTUM;
+	next->state = PROC_RUNNING;
+	next->counter = PROC_QUANTUM;
 	switch_to(next);
 }

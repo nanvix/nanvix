@@ -15,11 +15,9 @@
 #include <signal.h>
 #include <limits.h>
 
-/* init kstack. */
-EXTERN dword_t init_kstack[KSTACK_SIZE/DWORD_SIZE];
-
-/* init page directory. */
-EXTERN struct pte init_pgdir[PAGE_SIZE/PTE_SIZE];
+/* init stuff. */
+EXTERN char init_kstack[]; /* Kernel stack.   */
+EXTERN struct pte init_pgdir[];  /* Page directory. */
 
 /* Process table. */
 PUBLIC struct process proctab[PROC_MAX];
@@ -31,25 +29,6 @@ PUBLIC struct process *curr_proc = INIT;
 PUBLIC pid_t next_pid = 0;
 
 /*
- * Resets a process to the 'dead' state.
- */
-PUBLIC void reset(struct process *proc)
-{
-	int i;
-	
-	/* Reset process. */
-	proc->flags = PROC_FREE;
-	for (i = 0; i < NR_PREGIONS; i++)
-		proc->pregs[i].type = PREGION_UNUSED;
-	proc->size = 0;
-	proc->utime = 0;
-	proc->ktime = 0;
-	proc->state = PROC_DEAD;
-	proc->next = NULL;
-	proc->chain = NULL;
-}
-
-/*
  * Initializes the process manager.
  */
 PUBLIC void pm_init()
@@ -59,7 +38,7 @@ PUBLIC void pm_init()
 	
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
-		reset(p);
+		p->flags = PROC_FREE;
 		
 	/* Handcraft init process. */
 	INIT->kesp = 0;
@@ -101,7 +80,7 @@ PUBLIC void pm_init()
 	
 	enable_interrupts();
 	
-	kprintf("init process spawned");
+	kprintf("init process spawned %x %x", curr_proc->kstack, curr_proc->pgdir);
 }
 
 /*

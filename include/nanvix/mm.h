@@ -30,5 +30,11 @@
 	
 	/* User memory size. */
 	#define UMEM_SIZE (MEMORY_SIZE - KMEM_SIZE - KPOOL_SIZE)
+
+#ifndef _ASM_FILE_
+	
+	EXTERN void mm_init();
+
+#endif /* _ASM_FILE_ */
 	
 #endif /* MM_H_ */

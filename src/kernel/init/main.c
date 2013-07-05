@@ -9,7 +9,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/dev.h>
 #include <nanvix/pm.h>
-#include <nanvix/region.h>
+#include <nanvix/mm.h>
 #include <nanvix/syscall.h>
 
 #define syscall0(type, name)                                    \
@@ -28,11 +28,26 @@ PUBLIC void kmain()
 {		
 	/* Initialize system modules. */
 	dev_init();
-	initreg();
+	mm_init();
 	pm_init();
 	
-	while(1)
+	/* */
+	if (!fork())
 	{
-		yield();
+		while (1)
+		{
+			kprintf("child process");
+			yield();
+		}
+	}
+
+	else
+	{
+	
+		while (1)
+		{
+			kprintf("father process");
+			yield();
+		}
 	}
 }

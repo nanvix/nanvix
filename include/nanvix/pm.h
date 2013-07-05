@@ -21,9 +21,8 @@
 	#define PRIO_INODE  -60 /* Waiting for inode.         */
 	#define PRIO_TTY    -40 /* Waiting for terminal I/O.  */
 	#define PRIO_REGION -20 /* Waiting for memory region. */
-	#define PRIO_USER    0 /* User priority.             */
-	#define PRIO_DAEMON 20 /* Daemon priority.           */
-	#define PRIO_INIT   40 /* init priority.             */
+	#define PRIO_USER    0  /* User priority.             */
+	#define PRIO_INIT    20 /* init priority.             */
 	
 	/* Process flags. */
 	#define PROC_FREE 1 /* Process is free. */
@@ -130,7 +129,6 @@
 	#define IS_SUPERUSER(p) \
 		((p->uid == SUPERUSER) || (p->euid == SUPERUSER))
 		
-	
 	
 	EXTERN sighandler_t sig_default[NR_SIGNALS];
 

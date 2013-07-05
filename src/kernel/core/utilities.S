@@ -193,5 +193,5 @@ switch_to:
 fork_return:
 	notl %eax
 	andl %eax, PROC_FLAGS(%ecx)
-	movl $0, EAX(%ecx)
+	movl $0, EAX(%esp)
 	jmp leave
