@@ -13,5 +13,5 @@
  */
 PUBLIC pid_t sys_getppid()
 {
-	return (curr_proc->father);
+	return (curr_proc->father->pid);
 }

@@ -64,7 +64,7 @@ PUBLIC void pm_init()
 	INIT->egid = SUPERGROUP;
 	INIT->sgid = SUPERGROUP;
 	INIT->pid = next_pid++;
-	INIT->father = -1;
+	INIT->father = NULL;
 	INIT->pgrp = INIT->pid;
 	INIT->utime = 0;
 	INIT->ktime = 0;

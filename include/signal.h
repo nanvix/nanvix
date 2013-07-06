@@ -1,4 +1,4 @@
-/*
+init adopts all orphan processes. /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * signal.h - Signals library header.

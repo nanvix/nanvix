@@ -66,13 +66,13 @@
 	struct process
 	{
 		/* Hardcoded fields. */
-    	dword_t kesp;              /* Kernel stack poiner.       */
-    	dword_t cr3;               /* Page directory pointer.    */
-		dword_t intlvl;            /* Interrupt level.           */
-		int flags;                 /* Process flags (see above). */
-    	int received;              /* Received signals.          */
-    	void *kstack;              /* Kernel stack.              */
-		sighandler_t handlers[32]; /* Signal handlers.           */
+    	dword_t kesp;                      /* Kernel stack poiner.       */
+    	dword_t cr3;                       /* Page directory pointer.    */
+		dword_t intlvl;                    /* Interrupt level.           */
+		int flags;                         /* Process flags (see above). */
+    	int received;                      /* Received signals.          */
+    	void *kstack;                      /* Kernel stack.              */
+		sighandler_t handlers[NR_SIGNALS]; /* Signal handlers.           */
 		
     	/* Memory information. */
 		struct pte *pgdir;                 /* Page directory.         */
@@ -80,15 +80,15 @@
 		size_t size;                       /* Process size.           */
 		
 		/* General information. */
-		uid_t uid;    /* User ID.             */
-		uid_t euid;   /* Efective user ID.    */
-		uid_t suid;   /* Saved set-user-ID.   */
-		gid_t gid;    /* Group ID.            */
-		gid_t egid;   /* Efective user ID.    */
-		gid_t sgid;   /* Saved set-group-ID.  */
-    	pid_t pid;    /* Process ID.          */
-    	pid_t father; /* Father's process ID. */
-    	pid_t pgrp;   /* Process group ID.    */
+		uid_t uid;              /* User ID.             */
+		uid_t euid;             /* Efective user ID.    */
+		uid_t suid;             /* Saved set-user-ID.   */
+		gid_t gid;              /* Group ID.            */
+		gid_t egid;             /* Efective user ID.    */
+		gid_t sgid;             /* Saved set-group-ID.  */
+    	pid_t pid;              /* Process ID.          */
+    	pid_t pgrp;             /* Process group ID.    */
+    	struct process *father; /* Father process.      */
     	
     	/* Timing information. */
     	int utime; /* User time.   */
