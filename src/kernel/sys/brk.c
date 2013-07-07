@@ -38,5 +38,5 @@ PUBLIC int sys_brk(void *addr)
 	
 	unlockreg(preg->reg);
 	
-	return (ret);
+	return ((ret) ? -EAGAIN : 0);
 }

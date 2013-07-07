@@ -62,7 +62,7 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{
 			/* Found. */
-			if (curr_proc->pid == p->pgrp)
+			if (curr_proc == p->pgrp)
 			{
 				err_esrch = 0;
 			
@@ -99,7 +99,7 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{			
 			/* Found. */
-			if (p->pgrp == -pid)
+			if (p->pgrp->pid == -pid)
 			{
 				err_esrch = 0;
 			

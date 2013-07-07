@@ -26,7 +26,7 @@ PUBLIC struct process proctab[PROC_MAX];
 PUBLIC struct process *curr_proc = INIT;
 
 /* Next available PID. */
-PUBLIC pid_t next_pid = 0;
+PUBLIC pid_t next_pid = 1;
 
 /*
  * Initializes the process manager.
@@ -57,6 +57,7 @@ PUBLIC void pm_init()
 		INIT->pregs[i].reg = NULL;
 	}
 	INIT->size = 0;
+	INIT->status = 0;
 	INIT->uid = SUPERUSER;
 	INIT->euid = SUPERUSER;
 	INIT->suid = SUPERUSER;
@@ -65,7 +66,7 @@ PUBLIC void pm_init()
 	INIT->sgid = SUPERGROUP;
 	INIT->pid = next_pid++;
 	INIT->father = NULL;
-	INIT->pgrp = INIT->pid;
+	INIT->pgrp = NULL;
 	INIT->utime = 0;
 	INIT->ktime = 0;
 	INIT->state = PROC_RUNNING;

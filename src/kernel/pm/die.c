@@ -12,7 +12,7 @@
 /*
  * 
  */
-PUBLIC void die(int code)
+PUBLIC void die(int status)
 {
 	int i;
 	struct process *p;
@@ -31,16 +31,17 @@ PUBLIC void die(int code)
 	{
 		/* Child process found. */
 		if (p->father == curr_proc)
-			p->father == INIT;
+			p->father = INIT;
 	}
 	
 	/* init adotps process in the same group. */
-	if (curr_proc->pgrp == curr_proc->pid)
+	if (curr_proc->pgrp == curr_proc)
 	{
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{
-			if (p->pgrp == curr_proc->pid)
+			if (p->pgrp == curr_proc)
 			{
+				p->pgrp = NULL;
 				sndsig(p, SIGHUP);
 				sndsig(p, SIGCONT);
 			}
@@ -75,15 +76,15 @@ PUBLIC void terminate(int err)
 {
 	kprintf("terminating process %d with error code %d", curr_proc->pid, err);
 	
-	die();
+	die(err);
 }
 
 /*
  * Aborts the execution of a process.
  */
-PUBLIC void abort()
+PUBLIC void abort(int err)
 {
 	kprintf("aborting process %d", curr_proc->pid);
 	
-	die();
+	die(err);
 }

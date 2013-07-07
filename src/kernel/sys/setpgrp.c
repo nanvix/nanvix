@@ -14,10 +14,18 @@
 PUBLIC pid_t sys_setpgrp()
 {
 	/* Set process group ID. */
-	if (curr_proc->pid != curr_proc->pgrp)
-		curr_proc->pgrp = curr_proc->pid;
+	if (curr_proc->pid != curr_proc->pgrp->pid)
+	{
+		curr_proc->pgrp = curr_proc;
+		
+		/* TODO: 
+		 * 
+		 * If setpgrp() creates a new session, then the new session has no 
+		 * controlling terminal.
+		 */
+	}
 	
-	return (curr_proc->pgrp);
+	return (curr_proc->pgrp->pid);
 }
 
 

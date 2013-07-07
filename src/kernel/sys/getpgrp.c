@@ -14,5 +14,5 @@
  */
 PUBLIC pid_t sys_getpgrp()
 {
-	return (curr_proc->pgrp);
+	return (curr_proc->pgrp->pid);
 }

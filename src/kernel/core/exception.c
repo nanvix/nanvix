@@ -21,7 +21,7 @@ PUBLIC void do_##name(int err, struct intstack r ) \
 	{                                              \
 		kprintf("%s: %x", msg, err & 0xffff);      \
 		dumpstack(&r);                             \
-		die();                                     \
+		die(sig);                                  \
 	}                                              \
 	                                               \
 	/* Send signal. */                             \

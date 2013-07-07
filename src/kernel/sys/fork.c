@@ -81,6 +81,7 @@ found:
 	for (i = 0; i < NR_PREGIONS; i++)
 		proc->pregs[i].type = PREGION_UNUSED;
 	proc->size = 0;
+	proc->status = 0;
 	proc->uid = curr_proc->uid;
 	proc->euid = curr_proc->euid;
 	proc->suid = curr_proc->suid;
@@ -88,7 +89,7 @@ found:
 	proc->egid = curr_proc->egid;
 	proc->sgid = curr_proc->sgid;
 	proc->pid = next_pid++;
-	proc->father = curr_proc->pid;
+	proc->father = curr_proc;
 	proc->pgrp = curr_proc->pgrp;
 	proc->utime = 0;
 	proc->ktime = 0;

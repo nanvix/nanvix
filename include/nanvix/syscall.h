@@ -11,7 +11,7 @@
 	#include <sys/types.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 18
+	#define NR_SYSCALLS 19
 	
 	/* System call numbers. */
 	#define NR_alarm    0 /* alarm()   */
@@ -32,6 +32,7 @@
 	#define NR_setgid  15 /* setgid()  */
 	#define NR_setpgrp 16 /* setpgrp() */
 	#define NR_setuid  17 /* setuid()  */
+	#define NR_exit    18 /* exit()    */
 
 #ifndef _ASM_FILE_
 	
@@ -65,6 +66,11 @@
 	 * TODO.
 	 */
 	EXTERN int sys_brk(void *addr);
+	
+	/*
+	 * TODO.
+	 */
+	EXTERN void sys_exit(int status);
 	
 	/*
 	 * TODO.

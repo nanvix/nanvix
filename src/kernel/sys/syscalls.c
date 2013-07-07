@@ -28,5 +28,6 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	(void (*)(void))&sys_seteuid,
 	(void (*)(void))&sys_setgid,
 	(void (*)(void))&sys_setpgrp,
-	(void (*)(void))&sys_setuid
+	(void (*)(void))&sys_setuid,
+	(void (*)(void))&sys_exit
 };

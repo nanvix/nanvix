@@ -80,6 +80,7 @@
 		size_t size;                       /* Process size.           */
 		
 		/* General information. */
+		int status;             /* Exit status.         */
 		uid_t uid;              /* User ID.             */
 		uid_t euid;             /* Efective user ID.    */
 		uid_t suid;             /* Saved set-user-ID.   */
@@ -87,7 +88,7 @@
 		gid_t egid;             /* Efective user ID.    */
 		gid_t sgid;             /* Saved set-group-ID.  */
     	pid_t pid;              /* Process ID.          */
-    	pid_t pgrp;             /* Process group ID.    */
+    	struct process *pgrp;   /* Process group ID.    */
     	struct process *father; /* Father process.      */
     	
     	/* Timing information. */
@@ -116,9 +117,9 @@
 	
 	EXTERN void resume(struct process *proc);
 	
-	EXTERN void abort();
+	EXTERN void abort(int err);
 	
-	EXTERN void die();
+	EXTERN void die(int code);
 	
 	EXTERN void sndsig(struct process *proc, int sig);
 	
