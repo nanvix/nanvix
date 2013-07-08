@@ -126,6 +126,42 @@
 	EXTERN void yield();
 	
 	EXTERN void sched(struct process *proc);
+
+	/*
+	 * DESCRIPTION:
+	 *   The issig() function checks if a signal has been sent to the calling process.
+	 * 
+	 * RETURN VALUE:
+	 *   If a signal has been sent to the process calling process, issig() returns 
+	 *   the number of a signal that has been received. Otherwise, it returns SIGNULL
+	 *   (no signal). 
+	 * 
+	 *   No return value is reserved to indicate an error.
+	 * 
+	 * ERRORS:
+	 *   No errors are defined.
+	 * 
+	 * NOTES:
+	 *   The SIGCHLD signal is somewhat special. When the calling process receives
+	 *   the SIGCHLD signal but is ignoring it, issig() clears the signal flag and 
+	 *   buries all zombie children processes. 
+	 * 
+	 *   After that, issig() checks if the calling process still have children 
+	 *   processes. If it has, issig() checks for the receipt of another signal. 
+	 *   However if it hasn't, issig() returns SIGCHLD, even thought the process is 
+	 *   ignoring this signal. This allows sys_waitpid() to not get blocked forever.
+	 * 
+	 * SEE ALSO:
+	 *   <signal.h>, sys_waitpid() 
+	 */
+	EXTERN int issig();
+	
+	/*
+	 * Asserts if the current process is ignoring the signal sig.
+	 */
+	#define IGNORING(sig)                                                   \
+		((curr_proc->handlers[sig] == SIG_IGN) ||                           \
+		 (curr_proc->handlers[sig] == SIG_DFL) && (sigdlf[sig] == SIG_IGN))
 	
 	#define KERNEL_RUNNING(p) ((p)->intlvl > 1)
 	

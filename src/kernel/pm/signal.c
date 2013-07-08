@@ -73,3 +73,57 @@ PUBLIC void sndsig(struct process *proc, int sig)
 		sched(proc);
 	}
 }
+
+/*
+ * Checks if a signal has been sent to the calling process.
+ */
+PUBLIC int issig()
+{
+	int i;
+	struct process *p;
+	
+	/* Find a signal that has been sent to the process. */
+	for (i = 1; i < NR_SIGNALS; i++)
+	{
+		/* Found. */
+		if (curr_proc->received & (1 << i))
+		{
+			/* SIGCHLD is somewhat special. */
+			if (i == SIGCHLD)
+			{
+				if (IGNORING(SIGCHLD))
+				{					
+					/* Clear signal flag. */
+					curr_proc->sig &= ~(1 << i);
+				
+					/* Bury zombie children... */
+					for (p = FIRST_PROC; p <= LAST_PROC; p++)
+					{
+						/* Zombie child process. */
+						if ((p->father == curr_proc) && (p->state == PROC_ZOMBIE))
+						{
+							bury(p);
+							curr_proc->nchildren--;
+						}
+					}
+					
+					/* ...and find another signal. */
+					if (curr_proc->nchildren)
+						continue;
+				}
+				
+				/* sys_waitpid() will do whatever has to be done. */
+				return (SIGCHLD);
+			}
+			
+			/* Not ignoring signal. */
+			else if (!IGNORING(i))
+				return (i).
+			
+			/* Clear signal flag. */
+			curr_proc->sig &= ~(1 << i);
+		}
+	}
+	
+	return (SIGNULL);
+}
