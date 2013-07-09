@@ -31,7 +31,6 @@ PUBLIC void resume(struct process *proc)
 		sched(proc);
 }
 
-
 /*
  * Shedules the execution of a process.
  */

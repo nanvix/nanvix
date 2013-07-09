@@ -2,8 +2,6 @@
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * signal.c - Signals.
- * 
- * FIXME: sndsig() and issig()
  */
 
 #include <nanvix/const.h>
@@ -11,18 +9,24 @@
 #include <signal.h>
 
 /*
- * Asserts if a process is ignoring the signal sig.
+ * Asserts if a process is ignoring a signal.
  */
-#define IGNORING(p, sig)                                                      \
-		((p->handlers[sig] == SIG_IGN) ||                              \
+#define IGNORING(p, sig)                                                   \
+		((p->handlers[sig] == SIG_IGN) ||                                  \
 		 ((p->handlers[sig] == SIG_DFL) && (sig_default[sig] == SIG_IGN)))
+
+/*
+ * Asserts if a process is catching a signal.
+ */
+#define CATCHING(p, sig)                                             \
+	((p->handlers[sig] != SIG_DFL) && (p->handlers[sig] != SIG_IGN))
 
 /* Default signal handlers. */
 PUBLIC sighandler_t sig_default[NR_SIGNALS] = {
 	NULL,                     /* SIGNULL */ (sighandler_t)&terminate, /* SIGKILL */ 
 	(sighandler_t)&stop,      /* SIGSTOP */ SIG_IGN,                  /* SIGURG  */
 	(sighandler_t)&abort,     /* SIGABRT */ (sighandler_t)&abort,     /* SIGBUS  */
-	SIG_IGN,                  /* SIGCHLD */ (sighandler_t)&resume,    /* SIGCONT */
+	SIG_IGN,                  /* SIGCHLD */ NULL,                     /* SIGCONT */
 	(sighandler_t)&terminate, /* SIGFPE  */ (sighandler_t)&terminate, /* SIGHUP  */
 	(sighandler_t)&abort,     /* SIGILL  */ (sighandler_t)&terminate, /* SIGINT  */
 	(sighandler_t)&abort,     /* SIGPIPE */ (sighandler_t)&abort,     /* SIGQUIT */
@@ -44,26 +48,24 @@ PUBLIC void sndsig(struct process *proc, int sig)
 	if (sig == SIGNULL)
 		return;
 	
-	/* Default signal. */
-	if (proc->handlers[sig] == SIG_DFL)
+	proc->received |= (1 << sig);
+	
+	/* SIGCONT is somewhat special. */
+	if (sig == SIGCONT)
 	{
-		/* Process is igoring this signal. */
-		if (sig_default[sig] == SIG_IGN)
-			return;
+		/* 
+		 * The process must be resumed even if SIGCONT
+		 * is ignored. Otherwise it could stop forever.
+		 */
+		resume(proc);
 		
-		/* Continue process. */
-		if (sig_default[sig] == (sighandler_t)&resume)
+		/* SIGCONT has already been handled. */
+		if (!CATCHING(proc, sig))
 		{
-			resume(proc);
+			proc->received &= ~(1 << sig);
 			return;
 		}
 	}
-	
-	/* Process is igoring this signal. */
-	else if (proc->handlers[sig] == SIG_IGN)
-		return;
-	
-	proc->received |= (1 << sig);
 	
 	/* Wake up process. */
 	if (proc->state == PROC_WAITING)
