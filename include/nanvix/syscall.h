@@ -11,7 +11,7 @@
 	#include <sys/types.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 19
+	#define NR_SYSCALLS 20
 	
 	/* System call numbers. */
 	#define NR_alarm    0 /* alarm()   */
@@ -33,6 +33,7 @@
 	#define NR_setpgrp 16 /* setpgrp() */
 	#define NR_setuid  17 /* setuid()  */
 	#define NR_exit    18 /* exit()    */
+	#define NR_wait    19 /* wait()    */
 
 #ifndef _ASM_FILE_
 	
@@ -390,6 +391,29 @@
 	 *             not match the real user ID or the saved set-user-ID.
 	 */
 	EXTERN int sys_setuid(pid_t uid);
+	
+	/*
+	 * DESCRIPTION:
+	 *   The sys_wait() function suspends execution of the calling process until
+	 *   a child process terminates. Moreover, iIf stat_loc is not a null pointer, 
+	 *   information regarding the status of the terminated child process is stored 
+	 *   in the location pointed to by stat_loc.
+	 * 
+	 * RETURN VALUE:
+	 *   Upon successful completion, sys_wait() returns the process ID of the
+	 *   terminated child process. Upon failure a negative error code is returned
+	 *   instead.
+	 * 
+	 * ERRORS:
+	 *   - [ECHILD] The calling process has no existing unwaited-for child processes
+	 *              or the calling process has SIGCHLD set to SIG_IGN.
+	 * 
+	 *   - [EINTR] The function was interrupted by a signal.
+	 * 
+	 *   - [EPERM] The process has no permissions to write to the location pointed
+	 *             to by stat_loc. 
+	 */
+	EXTERN pid_t sys_wait(int *stat_loc);
 
 #endif /* _ASM_FILE_ */
 

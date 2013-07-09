@@ -7,6 +7,7 @@
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
+#include <nanvix/paging.h>
 #include <signal.h>
 
 /*
@@ -65,6 +66,7 @@ PUBLIC void die(int status)
 	curr_proc->status = status;
 	
 	sndsig(curr_proc->father, SIGCHLD);
+	curr_proc->father--;
 	
 	yield();
 }
@@ -87,4 +89,13 @@ PUBLIC void abort(int err)
 	kprintf("aborting process %d", curr_proc->pid);
 	
 	die(err);
+}
+
+/*
+ * Buries a zombie process.
+ */
+PUBLIC void bury(struct process *proc)
+{
+	dstrypgdir(proc);
+	proc->state = PROC_DEAD;
 }

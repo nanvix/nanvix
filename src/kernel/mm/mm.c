@@ -5,6 +5,7 @@
  */
 
 #include <nanvix/const.h>
+#include <nanvix/pm.h>
 #include <nanvix/region.h>
 
 /*
@@ -14,4 +15,34 @@ PUBLIC void mm_init()
 {
 	/* Initialize memory regions. */
 	initreg();
+}
+
+/*
+ * Checks a memory area.
+ */
+PUBLIC int chkmem(void *ptr, size_t size, int writable)
+{
+	struct pregion *preg;
+	
+	preg = findreg(curr_proc, (addr_t)ptr);
+	
+	if (preg == NULL)
+		goto out0;
+	
+	lockreg(preg->reg);
+	
+	if (((addr_t)ptr + size) < (preg->start + preg->reg->size))
+		goto out1;
+	
+	if (writable > accessreg(curr_proc, preg->reg))
+		goto out1;
+	
+	lockreg(preg->reg);
+		
+	return (1);
+
+out1:
+	lockreg(preg->reg);
+out0:
+	return (0);
 }

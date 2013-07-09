@@ -142,7 +142,7 @@ PUBLIC int accessreg(struct process *proc, struct region *reg)
 			
 		/* Cannot read nor write. */
 		else
-			rw = -1;
+			return (-1);
 	}
 		
 	/* Same group ID. */
@@ -158,7 +158,7 @@ PUBLIC int accessreg(struct process *proc, struct region *reg)
 			
 		/* Cannot read nor write. */
 		else
-			rw = -1;
+			return (-1);
 	}
 		
 	/* Others. */
@@ -174,7 +174,7 @@ PUBLIC int accessreg(struct process *proc, struct region *reg)
 		
 		/* Cannot read nor write. */
 		else
-			rw = -1;
+			return (-1);
 	}
 	
 	return (rw);

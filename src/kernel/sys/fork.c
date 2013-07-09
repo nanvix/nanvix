@@ -82,6 +82,7 @@ found:
 		proc->pregs[i].type = PREGION_UNUSED;
 	proc->size = 0;
 	proc->status = 0;
+	proc->nchildren = 0;
 	proc->uid = curr_proc->uid;
 	proc->euid = curr_proc->euid;
 	proc->suid = curr_proc->suid;
@@ -99,6 +100,8 @@ found:
 	proc->next = NULL;
 	proc->chain = NULL;
 	sched(proc);
+	
+	curr_proc->nchildren++;
 	
 	return (proc->pid);
 

@@ -81,6 +81,7 @@
 		
 		/* General information. */
 		int status;             /* Exit status.         */
+		int nchildren;          /* Number of children.  */
 		uid_t uid;              /* User ID.             */
 		uid_t euid;             /* Efective user ID.    */
 		uid_t suid;             /* Saved set-user-ID.   */
@@ -121,6 +122,8 @@
 	
 	EXTERN void die(int code);
 	
+	EXTERN void bury(struct process *proc);
+	
 	EXTERN void sndsig(struct process *proc, int sig);
 	
 	EXTERN void yield();
@@ -155,13 +158,6 @@
 	 *   <signal.h>, sys_waitpid() 
 	 */
 	EXTERN int issig();
-	
-	/*
-	 * Asserts if the current process is ignoring the signal sig.
-	 */
-	#define IGNORING(sig)                                                   \
-		((curr_proc->handlers[sig] == SIG_IGN) ||                           \
-		 (curr_proc->handlers[sig] == SIG_DFL) && (sigdlf[sig] == SIG_IGN))
 	
 	#define KERNEL_RUNNING(p) ((p)->intlvl > 1)
 	

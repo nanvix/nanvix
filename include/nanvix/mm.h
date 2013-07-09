@@ -8,6 +8,7 @@
 #define MM_H_
 	
 	#include <nanvix/const.h>
+	#include <sys/types.h>
 	
 	/* Kernel stack size. */
 	#define KSTACK_SIZE 4096
@@ -34,6 +35,12 @@
 #ifndef _ASM_FILE_
 	
 	EXTERN void mm_init();
+	
+	
+	/*
+	 * Checks a memory area.
+	 */
+	EXTERN int chkmem(void *ptr, size_t size, int writable);
 
 #endif /* _ASM_FILE_ */
 	

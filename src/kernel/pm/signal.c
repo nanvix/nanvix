@@ -2,12 +2,20 @@
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * signal.c - Signals.
+ * 
+ * FIXME: sndsig() and issig()
  */
 
 #include <nanvix/const.h>
 #include <nanvix/pm.h>
 #include <signal.h>
 
+/*
+ * Asserts if a process is ignoring the signal sig.
+ */
+#define IGNORING(p, sig)                                                      \
+		((p->handlers[sig] == SIG_IGN) ||                              \
+		 ((p->handlers[sig] == SIG_DFL) && (sig_default[sig] == SIG_IGN)))
 
 /* Default signal handlers. */
 PUBLIC sighandler_t sig_default[NR_SIGNALS] = {
@@ -91,10 +99,10 @@ PUBLIC int issig()
 			/* SIGCHLD is somewhat special. */
 			if (i == SIGCHLD)
 			{
-				if (IGNORING(SIGCHLD))
+				if (IGNORING(curr_proc, SIGCHLD))
 				{					
 					/* Clear signal flag. */
-					curr_proc->sig &= ~(1 << i);
+					curr_proc->received &= ~(1 << i);
 				
 					/* Bury zombie children... */
 					for (p = FIRST_PROC; p <= LAST_PROC; p++)
@@ -117,11 +125,11 @@ PUBLIC int issig()
 			}
 			
 			/* Not ignoring signal. */
-			else if (!IGNORING(i))
-				return (i).
+			else if (!IGNORING(curr_proc, i))
+				return (i);
 			
 			/* Clear signal flag. */
-			curr_proc->sig &= ~(1 << i);
+			curr_proc->received &= ~(1 << i);
 		}
 	}
 	

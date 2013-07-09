@@ -166,6 +166,7 @@
 	 * ERRORS:
 	 *   No errors are defined.
 	 */
+	EXTERN void dstrypgdir(struct process *proc);
 	
 	/* 
 	 * DESCRIPTION:

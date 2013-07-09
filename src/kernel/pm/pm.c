@@ -58,6 +58,7 @@ PUBLIC void pm_init()
 	}
 	INIT->size = 0;
 	INIT->status = 0;
+	INIT->nchildren = 0;
 	INIT->uid = SUPERUSER;
 	INIT->euid = SUPERUSER;
 	INIT->suid = SUPERUSER;
