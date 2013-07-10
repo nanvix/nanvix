@@ -66,7 +66,6 @@ PUBLIC void die(int status)
 	curr_proc->status = status;
 	
 	sndsig(curr_proc->father, SIGCHLD);
-	curr_proc->father--;
 	
 	yield();
 }
@@ -74,9 +73,10 @@ PUBLIC void die(int status)
 /*
  * Terminates a process.
  */
-PUBLIC void terminate(int err)
+PUBLIC void terminate(int sig)
 {
-	kprintf("terminating process %d with error code %d", curr_proc->pid, err);
+	/* Process exited due to uncaught signal. */
+	curr_proc->state = ((sig & 0xff) << 16) | (1 << 10);
 	
 	die(err);
 }
@@ -84,9 +84,10 @@ PUBLIC void terminate(int err)
 /*
  * Aborts the execution of a process.
  */
-PUBLIC void abort(int err)
+PUBLIC void abort(int sig)
 {
-	kprintf("aborting process %d", curr_proc->pid);
+	/* Process exited due to uncaught signal. */
+	curr_proc->state = ((sig & 0xff) << 16) | (1 << 10);
 	
 	die(err);
 }
@@ -98,4 +99,5 @@ PUBLIC void bury(struct process *proc)
 {
 	dstrypgdir(proc);
 	proc->state = PROC_DEAD;
+	curr_proc->father->nchildren--;
 }

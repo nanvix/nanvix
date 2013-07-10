@@ -7,6 +7,7 @@
 #include <nanvix/const.h>
 #include <nanvix/pm.h>
 #include <nanvix/region.h>
+#include <nanvix/klib.h>
 
 /*
  * Initializes the memory system module.
@@ -37,12 +38,12 @@ PUBLIC int chkmem(void *ptr, size_t size, int writable)
 	if (writable > accessreg(curr_proc, preg->reg))
 		goto out1;
 	
-	lockreg(preg->reg);
+	unlockreg(preg->reg);
 		
 	return (1);
 
 out1:
-	lockreg(preg->reg);
+	unlockreg(preg->reg);
 out0:
 	return (0);
 }

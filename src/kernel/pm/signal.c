@@ -11,18 +11,18 @@
 /*
  * Asserts if a process is ignoring a signal.
  */
-#define IGNORING(p, sig)                                                   \
-		((p->handlers[sig] == SIG_IGN) ||                                  \
-		 ((p->handlers[sig] == SIG_DFL) && (sig_default[sig] == SIG_IGN)))
+#define IGNORING(p, sig)                                              \
+		((p->handlers[sig] == SIG_IGN) ||                             \
+		 ((p->handlers[sig] == SIG_DFL) && (sigdfl[sig] == SIG_IGN))) \
 
 /*
  * Asserts if a process is catching a signal.
  */
 #define CATCHING(p, sig)                                             \
-	((p->handlers[sig] != SIG_DFL) && (p->handlers[sig] != SIG_IGN))
+	((p->handlers[sig] != SIG_DFL) && (p->handlers[sig] != SIG_IGN)) \
 
 /* Default signal handlers. */
-PUBLIC sighandler_t sig_default[NR_SIGNALS] = {
+PUBLIC const sighandler_t sigdfl[NR_SIGNALS] = {
 	NULL,                     /* SIGNULL */ (sighandler_t)&terminate, /* SIGKILL */ 
 	(sighandler_t)&stop,      /* SIGSTOP */ SIG_IGN,                  /* SIGURG  */
 	(sighandler_t)&abort,     /* SIGABRT */ (sighandler_t)&abort,     /* SIGBUS  */
@@ -44,22 +44,25 @@ PUBLIC void sndsig(struct process *proc, int sig)
 {
 	struct process *p;
 	
-	/* Null signal. */
+	/* Ignore SIGNULL. */
 	if (sig == SIGNULL)
 		return;
 	
+	/* Set signal flag. */
 	proc->received |= (1 << sig);
 	
-	/* SIGCONT is somewhat special. */
+	/* 
+	 * SIGCONT is somewhat special. The receiving process is resumed even if
+	 * SIGCONT is being ignored otherwise it could stop forever.
+	 */
 	if (sig == SIGCONT)
 	{
-		/* 
-		 * The process must be resumed even if SIGCONT
-		 * is ignored. Otherwise it could stop forever.
-		 */
 		resume(proc);
 		
-		/* SIGCONT has already been handled. */
+		/* 
+		 * The process is not catching SIGCONT and the default action for this
+		 * signal has already been taken.
+		 */
 		if (!CATCHING(proc, sig))
 		{
 			proc->received &= ~(1 << sig);
@@ -80,60 +83,77 @@ PUBLIC void sndsig(struct process *proc, int sig)
 			p->next = proc->next;
 		}
 		
+		/* Re-schedule process. */
 		sched(proc);
 	}
 }
 
 /*
- * Checks if a signal has been sent to the calling process.
+ * Checks there is a pending signal and returns it.
  */
 PUBLIC int issig()
 {
 	int i;
 	struct process *p;
-	
-	/* Find a signal that has been sent to the process. */
+
+	/* Find a signal that is pending and not being ignored. */
 	for (i = 1; i < NR_SIGNALS; i++)
 	{
 		/* Found. */
 		if (curr_proc->received & (1 << i))
 		{
-			/* SIGCHLD is somewhat special. */
+			/*
+			 * SIGCHLD is somewhat special. If the current process has set SIG_IGN
+			 * to handle SIGCHLD, the child processes should not become zombie 
+			 * processes, meaning that they are buried the soonest possible (here). 
+			 * However, if the current process is catching SIGCHLD or handling it
+			 * with the default handler (SIG_DFL), child processes do become zombie
+			 * processes and they are buried in wait().
+			 */
 			if (i == SIGCHLD)
 			{
-				if (IGNORING(curr_proc, SIGCHLD))
+				/* The current process has set SIG_IGN to handle SIGCHLD. */
+				if (curr_proc->handlers[SIGCHLD] == SIG_IGN)
 				{					
 					/* Clear signal flag. */
 					curr_proc->received &= ~(1 << i);
 				
-					/* Bury zombie children... */
+					/* Bury zombie child processes. */
 					for (p = FIRST_PROC; p <= LAST_PROC; p++)
 					{
-						/* Zombie child process. */
+						/* Zombie child process found. */
 						if ((p->father == curr_proc) && (p->state == PROC_ZOMBIE))
-						{
 							bury(p);
-							curr_proc->nchildren--;
-						}
 					}
 					
-					/* ...and find another signal. */
+					/*
+					 * The current process still have child processes, so try 
+					 * to find another signal that is pending and not being ignored.
+					 */
 					if (curr_proc->nchildren)
 						continue;
 				}
 				
-				/* sys_waitpid() will do whatever has to be done. */
+				/* 
+				 * Clear the signal flag for SIGCHLD since the current process is
+				 * not catching this signal and the default action is to ignore it.
+				 */
+				else if (curr_proc->handlers[SIGCHLD] == SIG_DFL)
+					curr_proc->received &= ~(1 << i);
+				
+				/* wait() will bury zombie child process (if any). */
 				return (SIGCHLD);
 			}
 			
-			/* Not ignoring signal. */
+			/* Found. */
 			else if (!IGNORING(curr_proc, i))
 				return (i);
-			
+
 			/* Clear signal flag. */
 			curr_proc->received &= ~(1 << i);
 		}
 	}
 	
+	/* There is no pending signal that is not being ignored. */
 	return (SIGNULL);
 }

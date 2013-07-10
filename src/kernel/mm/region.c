@@ -356,9 +356,14 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 	for (i = 0; i < NR_PREGIONS; i++)
 	{
 		/* Found. */
-		if ((addr >= proc->pregs[i].start) &&
-			(addr < proc->pregs[i].start + proc->pregs[i].reg->size))
-			return (&proc->pregs[i]);
+		if (proc->pregs[i].type != PREGION_UNUSED)
+		{
+			if (addr >= proc->pregs[i].start)
+			{
+				if (addr < proc->pregs[i].start + proc->pregs[i].reg->size)
+					return (&proc->pregs[i]);
+			}
+		}
 	}
 
 	return (NULL);

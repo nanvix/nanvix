@@ -9,9 +9,10 @@
 
 	#include <nanvix/const.h>
 	#include <sys/types.h>
+	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 20
+	#define NR_SYSCALLS 21
 	
 	/* System call numbers. */
 	#define NR_alarm    0 /* alarm()   */
@@ -34,6 +35,7 @@
 	#define NR_setuid  17 /* setuid()  */
 	#define NR_exit    18 /* exit()    */
 	#define NR_wait    19 /* wait()    */
+	#define NR_signal  20 /* signal.   */
 
 #ifndef _ASM_FILE_
 	
@@ -347,6 +349,8 @@
 	 *             not match the real group ID or the saved set-group-ID.
 	 */
 	EXTERN int sys_setgid(gid_t uid);
+	
+	EXTERN sighandler_t sys_signal(int signum, sighandler_t handler, void (*restorer)(void));
 	
 	/*
 	 * DESCRIPTION:

@@ -21,8 +21,8 @@
 	#define PRIO_INODE  -60 /* Waiting for inode.         */
 	#define PRIO_TTY    -40 /* Waiting for terminal I/O.  */
 	#define PRIO_REGION -20 /* Waiting for memory region. */
-	#define PRIO_USER    0  /* User priority.             */
-	#define PRIO_INIT    20 /* init priority.             */
+	#define PRIO_SIG      0 /* Waiting for signal.        */
+	#define PRIO_USER    20 /* User priority.             */
 	
 	/* Process flags. */
 	#define PROC_FREE 1 /* Process is free. */
@@ -38,13 +38,14 @@
 	#define PROC_STOPPED  6 /* Stopped.                   */
 
 	/* Offsets to the process structure. */
-	#define PROC_KESP      0 /* Kernel stack pointer.   */
-	#define PROC_CR3       4 /* Page directory pointer. */
-	#define PROC_INTLVL    8 /* Interrupt level.        */
-	#define PROC_FLAGS    12 /* Process flags.          */
-	#define PROC_RECEIVED 16 /* Received signasl.       */
-	#define PROC_KSTACK   20 /* Kernel stack base.      */
-	#define PROC_HANDLERS 24 /* Signals handlers.       */
+	#define PROC_KESP        0
+	#define PROC_CR3         4
+	#define PROC_INTLVL      8
+	#define PROC_FLAGS      12
+	#define PROC_RECEIVED   16
+	#define PROC_KSTACK     20
+	#define PROC_HANDLERS   24
+	#define PROC_RESTORERS 116
 	
 	/* Clock frequency (in hertz). */
 	#define CLOCK_FREQ 100
@@ -66,13 +67,14 @@
 	struct process
 	{
 		/* Hardcoded fields. */
-    	dword_t kesp;                      /* Kernel stack poiner.       */
-    	dword_t cr3;                       /* Page directory pointer.    */
-		dword_t intlvl;                    /* Interrupt level.           */
-		int flags;                         /* Process flags (see above). */
-    	int received;                      /* Received signals.          */
-    	void *kstack;                      /* Kernel stack.              */
-		sighandler_t handlers[NR_SIGNALS]; /* Signal handlers.           */
+    	dword_t kesp;                        /* Kernel stack poiner.       */
+    	dword_t cr3;                         /* Page directory pointer.    */
+		dword_t intlvl;                      /* Interrupt level.           */
+		int flags;                           /* Process flags (see above). */
+    	int received;                        /* Received signals.          */
+    	void *kstack;                        /* Kernel stack.              */
+		sighandler_t handlers[NR_SIGNALS];   /* Signal handlers.           */
+		void (*restorers[NR_SIGNALS])(void); /* Signal restorers.          */
 		
     	/* Memory information. */
 		struct pte *pgdir;                 /* Page directory.         */
@@ -130,33 +132,6 @@
 	
 	EXTERN void sched(struct process *proc);
 
-	/*
-	 * DESCRIPTION:
-	 *   The issig() function checks if a signal has been sent to the calling process.
-	 * 
-	 * RETURN VALUE:
-	 *   If a signal has been sent to the process calling process, issig() returns 
-	 *   the number of a signal that has been received. Otherwise, it returns SIGNULL
-	 *   (no signal). 
-	 * 
-	 *   No return value is reserved to indicate an error.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
-	 * 
-	 * NOTES:
-	 *   The SIGCHLD signal is somewhat special. When the calling process receives
-	 *   the SIGCHLD signal but is ignoring it, issig() clears the signal flag and 
-	 *   buries all zombie children processes. 
-	 * 
-	 *   After that, issig() checks if the calling process still have children 
-	 *   processes. If it has, issig() checks for the receipt of another signal. 
-	 *   However if it hasn't, issig() returns SIGCHLD, even thought the process is 
-	 *   ignoring this signal. This allows sys_waitpid() to not get blocked forever.
-	 * 
-	 * SEE ALSO:
-	 *   <signal.h>, sys_waitpid() 
-	 */
 	EXTERN int issig();
 	
 	#define KERNEL_RUNNING(p) ((p)->intlvl > 1)
@@ -164,9 +139,6 @@
 	#define IS_SUPERUSER(p) \
 		((p->uid == SUPERUSER) || (p->euid == SUPERUSER))
 		
-	
-	EXTERN sighandler_t sig_default[NR_SIGNALS];
-
 	/* Process table. */
 	EXTERN struct process proctab[PROC_MAX];
 	

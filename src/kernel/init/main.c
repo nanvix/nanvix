@@ -12,17 +12,28 @@
 #include <nanvix/mm.h>
 #include <nanvix/syscall.h>
 
-#define syscall0(type, name)                                    \
-    type name(void)                                                 \
-    {                                                               \
-        type ret;                                                   \
-        __asm__ volatile ("int $0x80" : "=a" (ret) : "0" (NR_##name)); \
-        if (ret >= 0)  return ret;                                  \
-        return -1;                                                  \
-    }
+int errno = 0;
 
+pid_t wait(int *stat_loc)
+{
+	pid_t pid;
+	
+	__asm__ volatile(    \
+		"int $0x80"      \
+		: "=a" (pid)     \
+		: "0" (NR_wait), \
+		  "b" (stat_loc) \
+	);
+	
+	if (pid < 0)
+	{
+		errno = -pid;
+		return (-1);
+	}
+	
+	return (pid);
+}
 
-syscall0(pid_t, fork)
 
 PUBLIC void kmain()
 {		
@@ -31,23 +42,5 @@ PUBLIC void kmain()
 	mm_init();
 	pm_init();
 	
-	/* */
-	if (!fork())
-	{
-		while (1)
-		{
-			kprintf("child process");
-			yield();
-		}
-	}
-
-	else
-	{
-	
-		while (1)
-		{
-			kprintf("father process");
-			yield();
-		}
-	}
+	while (1);
 }

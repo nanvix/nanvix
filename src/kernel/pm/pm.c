@@ -72,8 +72,8 @@ PUBLIC void pm_init()
 	INIT->ktime = 0;
 	INIT->state = PROC_RUNNING;
 	INIT->counter = PROC_QUANTUM;
-	INIT->priority = PRIO_INIT;
-	INIT->nice = NZERO;
+	INIT->priority = PRIO_USER;
+	INIT->nice = 2*NZERO -1;
 	INIT->alarm = 0;
 	INIT->next = NULL;
 	INIT->chain = NULL;
