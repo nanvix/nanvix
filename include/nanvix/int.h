@@ -12,8 +12,7 @@
 	#include <errno.h>
 
 	/* Hardware interrupt numbers. */
-	#define HWINT_CLOCK    0 /* Clock interrupt.    */
-	#define HWINT_KEYBOARD 1 /* Keyboard interrupt. */
+	#define HWINT_CLOCK    0 /* Clock interrupt. */
 
 	/* Offsets to the registers structure. */
 	#define DS       4

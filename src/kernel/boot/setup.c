@@ -11,6 +11,7 @@
 #include <nanvix/const.h>
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
+#include <nanvix/mm.h>
 
 /* Descriptor tables. */
 PRIVATE struct gdte gdt[GDT_SIZE]; /* Global descriptor table.    */

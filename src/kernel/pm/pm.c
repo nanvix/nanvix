@@ -81,6 +81,4 @@ PUBLIC void pm_init()
 	clock_init(CLOCK_FREQ);
 	
 	enable_interrupts();
-	
-	kprintf("init process spawned %x %x", curr_proc->kstack, curr_proc->pgdir);
 }

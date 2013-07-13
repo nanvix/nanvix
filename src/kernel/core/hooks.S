@@ -68,8 +68,7 @@
 	pushl %edi
 	
 	/* Save data segment. */
-	movw %ds, %ax
-	pushl %eax
+	pushl %ds
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -80,7 +79,6 @@
  * Enters in kernel.
  */
 .macro enter
-	/* Load kernel data segment. */
 	movw $KERNEL_DS, %bx
 	movw %bx, %ds
 
@@ -111,11 +109,7 @@ leave:
 	/* Decrement interrupt level. */
     decl PROC_INTLVL(%ebx)
 
-	/* Reolad data segment. */
-	popl %eax
-	mov %ax, %ds
-	
-	/* Load registers. */
+	popl %ds
 	popl %edi
 	popl %esi
 	popl %ebp
@@ -180,15 +174,11 @@ swint:
 	/* Save registers. */
 	pushl %edx
 	pushl %ebx
-	pushl %esp
 	pushl %ebp
 	pushl %esi
 	pushl %edi
+	pushl %ds
 	
-	/* Save data segment. */
-	movw %ds, %bx
-	pushl %ebx
-
 	enter
 	
 	/* Leave critical region. */

@@ -47,8 +47,8 @@
      * 
      *   Moreover, if stat_loc is not a NULL pointer, status information 
      *   regarding the process termination is stored in the location pointed to
-     *   by stat_loc. This information, aka process status value, may be later
-     *   analyzed by helper macros defined at <sys/wait.h>.
+     *   by stat_loc. This information, aka process status value, may be parsed 
+     *   by helper macros defined at <sys/wait.h>.
      * 
      *   The behavior of wait() when the calling process has set SIG_IGN to the 
      *   SIGCHLD signal is explained in the NOTES section.
@@ -76,11 +76,11 @@
      * NOTES:
      *   If the calling process has set SIG_IGN to the SIGCHLD signal, it gets 
      *   blocked until all of its child processed have terminated and then 
-     *   returns -1, setting errno to ECHILD
+     *   returns -1, setting errno to ECHILD.
      * 
      * SEE ALSO:
      *   <sys/wait.h>, <errno.h>, <signal.h>
      */
-    pid_t wait(int *stat_loc);
+    extern pid_t wait(int *stat_loc);
 
 #endif /* WAIT_H_ */

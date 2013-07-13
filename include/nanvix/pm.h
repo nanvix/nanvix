@@ -122,7 +122,7 @@
 	
 	EXTERN void abort(int err);
 	
-	EXTERN void die(int code);
+	EXTERN void die();
 	
 	EXTERN void bury(struct process *proc);
 	

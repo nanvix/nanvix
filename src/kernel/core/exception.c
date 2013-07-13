@@ -14,13 +14,13 @@
  * Exception handler.
  */
 #define EXCEPTION(name, sig, msg)                  \
-PUBLIC void do_##name(int err, struct intstack r ) \
+PUBLIC void do_##name(int err, struct intstack s)  \
 {                                                  \
 	/* Die. */                                     \
 	if (KERNEL_RUNNING(curr_proc))                 \
 	{                                              \
-		kprintf("%s: %x", msg, err & 0xffff);      \
-		dumpstack(&r);                             \
+		kprintf("%s: %d", msg, err & 0xffff);      \
+		dumpstack(&s);                             \
 		die(sig);                                  \
 	}                                              \
 	                                               \

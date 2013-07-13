@@ -42,5 +42,7 @@ PUBLIC void kmain()
 	mm_init();
 	pm_init();
 	
-	while (1);
+	
+	while (1)
+	kprintf("hi");
 }

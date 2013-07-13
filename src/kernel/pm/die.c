@@ -13,7 +13,7 @@
 /*
  * 
  */
-PUBLIC void die(int status)
+PUBLIC void die()
 {
 	int i;
 	struct process *p;
@@ -63,7 +63,6 @@ PUBLIC void die(int status)
 	}
 
 	curr_proc->state = PROC_ZOMBIE;
-	curr_proc->status = status;
 	
 	sndsig(curr_proc->father, SIGCHLD);
 	
@@ -78,7 +77,7 @@ PUBLIC void terminate(int sig)
 	/* Process exited due to uncaught signal. */
 	curr_proc->state = ((sig & 0xff) << 16) | (1 << 10);
 	
-	die(err);
+	die();
 }
 
 /*
@@ -89,7 +88,7 @@ PUBLIC void abort(int sig)
 	/* Process exited due to uncaught signal. */
 	curr_proc->state = ((sig & 0xff) << 16) | (1 << 10);
 	
-	die(err);
+	die();
 }
 
 /*
