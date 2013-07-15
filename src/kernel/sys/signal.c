@@ -25,11 +25,11 @@ PUBLIC sighandler_t sys_signal(int signum, sighandler_t handler, void (*restorer
 		return (NULL);
 	
 	/* Handler is not valid. */
-	if (!chkmem((void*)((addr_t)handler), 1, 0))
+	if (!chkmem((addr_t)handler, CHKMEM_FUNCTION))
 		return (NULL);
 	
 	/* Restorer is not valid. */
-	if (!chkmem((void*)((addr_t)restorer), 1, 0))
+	if (!chkmem((addr_t)restorer, CHKMEM_FUNCTION))
 		return (NULL);
 	
 	/* Set signal handler. */

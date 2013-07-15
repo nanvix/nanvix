@@ -7,6 +7,7 @@
 #ifndef MM_H_
 #define MM_H_
 	
+	#include <i386/i386.h>
 	#include <nanvix/const.h>
 	#include <sys/types.h>
 	
@@ -32,15 +33,18 @@
 	/* User memory size. */
 	#define UMEM_SIZE (MEMORY_SIZE - KMEM_SIZE - KPOOL_SIZE)
 
+	/* chkmem() request types. */
+	#define CHKMEM_FUNCTION  0 /* Function.      */
+	#define CHKMEM_CHUNK     1 /* Chunk of data. */
+
 #ifndef _ASM_FILE_
 	
 	EXTERN void mm_init();
 	
-	
 	/*
 	 * Checks a memory area.
 	 */
-	EXTERN int chkmem(void *ptr, size_t size, int writable);
+	EXTERN int chkmem(addr_t addr, int type, ...);
 	
 	EXTERN int fubyte(void *addr);
 
