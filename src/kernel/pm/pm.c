@@ -16,8 +16,8 @@
 #include <limits.h>
 
 /* init stuff. */
-EXTERN char init_kstack[]; /* Kernel stack.   */
-EXTERN struct pte init_pgdir[];  /* Page directory. */
+PUBLIC char init_kstack[KSTACK_SIZE]; /* Kernel stack.   */
+EXTERN struct pte init_pgdir[];      /* Page directory. */
 
 /* Process table. */
 PUBLIC struct process proctab[PROC_MAX];

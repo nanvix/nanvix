@@ -27,6 +27,17 @@
 	#define DWORD_BIT  32 /* 32 bits. */
 	#define QWORD_BIT  64 /* 64 bits. */
 	
+	/* Offsets to the jmp_buf structure*/
+	#define JMP_BUF_EBX     0
+	#define JMP_BUF_ESI     4
+	#define JMP_BUF_EDI     8
+	#define JMP_BUF_EIP    12
+	#define JMP_BUF_EFLAGS 16
+	#define JMP_BUF_EBP    20
+	#define JMP_BUF_ESP    24
+	#define JMP_BUF_KESP   28
+	#define JMP_BUF_INTLVL 32
+	
 #ifndef _ASM_FILE_
 
 	/* Machine types. */
@@ -36,7 +47,20 @@
 	
 	/* Used for addresses. */
 	typedef unsigned addr_t;
-	
+
+	typedef struct
+	{
+		dword_t ebx;
+		dword_t esi;
+		dword_t edi;
+		dword_t eip;
+		dword_t eflags;
+		dword_t ebp;
+		dword_t esp;
+		dword_t kesp;
+		dword_t intlvl;
+	} kjmp_buf;
+
 #endif /* _ASM_FILE_ */
 
 #endif /* I386_H_ */

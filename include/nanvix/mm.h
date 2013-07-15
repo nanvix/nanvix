@@ -41,6 +41,8 @@
 	 * Checks a memory area.
 	 */
 	EXTERN int chkmem(void *ptr, size_t size, int writable);
+	
+	EXTERN int fubyte(void *addr);
 
 #endif /* _ASM_FILE_ */
 	

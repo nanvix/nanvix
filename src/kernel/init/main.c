@@ -42,6 +42,7 @@ PUBLIC void kmain()
 	mm_init();
 	pm_init();
 	
+	fubyte((void*)0xa0000000);
 	
 	while (1)
 	kprintf("hi");

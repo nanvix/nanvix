@@ -7,6 +7,7 @@
 #ifndef KLIB_H_
 #define KLIB_H_
 
+	#include <i386/i386.h>
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
 	#include <sys/types.h>
@@ -223,5 +224,9 @@
 	 *   The UNUSED() macro says to the compiler that a variable is unused.
 	 */
 	#define UNUSED(a) ((void)a)
-
+	
+	EXTERN int ksetjmp(kjmp_buf *env);
+	
+	EXTERN int klongjmp(kjmp_buf *env, int val);
+	
 #endif /* KLIB_H_ */

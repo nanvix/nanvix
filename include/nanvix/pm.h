@@ -77,9 +77,10 @@
 		void (*restorers[NR_SIGNALS])(void); /* Signal restorers.          */
 		
     	/* Memory information. */
-		struct pte *pgdir;                 /* Page directory.         */
-		struct pregion pregs[NR_PREGIONS]; /* Process memory regions. */
-		size_t size;                       /* Process size.           */
+		struct pte *pgdir;                 /* Page directory.             */
+		struct pregion pregs[NR_PREGIONS]; /* Process memory regions.     */
+		size_t size;                       /* Process size.               */
+		kjmp_buf kenv;                     /* Environment for klongjmp(). */
 		
 		/* General information. */
 		int status;             /* Exit status.         */

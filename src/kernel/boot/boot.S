@@ -17,7 +17,6 @@
 /* Exported symbols. */
 .globl start
 .globl init_pgdir
-.globl init_kstack
 
 /*============================================================================*
  *                              bootstrap section                             *
@@ -73,10 +72,8 @@ start:
 	movl $init_kstack + PAGE_SIZE - DWORD_SIZE, %ebp
 	movl $init_kstack + PAGE_SIZE - DWORD_SIZE, %esp
 	
-	/* Setup machine. */
 	call setup
 	
-	/* Spawn init. */
 	call kmain
 	
 	halt:
@@ -115,14 +112,3 @@ kpool_pgtab:
 .align PAGE_SIZE
 init_pgdir:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
-
-/*----------------------------------------------------------------------------*
- *                                 init_kstack                                *
- *----------------------------------------------------------------------------*/
-
-/* 
- * init kernel stack.
- */
-.align PAGE_SIZE
-init_kstack:
-	.fill KSTACK_SIZE/DWORD_SIZE, DWORD_SIZE, 0

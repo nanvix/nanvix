@@ -8,6 +8,7 @@
 #include <nanvix/pm.h>
 #include <nanvix/region.h>
 #include <nanvix/klib.h>
+#include <nanvix/mm.h>
 
 /*
  * Initializes the memory system module.
@@ -17,7 +18,6 @@ PUBLIC void mm_init()
 	/* Initialize memory regions. */
 	initreg();
 }
-
 /*
  * Checks a memory area.
  */
@@ -46,4 +46,27 @@ out1:
 	unlockreg(preg->reg);
 out0:
 	return (0);
+}
+
+/*
+ * Fetches a byte from user addresss space.
+ */
+PUBLIC int fubyte(void *addr)
+{	
+	char byte;
+	
+	if ((addr_t)addr > UBASE_VIRT)
+	{
+		if ((addr_t)addr < KBASE_VIRT)
+		{
+			if (ksetjmp(&curr_proc->kenv) != 0)
+				return (-1);
+			
+			byte = (*((char *)addr));
+			
+			return ((int)byte);
+		}
+	}
+	
+	return (-1);
 }

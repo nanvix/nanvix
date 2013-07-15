@@ -176,7 +176,11 @@ PUBLIC void freeupg(struct pte *upg)
  */
 PUBLIC void cpypg(struct pte *pg1, struct pte *pg2)
 {
-	physcpy(pg2->frame << PAGE_SHIFT, pg1->frame << PAGE_SHIFT, PAGE_SIZE);
+	pg1->present = pg2->present;
+	pg1->writable = pg2->writable;
+	pg1->user = pg2->user;
+	pg1->cow = pg2->cow;
+	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
 }
 
 /*
@@ -296,7 +300,10 @@ PUBLIC void vfault(addr_t addr)
 
 err0:
 	if (KERNEL_RUNNING(curr_proc))
+	{
+		klongjmp(&curr_proc->kenv, -1);
 		kpanic("kernel validity page fault");
+	}
 	else
 		sndsig(curr_proc, SIGSEGV);
 }
@@ -320,9 +327,9 @@ PUBLIC void pfault(addr_t addr)
 		return;
 	}
 	
-	pg = &preg->reg->pgtab[PG(addr)];
-	
 	lockreg(preg->reg);
+	
+	pg = &preg->reg->pgtab[PG(addr)];
 
 	/* Copy on write not enabled. */
 	if (!pg->cow)
