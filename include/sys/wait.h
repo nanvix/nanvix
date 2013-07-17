@@ -21,7 +21,7 @@
      *   if the process exited normally.
      */
     #define WIFEXITED(status) \
-		((status >> 9) & 1)   \
+		((status >> 8) & 1)   \
     
     /*
      * DESCRIPTION:
@@ -29,7 +29,7 @@
      *   if the process exited due to uncaught signal.
      */
     #define WIFSIGNALED(status) \
-		((status >> 10) & 1)    \
+		((status >> 9) & 1)     \
 
 	/*
 	 * DESCRIPTION:

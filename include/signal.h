@@ -36,10 +36,10 @@
 	#define SIGTRAP   22 /* Trace/breakpoint trap.                          */
 	
 	/* Default signal handler. */
-	#define SIG_DFL (sighandler_t)(0)
+	#define SIG_DFL (sighandler_t)(1)
 	
 	/* Ignore signal. */
-    #define SIG_IGN (sighandler_t)(1)
+    #define SIG_IGN (sighandler_t)(2)
 
 #ifndef _ASM_FILE_
 

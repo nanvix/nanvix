@@ -301,7 +301,9 @@ PUBLIC void vfault(addr_t addr)
 err0:
 	if (KERNEL_RUNNING(curr_proc))
 	{
-		klongjmp(&curr_proc->kenv, -1);
+		if (curr_proc->flags & PROC_JMPSET)
+			klongjmp(&curr_proc->kenv, -1);
+			
 		kpanic("kernel validity page fault");
 	}
 	else
@@ -364,7 +366,12 @@ PUBLIC void pfault(addr_t addr)
 err0:
 	unlockreg(preg->reg);
 	if (KERNEL_RUNNING(curr_proc))
+	{
+		if (curr_proc->flags & PROC_JMPSET)
+			klongjmp(&curr_proc->kenv, -1);
+			
 		kpanic("kernel protection page fault");
+	}
 	else
 		sndsig(curr_proc, SIGSEGV);
 }

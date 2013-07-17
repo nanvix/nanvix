@@ -2,15 +2,6 @@
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * wait.c - wait() system call implementation.
- * 
- * TODO: improve comments.
- * 
- * XXX: test wait(NULL).
- * XXX: test wait(&whatever).
- * XXX: test EINVAL.
- * XXX: test ECHILD when the process has no children.
- * XXX: test ECHILD when SIGCHLD is set to SIG_IGN.
- * XXX: test EINTR.
  */
 
 #include <nanvix/const.h>
@@ -27,11 +18,12 @@ PRIVATE struct process *chain = NULL;
  */
 PUBLIC pid_t sys_wait(int *stat_loc)
 {
+	int sig;
 	pid_t pid;
 	struct process *p;
 
 	/* Has no permissions to write at stat_loc. */
-	if ((stat_loc != NULL) && (!chkmem((addr_t)stat_loc, CHKMEM_CHUNK, 1, sizeof(int))))
+	if ((stat_loc != NULL) && (!chkmem((addr_t)stat_loc, CHK_CHUNK, 1, sizeof(int))))
 		return (-EINVAL);
 
 repeat:
@@ -52,21 +44,26 @@ repeat:
 				/* Get exit code. */
 				if (stat_loc != NULL)
 					*stat_loc = p->status;
-
+				
+				/* 
+				 * Get child's PID before burying it 
+				 * to avoid problems. 
+				 */
 				pid = p->pid;
 
 				/* Bury child process. */
 				bury(p);
 				
-				/* Return task pid. */
 				return (pid);
 			}
 		}
 	}
-	
+
 	sleep(&chain, PRIO_USER);
+	sig = issig();
 	
-	if (issig() == SIGCHLD)
+	/* Go back and check what happened. */
+	if ((sig == SIGNULL) || (sig == SIGCHLD))
 		goto repeat;
 		
 	return (-EINTR);

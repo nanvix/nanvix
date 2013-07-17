@@ -66,7 +66,7 @@ PUBLIC void yield()
 	}
 
 	/* Choose a process to execute. */
-	next = INIT;
+	next = IDLE;
 	eprio = next->priority + next->nice - next->counter;
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{

@@ -13,7 +13,7 @@
 PUBLIC void sys_exit(int status)
 {
 	/* Process exited normally. */
-	curr_proc->status = (1 << 9) | (status & 0xff);
+	curr_proc->status = (1 << 8) | (status & 0xff);
 	
-	die(status);
+	die();
 }

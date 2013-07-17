@@ -39,7 +39,7 @@ PUBLIC int chkmem(addr_t addr, int type, ...)
 	lockreg(preg->reg);
 	
 	/* Check a chunk of memory. */
-	if (type == CHKMEM_CHUNK)
+	if (type == CHK_CHUNK)
 	{
 		va_start(args, writable);
 		writable = va_arg(args, size_t);
@@ -83,6 +83,8 @@ PUBLIC int fubyte(void *addr)
 				return (-1);
 			
 			byte = (*((char *)addr));
+			
+			kusetjmp(&curr_proc->kenv);
 			
 			return ((int)byte);
 		}

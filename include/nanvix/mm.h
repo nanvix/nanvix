@@ -34,8 +34,8 @@
 	#define UMEM_SIZE (MEMORY_SIZE - KMEM_SIZE - KPOOL_SIZE)
 
 	/* chkmem() request types. */
-	#define CHKMEM_FUNCTION  0 /* Function.      */
-	#define CHKMEM_CHUNK     1 /* Chunk of data. */
+	#define CHK_FUNCTION  0 /* Function.      */
+	#define CHK_CHUNK     1 /* Chunk of data. */
 
 #ifndef _ASM_FILE_
 	

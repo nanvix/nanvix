@@ -25,8 +25,9 @@
 	#define PRIO_USER    20 /* User priority.             */
 	
 	/* Process flags. */
-	#define PROC_FREE 1 /* Process is free. */
-	#define PROC_NEW  2 /* Process is new.  */
+	#define PROC_FREE   1 /* Process is free.       */
+	#define PROC_NEW    2 /* Process is new.        */
+	#define PROC_JMPSET 4 /* Process long jump set. */
 
 	/* Process states. */
 	#define PROC_DEAD     0 /* Dead.                      */
@@ -150,7 +151,10 @@
 	EXTERN pid_t next_pid;
 	
 	/*  init process. */
-	#define INIT (&proctab[0])
+	#define INIT (&proctab[1])
+	
+	/* idle process. */
+	#define IDLE (&proctab[0])
 	
 	/* First process. */
 	#define FIRST_PROC ((&proctab[1]))

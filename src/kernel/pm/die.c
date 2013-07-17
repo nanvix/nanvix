@@ -20,9 +20,9 @@ PUBLIC void die()
 	struct region *reg;
 	
 	/* Shall not occour. */
-	if (curr_proc == INIT)
+	if (curr_proc == IDLE)
 		kpanic("init died");
-	
+		
 	/* Ignore all signals since, process may sleep below. */
 	for (i = 0; i < NR_SIGNALS; i++)
 		curr_proc->handlers[i] = SIG_IGN;
@@ -75,7 +75,7 @@ PUBLIC void die()
 PUBLIC void terminate(int sig)
 {
 	/* Process exited due to uncaught signal. */
-	curr_proc->state = ((sig & 0xff) << 16) | (1 << 10);
+	curr_proc->state = ((sig & 0xff) << 16) | (1 << 9);
 	
 	die();
 }
@@ -86,7 +86,7 @@ PUBLIC void terminate(int sig)
 PUBLIC void abort(int sig)
 {
 	/* Process exited due to uncaught signal. */
-	curr_proc->state = ((sig & 0xff) << 16) | (1 << 10);
+	curr_proc->state = ((sig & 0xff) << 16) | (1 << 9);
 	
 	die();
 }
@@ -98,5 +98,5 @@ PUBLIC void bury(struct process *proc)
 {
 	dstrypgdir(proc);
 	proc->state = PROC_DEAD;
-	curr_proc->father->nchildren--;
+	proc->father->nchildren--;
 }

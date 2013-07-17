@@ -76,6 +76,8 @@ start:
 	
 	call kmain
 	
+	cli
+	
 	halt:
 		hlt
 		jmp halt

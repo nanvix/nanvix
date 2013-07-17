@@ -229,4 +229,6 @@
 	
 	EXTERN int klongjmp(kjmp_buf *env, int val);
 	
+	EXTERN void kusetjmp(kjmp_buf *kenv);
+	
 #endif /* KLIB_H_ */

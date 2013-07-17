@@ -114,7 +114,7 @@ PUBLIC int issig()
 			{
 				/* The current process has set SIG_IGN to handle SIGCHLD. */
 				if (curr_proc->handlers[SIGCHLD] == SIG_IGN)
-				{					
+				{		
 					/* Clear signal flag. */
 					curr_proc->received &= ~(1 << i);
 				

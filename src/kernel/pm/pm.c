@@ -17,13 +17,13 @@
 
 /* init stuff. */
 PUBLIC char init_kstack[KSTACK_SIZE]; /* Kernel stack.   */
-EXTERN struct pte init_pgdir[];      /* Page directory. */
+EXTERN struct pte init_pgdir[];       /* Page directory. */
 
 /* Process table. */
 PUBLIC struct process proctab[PROC_MAX];
 
 /* Current running process. */
-PUBLIC struct process *curr_proc = INIT;
+PUBLIC struct process *curr_proc = IDLE;
 
 /* Next available PID. */
 PUBLIC pid_t next_pid = 1;
@@ -41,42 +41,42 @@ PUBLIC void pm_init()
 		p->flags = PROC_FREE;
 		
 	/* Handcraft init process. */
-	INIT->kesp = 0;
-	INIT->cr3 = (dword_t)init_pgdir;
-	INIT->intlvl = 1;
-	INIT->flags = 0;
-	INIT->received = 0;
-	INIT->kstack = init_kstack;
+	IDLE->kesp = 0;
+	IDLE->cr3 = (dword_t)init_pgdir;
+	IDLE->intlvl = 1;
+	IDLE->flags = 0;
+	IDLE->received = 0;
+	IDLE->kstack = init_kstack;
 	for (i = 0; i < NR_SIGNALS; i++)
-		INIT->handlers[i] = SIG_DFL;
-	INIT->pgdir = init_pgdir;
+		IDLE->handlers[i] = SIG_DFL;
+	IDLE->pgdir = init_pgdir;
 	for (i = 0; i < NR_PREGIONS; i++)
 	{
-		INIT->pregs[i].type = PREGION_UNUSED;
-		INIT->pregs[i].start = 0;
-		INIT->pregs[i].reg = NULL;
+		IDLE->pregs[i].type = PREGION_UNUSED;
+		IDLE->pregs[i].start = 0;
+		IDLE->pregs[i].reg = NULL;
 	}
-	INIT->size = 0;
-	INIT->status = 0;
-	INIT->nchildren = 0;
-	INIT->uid = SUPERUSER;
-	INIT->euid = SUPERUSER;
-	INIT->suid = SUPERUSER;
-	INIT->gid = SUPERGROUP;
-	INIT->egid = SUPERGROUP;
-	INIT->sgid = SUPERGROUP;
-	INIT->pid = next_pid++;
-	INIT->father = NULL;
-	INIT->pgrp = NULL;
-	INIT->utime = 0;
-	INIT->ktime = 0;
-	INIT->state = PROC_RUNNING;
-	INIT->counter = PROC_QUANTUM;
-	INIT->priority = PRIO_USER;
-	INIT->nice = 2*NZERO -1;
-	INIT->alarm = 0;
-	INIT->next = NULL;
-	INIT->chain = NULL;
+	IDLE->size = 0;
+	IDLE->status = 0;
+	IDLE->nchildren = 0;
+	IDLE->uid = SUPERUSER;
+	IDLE->euid = SUPERUSER;
+	IDLE->suid = SUPERUSER;
+	IDLE->gid = SUPERGROUP;
+	IDLE->egid = SUPERGROUP;
+	IDLE->sgid = SUPERGROUP;
+	IDLE->pid = next_pid++;
+	IDLE->father = NULL;
+	IDLE->pgrp = NULL;
+	IDLE->utime = 0;
+	IDLE->ktime = 0;
+	IDLE->state = PROC_RUNNING;
+	IDLE->counter = PROC_QUANTUM;
+	IDLE->priority = PRIO_USER;
+	IDLE->nice = 2*NZERO -1;
+	IDLE->alarm = 0;
+	IDLE->next = NULL;
+	IDLE->chain = NULL;
 	
 	clock_init(CLOCK_FREQ);
 	

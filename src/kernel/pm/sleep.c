@@ -14,8 +14,8 @@
 PUBLIC void sleep(struct process **chain, int priority)
 {	
 	/* Process 0 cannot sleep. */
-	if (curr_proc == INIT)
-		kpanic("init trying to sleep");
+	if (curr_proc == IDLE)
+		kpanic("idle process trying to sleep");
 
 	/* Interruptible sleep and pending signal. */
 	if ((priority >= 0) && (curr_proc->received))

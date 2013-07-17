@@ -11,11 +11,12 @@
 /*
  * Terminates a process.
  */
-void exit(int status)
+void _exit(int status)
 {
 	__asm__ (
-	"int $0x80" 
-	: /* empty. */
-	: "a" (NR_exit), 
-	  "b" (status));
+		"int $0x80" 
+		: /* empty. */
+		: "a" (NR_exit), 
+		  "b" (status)
+	);
 }
