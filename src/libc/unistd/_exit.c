@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * unistd/_exit.c - exit() system call.
+ * <unistd/_exit.c> - exit() system call.
  */
 
 #include <nanvix/syscall.h>

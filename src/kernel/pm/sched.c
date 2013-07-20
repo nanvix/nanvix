@@ -61,7 +61,7 @@ PUBLIC void yield()
 		{
 			/* Alarm has expired. */
 			if ((p->alarm) && (p->alarm < ticks))
-				sndsig(p, SIGALRM);
+				p->alarm = 0, sndsig(p, SIGALRM);
 		}
 	}
 

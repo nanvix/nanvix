@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * alarm.c - alarm() system call implementation.
+ * <sys/alarm.c> - alarm() system call implementation.
  */
 
 #include <nanvix/const.h>
@@ -17,13 +17,17 @@ PUBLIC unsigned sys_alarm(unsigned seconds)
 	
 	oldalarm = curr_proc->alarm;
 	
-	/* Cancel alarm. */
-	if (seconds == 0)
-		curr_proc->alarm = 0;
-		
 	/* Schedule alarm. */
-	else
+	if (seconds > 0)
 		curr_proc->alarm = ticks + seconds*CLOCK_FREQ;
+		
+	/* Cancel alarm. */
+	else
+		curr_proc->alarm = 0;
 	
-	return (oldalarm);
+	/* Alarm would ring soon if we had not re-scheduled it. */
+	if (oldalarm <= ticks)
+		return (0);
+	
+	return ((oldalarm - ticks)/CLOCK_FREQ);
 }

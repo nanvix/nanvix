@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * wait.h - Declarations for waiting.
+ * <sys/wait.h> - Declarations for waiting.
  */
 
 #ifndef SYS_WAIT_H_

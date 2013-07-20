@@ -63,6 +63,7 @@ PUBLIC void die()
 	}
 
 	curr_proc->state = PROC_ZOMBIE;
+	curr_proc->alarm = 0;
 	
 	sndsig(curr_proc->father, SIGCHLD);
 	

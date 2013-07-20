@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * wait.c - wait() system call implementation.
+ * <sys/wait.c> - wait() system call implementation.
  */
 
 #include <nanvix/const.h>

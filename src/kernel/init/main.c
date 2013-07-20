@@ -77,6 +77,27 @@ pid_t wait(int *stat_loc)
 	return (pid);
 }
 
+int pause(void)
+{
+	int ret;
+	
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_pause)
+	);
+	
+	/* Error. */
+	if (ret < 0)
+	{
+		errno = -ret;
+		return (-1);
+	}
+	
+	return (ret);
+}
+
+
 int kill(pid_t pid, int sig)
 {
 	int ret;
@@ -134,6 +155,21 @@ void _exit(int status)
 	);
 }
 
+unsigned alarm(unsigned seconds)
+{
+	unsigned ret;
+	
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_alarm),
+		  "b" (seconds)
+	);
+	
+	return (ret);
+}
+
+
 
 PRIVATE void init()
 {
@@ -141,7 +177,25 @@ PRIVATE void init()
 	
 	if (!fork())
 	{
-		while(1);
+		int oldalarm;
+		
+		oldalarm = alarm(10);
+		
+		kprintf("oldalarm %d", oldalarm);
+		
+		kprintf("going to sleep");
+		/*
+		for(i = 0; i < 99999999; i++);
+		*/
+		oldalarm = alarm(0);
+		
+		kprintf("oldalarm %d", oldalarm);
+		
+		pause();
+		
+		kprintf("awaken");
+		
+		while(1)
 			yield();
 	}
 	
