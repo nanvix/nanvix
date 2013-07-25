@@ -173,40 +173,24 @@ unsigned alarm(unsigned seconds)
 
 PRIVATE void init()
 {
-	pid_t pid;
-	
 	if (!fork())
 	{
-		int oldalarm;
-		
-		oldalarm = alarm(10);
-		
-		kprintf("oldalarm %d", oldalarm);
-		
-		kprintf("going to sleep");
-		/*
-		for(i = 0; i < 99999999; i++);
-		*/
-		oldalarm = alarm(0);
-		
-		kprintf("oldalarm %d", oldalarm);
-		
-		pause();
-		
-		kprintf("awaken");
+		kill(2, SIGKILL);
 		
 		while(1)
 			yield();
 	}
 	
 	while (1)
-	{		
-		pid = wait(NULL);
+	{	
+		kprintf("pause()");
+			
+		pause();
 		
-		kprintf("child %d died", pid);
+		kprintf("awaken");
 		
-		if (errno == ECHILD)
-			break;
+		while(1);
+		
 	}
 	
 	_exit(0);

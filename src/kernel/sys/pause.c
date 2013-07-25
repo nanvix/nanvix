@@ -9,7 +9,7 @@
 #include <errno.h>
 #include <signal.h>
 
-/* Pause sleeping chain. */
+/* Sleeping chain. */
 PRIVATE struct process *chain = NULL;
 
 /*
@@ -22,8 +22,8 @@ PUBLIC int sys_pause()
 	{
 		sleep(&chain, PRIO_USER);
 		
-		/* Awaken on signal. */
-		if (issig())
+		/*  Wakeup on signal receipt. */
+		if (issig() != SIGNULL)
 			goto awaken;
 	}
 

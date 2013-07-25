@@ -132,6 +132,8 @@ PUBLIC int issig()
 					 */
 					if (curr_proc->nchildren)
 						continue;
+					
+					return (SIGNULL);
 				}
 				
 				/* 
@@ -139,7 +141,10 @@ PUBLIC int issig()
 				 * not catching this signal and the default action is to ignore it.
 				 */
 				else if (curr_proc->handlers[SIGCHLD] == SIG_DFL)
+				{
 					curr_proc->received &= ~(1 << i);
+					return (SIGNULL);
+				}
 				
 				/* wait() will bury zombie child process (if any). */
 				return (SIGCHLD);
