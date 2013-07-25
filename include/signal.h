@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * signal.h - Signals library header.
+ * <signal.h> - Signals library header.
  */
 
 #ifndef SIGNAL_H_
@@ -44,6 +44,68 @@
 #ifndef _ASM_FILE_
 
 	typedef void (*sighandler_t)(int);
+	
+	/*
+	 * DESCRIPTION:
+	 *   The kill() function sendS a signal to a process or a group of processes
+	 *   specified by pid. The signal to be sent is specified by sig and is either
+	 *   one from the list given in <signal.h> or 0. If sig is 0 (the null signal),
+	 *   error checking is performed but no signal is actually sent. The null 
+	 *   signal can be used to check the validity of pid.
+	 * 
+	 *   For a process to have permission to send a signal to a process designated
+	 *   by pid, unless the sending process has appropriate privileges, the real 
+	 *   or effective user ID of the sending process shall match the real or 
+	 *   saved set-user-ID of the receiving process. 
+	 * 
+	 *   The user ID tests described above are not applied when sending SIGCONT 
+	 *   to a process that is a member of the same session as the sending process.
+	 * 
+	 *   If pid is greater than 0, sig is sent to the process whose process ID 
+	 *   is equal to pid.
+	 * 
+	 *   If pid is 0, sig is sent to all processes (excluding an unspecified set
+	 *   of system processes) whose process group ID is equal to the process
+	 *   group ID of the sender, and for which the process has permission to 
+	 *   send a signal.
+	 * 
+	 *   If pid is -1, sig is sent to all processes (excluding an unspecified
+	 *   set of system processes) for which the process has permission to send 
+	 *   that signal.
+	 * 
+	 *   If pid is negative, but not -1, sig is sent to all processes (excluding
+	 *   an unspecified set of system processes) whose process group ID is equal
+	 *   to the absolute value of pid, and for which the process has permission 
+	 *   to send a signal.
+	 * 
+	 *   If the value of pid causes sig to be generated for the sending process,
+	 *   and if sig is not blocked for the calling thread and if no other thread
+	 *   has sig unblocked or is waiting in a sigwait() function for sig, either
+	 *   sig or at least one pending unblocked signal shall be delivered to the 
+	 *   sending thread before kill() returns.
+	 * 
+	 *   The kill() function is successful if the process has permission to send 
+	 *   sig to any of the processes specified by pid. If kill() fails, no signal 
+	 *   shall be sent.
+	 * 
+	 * RETURN VALUE:
+	 *   Upon successful completion, 0 shall be returned. Otherwise, -1 shall be 
+	 *   returned and errno set to indicate the error.
+	 * 
+	 * ERRORS:
+	 *   [EINVAL] The value of the sig argument is an invalid or unsupported 
+	 *            signal number.
+	 * 
+	 *   [EPERM] The process does not have permission to send the signal to any 
+	 *           receiving process.
+	 * 
+	 *   [ESRCH] No process or process group can be found corresponding to that 
+	 *           specified by pid. 
+     * 
+     * CONFORMING TO:
+     *   POSIX.1-2001.
+	 */
+	extern int kill(pid_t pid, int sig);
 
 #endif /* _ASM_FILE_ */
 

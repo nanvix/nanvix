@@ -67,7 +67,7 @@ PUBLIC void pm_init()
 	IDLE->sgid = SUPERGROUP;
 	IDLE->pid = next_pid++;
 	IDLE->father = NULL;
-	IDLE->pgrp = NULL;
+	IDLE->pgrp = IDLE;
 	IDLE->utime = 0;
 	IDLE->ktime = 0;
 	IDLE->state = PROC_RUNNING;

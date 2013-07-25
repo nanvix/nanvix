@@ -17,7 +17,7 @@ PUBLIC pid_t sys_setpgrp()
 	if (curr_proc->pid != curr_proc->pgrp->pid)
 	{
 		curr_proc->pgrp = curr_proc;
-		
+
 		/* TODO: 
 		 * 
 		 * If setpgrp() creates a new session, then the new session has no 

@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * pause.c - pause() system call implementation.
+ * <sys/pause.c> - pause() system call implementation.
  */
 
 #include <nanvix/const.h>

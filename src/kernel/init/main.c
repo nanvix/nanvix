@@ -97,6 +97,25 @@ int pause(void)
 	return (ret);
 }
 
+pid_t setpgrp(void)
+{
+	pid_t pid;
+	
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (pid)
+		: "0" (NR_setpgrp)
+	);
+	
+	/* Error. */
+	if (pid < 0)
+	{
+		errno = -pid;
+		return (-1);
+	}
+	
+	return (pid);
+}
 
 int kill(pid_t pid, int sig)
 {
@@ -175,7 +194,32 @@ PRIVATE void init()
 {
 	if (!fork())
 	{
-		kill(2, SIGKILL);
+		int i;
+		
+		setpgrp();
+		
+		for (i = 0; i < 10; i++)
+		{
+			if (!fork())
+			{
+				setpgrp();
+				goto done;
+			}
+			
+			yield();
+		}
+		
+		yield();
+		
+		kill(-5, SIGKILL);
+		
+		while(1)
+			yield();
+		
+done:
+		pause();
+		
+		kprintf("process %d done %d", getpid(), curr_proc->pgrp->pid);
 		
 		while(1)
 			yield();
@@ -183,14 +227,8 @@ PRIVATE void init()
 	
 	while (1)
 	{	
-		kprintf("pause()");
-			
-		pause();
-		
-		kprintf("awaken");
-		
-		while(1);
-		
+		while(1)
+			yield();
 	}
 	
 	_exit(0);
