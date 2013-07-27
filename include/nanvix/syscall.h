@@ -350,7 +350,7 @@
 	 */
 	EXTERN int sys_setgid(gid_t uid);
 	
-	EXTERN sighandler_t sys_signal(int signum, sighandler_t handler, void (*restorer)(void));
+	EXTERN sighandler_t sys_signal(int sig, sighandler_t func,  sigrestorer_t restorer);
 	
 	/*
 	 * DESCRIPTION:

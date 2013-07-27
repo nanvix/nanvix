@@ -1,0 +1,82 @@
+.TH "signal" "2" "July 2013" "Nanvix" "User Manual"
+
+.\ "============================================================================
+
+.SH NAME
+
+signal - Manages signals.
+
+.\ "============================================================================
+
+.SH SYNOPSIS
+
+.B #include <signal.h>
+
+.B extern sighandler_t signal(int sig, sighandler_t func);
+
+.\ "============================================================================
+
+.SH DESCRIPTION
+
+The 
+.BR signal()
+function chooses one of three ways in which receipt of the signal number 
+.IR sig 
+is to be subsequently handled. If the value of 
+.IR func 
+is 
+.BR SIG_DFL, 
+default handling for that signal occur. If the value of func is 
+.IR SIG_IGN, 
+the signal is ignored. Otherwise, the application shall ensure that 
+.IR func 
+points to a function to be called when that signal occurs. 
+
+When a signal occurs, and 
+.IR func
+points to a function, the signal handler is reset to its default value and then
+(*func)(sig) is executed. If and when the function returns, if the value of 
+.IR sig
+was any implementation-defined value corresponding to a computational exception, 
+the behavior is undefined. Otherwise, the program resumes execution at the point
+it was interrupted.
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+If the request can be honored, 
+.BR signal()
+returns the value of 
+.IR func
+for the most recent call to 
+.BR signal()
+for the specified signal 
+.IR sig.
+Otherwise,
+.BR SIG_ERR
+is returned and
+.BR errno
+set to indicate the error.
+
+.\ "============================================================================
+
+.SH ERRORS
+.TP
+.B [EINVAL]
+The sig argument is not a valid signal number or an attempt is made to catch a 
+signal that cannot be caught or ignore a signal that cannot be ignored.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+POSIX.1-2001.
+
+.\ "============================================================================
+
+.SH AUTHOR
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+.BR signal(1)

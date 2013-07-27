@@ -11,39 +11,44 @@
 	#define NR_SIGNALS 23
 
 	/* Sinals. */
-	#define SIGNULL    0 /* Null signal.                                    */
-	#define SIGKILL    1 /* Kill (cannot be caught or ignored).             */
-	#define SIGSTOP    2 /* Stop executing (cannot be caught or ignored).   */
-	#define SIGURG     3 /* High bandwidth data is available at a socket.   */
-	#define SIGABRT    4 /* Process abort signal.                           */
-	#define SIGBUS     5 /* Access to an undefined portion of a memory obj. */
-	#define SIGCHLD    6 /* Child process terminated or stopped.            */
-	#define SIGCONT    7 /* Continue executing, if stopped.                 */
-	#define SIGFPE     8 /* Erroneous arithmetic operation.                 */
-	#define SIGHUP     9 /* Hangup.                                         */
-	#define SIGILL    10 /* Illegal instruction.                            */
-	#define SIGINT    11 /* Terminal interrupt signal.                      */
-	#define SIGPIPE   12 /* Write on a pipe with no one to read it.         */
-	#define SIGQUIT   13 /* Terminal quit signal.                           */
-	#define SIGSEGV   14 /* Invalid memory reference.                       */
-	#define SIGTERM   15 /* Termination signal.                             */
-	#define SIGTSTP   16 /* Terminal stop signal.                           */
-	#define SIGTTIN   17 /* Background process attempting read.             */
-	#define SIGTTOU   18 /* Background process attempting write.            */
-	#define SIGALRM   19 /* Alarm clock.                                    */
-	#define SIGUSR1   20 /* User-defined signal 1.                          */
-	#define SIGUSR2   21 /* User-defined signal 2.                          */
-	#define SIGTRAP   22 /* Trace/breakpoint trap.                          */
+	#define SIGNULL   0 /* Null signal.                                    */
+	#define SIGKILL   1 /* Kill (cannot be caught or ignored).             */
+	#define SIGSTOP   2 /* Stop executing (cannot be caught or ignored).   */
+	#define SIGURG    3 /* High bandwidth data is available at a socket.   */
+	#define SIGABRT   4 /* Process abort signal.                           */
+	#define SIGBUS    5 /* Access to an undefined portion of a memory obj. */
+	#define SIGCHLD   6 /* Child process terminated or stopped.            */
+	#define SIGCONT   7 /* Continue executing, if stopped.                 */
+	#define SIGFPE    8 /* Erroneous arithmetic operation.                 */
+	#define SIGHUP    9 /* Hangup.                                         */
+	#define SIGILL   10 /* Illegal instruction.                            */
+	#define SIGINT   11 /* Terminal interrupt signal.                      */
+	#define SIGPIPE  12 /* Write on a pipe with no one to read it.         */
+	#define SIGQUIT  13 /* Terminal quit signal.                           */
+	#define SIGSEGV  14 /* Invalid memory reference.                       */
+	#define SIGTERM  15 /* Termination signal.                             */
+	#define SIGTSTP  16 /* Terminal stop signal.                           */
+	#define SIGTTIN  17 /* Background process attempting read.             */
+	#define SIGTTOU  18 /* Background process attempting write.            */
+	#define SIGALRM  19 /* Alarm clock.                                    */
+	#define SIGUSR1  20 /* User-defined signal 1.                          */
+	#define SIGUSR2  21 /* User-defined signal 2.                          */
+	#define SIGTRAP  22 /* Trace/breakpoint trap.                          */
 	
 	/* Default signal handler. */
 	#define SIG_DFL (sighandler_t)(1)
 	
 	/* Ignore signal. */
     #define SIG_IGN (sighandler_t)(2)
+    
+    /* Return value from signal() in case of error. */
+    #define SIG_ERR (sighandler_t)(0)
 
 #ifndef _ASM_FILE_
 
+	/* Function signatures. */
 	typedef void (*sighandler_t)(int);
+	typedef void (*sigrestorer_t)(void);
 	
 	/*
 	 * DESCRIPTION:
@@ -106,6 +111,8 @@
      *   POSIX.1-2001.
 	 */
 	extern int kill(pid_t pid, int sig);
+
+	extern sighandler_t signal(int sig, sighandler_t func);
 
 #endif /* _ASM_FILE_ */
 

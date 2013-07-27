@@ -5,7 +5,6 @@
 # Default rules.
 *.o
 bin/*
-doc/*
 
 # Exceptions.
 !bin/.gitignore

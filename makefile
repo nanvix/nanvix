@@ -14,7 +14,7 @@ export CC=$(TARGET)-gcc
 export LD=$(TARGET)-ld
 
 # Builds Nanvix.
-all: kernel	
+all: kernel
 
 # Builds kernel.
 kernel:

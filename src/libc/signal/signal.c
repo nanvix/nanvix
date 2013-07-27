@@ -1,35 +1,39 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * signal/signal.c - signal() system call.
+ * <signal/signal.c> - signal() system call.
  */
 
 #include <nanvix/syscall.h>
 #include <errno.h>
 #include <signal.h>
 
-/*
- * Configures signal handling.
- */
-sighandler_t signal(int signum, sighandler_t handler, void (*restorer)(void))
+void restorer()
 {
-	sighandler_t old_handler;
+}
+
+/*
+ * Manages signals.
+ */
+sighandler_t signal(int sig, sighandler_t func)
+{
+	sighandler_t old_func;
 	
 	__asm__ volatile (
 		"int $0x80"
-		: "=a" (old_handler)
+		: "=a" (old_func)
 		: "0" (NR_signal),
-		  "b" (signum),
-		  "c" (handler),
+		  "b" (sig),
+		  "c" (func),
 		  "d" (restorer)
 	);
 	
 	/* Error. */
-	if (old_handler == NULL)
+	if (old_func == NULL)
 	{
 		errno = -EINVAL;
-		return (NULL);
+		return (SIG_ERR);
 	}
 
-	return (old_handler);
+	return (old_func);
 }

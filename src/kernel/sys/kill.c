@@ -3,6 +3,7 @@
  * 
  * <sys/kill.c> - kill() system call implementation.
  * 
+ * TODO: test kill(whatever, SIGNULL)
  * TODO: test authorization.
  */
 
