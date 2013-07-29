@@ -8,12 +8,8 @@
 #include <errno.h>
 #include <signal.h>
 
-void restorer()
-{
-}
-
 /*
- * Manages signals.
+ * Manages signal handling.
  */
 sighandler_t signal(int sig, sighandler_t func)
 {
@@ -24,8 +20,7 @@ sighandler_t signal(int sig, sighandler_t func)
 		: "=a" (old_func)
 		: "0" (NR_signal),
 		  "b" (sig),
-		  "c" (func),
-		  "d" (restorer)
+		  "c" (func)
 	);
 	
 	/* Error. */

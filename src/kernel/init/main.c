@@ -139,10 +139,6 @@ int kill(pid_t pid, int sig)
 	return (0);
 }
 
-void restorer()
-{
-}
-
 sighandler_t signal(int sig, sighandler_t func)
 {
 	sighandler_t old_func;
@@ -152,21 +148,18 @@ sighandler_t signal(int sig, sighandler_t func)
 		: "=a" (old_func)
 		: "0" (NR_signal),
 		  "b" (sig),
-		  "c" (func),
-		  "d" (restorer)
+		  "c" (func)
 	);
 	
 	/* Error. */
 	if (old_func == NULL)
 	{
 		errno = -EINVAL;
-		return (NULL);
+		return (SIG_ERR);
 	}
 
 	return (old_func);
 }
-
-
 
 void _exit(int status)
 {

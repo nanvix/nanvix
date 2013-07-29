@@ -179,64 +179,7 @@
 	 */
 	EXTERN pid_t sys_getuid();
 	
-	/*
-	 * DESCRIPTION:
-	 *   The sys_kill() function attempts to send a signal to a process or a 
-	 *   group of processes specified by pid. The signal to be sent is sepcified
-	 *   by sig is either one from the list given in <signal.h>. If sig is the 
-	 *   SIGNULL signal, error checking is performed but no signal is actually
-	 *   sent. The null signal can be used to check the validity of pid.
-	 * 
-	 *   For a process to have permission to send a signal to a process designated
-	 *   by pid, unless the sending process has appropriate privileges, the real
-	 *   or effective user ID of the sending process shall match the real or saved
-	 *   set-user-ID of the receiving process.
-	 * 
-	 *   If pid is greater than 0, sig shall be sent to the process whose process
-	 *   ID is equal to pid.
-	 * 
-	 *   If pid is 0, sig shall be sent to the process whose process ID is equal
-	 *   to pid.
-	 * 
-	 *   If pid is 0, sig shall be sent to all processes (exclusing an unspecified
-	 *   set of system processes) whose process group ID is equal to the process
-	 *   group ID of the sender, and for which the process has permission to send
-	 *   a signal.
-	 * 
-	 *   If pid is -1, sig shall be sent to all processes (excluding an unspecified
-	 *   set of system processes) for which the process has permission to send 
-	 *   that signal.
-	 *  
-	 *   If pid is negative, but not -1, sig shall be sent to all processes 
-	 *   (excluding an unspecified set of system processes) whose process group 
-	 *   ID is equal to the absolute value of pid, and for which the process has
-	 *   permission to send a signal.
-	 *   
-	 *   The user ID tests described above shall not be applied when sending 
-	 *   SIGCONT to a process that is a member of the same session as the sending
-	 *   process.
-	 * 
-	 *   The sys_kill() function is successful if the process has permission to 
-	 *   send sig to any of the processes specified by pid. If sys_kill() fails,
-	 *   no signal is sent.
-	 * 
-	 * RETURN VALUE:
-	 * 	 Upon successful completion, sys_kill() returns zero. Upon failure, a 
-	 *   negative error code is returned instead.
-	 * 
-	 * ERRORS:
-	 *   - [EINVAL] The value of the sig argument is an invalid or unsupported 
-	 *              signal number.
-	 * 
-	 *   - [EPERM] The process does not have permission to send the signal to 
-	 *             any receiving process.
-	 *
-	 *   - [ESRCH] No process or process group can be found corresponding to that
-	 *             specified by pid.
-	 * 
-	 * SEE ALSO:
-	 *   <signal.h>
-	 */
+	
 	EXTERN int sys_kill(pid_t pid, int sig);
 	
 	/*
@@ -350,7 +293,7 @@
 	 */
 	EXTERN int sys_setgid(gid_t uid);
 	
-	EXTERN sighandler_t sys_signal(int sig, sighandler_t func,  sigrestorer_t restorer);
+	EXTERN sighandler_t sys_signal(int sig, sighandler_t func);
 	
 	/*
 	 * DESCRIPTION:

@@ -12,9 +12,9 @@
 #include <signal.h>
 
 /*
- * Manages signals.
+ * Manages signal handling.
  */
-PUBLIC sighandler_t sys_signal(int sig, sighandler_t func, sigrestorer_t restorer)
+PUBLIC sighandler_t sys_signal(int sig, sighandler_t func)
 {
 	sighandler_t old_func;
 	
@@ -34,14 +34,9 @@ PUBLIC sighandler_t sys_signal(int sig, sighandler_t func, sigrestorer_t restore
 			return (SIG_ERR);
 	}
 	
-	/* Restorer is not valid. */
-	if ((chkmem((addr_t)restorer, CHK_FUNCTION) != OK))
-		return (SIG_ERR);
-	
 	/* Set signal handler. */
 	old_func = curr_proc->handlers[sig];
 	curr_proc->handlers[sig] = func;
-	curr_proc->restorers[sig] = restorer;
 	
 	return (old_func);
 }

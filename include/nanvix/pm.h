@@ -75,7 +75,6 @@
     	int received;                        /* Received signals.          */
     	void *kstack;                        /* Kernel stack.              */
 		sighandler_t handlers[NR_SIGNALS];   /* Signal handlers.           */
-		void (*restorers[NR_SIGNALS])(void); /* Signal restorers.          */
 		
     	/* Memory information. */
 		struct pte *pgdir;                 /* Page directory.             */
