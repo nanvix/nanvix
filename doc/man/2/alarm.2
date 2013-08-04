@@ -1,0 +1,95 @@
+.\"
+.\" Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH alarm 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+alarm \- Schedules an alarm signal.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.IR "#include <unistd.h>"
+
+.BI "unsigned alarm(unsigned " seconds ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The 
+.BR alarm()
+function causes the system to generate a 
+.BR SIGALRM
+signal for the calling process, after the number of realtime seconds specified by 
+.IR seconds
+have elapsed. Processor scheduling delays may prevent the process from handling 
+the signal as soon as it is generated.
+
+If
+.IR seconds
+is 0, a pending alarm request, if any, is canceled.
+
+If the
+.BR SIGALRM
+signal has not yet been generated, the call results in rescheduling the time at 
+which the
+.BR SIGALRM
+signal is generated.
+
+Alarm requests are not stacked; only one 
+.BR SIGALRM
+generation can be scheduled in this manner. 
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+If there is a previous 
+.BR alarm()
+request with time remaining,
+.BR alarm()
+returns a non-zero value that is the number of seconds until the previous 
+request would have generated a 
+.BR SIGALRM
+signal. Otherwise, 
+.BR alarm()
+returns zero.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+The
+.BR alarm()
+function is always successful, and no return value is reserved to indicate an 
+error.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR exec(2) ,
+.BR fork(2) ,
+.BR pause(2) ,
+.BR sleep(2) ,
+.BR signals(6)
