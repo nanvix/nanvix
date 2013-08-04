@@ -9,7 +9,7 @@
 #include <signal.h>
 
 /*
- * Sends a signal to a process.
+ * Sends a signal to a process or a process group.
  */
 int kill(pid_t pid, int sig)
 {

@@ -13,7 +13,7 @@
 PRIVATE struct process *chain = NULL;
 
 /*
- * Suspend the calling process until a signal is received.
+ * Suspends the calling process until a signal is received.
  */
 PUBLIC int sys_pause()
 {	

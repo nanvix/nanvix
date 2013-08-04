@@ -7,11 +7,8 @@
 #ifndef SIGNAL_H_
 #define SIGNAL_H_
 
-	/* Constants. */
+	/* Signals. */
 	#define NR_SIGNALS 23
-    #define SIG_ERR (sighandler_t)(0)
-
-	/* Sinals. */
 	#define SIGNULL  0
 	#define SIGKILL  1
 	#define SIGSTOP  2
@@ -39,6 +36,9 @@
 	/* Handlers. */
 	#define SIG_DFL (sighandler_t)(1)
     #define SIG_IGN (sighandler_t)(2)
+    
+    /* Other constants. */
+    #define SIG_ERR (sighandler_t)(0)
 
 #ifndef _ASM_FILE_
 
