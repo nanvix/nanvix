@@ -7,8 +7,9 @@
 #ifndef SIGNAL_H_
 #define SIGNAL_H_
 
-	/* Signals. */
 	#define NR_SIGNALS 23
+
+	/* Signals. */
 	#define SIGNULL  0
 	#define SIGKILL  1
 	#define SIGSTOP  2
@@ -42,7 +43,7 @@
 
 #ifndef _ASM_FILE_
 
-	/* Function signatures. */
+	/* Types. */
 	typedef void (*sighandler_t)(int);
 	
 	/* Function prototypes. */
