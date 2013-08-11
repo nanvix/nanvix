@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * getpid.c - getpid() system call implementation.
+ * <sys/getpid.c> - getpid() system call implementation.
  */
 
 #include <nanvix/const.h>
@@ -11,7 +11,7 @@
 /*
  * Gets the process ID of the calling process.
  */
-PUBLIC pid_t sys_getpid()
+PUBLIC pid_t sys_getpid(void)
 {
 	return (curr_proc->pid);
 }

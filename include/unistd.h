@@ -7,8 +7,12 @@
 #ifndef UNISTD_H_
 #define UNISTD_H_
 
+	#include <sys/types.h>
+
 	extern unsigned alarm(unsigned seconds);
 	extern void _exit(int status);
+	extern pid_t getpid(void);
+	extern pid_t getpgrp(void);
 	extern int pause(void);
 
 #endif /* UNISTD_H_ */

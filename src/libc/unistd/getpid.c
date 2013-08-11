@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * unistd/getpid.c - getpid() system call.
+ * <unistd/getpid.c> - getpid() system call.
  */
 
 #include <nanvix/syscall.h>

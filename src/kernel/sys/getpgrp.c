@@ -1,9 +1,8 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * getpgrp.c - getpgrp() system call implementation.
+ * <sys/getpgrp.c> - getpgrp() system call implementation.
  */
-
 
 #include <nanvix/const.h>
 #include <nanvix/pm.h>
