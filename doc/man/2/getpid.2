@@ -3,13 +3,13 @@
 .\"
 .\"=============================================================================
 .\"
-.TH nice 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.TH getpid 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
 .\"
 .\"=============================================================================
 .\"
 .SH NAME
 .\"
-nice \- Changes the nice value of the calling process.
+getpid \- Gets the process ID of the calling process.
 .\"
 .\"=============================================================================
 .\"
@@ -18,49 +18,30 @@ nice \- Changes the nice value of the calling process.
 .\"
 .IR "#include <unistd.h>"
 
-.BI "int nice(int " incr ");"
+.BI "pid_t getpid(void);"
 .\"
 .\"=============================================================================
 .\"
 .SH "DESCRIPTION"
 .\"
 The
-.BR nice()
-system call adds the value of
-.IR incr
-to the nice value of the calling process. A process' nice value is a 
-non-negative number for which a more positive value results in less favorable
-scheduling.
-
-A maximum nice value of 
-.RB 2*{ NZERO }-1
-and a minimum nice value of 0 are imposed by the system. Requests for values
-above or below these limits result in the nice value being set to the
-corresponding limit. Only a process with appropriate privileges can lower the
-nice value.
+.BR getpid()
+system call returns the process ID of the calling process.
 .\"
 .\"=============================================================================
 .\"
 .SH "RETURN VALUE"
 .\"
-Upon successful completion,
-.BR nice()
-returns the new nice value 
-.RB -{ NZERO }.
-Upon failure, -1 is returned, the process' nice remains unchanged and
-.IR errno
-is set to indicate the error.
+The 
+.BR getpid()
+system call is always successful and no return value is reserved to indicate an
+error.
 .\"
 .\"=============================================================================
 .\"
 .SH ERRORS
 .\"
-.TP
-.BR [EPERM]
-The
-.IR incr
-argument is negative and the calling process does not have appropriate
-privileges. 
+No errors are defined.
 .\"
 .\"=============================================================================
 .\"
@@ -73,3 +54,14 @@ POSIX.1-2001
 .SH AUTHOR
 .\"
 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR exec(2) ,
+.BR fork(2) ,
+.BR getpgrp(2) ,
+.BR getppid(2) ,
+.BR kill(2)
+
