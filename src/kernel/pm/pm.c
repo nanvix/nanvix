@@ -73,7 +73,7 @@ PUBLIC void pm_init()
 	IDLE->state = PROC_RUNNING;
 	IDLE->counter = PROC_QUANTUM;
 	IDLE->priority = PRIO_USER;
-	IDLE->nice = 2*NZERO -1;
+	IDLE->nice = NZERO;
 	IDLE->alarm = 0;
 	IDLE->next = NULL;
 	IDLE->chain = NULL;

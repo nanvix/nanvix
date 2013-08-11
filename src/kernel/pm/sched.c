@@ -12,6 +12,12 @@
 #include <nanvix/klib.h>
 
 /*
+ * Returns the effective process priority.
+ */
+#define EPRIO(p)                         \
+	(p->priority + p->nice - p->counter) \
+
+/*
  * Handles a signal by stoping the process
  */
 PUBLIC void stop()
@@ -67,19 +73,20 @@ PUBLIC void yield()
 
 	/* Choose a process to execute. */
 	next = IDLE;
-	eprio = next->priority + next->nice - next->counter;
+	eprio = EPRIO(next);
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
 		/* Ready process. */
 		if (p->state == PROC_READY)
 		{
 			/* Process with higher priority found. */
-			if ((p->priority + p->nice - p->counter) < eprio)
+			if (EPRIO(p) < eprio)
 			{
 				next->counter++;
 				next = p;
-				eprio = next->priority + next->nice - next->counter;
+				eprio = EPRIO(next);
 			}
+			
 			/* Increment age of process. */
 			else
 				p->counter++;
@@ -87,6 +94,7 @@ PUBLIC void yield()
 	}
 	
 	/* Switch to process. */
+	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
 	next->counter = PROC_QUANTUM;
 	switch_to(next);

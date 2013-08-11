@@ -166,7 +166,7 @@ void _exit(int status)
 	__asm__ (
 		"int $0x80" 
 		: /* empty. */
-		: "a" (NR_exit), 
+		: "a" (NR__exit), 
 		  "b" (status)
 	);
 }
@@ -185,41 +185,45 @@ unsigned alarm(unsigned seconds)
 	return (ret);
 }
 
+int nice(int incr)
+{
+	int ret;
+	
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_nice),
+		  "b" (incr)
+	);
+	
+	return (ret);
+}
 
 
 PRIVATE void init()
 {
 	if (!fork())
 	{
-		int i;
-		
-		setpgrp();
-		
-		for (i = 0; i < 10; i++)
+		if (fork())
 		{
-			if (!fork())
-			{
-				setpgrp();
-				goto done;
-			}
+			nice(-10);
 			
-			yield();
+			while(1)
+			{
+				kprintf("process %d executing", getpid());
+				yield();
+			}
 		}
 		
-		yield();
-		
-		kill(-5, SIGKILL);
-		
-		while(1)
-			yield();
-		
-done:
-		pause();
-		
-		kprintf("process %d done %d", getpid(), curr_proc->pgrp->pid);
-		
-		while(1)
-			yield();
+		else
+		{
+			while(1)
+			{
+				kprintf("process %d executing", getpid());
+				yield();
+			}
+		}
+	
 	}
 	
 	while (1)

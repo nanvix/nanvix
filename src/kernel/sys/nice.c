@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * nice.c - nice() system call implementation.
+ * <sys/nice.c> - nice() system call implementation.
  */
 
 #include <nanvix/const.h>

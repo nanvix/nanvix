@@ -33,7 +33,7 @@
 	#define NR_setgid  15
 	#define NR_setpgrp 16
 	#define NR_setuid  17
-	#define NR_exit    18
+	#define NR__exit   18
 	#define NR_wait    19
 	#define NR_signal  20
 
@@ -42,7 +42,7 @@
 	/* System calls prototypes. */
 	EXTERN unsigned sys_alarm(unsigned seconds);
 	EXTERN int sys_brk(void *addr);
-	EXTERN void sys_exit(int status);
+	EXTERN void sys__exit(int status);
 	EXTERN pid_t sys_fork();
 	EXTERN gid_t sys_getegid();
 	EXTERN pid_t sys_geteuid();
