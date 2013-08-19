@@ -34,5 +34,10 @@
 	 * Gets the parent process ID of the calling process.
 	 */
 	extern pid_t getppid(void);
+	
+	/*
+	 * Gets the real user ID of the calling process.
+	 */
+	extern uid_t sys_getuid(void);
 
 #endif /* UNISTD_H_ */

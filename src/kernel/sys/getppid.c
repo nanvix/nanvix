@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * getppid.c - getppid() system call implementation.
+ * <sys/getppid.c> - getppid() system call implementation.
  */
 
 #include <nanvix/const.h>

@@ -78,6 +78,11 @@
 	 * Gets the parent process ID of the calling process.
 	 */
 	EXTERN pid_t sys_getppid(void);
+	
+	/*
+	 * Gets the real user ID of the calling process.
+	 */
+	EXTERN uid_t sys_getuid(void);
 
 #endif /* _ASM_FILE_ */
 
