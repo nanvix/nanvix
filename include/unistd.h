@@ -15,4 +15,9 @@
 	extern pid_t getpgrp(void);
 	extern int pause(void);
 
+	/*
+	 * Gets the effective user group ID of the calling process.
+	 */
+	extern gid_t getegid(void);
+
 #endif /* UNISTD_H_ */

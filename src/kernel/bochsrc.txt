@@ -1,0 +1,9 @@
+megs: 32
+floppya: 1_44=/dev/loop1, status=inserted
+boot: a
+log: bochsout.txt
+mouse: enabled=0
+clock: sync=realtime
+cpu: ips=1000000
+magic_break: enabled=1
+display_library: x, options="gui_debug"
