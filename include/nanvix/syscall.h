@@ -44,7 +44,6 @@
 	EXTERN int sys_brk(void *addr);
 	EXTERN void sys__exit(int status);
 	EXTERN pid_t sys_fork(void);
-	EXTERN pid_t sys_geteuid(void);
 	EXTERN gid_t sys_getgid(void);
 	EXTERN pid_t sys_getpgrp(void);
 	EXTERN pid_t sys_getpid(void);
@@ -65,6 +64,11 @@
 	 * Gets the effective user group ID of the calling process.
 	 */
 	EXTERN gid_t sys_getegid(void);
+	
+	/*
+	 *  Gets the effective user ID of the calling process.
+	 */
+	EXTERN uid_t sys_geteuid(void);
 
 #endif /* _ASM_FILE_ */
 

@@ -19,5 +19,10 @@
 	 * Gets the effective user group ID of the calling process.
 	 */
 	extern gid_t getegid(void);
+	
+	/*
+	 *  Gets the effective user ID of the calling process.
+	 */
+	extern uid_t geteuid(void);
 
 #endif /* UNISTD_H_ */
