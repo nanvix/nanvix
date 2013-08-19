@@ -29,5 +29,10 @@
 	 * Gets the real user group ID of the calling process.
 	 */
 	extern gid_t getgid(void);
+	
+	/*
+	 * Gets the parent process ID of the calling process.
+	 */
+	extern pid_t getppid(void);
 
 #endif /* UNISTD_H_ */

@@ -73,6 +73,11 @@
 	 * Gets the real user group ID of the calling process.
 	 */
 	EXTERN gid_t sys_getgid(void);
+	
+	/*
+	 * Gets the parent process ID of the calling process.
+	 */
+	EXTERN pid_t sys_getppid(void);
 
 #endif /* _ASM_FILE_ */
 

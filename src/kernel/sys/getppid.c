@@ -11,7 +11,7 @@
 /*
  * Gets the parent process ID of the calling process.
  */
-PUBLIC pid_t sys_getppid()
+PUBLIC pid_t sys_getppid(void)
 {
 	return (curr_proc->father->pid);
 }
