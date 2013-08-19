@@ -3,13 +3,13 @@
 .\"
 .\"=============================================================================
 .\"
-.TH getegid 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.TH getgid 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
 .\"
 .\"=============================================================================
 .\"
 .SH NAME
 .\"
-getegid \- Gets the effective user group ID of the calling process.
+getgid \- Gets the real user group ID of the calling process.
 .\"
 .\"=============================================================================
 .\"
@@ -18,22 +18,22 @@ getegid \- Gets the effective user group ID of the calling process.
 .\"
 .IR "#include <unistd.h>"
 
-.BI "gid_t getegid(void);"
+.BI "gid_t getgid(void);"
 .\"
 .\"=============================================================================
 .\"
 .SH "DESCRIPTION"
 .\"
 The
-.BR getegid()
-system call returns the effective user group ID of the calling process.
+.BR getgid()
+system call returns the real user group ID of the calling process.
 .\"
 .\"=============================================================================
 .\"
 .SH "RETURN VALUE"
 .\"
 The
-.BR getegid()
+.BR getgid()
 system call is always successful and no return value is reserved to indicate an
 error.
 .\"
@@ -59,11 +59,10 @@ Pedro H. Penna <pedrohenriquepenna@gmail.com>
 .\"
 .SH "SEE ALSO"
 .\"
+.BR getegid(2) ,
 .BR geteuid(2) ,
-.BR getgid(2) ,
 .BR getuid(2) ,
 .BR setegid(2) ,
 .BR seteuid(2) ,
 .BR setgid(2) ,
 .BR setuid(2)
-
