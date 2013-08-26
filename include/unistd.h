@@ -44,5 +44,10 @@
 	 * Sets the effective user group ID of the calling process.
 	 */
 	extern int setegid(gid_t gid);
+	
+	/*
+	 * Sets the user group ID of the calling process.
+	 */
+	extern int setgid(gid_t gid);
 
 #endif /* UNISTD_H_ */

@@ -2,8 +2,6 @@
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * <sys/setegid.c> - setegid() system call implementation.
- * 
- * TODO: test everything.
  */
 
 #include <nanvix/const.h>
@@ -22,7 +20,7 @@ PUBLIC int sys_setegid(gid_t gid)
 		
 	else
 	{
-		/* No authentication. */
+		/* No user authentication. */
 		if ((gid != curr_proc->gid) && (gid != curr_proc->sgid))
 			return (-EPERM);
 		

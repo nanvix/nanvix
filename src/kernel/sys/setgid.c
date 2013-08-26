@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * setgid.c - setgid() system call implementation.
+ * <sys/setgid.c> - setgid() system call implementation.
  */
 
 #include <nanvix/const.h>

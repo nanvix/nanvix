@@ -1,0 +1,83 @@
+.\"
+.\" Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH setgig 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+setgid \- Sets the user group ID of the calling process.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.IR "#include <unistd.h>"
+
+.BI "int setgid(gid_t " gid ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The
+.BR setgid()
+system call sets the effective user group ID, the real user group ID and the 
+saved-user-group-ID of the calling process to
+.IR gid
+if the process has appropriate privileges.
+
+If the process does not have appropriate privileges, but 
+.IR gid
+is equal to the real group ID or the saved set-user-group-ID,
+.BR setgid()
+sets the effective user group ID to
+.IR gid .
+The real user group ID and saved set-user-group-ID remain unchanged.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Upon successful completion, 0 is returned. Upon failure, -1 is returned and 
+.IR errno
+is set to indicate the error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+.TP
+.BR [EPERM]
+The process does not have appropriate privileges and 
+.IR gid
+does not match the real user group ID or the saved set-group-ID. 
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR exec(2) ,
+.BR getegid(2) ,
+.BR geteuid(2) ,
+.BR getgid(2) ,
+.BR getuid(2) ,
+.BR setegid(2) ,
+.BR seteuid(2) ,
+.BR setuid(2)

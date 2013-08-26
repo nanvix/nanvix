@@ -220,6 +220,28 @@ int setegid(gid_t gid)
 	return (ret);
 }
 
+int setgid(gid_t gid)
+{
+	int ret;
+	
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_setgid),
+		  "b" (gid)
+	);
+	
+	/* Error. */
+	if (ret < 0)
+	{
+		errno = -ret;
+		return (-1);
+	}
+	
+	return (ret);
+}
+
+
 
 PRIVATE void init()
 {	
