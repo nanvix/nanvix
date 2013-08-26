@@ -51,7 +51,6 @@
 	EXTERN int sys_kill(pid_t pid, int sig);
 	EXTERN int sys_nice(int incr);
 	EXTERN void sys_pause(void);
-	EXTERN int sys_setegid(gid_t gid);
 	EXTERN int sys_seteuid(uid_t uid);
 	EXTERN int sys_setgid(gid_t uid);	
 	EXTERN sighandler_t sys_signal(int sig, sighandler_t func);
@@ -83,6 +82,11 @@
 	 * Gets the real user ID of the calling process.
 	 */
 	EXTERN uid_t sys_getuid(void);
+	
+	/*
+	 * Sets the effective user group ID of the calling process.
+	 */
+	EXTERN int sys_setegid(gid_t gid);
 
 #endif /* _ASM_FILE_ */
 

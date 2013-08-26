@@ -39,5 +39,10 @@
 	 * Gets the real user ID of the calling process.
 	 */
 	extern uid_t sys_getuid(void);
+	
+	/*
+	 * Sets the effective user group ID of the calling process.
+	 */
+	extern int setegid(gid_t gid);
 
 #endif /* UNISTD_H_ */

@@ -199,11 +199,32 @@ int nice(int incr)
 	return (ret);
 }
 
+int setegid(gid_t gid)
+{
+	int ret;
+	
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_setegid),
+		  "b" (gid)
+	);
+	
+	/* Error. */
+	if (ret < 0)
+	{
+		errno = -ret;
+		return (-1);
+	}
+	
+	return (ret);
+}
+
 
 PRIVATE void init()
-{
+{	
 	if (!fork())
-	{
+	{		
 		if (fork())
 		{
 			nice(-10);
@@ -247,7 +268,7 @@ PUBLIC void kmain()
 	pid = fork();
 	
 	if (pid < 0)
-		kpanic("init fork failed");
+		kpanic("failed to fork init");
 	
 	/* init process. */
 	else if (pid == 0)
