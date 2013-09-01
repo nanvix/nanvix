@@ -89,7 +89,7 @@
 	EXTERN int sys_setegid(gid_t gid);
 	
 	/*
-	 * Sets the user group ID of the calling process.
+	 * Sets the real user group ID of the calling process.
 	 */
 	EXTERN int sys_setgid(gid_t gid);
 	
@@ -97,6 +97,11 @@
 	 * Sets the effective user ID of the calling process.
 	 */
 	EXTERN int sys_seteuid(uid_t uid);
+	
+	/*
+	 * Sets the real user ID of the calling process.
+	 */
+	EXTERN int sys_setuid(pid_t uid);
 
 #endif /* _ASM_FILE_ */
 

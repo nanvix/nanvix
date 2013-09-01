@@ -3,13 +3,13 @@
 .\"
 .\"=============================================================================
 .\"
-.TH setgig 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.TH seteuid 2 "September 2013" "System Calls" "The Nanvix Programmer's Manual"
 .\"
 .\"=============================================================================
 .\"
 .SH NAME
 .\"
-setgid \- Sets the real user group ID of the calling process.
+setuid \- Sets the real user ID of the calling process.
 .\"
 .\"=============================================================================
 .\"
@@ -18,26 +18,26 @@ setgid \- Sets the real user group ID of the calling process.
 .\"
 .IR "#include <unistd.h>"
 
-.BI "int setgid(gid_t " gid ");"
+.BI "int setuid(uid_t " uid ");"
 .\"
 .\"=============================================================================
 .\"
 .SH "DESCRIPTION"
 .\"
 The
-.BR setgid()
-system call sets the real user group ID, the effective user group ID and the 
-saved set-user-group-ID of the calling process to
-.IR gid
+.BR setuid()
+system call sets the real user ID, the effective user ID and the saved 
+set-user-ID of the calling process to
+.IR uid
 if the process has appropriate privileges.
 
 If the process does not have appropriate privileges, but 
-.IR gid
-is equal to the real group ID or the saved set-user-group-ID,
-.BR setgid()
-sets the effective user group ID to
-.IR gid .
-The real user group ID and saved set-user-group-ID remain unchanged.
+.IR uid
+is equal to the real user ID or the saved set-user-ID,
+.BR setuid()
+sets the effective user ID to
+.IR uid .
+The real user ID and saved set-user-ID remain unchanged.
 .\"
 .\"=============================================================================
 .\"
@@ -54,8 +54,8 @@ is set to indicate the error.
 .TP
 .BR [EPERM]
 The process does not have appropriate privileges and 
-.IR gid
-does not match the real user group ID or the saved set-group-ID. 
+.IR uid
+does not match the real user ID or the saved set-user-ID.
 .\"
 .\"=============================================================================
 .\"
@@ -80,4 +80,4 @@ Pedro H. Penna <pedrohenriquepenna@gmail.com>
 .BR getuid(2) ,
 .BR setegid(2) ,
 .BR seteuid(2) ,
-.BR setuid(2)
+.BR setgid(2)

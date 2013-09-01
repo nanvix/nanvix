@@ -10,7 +10,7 @@
 #include <errno.h>
 
 /*
- * Sets the user group ID of the calling process.
+ * Sets the real user group ID of the calling process.
  */
 PUBLIC int sys_setgid(gid_t gid)
 {

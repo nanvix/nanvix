@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * setuid.c - setuid() system call implementation.
+ * <sys/setuid.c> - setuid() system call implementation.
  */
 
 #include <nanvix/const.h>
@@ -10,7 +10,7 @@
 #include <errno.h>
 
 /*
- * Sets the user ID of the calling process.
+ * Sets the real user ID of the calling process.
  */
 PUBLIC int sys_setuid(pid_t uid)
 {
