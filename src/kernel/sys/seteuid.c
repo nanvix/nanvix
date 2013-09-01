@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * seteuid.c - seteuid() system call implementation.
+ * <sys/seteuid.c> - seteuid() system call implementation.
  */
 
 #include <nanvix/const.h>

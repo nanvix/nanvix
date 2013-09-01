@@ -3,13 +3,13 @@
 .\"
 .\"=============================================================================
 .\"
-.TH setegid 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.TH seteuid 2 "September 2013" "System Calls" "The Nanvix Programmer's Manual"
 .\"
 .\"=============================================================================
 .\"
 .SH NAME
 .\"
-setegid \- Sets the effective user group ID of the calling process.
+seteuid \- Sets the effective user ID of the calling process.
 .\"
 .\"=============================================================================
 .\"
@@ -18,19 +18,19 @@ setegid \- Sets the effective user group ID of the calling process.
 .\"
 .IR "#include <unistd.h>"
 
-.BI "int setegid(gid_t " gid ");"
+.BI "int setuid(uid_t " uid ");"
 .\"
 .\"=============================================================================
 .\"
 .SH "DESCRIPTION"
 .\"
 The
-.BR setegid()
-system call sets the effective user group ID of the calling process to
-.IR gid .
+.BR seteuid()
+system call sets the effective user ID of the calling process to
+.IR uid .
 
-Unprivileged processes may only set the effective user group ID to the real
-group user ID or the saved set-user-group-ID.
+Unprivileged processes may only set the effective user ID to the real user ID 
+or the saved set-user-ID..
 .\"
 .\"=============================================================================
 .\"
@@ -47,8 +47,8 @@ is set to indicate the error.
 .TP
 .BR [EPERM]
 The process does not have appropriate privileges and 
-.IR gid
-does not match the real user group ID or the saved set-user-group-ID. 
+.IR uid
+does not match the real user ID or the saved set-user-ID.
 .\"
 .\"=============================================================================
 .\"
@@ -71,6 +71,6 @@ Pedro H. Penna <pedrohenriquepenna@gmail.com>
 .BR geteuid(2) ,
 .BR getgid(2) ,
 .BR getuid(2) ,
-.BR seteuid(2) ,
+.BR setegid(2) ,
 .BR setgid(2) ,
 .BR setuid(2)
