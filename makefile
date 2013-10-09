@@ -7,9 +7,9 @@
 # Directories.
 export BINDIR=$(CURDIR)/bin
 export INCDIR=$(CURDIR)/include
-export LIBDIR=$$(CURDIR)/lib
+export LIBDIR=$(CURDIR)/lib
 
-# Tool chain
+# Toolchain
 export CC=$(TARGET)-gcc
 export LD=$(TARGET)-ld
 
