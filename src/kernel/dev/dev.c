@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
- * dev.c - Uniform device interface
+ * dev/dev.c - Uniform device interface.
  */
 
 #include <dev/tty.h>
@@ -44,7 +44,7 @@ PUBLIC int cdev_register(unsigned major, const struct cdev *dev)
 }
 
 /*
- * Writes to character device.
+ * Writes to a character device.
  */
 PUBLIC ssize_t cdev_write(dev_t dev, const void *buf, size_t n)
 {	
@@ -56,11 +56,15 @@ PUBLIC ssize_t cdev_write(dev_t dev, const void *buf, size_t n)
 	if (cdevsw[MAJOR(dev)] == NULL)
 		return (-EINVAL);
 	
+	/* Operation not supported. */
+	if (cdevsw[MAJOR(dev)]->write == NULL)
+		return (-ENOTSUP);
+	
 	return (cdevsw[MAJOR(dev)]->write(MINOR(dev), buf, n));
 }
 
 /*
- * Read from the character device.
+ * Reads from a character device.
  */
 PUBLIC ssize_t cdev_read(dev_t dev, void *buf, size_t n)
 {
@@ -72,8 +76,81 @@ PUBLIC ssize_t cdev_read(dev_t dev, void *buf, size_t n)
 	if (cdevsw[MAJOR(dev)] == NULL)
 		return (-EINVAL);
 	
+	/* Operation not supported. */
+	if (cdevsw[MAJOR(dev)]->read == NULL)
+		return (-ENOTSUP);
+	
 	return (cdevsw[MAJOR(dev)]->read(MINOR(dev), buf, n));
 }
+
+/*============================================================================*
+ *                              Block Devices                                 *
+ *============================================================================*/
+
+/* Number of block devices. */
+#define NR_BLKDEV 1
+
+/*
+ * Block devices table.
+ */
+PRIVATE const struct bdev *bdevsw[NR_BLKDEV] = {
+	NULL /* /dev/ramdisk */
+};
+
+/*
+ * Registers a block device.
+ */
+PUBLIC int bdev_register(unsigned major, const struct bdev *dev)
+{
+	/* Invalid major number? */
+	if (major >= NR_BLKDEV)
+		return (-EINVAL);
+	
+	/* Device already registered? */
+	if (bdevsw[major] != NULL)
+		return (-EBUSY);
+	
+	/* Register block device. */
+	bdevsw[major] = dev;
+	
+	return (0);
+}
+
+/*
+ * Writes to a block device.
+ */
+PUBLIC ssize_t bdev_write(dev_t dev, const char *buf, size_t n, off_t off)
+{
+	/* Invalid device. */
+	if (bdevsw[MAJOR(dev)] == NULL)
+		return (-EINVAL);
+	
+	/* Operation not supported. */
+	if (bdevsw[MAJOR(dev)]->write == NULL)
+		return (-ENOTSUP);
+	
+	return (bdevsw[MAJOR(dev)]->write(MINOR(dev), buf, n, off));
+}
+
+/*
+ * Reads from a block device.
+ */
+PUBLIC ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off)
+{
+	/* Invalid device. */
+	if (bdevsw[MAJOR(dev)] == NULL)
+		return (-EINVAL);
+		
+	/* Operation not supported. */
+	if (bdevsw[MAJOR(dev)]->read == NULL)
+		return (-ENOTSUP);
+	
+	return (bdevsw[MAJOR(dev)]->read(MINOR(dev), buf, n, off));
+}
+
+/*============================================================================*
+ *                                 Devices                                    *
+ *============================================================================*/
 
 /*
  * Initializes character device drivers.

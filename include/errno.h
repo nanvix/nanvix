@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
- * errno.h - System error codes
+ * <errno.h> - System error codes
  */
 
 #ifndef ERRNO_H_
@@ -33,5 +33,8 @@
 	
 	/* No such process. */
 	#define ESRCH 9
+	
+	/* Not supported. */
+	#define ENOTSUP 10
 
 #endif /* ERRNO_H_ */
