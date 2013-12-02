@@ -36,9 +36,7 @@
 		unsigned avail    :  2; /* Available for OS.  */
 		unsigned frame    : 12; /* Frame number.      */
 	};
-
 	
-
 	/*
 	 * DESCRIPTION;
 	 *   The PG() macro returns the page number where a given virtual address.

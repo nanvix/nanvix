@@ -45,7 +45,7 @@
 	 * ERRORS:
 	 *   No errors are defined.
 	 */
-	EXTERN void dev_init();
+	EXTERN void dev_init(void);
 
 	/*========================================================================*
 	 *                             character device                           *
@@ -116,7 +116,7 @@
 	 *========================================================================*/
 	
 	/* Block device major numbers. */
-	#define RAMDISK 0x00 /* ramdisk device. */
+	#define RAMDISK 0x0 /* ramdisk device. */
 	
 	/*
 	 * Block device.

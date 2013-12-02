@@ -80,7 +80,7 @@ PRIVATE uint16_t *video = (uint16_t*)VIDEO_ADDR;
 /*
  * Moves the hardware console cursor.
  */
-PRIVATE void cursor_move()
+PRIVATE void cursor_move(void)
 {
 	word_t cursor_location = cursor.y*VIDEO_WIDTH + cursor.x;
 	
@@ -93,7 +93,7 @@ PRIVATE void cursor_move()
 /*
  * Scrolls down the console by one row.
  */
-PRIVATE void console_scrolldown()
+PRIVATE void console_scrolldown(void)
 {
 	uint16_t *p;
 	
@@ -162,7 +162,7 @@ PRIVATE void console_put(uint8_t ch, uint8_t color)
 /*
  * Clears the console.
  */
-PRIVATE void console_clear()
+PRIVATE void console_clear(void)
 {
 	uint16_t *p;
 	
@@ -194,7 +194,7 @@ PUBLIC void console_write(struct kbuffer *buffer)
 /*
  * Initializes the console driver.
  */
-PUBLIC void console_init()
+PUBLIC void console_init(void)
 {
 	byte_t value;
 	

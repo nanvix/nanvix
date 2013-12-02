@@ -5,6 +5,7 @@
  */
 
 #include <dev/tty.h>
+#include <dev/ramdisk.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <errno.h>
@@ -153,10 +154,10 @@ PUBLIC ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off)
  *============================================================================*/
 
 /*
- * Initializes character device drivers.
+ * Initializes device drivers.
  */
-PUBLIC void dev_init()
+PUBLIC void dev_init(void)
 {
-	/* Initializes character devices. */
 	tty_init();
+	ramdisk_init();
 }

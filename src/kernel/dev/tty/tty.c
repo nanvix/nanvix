@@ -67,8 +67,10 @@ PRIVATE struct cdev tty_driver = {
 /*
  * Initializes the tty device driver.
  */
-PUBLIC void tty_init()
+PUBLIC void tty_init(void)
 {		
+	int err;
+	
 	/* Initialize buffers. */
 	KBUFFER_INIT(tty.output);
 	KBUFFER_INIT(tty.input);
@@ -77,7 +79,11 @@ PUBLIC void tty_init()
 	console_init();
 	
 	/* Register charecter device. */
-	cdev_register(TTY_MAJOR, &tty_driver);
+	err = cdev_register(TTY_MAJOR, &tty_driver);
+	
+	/* Failed to register tty device driver. */
+	if (err)
+		kpanic("failed to register tty device driver");
 	
 	/* Change kernel's output device. */
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));

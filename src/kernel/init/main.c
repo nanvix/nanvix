@@ -16,7 +16,7 @@
 
 int errno = 0;
 
-pid_t getpid()
+pid_t getpid(void)
 {
 	pid_t pid;
 	
@@ -36,7 +36,7 @@ pid_t getpid()
 	return (pid);
 }
 
-pid_t fork()
+pid_t fork(void)
 {
 	pid_t pid;
 	
@@ -243,7 +243,7 @@ int setgid(gid_t gid)
 
 
 
-PRIVATE void init()
+PRIVATE void init(void)
 {	
 	if (!fork())
 	{		
@@ -278,7 +278,7 @@ PRIVATE void init()
 	_exit(0);
 }
 
-PUBLIC void kmain()
+PUBLIC void kmain(void)
 {		
 	pid_t pid;
 	

@@ -97,7 +97,7 @@
 	 * ERRORS:
 	 *   No errors are defined.
 	 */
-	PUBLIC void* kmemcpy (void* dest, const void *src, size_t n);
+	PUBLIC void* kmemcpy(void* dest, const void *src, size_t n);
 	
 	/*
 	 * DESCRIPTION:
@@ -157,7 +157,7 @@
 	
 	/*
 	 * DESCRIPTION:
-	 *   THe chkout() function changes the kernel's output device.
+	 *   The chkout() function changes the kernel's output device.
 	 * 
 	 * RETURN VALUE:
 	 *   No return value is reserved to indicate an error.

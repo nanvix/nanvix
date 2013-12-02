@@ -17,6 +17,6 @@
 	 * ERROS:
 	 *   No errors are defined.
 	 */
-	extern void tty_init();
+	extern void tty_init(void);
 
 #endif /* TTY_H_ */
