@@ -73,7 +73,8 @@ found:
 			unlockreg(reg);
 		}
 	}
-		
+	
+	/* Initialize process. */
 	proc->intlvl = curr_proc->intlvl;
 	proc->received = 0;
 	for (i = 0; i < NR_SIGNALS; i++)

@@ -8,6 +8,7 @@
 #define _ASM_FILE_
 
 #include <i386/i386.h>
+#include <nanvix/config.h>
 #include <nanvix/mboot.h>
 #include <nanvix/mm.h>
 
@@ -45,21 +46,43 @@ mboot_header:
 /*
  * Kernel entry point.
  */
-start:
+start:	
+	cmpl $1, 20(%ebx)
+	jne halt
+	
+	/* Retrieve initrd location. */
+	movl 24(%ebx), %eax
+	movl (%eax), %eax
+	
+	/* Build initial RAM disk page table. */
+	movl $initrd_pgtab, %edi
+	addl $7, %eax	
+	movl %eax, %ebx
+	addl $RAMDISK_SIZE, %ebx
+	cld
+	start.loop0:
+		cmpl %eax, %ebx
+		je start.endloop0
+		stosl
+		addl $PAGE_SIZE, %eax
+		jmp start.loop0
+	start.endloop0:
+
 	/* Build kernel and kernel pool page tables. */
 	movl $kpool_pgtab + PAGE_SIZE - DWORD_SIZE, %edi
 	movl $0x07ff000 + 7, %eax
 	std
-	start.loop0:
+	start.loop1:
 		stosl
 		subl $PAGE_SIZE, %eax
-		jge start.loop0
+		jge start.loop1
 	cld
 
 	/* Build init page directory. */
-	movl $kpgtab + 7, init_pgdir + PTE_SIZE*0        /* at: 0x00000000 */
-	movl $kpgtab + 7, init_pgdir + PTE_SIZE*768      /* at: 0xc0000000 */
-	movl $kpool_pgtab + 7, init_pgdir + PTE_SIZE*769 /* at: 0xc0400000 */
+	movl $kpgtab + 7, init_pgdir + PTE_SIZE*0         /* at: 0x00000000 */
+	movl $kpgtab + 7, init_pgdir + PTE_SIZE*768       /* at: 0xc0000000 */
+	movl $kpool_pgtab + 7, init_pgdir + PTE_SIZE*769  /* at: 0xc0400000 */
+	movl $initrd_pgtab + 7, init_pgdir + PTE_SIZE*770 /* at: 0xc0800000 */
 	
 	/* Enable paging. */
 	movl $init_pgdir, %eax
@@ -67,7 +90,7 @@ start:
 	movl %cr0, %eax
 	orl $0x80000000, %eax
 	movl %eax, %cr0
-
+	
 	/* Setup stack. */
 	movl $init_kstack + PAGE_SIZE - DWORD_SIZE, %ebp
 	movl $init_kstack + PAGE_SIZE - DWORD_SIZE, %esp
@@ -102,6 +125,17 @@ kpgtab:
  */
 .align PAGE_SIZE
 kpool_pgtab:
+	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
+
+/*----------------------------------------------------------------------------*
+ *                                kpool_pgtab                                 *
+ *----------------------------------------------------------------------------*/
+
+/* 
+ * Initial RAM disk page table.
+ */
+.align PAGE_SIZE
+initrd_pgtab:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*

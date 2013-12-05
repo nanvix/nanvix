@@ -29,13 +29,13 @@
 00000000000i[     ]   SB16 support: no
 00000000000i[     ]   USB support: no
 00000000000i[     ]   VGA extension support: vbe 
-00000000000i[MEM0 ] allocated memory at 0x7fb2e558a010. after alignment, vector=0x7fb2e558b000
+00000000000i[MEM0 ] allocated memory at 0x7f26e88d1010. after alignment, vector=0x7f26e88d2000
 00000000000i[MEM0 ] 32,00MB
 00000000000i[MEM0 ] mem block size = 0x00100000, blocks=32
 00000000000i[MEM0 ] rom at 0xfffe0000/131072 ('/usr/local/share/bochs/BIOS-bochs-latest')
 00000000000i[VTIME] using 'realtime pit' synchronization method
 00000000000i[CMOS ] Using local time for initial clock
-00000000000i[CMOS ] Setting initial clock to: Sun Dec  1 17:29:02 2013 (time0=1385926142)
+00000000000i[CMOS ] Setting initial clock to: Thu Dec  5 15:55:02 2013 (time0=1386266102)
 00000000000i[DMA  ] channel 4 used by cascade
 00000000000i[DMA  ] channel 2 used by Floppy Drive
 00000000000e[FDD  ] cannot determine media geometry, trying to use defaults
@@ -107,32 +107,32 @@
 00000320013i[BIOS ] Shutdown flag 0
 00000320623i[BIOS ] ram_size=0x02000000
 00000321058i[BIOS ] ram_end=32MB
-00000333858i[BIOS ] Found 1 cpu(s)
-00000350112i[BIOS ] bios_table_addr: 0x000fbde8 end=0x000fcc00
-00000362682i[BIOS ] bios_table_cur_addr: 0x000fbde8
-00000490300i[VBIOS] VGABios $Id: vgabios.c,v 1.75 2011/10/15 14:07:21 vruppert Exp $
-00000490371i[BXVGA] VBE known Display Interface b0c0
-00000490403i[BXVGA] VBE known Display Interface b0c5
-00000493328i[VBIOS] VBE Bios $Id: vbe.c,v 1.64 2011/07/19 18:25:05 vruppert Exp $
-00029509045i[XGUI ] charmap update. Font Height is 16
-01427544221i[BIOS ] Booting from 0000:7c00
-01430044052i[BIOS ] int13_harddisk: function 41, unmapped device for ELDL=80
-01430048833i[BIOS ] int13_harddisk: function 08, unmapped device for ELDL=80
-01430053484i[BIOS ] *** int 15h function AX=00c0, BX=0000 not yet supported!
-01800856070i[     ] dbg: Quit
-01800856070i[CPU0 ] CPU is in protected mode (active)
-01800856070i[CPU0 ] CS.mode = 32 bit
-01800856070i[CPU0 ] SS.mode = 32 bit
-01800856070i[CPU0 ] | EAX=000b8f00  EBX=0002bd20  ECX=000b8f24  EDX=00000020
-01800856070i[CPU0 ] | ESP=c0403ad4  EBP=c0403ae4  ESI=0002be92  EDI=00100ffc
-01800856070i[CPU0 ] | IOPL=0 id vip vif ac vm rf nt of df IF tf sf zf af PF cf
-01800856070i[CPU0 ] | SEG sltr(index|ti|rpl)     base    limit G D
-01800856070i[CPU0 ] |  CS:0008( 0001| 0|  0) 00000000 ffffffff 1 1
-01800856070i[CPU0 ] |  DS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-01800856070i[CPU0 ] |  SS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-01800856070i[CPU0 ] |  ES:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-01800856070i[CPU0 ] |  FS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-01800856070i[CPU0 ] |  GS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-01800856070i[CPU0 ] | EIP=c010568d (c010568d)
-01800856070i[CPU0 ] | CR0=0xe0000011 CR2=0x00000000
-01800856070i[CPU0 ] | CR3=0x00402000 CR4=0x00000000
+00000333864i[BIOS ] Found 1 cpu(s)
+00000350118i[BIOS ] bios_table_addr: 0x000fbde8 end=0x000fcc00
+00000362688i[BIOS ] bios_table_cur_addr: 0x000fbde8
+00000490306i[VBIOS] VGABios $Id: vgabios.c,v 1.75 2011/10/15 14:07:21 vruppert Exp $
+00000490377i[BXVGA] VBE known Display Interface b0c0
+00000490409i[BXVGA] VBE known Display Interface b0c5
+00000493334i[VBIOS] VBE Bios $Id: vbe.c,v 1.64 2011/07/19 18:25:05 vruppert Exp $
+00032944921i[XGUI ] charmap update. Font Height is 16
+01981169407i[BIOS ] Booting from 0000:7c00
+01983669212i[BIOS ] int13_harddisk: function 41, unmapped device for ELDL=80
+01983673993i[BIOS ] int13_harddisk: function 08, unmapped device for ELDL=80
+01983678644i[BIOS ] *** int 15h function AX=00c0, BX=0000 not yet supported!
+12356677706i[     ] dbg: Quit
+12356677706i[CPU0 ] CPU is in protected mode (halted)
+12356677706i[CPU0 ] CS.mode = 32 bit
+12356677706i[CPU0 ] SS.mode = 32 bit
+12356677706i[CPU0 ] | EAX=00000000  EBX=001a0007  ECX=001a0007  EDX=00000001
+12356677706i[CPU0 ] | ESP=c011da38  EBP=c011da54  ESI=0002bea5  EDI=00100ffc
+12356677706i[CPU0 ] | IOPL=0 id vip vif ac vm rf nt of df IF tf SF zf af pf cf
+12356677706i[CPU0 ] | SEG sltr(index|ti|rpl)     base    limit G D
+12356677706i[CPU0 ] |  CS:0008( 0001| 0|  0) 00000000 ffffffff 1 1
+12356677706i[CPU0 ] |  DS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+12356677706i[CPU0 ] |  SS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+12356677706i[CPU0 ] |  ES:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+12356677706i[CPU0 ] |  FS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+12356677706i[CPU0 ] |  GS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+12356677706i[CPU0 ] | EIP=c0105473 (c0105473)
+12356677706i[CPU0 ] | CR0=0xe0000011 CR2=0x00000000
+12356677706i[CPU0 ] | CR3=0x00104000 CR4=0x00000000

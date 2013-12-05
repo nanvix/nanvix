@@ -18,6 +18,7 @@
 	#define PROC_QUANTUM 100
 
 	/* Process priorities. */
+	#define PRIO_BUFFER -80 /* Waitin for buffer.         */
 	#define PRIO_INODE  -60 /* Waiting for inode.         */
 	#define PRIO_TTY    -40 /* Waiting for terminal I/O.  */
 	#define PRIO_REGION -20 /* Waiting for memory region. */

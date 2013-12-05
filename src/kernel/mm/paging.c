@@ -235,6 +235,7 @@ PUBLIC int crtpgdir(struct process *proc)
 	pgdir[0] = curr_proc->pgdir[0];
 	pgdir[PGTAB(KBASE_VIRT)] = curr_proc->pgdir[PGTAB(KBASE_VIRT)];
 	pgdir[PGTAB(KPOOL_VIRT)] = curr_proc->pgdir[PGTAB(KPOOL_VIRT)];
+	pgdir[PGTAB(INITRD_VIRT)] = curr_proc->pgdir[PGTAB(INITRD_VIRT)];
 	
 	/* Clone kernel stack. */
 	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
@@ -303,7 +304,9 @@ err0:
 	{
 		if (curr_proc->flags & PROC_JMPSET)
 			klongjmp(&curr_proc->kenv, -1);
-			
+		
+		kprintf("%x", addr);
+		
 		kpanic("kernel validity page fault");
 	}
 	else

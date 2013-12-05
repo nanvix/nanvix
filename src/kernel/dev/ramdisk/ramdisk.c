@@ -4,11 +4,23 @@
  * dev/ramdisk/ramdisk.c - RAM disk driver implementation.
  */
 
-#include <i368/i386.h>
+#include <i386/i386.h>
+#include <nanvix/buffer.h>
+#include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
+#include <nanvix/mm.h>
 #include <sys/types.h>
+#include <errno.h>
+
+/* Maximul RAM disk size. */
+#if RAMDISK_SIZE > PGTAB_SIZE
+	#error "RAMDISK_SIZE > PGTAB_SIZE"
+#endif
+
+/* Read/Write burst size (in bytes). */
+#define BURST_SIZE 4096
 
 /*
  * RAM disks.
@@ -26,6 +38,7 @@ PRIVATE struct
 PRIVATE ssize_t ramdisk_write(unsigned minor, const char *buf, size_t n, off_t off)
 {
 	addr_t ptr;
+	size_t count;
 	
 	/* Invalid device. */
 	if (minor >= 1)
@@ -41,7 +54,20 @@ PRIVATE ssize_t ramdisk_write(unsigned minor, const char *buf, size_t n, off_t o
 	if (ptr + n >= ramdisks[minor].end)
 		n = ramdisks[minor].end - ptr;
 	
-	kmemcpy(buf, (void *)ptr, n);
+	/* Write in bursts. */
+	while (n > 0)
+	{
+		count = (n > BURST_SIZE) ? BURST_SIZE : n;
+		
+		kmemcpy((void *)ptr, buf, count);
+		
+		n -= count;
+		ptr += count;
+		
+		/* Avoid starvation. */
+		if (n > 0)
+			yield();
+	}
 	
 	return ((ssize_t)n);
 }
@@ -52,6 +78,7 @@ PRIVATE ssize_t ramdisk_write(unsigned minor, const char *buf, size_t n, off_t o
 PRIVATE ssize_t ramdisk_read(unsigned minor, char *buf, size_t n, off_t off)
 {
 	addr_t ptr;
+	size_t count;
 	
 	/* Invalid device. */
 	if (minor >= 1)
@@ -67,18 +94,69 @@ PRIVATE ssize_t ramdisk_read(unsigned minor, char *buf, size_t n, off_t off)
 	if (ptr + n >= ramdisks[minor].end)
 		n = ramdisks[minor].end - ptr;
 	
-	kmemcpy(buf, (void *)ptr, n);
+	/* Read in bursts. */
+	while (n > 0)
+	{
+		count = (n > BURST_SIZE) ? BURST_SIZE : n;
+		
+		kmemcpy(buf, (void *)ptr, count);
+		
+		n -= count;
+		ptr += count;
+		
+		/* Avoid starvation. */
+		if (n > 0)
+			yield();
+	}
 	
 	return ((ssize_t)n);
+}
+
+/*
+ * Reads a block from a RAM disk device.
+ */
+PRIVATE int ramdisk_readblk(unsigned minor, struct buffer *buf)
+{	
+	addr_t ptr;
+	
+	ptr = ramdisks[minor].start + buf->num*BUFFER_SIZE;
+	
+	kmemcpy(buf->data, (void *)ptr, BUFFER_SIZE);
+	
+	buf->valid = 1;
+	buf->dirty = 0;
+	
+	return (0);
+}
+
+/*
+ * Writes a block to a RAM disk device.
+ */
+PRIVATE int ramdisk_writeblk(unsigned minor, struct buffer *buf)
+{	
+	addr_t ptr;
+	
+	ptr = ramdisks[minor].start + buf->num*BUFFER_SIZE;
+	
+	kmemcpy((void *)ptr, buf->data, BUFFER_SIZE);
+	
+	buf->valid = 1;
+	buf->dirty = 0;
+	
+	brelse(buf);
+	
+	return (0);
 }
 
 /*
  * RAM disk device driver interface.
  */
 PRIVATE const struct bdev ramdisk_driver = {
-	&ramdisk_read, /* read()  */
-	&ramdisk_write /* write() */
-}
+	&ramdisk_read,     /* read()     */
+	&ramdisk_write,    /* write()    */
+	&ramdisk_readblk,  /* readblk()  */
+	&ramdisk_writeblk  /* writeblk() */
+};
 
 /*
  * Initializes the RAM disk device driver.
@@ -88,9 +166,9 @@ PUBLIC void ramdisk_init(void)
 	int err;
 
 	/* ramdisk[0] = INITRD. */
-	ramdisks[0].start = INITRD_START;
-	ramdisks[0].end = INITRD_END;
-	ramdisks[0].size = INITRD_START - INITRD_END;
+	ramdisks[0].start = INITRD_VIRT;
+	ramdisks[0].end = INITRD_VIRT + RAMDISK_SIZE;
+	ramdisks[0].size = RAMDISK_SIZE;
 	
 	err = bdev_register(RAMDISK_MAJOR, &ramdisk_driver);
 	

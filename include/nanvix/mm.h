@@ -15,14 +15,17 @@
 	#define KSTACK_SIZE 4096
 
 	/* Virtual memory layout. */
-	#define UBASE_VIRT  0x00400000 /* User base.        */
-	#define KBASE_VIRT  0xc0000000 /* Kernel base.      */
-	#define KPOOL_VIRT  0xc0400000 /* Kernel page pool. */
+	#define UBASE_VIRT   0x00400000 /* User base.        */
+	#define BUFFERS_VIRT 0xc0008000 /* Buffers.          */
+	#define KBASE_VIRT   0xc0000000 /* Kernel base.      */
+	#define KPOOL_VIRT   0xc0400000 /* Kernel page pool. */
+	#define INITRD_VIRT  0xc0800000 /* Initial RAM disk. */
 	
 	/* Physical memory layout. */
-	#define KBASE_PHYS 0x00000000 /* Kernel base.      */
-	#define KPOOL_PHYS 0x00400000 /* Kernel page pool. */
-	#define UBASE_PHYS 0x00800000 /* User base.        */
+	#define KBASE_PHYS   0x00000000 /* Kernel base.      */
+	#define BUFFERS_PHYS 0x00008000 /* Buffers.          */
+	#define KPOOL_PHYS   0x00400000 /* Kernel page pool. */
+	#define UBASE_PHYS   0x00800000 /* User base.        */
 
 	/* Kernel memory size: 4 MB. */
 	#define KMEM_SIZE 0x00400000

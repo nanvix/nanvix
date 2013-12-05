@@ -3,15 +3,17 @@
 #
 
 # C source files.
-C_SRC = $(wildcard boot/*.c)    \
-        $(wildcard core/*.c)    \
-        $(wildcard dev/*.c)     \
-        $(wildcard dev/tty/*.c) \
-        $(wildcard init/*.c)    \
-        $(wildcard lib/*.c)     \
-        $(wildcard mm/*.c)      \
-        $(wildcard pm/*.c)      \
-        $(wildcard sys/*.c)     \
+C_SRC = $(wildcard boot/*.c)        \
+        $(wildcard core/*.c)        \
+        $(wildcard dev/*.c)         \
+        $(wildcard dev/ramdisk/*.c) \
+        $(wildcard dev/tty/*.c)     \
+        $(wildcard fs/*.c)          \
+        $(wildcard init/*.c)        \
+        $(wildcard lib/*.c)         \
+        $(wildcard mm/*.c)          \
+        $(wildcard pm/*.c)          \
+        $(wildcard sys/*.c)         \
 
 # Assembly source files.
 ASM_SRC = $(wildcard boot/*.S) \

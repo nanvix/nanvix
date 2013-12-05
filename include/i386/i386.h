@@ -9,6 +9,7 @@
 
 	#include <i386/gdt.h>
 	#include <i386/idt.h>
+	#include <i386/int.h>
 	#include <i386/paging.h>
 	#include <i386/pic.h>
 	#include <i386/pit.h>

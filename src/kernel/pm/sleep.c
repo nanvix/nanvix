@@ -37,7 +37,7 @@ PUBLIC void sleep(struct process **chain, int priority)
  * Wakes up all process that are sleeping in a chain.
  */
 PUBLIC void wakeup(struct process **chain)
-{
+{	
 	/* Wakeup sleeping processes. */
 	while (*chain != NULL)
 	{

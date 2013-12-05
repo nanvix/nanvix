@@ -23,6 +23,7 @@
 .globl switch_to
 .globl ksetjmp
 .globl klongjmp
+.globl cpulvl
 
 /*----------------------------------------------------------------------------*
  *                                 gdt_flush                                  *
@@ -256,3 +257,23 @@ klongjmp:
 	pushl JMP_BUF_KESP(%ecx)
 	popl  PROC_KESP(%edx)
 	jmpl *JMP_BUF_EIP(%ecx)
+
+/*----------------------------------------------------------------------------*
+ *                                   cpulvl()                                 *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Sets the CPU level.
+ */
+cpulvl:
+	movl 4(%esp), %ecx
+	xorl %eax, %eax
+	inb $PIC_DATA_SLAVE, %al
+	movb %al, %ah
+	inb $PIC_DATA_MASTER, %al
+	xchg %eax, %ecx
+	outb %al, $PIC_DATA_MASTER
+	movb %ah, %al
+	outb %al, $PIC_DATA_SLAVE
+	xchg %eax, %ecx
+	ret

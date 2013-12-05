@@ -11,6 +11,9 @@
 #include <nanvix/pm.h>
 #include <nanvix/mm.h>
 
+#include <nanvix/clock.h>
+#include <nanvix/buffer.h>
+
 #include <nanvix/syscall.h>
 #include <errno.h>
 
@@ -242,31 +245,49 @@ int setgid(gid_t gid)
 }
 
 
-
 PRIVATE void init(void)
 {	
+	int i;
+	int num;
+	int offset;
+	struct buffer *buf;
+	
+	i = 0;
+	
 	if (!fork())
 	{		
-		if (fork())
+		while(++i)
 		{
-			nice(-10);
-			
-			while(1)
-			{
-				kprintf("process %d executing", getpid());
-				yield();
-			}
+			num = ticks%(RAMDISK_SIZE/BUFFER_SIZE);
+			offset = ticks%(BUFFER_SIZE);
+			yield();
+			buf = bread(DEVID(RAMDISK_MAJOR, 0, BLKDEV), num);
+			kprintf("read block %d", num);
+			yield();
+			buf->dirty = 1;
+			yield();
+			kmemcpy((char *)buf->data + offset, &ticks, sizeof(unsigned));
+			yield();
+			bwrite(buf);
 		}
-		
-		else
-		{
-			while(1)
-			{
-				kprintf("process %d executing", getpid());
-				yield();
-			}
-		}
+	}
 	
+	else
+	{
+		while(++i)
+		{
+			num = ticks%(RAMDISK_SIZE/BUFFER_SIZE);
+			offset = ticks%(BUFFER_SIZE);
+			yield();
+			buf = bread(DEVID(RAMDISK_MAJOR, 0, BLKDEV), num);
+			kprintf("read block %d", num);
+			yield();
+			buf->dirty = 1;
+			yield();
+			kmemcpy((char *)buf->data + offset, &ticks, sizeof(unsigned));
+			yield();
+			bwrite(buf);
+		}
 	}
 	
 	while (1)
@@ -286,9 +307,11 @@ PUBLIC void kmain(void)
 	dev_init();
 	mm_init();
 	pm_init();
+	buffer_init();
 	
 	pid = fork();
 	
+	/* Should never occur. */
 	if (pid < 0)
 		kpanic("failed to fork init");
 	

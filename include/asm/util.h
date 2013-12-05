@@ -10,8 +10,14 @@
 	#include <i386/i386.h>
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
-	#include <sys/types.h>
+	#include <sys/types.h>	
 	
+	/* Processor execution levels. */
+	#define CPULVL_CLOCK    (0xff)
+	#define CPULVL_DISK     (~((1 <<INT_CLOCK) | (1 <<INT_CMOS)) & CPULVL_CLOCK)
+	#define CPULVL_TERMINAL (~((1 <<INT_ATA1) | (1 <<INT_ATA2)) & CPULVL_DISK)
+	#define CPULVL_NONE     (0x00)
+
 	/*
 	 * DESCRIPTION:
 	 *   The gdt_flush() function flushes the GDT pointed to by gdtptr.
@@ -101,5 +107,10 @@
 	 * 
 	 */
 	EXTERN void switch_to(struct process *proc);
+	
+	/*
+	 * Sets CPU level.
+	 */
+	EXTERN uint16_t cpulvl(uint16_t lvl);
 	
 #endif /* UTIL_H_ */

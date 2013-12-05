@@ -8,6 +8,7 @@
 #define DEV_H_
 
 	#include <nanvix/const.h>
+	#include <nanvix/buffer.h>
 	#include <sys/types.h>
 
 	/* Device types. */
@@ -116,15 +117,17 @@
 	 *========================================================================*/
 	
 	/* Block device major numbers. */
-	#define RAMDISK 0x0 /* ramdisk device. */
+	#define RAMDISK_MAJOR 0x0 /* ramdisk device. */
 	
 	/*
 	 * Block device.
 	 */
 	struct bdev
 	{
-		ssize_t (*read)(dev_t, char *, size_t, off_t);        /* Read.  */
-		ssize_t (*write)(dev_t, const char *, size_t, off_t); /* Write. */
+		ssize_t (*read)(dev_t, char *, size_t, off_t);        /* Read.        */
+		ssize_t (*write)(dev_t, const char *, size_t, off_t); /* Write.       */
+		int (*readblk)(unsigned, struct buffer *);            /* Read block.  */
+		int (*writeblk)(unsigned, struct buffer *);           /* Write block. */
 	};
 	
 	/*
@@ -175,5 +178,15 @@
 	 *   - ENOTSUP: operation not supported.
 	 */
 	EXTERN ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off);
+	
+	/*
+	 * Writes a block to a block device.
+	 */
+	EXTERN int bdev_writeblk(struct buffer *buf);
+	
+	/*
+	 * Reads a block from a block device.
+	 */
+	EXTERN int bdev_readblk(struct buffer *buf);
 	
 #endif /* DEV_H_ */

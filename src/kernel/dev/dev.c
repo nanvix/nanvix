@@ -5,6 +5,7 @@
  */
 
 #include <dev/tty.h>
+#include <nanvix/buffer.h>
 #include <dev/ramdisk.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
@@ -147,6 +148,38 @@ PUBLIC ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off)
 		return (-ENOTSUP);
 	
 	return (bdevsw[MAJOR(dev)]->read(MINOR(dev), buf, n, off));
+}
+
+/*
+ * Writes a block to a block device.
+ */
+PUBLIC int bdev_writeblk(struct buffer *buf)
+{
+	/* Invalid device. */
+	if (bdevsw[MAJOR(buf->dev)] == NULL)
+		return (-EINVAL);
+		
+	/* Operation not supported. */
+	if (bdevsw[MAJOR(buf->dev)]->writeblk == NULL)
+		return (-ENOTSUP);
+		
+	return (bdevsw[MAJOR(buf->dev)]->writeblk(MINOR(buf->dev), buf));
+}
+
+/*
+ * Reads a block from a block device.
+ */
+PUBLIC int bdev_readblk(struct buffer *buf)
+{
+	/* Invalid device. */
+	if (bdevsw[MAJOR(buf->dev)] == NULL)
+		return (-EINVAL);
+		
+	/* Operation not supported. */
+	if (bdevsw[MAJOR(buf->dev)]->readblk == NULL)
+		return (-ENOTSUP);
+		
+	return (bdevsw[MAJOR(buf->dev)]->readblk(MINOR(buf->dev), buf));
 }
 
 /*============================================================================*
