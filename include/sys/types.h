@@ -26,6 +26,15 @@
 
 	/* Used for process IDs and process group IDs. */
 	typedef signed pid_t;
+	
+	/* Used for time in seconds. */
+	typedef signed time_t;
+
+	/* Used for file serial numbers. */
+	typedef unsigned ino_t;
+
+	/* Used for link counts. */
+	typedef int nlink_t;
 
 	/* Used for sizes of objects. */
 	#ifndef SIZE_T

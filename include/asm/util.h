@@ -12,7 +12,7 @@
 	#include <nanvix/pm.h>
 	#include <sys/types.h>	
 	
-	/* Processor execution levels. */
+	/* CPU levels. */
 	#define CPULVL_CLOCK    (0xff)
 	#define CPULVL_DISK     (~((1 <<INT_CLOCK) | (1 <<INT_CMOS)) & CPULVL_CLOCK)
 	#define CPULVL_TERMINAL (~((1 <<INT_ATA1) | (1 <<INT_ATA2)) & CPULVL_DISK)
@@ -109,7 +109,7 @@
 	EXTERN void switch_to(struct process *proc);
 	
 	/*
-	 * Sets CPU level.
+	 * Changes the CPU level.
 	 */
 	EXTERN uint16_t cpulvl(uint16_t lvl);
 	

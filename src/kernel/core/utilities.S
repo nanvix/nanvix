@@ -263,7 +263,7 @@ klongjmp:
  *----------------------------------------------------------------------------*/
 
 /*
- * Sets the CPU level.
+ * Changes the CPU level.
  */
 cpulvl:
 	movl 4(%esp), %ecx

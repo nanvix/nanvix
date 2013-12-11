@@ -10,6 +10,7 @@
 	#include <i386/i386.h>
 	#include <nanvix/config.h>
 	#include <nanvix/const.h>
+	#include <nanvix/fs.h>
 	#include <nanvix/region.h>
 	#include <sys/types.h>
 	#include <signal.h>
@@ -18,12 +19,13 @@
 	#define PROC_QUANTUM 100
 
 	/* Process priorities. */
-	#define PRIO_BUFFER -80 /* Waitin for buffer.         */
-	#define PRIO_INODE  -60 /* Waiting for inode.         */
-	#define PRIO_TTY    -40 /* Waiting for terminal I/O.  */
-	#define PRIO_REGION -20 /* Waiting for memory region. */
-	#define PRIO_SIG      0 /* Waiting for signal.        */
-	#define PRIO_USER    20 /* User priority.             */
+	#define PRIO_BUFFER     -100 /* Waiting for buffer.        */
+	#define PRIO_INODE      -80  /* Waiting for inode.         */
+	#define PRIO_SUPERBLOCK -60  /* Waiting for super block.   */
+	#define PRIO_TTY        -40  /* Waiting for terminal I/O.  */
+	#define PRIO_REGION     -20  /* Waiting for memory region. */
+	#define PRIO_SIG          0  /* Waiting for signal.        */
+	#define PRIO_USER        20  /* User priority.             */
 	
 	/* Process flags. */
 	#define PROC_FREE   1 /* Process is free.       */
@@ -48,9 +50,6 @@
 	#define PROC_KSTACK     20
 	#define PROC_HANDLERS   24
 	#define PROC_RESTORERS 116
-	
-	/* Clock frequency (in hertz). */
-	#define CLOCK_FREQ 100
 	
 	/* Superuser ID. */
 	#define SUPERUSER 0
@@ -82,6 +81,10 @@
 		struct pregion pregs[NR_PREGIONS]; /* Process memory regions.     */
 		size_t size;                       /* Process size.               */
 		kjmp_buf kenv;                     /* Environment for klongjmp(). */
+		
+		/* File system information. */
+		struct inode *pwd ; /* Working directory. */
+		struct inode *root; /* Root directory.    */
 		
 		/* General information. */
 		int status;             /* Exit status.         */

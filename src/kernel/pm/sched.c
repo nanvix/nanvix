@@ -49,7 +49,7 @@ PUBLIC void sched(struct process *proc)
 /*
  * Yields the processor.
  */
-PUBLIC void yield()
+PUBLIC void yield(void)
 {
 	int eprio;
 	struct process *p;

@@ -9,6 +9,7 @@
 #include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
+#include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
@@ -57,6 +58,8 @@ PUBLIC void pm_init()
 		IDLE->pregs[i].reg = NULL;
 	}
 	IDLE->size = 0;
+	IDLE->pwd = root;
+	IDLE->root = root;
 	IDLE->status = 0;
 	IDLE->nchildren = 0;
 	IDLE->uid = SUPERUSER;

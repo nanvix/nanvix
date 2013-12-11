@@ -1,6 +1,8 @@
 # 
 # Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>.
 #
+# makefile - builds nanvix kernel.
+#
 
 # C source files.
 C_SRC = $(wildcard boot/*.c)        \

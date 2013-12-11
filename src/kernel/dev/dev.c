@@ -5,10 +5,10 @@
  */
 
 #include <dev/tty.h>
-#include <nanvix/buffer.h>
 #include <dev/ramdisk.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
+#include <nanvix/klib.h>
 #include <errno.h>
 
 /*============================================================================*
@@ -153,33 +153,43 @@ PUBLIC ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off)
 /*
  * Writes a block to a block device.
  */
-PUBLIC int bdev_writeblk(struct buffer *buf)
+PUBLIC void bdev_writeblk(struct buffer *buf)
 {
+	int err;
+	
 	/* Invalid device. */
 	if (bdevsw[MAJOR(buf->dev)] == NULL)
-		return (-EINVAL);
+		kpanic("writing block to invalid device");
 		
 	/* Operation not supported. */
 	if (bdevsw[MAJOR(buf->dev)]->writeblk == NULL)
-		return (-ENOTSUP);
-		
-	return (bdevsw[MAJOR(buf->dev)]->writeblk(MINOR(buf->dev), buf));
+		kpanic("block device cannot write blocks");
+	
+	err = bdevsw[MAJOR(buf->dev)]->writeblk(MINOR(buf->dev), buf);
+	
+	if (err)
+		kpanic("failed to write block to device");
 }
 
 /*
  * Reads a block from a block device.
  */
-PUBLIC int bdev_readblk(struct buffer *buf)
+PUBLIC void bdev_readblk(struct buffer *buf)
 {
+	int err;
+	
 	/* Invalid device. */
 	if (bdevsw[MAJOR(buf->dev)] == NULL)
-		return (-EINVAL);
+		kpanic("reading block from invalid device");
 		
 	/* Operation not supported. */
 	if (bdevsw[MAJOR(buf->dev)]->readblk == NULL)
-		return (-ENOTSUP);
+		kpanic("block device cannot read blocks");
 		
-	return (bdevsw[MAJOR(buf->dev)]->readblk(MINOR(buf->dev), buf));
+	err = bdevsw[MAJOR(buf->dev)]->readblk(MINOR(buf->dev), buf);
+	
+	if (err)
+		kpanic("failed to read block from device");
 }
 
 /*============================================================================*

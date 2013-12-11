@@ -11,7 +11,7 @@
 #include <nanvix/pm.h>
 #include <nanvix/region.h>
 #include <sys/types.h>
-#include <stat.h>
+#include <sys/stat.h>
 
 /* Number of memory regions. */
 #define NR_REGIONS (PROC_MAX*NR_PREGIONS)

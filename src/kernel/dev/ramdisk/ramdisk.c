@@ -5,10 +5,10 @@
  */
 
 #include <i386/i386.h>
-#include <nanvix/buffer.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
+#include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <sys/types.h>
@@ -19,8 +19,8 @@
 	#error "RAMDISK_SIZE > PGTAB_SIZE"
 #endif
 
-/* Read/Write burst size (in bytes). */
-#define BURST_SIZE 4096
+/* Number of RAM disks. */
+#define NR_RAMDISKS 1
 
 /*
  * RAM disks.
@@ -30,7 +30,7 @@ PRIVATE struct
 	addr_t start; /* Start address.   */
 	addr_t end;   /* End address.     */
 	size_t size;  /* Size (in bytes). */
-} ramdisks[1];
+} ramdisks[NR_RAMDISKS];
 
 /*
  * Writes to a RAM disk device.
@@ -41,7 +41,7 @@ PRIVATE ssize_t ramdisk_write(unsigned minor, const char *buf, size_t n, off_t o
 	size_t count;
 	
 	/* Invalid device. */
-	if (minor >= 1)
+	if (minor >= NR_RAMDISKS)
 		return (-EINVAL);
 	
 	ptr = ramdisks[minor].start + off;
@@ -57,7 +57,7 @@ PRIVATE ssize_t ramdisk_write(unsigned minor, const char *buf, size_t n, off_t o
 	/* Write in bursts. */
 	while (n > 0)
 	{
-		count = (n > BURST_SIZE) ? BURST_SIZE : n;
+		count = (n > BLOCK_SIZE) ? BLOCK_SIZE : n;
 		
 		kmemcpy((void *)ptr, buf, count);
 		
@@ -81,7 +81,7 @@ PRIVATE ssize_t ramdisk_read(unsigned minor, char *buf, size_t n, off_t off)
 	size_t count;
 	
 	/* Invalid device. */
-	if (minor >= 1)
+	if (minor >= NR_RAMDISKS)
 		return (-EINVAL);
 	
 	ptr = ramdisks[minor].start + off;
@@ -97,7 +97,7 @@ PRIVATE ssize_t ramdisk_read(unsigned minor, char *buf, size_t n, off_t off)
 	/* Read in bursts. */
 	while (n > 0)
 	{
-		count = (n > BURST_SIZE) ? BURST_SIZE : n;
+		count = (n > BLOCK_SIZE) ? BLOCK_SIZE : n;
 		
 		kmemcpy(buf, (void *)ptr, count);
 		
@@ -119,12 +119,12 @@ PRIVATE int ramdisk_readblk(unsigned minor, struct buffer *buf)
 {	
 	addr_t ptr;
 	
-	ptr = ramdisks[minor].start + buf->num*BUFFER_SIZE;
+	ptr = ramdisks[minor].start + buf->num*BLOCK_SIZE;
 	
-	kmemcpy(buf->data, (void *)ptr, BUFFER_SIZE);
+	kmemcpy(buf->data, (void *)ptr, BLOCK_SIZE);
 	
-	buf->valid = 1;
-	buf->dirty = 0;
+	buf->flags |= BUFFER_VALID;
+	buf->flags &= ~BUFFER_DIRTY;
 	
 	return (0);
 }
@@ -136,14 +136,14 @@ PRIVATE int ramdisk_writeblk(unsigned minor, struct buffer *buf)
 {	
 	addr_t ptr;
 	
-	ptr = ramdisks[minor].start + buf->num*BUFFER_SIZE;
+	ptr = ramdisks[minor].start + buf->num*BLOCK_SIZE;
 	
-	kmemcpy((void *)ptr, buf->data, BUFFER_SIZE);
+	kmemcpy((void *)ptr, buf->data, BLOCK_SIZE);
 	
-	buf->valid = 1;
-	buf->dirty = 0;
+	buf->flags |= BUFFER_VALID;
+	buf->flags &= ~BUFFER_DIRTY;
 	
-	brelse(buf);
+	block_put(buf);
 	
 	return (0);
 }
@@ -164,6 +164,8 @@ PRIVATE const struct bdev ramdisk_driver = {
 PUBLIC void ramdisk_init(void)
 {
 	int err;
+	
+	kprintf("dev: initializing ramdisk device driver");
 
 	/* ramdisk[0] = INITRD. */
 	ramdisks[0].start = INITRD_VIRT;
@@ -175,6 +177,4 @@ PUBLIC void ramdisk_init(void)
 	/* Failed to register ramdisk device driver. */
 	if (err)
 		kpanic("failed to register RAM disk device driver. ");
-	
-	kprintf("INIT: RAM disks initialized");
 }

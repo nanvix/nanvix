@@ -6,14 +6,13 @@
 
 #include <asm/util.h>
 #include <nanvix/const.h>
+#include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/dev.h>
 #include <nanvix/pm.h>
 #include <nanvix/mm.h>
 
 #include <nanvix/clock.h>
-#include <nanvix/buffer.h>
-
 #include <nanvix/syscall.h>
 #include <errno.h>
 
@@ -244,52 +243,8 @@ int setgid(gid_t gid)
 	return (ret);
 }
 
-
 PRIVATE void init(void)
-{	
-	int i;
-	int num;
-	int offset;
-	struct buffer *buf;
-	
-	i = 0;
-	
-	if (!fork())
-	{		
-		while(++i)
-		{
-			num = ticks%(RAMDISK_SIZE/BUFFER_SIZE);
-			offset = ticks%(BUFFER_SIZE);
-			yield();
-			buf = bread(DEVID(RAMDISK_MAJOR, 0, BLKDEV), num);
-			kprintf("read block %d", num);
-			yield();
-			buf->dirty = 1;
-			yield();
-			kmemcpy((char *)buf->data + offset, &ticks, sizeof(unsigned));
-			yield();
-			bwrite(buf);
-		}
-	}
-	
-	else
-	{
-		while(++i)
-		{
-			num = ticks%(RAMDISK_SIZE/BUFFER_SIZE);
-			offset = ticks%(BUFFER_SIZE);
-			yield();
-			buf = bread(DEVID(RAMDISK_MAJOR, 0, BLKDEV), num);
-			kprintf("read block %d", num);
-			yield();
-			buf->dirty = 1;
-			yield();
-			kmemcpy((char *)buf->data + offset, &ticks, sizeof(unsigned));
-			yield();
-			bwrite(buf);
-		}
-	}
-	
+{		
 	while (1)
 	{	
 		while(1)
@@ -306,8 +261,8 @@ PUBLIC void kmain(void)
 	/* Initialize system modules. */
 	dev_init();
 	mm_init();
+	fs_init();
 	pm_init();
-	buffer_init();
 	
 	pid = fork();
 	
@@ -318,7 +273,7 @@ PUBLIC void kmain(void)
 	/* init process. */
 	else if (pid == 0)
 	{
-		kprintf("spawning init process...");
+		kprintf("init: spawning init process");
 		
 		init();
 	}

@@ -65,7 +65,7 @@ PRIVATE void tss_setup()
 /*
  * Sets up GDT.
  */
-PRIVATE void gdt_setup()
+PRIVATE void gdt_setup(void)
 {
 	/* Size-error checking. */
 	CHKSIZE(sizeof(struct gdte), GDTE_SIZE);
@@ -89,9 +89,6 @@ PRIVATE void gdt_setup()
     
     /* Flush GDT. */
     gdt_flush(&gdtptr);
-    
-    kprintf("gdt at %x", &gdt);
-    kprintf("gdt pointer at %x", &gdtptr);
 }
 
 /*
@@ -115,7 +112,7 @@ PRIVATE void set_idte
 /*
  * Sets up IDT.
  */
-PUBLIC void idt_setup()
+PRIVATE void idt_setup(void)
 {
 	int i;
 	
@@ -186,19 +183,18 @@ PUBLIC void idt_setup()
     idtptr.ptr = (unsigned)&idt;
      
     /* Flush IDT. */
-    idt_flush(&idtptr);  
-    
-    kprintf("idt at %x", &idt);
-    kprintf("idt pointer at %x", &idtptr);
+    idt_flush(&idtptr);
 }
 
 /*
  * Sets up machine.
  */
-PUBLIC void setup()
+PUBLIC void setup(void)
 {
 	/* Setup descriptor tables. */
 	gdt_setup();
+    kprintf("boot: loading global descriptor table");
 	tss_setup();
+    kprintf("boot: loading interrupt descriptor table");
 	idt_setup();
 }

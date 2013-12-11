@@ -14,6 +14,9 @@
 /* Clock ticks since system initialization. */
 PUBLIC unsigned ticks = 0;
 
+/* Time at system startup. */
+PUBLIC unsigned startup_time = 0;
+
 /*
  * Handles a timer interrupt.
  */
@@ -43,6 +46,8 @@ PUBLIC void clock_init(unsigned freq)
 {
 	uint16_t freq_divisor;
 	
+	kprintf("dev: initializing clock device driver");
+	
 	set_hwint(HWINT_CLOCK, &do_clock);
 	
 	freq_divisor = PIT_FREQUENCY/freq;
@@ -53,6 +58,4 @@ PUBLIC void clock_init(unsigned freq)
 	/* Send data byte: divisor_low and divisor_high. */
 	outputb(PIT_DATA, (byte_t)(freq_divisor & 0xff));
 	outputb(PIT_DATA, (byte_t)((freq_divisor >> 8)));
-	
-	kprintf("clock at %d MHz", freq);
 }

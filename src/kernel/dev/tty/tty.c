@@ -71,6 +71,8 @@ PUBLIC void tty_init(void)
 {		
 	int err;
 	
+	kprintf("dev: initializing tty device driver");
+	
 	/* Initialize buffers. */
 	KBUFFER_INIT(tty.output);
 	KBUFFER_INIT(tty.input);
@@ -87,6 +89,4 @@ PUBLIC void tty_init(void)
 	
 	/* Change kernel's output device. */
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
-	
-	kprintf("INIT: tty initialized");
 }

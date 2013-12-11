@@ -8,7 +8,7 @@
 #define DEV_H_
 
 	#include <nanvix/const.h>
-	#include <nanvix/buffer.h>
+	#include <nanvix/fs.h>
 	#include <sys/types.h>
 
 	/* Device types. */
@@ -182,11 +182,11 @@
 	/*
 	 * Writes a block to a block device.
 	 */
-	EXTERN int bdev_writeblk(struct buffer *buf);
+	EXTERN void bdev_writeblk(struct buffer *buf);
 	
 	/*
 	 * Reads a block from a block device.
 	 */
-	EXTERN int bdev_readblk(struct buffer *buf);
+	EXTERN void bdev_readblk(struct buffer *buf);
 	
 #endif /* DEV_H_ */
