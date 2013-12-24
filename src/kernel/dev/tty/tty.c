@@ -8,6 +8,7 @@
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
+#include <errno.h>
 #include "tty.h"
 
 /*
@@ -57,11 +58,31 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 }
 
 /*
+ * Opens a tty device.
+ */
+PRIVATE int tty_open(unsigned minor)
+{	
+	/* Assign controlling terminal. */
+	if ((IS_LEADER(curr_proc)) && (curr_proc->tty == NULL_DEV))
+	{
+		/* tty already assigned. */
+		if (tty.pgrp != NULL)
+			return (-EBUSY);
+		
+		curr_proc->tty = DEVID(TTY_MAJOR, minor, CHRDEV);
+		tty.pgrp = curr_proc;
+	}
+	
+	return (0);
+}
+
+/*
  * tty device driver interface.
  */
 PRIVATE struct cdev tty_driver = {
-	NULL,       /* Read.  */
-	&tty_write  /* Write. */
+	tty_open,   /* open().  */
+	NULL,       /* read().  */
+	&tty_write  /* write(). */
 };
 
 /*
@@ -73,7 +94,8 @@ PUBLIC void tty_init(void)
 	
 	kprintf("dev: initializing tty device driver");
 	
-	/* Initialize buffers. */
+	/* Initialize tty. */
+	tty.pgrp = NULL;
 	KBUFFER_INIT(tty.output);
 	KBUFFER_INIT(tty.input);
 	

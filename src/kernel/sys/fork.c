@@ -1,9 +1,10 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * fork.c - fork() system call implementation.
+ * sys/fork.c - fork() system call implementation.
  */
 
+#include <i386/i386.h>
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 #include <nanvix/paging.h>
@@ -14,15 +15,15 @@
 /*
  * Creates a new process.
  */
-PUBLIC pid_t sys_fork()
+PUBLIC pid_t sys_fork(void)
 {
-	int i;
-	int err;
-	struct process *proc;
-	struct region *reg;
-	struct pregion *preg;
+	int i;                /* Loop index.     */
+	int err;              /* Error?          */
+	struct process *proc; /* Process.        */
+	struct region *reg;   /* Memory region.  */
+	struct pregion *preg; /* Process region. */
 
-	/* Search for dead process. */
+	/* Search for free process. */
 	for (proc = FIRST_PROC; proc <= LAST_PROC; proc++)
 	{
 		/* Found. */
@@ -43,45 +44,62 @@ found:
 	
 	/* Failed to create process page directory. */
 	if (err)
-		goto err0;
+		goto error0;
 		
-	/* Duplicate attached regions. */
+	/*
+	 * Duplicate attached regions.
+	 * Notice that regions will be attached in the child process
+	 * on the same indexes as in the father process.
+	 */
 	for (i = 0; i < NR_PREGIONS; i++)
 	{
-		/* Process region in use. */
-		if (curr_proc->pregs[i].type != PREGION_UNUSED)
+		preg = &curr_proc->pregs[i];
+		
+		/* Process region not in use. */
+		if (preg->reg == NULL)
+			continue;
+		
+		lockreg(preg->reg);
+		reg = dupreg(preg->reg);
+		unlockreg(preg->reg);
+			
+		/* Failed to duplicate region. */
+		if (reg == NULL)
+			goto error1;
+			
+		err = attachreg(proc, &proc->pregs[i], preg->start, reg);
+			
+		/* Failed to attach region. */
+		if (err)
 		{
-			preg = &curr_proc->pregs[i];
-			
-			lockreg(preg->reg);
-			reg = dupreg(preg->reg);
-			unlockreg(preg->reg);
-			
-			/* Failed to duplicate region. */
-			if (reg == NULL)
-				goto err1;
-			
-			err = attachreg(proc, preg->start, preg->type, reg);
-			
-			/* Failed to attach region. */
-			if (err)
-			{
-				freereg(reg);
-				goto err1;
-			}
-			
-			unlockreg(reg);
+			freereg(reg);
+			goto error1;
 		}
+			
+		unlockreg(reg);
 	}
 	
 	/* Initialize process. */
 	proc->intlvl = curr_proc->intlvl;
 	proc->received = 0;
 	for (i = 0; i < NR_SIGNALS; i++)
-		proc->handlers[i] = SIG_DFL;
-	for (i = 0; i < NR_PREGIONS; i++)
-		proc->pregs[i].type = PREGION_UNUSED;
-	proc->size = 0;
+		proc->handlers[i] = curr_proc->handlers[i];
+	proc->size = curr_proc->size;
+	proc->pwd = curr_proc->pwd;
+	proc->pwd->count++;
+	proc->root = curr_proc->root;
+	proc->root->count++;
+	for (i = 0; i < OPEN_MAX; i++)
+	{
+		proc->ofiles[i] = curr_proc->ofiles[i];
+		
+		/* Increment file reference count. */
+		if (proc->ofiles[i] != NULL)
+			proc->ofiles[i]->count++;
+	}
+	proc->close = curr_proc->close;
+	proc->umask = curr_proc->umask;
+	proc->tty = curr_proc->tty;
 	proc->status = 0;
 	proc->nchildren = 0;
 	proc->uid = curr_proc->uid;
@@ -91,13 +109,13 @@ found:
 	proc->egid = curr_proc->egid;
 	proc->sgid = curr_proc->sgid;
 	proc->pid = next_pid++;
-	proc->father = curr_proc;
 	proc->pgrp = curr_proc->pgrp;
+	proc->father = curr_proc;
 	proc->utime = 0;
 	proc->ktime = 0;
-	proc->priority = PRIO_USER;
+	proc->priority = curr_proc->priority;
 	proc->nice = curr_proc->nice;
-	proc->alarm = curr_proc->alarm;
+	proc->alarm = 0;
 	proc->next = NULL;
 	proc->chain = NULL;
 	sched(proc);
@@ -106,21 +124,21 @@ found:
 	
 	return (proc->pid);
 
-err1:
+error1:
 	/* Detach attached regions. */
 	while (--i >= 0)
 	{
-		/* Attached region found. */
-		if ( proc->pregs[i].type != PREGION_UNUSED)
-		{
-			/* Detach. */
-			preg = &proc->pregs[i];
-			lockreg(preg->reg);
-			reg = detachreg(proc, preg);
-			freereg(reg);
-		}
+		/* Region not attached. */
+		if (proc->pregs[i].reg == NULL)
+			continue;
+		
+		/* Detach. */
+		preg = &proc->pregs[i];
+		lockreg(preg->reg);
+		detachreg(proc, preg);
 	}
-err0:
+error0:
+	dstrypgdir(proc);
 	proc->flags = PROC_FREE;
 	return (-ENOMEM);
 }

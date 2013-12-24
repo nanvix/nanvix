@@ -23,7 +23,7 @@
 	#define TSS_EAX     40 /* eax.                          */
 	#define TSS_ECX     44 /* ecx.                          */
 	#define TSS_EDX     48 /* edx.                          */
-	#define TSS_     52 /* ebx.                          */
+	#define TSS_EBX     52 /* ebx.                          */
 	#define TSS_ESP     56 /* esp.                          */
 	#define TSS_EBP     60 /* ebp.                          */
 	#define TSS_ESI     64 /* esi.                          */

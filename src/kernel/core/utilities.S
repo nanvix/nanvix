@@ -23,7 +23,7 @@
 .globl switch_to
 .globl ksetjmp
 .globl klongjmp
-.globl cpulvl
+.globl user_mode
 
 /*----------------------------------------------------------------------------*
  *                                 gdt_flush                                  *
@@ -179,7 +179,7 @@ switch_to:
 	movl %eax, %cr3
 	movl PROC_KSTACK(%ecx), %eax
 	addl $PAGE_SIZE - DWORD_SIZE, %eax
-	movl %eax, TSS_ESP + tss
+	movl %eax, TSS_ESP0 + tss
 	
 	/* Load process context. */
 	movl PROC_KESP(%ecx), %esp
@@ -259,21 +259,30 @@ klongjmp:
 	jmpl *JMP_BUF_EIP(%ecx)
 
 /*----------------------------------------------------------------------------*
- *                                   cpulvl()                                 *
+ *                                 user_mode()                                *
  *----------------------------------------------------------------------------*/
 
 /*
- * Changes the CPU level.
+ * Switches to user mode.
  */
-cpulvl:
+user_mode:
 	movl 4(%esp), %ecx
-	xorl %eax, %eax
-	inb $PIC_DATA_SLAVE, %al
-	movb %al, %ah
-	inb $PIC_DATA_MASTER, %al
-	xchg %eax, %ecx
-	outb %al, $PIC_DATA_MASTER
-	movb %ah, %al
-	outb %al, $PIC_DATA_SLAVE
-	xchg %eax, %ecx
-	ret
+	
+	cli
+	
+	/* Set interrupt level to "user level". */
+	movl curr_proc, %ebx
+    movl $0, PROC_INTLVL(%ebx)
+	
+	/* Load data segment selector. */
+	movw $USER_DS, %ax
+	movw %ax, %ds
+	
+	/* Build fake interrupt stack. */
+	pushl $USER_DS
+	pushl $USTACK_ADDR
+	pushfl
+	orl $0x200, (%esp)
+	pushl $USER_CS
+	pushl %ecx
+	iret

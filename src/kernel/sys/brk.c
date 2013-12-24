@@ -8,6 +8,7 @@
 
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
+#include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <nanvix/region.h>
 #include <errno.h>
@@ -22,15 +23,11 @@ PUBLIC int sys_brk(void *addr)
 	
 	ret = 0;
 	
-	preg = findreg(curr_proc, ALIGN(addr, PGTAB_SIZE));
-	
 	/* Invalid address. */
-	if (preg == NULL)
-		return (-ENOMEM);
+	if ((addr_t)addr < UHEAP_ADDR)
+		return (-EINVAL);
 	
-	/* Must be data region. */
-	if (preg->type != PREGION_DATA)
-		return (-ENOMEM);
+	preg = &curr_proc->pregs[HEAP];
 	
 	lockreg(preg->reg);
 	

@@ -9,6 +9,15 @@
 
 	/* Default process priority. */
 	#define NZERO 20
+	
+	/* Maximum number of bytes in a filename. */
+	#define NAME_MAX 14
+	
+	/* Maximum number of files that one process can have open simultaneously. */
+	#define OPEN_MAX 20
+	
+	/* Maximum length of argument to the execve(). */
+	#define ARG_MAX 4096
 
 #endif /* LIMITS_H_ */
 

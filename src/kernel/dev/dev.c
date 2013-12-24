@@ -85,6 +85,26 @@ PUBLIC ssize_t cdev_read(dev_t dev, void *buf, size_t n)
 	return (cdevsw[MAJOR(dev)]->read(MINOR(dev), buf, n));
 }
 
+/*
+ * Opens a character device.
+ */
+PUBLIC int cdev_open(dev_t dev)
+{
+	/* Null device. */
+	if (MAJOR(dev) == NULL_MAJOR)
+		return (0);
+	
+	/* Invalid device. */
+	if (cdevsw[MAJOR(dev)] == NULL)
+		return (-EINVAL);
+	
+	/* Operation not supported. */
+	if (cdevsw[MAJOR(dev)]->open == NULL)
+		return (-ENOTSUP);
+		
+	return (cdevsw[MAJOR(dev)]->open(MINOR(dev)));
+}
+
 /*============================================================================*
  *                              Block Devices                                 *
  *============================================================================*/

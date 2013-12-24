@@ -13,11 +13,10 @@
 /*
  * 
  */
-PUBLIC void die()
+PUBLIC void die(void)
 {
 	int i;
 	struct process *p;
-	struct region *reg;
 	
 	/* Shall not occour. */
 	if (curr_proc == IDLE)
@@ -49,18 +48,9 @@ PUBLIC void die()
 		}
 	}
 	
-	/* Detach attached memory regions. */
+	/* Detach process memory regions. */
 	for (i = 0; i < NR_PREGIONS; i++)
-	{
-		/* Attached region found. */
-		if (curr_proc->pregs[i].type != PREGION_UNUSED)
-		{
-			/* Detach. */
-			lockreg(curr_proc->pregs[i].reg);
-			reg = detachreg(curr_proc, &curr_proc->pregs[i]);
-			freereg(reg);
-		}
-	}
+		detachreg(curr_proc, &curr_proc->pregs[i]);
 
 	curr_proc->state = PROC_ZOMBIE;
 	curr_proc->alarm = 0;
@@ -98,6 +88,7 @@ PUBLIC void abort(int sig)
 PUBLIC void bury(struct process *proc)
 {
 	dstrypgdir(proc);
+	proc->flags = PROC_FREE;
 	proc->state = PROC_DEAD;
 	proc->father->nchildren--;
 }

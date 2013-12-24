@@ -310,7 +310,7 @@ PUBLIC struct buffer *block_read(dev_t dev, block_t num)
 	/* Valid buffer? */
 	if (buf->flags & BUFFER_VALID)
 		return (buf);
-	
+
 	bdev_readblk(buf);
 	
 	return (buf);
@@ -326,4 +326,12 @@ PUBLIC void block_write(struct buffer *buf)
 		bdev_writeblk(buf);
 	
 	cache_put(buf);
+}
+
+/*
+ * Mas a file byte offset in a block number.
+ */
+PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
+{
+	return (zone_map(inode, off, create));
 }

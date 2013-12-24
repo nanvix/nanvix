@@ -11,6 +11,15 @@
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
 	
+	/* markpg() request types. */
+	#define CLEAR 0 /* Clear page.                */
+	#define FILL  1 /* Load page from executable. */
+	
+	/*
+	 * Marks a page.
+	 */
+	EXTERN void markpg(struct pte *pg, int what);
+	
 	/*
 	 * DESCRIPTION:
 	 *   The getkpg() function attempts to get a kernel page from the kernel 

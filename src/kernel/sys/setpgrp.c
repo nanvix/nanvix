@@ -5,6 +5,7 @@
  */
 
 #include <nanvix/const.h>
+#include <nanvix/dev.h>
 #include <nanvix/pm.h>
 #include <sys/types.h>
 
@@ -13,16 +14,11 @@
  */
 PUBLIC pid_t sys_setpgrp()
 {
-	/* Set process group ID. */
-	if (curr_proc->pid != curr_proc->pgrp->pid)
+	/* Create a new session. */
+	if (!IS_LEADER(curr_proc))
 	{
 		curr_proc->pgrp = curr_proc;
-
-		/* TODO: 
-		 * 
-		 * If setpgrp() creates a new session, then the new session has no 
-		 * controlling terminal.
-		 */
+		curr_proc->tty = NULL_DEV;
 	}
 	
 	return (curr_proc->pgrp->pid);

@@ -9,10 +9,12 @@
 #include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
+#include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <limits.h>
 
@@ -32,7 +34,7 @@ PUBLIC pid_t next_pid = 1;
 /*
  * Initializes the process manager.
  */
-PUBLIC void pm_init()
+PUBLIC void pm_init(void)
 {	
 	int i;
 	struct process *p;
@@ -42,7 +44,6 @@ PUBLIC void pm_init()
 		p->flags = PROC_FREE;
 		
 	/* Handcraft init process. */
-	IDLE->kesp = 0;
 	IDLE->cr3 = (dword_t)init_pgdir;
 	IDLE->intlvl = 1;
 	IDLE->flags = 0;
@@ -52,14 +53,16 @@ PUBLIC void pm_init()
 		IDLE->handlers[i] = SIG_DFL;
 	IDLE->pgdir = init_pgdir;
 	for (i = 0; i < NR_PREGIONS; i++)
-	{
-		IDLE->pregs[i].type = PREGION_UNUSED;
-		IDLE->pregs[i].start = 0;
 		IDLE->pregs[i].reg = NULL;
-	}
 	IDLE->size = 0;
 	IDLE->pwd = root;
 	IDLE->root = root;
+	root->count += 2;
+	for (i = 0; i < OPEN_MAX; i++)
+		IDLE->ofiles[i] = NULL;
+	IDLE->close = 0;
+	IDLE->umask = S_IXUSR | S_IWGRP | S_IXGRP | S_IWOTH | S_IXOTH;
+	IDLE->tty = NULL_DEV;
 	IDLE->status = 0;
 	IDLE->nchildren = 0;
 	IDLE->uid = SUPERUSER;
@@ -69,8 +72,8 @@ PUBLIC void pm_init()
 	IDLE->egid = SUPERGROUP;
 	IDLE->sgid = SUPERGROUP;
 	IDLE->pid = next_pid++;
-	IDLE->father = NULL;
 	IDLE->pgrp = IDLE;
+	IDLE->father = NULL;
 	IDLE->utime = 0;
 	IDLE->ktime = 0;
 	IDLE->state = PROC_RUNNING;

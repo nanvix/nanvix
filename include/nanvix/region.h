@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
- * region.h - Memory regions header.
+ * <region.h> - Memory regions library.
  */
 
 #ifndef REGION_H_
@@ -14,72 +14,112 @@
 	#include <sys/types.h>
 
 	/* Memory region flags. */
-	#define REGION_FREE    0x01 /* Region is free.          */
-	#define REGION_DONE    0x02 /* Region is initialized.   */
-	#define REGION_SHARED  0x04 /* Region is shared.        */
-	#define REGION_LOADING 0x08 /* Region is beeing loaded. */
-	#define REGION_DEMAND  0x10 /* Region is on demand.     */
-	#define REGION_LOCKED  0x20 /* Region is locked.        */
+	#define REGION_FREE    0x01 /* Region is free.         */
+	#define REGION_SHARED  0x02 /* Region is shared.       */
+	#define REGION_VALID   0x04 /* Region is initialized.  */
+	#define REGION_LOADING 0x08 /* Region is being loaded. */
+	#define REGION_DEMAND  0x10 /* Region is on demand.    */
+	#define REGION_LOCKED  0x20 /* Region is locked.       */
+	#define REGION_STICKY  0x40 /* Stick on memory.        */
+	#define REGION_DOWN    0x80 /* Region grows downwards. */
 	
 	/*
-	 * DESCRIPTION:
-	 *   The region structure describes a memory region.
+	 * Memory region.
 	 */
 	struct region
 	{
-		int flags;             /* Flags (see above).               */
-		int count;             /* Reference count.                 */
-		size_t size;           /* Region size (in pages).          */
-		int nvalid;            /* Number of valid pages in region. */
-		mode_t mode;           /* Read/write permission.           */
-		uid_t cuid;            /* Creator's user ID.               */
-		gid_t cgid;            /* Creator's group ID.              */
-		pid_t cpid;            /* Creator's process ID.            */
-		uid_t uid;             /* Owner's user ID.                 */
-		gid_t gid;             /* Owner's group ID.                */
-		struct pte *pgtab;     /* Underlying page table.           */
-		struct process *chain; /* Sleeping chain.                  */
+		/* General information. */
+		int flags;             /* Flags (see above).     */
+		int count;             /* Reference count.       */
+		size_t size;           /* Region size.           */
+		struct pte *pgtab;     /* Underlying page table. */
+		struct process *chain; /* Sleeping chain.        */
+		
+		/* File information. */
+		struct
+		{
+			struct inode *inode;   /* Inode.  */
+			off_t off;             /* Offset. */
+			size_t size;           /* Size.   */
+		} file;
+		
+		/* Access information. */
+		mode_t mode; /* Access permissions.      */
+		uid_t cuid;  /* Creator's user ID.       */
+		gid_t cgid;  /* Creator's group ID.      */
+		uid_t uid;   /* Owner's user ID.         */
+		gid_t gid;   /* Owner's group ID.        */
 	};
 	
-	/* Process memory region types. */
-	#define PREGION_UNUSED 0x0 /* Unused region.        */
-	#define PREGION_TEXT   0x1 /* Text region.          */
-	#define PREGION_DATA   0x2 /* Data region.          */
-	#define PREGION_STACK  0x3 /* Stack region.         */
-	#define PREGION_SHM    0x4 /* Shared memory region. */
-	
 	/*
-	 * DESCRIPTION:
-	 *   The pregion structure describes a process memory region.
+	 * Process memory region.
 	 */
 	struct pregion
 	{
-		int type;           /* Type (see above).         */
 		addr_t start;       /* Starting address.         */
 		struct region *reg; /* Underlying memory region. */
 	};
+	
+	/*
+	 * Initializes memory regions.
+	 */
+	EXTERN void initreg(void);
 
-	EXTERN void initreg();
-
+	/*
+	 * Locks a memory region.
+	 */
 	EXTERN void lockreg(struct region *reg);
 	
+	/*
+	 * Unlocks a memory region.
+	 */
 	EXTERN void unlockreg(struct region *reg);
 	
-	EXTERN int accessreg(struct process *proc, struct region *reg);
-
-	EXTERN struct region *allocreg(int shared, mode_t mode, size_t size);
-
+	/*
+	 * Returns access permissions to a memory region.
+	 */
+	#define accessreg(p, r) \
+		permission(r->mode, r->uid, r->gid, p, MAY_ALL, 0)
+	
+	/*
+	 * Allocates a memory region.
+	 */
+	EXTERN struct region *allocreg(mode_t mode, size_t size, int flags);
+	
+	/*
+	 * Frees a memory region.
+	 */
 	EXTERN void freereg(struct region *reg);
 
-	EXTERN int attachreg(struct process *proc, addr_t addr, int type, struct region *reg);
+	/*
+	 * Attaches a memory region to a process.
+	 */
+	EXTERN int attachreg(struct process *proc, struct pregion *preg, addr_t addr, struct region *reg);
 	
-	EXTERN struct region *detachreg(struct process *proc, struct pregion *preg);
+	/*
+	 * Detaches a memory region from a process.
+	 */
+	EXTERN void detachreg(struct process *proc, struct pregion *preg);
 
+	/*
+	 * Duplicates a memory region.
+	 */
 	EXTERN struct region *dupreg(struct region *reg);
 
+	/*
+	 * Changes the size of a memory region.
+	 */
 	EXTERN int growreg(struct process *proc, struct pregion *preg, ssize_t size);
 	
+	/*
+	 * Finds a memory region
+	 */
 	EXTERN struct pregion *findreg(struct process *proc, addr_t addr);
+	
+	/*
+	 * Loads a portion of a file into a memory region.
+	 */
+	EXTERN int loadreg(struct inode *inode, struct region *reg, off_t off, size_t size);
 
 #endif /* _ASM_FILE */
 

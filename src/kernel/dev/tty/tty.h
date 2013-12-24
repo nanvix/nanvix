@@ -9,12 +9,14 @@
 
 	#include <nanvix/const.h>
 	#include <nanvix/klib.h>
+	#include <nanvix/pm.h>
 
 	/*
 	 * tty device.
 	 */
 	struct tty
 	{
+		struct process *pgrp;  /* Process group. */
 		struct kbuffer output; /* Output buffer. */
 		struct kbuffer input;  /* Input buffer.  */
 	};

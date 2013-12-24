@@ -36,5 +36,44 @@
 	
 	/* Not supported. */
 	#define ENOTSUP 10
+	
+	/* Filename too long. */
+	#define ENAMETOOLONG 11
+	
+	/* Not a directory. */
+	#define ENOTDIR 12
+	
+	/* No such file or directory. */
+	#define ENOENT 13
+	
+	/* Permission denied. */
+	#define EACCES 14
+	
+	/* Too many open files. */
+	#define EMFILE 15
+	
+	/* Too many files open in system. */
+	#define ENFILE 16
+	
+	/* File exists. */
+	#define EEXIST 17
+	
+	/* No space left on device. */
+	#define ENOSPC 18
+	
+	/* Is a directory. */
+	#define EISDIR 19
+	
+	/* Bad file descriptor. */
+	#define EBADF 20
+	
+	/* File too large. */
+	#define EFBIG 21
+	
+	/* Executable file format error. */
+	#define ENOEXEC 22
+	
+	/* Argument list too long. */
+	#define E2BIG 23
 
 #endif /* ERRNO_H_ */

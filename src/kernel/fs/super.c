@@ -166,6 +166,13 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	if (d_sb->s_magic != SUPER_MAGIC)
 		goto error1;
 	
+	/* Do not mount weird filed systems. */
+	if (d_sb->s_log_zone_size != 0)
+	{
+		kprintf("fs: file system on device %d has weird zone size", dev);
+		goto error1;
+	}
+	
 	/* Too many blocks in the inode/zone map. */
 	if ((d_sb->s_imap_blocks > IMAP_SIZE) || (d_sb->s_zmap_blocks > ZMAP_SIZE))
 	{

@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
- * syscalls.c - System calls
+ * sys/syscalls.c - System calls.
  */
 
 #include <nanvix/const.h>
@@ -31,5 +31,16 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	(void (*)(void))&sys_setuid,
 	(void (*)(void))&sys__exit,
 	(void (*)(void))&sys_wait,
-	(void (*)(void))&sys_signal
+	(void (*)(void))&sys_signal,
+	(void (*)(void))&sys_access,
+	(void (*)(void))&sys_chdir,
+	(void (*)(void))&sys_chown,
+	(void (*)(void))&sys_chroot,
+	(void (*)(void))&sys_chmod,
+	(void (*)(void))&sys_open,
+	(void (*)(void))&sys_umask,
+	(void (*)(void))&sys_read,
+	(void (*)(void))&sys_write,
+	(void (*)(void))&sys_close,
+	(void (*)(void))&sys_execve
 };

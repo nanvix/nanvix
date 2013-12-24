@@ -26,6 +26,10 @@
 	#define BUFFERS_PHYS 0x00008000 /* Buffers.          */
 	#define KPOOL_PHYS   0x00400000 /* Kernel page pool. */
 	#define UBASE_PHYS   0x00800000 /* User base.        */
+	
+	/* User memory layout. */
+	#define USTACK_ADDR 0xbffffffc /* User stack. */
+	#define UHEAP_ADDR  0xa0000000 /* User heap.  */
 
 	/* Kernel memory size: 4 MB. */
 	#define KMEM_SIZE 0x00400000

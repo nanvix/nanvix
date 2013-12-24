@@ -1,20 +1,18 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
- * region.c - Memory regions.
+ * mm/region.c - Memory region library implementation.
  */
 
-
+#include <nanvix/config.h>
 #include <nanvix/const.h>
+#include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/paging.h>
 #include <nanvix/pm.h>
 #include <nanvix/region.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
-/* Number of memory regions. */
-#define NR_REGIONS (PROC_MAX*NR_PREGIONS)
 
 /* Memory region table. */
 PRIVATE struct region regtab[NR_REGIONS];
@@ -43,16 +41,25 @@ PUBLIC void unlockreg(struct region *reg)
 /*
  * Allocates a memory region.
  */
-PUBLIC struct region *allocreg(int shared, mode_t mode, size_t size)
+PUBLIC struct region *allocreg(mode_t mode, size_t size, int flags)
 {
-	int i;
-	struct pte *pgtab;
+	int i;              /* Loop index.        */
+	int npages;         /* Number of pages.   */
+	struct region *reg; /* Region.            */
+	struct pte *pgtab;  /* Region page table. */
+
+	#define MASK \
+		(REGION_FREE|REGION_VALID|REGION_LOADING|REGION_DEMAND|REGION_LOCKED)
+	
+	/* Bad region size. */
+	if (size > PGTAB_SIZE)
+		return (NULL);
 	
 	/* Search for free region. */
-	for (i = 0; i < NR_REGIONS; i++)
+	for (reg = &regtab[0]; reg < &regtab[NR_REGIONS]; reg++)
 	{
 		/* Found. */
-		if (regtab[i].flags & REGION_FREE)
+		if (reg->flags & REGION_FREE)
 			goto found;
 	}
 
@@ -62,28 +69,48 @@ PUBLIC struct region *allocreg(int shared, mode_t mode, size_t size)
 
 found:
 
-	mode &= (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-	
 	pgtab = getkpg();
 	
 	/* Failed to allocate page table. */
 	if (pgtab == NULL)
 		return (NULL);
+
+	size = ALIGN(size, PAGE_SIZE);
+	npages = size/PAGE_SIZE;
+	
+	/* Mark pages as demand zero. */
+	if (flags & REGION_DOWN)
+	{
+		npages = PAGE_SIZE/PTE_SIZE - npages;
+		for (i = (PAGE_SIZE/PTE_SIZE - 1); i >= npages; i--)
+			markpg(&pgtab[i], CLEAR);
+	}
+	
+	else
+	{
+		for (i = 0; i < npages; i++)
+			markpg(&pgtab[i], CLEAR);
+	}
+	
 	
 	/* Initialize region. */
-	regtab[i].flags |= ((shared) ? REGION_SHARED : 0) & ~REGION_FREE;
-	regtab[i].size = size;
-	regtab[i].mode = mode;
-	regtab[i].cuid = curr_proc->uid;
-	regtab[i].cgid = curr_proc->gid;
-	regtab[i].cpid = curr_proc->pid;
-	regtab[i].uid = curr_proc->uid;
-	regtab[i].gid = curr_proc->gid;
-	regtab[i].pgtab = pgtab;
+	reg->flags = flags & ~MASK;
+	reg->count = 0;
+	reg->size = size;
+	reg->pgtab = pgtab;
+	reg->chain = NULL;
+	reg->file.inode = NULL;
+	reg->file.off = 0;
+	reg->file.size = 0;
+	reg->mode = mode & MAY_ALL;
+	reg->cuid = curr_proc->uid;
+	reg->cgid = curr_proc->gid;
+	reg->uid = curr_proc->uid;
+	reg->gid = curr_proc->gid;
 	
-	lockreg(&regtab[i]);
+	lockreg(reg);
 	
-	return (&regtab[i]);
+	return (reg);
 }
 
 /*
@@ -91,152 +118,73 @@ found:
  */
 PUBLIC void freereg(struct region *reg)
 {
-	int i;
+	int i;      /* Loop index.      */
+	int npages; /* Number of pages. */
 	
-	/* Nothing to be done. */
-	if (reg->count > 0)
-	{
-		unlockreg(reg);
+	/* Sticky region. */
+	if (reg->flags & REGION_STICKY)
 		return;
-	}
 	
-	/* Free underlying pages. */
-	for (i = 0; i < (int)reg->size/PAGE_SIZE; i++)
+	/* Release region inode. */
+	if (reg->file.inode != NULL)
+		inode_put(reg->file.inode);
+	
+	/* Free region */
+	npages = reg->size/PAGE_SIZE;
+	for (i = 0; i < npages; i++)
 		freeupg(&reg->pgtab[i]);
-	
-	/* Free underlying page table. */
 	putkpg(reg->pgtab);
-	
-	/* Clear region fields. */
-	reg->flags = 0 | REGION_FREE;
-	reg->count = 0;
-	reg->size = 0;
-	reg->nvalid = 0;
-	reg->mode = 0;
-	reg->cuid = 0;
-	reg->cgid = 0;
-	reg->cpid = 0;
-	reg->uid = 0;
-	reg->gid = 0;
-	reg->pgtab = NULL;
-	reg->chain = NULL;
-}
-
-/*
- * Checks if a process has read/write permissions to a memory region.
- */
-PUBLIC int accessreg(struct process *proc, struct region *reg)
-{
-	int rw;
-	
-	/* Same user ID. */
-	if (proc->uid == reg->uid)
-	{
-		/* Write permissions. */
-		if (reg->mode & S_IWUSR)
-			rw = 1;
-	
-		/* Read permissions. */
-		if (reg->mode & S_IRUSR)
-			rw = 0;
-			
-		/* Cannot read nor write. */
-		else
-			return (-1);
-	}
-		
-	/* Same group ID. */
-	else if (proc->gid == reg->gid)
-	{
-		/* Write permissions. */
-		if (reg->mode & S_IWGRP)
-				rw = 1;
-			
-		/* Read permissions. */
-		if (reg->mode & S_IRGRP)
-			rw = 0;
-			
-		/* Cannot read nor write. */
-		else
-			return (-1);
-	}
-		
-	/* Others. */
-	else 
-	{
-		/* Write permissions. */
-		if (reg->mode & S_IWOTH)
-			rw = 1;
-			
-		/* Read permissions. */
-		if (reg->mode & S_IROTH)
-			rw = 0;
-		
-		/* Cannot read nor write. */
-		else
-			return (-1);
-	}
-	
-	return (rw);
+	reg->flags = REGION_FREE;
 }
 
 /*
  * Attaches a memory region to a process.
  */
-PUBLIC int attachreg(struct process *proc, addr_t addr, int type, struct region *reg)
+PUBLIC int attachreg
+(struct process *proc, struct pregion *preg, addr_t addr, struct region *reg)
 {
-	int i;
-	int rw;
-	int err;
+	int err;     /* Error?              */
+	mode_t mode; /* Access permissions. */
+	
+	/* Process region is busy. */
+	if (preg->reg != NULL)
+		return (-1);
+	
+	/* Region grows down. */
+	if (reg->flags & REGION_DOWN)
+		addr &= PGTAB_MASK;
 	
 	/* Address must be page table aligned. */
 	if (addr & ~PGTAB_MASK)
 		return (-1);
-	
+		
 	/* Process cannot grow more. */
 	if (proc->size + reg->size > PROC_SIZE_MAX)
 		return (-1);
-		
+	
 	/* Non shared memory region is already attached to the process. */
-	if (!(reg->flags & REGION_SHARED) && (reg->count == 1))
+	if (!(reg->flags & REGION_SHARED) && (reg->count > 0))
 		return (-1);
-	
-	/* Search for free process memory region. */
-	for (i = 0; i < NR_PREGIONS; i++)
-	{
-		/* Found. */
-		if (proc->pregs[i].type == PREGION_UNUSED)
-			goto found;
-	}
 
-	kprintf("process region table overflow");
+	mode = accessreg(proc, reg);
 	
-	return (-1);
-
-found:
-	
-	rw = 1;
-		
 	/* Attaching shared region, so check read/write permissions. */
 	if (reg->flags & REGION_SHARED)
 	{
-		rw = accessreg(proc, reg);
-		
 		/* Do not have perssions to read/write region. */
-		if (rw < 0)
+		if (!(mode & (MAY_READ | MAY_WRITE)))
 			return (-1);
 	}
 
-	err = mappgtab(proc->pgdir, addr, reg->pgtab, rw);
+	err = mappgtab(proc->pgdir, addr, reg->pgtab, mode & MAY_WRITE);
 	
 	/* Failed to map page table. */
 	if (err)
 		return (-1);
 	
 	/* Attach region. */
-	proc->pregs[i].type = type;
-	proc->pregs[i].start = addr;
-	proc->pregs[i].reg = reg;
+	preg->start = addr;
+	preg->reg = reg;
 	reg->count++;
 	reg->flags |= REGION_DEMAND;
 	
@@ -249,35 +197,39 @@ found:
 /*
  * Detaches a memory region from a process.
  */
-PUBLIC struct region *detachreg(struct process *proc, struct pregion *preg)
+PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 {
 	struct region *reg;
 	
 	reg = preg->reg;
 	
+	/* Nothing to be done. */
+	if (reg == NULL)
+		return;
+	
+	lockreg(reg);
+	
 	/* Detach region. */
 	umappgtab(proc->pgdir, preg->start);
-	reg->count--;
-			
-	/* Detaches region. */
-	preg->type = PREGION_UNUSED;
-	preg->start = 0;
 	preg->reg = NULL;
-		
-	/* Decrement process size. */
 	proc->size -= reg->size;
 	
-	return (reg);
+	if (reg->count > 0)
+		reg->count--;
+	
+	if (reg->count == 0)
+		freereg(reg);
+	
+	unlockreg(reg);
 }
 
 /*
- * Duplicates a memoru region.
+ * Duplicates a memory region.
  */
 PUBLIC struct region *dupreg(struct region *reg)
 {
-	int i;
-	
-	struct region *new_reg;
+	int i;                  /* Loop index.        */
+	struct region *new_reg; /* New memory region. */
 	
 	/* Shared region. */
 	if (reg->flags & REGION_SHARED)
@@ -295,9 +247,15 @@ PUBLIC struct region *dupreg(struct region *reg)
 	
 	/* Copy region fields. */
 	new_reg->flags = reg->flags;
-	new_reg->nvalid = reg->nvalid;
+	if (reg->file.inode != NULL)
+	{
+		new_reg->file.inode = reg->file.inode;
+		new_reg->file.off = reg->file.off;
+		new_reg->file.size = reg->file.size;
+		reg->file.inode->count++;
+	}
 	
-	return (reg);
+	return (new_reg);
 }
 
 /*
@@ -306,6 +264,7 @@ PUBLIC struct region *dupreg(struct region *reg)
 PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 {
 	int i;
+	int npages;
 	struct region *reg;
 	
 	size = ALIGN(size, PAGE_SIZE);
@@ -321,13 +280,12 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 		/* Region cannot have negative size. */
 		if ((size_t)(-size) > reg->size)
 			return (-1);
+
+		npages = reg->size/PAGE_SIZE;
 		
 		/* Free pages. */
-		for (i = (reg->size + size)/PAGE_SIZE; i < (int)reg->size/PAGE_SIZE;i++)
-		{
+		for (i = (reg->size + size)/PAGE_SIZE; i < npages; i++)
 			freeupg(&reg->pgtab[i]);
-			reg->nvalid--;
-		}
 	}
 	
 	/* Region size is increasing. */
@@ -346,17 +304,19 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 }
 
 /*
- * Finds a memory region
- */
+* Finds a memory region
+*/
 PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
-{	
+{        
 	int i;
+	
+	addr &= PGTAB_MASK;
 	
 	/* Find associated region. */
 	for (i = 0; i < NR_PREGIONS; i++)
 	{
 		/* Found. */
-		if (proc->pregs[i].type != PREGION_UNUSED)
+		if (proc->pregs[i].reg != NULL)
 		{
 			if (addr >= proc->pregs[i].start)
 			{
@@ -370,26 +330,38 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 }
 
 /*
+ * Loads a portion of a file into a memory region.
+ */
+PUBLIC int loadreg(struct inode *inode, struct region *reg, off_t off, size_t size)
+{
+	int i;      /* Loop index.      */
+	int npages; /* Number of pages. */
+	
+	reg->flags |= REGION_LOADING;
+	reg->file.inode = inode;
+	reg->file.off = off;
+	reg->file.size = size;
+	reg->file.inode->count++;
+	
+	npages = ALIGN(size, PAGE_SIZE) >> PAGE_SHIFT;
+	
+	/* Mark pages as demand fill. */
+	for (i = 0; i < npages; i++)
+		markpg(&reg->pgtab[i], FILL);
+	
+	return (0);
+}
+
+/*
  * Initializes memory regions.
  */
-PUBLIC void initreg()
+PUBLIC void initreg(void)
 {
-	int i;
+	struct region *reg;
 	
 	/* Initialize memory region table. */
-	for (i = 0; i < NR_REGIONS; i++)
-	{
-		regtab[i].flags = REGION_FREE;
-		regtab[i].count = 0;
-		regtab[i].size = 0;
-		regtab[i].nvalid = 0;
-		regtab[i].mode = 0;
-		regtab[i].cuid = 0;
-		regtab[i].cgid = 0;
-		regtab[i].cpid = 0;
-		regtab[i].uid = 0;
-		regtab[i].gid = 0;
-		regtab[i].pgtab = NULL;
-		regtab[i].chain = NULL;
-	}
+	for (reg = &regtab[0]; reg < &regtab[NR_REGIONS]; reg++)
+		reg->flags = REGION_FREE;
+	
+	kprintf("mm: %d regions in memory regions table", NR_REGIONS);
 }

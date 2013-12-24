@@ -5,7 +5,10 @@
  */
 
 #include <nanvix/const.h>
+#include <nanvix/clock.h>
 #include <nanvix/fs.h>
+#include <nanvix/klib.h>
+#include <errno.h>
 #include "fs.h"
 
 /*
@@ -13,9 +16,10 @@
  */
 PUBLIC zone_t zone_alloc(struct superblock *sb)
 {
-	bit_t bit;             /* Bit in the zone bitmap.  */
-	zone_t num;            /* Zone number.             */
-	block_t blk;           /* Current block on search. */	
+	bit_t bit;          /* Bit in the zone bitmap.  */
+	zone_t num;         /* Zone number.             */
+	block_t blk;        /* Current block on search. */
+	struct buffer *buf; /* Working buffer.          */
 
 	blk = sb->zsearch/(BLOCK_SIZE << 3);
 	
@@ -34,7 +38,7 @@ PUBLIC zone_t zone_alloc(struct superblock *sb)
 		
 	} while (blk != sb->zsearch/(BLOCK_SIZE << 3));
 	
-	return (NO_ZONE);
+	return (ZONE_NULL);
 
 found:
 
@@ -46,6 +50,18 @@ found:
 	sb->zsearch = num;
 	sb->flags |= SUPERBLOCK_DIRTY;
 	
+	/*
+	 * Clean underlying blocks in order
+	 * to avoid security issues.
+	 */
+	for (blk = num; blk < num + (1 << sb->log_zone_size); blk++)
+	{
+		buf = block_read(sb->dev, blk);
+		kmemset(buf->data, 0, BLOCK_SIZE);
+		buf->flags |= BUFFER_DIRTY;
+		block_put(buf);
+	}
+	
 	return (num);
 }
 
@@ -55,6 +71,10 @@ found:
 PUBLIC void zone_free(struct superblock *sb, zone_t num)
 {
 	block_t blk;
+	
+	/* Nothing to be done. */
+	if (num == ZONE_NULL)
+		return;
 	
 	blk = num/(BLOCK_SIZE << 3);
 	
@@ -75,6 +95,10 @@ PUBLIC void zone_free_indirect(struct superblock *sb, zone_t num)
 	int nzones;         /* Number of zones.  */
 	int nblocks;        /* Number of blocks. */
 	struct buffer *buf; /* Block buffer.     */
+	
+	/* Nothing to be done. */
+	if (num == ZONE_NULL)
+		return;
 	
 	nblocks = (BLOCK_SIZE << sb->log_zone_size)/BLOCK_SIZE;
 	nzones = BLOCK_SIZE/sizeof(zone_t);
@@ -105,6 +129,10 @@ PUBLIC void zone_free_dindirect(struct superblock *sb, zone_t num)
 	zone_t zone;        /* Zone.             */
 	struct buffer *buf; /* Block buffer.     */
 	
+	/* Nothing to be done. */
+	if (num == ZONE_NULL)
+		return;
+	
 	nblocks = (BLOCK_SIZE << sb->log_zone_size)/BLOCK_SIZE;
 	nzones = BLOCK_SIZE/sizeof(zone_t);
 	
@@ -124,4 +152,95 @@ PUBLIC void zone_free_dindirect(struct superblock *sb, zone_t num)
 	}
 	
 	zone_free(sb, num);
+}
+
+/*
+ * Maps a file byte offset in a physical zone number.
+ */
+PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
+{
+	zone_t phys;        /* Physical zone number. */
+	zone_t logic;       /* Logical zone number.  */
+	struct buffer *buf; /* Underlying buffer.    */
+	
+	logic = off/BLOCK_SIZE;
+	
+	/* Offset too big. */
+	if (off/BLOCK_SIZE >= (ssize_t)(NR_DIRECT + NR_SINGLE + NR_DOUBLE))
+	{
+		curr_proc->errno = -EFBIG;
+		return (BLOCK_NULL);
+	}
+	
+	/* Direct zone. */
+	if (logic < NR_ZONES_DIRECT)
+	{
+		/* Create zone. */
+		if (inode->zones[logic] == ZONE_NULL && create)
+		{
+			superblock_lock(inode->sb);
+			phys = zone_alloc(inode->sb);
+			superblock_unlock(inode->sb);
+			
+			if (phys != ZONE_NULL)
+			{	
+				inode->zones[logic] = phys;		
+				inode->time = CURRENT_TIME;
+				inode->flags |= INODE_DIRTY;
+			}
+		}
+		
+		return (inode->zones[logic]);
+	}
+	
+	logic -= NR_ZONES_DIRECT;
+	
+	/* Single indirect zone. */
+	if (logic < NR_SINGLE)
+	{		
+		/* Create zone. */
+		if (inode->zones[ZONE_SINGLE] == ZONE_NULL && create)
+		{
+			superblock_lock(inode->sb);
+			phys = zone_alloc(inode->sb);
+			superblock_unlock(inode->sb);
+			
+			if (phys == ZONE_NULL)
+				return (ZONE_NULL);
+				
+			inode->zones[ZONE_SINGLE] = phys;		
+			inode->time = CURRENT_TIME;
+			inode->flags |= INODE_DIRTY;
+		}
+		
+		if ((phys = inode->zones[ZONE_SINGLE]) == ZONE_NULL)
+			return (ZONE_NULL);
+	
+		buf = block_read(inode->dev, phys);
+		
+		if ((((zone_t *)buf->data)[logic] == ZONE_NULL) && create)
+		{
+			superblock_lock(inode->sb);
+			phys = zone_alloc(inode->sb);
+			superblock_unlock(inode->sb);
+			
+			if (phys != ZONE_NULL)
+			{	
+				((zone_t *)buf->data)[logic] = phys;		
+				inode->time = CURRENT_TIME;
+				inode->flags |= INODE_DIRTY;
+			}
+		}
+		
+		block_put(buf);
+		
+		return (((zone_t *)buf->data)[logic]);
+	}
+	
+	logic -= NR_SINGLE;
+	
+	/* Double indirect zone. */
+	kpanic("double indirect zones not supported yet");
+	
+	return (ZONE_NULL);
 }

@@ -1,9 +1,65 @@
 
-Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
-This is the TODO list for the Nanvix project:
+Kernel functionalities to be implemented:
+	
+	* initialize proc->umask
+	* initialies proc->fildesc
+	* check file types while opening (block, character ....)
 
- * kernel: implement waitpid()
- * kernel: perform kill() tests
- * fs: implement block_map()
- * fs: implement inode_name()
+High priority system calls to be implemented:
+
+	* sys_brk()
+	* sys_dup()
+	* sys_execve()
+	* sys_exit()
+	* sys_fcntl()
+	* sys_fork()
+	* sys_ioctl()
+	* sys_link()
+	* sys_lseek()
+	* sys_mknod()
+	* sys_mount()
+	* sys_pipe()
+	* sys_stat()
+	* sys_stime()
+	* sys_sync()
+	* sys_time()
+	* sys_times()
+	* sys_ulimit()
+	* sys_umount()
+	* sys_uname()
+	* sys_unlink()
+	* sys_ustat()
+	* sys_utime()
+	
+Low priority system calls to be implemented:
+
+	* sys_acct()
+	* sys_msgctl()
+	* sys_msgget()
+	* sys_msgsnd()
+	* sys_msgrcv()
+	* sys_semctl()
+	* sys_semget()
+	* sys_semop()
+	* sys_shmctl()
+	* sys_shmget()
+	* sys_shmop()
+	* sys_plock()
+	* sys_profil()
+	* sys_ptrace()
+
+System calls to be tested:
+	
+	* sys_access()
+	* sys_close()
+	* sys_chdir()
+	* sys_chmod()
+	* sys_chown()
+	* sys_chroot()
+	* sys_kill()
+	* sys_open()
+	* sys_umask()
+	* sys_read()
+	* sys_write()

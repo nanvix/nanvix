@@ -59,7 +59,9 @@ PRIVATE void tss_setup()
 	tss.iomap = (TSS_SIZE - 1) << 16;
 	
 	/* Flush TSS. */
-	tss_flush();	
+	tss_flush();
+	
+	kprintf("kernel: tss at %x", &tss);
 }
 
 /*

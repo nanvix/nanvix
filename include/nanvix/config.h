@@ -13,11 +13,13 @@
 	#define HDD_SIZE    0x4000000 /* Hard disk size (in bytes). */
 	
 	/* Kernel configuration. */
-	#define PROC_MAX            64 /* Maximum number of process.      */
-	#define PROC_SIZE_MAX        8 /* Maximum process size.           */
-	#define RAMDISK_SIZE   0x80000 /* RAM disks size.                 */
-	#define NR_INODES         1024 /* Number of in-core inodes.       */
-	#define NR_SUPERBLOCKS       4 /* Number of in-core super blocks. */
-	#define ROOT_DEV        0x0001 /* Root device number.             */
+	#define PROC_MAX             64 /* Maximum number of process.      */
+	#define PROC_SIZE_MAX  0x100000 /* Maximum process size.           */
+	#define RAMDISK_SIZE    0x80000 /* RAM disks size.                 */
+	#define NR_INODES          1024 /* Number of in-core inodes.       */
+	#define NR_SUPERBLOCKS        4 /* Number of in-core super blocks. */
+	#define ROOT_DEV         0x0001 /* Root device number.             */
+	#define NR_FILES            256 /* Number of opened files.         */
+	#define NR_REGIONS          128 /* Number of memory regions.       */
 	
 #endif /* CONFIG_H_ */

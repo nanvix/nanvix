@@ -7,6 +7,7 @@
 #include <asm/util.h>
 #include <i386/i386.h>
 #include <nanvix/const.h>
+#include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/int.h>
 #include <nanvix/mm.h>
@@ -29,9 +30,10 @@ PRIVATE int upages[NR_UPAGES] = { 0,  };
 /*
  * Gets a kernel page from the kernel page pool.
  */
-PUBLIC void *getkpg()
+PUBLIC void *getkpg(void)
 {
-	int i;
+	int i;     /* Loop index.  */
+	void *kpg; /* Kernel page. */
 	
 	/* Search for a free kernel page. */
 	for (i = 0; i < NR_KPAGES; i++)
@@ -47,10 +49,13 @@ PUBLIC void *getkpg()
 
 found:
 
-	/* Increment kernel page reference count. */
+	/* Set page as used. */
+	kpg = (void *)(KPOOL_VIRT + (i << PAGE_SHIFT));
 	kpages[i]++;
 	
-	return ((void *)(KPOOL_VIRT + i*PAGE_SIZE));
+	kmemset(kpg, 0, PAGE_SIZE);
+	
+	return (kpg);
 }
 
 /*
@@ -60,10 +65,7 @@ PUBLIC void putkpg(void *kpg)
 {
 	int i;
 	
-	/* Clean page. */
-	kmemset(kpg, 0, PAGE_SIZE);
-	
-	i = ((addr_t)kpg - KPOOL_VIRT)/PAGE_SIZE;
+	i = ((addr_t)kpg - KPOOL_VIRT) >> PAGE_SHIFT;
 	
 	/* Decrement kernel page reference count. */
 	kpages[i]--;
@@ -93,7 +95,7 @@ PUBLIC int mappgtab(struct pte *pgdir, addr_t addr, void *kpg, int writable)
 	pgdir[i].present = 1;
 	pgdir[i].writable = (writable) ? 1 : 0;
 	pgdir[i].user = 1;
-	pgdir[i].frame = ((addr_t)kpg - KBASE_VIRT)/PAGE_SIZE;
+	pgdir[i].frame = ((addr_t)kpg - KBASE_VIRT) >> PAGE_SHIFT;
 	
 	return (0);
 }
@@ -116,6 +118,26 @@ PUBLIC void umappgtab(struct pte *pgdir, addr_t addr)
 }
 
 /*
+ * Marks a page.
+ */
+PUBLIC void markpg(struct pte *pg, int what)
+{
+	/* Load page from executable file. */
+	if (what == FILL)
+	{
+		pg->fill = 1;
+		pg->clear = 0;
+	}
+	
+	/* Clear page. */
+	else
+	{
+		pg->fill = 0;
+		pg->clear = 1;
+	}
+}
+
+/*
  * Allocates a user page.
  */
 PUBLIC int allocupg(struct pte *upg, int writable)
@@ -126,7 +148,7 @@ PUBLIC int allocupg(struct pte *upg, int writable)
 	for (i = 0; i < NR_UPAGES; i++)
 	{
 		/* Found it. */
-		if (upages[i] == 0)
+		if (!upages[i])
 			goto found;
 	}
 	
@@ -135,14 +157,14 @@ PUBLIC int allocupg(struct pte *upg, int writable)
 	return (-1);
 
 found:
-	
+
 	/* Increment user page reference count. */
 	upages[i]++;
 	
 	upg->present = 1;
 	upg->writable = (writable) ? 1 : 0;
 	upg->user = 1;
-	upg->frame = UBASE_PHYS/PAGE_SIZE + i;
+	upg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
 	
 	return (0);
 }
@@ -164,7 +186,7 @@ PUBLIC void freeupg(struct pte *upg)
 	upages[i]--;
 		
 	/* Free user page. */
-	kmemset(upg, 0, sizeof(upg));
+	kmemset(upg, 0, sizeof(struct pte));
 		
 	/* Double free. */
 	if (upages[i] < 0)
@@ -180,6 +202,9 @@ PUBLIC void cpypg(struct pte *pg1, struct pte *pg2)
 	pg1->writable = pg2->writable;
 	pg1->user = pg2->user;
 	pg1->cow = pg2->cow;
+	pg1->clear = pg2->clear;
+	pg2->fill = pg2->fill;
+
 	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
 }
 
@@ -200,13 +225,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 	}
 	
 	/* Link pages. */
-	upg2->present = upg1->present;
-	upg2->writable = upg1->writable;
-	upg2->user = upg1->user;
-	upg2->cow = upg1->cow;
-	upg2->frame = upg1->frame;
-
-	/* Increment page reference count. */
+	kmemcpy(upg2, upg1, sizeof(struct pte));
 	upages[upg1->frame]++;
 }
 
@@ -271,46 +290,107 @@ PUBLIC void dstrypgdir(struct process *proc)
 }
 
 /*
+ * Reads page from inode.
+ */
+PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
+{
+	int err;             /* Error?                   */
+	size_t n;            /* Number of bytes to read. */
+	void *kpg;           /* Auxiliary kernel page.   */
+	struct inode *inode; /* File inode.              */
+	
+	kpg = getkpg();
+	
+	/* Failed to get kernel page. */
+	if (kpg == NULL)
+		return (-1);
+	
+	/* Read page. */
+	inode_lock(inode = reg->file.inode);
+	n = (((PG(addr) << PAGE_SHIFT) + PAGE_SIZE) <= reg->file.size) ? 
+		PAGE_SIZE : ((PG(addr) << PAGE_SHIFT) + PAGE_SIZE) - reg->file.size;
+	
+	file_read(inode, kpg, n, reg->file.off + (PG(addr) << PAGE_SHIFT));
+	inode_unlock(inode);
+	
+	
+	/* Assign new user page. */
+	err = allocupg(pg, reg->mode & MAY_WRITE);
+	
+	/* Failed to assign new page. */
+	if (err)
+	{
+		putkpg(kpg);
+		return (-1);
+	}
+	
+	kmemcpy((void*)addr, kpg, PAGE_SIZE);
+	pg->fill = 0;
+	
+	return (0);
+}
+
+/*
  * Handles a validity page fault.
  */
 PUBLIC void vfault(addr_t addr)
 {
 	int err;
 	struct pte *pg;
-	struct pregion *preg;
-	
+	struct pregion *preg; /* Working process region. */
+	struct region *reg;   /* Working region.         */
+
 	preg = findreg(curr_proc, addr);
 	
 	/* Address outside virtual address space. */
 	if (preg == NULL)
 		goto err0;
 	
-	pg = &preg->reg->pgtab[PG(addr)];
+	lockreg(reg = preg->reg);
 	
-	lockreg(preg->reg);
-
-	err = allocupg(pg, preg->reg->mode & 0222);
+	pg = &reg->pgtab[PG(addr)];
 	
-	unlockreg(preg->reg);
+	/* Clear page. */
+	if (pg->clear)
+	{
+		/* Assign new page to region. */
+		err = allocupg(pg, reg->mode & MAY_WRITE);
 		
-	/* Failed to allocate user page. */
-	if (err)
-		goto err0;
+		/* Failed to allocate user page. */
+		if (err)
+			goto err0;
+	
+		kmemset((void *)addr, 0, PAGE_SIZE);
+		pg->clear = 0;
+	}
+	
+	/* Load page from executable file. */
+	else if (pg->fill)
+	{			
+		err = readpg(pg, reg, addr);
+		
+		/* Failed to read page. */
+		if (err)
+			goto err0;
+	}
+	
+	/* Swap page in. */
+	else
+		kpanic("swap page in");
 
+	unlockreg(reg);
 	return;
 
 err0:
+	unlockreg(reg);
 	if (KERNEL_RUNNING(curr_proc))
 	{
 		if (curr_proc->flags & PROC_JMPSET)
 			klongjmp(&curr_proc->kenv, -1);
 		
-		kprintf("%x", addr);
-		
 		kpanic("kernel validity page fault");
 	}
-	else
-		sndsig(curr_proc, SIGSEGV);
+	sndsig(curr_proc, SIGSEGV);
 }
 
 /*

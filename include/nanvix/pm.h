@@ -13,6 +13,7 @@
 	#include <nanvix/fs.h>
 	#include <nanvix/region.h>
 	#include <sys/types.h>
+	#include <limits.h>
 	#include <signal.h>
 	
 	/* Process quantum. */
@@ -56,9 +57,13 @@
 	
 	/* Superuser group ID. */
 	#define SUPERGROUP 0
-
-	/* Number of process memory regions. */
-	#define NR_PREGIONS 6
+	
+	/* Process regions. */
+	#define TEXT        0 /* Text region.                      */
+	#define DATA        1 /* Data region.                      */
+	#define STACK       2 /* Stack region.                     */
+	#define HEAP        3 /* Heap region.                      */
+	#define NR_PREGIONS 4 /* Number of process memory regions. */
 
 #ifndef _ASM_FILE_
 
@@ -83,11 +88,16 @@
 		kjmp_buf kenv;                     /* Environment for klongjmp(). */
 		
 		/* File system information. */
-		struct inode *pwd ; /* Working directory. */
-		struct inode *root; /* Root directory.    */
+		struct inode *pwd;             /* Working directory.          */
+		struct inode *root;            /* Root directory.             */
+		struct file *ofiles[OPEN_MAX]; /* Open files.                 */
+		int close;                     /* File to be close on exec(). */
+		mode_t umask;                  /* User file's creation mask.  */
+		dev_t tty;                     /* Associated tty device.      */
 		
 		/* General information. */
 		int status;             /* Exit status.         */
+		int errno;              /* Error code.          */
 		int nchildren;          /* Number of children.  */
 		uid_t uid;              /* User ID.             */
 		uid_t euid;             /* Efective user ID.    */
@@ -141,6 +151,12 @@
 	
 	#define KERNEL_RUNNING(p) ((p)->intlvl > 1)
 	
+	/*
+	 * Asserts if the process is the session leader.
+	 */
+	#define IS_LEADER(p) \
+		(p->pgrp->pid == p->pid)
+
 	#define IS_SUPERUSER(p) \
 		((p->uid == SUPERUSER) || (p->euid == SUPERUSER))
 		

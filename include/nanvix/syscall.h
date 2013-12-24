@@ -12,7 +12,7 @@
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 21
+	#define NR_SYSCALLS 32
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -36,6 +36,17 @@
 	#define NR__exit   18
 	#define NR_wait    19
 	#define NR_signal  20
+	#define NR_access  21
+	#define NR_chdir   22
+	#define NR_chown   23
+	#define NR_chroot  24
+	#define NR_chmod   25
+	#define NR_open    26
+	#define NR_umask   27
+	#define NR_read    28
+	#define NR_write   29
+	#define NR_close   30
+	#define NR_execve  31
 
 #ifndef _ASM_FILE_
 
@@ -57,6 +68,41 @@
 	EXTERN pid_t sys_setpgrp(void);
 	EXTERN int sys_setuid(pid_t uid);
 	EXTERN pid_t sys_wait(int *stat_loc);
+	
+	/*
+	 * Checks user permissions for a file.
+	 */
+	EXTERN int sys_access(const char *path, int amode);
+	
+	/*
+	 * Changes working directory.
+	 */
+	EXTERN int sys_chdir(const char *path);
+	
+	/*
+	 * Changes permissions of a file.
+	 */
+	EXTERN int sys_chmod(const char *path, mode_t mode);
+	
+	/*
+	 * Changes owner and group of a file.
+	 */
+	EXTERN int sys_chown(const char *path, uid_t owner, gid_t group);
+	
+	/*
+	 * Changes working directory.
+	 */
+	EXTERN int sys_chroot(const char *path);
+	
+	/*
+	 * Closes a file.
+	 */
+	EXTERN int sys_close(int fd);
+	
+	/*
+	 * Executes a program.
+	 */
+	EXTERN int sys_execve(const char *filename, const char **argv, const char **envp);
 	
 	/*
 	 * Gets the effective user group ID of the calling process.
@@ -84,6 +130,16 @@
 	EXTERN uid_t sys_getuid(void);
 	
 	/*
+	 * Opens a file.
+	 */
+	EXTERN int sys_open(const char *path, int oflag, mode_t mode);
+	
+	/*
+	 * Reads from a file.
+	 */
+	EXTERN ssize_t sys_read(int fd, void *buf, size_t n);
+	
+	/*
 	 * Sets the effective user group ID of the calling process.
 	 */
 	EXTERN int sys_setegid(gid_t gid);
@@ -102,6 +158,16 @@
 	 * Sets the real user ID of the calling process.
 	 */
 	EXTERN int sys_setuid(pid_t uid);
+	
+	/*
+	 * Sets and gets the file mode creation mask.
+	 */
+	EXTERN mode_t sys_umask(mode_t cmask);
+	
+	/*
+	 * Writes to a file.
+	 */
+	EXTERN ssize_t sys_write(int fd, const void *buf, size_t n);
 
 #endif /* _ASM_FILE_ */
 

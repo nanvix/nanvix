@@ -12,8 +12,12 @@
 	#include <nanvix/config.h>
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
+	#include <sys/stat.h>
 	#include <sys/types.h>
 	#include <stdint.h>
+		
+	/* No zone. */
+	#define ZONE_NULL 0
 	
 	/* Number of zones. */
 	#define NR_ZONES_DIRECT 7 /* Direct.          */
@@ -21,15 +25,81 @@
 	#define NR_ZONES_DOUBLE 1 /* Double indirect. */
 	#define NR_ZONES        9 /* Total.           */
 	
-	/* No zone. */
-	#define NO_ZONE 0
+	/* Zone indexes. */
+	#define ZONE_DIRECT                               0 /* Direct zone.     */ 
+	#define ZONE_SINGLE               (NR_ZONES_DIRECT) /* Single indirect. */
+	#define ZONE_DOUBLE (ZONE_SINGLE + NR_ZONES_SINGLE) /* Double indirect. */
+	
+	/* Number of zones in a direct zone. */
+	#define NR_DIRECT 1
+
+	/* Number of zones in a single indirect zone. */
+	#define NR_SINGLE (BLOCK_SIZE/sizeof(zone_t))
+	
+	/* Number of zones in a double indirect zone. */
+	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(zone_t))*NR_SINGLE)
+	
+	/* No inode. */
+	#define INODE_NULL 0
+	
+	/* Root inode. */
+	#define INODE_ROOT 0
+	
+	/* Inode flags. */
+	#define INODE_LOCKED 1 /* Locked?      */
+	#define INODE_DIRTY  2 /* Dirty?       */
+	#define INODE_MOUNT  4 /* Mount point? */
+	#define INODE_VALID  8 /* Valid inode? */
 	
 	/* Zone number. */
-	typedef uint32_t zone_t;
+	typedef uint16_t zone_t;
+		
+	/*
+	 * File.
+	 */
+	struct file
+	{
+		int oflag;           /* Open flags.                   */
+		int count;           /* Reference count.              */
+		off_t pos;           /* Read/write cursor's position. */
+		struct inode *inode; /* Underlying inode.             */
+	};
+ 
+	/*
+	 * In-core memory inode.
+	 */
+	struct inode 
+	{
+		mode_t mode;             /* Acess permissions.                    */
+		nlink_t nlinks;          /* Number of links to the file.          */
+		uid_t uid;               /* User id of the file's owner           */
+		gid_t gid;               /* Group number of owner user.           */
+		off_t size;              /* File size (in bytes).                 */
+		time_t time;             /* Time when the file was last modified. */
+		zone_t zones[NR_ZONES];  /* Zone numbers.                         */
+		dev_t dev;               /* Underlying device.                    */
+		ino_t num;               /* Inode number.                         */
+		struct superblock *sb;   /* Super block.                          */
+		int count;               /* Reference count.                      */
+		unsigned flags;          /* Flags (see above).                    */
+		struct inode *free_next; /* Next inode in the free list.          */
+		struct inode *hash_next; /* Next inode in the hash table.         */
+		struct inode *hash_prev; /* Previous unode in the hash table.     */
+		struct process *chain;   /* Sleeping chain.                       */
+	};
+
+	
+	/*
+	 * File table.
+	 */
+	EXTERN struct file filetab[NR_FILES];
 
 /*============================================================================*
  *                             Block Buffer Library                           *
  *============================================================================*/
+
+	/* Null block. */
+	#define BLOCK_NULL 0
 
 	/* Block size. */
 	#define BLOCK_SIZE 1024
@@ -40,7 +110,7 @@
 	#define BUFFER_LOCKED 4 /* Locked? */
 
 	/* Used for block number. */
-	typedef uint32_t block_t;
+	typedef uint16_t block_t;
 
 	/*
 	 * Block buffer.
@@ -99,38 +169,14 @@
 	 */
 	EXTERN void block_write(struct buffer *buf);
 	
+	/*
+	 * Maps a file byte offset in a block number.
+	 */
+	EXTERN block_t block_map(struct inode *inode, off_t off, int create);
+	
 /*============================================================================*
  *                               Inode Library                                *
  *============================================================================*/
-	
-	/* Inode flags. */
-	#define INODE_LOCKED 1 /* Locked?      */
-	#define INODE_DIRTY  2 /* Dirty?       */
-	#define INODE_MOUNT  4 /* Mount point? */
-	#define INODE_VALID  8 /* Valid inode? */
- 
-	/*
-	 * In-core memory inode.
-	 */
-	struct inode 
-	{
-		mode_t mode;             /* Acess permissions.                    */
-		nlink_t nlinks;          /* Number of links to the file.          */
-		uid_t uid;               /* User id of the file's owner           */
-		gid_t gid;               /* Group number of owner user.           */
-		off_t size;              /* File size (in bytes).                 */
-		time_t time;             /* Time when the file was last modified. */
-		zone_t zones[NR_ZONES];  /* Zone numbers.                         */
-		dev_t dev;               /* Underlying device.                    */
-		ino_t num;               /* Inode number.                         */
-		struct superblock *sb;   /* Super block.                          */        
-		int count;               /* Reference count.                      */
-		unsigned flags;          /* Flags (see above).                    */
-		struct inode *free_next; /* Next inode in the free list.          */
-		struct inode *hash_next; /* Next inode in the hash table.         */
-		struct inode *hash_prev; /* Previous unode in the hash table.     */
-		struct process *chain;   /* Sleeping chain.                       */
-	};
 	
 	/*
 	 * Locks an inode.
@@ -166,6 +212,16 @@
 	 * Releases access to inode.
 	 */
 	EXTERN void inode_put(struct inode *i);
+	
+	/*
+	 * Gets inode of the topmost directory of a path.
+	 */
+	EXTERN struct inode *inode_dname(const char *path, const char **name);
+	
+	/*
+	 * Converts pathname to inode.
+	 */
+	EXTERN struct inode *inode_name(const char *pathname);
 
 /*============================================================================*
  *                            Super Block Library                             *
@@ -266,14 +322,51 @@
 	 */
 	EXTERN void zone_free_dindirect(struct superblock *sb, zone_t num);
 	
+	/*
+	 * Maps a file byte offset in a physical zone number.
+	 */
+	EXTERN zone_t zone_map(struct inode *inode, off_t off, int create);
+	
 /*============================================================================*
  *                              File System Manager                           *
- *============================================================================*/	
+ *============================================================================*/
+
+	/* General file permissions. */
+	#define MAY_READ  (S_IRUSR | S_IRGRP | S_IROTH)     /* May read.        */
+	#define MAY_WRITE (S_IWUSR | S_IWGRP | S_IWOTH)     /* May write.       */
+	#define MAY_EXEC  (S_IXUSR | S_IXGRP | S_IXOTH)     /* May exec/search. */
+	#define MAY_ALL   (MAY_READ | MAY_WRITE | MAY_EXEC) /* May anything.    */
 
 	/*
 	 * Initializes the file system manager.
 	 */
 	EXTERN void fs_init(void);
+	
+	/*
+	 * Checks permissions on a file
+	 */
+	EXTERN int permission(mode_t mode, uid_t uid, gid_t gid, struct process *proc, mode_t mask, int oreal);
+	
+	/*
+	 * Adds an entry to a directory.
+	 */
+	EXTERN int dir_add
+	(struct inode *dinode, struct inode *inode, const char *name);
+	
+	/*
+	 * Searchs for a file in a directory.
+	 */
+	EXTERN ino_t dir_search(struct inode *i, const char *filename);
+	
+	/*
+	 * Reads from a regular file.
+	 */
+	EXTERN ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off);
+	
+	/*
+	 * Writes to a regular file.
+	 */
+	PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off);
 	
 	/*
 	 * Root device.

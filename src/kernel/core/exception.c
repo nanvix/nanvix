@@ -80,7 +80,7 @@ PUBLIC void do_debug()
 PUBLIC void do_page_fault(addr_t addr, int err)
 {
 	/* Validty page fault. */
-	if (~err & 1)
+	if (!(err & 1))
 		vfault(addr);
 	
 	/* Protection page fault. */

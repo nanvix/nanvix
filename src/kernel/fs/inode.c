@@ -9,6 +9,10 @@
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
+#include <nanvix/mm.h>
+#include <errno.h>
+#include <unistd.h>
+#include <limits.h>
 #include "fs.h"
 
 /* Number of inodes per block. */
@@ -264,24 +268,24 @@ PUBLIC void inode_truncate(struct inode *i)
 	for (j = 0; j < NR_ZONES_DIRECT; j++)
 	{
 		zone_free(sb, i->zones[j]);
-		i->zones[j] = NO_ZONE;
+		i->zones[j] = ZONE_NULL;
 	}
 	for (j = 0; j < NR_ZONES_SINGLE; j++)
 	{
 		zone_free_indirect(sb, i->zones[NR_ZONES_DIRECT + j]);
-		i->zones[NR_ZONES_DIRECT + j] = NO_ZONE;
+		i->zones[NR_ZONES_DIRECT + j] = ZONE_NULL;
 	}
 	for (j = 0; j < NR_ZONES_DOUBLE; j++)
 	{
 		zone_free_indirect(sb, i->zones[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j]);
-		i->zones[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j] = NO_ZONE;
+		i->zones[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j] = ZONE_NULL;
 	}
 	
 	superblock_unlock(sb);
 	
 	i->size = 0;
+	i->time = CURRENT_TIME;
 	i->flags |= INODE_DIRTY;
-	i->flags |= CURRENT_TIME;
 }
 
 /*
@@ -314,6 +318,7 @@ PUBLIC struct inode *inode_alloc(struct superblock *sb)
 		
 	} while (blk != sb->isearch/(BLOCK_SIZE << 3));
 	
+	curr_proc->errno = -ENOSPC;
 	goto error0;
 	
 found:
@@ -322,7 +327,10 @@ found:
 	
 	/* No free inode. */
 	if (i == NULL)
+	{
+		curr_proc->errno = -ENFILE;
 		goto error0;
+	}
 	
 	num = bit + blk*(BLOCK_SIZE << 3);
 	
@@ -332,14 +340,17 @@ found:
 	sb->isearch = num;
 	sb->flags |= SUPERBLOCK_DIRTY;
 	
-	/* Initialize inode. */
+	/* 
+	 * Initialize inode. 
+	 * mode_t will be initialized later.
+	 */
 	i->nlinks = 1;
-	i->uid = curr_proc->uid;
-	i->gid = curr_proc->gid;
+	i->uid = curr_proc->euid;
+	i->gid = curr_proc->egid;
 	i->size = 0;
 	i->time = CURRENT_TIME;
 	for (j = 0; j < NR_ZONES; j++)
-		i->zones[j] = 0;
+		i->zones[j] = ZONE_NULL;
 	i->dev = sb->dev;
 	i->num = num;
 	i->sb = sb;
@@ -432,6 +443,208 @@ PUBLIC void inode_put(struct inode *i)
 	}
 	
 	inode_unlock(i);
+}
+
+/*
+ * Breaks a path.
+ */
+PRIVATE const char *break_path(const char *pathname, char *filename)
+{
+	char *p2;
+	const char *p1;
+	
+	p1 = pathname;
+	p2 = filename;
+	
+	/* Skip those. */
+	while (*p1 == '/')
+		p1++;
+	
+	/* Get file name. */
+	while ((*p1 != '\0') && (*p1 != '/'))
+	{
+		/* File name too long. */
+		if ((p2 - filename) > NAME_MAX)
+		{
+			curr_proc->errno = -ENAMETOOLONG;
+			return (NULL);
+		}
+		
+		*p2++ = *p1++;
+	}
+	
+	*p2 = '\0';
+	
+	return (p1);
+}
+
+/*
+ * Gets inode of the topmost directory of a path.
+ */
+PUBLIC struct inode *inode_dname(const char *path, const char **name)
+{
+	dev_t dev;                   /* Current device.     */
+	ino_t ent;                   /* Directory entry.    */
+	struct inode *i;             /* Working inode.      */
+	const char *p;               /* Current path.       */
+	struct superblock *sb;       /* Working superblock. */
+	char filename[NAME_MAX + 1]; /* File name.          */
+	
+	p = path;
+	
+	/* Absolute path. */
+	if (*p == '/')
+		i = curr_proc->root;
+	
+	/* Relative path. */
+	else if (*p != '\0')
+		i = curr_proc->pwd;
+		
+	/* Empty path name. */
+	else
+	{
+		curr_proc->errno = -EINVAL;
+		return (NULL);
+	}
+	
+	i->count++;
+	inode_lock(i);
+	
+	p = break_path((*name) = p, filename);
+	
+	/* Failed to break path. */
+	if (p == NULL)
+		goto error0;
+	
+	/* Parse all file path. */
+	while (*p != '\0')
+	{
+		/* Not a directory. */
+		if (!S_ISDIR(i->mode))
+		{
+			curr_proc->errno = -ENOTDIR;
+			goto error0;
+		}
+
+again:
+		
+		/* Permission denied. */
+		if (!permission(i->mode, i->uid, i->gid, curr_proc, MAY_EXEC, 0))
+		{
+			curr_proc->errno = -EACCES;
+			goto error0;
+		}
+		
+		/* Root directory reached. */
+		if ((curr_proc->root->num == i->num) && (!kstrcmp(filename, "..")))
+		{
+			do
+			{
+				p = break_path((*name) = p, filename);
+				
+				if (p == NULL)
+					goto error0;
+			
+			} while (!kstrcmp(filename, ".."));
+		}
+
+		ent = dir_search(i, filename);
+			
+		/* No such file or directory. */
+		if (ent == INODE_NULL)
+		{
+			/* This path was really invalid. */
+			if (*p != '\0')
+			{			
+				goto error0;	
+				curr_proc->errno = -ENOENT;
+			}
+			
+			/* Let someone else decide what to do. */
+			break;
+		}
+			
+		/* Cross mount point. */
+		if ((i->num == INODE_ROOT) && (!kstrcmp(filename, "..")))
+		{
+			sb = i->sb;
+			inode_put(i);
+			i = sb->mp;
+			inode_lock(i);
+			i->count++;
+			goto again;
+		}
+			
+		dev = i->dev;	
+		inode_put(i);
+		i = inode_get(dev, ent);
+		
+		/* Failed to get inode. */
+		if (i == NULL)
+			return (NULL);
+		
+		p = break_path((*name) = p, filename);
+		
+		/* Failed to break path. */
+		if (p == NULL)
+			goto error0;
+	}
+	
+	/* Special treatment for root directory. */
+	if (kstrcmp(*name, "/"))
+	{
+		while (**name == '/')
+			(*name)++;
+	}
+	
+	return (i);
+
+error0:
+	inode_put(i);
+	return (NULL);
+}
+
+/*
+ * Converts a path name to inode.
+ */
+PUBLIC struct inode *inode_name(const char *pathname)
+{
+	dev_t dev;           /* Device number. */
+	ino_t num;           /* Inode number.  */
+	const char *name;    /* File name.     */
+	struct inode *inode; /* Working inode. */
+	
+	inode = inode_dname(pathname, &name);
+	
+	/* Failed to get directory inode. */
+	if (inode == NULL)
+		return (NULL);
+	
+	/* Special treatment for the root directory. */
+	if (!kstrcmp(name,"/"))
+		num = curr_proc->root->num;
+	else
+	{
+		num = dir_search(inode, name);
+		
+		/* No such file or directory. */
+		if (num == INODE_NULL)
+		{
+			inode_put(inode);
+			curr_proc->errno = -ENOENT;
+			return (NULL);
+		}
+	} 
+
+	dev = inode->dev;	
+	inode_put(inode);
+	inode = inode_get(dev, num);
+
+	/* Failed to get inode. */
+	if (inode == NULL)
+		return (NULL);
+	
+	return (inode);
 }
 
 /*

@@ -195,7 +195,7 @@ swint:
     jmp leave
 
 /*
- * Page fault handler warapper.
+ * Page fault handler wrapper.
  */
 _do_page_fault:
 	pushl 4(%esp)

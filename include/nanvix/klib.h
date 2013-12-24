@@ -67,8 +67,43 @@
 		{b.head = 0, b.tail = 0, b.chain = NULL;}
 
 	/*========================================================================*
+	 *                              strings                                   *
+	 *========================================================================*/
+
+	/*
+	 * Compares two strings.
+	 */
+	EXTERN int kstrcmp(const char *str1, const char *str2);
+
+	/*
+	 * Compares part of two strings.
+	 */
+	EXTERN int kstrncmp(const char *str1, const char *str2, size_t n);
+	
+	/*
+	 * Copies part of a string.
+	 */
+	EXTERN char *kstrncpy(char *str1, const char *str2, size_t n);
+	
+	/*
+	 * Copies a string.
+	 */
+	EXTERN char *kstrcpy(char *dest, const char *src);
+	
+	/*
+	 * Returns the length of a string.
+	 */
+	EXTERN size_t kstrlen(const char * str);
+
+	/*========================================================================*
 	 *                               memory                                   *
 	 *========================================================================*/
+
+	/*
+	 * Aligns a value on a boundary.
+	 */
+	#define ALIGN(x, a) \
+		(((x) + (a - 1)) & ~(a - 1))
 
 	/*
 	 * DESCRIPTION:
@@ -107,13 +142,6 @@
 	 */
 	#define CHKSIZE(a, b) \
 		((void)sizeof(char[(((a) == (b)) ? 1 : -1)]))
-	
-	/*
-	 * DESCRIPTION:
-	 *   The ALIGN() macro aligns the value a to the boundary b.
-	 */
-	#define ALIGN(a, b) \
-		 (((addr_t)(a) + ((b) - 1)) & ~((b) - 1))
 
 	/*========================================================================*
 	 *                            formatted output                            *

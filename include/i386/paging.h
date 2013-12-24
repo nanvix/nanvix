@@ -25,16 +25,17 @@
 	 */
 	struct pte
 	{
-		unsigned present  :  1; /* Present in memory? */
-		unsigned writable :  1; /* Writable page?     */
-		unsigned user     :  1; /* User page?         */
-		unsigned          :  2; /* Reserved.          */
-		unsigned accessed :  1; /* Accessed?          */
-		unsigned dirty    :  1; /* Dirty?             */
-		unsigned          :  2; /* Reserved.          */
-		unsigned cow      :  1; /* Copy on write?     */
-		unsigned avail    :  2; /* Available for OS.  */
-		unsigned frame    : 12; /* Frame number.      */
+		unsigned present  :  1; /* Present in memory?   */
+		unsigned writable :  1; /* Writable page?       */
+		unsigned user     :  1; /* User page?           */
+		unsigned          :  2; /* Reserved.            */
+		unsigned accessed :  1; /* Accessed?            */
+		unsigned dirty    :  1; /* Dirty?               */
+		unsigned          :  2; /* Reserved.            */
+		unsigned cow      :  1; /* Copy on write?       */
+		unsigned clear    :  1; /* Clear page.          */
+		unsigned fill     :  1; /* Load from exec file. */
+		unsigned frame    : 20; /* Frame number.        */
 	};
 	
 	/*

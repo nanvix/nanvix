@@ -56,13 +56,17 @@
 	#define NULL_MAJOR 0x0 /* Null device. */
 	#define TTY_MAJOR  0x1 /* tty device.  */
 	
+	/* NULL device. */
+	#define NULL_DEV DEVID(NULL_MAJOR, 0, CHRDEV)
+	
 	/*
 	 * Character device.
 	 */
 	struct cdev
 	{
-		ssize_t (*read)(dev_t, char *, size_t);        /* Read.  */
-		ssize_t (*write)(dev_t, const char *, size_t); /* Write. */
+		int (*open)(unsigned);                            /* Open.  */
+		ssize_t (*read)(unsigned, char *, size_t);        /* Read.  */
+		ssize_t (*write)(unsigned, const char *, size_t); /* Write. */
 	};
 	
 	/*
@@ -110,7 +114,12 @@
 	 *   - EINVAL: invalid character device.
 	 *   - ENOTSUP: operation not supported.
 	 */
-	EXTERN ssize_t cdev_read(dev_t dev, void *buf, size_t);
+	EXTERN ssize_t cdev_read(dev_t dev, void *buf, size_t n);
+
+	/*
+	 * Opens a character device.
+	 */
+	EXTERN int cdev_open(dev_t dev);
 	
 	/*========================================================================*
 	 *                               block device                             *
