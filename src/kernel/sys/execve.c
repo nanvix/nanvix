@@ -37,7 +37,6 @@ PRIVATE int is_elf(struct elf32_fhdr *header)
 PRIVATE addr_t load_elf32(struct inode *inode)
 {
 	int i;                  /* Loop index.                    */
-	int err;                /* Error?                         */
 	addr_t addr;            /* Region address.                */
 	addr_t entry;           /* Program entry point.           */
 	struct elf32_fhdr *elf; /* ELF file header.               */
@@ -95,16 +94,17 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 		
 		addr = ALIGN(seg[i].p_vaddr, seg[i].p_align);
 		
-		/* Data section. */
+		/* Text section. */
 		if (seg[i].p_flags & (PF_R | PF_X))
 		{
-			preg = &curr_proc->pregs[TEXT];
+			preg = TEXT(curr_proc);
 			reg = allocreg(S_IRUSR | S_IXUSR, seg[i].p_memsz, 0);
 		}
 		
+		/* Data section. */
 		else
 		{
-			preg = &curr_proc->pregs[DATA];
+			preg = DATA(curr_proc);
 			reg = allocreg(S_IRUSR | S_IWUSR, seg[i].p_memsz, 0);
 		}
 		
@@ -116,10 +116,8 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 			return (0);
 		}
 		
-		err = attachreg(curr_proc, preg, addr, reg);
-		
-		/* Failed to attach memory region. */
-		if (preg == NULL)
+		/* Attach memory region. */
+		if (attachreg(curr_proc, preg, addr, reg))
 		{
 			freereg(reg);
 			block_put(header);
@@ -188,16 +186,16 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		goto die0;
 	
 	/* Attach stack region. */
-	if ((reg = allocreg(S_IRUSR | S_IWUSR, 2*PAGE_SIZE, REGION_DOWN)) == NULL)
+	if ((reg = allocreg(S_IRUSR | S_IWUSR, 2*PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
 		goto die0;
-	if (attachreg(curr_proc, &curr_proc->pregs[STACK], USTACK_ADDR, reg))
+	if (attachreg(curr_proc, STACK(curr_proc), USTACK_ADDR, reg))
 		goto die1;
 	unlockreg(reg);
 	
 	/* Attach heap region. */
-	if ((reg = allocreg(S_IRUSR | S_IWUSR, 2*PAGE_SIZE, 0)) == NULL)
+	if ((reg = allocreg(S_IRUSR | S_IWUSR, 2*PAGE_SIZE, REGION_UPWARDS)) == NULL)
 		goto die0;
-	if (attachreg(curr_proc, &curr_proc->pregs[HEAP], UHEAP_ADDR, reg))
+	if (attachreg(curr_proc, HEAP(curr_proc), UHEAP_ADDR, reg))
 		goto die1;
 	unlockreg(reg);
 	

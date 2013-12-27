@@ -75,5 +75,8 @@
 	
 	/* Argument list too long. */
 	#define E2BIG 23
+	
+	/* Bad address. */
+	#define EFAULT  24
 
 #endif /* ERRNO_H_ */

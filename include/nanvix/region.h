@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
- * <region.h> - Memory regions library.
+ * <nanvix/region.h> - Memory regions library.
  */
 
 #ifndef REGION_H_
@@ -14,14 +14,12 @@
 	#include <sys/types.h>
 
 	/* Memory region flags. */
-	#define REGION_FREE    0x01 /* Region is free.         */
-	#define REGION_SHARED  0x02 /* Region is shared.       */
-	#define REGION_VALID   0x04 /* Region is initialized.  */
-	#define REGION_LOADING 0x08 /* Region is being loaded. */
-	#define REGION_DEMAND  0x10 /* Region is on demand.    */
-	#define REGION_LOCKED  0x20 /* Region is locked.       */
-	#define REGION_STICKY  0x40 /* Stick on memory.        */
-	#define REGION_DOWN    0x80 /* Region grows downwards. */
+	#define REGION_FREE      0x01 /* Region is free.         */
+	#define REGION_SHARED    0x02 /* Region is shared.       */
+	#define REGION_LOCKED    0x04 /* Region is locked.       */
+	#define REGION_STICKY    0x08 /* Stick region.           */
+	#define REGION_DOWNWARDS 0x10 /* Region grows downwards. */
+	#define REGION_UPWARDS   0x20 /* Region grows upwards.   */
 	
 	/*
 	 * Memory region.
@@ -81,6 +79,14 @@
 	#define accessreg(p, r) \
 		permission(r->mode, r->uid, r->gid, p, MAY_ALL, 0)
 	
+	/*
+	 * Asserts if an address is within a region.
+	 */
+	 #define withinreg(reg, addr)                                           \
+		((reg->flags & REGION_DOWNWARDS) ?                                  \
+			(((addr_t)(addr) & ~PGTAB_MASK) > PGTAB_SIZE - reg->size - 1) : \
+		    (((addr_t)(addr) & ~PGTAB_MASK) < reg->size))                  \
+
 	/*
 	 * Allocates a memory region.
 	 */

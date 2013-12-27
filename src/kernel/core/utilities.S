@@ -268,6 +268,7 @@ klongjmp:
 user_mode:
 	movl 4(%esp), %ecx
 	
+	/* Enter critical region. */
 	cli
 	
 	/* Set interrupt level to "user level". */
@@ -280,7 +281,7 @@ user_mode:
 	
 	/* Build fake interrupt stack. */
 	pushl $USER_DS
-	pushl $USTACK_ADDR
+	pushl $USTACK_ADDR + 1
 	pushfl
 	orl $0x200, (%esp)
 	pushl $USER_CS

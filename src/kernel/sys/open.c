@@ -23,8 +23,7 @@
 /*
  * Creates a file.
  */
-PRIVATE struct inode *do_creat
-(struct inode *d, const char *name, mode_t mode, int oflag)
+PRIVATE struct inode *do_creat(struct inode *d, const char *name, mode_t mode, int oflag)
 {
 	struct inode *i;
 	
@@ -183,9 +182,14 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
  */
 PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 {
-	int fd;              /* File descriptor.  */
-	struct file *f;      /* File.             */
-	struct inode *i; /* Underlying inode. */
+	int fd;           /* File descriptor.  */
+	struct file *f;   /* File.             */
+	struct inode *i;  /* Underlying inode. */
+	char *name;       /* Path name.        */
+
+	/* Fetch path from user address space. */
+	if ((name = getname(path)) == NULL)
+		return (curr_proc->errno);
 
 	/* Get empty file descriptor. */
 	for (fd = 0; fd < OPEN_MAX; fd++)
@@ -197,7 +201,10 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	
 	/* Too many opened files. */
 	if (fd >= OPEN_MAX)
+	{
+		putname(name);
 		return (-EMFILE);
+	}
 
 	/* Get file table entry. */
 	for (f = &filetab[0]; f < &filetab[NR_FILES]; f++)
@@ -209,7 +216,10 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 
 	/* Too many files open in the system. */
 	if (f >= &filetab[NR_FILES])
+	{
+		putname(name);
 		return (-ENFILE);
+	}
 	
 	/* Increment reference count before actually opening
 	 * the file because we can sleep below and another process
@@ -221,6 +231,7 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	/* Failed to open file*/
 	if (i == NULL)
 	{
+		putname(name);
 		f->count = 0;
 		return (curr_proc->errno);
 	}
@@ -233,5 +244,6 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	curr_proc->ofiles[fd] = f;
 	curr_proc->close &= ~(1 << fd);
 
+	putname(name);
 	return (fd);
 }

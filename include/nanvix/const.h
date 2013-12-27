@@ -18,8 +18,5 @@
 	
 	/* Null pointer. */
 	#define NULL ((void *)0)
-	
-	/* Other. */
-	#define OK 1 /* Okay. */
 
 #endif /* CONST_H_ */

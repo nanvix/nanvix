@@ -265,13 +265,10 @@ PUBLIC int crtpgdir(struct process *proc)
 	
 	/* Adjust stack pointers. */
 	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
-	if (KERNEL_RUNNING(curr_proc))
-	{
-		s1 = (struct intstack *) curr_proc->kesp;
-		s2 = (struct intstack *) proc->kesp;
-		
-		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
-	}
+	s1 = (struct intstack *) curr_proc->kesp;
+	s2 = (struct intstack *) proc->kesp;	
+	s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+	
 	return (0);
 
 err1:
@@ -294,31 +291,20 @@ PUBLIC void dstrypgdir(struct process *proc)
  */
 PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 {
-	int err;             /* Error?                   */
-	size_t n;            /* Number of bytes to read. */
 	void *kpg;           /* Auxiliary kernel page.   */
 	struct inode *inode; /* File inode.              */
 	
-	kpg = getkpg();
-	
-	/* Failed to get kernel page. */
-	if (kpg == NULL)
+	/* Get auxiliary page. */
+	if ((kpg = getkpg()) == NULL)
 		return (-1);
 	
 	/* Read page. */
 	inode_lock(inode = reg->file.inode);
-	n = (((PG(addr) << PAGE_SHIFT) + PAGE_SIZE) <= reg->file.size) ? 
-		PAGE_SIZE : ((PG(addr) << PAGE_SHIFT) + PAGE_SIZE) - reg->file.size;
-	
-	file_read(inode, kpg, n, reg->file.off + (PG(addr) << PAGE_SHIFT));
+	file_read(inode, kpg, PAGE_SIZE, reg->file.off + (PG(addr) << PAGE_SHIFT));
 	inode_unlock(inode);
 	
-	
 	/* Assign new user page. */
-	err = allocupg(pg, reg->mode & MAY_WRITE);
-	
-	/* Failed to assign new page. */
-	if (err)
+	if (allocupg(pg, reg->mode & MAY_WRITE))
 	{
 		putkpg(kpg);
 		return (-1);
@@ -327,6 +313,7 @@ PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 	kmemcpy((void*)addr, kpg, PAGE_SIZE);
 	pg->fill = 0;
 	
+	putkpg(kpg);
 	return (0);
 }
 
@@ -335,61 +322,62 @@ PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
  */
 PUBLIC void vfault(addr_t addr)
 {
-	int err;
-	struct pte *pg;
+	struct pte *pg;       /* Working page.           */
 	struct pregion *preg; /* Working process region. */
 	struct region *reg;   /* Working region.         */
 
-	preg = findreg(curr_proc, addr);
-	
-	/* Address outside virtual address space. */
-	if (preg == NULL)
-		goto err0;
+	/* Get associated region. */
+	if ((preg = findreg(curr_proc, addr)) == NULL)
+		goto error0;
 	
 	lockreg(reg = preg->reg);
 	
-	pg = &reg->pgtab[PG(addr)];
+	/* Outside virtual address space. */
+	if (!withinreg(reg, addr))
+	{		
+		/* Not a stack region. */
+		if (preg != STACK(curr_proc))
+			goto error0;
 	
+		kprintf("growing stack");
+		
+		/* Expand region. */
+		if (growreg(curr_proc, preg, (~PGTAB_MASK - reg->size) - (addr & ~PGTAB_MASK)))
+			goto error0;
+	}
+
+	pg = &reg->pgtab[PG(addr)];
+		
 	/* Clear page. */
 	if (pg->clear)
 	{
 		/* Assign new page to region. */
-		err = allocupg(pg, reg->mode & MAY_WRITE);
+		if (allocupg(pg, reg->mode & MAY_WRITE))
+			goto error0;
 		
-		/* Failed to allocate user page. */
-		if (err)
-			goto err0;
-	
-		kmemset((void *)addr, 0, PAGE_SIZE);
+		kmemset((void *)(addr & PAGE_MASK), 0, PAGE_SIZE);
 		pg->clear = 0;
 	}
-	
+		
 	/* Load page from executable file. */
 	else if (pg->fill)
 	{			
-		err = readpg(pg, reg, addr);
-		
-		/* Failed to read page. */
-		if (err)
-			goto err0;
+		/* Read page. */
+		if (readpg(pg, reg, addr))
+			goto error0;
 	}
-	
+		
 	/* Swap page in. */
 	else
 		kpanic("swap page in");
-
+	
 	unlockreg(reg);
 	return;
 
-err0:
+error0:
 	unlockreg(reg);
 	if (KERNEL_RUNNING(curr_proc))
-	{
-		if (curr_proc->flags & PROC_JMPSET)
-			klongjmp(&curr_proc->kenv, -1);
-		
 		kpanic("kernel validity page fault");
-	}
 	sndsig(curr_proc, SIGSEGV);
 }
 

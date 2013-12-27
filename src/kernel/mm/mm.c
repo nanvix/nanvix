@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * mm/mm.c - Memory system module.
+ * mm/mm.c - Memory subsystem module.
  */
 
 #include <nanvix/const.h>
@@ -9,12 +9,11 @@
 #include <nanvix/region.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
-#include <stdarg.h>
 
 /*
  * Initializes the memory system module.
  */
-PUBLIC void mm_init()
+PUBLIC void mm_init(void)
 {
 	/* Initialize memory regions. */
 	initreg();
@@ -23,72 +22,49 @@ PUBLIC void mm_init()
 /*
  * Checks access permissions to a memory area.
  */
-PUBLIC int chkmem(addr_t addr, int type, ...)
+PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
 {
-	size_t size;
-	int writable;
-	va_list args;
-	struct pregion *preg;
+	int ret;              /* Return value.           */
+	struct region *reg;   /* Working memory region.  */
+	struct pregion *preg; /* Working process region. */
 	
-	preg = findreg(curr_proc, addr);
+	/* Get associated process memory region. */
+	if ((preg = findreg(curr_proc, ADDR(addr))) == NULL)
+		return (-1);
 	
-	/* Memory area not attached to user address space. */
-	if (preg == NULL)
-		goto out0;
+	lockreg(reg = preg->reg);
 	
-	lockreg(preg->reg);
-	
-	/* Check a chunk of memory. */
-	if (type == CHK_CHUNK)
+	/* Not allowed. */
+	if (!(accessreg(curr_proc, reg) & mask))
 	{
-		va_start(args, writable);
-		writable = va_arg(args, size_t);
-		size = va_arg(args, size_t);
-		va_end(args);
-		
-		if ((addr + size) < (preg->start + preg->reg->size))
-			goto out1;
+		unlockreg(reg);
+		return (-1);
 	}
 	
-	/* Check a function area of memory. */
-	else
-		writable = 0;
-	
-	/* No read/write permission. */	
-	if (writable > accessreg(curr_proc, preg->reg))
-		goto out1;
-	
-	unlockreg(preg->reg);
-	
-	return (1);
+	ret = !withinreg(reg, ADDR(addr));
+	ret |= !withinreg(reg, ADDR(addr) + size);
 
-out1:
-	unlockreg(preg->reg);
-out0:
-	return (0);
+	unlockreg(reg);
+	
+	return (ret);
 }
 
 /*
- * Fetches a byte from user addresss space.
+ * Fetches a byte from user address space.
  */
-PUBLIC int fubyte(void *addr)
+PUBLIC int fubyte(const void *addr)
 {	
-	char byte;
+	int byte;            /* User byte.              */
+	struct region *reg;   /* Working region.         */
+	struct pregion *preg; /* Working process region. */
 	
-	if ((addr_t)addr >= UBASE_VIRT)
-	{
-		if ((addr_t)addr < KBASE_VIRT)
-		{
-			if (ksetjmp(&curr_proc->kenv) != 0)
-				return (-1);
-			
-			byte = (*((char *)addr));
-			
-			kusetjmp(&curr_proc->kenv);
-			
-			return ((int)byte);
-		}
-	}
+	/* Get associated process region. */
+	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
+		return (-1);
 	
-	return (-1);
+	lockreg(reg = preg->reg);
+	byte = (withinreg(reg, addr)) ? (*((char *)addr)) : -1;
+	unlockreg(reg);
+	
+	return (byte);
 }

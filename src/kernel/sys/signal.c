@@ -26,14 +26,6 @@ PUBLIC sighandler_t sys_signal(int sig, sighandler_t func)
 	if ((sig == SIGKILL) || (sig == SIGSTOP))
 		return (SIG_ERR);
 	
-	/* Check handler function. */
-	if ((func != SIG_DFL) && (func != SIG_IGN))
-	{
-		/* Handler is not valid. */
-		if ((!chkmem((addr_t)func, CHK_FUNCTION)))
-			return (SIG_ERR);
-	}
-	
 	/* Set signal handler. */
 	old_func = curr_proc->handlers[sig];
 	curr_proc->handlers[sig] = func;

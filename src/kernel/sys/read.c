@@ -32,7 +32,7 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 		return (-EBADF);
 	
 	/* Invalid buffer. */	
-	if (!chkmem((addr_t)buf, CHK_CHUNK, 0, n))
+	if (!chkmem(buf, n, MAY_READ))
 		return (-EINVAL);
 	
 	inode_lock(i = f->inode);

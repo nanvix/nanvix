@@ -86,7 +86,6 @@ PUBLIC void kmain(void)
 	/* idle process. */	
 	while (1)
 	{
-		kprintf("idle process");
 		halt();
 		yield();
 	}

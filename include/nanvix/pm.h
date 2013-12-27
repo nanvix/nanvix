@@ -17,7 +17,7 @@
 	#include <signal.h>
 	
 	/* Process quantum. */
-	#define PROC_QUANTUM 100
+	#define PROC_QUANTUM 50
 
 	/* Process priorities. */
 	#define PRIO_BUFFER     -100 /* Waiting for buffer.        */
@@ -59,11 +59,13 @@
 	#define SUPERGROUP 0
 	
 	/* Process regions. */
-	#define TEXT        0 /* Text region.                      */
-	#define DATA        1 /* Data region.                      */
-	#define STACK       2 /* Stack region.                     */
-	#define HEAP        3 /* Heap region.                      */
-	#define NR_PREGIONS 4 /* Number of process memory regions. */
+	#define TEXT(p)  (&p->pregs[0]) /* Text region.  */
+	#define DATA(p)  (&p->pregs[1]) /* Data region.  */
+	#define STACK(p) (&p->pregs[2]) /* Stack region. */
+	#define HEAP(p)  (&p->pregs[3]) /* Heap region.  */
+	
+	/* Number of process memory regions. */
+	#define NR_PREGIONS 4
 
 #ifndef _ASM_FILE_
 

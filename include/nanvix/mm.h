@@ -28,7 +28,7 @@
 	#define UBASE_PHYS   0x00800000 /* User base.        */
 	
 	/* User memory layout. */
-	#define USTACK_ADDR 0xbffffffc /* User stack. */
+	#define USTACK_ADDR 0xbfffffff /* User stack. */
 	#define UHEAP_ADDR  0xa0000000 /* User heap.  */
 
 	/* Kernel memory size: 4 MB. */
@@ -40,20 +40,19 @@
 	/* User memory size. */
 	#define UMEM_SIZE (MEMORY_SIZE - KMEM_SIZE - KPOOL_SIZE)
 
-	/* chkmem() request types. */
-	#define CHK_FUNCTION  0 /* Function.      */
-	#define CHK_CHUNK     1 /* Chunk of data. */
-
 #ifndef _ASM_FILE_
 	
-	EXTERN void mm_init();
+	EXTERN void mm_init(void);
 	
 	/*
-	 * Checks a memory area.
+	 * Checks access permissions to a memory area.
 	 */
-	EXTERN int chkmem(addr_t addr, int type, ...);
-	
-	EXTERN int fubyte(void *addr);
+	EXTERN int chkmem(const void *addr, size_t size, mode_t mask);
+
+	/*
+	 * Fetches a byte from user address space.
+	 */
+	EXTERN int fubyte(const void *addr);
 
 #endif /* _ASM_FILE_ */
 	

@@ -24,19 +24,17 @@ PRIVATE void do_clock()
 {
 	ticks++;
 	
-	/* User running. */
-	if (!KERNEL_RUNNING(curr_proc))
+	if (KERNEL_RUNNING(curr_proc))
 	{
-		curr_proc->utime++;
-		
-		/* Give up processor time. */
-		if (--curr_proc->counter == 0)
-			yield();
+		curr_proc->ktime++;
+		return;
 	}
 	
-	/* Kernel running. */
-	else
-		curr_proc->ktime++;
+	curr_proc->utime++;
+		
+	/* Give up processor time. */
+	if (--curr_proc->counter == 0)
+		yield();
 }
 
 /*

@@ -62,6 +62,11 @@
 		dword_t intlvl;
 	} kjmp_buf;
 
+	/*
+	 * Converts to address.
+	 */
+	#define ADDR(x) ((addr_t)addr)
+
 #endif /* _ASM_FILE_ */
 
 #endif /* I386_H_ */

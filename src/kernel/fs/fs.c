@@ -7,7 +7,10 @@
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
+#include <nanvix/paging.h>
+#include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <errno.h>
 #include "fs.h"
 
 #if NR_FILES < OPEN_MAX*NR_PROCS
@@ -53,6 +56,57 @@ PUBLIC mode_t permission(mode_t mode, uid_t uid, gid_t gid, struct process *proc
 		mode &= S_IRWXO;
 	
 	return (mode);
+}
+
+/*
+ * Gets a user file name
+ */
+PUBLIC char *getname(const char *name)
+{
+	int ch;        /* Temporary character. */
+	char *kname;   /* Kernel user name.    */
+	const char *r; /* Read pointer.        */
+	char *w;       /* Write pointer.       */
+	
+	/* Grab a kernel page. */
+	if ((kname = getkpg()) == NULL)
+	{
+		curr_proc->errno = -ENOMEM;
+		return (NULL);
+	}
+	
+	/* Copy user file name. */
+	for (r = name, w = kname; (ch = fubyte(name)) != '\0'; r++, w++)
+	{
+		/* Bad user file name. */
+		if (ch < 0)
+		{
+			putkpg(kname);
+			curr_proc->errno = -EFAULT;
+			return (NULL);
+			
+		}
+		
+		/* File name too long. */
+		if ((w - kname) > PAGE_SIZE)
+		{
+			putkpg(kname);
+			curr_proc->errno = -ENAMETOOLONG;
+			return (NULL);
+		}
+		
+		*w = ch;
+	}
+	
+	return (kname);
+}
+
+/*
+ * Puts back a user file name.
+ */
+PUBLIC void putname(char *name)
+{
+	putkpg(name);
 }
 
 /*

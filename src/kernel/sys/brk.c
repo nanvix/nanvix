@@ -27,7 +27,11 @@ PUBLIC int sys_brk(void *addr)
 	if ((addr_t)addr < UHEAP_ADDR)
 		return (-EINVAL);
 	
-	preg = &curr_proc->pregs[HEAP];
+	preg = findreg(curr_proc, (addr_t)addr);
+	
+	/* Invalid address. */
+	if (preg != HEAP(curr_proc))
+		return (-EFAULT);
 	
 	lockreg(preg->reg);
 	

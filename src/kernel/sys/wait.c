@@ -23,8 +23,7 @@ PUBLIC pid_t sys_wait(int *stat_loc)
 	struct process *p;
 
 	/* Has no permissions to write at stat_loc. */
-	if ((stat_loc != NULL) && 
-		(!chkmem((addr_t)stat_loc, CHK_CHUNK, 1, sizeof(int))))
+	if ((stat_loc != NULL) && (!chkmem(stat_loc, sizeof(int), MAY_WRITE)))
 		return (-EINVAL);
 
 repeat:

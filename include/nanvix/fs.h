@@ -348,6 +348,16 @@
 	EXTERN int permission(mode_t mode, uid_t uid, gid_t gid, struct process *proc, mode_t mask, int oreal);
 	
 	/*
+	 * Gets a user file name
+	 */
+	EXTERN char *getname(const char *name);
+	
+	/*
+	 * Puts back a user file name.
+	 */
+	EXTERN void putname(char *name);
+	
+	/*
 	 * Adds an entry to a directory.
 	 */
 	EXTERN int dir_add
