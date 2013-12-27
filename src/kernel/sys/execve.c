@@ -85,8 +85,10 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 			continue;
 		
 		/* Broken executable. */
-		if (seg[i].p_filesz < seg[i].p_memsz)
+		if (seg[i].p_filesz > seg[i].p_memsz)
 		{
+			kprintf("broken executable");
+			
 			block_put(header);
 			curr_proc->errno = -ENOEXEC;
 			return (0);
@@ -95,7 +97,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 		addr = ALIGN(seg[i].p_vaddr, seg[i].p_align);
 		
 		/* Text section. */
-		if (seg[i].p_flags & (PF_R | PF_X))
+		if (!(seg[i].p_flags ^ (PF_R | PF_X)))
 		{
 			preg = TEXT(curr_proc);
 			reg = allocreg(S_IRUSR | S_IXUSR, seg[i].p_memsz, 0);
@@ -125,7 +127,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 			return (0);
 		}
 		
-		loadreg(inode, reg, seg[i].p_offset, seg[i].p_filesz);	
+		loadreg(inode, reg, seg[i].p_offset, seg[i].p_filesz);
 		
 		unlockreg(reg);	
 	}

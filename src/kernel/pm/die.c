@@ -20,7 +20,7 @@ PUBLIC void die(void)
 	
 	/* Shall not occour. */
 	if (curr_proc == IDLE)
-		kpanic("init died");
+		kpanic("idle process dying");
 		
 	/* Ignore all signals since, process may sleep below. */
 	for (i = 0; i < NR_SIGNALS; i++)

@@ -74,10 +74,10 @@ PUBLIC char *getname(const char *name)
 		curr_proc->errno = -ENOMEM;
 		return (NULL);
 	}
-	
+
 	/* Copy user file name. */
-	for (r = name, w = kname; (ch = fubyte(name)) != '\0'; r++, w++)
-	{
+	for (r = name, w = kname; (ch = fubyte(r)) != '\0'; r++, w++)
+	{	
 		/* Bad user file name. */
 		if (ch < 0)
 		{

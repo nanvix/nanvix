@@ -90,8 +90,6 @@ PRIVATE struct cdev tty_driver = {
  */
 PUBLIC void tty_init(void)
 {		
-	int err;
-	
 	kprintf("dev: initializing tty device driver");
 	
 	/* Initialize tty. */
@@ -103,10 +101,7 @@ PUBLIC void tty_init(void)
 	console_init();
 	
 	/* Register charecter device. */
-	err = cdev_register(TTY_MAJOR, &tty_driver);
-	
-	/* Failed to register tty device driver. */
-	if (err)
+	if (cdev_register(TTY_MAJOR, &tty_driver))
 		kpanic("failed to register tty device driver");
 	
 	/* Change kernel's output device. */

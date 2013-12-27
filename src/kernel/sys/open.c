@@ -97,7 +97,7 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 		return (i);
 	}
 	
-	num = dinode->dev;
+	dev = dinode->dev;
 	inode_put(dinode);
 	
 	/* File already exists. */
@@ -106,13 +106,12 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 		curr_proc->errno = -EEXIST;
 		return (NULL);
 	}
-	
+
 	i = inode_get(dev, num);
 	
 	/* Failed to get inode. */
 	if (i == NULL)
 		return (NULL);
-	
 	
 	/* Not allowed. */
 	if (!permission(i->mode, i->uid, i->gid, curr_proc, PERM(oflag), 0))
@@ -125,7 +124,7 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 	/* Character special file. */
 	if (S_ISCHR(i->mode))
 	{
-		err = cdev_open(i->dev);
+		err = cdev_open(i->zones[0]);
 		
 		/* Failed to open character device. */
 		if (err)
@@ -190,7 +189,7 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	/* Fetch path from user address space. */
 	if ((name = getname(path)) == NULL)
 		return (curr_proc->errno);
-
+	
 	/* Get empty file descriptor. */
 	for (fd = 0; fd < OPEN_MAX; fd++)
 	{
@@ -224,12 +223,10 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	/* Increment reference count before actually opening
 	 * the file because we can sleep below and another process
 	 * may want to use this file table entry also.  */	
-	f->count = 1;
-
-	i = do_open(path, oflag, mode);	
+	f->count = 1;	
 	
-	/* Failed to open file*/
-	if (i == NULL)
+	/* Open file. */
+	if ((i = do_open(name, oflag, mode)) == NULL)
 	{
 		putname(name);
 		f->count = 0;
@@ -245,5 +242,6 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	curr_proc->close &= ~(1 << fd);
 
 	putname(name);
+	
 	return (fd);
 }

@@ -40,9 +40,9 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
 		unlockreg(reg);
 		return (-1);
 	}
-	
-	ret = !withinreg(reg, ADDR(addr));
-	ret |= !withinreg(reg, ADDR(addr) + size);
+		
+	ret = withinreg(reg, ADDR(addr));
+	ret |= withinreg(reg, ADDR(addr) + size);
 
 	unlockreg(reg);
 	
@@ -54,17 +54,14 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
  */
 PUBLIC int fubyte(const void *addr)
 {	
-	int byte;            /* User byte.              */
-	struct region *reg;   /* Working region.         */
+	int byte;            /* User byte.               */
 	struct pregion *preg; /* Working process region. */
 	
 	/* Get associated process region. */
 	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
 		return (-1);
 	
-	lockreg(reg = preg->reg);
-	byte = (withinreg(reg, addr)) ? (*((char *)addr)) : -1;
-	unlockreg(reg);
+	byte = (withinreg(preg->reg, addr)) ? (*((char *)addr)) : -1;
 	
 	return (byte);
 }

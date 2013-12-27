@@ -357,16 +357,25 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 */
 PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 {        
-	struct pregion *preg;
+	struct region *reg;   /* Working memory region.  */
+	struct pregion *preg; /* Working process region. */
 	
 	/* Find associated region. */
 	for (preg = &proc->pregs[0]; preg < &proc->pregs[NR_PREGIONS]; preg++)
 	{
 		/* Found. */
-		if (preg->reg != NULL)
+		if ((reg = preg->reg) != NULL)
 		{
-			if (withinreg(preg->reg, addr))
-				return (preg);
+			if (reg->flags & REGION_DOWNWARDS)
+			{
+				if ((addr | ~PGTAB_MASK) == preg->start)
+					return (preg);
+			}
+			else
+			{
+				if ((addr & PGTAB_MASK) == preg->start)
+					return (preg);
+			}
 		}
 	}
 

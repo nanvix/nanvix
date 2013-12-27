@@ -8,6 +8,7 @@
 #include <nanvix/fs.h>
 #include <nanvix/pm.h>
 #include <errno.h>
+#include <nanvix/klib.h>
 
 /*
  * Closes a file.
@@ -33,7 +34,7 @@ PUBLIC void do_close(int fd)
  * Closes a file.
  */
 PUBLIC int sys_close(int fd)
-{
+{	
 	/* Invalid file descriptor. */
 	if ((fd < 0) || (fd > OPEN_MAX) || (curr_proc->ofiles[fd] == NULL))
 		return (-EINVAL);

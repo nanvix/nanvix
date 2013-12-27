@@ -180,8 +180,8 @@ PUBLIC void freeupg(struct pte *upg)
 	if (!upg->present)
 		return;
 		
-	i = upg->frame;
-		
+	i = upg->frame - (UBASE_PHYS >> PAGE_SHIFT);
+	
 	/* Decrement user page reference count. */
 	upages[i]--;
 		
@@ -310,7 +310,7 @@ PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 		return (-1);
 	}
 	
-	kmemcpy((void*)addr, kpg, PAGE_SIZE);
+	kmemcpy((void*)(addr & PAGE_MASK), kpg, PAGE_SIZE);
 	pg->fill = 0;
 	
 	putkpg(kpg);
@@ -334,7 +334,7 @@ PUBLIC void vfault(addr_t addr)
 	
 	/* Outside virtual address space. */
 	if (!withinreg(reg, addr))
-	{		
+	{			
 		/* Not a stack region. */
 		if (preg != STACK(curr_proc))
 			goto error0;
@@ -361,7 +361,7 @@ PUBLIC void vfault(addr_t addr)
 		
 	/* Load page from executable file. */
 	else if (pg->fill)
-	{			
+	{	
 		/* Read page. */
 		if (readpg(pg, reg, addr))
 			goto error0;

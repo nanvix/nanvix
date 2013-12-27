@@ -3,10 +3,8 @@ Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 Kernel functionalities to be implemented:
 	
-	* initialize proc->umask
-	* initialies proc->fildesc
-	* check file types while opening (block, character ....)
-
+	
+	
 High priority system calls to be implemented:
 
 	* sys_brk()

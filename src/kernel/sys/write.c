@@ -12,7 +12,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
-
+#include <nanvix/klib.h>
 /*
  * Writes to a file.
  */
@@ -32,13 +32,13 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 		return (-EBADF);
 	
 	/* Invalid buffer. */
-	if (!chkmem(buf, n, MAY_WRITE))
+	if (!chkmem(buf, n, MAY_READ))
 		return (-EINVAL);
 	
 	inode_lock(i = f->inode);
 	
 	/* Character special file. */
-	if (S_ISBLK(i->mode))
+	if (S_ISCHR(i->mode))
 	{
 		dev = i->zones[0];
 		inode_unlock(i);

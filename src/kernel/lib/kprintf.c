@@ -22,14 +22,11 @@ PUBLIC void chkout(dev_t dev)
 	ssize_t n;
 	char buffer[KBUFFER_SIZE];
 	
-	/* Not a character device. */
-	if (!(dev & CHRDEV))
-		return;
-		
 	kout = dev;
 	
 	/* Flush the content of kernel log. */
 	n = klog_read(buffer, KLOG_SIZE);
+	
 	cdev_write(kout, buffer, n);
 }
 

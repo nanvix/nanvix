@@ -12,29 +12,29 @@
 	#include <sys/types.h>
 
 	/* Device types. */
-	#define CHRDEV 1 /* Charecter device. */
-	#define BLKDEV 2 /* Block device.     */
+	#define CHRDEV 0 /* Charecter device. */
+	#define BLKDEV 1 /* Block device.     */
 
 	/*
 	 * DESCRIPTION:
 	 *   The MAJOR() macro returns the major number of a device.
 	 */
 	#define MAJOR(dev) \
-		(((dev) >> 2) >> 4)
+		(((dev) >> 8) & 0xf)
 	
 	/*
 	 * DESCRIPTION:
 	 *   The MINOR() macro returns the minor number of a device.
 	 */
 	#define MINOR(dev) \
-		(((dev) >> 2) & 0xf)
+		(((dev) >> 4) & 0xf)
 	
 	/*
 	 * DESCRIPTION:
 	 *   The DEVID() macro returns the device number of a device.
 	 */
 	#define DEVID(major, minor, type) \
-		(((((major) << 4) | (minor)) << 2) | (type))
+		(((major) << 8) | ((minor) << 4) | (type))
 		
 	/*
 	 * DESCRIPTION:
