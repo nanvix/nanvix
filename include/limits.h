@@ -17,7 +17,7 @@
 	#define OPEN_MAX 20
 	
 	/* Maximum length of argument to the execve(). */
-	#define ARG_MAX 4096
+	#define ARG_MAX 2048
 
 #endif /* LIMITS_H_ */
 

@@ -54,7 +54,7 @@ int execve(const char *filename, const char **argv, const char **envp)
 }
 
 /* Init arguments. */
-PRIVATE const char *argv[] = { "init", "/etc/inittab", NULL };
+PRIVATE const char *argv[] = { "/etc/inittab", NULL };
 PRIVATE const char *envp[] = { "PATH=/usr/bin", NULL };
 
 PUBLIC void kmain(void)

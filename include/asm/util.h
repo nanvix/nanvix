@@ -105,6 +105,6 @@
 	/*
 	 * Switches to user mode.
 	 */
-	EXTERN void user_mode(addr_t entry);
+	EXTERN void user_mode(addr_t entry, addr_t sp);
 	
 #endif /* UTIL_H_ */

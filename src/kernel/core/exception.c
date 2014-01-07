@@ -77,8 +77,6 @@ PUBLIC void do_debug(void)
  */
 PUBLIC void do_page_fault(addr_t addr, int err)
 {	
-	kprintf("page fault %d at %x", err, addr);
-	
 	/* Validty page fault. */
 	if (!(err & 1))
 	{

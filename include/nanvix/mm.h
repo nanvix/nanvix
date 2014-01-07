@@ -28,7 +28,7 @@
 	#define UBASE_PHYS   0x00800000 /* User base.        */
 	
 	/* User memory layout. */
-	#define USTACK_ADDR 0xbfffffff /* User stack. */
+	#define USTACK_ADDR 0xc0000000 /* User stack. */
 	#define UHEAP_ADDR  0xa0000000 /* User heap.  */
 
 	/* Kernel memory size: 4 MB. */
@@ -53,6 +53,11 @@
 	 * Fetches a byte from user address space.
 	 */
 	EXTERN int fubyte(const void *addr);
+	
+	/*
+	 * Fetches a double word from user address space.
+	 */
+	PUBLIC int fudword(const void *addr);
 
 #endif /* _ASM_FILE_ */
 	

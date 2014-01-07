@@ -140,27 +140,192 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 }
 
 /*
+ * Returns the number of strings of a null terminated vector of strings.
+ */
+PRIVATE int count(const char **str)
+{
+	int s;          /* Working string. */
+	const char **r; /* Read pointer.   */
+	int c;          /* String couynt.  */
+	
+	/* Count the number of strings. */
+	for (c = 0, r = str; (s = fudword(r)) != 0; r++)
+	{
+		/* Bad string vector. */
+		if (s == -1)
+		{
+			curr_proc->errno = -EFAULT;
+			return (-1);
+		}
+		
+		c++;
+	}
+	
+	return (c);
+}
+
+/*
+ * Copy strings of a vector of strings to somewhere.
+ */
+PRIVATE int copy_strings(int count, const char **strings, char *where, int p)
+{
+	int ch;     /* Working character.     */
+	char *str;  /* Working string.        */
+	int length; /* Working string length. */
+	
+	/* Copy strings. */
+	while (count-- > 0)
+	{
+		str = (char *)fudword(strings + count);
+		length = 1;
+		
+		/* Get working string length. */
+		while ((ch = fubyte(str) != '\0'))
+		{
+			/* Bad string. */
+			if (ch < 0)
+			{
+				curr_proc->errno = -EFAULT;
+				return (-1);
+			}
+			
+			length++;
+			str++;
+		}
+		
+		/* Copy working string. */
+		while (length-- > 0)
+		{
+			where[p] = (char) fubyte(str);
+		
+			p--;
+			str--;
+			
+			/* Strings too long. */
+			if (p < 0)
+			{
+				curr_proc->errno = -E2BIG;
+				return (-1);
+			}
+		}
+	}
+	
+	return (p);
+}
+
+/*
+ * Create string tables for argv and envp.
+ */
+PRIVATE addr_t create_tables(char *stack, size_t size, int p, int argc, int envc)
+{
+	int argv; /* Argument variables table.    */
+	int envp; /* Environment variables table. */
+	int sp;   /* Stack pointer.               */
+	
+	sp = p & ~(DWORD_SIZE - 1);
+	sp -= (envc + 1)*DWORD_SIZE;
+	envp = sp;
+	sp -= (argc + 1)*DWORD_SIZE;
+	argv = sp;
+	
+	/* Arguments too long. */
+	if (sp < 0)
+	{
+		curr_proc->errno = -E2BIG;
+		return (0);
+	}
+	
+	sp -= DWORD_SIZE; (*((dword_t *)(stack + sp))) = USTACK_ADDR - size + envp;
+	sp -= DWORD_SIZE; (*((dword_t *)(stack + sp))) = USTACK_ADDR - size + argv;
+	sp -= DWORD_SIZE; (*((dword_t *)(stack + sp))) = argc;
+	
+	/* Build argv table. */
+	while (argc-- > 0)
+	{
+		(*((dword_t *)(stack + argv))) = USTACK_ADDR - size + p;
+		while (stack[p++] != '\0') /* nothing. */ ;
+		argv += DWORD_SIZE;
+	}
+	(*((dword_t *)(stack + argv))) = 0;
+	
+	/* Build envp table. */
+	while (envc-- > 0)
+	{
+		(*((dword_t *)(stack + envp))) = USTACK_ADDR - size + p;
+		while (stack[p++] != '\0') /* nothing. */ ;
+		envp += DWORD_SIZE;
+	}
+	(*((dword_t *)(stack + envp))) = 0;
+	
+	
+	return (USTACK_ADDR - size + sp);
+}
+
+
+/*
+ * Builds arguments.
+ */
+PRIVATE addr_t buildargs
+(void *stack, size_t size, const char *name, const char **argv, const char **envp)
+{
+	int p;        /* Stack pointer. */
+	int argc;     /* argv length.   */
+	int envc;     /* envc length.   */
+	
+	/* Get argv count. */
+	if ((argc = count(argv)) < 0)
+		return (0);
+
+	/* Get envp count. */
+	if ((envc = count(envp)) < 0)
+		return (0);
+	
+	/* Copy argv and envp to stack. */
+	if ((p = copy_strings(envc, envp, stack, size - 1)) < 0)
+		return (0);
+	if ((p = copy_strings(argc, argv, stack, p)) < 0)
+		return (0);
+	if ((p = copy_strings(1, &name, stack, p)) < 0)
+		return (0);
+	if ((p = create_tables(stack, size, p, argc + 1, envc)) == 0)
+		return (0);
+	
+	return (p);
+}
+
+/*
  * Executes a program.
  */
 PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp)
 {
-	int i;                /* Loop index.             */
-	struct inode *inode;  /* File inode.             */
-	struct region *reg;   /* Process region.         */
-	addr_t entry;         /* Program entry point.    */
+	int i;                /* Loop index.          */
+	struct inode *inode;  /* File inode.          */
+	struct region *reg;   /* Process region.      */
+	addr_t entry;         /* Program entry point. */
+	addr_t sp;            /* User stack pointer.  */
+	char *name;           /* File name.           */
+	char stack[ARG_MAX];  /* Stack size.          */
 	
-	UNUSED(argv);
-	UNUSED(envp);
-	
-	inode = inode_name(filename);
-	
-	/* Failed to get inode. */
-	if (inode == NULL)
+	/* Get file name. */
+	if ((name = getname(filename)) == NULL)
 		return (curr_proc->errno);
+	
+	/* Build arguments before freeing user memory. */
+	kmemset(stack, 0, ARG_MAX);
+	if (!(sp = buildargs(stack, ARG_MAX, name, argv, envp)))
+		return (curr_proc->errno);
+	
+	/* Get file's inode. */
+	if ((inode = inode_name(name)) == NULL)
+	{
+		putname(name);
+		return (curr_proc->errno);
+	}
 	
 	/* Not a regular file. */
 	if (!S_ISREG(inode->mode))
 	{
+		putname(name);
 		inode_put(inode);
 		return (-EACCES);
 	}
@@ -168,6 +333,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	/* Not allowed. */
 	if (!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_EXEC, 0))
 	{
+		putname(name);
 		inode_put(inode);
 		return (-EACCES);
 	}
@@ -188,22 +354,25 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		goto die0;
 	
 	/* Attach stack region. */
-	if ((reg = allocreg(S_IRUSR | S_IWUSR, 2*PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
+	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
 		goto die0;
-	if (attachreg(curr_proc, STACK(curr_proc), USTACK_ADDR, reg))
+	if (attachreg(curr_proc, STACK(curr_proc), USTACK_ADDR - 1, reg))
 		goto die1;
 	unlockreg(reg);
 	
 	/* Attach heap region. */
-	if ((reg = allocreg(S_IRUSR | S_IWUSR, 2*PAGE_SIZE, REGION_UPWARDS)) == NULL)
+	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_UPWARDS)) == NULL)
 		goto die0;
 	if (attachreg(curr_proc, HEAP(curr_proc), UHEAP_ADDR, reg))
 		goto die1;
 	unlockreg(reg);
 	
 	inode_put(inode);
+	putname(name);
 	
-	user_mode(entry);
+	kmemcpy((void *)(USTACK_ADDR - ARG_MAX), stack, ARG_MAX);
+	
+	user_mode(entry, sp);
 	
 	/* Will not return. */
 	return (0);
@@ -213,6 +382,7 @@ die1:
 	freereg(reg);
 die0:
 	inode_put(inode);
+	putname(name);
 	die();
 	return (-1);
 }

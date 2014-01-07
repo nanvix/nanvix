@@ -42,7 +42,7 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
 	}
 		
 	ret = withinreg(reg, ADDR(addr));
-	ret |= withinreg(reg, ADDR(addr) + size);
+	ret &= withinreg(reg, ADDR(addr) + size);
 
 	unlockreg(reg);
 	
@@ -57,6 +57,15 @@ PUBLIC int fubyte(const void *addr)
 	int byte;            /* User byte.               */
 	struct pregion *preg; /* Working process region. */
 	
+	/* Kernel address space. */
+	if (((addr_t)addr < UBASE_VIRT) || ((addr_t)addr >= KBASE_VIRT))
+	{
+		if (KERNEL_RUNNING(curr_proc))
+			return (*((char *)addr));
+		
+		return (-1);
+	}
+	
 	/* Get associated process region. */
 	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
 		return (-1);
@@ -64,4 +73,30 @@ PUBLIC int fubyte(const void *addr)
 	byte = (withinreg(preg->reg, addr)) ? (*((char *)addr)) : -1;
 	
 	return (byte);
+}
+
+/*
+ * Fetches a double word from user address space.
+ */
+PUBLIC int fudword(const void *addr)
+{	
+	int dword;            /* User double word.       */
+	struct pregion *preg; /* Working process region. */
+	
+	/* Kernel address space. */
+	if (((addr_t)addr < UBASE_VIRT) || ((addr_t)addr >= KBASE_VIRT))
+	{
+		if (KERNEL_RUNNING(curr_proc))
+			return (*((int *)addr));
+		
+		return (-1);
+	}
+	
+	/* Get associated process region. */
+	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
+		return (-1);
+	
+	dword = (withinreg(preg->reg, addr)) ? (*((int *)addr)) : -1;
+	
+	return (dword);
 }

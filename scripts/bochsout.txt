@@ -29,13 +29,13 @@
 00000000000i[     ]   SB16 support: no
 00000000000i[     ]   USB support: no
 00000000000i[     ]   VGA extension support: vbe 
-00000000000i[MEM0 ] allocated memory at 0x7f6d62a27010. after alignment, vector=0x7f6d62a28000
+00000000000i[MEM0 ] allocated memory at 0x7fed33fc0010. after alignment, vector=0x7fed33fc1000
 00000000000i[MEM0 ] 32,00MB
 00000000000i[MEM0 ] mem block size = 0x00100000, blocks=32
 00000000000i[MEM0 ] rom at 0xfffe0000/131072 ('/usr/local/share/bochs/BIOS-bochs-latest')
 00000000000i[VTIME] using 'realtime pit' synchronization method
 00000000000i[CMOS ] Using local time for initial clock
-00000000000i[CMOS ] Setting initial clock to: Fri Dec 27 15:08:22 2013 (time0=1388164102)
+00000000000i[CMOS ] Setting initial clock to: Tue Jan  7 18:59:07 2014 (time0=1389128347)
 00000000000i[DMA  ] channel 4 used by cascade
 00000000000i[DMA  ] channel 2 used by Floppy Drive
 00000000000e[FDD  ] cannot determine media geometry, trying to use defaults
@@ -114,29 +114,25 @@
 00000490377i[BXVGA] VBE known Display Interface b0c0
 00000490409i[BXVGA] VBE known Display Interface b0c5
 00000493334i[VBIOS] VBE Bios $Id: vbe.c,v 1.64 2011/07/19 18:25:05 vruppert Exp $
-00012637388i[XGUI ] charmap update. Font Height is 16
-01925861917i[BIOS ] Booting from 0000:7c00
-01928361722i[BIOS ] int13_harddisk: function 41, unmapped device for ELDL=80
-01928366503i[BIOS ] int13_harddisk: function 08, unmapped device for ELDL=80
-01928371154i[BIOS ] *** int 15h function AX=00c0, BX=0000 not yet supported!
-04442044309i[XGUI ] Mouse capture off
-04442044309i[     ] dbg: Quit
-04442044309i[CPU0 ] CPU is in protected mode (halted)
-04442044309i[CPU0 ] CS.mode = 32 bit
-04442044309i[CPU0 ] SS.mode = 32 bit
-04442044309i[CPU0 ] | EAX=00000000  EBX=00000000  ECX=00000000  EDX=00000028
-04442044309i[CPU0 ] | ESP=c0133cd8  EBP=c0133cf4  ESI=0002bea5  EDI=00100ffc
-04442044309i[CPU0 ] | IOPL=0 id vip vif ac vm rf nt of df IF tf SF zf af pf cf
-04442044309i[CPU0 ] | SEG sltr(index|ti|rpl)     base    limit G D
-04442044309i[CPU0 ] |  CS:0008( 0001| 0|  0) 00000000 ffffffff 1 1
-04442044309i[CPU0 ] |  DS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-04442044309i[CPU0 ] |  SS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-04442044309i[CPU0 ] |  ES:0000( 0002| 0|  0) 00000000 ffffffff 1 1
-04442044309i[CPU0 ] |  FS:0000( 0002| 0|  0) 00000000 ffffffff 1 1
-04442044309i[CPU0 ] |  GS:0000( 0002| 0|  0) 00000000 ffffffff 1 1
-04442044309i[CPU0 ] | EIP=c0105473 (c0105473)
-04442044309i[CPU0 ] | CR0=0xe0000011 CR2=0x00c00012
-04442044309i[CPU0 ] | CR3=0x00104000 CR4=0x00000000
-04442044309i[CMOS ] Last time is 1388168544 (Fri Dec 27 16:22:24 2013)
-04442044309i[XGUI ] Exit
-04442044309i[CTRL ] quit_sim called with exit code 0
+00014080540i[XGUI ] charmap update. Font Height is 16
+01940738217i[BIOS ] Booting from 0000:7c00
+01943238022i[BIOS ] int13_harddisk: function 41, unmapped device for ELDL=80
+01943242803i[BIOS ] int13_harddisk: function 08, unmapped device for ELDL=80
+01943247454i[BIOS ] *** int 15h function AX=00c0, BX=0000 not yet supported!
+05331362003i[     ] dbg: Quit
+05331362003i[CPU0 ] CPU is in protected mode (halted)
+05331362003i[CPU0 ] CS.mode = 32 bit
+05331362003i[CPU0 ] SS.mode = 32 bit
+05331362003i[CPU0 ] | EAX=00000000  EBX=00000000  ECX=00000000  EDX=00000028
+05331362003i[CPU0 ] | ESP=c0134cd8  EBP=c0134cf4  ESI=0002bea5  EDI=00100ffc
+05331362003i[CPU0 ] | IOPL=0 id vip vif ac vm rf nt of df IF tf SF zf af pf cf
+05331362003i[CPU0 ] | SEG sltr(index|ti|rpl)     base    limit G D
+05331362003i[CPU0 ] |  CS:0008( 0001| 0|  0) 00000000 ffffffff 1 1
+05331362003i[CPU0 ] |  DS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+05331362003i[CPU0 ] |  SS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+05331362003i[CPU0 ] |  ES:0000( 0002| 0|  0) 00000000 ffffffff 1 1
+05331362003i[CPU0 ] |  FS:0000( 0002| 0|  0) 00000000 ffffffff 1 1
+05331362003i[CPU0 ] |  GS:0000( 0002| 0|  0) 00000000 ffffffff 1 1
+05331362003i[CPU0 ] | EIP=c0105473 (c0105473)
+05331362003i[CPU0 ] | CR0=0xe0000011 CR2=0x00c00012
+05331362003i[CPU0 ] | CR3=0x00104000 CR4=0x00000000

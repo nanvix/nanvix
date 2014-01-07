@@ -88,7 +88,7 @@ PUBLIC char *getname(const char *name)
 		}
 		
 		/* File name too long. */
-		if ((w - kname) > PAGE_SIZE)
+		if ((w - kname) > PAGE_SIZE - 1)
 		{
 			putkpg(kname);
 			curr_proc->errno = -ENAMETOOLONG;
@@ -97,6 +97,8 @@ PUBLIC char *getname(const char *name)
 		
 		*w = ch;
 	}
+
+	*w = '\0';
 	
 	return (kname);
 }

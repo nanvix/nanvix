@@ -21,7 +21,6 @@ void _start(int argc, char **argv)
 	
 	stdout = open("/dev/tty", O_RDWR);
 	
-	
 	main(0, NULL);
 	
 	while(1);
