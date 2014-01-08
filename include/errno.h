@@ -81,5 +81,8 @@
 	
 	/* Invalid seek. */
 	#define ESPIPE 25
+	
+	/* Broken pipe. */
+	#define EPIPE 26
 
 #endif /* ERRNO_H_ */

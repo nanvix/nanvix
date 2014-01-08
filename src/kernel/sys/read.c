@@ -35,13 +35,12 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 	if (!chkmem(buf, n, MAY_READ))
 		return (-EINVAL);
 	
-	inode_lock(i = f->inode);
+	 i = f->inode;
 	
 	/* Character special file. */
 	if (S_ISCHR(i->mode))
 	{
 		dev = i->zones[0];
-		inode_unlock(i);
 		count = cdev_read(dev, buf, n);
 		return (count);
 	}
@@ -50,17 +49,14 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 	else if (S_ISBLK(i->mode))
 	{
 		dev = i->zones[0];
-		inode_unlock(i);
 		count = bdev_read(dev, buf, n, f->pos);
-		goto out;
 	}
 	
 	/* Pipe file. */
 	else if (S_ISFIFO(i->mode))
 	{
-		kprintf("read from pipe file");
-		inode_unlock(i);
-		return (-ENOTSUP);
+		kprintf("read from pipe");
+		count = pipe_read(i, buf, n);
 	}
 	
 	/* Regular file. */
@@ -71,14 +67,9 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 	else if (S_ISDIR(i->mode))
 	{
 		kprintf("read from directory");
-		inode_unlock(i);
 		return (-ENOTSUP);
 	}
 	
-	inode_unlock(i);
-
-out:
-
 	/* Failed to read. */
 	if (count < 0)
 		return (curr_proc->errno);

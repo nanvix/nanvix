@@ -35,13 +35,12 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	if (!chkmem(buf, n, MAY_READ))
 		return (-EINVAL);
 	
-	inode_lock(i = f->inode);
+	i = f->inode;
 	
 	/* Character special file. */
 	if (S_ISCHR(i->mode))
 	{
 		dev = i->zones[0];
-		inode_unlock(i);
 		count = cdev_write(dev, buf, n);
 		return (count);
 	}
@@ -50,32 +49,24 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	else if (S_ISBLK(i->mode))
 	{
 		dev = i->zones[0];
-		inode_unlock(i);
 		count = bdev_write(dev, buf, n, f->pos);
-		goto out;
 	}
 	
 	/* Pipe file. */
 	else if (S_ISFIFO(i->mode))
 	{
-		kprintf("write to pipe file");
-		inode_unlock(i);
-		return (-ENOTSUP);
+		kprintf("write to pipe");
+		count = pipe_write(i, buf, n);
 	}
 	
 	/* Regular file. */
 	else if (S_ISREG(i->mode))
 		count = file_write(i, buf, n, f->pos);
-	
-	inode_unlock(i);
-
-out:	
 
 	/* Failed to write. */
 	if (count < 0)
 		return (curr_proc->errno);
 		
-	
 	f->pos += count;
 	
 	return (count);

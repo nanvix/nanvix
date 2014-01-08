@@ -33,6 +33,63 @@ PUBLIC struct inode *root = NULL;
 PUBLIC struct file filetab[NR_FILES];
 
 /*
+ * Gets an empty file descriptor table entry.
+ */
+PUBLIC int getfildes(void)
+{
+	int i;
+	
+	/* Look for empty file descriptor table entry. */
+	for (i = 0; i < OPEN_MAX; i++)
+	{
+		/* Found. */
+		if (curr_proc->ofiles[i] == NULL)
+			return (i);
+	}
+	
+	return (-1);
+}
+
+/*
+ * Gets an empty file table entry.
+ */
+PUBLIC struct file *getfile(void)
+{
+	struct file *f;
+	
+	/* Look for empty file table entry. */
+	for (f = &filetab[0]; f < &filetab[NR_FILES]; f++)
+	{
+		/* Found. */
+		if (f->count == 0)
+			return (f);
+	}
+	
+	return (NULL);
+}
+
+
+/*
+ * Closes a file.
+ */
+PUBLIC void do_close(int fd)
+{
+	struct inode *i; /* Inode. */
+	struct file *f;  /* File.  */
+	
+	f = curr_proc->ofiles[fd];
+	
+	curr_proc->close &= ~(1 << fd);
+	curr_proc->ofiles[fd] = NULL;	
+	
+	if (--f->count)
+		return;
+	
+	inode_lock(i = f->inode);
+	inode_put(i);
+}
+
+/*
  * Checks rwx permissions on a file.
  */
 PUBLIC mode_t permission(mode_t mode, uid_t uid, gid_t gid, struct process *proc, mode_t mask, int oreal)

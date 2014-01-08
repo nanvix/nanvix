@@ -46,10 +46,11 @@
 	#define INODE_ROOT 0
 	
 	/* Inode flags. */
-	#define INODE_LOCKED 1 /* Locked?      */
-	#define INODE_DIRTY  2 /* Dirty?       */
-	#define INODE_MOUNT  4 /* Mount point? */
-	#define INODE_VALID  8 /* Valid inode? */
+	#define INODE_LOCKED 0x01 /* Locked?      */
+	#define INODE_DIRTY  0x02 /* Dirty?       */
+	#define INODE_MOUNT  0x04 /* Mount point? */
+	#define INODE_VALID  0x08 /* Valid inode? */
+	#define INODE_PIPE   0x10 /* Pipe inode?  */
 	
 	/* Zone number. */
 	typedef uint16_t zone_t;
@@ -82,6 +83,9 @@
 		struct superblock *sb;   /* Super block.                          */
 		int count;               /* Reference count.                      */
 		unsigned flags;          /* Flags (see above).                    */
+		char *pipe;              /* Pipe page.                            */
+		off_t head;              /* Pipe head.                            */
+		off_t tail;              /* Pipe tail.                            */
 		struct inode *free_next; /* Next inode in the free list.          */
 		struct inode *hash_next; /* Next inode in the hash table.         */
 		struct inode *hash_prev; /* Previous unode in the hash table.     */
@@ -222,6 +226,11 @@
 	 * Converts pathname to inode.
 	 */
 	EXTERN struct inode *inode_name(const char *pathname);
+	
+	/*
+	 * Gets a pipe inode.
+	 */
+	EXTERN struct inode *inode_pipe(void);
 
 /*============================================================================*
  *                            Super Block Library                             *
@@ -358,6 +367,21 @@
 	EXTERN void putname(char *name);
 	
 	/*
+	 * Gets an empty file descriptor table entry.
+	 */
+	EXTERN int getfildes(void);
+	
+	/*
+	 * Gets an empty file table entry.
+	 */
+	EXTERN struct file *getfile(void);
+	
+	/*
+	 * Closes a file.
+	 */
+	EXTERN void do_close(int fd);
+	
+	/*
 	 * Adds an entry to a directory.
 	 */
 	EXTERN int dir_add
@@ -376,7 +400,17 @@
 	/*
 	 * Writes to a regular file.
 	 */
-	PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off);
+	EXTERN ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off);
+	
+	/*
+	 * Reads data from a pipe.
+	 */
+	EXTERN ssize_t pipe_read(struct inode *inode, char *buf, size_t n);
+	
+	/*
+	 * Writes data to a pipe.
+	 */
+	EXTERN ssize_t pipe_write(struct inode *inode, const char *buf, size_t n);
 	
 	/*
 	 * Root device.

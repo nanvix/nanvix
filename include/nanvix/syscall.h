@@ -48,6 +48,7 @@
 	#define NR_close   30
 	#define NR_execve  31
 	#define NR_lseek   32
+	#define NR_pipe
 
 #ifndef _ASM_FILE_
 
@@ -139,6 +140,11 @@
 	 * Opens a file.
 	 */
 	EXTERN int sys_open(const char *path, int oflag, mode_t mode);
+	
+	/*
+	 * Creates an interprocess channel.
+	 */
+	EXTERN int sys_pipe(int fildes[2]);
 	
 	/*
 	 * Reads from a file.

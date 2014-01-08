@@ -203,6 +203,8 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 		
 	p = buf;
 	
+	inode_lock(i);
+	
 	/* Read data. */
 	do
 	{
@@ -223,6 +225,8 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 		p += chunk;
 	} while (n > 0);
 	
+	inode_unlock(i);
+	
 	return ((ssize_t)(p - (char *)buf));
 }
 
@@ -237,6 +241,8 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 	struct buffer *bbuf; /* Working block buffer. */
 		
 	p = buf;
+	
+	inode_lock(i);
 	
 	/* Write data. */
 	do
@@ -257,6 +263,8 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 		off += chunk;
 		p += chunk;
 	} while (n > 0);
+	
+	inode_unlock(i);
 	
 	return ((ssize_t)(p - (char *)buf));
 }

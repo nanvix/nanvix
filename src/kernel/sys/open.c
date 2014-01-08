@@ -190,13 +190,7 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	if ((name = getname(path)) == NULL)
 		return (curr_proc->errno);
 	
-	/* Get empty file descriptor. */
-	for (fd = 0; fd < OPEN_MAX; fd++)
-	{
-		/* Found. */
-		if (curr_proc->ofiles[fd] == NULL)
-			break;
-	}
+	fd = getfildes();
 	
 	/* Too many opened files. */
 	if (fd >= OPEN_MAX)
@@ -204,17 +198,11 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 		putname(name);
 		return (-EMFILE);
 	}
-
-	/* Get file table entry. */
-	for (f = &filetab[0]; f < &filetab[NR_FILES]; f++)
-	{
-		/* Found. */
-		if (f->count == 0)
-			break;
-	}
-
+	
+	f = getfile();
+	
 	/* Too many files open in the system. */
-	if (f >= &filetab[NR_FILES])
+	if (f == NULL)
 	{
 		putname(name);
 		return (-ENFILE);

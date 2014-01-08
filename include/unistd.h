@@ -88,6 +88,11 @@
 	extern uid_t getuid(void);
 	
 	/*
+	 * Creates an interprocess channel.
+	 */
+	extern int pipe(int fildes[2]);
+	
+	/*
 	 * Reads from a file.
 	 */
 	extern ssize_t read(int fd, void *buf, size_t n);

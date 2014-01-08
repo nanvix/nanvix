@@ -7,9 +7,11 @@
 #include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
+#include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
+#include <nanvix/paging.h>
 #include <errno.h>
 #include <unistd.h>
 #include <limits.h>
@@ -181,7 +183,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 	i->num = num;
 	i->sb = sb;
 	i->count = 1;
-	i->flags = (i->flags & ~(INODE_DIRTY | INODE_MOUNT)) | INODE_VALID;
+	i->flags = (INODE_DIRTY | INODE_MOUNT) & INODE_VALID;
 	
 	block_put(buf);
 	superblock_unlock(sb);
@@ -250,7 +252,10 @@ PUBLIC void inode_sync(void)
 	for (i = &inodes[0]; i < &inodes[NR_INODES]; i++)
 	{
 		if (i->flags & INODE_VALID)
-			inode_write(i);
+		{
+			if (!(i->flags & INODE_PIPE))
+				inode_write(i);
+		}
 	}
 }
 
@@ -417,27 +422,76 @@ repeat:
 }
 
 /*
+ * Gets a pipe inode.
+ */
+PUBLIC struct inode *inode_pipe(void)
+{
+	void *pipe;          /* Pipe page.  */
+	struct inode *inode; /* Pipe inode. */
+	
+	pipe = getkpg();
+	
+	/* Failed to get pipe page. */
+	if (pipe == NULL)
+		goto error0;
+	
+	inode = inode_cache_evict();
+	
+	/* No free inode. */
+	if (inode == NULL)
+		goto error1;
+
+	/* Initialize inode. */
+	inode->mode = MAY_READ | MAY_WRITE | S_IFIFO;
+	inode->nlinks = 0;
+	inode->uid = curr_proc->uid;
+	inode->gid = curr_proc->gid;
+	inode->size = PAGE_SIZE;
+	inode->time = CURRENT_TIME;
+	inode->dev = NULL_DEV;
+	inode->num = INODE_NULL;
+	inode->count = 2;
+	inode->flags = ~(INODE_DIRTY | INODE_MOUNT) & (INODE_VALID | INODE_PIPE);
+	inode->pipe = pipe;
+	inode->head = 0;
+	inode->tail = 0;
+	
+	return (inode);
+
+error1:
+	putkpg(pipe);
+error0:
+	return (NULL);
+}
+
+/*
  * Releases access to inode.
  */
 PUBLIC void inode_put(struct inode *i)
 {
 	/* Release in-core inode. */
 	if (--i->count == 0)
-	{		
-		/* Free underlying disk blocks. */
-		if (i->nlinks == 0)
-		{
-			inode_free(i);
-			inode_truncate(i);
+	{
+		if (i->flags & INODE_PIPE)
+			putkpg(i->pipe);	
+		else
+		{		
+			/* Free underlying disk blocks. */
+			if (i->nlinks == 0)
+			{
+				inode_free(i);
+				inode_truncate(i);
+			}
+			
+			inode_write(i);
+			
+			inode_cache_remove(i);
 		}
 		
-		inode_write(i);
 		
 		/* Insert inode in the free list. */
 		i->free_next = free_inodes;
 		free_inodes = i;
-		
-		inode_cache_remove(i);
 		
 		i->flags &= ~INODE_VALID;
 	}
@@ -660,7 +714,7 @@ PUBLIC void inode_init(void)
 	for (i = 0; i < NR_INODES; i++)
 	{
 		inodes[i].count = 0;
-		inodes[i].flags = ~(INODE_DIRTY|INODE_VALID|INODE_LOCKED|INODE_MOUNT);
+		inodes[i].flags = ~INODE_VALID;
 		inodes[i].chain = NULL;
 		inodes[i].free_next = &inodes[(i + 1)%NR_INODES];
 		inodes[i].hash_next = NULL;

@@ -43,5 +43,6 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	(void (*)(void))&sys_write,
 	(void (*)(void))&sys_close,
 	(void (*)(void))&sys_execve,
-	(void (*)(void))&sys_lseek
+	(void (*)(void))&sys_lseek,
+	(void (*)(void))&sys_pipe
 };

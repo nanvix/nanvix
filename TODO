@@ -12,6 +12,7 @@ Kernel functionalities to be implemented:
 	* fork() check number of process per user
 	* signal() check death of child signal
 	* normal user cannot use last process table slot
+	* sleep on inode must be interruptible
 	
 High priority system calls to be implemented:
 
@@ -21,7 +22,6 @@ High priority system calls to be implemented:
 	* sys_link()
 	* sys_mknod()
 	* sys_mount()
-	* sys_pipe()
 	* sys_stat()
 	* sys_stime()
 	* sys_sync()
@@ -66,6 +66,7 @@ System calls to be tested:
 	* sys_kill()
 	* sys_lseek()
 	* sys_open()
+	* sys_pipe()
 	* sys_umask()
 	* sys_read()
 	* sys_write()

@@ -14,11 +14,6 @@
 #include <errno.h>
 
 /*
- * Closes a file.
- */
-EXTERN void do_close(int fd);
-
-/*
  * Asserts if a file is a ELF executable.
  */
 PRIVATE int is_elf(struct elf32_fhdr *header)
