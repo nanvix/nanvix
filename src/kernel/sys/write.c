@@ -5,6 +5,7 @@
  */
 
 #include <nanvix/const.h>
+#include <nanvix/clock.h>
 #include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
@@ -66,7 +67,8 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	/* Failed to write. */
 	if (count < 0)
 		return (curr_proc->errno);
-		
+	
+	i->time = CURRENT_TIME;
 	f->pos += count;
 	
 	return (count);

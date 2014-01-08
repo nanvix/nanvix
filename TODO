@@ -22,7 +22,6 @@ High priority system calls to be implemented:
 	* sys_link()
 	* sys_mknod()
 	* sys_mount()
-	* sys_stat()
 	* sys_stime()
 	* sys_sync()
 	* sys_time()
@@ -69,4 +68,5 @@ System calls to be tested:
 	* sys_pipe()
 	* sys_umask()
 	* sys_read()
+	* sys_stat()
 	* sys_write()

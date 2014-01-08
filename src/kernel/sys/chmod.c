@@ -38,7 +38,7 @@ PUBLIC int sys_chmod(const char *path, mode_t mode)
 	if ((curr_proc->gid != inode->gid) && !IS_SUPERUSER(curr_proc))
 		inode->mode &= ~S_ISGID;
 		
-	inode->time |= CURRENT_TIME;
+	inode->time = CURRENT_TIME;
 	inode->flags |= INODE_DIRTY;
 	inode_put(inode);
 	

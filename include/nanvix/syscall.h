@@ -8,11 +8,12 @@
 #define NANVIX_SYSCALL_H_
 
 	#include <nanvix/const.h>
+	#include <sys/stat.h>
 	#include <sys/types.h>
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 33
+	#define NR_SYSCALLS 35
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -48,7 +49,8 @@
 	#define NR_close   30
 	#define NR_execve  31
 	#define NR_lseek   32
-	#define NR_pipe
+	#define NR_pipe    33
+	#define NR_stat    34
 
 #ifndef _ASM_FILE_
 
@@ -170,6 +172,11 @@
 	 * Sets the real user ID of the calling process.
 	 */
 	EXTERN int sys_setuid(pid_t uid);
+	
+	/*
+	 * Gets file status.
+	 */
+	EXTERN int sys_stat(const char *path, struct stat *buf);
 	
 	/*
 	 * Sets and gets the file mode creation mask.

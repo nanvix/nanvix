@@ -39,6 +39,28 @@
 	#define S_ISUID 04000 /* Set-user-ID on execution.                 */
 	#define S_ISGID 02000 /* Set-group-ID on execution.                */
 	#define S_ISVTX 01000 /* On directories, restricted deletion flag. */
+
+
+#ifndef _ASM_FILE_
+	
+	/*
+	 * File status.
+	 */
+	struct stat
+	{
+		dev_t st_dev;     /* Device ID of the containing file.              */
+		ino_t st_ino;     /* File serial number.                            */
+		mode_t st_mode;   /* File mode (see above).                         */
+		nlink_t st_nlink; /* Number of hard links to the file.              */
+		uid_t st_uid;     /* User ID of file.                               */
+		gid_t st_gid;     /* Group ID of file.                              */
+		off_t st_size;    /* For regular files, the file size in bytes.     
+                           * For symbolic links, the length in bytes of the 
+                           * pathname contained in the symbolic link.       */
+		time_t st_atime;  /* Time of last access.                           */
+		time_t st_mtime;  /* Time of last data modification.                */
+		time_t st_ctime;  /* Time of last status change.                    */
+	};
 	
 	/*
 	 * Changes permissions of a file.
@@ -46,8 +68,15 @@
 	extern int chmod(const char *path, mode_t mode);
 	
 	/*
+	 * Gets file status.
+	 */
+	extern int stat(const char *path, struct stat *buf);
+	
+	/*
 	 * Sets and gets the file mode creation mask.
 	 */
 	extern mode_t umask(mode_t cmask);
+
+#endif /* _ASM_FILE_ */
 
 #endif /* STAT_H_ */
