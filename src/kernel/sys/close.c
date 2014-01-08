@@ -16,7 +16,7 @@
 PUBLIC int sys_close(int fd)
 {	
 	/* Invalid file descriptor. */
-	if ((fd < 0) || (fd > OPEN_MAX) || (curr_proc->ofiles[fd] == NULL))
+	if ((fd < 0) || (fd >= OPEN_MAX) || (curr_proc->ofiles[fd] == NULL))
 		return (-EINVAL);
 	
 	do_close(fd);

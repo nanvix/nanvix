@@ -25,8 +25,8 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 	ssize_t count;   /* Bytes actually read. */
 	
 	/* Invalid file descriptor. */
-	if ((fd < 0) || (fd > OPEN_MAX) || ((f = curr_proc->ofiles[fd]) == NULL))
-		return (-EINVAL);
+	if ((fd < 0) || (fd >= OPEN_MAX) || ((f = curr_proc->ofiles[fd]) == NULL))
+		return (-EBADF);
 	
 	/* File not opened for reading. */
 	if (ACCMODE(f->oflag) == O_WRONLY)

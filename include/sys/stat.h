@@ -40,7 +40,6 @@
 	#define S_ISGID 02000 /* Set-group-ID on execution.                */
 	#define S_ISVTX 01000 /* On directories, restricted deletion flag. */
 
-
 #ifndef _ASM_FILE_
 	
 	/*

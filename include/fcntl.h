@@ -20,8 +20,19 @@
 	#define O_TRUNC	 01000 /* Truncate file.                      */
 	
 	/* File status flags. */
-	#define O_APPEND 02000 /* Append mode. */
+	#define O_APPEND   02000 /* Append mode.       */
+	#define O_NONBLOCK 04000 /* Non-blocking mode. */
+	
+	/* File descriptor flags. */
+	#define FD_CLOEXEC 01 /* Close on exec. */
 		
+	/* Commands for fcntl(). */
+	#define F_DUPFD  0 /* Duplicate file descriptor.                   */
+	#define F_GETFD  1 /* Get file descriptor flags.                   */
+	#define F_SETFD  2 /* Set file descriptor flags.                   */
+	#define F_GETFL  3 /* Get file status flags and file access modes. */
+	#define F_SETFL  4 /* Set file status flags.                       */
+
 	/*
 	 * Returns file's access mode.
 	 */
@@ -31,6 +42,11 @@
 	 * Opens a file.
 	 */
 	extern int open(const char *path, int oflag, ...);
+	
+	/*
+	 * Manipulates file descriptor.
+	 */
+	extern int fcntl(int fd, int cmd, ...);
 	
 	/*
 	 * Creates a file. 

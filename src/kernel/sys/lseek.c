@@ -21,11 +21,7 @@ PUBLIC off_t sys_lseek(int fd, off_t offset, int whence)
 	struct file *f; /* File.               */
 	
 	/* Invalid file descriptor. */
-	if ((fd < 0) || (fd > OPEN_MAX))
-		return (-EINVAL);
-	
-	/* Invalid file. */
-	if ((f = curr_proc->ofiles[fd])->inode == NULL)
+	if ((fd < 0) || (fd >= OPEN_MAX) || ((f = curr_proc->ofiles[fd]) == NULL))
 		return (-EBADF);
 	
 	/* Pipe file. */

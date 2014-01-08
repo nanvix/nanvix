@@ -222,7 +222,7 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	}
 	
 	/* Initialize file. */
-	f->oflag = (((oflag & O_ACCMODE) == O_ACCMODE)) ? oflag & ~O_ACCMODE :oflag;
+	f->oflag = oflag;
 	f->pos = 0;
 	f->inode = i;
 	

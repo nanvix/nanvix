@@ -13,7 +13,7 @@
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 35
+	#define NR_SYSCALLS 36
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -51,6 +51,9 @@
 	#define NR_lseek   32
 	#define NR_pipe    33
 	#define NR_stat    34
+	#define NR_fcntl   35
+	
+	
 
 #ifndef _ASM_FILE_
 
@@ -107,6 +110,11 @@
 	 * Executes a program.
 	 */
 	EXTERN int sys_execve(const char *filename, const char **argv, const char **envp);
+	
+	/*
+	 * Manipulates file descriptor.
+	 */
+	EXTERN int sys_fcntl(int fd, int cmd, int arg);
 	
 	/*
 	 * Gets the effective user group ID of the calling process.

@@ -13,11 +13,11 @@ Kernel functionalities to be implemented:
 	* signal() check death of child signal
 	* normal user cannot use last process table slot
 	* sleep on inode must be interruptible
+	* implement file locking
+	* implemented O_NONBLOCK
 	
 High priority system calls to be implemented:
 
-	* sys_dup()
-	* sys_fcntl()
 	* sys_ioctl()
 	* sys_link()
 	* sys_mknod()
@@ -59,8 +59,10 @@ System calls to be tested:
 	* sys_chmod()
 	* sys_chown()
 	* sys_chroot()
+	* sys_dup()
 	* sys_execve()
 	* sys_exit()
+	* sys_fcntl()
 	* sys_fork()
 	* sys_kill()
 	* sys_lseek()

@@ -9,6 +9,7 @@
 
 	#include <sys/stat.h>
 	#include <sys/types.h>
+	#include <fcntl.h>
 
 	/* Tests for access(). */
 	#define F_OK 0 /* File exists. */
@@ -51,6 +52,12 @@
 	 * Closes a file.
 	 */
 	extern int close(int fd);
+	
+	/*
+	 * Duplicates an opened file descriptor.
+	 */
+	#define dup(fd) \
+		fcntl(fd, F_DUPFD, 0)
 	
 	/*
 	 * Executes a program.
