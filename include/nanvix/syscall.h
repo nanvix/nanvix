@@ -12,7 +12,7 @@
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 32
+	#define NR_SYSCALLS 33
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -47,6 +47,7 @@
 	#define NR_write   29
 	#define NR_close   30
 	#define NR_execve  31
+	#define NR_lseek   32
 
 #ifndef _ASM_FILE_
 
@@ -128,6 +129,11 @@
 	 * Gets the real user ID of the calling process.
 	 */
 	EXTERN uid_t sys_getuid(void);
+	
+	/*
+	 * Moves the read/write file offset.
+	 */
+	EXTERN off_t sys_lseek(int fd, off_t offset, int whence);
 	
 	/*
 	 * Opens a file.

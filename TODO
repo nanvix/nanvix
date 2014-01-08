@@ -3,19 +3,22 @@ Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 Kernel functionalities to be implemented:
 	
-	
+	* execve() setuid when need
+	* write() and append mode
+	* read() at valid offset but blocks are unallocated
+	* close() release inode and current directory
+	* open() when creating new file allocate inode first than writing directory 
+	* open() when truncating existing file do not change ownership
+	* fork() check number of process per user
+	* signal() check death of child signal
+	* normal user cannot use last process table slot
 	
 High priority system calls to be implemented:
 
-	* sys_brk()
 	* sys_dup()
-	* sys_execve()
-	* sys_exit()
 	* sys_fcntl()
-	* sys_fork()
 	* sys_ioctl()
 	* sys_link()
-	* sys_lseek()
 	* sys_mknod()
 	* sys_mount()
 	* sys_pipe()
@@ -51,12 +54,17 @@ Low priority system calls to be implemented:
 System calls to be tested:
 	
 	* sys_access()
+	* sys_brk()
 	* sys_close()
 	* sys_chdir()
 	* sys_chmod()
 	* sys_chown()
 	* sys_chroot()
+	* sys_execve()
+	* sys_exit()
+	* sys_fork()
 	* sys_kill()
+	* sys_lseek()
 	* sys_open()
 	* sys_umask()
 	* sys_read()

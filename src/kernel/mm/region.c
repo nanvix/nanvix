@@ -13,6 +13,7 @@
 #include <nanvix/region.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 /* Memory region table. */
 PRIVATE struct region regtab[NR_REGIONS];
@@ -326,11 +327,11 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 	
 	/* Attached shared regions may not grow. */
 	if ((reg = preg->reg)->flags & REGION_SHARED)
-		return (-1);
+		return (-EINVAL);
 	
 	/* Region cannot grow. */
 	if (!(reg->flags & (REGION_DOWNWARDS | REGION_UPWARDS)))
-		return (-1);
+		return (-EINVAL);
 	
 	/* Contract region */
 	if (size < 0)
@@ -341,7 +342,7 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 	{		
 		/* Process cannot grow more. */
 		if (proc->size + size > PROC_SIZE_MAX)
-			return (-1);
+			return (-ENOMEM);
 		
 		expand(reg, size);
 	}

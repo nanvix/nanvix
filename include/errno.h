@@ -78,5 +78,8 @@
 	
 	/* Bad address. */
 	#define EFAULT  24
+	
+	/* Invalid seek. */
+	#define ESPIPE 25
 
 #endif /* ERRNO_H_ */

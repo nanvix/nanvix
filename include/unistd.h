@@ -15,6 +15,11 @@
 	#define R_OK 1 /* May read.    */
 	#define W_OK 2 /* May write.   */
 	#define X_OK 4 /* May execute. */
+	
+	/* Starting positions for lseek() and fcntl(). */
+	#define SEEK_CUR 0 /* Set file offset to current plus offset. */
+	#define SEEK_END 1 /* Set file offset to EOF plus offset.     */
+	#define SEEK_SET 2 /* Set file offset to offset.              */
 
 	extern unsigned alarm(unsigned seconds);
 	extern void _exit(int status);
@@ -73,9 +78,14 @@
 	extern pid_t getppid(void);
 	
 	/*
+	 * Moves the read/write file offset.
+	 */
+	extern off_t lseek(int fd, off_t offset, int whence);
+	
+	/*
 	 * Gets the real user ID of the calling process.
 	 */
-	extern uid_t sys_getuid(void);
+	extern uid_t getuid(void);
 	
 	/*
 	 * Reads from a file.
