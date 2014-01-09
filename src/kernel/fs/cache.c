@@ -167,9 +167,7 @@ repeat:
 		}
 		
 		cache_remove(buf);
-
 		enable_interrupts();
-
 		block_lock(buf);
 
 		return (buf);
@@ -204,6 +202,20 @@ repeat:
 }
 
 /*
+ * Waits for a block buffer to become unlocked.
+ */
+PRIVATE void block_wait(struct buffer *buf)
+{
+	disable_interrupts();
+	
+	/* Wait for block buffer to become unlocked. */
+	while (buf->flags & BUFFER_LOCKED)
+		sleep(&buf->chain, PRIO_BUFFER);
+	
+	enable_interrupts();
+}
+
+/*
  * Synchronizes the cache.
  */
 PUBLIC void cache_sync(void)
@@ -213,17 +225,12 @@ PUBLIC void cache_sync(void)
 	/* Synchronize buffers. */
 	for (buf = &buffers[0]; buf < &buffers[NR_BUFFERS]; buf++)
 	{
-		block_lock(buf);
-		
 		/* Write only valid buffers. */
 		if (buf->flags & BUFFER_VALID)
 		{
-			/* Write buffer to disk. */
-			if (buf->flags & BUFFER_DIRTY)
-				bdev_writeblk(buf);
+			block_wait(buf);
+			bdev_writeblk(buf);
 		}
-		
-		block_unlock(buf);
 	}
 }
 
@@ -244,7 +251,7 @@ PUBLIC void cache_init(void)
 	{
 		buffers[i].data = ptr;
 		buffers[i].count = 0;
-		buffers[i].flags = ~(BUFFER_DIRTY | BUFFER_VALID | BUFFER_LOCKED);
+		buffers[i].flags = ~(BUFFER_VALID | BUFFER_LOCKED);
 		buffers[i].chain = NULL;
 		buffers[i].free_next = &buffers[(i + 1)%NR_BUFFERS];
 		buffers[i].free_prev = &buffers[(i - 1)%NR_BUFFERS];
@@ -267,11 +274,8 @@ PUBLIC void cache_init(void)
 PUBLIC void block_lock(struct buffer *buf)
 {
 	disable_interrupts();
-
-	/* Wait for block buffer to become unlocked. */
-	while (buf->flags & BUFFER_LOCKED)
-		sleep(&buf->chain, PRIO_BUFFER);
 	
+	block_wait(buf);
 	buf->flags |= BUFFER_LOCKED;
 
 	enable_interrupts();
@@ -284,8 +288,8 @@ PUBLIC void block_unlock(struct buffer *buf)
 {
 	disable_interrupts();
 
-	wakeup(&buf->chain);
 	buf->flags &= ~BUFFER_LOCKED;
+	wakeup(&buf->chain);
 
 	enable_interrupts();
 }
@@ -322,8 +326,7 @@ PUBLIC struct buffer *block_read(dev_t dev, block_t num)
 PUBLIC void block_write(struct buffer *buf)
 {
 	/* Write block. */
-	if (buf->flags & BUFFER_DIRTY)
-		bdev_writeblk(buf);
+	bdev_writeblk(buf);
 	
 	cache_put(buf);
 }

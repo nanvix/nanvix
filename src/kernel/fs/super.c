@@ -68,14 +68,20 @@ PUBLIC struct superblock *superblock_get(dev_t dev)
 }
 
 /*
+ * Waits for super block to become unlocked.
+ */
+PUBLIC void superblock_wait(struct superblock *sb)
+{
+	while (sb->flags & SUPERBLOCK_LOCKED)
+		sleep(&sb->chain, PRIO_SUPERBLOCK);
+}
+
+/*
  * Locks a super block.
  */
 PUBLIC void superblock_lock(struct superblock *sb)
 {
-	/* Wait for super block to become unlocked. */
-	while (sb->flags & SUPERBLOCK_LOCKED)
-		sleep(&sb->chain, PRIO_SUPERBLOCK);
-	
+	superblock_wait(sb);
 	sb->flags |= SUPERBLOCK_LOCKED;
 }
 
@@ -140,6 +146,25 @@ PUBLIC void superblock_write(struct superblock *sb)
 	block_write(sb->buf);
 	
 	sb->flags &= ~SUPERBLOCK_DIRTY;
+}
+
+/*
+ * Synchronizes super blocks.
+ */
+PUBLIC void superblock_sync(void)
+{
+	struct superblock *sb;
+	
+	/* Write super blocks to disk. */
+	for (sb = &superblocks[0]; sb < &superblocks[NR_SUPERBLOCKS]; sb++)
+	{
+		/* Write only valid super blocks. */
+		if (sb->flags & SUPERBLOCK_VALID)
+		{
+			superblock_wait(sb);
+			superblock_write(sb);
+		}
+	}
 }
 
 /*

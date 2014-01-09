@@ -212,7 +212,7 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 		
 		/* End of file reached. */
 		if (blk == BLOCK_NULL)
-			return ((ssize_t)(p - (char *)buf));
+			goto out;
 		
 		bbuf = block_read(i->dev, blk);
 		
@@ -224,9 +224,9 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 		off += chunk;
 		p += chunk;
 	} while (n > 0);
-	
+
+out:
 	inode_unlock(i);
-	
 	return ((ssize_t)(p - (char *)buf));
 }
 
@@ -251,7 +251,7 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 		
 		/* End of file reached. */
 		if (blk == BLOCK_NULL)
-			return ((ssize_t)(p - (char *)buf));
+			goto out;
 		
 		bbuf = block_read(i->dev, blk);
 		chunk = (n < BLOCK_SIZE) ? n : BLOCK_SIZE;
@@ -263,8 +263,8 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 		off += chunk;
 		p += chunk;
 	} while (n > 0);
-	
+
+out:
 	inode_unlock(i);
-	
 	return ((ssize_t)(p - (char *)buf));
 }

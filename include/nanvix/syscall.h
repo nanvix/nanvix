@@ -13,7 +13,7 @@
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 36
+	#define NR_SYSCALLS 37
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -52,7 +52,7 @@
 	#define NR_pipe    33
 	#define NR_stat    34
 	#define NR_fcntl   35
-	
+	#define NR_sync    36
 	
 
 #ifndef _ASM_FILE_
@@ -185,6 +185,11 @@
 	 * Gets file status.
 	 */
 	EXTERN int sys_stat(const char *path, struct stat *buf);
+	
+	/*
+	 * Schedules file system updates.
+	 */
+	EXTERN void sys_sync(void);
 	
 	/*
 	 * Sets and gets the file mode creation mask.

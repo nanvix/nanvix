@@ -76,7 +76,7 @@ PUBLIC void do_debug(void)
  * Handles a page fault.
  */
 PUBLIC void do_page_fault(addr_t addr, int err)
-{	
+{		
 	/* Validty page fault. */
 	if (!(err & 1))
 	{

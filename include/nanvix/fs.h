@@ -303,6 +303,11 @@
 	EXTERN struct superblock *superblock_read(dev_t dev);
 	
 	/*
+	 * Synchronizes super blocks.
+	 */
+	EXTERN void superblock_sync(void);
+	
+	/*
 	 * Super block table.
 	 */
 	EXTERN struct superblock superblocks[NR_SUPERBLOCKS];

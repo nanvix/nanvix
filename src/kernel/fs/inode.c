@@ -221,14 +221,20 @@ PRIVATE void inode_free(struct inode *i)
 }
 
 /*
+ * Waits for an inode to become unlocked.
+ */
+PRIVATE void inode_wait(struct inode *i)
+{
+	while (i->flags & INODE_LOCKED)
+		sleep(&i->chain, PRIO_INODE);
+}
+
+/*
  * Locks an inode.
  */
 PUBLIC void inode_lock(struct inode *i)
 {
-	/* Wait for inode to become unlocked. */
-	while (i->flags & INODE_LOCKED)
-		sleep(&i->chain, PRIO_INODE);
-		
+	inode_wait(i);
 	i->flags |= INODE_LOCKED;
 }
 
@@ -253,6 +259,7 @@ PUBLIC void inode_sync(void)
 	{
 		if (i->flags & INODE_VALID)
 		{
+			inode_wait(i);
 			if (!(i->flags & INODE_PIPE))
 				inode_write(i);
 		}
@@ -409,7 +416,7 @@ repeat:
 		
 		return (i);
 	}
-
+	
 	i = inode_read(dev, num);
 	
 	/* No free inode. */
@@ -714,7 +721,7 @@ PUBLIC void inode_init(void)
 	for (i = 0; i < NR_INODES; i++)
 	{
 		inodes[i].count = 0;
-		inodes[i].flags = ~INODE_VALID;
+		inodes[i].flags = ~(INODE_VALID | INODE_LOCKED);
 		inodes[i].chain = NULL;
 		inodes[i].free_next = &inodes[(i + 1)%NR_INODES];
 		inodes[i].hash_next = NULL;

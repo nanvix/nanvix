@@ -182,7 +182,7 @@ PUBLIC void fs_init(void)
 	/* Failed to read root super block. */
 	if (rootdev == NULL)
 		kpanic("failed to mount root file system");
-	
+		
 	superblock_unlock(rootdev);
 	
 	root = inode_get(ROOT_DEV, 1);

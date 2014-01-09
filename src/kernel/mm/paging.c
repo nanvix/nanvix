@@ -297,11 +297,10 @@ PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 	/* Get auxiliary page. */
 	if ((kpg = getkpg()) == NULL)
 		return (-1);
-	
+		
 	/* Read page. */
-	inode_lock(inode = reg->file.inode);
+	inode = reg->file.inode;
 	file_read(inode, kpg, PAGE_SIZE, reg->file.off + (PG(addr) << PAGE_SHIFT));
-	inode_unlock(inode);
 	
 	/* Assign new user page. */
 	if (allocupg(pg, reg->mode & MAY_WRITE))
@@ -377,7 +376,7 @@ PUBLIC void vfault(addr_t addr)
 error0:
 	unlockreg(reg);
 	if (KERNEL_RUNNING(curr_proc))
-		kpanic("kernel validity page fault");
+		kpanic("validity page fault");
 	sndsig(curr_proc, SIGSEGV);
 }
 

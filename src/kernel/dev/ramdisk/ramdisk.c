@@ -136,6 +136,10 @@ PRIVATE int ramdisk_writeblk(unsigned minor, struct buffer *buf)
 {	
 	addr_t ptr;
 	
+	/* Write only dirty buffers. */
+	if (!(buf->flags & BUFFER_DIRTY))
+		return (0);
+		
 	ptr = ramdisks[minor].start + buf->num*BLOCK_SIZE;
 	
 	kmemcpy((void *)ptr, buf->data, BLOCK_SIZE);

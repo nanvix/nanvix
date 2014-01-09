@@ -125,6 +125,11 @@
 	extern int setuid(pid_t uid);
 	
 	/*
+	 * Schedules file system updates.
+	 */
+	extern void sync(void);
+	
+	/*
 	 * Writes to a file.
 	 */
 	extern ssize_t write(int fd, const void *buf, size_t n);

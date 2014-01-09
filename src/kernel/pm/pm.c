@@ -29,7 +29,7 @@ PUBLIC struct process proctab[PROC_MAX];
 PUBLIC struct process *curr_proc = IDLE;
 
 /* Next available PID. */
-PUBLIC pid_t next_pid = 1;
+PUBLIC pid_t next_pid = 0;
 
 /*
  * Initializes the process manager.

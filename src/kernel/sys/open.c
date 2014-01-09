@@ -185,7 +185,7 @@ PUBLIC int sys_open(const char *path, int oflag, mode_t mode)
 	struct file *f;   /* File.             */
 	struct inode *i;  /* Underlying inode. */
 	char *name;       /* Path name.        */
-
+	
 	/* Fetch path from user address space. */
 	if ((name = getname(path)) == NULL)
 		return (curr_proc->errno);
