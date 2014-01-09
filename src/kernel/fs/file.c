@@ -4,6 +4,7 @@
  * fs/file.c - File and directories library implementation.
  */
 
+#include <nanvix/clock.h>
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
@@ -75,6 +76,123 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 		block_put(buf);
 	
 	return (INODE_NULL);
+}
+
+/*
+ * Removes an entry from a directory.
+ */
+PUBLIC int dir_remove(struct inode *dinode, const char *filename)
+{
+	int i;              /* Working directory entry index. */
+	block_t blk;        /* Working block number.          */
+	struct buffer *buf; /* Block buffer.                  */
+	struct d_dirent *d; /* Directory entry.               */
+	struct inode *file; /* File inode.                    */
+	int nentries;       /* Number of directory entries.   */
+	
+	nentries = dinode->size/sizeof(struct d_dirent);
+	
+	/* Search from very first block. */
+	i = 0;
+	blk = dinode->zones[0];		
+	buf = NULL;
+	
+	/* Search directory entry. */
+	while (i < nentries)
+	{
+		/* Get valid block. */
+		if (blk == BLOCK_NULL)
+		{
+			i += BLOCK_SIZE/sizeof(struct d_dirent);
+			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			continue;
+		}
+		
+		/* Get buffer. */
+		if (buf == NULL)
+		{
+			buf = block_read(dinode->dev, blk);
+			d = buf->data;
+		}
+		
+		/* Get next block */
+		else if ((char *)d >= BLOCK_SIZE + (char *) buf->data)
+		{
+			block_put(buf);
+			buf = NULL;
+			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			continue;
+		}
+		
+		/* Valid entry. */
+		if (d->d_ino != INODE_NULL)
+		{
+			/* Found. */
+			if (!kstrncmp(d->d_name, filename, NAME_MAX))
+				goto found;
+		}
+		
+		d++; i++;	
+	}
+	
+	/* House keeping. */
+	if (buf != NULL)
+		block_put(buf);
+
+	return (-ENOENT);
+
+found:
+
+	/* Cannot remove '.' */
+	if (d->d_ino == dinode->num)
+	{
+		block_put(buf);
+		return (-EBUSY);
+	}
+	
+	file = inode_get(dinode->dev, d->d_ino);
+	
+	/* Failed to get file's inode. */
+	if (file == NULL)
+	{
+		block_put(buf);
+		return (-ENOENT);
+	}
+	
+	/* Unlinking directory. */
+	if (S_ISDIR(file->mode))
+	{
+		/* Not allowed. */
+		if (!IS_SUPERUSER(curr_proc))
+		{
+			inode_put(file);
+			block_put(buf);
+			return (-EPERM);
+		}
+		
+		/* Directory not empty. */
+		if (dinode->size)
+		{
+			inode_put(file);
+			block_put(buf);
+			return (-EBUSY);			
+		}
+	}
+
+	/* Remove directory entry. */
+	d->d_ino = 0;
+	buf->flags |= BUFFER_DIRTY;
+	dinode->time = CURRENT_TIME;
+	dinode->flags |= INODE_DIRTY;
+	file->nlinks--;
+	file->time = CURRENT_TIME;
+	file->flags |= INODE_DIRTY;
+	
+	inode_put(file);
+	block_put(buf);
+	inode_put(dinode);
+	
+	return (0);
 }
 
 /*

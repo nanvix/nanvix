@@ -398,6 +398,11 @@
 	EXTERN ino_t dir_search(struct inode *i, const char *filename);
 	
 	/*
+	 * Removes an entry from a directory.
+	 */
+	EXTERN int dir_remove(struct inode *dinode, const char *filename);
+	
+	/*
 	 * Reads from a regular file.
 	 */
 	EXTERN ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off);

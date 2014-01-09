@@ -3,7 +3,6 @@ Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 Kernel functionalities to be implemented:
 	
-	* check inode and buffer caches
 	* execve() setuid when need
 	* write() and append mode
 	* read() at valid offset but blocks are unallocated
@@ -11,6 +10,7 @@ Kernel functionalities to be implemented:
 	* open() when creating new file allocate inode first than writing directory 
 	* open() when truncating existing file do not change ownership
 	* fork() check number of process per user
+	* implement xalloc()
 	* signal() check death of child signal
 	* normal user cannot use last process table slot
 	* sleep on inode must be interruptible

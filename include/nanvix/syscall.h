@@ -13,7 +13,7 @@
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 37
+	#define NR_SYSCALLS 38
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -53,6 +53,7 @@
 	#define NR_stat    34
 	#define NR_fcntl   35
 	#define NR_sync    36
+	#define NR_unlink  37
 	
 
 #ifndef _ASM_FILE_
@@ -195,6 +196,11 @@
 	 * Sets and gets the file mode creation mask.
 	 */
 	EXTERN mode_t sys_umask(mode_t cmask);
+	
+	/*
+	 * Removes a directory entry.
+	 */
+	EXTERN int sys_unlink(const char *path);
 	
 	/*
 	 * Writes to a file.

@@ -685,27 +685,12 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	if (!kstrcmp(name,"/"))
 		num = curr_proc->root->num;
 	else
-	{
 		num = dir_search(inode, name);
-		
-		/* No such file or directory. */
-		if (num == INODE_NULL)
-		{
-			inode_put(inode);
-			curr_proc->errno = -ENOENT;
-			return (NULL);
-		}
-	} 
 
 	dev = inode->dev;	
 	inode_put(inode);
-	inode = inode_get(dev, num);
-
-	/* Failed to get inode. */
-	if (inode == NULL)
-		return (NULL);
 	
-	return (inode);
+	return (inode_get(dev, num));
 }
 
 /*

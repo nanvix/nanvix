@@ -15,15 +15,24 @@
  */
 PUBLIC int sys_access(const char *path, int amode)
 {
-	mode_t test;     /* Permissions to test.  */
-	mode_t mode;     /* Permissions for file. */
-	struct inode *i; /* Underlying inode.     */
+	mode_t test;      /* Permissions to test.  */
+	mode_t mode;      /* Permissions for file. */
+	char *name;       /* File name.           */
+	struct inode *i;  /* Underlying inode.     */
 	
 	/* Invalid test. */
 	if ((amode & (R_OK | W_OK | X_OK | F_OK)) != amode)
 		return (-EINVAL);
 	
+	name = getname(path);
+	
+	/* Failed to get name. */
+	if (name == NULL)
+		return (-ENOENT);
+	
 	i = inode_name(path);
+	
+	putname(name);
 	
 	/* Failed to get inode. */
 	if (i == NULL)

@@ -130,6 +130,11 @@
 	extern void sync(void);
 	
 	/*
+	 * Removes a directory entry.
+	 */
+	extern int unlink(const char *path);
+	
+	/*
 	 * Writes to a file.
 	 */
 	extern ssize_t write(int fd, const void *buf, size_t n);
