@@ -5,25 +5,13 @@
 # Source files.
 SRC = $(wildcard *.c)
 
-# Object files.
-OBJ = $(SRC:.c=.release.o)
-OBJDBG = $(SRC:.c=.debug.o)
-
 # Executable files.
 EXEC = init
-EXECDBG = init.debug
 
-# Builds everything.
-all: release debug
-
-# Builds release version.
-release: $(SRC)
-	$(CC) $(CFLAGS) $(RELEASE) -Wl,-T link.ld $< -o $(BINDIR)/$(EXEC)
-
-# Builds debug version.
-debug: $(SRC)
-	$(CC) $(CFLAGS) $(DEBUG) $< -Wl,-T link.ld -o $(BINDIR)/$(EXECDBG)
+# Builds init.
+all: $(SRC)
+	$(CC) $(CFLAGS) -Wl,-T $(LIBDIR)/link.ld $< -o $(BINDIR)/$(EXEC) $(LIBDIR)/$(LIB)
 
 # Cleans compilation files.
 clean:
-	rm -f $(EXEC) $(EXECDBG)
+	rm -f $(EXEC) $(BINDIR)/$(EXEC)

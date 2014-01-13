@@ -301,18 +301,27 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	char *name;           /* File name.           */
 	char stack[ARG_MAX];  /* Stack size.          */
 	
+	kprintf("execve(%d)", curr_proc->pid);
+	
 	/* Get file name. */
 	if ((name = getname(filename)) == NULL)
+	{
+		kpanic("execve(0)");
 		return (curr_proc->errno);
+	}
 	
 	/* Build arguments before freeing user memory. */
 	kmemset(stack, 0, ARG_MAX);
 	if (!(sp = buildargs(stack, ARG_MAX, name, argv, envp)))
+	{
+		kpanic("execve(1)");
 		return (curr_proc->errno);
+	}
 	
 	/* Get file's inode. */
 	if ((inode = inode_name(name)) == NULL)
 	{
+		kpanic("execve(2)");
 		putname(name);
 		return (curr_proc->errno);
 	}

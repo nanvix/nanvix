@@ -60,7 +60,7 @@
 
 	/* System calls prototypes. */
 	EXTERN unsigned sys_alarm(unsigned seconds);
-	EXTERN int sys_brk(void *addr);
+	EXTERN int sys_brk(void *ptr);
 	EXTERN void sys__exit(int status);
 	EXTERN pid_t sys_fork(void);
 	EXTERN pid_t sys_getpgrp(void);

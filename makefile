@@ -12,26 +12,37 @@ export SRCDIR = $(CURDIR)/src
 # Toolchain
 export CC = $(TARGET)-gcc
 export LD = $(TARGET)-ld
+export AR = $(TARGET)-ar
 
 # Toolchain configuration.
-export CFLAGS += -I $(INCDIR)
-export CFLAGS += -ansi -pedantic
-export CFLAGS += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
-export CFLAGS += -Wall -Wextra
-export DEBUG = -Werror -g
-export RELEASE = -D NDEBUG
+export CFLAGS    = -I $(INCDIR)
+export CFLAGS   += -ansi -pedantic
+export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
+export CFLAGS   += -Wall -Wextra -Werror
+export CFLAGS   += -D NDEBUG
+export ASMFLAGS  = -Wa,--divide,--warn
+export ARFLAGS   = -vq
+
+# Library name.
+export LIB = libc.a
 
 # Builds the Nanvix operating system.
-all: kernel init
+all: kernel libc init
 
-# Builds kernel.
+# Builds the Nanvix kernel.
 kernel:
-	cd src/kernel/ && $(MAKE) all
+	cd $(SRCDIR)/kernel && $(MAKE) all
+
+# Builds the C library.
+libc:
+	cd $(LIBDIR) && $(MAKE) all
 
 # Builds init process.
-init:
+init: libc
 	cd $(SRCDIR)/init && $(MAKE) all
 
 # Cleans compilation files.
 clean:
 	cd src/kernel/ && $(MAKE) clean
+	cd $(LIBDIR) && $(MAKE) clean
+	cd $(SRCDIR)/init && $(MAKE) clean

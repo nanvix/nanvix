@@ -13,19 +13,20 @@
 /*
  * Exception handler.
  */
-#define EXCEPTION(name, sig, msg)                  \
-PUBLIC void do_##name(int err, struct intstack s)  \
-{                                                  \
-	/* Die. */                                     \
-	if (!KERNEL_RUNNING(curr_proc))                \
-	{                                              \
-		kprintf("%s: %d", msg, err & 0xffff);      \
-		dumpregs(&s);                              \
-		kpanic("kernel caused an exception");      \
-	}                                              \
-	                                               \
-	sndsig(curr_proc, sig);                        \
-}                                                  \
+#define EXCEPTION(name, sig, msg)                                   \
+PUBLIC void do_##name(int err, struct intstack s)                   \
+{                                                                   \
+	/* Die. */                                                      \
+	if (!KERNEL_RUNNING(curr_proc))                                 \
+	{                                                               \
+		kprintf("%s: %d", msg, err & 0xffff);                       \
+		dumpregs(&s);                                               \
+		kprintf("process %d caused and exception", curr_proc->pid); \
+		kpanic("kernel running");                                   \
+	}                                                               \
+	                                                                \
+	sndsig(curr_proc, sig);                                         \
+}                                                                   \
 
 /*
  * Kills process.
@@ -75,11 +76,15 @@ PUBLIC void do_debug(void)
 /*
  * Handles a page fault.
  */
-PUBLIC void do_page_fault(addr_t addr, int err)
-{		
+PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct intstack s)
+{	
+	((void)dummy0);
+	((void)dummy1);
+	
 	/* Validty page fault. */
 	if (!(err & 1))
 	{
+		kprintf("proc %d: validity page fault %d at %x(%x)", curr_proc->pid, err, addr, s.eip);
 		vfault(addr);
 		return;
 	}
@@ -87,6 +92,7 @@ PUBLIC void do_page_fault(addr_t addr, int err)
 	/* Protection page fault. */
 	if (err & 2)
 	{
+		kprintf("proc %d: protection page fault %d at %x(%x)", curr_proc->pid, err, addr, s.eip);
 		pfault(addr);
 		return;
 	}

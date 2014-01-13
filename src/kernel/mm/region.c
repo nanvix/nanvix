@@ -136,7 +136,6 @@ found:
 	if ((pgtab = getkpg()) == NULL)
 		return (NULL);
 	
-	
 	/* Initialize region. */
 	reg->flags = flags & ~REGION_FREE;
 	reg->count = 0;
@@ -289,6 +288,8 @@ PUBLIC struct region *dupreg(struct region *reg)
 	/* Failed to allocate new region. */
 	if ((new_reg = allocreg(reg->flags, reg->mode, reg->size)) == NULL)
 		return (NULL);
+	
+	npages = reg->size >> PAGE_SHIFT;
 	
 	/* Link all pages in the region. */
 	if (reg->flags & REGION_DOWNWARDS)

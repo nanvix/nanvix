@@ -19,7 +19,9 @@
     #define WTERMSIG(status)    \
 		((status >> 16) & 0xff) \
     
-    /* Function prototypes. */
-    extern pid_t wait(int *stat_loc);
+    /*
+	 * Waits for a child process to stop or terminate.
+	 */
+	extern pid_t wait(int *stat_loc);
 
 #endif /* WAIT_H_ */

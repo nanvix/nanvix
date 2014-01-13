@@ -32,7 +32,7 @@
 #ifndef _ASM_FILE_
 
 	/*
-	 * Saved registers durint interrupt/exception.
+	 * Saved registers during interrupt/exception.
 	 */
 	struct intstack
 	{   

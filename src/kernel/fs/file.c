@@ -207,6 +207,8 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	struct d_dirent *d; /* Disk directory entry.               */
 	int nentries;       /* Actual number of directory entries. */
 	
+	nentries = dinode->size/sizeof(struct d_dirent);
+	
 	i = 0;
 	entry = -1;
 	blk = inode->zones[0];

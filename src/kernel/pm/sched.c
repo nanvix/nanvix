@@ -55,6 +55,12 @@ PUBLIC void yield(void)
 	struct process *p;
 	struct process *next;
 
+	if (curr_proc->pid == 1)
+	{
+		kprintf("process 1 scheduled");
+		__asm__("xchg %bx, %bx");
+	}	
+
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING)
 		sched(curr_proc);
@@ -91,6 +97,12 @@ PUBLIC void yield(void)
 			else
 				p->counter++;
 		}
+	}
+	
+	if (curr_proc->pid == 1)
+	{
+		kprintf("switching to %d", next->pid);
+		__asm__("xchg %bx, %bx");
 	}
 	
 	/* Switch to process. */

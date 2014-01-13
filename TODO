@@ -3,6 +3,8 @@ Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 Kernel functionalities to be implemented:
 	
+	* debug demand paging feature
+	* check when linking pages from executable 
 	* execve() setuid when need
 	* write() and append mode
 	* read() at valid offset but blocks are unallocated
@@ -29,7 +31,6 @@ High priority system calls to be implemented:
 	* sys_ulimit()
 	* sys_umount()
 	* sys_uname()
-	* sys_unlink()
 	* sys_ustat()
 	* sys_utime()
 	
@@ -72,4 +73,5 @@ System calls to be tested:
 	* sys_read()
 	* sys_stat()
 	* sys_sync()
+	* sys_unlink()
 	* sys_write()

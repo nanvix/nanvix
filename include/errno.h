@@ -85,4 +85,11 @@
 	/* Broken pipe. */
 	#define EPIPE 26
 
+#ifndef _ASM_FILE_
+
+	/* Number of last error. */
+	extern int errno;
+
+#endif /* _ASM_FILE_ */
+
 #endif /* ERRNO_H_ */

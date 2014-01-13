@@ -224,7 +224,6 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		upg1->cow = 1;
 	}
 	
-	/* Link pages. */
 	kmemcpy(upg2, upg1, sizeof(struct pte));
 	upages[upg1->frame]++;
 }
@@ -265,9 +264,12 @@ PUBLIC int crtpgdir(struct process *proc)
 	
 	/* Adjust stack pointers. */
 	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
-	s1 = (struct intstack *) curr_proc->kesp;
-	s2 = (struct intstack *) proc->kesp;	
-	s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+	if (KERNEL_RUNNING(curr_proc))
+	{
+		s1 = (struct intstack *) curr_proc->kesp;
+		s2 = (struct intstack *) proc->kesp;	
+		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+	}
 	
 	return (0);
 
@@ -327,7 +329,10 @@ PUBLIC void vfault(addr_t addr)
 
 	/* Get associated region. */
 	if ((preg = findreg(curr_proc, addr)) == NULL)
+	{
+		kpanic("debug 0");
 		goto error0;
+	}
 	
 	lockreg(reg = preg->reg);
 	
@@ -336,13 +341,19 @@ PUBLIC void vfault(addr_t addr)
 	{			
 		/* Not a stack region. */
 		if (preg != STACK(curr_proc))
+		{
+			kprintf("debug 1");
 			goto error0;
+		}
 	
 		kprintf("growing stack");
 		
 		/* Expand region. */
 		if (growreg(curr_proc, preg, (~PGTAB_MASK - reg->size) - (addr & ~PGTAB_MASK)))
+		{
+			kprintf("debug 2");
 			goto error0;
+		}
 	}
 
 	pg = &reg->pgtab[PG(addr)];
@@ -352,7 +363,10 @@ PUBLIC void vfault(addr_t addr)
 	{
 		/* Assign new page to region. */
 		if (allocupg(pg, reg->mode & MAY_WRITE))
+		{
+			kprintf("debug 3");
 			goto error0;
+		}
 		
 		kmemset((void *)(addr & PAGE_MASK), 0, PAGE_SIZE);
 		pg->clear = 0;
@@ -363,7 +377,10 @@ PUBLIC void vfault(addr_t addr)
 	{	
 		/* Read page. */
 		if (readpg(pg, reg, addr))
+		{
+			kprintf("debug 4");
 			goto error0;
+		}
 	}
 		
 	/* Swap page in. */

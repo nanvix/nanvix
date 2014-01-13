@@ -25,28 +25,19 @@ ASM_SRC = $(wildcard boot/*.S) \
 OBJ = $(ASM_SRC:.S=.o) \
 	  $(C_SRC:.c=.o)   \
 
-# Executable file.clear
+# Executable file.
 EXEC = kernel
 
-# Compiler options.
-CFLAGS += -c -I $(INCDIR)
-CFLAGS += -ansi -pedantic
-CFLAGS += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
-CFLAGS += -Wall -Wextra -Werror
-
-# Assembler options
-ASMFLAGS += -Wa,--divide,--warn
-
-# Linker options.
-LDFLAGS = -Tlink.ld
+# Linker configuration options.
+export LDFLAGS = -Tlink.ld
 
 # Builds object file from C source file.
 %.o: %.c
-	$(CC) $< $(CFLAGS) -o $@
+	$(CC) $< $(CFLAGS) -c -o $@
 
 # Builds object file from assembly source file.
 %.o: %.S
-	$(CC) $< $(CFLAGS) $(ASMFLAGS) -o $@
+	$(CC) $< $(CFLAGS) -c $(ASMFLAGS) -o $@
 
 # Builds Nanvix kernel.
 all: $(OBJ)

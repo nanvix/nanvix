@@ -55,7 +55,7 @@ int execve(const char *filename, const char **argv, const char **envp)
 
 /* Init arguments. */
 PRIVATE const char *argv[] = { "/etc/inittab", NULL };
-PRIVATE const char *envp[] = { "PATH=/usr/bin", NULL };
+PRIVATE const char *envp[] = { "PATH=/usr/bin", "HOME=/", NULL };
 
 PUBLIC void kmain(void)
 {		
@@ -77,7 +77,6 @@ PUBLIC void kmain(void)
 	else if (pid == 0)
 	{
 		kprintf("kernel: spawning init process");
-		
 		execve("/etc/init", argv, envp);
 		
 		kpanic("failed to execute init");

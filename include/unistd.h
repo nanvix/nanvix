@@ -34,6 +34,16 @@
 	extern int access(const char *path, int amode);
 	
 	/*
+	 * Changes process' breakpoint value.
+	 */
+	extern void *sbrk(size_t size);
+	
+	/*
+	 * Changes process' breakpoint value.
+	 */
+	extern int brk(void *ptr);
+	
+	/*
 	 * Changes working directory.
 	 */
 	extern int chdir(const char *path);
@@ -63,6 +73,11 @@
 	 * Executes a program.
 	 */
 	extern int execve(const char *filename, const char **argv, const char **envp);
+
+	/*
+	 * Creates a new process.
+	 */
+	extern pid_t fork(void);
 
 	/*
 	 * Gets the effective user group ID of the calling process.
@@ -138,5 +153,8 @@
 	 * Writes to a file.
 	 */
 	extern ssize_t write(int fd, const void *buf, size_t n);
+	
+	/* Environment variables. */
+	extern char **environ;
 
 #endif /* UNISTD_H_ */

@@ -37,6 +37,8 @@ PUBLIC pid_t sys_fork(void)
 
 found:
 	
+	kprintf("fork(%d)", curr_proc->pid);
+	
 	/* Mark process as beeing created. */
 	proc->flags = PROC_NEW & ~PROC_FREE;
 
@@ -45,30 +47,30 @@ found:
 	/* Failed to create process page directory. */
 	if (err)
 		goto error0;
-		
+	
 	/*
 	 * Duplicate attached regions.
 	 * Notice that regions will be attached in the child process
 	 * on the same indexes as in the father process.
 	 */
 	for (i = 0; i < NR_PREGIONS; i++)
-	{
+	{	
 		preg = &curr_proc->pregs[i];
 		
 		/* Process region not in use. */
 		if (preg->reg == NULL)
-			continue;
+			continue;	
 		
 		lockreg(preg->reg);
 		reg = dupreg(preg->reg);
 		unlockreg(preg->reg);
-			
+		
 		/* Failed to duplicate region. */
 		if (reg == NULL)
 			goto error1;
 			
 		err = attachreg(proc, &proc->pregs[i], preg->start, reg);
-			
+		
 		/* Failed to attach region. */
 		if (err)
 		{
