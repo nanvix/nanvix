@@ -3,7 +3,6 @@ Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 Kernel functionalities to be implemented:
 	
-	* debug demand paging feature
 	* check when linking pages from executable 
 	* execve() setuid when need
 	* write() and append mode

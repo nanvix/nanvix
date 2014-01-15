@@ -21,7 +21,7 @@ int main(int argc, char **argv)
 	int status;   /* Child exit status code. */
 	pid_t pid;    /* Child process ID.       */
 	char *arg[2]; /* Child arguments.        */	
-	
+
 	((void)argc);
 	((void)argv);
 	
@@ -50,18 +50,15 @@ int main(int argc, char **argv)
 		/* Child process. */
 		if (pid == 0)
 			_exit(execve("/bin/sh", (const char **)arg, (const char **)environ));			
-		
-		while(1);
 			
 		/* Wait child processes. */
 		while (1)
 		{
 			if (pid == wait(&status))
 				break;
-		
 		}
 		
-		puts("\nchild process died");
+		puts("child process died\n");
 		sync();
 	}
 	

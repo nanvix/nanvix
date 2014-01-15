@@ -20,8 +20,6 @@ pid_t fork(void)
 		: "0" (NR_fork)
 	);
 	
-	__asm__("xchg %bx, %bx");
-	
 	/* Error. */
 	if (pid < 0)
 	{

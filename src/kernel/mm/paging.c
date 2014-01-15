@@ -203,7 +203,7 @@ PUBLIC void cpypg(struct pte *pg1, struct pte *pg2)
 	pg1->user = pg2->user;
 	pg1->cow = pg2->cow;
 	pg1->clear = pg2->clear;
-	pg2->fill = pg2->fill;
+	pg1->fill = pg2->fill;
 
 	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
 }
@@ -213,9 +213,14 @@ PUBLIC void cpypg(struct pte *pg1, struct pte *pg2)
  */
 PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 {	
+	int i;
+	
 	/* Page is not present. */
 	if (!upg1->present)
+	{
+		kprintf("linking non present page");
 		return;
+	}
 	
 	/* Set copy on write. */
 	if (upg1->writable)
@@ -225,7 +230,9 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 	}
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
-	upages[upg1->frame]++;
+	
+	i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
+	upages[i]++;
 }
 
 /*
@@ -342,7 +349,7 @@ PUBLIC void vfault(addr_t addr)
 		/* Not a stack region. */
 		if (preg != STACK(curr_proc))
 		{
-			kprintf("debug 1");
+			kpanic("debug 1");
 			goto error0;
 		}
 	
@@ -351,7 +358,7 @@ PUBLIC void vfault(addr_t addr)
 		/* Expand region. */
 		if (growreg(curr_proc, preg, (~PGTAB_MASK - reg->size) - (addr & ~PGTAB_MASK)))
 		{
-			kprintf("debug 2");
+			kpanic("debug 2");
 			goto error0;
 		}
 	}
@@ -364,7 +371,7 @@ PUBLIC void vfault(addr_t addr)
 		/* Assign new page to region. */
 		if (allocupg(pg, reg->mode & MAY_WRITE))
 		{
-			kprintf("debug 3");
+			kpanic("debug 3");
 			goto error0;
 		}
 		
@@ -378,7 +385,7 @@ PUBLIC void vfault(addr_t addr)
 		/* Read page. */
 		if (readpg(pg, reg, addr))
 		{
-			kprintf("debug 4");
+			kpanic("debug 4");
 			goto error0;
 		}
 	}
@@ -402,41 +409,43 @@ error0:
  */
 PUBLIC void pfault(addr_t addr)
 {
-	int err;
-	struct pte *pg;
-	struct pte new_pg;
-	struct pregion *preg;
+	int i;                /* Frame index.            */
+	struct pte *pg;       /* Faulting page.          */
+	struct pte new_pg;    /* New page.               */
+	struct region *reg;   /* Working memory region.  */
+	struct pregion *preg; /* Working process region. */
 	
 	preg = findreg(curr_proc, addr);
 	
-	/* Address outside virtual address space. */
+	/* Outside virtual address space. */
 	if (preg == NULL)
-	{
-		sndsig(curr_proc, SIGSEGV);	
-		return;
-	}
+		goto error0;
 	
-	lockreg(preg->reg);
+	lockreg(reg = preg->reg);
 	
-	pg = &preg->reg->pgtab[PG(addr)];
+	pg = &reg->pgtab[PG(addr)];
 
 	/* Copy on write not enabled. */
 	if (!pg->cow)
-		goto err0;
-		
+		goto error1;
+
+	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
+
 	/* Duplicate page. */
-	if (upages[pg->frame] > 1)
-	{
-		err = allocupg(&new_pg, pg->writable);
-		
-		/* Failed to allocate new user page. */
-		if (err)
-			goto err0;
+	if (upages[i] > 1)
+	{			
+		/* Allocate new user page. */
+		if (allocupg(&new_pg, pg->writable))
+			goto error1;
 			
-		cpypg(pg, &new_pg);
+		cpypg(&new_pg, pg);
+		
+		new_pg.cow = 0;
+		new_pg.writable = 1;
 		
 		/* Unlik page. */
-		upages[pg->frame]--;
+		upages[i]--;
+		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 		
 	/* Steal page. */
@@ -446,19 +455,16 @@ PUBLIC void pfault(addr_t addr)
 		pg->writable = 1;
 	}
 		
-	unlockreg(preg->reg);
+	
+	
+	unlockreg(reg);
 
 	return;
 
-err0:
-	unlockreg(preg->reg);
+error1:
+	unlockreg(reg);
+error0:
 	if (KERNEL_RUNNING(curr_proc))
-	{
-		if (curr_proc->flags & PROC_JMPSET)
-			klongjmp(&curr_proc->kenv, -1);
-			
 		kpanic("kernel protection page fault");
-	}
-	else
-		sndsig(curr_proc, SIGSEGV);
+	sndsig(curr_proc, SIGSEGV);
 }

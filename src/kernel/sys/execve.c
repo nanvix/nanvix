@@ -145,14 +145,14 @@ PRIVATE int count(const char **str)
 	
 	/* Count the number of strings. */
 	for (c = 0, r = str; (s = fudword(r)) != 0; r++)
-	{
+	{				
 		/* Bad string vector. */
 		if (s == -1)
 		{
 			curr_proc->errno = -EFAULT;
 			return (-1);
 		}
-		
+			
 		c++;
 	}
 	
@@ -162,21 +162,21 @@ PRIVATE int count(const char **str)
 /*
  * Copy strings of a vector of strings to somewhere.
  */
-PRIVATE int copy_strings(int count, const char **strings, char *where, int p)
+PRIVATE int copy_strings(int count, const char **strings, char *where, int p, const int bypass)
 {
-	int ch;     /* Working character.     */
-	char *str;  /* Working string.        */
-	int length; /* Working string length. */
+	int ch;          /* Working character.     */
+	const char *str; /* Working string.        */
+	int length;      /* Working string length. */
 	
 	/* Copy strings. */
 	while (count-- > 0)
 	{
-		str = (char *)fudword(strings + count);
+		str = (bypass) ? *strings : (const char *)fudword(strings + count);
 		length = 1;
 		
 		/* Get working string length. */
-		while ((ch = fubyte(str) != '\0'))
-		{
+		while ((ch = ((bypass) ? *str : fubyte(str))) != '\0')
+		{			
 			/* Bad string. */
 			if (ch < 0)
 			{
@@ -187,6 +187,7 @@ PRIVATE int copy_strings(int count, const char **strings, char *where, int p)
 			length++;
 			str++;
 		}
+		
 		
 		/* Copy working string. */
 		while (length-- > 0)
@@ -224,7 +225,7 @@ PRIVATE addr_t create_tables(char *stack, size_t size, int p, int argc, int envc
 	argv = sp;
 	
 	/* Arguments too long. */
-	if (sp < 0)
+	if (sp < (4*DWORD_SIZE))
 	{
 		curr_proc->errno = -E2BIG;
 		return (0);
@@ -233,12 +234,17 @@ PRIVATE addr_t create_tables(char *stack, size_t size, int p, int argc, int envc
 	sp -= DWORD_SIZE; (*((dword_t *)(stack + sp))) = USTACK_ADDR - size + envp;
 	sp -= DWORD_SIZE; (*((dword_t *)(stack + sp))) = USTACK_ADDR - size + argv;
 	sp -= DWORD_SIZE; (*((dword_t *)(stack + sp))) = argc;
+	sp -= DWORD_SIZE;
 	
-	/* Build argv table. */
+	/* 
+	 * Build argv table.
+	 * p is the first byte available in the stack
+	 * so we need to increment it before checking strings.
+	 */
 	while (argc-- > 0)
 	{
-		(*((dword_t *)(stack + argv))) = USTACK_ADDR - size + p;
-		while (stack[p++] != '\0') /* nothing. */ ;
+		(*((dword_t *)(stack + argv))) = USTACK_ADDR - size + p + 1;
+		while (stack[++p] != '\0') /* nothing. */ ;
 		argv += DWORD_SIZE;
 	}
 	(*((dword_t *)(stack + argv))) = 0;
@@ -246,8 +252,8 @@ PRIVATE addr_t create_tables(char *stack, size_t size, int p, int argc, int envc
 	/* Build envp table. */
 	while (envc-- > 0)
 	{
-		(*((dword_t *)(stack + envp))) = USTACK_ADDR - size + p;
-		while (stack[p++] != '\0') /* nothing. */ ;
+		(*((dword_t *)(stack + envp))) = USTACK_ADDR - size + p + 1;
+		while (stack[++p] != '\0') /* nothing. */ ;
 		envp += DWORD_SIZE;
 	}
 	(*((dword_t *)(stack + envp))) = 0;
@@ -261,7 +267,7 @@ PRIVATE addr_t create_tables(char *stack, size_t size, int p, int argc, int envc
  * Builds arguments.
  */
 PRIVATE addr_t buildargs
-(void *stack, size_t size, const char *name, const char **argv, const char **envp)
+(void *stack, size_t size, const char **name, const char **argv, const char **envp)
 {
 	int p;        /* Stack pointer. */
 	int argc;     /* argv length.   */
@@ -270,21 +276,21 @@ PRIVATE addr_t buildargs
 	/* Get argv count. */
 	if ((argc = count(argv)) < 0)
 		return (0);
-
+		
 	/* Get envp count. */
 	if ((envc = count(envp)) < 0)
 		return (0);
-	
+		
 	/* Copy argv and envp to stack. */
-	if ((p = copy_strings(envc, envp, stack, size - 1)) < 0)
+	if ((p = copy_strings(envc, envp, stack, size - 1, 0)) < 0)
 		return (0);
-	if ((p = copy_strings(argc, argv, stack, p)) < 0)
+	if ((p = copy_strings(argc, argv, stack, p, 0)) < 0)
 		return (0);
-	if ((p = copy_strings(1, &name, stack, p)) < 0)
+	if ((p = copy_strings(1, name, stack, p, 1)) < 0)
 		return (0);
 	if ((p = create_tables(stack, size, p, argc + 1, envc)) == 0)
 		return (0);
-	
+		
 	return (p);
 }
 
@@ -301,27 +307,21 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	char *name;           /* File name.           */
 	char stack[ARG_MAX];  /* Stack size.          */
 	
-	kprintf("execve(%d)", curr_proc->pid);
-	
 	/* Get file name. */
 	if ((name = getname(filename)) == NULL)
-	{
-		kpanic("execve(0)");
 		return (curr_proc->errno);
-	}
 	
 	/* Build arguments before freeing user memory. */
 	kmemset(stack, 0, ARG_MAX);
-	if (!(sp = buildargs(stack, ARG_MAX, name, argv, envp)))
+	if (!(sp = buildargs(stack, ARG_MAX, (const char **)&name, argv, envp)))
 	{
-		kpanic("execve(1)");
+		putname(name);
 		return (curr_proc->errno);
 	}
 	
 	/* Get file's inode. */
 	if ((inode = inode_name(name)) == NULL)
 	{
-		kpanic("execve(2)");
 		putname(name);
 		return (curr_proc->errno);
 	}

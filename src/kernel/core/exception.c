@@ -80,11 +80,11 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 {	
 	((void)dummy0);
 	((void)dummy1);
+	((void)s);
 	
 	/* Validty page fault. */
 	if (!(err & 1))
 	{
-		kprintf("proc %d: validity page fault %d at %x(%x)", curr_proc->pid, err, addr, s.eip);
 		vfault(addr);
 		return;
 	}
@@ -92,7 +92,6 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 	/* Protection page fault. */
 	if (err & 2)
 	{
-		kprintf("proc %d: protection page fault %d at %x(%x)", curr_proc->pid, err, addr, s.eip);
 		pfault(addr);
 		return;
 	}

@@ -93,7 +93,7 @@ PRIVATE int contract(struct region *reg, size_t size)
  * Locks a memory region.
  */
 PUBLIC void lockreg(struct region *reg)
-{
+{	
 	/* Sleep until region is unlocked. */
 	while (reg->flags & REGION_LOCKED)
 		sleep(&reg->chain, PRIO_REGION);
@@ -115,8 +115,8 @@ PUBLIC void unlockreg(struct region *reg)
  */
 PUBLIC struct region *allocreg(mode_t mode, size_t size, int flags)
 {
-	struct region *reg; /* Region.                        */
-	struct pte *pgtab;  /* Region page table.             */
+	struct region *reg; /* Region.            */
+	struct pte *pgtab;  /* Region page table. */
 	
 	/* Search for free region. */
 	for (reg = &regtab[0]; reg < &regtab[NR_REGIONS]; reg++)
@@ -131,13 +131,14 @@ PUBLIC struct region *allocreg(mode_t mode, size_t size, int flags)
 	return (NULL);
 
 found:
+	
 
 	/* Allocate page table. */
 	if ((pgtab = getkpg()) == NULL)
 		return (NULL);
 	
 	/* Initialize region. */
-	reg->flags = flags & ~REGION_FREE;
+	reg->flags = flags & ~(REGION_FREE | REGION_LOCKED);
 	reg->count = 0;
 	reg->size = 0;
 	reg->pgtab = pgtab;
@@ -184,6 +185,18 @@ PUBLIC void freereg(struct region *reg)
 }
 
 /*
+ * Edits permissions on a memory region.
+ */
+PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode)
+{
+	reg->uid = uid;
+	reg->gid = gid;
+	reg->mode = mode;
+	
+	return (0);
+}
+
+/*
  * Attaches a memory region to a process.
  */
 PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, struct region *reg)
@@ -220,7 +233,7 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 	if (reg->flags & REGION_SHARED)
 	{
 		/* Do not have perssions to read/write region. */
-		if (!(mode & (MAY_READ | MAY_WRITE)))
+		if (!(accessreg(proc, reg) & (MAY_READ | MAY_WRITE)))
 			return (-1);
 	}
 	
@@ -286,7 +299,7 @@ PUBLIC struct region *dupreg(struct region *reg)
 		return (reg);
 	
 	/* Failed to allocate new region. */
-	if ((new_reg = allocreg(reg->flags, reg->mode, reg->size)) == NULL)
+	if ((new_reg = allocreg(reg->mode, reg->size, reg->flags)) == NULL)
 		return (NULL);
 	
 	npages = reg->size >> PAGE_SHIFT;

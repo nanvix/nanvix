@@ -37,8 +37,6 @@ PUBLIC pid_t sys_fork(void)
 
 found:
 	
-	kprintf("fork(%d)", curr_proc->pid);
-	
 	/* Mark process as beeing created. */
 	proc->flags = PROC_NEW & ~PROC_FREE;
 
@@ -60,7 +58,7 @@ found:
 		/* Process region not in use. */
 		if (preg->reg == NULL)
 			continue;	
-		
+			
 		lockreg(preg->reg);
 		reg = dupreg(preg->reg);
 		unlockreg(preg->reg);
@@ -68,12 +66,16 @@ found:
 		/* Failed to duplicate region. */
 		if (reg == NULL)
 			goto error1;
-			
+		
 		err = attachreg(proc, &proc->pregs[i], preg->start, reg);
 		
 		/* Failed to attach region. */
 		if (err)
 		{
+			/*
+			 * FIXME: region count.
+			 */
+			kpanic("failed to attach region");
 			freereg(reg);
 			goto error1;
 		}

@@ -617,8 +617,8 @@ again:
 			/* This path was really invalid. */
 			if (*p != '\0')
 			{			
-				goto error0;	
 				curr_proc->errno = -ENOENT;
+				goto error0;	
 			}
 			
 			/* Let someone else decide what to do. */
@@ -680,12 +680,20 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	/* Failed to get directory inode. */
 	if (inode == NULL)
 		return (NULL);
-	
+		
 	/* Special treatment for the root directory. */
 	if (!kstrcmp(name,"/"))
 		num = curr_proc->root->num;
 	else
 		num = dir_search(inode, name);
+
+	/* File not found. */
+	if (num == INODE_NULL)
+	{	
+		inode_put(inode);
+		curr_proc->errno = -ENOENT;
+		return (NULL);
+	}
 
 	dev = inode->dev;	
 	inode_put(inode);

@@ -98,6 +98,11 @@
 	EXTERN void freereg(struct region *reg);
 
 	/*
+	 * Edits permissions on a memory region.
+	 */
+	PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode);
+
+	/*
 	 * Attaches a memory region to a process.
 	 */
 	EXTERN int attachreg(struct process *proc, struct pregion *preg, addr_t addr, struct region *reg);

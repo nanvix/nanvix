@@ -114,14 +114,13 @@ halt:
  * Physical memory copy.
  */
 physcpy:
-	
 	pushl %esi
 	pushl %edi
 	
 	/* Get parameters. */
-	movl 16(%esp), %ecx
-	movl 20(%esp), %esi
-	movl 24(%esp), %edi
+	movl 12(%esp), %edi
+	movl 16(%esp), %esi
+	movl 20(%esp), %ecx
 
 	/* Jump to lower-half kernel*/
 	cli
@@ -134,8 +133,21 @@ physcpy:
   	movl %cr0, %eax
   	andl $0x80000000 - 1, %eax
   	movl %eax, %cr0
-  	
-  	std; stosb; rep           
+
+/*
+ * Copy memory from a page to another.
+ * We cannot use nice instructions such as
+ * movsb because we would use segment registers
+ * and therefore the GDT, which is only accessible
+ * when paging is enabled.
+ */
+physcpy.loop:
+	movl (%esi), %eax
+	movl %eax, (%edi)
+	addl $4, %esi
+	addl $4, %edi
+	subl $4, %ecx
+	jnz physcpy.loop   
   
   	/* Re-enable paging. */
 	movl %cr0, %eax
@@ -204,59 +216,6 @@ fork_return:
 	andl %eax, PROC_FLAGS(%ecx)
 	movl $0, EAX(%esp)
 	jmp leave
-
-/*----------------------------------------------------------------------------*
- *                                  ksetjmp()                                 *
- *----------------------------------------------------------------------------*/
-
-/*
- * Sets a jump point for a non-local goto.
- */
-ksetjmp:
-	xchg %bx, %bx
-	movl curr_proc, %eax
-	movl 4(%esp), %ecx
-	movl 0(%esp), %edx
-	movl %ebx, JMP_BUF_EBX(%ecx)
-	movl %esi, JMP_BUF_ESI(%ecx)
-	movl %edi, JMP_BUF_EDI(%ecx)
-	movl %edx, JMP_BUF_EIP(%ecx)
-	pushfl
-	popl %edx
-	movl %edx, JMP_BUF_EFLAGS(%ecx)
-	movl %ebp, JMP_BUF_EBP(%ecx)
-	movl %esp, JMP_BUF_ESP(%ecx)
-	movl PROC_INTLVL(%eax), %edx
-	movl %edx, JMP_BUF_INTLVL(%ecx)
-	movl PROC_KESP(%eax), %edx
-	movl %edx, JMP_BUF_KESP(%ecx)
-	xorl %eax, %eax
-	ret
-
-/*----------------------------------------------------------------------------*
- *                                  klongjmp()                                *
- *----------------------------------------------------------------------------*/
-
-/*
- * Performs a non-local goto.
- */
-klongjmp:
-	xchg %bx, %bx
-	movl 8(%esp), %eax
-	movl 4(%esp), %ecx
-	movl curr_proc, %edx
-	movl JMP_BUF_EBX(%ecx), %ebx
-	movl JMP_BUF_ESI(%ecx), %esi
-	movl JMP_BUF_EDI(%ecx), %edi
-	pushl JMP_BUF_EFLAGS(%ecx)
-	popfl
-	movl JMP_BUF_EBP(%ecx), %ebp
-	movl JMP_BUF_ESP(%ecx), %esp
-	pushl JMP_BUF_INTLVL(%ecx)
-	popl PROC_INTLVL(%edx)
-	pushl JMP_BUF_KESP(%ecx)
-	popl  PROC_KESP(%edx)
-	jmpl *JMP_BUF_EIP(%ecx)
 
 /*----------------------------------------------------------------------------*
  *                                 user_mode()                                *

@@ -12,11 +12,5 @@
  */
 int puts(const char *str)
 {
-	int length;
-	
-	length = strlen(str);
-	
-	((char *)str)[length++] = '\n';
-	
-	return (fwrite(str, length*sizeof(char), 1, stdout));
+	return (fwrite(str, strlen(str), 1, stdout));
 }

@@ -26,7 +26,7 @@ PUBLIC void die(void)
 	for (i = 0; i < NR_SIGNALS; i++)
 		curr_proc->handlers[i] = SIG_IGN;
 	
-	/* init adopts child processes. */
+	/* init adopts orphan processes. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
 		/* Child process found. */
