@@ -4,15 +4,14 @@
  * stdio/stdio.c - Internal stdio library stuff.
  */
 
-#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
 
 /* File streams table. */
 FILE streams[FOPEN_MAX] = {
-	{ 0, 0, 0, 0, 0, O_RDONLY, NULL, 0, 0, 0, 0, 0 },
-	{ 1, 0, 0, 0, 0, O_WRONLY, NULL, 0, 0, 0, 0, 0 },
-	{ 2, 0, 0, 0, 0, O_WRONLY, NULL, 0, 0, 0, 0, 0 },
+	{ 0, _IOREADING | _IOREAD  | _IOLBF, NULL, NULL, 0, -1, -1 },
+	{ 1, _IOWRITING | _IOWRITE | _IOFBF, NULL, NULL, 0, -1, -1 },
+	{ 2, _IOWRITING | _IOWRITE | _IONBF, NULL, NULL, 0, -1, -1 },
 };
 
 /* Standard file streams. */

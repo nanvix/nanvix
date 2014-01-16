@@ -1,7 +1,7 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * <stdio.h> - Standard I/O library.
+ * <stdio.h> - Standard IO library.
  */
 
 #ifndef STDIO_H_
@@ -9,87 +9,73 @@
 
 	#include <sys/types.h>
 	#include <limits.h>
-	#include <stdarg.h>
-	#include <unistd.h>
-	
-	/* Standard size for a file stream buffer. */
-	#define BUFSIZ 128
-	
-	/* Buffering modes. */
-	#define _IOFBF 0 /* Input/output fully buffered. */
-	#define _IOLBF 1 /* Input/output line buffered.  */
-	#define _IONBF 2 /* Input/output unbuffered.     */
-	
+
+	/* Standard buffer size. */
+	#define BUFSIZ 256
+
 	/* End of file. */
 	#define EOF -1
 	
-	/* Maximum number of streams that can be open simultaneously. */
+	/* Maximum number of opened file streams. */
 	#define FOPEN_MAX OPEN_MAX
+
+	/* File stream flags. */
+	#define _IOFBF     00001 /* Fully buffered?                */
+	#define _IOLBF     00002 /* Line buffered?                 */
+	#define _IONBF     00004 /* Unbuffered?                    */
+	#define _IOREAD    00010 /* Readable?                      */
+	#define _IOWRITE   00020 /* Writable?                      */
+	#define _IOAPPEND  00040 /* Append?                        */
+	#define _IOEOF     00100 /* End of file reached?           */
+	#define _IOERROR   00200 /* Error encountered?             */
+	#define _IO_MYBUF  00400 /* Library buffer?                */
+	#define _IOREADING 01000 /* Now reading?                   */
+	#define _IOWRITING 02000 /* Now writing?                   */
+	#define _IOSYNC    04000 /* Sync file position on append?  */
 
 	/*
 	 * File stream.
 	 */
-	typedef struct
+	typedef struct _iobuf
 	{
-		int fd;     /* File descriptor.       */
-		off_t size; /* File size.             */
-		off_t ptr;  /* File-position cursor   */
-		int eof;    /* End of file indicator. */
-		int error;  /* Error indicator.       */
-		int omode;  /* File open mode.        */
-		
-		/* I/O buffer. */
-		char *buffer; /* The buffer itself. */
-		size_t bufsz; /* Buffer size.       */
-		int nread;    /* Read pointer.      */
-		int nwritten; /* Write pointer.     */
-		int buf_mode; /* Buffering mode.    */
-		int usr_buf;  /* User buffer?       */
+		int fd;        /* File descriptor.    */
+		int flags;     /* Flags (see above).  */
+		char *buf;     /* Stream buffer.      */
+		char *ptr;     /* Next character.     */
+		size_t bufsiz; /* Buffer size.        */
+		int nread;     /* Read characters.    */
+		int nwritten;  /* Written characters. */
 	} FILE;
-
-	extern FILE *fclose(FILE *file);
-	
-	extern FILE *fopen(const char *name, const char *mode);
-	
-	extern int fread(void *ptr, size_t size, size_t nmeb, FILE *file);
 	
 	/*
-	 * Writes raw data to a file.
+	 * Writes a character to a file.
 	 */
-	extern size_t fwrite(const void *ptr, size_t size, size_t nitems, FILE *stream);
-	
-	extern int fputc(int c, FILE *file);
-	
-	extern int fgetc(FILE *file);
-	
-	extern int ferror(FILE *file);
-	
-	extern int feof(FILE *file);
+	extern int fputc(int c, FILE *stream);
 	
 	/*
-	 * Flushes a file stream.
+	 * Writes a string to a file.
 	 */
-	extern int fflush(FILE *file);
+	extern int fputs(const char *str, FILE *stream);
 	
 	/*
-	 * Fills a file stream.
+	 * Writes a character to a file.
 	 */
-	extern int ffill(FILE *stream);
+	extern int putc(int c, FILE *stream);
+	
+	/*
+	 * Writes a character to the standard output file.
+	 */
+	extern int putchar(int c);
 	
 	/*
 	 * Writes a string to the standard output file.
 	 */
 	extern int puts(const char *str);
 	
-	extern int setvbuf(FILE *file, char *buffer, int type, size_t size);
-	
-	extern int vfscanf(FILE *stream, const char *fmt, va_list args);
-	
-	extern int fscanf(FILE *stream, const char *fmt, ...);
-	
-	extern int vfprintf(FILE *stream, const char *fmt, va_list args);
-	
-	extern int fpritnf(FILE *stream, const char *fmt, ...);
+	/*
+	 * Flushes a file stream.
+	 */
+	extern int fflush(FILE *stream);
 	
 	/* Standard file streams. */
 	extern FILE *stdin;  /* Standard input.  */

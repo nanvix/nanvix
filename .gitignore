@@ -4,6 +4,7 @@
 
 # Default rules.
 *.o
+*.a
 bin/*
 
 # Exceptions.

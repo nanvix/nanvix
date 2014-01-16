@@ -12,5 +12,11 @@
  */
 int puts(const char *str)
 {
-	return (fwrite(str, strlen(str), 1, stdout));
+	int c;
+	
+	/* Write string. */
+	while ((c = *str++) != '\0')
+		putchar(c);
+		
+	return (putchar('\n'));
 }

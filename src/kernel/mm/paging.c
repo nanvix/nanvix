@@ -213,26 +213,20 @@ PUBLIC void cpypg(struct pte *pg1, struct pte *pg2)
  */
 PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 {	
-	int i;
-	
-	/* Page is not present. */
-	if (!upg1->present)
-	{
-		kprintf("linking non present page");
-		return;
-	}
-	
-	/* Set copy on write. */
-	if (upg1->writable)
-	{
-		upg1->writable = 0;
-		upg1->cow = 1;
+	/* Page is present. */
+	if (upg1->present)
+	{		
+		/* Set copy on write. */
+		if (upg1->writable)
+		{
+			upg1->writable = 0;
+			upg1->cow = 1;
+		}
+		
+		upages[upg1->frame - (UBASE_PHYS >> PAGE_SHIFT)]++;
 	}
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
-	
-	i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
-	upages[i]++;
 }
 
 /*
