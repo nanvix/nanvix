@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
- * console.c - Console device driver
+ * dev/tty/console.c - Console device driver
  */
 
 #include <asm/io.h>
@@ -11,23 +11,6 @@
 #include <stdint.h>
 #include "tty.h"
 
-/* Video colors (black background). */
-#define BLACK         0x0 /* Black .           */
-#define BLUE          0x1 /* Blue.             */
-#define GREEN         0x2 /* Green.            */
-#define CYAN          0x3 /* Cyan.             */
-#define RED           0x4 /* Red.              */
-#define MAGENTA       0x5 /* Magenta.          */
-#define BROWN         0x6 /* Brown.            */
-#define LIGHT_GREY    0x7 /* Light grey.       */
-#define DARK_GREY     0x8 /* Dark grey.        */
-#define LIGHT_BLUE    0x9 /* Light blue.       */
-#define LIGHT_GREEN   0xa /* Light green.      */
-#define LIGHT_CYAN    0xb /* Light cyan.       */
-#define LIGHT_RED     0xc /* Light red.        */
-#define LIGHT_MAGENTA 0xd /* Light magenta     */
-#define YELLOW        0xe /* Yellow.           */
-#define WHITE         0xf /* White.            */
 
 /* Video specifications (Text mode). */
 #define VIDEO_ADDR  0xb8000 /* Video memory address. */
@@ -112,7 +95,7 @@ PRIVATE void console_scrolldown(void)
 /*
  * Outputs a colored ASCII character on the console device.
  */
-PRIVATE void console_put(uint8_t ch, uint8_t color)
+PUBLIC void console_put(uint8_t ch, uint8_t color)
 {	
 	/* Parse character. */
     switch (ch)

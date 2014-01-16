@@ -65,6 +65,12 @@
 	 */
 	#define KBUFFER_INIT(b) \
 		{b.head = 0, b.tail = 0, b.chain = NULL;}
+		
+	/*
+	 * Takes out a character from a kernel buffer.
+	 */
+	#define KBUFFER_TAKEOUT(b) \
+		{b.tail = ((b.tail - 1)%KBUFFER_SIZE);}
 
 	/*========================================================================*
 	 *                              strings                                   *
