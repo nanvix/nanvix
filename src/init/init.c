@@ -24,16 +24,9 @@ int main(int argc, char **argv)
 
 	((void)argc);
 	((void)argv);
-	
-	/* Open standard output streams. */
-	open("/dev/tty", O_RDWR);
-	dup(0);
-	dup(0);
 
 	arg[0] = "-";
 	arg[1] = NULL;
-	
-	puts("Hello World!");
 
 	/* init never ends. */
 	while (1)

@@ -37,6 +37,11 @@
 	EXTERN void tss_flush();
 	
 	/*
+	 * Flushes the TLB.
+	 */
+	EXTERN void tlb_flush(void);
+	
+	/*
 	 * DESCRIPTION:
 	 *   The idt_flush() function flushes the IDT pointed to by idtptr.
 	 * 

@@ -16,6 +16,7 @@
 .globl gdt_flush
 .globl idt_flush
 .globl tss_flush
+.globl tlb_flush
 .globl enable_interrupts
 .globl disable_interrupts
 .globl halt
@@ -72,6 +73,18 @@ idt_flush:
 	mov 4(%esp), %eax
     lidt (%eax)
     ret
+
+/*----------------------------------------------------------------------------*
+ *                                 tlb_flush                                  *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Flushes the TLB.
+ */
+tlb_flush:
+	movl %cr3, %eax
+	movl %eax, %cr3
+	ret
 
 /*----------------------------------------------------------------------------*
  *                            enable_interrupts()                             *

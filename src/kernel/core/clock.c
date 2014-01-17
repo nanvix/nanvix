@@ -46,7 +46,7 @@ PUBLIC void clock_init(unsigned freq)
 	
 	kprintf("dev: initializing clock device driver");
 	
-	set_hwint(HWINT_CLOCK, &do_clock);
+	set_hwint(INT_CLOCK, &do_clock);
 	
 	freq_divisor = PIT_FREQUENCY/freq;
 	

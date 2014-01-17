@@ -27,7 +27,7 @@ export ARFLAGS   = -vq
 export LIB = libc.a
 
 # Builds the Nanvix operating system.
-all: kernel libc init
+all: kernel libc init shell
 
 # Builds the Nanvix kernel.
 kernel:
@@ -41,8 +41,13 @@ libc:
 init: libc
 	cd $(SRCDIR)/init && $(MAKE) all
 
+# Builds the Nanvix shell.
+shell: libc
+	cd $(SRCDIR)/sh && $(MAKE) all
+
 # Cleans compilation files.
 clean:
 	cd src/kernel/ && $(MAKE) clean
 	cd $(LIBDIR) && $(MAKE) clean
 	cd $(SRCDIR)/init && $(MAKE) clean
+	cd $(SRCDIR)/sh && $(MAKE) clean

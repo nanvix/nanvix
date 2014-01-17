@@ -189,7 +189,7 @@ PUBLIC void do_keyboard_hit(void)
 		default:
 		
 		    /* Canonical mode. */
-		    if ((tty.term.c_lflag >> 1) & 0x1)
+		    if (tty.term.c_lflag & ICANON)
 		    {
 		        if (ascii_code == '\b')
 		        {
@@ -201,6 +201,7 @@ PUBLIC void do_keyboard_hit(void)
 		        else
 		        {
 					KBUFFER_PUT(tty.input, ascii_code);
+					
 					if (ascii_code == '\n')
 						wakeup(&tty.input.chain);
 		        }
@@ -214,7 +215,7 @@ PUBLIC void do_keyboard_hit(void)
 		    }
 
 		    /* Output echo character. */
-		    if (((tty.term.c_lflag & 0x1) & ECHO))
+		    if (tty.term.c_lflag  & ECHO)
 		        console_put(ascii_code, WHITE);
 
         	break;

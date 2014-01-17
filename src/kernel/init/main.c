@@ -11,10 +11,9 @@
 #include <nanvix/dev.h>
 #include <nanvix/pm.h>
 #include <nanvix/mm.h>
-
-#include <nanvix/clock.h>
 #include <nanvix/syscall.h>
-#include <errno.h>
+#include <fcntl.h>
+
 
 pid_t fork(void)
 {
@@ -53,10 +52,58 @@ int execve(const char *filename, const char **argv, const char **envp)
 	return (ret);
 }
 
-/* Init arguments. */
-PRIVATE const char *argv[] = { "/etc/inittab", NULL };
-PRIVATE const char *envp[] = { "PATH=/usr/bin", "HOME=/", NULL };
+void _exit(int status)
+{
+	__asm__ volatile(
+		"int $0x80"
+		: /* empty. */
+		: "a" (NR__exit),
+		"b" (status)
+	);
+}
 
+/*
+ * Opens a file.
+ */
+int open(const char *path, int oflag, ...)
+{
+	int ret;
+	
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_open),
+		  "b" (path),
+		  "c" (oflag),
+		  "d" (0)
+	);
+	
+	/* Error. */
+	if (ret < 0)
+		return (-1);
+	
+	return (ret);
+}
+
+/*
+ * Executes init.
+ */
+PRIVATE void init(void)
+{
+	const char *argv[] = { "/etc/inittab", NULL };
+	const char *envp[] = { "PATH=/usr/bin", "HOME=/", NULL };
+	
+	/* Open standard output streams. */
+	open("/dev/tty", O_RDONLY);
+	open("/dev/tty", O_WRONLY);
+	open("/dev/tty", O_WRONLY);
+		
+	execve("/etc/init", argv, envp);
+}
+
+/*
+ * Initializes the kernel.
+ */
 PUBLIC void kmain(void)
 {		
 	pid_t pid;
@@ -75,11 +122,10 @@ PUBLIC void kmain(void)
 	
 	/* init process. */
 	else if (pid == 0)
-	{
-		kprintf("kernel: spawning init process");
-		execve("/etc/init", argv, envp);
-		
-		kpanic("failed to execute init");
+	{	
+		init();
+		kprintf("failed to execute init");
+		_exit(-1);
 	}
 	
 	/* idle process. */	

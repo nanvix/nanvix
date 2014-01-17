@@ -79,10 +79,10 @@ start:
 	cld
 
 	/* Build init page directory. */
-	movl $kpgtab + 7, init_pgdir + PTE_SIZE*0         /* at: 0x00000000 */
-	movl $kpgtab + 7, init_pgdir + PTE_SIZE*768       /* at: 0xc0000000 */
-	movl $kpool_pgtab + 7, init_pgdir + PTE_SIZE*769  /* at: 0xc0400000 */
-	movl $initrd_pgtab + 7, init_pgdir + PTE_SIZE*770 /* at: 0xc0800000 */
+	movl $kpgtab + 3, init_pgdir + PTE_SIZE*0         /* at: 0x00000000 */
+	movl $kpgtab + 3, init_pgdir + PTE_SIZE*768       /* at: 0xc0000000 */
+	movl $kpool_pgtab + 3, init_pgdir + PTE_SIZE*769  /* at: 0xc0400000 */
+	movl $initrd_pgtab + 3, init_pgdir + PTE_SIZE*770 /* at: 0xc0800000 */
 	
 	/* Enable paging. */
 	movl $init_pgdir, %eax

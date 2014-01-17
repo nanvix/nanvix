@@ -10,10 +10,7 @@
 	#include <i386/i386.h>
 	#include <nanvix/const.h>
 	#include <errno.h>
-
-	/* Hardware interrupt numbers. */
-	#define HWINT_CLOCK    0 /* Clock interrupt. */
-
+	
 	/* Offsets to the registers structure. */
 	#define DS       4
 	#define EDI      8

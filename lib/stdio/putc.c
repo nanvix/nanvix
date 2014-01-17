@@ -48,7 +48,7 @@ int putc(int c, FILE *stream)
 	}
 	
 	/* Synchronize file position. */
-	if (stream->flags & (_IOAPPEND | _IOSYNC))
+	if ((stream->flags & _IOAPPEND) && (stream->flags | _IOSYNC))
 	{
 		/* Failed. */
 		if (lseek(stream->fd, 0, SEEK_END) < 0)
@@ -68,7 +68,6 @@ again:
 		stream->flags |= _IOWRITING;
 		stream->nwritten = 0;
 		
-		/* Write. */
 		n = write(stream->fd, &c, count = 1);
 	}
 	

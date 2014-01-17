@@ -91,7 +91,7 @@ PUBLIC void sndsig(struct process *proc, int sig)
 /*
  * Checks there is a pending signal and returns it.
  */
-PUBLIC int issig()
+PUBLIC int issig(void)
 {
 	int i;
 	struct process *p;

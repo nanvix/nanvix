@@ -9,9 +9,15 @@
 
 	 #include <stdint.h>
 
-    /* Local modes. */
-    #define ECHO   0x1 /* Enable echo.     */
-    #define ICANON 0x2 /* Canonical input. */
+    /* Local mode flags. */
+    #define ECHO    0001 /* Enable echo.                                */
+	#define ECHOE	0002 /* Echo erase character when backspace.        */
+	#define ECHOK	0004 /* Echo KILL.                                  */
+	#define ECHONL	0010 /* Echo NL.                                    */
+	#define ICANON	0020 /* Canonical input.                            */
+	#define IEXTEN	0040 /* Enable extended input character processing. */	
+	#define ISIG	0100 /* Enable signals.                             */
+
 
 	/* Size of c_cc[] */
 	#define NCCS 17
@@ -26,10 +32,10 @@
      */
     struct termios
     {
-		tcflag_t c_iflag;    /* Input mode flags.   */
-		tcflag_t c_oflag;    /* Output mode flags.  */
-		tcflag_t c_cflag;    /* Control mode flags. */
-		tcflag_t c_lflag;    /* Local mode flags.   */
+		tcflag_t c_iflag;    /* Input mode flags (see above).   */
+		tcflag_t c_oflag;    /* Output mode flags (see above).  */
+		tcflag_t c_cflag;    /* Control mode flags (see above). */
+		tcflag_t c_lflag;    /* Local mode flags (see above).   */
 		tcflag_t c_cc[NCCS]; /* Control characters. */
     };
 

@@ -9,6 +9,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
 #include <errno.h>
+#include <termios.h>
 #include "tty.h"
 
 /*
@@ -24,6 +25,27 @@ PRIVATE void sleep_full()
 	/* Sleep while output buffer is full. */
 	while (KBUFFER_FULL(tty.output))
 		sleep(&tty.output.chain, PRIO_TTY);
+}
+
+/*
+ * Puts the calling process to sleep it the tty input buffer is full.
+ */
+PRIVATE int sleep_empty(void)
+{
+	/* Sleep while input buffer is empty. */
+	while (KBUFFER_EMPTY(tty.input))
+	{
+		sleep(&tty.input.chain, PRIO_TTY);
+		
+		/* Awaken by signal. */
+		if (issig())
+		{
+			curr_proc->errno = -EINTR;
+			return (-1);
+		}
+	}
+	
+	return (0);
 }
 
 /*
@@ -58,6 +80,42 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 }
 
 /*
+ * Reads from a tty device.
+ */
+PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
+{
+	char c;  /* Working character. */
+	char *p; /* Write pointer.     */
+	
+	UNUSED(minor);
+	
+	p = buf;
+	
+	/* Read characters. */
+	while (n > 0)
+	{
+		/* Wait for data. */
+		if (sleep_empty())
+			return (-1);
+		
+		/* Copy data from input buffer. */
+		while ((n > 0) && (!KBUFFER_EMPTY(tty.input)))
+		{
+			KBUFFER_GET(tty.input, *p);
+			
+			n--;
+			c = *p++;
+			
+			/* Done reading. */
+			if ((c == '\n') && (tty.term.c_lflag & ICANON))
+				return ((ssize_t)(p - buf));
+		}
+	}
+	
+	return ((ssize_t)(p - buf));
+}
+
+/*
  * Opens a tty device.
  */
 PRIVATE int tty_open(unsigned minor)
@@ -81,7 +139,7 @@ PRIVATE int tty_open(unsigned minor)
  */
 PRIVATE struct cdev tty_driver = {
 	tty_open,   /* open().  */
-	NULL,       /* read().  */
+	tty_read,   /* read().  */
 	&tty_write  /* write(). */
 };
 
@@ -96,9 +154,11 @@ PUBLIC void tty_init(void)
 	tty.pgrp = NULL;
 	KBUFFER_INIT(tty.output);
 	KBUFFER_INIT(tty.input);
+	tty.term.c_lflag |= ICANON | ECHO;
 	
 	/* Initialize device drivers. */
 	console_init();
+	keyboard_init();
 	
 	/* Register charecter device. */
 	if (cdev_register(TTY_MAJOR, &tty_driver))

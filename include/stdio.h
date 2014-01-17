@@ -48,6 +48,22 @@
 	} FILE;
 	
 	/*
+	 * Reads a character from a file.
+	 */
+	int getc(FILE *stream);
+	
+	/*
+	 * Reads a character from the standard input file.
+	 */
+	#define getchar() \
+		getc(stdin)
+	
+	/*
+	 * Reads a string from the standard input file.
+	 */
+	extern char *gets(char *str);
+	
+	/*
 	 * Writes a character to a file.
 	 */
 	extern int fputc(int c, FILE *stream);
@@ -65,7 +81,8 @@
 	/*
 	 * Writes a character to the standard output file.
 	 */
-	extern int putchar(int c);
+	#define putchar(c) \
+		putc(c, stdout)
 	
 	/*
 	 * Writes a string to the standard output file.

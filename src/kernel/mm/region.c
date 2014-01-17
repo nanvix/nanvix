@@ -170,6 +170,8 @@ found:
  */
 PUBLIC void freereg(struct region *reg)
 {
+	int i;
+	
 	/* Sticky region. */
 	if (reg->flags & REGION_STICKY)
 		return;
@@ -178,8 +180,10 @@ PUBLIC void freereg(struct region *reg)
 	if (reg->file.inode != NULL)
 		inode_put(reg->file.inode);
 	
-	/* Free region */
-	contract(reg, reg->size);
+	/* Free underlying pages. */
+	for (i = 0; i < PAGE_SIZE/PTE_SIZE; i++)
+		freeupg(&reg->pgtab[i]);
+	
 	putkpg(reg->pgtab);
 	reg->flags = REGION_FREE;
 }
@@ -290,9 +294,8 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
  */
 PUBLIC struct region *dupreg(struct region *reg)
 {
-	int i;                  /* Loop index.                    */
-	int npages;             /* Number of pages in the region. */
-	struct region *new_reg; /* New memory region.             */
+	int i;                  /* Loop index.        */
+	struct region *new_reg; /* New memory region. */
 	
 	/* Shared region. */
 	if (reg->flags & REGION_SHARED)
@@ -302,20 +305,9 @@ PUBLIC struct region *dupreg(struct region *reg)
 	if ((new_reg = allocreg(reg->mode, reg->size, reg->flags)) == NULL)
 		return (NULL);
 	
-	npages = reg->size >> PAGE_SHIFT;
-	
-	/* Link all pages in the region. */
-	if (reg->flags & REGION_DOWNWARDS)
-	{
-		npages = PAGE_SIZE/PTE_SIZE - npages;
-		for (i = (PAGE_SIZE/PTE_SIZE - 1); i >= npages; i--)
-			linkupg(&reg->pgtab[i], &new_reg->pgtab[i]);
-	}
-	else
-	{
-		for (i = 0; i < npages; i++)
-			linkupg(&reg->pgtab[i], &new_reg->pgtab[i]);
-	}
+	/* Link underlying pages. */
+	for (i = 0; i < PAGE_SIZE/PTE_SIZE; i++)
+		linkupg(&reg->pgtab[i], &new_reg->pgtab[i]);
 	
 	/* Copy region fields. */
 	new_reg->flags = reg->flags;

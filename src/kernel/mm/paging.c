@@ -97,6 +97,8 @@ PUBLIC int mappgtab(struct pte *pgdir, addr_t addr, void *kpg, int writable)
 	pgdir[i].user = 1;
 	pgdir[i].frame = ((addr_t)kpg - KBASE_VIRT) >> PAGE_SHIFT;
 	
+	tlb_flush();
+	
 	return (0);
 }
 
@@ -111,10 +113,12 @@ PUBLIC void umappgtab(struct pte *pgdir, addr_t addr)
 	
 	/* Cannot unmap page at given address. */
 	if ((addr >= KBASE_VIRT) || !(pgdir[i].present))
-		kpanic("cannot unmap page table from kernel address space");
-	
+		kpanic("cannot unmap page table");
+
 	/* Unmap kernel page. */
-	kmemset(&pgdir[i], 0, sizeof(pgdir[i]));
+	kmemset(&pgdir[i], 0, sizeof(struct pte));
+	
+	tlb_flush();
 }
 
 /*
