@@ -21,37 +21,12 @@
 	EXTERN void markpg(struct pte *pg, int what);
 	
 	/*
-	 * DESCRIPTION:
-	 *   The getkpg() function attempts to get a kernel page from the kernel 
-	 *   page pool.
-	 *
-	 * RETURN VALUE:
-	 *   Upon successful completion, the getkpg() function returns a pointer to
-	 *   a kernel page. Upon failure, a NULL pointer is returned instead.
-	 *
-	 * ERRORS:
-	 *   - There are no free kernel pages.
+	 * Allocates a kernel page.
 	 */
-	EXTERN void *getkpg();
+	EXTERN void *getkpg(int clean);
 	
 	/*
-	 * DESCRIPTION:
-	 *   The putkpg() function puts back the kernel page pointed to by kpg in 
-	 *   the kernel page pool. kpg shall point to a kernel page that has been
-	 *   previous retrieved with a prior call to getkpg(). If it doesn't the
-	 *   behavior is undefined.
-	 *
-	 * RETURN VALUE:
-	 *   The putkpg() function has no return value.
-	 *
-	 * ERRORS:
-	 *   No errors are defined.
-	 * 
-	 * COMMENTS:
-	 *   - The page is cleaned before being freed.
-	 * 
-	 * SEE ALSO:
-	 *   getkpg()
+	 * Releases a kernel page.
 	 */
 	EXTERN void putkpg(void *kpg);
 	

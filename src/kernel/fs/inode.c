@@ -436,7 +436,7 @@ PUBLIC struct inode *inode_pipe(void)
 	void *pipe;          /* Pipe page.  */
 	struct inode *inode; /* Pipe inode. */
 	
-	pipe = getkpg();
+	pipe = getkpg(0);
 	
 	/* Failed to get pipe page. */
 	if (pipe == NULL)

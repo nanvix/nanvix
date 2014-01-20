@@ -28,9 +28,9 @@ PRIVATE int kpages[NR_KPAGES] = { 0,  };
 PRIVATE int upages[NR_UPAGES] = { 0,  };
 
 /*
- * Gets a kernel page from the kernel page pool.
+ * Allocates a kernel page.
  */
-PUBLIC void *getkpg(void)
+PUBLIC void *getkpg(int clean)
 {
 	int i;     /* Loop index.  */
 	void *kpg; /* Kernel page. */
@@ -43,7 +43,7 @@ PUBLIC void *getkpg(void)
 			goto found;
 	}
 
-	kprintf("there are no free kernel pages");
+	kprintf("mm: kernel page pool overflow");
 
 	return (NULL);
 
@@ -53,13 +53,15 @@ found:
 	kpg = (void *)(KPOOL_VIRT + (i << PAGE_SHIFT));
 	kpages[i]++;
 	
-	kmemset(kpg, 0, PAGE_SIZE);
+	/* Clean page. */
+	if (clean)
+		kmemset(kpg, 0, PAGE_SIZE);
 	
 	return (kpg);
 }
 
 /*
- * Puts back a kernel page in the kernel page pool.
+ * Releases kernel page.
  */
 PUBLIC void putkpg(void *kpg)
 {
@@ -242,13 +244,13 @@ PUBLIC int crtpgdir(struct process *proc)
 	struct pte *pgdir;
 	struct intstack *s1, *s2;
 	
-	pgdir = getkpg();
+	pgdir = getkpg(1);
 	
 	/* Failed to get kernel page. */
 	if (pgdir == NULL)
 		goto err0;
 
-	kstack = getkpg();
+	kstack = getkpg(0);
 	
 	/* Failed to get kernel page. */
 	if (kstack == NULL)
@@ -302,7 +304,7 @@ PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 	struct inode *inode; /* File inode.              */
 	
 	/* Get auxiliary page. */
-	if ((kpg = getkpg()) == NULL)
+	if ((kpg = getkpg(1)) == NULL)
 		return (-1);
 		
 	/* Read page. */

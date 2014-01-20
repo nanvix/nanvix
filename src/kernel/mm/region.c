@@ -134,7 +134,7 @@ found:
 	
 
 	/* Allocate page table. */
-	if ((pgtab = getkpg()) == NULL)
+	if ((pgtab = getkpg(1)) == NULL)
 		return (NULL);
 	
 	/* Initialize region. */

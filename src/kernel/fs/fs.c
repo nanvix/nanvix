@@ -126,7 +126,7 @@ PUBLIC char *getname(const char *name)
 	char *w;       /* Write pointer.       */
 	
 	/* Grab a kernel page. */
-	if ((kname = getkpg()) == NULL)
+	if ((kname = getkpg(0)) == NULL)
 	{
 		curr_proc->errno = -ENOMEM;
 		return (NULL);
