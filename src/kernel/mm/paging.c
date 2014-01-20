@@ -124,26 +124,6 @@ PUBLIC void umappgtab(struct pte *pgdir, addr_t addr)
 }
 
 /*
- * Marks a page.
- */
-PUBLIC void markpg(struct pte *pg, int what)
-{
-	/* Load page from executable file. */
-	if (what == FILL)
-	{
-		pg->fill = 1;
-		pg->clear = 0;
-	}
-	
-	/* Clear page. */
-	else
-	{
-		pg->fill = 0;
-		pg->clear = 1;
-	}
-}
-
-/*
  * Allocates a user page.
  */
 PUBLIC int allocupg(struct pte *upg, int writable)
@@ -167,6 +147,8 @@ found:
 	/* Increment user page reference count. */
 	upages[i]++;
 	
+	kmemset(upg, 0, sizeof(struct pte));
+	
 	upg->present = 1;
 	upg->writable = (writable) ? 1 : 0;
 	upg->user = 1;
@@ -182,9 +164,12 @@ PUBLIC void freeupg(struct pte *upg)
 {
 	int i;
 	
-	/* Nothing to be done. */
+	/* In-disk page. */
 	if (!upg->present)
+	{
+		kmemset(upg, 0, sizeof(struct pte));
 		return;
+	}
 		
 	i = upg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 	
@@ -200,18 +185,21 @@ PUBLIC void freeupg(struct pte *upg)
 }
 
 /*
- * Copies a page.
+ * Marks a page "demand zero".
  */
-PUBLIC void cpypg(struct pte *pg1, struct pte *pg2)
+PUBLIC void zeropg(struct pte *pg)
 {
-	pg1->present = pg2->present;
-	pg1->writable = pg2->writable;
-	pg1->user = pg2->user;
-	pg1->cow = pg2->cow;
-	pg1->clear = pg2->clear;
-	pg1->fill = pg2->fill;
+	pg->fill = 0;
+	pg->clear = 1;
+}
 
-	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
+/*
+ * Marks a page "demand fill"
+ */
+PUBLIC void fillpg(struct pte *pg)
+{
+	pg->fill = 1;
+	pg->clear = 0;	
 }
 
 /*
@@ -319,7 +307,6 @@ PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 	}
 	
 	kmemcpy((void*)(addr & PAGE_MASK), kpg, PAGE_SIZE);
-	pg->fill = 0;
 	
 	putkpg(kpg);
 	return (0);
@@ -376,7 +363,6 @@ PUBLIC void vfault(addr_t addr)
 		}
 		
 		kmemset((void *)(addr & PAGE_MASK), 0, PAGE_SIZE);
-		pg->clear = 0;
 	}
 		
 	/* Load page from executable file. */
@@ -402,6 +388,19 @@ error0:
 	if (KERNEL_RUNNING(curr_proc))
 		kpanic("validity page fault");
 	sndsig(curr_proc, SIGSEGV);
+}
+
+/*
+ * Copies a page.
+ */
+EXTERN void cpypg(struct pte *pg1, struct pte *pg2)
+{
+	pg1->present = pg2->present;
+	pg1->writable = pg2->writable;
+	pg1->user = pg2->user;
+	pg1->cow = pg2->cow;
+
+	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
 }
 
 /*

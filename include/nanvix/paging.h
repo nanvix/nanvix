@@ -11,15 +11,6 @@
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
 	
-	/* markpg() request types. */
-	#define CLEAR 0 /* Clear page.                */
-	#define FILL  1 /* Load page from executable. */
-	
-	/*
-	 * Marks a page.
-	 */
-	EXTERN void markpg(struct pte *pg, int what);
-	
 	/*
 	 * Allocates a kernel page.
 	 */
@@ -97,18 +88,16 @@
 	 */
 	EXTERN void freeupg(struct pte *upg);
 	
+	
 	/*
-	 * DESCRIPTION:
-	 *   The cpypg() function copies the contents of the page pointed to by pg1
-	 *   to the page pointed to by pg2.
-	 * 
-	 * RETURN VALUE:
-	 *   The cpypg() function has no return value.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
+	 * Marks a page "demand zero".
 	 */
-	EXTERN void cpypg(struct pte *pg1, struct pte *pg2);
+	EXTERN void zeropg(struct pte *pg);
+	
+	/*
+	 * Marks a page "demand fill"
+	 */
+	PUBLIC void fillpg(struct pte *pg);
 	
 	/*
 	 * DESCRIPTION:

@@ -39,14 +39,14 @@ PRIVATE int expand(struct region *reg, size_t size)
 	{
 		npages = PAGE_SIZE/PTE_SIZE - npages;
 		for (i = (PAGE_SIZE/PTE_SIZE - 1); i >= npages; i--)
-			markpg(&reg->pgtab[i], CLEAR);	
+			zeropg(&reg->pgtab[i]);
 	}
 
 	/* Expand upwards. */
 	else
 	{
 		for (i = 0; i < npages; i++)
-			markpg(&reg->pgtab[i], CLEAR);
+			zeropg(&reg->pgtab[i]);
 	}
 	
 	reg->size += size;
@@ -406,7 +406,7 @@ PUBLIC int loadreg(struct inode *inode, struct region *reg, off_t off, size_t si
 	
 	/* Mark pages as demand fill. */
 	for (i = 0; i < npages; i++)
-		markpg(&reg->pgtab[i], FILL);
+		fillpg(&reg->pgtab[i]);
 	
 	return (0);
 }
