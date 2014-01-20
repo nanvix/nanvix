@@ -13,7 +13,7 @@
 /*
  * 
  */
-PUBLIC void die(void)
+PUBLIC void die(int status)
 {
 	int i;
 	struct process *p;
@@ -21,7 +21,9 @@ PUBLIC void die(void)
 	/* Shall not occour. */
 	if (curr_proc == IDLE)
 		kpanic("idle process dying");
-		
+	
+	curr_proc->status = status;
+	
 	/* Ignore all signals since, process may sleep below. */
 	for (i = 0; i < NR_SIGNALS; i++)
 		curr_proc->handlers[i] = SIG_IGN;
@@ -65,10 +67,7 @@ PUBLIC void die(void)
  */
 PUBLIC void terminate(int sig)
 {
-	/* Process exited due to uncaught signal. */
-	curr_proc->state = ((sig & 0xff) << 16) | (1 << 9);
-	
-	die();
+	die(((sig & 0xff) << 16) | (1 << 9));
 }
 
 /*
@@ -76,10 +75,7 @@ PUBLIC void terminate(int sig)
  */
 PUBLIC void abort(int sig)
 {
-	/* Process exited due to uncaught signal. */
-	curr_proc->state = ((sig & 0xff) << 16) | (1 << 9);
-	
-	die();
+	die(((sig & 0xff) << 16) | (1 << 9));
 }
 
 /*

@@ -14,30 +14,47 @@
 	#define PGTAB_MASK  (~(PGTAB_SIZE - 1)) /* Page table mask.            */
 
 	/* Sizes. */
-	#define PAGE_SIZE  (1 << PAGE_SHIFT) /* Page size (in bytes).             */
-	#define PGTAB_SIZE (1 <<PGTAB_SHIFT) /* Page table size (in bytes).       */
-	#define PTE_SIZE   4                 /* Page table entry size (in bytes). */
+	#define PAGE_SIZE  (1 << PAGE_SHIFT) /* Page size.                 */
+	#define PGTAB_SIZE (1 << PGTAB_SHIFT) /* Page table size.           */
+	#define PTE_SIZE   4                 /* Page table entry size.     */
+	#define PDE_SIZE   4                 /* Page directory entry size. */
 
 #ifndef _ASM_FILE_
 
+	/*
+	 * Page directory entry.
+	 */
+	struct pde
+	{
+		unsigned present  :  1; /* Present in memory? */
+		unsigned writable :  1; /* Writable page?     */
+		unsigned user     :  1; /* User page?         */
+		unsigned          :  2; /* Reserved.          */
+		unsigned accessed :  1; /* Accessed?          */
+		unsigned dirty    :  1; /* Dirty?             */
+		unsigned          :  2; /* Reserved.          */
+		unsigned          :  3; /* Unused.            */
+		unsigned frame    : 20; /* Frame number.      */
+	};
+	
 	/*
 	 * Page table entry.
 	 */
 	struct pte
 	{
-		unsigned present  :  1; /* Present in memory?   */
-		unsigned writable :  1; /* Writable page?       */
-		unsigned user     :  1; /* User page?           */
-		unsigned          :  2; /* Reserved.            */
-		unsigned accessed :  1; /* Accessed?            */
-		unsigned dirty    :  1; /* Dirty?               */
-		unsigned          :  2; /* Reserved.            */
-		unsigned cow      :  1; /* Copy on write?       */
-		unsigned clear    :  1; /* Clear page.          */
-		unsigned fill     :  1; /* Load from exec file. */
-		unsigned frame    : 20; /* Frame number.        */
+		unsigned present  :  1; /* Present in memory? */
+		unsigned writable :  1; /* Writable page?     */
+		unsigned user     :  1; /* User page?         */
+		unsigned          :  2; /* Reserved.          */
+		unsigned accessed :  1; /* Accessed?          */
+		unsigned dirty    :  1; /* Dirty?             */
+		unsigned          :  2; /* Reserved.          */
+		unsigned cow      :  1; /* Copy on write?     */
+		unsigned zero     :  1; /* Demand zero?       */
+		unsigned fill     :  1; /* Demand fill?       */
+		unsigned frame    : 20; /* Frame number.      */
 	};
-	
+
 	/*
 	 * DESCRIPTION;
 	 *   The PG() macro returns the page number where a given virtual address.

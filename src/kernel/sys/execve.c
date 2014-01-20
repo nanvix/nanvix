@@ -387,6 +387,6 @@ die1:
 die0:
 	inode_put(inode);
 	putname(name);
-	die();
+	die(((SIGSEGV & 0xff) << 16) | (1 << 9));
 	return (-1);
 }

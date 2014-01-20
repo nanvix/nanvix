@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * paging.c - Paging subsystem.
+ * mm/paging.c - Paging subsystem.
  */
 
 #include <asm/util.h>
@@ -13,19 +13,16 @@
 #include <nanvix/mm.h>
 #include <nanvix/paging.h>
 #include <nanvix/region.h>
+#include <errno.h>
 #include <signal.h>
 
-/* Number of kernel pages. */
-#define NR_KPAGES (KPOOL_SIZE/PAGE_SIZE)
-
-/* Number of user pages. */
-#define NR_UPAGES (UMEM_SIZE/PAGE_SIZE)
-
 /* Kernel pages. */
-PRIVATE int kpages[NR_KPAGES] = { 0,  };
+#define NR_KPAGES (KPOOL_SIZE/PAGE_SIZE) /* Amount.          */
+PRIVATE int kpages[NR_KPAGES] = { 0,  }; /* Reference count. */
 
 /* User pages. */
-PRIVATE int upages[NR_UPAGES] = { 0,  };
+#define NR_UPAGES (UMEM_SIZE/PAGE_SIZE)  /* Amount.          */
+PRIVATE int upages[NR_UPAGES] = { 0,  }; /* Reference count. */
 
 /*
  * Allocates a kernel page.
@@ -44,7 +41,8 @@ PUBLIC void *getkpg(int clean)
 	}
 
 	kprintf("mm: kernel page pool overflow");
-
+	
+	curr_proc->errno = -EAGAIN;
 	return (NULL);
 
 found:
@@ -69,33 +67,33 @@ PUBLIC void putkpg(void *kpg)
 	
 	i = ((addr_t)kpg - KPOOL_VIRT) >> PAGE_SHIFT;
 	
-	/* Decrement kernel page reference count. */
+	/* Release page. */
 	kpages[i]--;
 	
 	/* Double free. */
 	if (kpages[i] < 0)
-		kpanic("putting back kernel page twice");
+		kpanic("mm: releasing kernel page twice");
 }
 
 /*
- * Maps a kernel page in the user address space as a page table.
+ * Maps a kernel page as a user page table.
  */
-PUBLIC int mappgtab(struct pte *pgdir, addr_t addr, void *kpg, int writable)
+PUBLIC int mappgtab(struct pde *pgdir, addr_t addr, void *kpg)
 {
 	int i;
 	
-	i = addr >> PGTAB_SHIFT;
+	i = PGTAB(addr);
 	
-	/* Kernel page cannot be mapped at given address. */
-	if ((addr >= KBASE_VIRT) || (pgdir[i].present))
+	/* Another page table is mapped here. */
+	if (pgdir[i].present)
 	{
-		kprintf("cannot map page table at %x", addr);
+		curr_proc->errno = -EBUSY;
 		return (-1);
 	}
 	
 	/* Map kernel page. */
 	pgdir[i].present = 1;
-	pgdir[i].writable = (writable) ? 1 : 0;
+	pgdir[i].writable = 1;
 	pgdir[i].user = 1;
 	pgdir[i].frame = ((addr_t)kpg - KBASE_VIRT) >> PAGE_SHIFT;
 	
@@ -107,15 +105,15 @@ PUBLIC int mappgtab(struct pte *pgdir, addr_t addr, void *kpg, int writable)
 /*
  * Unmaps a page table from the user address space.
  */
-PUBLIC void umappgtab(struct pte *pgdir, addr_t addr)
+PUBLIC void umappgtab(struct pde *pgdir, addr_t addr)
 {
 	int i;
 	
 	i = addr >> PGTAB_SHIFT;
 	
-	/* Cannot unmap page at given address. */
-	if ((addr >= KBASE_VIRT) || !(pgdir[i].present))
-		kpanic("cannot unmap page table");
+	/* Unmap non present page table. */
+	if (!(pgdir[i].present))
+		kpanic("unmap non present page table");
 
 	/* Unmap kernel page. */
 	kmemset(&pgdir[i], 0, sizeof(struct pte));
@@ -138,21 +136,21 @@ PUBLIC int allocupg(struct pte *upg, int writable)
 			goto found;
 	}
 	
-	kprintf("there are no free user pages");
+	kprintf("mm: there are no free user pages left");
 	
+	curr_proc->errno = -EAGAIN;
 	return (-1);
 
 found:
-
-	/* Increment user page reference count. */
-	upages[i]++;
 	
+	/* Allocate page. */
 	kmemset(upg, 0, sizeof(struct pte));
-	
+	upages[i]++;
 	upg->present = 1;
 	upg->writable = (writable) ? 1 : 0;
 	upg->user = 1;
 	upg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
+	tlb_flush();
 	
 	return (0);
 }
@@ -173,11 +171,10 @@ PUBLIC void freeupg(struct pte *upg)
 		
 	i = upg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 	
-	/* Decrement user page reference count. */
-	upages[i]--;
-		
 	/* Free user page. */
+	upages[i]--;
 	kmemset(upg, 0, sizeof(struct pte));
+	tlb_flush();
 		
 	/* Double free. */
 	if (upages[i] < 0)
@@ -189,8 +186,12 @@ PUBLIC void freeupg(struct pte *upg)
  */
 PUBLIC void zeropg(struct pte *pg)
 {
+	/* Bad page table entry. */
+	if (pg->present)
+		kpanic("demand zero on a present page");
+	
 	pg->fill = 0;
-	pg->clear = 1;
+	pg->zero = 1;
 }
 
 /*
@@ -198,8 +199,12 @@ PUBLIC void zeropg(struct pte *pg)
  */
 PUBLIC void fillpg(struct pte *pg)
 {
+	/* Bad page table entry. */
+	if (pg->present)
+		kpanic("demand fill on a present page");
+	
 	pg->fill = 1;
-	pg->clear = 0;	
+	pg->zero = 0;	
 }
 
 /*
@@ -207,6 +212,8 @@ PUBLIC void fillpg(struct pte *pg)
  */
 PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 {	
+	int i;
+	
 	/* Page is present. */
 	if (upg1->present)
 	{		
@@ -217,7 +224,8 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 			upg1->cow = 1;
 		}
 		
-		upages[upg1->frame - (UBASE_PHYS >> PAGE_SHIFT)]++;
+		i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
+		upages[i]++;
 	}
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
@@ -228,19 +236,17 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
  */
 PUBLIC int crtpgdir(struct process *proc)
 {
-	void *kstack;
-	struct pte *pgdir;
-	struct intstack *s1, *s2;
+	void *kstack;             /* Kernel stack.     */
+	struct pde *pgdir;        /* Page directory.   */
+	struct intstack *s1, *s2; /* Interrupt stacks. */
 	
+	/* Get kernel page for page directory. */
 	pgdir = getkpg(1);
-	
-	/* Failed to get kernel page. */
 	if (pgdir == NULL)
 		goto err0;
 
+	/* Get kernel page for kernel stack. */
 	kstack = getkpg(0);
-	
-	/* Failed to get kernel page. */
 	if (kstack == NULL)
 		goto err1;
 
@@ -253,10 +259,6 @@ PUBLIC int crtpgdir(struct process *proc)
 	/* Clone kernel stack. */
 	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
 	
-	proc->cr3 = (addr_t)pgdir - KBASE_VIRT;
-	proc->pgdir = pgdir;
-	proc->kstack = kstack;
-	
 	/* Adjust stack pointers. */
 	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
 	if (KERNEL_RUNNING(curr_proc))
@@ -265,6 +267,11 @@ PUBLIC int crtpgdir(struct process *proc)
 		s2 = (struct intstack *) proc->kesp;	
 		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
 	}
+	
+	/* Assign page directory. */
+	proc->cr3 = (addr_t)pgdir - KBASE_VIRT;
+	proc->pgdir = pgdir;
+	proc->kstack = kstack;
 	
 	return (0);
 
@@ -288,27 +295,32 @@ PUBLIC void dstrypgdir(struct process *proc)
  */
 PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 {
-	void *kpg;           /* Auxiliary kernel page.   */
-	struct inode *inode; /* File inode.              */
-	
-	/* Get auxiliary page. */
-	if ((kpg = getkpg(1)) == NULL)
-		return (-1);
-		
-	/* Read page. */
-	inode = reg->file.inode;
-	file_read(inode, kpg, PAGE_SIZE, reg->file.off + (PG(addr) << PAGE_SHIFT));
+	char *p;             /* Read pointer. */
+	off_t off;           /* Block offset. */
+	ssize_t count;       /* Bytes read.   */
+	struct inode *inode; /* File inode.   */
 	
 	/* Assign new user page. */
 	if (allocupg(pg, reg->mode & MAY_WRITE))
+		return (-1);
+	
+	/* Read page. */
+	off = reg->file.off + (PG(addr) << PAGE_SHIFT);
+	inode = reg->file.inode;
+	p = (char *)(addr & PAGE_MASK);
+	count = file_read(inode, p, PAGE_SIZE, off);
+	
+	/* Failed to read page. */
+	if (count < 0)
 	{
-		putkpg(kpg);
+		freeupg(pg);
 		return (-1);
 	}
 	
-	kmemcpy((void*)(addr & PAGE_MASK), kpg, PAGE_SIZE);
+	/* Fill remainder bytes with zero. */
+	else if (count < PAGE_SIZE)
+		kmemset(p + count, 0, PAGE_SIZE - count);
 	
-	putkpg(kpg);
 	return (0);
 }
 
@@ -318,11 +330,12 @@ PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 PUBLIC void vfault(addr_t addr)
 {
 	struct pte *pg;       /* Working page.           */
-	struct pregion *preg; /* Working process region. */
 	struct region *reg;   /* Working region.         */
+	struct pregion *preg; /* Working process region. */
 
 	/* Get associated region. */
-	if ((preg = findreg(curr_proc, addr)) == NULL)
+	preg = findreg(curr_proc, addr);
+	if (reg == NULL)
 	{
 		kpanic("debug 0");
 		goto error0;
@@ -353,7 +366,7 @@ PUBLIC void vfault(addr_t addr)
 	pg = &reg->pgtab[PG(addr)];
 		
 	/* Clear page. */
-	if (pg->clear)
+	if (pg->zero)
 	{
 		/* Assign new page to region. */
 		if (allocupg(pg, reg->mode & MAY_WRITE))
@@ -388,6 +401,7 @@ error0:
 	if (KERNEL_RUNNING(curr_proc))
 		kpanic("validity page fault");
 	sndsig(curr_proc, SIGSEGV);
+	die(((SIGSEGV & 0xff) << 16) | (1 << 9));
 }
 
 /*
@@ -453,8 +467,6 @@ PUBLIC void pfault(addr_t addr)
 		pg->cow = 0;
 		pg->writable = 1;
 	}
-		
-	
 	
 	unlockreg(reg);
 
@@ -466,4 +478,5 @@ error0:
 	if (KERNEL_RUNNING(curr_proc))
 		kpanic("kernel protection page fault");
 	sndsig(curr_proc, SIGSEGV);
+	die(((SIGSEGV & 0xff) << 16) | (1 << 9));
 }

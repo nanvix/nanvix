@@ -336,6 +336,10 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 		
 		bbuf = block_read(i->dev, blk);
 		
+		/* Failed to read. */
+		if (bbuf == NULL)
+			return (-1);
+		
 		chunk = (n < BLOCK_SIZE) ? n : BLOCK_SIZE;
 		kmemcpy(p, bbuf->data, chunk);
 		block_put(bbuf);

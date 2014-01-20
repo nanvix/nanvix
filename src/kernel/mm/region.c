@@ -8,6 +8,7 @@
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
+#include <nanvix/mm.h>
 #include <nanvix/paging.h>
 #include <nanvix/pm.h>
 #include <nanvix/region.h>
@@ -132,7 +133,6 @@ PUBLIC struct region *allocreg(mode_t mode, size_t size, int flags)
 
 found:
 	
-
 	/* Allocate page table. */
 	if ((pgtab = getkpg(1)) == NULL)
 		return (NULL);
@@ -211,6 +211,13 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 	if (preg->reg != NULL)
 		return (-1);
 	
+	/* Bad address. */
+	if ((addr < UBASE_VIRT) || (addr >= KBASE_VIRT))
+	{
+		curr_proc->errno = -EFAULT;
+		return (-1);
+	}
+	
 	/* Region grows downwards. */
 	if (reg->flags & REGION_DOWNWARDS)
 	{
@@ -250,7 +257,7 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 	}
 
 	/* Map page table. */
-	if (mappgtab(proc->pgdir, addr, reg->pgtab, mode & MAY_WRITE))
+	if (mappgtab(proc->pgdir, addr, reg->pgtab))
 		return (-1);
 	
 	/* Attach region. */

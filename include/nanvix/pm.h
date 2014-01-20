@@ -84,7 +84,7 @@
 		sighandler_t handlers[NR_SIGNALS];   /* Signal handlers.           */
 		
     	/* Memory information. */
-		struct pte *pgdir;                 /* Page directory.             */
+		struct pde *pgdir;                 /* Page directory.             */
 		struct pregion pregs[NR_PREGIONS]; /* Process memory regions.     */
 		size_t size;                       /* Process size.               */
 		kjmp_buf kenv;                     /* Environment for klongjmp(). */
@@ -139,7 +139,7 @@
 	
 	EXTERN void abort(int err);
 	
-	EXTERN void die();
+	EXTERN void die(int die);
 	
 	EXTERN void bury(struct process *proc);
 	

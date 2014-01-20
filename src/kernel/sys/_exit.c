@@ -12,8 +12,5 @@
  */
 PUBLIC void sys__exit(int status)
 {
-	/* Process exited normally. */
-	curr_proc->status = (1 << 8) | (status & 0xff);
-	
-	die();
+	die((1 << 8) | (status & 0xff));
 }

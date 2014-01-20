@@ -20,7 +20,7 @@
 
 /* init stuff. */
 PUBLIC char init_kstack[KSTACK_SIZE]; /* Kernel stack.   */
-EXTERN struct pte init_pgdir[];       /* Page directory. */
+EXTERN struct pde init_pgdir[];       /* Page directory. */
 
 /* Process table. */
 PUBLIC struct process proctab[PROC_MAX];
