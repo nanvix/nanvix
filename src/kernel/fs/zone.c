@@ -172,6 +172,13 @@ PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
 		return (BLOCK_NULL);
 	}
 	
+	/* 
+	 * Create blocks that are in a
+	 * valid offset.
+	 */
+	if (off < inode->size)
+		create = 1;
+	
 	/* Direct zone. */
 	if (logic < NR_ZONES_DIRECT)
 	{

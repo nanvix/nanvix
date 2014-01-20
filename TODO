@@ -3,20 +3,20 @@ Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 Kernel functionalities to be implemented:
 	
-	* check when linking pages from executable 
+	* xalloc()
+	* file locking
+	* nonblocking I/O
+
+Things to be fixed:
+
+	* sleep on inode must be interruptible
+	* signal() check death of child signal
+	* normal user cannot use last process table slot
 	* execve() setuid when need
-	* write() and append mode
-	* read() at valid offset but blocks are unallocated
 	* close() release inode and current directory
 	* open() when creating new file allocate inode first than writing directory 
 	* open() when truncating existing file do not change ownership
 	* fork() check number of process per user
-	* implement xalloc()
-	* signal() check death of child signal
-	* normal user cannot use last process table slot
-	* sleep on inode must be interruptible
-	* implement file locking
-	* implemented O_NONBLOCK
 	
 High priority system calls to be implemented:
 

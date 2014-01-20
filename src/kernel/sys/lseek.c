@@ -54,7 +54,6 @@ PUBLIC off_t sys_lseek(int fd, off_t offset, int whence)
 		
 		default :
 			return (-EINVAL);
-			break;
 	}
 	
 	return (f->pos);

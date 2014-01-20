@@ -340,7 +340,18 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 		if (bbuf == NULL)
 			return (-1);
 		
+		/* Calculate read chunk size. */
 		chunk = (n < BLOCK_SIZE) ? n : BLOCK_SIZE;
+		if ((off_t)chunk > i->size - off)
+		{
+			chunk = i->size - off;
+			if (chunk == 0)
+			{
+				block_put(bbuf);
+				goto out;
+			}
+		}
+		
 		kmemcpy(p, bbuf->data, chunk);
 		block_put(bbuf);
 		
@@ -350,6 +361,7 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 	} while (n > 0);
 
 out:
+	i->time = CURRENT_TIME;
 	inode_unlock(i);
 	return ((ssize_t)(p - (char *)buf));
 }
@@ -386,9 +398,19 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 		n -= chunk;
 		off += chunk;
 		p += chunk;
+		
+		/* Update file size. */
+		if (off > i->size)
+		{
+			i->size = off;
+			i->flags |= INODE_DIRTY;
+		}
+		
 	} while (n > 0);
 
 out:
+
+	i->time = CURRENT_TIME;
 	inode_unlock(i);
 	return ((ssize_t)(p - (char *)buf));
 }

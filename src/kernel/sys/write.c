@@ -30,16 +30,17 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	
 	/* File not opened for writing. */
 	if (ACCMODE(f->oflag) == O_RDONLY)
-	{
-		kprintf("write(%d) %d %x %d", curr_proc->pid, fd, buf, n);
 		return (-EBADF);
-	}
 	
 	/* Invalid buffer. */
 	if (!chkmem(buf, n, MAY_READ))
 		return (-EINVAL);
 	
 	i = f->inode;
+	
+	/* Append mode. */
+	if (f->oflag & O_APPEND)
+		f->pos = i->size;
 	
 	/* Character special file. */
 	if (S_ISCHR(i->mode))
@@ -71,7 +72,6 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	if (count < 0)
 		return (curr_proc->errno);
 	
-	i->time = CURRENT_TIME;
 	f->pos += count;
 	
 	return (count);
