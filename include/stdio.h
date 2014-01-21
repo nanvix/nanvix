@@ -9,6 +9,7 @@
 
 	#include <sys/types.h>
 	#include <limits.h>
+	#include <stdarg.h>
 
 	/* Standard buffer size. */
 	#define BUFSIZ 256
@@ -88,6 +89,21 @@
 	 * Writes a string to the standard output file.
 	 */
 	extern int puts(const char *str);
+	
+	/*
+	 * Writes a formated string to the standard output file.
+	 */
+	extern int printf(const char *format, ...);
+	
+	/*
+	 * Writes format output of a stdarg argument list to a file.
+	 */
+	extern int vfprintf(FILE *stream, const char *format, va_list ap);
+	
+	/*
+	 * Writes format output of a stdarg argument list to a string. 
+	 */
+	extern int vsprintf(char *string, const char *format, va_list args);
 	
 	/*
 	 * Flushes a file stream.

@@ -16,12 +16,13 @@ int main(int argc, char **argv)
 	((void)argc);
 	((void)argv);
 	
-	puts("Nanvix Shell - Copyright(C) 2011-2014 Pedro H. Penna");
+	printf("Nanvix Shell - Copyright(C) 2011-2014 Pedro H. Penna\n");
 	
 	while (1)
 	{
-		puts("$ ");
+		printf("$ ");
 		gets(line);
+		puts(line);
 	}
 	
 	return (0);
