@@ -78,7 +78,7 @@ again:
 			}
 			
 			/* Initialize buffer. */
-			stream->flags |= _IO_MYBUF | _IOREADING;
+			stream->flags |= _IOMYBUF | _IOREADING;
 			stream->buf = buf;
 			stream->ptr = buf;
 			stream->bufsiz = BUFSIZ;

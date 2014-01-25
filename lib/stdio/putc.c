@@ -86,7 +86,7 @@ again:
 			}
 			
 			/* Initialize buffer. */
-			stream->flags |= _IO_MYBUF | _IOWRITING;
+			stream->flags |= _IOMYBUF | _IOWRITING;
 			stream->buf = buf;
 			stream->ptr = buf;
 			stream->bufsiz = BUFSIZ;

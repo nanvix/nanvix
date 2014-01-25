@@ -21,18 +21,18 @@
 	#define FOPEN_MAX OPEN_MAX
 
 	/* File stream flags. */
-	#define _IOFBF     00001 /* Fully buffered?                */
-	#define _IOLBF     00002 /* Line buffered?                 */
-	#define _IONBF     00004 /* Unbuffered?                    */
-	#define _IOREAD    00010 /* Readable?                      */
-	#define _IOWRITE   00020 /* Writable?                      */
-	#define _IOAPPEND  00040 /* Append?                        */
-	#define _IOEOF     00100 /* End of file reached?           */
-	#define _IOERROR   00200 /* Error encountered?             */
-	#define _IO_MYBUF  00400 /* Library buffer?                */
-	#define _IOREADING 01000 /* Now reading?                   */
-	#define _IOWRITING 02000 /* Now writing?                   */
-	#define _IOSYNC    04000 /* Sync file position on append?  */
+	#define _IOFBF     00001 /* Fully buffered?               */
+	#define _IOLBF     00002 /* Line buffered?                */
+	#define _IONBF     00004 /* Unbuffered?                   */
+	#define _IOREAD    00010 /* Readable?                     */
+	#define _IOWRITE   00020 /* Writable?                     */
+	#define _IOAPPEND  00040 /* Append?                       */
+	#define _IOEOF     00100 /* End of file reached?          */
+	#define _IOERROR   00200 /* Error encountered?            */
+	#define _IOMYBUF   00400 /* Library buffer?               */
+	#define _IOREADING 01000 /* Now reading?                  */
+	#define _IOWRITING 02000 /* Now writing?                  */
+	#define _IOSYNC    04000 /* Sync file position on append? */
 
 	/*
 	 * File stream.
@@ -94,6 +94,11 @@
 	 * Writes a formated string to the standard output file.
 	 */
 	extern int printf(const char *format, ...);
+	
+	/*
+	 * Assigns a buffer to a stream.
+	 */
+	extern int setvbuf(FILE *stream, char *buf, int type, size_t size);
 	
 	/*
 	 * Writes format output of a stdarg argument list to a file.

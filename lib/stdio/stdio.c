@@ -10,7 +10,7 @@
 /* File streams table. */
 FILE streams[FOPEN_MAX] = {
 	{ 0, _IOREADING | _IOREAD  | _IOLBF, NULL, NULL, 0, -1, -1 },
-	{ 1, _IOWRITING | _IOWRITE | _IONBF, NULL, NULL, 0, -1, -1 },
+	{ 1, _IOWRITING | _IOWRITE | _IOFBF, NULL, NULL, 0, -1, -1 },
 	{ 2, _IOWRITING | _IOWRITE | _IONBF, NULL, NULL, 0, -1, -1 },
 };
 

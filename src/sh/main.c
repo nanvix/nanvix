@@ -4,6 +4,7 @@
  * sh - Nanvix shell.
  */
 
+#include <stdlib.h>
 #include <stdio.h>
 
 /*
@@ -16,7 +17,9 @@ int main(int argc, char **argv)
 	((void)argc);
 	((void)argv);
 	
-	printf("Nanvix Shell - Copyright(C) 2011-2014 Pedro H. Penna\n");
+	setvbuf(stdout, NULL, _IONBF, 0);
+	
+	puts("Nanvix Shell - Copyright(C) 2011-2014 Pedro H. Penna");
 	
 	while (1)
 	{
