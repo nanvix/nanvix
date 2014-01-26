@@ -19,36 +19,15 @@ int putc(int c, FILE *stream)
 	char *buf; /* Buffer.                      */
 	
 	/* Buffer is not full. */
-	if (--stream->nwritten >= 0)
+	if (--stream->count >= 0)
 		return (*stream->ptr++ = c);
 	
 	/* File is not writable. */
 	if (!(stream->flags & _IOWRITE))
 		return (EOF);
-	
-	/* Discard data buffer writing. */
-	if (stream->flags & _IOREADING)
-	{
-		/* Synchronize file position. */
-		if ((n = stream->nread) > 0)
-		{
-			/* Failed. */
-			if (lseek(stream->fd, -n, SEEK_CUR) < 0)
-			{
-				stream->flags |= _IOERROR;
-				return (EOF);
-			}
-		}
-			
-		/* Reset buffer. */
-		stream->nread = -1;
-		stream->ptr = stream->buf;
-		stream->flags &= ~_IOREADING;
-		stream->flags |= _IOWRITING;
-	}
-	
+
 	/* Synchronize file position. */
-	if ((stream->flags & _IOAPPEND) && (stream->flags | _IOSYNC))
+	if ((stream->flags & (_IOSYNC | _IOAPPEND)) == (_IOSYNC | _IOAPPEND))
 	{
 		/* Failed. */
 		if (lseek(stream->fd, 0, SEEK_END) < 0)
@@ -65,8 +44,7 @@ again:
 	if (stream->flags & _IONBF)
 	{
 		/* Reset buffer. */
-		stream->flags |= _IOWRITING;
-		stream->nwritten = 0;
+		stream->count = 0;
 		
 		n = write(stream->fd, &c, count = 1);
 	}
@@ -86,7 +64,7 @@ again:
 			}
 			
 			/* Initialize buffer. */
-			stream->flags |= _IOMYBUF | _IOWRITING;
+			stream->flags |= _IOMYBUF;
 			stream->buf = buf;
 			stream->ptr = buf;
 			stream->bufsiz = BUFSIZ;
@@ -98,7 +76,7 @@ again:
 		if (stream->flags & _IOLBF)
 		{
 			/* Reset buffer. */
-			stream->nwritten = 0;
+			stream->count = 0;
 			
 			/* Flush buffer. */
 			if ((stream->ptr == (buf + stream->bufsiz)) || (c == '\n'))
@@ -112,7 +90,7 @@ again:
 		else
 		{	
 			/* Reset buffer. */
-			stream->nwritten = stream->bufsiz - 1;
+			stream->count = stream->bufsiz - 1;
 			
 			/* Flush buffer. */
 			if (stream->ptr == (buf + stream->bufsiz))

@@ -19,35 +19,12 @@ int getc(FILE *stream)
 	char *buf; /* Buffer.              */
 	
 	/* Buffer is not empty. */
-	if (--stream->nread >= 0)
+	if (--stream->count >= 0)
 		return (*stream->ptr++ & 0xff);
 	
 	/* File is not readable. */
 	if (!(stream->flags & _IOREAD))
 		return (EOF);
-	
-	/* Flush data buffer before reading. */
-	if ((stream->flags & _IOWRITING) && !(stream->flags & _IONBF))
-	{
-		if ((buf = stream->buf) != NULL)
-		{
-			if ((count = (stream->ptr - buf)) > 0)
-			{
-				/* Failed. */
-				if (write(stream->fd, buf, count) != count)
-				{
-					stream->flags |= _IOERROR;
-					return (EOF);
-				}
-			}
-		}
-		
-		/* Reset buffer. */
-		stream->nwritten = -1;
-		stream->ptr = buf;
-		stream->flags &= ~_IOWRITING;
-		stream->flags |= _IOREADING;
-	}
 	
 again:
 	
@@ -55,8 +32,7 @@ again:
 	if (stream->flags & _IONBF)
 	{
 		/* Reset buffer. */
-		stream->flags |= _IOWRITING;
-		stream->nread = 0;
+		stream->count = 0;
 		
 		/* Setup read parameters. */
 		count = 1;
@@ -78,26 +54,26 @@ again:
 			}
 			
 			/* Initialize buffer. */
-			stream->flags |= _IOMYBUF | _IOREADING;
+			stream->flags |= _IOMYBUF;
 			stream->buf = buf;
 			stream->ptr = buf;
 			stream->bufsiz = BUFSIZ;
-			stream->nread = 0;
+			stream->count = 0;
 		}
 		
 		/* Setup read parameters. */
 		count = BUFSIZ;
 	}
 	
-	stream->nread = read(stream->fd, buf, count);
+	stream->count = read(stream->fd, buf, count);
 	
 	/* Reset buffer. */
 	stream->ptr = buf;
 	
 	/* Failed to read. */
-	if (--stream->nread < 0)
+	if (--stream->count < 0)
 	{
-		stream->flags |= (stream->nread == -1) ? _IOEOF : _IOERROR;
+		stream->flags |= (stream->count == -1) ? _IOEOF : _IOERROR;
 		return (EOF);
 	}
 	

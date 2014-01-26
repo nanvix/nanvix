@@ -27,8 +27,7 @@ int setvbuf(FILE *stream, char *buf, int type, size_t size)
 	{
 		stream->flags &= ~(_IOLBF | _IOFBF);
 		stream->flags |= _IONBF;
-		stream->nread = 0;
-		stream->nwritten = 0;
+		stream->count = 0;
 	}
 	
 	/* Buffered. */
@@ -54,18 +53,18 @@ int setvbuf(FILE *stream, char *buf, int type, size_t size)
 		stream->bufsiz = size;
 		
 		/* Setup write buffer. */
-		if (stream->flags & _IOWRITING)
+		if (stream->flags & _IOWRITE)
 		{
 			if (type == _IOLBF)
 			{
 				stream->flags |= _IOLBF;
-				stream->nwritten = 0;
+				stream->count = 0;
 			}
 			
 			else
 			{
 				stream->flags |= _IOFBF;
-				stream->nwritten = stream->bufsiz - 1;
+				stream->count = stream->bufsiz - 1;
 			}
 		}
 		
@@ -73,7 +72,7 @@ int setvbuf(FILE *stream, char *buf, int type, size_t size)
 		else
 		{
 			stream->flags |= (type == _IOLBF) ? _IOLBF : _IOFBF;
-			stream->nread = 0;
+			stream->count = 0;
 		}
 	}
 	

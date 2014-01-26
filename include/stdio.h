@@ -30,8 +30,6 @@
 	#define _IOEOF     00100 /* End of file reached?          */
 	#define _IOERROR   00200 /* Error encountered?            */
 	#define _IOMYBUF   00400 /* Library buffer?               */
-	#define _IOREADING 01000 /* Now reading?                  */
-	#define _IOWRITING 02000 /* Now writing?                  */
 	#define _IOSYNC    04000 /* Sync file position on append? */
 
 	/*
@@ -44,8 +42,7 @@
 		char *buf;     /* Stream buffer.      */
 		char *ptr;     /* Next character.     */
 		size_t bufsiz; /* Buffer size.        */
-		int nread;     /* Read characters.    */
-		int nwritten;  /* Written characters. */
+		int count;     /* Character count.    */
 	} FILE;
 	
 	/*
@@ -63,6 +60,11 @@
 	 * Reads a string from the standard input file.
 	 */
 	extern char *gets(char *str);
+	
+	/*
+	 * Flushes a file stream.
+	 */
+	extern int fflush(FILE *stream);
 	
 	/*
 	 * Writes a character to a file.
