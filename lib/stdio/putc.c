@@ -90,7 +90,6 @@ again:
 			stream->buf = buf;
 			stream->ptr = buf;
 			stream->bufsiz = BUFSIZ;
-			stream->nwritten = BUFSIZ - 1;
 		}
 		
 		*stream->ptr++ = c;
@@ -112,14 +111,14 @@ again:
 		/* Fully buffered. */
 		else
 		{	
-			stream->nwritten--;
+			/* Reset buffer. */
+			stream->nwritten = stream->bufsiz - 1;
 			
 			/* Flush buffer. */
 			if (stream->ptr == (buf + stream->bufsiz))
 			{
 				n = write(stream->fd, buf, count = stream->ptr - buf);
 				stream->ptr = buf;
-				stream->nwritten = stream->bufsiz - 1;
 			}
 		}
 	}
