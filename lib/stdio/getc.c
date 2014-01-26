@@ -22,6 +22,13 @@ int getc(FILE *stream)
 	if (--stream->count >= 0)
 		return (*stream->ptr++ & 0xff);
 	
+	/* Now reading. */
+	if (stream->flags & _IORW)
+	{
+		stream->flags &= ~_IOWRITE;
+		stream->flags |= _IOREAD;
+	}
+	
 	/* File is not readable. */
 	if (!(stream->flags & _IOREAD))
 		return (EOF);

@@ -1,0 +1,82 @@
+.\"
+.\" Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH fclose 3 "January 2014" "C Library" "The Nanvix User Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+fclose \- Closes a file stream.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.BI "#include <" "stdio.h" >
+
+.BI "int fclose(FILE *" stream ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The 
+.BR fclose()
+function causes the stream pointed to by
+.IR stream
+to be flushed and the associated file to be closed. Any unwritten
+buffered data for the stream are written to file; any unread data buffered are
+discarded. Whether or not the call succeeds, the stream is disassociated from 
+the file and any buffer set by the
+.BR setbuf() " or " setvbuf()
+functions are disassociated from the stream. If the associated buffer was 
+automatically allocated, it is deallocated.
+
+After the call to
+.BR fclose() ,
+any use of 
+.IR stream 
+results in undefined behavior.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Upon successul completion, 
+.BR fclose()
+returns 0; otherwise, it returns 
+.BR EOF
+and set 
+.IR errno
+to indicate the error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+Refer to
+.BR close(2) .
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR close(2) ,
+.BR fopen(3)
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"

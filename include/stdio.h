@@ -21,16 +21,17 @@
 	#define FOPEN_MAX OPEN_MAX
 
 	/* File stream flags. */
-	#define _IOFBF     00001 /* Fully buffered?               */
-	#define _IOLBF     00002 /* Line buffered?                */
-	#define _IONBF     00004 /* Unbuffered?                   */
-	#define _IOREAD    00010 /* Readable?                     */
-	#define _IOWRITE   00020 /* Writable?                     */
-	#define _IOAPPEND  00040 /* Append?                       */
-	#define _IOEOF     00100 /* End of file reached?          */
-	#define _IOERROR   00200 /* Error encountered?            */
-	#define _IOMYBUF   00400 /* Library buffer?               */
-	#define _IOSYNC    04000 /* Sync file position on append? */
+	#define _IOFBF    00001 /* Fully buffered?               */
+	#define _IOLBF    00002 /* Line buffered?                */
+	#define _IONBF    00004 /* Unbuffered?                   */
+	#define _IORW     00010 /* Read/Write.                   */
+	#define _IOREAD   00020 /* Readable?                     */
+	#define _IOWRITE  00040 /* Writable?                     */
+	#define _IOAPPEND 00100 /* Append?                       */
+	#define _IOEOF    00200 /* End of file reached?          */
+	#define _IOERROR  00400 /* Error encountered?            */
+	#define _IOMYBUF  01000 /* Library buffer?               */
+	#define _IOSYNC   02000 /* Sync file position on append? */
 
 	/*
 	 * File stream.
@@ -62,6 +63,11 @@
 	extern char *gets(char *str);
 	
 	/*
+	 * Closes a file stream.
+	 */
+	extern int fclose(FILE *stream);
+	
+	/*
 	 * Flushes a file stream.
 	 */
 	extern int fflush(FILE *stream);
@@ -75,6 +81,11 @@
 	 * Writes a string to a file.
 	 */
 	extern int fputs(const char *str, FILE *stream);
+	
+	/*
+	 * Reopens a file stream.
+	 */
+	extern FILE *freopen(const char *filename, const char *mode, FILE *stream);
 	
 	/*
 	 * Writes a character to a file.

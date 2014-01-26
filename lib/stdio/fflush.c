@@ -18,7 +18,12 @@ static int do_fflush(FILE *stream)
 	ssize_t n; /* Byte count to flush. */
 	
 	/* Cannot be flushed. */
-	if ((stream->flags & (_IONBF | _IOWRITE)) != _IOWRITE)
+	/* Not buffered. */
+	if (stream->flags & _IONBF)
+		return (0);
+	
+	/* Not writable. */
+	if (stream->flags & _IOWRITE)
 		return (0);
 	
 	/* No buffer assigned. */

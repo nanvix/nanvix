@@ -15,6 +15,11 @@
 	#endif
 	
 	/*
+	 * Frees memory.
+	 */
+	extern void free(void *ptr);
+	
+	/*
 	 * Allocates memory.
 	 */
 	extern void *malloc(size_t size);

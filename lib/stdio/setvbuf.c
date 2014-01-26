@@ -48,32 +48,11 @@ int setvbuf(FILE *stream, char *buf, int type, size_t size)
 		}
 		
 		stream->flags &= ~(_IOFBF | _IONBF | _IOFBF);
+		stream->flags |= (type == _IOLBF) ? _IOLBF : _IOFBF;
 		stream->buf = buf;
 		stream->ptr = buf;
 		stream->bufsiz = size;
-		
-		/* Setup write buffer. */
-		if (stream->flags & _IOWRITE)
-		{
-			if (type == _IOLBF)
-			{
-				stream->flags |= _IOLBF;
-				stream->count = 0;
-			}
-			
-			else
-			{
-				stream->flags |= _IOFBF;
-				stream->count = stream->bufsiz - 1;
-			}
-		}
-		
-		/* Setup read buffer. */
-		else
-		{
-			stream->flags |= (type == _IOLBF) ? _IOLBF : _IOFBF;
-			stream->count = 0;
-		}
+		stream->count = 0;
 	}
 	
 	return (0);

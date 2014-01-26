@@ -22,6 +22,13 @@ int putc(int c, FILE *stream)
 	if (--stream->count >= 0)
 		return (*stream->ptr++ = c);
 	
+	/* Now writing. */
+	if (stream->flags & _IORW)
+	{
+		stream->flags &= ~_IOREAD;
+		stream->flags |= _IOWRITE;
+	}
+	
 	/* File is not writable. */
 	if (!(stream->flags & _IOWRITE))
 		return (EOF);
@@ -73,11 +80,11 @@ again:
 			stream->bufsiz = BUFSIZ;
 		}
 		
-		*stream->ptr++ = c;
-		
 		/* Line buffered. */
 		if (stream->flags & _IOLBF)
 		{
+			*stream->ptr++ = c;
+		
 			/* Reset buffer. */
 			stream->count = 0;
 			
@@ -92,15 +99,17 @@ again:
 		/* Fully buffered. */
 		else
 		{	
-			/* Reset buffer. */
-			stream->count = stream->bufsiz - 1;
-			
 			/* Flush buffer. */
 			if (stream->ptr == (buf + stream->bufsiz))
 			{
-				n = write(stream->fd, buf, count = stream->ptr - buf);
+				n = write(stream->fd, buf, count = stream->bufsiz);
 				stream->ptr = buf;
 			}
+			
+			*stream->ptr++ = c;
+		
+			/* Reset buffer. */
+			stream->count = stream->bufsiz - 1;
 		}
 	}
 		
