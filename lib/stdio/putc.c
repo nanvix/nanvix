@@ -27,13 +27,16 @@ int putc(int c, FILE *stream)
 		return (EOF);
 
 	/* Synchronize file position. */
-	if ((stream->flags & (_IOSYNC | _IOAPPEND)) == (_IOSYNC | _IOAPPEND))
+	if (!(stream->flags & _IOEOF))
 	{
-		/* Failed. */
-		if (lseek(stream->fd, 0, SEEK_END) < 0)
+		if ((stream->flags & (_IOSYNC | _IOAPPEND)) == (_IOSYNC | _IOAPPEND))
 		{
-			stream->flags |= _IOERROR;
-			return (EOF);
+			/* Failed. */
+			if (lseek(stream->fd, 0, SEEK_END) < 0)
+			{
+				stream->flags |= _IOERROR;
+				return (EOF);
+			}
 		}
 	}
 

@@ -26,6 +26,10 @@ int getc(FILE *stream)
 	if (!(stream->flags & _IOREAD))
 		return (EOF);
 	
+	/* End of file reached. */
+	if (stream->flags & _IOEOF)
+		return (EOF);
+		
 again:
 	
 	/* Not buffered. */
