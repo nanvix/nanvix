@@ -9,6 +9,12 @@
 
 	#include <sys/types.h>
 
+	/* Unsuccessful termination. */
+	#define EXIT_FAILURE 1
+	
+	/* Successful termination. */
+	#define EXIT_SUCCESS 0
+
 	/* Null pointer. */
 	#ifndef NULL
 		#define NULL ((void *)0)

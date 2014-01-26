@@ -7,6 +7,8 @@
 #ifndef SYS_WAIT_H_
 #define SYS_WAIT_H_
 
+	#include <sys/types.h>
+
 	#define WEXITSTATUS(status) \
 		(status & 0xff)         \
     

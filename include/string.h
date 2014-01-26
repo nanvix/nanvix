@@ -15,6 +15,11 @@
 	extern char *strchr(const char *str, int c);
 
 	/*
+	 * Compares two strings.
+	 */
+	extern int strcmp(const char *str1, const char *str2);
+
+	/*
 	 * Returns the length of a string.
 	 */
 	extern size_t strlen(const char * str);
