@@ -6,6 +6,7 @@
 SRC = $(wildcard *.c)          \
       $(wildcard errno/*.c)    \
       $(wildcard fcntl/*.c)    \
+      $(wildcard signal/*.c)   \
       $(wildcard stdio/*.c)    \
       $(wildcard stdlib/*.c)   \
       $(wildcard string/*.c)   \

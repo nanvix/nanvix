@@ -76,7 +76,7 @@ again:
 		count = BUFSIZ;
 	}
 	
-	stream->count = read(stream->fd, buf, count);
+	stream->count = read(fileno(stream), buf, count);
 	
 	/* Reset buffer. */
 	stream->ptr = buf;

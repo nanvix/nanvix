@@ -90,8 +90,8 @@ int open(const char *path, int oflag, ...)
  */
 PRIVATE void init(void)
 {
-	const char *argv[] = { "/etc/inittab", NULL };
-	const char *envp[] = { "PATH=/usr/bin", "HOME=/", NULL };
+	const char *argv[] = { "init", "/etc/inittab", NULL };
+	const char *envp[] = { "PATH=/bin", "HOME=/", NULL };
 	
 	/* Open standard output streams. */
 	open("/dev/tty", O_RDONLY);

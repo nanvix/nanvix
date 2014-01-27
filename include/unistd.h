@@ -70,9 +70,25 @@
 		fcntl(fd, F_DUPFD, 0)
 	
 	/*
+	 * Duplicates a file descriptor.
+	 */
+	extern int dup2(int oldfd, int newfd);
+	
+	/*
 	 * Executes a program.
 	 */
-	extern int execve(const char *filename, const char **argv, const char **envp);
+	#define execv(path, argv) \
+		execve(path, argv, (char *const*)environ);
+	
+	/*
+	 * Executes a program.
+	 */
+	extern int execve(const char *filename, char *const argv[],  char *const envp[]);
+
+	/*
+	 * Executes a program.
+	 */
+	extern int execvp(const char *file, char *const argv[]);
 
 	/*
 	 * Creates a new process.
@@ -108,6 +124,12 @@
 	 * Gets the real user ID of the calling process.
 	 */
 	extern uid_t getuid(void);
+	
+	/*
+	 * Test whether a file descriptor refers to a terminal.
+	 */
+	#define isatty(fd) \
+		(1)
 	
 	/*
 	 * Creates an interprocess channel.

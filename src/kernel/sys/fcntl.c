@@ -7,6 +7,7 @@
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <nanvix/pm.h>
+#include <nanvix/syscall.h>
 #include <errno.h>
 #include <fcntl.h>
 
@@ -36,6 +37,19 @@ found:
 	(curr_proc->ofiles[newfd] = curr_proc->ofiles[oldfd])->count++;
 
 	return (newfd);
+}
+
+/*
+ * Duplicates a file descriptor.
+ */
+EXTERN int sys_dup2(int oldfd, int newfd)
+{
+	/* Invalid file descriptor. */
+	if ((newfd < 0)||(newfd >= OPEN_MAX)||((curr_proc->ofiles[newfd]) == NULL))
+		return (-EBADF);
+	
+	sys_close(newfd);
+	return (do_dup(oldfd, newfd));
 }
 
 /*

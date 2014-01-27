@@ -39,7 +39,7 @@ static int do_fflush(FILE *stream)
 	stream->count = (stream->flags & _IOLBF) ? 0 : stream->bufsiz - 1;
 	
 	/* Flush. */
-	if (write(stream->fd, buf, n) != n)
+	if (write(fileno(stream), buf, n) != n)
 	{
 		stream->flags |= _IOERROR;
 		return (EOF);

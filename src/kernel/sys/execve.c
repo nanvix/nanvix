@@ -267,7 +267,7 @@ PRIVATE addr_t create_tables(char *stack, size_t size, int p, int argc, int envc
  * Builds arguments.
  */
 PRIVATE addr_t buildargs
-(void *stack, size_t size, const char **name, const char **argv, const char **envp)
+(void *stack, size_t size, const char **argv, const char **envp)
 {
 	int p;        /* Stack pointer. */
 	int argc;     /* argv length.   */
@@ -286,9 +286,7 @@ PRIVATE addr_t buildargs
 		return (0);
 	if ((p = copy_strings(argc, argv, stack, p, 0)) < 0)
 		return (0);
-	if ((p = copy_strings(1, name, stack, p, 1)) < 0)
-		return (0);
-	if ((p = create_tables(stack, size, p, argc + 1, envc)) == 0)
+	if ((p = create_tables(stack, size, p, argc, envc)) == 0)
 		return (0);
 		
 	return (p);
@@ -313,7 +311,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	
 	/* Build arguments before freeing user memory. */
 	kmemset(stack, 0, ARG_MAX);
-	if (!(sp = buildargs(stack, ARG_MAX, (const char **)&name, argv, envp)))
+	if (!(sp = buildargs(stack, ARG_MAX, argv, envp)))
 	{
 		putname(name);
 		return (curr_proc->errno);

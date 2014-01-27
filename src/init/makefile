@@ -10,7 +10,7 @@ EXEC = init
 
 # Builds init.
 all: $(SRC)
-	$(CC) $(CFLAGS) -Wl,-T $(LIBDIR)/link.ld $< -o $(BINDIR)/$(EXEC) $(LIBDIR)/$(LIB)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(SRC) -o $(BINDIR)/$(EXEC) $(LIBDIR)/$(LIB)
 
 # Cleans compilation files.
 clean:

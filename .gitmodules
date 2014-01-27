@@ -1,0 +1,3 @@
+[submodule "src/tsh"]
+	path = src/tsh
+	url = https://github.com/ppenna/tsh.git

@@ -39,7 +39,7 @@ int putc(int c, FILE *stream)
 		if ((stream->flags & (_IOSYNC | _IOAPPEND)) == (_IOSYNC | _IOAPPEND))
 		{
 			/* Failed. */
-			if (lseek(stream->fd, 0, SEEK_END) < 0)
+			if (lseek(fileno(stream), 0, SEEK_END) < 0)
 			{
 				stream->flags |= _IOERROR;
 				return (EOF);
@@ -56,7 +56,7 @@ again:
 		/* Reset buffer. */
 		stream->count = 0;
 		
-		n = write(stream->fd, &c, count = 1);
+		n = write(fileno(stream), &c, count = 1);
 	}
 	
 	/* Buffered. */
@@ -91,7 +91,7 @@ again:
 			/* Flush buffer. */
 			if ((stream->ptr == (buf + stream->bufsiz)) || (c == '\n'))
 			{			
-				n = write(stream->fd, buf, count = stream->ptr - buf);
+				n = write(fileno(stream), buf, count = stream->ptr - buf);
 				stream->ptr = buf;
 			}
 		}
@@ -102,7 +102,7 @@ again:
 			/* Flush buffer. */
 			if (stream->ptr == (buf + stream->bufsiz))
 			{
-				n = write(stream->fd, buf, count = stream->bufsiz);
+				n = write(fileno(stream), buf, count = stream->bufsiz);
 				stream->ptr = buf;
 			}
 			

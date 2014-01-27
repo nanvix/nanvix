@@ -24,6 +24,8 @@ int main(int argc, char **argv)
 
 	((void)argc);
 	((void)argv);
+	
+	setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
 	arg[0] = "-";
 	arg[1] = NULL;
@@ -42,7 +44,7 @@ int main(int argc, char **argv)
 			
 		/* Child process. */
 		if (pid == 0)
-			_exit(execve("/bin/sh", (const char **)arg, (const char **)environ));			
+			_exit(execve("/bin/tsh", (char *const*)arg, (char *const*)environ));			
 			
 		/* Wait child processes. */
 		while (1)
@@ -51,7 +53,7 @@ int main(int argc, char **argv)
 				break;
 		}
 		
-		puts("child process died\n");
+		printf("child died with code %d\n", status & 0xff);
 		sync();
 	}
 	

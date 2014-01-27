@@ -3,6 +3,7 @@
  * crt0.c - Program startup.
  */
 
+#include <stdlib.h>
 #include <unistd.h>
 
 /*
@@ -15,7 +16,13 @@ extern int main(int argc, char **argv);
  */
 void _start(int argc, char **argv, char **envp)
 {
+	int ret;
+	
 	environ = envp;
 	
-	_exit(main(argc, argv));
+	main(argc, argv);
+	
+	exit(ret);
+	
+	/* Never gets here. */
 }

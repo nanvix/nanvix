@@ -21,9 +21,19 @@
 	#endif
 	
 	/*
+	 * Terminates the calling process.
+	 */
+	extern void exit(int status);
+	
+	/*
 	 * Frees memory.
 	 */
 	extern void free(void *ptr);
+	
+	/*
+	 * Gets value of an environment variable.
+	 */
+	extern char *getenv(const char *name);
 	
 	/*
 	 * Allocates memory.

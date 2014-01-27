@@ -13,7 +13,7 @@
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 38
+	#define NR_SYSCALLS 39
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -54,6 +54,7 @@
 	#define NR_fcntl   35
 	#define NR_sync    36
 	#define NR_unlink  37
+	#define NR_dup2    38
 	
 
 #ifndef _ASM_FILE_
@@ -106,6 +107,11 @@
 	 * Closes a file.
 	 */
 	EXTERN int sys_close(int fd);
+	
+	/*
+	 * Duplicates a file descriptor.
+	 */
+	EXTERN int sys_dup2(int oldfd, int newfd);
 	
 	/*
 	 * Executes a program.

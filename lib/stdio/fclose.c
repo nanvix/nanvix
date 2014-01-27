@@ -16,7 +16,7 @@ int fclose(FILE *stream)
 	fflush(stream);
 
 	/* Failed to close file. */
-	if (close(stream->fd) == -1)
+	if (close(fileno(stream)) == -1)
 		return (EOF);
 	
 	/* Release file stream. */

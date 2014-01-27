@@ -1,6 +1,7 @@
 #
 # Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>.
 #
+# Builds the Nanvix operating system.
 
 # Directories.
 export BINDIR = $(CURDIR)/bin
@@ -22,6 +23,7 @@ export CFLAGS   += -Wall -Wextra -Werror
 export CFLAGS   += -D NDEBUG
 export ASMFLAGS  = -Wa,--divide,--warn
 export ARFLAGS   = -vq
+export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 
 # Library name.
 export LIB = libc.a
@@ -29,25 +31,23 @@ export LIB = libc.a
 # Builds the Nanvix operating system.
 all: kernel libc init shell
 
-# Builds the Nanvix kernel.
+# Builds the kernel.
 kernel:
-	cd $(SRCDIR)/kernel && $(MAKE) all
+	cd $(SRCDIR) && $(MAKE) kernel
+
+# Builds the shell.
+shell: libc
+	cd $(SRCDIR) && $(MAKE) shell
+	
+# Builds init.
+init: libc
+	cd $(SRCDIR) && $(MAKE) init
 
 # Builds the C library.
-libc:
+libc: 
 	cd $(LIBDIR) && $(MAKE) all
-
-# Builds init process.
-init: libc
-	cd $(SRCDIR)/init && $(MAKE) all
-
-# Builds the Nanvix shell.
-shell: libc
-	cd $(SRCDIR)/sh && $(MAKE) all
 
 # Cleans compilation files.
 clean:
-	cd src/kernel/ && $(MAKE) clean
+	cd $(SRCDIR) && $(MAKE) clean
 	cd $(LIBDIR) && $(MAKE) clean
-	cd $(SRCDIR)/init && $(MAKE) clean
-	cd $(SRCDIR)/sh && $(MAKE) clean

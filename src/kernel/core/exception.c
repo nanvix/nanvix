@@ -96,5 +96,6 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 		return;
 	}
 	
+	kprintf("page fault %d at %x (%x)", err, addr, s.eip);
 	kpanic("kernel page fault");
 }

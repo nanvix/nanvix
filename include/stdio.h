@@ -47,6 +47,12 @@
 	} FILE;
 	
 	/*
+	 * Clears the end-of-file and error indicators for a stream.
+	 */
+	#define clearerr(stream) \
+		((void)(stream->flags &= ~(_IOEOF | _IOERROR)))
+	
+	/*
 	 * Reads a character from a file.
 	 */
 	int getc(FILE *stream);
@@ -68,9 +74,31 @@
 	extern int fclose(FILE *stream);
 	
 	/*
+	 * Asserts if the end-of-file for a stream is set.
+	 */
+	#define feof(stream) \
+		(stream->flags & _IOEOF)
+	
+	/*
 	 * Flushes a file stream.
 	 */
 	extern int fflush(FILE *stream);
+	
+	/*
+	 * Reads a string from a file.
+	 */
+	extern char *fgets(char *str, int n, FILE *stream);
+	
+	/*
+	 * Returns the file descriptor associated with a file stream.
+	 */
+	#define fileno(stream) \
+		(stream->fd)
+	
+	/*
+	 * Writes a formated string to a file.
+	 */
+	extern int fprintf(FILE *stream, const char *format, ...);
 	
 	/*
 	 * Writes a character to a file.
