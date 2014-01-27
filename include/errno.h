@@ -84,6 +84,9 @@
 	
 	/* Broken pipe. */
 	#define EPIPE 26
+	
+	/* No such device. */
+	#define ENODEV 27
 
 #ifndef _ASM_FILE_
 

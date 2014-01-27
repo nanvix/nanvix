@@ -138,9 +138,10 @@ PRIVATE int tty_open(unsigned minor)
  * tty device driver interface.
  */
 PRIVATE struct cdev tty_driver = {
-	tty_open,   /* open().  */
-	tty_read,   /* read().  */
-	&tty_write  /* write(). */
+	&tty_open,  /* open().  */
+	&tty_read,  /* read().  */
+	&tty_write, /* write(). */
+	NULL        /* ioctl(). */
 };
 
 /*

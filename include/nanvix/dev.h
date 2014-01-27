@@ -64,9 +64,10 @@
 	 */
 	struct cdev
 	{
-		int (*open)(unsigned);                            /* Open.  */
-		ssize_t (*read)(unsigned, char *, size_t);        /* Read.  */
-		ssize_t (*write)(unsigned, const char *, size_t); /* Write. */
+		int (*open)(unsigned);                            /* Open.    */
+		ssize_t (*read)(unsigned, char *, size_t);        /* Read.    */
+		ssize_t (*write)(unsigned, const char *, size_t); /* Write.   */
+		int (*ioctl)(unsigned, int, ...);                 /* Control. */
 	};
 	
 	/*
@@ -120,6 +121,11 @@
 	 * Opens a character device.
 	 */
 	EXTERN int cdev_open(dev_t dev);
+	
+	/*
+	 * Performs control operations on a character device.
+	 */
+	EXTERN int cdev_ioctl(dev_t dev, unsigned cmd, unsigned arg);
 	
 	/*========================================================================*
 	 *                               block device                             *

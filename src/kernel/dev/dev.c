@@ -105,6 +105,26 @@ PUBLIC int cdev_open(dev_t dev)
 	return (cdevsw[MAJOR(dev)]->open(MINOR(dev)));
 }
 
+/*
+ * Performs control operations on a character device.
+ */
+PUBLIC int cdev_ioctl(dev_t dev, unsigned cmd, unsigned arg)
+{	
+	/* Null device. */
+	if (MAJOR(dev) == NULL_MAJOR)
+		return (-ENODEV);
+	
+	/* Invalid device. */
+	if (cdevsw[MAJOR(dev)] == NULL)
+		return (-EINVAL);
+	
+	/* Operation not supported. */
+	if (cdevsw[MAJOR(dev)]->ioctl == NULL)
+		return (-ENOTSUP);
+		
+	return (cdevsw[MAJOR(dev)]->ioctl(MINOR(dev), cmd, arg));
+}
+
 /*============================================================================*
  *                              Block Devices                                 *
  *============================================================================*/

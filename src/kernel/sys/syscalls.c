@@ -49,5 +49,6 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	(void (*)(void))&sys_fcntl,
 	(void (*)(void))&sys_sync,
 	(void (*)(void))&sys_unlink,
-	(void (*)(void))&sys_dup2
+	(void (*)(void))&sys_dup2,
+	(void (*)(void))&sys_ioctl
 };

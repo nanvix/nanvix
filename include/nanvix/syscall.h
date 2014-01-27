@@ -13,7 +13,7 @@
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 39
+	#define NR_SYSCALLS 40
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -55,7 +55,7 @@
 	#define NR_sync    36
 	#define NR_unlink  37
 	#define NR_dup2    38
-	
+	#define NR_ioctl   39
 
 #ifndef _ASM_FILE_
 
@@ -77,6 +77,16 @@
 	EXTERN pid_t sys_setpgrp(void);
 	EXTERN int sys_setuid(pid_t uid);
 	EXTERN pid_t sys_wait(int *stat_loc);
+	
+	/*
+	 * Duplicates a file descriptor.
+	 */
+	EXTERN int sys_dup2(int oldfd, int newfd);
+	
+	/*
+	 * Performs control operations on a device.
+	 */
+	EXTERN int sys_ioctl(unsigned fd, unsigned cmd, unsigned arg);
 	
 	/*
 	 * Checks user permissions for a file.
