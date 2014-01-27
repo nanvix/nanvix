@@ -4,9 +4,11 @@
  * tty.c - tty device driver
  */
 
+#include <dev/tty.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
+#include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <errno.h>
 #include <termios.h>
@@ -135,13 +137,53 @@ PRIVATE int tty_open(unsigned minor)
 }
 
 /*
+ * Gets tty settings.
+ */
+PRIVATE int tty_gets(struct tty *tty, struct termios *termiosp)
+{
+	/* Invalid termios pointer. */	
+	if (!chkmem(termiosp, sizeof(struct termios), MAY_WRITE))
+		return (-EINVAL);
+	
+	kmemcpy(termiosp, &tty->term, sizeof(struct termios));
+	
+	return (0);
+}
+
+/*
+ * Performs control operation on a tty device.
+ */
+PRIVATE int tty_ioctl(unsigned minor, unsigned cmd, unsigned arg)
+{
+	int ret;
+	
+	UNUSED(minor);
+	
+	/* Parse command. */
+	switch (cmd)
+	{
+		/* Gets tty settings. */
+		case TTY_GETS:
+			ret = tty_gets(&tty, (struct termios *)arg);
+			break;
+		
+		/* Invalid operation. */
+		default:
+			ret = -EINVAL;
+			break;
+	}
+	
+	return (ret);
+}
+
+/*
  * tty device driver interface.
  */
 PRIVATE struct cdev tty_driver = {
 	&tty_open,  /* open().  */
 	&tty_read,  /* read().  */
 	&tty_write, /* write(). */
-	NULL        /* ioctl(). */
+	&tty_ioctl  /* ioctl(). */
 };
 
 /*

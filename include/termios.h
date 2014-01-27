@@ -9,6 +9,8 @@
 
 	 #include <stdint.h>
 
+	/* termios ioctl() requests. */
+
     /* Local mode flags. */
     #define ECHO    0001 /* Enable echo.                                */
 	#define ECHOE	0002 /* Echo erase character when backspace.        */
@@ -18,9 +20,8 @@
 	#define IEXTEN	0040 /* Enable extended input character processing. */	
 	#define ISIG	0100 /* Enable signals.                             */
 
-
 	/* Size of c_cc[] */
-	#define NCCS 17
+	#define NCCS 11
 
     /* Terminal input output data types. */
     typedef unsigned cc_t;     /* Used for terminal special characters. */
@@ -38,5 +39,10 @@
 		tcflag_t c_lflag;    /* Local mode flags (see above).   */
 		tcflag_t c_cc[NCCS]; /* Control characters. */
     };
+    
+	/*
+	 * Gets the parameters associated with the terminal
+	 */
+	extern int tcgetattr(int fd, struct termios *termiosp);
 
 #endif /* TERMIOS_H_ */

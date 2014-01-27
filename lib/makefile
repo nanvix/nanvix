@@ -10,7 +10,9 @@ SRC = $(wildcard *.c)          \
       $(wildcard stdio/*.c)    \
       $(wildcard stdlib/*.c)   \
       $(wildcard string/*.c)   \
+      $(wildcard stropts/*.c)  \
       $(wildcard sys/wait/*.c) \
+      $(wildcard termios/*.c)  \
       $(wildcard unistd/*.c)   \
 
 # Object files.

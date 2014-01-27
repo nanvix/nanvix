@@ -67,7 +67,7 @@
 		int (*open)(unsigned);                            /* Open.    */
 		ssize_t (*read)(unsigned, char *, size_t);        /* Read.    */
 		ssize_t (*write)(unsigned, const char *, size_t); /* Write.   */
-		int (*ioctl)(unsigned, int, ...);                 /* Control. */
+		int (*ioctl)(unsigned, unsigned, unsigned);       /* Control. */
 	};
 	
 	/*

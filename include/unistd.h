@@ -126,10 +126,9 @@
 	extern uid_t getuid(void);
 	
 	/*
-	 * Test whether a file descriptor refers to a terminal.
+	 * Tests whether a file descriptor refers to a terminal.
 	 */
-	#define isatty(fd) \
-		(1)
+	extern int isatty(int fd);
 	
 	/*
 	 * Creates an interprocess channel.

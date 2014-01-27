@@ -7,15 +7,11 @@
 #ifndef TTY_H_
 #define TTY_H_
 
+	/* tty ioctl() commands. */
+	#define TTY_GETS 0x54000101 /* Get tty settings. */
+
 	/*
-	 * DESCRIPTION:
-	 *   The tty_init() function initializes the tty device driver.
-	 * 
-	 * RETURN VALUE:
-	 *   The tty_init() has no return value.
-	 * 
-	 * ERROS:
-	 *   No errors are defined.
+	 * Initializes the tty device driver.
 	 */
 	extern void tty_init(void);
 
