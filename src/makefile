@@ -43,7 +43,7 @@ shell:
 # Builds core utilities.
 coreutils:
 	cd $(COREUTILS_SRCDIR) && $(MAKE) all BINDIR="$(COREUTILS_BINDIR)" DOCDIR="$(COREUTILS_DOCDIR)" CFLAGS="$(COREUTILS_CFLAGS)" LIBS="$(COREUTILS_LIBS)"
-	cp $(COREUTILS_BINDIR)/* $(BINDIR)/$(COREUTILS_EXEC)
+	cp $(COREUTILS_BINDIR)/* $(BINDIR)/
 	cp $(COREUTILS_DOCDIR)/* $(DOCDIR)/man/1/
 
 # Cleans compilation files.

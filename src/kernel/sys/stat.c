@@ -15,28 +15,30 @@
  */
 PUBLIC int sys_stat(const char *path, struct stat *buf)
 {
-	struct inode *inode;
+	struct inode *ip;
 	
 	/* Invalid buffer. */
 	if (!chkmem(buf, sizeof(struct stat), MAY_WRITE))
 		return (-EFAULT);
 	
-	inode = inode_name(path);
+	ip = inode_name(path);
 	
 	/* Failed to get inode. */
-	if (inode == NULL)
+	if (ip == NULL)
 		return (curr_proc->errno);
 	
-	buf->st_dev = inode->dev;
-	buf->st_ino = inode->num;
-	buf->st_mode = inode->mode;
-	buf->st_nlink = inode->nlinks;
-	buf->st_uid = inode->uid;
-	buf->st_gid = inode->gid;
-	buf->st_size = inode->size;
-	buf->st_atime = inode->time;
-	buf->st_mtime = inode->time;
-	buf->st_ctime = inode->time;
+	buf->st_dev = ip->dev;
+	buf->st_ino = ip->num;
+	buf->st_mode = ip->mode;
+	buf->st_nlink = ip->nlinks;
+	buf->st_uid = ip->uid;
+	buf->st_gid = ip->gid;
+	buf->st_size = ip->size;
+	buf->st_atime = ip->time;
+	buf->st_mtime = ip->time;
+	buf->st_ctime = ip->time;
+	
+	inode_put(ip);
 	
 	return (0);
 }

@@ -4,8 +4,10 @@
  * stdio/vsprintf - vsprintf() implementation.
  */
 
-#include <stdio.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 /*
  * Converts an integer to a string.
@@ -19,7 +21,7 @@ static int itoa(char *string, unsigned num, int base)
 
 	s = string;
 
-	if (base == 'd')
+	if (strchr("ud", base) != NULL)
 		divisor = 10;
 
 	else
@@ -83,8 +85,14 @@ int vsprintf(char *string, const char *format, va_list ap)
 					*string++ = va_arg(ap, char);
 					break;
 				
-				/* Number. */
+				/* Decimal. */
 				case 'd':
+				case 'u':
+					string += itoa(string, va_arg(ap, unsigned int), *format);
+					break;
+				
+				/* Hexadecimal. */
+				case 'X':
 				case 'x':
 					string += itoa(string, va_arg(ap, unsigned int), *format);
 					break;

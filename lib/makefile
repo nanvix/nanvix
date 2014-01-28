@@ -11,6 +11,7 @@ SRC = $(wildcard *.c)          \
       $(wildcard stdlib/*.c)   \
       $(wildcard string/*.c)   \
       $(wildcard stropts/*.c)  \
+      $(wildcard sys/stat/*.c) \
       $(wildcard sys/wait/*.c) \
       $(wildcard termios/*.c)  \
       $(wildcard unistd/*.c)   \
