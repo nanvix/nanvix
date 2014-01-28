@@ -18,3 +18,19 @@ FILE streams[FOPEN_MAX] = {
 FILE *stdin = &streams[0];  /* Standard input.  */
 FILE *stdout = &streams[1]; /* Standard output. */
 FILE *stderr = &streams[2]; /* Standard error.  */
+
+/*
+ * Stdio house keeping.
+ */
+void stdio_cleanup(void)
+{
+	FILE *stream;
+	
+	/* Close all streams. */
+	for (stream = &streams[0]; stream < &streams[FOPEN_MAX]; stream++)
+	{
+		/* Valid stream. */
+		if (stream->flags & (_IORW | _IOREAD | _IOWRITE))
+			fclose(stream);
+	}
+}

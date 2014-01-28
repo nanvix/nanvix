@@ -21,6 +21,11 @@
 	#endif
 	
 	/*
+	 * Registers a function to run at process termination.
+	 */
+	extern int atexit(void(*func)(void));
+	
+	/*
 	 * Terminates the calling process.
 	 */
 	extern void exit(int status);

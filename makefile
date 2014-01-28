@@ -29,7 +29,7 @@ export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 export LIB = libc.a
 
 # Builds the Nanvix operating system.
-all: kernel libc init shell
+all: kernel libc init shell coreutils
 
 # Builds the kernel.
 kernel:
@@ -42,6 +42,10 @@ shell: libc
 # Builds init.
 init: libc
 	cd $(SRCDIR) && $(MAKE) init
+	
+# Builds core utilities.
+coreutils: libc
+	cd $(SRCDIR) && $(MAKE) coreutils
 
 # Builds the C library.
 libc: 

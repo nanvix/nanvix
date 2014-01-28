@@ -1,3 +1,6 @@
 [submodule "src/tsh"]
 	path = src/tsh
 	url = https://github.com/ppenna/tsh.git
+[submodule "src/coreutils"]
+	path = src/coreutils
+	url = https://github.com/ppenna/coreutils.git

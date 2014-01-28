@@ -17,13 +17,12 @@ static int do_fflush(FILE *stream)
 	char *buf; /* Buffer.              */
 	ssize_t n; /* Byte count to flush. */
 	
-	/* Cannot be flushed. */
 	/* Not buffered. */
 	if (stream->flags & _IONBF)
 		return (0);
 	
 	/* Not writable. */
-	if (stream->flags & _IOWRITE)
+	if (!(stream->flags & _IOWRITE))
 		return (0);
 	
 	/* No buffer assigned. */
