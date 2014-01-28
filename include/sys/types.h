@@ -9,6 +9,8 @@
 
 #ifndef _ASM_FILE_
 
+	#include <stdint.h>
+
 	/* Used for device IDs. */
 	typedef unsigned dev_t;
 	
@@ -31,7 +33,7 @@
 	typedef signed time_t;
 
 	/* Used for file serial numbers. */
-	typedef unsigned ino_t;
+	typedef uint16_t ino_t;
 
 	/* Used for link counts. */
 	typedef int nlink_t;

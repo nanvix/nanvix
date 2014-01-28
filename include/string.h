@@ -30,8 +30,23 @@
 	extern int strncmp(const char *str1, const char *str2, size_t n);
 
 	/*
+	 * Concatenates two strings.
+	 */
+	extern char *strcat(char *dest, const char *src);
+
+	/*
+	 * Copies a string.
+	 */
+	extern char *strcpy(char *dest, const char *src);
+
+	/*
 	 * Returns the length of a string.
 	 */
 	extern size_t strlen(const char * str);
+	
+	/*
+	 * Gets the length of a fixed-size string.
+	 */
+	extern size_t strnlen(const char *str, size_t maxlen);
 
 #endif /* STRING_H_ */

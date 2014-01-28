@@ -13,7 +13,7 @@
 	/* Default process priority. */
 	#define NZERO 20
 	
-	/* MBytes in a filename. */
+	/* Bytes in a filename. */
 	#define NAME_MAX 14
 	
 	/* Files that one process can have open simultaneously. */
@@ -21,6 +21,8 @@
 	
 	/* Length of argument to the execve(). */
 	#define ARG_MAX 2048
+	
+	/* Number of bytes in pathname. */
+	#define PATH_MAX 512
 
 #endif /* LIMITS_H_ */
-

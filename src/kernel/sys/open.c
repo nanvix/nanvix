@@ -116,9 +116,8 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 	/* Not allowed. */
 	if (!permission(i->mode, i->uid, i->gid, curr_proc, PERM(oflag), 0))
 	{
-		inode_put(i);
 		curr_proc->errno = -EACCES;
-		return (NULL);
+		goto error;
 	}
 	
 	/* Character special file. */
@@ -129,26 +128,23 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 		/* Failed to open character device. */
 		if (err)
 		{
-			inode_put(i);
 			curr_proc->errno = err;
-			return (NULL);
+			goto error;
 		}
 	}
 	
 	/* Block special file. */
 	else if (S_ISBLK(i->mode))
 	{
-		inode_put(i);
 		curr_proc->errno = -ENOTSUP;
-		return (NULL);
+		goto error;
 	}
 	
 	/* Pipe file. */
 	else if (S_ISFIFO(i->mode))
 	{
-		inode_put(i);
 		curr_proc->errno = -ENOTSUP;
-		return (NULL);
+		goto error;
 	}
 	
 	/* Regular file. */
@@ -163,17 +159,21 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 	else if (S_ISDIR(i->mode))
 	{
 		/* Directories are not writable. */
-		if ((ACCMODE(oflag) == O_WRONLY) || (ACCMODE(oflag) == O_RDWR))
+		if (ACCMODE(oflag) != O_RDONLY)
 		{
-			inode_put(i);
 			curr_proc->errno = -EISDIR;
-			return (NULL);
+			goto error;
 		}
 	}
 	
 	inode_unlock(i);
 	
 	return (i);
+
+error:
+	inode_put(i);
+	return (NULL);
+	
 }
 
 /*

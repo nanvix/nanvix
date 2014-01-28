@@ -11,10 +11,11 @@
  */
 PUBLIC size_t kstrlen(const char * str)
 {
-	const char *p = str;
+	const char *p;
 	
 	/* Count the number of characters. */
-	while (*p++ != '\0') /* No operation.*/;
+	for (p = str; *p != '\0'; p++)
+		/* No operation.*/;
 	
-	return ((p - 1) - str);
+	return (p - str);
 }

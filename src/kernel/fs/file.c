@@ -9,6 +9,7 @@
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <sys/types.h>
+#include <dirent.h>
 #include <errno.h>
 #include "fs.h"
 
@@ -20,10 +21,10 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 	int i;              /* Working directory entry index. */
 	block_t blk;        /* Working block number.          */
 	struct buffer *buf; /* Block buffer.                  */
-	struct d_dirent *d; /* Directory entry.               */
+	struct dirent *d;   /* Directory entry.               */
 	int nentries;       /* Number of directory entries.   */
 	
-	nentries = dinode->size/sizeof(struct d_dirent);
+	nentries = dinode->size/_SIZEOF_DIRENT;
 	
 	/* Search from very first block. */
 	i = 0;
@@ -36,8 +37,8 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 		/* Get valid block. */
 		if (blk == BLOCK_NULL)
 		{
-			i += BLOCK_SIZE/sizeof(struct d_dirent);
-			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			i += BLOCK_SIZE/_SIZEOF_DIRENT;
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -53,7 +54,7 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 		{
 			block_put(buf);
 			buf = NULL;
-			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -86,11 +87,11 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 	int i;              /* Working directory entry index. */
 	block_t blk;        /* Working block number.          */
 	struct buffer *buf; /* Block buffer.                  */
-	struct d_dirent *d; /* Directory entry.               */
+	struct dirent *d;   /* Directory entry.               */
 	struct inode *file; /* File inode.                    */
 	int nentries;       /* Number of directory entries.   */
 	
-	nentries = dinode->size/sizeof(struct d_dirent);
+	nentries = dinode->size/_SIZEOF_DIRENT;
 	
 	/* Search from very first block. */
 	i = 0;
@@ -103,8 +104,8 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 		/* Get valid block. */
 		if (blk == BLOCK_NULL)
 		{
-			i += BLOCK_SIZE/sizeof(struct d_dirent);
-			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			i += BLOCK_SIZE/_SIZEOF_DIRENT;
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -120,7 +121,7 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 		{
 			block_put(buf);
 			buf = NULL;
-			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -204,10 +205,10 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	int entry;          /* Inode entry index.                  */
 	block_t blk;        /* Working block number.               */
 	struct buffer *buf; /* Block buffer.                       */
-	struct d_dirent *d; /* Disk directory entry.               */
+	struct dirent *d;   /* Disk directory entry.               */
 	int nentries;       /* Actual number of directory entries. */
 	
-	nentries = dinode->size/sizeof(struct d_dirent);
+	nentries = dinode->size/_SIZEOF_DIRENT;
 	
 	i = 0;
 	entry = -1;
@@ -220,8 +221,8 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 		/* Get valid block. */
 		if (blk == BLOCK_NULL)
 		{
-			i += BLOCK_SIZE/sizeof(struct d_dirent);
-			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			i += BLOCK_SIZE/_SIZEOF_DIRENT;
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -237,7 +238,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 		{
 			block_put(buf);
 			buf = NULL;
-			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -264,10 +265,10 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 				/* Free remembered entry index. */
 				if (entry >= 0)
 				{
-					blk = block_map(dinode, entry*sizeof(struct d_dirent), 0);
+					blk = block_map(dinode, entry*_SIZEOF_DIRENT, 0);
 					buf = block_read(dinode->dev, blk);
-					entry %= (BLOCK_SIZE/sizeof(struct d_dirent));
-					d = &((struct d_dirent *)(buf->data))[entry];
+					entry %= (BLOCK_SIZE/_SIZEOF_DIRENT);
+					d = &((struct dirent *)(buf->data))[entry];
 					d->d_ino = 0;
 					buf->flags |= BUFFER_DIRTY;
 					block_put(buf);
@@ -289,7 +290,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	{
 		entry = nentries;
 		
-		blk = block_map(dinode, entry*sizeof(struct d_dirent), 1);
+		blk = block_map(dinode, entry*_SIZEOF_DIRENT, 1);
 		
 		/* Failed to create entry. */
 		if (blk == BLOCK_NULL)
@@ -300,11 +301,11 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	}
 	
 	else
-		blk = block_map(dinode, entry*sizeof(struct d_dirent), 0);
+		blk = block_map(dinode, entry*_SIZEOF_DIRENT, 0);
 	
 	buf = block_read(dinode->dev, blk);
-	entry %= (BLOCK_SIZE/sizeof(struct d_dirent));
-	d = &((struct d_dirent *)(buf->data))[entry];
+	entry %= (BLOCK_SIZE/_SIZEOF_DIRENT);
+	d = &((struct dirent *)(buf->data))[entry];
 	kstrncpy(d->d_name, name, NAME_MAX);
 	buf->flags |= INODE_DIRTY;
 	block_put(buf);

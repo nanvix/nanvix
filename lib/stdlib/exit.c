@@ -9,7 +9,8 @@
 #include <unistd.h>
 
 /* Cleanup functions. */
-extern void stdio_cleanup(void); /* stdio. */
+extern void stdio_cleanup(void); /* <stdio.h>  */
+void dirent_cleanup(void);       /* <dirent.h> */
 
 /* atexit() function table. */
 static void (*functab[ATEXIT_MAX])(void);

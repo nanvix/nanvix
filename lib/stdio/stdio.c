@@ -20,7 +20,7 @@ FILE *stdout = &streams[1]; /* Standard output. */
 FILE *stderr = &streams[2]; /* Standard error.  */
 
 /*
- * Stdio house keeping.
+ * Stdio library house keeping.
  */
 void stdio_cleanup(void)
 {

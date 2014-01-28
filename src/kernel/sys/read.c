@@ -60,16 +60,13 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 		count = pipe_read(i, buf, n);
 	}
 	
-	/* Regular file. */
-	else if (S_ISREG(i->mode))
+	/* Regular file/directory. */
+	else if ((S_ISDIR(i->mode)) || (S_ISREG(i->mode)))
 		count = file_read(i, buf, n, f->pos);
 	
-	/* Directory. */
-	else if (S_ISDIR(i->mode))
-	{
-		kprintf("read from directory");
-		return (-ENOTSUP);
-	}
+	/* Unknown file type. */
+	else
+		return (-EINVAL);
 	
 	/* Failed to read. */
 	if (count < 0)

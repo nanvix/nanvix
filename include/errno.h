@@ -87,6 +87,9 @@
 	
 	/* No such device. */
 	#define ENODEV 27
+	
+	/* Result too large. */
+	#define ERANGE 28
 
 #ifndef _ASM_FILE_
 

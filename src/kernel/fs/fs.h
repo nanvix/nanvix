@@ -10,17 +10,7 @@
 	#include <nanvix/const.h>
 	#include <nanvix/fs.h>
 	#include <stdint.h>
-	#include <limits.h>
-
-	
-	/*
-	 * Disk directory entry.
-	 */
-	struct d_dirent
-	{
-		uint16_t d_ino;        /* File serial number. */
-		char d_name[NAME_MAX]; /* Name of entry.      */
-	};
+	#include <limits.h>	
 
 /*============================================================================*
  *                              Bitmap Library                                *
