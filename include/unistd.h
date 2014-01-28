@@ -96,6 +96,11 @@
 	extern pid_t fork(void);
 
 	/*
+	 * Gets the pathname of the current working directory.
+	 */
+	extern char *getcwd(char *buf, size_t size);
+
+	/*
 	 * Gets the effective user group ID of the calling process.
 	 */
 	extern gid_t getegid(void);
