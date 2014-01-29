@@ -45,6 +45,11 @@
 	extern size_t strlen(const char * str);
 	
 	/*
+	 * Copies a fixed-size string.
+	 */
+	extern char *strncpy(char *dest, const char *src, size_t n);
+	
+	/*
 	 * Gets the length of a fixed-size string.
 	 */
 	extern size_t strnlen(const char *str, size_t maxlen);

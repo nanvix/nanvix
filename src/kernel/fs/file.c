@@ -318,6 +318,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 {
 	char *p;             /* Writing pointer.      */
+	size_t blkoff;       /* Block offset.         */
 	size_t chunk;        /* Data chunk size.      */
 	block_t blk;         /* Working block number. */
 	struct buffer *bbuf; /* Working block buffer. */
@@ -341,8 +342,10 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 		if (bbuf == NULL)
 			return (-1);
 		
+		blkoff = off % BLOCK_SIZE;
+		
 		/* Calculate read chunk size. */
-		chunk = (n < BLOCK_SIZE) ? n : BLOCK_SIZE;
+		chunk = (n < BLOCK_SIZE - blkoff) ? n : BLOCK_SIZE - blkoff;
 		if ((off_t)chunk > i->size - off)
 		{
 			chunk = i->size - off;
@@ -353,7 +356,7 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 			}
 		}
 		
-		kmemcpy(p, bbuf->data, chunk);
+		kmemcpy(p, (char *)bbuf->data + blkoff, chunk);
 		block_put(bbuf);
 		
 		n -= chunk;
@@ -373,6 +376,7 @@ out:
 PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 {
 	const char *p;       /* Reading pointer.      */
+	size_t blkoff;       /* Block offset.         */
 	size_t chunk;        /* Data chunk size.      */
 	block_t blk;         /* Working block number. */
 	struct buffer *bbuf; /* Working block buffer. */
@@ -391,8 +395,15 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 			goto out;
 		
 		bbuf = block_read(i->dev, blk);
-		chunk = (n < BLOCK_SIZE) ? n : BLOCK_SIZE;
-		kmemcpy(bbuf->data, buf, chunk);
+		
+		/* Failed to read block. */
+		if (bbuf == NULL)
+			return (-1);
+		
+		blkoff = off % BLOCK_SIZE;
+		
+		chunk = (n < BLOCK_SIZE - blkoff) ? n : BLOCK_SIZE - blkoff;
+		kmemcpy((char *)bbuf->data + blkoff, buf, chunk);
 		bbuf->flags |= BUFFER_DIRTY;
 		block_put(bbuf);
 		

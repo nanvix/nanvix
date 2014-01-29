@@ -8,49 +8,58 @@
 #include <dirent.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdio.h>
 
 /*
  * Reads a directory.
  */
 struct dirent *readdir(DIR *dirp)
 {
-	struct dirent *dp;  /* Working directory entry. */
-	struct dirent *buf; /* Buffer.                  */
-
-again:
-
-	/* Get next non-empty directory entry. */
-	while (--dirp->count >= 0)
+	struct dirent *buf; /* Buffer.         */
+	struct dirent *dp;  /* Working dirent. */
+	
+	/* End of directory. */
+	if (dirp->flags & _DIR_EOD)
+		return (NULL);
+	
+	do
 	{
-		dp = dirp->ptr++;
+		/* Get next non-empty directory entry. */
+		while (--dirp->count >= 0)
+		{
+			dp = dirp->ptr++;
+			
+			/* Found. */
+			if (dp->d_ino != INODE_NULL)
+				return (dp);
+		}
 		
-		/* Found. */
-		if (dp->d_ino != INODE_NULL)
-			return (dp);
-	}
-	
-	/* Allocate buffer. */
-	if ((buf = dirp->buf) == NULL)
-	{
-		buf = malloc(_DIR_BUFSIZ);
-	
-		/* Failed to allocate buffer. */
-		if (buf == NULL)
+		/* Allocate buffer. */
+		if ((buf = dirp->buf) == NULL)
+		{
+			buf = malloc(_DIR_BUFSIZ);
+			/* Failed to allocate buffer. */
+			if (buf == NULL)
+				return (NULL);
+		}
+		
+		dirp->count = read(dirp->fd, buf, _DIR_BUFSIZ)/_SIZEOF_DIRENT;
+		
+		/* Reset buffer. */
+		dirp->ptr = buf;
+		dirp->buf = buf;
+		
+		/* Error while reading. */
+		if (dirp->count <= 0)
+		{
+			/* End of directory. */
+			if (dirp->count == 0)
+				dirp->flags |= _DIR_EOD;
+			
 			return (NULL);
-	}
-	
-	dirp->count = read(dirp->fd, buf, _DIR_BUFSIZ)/_SIZEOF_DIRENT;
-	
-	/* Reset buffer. */
-	dirp->ptr = buf;
-	dirp->buf = buf;
-	
-	/*
-	 * Buffer is full again, so go back and try
-	 * to get a non-empty directory entry.
-	  */
-	if (dirp->count > 0)
-		goto again;	
-	
+		}
+	} while (1);
+
+	/* Never gets here. */
 	return (NULL);
 }
