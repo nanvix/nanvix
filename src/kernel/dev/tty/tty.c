@@ -151,6 +151,16 @@ PRIVATE int tty_gets(struct tty *tty, struct termios *termiosp)
 }
 
 /*
+ * Cleans the console.
+ */
+PRIVATE int tty_clear(struct tty *tty)
+{
+	UNUSED(tty);
+	console_clear();
+	return (0);
+}
+
+/*
  * Performs control operation on a tty device.
  */
 PRIVATE int tty_ioctl(unsigned minor, unsigned cmd, unsigned arg)
@@ -162,9 +172,14 @@ PRIVATE int tty_ioctl(unsigned minor, unsigned cmd, unsigned arg)
 	/* Parse command. */
 	switch (cmd)
 	{
-		/* Gets tty settings. */
+		/* Get tty settings. */
 		case TTY_GETS:
 			ret = tty_gets(&tty, (struct termios *)arg);
+			break;
+		
+		/* Clear console. */
+		case TTY_CLEAR:
+			ret = tty_clear(&tty);
 			break;
 		
 		/* Invalid operation. */

@@ -8,7 +8,8 @@
 #define TTY_H_
 
 	/* tty ioctl() commands. */
-	#define TTY_GETS 0x54000101 /* Get tty settings. */
+	#define TTY_CLEAR 0x54000100 /* Clear console.    */
+	#define TTY_GETS  0x54000201 /* Get tty settings. */
 
 	/*
 	 * Initializes the tty device driver.

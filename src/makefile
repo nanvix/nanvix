@@ -24,7 +24,14 @@ COREUTILS_CFLAGS = $(CFLAGS)
 .PHONY: coreutils
 .PHONY: init
 .PHONY: kernel
+.PHONY: login
 .PHONY: shell
+
+# Builds core utilities.
+coreutils:
+	cd $(COREUTILS_SRCDIR) && $(MAKE) all BINDIR="$(COREUTILS_BINDIR)" DOCDIR="$(COREUTILS_DOCDIR)" CFLAGS="$(COREUTILS_CFLAGS)" LIBS="$(COREUTILS_LIBS)"
+	cp $(COREUTILS_BINDIR)/* $(BINDIR)/
+	cp $(COREUTILS_DOCDIR)/* $(DOCDIR)/man/1/
 
 # Builds init.
 init:
@@ -34,21 +41,19 @@ init:
 kernel:
 	cd kernel/ && $(MAKE) all
 
+# Builds login.
+login:
+	cd login/ && $(MAKE) all
+
 # Builds the shell.
 shell:
 	cd $(SHELL_SRCDIR) && $(MAKE) all BINDIR="$(SHELL_BINDIR)" DOCDIR="$(SHELL_DOCDIR)" CFLAGS="$(SHELL_CFLAGS)" LIBS="$(SHELL_LIBS)"
 	cp $(SHELL_BINDIR)/* $(BINDIR)/$(SHELL_EXEC)
 	cp $(SHELL_DOCDIR)/* $(DOCDIR)/man/1/$(SHELL_EXEC).1
-
-# Builds core utilities.
-coreutils:
-	cd $(COREUTILS_SRCDIR) && $(MAKE) all BINDIR="$(COREUTILS_BINDIR)" DOCDIR="$(COREUTILS_DOCDIR)" CFLAGS="$(COREUTILS_CFLAGS)" LIBS="$(COREUTILS_LIBS)"
-	cp $(COREUTILS_BINDIR)/* $(BINDIR)/
-	cp $(COREUTILS_DOCDIR)/* $(DOCDIR)/man/1/
-
 # Cleans compilation files.
 clean:
-	cd kernel/ && $(MAKE) clean
 	cd init/ && $(MAKE) clean
+	cd kernel/ && $(MAKE) clean
+	cd login/ && $(MAKE) clean
 	cd tsh/src && $(MAKE) clean
 	rm -f $(BINDIR)/*

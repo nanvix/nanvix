@@ -52,6 +52,11 @@
 	EXTERN void console_init();
 	
 	/*
+	 * Clears the console.
+	 */
+	EXTERN void console_clear(void);
+	
+	/*
 	 * Initializes the keyboard driver.
 	 */
 	EXTERN void keyboard_init(void);

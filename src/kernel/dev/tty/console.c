@@ -145,7 +145,7 @@ PUBLIC void console_put(uint8_t ch, uint8_t color)
 /*
  * Clears the console.
  */
-PRIVATE void console_clear(void)
+PUBLIC void console_clear(void)
 {
 	uint16_t *p;
 	

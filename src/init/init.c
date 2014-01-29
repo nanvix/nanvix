@@ -18,16 +18,15 @@
  */
 int main(int argc, char **argv)
 {
-	int status;   /* Child exit status code. */
-	pid_t pid;    /* Child process ID.       */
-	char *arg[2]; /* Child arguments.        */	
+	pid_t pid;    /* Child process ID. */
+	char *arg[2]; /* Child arguments.  */	
 
 	((void)argc);
 	((void)argv);
 	
 	setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-	arg[0] = "-";
+	arg[0] = "login";
 	arg[1] = NULL;
 
 	/* init never ends. */
@@ -44,16 +43,15 @@ int main(int argc, char **argv)
 			
 		/* Child process. */
 		if (pid == 0)
-			_exit(execve("/bin/tsh", (char *const*)arg, (char *const*)environ));			
+			_exit(execve("/etc/login", (char *const*)arg, (char *const*)environ));			
 			
 		/* Wait child processes. */
 		while (1)
 		{
-			if (pid == wait(&status))
+			if (pid == wait(NULL))
 				break;
 		}
 		
-		printf("child died with code %d\n", status & 0xff);
 		sync();
 	}
 	
