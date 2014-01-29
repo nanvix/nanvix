@@ -69,11 +69,11 @@
 	/* 
 	 * Handles a validity page fault.
 	 */
-	EXTERN void vfault(addr_t addr);
+	EXTERN int vfault(addr_t addr);
 	
 	/*
 	 * Handles a protection page fault.
 	 */
-	EXTERN void pfault(addr_t addr);
+	EXTERN int pfault(addr_t addr);
 
 #endif /* NANVIX_PAGING_H_ */

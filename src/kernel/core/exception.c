@@ -17,7 +17,7 @@
 PUBLIC void do_##name(int err, struct intstack s)                   \
 {                                                                   \
 	/* Die. */                                                      \
-	if (!KERNEL_RUNNING(curr_proc))                                 \
+	if (KERNEL_RUNNING(curr_proc))                                  \
 	{                                                               \
 		kprintf("%s: %d", msg, err & 0xffff);                       \
 		dumpregs(&s);                                               \
@@ -29,7 +29,7 @@ PUBLIC void do_##name(int err, struct intstack s)                   \
 }                                                                   \
 
 /*
- * Kills process.
+ * Dump kernel registers.
  */
 PRIVATE void dumpregs(struct intstack *regs)
 {
@@ -37,7 +37,7 @@ PRIVATE void dumpregs(struct intstack *regs)
 	kprintf("  [eax: %x] [ebx:    %x]", regs->eax, regs->ebx);
 	kprintf("  [ecx: %x] [edx:    %x]", regs->ecx, regs->edx);
 	kprintf("  [esi: %x] [edi:    %x]", regs->esi, regs->edi);
-	kprintf("  [ebp: %x]", regs->ebp);
+	kprintf("  [ebp: %x] [esp:    %x]", regs->ebp, curr_proc->kesp);
 	kprintf("  [eip: %x] [eflags: %x]", regs->eip, regs->eflags);
 }
 
@@ -85,20 +85,21 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 	/* Validty page fault. */
 	if (!(err & 1))
 	{
-		vfault(addr);
-		return;
+		if (!vfault(addr))
+			return;
 	}
 	
 	/* Protection page fault. */
 	if (err & 2)
 	{
-		pfault(addr);
-		return;
+		if (!pfault(addr))
+			return;
 	}
 	
 	if (KERNEL_RUNNING(curr_proc))
 	{
-		kprintf("page fault %d at %x (%x)", err, addr, s.eip);
+		kprintf("page fault: %d at %x", err, addr);
+		dumpregs(&s);
 		kpanic("kernel page fault");
 	}
 	sndsig(curr_proc, SIGSEGV);

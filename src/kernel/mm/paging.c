@@ -327,7 +327,7 @@ PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
 /*
  * Handles a validity page fault.
  */
-PUBLIC void vfault(addr_t addr)
+PUBLIC int vfault(addr_t addr)
 {
 	struct pte *pg;       /* Working page.           */
 	struct region *reg;   /* Working region.         */
@@ -379,14 +379,11 @@ PUBLIC void vfault(addr_t addr)
 		kpanic("swap page in");
 	
 	unlockreg(reg);
-	return;
+	return (0);
 
 error0:
 	unlockreg(reg);
-	if (KERNEL_RUNNING(curr_proc))
-		kpanic("validity page fault");
-	sndsig(curr_proc, SIGSEGV);
-	die(((SIGSEGV & 0xff) << 16) | (1 << 9));
+	return (-1);
 }
 
 /*
@@ -405,7 +402,7 @@ EXTERN void cpypg(struct pte *pg1, struct pte *pg2)
 /*
  * Handles a protection page fault.
  */
-PUBLIC void pfault(addr_t addr)
+PUBLIC int pfault(addr_t addr)
 {
 	int i;                /* Frame index.            */
 	struct pte *pg;       /* Faulting page.          */
@@ -455,13 +452,10 @@ PUBLIC void pfault(addr_t addr)
 	
 	unlockreg(reg);
 
-	return;
+	return(0);
 
 error1:
 	unlockreg(reg);
 error0:
-	if (KERNEL_RUNNING(curr_proc))
-		kpanic("kernel protection page fault");
-	sndsig(curr_proc, SIGSEGV);
-	die(((SIGSEGV & 0xff) << 16) | (1 << 9));
+	return (-1);
 }

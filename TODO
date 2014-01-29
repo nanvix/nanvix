@@ -9,7 +9,7 @@ Kernel functionalities to be implemented:
 
 Things to be fixed:
 
-	* check for validity page fault on exec and exit.
+	* CHECK VALIDITY PAGE FAULT ON SLEEP WHEN LOGIN (PROBABLY EXEC)
 	* sleep on inode must be interruptible
 	* signal() check death of child signal
 	* normal user cannot use last process table slot

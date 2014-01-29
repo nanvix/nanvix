@@ -304,11 +304,11 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	addr_t sp;            /* User stack pointer.  */
 	char *name;           /* File name.           */
 	char stack[ARG_MAX];  /* Stack size.          */
-	
+
 	/* Get file name. */
 	if ((name = getname(filename)) == NULL)
 		return (curr_proc->errno);
-	
+
 	/* Build arguments before freeing user memory. */
 	kmemset(stack, 0, ARG_MAX);
 	if (!(sp = buildargs(stack, ARG_MAX, argv, envp)))
@@ -316,14 +316,14 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		putname(name);
 		return (curr_proc->errno);
 	}
-	
+
 	/* Get file's inode. */
 	if ((inode = inode_name(name)) == NULL)
 	{
 		putname(name);
 		return (curr_proc->errno);
 	}
-	
+
 	/* Not a regular file. */
 	if (!S_ISREG(inode->mode))
 	{
@@ -331,7 +331,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		inode_put(inode);
 		return (-EACCES);
 	}
-	
+
 	/* Not allowed. */
 	if (!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_EXEC, 0))
 	{
@@ -339,14 +339,14 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		inode_put(inode);
 		return (-EACCES);
 	}
-	
+
 	/* Close file descriptors. */
 	for (i = 0; i < OPEN_MAX; i++)
 	{
 		if (curr_proc->close & (1 << i))
 			do_close(i);
 	}
-	
+
 	/* Detach process memory regions. */
 	for (i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
@@ -354,14 +354,14 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	/* Load executable. */
 	if (!(entry = load_elf32(inode)))
 		goto die0;
-	
+
 	/* Attach stack region. */
 	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
 		goto die0;
 	if (attachreg(curr_proc, STACK(curr_proc), USTACK_ADDR - 1, reg))
 		goto die1;
 	unlockreg(reg);
-	
+
 	/* Attach heap region. */
 	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_UPWARDS)) == NULL)
 		goto die0;
@@ -371,7 +371,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	
 	inode_put(inode);
 	putname(name);
-	
+
 	kmemcpy((void *)(USTACK_ADDR - ARG_MAX), stack, ARG_MAX);
 	
 	user_mode(entry, sp);
