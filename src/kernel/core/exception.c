@@ -80,7 +80,6 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 {	
 	((void)dummy0);
 	((void)dummy1);
-	((void)s);
 	
 	/* Validty page fault. */
 	if (!(err & 1))

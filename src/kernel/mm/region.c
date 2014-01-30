@@ -286,8 +286,8 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 	umappgtab(proc->pgdir, preg->start);
 	preg->reg = NULL;
 	proc->size -= reg->size;
-	if (reg->count > 0)
-		reg->count--;
+	if (--reg->count < 0)
+		kpanic("mm: detaching memory region twice");
 	
 	unlockreg(reg);
 	
@@ -317,7 +317,6 @@ PUBLIC struct region *dupreg(struct region *reg)
 		linkupg(&reg->pgtab[i], &new_reg->pgtab[i]);
 	
 	/* Copy region fields. */
-	new_reg->flags = reg->flags;
 	if (reg->file.inode != NULL)
 	{
 		new_reg->file.inode = reg->file.inode;

@@ -335,7 +335,7 @@ PUBLIC int vfault(addr_t addr)
 
 	/* Get associated region. */
 	preg = findreg(curr_proc, addr);
-	if (reg == NULL)
+	if (preg == NULL)
 		goto error0;
 	
 	lockreg(reg = preg->reg);
@@ -345,13 +345,13 @@ PUBLIC int vfault(addr_t addr)
 	{			
 		/* Not a stack region. */
 		if (preg != STACK(curr_proc))
-			goto error0;
+			goto error1;
 	
 		kprintf("growing stack");
 		
 		/* Expand region. */
 		if (growreg(curr_proc, preg, (~PGTAB_MASK - reg->size) - (addr & ~PGTAB_MASK)))
-			goto error0;
+			goto error1;
 	}
 
 	pg = &reg->pgtab[PG(addr)];
@@ -361,7 +361,7 @@ PUBLIC int vfault(addr_t addr)
 	{
 		/* Assign new page to region. */
 		if (allocupg(pg, reg->mode & MAY_WRITE))
-			goto error0;
+			goto error1;
 		
 		kmemset((void *)(addr & PAGE_MASK), 0, PAGE_SIZE);
 	}
@@ -371,7 +371,7 @@ PUBLIC int vfault(addr_t addr)
 	{	
 		/* Read page. */
 		if (readpg(pg, reg, addr))
-			goto error0;
+			goto error1;
 	}
 		
 	/* Swap page in. */
@@ -381,8 +381,9 @@ PUBLIC int vfault(addr_t addr)
 	unlockreg(reg);
 	return (0);
 
-error0:
+error1:
 	unlockreg(reg);
+error0:
 	return (-1);
 }
 
