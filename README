@@ -21,7 +21,7 @@ BUILDING
 	environment, the x86 GCC compiler and the x86 GNU binutils.
 	
 	Once you have setup the required tools, you should set the 
-	environment variable 	$TARGET to point to the toolchain's directory. 
+	environment variable $TARGET to point to the toolchain's directory. 
 	
 	When done, you can build Nanvix running the topmost makefile and 
 	generate a Live System's Image running the scripts/build-img.sh 
