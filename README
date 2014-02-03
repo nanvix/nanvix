@@ -24,7 +24,8 @@ BUILDING
 	environment variable 	$TARGET to point to the toolchain's directory. 
 	
 	When done, you can build Nanvix running the topmost makefile and 
-	generate a Live System's running the scripts/build-img.sh script.
+	generate a Live System's Image running the scripts/build-img.sh 
+	script.
 
 LICENSE AND MAINTAINERS
 
