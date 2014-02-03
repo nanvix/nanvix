@@ -20,12 +20,11 @@ BUILDING
 	In order to build Nanvix, you will need a Linux like programming 
 	environment, the x86 GCC compiler and the x86 GNU binutils.
 	
-	Once you have setup the required tools, you should either edit the topmost
-	makefile to use the correct toolchain or set the environment variable
-	$TARGET to point to the toolchain's directory.
+	Once you have setup the required tools, you should set the 
+	environment variable 	$TARGET to point to the toolchain's directory. 
 	
-	When done, you can build Nanvix running the topmost makefile and generate
-	a Live System's running the scripts/build-img.sh script.
+	When done, you can build Nanvix running the topmost makefile and 
+	generate a Live System's running the scripts/build-img.sh script.
 
 LICENSE AND MAINTAINERS
 
