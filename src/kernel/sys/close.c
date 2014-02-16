@@ -8,7 +8,6 @@
 #include <nanvix/fs.h>
 #include <nanvix/pm.h>
 #include <errno.h>
-#include <nanvix/klib.h>
 
 /*
  * Closes a file.

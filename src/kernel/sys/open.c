@@ -39,9 +39,9 @@ PRIVATE struct inode *do_creat(struct inode *d, const char *name, mode_t mode, i
 	{
 		curr_proc->errno = -EACCES;
 		return (NULL);
-	}
-		
-	i = inode_alloc(i->sb);
+	}	
+	
+	i = inode_alloc(d->sb);
 	
 	/* Failed to allocate inode. */
 	if (i == NULL)
@@ -56,7 +56,6 @@ PRIVATE struct inode *do_creat(struct inode *d, const char *name, mode_t mode, i
 		return (NULL);
 	}
 		
-	inode_put(d);
 	inode_unlock(i);
 	
 	return (i);
@@ -93,7 +92,8 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 			inode_put(dinode);
 			return (NULL);
 		}
-			
+		
+		inode_put(dinode);
 		return (i);
 	}
 	

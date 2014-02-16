@@ -491,16 +491,14 @@ PUBLIC void inode_put(struct inode *i)
 			}
 			
 			inode_write(i);
-			
 			inode_cache_remove(i);
 		}
-		
 		
 		/* Insert inode in the free list. */
 		i->free_next = free_inodes;
 		free_inodes = i;
 		
-		i->flags &= ~INODE_VALID;
+		i->flags = 0;
 	}
 	
 	inode_unlock(i);
@@ -714,7 +712,7 @@ PUBLIC void inode_init(void)
 	for (i = 0; i < NR_INODES; i++)
 	{
 		inodes[i].count = 0;
-		inodes[i].flags = ~(INODE_VALID | INODE_LOCKED);
+		inodes[i].flags = 0;
 		inodes[i].chain = NULL;
 		inodes[i].free_next = &inodes[(i + 1)%NR_INODES];
 		inodes[i].hash_next = NULL;

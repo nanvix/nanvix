@@ -250,7 +250,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 			{			
 				entry = i;
 				d->d_ino = inode->num;
-				buf->flags |= INODE_DIRTY;
+				buf->flags |= BUFFER_DIRTY;
 			}
 		}
 		
@@ -298,6 +298,9 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 			curr_proc->errno = -ENOSPC;
 			return (-1);
 		}
+		
+		dinode->size += sizeof(struct dirent);
+		dinode->flags |= INODE_DIRTY;
 	}
 	
 	else
@@ -307,9 +310,11 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	entry %= (BLOCK_SIZE/_SIZEOF_DIRENT);
 	d = &((struct dirent *)(buf->data))[entry];
 	kstrncpy(d->d_name, name, NAME_MAX);
-	buf->flags |= INODE_DIRTY;
+	d->d_ino = inode->num;
+	buf->flags |= BUFFER_DIRTY;
 	block_put(buf);
-	return (entry);
+	
+	return (0);
 }
 
 /*
@@ -341,7 +346,7 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 		/* Failed to read. */
 		if (bbuf == NULL)
 			return (-1);
-		
+			
 		blkoff = off % BLOCK_SIZE;
 		
 		/* Calculate read chunk size. */
