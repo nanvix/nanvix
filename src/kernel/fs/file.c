@@ -247,11 +247,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 		{
 			/* Remember entry index. */
 			if (entry < 0)
-			{			
 				entry = i;
-				d->d_ino = inode->num;
-				buf->flags |= BUFFER_DIRTY;
-			}
 		}
 		
 		/* Check if entry is not duplicated. */
@@ -261,18 +257,6 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 			if (!kstrncmp(d->d_name, name, NAME_MAX))
 			{
 				block_put(buf);
-				
-				/* Free remembered entry index. */
-				if (entry >= 0)
-				{
-					blk = block_map(dinode, entry*_SIZEOF_DIRENT, 0);
-					buf = block_read(dinode->dev, blk);
-					entry %= (BLOCK_SIZE/_SIZEOF_DIRENT);
-					d = &((struct dirent *)(buf->data))[entry];
-					d->d_ino = 0;
-					buf->flags |= BUFFER_DIRTY;
-					block_put(buf);
-				}
 				
 				return (-1);
 			}
