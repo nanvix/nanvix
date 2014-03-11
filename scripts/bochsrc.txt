@@ -1,0 +1,10 @@
+megs: 32
+romimage: file="/usr/local/share/bochs/BIOS-bochs-latest"
+vgaromimage: file="/usr/local/share/bochs/VGABIOS-lgpl-latest"
+floppya: 1_44="/dev/loop1", status=inserted
+boot: a
+log: bochsout.txt
+mouse: enabled=0
+clock: sync=realtime
+display_library: x, options="gui_debug"
+magic_break: enabled=1

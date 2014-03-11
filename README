@@ -27,6 +27,9 @@ BUILDING
 	generate a Live System's Image running the scripts/build-img.sh 
 	script.
 
+	TIP: If you are running a Debian-based Linux distribution, like Ubuntu, 
+	you can simply run the scripts/setup-toolchain.sh script.
+
 LICENSE AND MAINTAINERS
 
 	Nanvix is a free software that is under the GPL V3 license and is 

@@ -4,7 +4,7 @@ rm -f Nanvix.img
 rm -f initrd.img
 cp -f img/blank.img Nanvix.img
 cp -f img/initrd.img initrd.img
-chmod 777 Nanvix.img initrd.img
+chmod 666 Nanvix.img initrd.img
 
 losetup /dev/loop2 initrd.img
 mount /dev/loop2 /mnt
