@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
- * util.h - Low-level utilities
+ * <asm/util.h> - Low-level utilities.
  */
 
 #ifndef UTIL_H_
@@ -13,28 +13,14 @@
 	#include <sys/types.h>
 
 	/*
-	 * DESCRIPTION:
-	 *   The gdt_flush() function flushes the GDT pointed to by gdtptr.
-	 * 
-	 * RETURN VALUE:
-	 *   The gdt_flush() function returns no value.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
+	 * Flushes the GDT pointed to by gdtptr.
 	 */
 	EXTERN void gdt_flush(struct gdtptr *gdtptr);
 	
 	/*
-	 * DESCRIPTION:
-	 *   The tss_flush() function flushes the TSS.
-	 * 
-	 * RETURN VALUE:
-	 *   The tss_flush() function returns no value.
-	 * 
-	 * ERRORS:
-	 *   No erros are defined.
+	 * Flushes the TSS.
 	 */
-	EXTERN void tss_flush();
+	EXTERN void tss_flush(void);
 	
 	/*
 	 * Flushes the TLB.
@@ -42,68 +28,32 @@
 	EXTERN void tlb_flush(void);
 	
 	/*
-	 * DESCRIPTION:
-	 *   The idt_flush() function flushes the IDT pointed to by idtptr.
-	 * 
-	 * RETURN VALUE:
-	 *   The idt_flush() function returns no value.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
+	 * Flushes the IDT pointed to by idtptr.
 	 */
 	EXTERN void idt_flush(struct idtptr *idtptr);
 	
 	/*
-	 * DESCRIPTION:
-	 *   The enable_interrupt() function enables all hardware interrupts.
-	 *
-	 * RETURN VALUE:
-	 *   The enable_interrupt() function has no return value.
-	 * 
-	 * ERRORS:
-	 *   No erros are defined.
+	 * Enables all hardware interrupts.
 	 */
-	EXTERN void enable_interrupts();
+	EXTERN void enable_interrupts(void);
 	
 	/*
-	 * DESCRIPTION:
-	 *   The disable_interrupts() function disables all hardware interrupts.
-	 * 
-	 * RETURN VALUE:
-	 *   The disable_interrupts() function has no return value.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
+	 * Disables all hardware interrupts.
 	 */
-	EXTERN void disable_interrupts();
+	EXTERN void disable_interrupts(void);
 	
 	/*
-	 * DESCRIPTION:
-	 *   The halt() function halts the processor.
-	 * 
-	 * RETURN VALUE:
-	 *   The halt() function has no return value.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
+	 * Halts the processor.
 	 */
-	EXTERN void halt();
+	EXTERN void halt(void);
 	
 	/*
-	 * DESCRIPTION:
-	 *   The physcpy() function performs a physical memory copy of n bytes from
-	 *   the source address src to the destin address dest.
-	 * 
-	 * RETURN VALUE:
-	 *   The physcpy() function has no return value.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
+	 * Performs a physical memory copy.
 	 */
 	EXTERN void physcpy(addr_t dest, addr_t src, size_t n);
 	
 	/*
-	 * 
+	 * Switches execution to a process.
 	 */
 	EXTERN void switch_to(struct process *proc);
 	
