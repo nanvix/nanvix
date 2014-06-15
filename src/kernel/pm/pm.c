@@ -31,13 +31,16 @@ PUBLIC struct process *curr_proc = IDLE;
 /* Next available PID. */
 PUBLIC pid_t next_pid = 0;
 
+/* Current number of process in the system. */
+PUBLIC int nprocs = 0;
+
 /*
  * Initializes the process manager.
  */
 PUBLIC void pm_init(void)
 {	
-	int i;
-	struct process *p;
+	int i;             /* Loop index.      */
+	struct process *p; /* Working process. */
 	
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
@@ -83,6 +86,8 @@ PUBLIC void pm_init(void)
 	IDLE->alarm = 0;
 	IDLE->next = NULL;
 	IDLE->chain = NULL;
+	
+	nprocs++;
 	
 	clock_init(CLOCK_FREQ);
 	

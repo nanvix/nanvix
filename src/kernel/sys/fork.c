@@ -5,6 +5,7 @@
  */
 
 #include <i386/i386.h>
+#include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 #include <nanvix/paging.h>
@@ -22,8 +23,16 @@ PUBLIC pid_t sys_fork(void)
 	struct process *proc; /* Process.        */
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
+kprintf("nprocs: %d", nprocs);
+	/*
+	 * Prevent non-privileged user from using the last 
+	 * available slot in the process table, so a privileged
+	 * user can invoke kill() if something goes wrong.
+	 */
+	if ((nprocs + 1 >= PROC_MAX) && (!IS_SUPERUSER(curr_proc)))
+		return (-EAGAIN);
 
-	/* Search for free process. */
+	/* Search for a free process. */
 	for (proc = FIRST_PROC; proc <= LAST_PROC; proc++)
 	{
 		/* Found. */
@@ -123,8 +132,10 @@ found:
 	proc->next = NULL;
 	proc->chain = NULL;
 	sched(proc);
-	
+
 	curr_proc->nchildren++;
+	
+	nprocs++;
 	
 	return (proc->pid);
 

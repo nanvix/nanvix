@@ -87,4 +87,5 @@ PUBLIC void bury(struct process *proc)
 	proc->flags = PROC_FREE;
 	proc->state = PROC_DEAD;
 	proc->father->nchildren--;
+	nprocs--;
 }

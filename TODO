@@ -10,7 +10,6 @@ Kernel functionalities to be implemented:
 Things to be fixed:
 
 	* signal() check death of child signal
-	* normal user cannot use last process table slot
 	* execve() setuid when need
 	* close() release inode and current directory
 	* open() when creating new file allocate inode first than writing directory 

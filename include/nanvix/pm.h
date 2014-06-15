@@ -182,6 +182,9 @@
 	
 	/* Last process. */
 	#define LAST_PROC ((&proctab[PROC_MAX - 1]))
+	
+	/* Current number of process in the system. */
+	EXTERN int nprocs;
 
 #endif /* _ASM_FILE */
 
