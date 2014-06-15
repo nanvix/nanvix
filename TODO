@@ -9,7 +9,6 @@ Kernel functionalities to be implemented:
 
 Things to be fixed:
 
-	* sleep on inode must be interruptible
 	* signal() check death of child signal
 	* normal user cannot use last process table slot
 	* execve() setuid when need
