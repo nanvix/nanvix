@@ -20,7 +20,7 @@ void _start(int argc, char **argv, char **envp)
 	
 	environ = envp;
 	
-	main(argc, argv);
+	ret= main(argc, argv);
 	
 	exit(ret);
 	

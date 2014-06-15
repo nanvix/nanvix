@@ -18,7 +18,7 @@ wget "http://ftp.gnu.org/gnu/binutils/binutils-2.24.tar.bz2"
 wget "http://ftp.gnu.org/gnu/gcc/gcc-4.9.0/gcc-4.9.0.tar.bz2"
 
 # Get required packages.
-apt-get install libmpc-dev
+apt-get install build-essential libmpc-dev
 
 # Export variables.
 export PREFIX=/usr/local/cross

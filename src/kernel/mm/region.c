@@ -204,9 +204,7 @@ PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode)
  * Attaches a memory region to a process.
  */
 PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, struct region *reg)
-{
-	mode_t mode;
-	
+{	
 	/* Process region is busy. */
 	if (preg->reg != NULL)
 		return (-1);
@@ -237,8 +235,6 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 	/* Process cannot grow more. */
 	if (proc->size + reg->size > PROC_SIZE_MAX)
 		return (-1);
-	
-	mode = accessreg(proc, reg);
 
 	/* Attaching shared region. */
 	if (reg->flags & REGION_SHARED)

@@ -14,16 +14,18 @@ export WORKDIR=~/nanvix-toolchain
 cd $WORKDIR
 
 # Get required packages.
-apt-get install libgmp3-dev libmpfr-dev libgtk2.0-dev
+apt-get install libgtk2.0-dev
 
 # Get bochs.
-wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.2/bochs-2.6.2.tar.gz"
+wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.5/bochs-2.6.5.tar.gz"
 
 # Build Bochs
-tar -xvf bochs-2.6.2.tar.gz
-cd bochs-2.6.2/
+tar -xvf bochs-2.6.5.tar.gz
+cd bochs-2.6.5/
 ./configure --enable-x86-debugger --enable-debugger --enable-debugger-gui
+sed -i '/^\<LIBS\>/ s/$/ -lpthread/' Makefile
 make all
 make install
 
-
+cd $WORKDIR
+rm -R -f nanvix-toolchain/
