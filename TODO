@@ -15,6 +15,10 @@ Things to be fixed:
 	* open() when creating new file allocate inode first than writing directory 
 	* open() when truncating existing file do not change ownership
 	* fork() check number of process per user
+
+Things to be tested:
+
+	* stress the block buffer pool
 	
 High priority system calls to be implemented:
 

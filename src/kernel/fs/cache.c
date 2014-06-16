@@ -23,17 +23,14 @@
 	#error "hard disk too big"
 #endif
 
-/* Block buffers hash table size. */
-#define HASHTAB_SIZE 53
-
 /* Block buffers. */
 PRIVATE struct buffer buffers[NR_BUFFERS];
 
 /* Block buffers hash table. */
-PRIVATE struct buffer *hashtab[HASHTAB_SIZE];
+PRIVATE struct buffer *hashtab[BUFFERS_HASHTAB_SIZE];
 
 /* Free block buffers. */
-PRIVATE struct buffer *free_buffers;
+PRIVATE struct buffer *free_buffers = NULL;
 
 /* Processes waiting for any block. */
 PRIVATE struct process *chain = NULL;
@@ -42,13 +39,14 @@ PRIVATE struct process *chain = NULL;
  * Hash function.
  */
 #define HASH(dev, block) \
-	(((dev)^(block))%HASHTAB_SIZE)
+	(((dev)^(block))%BUFFERS_HASHTAB_SIZE)
 
 /*
  * Removes a block from the cache.
  */
 PRIVATE struct buffer *cache_remove(struct buffer *buf)
 {	
+	/* Get a free buffer. */
 	if (buf == NULL)
 		buf = free_buffers;
 		
@@ -61,8 +59,12 @@ PRIVATE struct buffer *cache_remove(struct buffer *buf)
 	{
 		buf->free_prev->free_next = buf->free_next;
 		buf->free_next->free_prev = buf->free_prev;
+		
+		/* Removing last buffer. */
 		if (buf->free_next == buf->free_prev)
 			free_buffers = NULL;
+		
+		/* Removing first buffer. */
 		else if (free_buffers == buf)
 			free_buffers = buf->free_next;
 	}
@@ -85,6 +87,7 @@ PRIVATE void cache_update(struct buffer *buf, dev_t dev, block_t num)
 	if (hashtab[HASH(buf->dev, buf->num)] == buf)
 		hashtab[HASH(buf->dev, buf->num)] = buf->hash_next;
 	
+	/* Reassigns device and block number. */
 	buf->dev = dev;
 	buf->num = num;
 	buf->flags &= ~BUFFER_VALID;
@@ -162,13 +165,17 @@ repeat:
 		if ((buf->dev != dev) || (buf->num != num))
 			continue;
 		
-		/* Buffer is locked. */
+		/*
+		 * Buffer is locked so we wait for
+		 * it to become free.
+		 */
 		if (buf->flags & BUFFER_LOCKED)
 		{
 			sleep(&buf->chain, PRIO_BUFFER);
 			goto repeat;
 		}
 		
+		/* Mark buffer as busy. */
 		cache_remove(buf);
 		enable_interrupts();
 		block_lock(buf);
@@ -178,7 +185,10 @@ repeat:
 
 	buf = cache_remove(NULL);
 
-	/* There are no free buffers. */
+	/*
+	 * There are no free buffers so we need to
+	 * wait for one to become free.
+	 */
 	if (buf == NULL)
 	{
 		kprintf("fs: block buffer cache full");
@@ -186,7 +196,10 @@ repeat:
 		goto repeat;
 	}
 	
-	/* Synchronize buffer. */
+	/* 
+	 * Buffer is dirty, so write it asynchronously 
+	 * to the disk and go get another one.
+	 */
 	if (buf->flags & BUFFER_DIRTY)
 	{
 		enable_interrupts();
@@ -195,10 +208,9 @@ repeat:
 		goto repeat;
 	}
 	
+	/* Reassign buffer. */
 	cache_update(buf, dev, num);
-	
 	enable_interrupts();
-	
 	block_lock(buf);
 	
 	return (buf);
@@ -247,9 +259,8 @@ PUBLIC void cache_init(void)
 	
 	kprintf("fs: initializing the block buffer cache");
 	
-	ptr = (char *)BUFFERS_VIRT;
-	
 	/* Initialize block buffers. */
+	ptr = (char *)BUFFERS_VIRT;
 	for (i = 0; i < NR_BUFFERS; i++)
 	{
 		buffers[i].dev = 0;
@@ -270,7 +281,7 @@ PUBLIC void cache_init(void)
 	
 	/* Initialize the buffer cache. */
 	free_buffers = &buffers[0];
-	for (i = 0; i < HASHTAB_SIZE; i++)
+	for (i = 0; i < BUFFERS_HASHTAB_SIZE; i++)
 		hashtab[i] = NULL;
 }
 
