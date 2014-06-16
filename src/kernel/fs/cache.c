@@ -126,7 +126,7 @@ PRIVATE void cache_put(struct buffer *buf)
 			buf->free_prev = free_buffers->free_prev;
 					
 			/* Frenquently used buffer (insert in the end). */
-			if ((buf->flags & BUFFER_VALID) && !(buf->flags & BUFFER_DIRTY))
+			if ((buf->flags & BUFFER_VALID) && (buf->flags & BUFFER_DIRTY))
 			{	
 				free_buffers->free_prev->free_next = buf;
 				free_buffers->free_prev = buf;
