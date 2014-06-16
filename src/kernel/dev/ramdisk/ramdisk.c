@@ -144,11 +144,6 @@ PRIVATE int ramdisk_writeblk(unsigned minor, struct buffer *buf)
 	
 	kmemcpy((void *)ptr, buf->data, BLOCK_SIZE);
 	
-	buf->flags |= BUFFER_VALID;
-	buf->flags &= ~BUFFER_DIRTY;
-	
-	block_put(buf);
-	
 	return (0);
 }
 

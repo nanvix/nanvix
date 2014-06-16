@@ -209,6 +209,11 @@ PUBLIC void bdev_writeblk(struct buffer *buf)
 	
 	if (err)
 		kpanic("failed to write block to device");
+	
+	buf->flags |= BUFFER_VALID;
+	buf->flags &= ~BUFFER_DIRTY;
+	
+	block_put(buf);
 }
 
 /*
