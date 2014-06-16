@@ -105,7 +105,7 @@
 	/* Null block. */
 	#define BLOCK_NULL 0
 
-	/* Block size. */
+	/* Block size (in bytes). */
 	#define BLOCK_SIZE 1024
 	
 	/* Buffer flags. */

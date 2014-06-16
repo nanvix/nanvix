@@ -23,7 +23,7 @@ PUBLIC pid_t sys_fork(void)
 	struct process *proc; /* Process.        */
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
-kprintf("nprocs: %d", nprocs);
+
 	/*
 	 * Prevent non-privileged user from using the last 
 	 * available slot in the process table, so a privileged

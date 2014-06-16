@@ -1,0 +1,55 @@
+.\"
+.\" Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH cache_init 9 "June 2014" "Kernel Routines" "The Nanvix Kernel Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+cache_init \- Initializes the block buffer cache.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.RI "location: " "src/kernel/fd/cache.c"
+
+.BI "void cache_init(void);"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The 
+.BR cache_init()
+kernel routine initializes the block buffer cache, by first initializing the 
+block buffers and then initializing the cache.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+.BR cache_init()
+has no return value.
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR block_lock(9) ,
+.BR block_map(9) ,
+.BR block_put(9) ,
+.BR block_read(9) ,
+.BR cache_sync(9) ,
+.BR block_unlock(9) ,
+.BR block_write(9)

@@ -13,9 +13,12 @@
 #include <nanvix/pm.h>
 #include "fs.h"
 
-/* Number of block buffers (don't touch). */
-#define NR_BUFFERS 256
+/* Too many buffers. */
+#if (NR_BUFFERS > 512)
+	#error "too many buffers"
+#endif
 
+/* Hard disk too big. */
 #if (IMAP_SIZE + ZMAP_SIZE > NR_BUFFERS/16)
 	#error "hard disk too big"
 #endif
@@ -246,24 +249,27 @@ PUBLIC void cache_init(void)
 	
 	ptr = (char *)BUFFERS_VIRT;
 	
-	/* Initialize buffers. */
+	/* Initialize block buffers. */
 	for (i = 0; i < NR_BUFFERS; i++)
 	{
+		buffers[i].dev = 0;
+		buffers[i].num = 0;
 		buffers[i].data = ptr;
 		buffers[i].count = 0;
-		buffers[i].flags = ~(BUFFER_VALID | BUFFER_LOCKED);
+		buffers[i].flags = ~(BUFFER_VALID | BUFFER_LOCKED | BUFFER_DIRTY);
 		buffers[i].chain = NULL;
-		buffers[i].free_next = &buffers[(i + 1)%NR_BUFFERS];
-		buffers[i].free_prev = &buffers[(i - 1)%NR_BUFFERS];
+		buffers[i].free_next = 
+			(i + 1 == NR_BUFFERS) ? &buffers[0] : &buffers[i + 1];
+		buffers[i].free_prev = 
+			(i - 1 < 0) ? &buffers[NR_BUFFERS - 1] : &buffers[i - 1];
 		buffers[i].hash_next = NULL;
 		buffers[i].hash_prev = NULL;
 		
 		ptr += BLOCK_SIZE;
 	}
 	
-	/* Initialize buffer cache. */
+	/* Initialize the buffer cache. */
 	free_buffers = &buffers[0];
-	free_buffers->free_prev = &buffers[NR_BUFFERS - 1];
 	for (i = 0; i < HASHTAB_SIZE; i++)
 		hashtab[i] = NULL;
 }
