@@ -56,10 +56,10 @@ found:
 	 */
 	for (blk = num; blk < num + (1 << sb->log_zone_size); blk++)
 	{
-		buf = block_read(sb->dev, blk);
+		buf = bread(sb->dev, blk);
 		kmemset(buf->data, 0, BLOCK_SIZE);
 		buf->flags |= BUFFER_DIRTY;
-		block_put(buf);
+		brelse(buf);
 	}
 	
 	return (num);
@@ -106,13 +106,13 @@ PUBLIC void zone_free_indirect(struct superblock *sb, zone_t num)
 	/* Free indirect zone. */
 	for (i = 0; i < nblocks; i++)
 	{
-		buf = block_read(sb->dev, num + i);
+		buf = bread(sb->dev, num + i);
 		
 		/* Free direct zone. */
 		for (j = 0; j < nzones; j++)
 			zone_free(sb, ((zone_t *)buf->data)[j]);
 		
-		block_put(buf);
+		brelse(buf);
 	}
 	
 	zone_free(sb, num);
@@ -139,7 +139,7 @@ PUBLIC void zone_free_dindirect(struct superblock *sb, zone_t num)
 	/* Free indirect zone. */
 	for (i = 0; i < nblocks; i++)
 	{
-		buf = block_read(sb->dev, num + i);
+		buf = bread(sb->dev, num + i);
 		
 		/* Free direct zone. */
 		for (j = 0; j < nzones; j++)
@@ -148,7 +148,7 @@ PUBLIC void zone_free_dindirect(struct superblock *sb, zone_t num)
 				zone_free_indirect(sb, zone);
 		}
 		
-		block_put(buf);
+		brelse(buf);
 	}
 	
 	zone_free(sb, num);
@@ -223,7 +223,7 @@ PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
 		if ((phys = inode->zones[ZONE_SINGLE]) == ZONE_NULL)
 			return (ZONE_NULL);
 	
-		buf = block_read(inode->dev, phys);
+		buf = bread(inode->dev, phys);
 		
 		if ((((zone_t *)buf->data)[logic] == ZONE_NULL) && create)
 		{
@@ -239,7 +239,7 @@ PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
 			}
 		}
 		
-		block_put(buf);
+		brelse(buf);
 		
 		return (((zone_t *)buf->data)[logic]);
 	}

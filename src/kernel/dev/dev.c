@@ -212,8 +212,7 @@ PUBLIC void bdev_writeblk(struct buffer *buf)
 	
 	buf->flags |= BUFFER_VALID;
 	buf->flags &= ~BUFFER_DIRTY;
-	
-	block_put(buf);
+	brelse(buf);
 }
 
 /*

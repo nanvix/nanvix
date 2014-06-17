@@ -108,7 +108,7 @@ PRIVATE void inode_write(struct inode *i)
 	
 	blk = 2 + sb->imap_blocks + sb->zmap_blocks + i->num/INODES_PER_BLOCK;
 	
-	buf = block_read(i->dev, blk);
+	buf = bread(i->dev, blk);
 	
 	/* Failed to read inode. */
 	if (buf == NULL)
@@ -127,7 +127,7 @@ PRIVATE void inode_write(struct inode *i)
 	i->flags &= ~INODE_DIRTY;
 	buf->flags |= BUFFER_DIRTY;
 	
-	block_put(buf);
+	brelse(buf);
 	superblock_unlock(sb);
 }
 
@@ -152,7 +152,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 	/* Calculate block number. */
 	blk = 2 + sb->imap_blocks + sb->zmap_blocks + num/INODES_PER_BLOCK;
 	
-	buf = block_read(dev, blk);
+	buf = bread(dev, blk);
 	
 	/* Failed to read inode. */
 	if (buf == NULL)
@@ -185,7 +185,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 	i->count = 1;
 	i->flags = (INODE_DIRTY | INODE_MOUNT) & INODE_VALID;
 	
-	block_put(buf);
+	brelse(buf);
 	superblock_unlock(sb);
 	
 	return (i);

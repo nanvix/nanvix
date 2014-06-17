@@ -38,23 +38,23 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/_SIZEOF_DIRENT;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
 		/* Get buffer. */
 		if (buf == NULL)
 		{
-			buf = block_read(dinode->dev, blk);
+			buf = bread(dinode->dev, blk);
 			d = buf->data;
 		}
 		
 		/* Get next block */
 		else if ((char *)d >= BLOCK_SIZE + (char *) buf->data)
 		{
-			block_put(buf);
+			brelse(buf);
 			buf = NULL;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -64,7 +64,7 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 			/* Found. */
 			if (!kstrncmp(d->d_name, filename, NAME_MAX))
 			{
-				block_put(buf);
+				brelse(buf);
 				return (d->d_ino);
 			}
 		}
@@ -74,7 +74,7 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 	
 	/* House keeping. */
 	if (buf != NULL)
-		block_put(buf);
+		brelse(buf);
 	
 	return (INODE_NULL);
 }
@@ -105,23 +105,23 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/_SIZEOF_DIRENT;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
 		/* Get buffer. */
 		if (buf == NULL)
 		{
-			buf = block_read(dinode->dev, blk);
+			buf = bread(dinode->dev, blk);
 			d = buf->data;
 		}
 		
 		/* Get next block */
 		else if ((char *)d >= BLOCK_SIZE + (char *) buf->data)
 		{
-			block_put(buf);
+			brelse(buf);
 			buf = NULL;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -138,7 +138,7 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 	
 	/* House keeping. */
 	if (buf != NULL)
-		block_put(buf);
+		brelse(buf);
 
 	return (-ENOENT);
 
@@ -147,7 +147,7 @@ found:
 	/* Cannot remove '.' */
 	if (d->d_ino == dinode->num)
 	{
-		block_put(buf);
+		brelse(buf);
 		return (-EBUSY);
 	}
 	
@@ -156,7 +156,7 @@ found:
 	/* Failed to get file's inode. */
 	if (file == NULL)
 	{
-		block_put(buf);
+		brelse(buf);
 		return (-ENOENT);
 	}
 	
@@ -167,7 +167,7 @@ found:
 		if (!IS_SUPERUSER(curr_proc))
 		{
 			inode_put(file);
-			block_put(buf);
+			brelse(buf);
 			return (-EPERM);
 		}
 		
@@ -175,7 +175,7 @@ found:
 		if (dinode->size)
 		{
 			inode_put(file);
-			block_put(buf);
+			brelse(buf);
 			return (-EBUSY);			
 		}
 	}
@@ -190,7 +190,7 @@ found:
 	file->flags |= INODE_DIRTY;
 	
 	inode_put(file);
-	block_put(buf);
+	brelse(buf);
 	inode_put(dinode);
 	
 	return (0);
@@ -222,23 +222,23 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/_SIZEOF_DIRENT;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
 		/* Read block buffer. */
 		if (buf == NULL)
 		{
-			buf = block_read(dinode->dev, blk);
+			buf = bread(dinode->dev, blk);
 			d = buf->data;
 		}
 		
 		/* Get next block. */
 		else if ((char *)d >= BLOCK_SIZE + (char *)buf->data)
 		{
-			block_put(buf);
+			brelse(buf);
 			buf = NULL;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -256,7 +256,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 			/* Found duplicated entry. */
 			if (!kstrncmp(d->d_name, name, NAME_MAX))
 			{
-				block_put(buf);
+				brelse(buf);
 				
 				return (-1);
 			}
@@ -267,14 +267,14 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	
 	/* House keeping. */
 	if (buf != NULL)
-		block_put(buf);
+		brelse(buf);
 	
 	/* Create entry. */
 	if (entry < 0)
 	{
 		entry = nentries;
 		
-		blk = block_map(dinode, entry*_SIZEOF_DIRENT, 1);
+		blk = bmap(dinode, entry*_SIZEOF_DIRENT, 1);
 		
 		/* Failed to create entry. */
 		if (blk == BLOCK_NULL)
@@ -288,15 +288,15 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	}
 	
 	else
-		blk = block_map(dinode, entry*_SIZEOF_DIRENT, 0);
+		blk = bmap(dinode, entry*_SIZEOF_DIRENT, 0);
 	
-	buf = block_read(dinode->dev, blk);
+	buf = bread(dinode->dev, blk);
 	entry %= (BLOCK_SIZE/_SIZEOF_DIRENT);
 	d = &((struct dirent *)(buf->data))[entry];
 	kstrncpy(d->d_name, name, NAME_MAX);
 	d->d_ino = inode->num;
 	buf->flags |= BUFFER_DIRTY;
-	block_put(buf);
+	brelse(buf);
 	
 	return (0);
 }
@@ -319,13 +319,13 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 	/* Read data. */
 	do
 	{
-		blk = block_map(i, off, 0);
+		blk = bmap(i, off, 0);
 		
 		/* End of file reached. */
 		if (blk == BLOCK_NULL)
 			goto out;
 		
-		bbuf = block_read(i->dev, blk);
+		bbuf = bread(i->dev, blk);
 		
 		/* Failed to read. */
 		if (bbuf == NULL)
@@ -340,13 +340,13 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 			chunk = i->size - off;
 			if (chunk == 0)
 			{
-				block_put(bbuf);
+				brelse(bbuf);
 				goto out;
 			}
 		}
 		
 		kmemcpy(p, (char *)bbuf->data + blkoff, chunk);
-		block_put(bbuf);
+		brelse(bbuf);
 		
 		n -= chunk;
 		off += chunk;
@@ -377,13 +377,13 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 	/* Write data. */
 	do
 	{
-		blk = block_map(i, off, 1);
+		blk = bmap(i, off, 1);
 		
 		/* End of file reached. */
 		if (blk == BLOCK_NULL)
 			goto out;
 		
-		bbuf = block_read(i->dev, blk);
+		bbuf = bread(i->dev, blk);
 		
 		/* Failed to read block. */
 		if (bbuf == NULL)
@@ -394,7 +394,7 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 		chunk = (n < BLOCK_SIZE - blkoff) ? n : BLOCK_SIZE - blkoff;
 		kmemcpy((char *)bbuf->data + blkoff, buf, chunk);
 		bbuf->flags |= BUFFER_DIRTY;
-		block_put(bbuf);
+		brelse(bbuf);
 		
 		n -= chunk;
 		off += chunk;

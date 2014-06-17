@@ -42,44 +42,85 @@ PRIVATE struct process *chain = NULL;
 	(((dev)^(block))%BUFFERS_HASHTAB_SIZE)
 
 /*
- * Removes a block from the cache.
+ * Gets a block buffer from the cache.
  */
-PRIVATE struct buffer *cache_remove(struct buffer *buf)
-{	
-	/* Get a free buffer. */
-	if (buf == NULL)
-		buf = free_buffers;
-		
-	/* No free buffers. */
-	if (buf == NULL)
-		return (NULL);
-	
-	/* Remove buffer from the free list. */
-	if (buf->count == 0)
+PRIVATE struct buffer *getblk(dev_t dev, block_t num)
+{
+	struct buffer *buf;
+
+repeat:
+
+	disable_interrupts();
+
+	/* Search in hash table. */
+	for (buf = hashtab[HASH(dev, num)]; buf != NULL; buf = buf->hash_next)
 	{
-		buf->free_prev->free_next = buf->free_next;
-		buf->free_next->free_prev = buf->free_prev;
+		/* Not found. */
+		if ((buf->dev != dev) || (buf->num != num))
+			continue;
 		
-		/* Removing last buffer. */
-		if (buf->free_next == buf->free_prev)
-			free_buffers = NULL;
+		/*
+		 * Buffer is locked so we wait for
+		 * it to become free.
+		 */
+		if (buf->flags & BUFFER_LOCKED)
+		{
+			sleep(&buf->chain, PRIO_BUFFER);
+			goto repeat;
+		}
 		
-		/* Removing first buffer. */
-		else if (free_buffers == buf)
-			free_buffers = buf->free_next;
+		/* Remove buffer from the free list. */
+		if (buf->count++ == 0)
+		{
+			buf->free_prev->free_next = buf->free_next;
+			buf->free_next->free_prev = buf->free_prev;
+			if (buf->free_next == buf->free_prev)
+				free_buffers = NULL;
+			else if (free_buffers == buf)
+				free_buffers = buf->free_next;
+		}
+		
+		enable_interrupts();
+		blklock(buf);
+
+		return (buf);
+	}
+
+	buf = free_buffers;
+
+	/*
+	 * There are no free buffers so we need to
+	 * wait for one to become free.
+	 */
+	if (buf == NULL)
+	{
+		kprintf("fs: block buffer cache full");
+		sleep(&chain, PRIO_BUFFER);
+		goto repeat;
 	}
 	
+	/* Remove buffer from the free list. */
+	buf->free_prev->free_next = buf->free_next;
+	buf->free_next->free_prev = buf->free_prev;
+	if (buf->free_next == buf->free_prev)
+		free_buffers = NULL;
+	else if (free_buffers == buf)
+		free_buffers = buf->free_next;
 	buf->count++;
-
-	return (buf);
-}
-
-/*
- * Updates a block in the cache.
- */
-PRIVATE void cache_update(struct buffer *buf, dev_t dev, block_t num)
-{
-	/* Remmove buffer from hash queue. */
+	
+	/* 
+	 * Buffer is dirty, so write it asynchronously 
+	 * to the disk and go get another one.
+	 */
+	if (buf->flags & BUFFER_DIRTY)
+	{
+		enable_interrupts();
+		blklock(buf);
+		bdev_writeblk(buf);
+		goto repeat;
+	}
+	
+	/* Remove buffer from hash queue. */
 	if (buf->hash_prev != NULL)
 		buf->hash_prev->hash_next = buf->hash_next;
 	if (buf->hash_next != NULL)
@@ -92,18 +133,52 @@ PRIVATE void cache_update(struct buffer *buf, dev_t dev, block_t num)
 	buf->num = num;
 	buf->flags &= ~BUFFER_VALID;
 	
-	/* Insert buffer in a new hash queue. */
+	/* Place buffer in a new hash queue. */
 	buf->hash_next = hashtab[HASH(buf->dev, buf->num)];
 	buf->hash_prev = NULL;
 	hashtab[HASH(buf->dev, buf->num)] = buf;
 	if (buf->hash_next != NULL)
 		buf->hash_next->hash_prev = buf;
+	
+	enable_interrupts();
+	blklock(buf);
+	
+	return (buf);
+}
+
+/*
+ * Locks a block buffer.
+ */
+PUBLIC void blklock(struct buffer *buf)
+{
+	disable_interrupts();
+	
+	/* Wait for block buffer to become unlocked. */
+	while (buf->flags & BUFFER_LOCKED)
+		sleep(&buf->chain, PRIO_BUFFER);
+		
+	buf->flags |= BUFFER_LOCKED;
+
+	enable_interrupts();
+}
+
+/*
+ * Unlocks a block buffer.
+ */
+PUBLIC void blkunlock(struct buffer *buf)
+{
+	disable_interrupts();
+
+	buf->flags &= ~BUFFER_LOCKED;
+	wakeup(&buf->chain);
+
+	enable_interrupts();
 }
 
 /*
  * Puts back a block buffer in the cache.
  */
-PRIVATE void cache_put(struct buffer *buf)
+PUBLIC void brelse(struct buffer *buf)
 {
 	disable_interrupts();
 	
@@ -144,115 +219,73 @@ PRIVATE void cache_put(struct buffer *buf)
 	
 	enable_interrupts();
 
-	block_unlock(buf);
+	blkunlock(buf);
 }
 
 /*
- * Gets a block buffer from the cache.
+ * Reads a block buffer.
  */
-PRIVATE struct buffer *cache_get(dev_t dev, block_t num)
+PUBLIC struct buffer *bread(dev_t dev, block_t num)
 {
 	struct buffer *buf;
-
-repeat:
-
-	disable_interrupts();
-
-	/* Search in hash table. */
-	for (buf = hashtab[HASH(dev, num)]; buf != NULL; buf = buf->hash_next)
-	{
-		/* Not found. */
-		if ((buf->dev != dev) || (buf->num != num))
-			continue;
-		
-		/*
-		 * Buffer is locked so we wait for
-		 * it to become free.
-		 */
-		if (buf->flags & BUFFER_LOCKED)
-		{
-			sleep(&buf->chain, PRIO_BUFFER);
-			goto repeat;
-		}
-		
-		/* Mark buffer as busy. */
-		cache_remove(buf);
-		enable_interrupts();
-		block_lock(buf);
-
+	
+	buf = getblk(dev, num);
+	
+	/* Valid buffer? */
+	if (buf->flags & BUFFER_VALID)
 		return (buf);
-	}
 
-	buf = cache_remove(NULL);
-
-	/*
-	 * There are no free buffers so we need to
-	 * wait for one to become free.
-	 */
-	if (buf == NULL)
-	{
-		kprintf("fs: block buffer cache full");
-		sleep(&chain, PRIO_BUFFER);
-		goto repeat;
-	}
-	
-	/* 
-	 * Buffer is dirty, so write it asynchronously 
-	 * to the disk and go get another one.
-	 */
-	if (buf->flags & BUFFER_DIRTY)
-	{
-		enable_interrupts();
-		block_lock(buf);
-		bdev_writeblk(buf);
-		goto repeat;
-	}
-	
-	/* Reassign buffer. */
-	cache_update(buf, dev, num);
-	enable_interrupts();
-	block_lock(buf);
+	bdev_readblk(buf);
 	
 	return (buf);
 }
 
 /*
- * Waits for a block buffer to become unlocked.
+ * Writes a block buffer.
  */
-PRIVATE void block_wait(struct buffer *buf)
+PUBLIC void bwrite(struct buffer *buf)
 {
-	disable_interrupts();
-	
-	/* Wait for block buffer to become unlocked. */
-	while (buf->flags & BUFFER_LOCKED)
-		sleep(&buf->chain, PRIO_BUFFER);
-	
-	enable_interrupts();
+	bdev_writeblk(buf);
+}
+
+/*
+ * Mas a file byte offset in a block number.
+ */
+PUBLIC block_t bmap(struct inode *inode, off_t off, int create)
+{
+	return (zone_map(inode, off, create));
 }
 
 /*
  * Synchronizes the cache.
  */
-PUBLIC void cache_sync(void)
+PUBLIC void bsync(void)
 {
 	struct buffer *buf;
 	
 	/* Synchronize buffers. */
 	for (buf = &buffers[0]; buf < &buffers[NR_BUFFERS]; buf++)
 	{
-		/* Write only valid buffers. */
-		if (buf->flags & BUFFER_VALID)
+		blklock(buf);
+			
+		/* Skip invalid buffers. */
+		if (!(buf->flags & BUFFER_VALID))
 		{
-			block_wait(buf);
-			bdev_writeblk(buf);
+			blkunlock(buf);
+			continue;
 		}
+		
+		/* Prevent double free. */
+		buf->count++;
+		
+		bdev_writeblk(buf);
 	}
 }
 
 /*
  * Initializes the block buffer cache.
  */
-PUBLIC void cache_init(void)
+PUBLIC void binit(void)
 {
 	int i;     /* Loop index.          */
 	char *ptr; /* Buffer data pointer. */
@@ -283,75 +316,4 @@ PUBLIC void cache_init(void)
 	free_buffers = &buffers[0];
 	for (i = 0; i < BUFFERS_HASHTAB_SIZE; i++)
 		hashtab[i] = NULL;
-}
-
-/*
- * Locks a block buffer.
- */
-PUBLIC void block_lock(struct buffer *buf)
-{
-	disable_interrupts();
-	
-	block_wait(buf);
-	buf->flags |= BUFFER_LOCKED;
-
-	enable_interrupts();
-}
-
-/*
- * Unlocks a block buffer.
- */
-PUBLIC void block_unlock(struct buffer *buf)
-{
-	disable_interrupts();
-
-	buf->flags &= ~BUFFER_LOCKED;
-	wakeup(&buf->chain);
-
-	enable_interrupts();
-}
-
-/*
- * Releases access to a block buffer.
- */
-PUBLIC void block_put(struct buffer *buf)
-{
-	cache_put(buf);
-}
-
-/*
- * Reads a block buffer.
- */
-PUBLIC struct buffer *block_read(dev_t dev, block_t num)
-{
-	struct buffer *buf;
-	
-	buf = cache_get(dev, num);
-	
-	/* Valid buffer? */
-	if (buf->flags & BUFFER_VALID)
-		return (buf);
-
-	bdev_readblk(buf);
-	
-	return (buf);
-}
-
-/*
- * Writes a block buffer.
- */
-PUBLIC void block_write(struct buffer *buf)
-{
-	/* Write block. */
-	bdev_writeblk(buf);
-	
-	cache_put(buf);
-}
-
-/*
- * Mas a file byte offset in a block number.
- */
-PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
-{
-	return (zone_map(inode, off, create));
 }

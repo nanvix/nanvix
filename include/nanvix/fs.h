@@ -141,42 +141,42 @@
 	/*
 	 * Initializes the block buffer cache.
 	 */
-	EXTERN void cache_init(void);
+	EXTERN void binit(void);
 	
 	/*
 	 * Synchronizes the block buffers cache.
 	 */
-	EXTERN void cache_sync(void);
+	EXTERN void bsync(void);
 
 	/*
 	 * Locks a block buffer.
 	 */
-	EXTERN void block_lock(struct buffer *buf);
+	EXTERN void blklock(struct buffer *buf);
 
 	/*
 	 * Unlocks a block buffer.
 	 */
-	EXTERN void block_unlock(struct buffer *buf);
+	EXTERN void blkunlock(struct buffer *buf);
 
 	/*
 	 * Releases access to a block buffer.
 	 */
-	EXTERN void block_put(struct buffer *buf);
+	EXTERN void brelse(struct buffer *buf);
 
 	/*
 	 * Reads a block buffer.
 	 */
-	EXTERN struct buffer *block_read(dev_t dev, block_t num);
+	EXTERN struct buffer *bread(dev_t dev, block_t num);
 
 	/*
 	 * Writes a block buffer.
 	 */
-	EXTERN void block_write(struct buffer *buf);
+	EXTERN void bwrite(struct buffer *buf);
 	
 	/*
 	 * Maps a file byte offset in a block number.
 	 */
-	EXTERN block_t block_map(struct inode *inode, off_t off, int create);
+	EXTERN block_t bmap(struct inode *inode, off_t off, int create);
 	
 /*============================================================================*
  *                               Inode Library                                *

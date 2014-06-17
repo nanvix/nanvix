@@ -41,7 +41,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 	struct region *reg;     /* Working memory region.         */
 	struct pregion *preg;   /* Working process memory region. */
 	
-	blk = block_map(inode, 0, 0);
+	blk = bmap(inode, 0, 0);
 	
 	/* Empty file. */
 	if (blk == BLOCK_NULL)
@@ -51,13 +51,13 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 	}
 	
 	/* Read ELF file header. */
-	header = block_read(inode->dev, blk);
+	header = bread(inode->dev, blk);
 	elf = header->data;
 	
 	/* Bad ELF file. */
 	if (!is_elf(elf))
 	{
-		block_put(header);
+		brelse(header);
 		curr_proc->errno = -ENOEXEC;
 		return (0);
 	}
@@ -65,7 +65,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 	/* Bad ELF file. */
 	if (elf->e_phoff + elf->e_phnum*elf->e_phentsize > BLOCK_SIZE)
 	{
-		block_put(header);
+		brelse(header);
 		curr_proc->errno = -ENOEXEC;
 		return (0);
 	}
@@ -84,7 +84,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 		{
 			kprintf("broken executable");
 			
-			block_put(header);
+			brelse(header);
 			curr_proc->errno = -ENOEXEC;
 			return (0);
 		}
@@ -108,7 +108,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 		/* Failed to allocate region. */
 		if (reg == NULL)
 		{
-			block_put(header);
+			brelse(header);
 			curr_proc->errno = -ENOMEM;
 			return (0);
 		}
@@ -117,7 +117,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 		if (attachreg(curr_proc, preg, addr, reg))
 		{
 			freereg(reg);
-			block_put(header);
+			brelse(header);
 			curr_proc->errno = -ENOMEM;
 			return (0);
 		}
@@ -129,7 +129,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 	
 	entry = elf->e_entry;
 	
-	block_put(header);
+	brelse(header);
 	
 	return (entry);
 }

@@ -105,14 +105,14 @@ PUBLIC void superblock_put(struct superblock *sb)
 	
 	/* Release inode map buffers. */
 	for (i = 0; i < (int) sb->imap_blocks; i++)
-		block_put(sb->imap[i]);
+		brelse(sb->imap[i]);
 	
 	/* Release zone map buffers. */
 	for (i = 0; i < (int) sb->zmap_blocks; i++)
-		block_put(sb->zmap[i]);
+		brelse(sb->zmap[i]);
 	
 	/* Release super block buffer. */
-	block_put(sb->buf);
+	brelse(sb->buf);
 	
 	sb->flags &= ~SUPERBLOCK_VALID;
 	
@@ -133,17 +133,17 @@ PUBLIC void superblock_write(struct superblock *sb)
 	
 	/* Write inode map buffers. */
 	for (i = 0; i < (int) sb->imap_blocks; i++)
-		block_write(sb->imap[i]);
+		bwrite(sb->imap[i]);
 	
 	/* Write zone map buffers. */
 	for (i = 0; i < (int) sb->zmap_blocks; i++)
-		block_write(sb->zmap[i]);
+		bwrite(sb->zmap[i]);
 	
 	/* Write super block buffer. */
 	d_sb = (struct d_superblock *) sb->buf->data;
 	d_sb->s_firstdatazone = sb->firstdatazone;
 	sb->buf->flags |= BUFFER_DIRTY;
-	block_write(sb->buf);
+	bwrite(sb->buf);
 	
 	sb->flags &= ~SUPERBLOCK_DIRTY;
 }
@@ -183,7 +183,7 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	if (sb == NULL)
 		goto error0;
 	
-	buf = block_read(dev, 1);
+	buf = bread(dev, 1);
 	
 	d_sb = (struct d_superblock *)buf->data;
 	
@@ -211,14 +211,14 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	sb->imap_blocks = d_sb->s_imap_blocks;
 	for (i = 0; i < (int) sb->imap_blocks; i++)
 	{
-		sb->imap[i] = block_read(dev, 2 + i);
-		block_unlock(sb->imap[i]);
+		sb->imap[i] = bread(dev, 2 + i);
+		blkunlock(sb->imap[i]);
 	}
 	sb->zmap_blocks = d_sb->s_zmap_blocks;
 	for (i = 0; i < (int) sb->zmap_blocks; i++)
 	{
-		sb->zmap[i] = block_read(dev, 2 + sb->imap_blocks + i);
-		block_unlock(sb->zmap[i]);
+		sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i);
+		blkunlock(sb->zmap[i]);
 	}
 	sb->firstdatazone = d_sb->s_firstdatazone;
 	sb->log_zone_size = d_sb->s_log_zone_size;
@@ -233,12 +233,12 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	sb->zsearch = 0;
 	sb->chain = NULL;
 	
-	block_unlock(buf);
+	blkunlock(buf);
 	
 	return (sb);
 	
 error1:
-	block_put(buf);
+	brelse(buf);
 	superblock_put(sb);
 error0:
 	return (NULL);

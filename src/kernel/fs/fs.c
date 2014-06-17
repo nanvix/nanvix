@@ -173,7 +173,7 @@ PUBLIC void putname(char *name)
  */
 PUBLIC void fs_init(void)
 {
-	cache_init();
+	binit();
 	inode_init();
 	superblock_init();
 
