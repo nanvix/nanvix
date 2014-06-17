@@ -322,19 +322,9 @@
 	EXTERN zone_t zone_alloc(struct superblock *sb);
 
 	/*
-	 * Frees a zone.
+	 * Frees a disk block.
 	 */
-	EXTERN void zone_free(struct superblock *sb, zone_t num);
-
-	/*
-	 * Frees an indirect zone.
-	 */
-	EXTERN void zone_free_indirect(struct superblock *sb, zone_t num);
-
-	/*
-	 * Frees a doubly indirect zone.
-	 */
-	EXTERN void zone_free_dindirect(struct superblock *sb, zone_t num);
+	EXTERN void block_free(struct superblock *sb, block_t num, int lvl);
 	
 	/*
 	 * Maps a file byte offset in a physical zone number.

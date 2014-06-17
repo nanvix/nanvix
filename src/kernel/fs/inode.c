@@ -279,17 +279,17 @@ PUBLIC void inode_truncate(struct inode *i)
 	/* Free file zones. */
 	for (j = 0; j < NR_ZONES_DIRECT; j++)
 	{
-		zone_free(sb, i->zones[j]);
+		block_free(sb, i->zones[j], 0);
 		i->zones[j] = ZONE_NULL;
 	}
 	for (j = 0; j < NR_ZONES_SINGLE; j++)
 	{
-		zone_free_indirect(sb, i->zones[NR_ZONES_DIRECT + j]);
+		block_free(sb, i->zones[NR_ZONES_DIRECT + j], 1);
 		i->zones[NR_ZONES_DIRECT + j] = ZONE_NULL;
 	}
 	for (j = 0; j < NR_ZONES_DOUBLE; j++)
 	{
-		zone_free_indirect(sb, i->zones[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j]);
+		block_free(sb, i->zones[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j], 2);
 		i->zones[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j] = ZONE_NULL;
 	}
 	

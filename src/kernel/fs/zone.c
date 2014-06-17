@@ -68,7 +68,7 @@ found:
 /*
  * Frees a zone.
  */
-PUBLIC void zone_free(struct superblock *sb, zone_t num)
+PRIVATE void zone_free(struct superblock *sb, zone_t num)
 {
 	block_t blk;
 	
@@ -89,7 +89,7 @@ PUBLIC void zone_free(struct superblock *sb, zone_t num)
 /*
  * Frees an indirect zone.
  */
-PUBLIC void zone_free_indirect(struct superblock *sb, zone_t num)
+PRIVATE void zone_free_indirect(struct superblock *sb, zone_t num)
 {
 	int i, j;           /* Loop indexes.     */
 	int nzones;         /* Number of zones.  */
@@ -121,7 +121,7 @@ PUBLIC void zone_free_indirect(struct superblock *sb, zone_t num)
 /*
  * Frees a doubly indirect zone.
  */
-PUBLIC void zone_free_dindirect(struct superblock *sb, zone_t num)
+PRIVATE void zone_free_dindirect(struct superblock *sb, zone_t num)
 {
 	int i, j;           /* Loop indexes.     */
 	int nzones;         /* Number of zones.  */
@@ -152,6 +152,35 @@ PUBLIC void zone_free_dindirect(struct superblock *sb, zone_t num)
 	}
 	
 	zone_free(sb, num);
+}
+
+/*
+ * Frees a disk block.
+ */
+PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
+{
+	/* Free disk block. */
+	switch (lvl)
+	{
+		/* Direct block. */
+		case 0:
+			zone_free(sb, num);
+			break;
+		
+		/* Single indirect block. */
+		case 1:
+			zone_free_indirect(sb, num);
+			break;
+		
+		/* Doubly indirect block. */
+		case 2:
+			zone_free_dindirect(sb, num);
+			break;
+		
+		/* Should not happen. */
+		default:
+			kpanic("block_free() bad indirection level");
+	}
 }
 
 /*
