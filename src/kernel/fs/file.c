@@ -14,22 +14,23 @@
 #include "fs.h"
 
 /*
- * Searchs for a file in a directory.
+ * Searches for a directory entry.
  */
-PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
+PRIVATE struct dirent *dirent_search
+(struct inode *dinode, const char *filename, struct buffer **buf, int *entry)
 {
-	int i;              /* Working directory entry index. */
-	block_t blk;        /* Working block number.          */
-	struct buffer *buf; /* Block buffer.                  */
-	struct dirent *d;   /* Directory entry.               */
-	int nentries;       /* Number of directory entries.   */
+	int i;            /* Working directory entry index. */
+	block_t blk;      /* Working block number.          */
+	struct dirent *d; /* Directory entry.               */
+	int nentries;     /* Number of directory entries.   */
 	
 	nentries = dinode->size/_SIZEOF_DIRENT;
 	
 	/* Search from very first block. */
 	i = 0;
+	*entry = -1;
 	blk = dinode->blocks[0];		
-	buf = NULL;
+	(*buf) = NULL;
 	
 	/* Search directory entry. */
 	while (i < nentries)
@@ -43,17 +44,17 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 		}
 		
 		/* Get buffer. */
-		if (buf == NULL)
+		if ((*buf) == NULL)
 		{
-			buf = bread(dinode->dev, blk);
-			d = buf->data;
+			(*buf) = bread(dinode->dev, blk);
+			d = (*buf)->data;
 		}
 		
 		/* Get next block */
-		else if ((char *)d >= BLOCK_SIZE + (char *) buf->data)
+		else if ((char *)d >= BLOCK_SIZE + (char *) (*buf)->data)
 		{
-			brelse(buf);
-			buf = NULL;
+			brelse((*buf));
+			(*buf) = NULL;
 			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
@@ -61,22 +62,62 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 		/* Valid entry. */
 		if (d->d_ino != INODE_NULL)
 		{
-			/* Found. */
+			/* Found */
 			if (!kstrncmp(d->d_name, filename, NAME_MAX))
 			{
-				brelse(buf);
-				return (d->d_ino);
+				/* Duplicated entry. */
+				if (entry != NULL)
+				{
+					*entry = -1;
+					brelse((*buf));
+					d = NULL;
+				}
+				
+				return (d);
 			}
+		}
+
+		/* Creating entry. */
+		else if (entry != NULL)
+		{
+			/* Remember entry index. */
+			if (*entry < 0)
+				*entry = i;
 		}
 		
 		d++; i++;	
 	}
 	
-	/* House keeping. */
-	if (buf != NULL)
-		brelse(buf);
+	/* Creating entry. */
+	if (entry != NULL)
+		*entry = nentries;
 	
-	return (INODE_NULL);
+	/* House keeping. */
+	if ((*buf) != NULL)
+	{
+		brelse((*buf));
+		(*buf) = NULL;
+	}
+	
+	return (NULL);
+}
+
+/*
+ * Searchs for a file in a directory.
+ */
+PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
+{
+	struct buffer *buf; /* Block buffer.    */
+	struct dirent *d;   /* Directory entry. */
+	
+	d = dirent_search(dinode, filename, &buf, NULL);
+	
+	/* Not found. */
+	if (d == NULL)
+		return (INODE_NULL);
+	
+	brelse(buf);
+	return (d->d_ino);
 }
 
 /*
@@ -84,65 +125,15 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
  */
 PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 {
-	int i;              /* Working directory entry index. */
-	block_t blk;        /* Working block number.          */
-	struct buffer *buf; /* Block buffer.                  */
-	struct dirent *d;   /* Directory entry.               */
-	struct inode *file; /* File inode.                    */
-	int nentries;       /* Number of directory entries.   */
+	struct buffer *buf; /* Block buffer.    */
+	struct dirent *d;   /* Directory entry. */
+	struct inode *file; /* File inode.      */
 	
-	nentries = dinode->size/_SIZEOF_DIRENT;
+	d = dirent_search(dinode, filename, &buf, NULL);
 	
-	/* Search from very first block. */
-	i = 0;
-	blk = dinode->blocks[0];		
-	buf = NULL;
-	
-	/* Search directory entry. */
-	while (i < nentries)
-	{
-		/* Get valid block. */
-		if (blk == BLOCK_NULL)
-		{
-			i += BLOCK_SIZE/_SIZEOF_DIRENT;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
-			continue;
-		}
-		
-		/* Get buffer. */
-		if (buf == NULL)
-		{
-			buf = bread(dinode->dev, blk);
-			d = buf->data;
-		}
-		
-		/* Get next block */
-		else if ((char *)d >= BLOCK_SIZE + (char *) buf->data)
-		{
-			brelse(buf);
-			buf = NULL;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
-			continue;
-		}
-		
-		/* Valid entry. */
-		if (d->d_ino != INODE_NULL)
-		{
-			/* Found. */
-			if (!kstrncmp(d->d_name, filename, NAME_MAX))
-				goto found;
-		}
-		
-		d++; i++;	
-	}
-	
-	/* House keeping. */
-	if (buf != NULL)
-		brelse(buf);
-
-	return (-ENOENT);
-
-found:
+	/* Not found. */
+	if (d == NULL)
+		return (-ENOENT);
 
 	/* Cannot remove '.' */
 	if (d->d_ino == dinode->num)
@@ -188,7 +179,6 @@ found:
 	file->nlinks--;
 	file->time = CURRENT_TIME;
 	file->flags |= INODE_DIRTY;
-	
 	inode_put(file);
 	brelse(buf);
 	inode_put(dinode);
