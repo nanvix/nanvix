@@ -34,14 +34,14 @@
 	/*
 	 * Sets a bit in a bitmap.
 	 */
-	#define bitmap_set(bmap, pos) \
-		(((uint32_t *)(bmap))[IDX(pos)] |= (0x1 << OFF(pos)))
+	#define bitmap_set(block_map, pos) \
+		(((uint32_t *)(block_map))[IDX(pos)] |= (0x1 << OFF(pos)))
 	
 	/*
 	 * Clears a bit in a bitmap.
 	 */
-	#define bitmap_clear(bmap, pos) \
-		(((uint32_t *)(bmap))[IDX(pos)] &= ~(0x1 << OFF(pos)))
+	#define bitmap_clear(block_map, pos) \
+		(((uint32_t *)(block_map))[IDX(pos)] &= ~(0x1 << OFF(pos)))
 		
 	/*
 	 * Finds the first free bit in a bitmap.
@@ -61,8 +61,8 @@
 		uint16_t i_uid;             /* User id of the file's owner           */
 		uint32_t i_size;            /* File size (in bytes).                 */
 		uint32_t i_time;            /* Time when the file was last accessed. */
-		uint8_t i_gid;             /* Group number of owner user.           */
-		uint8_t i_nlinks;          /* Number of links to the file.          */
+		uint8_t i_gid;              /* Group number of owner user.           */
+		uint8_t i_nlinks;           /* Number of links to the file.          */
 		uint16_t i_zones[NR_ZONES]; /* Zone numbers.                         */
 	};
 	
@@ -83,14 +83,14 @@
 	 */
 	struct d_superblock
 	{
-		uint16_t s_ninodes;       /* Number of inodes.           */
-		uint16_t s_nzones;        /* Number of zones.            */
-		uint16_t s_imap_blocks;   /* Number of inode map blocks. */
-		uint16_t s_zmap_blocks;   /* Number of zone map blocks.  */
-		uint16_t s_firstdatazone; /* Number of first data zone.  */
-		uint16_t s_log_zone_size; /* Log2 of blocks/zone.        */
-		uint32_t s_max_size;      /* Maximum file size.          */
-		uint16_t s_magic;         /* Magic number.               */
+		uint16_t s_ninodes;     /* Number of inodes.           */
+		uint16_t s_nzones;      /* Number of zones.            */
+		uint16_t s_imap_blocks; /* Number of inode map blocks. */
+		uint16_t s_zmap_blocks; /* Number of zone map blocks.  */
+		uint16_t unused0;       /* Unused.                     */
+		uint16_t unused1;       /* Unused.                     */
+		uint32_t s_max_size;    /* Maximum file size.          */
+		uint16_t s_magic;       /* Magic number.               */
 	};
 	
 	/*

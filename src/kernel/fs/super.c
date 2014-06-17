@@ -124,8 +124,7 @@ PUBLIC void superblock_put(struct superblock *sb)
  */
 PUBLIC void superblock_write(struct superblock *sb)
 {
-	int i;                     /* Loop index.       */
-	struct d_superblock *d_sb; /* Disk super block. */
+	int i;
 	
 	/* Nothing to be done. */
 	if (!(sb->flags & SUPERBLOCK_DIRTY))
@@ -140,8 +139,6 @@ PUBLIC void superblock_write(struct superblock *sb)
 		bwrite(sb->zmap[i]);
 	
 	/* Write super block buffer. */
-	d_sb = (struct d_superblock *) sb->buf->data;
-	d_sb->s_firstdatazone = sb->firstdatazone;
 	sb->buf->flags |= BUFFER_DIRTY;
 	bwrite(sb->buf);
 	
@@ -191,13 +188,6 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	if (d_sb->s_magic != SUPER_MAGIC)
 		goto error1;
 	
-	/* Do not mount weird filed systems. */
-	if (d_sb->s_log_zone_size != 0)
-	{
-		kprintf("fs: file system on device %d has weird zone size", dev);
-		goto error1;
-	}
-	
 	/* Too many blocks in the inode/zone map. */
 	if ((d_sb->s_imap_blocks > IMAP_SIZE) || (d_sb->s_zmap_blocks > ZMAP_SIZE))
 	{
@@ -220,8 +210,6 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 		sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i);
 		blkunlock(sb->zmap[i]);
 	}
-	sb->firstdatazone = d_sb->s_firstdatazone;
-	sb->log_zone_size = d_sb->s_log_zone_size;
 	sb->max_size = d_sb->s_max_size;
 	sb->zones = d_sb->s_nzones;
 	sb->root = NULL;

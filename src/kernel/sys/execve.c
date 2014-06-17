@@ -41,7 +41,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 	struct region *reg;     /* Working memory region.         */
 	struct pregion *preg;   /* Working process memory region. */
 	
-	blk = bmap(inode, 0, 0);
+	blk = block_map(inode, 0, 0);
 	
 	/* Empty file. */
 	if (blk == BLOCK_NULL)

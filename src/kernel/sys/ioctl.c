@@ -29,7 +29,7 @@ PUBLIC int sys_ioctl(unsigned fd, unsigned cmd, unsigned arg)
 	if (!S_ISCHR((ip = fp->inode)->mode))
 		return (-EINVAL);
 	
-	dev = ip->zones[0];
+	dev = ip->blocks[0];
 	
 	return (cdev_ioctl(dev, cmd, arg));
 }

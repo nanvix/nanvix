@@ -45,7 +45,7 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	/* Character special file. */
 	if (S_ISCHR(i->mode))
 	{
-		dev = i->zones[0];
+		dev = i->blocks[0];
 		count = cdev_write(dev, buf, n);
 		return (count);
 	}
@@ -53,7 +53,7 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	/* Block special file. */
 	else if (S_ISBLK(i->mode))
 	{
-		dev = i->zones[0];
+		dev = i->blocks[0];
 		count = bdev_write(dev, buf, n, f->pos);
 	}
 	

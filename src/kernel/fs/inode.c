@@ -123,7 +123,7 @@ PRIVATE void inode_write(struct inode *i)
 	d_i->i_size = i->size;
 	d_i->i_time = i->time;
 	for (j = 0; j < NR_ZONES; j++)
-		d_i->i_zones[j] = i->zones[j];
+		d_i->i_zones[j] = i->blocks[j];
 	i->flags &= ~INODE_DIRTY;
 	buf->flags |= BUFFER_DIRTY;
 	
@@ -178,7 +178,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 	i->size = d_i->i_size;
 	i->time = d_i->i_time;
 	for (j = 0; j < NR_ZONES; j++)
-		i->zones[j] = d_i->i_zones[j];
+		i->blocks[j] = d_i->i_zones[j];
 	i->dev = dev;
 	i->num = num;
 	i->sb = sb;
@@ -279,18 +279,18 @@ PUBLIC void inode_truncate(struct inode *i)
 	/* Free file zones. */
 	for (j = 0; j < NR_ZONES_DIRECT; j++)
 	{
-		block_free(sb, i->zones[j], 0);
-		i->zones[j] = ZONE_NULL;
+		block_free(sb, i->blocks[j], 0);
+		i->blocks[j] = BLOCK_NULL;
 	}
 	for (j = 0; j < NR_ZONES_SINGLE; j++)
 	{
-		block_free(sb, i->zones[NR_ZONES_DIRECT + j], 1);
-		i->zones[NR_ZONES_DIRECT + j] = ZONE_NULL;
+		block_free(sb, i->blocks[NR_ZONES_DIRECT + j], 1);
+		i->blocks[NR_ZONES_DIRECT + j] = BLOCK_NULL;
 	}
 	for (j = 0; j < NR_ZONES_DOUBLE; j++)
 	{
-		block_free(sb, i->zones[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j], 2);
-		i->zones[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j] = ZONE_NULL;
+		block_free(sb, i->blocks[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j], 2);
+		i->blocks[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j] = BLOCK_NULL;
 	}
 	
 	superblock_unlock(sb);
@@ -362,7 +362,7 @@ found:
 	i->size = 0;
 	i->time = CURRENT_TIME;
 	for (j = 0; j < NR_ZONES; j++)
-		i->zones[j] = ZONE_NULL;
+		i->blocks[j] = BLOCK_NULL;
 	i->dev = sb->dev;
 	i->num = num;
 	i->sb = sb;

@@ -28,7 +28,7 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 	
 	/* Search from very first block. */
 	i = 0;
-	blk = dinode->zones[0];		
+	blk = dinode->blocks[0];		
 	buf = NULL;
 	
 	/* Search directory entry. */
@@ -38,7 +38,7 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/_SIZEOF_DIRENT;
-			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -54,7 +54,7 @@ PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
 		{
 			brelse(buf);
 			buf = NULL;
-			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -95,7 +95,7 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 	
 	/* Search from very first block. */
 	i = 0;
-	blk = dinode->zones[0];		
+	blk = dinode->blocks[0];		
 	buf = NULL;
 	
 	/* Search directory entry. */
@@ -105,7 +105,7 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/_SIZEOF_DIRENT;
-			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -121,7 +121,7 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 		{
 			brelse(buf);
 			buf = NULL;
-			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -212,7 +212,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	
 	i = 0;
 	entry = -1;
-	blk = inode->zones[0];
+	blk = inode->blocks[0];
 	buf = NULL;
 	
 	/* Search for an empty directory entry. */
@@ -222,7 +222,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/_SIZEOF_DIRENT;
-			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -238,7 +238,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 		{
 			brelse(buf);
 			buf = NULL;
-			blk = bmap(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
 			continue;
 		}
 		
@@ -274,7 +274,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	{
 		entry = nentries;
 		
-		blk = bmap(dinode, entry*_SIZEOF_DIRENT, 1);
+		blk = block_map(dinode, entry*_SIZEOF_DIRENT, 1);
 		
 		/* Failed to create entry. */
 		if (blk == BLOCK_NULL)
@@ -288,7 +288,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	}
 	
 	else
-		blk = bmap(dinode, entry*_SIZEOF_DIRENT, 0);
+		blk = block_map(dinode, entry*_SIZEOF_DIRENT, 0);
 	
 	buf = bread(dinode->dev, blk);
 	entry %= (BLOCK_SIZE/_SIZEOF_DIRENT);
@@ -319,7 +319,7 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 	/* Read data. */
 	do
 	{
-		blk = bmap(i, off, 0);
+		blk = block_map(i, off, 0);
 		
 		/* End of file reached. */
 		if (blk == BLOCK_NULL)
@@ -377,7 +377,7 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 	/* Write data. */
 	do
 	{
-		blk = bmap(i, off, 1);
+		blk = block_map(i, off, 1);
 		
 		/* End of file reached. */
 		if (blk == BLOCK_NULL)

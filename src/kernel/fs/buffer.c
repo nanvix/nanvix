@@ -235,14 +235,6 @@ PUBLIC void bwrite(struct buffer *buf)
 }
 
 /*
- * Mas a file byte offset in a block number.
- */
-PUBLIC block_t bmap(struct inode *inode, off_t off, int create)
-{
-	return (zone_map(inode, off, create));
-}
-
-/*
  * Synchronizes the cache.
  */
 PUBLIC void bsync(void)

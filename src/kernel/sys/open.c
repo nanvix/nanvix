@@ -123,7 +123,7 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 	/* Character special file. */
 	if (S_ISCHR(i->mode))
 	{
-		err = cdev_open(i->zones[0]);
+		err = cdev_open(i->blocks[0]);
 		
 		/* Failed to open character device. */
 		if (err)

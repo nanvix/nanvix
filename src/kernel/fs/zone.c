@@ -14,10 +14,10 @@
 /*
  * Allocates a zone.
  */
-PUBLIC zone_t zone_alloc(struct superblock *sb)
+PUBLIC block_t block_alloc(struct superblock *sb)
 {
 	bit_t bit;          /* Bit in the zone bitmap.  */
-	zone_t num;         /* Zone number.             */
+	block_t num;         /* Zone number.             */
 	block_t blk;        /* Current block on search. */
 	struct buffer *buf; /* Working buffer.          */
 
@@ -38,7 +38,7 @@ PUBLIC zone_t zone_alloc(struct superblock *sb)
 		
 	} while (blk != sb->zsearch/(BLOCK_SIZE << 3));
 	
-	return (ZONE_NULL);
+	return (BLOCK_NULL);
 
 found:
 
@@ -54,7 +54,7 @@ found:
 	 * Clean underlying blocks in order
 	 * to avoid security issues.
 	 */
-	for (blk = num; blk < num + (1 << sb->log_zone_size); blk++)
+	for (blk = num; blk < num + 1; blk++)
 	{
 		buf = bread(sb->dev, blk);
 		kmemset(buf->data, 0, BLOCK_SIZE);
@@ -68,12 +68,12 @@ found:
 /*
  * Frees a zone.
  */
-PRIVATE void zone_free(struct superblock *sb, zone_t num)
+PRIVATE void zone_free(struct superblock *sb, block_t num)
 {
 	block_t blk;
 	
 	/* Nothing to be done. */
-	if (num == ZONE_NULL)
+	if (num == BLOCK_NULL)
 		return;
 	
 	blk = num/(BLOCK_SIZE << 3);
@@ -89,31 +89,25 @@ PRIVATE void zone_free(struct superblock *sb, zone_t num)
 /*
  * Frees an indirect zone.
  */
-PRIVATE void zone_free_indirect(struct superblock *sb, zone_t num)
+PRIVATE void zone_free_indirect(struct superblock *sb, block_t num)
 {
-	int i, j;           /* Loop indexes.     */
-	int nzones;         /* Number of zones.  */
-	int nblocks;        /* Number of blocks. */
-	struct buffer *buf; /* Block buffer.     */
+	int i;              /* Loop index.      */
+	int nzones;         /* Number of zones. */
+	struct buffer *buf; /* Block buffer.    */
 	
 	/* Nothing to be done. */
-	if (num == ZONE_NULL)
+	if (num == BLOCK_NULL)
 		return;
 	
-	nblocks = (BLOCK_SIZE << sb->log_zone_size)/BLOCK_SIZE;
-	nzones = BLOCK_SIZE/sizeof(zone_t);
-	
-	/* Free indirect zone. */
-	for (i = 0; i < nblocks; i++)
-	{
-		buf = bread(sb->dev, num + i);
+	buf = bread(sb->dev, num);
 		
-		/* Free direct zone. */
-		for (j = 0; j < nzones; j++)
-			zone_free(sb, ((zone_t *)buf->data)[j]);
+	/* Free direct zone. */
+	nzones = BLOCK_SIZE/sizeof(block_t);
+	for (i = 0; i < nzones; i++)
+		zone_free(sb, ((block_t *)buf->data)[i]);
 		
 		brelse(buf);
-	}
+	
 	
 	zone_free(sb, num);
 }
@@ -121,35 +115,28 @@ PRIVATE void zone_free_indirect(struct superblock *sb, zone_t num)
 /*
  * Frees a doubly indirect zone.
  */
-PRIVATE void zone_free_dindirect(struct superblock *sb, zone_t num)
+PRIVATE void zone_free_dindirect(struct superblock *sb, block_t num)
 {
-	int i, j;           /* Loop indexes.     */
+	int i;              /* Loop indexes.     */
 	int nzones;         /* Number of zones.  */
-	int nblocks;        /* Number of blocks. */
-	zone_t zone;        /* Zone.             */
+	block_t zone;        /* Zone.             */
 	struct buffer *buf; /* Block buffer.     */
 	
 	/* Nothing to be done. */
-	if (num == ZONE_NULL)
+	if (num == BLOCK_NULL)
 		return;
 	
-	nblocks = (BLOCK_SIZE << sb->log_zone_size)/BLOCK_SIZE;
-	nzones = BLOCK_SIZE/sizeof(zone_t);
-	
-	/* Free indirect zone. */
-	for (i = 0; i < nblocks; i++)
+	buf = bread(sb->dev, num);
+		
+	/* Free direct zone. */
+	nzones = BLOCK_SIZE/sizeof(block_t);
+	for (i = 0; i < nzones; i++)
 	{
-		buf = bread(sb->dev, num + i);
-		
-		/* Free direct zone. */
-		for (j = 0; j < nzones; j++)
-		{
-			if ((zone = ((zone_t *)buf->data)[j]))
-				zone_free_indirect(sb, zone);
-		}
-		
-		brelse(buf);
+		if ((zone = ((block_t *)buf->data)[i]))
+			zone_free_indirect(sb, zone);
 	}
+		
+	brelse(buf);
 	
 	zone_free(sb, num);
 }
@@ -186,10 +173,10 @@ PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
 /*
  * Maps a file byte offset in a physical zone number.
  */
-PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
+PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 {
-	zone_t phys;        /* Physical zone number. */
-	zone_t logic;       /* Logical zone number.  */
+	block_t phys;        /* Physical zone number. */
+	block_t logic;       /* Logical zone number.  */
 	struct buffer *buf; /* Underlying buffer.    */
 	
 	logic = off/BLOCK_SIZE;
@@ -212,21 +199,21 @@ PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
 	if (logic < NR_ZONES_DIRECT)
 	{
 		/* Create zone. */
-		if (inode->zones[logic] == ZONE_NULL && create)
+		if (inode->blocks[logic] == BLOCK_NULL && create)
 		{
 			superblock_lock(inode->sb);
-			phys = zone_alloc(inode->sb);
+			phys = block_alloc(inode->sb);
 			superblock_unlock(inode->sb);
 			
-			if (phys != ZONE_NULL)
+			if (phys != BLOCK_NULL)
 			{	
-				inode->zones[logic] = phys;		
+				inode->blocks[logic] = phys;		
 				inode->time = CURRENT_TIME;
 				inode->flags |= INODE_DIRTY;
 			}
 		}
 		
-		return (inode->zones[logic]);
+		return (inode->blocks[logic]);
 	}
 	
 	logic -= NR_ZONES_DIRECT;
@@ -235,34 +222,34 @@ PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
 	if (logic < NR_SINGLE)
 	{		
 		/* Create zone. */
-		if (inode->zones[ZONE_SINGLE] == ZONE_NULL && create)
+		if (inode->blocks[ZONE_SINGLE] == BLOCK_NULL && create)
 		{
 			superblock_lock(inode->sb);
-			phys = zone_alloc(inode->sb);
+			phys = block_alloc(inode->sb);
 			superblock_unlock(inode->sb);
 			
-			if (phys == ZONE_NULL)
-				return (ZONE_NULL);
+			if (phys == BLOCK_NULL)
+				return (BLOCK_NULL);
 				
-			inode->zones[ZONE_SINGLE] = phys;		
+			inode->blocks[ZONE_SINGLE] = phys;		
 			inode->time = CURRENT_TIME;
 			inode->flags |= INODE_DIRTY;
 		}
 		
-		if ((phys = inode->zones[ZONE_SINGLE]) == ZONE_NULL)
-			return (ZONE_NULL);
+		if ((phys = inode->blocks[ZONE_SINGLE]) == BLOCK_NULL)
+			return (BLOCK_NULL);
 	
 		buf = bread(inode->dev, phys);
 		
-		if ((((zone_t *)buf->data)[logic] == ZONE_NULL) && create)
+		if ((((block_t *)buf->data)[logic] == BLOCK_NULL) && create)
 		{
 			superblock_lock(inode->sb);
-			phys = zone_alloc(inode->sb);
+			phys = block_alloc(inode->sb);
 			superblock_unlock(inode->sb);
 			
-			if (phys != ZONE_NULL)
+			if (phys != BLOCK_NULL)
 			{	
-				((zone_t *)buf->data)[logic] = phys;		
+				((block_t *)buf->data)[logic] = phys;		
 				inode->time = CURRENT_TIME;
 				inode->flags |= INODE_DIRTY;
 			}
@@ -270,7 +257,7 @@ PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
 		
 		brelse(buf);
 		
-		return (((zone_t *)buf->data)[logic]);
+		return (((block_t *)buf->data)[logic]);
 	}
 	
 	logic -= NR_SINGLE;
@@ -278,5 +265,5 @@ PUBLIC zone_t zone_map(struct inode *inode, off_t off, int create)
 	/* Double indirect zone. */
 	kpanic("double indirect zones not supported yet");
 	
-	return (ZONE_NULL);
+	return (BLOCK_NULL);
 }

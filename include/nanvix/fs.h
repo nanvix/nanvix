@@ -15,91 +15,9 @@
 	#include <sys/stat.h>
 	#include <sys/types.h>
 	#include <stdint.h>
-		
-	/* No zone. */
-	#define ZONE_NULL 0
-	
-	/* Number of zones. */
-	#define NR_ZONES_DIRECT 7 /* Direct.          */
-	#define NR_ZONES_SINGLE 1 /* Single indirect. */
-	#define NR_ZONES_DOUBLE 1 /* Double indirect. */
-	#define NR_ZONES        9 /* Total.           */
-	
-	/* Zone indexes. */
-	#define ZONE_DIRECT                               0 /* Direct zone.     */ 
-	#define ZONE_SINGLE               (NR_ZONES_DIRECT) /* Single indirect. */
-	#define ZONE_DOUBLE (ZONE_SINGLE + NR_ZONES_SINGLE) /* Double indirect. */
-	
-	/* Number of zones in a direct zone. */
-	#define NR_DIRECT 1
-
-	/* Number of zones in a single indirect zone. */
-	#define NR_SINGLE (BLOCK_SIZE/sizeof(zone_t))
-	
-	/* Number of zones in a double indirect zone. */
-	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(zone_t))*NR_SINGLE)
-	
-	/* No inode. */
-	#define INODE_NULL 0
-	
-	/* Root inode. */
-	#define INODE_ROOT 0
-	
-	/* Inode flags. */
-	#define INODE_LOCKED 0x01 /* Locked?      */
-	#define INODE_DIRTY  0x02 /* Dirty?       */
-	#define INODE_MOUNT  0x04 /* Mount point? */
-	#define INODE_VALID  0x08 /* Valid inode? */
-	#define INODE_PIPE   0x10 /* Pipe inode?  */
-	
-	/* Zone number. */
-	typedef uint16_t zone_t;
-		
-	/*
-	 * File.
-	 */
-	struct file
-	{
-		int oflag;           /* Open flags.                   */
-		int count;           /* Reference count.              */
-		off_t pos;           /* Read/write cursor's position. */
-		struct inode *inode; /* Underlying inode.             */
-	};
- 
-	/*
-	 * In-core memory inode.
-	 */
-	struct inode 
-	{
-		mode_t mode;             /* Acess permissions.                    */
-		nlink_t nlinks;          /* Number of links to the file.          */
-		uid_t uid;               /* User id of the file's owner           */
-		gid_t gid;               /* Group number of owner user.           */
-		off_t size;              /* File size (in bytes).                 */
-		time_t time;             /* Time when the file was last modified. */
-		zone_t zones[NR_ZONES];  /* Zone numbers.                         */
-		dev_t dev;               /* Underlying device.                    */
-		ino_t num;               /* Inode number.                         */
-		struct superblock *sb;   /* Super block.                          */
-		int count;               /* Reference count.                      */
-		unsigned flags;          /* Flags (see above).                    */
-		char *pipe;              /* Pipe page.                            */
-		off_t head;              /* Pipe head.                            */
-		off_t tail;              /* Pipe tail.                            */
-		struct inode *free_next; /* Next inode in the free list.          */
-		struct inode *hash_next; /* Next inode in the hash table.         */
-		struct inode *hash_prev; /* Previous unode in the hash table.     */
-		struct process *chain;   /* Sleeping chain.                       */
-	};
-
-	
-	/*
-	 * File table.
-	 */
-	EXTERN struct file filetab[NR_FILES];
 
 /*============================================================================*
- *                             Block Buffer Library                           *
+ *                              Block Buffer Library                          *
  *============================================================================*/
 
 	/* Null block. */
@@ -173,14 +91,68 @@
 	 */
 	EXTERN void bwrite(struct buffer *buf);
 	
-	/*
-	 * Maps a file byte offset in a block number.
-	 */
-	EXTERN block_t bmap(struct inode *inode, off_t off, int create);
-	
 /*============================================================================*
  *                               Inode Library                                *
  *============================================================================*/
+		
+	/* Number of zones. */
+	#define NR_ZONES_DIRECT 7 /* Direct.          */
+	#define NR_ZONES_SINGLE 1 /* Single indirect. */
+	#define NR_ZONES_DOUBLE 1 /* Double indirect. */
+	#define NR_ZONES        9 /* Total.           */
+	
+	/* Zone indexes. */
+	#define ZONE_DIRECT                               0 /* Direct zone.     */ 
+	#define ZONE_SINGLE               (NR_ZONES_DIRECT) /* Single indirect. */
+	#define ZONE_DOUBLE (ZONE_SINGLE + NR_ZONES_SINGLE) /* Double indirect. */
+	
+	/* Number of zones in a direct zone. */
+	#define NR_DIRECT 1
+
+	/* Number of zones in a single indirect zone. */
+	#define NR_SINGLE (BLOCK_SIZE/sizeof(block_t))
+	
+	/* Number of zones in a double indirect zone. */
+	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(block_t))*NR_SINGLE)
+	
+	/* No inode. */
+	#define INODE_NULL 0
+	
+	/* Root inode. */
+	#define INODE_ROOT 0
+	
+	/* Inode flags. */
+	#define INODE_LOCKED 0x01 /* Locked?      */
+	#define INODE_DIRTY  0x02 /* Dirty?       */
+	#define INODE_MOUNT  0x04 /* Mount point? */
+	#define INODE_VALID  0x08 /* Valid inode? */
+	#define INODE_PIPE   0x10 /* Pipe inode?  */
+	 
+	/*
+	 * In-core memory inode.
+	 */
+	struct inode 
+	{
+		mode_t mode;              /* Acess permissions.                    */
+		nlink_t nlinks;           /* Number of links to the file.          */
+		uid_t uid;                /* User id of the file's owner           */
+		gid_t gid;                /* Group number of owner user.           */
+		off_t size;               /* File size (in bytes).                 */
+		time_t time;              /* Time when the file was last modified. */
+		block_t blocks[NR_ZONES]; /* Zone numbers.                         */
+		dev_t dev;                /* Underlying device.                    */
+		ino_t num;                /* Inode number.                         */
+		struct superblock *sb;    /* Super block.                          */
+		int count;                /* Reference count.                      */
+		unsigned flags;           /* Flags (see above).                    */
+		char *pipe;               /* Pipe page.                            */
+		off_t head;               /* Pipe head.                            */
+		off_t tail;               /* Pipe tail.                            */
+		struct inode *free_next;  /* Next inode in the free list.          */
+		struct inode *hash_next;  /* Next inode in the hash table.         */
+		struct inode *hash_prev;  /* Previous unode in the hash table.     */
+		struct process *chain;    /* Sleeping chain.                       */
+	};
 	
 	/*
 	 * Locks an inode.
@@ -259,16 +231,14 @@
 		block_t imap_blocks;            /* Number of inode map blocks.   */
 		struct buffer *zmap[ZMAP_SIZE]; /* Zone map.                     */
 		block_t zmap_blocks;            /* Number of zone map blocks.    */
-		zone_t firstdatazone;           /* Number of first data zone.    */
-		unsigned log_zone_size;         /* Log2 of blocks/zone.          */
 		off_t max_size;                 /* Maximum file size.            */
-		zone_t zones;                   /* Number of zones.              */
+		block_t zones;                   /* Number of zones.              */
 		struct inode *root;             /* Inode for root directory.     */
 		struct inode *mp;               /* Inode mounted on.             */
 		dev_t dev;                      /* Underlying device.            */
 		int flags;                      /* Flags (see above).            */
 		ino_t isearch;		            /* Inodes below this are in use. */
-		zone_t zsearch;		            /* Zones below this are in use.  */
+		block_t zsearch;		            /* Zones below this are in use.  */
 		struct process *chain;          /* Waiting chain.                */
 	};
 	
@@ -311,25 +281,26 @@
 	 * Super block table.
 	 */
 	EXTERN struct superblock superblocks[NR_SUPERBLOCKS];
- 
+	
 /*============================================================================*
- *                                Zone Library                                *
- *============================================================================*/	
+ *                                  Block Library                             *
+ *============================================================================*/
+	
+	
+	/*
+	 * Maps a file byte offset in a block number.
+	 */
+	EXTERN block_t block_map(struct inode *inode, off_t off, int create);
 	
 	/*
 	 * Allocates a zone.
 	 */
-	EXTERN zone_t zone_alloc(struct superblock *sb);
+	EXTERN block_t block_alloc(struct superblock *sb);
 
 	/*
 	 * Frees a disk block.
 	 */
 	EXTERN void block_free(struct superblock *sb, block_t num, int lvl);
-	
-	/*
-	 * Maps a file byte offset in a physical zone number.
-	 */
-	EXTERN zone_t zone_map(struct inode *inode, off_t off, int create);
 	
 /*============================================================================*
  *                              File System Manager                           *
@@ -340,6 +311,23 @@
 	#define MAY_WRITE (S_IWUSR | S_IWGRP | S_IWOTH)     /* May write.       */
 	#define MAY_EXEC  (S_IXUSR | S_IXGRP | S_IXOTH)     /* May exec/search. */
 	#define MAY_ALL   (MAY_READ | MAY_WRITE | MAY_EXEC) /* May anything.    */
+
+	/*
+	 * File.
+	 */
+	struct file
+	{
+		int oflag;           /* Open flags.                   */
+		int count;           /* Reference count.              */
+		off_t pos;           /* Read/write cursor's position. */
+		struct inode *inode; /* Underlying inode.             */
+	};
+
+	
+	/*
+	 * File table.
+	 */
+	EXTERN struct file filetab[NR_FILES];
 
 	/*
 	 * Initializes the file system manager.
