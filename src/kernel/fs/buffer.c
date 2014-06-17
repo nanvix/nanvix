@@ -27,7 +27,7 @@
 PRIVATE struct buffer buffers[NR_BUFFERS];
 
 /* Block buffers hash table. */
-PRIVATE struct buffer *hashtab[BUFFERS_HASHTAB_SIZE];
+PRIVATE struct buffer hashtab[BUFFERS_HASHTAB_SIZE];
 
 /* Free block buffers. */
 PRIVATE struct buffer *free_buffers = NULL;
@@ -46,14 +46,21 @@ PRIVATE struct process *chain = NULL;
  */
 PRIVATE struct buffer *getblk(dev_t dev, block_t num)
 {
-	struct buffer *buf;
+	int i;              /* Hash table index. */
+	struct buffer *buf; /* Buffer.           */
+	
+	/* Should not happen. */
+	if ((dev == 0) && (num == 0))
+		kpanic("getblk(0, 0)");
 
 repeat:
+
+	i = HASH(dev, num);
 
 	disable_interrupts();
 
 	/* Search in hash table. */
-	for (buf = hashtab[HASH(dev, num)]; buf != NULL; buf = buf->hash_next)
+	for (buf = hashtab[i].hash_next; buf != &hashtab[i]; buf = buf->hash_next)
 	{
 		/* Not found. */
 		if ((buf->dev != dev) || (buf->num != num))
@@ -74,10 +81,6 @@ repeat:
 		{
 			buf->free_prev->free_next = buf->free_next;
 			buf->free_next->free_prev = buf->free_prev;
-			if (buf->free_next == buf->free_prev)
-				free_buffers = NULL;
-			else if (free_buffers == buf)
-				free_buffers = buf->free_next;
 		}
 		
 		enable_interrupts();
@@ -86,13 +89,13 @@ repeat:
 		return (buf);
 	}
 
-	buf = free_buffers;
+	buf = free_buffers->free_next;
 
 	/*
 	 * There are no free buffers so we need to
 	 * wait for one to become free.
 	 */
-	if (buf == NULL)
+	if (buf == buf->free_next)
 	{
 		kprintf("fs: block buffer cache full");
 		sleep(&chain, PRIO_BUFFER);
@@ -102,10 +105,6 @@ repeat:
 	/* Remove buffer from the free list. */
 	buf->free_prev->free_next = buf->free_next;
 	buf->free_next->free_prev = buf->free_prev;
-	if (buf->free_next == buf->free_prev)
-		free_buffers = NULL;
-	else if (free_buffers == buf)
-		free_buffers = buf->free_next;
 	buf->count++;
 	
 	/* 
@@ -121,12 +120,8 @@ repeat:
 	}
 	
 	/* Remove buffer from hash queue. */
-	if (buf->hash_prev != NULL)
-		buf->hash_prev->hash_next = buf->hash_next;
-	if (buf->hash_next != NULL)
-		buf->hash_next->hash_prev = buf->hash_prev;
-	if (hashtab[HASH(buf->dev, buf->num)] == buf)
-		hashtab[HASH(buf->dev, buf->num)] = buf->hash_next;
+	buf->hash_prev->hash_next = buf->hash_next;
+	buf->hash_next->hash_prev = buf->hash_prev;
 	
 	/* Reassigns device and block number. */
 	buf->dev = dev;
@@ -134,11 +129,10 @@ repeat:
 	buf->flags &= ~BUFFER_VALID;
 	
 	/* Place buffer in a new hash queue. */
-	buf->hash_next = hashtab[HASH(buf->dev, buf->num)];
-	buf->hash_prev = NULL;
-	hashtab[HASH(buf->dev, buf->num)] = buf;
-	if (buf->hash_next != NULL)
-		buf->hash_next->hash_prev = buf;
+	hashtab[i].hash_next->hash_prev = buf;
+	buf->hash_prev = &hashtab[i];
+	buf->hash_next = hashtab[i].hash_next;
+	hashtab[i].hash_next = buf;
 	
 	enable_interrupts();
 	blklock(buf);
@@ -187,33 +181,25 @@ PUBLIC void brelse(struct buffer *buf)
 	{	
 		wakeup(&chain);
 		
-		/* Insert buffer in the free list. */
-		if (free_buffers == NULL)
-		{
-			buf->free_next = buf;
-			buf->free_prev = buf;
-			free_buffers = buf;
+		buf->free_next = free_buffers;
+		buf->free_prev = free_buffers->free_prev;
+					
+		/* Frequently used buffer (insert in the end). */
+		if ((buf->flags & BUFFER_VALID) && (buf->flags & BUFFER_DIRTY))
+		{	
+			free_buffers->free_prev->free_next = buf;
+			buf->free_prev = free_buffers->free_prev;
+			free_buffers->free_prev = buf;
+			buf->free_next = free_buffers;
 		}
-		
+			
+		/* Not frequently used buffer (insert in the begin). */
 		else
 		{	
-			buf->free_next = free_buffers;
-			buf->free_prev = free_buffers->free_prev;
-					
-			/* Frenquently used buffer (insert in the end). */
-			if ((buf->flags & BUFFER_VALID) && (buf->flags & BUFFER_DIRTY))
-			{	
-				free_buffers->free_prev->free_next = buf;
-				free_buffers->free_prev = buf;
-			}
-			
-			/* Not frequently used buffer (insert in the begin). */
-			else
-			{	
-				free_buffers->free_next->free_prev = buf;
-				free_buffers->free_prev = buf;	
-				free_buffers = buf;
-			}
+			free_buffers->free_next->free_prev = buf;
+			buf->free_prev = free_buffers;
+			buf->free_next = free_buffers->free_next;
+			free_buffers->free_next = buf;
 		}
 	}
 	
@@ -306,8 +292,8 @@ PUBLIC void binit(void)
 			(i + 1 == NR_BUFFERS) ? &buffers[0] : &buffers[i + 1];
 		buffers[i].free_prev = 
 			(i - 1 < 0) ? &buffers[NR_BUFFERS - 1] : &buffers[i - 1];
-		buffers[i].hash_next = NULL;
-		buffers[i].hash_prev = NULL;
+		buffers[i].hash_next = &buffers[i];
+		buffers[i].hash_prev = &buffers[i];
 		
 		ptr += BLOCK_SIZE;
 	}
@@ -315,5 +301,8 @@ PUBLIC void binit(void)
 	/* Initialize the buffer cache. */
 	free_buffers = &buffers[0];
 	for (i = 0; i < BUFFERS_HASHTAB_SIZE; i++)
-		hashtab[i] = NULL;
+	{
+		hashtab[i].hash_prev = &hashtab[i];
+		hashtab[i].hash_next = &hashtab[i];
+	}
 }
