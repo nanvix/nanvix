@@ -110,7 +110,7 @@
 	#define NR_DIRECT 1
 
 	/* Number of zones in a single indirect zone. */
-	#define NR_SINGLE (BLOCK_SIZE/sizeof(block_t))
+	#define NR_SINGLE ((int)(BLOCK_SIZE/sizeof(block_t)))
 	
 	/* Number of zones in a double indirect zone. */
 	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(block_t))*NR_SINGLE)

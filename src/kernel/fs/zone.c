@@ -66,34 +66,44 @@ found:
 }
 
 /*
- * Frees a zone.
+ * Frees a direct disk block.
  */
-PRIVATE void zone_free(struct superblock *sb, block_t num)
+PRIVATE void block_free_direct(struct superblock *sb, block_t num)
 {
-	block_t blk;
+	int idx; /* Bitmap index.  */
+	int off; /* Bitmap offset. */
 	
 	/* Nothing to be done. */
 	if (num == BLOCK_NULL)
 		return;
-	
-	blk = num/(BLOCK_SIZE << 3);
-	
-	/* Free zone. */
-	bitmap_clear(sb->zmap[blk]->data, num%(BLOCK_SIZE << 3));
-	sb->zmap[blk]->flags |= BUFFER_DIRTY;
+		
+	/* 
+	 * Remember free disk to
+	 * speedup next block allocation.
+	 */
 	if (num < sb->zsearch)
 		sb->zsearch = num;
+	
+	/*
+	 * Compute block index and offset 
+	 * in the bitmap.
+	 */
+	idx = num/(BLOCK_SIZE << 3);
+	off = num%(BLOCK_SIZE << 3);
+	
+	/* Free disk block. */
+	bitmap_clear(sb->zmap[idx]->data, off);
+	sb->zmap[idx]->flags |= BUFFER_DIRTY;
 	sb->flags |= SUPERBLOCK_DIRTY;
 }
 
 /*
- * Frees an indirect zone.
+ * Frees an indirect disk block.
  */
-PRIVATE void zone_free_indirect(struct superblock *sb, block_t num)
+PRIVATE void block_free_indirect(struct superblock *sb, block_t num)
 {
-	int i;              /* Loop index.      */
-	int nzones;         /* Number of zones. */
-	struct buffer *buf; /* Block buffer.    */
+	int i;              /* Loop index.   */
+	struct buffer *buf; /* Block buffer. */
 	
 	/* Nothing to be done. */
 	if (num == BLOCK_NULL)
@@ -101,21 +111,18 @@ PRIVATE void zone_free_indirect(struct superblock *sb, block_t num)
 	
 	buf = bread(sb->dev, num);
 		
-	/* Free direct zone. */
-	nzones = BLOCK_SIZE/sizeof(block_t);
-	for (i = 0; i < nzones; i++)
-		zone_free(sb, ((block_t *)buf->data)[i]);
+	/* Free indirect disk block. */
+	for (i = 0; i < NR_SINGLE; i++)
+		block_free_direct(sb, ((block_t *)buf->data)[i]);
+	block_free_direct(sb, num);
 		
-		brelse(buf);
-	
-	
-	zone_free(sb, num);
+	brelse(buf);
 }
 
 /*
  * Frees a doubly indirect zone.
  */
-PRIVATE void zone_free_dindirect(struct superblock *sb, block_t num)
+PRIVATE void block_free_dindirect(struct superblock *sb, block_t num)
 {
 	int i;              /* Loop indexes.     */
 	int nzones;         /* Number of zones.  */
@@ -133,12 +140,12 @@ PRIVATE void zone_free_dindirect(struct superblock *sb, block_t num)
 	for (i = 0; i < nzones; i++)
 	{
 		if ((zone = ((block_t *)buf->data)[i]))
-			zone_free_indirect(sb, zone);
+			block_free_indirect(sb, zone);
 	}
 		
 	brelse(buf);
 	
-	zone_free(sb, num);
+	block_free_direct(sb, num);
 }
 
 /*
@@ -151,17 +158,17 @@ PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
 	{
 		/* Direct block. */
 		case 0:
-			zone_free(sb, num);
+			block_free_direct(sb, num);
 			break;
 		
 		/* Single indirect block. */
 		case 1:
-			zone_free_indirect(sb, num);
+			block_free_indirect(sb, num);
 			break;
 		
 		/* Doubly indirect block. */
 		case 2:
-			zone_free_dindirect(sb, num);
+			block_free_dindirect(sb, num);
 			break;
 		
 		/* Should not happen. */

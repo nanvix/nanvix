@@ -18,9 +18,9 @@
 	#error "too many buffers"
 #endif
 
-/* Hard disk too big. */
+/* Hard disk too small. */
 #if (IMAP_SIZE + ZMAP_SIZE > NR_BUFFERS/16)
-	#error "hard disk too big"
+	#error "hard disk too small"
 #endif
 
 /* Block buffers. */
