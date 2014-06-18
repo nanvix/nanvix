@@ -13,6 +13,9 @@
 	/* Default process priority. */
 	#define NZERO 20
 	
+	/* Maximum number of links to a single file. */
+	#define LINK_MAX 8
+	
 	/* Bytes in a filename. */
 	#define NAME_MAX 14
 	

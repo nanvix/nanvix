@@ -71,6 +71,7 @@ PRIVATE struct dirent *dirent_search
 				{
 					brelse((*buf));
 					d = NULL;
+					curr_proc->errno = EEXIST;
 				}
 				
 				return (d);

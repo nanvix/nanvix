@@ -121,6 +121,11 @@
 	extern pid_t getppid(void);
 	
 	/*
+	 * Links a name to a file.
+	 */
+	extern int link(const char *path1, const char *path2);
+	
+	/*
 	 * Moves the read/write file offset.
 	 */
 	extern off_t lseek(int fd, off_t offset, int whence);

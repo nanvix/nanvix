@@ -90,6 +90,9 @@
 	
 	/* Result too large. */
 	#define ERANGE 28
+	
+	/* Too many links. */
+	#define EMLINK 29
 
 #ifndef _ASM_FILE_
 

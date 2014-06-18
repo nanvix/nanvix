@@ -22,11 +22,8 @@ Things to be tested:
 	
 High priority system calls to be implemented:
 
-	* sys_link()
 	* sys_mknod()
 	* sys_mount()
-	* sys_stime()
-	* sys_time()
 	* sys_times()
 	* sys_ulimit()
 	* sys_umount()
@@ -50,6 +47,8 @@ Low priority system calls to be implemented:
 	* sys_plock()
 	* sys_profil()
 	* sys_ptrace()
+	* sys_stime()
+	* sys_time()
 
 System calls to be tested:
 	
@@ -67,6 +66,7 @@ System calls to be tested:
 	* sys_fork()
 	* sys_ioctl()
 	* sys_kill()
+	* sys_link()
 	* sys_lseek()
 	* sys_open()
 	* sys_pipe()
