@@ -10,10 +10,11 @@
 	#include <nanvix/const.h>
 	#include <sys/stat.h>
 	#include <sys/types.h>
+	#include <sys/utsname.h>
 	#include <signal.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 41
+	#define NR_SYSCALLS 42
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -57,6 +58,7 @@
 	#define NR_dup2    38
 	#define NR_ioctl   39
 	#define NR_link    40
+	#define NR_uname   41
 
 #ifndef _ASM_FILE_
 
@@ -218,6 +220,11 @@
 	 * Sets and gets the file mode creation mask.
 	 */
 	EXTERN mode_t sys_umask(mode_t cmask);
+	
+	/*
+	 * Gets the name of the current system.
+	 */
+	EXTERN int sys_uname(struct utsname *name);
 	
 	/*
 	 * Removes a directory entry.

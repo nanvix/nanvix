@@ -19,6 +19,10 @@ Things to be fixed:
 Things to be tested:
 
 	* stress the block buffer pool
+
+Things to be implemented:
+
+	* when locking structures record pid so the lock can be re-entrant.
 	
 High priority system calls to be implemented:
 
@@ -27,7 +31,6 @@ High priority system calls to be implemented:
 	* sys_times()
 	* sys_ulimit()
 	* sys_umount()
-	* sys_uname()
 	* sys_ustat()
 	* sys_utime()
 	
@@ -74,5 +77,6 @@ System calls to be tested:
 	* sys_read()
 	* sys_stat()
 	* sys_sync()
+	* sys_uname()
 	* sys_unlink()
 	* sys_write()

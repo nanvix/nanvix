@@ -4,6 +4,7 @@
  * sys/link.c - link() system call implementation.
  */
 
+#include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <errno.h>
 #include <limits.h>
