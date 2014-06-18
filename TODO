@@ -32,7 +32,6 @@ High priority system calls to be implemented:
 	* sys_ulimit()
 	* sys_umount()
 	* sys_ustat()
-	* sys_utime()
 	
 Low priority system calls to be implemented:
 
@@ -79,4 +78,5 @@ System calls to be tested:
 	* sys_sync()
 	* sys_uname()
 	* sys_unlink()
+	* sys_utime()
 	* sys_write()
