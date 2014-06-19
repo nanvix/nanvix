@@ -4,21 +4,12 @@
  * sys/stat.c - ustat() system call implementation.
  */
 
+#include <nanvix/bitmap.h>
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <nanvix/mm.h>
 #include <sys/types.h>
 #include <ustat.h>
-
-/*
- * Returns the number of bits clear.
- */
-PRIVATE int bitmap_nclear(uint32_t i)
-{
-     i = i - ((i >> 1) & 0x55555555);
-     i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
-     return (32 - ((((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24));
-}
 
 /*
  * Internal ustat().
@@ -45,7 +36,7 @@ PRIVATE void do_ustat(dev_t dev, struct ustat *ubuf)
 	{
 		for (j = 0; j < (BLOCK_SIZE >> 2); j++)
 		{
-			tfree += bitmap_nclear(((uint32_t *)sb->zmap[i]->data)[i]);
+			tfree += bitmap_nclear(sb->zmap[i]->data, BLOCK_SIZE);
 		}
 	}
 	
@@ -56,7 +47,7 @@ PRIVATE void do_ustat(dev_t dev, struct ustat *ubuf)
 	{
 		for (j = 0; j < (BLOCK_SIZE >> 2); j++)
 		{
-			tinode += bitmap_nclear(((uint32_t *)(sb->imap[i]->data))[i]);
+			tinode += bitmap_nclear(sb->imap[i]->data, BLOCK_SIZE);
 		}
 	}
 	

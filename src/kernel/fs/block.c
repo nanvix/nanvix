@@ -4,6 +4,7 @@
  * fs/zone.c - Zone library implementation.
  */
 
+#include <nanvix/bitmap.h>
 #include <nanvix/const.h>
 #include <nanvix/clock.h>
 #include <nanvix/fs.h>
@@ -124,10 +125,9 @@ PRIVATE void block_free_indirect(struct superblock *sb, block_t num)
  */
 PRIVATE void block_free_dindirect(struct superblock *sb, block_t num)
 {
-	int i;              /* Loop indexes.     */
-	int nzones;         /* Number of zones.  */
-	block_t zone;        /* Zone.             */
-	struct buffer *buf; /* Block buffer.     */
+	int i;              /* Loop indexes. */
+	block_t zone;       /* Zone.         */
+	struct buffer *buf; /* Block buffer. */
 	
 	/* Nothing to be done. */
 	if (num == BLOCK_NULL)
@@ -136,8 +136,7 @@ PRIVATE void block_free_dindirect(struct superblock *sb, block_t num)
 	buf = bread(sb->dev, num);
 		
 	/* Free direct zone. */
-	nzones = BLOCK_SIZE/sizeof(block_t);
-	for (i = 0; i < nzones; i++)
+	for (i = 0; i < NR_SINGLE; i++)
 	{
 		if ((zone = ((block_t *)buf->data)[i]))
 			block_free_indirect(sb, zone);

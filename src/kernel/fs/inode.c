@@ -4,6 +4,7 @@
  * fs/inode.c - Inode library implementation.
  */
 
+#include <nanvix/bitmap.h>
 #include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>

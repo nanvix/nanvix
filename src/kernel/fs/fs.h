@@ -11,42 +11,11 @@
 	#include <nanvix/fs.h>
 	#include <stdint.h>
 	#include <limits.h>	
-
-/*============================================================================*
- *                              Bitmap Library                                *
- *============================================================================*/
- 
-	/* Bit number. */
-	typedef int32_t bit_t;
 	
 	/*
 	 * Initializes inodes.
 	 */
 	EXTERN void inode_init(void);
-	
-	/* Bitmap is full. */
-	#define BITMAP_FULL -1
-	
-	/* Bitmap operators. */
-	#define IDX(a) ((a) >> 5)   /* Returns the index of the bit.  */
-	#define OFF(a) ((a) & 0x1F) /* Returns the offset of the bit. */
-	
-	/*
-	 * Sets a bit in a bitmap.
-	 */
-	#define bitmap_set(block_map, pos) \
-		(((uint32_t *)(block_map))[IDX(pos)] |= (0x1 << OFF(pos)))
-	
-	/*
-	 * Clears a bit in a bitmap.
-	 */
-	#define bitmap_clear(block_map, pos) \
-		(((uint32_t *)(block_map))[IDX(pos)] &= ~(0x1 << OFF(pos)))
-		
-	/*
-	 * Finds the first free bit in a bitmap.
-	 */
-	EXTERN bit_t bitmap_first_free(uint32_t *bitmap, size_t size);
 	
 /*============================================================================*
  *                               Inode Library                                *
@@ -83,14 +52,14 @@
 	 */
 	struct d_superblock
 	{
-		uint16_t s_ninodes;     /* Number of inodes.           */
-		uint16_t s_nzones;      /* Number of zones.            */
-		uint16_t s_imap_blocks; /* Number of inode map blocks. */
-		uint16_t s_zmap_blocks; /* Number of zone map blocks.  */
-		uint16_t unused0;       /* Unused.                     */
-		uint16_t unused1;       /* Unused.                     */
-		uint32_t s_max_size;    /* Maximum file size.          */
-		uint16_t s_magic;       /* Magic number.               */
+		uint16_t s_ninodes;      /* Number of inodes.           */
+		uint16_t s_nblocks;      /* Number of blocks.           */
+		uint16_t s_imap_nblocks; /* Number of inode map blocks. */
+		uint16_t s_bmap_nblocks; /* Number of zone map blocks.  */
+		uint16_t unused0;        /* Unused.                     */
+		uint16_t unused1;        /* Unused.                     */
+		uint32_t s_max_size;     /* Maximum file size.          */
+		uint16_t s_magic;        /* Magic number.               */
 	};
 	
 	/*

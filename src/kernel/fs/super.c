@@ -192,7 +192,7 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 		goto error1;
 	
 	/* Too many blocks in the inode/zone map. */
-	if ((d_sb->s_imap_blocks > IMAP_SIZE) || (d_sb->s_zmap_blocks > ZMAP_SIZE))
+	if ((d_sb->s_imap_nblocks > IMAP_SIZE) || (d_sb->s_bmap_nblocks > ZMAP_SIZE))
 	{
 		kprintf("fs: too many blocks in the inode/zone map");
 		goto error1;
@@ -201,20 +201,20 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	/* Initialize super block. */
 	sb->buf = buf;
 	sb->ninodes = d_sb->s_ninodes;
-	sb->imap_blocks = d_sb->s_imap_blocks;
+	sb->imap_blocks = d_sb->s_imap_nblocks;
 	for (i = 0; i < (int) sb->imap_blocks; i++)
 	{
 		sb->imap[i] = bread(dev, 2 + i);
 		blkunlock(sb->imap[i]);
 	}
-	sb->zmap_blocks = d_sb->s_zmap_blocks;
+	sb->zmap_blocks = d_sb->s_bmap_nblocks;
 	for (i = 0; i < (int) sb->zmap_blocks; i++)
 	{
 		sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i);
 		blkunlock(sb->zmap[i]);
 	}
 	sb->max_size = d_sb->s_max_size;
-	sb->zones = d_sb->s_nzones;
+	sb->zones = d_sb->s_nblocks;
 	sb->root = NULL;
 	sb->mp = NULL;
 	sb->dev = dev;

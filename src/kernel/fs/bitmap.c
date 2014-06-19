@@ -4,8 +4,46 @@
  * fs/bitmap.c - Bitmap library implementation.
  */
 
+#include <nanvix/bitmap.h>
 #include <nanvix/const.h>
-#include "fs.h"
+
+/*
+ * Returns the number of bits clear.
+ */
+PUBLIC int bitmap_nset(uint32_t *bitmap, size_t size)
+{
+	int count;      /* Number of bits set. */
+	uint32_t *idx;  /* Loop index.         */
+	uint32_t *end;  /* End of bitmap.      */
+	uint32_t chunk; /* Working chunk.      */
+	
+	/* Count the number of bits set. */
+	count = 0;
+	end = (bitmap + (size >> 5));
+	for (idx = bitmap; idx < end; idx++)
+	{
+		chunk = *idx;
+		
+		/*
+		 * Fast way for counting number of bits set in a bit map.
+		 * I have no idea how does it work. I just got it from here:
+		 * https://graphics.stanford.edu/~seander/bithacks.html
+		 */
+		chunk = chunk - ((chunk >> 1) & 0x55555555);
+		chunk = (chunk & 0x33333333) + ((chunk >> 2) & 0x33333333);
+		count += (((chunk + (chunk >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
+	}
+	
+	return (count);
+}
+
+/*
+ * Returns the number of bits clear in a bitmap.
+ */
+PUBLIC int bitmap_nclear(uint32_t *bitmap, size_t size)
+{
+	return (size - bitmap_nset(bitmap, size));
+}
 
 /*
  * Finds the first free bit in a bitmap.
