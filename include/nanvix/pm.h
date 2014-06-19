@@ -112,9 +112,11 @@
     	struct process *father; /* Father process.      */
     	
     	/* Timing information. */
-    	int utime; /* User time.   */
-    	int ktime; /* Kernel time. */
-    	
+    	int utime;  /* User CPU time.                                 */
+    	int ktime;  /* Kernel CPU time.                               */
+		int cutime; /* User CPU time of terminated child processes.   */
+		int cktime; /* Kernel CPU time of terminated child processes. */
+
     	/* Scheduling information. */
     	int state;              /* Current state.          */
     	int counter;            /* Remaining quantum.      */

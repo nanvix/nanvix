@@ -54,5 +54,6 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	(void (*)(void))&sys_link,
 	(void (*)(void))&sys_uname,
 	(void (*)(void))&sys_utime,
-	(void (*)(void))&sys_ustat
+	(void (*)(void))&sys_ustat,
+	(void (*)(void))&sys_times
 };

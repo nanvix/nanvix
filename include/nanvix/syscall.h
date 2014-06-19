@@ -9,6 +9,7 @@
 
 	#include <nanvix/const.h>
 	#include <sys/stat.h>
+	#include <sys/times.h>
 	#include <sys/types.h>
 	#include <sys/utsname.h>
 	#include <signal.h>
@@ -16,7 +17,7 @@
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 44
+	#define NR_SYSCALLS 45
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -63,6 +64,7 @@
 	#define NR_uname   41
 	#define NR_utime   42
 	#define NR_ustat   43
+	#define NR_times   44
 
 #ifndef _ASM_FILE_
 
@@ -219,6 +221,11 @@
 	 * Schedules file system updates.
 	 */
 	EXTERN void sys_sync(void);
+	
+	/*
+	 * Gets process and waited-for child process times.
+	 */
+	EXTERN clock_t sys_times(struct tms *buffer);
 	
 	/*
 	 * Sets and gets the file mode creation mask.

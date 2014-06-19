@@ -10,6 +10,9 @@
 #ifndef _ASM_FILE_
 
 	#include <stdint.h>
+	
+	/* Used for system times in clock ticks. */
+	typedef int clock_t;
 
 	/* Used for device IDs. */
 	typedef unsigned dev_t;

@@ -79,6 +79,8 @@ PUBLIC void pm_init(void)
 	IDLE->father = NULL;
 	IDLE->utime = 0;
 	IDLE->ktime = 0;
+	IDLE->cutime = 0;
+	IDLE->cktime = 0;
 	IDLE->state = PROC_RUNNING;
 	IDLE->counter = PROC_QUANTUM;
 	IDLE->priority = PRIO_USER;

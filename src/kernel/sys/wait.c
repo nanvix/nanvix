@@ -46,10 +46,12 @@ repeat:
 					*stat_loc = p->status;
 				
 				/* 
-				 * Get child's PID before burying it 
-				 * to avoid problems. 
+				 * Get information from child
+				 * process before burying it.
 				 */
 				pid = p->pid;
+				curr_proc->cutime += p->utime;
+				curr_proc->cktime += p->ktime;
 
 				/* Bury child process. */
 				bury(p);
