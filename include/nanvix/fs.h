@@ -232,13 +232,13 @@
 		struct buffer *zmap[ZMAP_SIZE]; /* Zone map.                     */
 		block_t zmap_blocks;            /* Number of zone map blocks.    */
 		off_t max_size;                 /* Maximum file size.            */
-		block_t zones;                   /* Number of zones.              */
+		block_t zones;                  /* Number of zones.              */
 		struct inode *root;             /* Inode for root directory.     */
 		struct inode *mp;               /* Inode mounted on.             */
 		dev_t dev;                      /* Underlying device.            */
 		int flags;                      /* Flags (see above).            */
 		ino_t isearch;		            /* Inodes below this are in use. */
-		block_t zsearch;		            /* Zones below this are in use.  */
+		block_t zsearch;		        /* Zones below this are in use.  */
 		struct process *chain;          /* Waiting chain.                */
 	};
 	

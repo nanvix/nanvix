@@ -71,5 +71,5 @@ PUBLIC int sys_utime(const char *path, struct utimbuf *times)
 out1:
 	putname(name);
 out0:
-	return (curr_proc->errno);
+	return (-curr_proc->errno);
 }

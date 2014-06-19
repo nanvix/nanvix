@@ -7,6 +7,7 @@
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 #include <nanvix/fs.h>
+#include <errno.h>
 #include "fs.h"
 
 /* Super block table. */
@@ -63,6 +64,8 @@ PUBLIC struct superblock *superblock_get(dev_t dev)
 		
 		superblock_unlock(sb);
 	}
+	
+	curr_proc->errno = EINVAL;
 	
 	return (NULL);
 }

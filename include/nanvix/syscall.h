@@ -12,10 +12,11 @@
 	#include <sys/types.h>
 	#include <sys/utsname.h>
 	#include <signal.h>
+	#include <ustat.h>
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 43
+	#define NR_SYSCALLS 44
 	
 	/* System call numbers. */
 	#define NR_alarm    0
@@ -61,6 +62,7 @@
 	#define NR_link    40
 	#define NR_uname   41
 	#define NR_utime   42
+	#define NR_ustat   43
 
 #ifndef _ASM_FILE_
 
@@ -232,6 +234,11 @@
 	 * Removes a directory entry.
 	 */
 	EXTERN int sys_unlink(const char *path);
+	
+	/*
+	 * Gets file system statistics.
+	 */
+	EXTERN int sys_ustat(dev_t dev, struct ustat *ubuf);
 	
 	/*
 	 * Set file access and modification times

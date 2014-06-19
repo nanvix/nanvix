@@ -87,21 +87,19 @@ PUBLIC int sys_link(const char *path1, const char *path2)
 	
 	/* Failed to get source name. */
 	if (source == NULL)
-		return (-EINVAL);
+		goto out0;
 	
 	target = getname(path2);
 	
 	/* Failed to get target name. */
 	if (target == NULL)
-	{
-		putname(source);
-		return (-EINVAL);
-	}
+		goto out1;
 	
 	do_link(source, target);
 	
 	putname(target);
+out1:
 	putname(source);
-	
-	return (curr_proc->errno);
+out0:
+	return (-curr_proc->errno);
 }

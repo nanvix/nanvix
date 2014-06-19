@@ -14,6 +14,9 @@
 	/* Used for device IDs. */
 	typedef unsigned dev_t;
 	
+	/* Used for disk addresses. */
+	typedef unsigned daddr_t;
+	
 	/* Used as a general identifier. */
 	typedef int id_t;
 	
