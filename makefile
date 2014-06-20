@@ -4,11 +4,12 @@
 # Builds the Nanvix operating system.
 
 # Directories.
-export BINDIR = $(CURDIR)/bin
-export DOCDIR = $(CURDIR)/doc
-export INCDIR = $(CURDIR)/include
-export LIBDIR = $(CURDIR)/lib
-export SRCDIR = $(CURDIR)/src
+export BINDIR    = $(CURDIR)/bin
+export DOCDIR    = $(CURDIR)/doc
+export INCDIR    = $(CURDIR)/include
+export LIBDIR    = $(CURDIR)/lib
+export LIBSRCDIR = $(CURDIR)/libsrc
+export SRCDIR    = $(CURDIR)/src
 
 # Toolchain
 export CC = $(TARGET)-gcc
@@ -23,39 +24,39 @@ export CFLAGS   += -Wall -Wextra -Werror
 export CFLAGS   += -D NDEBUG
 export ASMFLAGS  = -Wa,--divide,--warn
 export ARFLAGS   = -vq
-export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
+export LDFLAGS   = -Wl,-T $(LIBSRCDIR)/link.ld
 
 # Library name.
 export LIB = libc.a
 
 # Builds the Nanvix operating system.
-all: kernel libc init login shell coreutils
+all: kernel libraries init login shell coreutils
 
 # Builds the kernel.
 kernel:
 	cd $(SRCDIR) && $(MAKE) kernel
 
 # Builds the shell.
-shell: libc
+shell: libraries
 	cd $(SRCDIR) && $(MAKE) shell
 	
 # Builds init.
-init: libc
+init: libraries
 	cd $(SRCDIR) && $(MAKE) init
 	
 # Builds login.
-login: libc
+login: libraries
 	cd $(SRCDIR) && $(MAKE) login
 	
 # Builds core utilities.
-coreutils: libc
+coreutils: libraries
 	cd $(SRCDIR) && $(MAKE) coreutils
 
 # Builds the C library.
-libc: 
-	cd $(LIBDIR) && $(MAKE) all
+libraries: 
+	cd $(LIBSRCDIR) && $(MAKE) all
 
 # Cleans compilation files.
 clean:
 	cd $(SRCDIR) && $(MAKE) clean
-	cd $(LIBDIR) && $(MAKE) clean
+	cd $(LIBSRCDIR) && $(MAKE) clean

@@ -16,9 +16,9 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+ 
 /*
- * Copyright (c) 1990 Regents of the University of California.
+ * Copyright (c) 1989 The Regents of the University of California.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,102 +50,24 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _CTYPE_H_
-#define _CTYPE_H_
+#include <ctype.h>
 
-	/* Character types. */
-	#define	_U	0x01 /* Upper-case character.         */
-	#define	_L	0x02 /* Lower-case character.         */
-	#define	_N	0x04 /* Decimal number character.     */
-	#define	_S	0x08 /* White-space character.        */
-	#define	_P	0x10 /* Punctuation character.        */
-	#define	_C	0x20 /* Control character.            */
-	#define	_X	0x40 /* Hexadecimal number character. */
-	#define	_B	0x80 /* Blank space character.        */
-	
-	/*
-	 * Character type table.
-	 */
-	extern unsigned char _ctype[];
-	
-	/*
-	 * Lower character map.
-	 */
-	extern char _maplower[1 + 256];
-	
-	/*
-	 * Upper character map.
-	 */
-	extern char _mapupper[1 + 256];
-
-	/*
-	 * Checks for an alphanumeric character.
-	 */
-	#define	isalnum(c)((_ctype + 1)[c] & (_U|_L|_N))
-	
-	/*
-	 * Checks for an alphabetic character.
-	 */
-	#define	isalpha(c) ((_ctype + 1)[c] & (_U|_L))
-	
-	/*
-	 * Checks for a blank character.
-	 */
-	#define	isblank(c) ((c) == '\t' || (c) == ' ')
-	
-	/*
-	 * Checks for a control character.
-	 */
-	#define	iscntrl(c) ((_ctype + 1)[c] & _C)
-	
-	/*
-	 * Checks for a decimal digit.
-	 */
-	#define	isdigit(c) ((_ctype + 1)[c] & _N)
-	
-	/*
-	 * Checks for a visible character.
-	 */
-	#define	isgraph(c) ((_ctype + 1)[c] & (_P|_U|_L|_N))
-	
-	/*
-	 * Checks for a lowercase character.
-	 */
-	#define	islower(c) ((_ctype + 1)[c] & _L)
-	
-	/*
-	 * Checks for a printable character.
-	 */
-	#define	isprint(c) ((_ctype + 1)[c] & (_P|_U|_L|_N|_B))
-	
-	/*
-	 * Checks for a punctuation character.
-	 */
-	#define	ispunct(c) ((_ctype + 1)[c] & _P)
-	
-	/*
-	 * For a white-space character.
-	 */
-	#define	isspace(c) ((_ctype + 1)[c] & _S)
-	
-	/*
-	 * Checks for an uppercase letter.
-	 */
-	#define	isupper(c) ((_ctype + 1)[c] & _U)
-	
-	/*
-	 * Checks for a hexadecimal digit.
-	 */
-	#define	isxdigit(c) ((_ctype + 1)[c] & (_N|_X))
-	
-	/*
-	 * Transliterates an uppercase character to a lowercase character.
-	 */
-	#define	tolower(c) ((_maplower + 1)[c])
-	
-	/*
-	 * Transliterates a lowercase character to an uppercase character.
-	 */
-	#define	toupper(c) ((_mapupper + 1)[c])
-
-#endif /* !_CTYPE_H_ */
+unsigned char _ctype[1 + 256] = {
+	0,
+	_C,   _C,    _C,    _C,    _C,    _C,    _C,    _C,
+	_C,   _C|_S, _C|_S, _C|_S, _C|_S, _C|_S, _C,    _C,
+	_C,   _C,    _C,    _C,    _C,    _C,    _C,    _C,
+	_C,   _C,    _C,    _C,    _C,    _C,    _C,    _C|_B,
+	_S,   _P,    _P,    _P,    _P,    _P,    _P,    _P,
+	_P,   _P,    _P,    _P,    _P,    _P,    _P,    _P,
+	_N,   _N,    _N,    _N,    _N,    _N,    _N,    _N,
+	_N,   _N,    _P,    _P,    _P,    _P,    _P,    _P,
+	_P,   _U|_X, _U|_X, _U|_X, _U|_X, _U|_X, _U|_X, _U,
+	_U,   _U,    _U,    _U,    _U,    _U,    _U,    _U,
+	_U,   _U,    _U,    _U,    _U,    _U,    _U,    _U,
+	_U,   _U,    _U,    _P,    _P,    _P,    _P,    _P,
+	_P,   _L|_X, _L|_X, _L|_X, _L|_X, _L|_X, _L|_X, _L,
+	_L,   _L,    _L,    _L,    _L,    _L,    _L,    _L,
+	_L,   _L,    _L,    _L,    _L,    _L,    _L,    _L,
+	_L,   _L,    _L,    _P,    _P,    _P,    _P,    _C
+};
