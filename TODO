@@ -1,81 +1,63 @@
 
 Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
-Kernel functionalities to be implemented:
+TO BE IMPLEMENTED:
 	
-	* xalloc()
-	* file locking
-	* nonblocking I/O
+	+ text region allocation
+	+ file and record locking
+	+ re-entrant kernel structure locking
+	+ system call mknod()
+	+ system call mount()
+	+ system call time()
+	+ system call umount()
+	+ system call msgctl()
+	+ system call msgget()
+	+ system call msgsnd()
+	+ system call msgrcv()
+	+ system call semctl()
+	+ system call semget()
+	+ system call semop()
+	+ system call shmctl()
+	+ system call shmget()
+	+ system call shmop()
 
-Things to be fixed:
+TO BE FIXED:
 
-	* signal() check death of child signal
-	* execve() setuid when need
-	* close() release inode and current directory
-	* open() when creating new file allocate inode first than writing directory 
-	* open() when truncating existing file do not change ownership
-	* fork() check number of process per user
+	- death of child signal on signal()
+	- set user ID on execve()
+	- release inode and current directory on close()
+	- allocate inode first when creating a new file on open()
+	- do not change ownership when truncating existing file on open()
+	- check number of process per user on fork()
 
-Things to be tested:
+TO BE TESTED:
 
-	* stress the block buffer pool
-
-Things to be implemented:
-
-	* When locking structures, record process ID so the lock can be re-entrant.
-	
-High priority system calls to be implemented:
-
-	* sys_mknod()
-	* sys_mount()
-	* sys_umount()
-	
-Low priority system calls to be implemented:
-
-	* sys_acct()
-	* sys_msgctl()
-	* sys_msgget()
-	* sys_msgsnd()
-	* sys_msgrcv()
-	* sys_semctl()
-	* sys_semget()
-	* sys_semop()
-	* sys_shmctl()
-	* sys_shmget()
-	* sys_shmop()
-	* sys_plock()
-	* sys_profil()
-	* sys_ptrace()
-	* sys_stime()
-	* sys_time()
-
-System calls to be tested:
-	
-	* sys_access()
-	* sys_brk()
-	* sys_close()
-	* sys_chdir()
-	* sys_chmod()
-	* sys_chown()
-	* sys_chroot()
-	* sys_dup()
-	* sys_execve()
-	* sys_exit()
-	* sys_fcntl()
-	* sys_fork()
-	* sys_ioctl()
-	* sys_kill()
-	* sys_link()
-	* sys_lseek()
-	* sys_open()
-	* sys_pipe()
-	* sys_umask()
-	* sys_read()
-	* sys_stat()
-	* sys_sync()
-	* sys_times()
-	* sys_uname()
-	* sys_unlink()
-	* sys_ustat()
-	* sys_utime()
-	* sys_write()
+	? block buffer pool
+	? system call access()
+	? system call brk()
+	? system call close()
+	? system call chdir()
+	? system call chmod()
+	? system call chown()
+	? system call chroot()
+	? system call dup()
+	? system call execve()
+	? system call exit()
+	? system call fcntl()
+	? system call fork()
+	? system call ioctl()
+	? system call kill()
+	? system call link()
+	? system call lseek()
+	? system call open()
+	? system call pipe()
+	? system call umask()
+	? system call read()
+	? system call stat()
+	? system call sync()
+	? system call times()
+	? system call uname()
+	? system call unlink()
+	? system call ustat()
+	? system call utime()
+	? system call write()
