@@ -27,5 +27,8 @@
 	
 	/* Number of bytes in pathname. */
 	#define PATH_MAX 512
+	
+	/* Maximum value for unsigned long. */
+	#define ULONG_MAX 4294967295u
 
 #endif /* LIMITS_H_ */

@@ -1,0 +1,70 @@
+.\"
+.\" Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH "chmod" 1 "February 2014" "Commands" "The Nanvix User Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+chmod \- Changes file's mode
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.BI "chmod [" "options" "] <" "mode" "> <" "file" ">"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+.BR chmod 
+changes the file mode bits of the file
+.IR file
+according to 
+.IR mode ,
+which is an octal number number constructed from the OR of the following modes:
+
+.IP \[bu] 2
+0001 Execute/search permission, others.
+.IP \[bu]
+0002 Write permission, others.
+.IP \[bu]
+0004 Read permission, others.
+.IP \[bu]
+0010 Execute/search permission, group.
+.IP \[bu]
+0020 Write permission, group.
+.IP \[bu]
+0040 Read permission, group.
+.IP \[bu]
+0100 Execute/search permission, owner.
+.IP \[bu]
+0200 Write permission, owner.
+.IP \[bu]
+0400 Read permission, owner.
+
+.P
+.\"
+.\"=============================================================================
+.\"
+.SH "OPTIONS"
+.\"
+.TP 
+.BR --help
+Display help information and exits.
+
+.TP
+.BR --version
+Display program version and exits.
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"

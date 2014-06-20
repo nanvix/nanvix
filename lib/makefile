@@ -4,6 +4,7 @@
 
 # Source files.
 SRC = $(wildcard *.c)          \
+      $(wildcard ctype/*.c)    \
       $(wildcard dirent/*.c)   \
       $(wildcard errno/*.c)    \
       $(wildcard fcntl/*.c)    \

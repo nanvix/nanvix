@@ -44,5 +44,10 @@
 	 * Allocates memory.
 	 */
 	extern void *malloc(size_t size);
+	
+	/*
+	 * Converts a string to an unsigned long.
+	 */
+	extern unsigned long strtoul(const char *str, char **endptr, int base);
 
 #endif /* STDLIB_H_ */
