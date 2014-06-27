@@ -27,6 +27,7 @@ OBJ = $(SRC:.c=.o)
 
 # Builds the C library.
 all: $(OBJ)
+	mkdir -p $(LIBDIR)
 	$(AR) $(ARFLAGS) $(LIBDIR)/$(LIB) $^
 
 # Cleans compilation files.

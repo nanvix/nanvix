@@ -16,6 +16,12 @@
 	/* Maximum number of links to a single file. */
 	#define LINK_MAX 8
 	
+	/* Maximum value of a long. */
+	#define LONG_MAX 2147483647
+	
+	/* Minimum value of type long. */
+	#define LONG_MIN -2147483647
+	
 	/* Bytes in a filename. */
 	#define NAME_MAX 14
 	

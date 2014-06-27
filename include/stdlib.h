@@ -26,6 +26,11 @@
 	extern int atexit(void(*func)(void));
 	
 	/*
+	 * Converts a string to an integer.
+	 */
+	extern int atoi(const char *str);
+	
+	/*
 	 * Terminates the calling process.
 	 */
 	extern void exit(int status);
@@ -44,6 +49,11 @@
 	 * Allocates memory.
 	 */
 	extern void *malloc(size_t size);
+		
+	/*
+	 * Converta a string to a long integer.
+	 */
+	extern long strtol(const char *nptr, char **endptr, int base);
 	
 	/*
 	 * Converts a string to an unsigned long.
