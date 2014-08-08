@@ -4,16 +4,17 @@ Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 WHAT IS NANVIX?
 
-	Nanvix is a Unix like operating system written by Pedro H. Penna for 
+	Nanvix is a Unix-like operating system written by Pedro H. Penna for 
 	educational purposes. It is designed to be simple and small, but also 
 	modern and fully featured.
 	
 WHAT HARDWARE IS REQUIRED?
 
-	The Nanvix operating system targets 32-bit x86-based PCs and only 
-	requires a floppy or CD-ROM drive and 16 MB of RAM. You can run it 
-	in a real PC (or in a virtual machine) from a Live System's Image, 
-	available at: sourceforge.net/projects/nanvix/files/
+	Nanvix targets 32-bit x86-based PCs and only requires a floppy or CD-ROM
+	drive and 16 MB of RAM. You can run it either in a real PC or in a virtual
+	machine, from a Live System's Image, available at: 
+	
+		<sourceforge.net/projects/nanvix/files/>
 	
 BUILDING
 
@@ -23,9 +24,15 @@ BUILDING
 	Once you have setup the required tools, you should set the 
 	environment variable $TARGET to point to the toolchain's directory. 
 	
-	When done, you can build Nanvix running the topmost makefile and 
-	generate a Live System's Image running the scripts/build-img.sh 
-	script.
+	When done, you can build Nanvix by typing, at the root directory:
+	
+		$ make all
+	
+	Or you can build a Live System's Image by typing, at the same directory:
+	
+		# make image
+	
+	Note that for build a image you may require priveleged access.
 
 	TIP: If you are running a Debian-based Linux distribution, like Ubuntu, 
 	you can simply run the scripts/setup-toolchain.sh script.
