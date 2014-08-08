@@ -6,6 +6,7 @@ TO BE IMPLEMENTED:
 	+ text region allocation
 	+ file and record locking
 	+ re-entrant kernel structure locking
+	+ system call mkdir()
 	+ system call mknod()
 	+ system call mount()
 	+ system call time()
@@ -14,6 +15,7 @@ TO BE IMPLEMENTED:
 	+ system call msgget()
 	+ system call msgsnd()
 	+ system call msgrcv()
+	+ system call rmdir()
 	+ system call semctl()
 	+ system call semget()
 	+ system call semop()

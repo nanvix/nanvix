@@ -131,6 +131,11 @@
 	extern off_t lseek(int fd, off_t offset, int whence);
 	
 	/*
+	 * Changes the nice value of the calling process.
+	 */
+	extern int nice(int incr);
+	
+	/*
 	 * Gets the real user ID of the calling process.
 	 */
 	extern uid_t getuid(void);

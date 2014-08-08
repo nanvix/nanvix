@@ -1,0 +1,67 @@
+.\"
+.\" Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This program is free software; you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation; either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" This program is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with this program. If not, see <http://www.gnu.org/licenses/>.
+.\"
+.\"=============================================================================
+.\"
+.TH "nice" 1 "July 2014" "Commands" "The Nanvix User Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+nice \- Runs a program with modified scheduling priority
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.BI "nice [" "options" "] <" "command" "> [" "arguments..." "]"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+.BR nice
+runs 
+.BI command
+with modified scheduling priority.
+.\"
+.\"=============================================================================
+.\"
+.SH "OPTIONS"
+.\"
+.TP 
+.BR --help
+Display help information and exits.
+
+.TP
+.BR "-n <increment>"
+System scheduling priority increment. It can be either a negative or a positive 
+value. Positive increment values likely cause a lower system scheduling
+priority; whereas negative increment values may require appropriate privileges
+and likely cause a higher system scheduling priority.
+
+.TP
+.BR --version
+Display program version and exits.
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"

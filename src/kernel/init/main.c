@@ -91,14 +91,14 @@ int open(const char *path, int oflag, ...)
 PRIVATE void init(void)
 {
 	const char *argv[] = { "init", "/etc/inittab", NULL };
-	const char *envp[] = { "PATH=/bin", "HOME=/", NULL };
+	const char *envp[] = { "PATH=/bin:/sbin", "HOME=/", NULL };
 	
 	/* Open standard output streams. */
 	open("/dev/tty", O_RDONLY);
 	open("/dev/tty", O_WRONLY);
 	open("/dev/tty", O_WRONLY);
 		
-	execve("/etc/init", argv, envp);
+	execve("/sbin/init", argv, envp);
 }
 
 /*

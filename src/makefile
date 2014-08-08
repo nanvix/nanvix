@@ -1,59 +1,50 @@
+# 
+# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
 #
-# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+# This file is part of Nanvix.
 #
-# Builds the kernel, system utilities and user applications.
+# Nanvix is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Nanvix is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Shell variables.
-SHELL_EXEC = tsh
-SHELL_BINDIR = $(CURDIR)/tsh/bin
-SHELL_DOCDIR = $(CURDIR)/tsh/doc
-SHELL_INCDIR = $(CURDIR)/tsh/include
-SHELL_SRCDIR = $(CURDIR)/tsh/src
-SHELL_LIBS   = $(LIBDIR)/$(LIB)
-SHELL_CFLAGS = -I $(SHELL_INCDIR) $(CFLAGS)
-
-# Core utilities variables.
-COREUTILS_BINDIR = $(CURDIR)/coreutils/bin
-COREUTILS_DOCDIR = $(CURDIR)/coreutils/doc
-COREUTILS_SRCDIR = $(CURDIR)/coreutils/src
-COREUTILS_LIBS   = $(LIBDIR)/$(LIB)
-COREUTILS_CFLAGS = $(CFLAGS)
-
-# Phony list.
-.PHONY: coreutils
-.PHONY: init
+# Conflicts.
 .PHONY: kernel
-.PHONY: login
-.PHONY: shell
+.PHONY: lib
+.PHONY: sbin
+.PHONY: ubin
 
-# Builds core utilities.
-coreutils:
-	cd $(COREUTILS_SRCDIR) && $(MAKE) all BINDIR="$(COREUTILS_BINDIR)" DOCDIR="$(COREUTILS_DOCDIR)" CFLAGS="$(COREUTILS_CFLAGS)" LIBS="$(COREUTILS_LIBS)"
-	cp $(COREUTILS_BINDIR)/* $(BINDIR)/
-	cp $(COREUTILS_DOCDIR)/* $(DOCDIR)/man/1/
-
-# Builds init.
-init:
-	cd init/ && $(MAKE) all
+# Builds everything.
+all: kernel lib sbin ubin
 	
 # Builds the kernel.
 kernel:
 	cd kernel/ && $(MAKE) all
+	
+# Builds the libraries.
+lib:
+	cd lib/ && $(MAKE) all
 
-# Builds login.
-login:
-	cd login/ && $(MAKE) all
+# Builds superuser utilities.
+sbin: lib
+	cd sbin/ && $(MAKE) all
 
-# Builds the shell.
-shell:
-	cd $(SHELL_SRCDIR) && $(MAKE) all BINDIR="$(SHELL_BINDIR)" DOCDIR="$(SHELL_DOCDIR)" CFLAGS="$(SHELL_CFLAGS)" LIBS="$(SHELL_LIBS)"
-	cp $(SHELL_BINDIR)/* $(BINDIR)/$(SHELL_EXEC)
-	cp $(SHELL_DOCDIR)/* $(DOCDIR)/man/1/$(SHELL_EXEC).1
-# Cleans compilation files.
+# Builds user utilities.
+ubin: lib
+	cd ubin/ && $(MAKE) all
+
+# Clean compilation files.
 clean:
-	cd init/ && $(MAKE) clean
 	cd kernel/ && $(MAKE) clean
-	cd login/ && $(MAKE) clean
-	cd tsh/src && $(MAKE) clean
-	rm -f $(BINDIR)/*
+	cd lib/ && $(MAKE) clean
+	cd sbin/ && $(MAKE) clean
+	cd ubin/ && $(MAKE) clean
