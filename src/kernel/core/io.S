@@ -7,6 +7,7 @@
 /* Exported symbols. */
 .globl outputb
 .globl inputb
+.globl iowait
 
 /*----------------------------------------------------------------------------*
  *                                  outputb                                   *
@@ -35,4 +36,16 @@ inputb:
 	movl  8(%esp), %edx /* Port number. */
 	inb  %dx, %al
 	popl %edx
+	ret
+	
+/*----------------------------------------------------------------------------*
+ *                                   iowait                                   *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Forces the CPU to wait for an I/O operation to complete.
+ */
+iowait:
+	xorl %eax, %eax
+	outb %al, $0x80
 	ret

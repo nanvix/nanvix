@@ -21,6 +21,7 @@
 C_SRC = $(wildcard boot/*.c)        \
         $(wildcard core/*.c)        \
         $(wildcard dev/*.c)         \
+        $(wildcard dev/hdd/*.c)     \
         $(wildcard dev/ramdisk/*.c) \
         $(wildcard dev/tty/*.c)     \
         $(wildcard fs/*.c)          \

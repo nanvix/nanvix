@@ -4,6 +4,7 @@
  * dev/dev.c - Uniform device interface.
  */
 
+#include <dev/hdd.h>
 #include <dev/tty.h>
 #include <dev/ramdisk.h>
 #include <nanvix/const.h>
@@ -245,6 +246,7 @@ PUBLIC void bdev_readblk(struct buffer *buf)
  */
 PUBLIC void dev_init(void)
 {
+	ata_init();
 	tty_init();
 	ramdisk_init();
 }

@@ -19,5 +19,10 @@
 	 * Reads a byte from a port.
 	 */
 	EXTERN byte_t inputb(word_t port);
+	
+	/*
+	 * Forces the CPU to wait for an I/O operation to complete.
+	 */
+	EXTERN void iowait(void);
 
 #endif /* IO_H_ */
