@@ -27,6 +27,9 @@ function eject {
 	losetup -d /dev/loop2
 }
 
+# Build HDD image.
+dd if=/dev/zero of=hdd.img bs=10M count=1
+
 # Clone blank images.
 cp -f tools/img/blank.img nanvix.img
 cp -f tools/img/initrd.img initrd.img

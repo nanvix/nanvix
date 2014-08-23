@@ -20,6 +20,7 @@
 # Default rules.
 *.o
 *.a
+*.img
 bin/*
 bin/sbin/*
 bin/ubin/*
