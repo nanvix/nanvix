@@ -7,6 +7,7 @@
 /* Exported symbols. */
 .globl outputb
 .globl inputb
+.globl inputw
 .globl iowait
 
 /*----------------------------------------------------------------------------*
@@ -35,6 +36,20 @@ inputb:
 	pushl %edx
 	movl  8(%esp), %edx /* Port number. */
 	inb  %dx, %al
+	popl %edx
+	ret
+	
+/*----------------------------------------------------------------------------*
+ *                                   inputw                                   *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Reads a word from a port.
+ */
+inputw:
+	pushl %edx
+	movl  8(%esp), %edx /* Port number. */
+	inw  %dx, %ax
 	popl %edx
 	ret
 	

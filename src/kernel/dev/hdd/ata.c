@@ -18,6 +18,7 @@
  */
 
 #include <asm/io.h>
+#include <drivers/ata.h>
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 
@@ -29,176 +30,244 @@
 #define MASTER_DEV 0 /* Master. */
 #define SLAVE_DEV  1 /* Slave.  */
 
-/* ATA controller registers. */
-#define REG_DATA	0 /* Used to read/write PIO data.                      */
-#define REG_FERR	1 /* Features and error information.                   */
-#define REG_SC		2 /* Sector count, number of sectors to read/write.    */
-#define REG_SADDR1	3 /* Sector number.                                    */
-#define REG_SADDR2	4 /* Partial disk sector address.                      */
-#define REG_SADDR3	5 /* Partial disk sector address.                      */
-#define REG_DC		6 /* Used to select a drive and/or head.               */
-#define REG_CMD		7 /* Used to send commands or read the current status. */
-#define REG_ASTATUS	8 /* Status.                                           */
-
-/* ATA commands. */
-#define CMD_RESET				0x08
-#define CMD_IDENTIFY			0xEC /* Identify device. */
-#define CMD_READ_SECTORS		0x20
-#define CMD_READ_SECTORS_EXT	0x24
-#define CMD_WRITE_SECTORS		0x30
-#define CMD_WRITE_SECTORS_EXT	0x34
-#define CMD_FLUSH_CACHE			0xE7
-#define CMD_FLUSH_CACHE_EXT		0xEA
-
-/* Device status byte. */
-#define ERR_BIT 0 /* An error occurred.                 */
-#define DRQ_BIT 3 /* Ready to accept/transfer PIO data. */
-#define SRV_BIT 4 /* Overlapped Mode Service Request.   */
-#define DF_BIT  5 /* Fault error.                       */
-#define RDY_BIT 6 /* Ready.                             */
-#define BSY_BIT 7 /* Busy.                              */
+/**
+ * @brief ATA devices information.
+ */
+PRIVATE struct atadev ata_devices[4];
 
 /**
  * @brief Default I/O ports for ATA controller.
  */
 PRIVATE uint16_t pio_ports[2][9] = {
-		/* Primary Bus */
-		{0x1F0, 0x1F1, 0x1F2, 0x1F3, 0x1F4, 0x1F5, 0x1F6, 0x1F7, 0x3F6},
-		/* Secondary Bus */
-		{0x170, 0x171, 0x172, 0x173, 0x174, 0x175, 0x176, 0x177, 0x376}
+	/* Primary Bus */
+	{ 0x1F0, 0x1F1, 0x1F2, 0x1F3, 0x1F4, 0x1F5, 0x1F6, 0x1F7, 0x3F6 },
+	/* Secondary Bus */
+	{ 0x170, 0x171, 0x172, 0x173, 0x174, 0x175, 0x176, 0x177, 0x376 }
 };
 
 /**
- * @brief      Forces an I/O delay.
- * @param time Desired delay in nanoseconds.
+ * @brief Forces an 400 ns delay.
  */
-PRIVATE void delay(int time)
+PRIVATE void ata_delay(void)
 {
-	int i;
-	
-	time /= 100;
-	
-	for (i = 0; i < time; i++)
-		iowait();
+	iowait();
+	iowait();
+	iowait();
+	iowait();
+	iowait();
 }
 
 /**
- * @brief        Select active device on the ATA bus
- * @param bus    Bus to be used (primary or secondary).
- * @param device Device to be selected (master or slave).
+ * @brief          Selects active device on the ATA bus.
+ * @param atadevid ATA device ID.
  */
-PRIVATE void set_device(uint8_t bus, uint8_t device)
+PRIVATE void ata_device_select(int atadevid)
 {
-	/* Primary bus. */
-	if (bus == PRI_BUS)
+	int bus;
+	
+	bus = ATA_BUS(atadevid);
+	
+	/* Parse ATA device ID. */
+	switch (atadevid)
 	{
-		/* Master device. */
-		if (device == MASTER_DEV)
-			outputb(pio_ports[PRI_BUS][REG_DC], 0xa0);
+		/* Primary master. */
+		case ATA_PRI_MASTER:
+			outputb(pio_ports[bus][ATA_REG_DEVCTL], 0xa0);
+			break;
 		
-		/* Slave device. */
-		else if (device == SLAVE_DEV)
-			outputb(pio_ports[PRI_BUS][REG_DC], 0xb0);
+		/* Primary slave. */
+		case ATA_PRI_SLAVE:
+			outputb(pio_ports[bus][ATA_REG_DEVCTL], 0xb0);
+			break;
+		
+		/* Secondary master. */
+		case ATA_SEC_MASTER:
+			outputb(pio_ports[bus][ATA_REG_DEVCTL], 0xa0);
+			break;
+		
+		/* Secondary slave. */
+		case ATA_SEC_SLAVE:
+			outputb(pio_ports[bus][ATA_REG_DEVCTL], 0xb0);
+			break;
 	}
 	
-	/* Secondary bus. */
-	else if (bus == SEC_BUS)
-	{
-		/* Master device. */
-		if (device == MASTER_DEV)
-			outputb(pio_ports[SEC_BUS][REG_DC], 0xa0);
-		
-		/* Slave device. */
-		else if (device == SLAVE_DEV)
-			outputb(pio_ports[SEC_BUS][REG_DC], 0xb0);
-	}
-	
-	delay(500);
+	ata_delay();
 }
 
 /**
- * @brief Initializes the generic driver for ATA controllers.
+ * @brief      Waits ATA bus to be ready.
+ * @param bus  Bus to wait (primary or secondary).
+ */
+PRIVATE void ata_bus_wait(int bus)
+{
+	while (inputb(pio_ports[bus][ATA_REG_ASTATUS] & ATA_BUSY))
+		/* noop*/ ;
+}
+
+/**
+ * @brief          Sets up PATA device.
+ * @param atadevid ATA device ID.
+ * @returns        On success, zero is returned. On failure, a negative number
+ *                 is returned instead.
+ */
+PRIVATE int pata_setup(int atadevid)
+{
+	int i;              /* Loop index.      */
+	int bus;            /* Bus number.      */
+	struct atadev *dev; /* ATA device.      */
+	uint16_t status;    /* Status register. */
+	
+	bus = ATA_BUS(atadevid);
+	dev = &ata_devices[atadevid];
+	
+	/* Probe device. */
+	while (1)
+	{
+		status = inputb(pio_ports[bus][ATA_REG_ASTATUS]);
+				
+		/* Device is online. */
+		if (status & ATA_DRQ)
+			break;
+					
+		/* Error when probing. */
+		if (status & ATA_ERR)
+			return (-1);
+	}
+			
+	/* Ready information. */
+	for(i = 0; i < 256; i++)
+	{
+		ata_bus_wait(bus);
+		dev->rawinfo[i] = inputw(pio_ports[bus][ATA_REG_DATA]);
+	}
+	
+	/* Not a ATA device. */
+	if (!ata_info_is_ata(dev->rawinfo))
+		return (-1);
+	
+	/* Does not support LBA. */
+	if (!ata_info_supports_lba(dev->rawinfo))
+		return (-1);
+	
+	/* Setup ATA device structure. */
+	dev->type = ATADEV_PATA;
+	dev->flags = ATADEV_PRESENT | ATADEV_LBA;
+	dev->nsectors = dev->rawinfo[ATA_INFO_LBA_CAPACITY_1]
+					 | dev->rawinfo[ATA_INFO_LBA_CAPACITY_2] << 16;
+	
+	/* Supports DMA. */
+	if (ata_info_supports_dma(dev->rawinfo))
+		dev->flags |= ATADEV_DMA;
+	
+	return (0);
+}
+
+/**
+ * @brief          Attempts to identify the type of the active ATA device by
+ *                 issuing an IDENTIFY command.
+ * @param atadevid ATA device ID.
+ * @returns        ATA device type. Moreover, if ATA device is of type PATA,
+ *                 device identification information is ready to be read.
+ */
+PRIVATE int ata_identify(int atadevid)
+{
+	int bus;              /* Bus number.       */
+	uint8_t signature[2]; /* Device signature. */
+	
+	bus = ATA_BUS(atadevid);
+	
+	/*
+	 * ATA specification says that we should set these
+	 * values to zero before issuing an IDENTIFY command,
+	 * so later we can properly detect ATA and ATAPI 
+	 * devices.
+	 */
+	outputb(pio_ports[bus][ATA_REG_NSECT], 0);
+	outputb(pio_ports[bus][ATA_REG_LBAL], 0);
+	outputb(pio_ports[bus][ATA_REG_LBAM], 0);
+	outputb(pio_ports[bus][ATA_REG_LBAH], 0);
+	
+	/* identify command. */	
+	outputb(pio_ports[bus][ATA_REG_CMD], ATA_CMD_IDENTIFY);
+		
+	/* No device attached. */
+	if (inputb(pio_ports[bus][ATA_REG_ASTATUS]) == 0)
+		return (ATADEV_NULL);
+	
+	ata_bus_wait(bus);
+		
+	/* Get device signature */
+	signature[0] = inputb(pio_ports[bus][ATA_REG_LBAM]);
+	signature[1] = inputb(pio_ports[bus][ATA_REG_LBAH]);
+	
+	/* ATAPI device.  */
+	if ((signature[0] == 0x14) && (signature[1] == 0xeb))
+		return (ATADEV_PATAPI);
+			
+	/* SATAPI device. */
+	else if ((signature[0] == 0x69) && (signature[1] == 0x96))
+		return (ATADEV_SATAPI);
+			
+	/* SATA device. */
+	else if ((signature[0] == 0x3c) && (signature[1] == 0xc3))
+		return (ATADEV_SATA);
+
+	/* PATA device. */
+	else if ((signature[0] == 0) && (signature[1] == 0))
+		return (ATADEV_PATA);
+
+	/* Unknown ATA device. */
+	else
+		return (ATADEV_UNKNOWN);
+}
+
+/**
+ * @brief Initializes the generic ATA driver.
  */
 PUBLIC void ata_init(void)
 {
-	int i;          /* Loop index.    */
-	char dvrl;      /* Driver letter. */
-	int status;     /* Status byte.   */
-	uint8_t bus;    /* Bus.           */
-	uint8_t device; /* Device.        */
-	uint8_t saddr2, saddr3;
+	int i;     /* Loop index.    */
+	char dvrl; /* Device letter. */
 	
 	/* Detect devices. */
-	bus = PRI_BUS;
 	for (i = 0, dvrl = 'a'; i < 4; i++, dvrl++)
 	{
-		/* Switch to secondary bus. */
-		if (i >= 2)
-			bus = SEC_BUS;
+		ata_device_select(i);
 		
-		/* Select device. */
-		device = ((i == 0) || (i == 2)) ? MASTER_DEV : SLAVE_DEV;
-		set_device(bus, device);
-		
-		outputb(pio_ports[bus][REG_SC], 0);
-		outputb(pio_ports[bus][REG_SADDR1], 0);
-		outputb(pio_ports[bus][REG_SADDR2], 0);
-		outputb(pio_ports[bus][REG_SADDR3], 0);
-		
-		outputb(pio_ports[bus][REG_CMD], CMD_IDENTIFY);
-		
-		/* No device attached. */
-		if (inputb(pio_ports[bus][REG_ASTATUS]) == 0)
-			continue;
-	
-		while (inputb(pio_ports[bus][REG_ASTATUS] & (1 << BSY_BIT)))
-			/* noop*/ ;
-		
-		/* Check device type */
-		saddr2 = inputb(pio_ports[bus][REG_SADDR2]);
-		saddr3 = inputb(pio_ports[bus][REG_SADDR3]);
-			
-		/* ATAPI device.  */
-		if ((saddr2 == 0x14) && (saddr3 == 0xeb))
-			kprintf("hd%c: CD/DVD-ROM detected.", dvrl);
-			
-		/* SATAPI device. */
-		else if ((saddr2 == 0x69) && (saddr3 == 0x96))
-			kprintf("hd%c: CD/DVD-ROM detected.", dvrl);
-			
-		/* SATA device. */
-		else if ((saddr2 == 0x3c) && (saddr3 == 0xc3))
-			kprintf("hd%c: SATA HDD detected.", dvrl);
-
-		/* Unkown device. */
-		else if ((saddr2 != 0) && (saddr3 != 0))
-			kprintf("hd?: %x %x.", saddr2, saddr3);
-
-		/* ATA device. */
-		else
+		/* Setup ATA device. */
+		switch (ata_identify(i))
 		{
-			kprintf("hd%c: ATA HDD detected.", dvrl);
-			
-			/* Probe device. */
-			while (1)
-			{
-				status = inputb(pio_ports[bus][REG_ASTATUS]);
+			/* ATAPI.  */
+			case ATADEV_PATAPI:
+				kprintf("hd%c: ATAPI CD/DVD detected.", dvrl);
+				break;
 				
-				/* Device is online. */
-				if (status & (1 << DRQ_BIT))
-				{
-					kprintf("hd%c: online.", dvrl);
-					break;
-				}
+			/* SATAPI. */
+			case ATADEV_SATAPI:
+				kprintf("hd%c: SATAPI CD/DVD detected.", dvrl);
+				break;
+				
 					
-				/* Error when probing. */
-				if (status & (1 << ERR_BIT))
-				{
-					kprintf("hd%c: error.", dvrl);
-					break;
-				}
-			}
-		}
+			/* SATA. */
+			case ATADEV_SATA:
+				kprintf("hd%c: SATA HDD detected.", dvrl);
+				break;
 			
+			/* PATA. */
+			case ATADEV_PATA:
+				if (pata_setup(i))
+					kprintf("hd%c: device not found.", dvrl);
+				else
+				{
+					kprintf("hd%c: PATA HDD detected.", dvrl);
+					kprintf("hd%c: %d sectors.", dvrl, ata_devices[i].nsectors);
+				}
+				break;
+
+			/* UNKNOWN. */
+			case ATADEV_UNKNOWN:
+				kprintf("hd?: unknown ATA device.");
+				break;
+		}
 	}
 }
