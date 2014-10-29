@@ -19,6 +19,9 @@ BUILDING
 
 	In order to build Nanvix, you will need a Linux like programming 
 	environment, the x86 GCC compiler and the x86 GNU binutils.
+
+	TIP: If you are running a Debian-based Linux distribution, like Ubuntu, 
+	you can simply run the tools/setup-toolchain.sh script.
 	
 	Once you have setup the required tools, you should set the 
 	environment variable $TARGET to point to the toolchain's directory. 
@@ -32,9 +35,6 @@ BUILDING
 		# make image
 	
 	Note that for build a image you may require priveleged access.
-
-	TIP: If you are running a Debian-based Linux distribution, like Ubuntu, 
-	you can simply run the scripts/setup-toolchain.sh script.
 
 LICENSE AND MAINTAINERS
 
