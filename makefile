@@ -46,7 +46,7 @@ export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 all: nanvix
 
 # Builds system's image.
-image: nanvix
+image: $(BINDIR)/kernel
 	bash $(TOOLSDIR)/build/build-img.sh
 
 # Builds Nanvix.

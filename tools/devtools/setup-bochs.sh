@@ -9,8 +9,9 @@
 #
 
 # Set working directory.
-mkdir ~/nanvix-toolchain
-export WORKDIR=~/nanvix-toolchain
+export CURDIR=`pwd`
+export WORKDIR=$CURDIR/nanvix-toolchain
+mkdir -p $WORKDIR
 cd $WORKDIR
 
 # Get required packages.
@@ -27,5 +28,7 @@ sed -i '/^\<LIBS\>/ s/$/ -lpthread/' Makefile
 make all
 make install
 
+# Cleans files.
 cd $WORKDIR
-rm -R -f nanvix-toolchain/
+cd ..
+rm -R -f $WORKDIR

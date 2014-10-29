@@ -9,8 +9,9 @@
 #
 
 # Set working directory.
-mkdir ~/nanvix-toolchain
-export WORKDIR=~/nanvix-toolchain
+export CURDIR=`pwd`
+export WORKDIR=$CURDIR/nanvix-toolchain
+mkdir -p $WORKDIR
 cd $WORKDIR
 
 # Get binutils and GCC.
@@ -43,4 +44,5 @@ make install-gcc
 
 # Cleans files.
 cd $WORKDIR
-rm -R -f $WORKDIR/*
+cd ..
+rm -R -f $WORKDIR
