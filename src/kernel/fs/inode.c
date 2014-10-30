@@ -502,6 +502,10 @@ PUBLIC void inode_put(struct inode *i)
 		i->flags = 0;
 	}
 	
+	/* Should not happen. */
+	if (i->count < 0)
+		kpanic("putting inode twice");
+	
 	inode_unlock(i);
 }
 

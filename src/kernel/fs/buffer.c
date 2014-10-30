@@ -30,7 +30,7 @@ PRIVATE struct buffer buffers[NR_BUFFERS];
 PRIVATE struct buffer hashtab[BUFFERS_HASHTAB_SIZE];
 
 /* Free block buffers. */
-PRIVATE struct buffer *free_buffers = NULL;
+PRIVATE struct buffer free_buffers;
 
 /* Processes waiting for any block. */
 PRIVATE struct process *chain = NULL;
@@ -89,20 +89,19 @@ repeat:
 		return (buf);
 	}
 
-	buf = free_buffers->free_next;
-
 	/*
 	 * There are no free buffers so we need to
 	 * wait for one to become free.
 	 */
-	if (buf == buf->free_next)
+	if (&free_buffers == free_buffers.free_next)
 	{
-		kprintf("fs: block buffer cache full");
+		kprintf("fs: no free buffers");
 		sleep(&chain, PRIO_BUFFER);
 		goto repeat;
 	}
 	
 	/* Remove buffer from the free list. */
+	buf = free_buffers.free_next;
 	buf->free_prev->free_next = buf->free_next;
 	buf->free_next->free_prev = buf->free_prev;
 	buf->count++;
@@ -113,6 +112,12 @@ repeat:
 	 */
 	if (buf->flags & BUFFER_DIRTY)
 	{
+		/*
+		 * Asynchronous write has never happened before.
+		 * When it first occurs, it would be interesting to
+		 * check if the integrity of the free list is maintained.
+		 */
+		kpanic("asynchronous write");
 		enable_interrupts();
 		blklock(buf);
 		bdev_writeblk(buf);
@@ -180,28 +185,29 @@ PUBLIC void brelse(struct buffer *buf)
 	if (--buf->count == 0)
 	{	
 		wakeup(&chain);
-		
-		buf->free_next = free_buffers;
-		buf->free_prev = free_buffers->free_prev;
 					
 		/* Frequently used buffer (insert in the end). */
 		if ((buf->flags & BUFFER_VALID) && (buf->flags & BUFFER_DIRTY))
 		{	
-			free_buffers->free_prev->free_next = buf;
-			buf->free_prev = free_buffers->free_prev;
-			free_buffers->free_prev = buf;
-			buf->free_next = free_buffers;
+			free_buffers.free_prev->free_next = buf;
+			buf->free_prev = free_buffers.free_prev;
+			free_buffers.free_prev = buf;
+			buf->free_next = &free_buffers;
 		}
 			
 		/* Not frequently used buffer (insert in the begin). */
 		else
 		{	
-			free_buffers->free_next->free_prev = buf;
-			buf->free_prev = free_buffers;
-			buf->free_next = free_buffers->free_next;
-			free_buffers->free_next = buf;
+			free_buffers.free_next->free_prev = buf;
+			buf->free_prev = &free_buffers;
+			buf->free_next = free_buffers.free_next;
+			free_buffers.free_next = buf;
 		}
 	}
+	
+	/* Should not happen. */
+	if (buf->count < 0)
+		kpanic("freeing buffer twice");
 	
 	enable_interrupts();
 
@@ -254,7 +260,11 @@ PUBLIC void bsync(void)
 		}
 		
 		/* Prevent double free. */
-		buf->count++;
+		if (buf->count++ == 0)
+		{
+			buf->free_prev->free_next = buf->free_next;
+			buf->free_next->free_prev = buf->free_prev;
+		}
 		
 		bdev_writeblk(buf);
 	}
@@ -281,9 +291,9 @@ PUBLIC void binit(void)
 		buffers[i].flags = ~(BUFFER_VALID | BUFFER_LOCKED | BUFFER_DIRTY);
 		buffers[i].chain = NULL;
 		buffers[i].free_next = 
-			(i + 1 == NR_BUFFERS) ? &buffers[0] : &buffers[i + 1];
+			(i + 1 == NR_BUFFERS) ? &free_buffers : &buffers[i + 1];
 		buffers[i].free_prev = 
-			(i - 1 < 0) ? &buffers[NR_BUFFERS - 1] : &buffers[i - 1];
+			(i - 1 < 0) ? &free_buffers : &buffers[i - 1];
 		buffers[i].hash_next = &buffers[i];
 		buffers[i].hash_prev = &buffers[i];
 		
@@ -291,7 +301,8 @@ PUBLIC void binit(void)
 	}
 	
 	/* Initialize the buffer cache. */
-	free_buffers = &buffers[0];
+	free_buffers.free_next = &buffers[0];
+	free_buffers.free_prev = &buffers[NR_BUFFERS - 1];
 	for (i = 0; i < BUFFERS_HASHTAB_SIZE; i++)
 	{
 		hashtab[i].hash_prev = &hashtab[i];
