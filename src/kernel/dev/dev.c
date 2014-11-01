@@ -131,13 +131,14 @@ PUBLIC int cdev_ioctl(dev_t dev, unsigned cmd, unsigned arg)
  *============================================================================*/
 
 /* Number of block devices. */
-#define NR_BLKDEV 1
+#define NR_BLKDEV 2
 
 /*
  * Block devices table.
  */
 PRIVATE const struct bdev *bdevsw[NR_BLKDEV] = {
-	NULL /* /dev/ramdisk */
+	NULL, /* /dev/ramdisk */
+	NULL  /* /dev/hdd     */
 };
 
 /*

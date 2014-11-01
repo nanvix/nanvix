@@ -18,9 +18,16 @@
  */
 
 #include <asm/io.h>
+#include <asm/util.h>
 #include <drivers/ata.h>
+#include <i386/i386.h>
 #include <nanvix/const.h>
+#include <nanvix/dev.h>
+#include <nanvix/fs.h>
+#include <nanvix/int.h>
 #include <nanvix/klib.h>
+#include <nanvix/pm.h>
+#include <stdint.h>
 
 /* Buses. */
 #define PRI_BUS   0 /* Primary.   */
@@ -30,10 +37,44 @@
 #define MASTER_DEV 0 /* Master. */
 #define SLAVE_DEV  1 /* Slave.  */
 
+/* ATA device maximum queue size. */
+#define ATADEV_QUEUE_SIZE 64
+
+/* ATA device flags. */
+#define ATADEV_VALID   (1 << 0) /* Valid device?     */
+#define ATADEV_DISCARD (1 << 1) /* Discard next IRQ? */
+
 /**
- * @brief ATA devices information.
+ * @brief Block device operation.
  */
-PRIVATE struct atadev ata_devices[4];
+struct block_op
+{
+	char write;         /* Write operation? */
+	struct buffer *buf; /* Buffer to use.   */
+}; 
+
+/**
+ * @brief ATA devices.
+ */
+PRIVATE struct atadev
+{
+	/* General information. */
+	int flags;             /* Flags (see above).                         */
+	struct ata_info info;  /* Device information.                        */
+	struct process *chain; /* Process waiting for operation to complete. */
+	
+	/* Block operation queue. */
+	struct
+	{
+		int size;                                  /* Current size.          */
+		int head;                                  /* Head.                  */
+		int tail;                                  /* Tail.                  */
+		struct block_op blocks[ATADEV_QUEUE_SIZE]; /* Blocks.                */
+		struct process *chain;                     /* Processes wanting for  *
+		                                            * a slot in the queue.   */
+	} queue;
+} ata_devices[4];
+
 
 /**
  * @brief Default I/O ports for ATA controller.
@@ -50,11 +91,11 @@ PRIVATE uint16_t pio_ports[2][9] = {
  */
 PRIVATE void ata_delay(void)
 {
-	iowait();
-	iowait();
-	iowait();
-	iowait();
-	iowait();
+	int i;
+	
+	/* Waste some time. */
+	for (i = 0; i < 5; i++)
+		iowait();
 }
 
 /**
@@ -112,13 +153,15 @@ PRIVATE void ata_bus_wait(int bus)
  */
 PRIVATE int pata_setup(int atadevid)
 {
-	int i;              /* Loop index.      */
-	int bus;            /* Bus number.      */
-	struct atadev *dev; /* ATA device.      */
-	uint16_t status;    /* Status register. */
+	int i;                    /* Loop index.             */
+	int bus;                  /* Bus number.             */
+	uint16_t status;          /* Status register.        */
+	struct atadev *dev;       /* ATA device.             */
+	struct ata_info *devinfo; /* ATA device information. */
 	
 	bus = ATA_BUS(atadevid);
 	dev = &ata_devices[atadevid];
+	devinfo = &dev->info;
 	
 	/* Probe device. */
 	while (1)
@@ -138,26 +181,33 @@ PRIVATE int pata_setup(int atadevid)
 	for(i = 0; i < 256; i++)
 	{
 		ata_bus_wait(bus);
-		dev->rawinfo[i] = inputw(pio_ports[bus][ATA_REG_DATA]);
+		devinfo->rawinfo[i] = inputw(pio_ports[bus][ATA_REG_DATA]);
 	}
 	
 	/* Not a ATA device. */
-	if (!ata_info_is_ata(dev->rawinfo))
+	if (!ata_info_is_ata(devinfo->rawinfo))
 		return (-1);
 	
 	/* Does not support LBA. */
-	if (!ata_info_supports_lba(dev->rawinfo))
+	if (!ata_info_supports_lba(devinfo->rawinfo))
 		return (-1);
 	
 	/* Setup ATA device structure. */
-	dev->type = ATADEV_PATA;
-	dev->flags = ATADEV_PRESENT | ATADEV_LBA;
-	dev->nsectors = dev->rawinfo[ATA_INFO_LBA_CAPACITY_1]
-					 | dev->rawinfo[ATA_INFO_LBA_CAPACITY_2] << 16;
+	devinfo->type = ATADEV_PATA;
+	devinfo->flags = ATADEV_PRESENT | ATADEV_LBA;
+	devinfo->nsectors = devinfo->rawinfo[ATA_INFO_LBA_CAPACITY_1]
+					 | devinfo->rawinfo[ATA_INFO_LBA_CAPACITY_2] << 16;
 	
 	/* Supports DMA. */
-	if (ata_info_supports_dma(dev->rawinfo))
-		dev->flags |= ATADEV_DMA;
+	if (ata_info_supports_dma(devinfo->rawinfo))
+		devinfo->flags |= ATADEV_DMA;
+	
+	dev->flags = ATADEV_VALID | ATADEV_DISCARD;
+	dev->queue.chain = NULL;
+	dev->queue.size = 0;
+	dev->queue.head = 0;
+	dev->queue.tail = 0;
+	dev->queue.chain = NULL;
 	
 	return (0);
 }
@@ -222,6 +272,230 @@ PRIVATE int ata_identify(int atadevid)
 }
 
 /**
+ * @brief Issues a read operation.
+ * 
+ * @param atadevid ATA device ID.
+ * @param addr     LBA 48-bit address.
+ */
+PRIVATE void ata_read_op(unsigned atadevid, uint64_t addr)
+{
+	int bus;     /* Bus number.        */
+	byte_t byte; /* Byte used for I/O. */
+	
+	ata_device_select(atadevid);
+	bus = ATA_BUS(atadevid);
+	
+	/* Send the three highest bytes of the address. */
+	outputb(0x00, pio_ports[bus][ATA_REG_NSECT]);
+	outputb((addr >> 0x18) & 0xff, pio_ports[bus][ATA_REG_LBAL]);
+	outputb((addr >> 0x20) & 0xff, pio_ports[bus][ATA_REG_LBAM]);
+	outputb((addr >> 0x28) & 0xff, pio_ports[bus][ATA_REG_LBAH]);
+
+	/* Send the three lowest bytes of the address. */
+	outputb(BLOCK_SIZE/ATA_SECTOR_SIZE, pio_ports[bus][ATA_REG_NSECT]);
+	outputb((addr >> 0x00) & 0xff, pio_ports[bus][ATA_REG_LBAL]);
+	outputb((addr >> 0x08) & 0xff, pio_ports[bus][ATA_REG_LBAM]);
+	outputb((addr >> 0x10) & 0xff, pio_ports[bus][ATA_REG_LBAH]);
+
+	/*
+	 * Set LBA bit, to specify
+	 * that the address is in LBA.
+	 */
+	byte = (inputb(pio_ports[bus][ATA_REG_DEVCTL]) & 0xf0) | 0x40;
+	outputb(byte, pio_ports[bus][ATA_REG_DEVCTL]);
+
+	outputb(pio_ports[bus][ATA_REG_CMD], ATA_CMD_READ_SECTORS_EXT);
+	ata_bus_wait(bus);
+
+	/* Query return value. */
+	byte = inputb(pio_ports[bus][ATA_REG_ASTATUS]);
+	if (byte & (ATA_DF | ATA_ERR))
+		kprintf("ATA: device error");
+}
+
+/**
+ * @brief Sleeps if block operation queue is full.
+ */
+PRIVATE void sleep_full(struct atadev *dev)
+{
+	while (dev->queue.size == ATADEV_QUEUE_SIZE)
+		sleep(&dev->queue.chain, PRIO_IO);
+}
+
+/**
+ * @brief Schedules a block disk IO operation.
+ * 
+ * @param atadevid ATA device ID.
+ * @param buf      Block buffer to use.
+ * @param write    Write operation?
+ */
+PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
+{
+	uint64_t addr;      /* LBA 48-bit address. */
+	struct atadev *dev; /* ATA device.         */
+
+	dev = &ata_devices[atadevid];
+
+	disable_interrupts();
+	
+		sleep_full(dev);
+		
+		/* Insert block on the queue. */
+		dev->queue.blocks[dev->queue.tail].buf = buf;
+		dev->queue.blocks[dev->queue.tail].write = write;
+		dev->queue.tail = (dev->queue.tail + 1)%ATADEV_QUEUE_SIZE;
+		dev->queue.size++;
+		
+		/*
+		 * The queue was empty, therefore,
+		 * we can process this block right now.
+		 */
+		if (dev->queue.size == 1)
+		{
+			addr = dev->queue.blocks[dev->queue.head].buf->num*BLOCK_SIZE;
+			ata_read_op(atadevid, addr);
+		}
+	
+	enable_interrupts();
+}
+
+/**
+ * @brief Reads a block from a ATA device.
+ * 
+ * @param minor Minor device number.
+ * @param buf   Block buffer to use.
+ * 
+ * @returns Zero if successful; non-zero otherwise.
+ */
+PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
+{
+	struct atadev *dev;
+	
+	/* Invalid minor device. */
+	if (minor >= 4)
+		return (-EINVAL);
+	
+	dev = &ata_devices[minor];
+	
+	/* Device not valid. */
+	if (dev->flags & ATADEV_VALID)
+		return (-EINVAL);
+	
+	ata_sched(minor, buf, 0);
+	
+	sleep(&dev->chain, PRIO_IO);
+	
+	return (0);
+}
+
+/**
+ * @brief ATA device operations.
+ */
+PRIVATE const struct bdev ata_ops = {
+	NULL,         /* read()     */
+	NULL,         /* write()    */
+	&ata_readblk, /* readblk()  */
+	NULL          /* writeblk() */
+};
+
+/**
+ * @brief Generic ATA interrupt handler.
+ * 
+ * @param atadevid ATA device ID.
+ */
+PRIVATE void ata_handler(int atadevid)
+{
+	size_t i;               /* Loop index.        */
+	struct atadev *dev;     /* ATA device.        */
+	struct block_op *blkop; /* Block operation.   */
+	struct buffer *buf;     /* Buffer to be used. */
+	word_t word;
+	
+	dev = &ata_devices[atadevid];
+	
+	/*
+	 * That's weird! A non valid device
+	 * is firing an IRQ. Let's just ignore it so.
+	 */
+	if (!(dev->flags & ATADEV_VALID))
+	{
+		kprintf("ATA: non valid device %d fired an IRQ", atadevid);
+		return;
+	}
+	
+	/* We don't need to handle this IRQ. */
+	if (dev->flags & ATADEV_DISCARD)
+	{
+		dev->flags &= ~ATADEV_DISCARD;
+		return;
+	}
+	
+	/* Broken block operation queue. */
+	if (dev->queue.size == 0)
+	{
+		kprintf("ATA: broken block operation queue");
+		return;
+	}
+	
+	/* Get first block operation. */
+	blkop = &dev->queue.blocks[dev->queue.head];
+	dev->queue.head = (dev->queue.head + 1)%ATADEV_QUEUE_SIZE;
+	dev->queue.size--;
+	
+	buf = blkop->buf;
+	
+	/* Write operation. */
+	if (blkop->write)
+	{
+		/*
+		 * Write is done, so 
+		 * just ignore next IRQ.
+		 */
+		ata_bus_wait(ATA_BUS(atadevid));
+		dev->flags |= ATADEV_DISCARD;
+	}
+	
+	/* Read operation. */
+	else
+	{
+		/* Read block. */
+		for (i = 0; i < BLOCK_SIZE; i += 2)
+		{
+			ata_bus_wait(ATA_BUS(atadevid));
+			word = inputw(pio_ports[PRI_BUS][ATA_REG_DATA]);
+			((char *)(buf->data))[i] = word & 0xff;
+			((char *)(buf->data))[i + 1] = (word >> 8) & 0xff;
+		}
+		
+		buf->flags |= BUFFER_DIRTY;
+	}
+	
+	/*
+	 * Wakeup the process that was waiting for this
+	 * operation and the processes that were waiting
+	 * for an empty slot in the block operation queue.
+	 */
+	wakeup(&dev->queue.chain);
+	wakeup(&dev->chain);
+}
+
+/**
+ * @brief Primary ATA interrupt handler.
+ */
+PRIVATE void ata1_handler(void)
+{
+	ata_handler(0);
+}
+
+/**
+ * @brief Secondary ATA interrupt handler.
+ */
+PRIVATE void ata2_handler(void)
+{
+	ata_handler(1);
+}
+
+/**
  * @brief Initializes the generic ATA driver.
  */
 PUBLIC void ata_init(void)
@@ -232,6 +506,8 @@ PUBLIC void ata_init(void)
 	/* Detect devices. */
 	for (i = 0, dvrl = 'a'; i < 4; i++, dvrl++)
 	{
+		kmemset(&ata_devices[i], 0, sizeof(struct atadev));
+		
 		ata_device_select(i);
 		
 		/* Setup ATA device. */
@@ -246,7 +522,6 @@ PUBLIC void ata_init(void)
 			case ATADEV_SATAPI:
 				kprintf("hd%c: SATAPI CD/DVD detected.", dvrl);
 				break;
-				
 					
 			/* SATA. */
 			case ATADEV_SATA:
@@ -260,7 +535,8 @@ PUBLIC void ata_init(void)
 				else
 				{
 					kprintf("hd%c: PATA HDD detected.", dvrl);
-					kprintf("hd%c: %d sectors.", dvrl, ata_devices[i].nsectors);
+					kprintf("hd%c: %d sectors.", dvrl, 
+												ata_devices[i].info.nsectors);
 				}
 				break;
 
@@ -270,4 +546,12 @@ PUBLIC void ata_init(void)
 				break;
 		}
 	}
+	
+	/* Register interrupt handler. */
+	if (set_hwint(INT_ATA1, &ata1_handler))
+		kpanic("INT_ATA1 busy");
+	if (set_hwint(INT_ATA2, &ata2_handler))
+		kpanic("INT_ATA2 busy");
+	
+	bdev_register(ATA_MAJOR, &ata_ops);
 }

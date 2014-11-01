@@ -22,6 +22,9 @@
 
 	#include <stdint.h>
 	
+	/* ATA sector size (in bytes). */
+	#define ATA_SECTOR_SIZE 512
+	
 	/* ATA drives. */
 	#define ATA_PRI_MASTER 0 /* Primary master.   */
 	#define ATA_PRI_SLAVE  1 /* Primary slave.    */
@@ -163,7 +166,7 @@
 	/**
 	 * @brief ATA device information.
 	 */
-	struct atadev
+	struct ata_info
 	{
 		int flags;                        /* Flags (see above).       */
 		int nsectors;                     /* Number of sectors.       */

@@ -132,7 +132,8 @@
 	 *========================================================================*/
 	
 	/* Block device major numbers. */
-	#define RAMDISK_MAJOR 0x0 /* ramdisk device. */
+	#define RAMDISK_MAJOR 0x0 /* ramdisk device */
+	#define ATA_MAJOR     0x1 /* ATA device     */
 	
 	/*
 	 * Block device.
