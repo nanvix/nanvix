@@ -261,10 +261,6 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 			goto out;
 		
 		bbuf = bread(i->dev, blk);
-		
-		/* Failed to read. */
-		if (bbuf == NULL)
-			return (-1);
 			
 		blkoff = off % BLOCK_SIZE;
 		
@@ -319,10 +315,6 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 			goto out;
 		
 		bbuf = bread(i->dev, blk);
-		
-		/* Failed to read block. */
-		if (bbuf == NULL)
-			return (-1);
 		
 		blkoff = off % BLOCK_SIZE;
 		
