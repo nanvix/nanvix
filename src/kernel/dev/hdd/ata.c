@@ -27,6 +27,7 @@
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
+#include <sys/types.h>
 #include <stdint.h>
 
 /* Buses. */
@@ -389,10 +390,46 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 }
 
 /**
+ * @brief Reads from a ATA device.
+ */
+PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
+{
+	size_t i;              /* Loop index.   */
+	block_t blknum;        /* Block number. */
+	struct atadev *dev;    /* ATA device.   */
+	struct buffer *blkbuf; /* Block buffer. */
+	
+	/* Invalid minor device. */
+	if (minor >= 4)
+		return (-EINVAL);
+	
+	dev = &ata_devices[minor];
+	
+	/* Device not valid. */
+	if (dev->flags & ATADEV_VALID)
+		return (-EINVAL);
+	
+	blknum = ALIGN((off & 0xffff), BLOCK_SIZE);
+	n = ALIGN(n, BLOCK_SIZE);
+	
+	if ((blknum*BLOCK_SIZE + n)/ATA_SECTOR_SIZE > dev->info.nsectors)
+	
+	/* Read blocks. */
+	for (i = 0; i < n; i += BLOCK_SIZE)
+	{
+		blkbuf = bread(DEVID(ATA_MAJOR, minor, BLKDEV), blknum++);
+		kmemcpy(buf, blkbuf->data, BLOCK_SIZE);
+		brelse(blkbuf);
+	}
+	
+	return ((ssize_t)i);
+}
+
+/**
  * @brief ATA device operations.
  */
 PRIVATE const struct bdev ata_ops = {
-	NULL,         /* read()     */
+	&ata_read,    /* read()     */
 	NULL,         /* write()    */
 	&ata_readblk, /* readblk()  */
 	NULL          /* writeblk() */
