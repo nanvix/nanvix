@@ -169,7 +169,7 @@
 	struct ata_info
 	{
 		int flags;                        /* Flags (see above).       */
-		int nsectors;                     /* Number of sectors.       */
+		unsigned nsectors;                /* Number of sectors.       */
 		int type;                         /* Device type (see above). */
 		uint16_t rawinfo[ATA_INFO_WORDS]; /* Raw information.         */
 	};
