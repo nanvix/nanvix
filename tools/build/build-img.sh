@@ -35,6 +35,10 @@ function format {
 	mkdir /mnt/bin/
 	mkdir /mnt/home
 	mkdir /mnt/dev
+	mknod -m 666 /mnt/dev/null c 0 0
+	mknod -m 666 /mnt/dev/tty c 1 0
+	mknod -m 666 /mnt/dev/ramdisk b 0 0
+	mknod -m 666 /mnt/dev/hdd b 1 0
 	umount /dev/loop2
 	losetup -d /dev/loop2
 }
@@ -42,6 +46,10 @@ function format {
 # Build HDD image.
 dd if=/dev/zero of=hdd.img bs=10M count=1
 format hdd.img
+insert hdd.img
+cp bin/sbin/* /mnt/sbin/
+cp bin/ubin/* /mnt/bin/
+eject
 
 # Clone blank images.
 cp -f tools/img/blank.img nanvix.img

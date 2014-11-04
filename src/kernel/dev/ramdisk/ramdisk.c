@@ -123,9 +123,6 @@ PRIVATE int ramdisk_readblk(unsigned minor, struct buffer *buf)
 	
 	kmemcpy(buf->data, (void *)ptr, BLOCK_SIZE);
 	
-	buf->flags |= BUFFER_VALID;
-	buf->flags &= ~BUFFER_DIRTY;
-	
 	return (0);
 }
 

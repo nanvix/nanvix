@@ -508,9 +508,8 @@ PRIVATE void ata_handler(int atadevid)
 			((char *)(buf->data))[i] = word & 0xff;
 			((char *)(buf->data))[i + 1] = (word >> 8) & 0xff;
 		}
-		
-		buf->flags |= BUFFER_DIRTY;
 	}
+	
 	/*
 	 * Wakeup the process that was waiting for this
 	 * operation and the processes that were waiting

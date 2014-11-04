@@ -236,6 +236,10 @@ PUBLIC void bdev_readblk(struct buffer *buf)
 	
 	if (err)
 		kpanic("failed to read block from device");
+	
+	/* Update buffer flags. */
+	buf->flags |= BUFFER_VALID;
+	buf->flags &= ~BUFFER_DIRTY;
 }
 
 /*============================================================================*
