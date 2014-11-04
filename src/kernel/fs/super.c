@@ -19,21 +19,28 @@ PUBLIC struct superblock superblocks[NR_SUPERBLOCKS];
 PRIVATE struct superblock *superblock_empty(void)
 {
 	struct superblock *sb;
-	
+
+again:
+
 	/* Get empty super block. */
 	for (sb = &superblocks[0]; sb < &superblocks[NR_SUPERBLOCKS]; sb++)
 	{
-		superblock_lock(sb);
-		
-		/* Found. */
-		if (!(sb->flags & SUPERBLOCK_VALID))
+		/* Skip valid super blocks. */
+		if (sb->flags & SUPERBLOCK_VALID)
+			continue;
+	
+		/*
+		 * Super block is locked, so we 
+		 * wait for it to become free.
+		 */
+		if (sb->flags & SUPERBLOCK_LOCKED)
 		{
-			sb->flags = SUPERBLOCK_VALID;
-			superblock_lock(sb);
-			return (sb);
+			sleep(&sb->chain, PRIO_SUPERBLOCK);
+			goto again;
 		}
 		
-		superblock_unlock(sb);
+		superblock_lock(sb);
+		return (sb);
 	}
 
 	/* Super block table */
@@ -73,7 +80,7 @@ PUBLIC struct superblock *superblock_get(dev_t dev)
 /*
  * Waits for super block to become unlocked.
  */
-PUBLIC void superblock_wait(struct superblock *sb)
+PRIVATE void superblock_wait(struct superblock *sb)
 {
 	while (sb->flags & SUPERBLOCK_LOCKED)
 		sleep(&sb->chain, PRIO_SUPERBLOCK);
@@ -104,20 +111,24 @@ PUBLIC void superblock_put(struct superblock *sb)
 {
 	int i;
 	
-	superblock_write(sb);
-	
-	/* Release inode map buffers. */
-	for (i = 0; i < (int) sb->imap_blocks; i++)
-		brelse(sb->imap[i]);
-	
-	/* Release zone map buffers. */
-	for (i = 0; i < (int) sb->zmap_blocks; i++)
-		brelse(sb->zmap[i]);
-	
-	/* Release super block buffer. */
-	brelse(sb->buf);
-	
-	sb->flags &= ~SUPERBLOCK_VALID;
+	/* Release underlying resources. */
+	if (sb->flags & SUPERBLOCK_VALID)
+	{
+		superblock_write(sb);
+		
+		/* Release inode map buffers. */
+		for (i = 0; i < (int) sb->imap_blocks; i++)
+			brelse(sb->imap[i]);
+		
+		/* Release zone map buffers. */
+		for (i = 0; i < (int) sb->zmap_blocks; i++)
+			brelse(sb->zmap[i]);
+		
+		/* Release super block buffer. */
+		brelse(sb->buf);
+		
+		sb->flags &= ~SUPERBLOCK_VALID;
+	}
 	
 	superblock_unlock(sb);
 }
@@ -244,7 +255,7 @@ PUBLIC void superblock_init(void)
 	
 	/* Initialize super blocks. */
 	for (i = 0; i < NR_SUPERBLOCKS; i++)
-		superblocks[i].flags &= ~SUPERBLOCK_VALID;
+		superblocks[i].flags = 0x00 & ~(SUPERBLOCK_VALID | SUPERBLOCK_LOCKED);
 	
 	kprintf("fs: super block table has %d entries", NR_SUPERBLOCKS);
 }
