@@ -27,8 +27,21 @@ function eject {
 	losetup -d /dev/loop2
 }
 
+function format {
+	losetup /dev/loop2 $1
+	mkfs.minix -n 14 -i 1024 -1 /dev/loop2 10240
+	mount /dev/loop2 /mnt
+	mkdir /mnt/sbin/
+	mkdir /mnt/bin/
+	mkdir /mnt/home
+	mkdir /mnt/dev
+	umount /dev/loop2
+	losetup -d /dev/loop2
+}
+
 # Build HDD image.
 dd if=/dev/zero of=hdd.img bs=10M count=1
+format hdd.img
 
 # Clone blank images.
 cp -f tools/img/blank.img nanvix.img
