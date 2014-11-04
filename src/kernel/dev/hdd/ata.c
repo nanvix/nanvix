@@ -285,32 +285,33 @@ PRIVATE void ata_read_op(unsigned atadevid, uint64_t addr)
 	
 	ata_device_select(atadevid);
 	bus = ATA_BUS(atadevid);
-	
-	/* Send the three highest bytes of the address. */
-	outputb(0x00, pio_ports[bus][ATA_REG_NSECT]);
-	outputb((addr >> 0x18) & 0xff, pio_ports[bus][ATA_REG_LBAL]);
-	outputb((addr >> 0x20) & 0xff, pio_ports[bus][ATA_REG_LBAM]);
-	outputb((addr >> 0x28) & 0xff, pio_ports[bus][ATA_REG_LBAH]);
 
-	/* Send the three lowest bytes of the address. */
-	outputb(BLOCK_SIZE/ATA_SECTOR_SIZE, pio_ports[bus][ATA_REG_NSECT]);
-	outputb((addr >> 0x00) & 0xff, pio_ports[bus][ATA_REG_LBAL]);
-	outputb((addr >> 0x08) & 0xff, pio_ports[bus][ATA_REG_LBAM]);
-	outputb((addr >> 0x10) & 0xff, pio_ports[bus][ATA_REG_LBAH]);
+	addr <<= 1;
 
 	/*
 	 * Set LBA bit, to specify
 	 * that the address is in LBA.
 	 */
-	byte = (inputb(pio_ports[bus][ATA_REG_DEVCTL]) & 0xf0) | 0x40;
-	outputb(byte, pio_ports[bus][ATA_REG_DEVCTL]);
+	outputb(pio_ports[bus][ATA_REG_DEVCTL], 0x40);
+	
+	/* Send the three highest bytes of the address. */
+	outputb(pio_ports[bus][ATA_REG_NSECT], 0x00);
+	outputb(pio_ports[bus][ATA_REG_LBAL], (addr >> 0x18) & 0xff);
+	outputb(pio_ports[bus][ATA_REG_LBAM], (addr >> 0x20) & 0xff);
+	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x28) & 0xff);
+
+	/* Send the three lowest bytes of the address. */
+	outputb(pio_ports[bus][ATA_REG_NSECT], 2);
+	outputb(pio_ports[bus][ATA_REG_LBAL], (addr >> 0x00) & 0xff);
+	outputb(pio_ports[bus][ATA_REG_LBAM], (addr >> 0x08) & 0xff);
+	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x10) & 0xff);
 
 	outputb(pio_ports[bus][ATA_REG_CMD], ATA_CMD_READ_SECTORS_EXT);
 	ata_bus_wait(bus);
 
 	/* Query return value. */
 	byte = inputb(pio_ports[bus][ATA_REG_ASTATUS]);
-	if (byte & (ATA_DF | ATA_ERR))
+	if (byte & ATA_DF)
 		kprintf("ATA: device error");
 }
 
@@ -334,7 +335,7 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 {
 	uint64_t addr;      /* LBA 48-bit address. */
 	struct atadev *dev; /* ATA device.         */
-
+	
 	dev = &ata_devices[atadevid];
 
 	disable_interrupts();
@@ -353,9 +354,11 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 		 */
 		if (dev->queue.size == 1)
 		{
-			addr = dev->queue.blocks[dev->queue.head].buf->num*BLOCK_SIZE;
+			addr = dev->queue.blocks[dev->queue.head].buf->num;
 			ata_read_op(atadevid, addr);
 		}
+	
+	sleep(&dev->chain, PRIO_IO);
 	
 	enable_interrupts();
 }
@@ -383,8 +386,6 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 		return (-EINVAL);
 	
 	ata_sched(minor, buf, 0);
-	
-	sleep(&dev->chain, PRIO_IO);
 	
 	return (0);
 }
@@ -435,6 +436,8 @@ PRIVATE const struct bdev ata_ops = {
 	NULL          /* writeblk() */
 };
 
+unsigned _dump[256];
+
 /**
  * @brief Generic ATA interrupt handler.
  * 
@@ -442,12 +445,14 @@ PRIVATE const struct bdev ata_ops = {
  */
 PRIVATE void ata_handler(int atadevid)
 {
+	int bus;                /* Bus number.        */
 	size_t i;               /* Loop index.        */
 	struct atadev *dev;     /* ATA device.        */
 	struct block_op *blkop; /* Block operation.   */
 	struct buffer *buf;     /* Buffer to be used. */
 	word_t word;
 	
+	bus = ATA_BUS(atadevid);
 	dev = &ata_devices[atadevid];
 	
 	/*
@@ -488,7 +493,7 @@ PRIVATE void ata_handler(int atadevid)
 		 * Write is done, so 
 		 * just ignore next IRQ.
 		 */
-		ata_bus_wait(ATA_BUS(atadevid));
+		ata_bus_wait(bus);
 		dev->flags |= ATADEV_DISCARD;
 	}
 	
@@ -498,15 +503,14 @@ PRIVATE void ata_handler(int atadevid)
 		/* Read block. */
 		for (i = 0; i < BLOCK_SIZE; i += 2)
 		{
-			ata_bus_wait(ATA_BUS(atadevid));
-			word = inputw(pio_ports[PRI_BUS][ATA_REG_DATA]);
+			ata_bus_wait(bus);
+			word = inputw(pio_ports[bus][ATA_REG_DATA]);
 			((char *)(buf->data))[i] = word & 0xff;
 			((char *)(buf->data))[i + 1] = (word >> 8) & 0xff;
 		}
 		
 		buf->flags |= BUFFER_DIRTY;
 	}
-	
 	/*
 	 * Wakeup the process that was waiting for this
 	 * operation and the processes that were waiting
