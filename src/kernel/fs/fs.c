@@ -193,5 +193,10 @@ PUBLIC void fs_init(void)
 	
 	kprintf("fs: root file system mounted");
 	
+	/* Hand craft idle process. */
+	IDLE->pwd = root;
+	IDLE->root = root;
+	root->count += 2;
+	
 	inode_unlock(root);
 }

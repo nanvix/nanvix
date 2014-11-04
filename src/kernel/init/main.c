@@ -111,8 +111,8 @@ PUBLIC void kmain(void)
 	/* Initialize system modules. */
 	dev_init();
 	mm_init();
-	fs_init();
 	pm_init();
+	fs_init();
 	
 	pid = fork();
 	

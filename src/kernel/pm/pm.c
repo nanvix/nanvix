@@ -58,9 +58,6 @@ PUBLIC void pm_init(void)
 	for (i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;
 	IDLE->size = 0;
-	IDLE->pwd = root;
-	IDLE->root = root;
-	root->count += 2;
 	for (i = 0; i < OPEN_MAX; i++)
 		IDLE->ofiles[i] = NULL;
 	IDLE->close = 0;

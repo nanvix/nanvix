@@ -25,7 +25,7 @@ PUBLIC void sleep(struct process **chain, int priority)
 	 */
 	if (curr_proc == IDLE)
 	{
-		kprintf("pm: idle process trying to sleep");
+		kprintf("pm: idle process sleeping");
 		
 		/* Busy wait. */
 		idle_queue = chain;
