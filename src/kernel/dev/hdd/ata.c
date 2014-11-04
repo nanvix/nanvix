@@ -379,7 +379,7 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 	dev = &ata_devices[minor];
 	
 	/* Device not valid. */
-	if (dev->flags & ATADEV_VALID)
+	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
 	ata_sched(minor, buf, 0);
@@ -406,7 +406,7 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	dev = &ata_devices[minor];
 	
 	/* Device not valid. */
-	if (dev->flags & ATADEV_VALID)
+	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
 	blknum = ALIGN((off & 0xffff), BLOCK_SIZE);
