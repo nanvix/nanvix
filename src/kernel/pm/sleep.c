@@ -4,6 +4,7 @@
  * ipc.c - Inter-process communication
  */
 
+#include <asm/util.h>
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
@@ -28,6 +29,7 @@ PUBLIC void sleep(struct process **chain, int priority)
 		
 		/* Busy wait. */
 		idle_queue = chain;
+		enable_interrupts();
 		while (idle_queue == chain)
 			/* noop*/ ;
 		
