@@ -277,6 +277,7 @@ syscall:
 		save
 		enter
 		movb $0x20, %al
+		outb %al, $PIC_CTRL_MASTER /* Send reset signal to master. */
 		outb %al, $PIC_CTRL_SLAVE  /* Send reset signal to slave. */
 		movl $(\num), %eax
 		jmp hwint
