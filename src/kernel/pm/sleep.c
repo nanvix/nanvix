@@ -9,13 +9,30 @@
 #include <nanvix/pm.h>
 
 /*
+ * Sleep queue for idle process.
+ */
+PRIVATE struct process **idle_queue = NULL;
+
+/*
  * Puts a process to sleep in a sleeping chain.
  */
 PUBLIC void sleep(struct process **chain, int priority)
 {	
-	/* Process 0 cannot sleep. */
+	/*
+	 * Idle process trying to sleep,
+	 * so let's do some busy waiting.
+	 */
 	if (curr_proc == IDLE)
-		kpanic("idle process trying to sleep");
+	{
+		kprintf("pm: idle process trying to sleep");
+		
+		/* Busy wait. */
+		idle_queue = chain;
+		while (idle_queue == chain)
+			/* noop*/ ;
+		
+		return;
+	}
 
 	/* Interruptible sleep and pending signal. */
 	if ((priority >= 0) && (curr_proc->received))
@@ -38,6 +55,13 @@ PUBLIC void sleep(struct process **chain, int priority)
  */
 PUBLIC void wakeup(struct process **chain)
 {	
+	/* Wakeup idle process. */
+	if (idle_queue == chain)
+	{
+		idle_queue = NULL;
+		return;
+	}
+	
 	/* Wakeup sleeping processes. */
 	while (*chain != NULL)
 	{
