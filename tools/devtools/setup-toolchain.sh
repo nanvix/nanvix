@@ -8,6 +8,9 @@
 #   - You should run this script with superuser privileges.
 #
 
+# Get required packages.
+apt-get install build-essential libmpc-dev
+
 # Set working directory.
 export CURDIR=`pwd`
 export WORKDIR=$CURDIR/nanvix-toolchain
@@ -17,9 +20,6 @@ cd $WORKDIR
 # Get binutils and GCC.
 wget "http://ftp.gnu.org/gnu/binutils/binutils-2.24.tar.bz2"
 wget "http://ftp.gnu.org/gnu/gcc/gcc-4.9.0/gcc-4.9.0.tar.bz2"
-
-# Get required packages.
-apt-get install build-essential libmpc-dev
 
 # Export variables.
 export PREFIX=/usr/local/cross
