@@ -16,6 +16,11 @@
 	EXTERN void outputb(word_t port, byte_t byte);
 	
 	/*
+	 * Writes a word to a port.
+	 */
+	EXTERN void outputw(word_t port, word_t word);
+	
+	/*
 	 * Reads a byte from a port.
 	 */
 	EXTERN byte_t inputb(word_t port);

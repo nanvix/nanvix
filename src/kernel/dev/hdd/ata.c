@@ -316,6 +316,73 @@ PRIVATE void ata_read_op(unsigned atadevid, uint64_t addr)
 }
 
 /**
+ * @brief Issues a write operation.
+ * 
+ * @param atadevid ATA device ID.
+ * @param buf      Block buffer to use.
+ */
+PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
+{
+	int bus;       /* Bus number.         */
+	size_t i;      /* Loop index.         */
+	byte_t byte;   /* Byte used for I/O.  */
+	uint64_t addr; /* LBA 48-bit address. */
+	word_t word;   /* Word used for I/O.  */
+	
+	ata_device_select(atadevid);
+	bus = ATA_BUS(atadevid);
+
+	addr = buf->num << 1;
+
+	/*
+	 * Set LBA bit, to specify
+	 * that the address is in LBA.
+	 */
+	outputb(pio_ports[bus][ATA_REG_DEVCTL], 0x40);
+	
+	/* Send the three highest bytes of the address. */
+	outputb(pio_ports[bus][ATA_REG_NSECT], 0x00);
+	outputb(pio_ports[bus][ATA_REG_LBAL], (addr >> 0x18) & 0xff);
+	outputb(pio_ports[bus][ATA_REG_LBAM], (addr >> 0x20) & 0xff);
+	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x28) & 0xff);
+
+	/* Send the three lowest bytes of the address. */
+	outputb(pio_ports[bus][ATA_REG_NSECT], 2);
+	outputb(pio_ports[bus][ATA_REG_LBAL], (addr >> 0x00) & 0xff);
+	outputb(pio_ports[bus][ATA_REG_LBAM], (addr >> 0x08) & 0xff);
+	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x10) & 0xff);
+
+	outputb(pio_ports[bus][ATA_REG_CMD], ATA_CMD_WRITE_SECTORS_EXT);
+	ata_bus_wait(bus);
+
+	/* Query return value. */
+	byte = inputb(pio_ports[bus][ATA_REG_ASTATUS]);
+	if (byte & ATA_DF)
+	{
+		kprintf("ATA: device error");
+		return;
+	}			
+		
+	/* Write block. */
+	for (i = 0; i < BLOCK_SIZE; i += 2)
+	{
+		ata_bus_wait(bus);
+		word  = ((char *)(buf->data))[i];
+		word |= ((char *)(buf->data))[i + 1] << 8;
+		outputw(pio_ports[bus][ATA_REG_DATA], word);
+		iowait();
+	}
+	
+	/*
+	 * Flushes ATA cache. Note that this will
+	 * generate a IRQ, which shall be discarded
+	 */
+	outputb(pio_ports[bus][ATA_REG_CMD], ATA_CMD_FLUSH_CACHE_EXT);
+	ata_bus_wait(bus);
+	iowait();
+}
+
+/**
  * @brief Sleeps if block operation queue is full.
  */
 PRIVATE void sleep_full(struct atadev *dev)
@@ -355,7 +422,11 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 		if (dev->queue.size == 1)
 		{
 			addr = dev->queue.blocks[dev->queue.head].buf->num;
-			ata_read_op(atadevid, addr);
+			
+			if (write)
+				ata_write_op(atadevid, buf);
+			else
+				ata_read_op(atadevid, addr);
 		}
 	
 	sleep(&dev->chain, PRIO_IO);
@@ -386,6 +457,33 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 		return (-EINVAL);
 	
 	ata_sched(minor, buf, 0);
+	
+	return (0);
+}
+
+/**
+ * @brief Writes a block to a ATA device.
+ * 
+ * @param minor Minor device number.
+ * @param buf   Block buffer to use.
+ * 
+ * @returns Zero if successful; non-zero otherwise.
+ */
+PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
+{
+	struct atadev *dev;
+	
+	/* Invalid minor device. */
+	if (minor >= 4)
+		return (-EINVAL);
+	
+	dev = &ata_devices[minor];
+	
+	/* Device not valid. */
+	if (!(dev->flags & ATADEV_VALID))
+		return (-EINVAL);
+	
+	ata_sched(minor, buf, 1);
 	
 	return (0);
 }
@@ -433,7 +531,7 @@ PRIVATE const struct bdev ata_ops = {
 	&ata_read,    /* read()     */
 	NULL,         /* write()    */
 	&ata_readblk, /* readblk()  */
-	NULL          /* writeblk() */
+	&ata_writeblk /* writeblk() */
 };
 
 unsigned _dump[256];
@@ -445,11 +543,11 @@ unsigned _dump[256];
  */
 PRIVATE void ata_handler(int atadevid)
 {
-	int bus;                /* Bus number.        */
-	size_t i;               /* Loop index.        */
-	struct atadev *dev;     /* ATA device.        */
-	struct block_op *blkop; /* Block operation.   */
-	struct buffer *buf;     /* Buffer to be used. */
+	int bus;                /* Bus number.         */
+	size_t i;               /* Loop index.         */
+	struct atadev *dev;     /* ATA device.         */
+	struct block_op *blkop; /* Block operation.    */
+	struct buffer *buf;     /* Buffer to be used.  */
 	word_t word;
 	
 	bus = ATA_BUS(atadevid);
@@ -464,19 +562,21 @@ PRIVATE void ata_handler(int atadevid)
 		kprintf("ATA: non valid device %d fired an IRQ", atadevid);
 		return;
 	}
-	
+#ifdef _DISCARD_	
 	/* We don't need to handle this IRQ. */
 	if (dev->flags & ATADEV_DISCARD)
 	{
+		kprintf("ata_handler(): discard");
 		dev->flags &= ~ATADEV_DISCARD;
-		return;
+		goto out;
 	}
+#endif
 	
 	/* Broken block operation queue. */
 	if (dev->queue.size == 0)
 	{
-		kprintf("ATA: broken block operation queue");
-		return;
+		kprintf("ATA: broken block operation queue?");
+		goto out;
 	}
 	
 	/* Get first block operation. */
@@ -494,12 +594,12 @@ PRIVATE void ata_handler(int atadevid)
 		 * just ignore next IRQ.
 		 */
 		ata_bus_wait(bus);
-		dev->flags |= ATADEV_DISCARD;
+		dev->flags &= ~ATADEV_DISCARD;
 	}
 	
 	/* Read operation. */
 	else
-	{
+	{		
 		/* Read block. */
 		for (i = 0; i < BLOCK_SIZE; i += 2)
 		{
@@ -510,6 +610,18 @@ PRIVATE void ata_handler(int atadevid)
 		}
 	}
 	
+	/* Process next operation. */
+	if (dev->queue.size > 0)
+	{
+		blkop = &dev->queue.blocks[dev->queue.head];
+		
+		if (blkop->write)
+			ata_write_op(atadevid, blkop->buf);
+		else
+			ata_read_op(atadevid, blkop->buf->num);
+	}
+
+out:
 	/*
 	 * Wakeup the process that was waiting for this
 	 * operation and the processes that were waiting

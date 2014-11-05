@@ -6,6 +6,7 @@
 
 /* Exported symbols. */
 .globl outputb
+.globl outputw
 .globl inputb
 .globl inputw
 .globl iowait
@@ -22,6 +23,21 @@ outputb:
 	movl  8(%esp), %edx /* Port number. */
 	movl 12(%esp), %eax /* Byte.        */
 	outb %al, %dx
+	popl %edx
+	ret
+
+/*----------------------------------------------------------------------------*
+ *                                  outputw                                   *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Writes a word to a port.
+ */
+outputw:
+	pushl %edx
+	movl  8(%esp), %edx /* Port number. */
+	movl 12(%esp), %eax /* Word.        */
+	outw %ax, %dx
 	popl %edx
 	ret
 	
