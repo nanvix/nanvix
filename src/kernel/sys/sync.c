@@ -12,7 +12,7 @@
  */
 PUBLIC void sys_sync(void)
 {
-	bsync();
 	inode_sync();
 	superblock_sync();
+	bsync();
 }
