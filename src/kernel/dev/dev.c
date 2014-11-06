@@ -207,13 +207,18 @@ PUBLIC void bdev_writeblk(struct buffer *buf)
 	if (bdevsw[MAJOR(buf->dev)]->writeblk == NULL)
 		kpanic("block device cannot write blocks");
 	
-	err = bdevsw[MAJOR(buf->dev)]->writeblk(MINOR(buf->dev), buf);
+	/* Write only dirty buffers. */
+	if (buf->flags & BUFFER_DIRTY)
+	{
+		err = bdevsw[MAJOR(buf->dev)]->writeblk(MINOR(buf->dev), buf);
+		
+		if (err)
+			kpanic("failed to write block to device");
+		
+		buf->flags |= BUFFER_VALID;
+		buf->flags &= ~BUFFER_DIRTY;
+	}
 	
-	if (err)
-		kpanic("failed to write block to device");
-	
-	buf->flags |= BUFFER_VALID;
-	buf->flags &= ~BUFFER_DIRTY;
 	brelse(buf);
 }
 
