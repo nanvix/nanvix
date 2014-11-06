@@ -31,7 +31,7 @@
 #include <stdint.h>
 
 /* Buses. */
-#define PRI_BUS   0 /* Primary.   */
+#define PRI_BUS 0 /* Primary.   */
 #define SEC_BUS 1 /* Secondary. */
 
 /* Devices. */
@@ -367,8 +367,8 @@ PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
 	for (i = 0; i < BLOCK_SIZE; i += 2)
 	{
 		ata_bus_wait(bus);
-		word  = ((char *)(buf->data))[i];
-		word |= ((char *)(buf->data))[i + 1] << 8;
+		word  = (((unsigned char *)(buf->data))[i]);
+		word |= (((unsigned char *)(buf->data))[i + 1] << 8);
 		outputw(pio_ports[bus][ATA_REG_DATA], word);
 		iowait();
 	}
@@ -534,8 +534,6 @@ PRIVATE const struct bdev ata_ops = {
 	&ata_writeblk /* writeblk() */
 };
 
-unsigned _dump[256];
-
 /**
  * @brief Generic ATA interrupt handler.
  * 
@@ -562,20 +560,18 @@ PRIVATE void ata_handler(int atadevid)
 		kprintf("ATA: non valid device %d fired an IRQ", atadevid);
 		return;
 	}
-#ifdef _DISCARD_	
+		
 	/* We don't need to handle this IRQ. */
 	if (dev->flags & ATADEV_DISCARD)
 	{
-		kprintf("ata_handler(): discard");
 		dev->flags &= ~ATADEV_DISCARD;
 		goto out;
 	}
-#endif
 	
 	/* Broken block operation queue. */
 	if (dev->queue.size == 0)
 	{
-		kprintf("ATA: broken block operation queue?");
+		kpanic("ATA: broken block operation queue?");
 		goto out;
 	}
 	

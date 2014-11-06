@@ -18,7 +18,7 @@
 	#define RAMDISK_SIZE          0x80000 /* RAM disks size.                 */
 	#define NR_INODES                1024 /* Number of in-core inodes.       */
 	#define NR_SUPERBLOCKS              4 /* Number of in-core super blocks. */
-	#define ROOT_DEV               0x0001 /* Root device number.             */
+	#define ROOT_DEV               0x0101 /* Root device number.             */
 	#define NR_FILES                  256 /* Number of opened files.         */
 	#define NR_REGIONS                128 /* Number of memory regions.       */
 	#define NR_BUFFERS                256 /* Number of block buffers.        */
