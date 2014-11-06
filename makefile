@@ -63,4 +63,5 @@ documentation:
 # Cleans compilation files.
 clean:
 	@rm -f nanvix.img
+	@rm -rf $(DOCDIR)/html
 	cd $(SRCDIR) && $(MAKE) clean
