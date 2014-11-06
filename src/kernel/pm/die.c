@@ -53,7 +53,11 @@ PUBLIC void die(int status)
 	/* Detach process memory regions. */
 	for (i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
-
+	
+	/* Release root and pwd. */
+	inode_put(curr_proc->root);
+	inode_put(curr_proc->pwd);
+	
 	curr_proc->state = PROC_ZOMBIE;
 	curr_proc->alarm = 0;
 	

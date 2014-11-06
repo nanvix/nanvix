@@ -31,12 +31,6 @@ TO BE FIXED:
 	- allocate inode first when creating a new file on open()
 	- do not change ownership when truncating existing file on open()
 	- check number of processes per user on fork()
-	- freeing buffer twice:
-		echo hello > hi
-		sync
-		echo hey > hi
-		sync
-	- free root inode and pwd inode on exit
 	- race condition on tty driver
 
 TO BE TESTED:
