@@ -187,12 +187,12 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 	i->flags = (INODE_DIRTY | INODE_MOUNT) & INODE_VALID;
 	
 	brelse(buf);
-	superblock_unlock(sb);
+	superblock_put(sb);
 	
 	return (i);
 
 error1:
-	superblock_unlock(sb);
+	superblock_put(sb);
 error0:
 	return (NULL);
 }
@@ -318,7 +318,7 @@ PUBLIC struct inode *inode_alloc(struct superblock *sb)
 	
 	/* Search for free inode. */
 	do
-	{			
+	{	
 		bit = bitmap_first_free(sb->imap[blk]->data, BLOCK_SIZE);
 	
 		/* Found. */

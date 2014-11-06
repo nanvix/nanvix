@@ -224,7 +224,7 @@ PUBLIC void superblock_write(struct superblock *sb)
 	}
 	
 	/* Write super block buffer. */
-	sb->buf++;
+	sb->buf->count++;
 	bwrite(sb->buf);
 	
 	sb->flags &= ~SUPERBLOCK_DIRTY;

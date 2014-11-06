@@ -40,7 +40,7 @@ PRIVATE struct process *chain = NULL;
  */
 #define HASH(dev, block) \
 	(((dev)^(block))%BUFFERS_HASHTAB_SIZE)
-
+	
 /*
  * Gets a block buffer from the cache.
  */
@@ -83,8 +83,8 @@ repeat:
 			buf->free_next->free_prev = buf->free_prev;
 		}
 		
-		enable_interrupts();
 		blklock(buf);
+		enable_interrupts();
 
 		return (buf);
 	}
@@ -112,14 +112,9 @@ repeat:
 	 */
 	if (buf->flags & BUFFER_DIRTY)
 	{
-		/*
-		 * Asynchronous write has never happened before.
-		 * When it first occurs, it would be interesting to
-		 * check if the integrity of the free list is maintained.
-		 */
-		kpanic("asynchronous write");
-		enable_interrupts();
+		kpanic("fs: asynchronous write");
 		blklock(buf);
+		enable_interrupts();
 		bdev_writeblk(buf);
 		goto repeat;
 	}
@@ -139,8 +134,8 @@ repeat:
 	buf->hash_next = hashtab[i].hash_next;
 	hashtab[i].hash_next = buf;
 	
-	enable_interrupts();
 	blklock(buf);
+	enable_interrupts();
 	
 	return (buf);
 }
@@ -183,7 +178,11 @@ PUBLIC void brelse(struct buffer *buf)
 	
 	/* No more references. */
 	if (--buf->count == 0)
-	{	
+	{
+		/*
+		 * Wakeup processes that were waiting
+		 * for any block to  become free.
+		 */
 		wakeup(&chain);
 					
 		/* Frequently used buffer (insert in the end). */
@@ -208,10 +207,9 @@ PUBLIC void brelse(struct buffer *buf)
 	/* Should not happen. */
 	if (buf->count < 0)
 		kpanic("freeing buffer twice");
-	
-	enable_interrupts();
 
 	blkunlock(buf);
+	enable_interrupts();
 }
 
 /*
