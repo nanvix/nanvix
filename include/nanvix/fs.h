@@ -225,6 +225,7 @@
 	 */
 	struct superblock
 	{
+		int count;                      /* Reference count.              */
 		struct buffer *buf;             /* Buffer disk super block.      */
 		ino_t ninodes;                  /* Number of inodes.             */
 		struct buffer *imap[IMAP_SIZE]; /* Inode map.                    */
@@ -236,11 +237,16 @@
 		struct inode *root;             /* Inode for root directory.     */
 		struct inode *mp;               /* Inode mounted on.             */
 		dev_t dev;                      /* Underlying device.            */
-		int flags;                      /* Flags (see above).            */
+		unsigned flags;                 /* Flags (see above).            */
 		ino_t isearch;		            /* Inodes below this are in use. */
 		block_t zsearch;		        /* Zones below this are in use.  */
 		struct process *chain;          /* Waiting chain.                */
 	};
+	
+	/**
+	 * @brief Initializes the super block table.
+	 */
+	EXTERN void superblock_init(void);
 	
 	/*
 	 * Locks a super block.

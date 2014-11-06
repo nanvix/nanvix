@@ -61,10 +61,5 @@
 		uint32_t s_max_size;     /* Maximum file size.          */
 		uint16_t s_magic;        /* Magic number.               */
 	};
-	
-	/*
-	 * Initialize super blocks.
-	 */
-	EXTERN void superblock_init(void);
 
 #endif /* _FS_H_ */

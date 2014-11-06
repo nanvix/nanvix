@@ -2,6 +2,21 @@
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * fs/super.c - Super block library implementation.
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/const.h>
@@ -10,11 +25,24 @@
 #include <errno.h>
 #include "fs.h"
 
-/* Super block table. */
+/**
+ * @brief Super block table.
+ * 
+ * @details The super block table holds all the information of mounted file 
+ *          systems and it is, indeed, the mount table, which is looked up by
+ *          a mount() system call.
+ *          
+ */
 PUBLIC struct superblock superblocks[NR_SUPERBLOCKS];
 
-/*
- * Gets an empty super block.
+/**
+ * @brief Gets a non-valid super block from the super block table.
+ * 
+ * @details Searches for a non-valid super block entry in the super block table.
+ * 
+ * @returns If such super block has been found, a pointer to it is returned. In
+ *          this case, the super block is ensured to be locked. However, if no
+ *          such block has been found, a NULL pointer is returned instead.
  */
 PRIVATE struct superblock *superblock_empty(void)
 {
@@ -49,8 +77,18 @@ again:
 	return (NULL);
 }
 
-/*
- * Gets super block.
+/**
+ * @brief Gets a super block that matches a device number.
+ * 
+ * @details Searches for a valid super block in the super block table which the
+ *          device number equals the informed one.
+ * 
+ * @param dev Device number.
+ * 
+ * @returns If such requested super block exists in the super block table, a 
+ *          pointer to it is returned. In this case, the super block is ensured
+ *          to be locked. However, if no such super block exists, a NULL pointer
+ *          is returned instead.
  */
 PUBLIC struct superblock *superblock_get(dev_t dev)
 {
@@ -61,42 +99,51 @@ PUBLIC struct superblock *superblock_get(dev_t dev)
 	{
 		superblock_lock(sb);
 		
-		/* Valid. */
+		/* Valid super block. */
 		if (sb->flags & SUPERBLOCK_VALID)
 		{
 			/* Found. */
 			if (sb->dev == dev)
+			{
+				sb->count++;
 				return (sb);
+			}
 		}
 		
 		superblock_unlock(sb);
 	}
 	
-	curr_proc->errno = EINVAL;
-	
 	return (NULL);
 }
 
-/*
- * Waits for super block to become unlocked.
- */
-PRIVATE void superblock_wait(struct superblock *sb)
-{
-	while (sb->flags & SUPERBLOCK_LOCKED)
-		sleep(&sb->chain, PRIO_SUPERBLOCK);
-}
-
-/*
- * Locks a super block.
+/**
+ * @brief Locks a super block.
+ * 
+ * @details Locks a super block by marking it as locked. The calling process
+ *          may block here some time, waiting its turn to acquire the lock.
+ * 
+ * @param sb Super block pointer.
+ * 
+ * @note The super block must valid.
  */
 PUBLIC void superblock_lock(struct superblock *sb)
 {
-	superblock_wait(sb);
+	/* Waits for super block to become unlocked. */
+	while (sb->flags & SUPERBLOCK_LOCKED)
+		sleep(&sb->chain, PRIO_SUPERBLOCK);
+		
 	sb->flags |= SUPERBLOCK_LOCKED;
 }
 
-/*
- * Unlocks a super block.
+/**
+ * @brief Unlocks a super block.
+ * 
+ * @details Unlocks a super block by marking it as not locked and waking up
+ *          all processes that were waiting for it.
+ * 
+ * @param sb Super block pointer.
+ * 
+ * @note The super block must be locked and valid.
  */
 PUBLIC void superblock_unlock(struct superblock *sb)
 {
@@ -104,37 +151,55 @@ PUBLIC void superblock_unlock(struct superblock *sb)
 	sb->flags &= ~SUPERBLOCK_LOCKED;
 }
 
-/*
- * Releases a super block.
+/**
+ * @brief Releases a super block.
+ * 
+ * @details Releases a super block by freeing all underlying buffers and then
+ *          marking it as invalid.
+ * 
+ * @param sb Super block pointer.
+ * 
+ * @note The super block must be locked and valid.
  */
 PUBLIC void superblock_put(struct superblock *sb)
 {
 	int i;
 	
 	/* Release underlying resources. */
-	if (sb->flags & SUPERBLOCK_VALID)
+	if (--sb->count == 0)
 	{
 		superblock_write(sb);
-		
+			
 		/* Release inode map buffers. */
 		for (i = 0; i < (int) sb->imap_blocks; i++)
 			brelse(sb->imap[i]);
-		
+			
 		/* Release zone map buffers. */
 		for (i = 0; i < (int) sb->zmap_blocks; i++)
 			brelse(sb->zmap[i]);
-		
+			
 		/* Release super block buffer. */
 		brelse(sb->buf);
-		
+			
 		sb->flags &= ~SUPERBLOCK_VALID;
 	}
+	
+	/* Should not happen. */
+	if (sb->count < 0)
+		kpanic("freeing super block twice");
 	
 	superblock_unlock(sb);
 }
 
-/*
- * Writes a super block to a device.
+/**
+ * @brief Writes super block to underlying device.
+ * 
+ * @details If the super block is dirty, writes it to the underlying device.
+ *          The inode and block maps are also written back.
+ * 
+ * @param sb Super block pointer.
+ * 
+ * @note The super block must be locked and valid.
  */
 PUBLIC void superblock_write(struct superblock *sb)
 {
@@ -165,8 +230,11 @@ PUBLIC void superblock_write(struct superblock *sb)
 	sb->flags &= ~SUPERBLOCK_DIRTY;
 }
 
-/*
- * Synchronizes super blocks.
+/**
+ * @brief Synchronizes the super block table.
+ * 
+ * @details Synchronizes the super block table by flushing all valid super 
+ *          blocks onto underlying devices.
  */
 PUBLIC void superblock_sync(void)
 {
@@ -174,18 +242,33 @@ PUBLIC void superblock_sync(void)
 	
 	/* Write super blocks to disk. */
 	for (sb = &superblocks[0]; sb < &superblocks[NR_SUPERBLOCKS]; sb++)
-	{
+	{		
+		superblock_lock(sb);
+		
 		/* Write only valid super blocks. */
 		if (sb->flags & SUPERBLOCK_VALID)
-		{
-			superblock_wait(sb);
 			superblock_write(sb);
-		}
+		
+		superblock_unlock(sb);
 	}
 }
 
-/*
- * Reads a super block from a device.
+/**
+ * @brief Reads a super block from a device.
+ * 
+ * @details Reads a super block by reading the first block of a device. Once 
+ *          the read has completed, the magic number of the block is asserted
+ *          and in-memory fields are filled.
+ * 
+ * @param dev Device number.
+ * 
+ * @returns Upon successful completion, a pointer to the in-memory super block
+ *          is returned. The super block is ensured to be locked in this case.
+ *          Upon failure, a NULL pointer is returned instead.
+ * 
+ * @note The device number should be valid.
+ * 
+ * @todo Check for read error on bread().
  */
 PUBLIC struct superblock *superblock_read(dev_t dev)
 {
@@ -200,13 +283,16 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	if (sb == NULL)
 		goto error0;
 	
+	/* Read super block from device. */
 	buf = bread(dev, 1);
-	
 	d_sb = (struct d_superblock *)buf->data;
 	
 	/* Bad magic number. */
 	if (d_sb->s_magic != SUPER_MAGIC)
+	{
+		kprintf("fs: bad super block magic number");
 		goto error1;
+	}
 	
 	/* Too many blocks in the inode/zone map. */
 	if ((d_sb->s_imap_nblocks > IMAP_SIZE) || (d_sb->s_bmap_nblocks > ZMAP_SIZE))
@@ -220,16 +306,10 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	sb->ninodes = d_sb->s_ninodes;
 	sb->imap_blocks = d_sb->s_imap_nblocks;
 	for (i = 0; i < (int) sb->imap_blocks; i++)
-	{
-		sb->imap[i] = bread(dev, 2 + i);
-		blkunlock(sb->imap[i]);
-	}
+		blkunlock(sb->imap[i] = bread(dev, 2 + i));
 	sb->zmap_blocks = d_sb->s_bmap_nblocks;
 	for (i = 0; i < (int) sb->zmap_blocks; i++)
-	{
-		sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i);
-		blkunlock(sb->zmap[i]);
-	}
+		blkunlock(sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i));
 	sb->max_size = d_sb->s_max_size;
 	sb->zones = d_sb->s_nblocks;
 	sb->root = NULL;
@@ -240,6 +320,7 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	sb->isearch = 0;
 	sb->zsearch = 0;
 	sb->chain = NULL;
+	sb->count++;
 	
 	blkunlock(buf);
 	
@@ -247,13 +328,16 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	
 error1:
 	brelse(buf);
-	superblock_put(sb);
+	superblock_unlock(sb);
 error0:
 	return (NULL);
 }
 
-/*
- * Initialize super blocks.
+/**
+ * @brief Initializes the super block table.
+ * 
+ * @details Initializes the super block table by setting all super blocks in
+ *          it the table to be invalid and unlocked.
  */
 PUBLIC void superblock_init(void)
 {
@@ -261,7 +345,10 @@ PUBLIC void superblock_init(void)
 	
 	/* Initialize super blocks. */
 	for (i = 0; i < NR_SUPERBLOCKS; i++)
+	{
+		superblocks[i].count = 0;
 		superblocks[i].flags = 0x00 & ~(SUPERBLOCK_VALID | SUPERBLOCK_LOCKED);
+	}
 	
 	kprintf("fs: super block table has %d entries", NR_SUPERBLOCKS);
 }
