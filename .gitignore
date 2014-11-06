@@ -21,9 +21,10 @@
 *.o
 *.a
 *.img
+bochsout.txt
 bin/*
 bin/sbin/*
 bin/ubin/*
-bochsout.txt
+doc/html/*
 
 # Exceptions.

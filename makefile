@@ -58,7 +58,7 @@ nanvix:
 
 # Builds documentation.
 documentation:
-	cd $(SRCDIR) && $(MAKE) documentation
+	doxygen doxygen.config
 
 # Cleans compilation files.
 clean:
