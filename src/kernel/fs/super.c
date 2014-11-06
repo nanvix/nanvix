@@ -146,14 +146,20 @@ PUBLIC void superblock_write(struct superblock *sb)
 	
 	/* Write inode map buffers. */
 	for (i = 0; i < (int) sb->imap_blocks; i++)
+	{
+		sb->imap[i]->count++;
 		bwrite(sb->imap[i]);
+	}
 	
 	/* Write zone map buffers. */
 	for (i = 0; i < (int) sb->zmap_blocks; i++)
+	{
+		sb->zmap[i]->count++;
 		bwrite(sb->zmap[i]);
+	}
 	
 	/* Write super block buffer. */
-	sb->buf->flags |= BUFFER_DIRTY;
+	sb->buf++;
 	bwrite(sb->buf);
 	
 	sb->flags &= ~SUPERBLOCK_DIRTY;
