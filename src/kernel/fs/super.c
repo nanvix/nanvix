@@ -1,7 +1,7 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * fs/super.c - Super block library implementation.
+ * fs/super.c - Superblock library implementation.
  * 
  * This file is part of Nanvix.
  * 
@@ -26,9 +26,9 @@
 #include "fs.h"
 
 /**
- * @brief Super block table.
+ * @brief Superblock table.
  * 
- * @details The super block table holds all the information of mounted file 
+ * @details The superblock table holds all the information of mounted file 
  *          systems and it is, indeed, the mount table, which is looked up by
  *          a mount() system call.
  *          
@@ -36,12 +36,12 @@
 PUBLIC struct superblock superblocks[NR_SUPERBLOCKS];
 
 /**
- * @brief Gets a non-valid super block from the super block table.
+ * @brief Gets a non-valid superblock from the superblock table.
  * 
- * @details Searches for a non-valid super block entry in the super block table.
+ * @details Searches for a non-valid superblock entry in the superblock table.
  * 
- * @returns If such super block has been found, a pointer to it is returned. In
- *          this case, the super block is ensured to be locked. However, if no
+ * @returns If such superblock has been found, a pointer to it is returned. In
+ *          this case, the superblock is ensured to be locked. However, if no
  *          such block has been found, a NULL pointer is returned instead.
  */
 PRIVATE struct superblock *superblock_empty(void)
@@ -50,15 +50,15 @@ PRIVATE struct superblock *superblock_empty(void)
 
 again:
 
-	/* Get empty super block. */
+	/* Get empty superblock. */
 	for (sb = &superblocks[0]; sb < &superblocks[NR_SUPERBLOCKS]; sb++)
 	{
-		/* Skip valid super blocks. */
+		/* Skip valid superblocks. */
 		if (sb->flags & SUPERBLOCK_VALID)
 			continue;
 	
 		/*
-		 * Super block is locked, so we 
+		 * Superblock is locked, so we 
 		 * wait for it to become free.
 		 */
 		if (sb->flags & SUPERBLOCK_LOCKED)
@@ -71,35 +71,35 @@ again:
 		return (sb);
 	}
 
-	/* Super block table */
-	kprintf("fs: super block table overflow");
+	/* Superblock table */
+	kprintf("fs: superblock table overflow");
 	
 	return (NULL);
 }
 
 /**
- * @brief Gets a super block that matches a device number.
+ * @brief Gets a superblock that matches a device number.
  * 
- * @details Searches for a valid super block in the super block table which the
+ * @details Searches for a valid superblock in the superblock table which the
  *          device number equals the informed one.
  * 
  * @param dev Device number.
  * 
- * @returns If such requested super block exists in the super block table, a 
- *          pointer to it is returned. In this case, the super block is ensured
- *          to be locked. However, if no such super block exists, a NULL pointer
+ * @returns If such requested superblock exists in the superblock table, a 
+ *          pointer to it is returned. In this case, the superblock is ensured
+ *          to be locked. However, if no such superblock exists, a NULL pointer
  *          is returned instead.
  */
 PUBLIC struct superblock *superblock_get(dev_t dev)
 {
 	struct superblock *sb;
 	
-	/* Get empty super block. */
+	/* Get empty superblock. */
 	for (sb = &superblocks[0]; sb < &superblocks[NR_SUPERBLOCKS]; sb++)
 	{
 		superblock_lock(sb);
 		
-		/* Valid super block. */
+		/* Valid superblock. */
 		if (sb->flags & SUPERBLOCK_VALID)
 		{
 			/* Found. */
@@ -117,18 +117,19 @@ PUBLIC struct superblock *superblock_get(dev_t dev)
 }
 
 /**
- * @brief Locks a super block.
+ * @brief Locks a superblock.
  * 
- * @details Locks a super block by marking it as locked. The calling process
+ * @details Locks a superblock by marking it as locked. The calling process
  *          may block here some time, waiting its turn to acquire the lock.
  * 
- * @param sb Super block pointer.
+ * @param sb Superblock pointer.
  * 
- * @note The super block must valid.
+ * @note The superblock must valid. The superblock will be locked after that the
+ *       operation has completed.
  */
 PUBLIC void superblock_lock(struct superblock *sb)
 {
-	/* Waits for super block to become unlocked. */
+	/* Waits for superblock to become unlocked. */
 	while (sb->flags & SUPERBLOCK_LOCKED)
 		sleep(&sb->chain, PRIO_SUPERBLOCK);
 		
@@ -136,14 +137,14 @@ PUBLIC void superblock_lock(struct superblock *sb)
 }
 
 /**
- * @brief Unlocks a super block.
+ * @brief Unlocks a superblock.
  * 
- * @details Unlocks a super block by marking it as not locked and waking up
+ * @details Unlocks a superblock by marking it as not locked and waking up
  *          all processes that were waiting for it.
  * 
- * @param sb Super block pointer.
+ * @param sb Superblock pointer.
  * 
- * @note The super block must be locked and valid.
+ * @note The superblock must be locked and valid.
  */
 PUBLIC void superblock_unlock(struct superblock *sb)
 {
@@ -152,14 +153,15 @@ PUBLIC void superblock_unlock(struct superblock *sb)
 }
 
 /**
- * @brief Releases a super block.
+ * @brief Releases a superblock.
  * 
- * @details Releases a super block by freeing all underlying buffers and then
- *          marking it as invalid.
+ * @details Releases a superblock. It its reference count drops to zero all
+ *          underlying buffers freed and then the superblock is marked as 
+ *          invalid.
  * 
- * @param sb Super block pointer.
+ * @param sb Superblock pointer.
  * 
- * @note The super block must be locked and valid.
+ * @note The superblock must be locked and valid.
  */
 PUBLIC void superblock_put(struct superblock *sb)
 {
@@ -178,7 +180,7 @@ PUBLIC void superblock_put(struct superblock *sb)
 		for (i = 0; i < (int) sb->zmap_blocks; i++)
 			brelse(sb->zmap[i]);
 			
-		/* Release super block buffer. */
+		/* Release superblock buffer. */
 		brelse(sb->buf);
 			
 		sb->flags &= ~SUPERBLOCK_VALID;
@@ -186,20 +188,20 @@ PUBLIC void superblock_put(struct superblock *sb)
 	
 	/* Should not happen. */
 	if (sb->count < 0)
-		kpanic("freeing super block twice");
+		kpanic("freeing superblock twice");
 	
 	superblock_unlock(sb);
 }
 
 /**
- * @brief Writes super block to underlying device.
+ * @brief Writes superblock to underlying device.
  * 
- * @details If the super block is dirty, writes it to the underlying device.
+ * @details If the superblock is dirty, writes it to the underlying device.
  *          The inode and block maps are also written back.
  * 
- * @param sb Super block pointer.
+ * @param sb Superblock pointer.
  * 
- * @note The super block must be locked and valid.
+ * @note The superblock must be locked and valid.
  */
 PUBLIC void superblock_write(struct superblock *sb)
 {
@@ -223,7 +225,7 @@ PUBLIC void superblock_write(struct superblock *sb)
 		bwrite(sb->zmap[i]);
 	}
 	
-	/* Write super block buffer. */
+	/* Write superblock buffer. */
 	sb->buf->count++;
 	bwrite(sb->buf);
 	
@@ -231,21 +233,21 @@ PUBLIC void superblock_write(struct superblock *sb)
 }
 
 /**
- * @brief Synchronizes the super block table.
+ * @brief Synchronizes the superblock table.
  * 
- * @details Synchronizes the super block table by flushing all valid super 
+ * @details Synchronizes the superblock table by flushing all valid super 
  *          blocks onto underlying devices.
  */
 PUBLIC void superblock_sync(void)
 {
 	struct superblock *sb;
 	
-	/* Write super blocks to disk. */
+	/* Write superblocks to disk. */
 	for (sb = &superblocks[0]; sb < &superblocks[NR_SUPERBLOCKS]; sb++)
 	{		
 		superblock_lock(sb);
 		
-		/* Write only valid super blocks. */
+		/* Write only valid superblocks. */
 		if (sb->flags & SUPERBLOCK_VALID)
 			superblock_write(sb);
 		
@@ -254,16 +256,16 @@ PUBLIC void superblock_sync(void)
 }
 
 /**
- * @brief Reads a super block from a device.
+ * @brief Reads a superblock from a device.
  * 
- * @details Reads a super block by reading the first block of a device. Once 
+ * @details Reads a superblock by reading the first block of a device. Once 
  *          the read has completed, the magic number of the block is asserted
  *          and in-memory fields are filled.
  * 
  * @param dev Device number.
  * 
- * @returns Upon successful completion, a pointer to the in-memory super block
- *          is returned. The super block is ensured to be locked in this case.
+ * @returns Upon successful completion, a pointer to the in-memory superblock
+ *          is returned. The superblock is ensured to be locked in this case.
  *          Upon failure, a NULL pointer is returned instead.
  * 
  * @note The device number should be valid.
@@ -273,24 +275,24 @@ PUBLIC void superblock_sync(void)
 PUBLIC struct superblock *superblock_read(dev_t dev)
 {
 	int i;                     /* Loop indexes.            */
-	struct buffer *buf;        /* Buffer disk super block. */
-	struct superblock *sb;     /* In-core super block.     */
-	struct d_superblock *d_sb; /* Disk super block.        */
+	struct buffer *buf;        /* Buffer disk superblock. */
+	struct superblock *sb;     /* In-core superblock.     */
+	struct d_superblock *d_sb; /* Disk superblock.        */
 		
 	sb = superblock_empty();
 	
-	/* Super block table overflow. */
+	/* Superblock table overflow. */
 	if (sb == NULL)
 		goto error0;
 	
-	/* Read super block from device. */
+	/* Read superblock from device. */
 	buf = bread(dev, 1);
 	d_sb = (struct d_superblock *)buf->data;
 	
 	/* Bad magic number. */
 	if (d_sb->s_magic != SUPER_MAGIC)
 	{
-		kprintf("fs: bad super block magic number");
+		kprintf("fs: bad superblock magic number");
 		goto error1;
 	}
 	
@@ -301,7 +303,7 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 		goto error1;
 	}
 	
-	/* Initialize super block. */
+	/* Initialize superblock. */
 	sb->buf = buf;
 	sb->ninodes = d_sb->s_ninodes;
 	sb->imap_blocks = d_sb->s_imap_nblocks;
@@ -334,21 +336,22 @@ error0:
 }
 
 /**
- * @brief Initializes the super block table.
+ * @brief Initializes the superblock table.
  * 
- * @details Initializes the super block table by setting all super blocks in
+ * @details Initializes the superblock table by setting all superblocks in
  *          it the table to be invalid and unlocked.
  */
 PUBLIC void superblock_init(void)
 {
 	int i;
 	
-	/* Initialize super blocks. */
+	/* Initialize superblocks. */
 	for (i = 0; i < NR_SUPERBLOCKS; i++)
 	{
 		superblocks[i].count = 0;
-		superblocks[i].flags = 0x00 & ~(SUPERBLOCK_VALID | SUPERBLOCK_LOCKED);
+		superblocks[i].chain = NULL;
+		superblocks[i].flags = ~(SUPERBLOCK_VALID | SUPERBLOCK_LOCKED);
 	}
 	
-	kprintf("fs: super block table has %d entries", NR_SUPERBLOCKS);
+	kprintf("fs: superblock table has %d entries", NR_SUPERBLOCKS);
 }

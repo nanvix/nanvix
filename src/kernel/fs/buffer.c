@@ -1,7 +1,22 @@
 /*
  * Copyright(C) 2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * fs/cache.c - Block buffer cache library implementation.
+ * fs/buffer.c - Block buffer cache library implementation.
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <asm/util.h>
@@ -11,38 +26,74 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
-#include "fs.h"
 
-/* Too many buffers. */
+/*
+ * Too many buffers. The maximum value depends on
+ * the amount of memory that is reserved to buffer
+ * data. If you wanna change this, you shall take
+ * a look on <nanvix/mm.h>
+ */
 #if (NR_BUFFERS > 512)
 	#error "too many buffers"
 #endif
 
-/* Hard disk too small. */
+/*
+ * Number of buffers should be great enough so that
+ * the superblock, the inode map and the free blocks
+ * map do not waste more than 1/16 of buffers. If we
+ * allowed that situation, we might observe a poor
+ * performance.
+ */
 #if (IMAP_SIZE + ZMAP_SIZE > NR_BUFFERS/16)
 	#error "hard disk too small"
 #endif
 
-/* Block buffers. */
+/**
+ * @brief Block buffers.
+ */
 PRIVATE struct buffer buffers[NR_BUFFERS];
 
-/* Block buffers hash table. */
-PRIVATE struct buffer hashtab[BUFFERS_HASHTAB_SIZE];
-
-/* Free block buffers. */
+/**
+ * @brief List of free block buffers.
+ */
 PRIVATE struct buffer free_buffers;
 
-/* Processes waiting for any block. */
+/**
+ * @brief Processes waiting for any block.
+ * 
+ * @details Chain of processes that are sleeping, waiting for any block to
+ *          become free.
+ */
 PRIVATE struct process *chain = NULL;
 
-/*
- * Hash function.
+/**
+ * @brief block buffer hash table.
+ */
+PRIVATE struct buffer hashtab[BUFFERS_HASHTAB_SIZE];
+
+
+/**
+ * @brief Hash function for block buffer hash table.
+ * 
+ * @details Hashes a device number and a block number to a block buffer hash
+ *          table slot.
  */
 #define HASH(dev, block) \
 	(((dev)^(block))%BUFFERS_HASHTAB_SIZE)
-	
-/*
- * Gets a block buffer from the cache.
+
+/**
+ * @brief Gets a block buffer from the block buffer cache.
+ * 
+ * @details Searches the block buffer cache for a block buffer that matches
+ *          a device number and block number.
+ * 
+ * @param dev Device number.
+ * @param num Block number.
+ * 
+ * @returns Upon successful completion, a pointer to a buffer holding the
+ *          requested block is returned. In this case, the block buffer is 
+ *          ensured to be locked, and may be, or may be not, valid.
+ *          Upon failure, NULL is returned instead.
  */
 PRIVATE struct buffer *getblk(dev_t dev, block_t num)
 {
@@ -108,7 +159,7 @@ repeat:
 	
 	/* 
 	 * Buffer is dirty, so write it asynchronously 
-	 * to the disk and go get another one.
+	 * to the disk and go find another buffer.
 	 */
 	if (buf->flags & BUFFER_DIRTY)
 	{
@@ -140,8 +191,15 @@ repeat:
 	return (buf);
 }
 
-/*
- * Locks a block buffer.
+/**
+ * @brief Locks a block buffer.
+ * 
+ * @details Locks the block buffer by marking it as locked. The calling process
+ *          may block here some time, waiting its turn to acquire the lock.
+ * 
+ * @param Block buffer to lock.
+ * 
+ * @note The block buffer will be locked after that the operation has completed.
  */
 PUBLIC void blklock(struct buffer *buf)
 {
@@ -156,8 +214,15 @@ PUBLIC void blklock(struct buffer *buf)
 	enable_interrupts();
 }
 
-/*
- * Unlocks a block buffer.
+/**
+ * @brief Unlocks a block buffer.
+ * 
+ * @details Unlocks a block buffer by marking it as not locked and waking up
+ *          all processes that were waiting for it.
+ *
+ * @param buf Block buffer to unlock.
+ * 
+ * @note The block buffer must be locked. Afterwards, it will be unlocked.
  */
 PUBLIC void blkunlock(struct buffer *buf)
 {
@@ -169,8 +234,15 @@ PUBLIC void blkunlock(struct buffer *buf)
 	enable_interrupts();
 }
 
-/*
- * Puts back a block buffer in the cache.
+/**
+ * @brief Puts back a block buffer in the block buffer cache.
+ * 
+ * @details Releases a block buffer. If its reference count drops to zero, 
+ *          it puts back the block buffer into the block buffer cache.
+ * 
+ * @param buf Buffer to release.
+ * 
+ * @note The block buffer must be locked. Afterwards, it will be freed.
  */
 PUBLIC void brelse(struct buffer *buf)
 {
@@ -181,7 +253,7 @@ PUBLIC void brelse(struct buffer *buf)
 	{
 		/*
 		 * Wakeup processes that were waiting
-		 * for any block to  become free.
+		 * for any block to become free.
 		 */
 		wakeup(&chain);
 					
@@ -206,14 +278,25 @@ PUBLIC void brelse(struct buffer *buf)
 	
 	/* Should not happen. */
 	if (buf->count < 0)
-		kpanic("freeing buffer twice");
+		kpanic("fs: freeing buffer twice");
 
 	blkunlock(buf);
 	enable_interrupts();
 }
 
-/*
- * Reads a block buffer.
+/**
+ * @brief Reads a block from a device.
+ * 
+ * @details Reads a block synchronously from a device.
+ * 
+ * @param dev Device number.
+ * @param num Block number.
+ * 
+ * @returns Upon successful completion, a pointer to a buffer holding the
+ *          requested block is returned. In this case, the block buffer is 
+ *          ensured to be locked. Upon failure, NULL is returned instead.
+ * 
+ * \note The device number and the block number should be valid.
  */
 PUBLIC struct buffer *bread(dev_t dev, block_t num)
 {
@@ -230,16 +313,24 @@ PUBLIC struct buffer *bread(dev_t dev, block_t num)
 	return (buf);
 }
 
-/*
- * Writes a block buffer.
+/**
+ * @brief Writes a block buffer to underlying device.
+ * 
+ * @details Writes a block buffer synchronously to underlying.
+ * 
+ * @param buf Block buffer to write.
+ * 
+ * @note The block buffer must be locked.
  */
 PUBLIC void bwrite(struct buffer *buf)
 {
 	bdev_writeblk(buf);
 }
 
-/*
- * Synchronizes the cache.
+/**
+ * @brief Synchronizes the block buffer cache.
+ * 
+ * @details Flush all valid and dirty block buffers onto underlying devices.
  */
 PUBLIC void bsync(void)
 {
@@ -257,19 +348,30 @@ PUBLIC void bsync(void)
 			continue;
 		}
 		
-		/* Prevent double free. */
+		/*
+		 * Prevent double free, once a call
+		 * to brelse() will follow.
+		 */
 		if (buf->count++ == 0)
 		{
 			buf->free_prev->free_next = buf->free_next;
 			buf->free_next->free_prev = buf->free_prev;
 		}
 		
+		/*
+		 * This will cause the buffer to be
+		 * written back to disk and then
+		 * released.
+		 */
 		bdev_writeblk(buf);
 	}
 }
 
-/*
- * Initializes the block buffer cache.
+/**
+ * @brief Initializes the bock buffer cache.
+ * 
+ * @details Initializes the block buffer cache by putting all buffers in the
+ *          free list and cleaning the hash table.
  */
 PUBLIC void binit(void)
 {
@@ -306,4 +408,6 @@ PUBLIC void binit(void)
 		hashtab[i].hash_prev = &hashtab[i];
 		hashtab[i].hash_next = &hashtab[i];
 	}
+	
+	kprintf("fs: %d slots in the block buffer cache");
 }

@@ -32,6 +32,12 @@ TO BE FIXED:
 	- do not change ownership when truncating existing file on open()
 	- check number of processes per user on fork()
 	- race condition on tty driver
+	- memory violation
+		echo hello > hi
+		sync
+		echo hey > hello
+		ls
+		sync
 
 TO BE TESTED:
 
