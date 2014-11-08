@@ -138,7 +138,7 @@
 		uid_t uid;                /* User id of the file's owner           */
 		gid_t gid;                /* Group number of owner user.           */
 		off_t size;               /* File size (in bytes).                 */
-		time_t time;              /* Time when the file was last modified. */
+		time_t time;              /* Time when the file was last accessed. */
 		block_t blocks[NR_ZONES]; /* Zone numbers.                         */
 		dev_t dev;                /* Underlying device.                    */
 		ino_t num;                /* Inode number.                         */
@@ -153,6 +153,8 @@
 		struct inode *hash_prev;  /* Previous unode in the hash table.     */
 		struct process *chain;    /* Sleeping chain.                       */
 	};
+	
+	EXTERN void inode_touch(struct inode *i);
 	
 	/*
 	 * Locks an inode.

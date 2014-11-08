@@ -24,10 +24,7 @@ PRIVATE void do_utime(struct inode *ip, struct utimbuf *times)
 	
 	/* Set time. */
 	else
-	{
-		ip->time = CURRENT_TIME;
-		ip->flags |= INODE_DIRTY;
-	}
+		inode_touch(ip);
 }
 
 /*

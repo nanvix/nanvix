@@ -34,8 +34,7 @@ PUBLIC int sys_chown(const char *path, uid_t owner, gid_t group)
 	inode->uid = owner;
 	inode->gid = group;
 	inode->mode &= ~(S_ISUID | S_ISGID);
-	inode->time = CURRENT_TIME;
-	inode->flags |= INODE_DIRTY;
+	inode_touch(inode);
 	inode_put(inode);
 	
 	return (0);

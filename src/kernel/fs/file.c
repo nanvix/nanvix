@@ -202,11 +202,9 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 	/* Remove directory entry. */
 	d->d_ino = INODE_NULL;
 	buf->flags |= BUFFER_DIRTY;
-	dinode->time = CURRENT_TIME;
-	dinode->flags |= INODE_DIRTY;
+	inode_touch(dinode);
 	file->nlinks--;
-	file->time = CURRENT_TIME;
-	file->flags |= INODE_DIRTY;
+	inode_touch(file);
 	inode_put(file);
 	brelse(buf);
 	inode_put(dinode);
@@ -285,7 +283,7 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 	} while (n > 0);
 
 out:
-	i->time = CURRENT_TIME;
+	inode_touch(i);
 	inode_unlock(i);
 	return ((ssize_t)(p - (char *)buf));
 }
@@ -338,7 +336,7 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 
 out:
 
-	i->time = CURRENT_TIME;
+	inode_touch(i);
 	inode_unlock(i);
 	return ((ssize_t)(p - (char *)buf));
 }

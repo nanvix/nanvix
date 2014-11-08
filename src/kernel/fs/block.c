@@ -280,9 +280,8 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 			
 			if (phys != BLOCK_NULL)
 			{
-				inode->blocks[logic] = phys;		
-				inode->time = CURRENT_TIME;
-				inode->flags |= INODE_DIRTY;
+				inode->blocks[logic] = phys;
+				inode_touch(inode);
 			}
 		}
 		
@@ -303,9 +302,8 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 			
 			if (phys != BLOCK_NULL)
 			{
-				inode->blocks[ZONE_SINGLE] = phys;		
-				inode->time = CURRENT_TIME;
-				inode->flags |= INODE_DIRTY;
+				inode->blocks[ZONE_SINGLE] = phys;
+				inode_touch(inode);
 			}
 		}
 		
@@ -326,8 +324,7 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 			{
 				((block_t *)buf->data)[logic] = phys;
 				buf->flags |= BUFFER_DIRTY;
-				inode->time = CURRENT_TIME;
-				inode->flags |= INODE_DIRTY;
+				inode_touch(inode);
 			}
 		}
 		

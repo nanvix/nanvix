@@ -72,7 +72,7 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 	if (count < 0)
 		return (curr_proc->errno);
 
-	i->time = CURRENT_TIME;
+	inode_touch(i);
 	f->pos += count;
 
 	return (count);

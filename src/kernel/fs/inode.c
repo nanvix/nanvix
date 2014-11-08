@@ -297,8 +297,7 @@ PUBLIC void inode_truncate(struct inode *i)
 	superblock_unlock(sb);
 	
 	i->size = 0;
-	i->time = CURRENT_TIME;
-	i->flags |= INODE_DIRTY;
+	inode_touch(i);
 }
 
 /*
@@ -361,15 +360,14 @@ found:
 	i->uid = curr_proc->euid;
 	i->gid = curr_proc->egid;
 	i->size = 0;
-	i->time = CURRENT_TIME;
 	for (j = 0; j < NR_ZONES; j++)
 		i->blocks[j] = BLOCK_NULL;
 	i->dev = sb->dev;
 	i->num = num;
 	i->sb = sb;
 	i->count = 1;
-	i->flags |= INODE_DIRTY;
 	i->chain = NULL;
+	inode_touch(i);
 	
 	inode_cache_insert(i);
 	
@@ -470,6 +468,21 @@ error1:
 	putkpg(pipe);
 error0:
 	return (NULL);
+}
+
+/**
+ * @brief Updates inode time stamp.
+ * 
+ * @details Updates the inode time stamp to current time.
+ * 
+ * @param i Inode to be touched.
+ * 
+ * @note The inode must bhe locked.
+ */
+PUBLIC void inode_touch(struct inode *i)
+{
+	i->time = CURRENT_TIME;
+	i->flags |= INODE_DIRTY;
 }
 
 /*
