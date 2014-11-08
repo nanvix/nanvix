@@ -1,7 +1,22 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * fs/zone.c - Zone library implementation.
+ * fs/block.c - Block library implementation.
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/bitmap.h>
@@ -10,21 +25,31 @@
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <errno.h>
-#include "fs.h"
 
-/*
- * Allocates a zone.
+/**
+ * @brief Allocates a disk block.
+ * 
+ * @details Allocates a disk block by searching in the bitmap of blocks for a
+ *          free block.
+ * 
+ * @param sb Superblock in which the disk block should be allocated.
+ * 
+ * @return Upon successful completion, the block number of the allocated block
+ *         is returned. Upon failed, #BLOCK_NULL is returned instead.
+ * 
+ * @note The superblock must be locked.
  */
-PUBLIC block_t block_alloc(struct superblock *sb)
+PRIVATE block_t block_alloc(struct superblock *sb)
 {
-	bit_t bit;          /* Bit in the zone bitmap.  */
-	block_t num;         /* Zone number.             */
-	block_t blk;        /* Current block on search. */
-	struct buffer *buf; /* Working buffer.          */
+	bit_t bit;          /* Bit number in the bitmap. */
+	block_t num;        /* Block number.             */
+	block_t blk;        /* Working block.            */
+	block_t firstblk;   /* First block to check.     */
+	struct buffer *buf; /* Working buffer.           */
 
-	blk = sb->zsearch/(BLOCK_SIZE << 3);
-	
-	/* Search for free zone. */
+	/* Search for a free block. */
+	firstblk = (sb->zsearch - sb->first_data_block)/(BLOCK_SIZE << 3);
+	blk = firstblk;
 	do
 	{
 		bit = bitmap_first_free(sb->zmap[blk]->data, BLOCK_SIZE);
@@ -33,57 +58,64 @@ PUBLIC block_t block_alloc(struct superblock *sb)
 		if (bit != BITMAP_FULL)
 			goto found;
 		
-		blk++;
-		if (blk < sb->zmap_blocks)
-			blk = 0;
-		
-	} while (blk != sb->zsearch/(BLOCK_SIZE << 3));
+		/* Wrap around. */
+		blk = (blk + 1 < sb->zmap_blocks) ? blk + 1 : 0;
+	} while (blk != firstblk);
 	
 	return (BLOCK_NULL);
 
 found:
 
-	num = bit + blk*(BLOCK_SIZE << 3);
+	num =  sb->first_data_block + bit + blk*(BLOCK_SIZE << 3);
 	
-	/* Allocate zone. */
+	/* 
+	 * Remember disk block number to 
+	 * speedup next block allocation.
+	 */
+	sb->zsearch = num;
+	
+	/* Allocate block. */
 	bitmap_set(sb->zmap[blk]->data, bit);
 	sb->zmap[blk]->flags |= BUFFER_DIRTY;
-	sb->zsearch = num;
 	sb->flags |= SUPERBLOCK_DIRTY;
 	
-	/*
-	 * Clean underlying blocks in order
-	 * to avoid security issues.
-	 */
-	for (blk = num; blk < num + 1; blk++)
-	{
-		buf = bread(sb->dev, blk);
-		kmemset(buf->data, 0, BLOCK_SIZE);
-		buf->flags |= BUFFER_DIRTY;
-		brelse(buf);
-	}
+	/* Clean block to avoid security issues. */
+	buf = bread(sb->dev, blk);	
+	kmemset(buf->data, 0, BLOCK_SIZE);
+	buf->flags |= BUFFER_DIRTY;
+	brelse(buf);
 	
 	return (num);
 }
 
-/*
- * Frees a direct disk block.
+/**
+ * @brief Frees a direct disk block.
+ * 
+ * @details Frees a direct disk block by setting the block as free in the bitmap
+ *          of blocks.
+ * 
+ * @param sb  Superblock in which the disk block should be freed.
+ * @param num Number of the direct disk block that shall be freed.
+ * 
+ * @note The superblock must be locked.
  */
 PRIVATE void block_free_direct(struct superblock *sb, block_t num)
 {
-	int idx; /* Bitmap index.  */
-	int off; /* Bitmap offset. */
+	unsigned idx; /* Bitmap index.  */
+	unsigned off; /* Bitmap offset. */
 	
 	/* Nothing to be done. */
 	if (num == BLOCK_NULL)
 		return;
 		
 	/* 
-	 * Remember free disk to
+	 * Remember free disk block to
 	 * speedup next block allocation.
 	 */
 	if (num < sb->zsearch)
 		sb->zsearch = num;
+	
+	num -= sb->first_data_block;
 	
 	/*
 	 * Compute block index and offset 
@@ -98,12 +130,20 @@ PRIVATE void block_free_direct(struct superblock *sb, block_t num)
 	sb->flags |= SUPERBLOCK_DIRTY;
 }
 
-/*
- * Frees an indirect disk block.
+/**
+ * @brief Frees a single indirect disk block.
+ * 
+ * @details Frees a single indirect disk block by freeing all underlying direct
+ *          disk blocks.
+ * 
+ * @param sb  Superblock in which the disk block should be freed.
+ * @param num Number of the single indirect disk block that shall be freed.
+ * 
+ * @note The superblock must be locked.
  */
 PRIVATE void block_free_indirect(struct superblock *sb, block_t num)
 {
-	int i;              /* Loop index.   */
+	unsigned i;         /* Loop index.   */
 	struct buffer *buf; /* Block buffer. */
 	
 	/* Nothing to be done. */
@@ -120,13 +160,20 @@ PRIVATE void block_free_indirect(struct superblock *sb, block_t num)
 	brelse(buf);
 }
 
-/*
- * Frees a doubly indirect zone.
+/**
+ * @brief Frees a doubly indirect disk block.
+ * 
+ * @details Frees a doubly indirect disk block by freeing all underlying single 
+ *          indirect disk blocks.
+ * 
+ * @param sb  Superblock in which the disk block should be freed.
+ * @param num Number of the doubly indirect disk block that shall be freed.
+ * 
+ * @note The superblock must be locked.
  */
 PRIVATE void block_free_dindirect(struct superblock *sb, block_t num)
 {
-	int i;              /* Loop indexes. */
-	block_t zone;       /* Zone.         */
+	unsigned i;         /* Loop indexes. */
 	struct buffer *buf; /* Block buffer. */
 	
 	/* Nothing to be done. */
@@ -137,18 +184,23 @@ PRIVATE void block_free_dindirect(struct superblock *sb, block_t num)
 		
 	/* Free direct zone. */
 	for (i = 0; i < NR_SINGLE; i++)
-	{
-		if ((zone = ((block_t *)buf->data)[i]))
-			block_free_indirect(sb, zone);
-	}
-		
-	brelse(buf);
-	
+		block_free_indirect(sb, ((block_t *)buf->data)[i]);
 	block_free_direct(sb, num);
+	
+	brelse(buf);
 }
 
-/*
- * Frees a disk block.
+/**
+ * @brief Frees a disk block.
+ * 
+ * @details Frees a disk block by freeing all underlying disk blocks.
+ * 
+ * @param sb  Superblock in which the disk block should be freed.
+ * @param num Number of the disk block that shall be freed.
+ * @param lvl Level of indirection to be parsed: zero for direct blocks, one for
+ *        single indirect blocks, and two for doubly indirect blocks.
+ * 
+ * @note The superblock must be locked.
  */
 PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
 {
@@ -172,22 +224,37 @@ PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
 		
 		/* Should not happen. */
 		default:
-			kpanic("block_free() bad indirection level");
+			kpanic("fs: bad indirection level");
 	}
 }
 
-/*
- * Maps a file byte offset in a physical zone number.
+/**
+ * @brief Maps a file byte offset in a disk block number.
+ * 
+ * @details Maps a file byte offset in a disk block number by traversing the
+ *          disk block tree of the related inode. If the associated disk block
+ *          does not exist, it may be created, if requested.
+ * 
+ * @param inode  Inode to use.
+ * @param off    File offset.
+ * @param create Zero if the block should be created if it does not exist, and
+ *               one otherwise.
+ * 
+ * @returns Upon successful completion, the disk block number that is associated
+ *          with the file byte offset is returned. Upon failure, #BLOCK_NULL is
+ *          returned instead.
+ * 
+ * @note The inode must be locked.
  */
 PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 {
-	block_t phys;        /* Physical zone number. */
-	block_t logic;       /* Logical zone number.  */
-	struct buffer *buf; /* Underlying buffer.    */
+	block_t phys;       /* Physical block number. */
+	block_t logic;      /* Logical block number.  */
+	struct buffer *buf; /* Underlying buffer.     */
 	
 	logic = off/BLOCK_SIZE;
 	
-	/* Offset too big. */
+	/* File offset too big. */
 	if (off/BLOCK_SIZE >= (ssize_t)(NR_DIRECT + NR_SINGLE + NR_DOUBLE))
 	{
 		curr_proc->errno = -EFBIG;
@@ -195,16 +262,16 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 	}
 	
 	/* 
-	 * Create blocks that are in a
-	 * valid offset.
+	 * Create blocks that are
+	 * in a valid offset.
 	 */
 	if (off < inode->size)
 		create = 1;
 	
-	/* Direct zone. */
+	/* Direct block. */
 	if (logic < NR_ZONES_DIRECT)
 	{
-		/* Create zone. */
+		/* Create direct block. */
 		if (inode->blocks[logic] == BLOCK_NULL && create)
 		{
 			superblock_lock(inode->sb);
@@ -212,7 +279,7 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 			superblock_unlock(inode->sb);
 			
 			if (phys != BLOCK_NULL)
-			{	
+			{
 				inode->blocks[logic] = phys;		
 				inode->time = CURRENT_TIME;
 				inode->flags |= INODE_DIRTY;
@@ -224,38 +291,41 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 	
 	logic -= NR_ZONES_DIRECT;
 	
-	/* Single indirect zone. */
+	/* Single indirect block. */
 	if (logic < NR_SINGLE)
-	{		
-		/* Create zone. */
+	{
+		/* Create single indirect block. */
 		if (inode->blocks[ZONE_SINGLE] == BLOCK_NULL && create)
 		{
 			superblock_lock(inode->sb);
 			phys = block_alloc(inode->sb);
 			superblock_unlock(inode->sb);
 			
-			if (phys == BLOCK_NULL)
-				return (BLOCK_NULL);
-				
-			inode->blocks[ZONE_SINGLE] = phys;		
-			inode->time = CURRENT_TIME;
-			inode->flags |= INODE_DIRTY;
+			if (phys != BLOCK_NULL)
+			{
+				inode->blocks[ZONE_SINGLE] = phys;		
+				inode->time = CURRENT_TIME;
+				inode->flags |= INODE_DIRTY;
+			}
 		}
 		
+		/* We cannot go any further. */
 		if ((phys = inode->blocks[ZONE_SINGLE]) == BLOCK_NULL)
 			return (BLOCK_NULL);
 	
 		buf = bread(inode->dev, phys);
 		
-		if ((((block_t *)buf->data)[logic] == BLOCK_NULL) && create)
+		/* Create direct block. */
+		if (((block_t *)buf->data)[logic] == BLOCK_NULL && create)
 		{
 			superblock_lock(inode->sb);
 			phys = block_alloc(inode->sb);
 			superblock_unlock(inode->sb);
 			
 			if (phys != BLOCK_NULL)
-			{	
-				((block_t *)buf->data)[logic] = phys;		
+			{
+				((block_t *)buf->data)[logic] = phys;
+				buf->flags |= BUFFER_DIRTY;
 				inode->time = CURRENT_TIME;
 				inode->flags |= INODE_DIRTY;
 			}

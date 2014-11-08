@@ -110,7 +110,7 @@
 	#define NR_DIRECT 1
 
 	/* Number of zones in a single indirect zone. */
-	#define NR_SINGLE ((int)(BLOCK_SIZE/sizeof(block_t)))
+	#define NR_SINGLE (BLOCK_SIZE/sizeof(block_t))
 	
 	/* Number of zones in a double indirect zone. */
 	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(block_t))*NR_SINGLE)
@@ -293,16 +293,10 @@
  *                                  Block Library                             *
  *============================================================================*/
 	
-	
 	/*
 	 * Maps a file byte offset in a block number.
 	 */
 	EXTERN block_t block_map(struct inode *inode, off_t off, int create);
-	
-	/*
-	 * Allocates a zone.
-	 */
-	EXTERN block_t block_alloc(struct superblock *sb);
 
 	/*
 	 * Frees a disk block.

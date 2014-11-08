@@ -321,7 +321,7 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	sb->flags &= ~(SUPERBLOCK_DIRTY | SUPERBLOCK_RDONLY);
 	sb->flags |= SUPERBLOCK_VALID;
 	sb->isearch = 0;
-	sb->zsearch = 0;
+	sb->zsearch = d_sb->s_first_data_block;
 	sb->chain = NULL;
 	sb->count++;
 	
