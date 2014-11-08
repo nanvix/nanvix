@@ -232,6 +232,7 @@
 		block_t imap_blocks;            /* Number of inode map blocks.   */
 		struct buffer *zmap[ZMAP_SIZE]; /* Zone map.                     */
 		block_t zmap_blocks;            /* Number of zone map blocks.    */
+		block_t first_data_block;       /* First data block.             */
 		off_t max_size;                 /* Maximum file size.            */
 		block_t zones;                  /* Number of zones.              */
 		struct inode *root;             /* Inode for root directory.     */

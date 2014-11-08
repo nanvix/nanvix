@@ -312,6 +312,7 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	sb->zmap_blocks = d_sb->s_bmap_nblocks;
 	for (i = 0; i < (int) sb->zmap_blocks; i++)
 		blkunlock(sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i));
+	sb->first_data_block = d_sb->s_first_data_block;
 	sb->max_size = d_sb->s_max_size;
 	sb->zones = d_sb->s_nblocks;
 	sb->root = NULL;
