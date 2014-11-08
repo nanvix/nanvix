@@ -12,10 +12,10 @@
 	#include <stdint.h>
 
 	/* Bit number. */
-	typedef int32_t bit_t;
+	typedef uint32_t bit_t;
 	
 	/* Bitmap is full. */
-	#define BITMAP_FULL -1
+	#define BITMAP_FULL 0xffffffff
 	
 	/* Bitmap operators. */
 	#define IDX(a) ((a) >> 5)   /* Returns the index of the bit.  */
@@ -41,11 +41,6 @@
 	/*
 	 * Returns the number of bits clear in a bitmap.
 	 */
-	EXTERN int bitmap_nclear(uint32_t *bitmap, size_t size);
-	
-	/*
-	 * Returns the number of bits clear.
-	 */
-	EXTERN int bitmap_nset(uint32_t *bitmap, size_t size);
+	EXTERN unsigned bitmap_nclear(uint32_t *bitmap, size_t size);
 
 #endif /* BITMAP_H_ */

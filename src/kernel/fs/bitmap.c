@@ -2,24 +2,47 @@
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * fs/bitmap.c - Bitmap library implementation.
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/bitmap.h>
 #include <nanvix/const.h>
 
-/*
- * Returns the number of bits clear.
+/**
+ * @brief Returns the number of bits that are set in a bitmap.
+ * 
+ * @details Counts the number of bits that are set in a bitmap using a 
+ *          bit-hacking algorithm from Stanford.
+ * 
+ * @param bitmap Bitmap to be searched.
+ * @param size   Size (in bytes) of the bitmap.
+ * 
+ * @returns The number of bits that are set in the bitmap.
  */
-PUBLIC int bitmap_nset(uint32_t *bitmap, size_t size)
+PRIVATE unsigned bitmap_nset(uint32_t *bitmap, size_t size)
 {
-	int count;      /* Number of bits set. */
+	unsigned count; /* Number of bits set. */
 	uint32_t *idx;  /* Loop index.         */
 	uint32_t *end;  /* End of bitmap.      */
 	uint32_t chunk; /* Working chunk.      */
 	
 	/* Count the number of bits set. */
 	count = 0;
-	end = (bitmap + (size >> 5));
+	end = (bitmap + (size >> 2));
 	for (idx = bitmap; idx < end; idx++)
 	{
 		chunk = *idx;
@@ -37,16 +60,33 @@ PUBLIC int bitmap_nset(uint32_t *bitmap, size_t size)
 	return (count);
 }
 
-/*
- * Returns the number of bits clear in a bitmap.
+/**
+ * @brief Returns the number of bits that are cleared in a bitmap.
+ * 
+ * @details Counts the number of bits that are cleared in a bitmap using a 
+ *          bit-hacking algorithm from Stanford.
+ * 
+ * @param bitmap Bitmap to be searched.
+ * @param size   Size (in bytes) of the bitmap.
+ * 
+ * @returns The number of bits that are cleared in the bitmap.
  */
-PUBLIC int bitmap_nclear(uint32_t *bitmap, size_t size)
+PUBLIC unsigned bitmap_nclear(uint32_t *bitmap, size_t size)
 {
-	return (size - bitmap_nset(bitmap, size));
+	return ((size << 3) - bitmap_nset(bitmap, size));
 }
 
-/*
- * Finds the first free bit in a bitmap.
+/**
+ * @brief Searches for the first free bit in a bitmap.
+ * 
+ * @details Searches for the first free bit in a bitmap. In order to speedup
+ *          computation, bits are checked in chunks of 4 bytes.
+ * 
+ * @param bitmap Bitmap to be searched.
+ * @param size   Size (in bytes) of the bitmap.
+ * 
+ * @returns If a free bit is found, the number of that bit is returned. However,
+ *          if no free bit is found #BITMAP_FULL is returned instead.
  */
 PUBLIC bit_t bitmap_first_free(uint32_t *bitmap, size_t size)
 {
@@ -55,7 +95,7 @@ PUBLIC bit_t bitmap_first_free(uint32_t *bitmap, size_t size)
     register uint32_t *idx; /* Bit index.      */
     
     idx = bitmap;
-    max = (idx + (size >> 5));
+    max = (idx + (size >> 2));
     
     /* Find bit index. */
     while (idx < max)
@@ -68,7 +108,7 @@ PUBLIC bit_t bitmap_first_free(uint32_t *bitmap, size_t size)
 			/* Find offset. */
 			while (*idx & (0x1 << off))
 				off++;
-			
+				
 			return (((idx - bitmap) << 5) + off);
 		}
 	
