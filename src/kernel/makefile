@@ -18,7 +18,8 @@
 #
 
 # C source files.
-C_SRC = $(wildcard boot/*.c)        \
+C_SRC = $(wildcard arch/x86/*.c)    \
+        $(wildcard boot/*.c)        \
         $(wildcard core/*.c)        \
         $(wildcard dev/*.c)         \
         $(wildcard dev/hdd/*.c)     \
