@@ -1,0 +1,69 @@
+.\"
+.\" Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH geteuid 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+geteuid \- Gets the effective user ID of the calling process.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.IR "#include <unistd.h>"
+
+.BI "uid_t geteuid(void);"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The 
+.BR geteuid()
+system call returns the effective user ID of the calling process.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+The
+.BR geteuid()
+system call is always successful and no return value is reserved to indicate an
+error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+No errors are defined.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR getegid(2) ,
+.BR getgid(2) ,
+.BR getuid(2) ,
+.BR setegid(2) ,
+.BR seteuid(2) ,
+.BR setgid(2) ,
+.BR setuid(2)
+

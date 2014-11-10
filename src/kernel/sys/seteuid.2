@@ -1,0 +1,76 @@
+.\"
+.\" Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH seteuid 2 "September 2013" "System Calls" "The Nanvix Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+seteuid \- Sets the effective user ID of the calling process.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.IR "#include <unistd.h>"
+
+.BI "int seteuid(uid_t " uid ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The
+.BR seteuid()
+system call sets the effective user ID of the calling process to
+.IR uid .
+
+Unprivileged processes may only set the effective user ID to the real user ID 
+or the saved set-user-ID.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Upon successful completion, 0 is returned. Upon failure, -1 is returned and 
+.IR errno
+is set to indicate the error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+.TP
+.BR [EPERM]
+The process does not have appropriate privileges and 
+.IR uid
+does not match the real user ID or the saved set-user-ID.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR exec(2) ,
+.BR getegid(2) ,
+.BR geteuid(2) ,
+.BR getgid(2) ,
+.BR getuid(2) ,
+.BR setegid(2) ,
+.BR setgid(2) ,
+.BR setuid(2)

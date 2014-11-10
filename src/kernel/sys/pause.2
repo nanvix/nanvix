@@ -1,0 +1,76 @@
+.\"
+.\" Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH pause 2 "July 2013" "System Calls" "The Nanvix Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+pause \- Suspends the calling process until a signal is received.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.IR "#include <unistd.h>"
+
+.BI "int pause(void);"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The 
+.BR pause()
+system call suspends the calling process until delivery of a signal whose action
+is either to execute a signal-catching function or to terminate the process.
+
+If the action is to terminate the process, 
+.BR pause()
+does not return.
+
+If the action is to execute a signal-catching function,
+.BR pause()
+returns after the signal-catching function returns.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Since
+.BR pause()
+suspends process execution indefinitely, unless interrupted by a signal, there
+is no successful completion return value. A value of -1 is returned and 
+.IR errno
+set to indicate the error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+.TP
+.BR [EINTR]
+A signal is caught by the calling process and control is returned from the 
+signal-catching function.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR signals(6)

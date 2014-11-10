@@ -23,8 +23,6 @@
 *.img
 bochsout.txt
 bin/*
-bin/sbin/*
-bin/ubin/*
-doc/html/*
+doc/*
 
 # Exceptions.

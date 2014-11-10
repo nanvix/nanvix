@@ -43,7 +43,7 @@ export ARFLAGS   = -vq
 export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 
 # Builds everything.
-all: nanvix
+all: nanvix documentation
 
 # Builds system's image.
 image: $(BINDIR)/kernel
@@ -54,14 +54,18 @@ nanvix:
 	mkdir -p $(BINDIR)
 	mkdir -p $(SBINDIR)
 	mkdir -p $(UBINDIR)
-	cd $(SRCDIR) && $(MAKE) all
+	cd $(SRCDIR) && $(MAKE) nanvix
 
 # Builds documentation.
 documentation:
-	doxygen doxygen.config
+	mkdir -p $(DOCDIR)/man/1
+	mkdir -p $(DOCDIR)/man/2
+	mkdir -p $(DOCDIR)/man/3
+	cd $(SRCDIR) && $(MAKE) documentation
 
 # Cleans compilation files.
 clean:
 	@rm -f nanvix.img
-	@rm -rf $(DOCDIR)/html
+	@rm -rf $(DOCDIR)/
+	@rm -rf $(BINDIR)/
 	cd $(SRCDIR) && $(MAKE) clean

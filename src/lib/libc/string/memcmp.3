@@ -1,0 +1,71 @@
+.\"
+.\" Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH memcmp 3 "March 2014" "C Library" "The Nanvix User Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+memcmp \- Compares memory areas
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.BI "#include <" "string.h" >
+
+.BI "int memcmp(const void *" s1 ", const void *" s2 ", size_t " n ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The
+.BR memcmp() 
+function compares the first 
+.IR n
+bytes, interpreted as 
+.IR "unsigned char",
+of the memory areas pointed to by
+.IR s1 " and " s2 .
+
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+The 
+.BR memcmp()
+function returns zero if 
+.IR s1 " and " s2 " matches"
+and a non-zero value otherwise.
+
+For a non-zero value, the sign is determined by the sign of the difference 
+between the first pair of bytes (interpreted as 
+.IR "unsigned char" )
+that differ in
+.IR s1 " and " s2.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR memcpy(3),
+.BR memset(3)
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"

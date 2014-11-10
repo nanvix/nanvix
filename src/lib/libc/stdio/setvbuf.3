@@ -1,0 +1,124 @@
+.\"
+.\" Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH setvbuf 3 "January 2014" "C Library" "The Nanvix User Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+setvbuf \- Assigns a buffer to a stream.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.BI "#include <" "stdio.h" >
+
+.BI "int setvbuf(FILE *" stream ", char *" buf ", int " type ", size_t " size ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The 
+.BR setvbuf()
+function may be used after stream pointed to by
+.IR stream
+is associated with an open file but before any other operation (other than
+an unsuccessful call to
+.BR setvbuf() )
+is performed on the stream. The argument 
+.IR type 
+determines how
+.IR stream
+is buffered, as follows:
+
+.IP \(bu 4
+_IOFBF causes input/output to be fully buffered.
+
+.IP \(bu 4
+_IOLBF causes input/output to be line buffered.
+
+.IP \(bu 4
+_IONBF causes input/output to be unbuffered.
+
+.P
+If
+.IR buf 
+is not a null pointer, the array it points to is used instead of a buffer
+allocated by 
+.BR setvbuf()
+and the argument 
+.IR size 
+specifies the size of the array; otherwise, size determines the size of a 
+buffer allocated by 
+.BR setvbuf() .
+The contents of the array at any time are undetermined.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Upon successful completion, 
+.BR setvbuf()
+returns 0. Otherwise, it returns a non-zero value and 
+.IR errno
+is set to indicate the error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+.TP
+.BR [EBADF]
+The file descriptor underlying 
+.IR stream 
+is not valid.
+
+.TP
+.BR [EBUSY]
+A buffer is already assigned to 
+.IR stream .
+
+.TP
+.BR [EINVAL]
+Invalid buffer size.
+
+.P
+For other errors refer to 
+.BR malloc(3) .
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH "BUGS"
+.\"
+The programmer must ensure that the buffer pointed to by
+.IR buf 
+still exists until 
+.IR stream 
+is closed.
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR fopen(3) ,
+.BR malloc(3) ,
+.BR setbuf(3)
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"

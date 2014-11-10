@@ -1,0 +1,87 @@
+.\"
+.\" Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH fflush 3 "January 2014" "C Library" "The Nanvix User Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+fflush \- Flushes a stream.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.BI "#include <" "stdio.h" >
+
+.BI "int fflush(FILE *" stream ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+If 
+.IR stream
+points to an output stream in which the most recent operation was not input,
+.BR fflush() 
+causes any unwritten data for that stream to be written to the file. 
+
+If 
+.IR stream
+is a null pointer, 
+.BR fflush()
+performs this flushing action on all streams for which the behavior is defined 
+above.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Open successful completion,
+.BR fflush()
+returns 0; otherwise, it sets the error indicator for the stream, returns
+.BR EOF
+and sets
+.IR errno
+to indicate the error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+Refer to  
+.BR write(2) .
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH "NOTES"
+.\"
+The 
+.BR fflush()
+function causes the user-space buffers to be flushed. To ensure that the data 
+is flushed from kernel buffers see
+.BR sync(2) .
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR sync(2) ,
+.BR write(2)
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"

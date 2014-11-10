@@ -1,0 +1,74 @@
+.\"
+.\" Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH strcmp 3 "January 2014" "C Library" "The Nanvix User Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+strcmp \- Compares two strings.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.BI "#include <" "string.h" >
+
+.BI "int strcmp(const char *" str1 ", const char *" str2 ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The
+.BR strcmp()
+function compares the string pointed to by
+.IR str1
+to the string pointed to by
+.IR str2 .
+
+The sign of a non-zero return value is determined by the sign of the difference 
+between the values of the first pair of bytes that differ in the strings being
+compared.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Upon completion,
+.BR strcmp()
+returns an integer greater than, equal to, or less than 0, if the string 
+pointed to by
+.IR str1
+is greater than, equal to, or less than the string pointed to by 
+.IR str2 ,
+respectively.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+No errors are defined.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR strncmp(3)
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"

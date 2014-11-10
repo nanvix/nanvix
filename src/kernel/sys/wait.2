@@ -1,0 +1,154 @@
+.\"
+.\" Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH wait 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+wait \- Waits for a child process to terminate.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.IR "#include <sys/wait.h>"
+
+.BI "pid_t wait(int " "*stat_loc" ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The
+.BR wait()
+system call causes the calling process to block until a child process 
+terminates. If a child process has already terminated, then 
+.BR wait()
+returns immediately.
+
+Moreover, if
+.IR stat_loc
+is not a
+.BR NULL
+pointer, status information regarding the process termination is stored in the 
+location pointed to by
+.IR stat_loc .
+This information, aka process status value, may be parsed by helper macros, 
+defined at <sys/wait.h>:
+
+.TP
+.BR WIFEXITED(stat_val)
+Evaluates to a non-zero value if status was returned for a child process that 
+terminated normally.
+
+.TP
+.BR WEXITSTATUS(stat_val)
+If the value of
+.BR WIFEXITED(stat_val)
+is non-zero, this macro evaluates to the low-order 8 bits of the status
+argument that the child process passed to 
+.BR _exit() ,
+or the value the child process returned from 
+.BR main() .
+
+.TP
+.BR WIFSIGNALED(stat_val)
+Evaluates to a non-zero value if status was returned for a child process that
+terminated due to the receipt of a signal that was not caught.
+
+.TP
+.BR WTERMSIG(stat_val)
+If the value of
+.BR WIFSIGNALED(stat_val)
+is non-zero, this macro evaluates to the number of the signal that caused the
+termination of the child process.
+
+.P
+The behavior of
+.BR wait()
+when the calling process has set
+.BR SIG_IGN
+to the
+.BR SIGCHLD
+signal is explained in the 
+.BR NOTES 
+section.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Upon successful completion, 
+.BR wait()
+returns the process ID of the terminated child process. Upon failure, -1 is
+returned and
+.IR errno
+is set to indicate the error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+.TP
+.BR [EINVAL]
+.IR stat_loc
+is not
+.BR NULL
+and points to a memory location that is invalid.  The value of the location
+pointed to by
+.IR stat_loc 
+remains unchanged.
+
+.TP
+.BR [EINTR]
+.BR wait()
+has been interrupted by a signal other than 
+.BR SIGCHLD .
+The value of the location pointed to by
+.IR stat_loc
+remains unchanged.
+
+.TP
+.BR [ECHILD]
+The calling process has no child processes. The value of the location pointed to
+by
+.IR stat_loc
+remains unchanged.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH NOTES
+.\"
+If the calling process has set 
+.BR SIG_IGN " to the SIGCHLD
+signal, it gets blocked until all child processes have terminated and then, 
+returns -1 and sets
+.IR errno
+to
+.BR ECHILD .
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR exec(2) ,
+.BR _exit(2) ,
+.BR fork(2) ,
+.BR signals(6)

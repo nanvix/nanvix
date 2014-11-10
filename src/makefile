@@ -24,24 +24,46 @@
 .PHONY: ubin
 
 # Builds everything.
-all: kernel lib sbin ubin
+all: nanvix documentation
+
+# Builds Nanvix.
+nanvix: kernel lib sbin ubin
+
+# Builds documentation.
+documentation: kernel-doc lib-doc sbin-doc ubin-doc
 	
 # Builds the kernel.
 kernel:
-	cd kernel/ && $(MAKE) all
+	cd kernel/ && $(MAKE) kernel
+
+# Builds kernel documentation.
+kernel-doc:
+	cd kernel/ && $(MAKE) documentation
 	
 # Builds the libraries.
 lib:
-	cd lib/ && $(MAKE) all
+	cd lib/ && $(MAKE) lib
+
+# Builds libraries documentation.
+lib-doc:
+	cd lib/ && $(MAKE) documentation
 
 # Builds superuser utilities.
 sbin: lib
-	cd sbin/ && $(MAKE) all
+	cd sbin/ && $(MAKE) sbin
+
+# Builds superuser utilities documentation.
+sbin-doc:
+	cd sbin/ && $(MAKE) documentation 
 
 # Builds user utilities.
 ubin: lib
-	cd ubin/ && $(MAKE) all
+	cd ubin/ && $(MAKE) ubin
 
+# Builds user utilities documentation.
+ubin-doc:
+	cd ubin/ && $(MAKE) documentation
+	
 # Clean compilation files.
 clean:
 	cd kernel/ && $(MAKE) clean

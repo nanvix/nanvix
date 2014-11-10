@@ -1,0 +1,67 @@
+.\"
+.\" Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH strchr 3 "January 2014" "C Library" "The Nanvix User Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+strchr \- String scanning operation.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.BI "#include <" "string.h" >
+
+.BI "char *strchr(const char *" str ", int " c ");"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The 
+.BR strchr()
+function locates the first occurrence of 
+.IR c
+(converted to a 
+.BR char )
+in the string pointed to by
+.IR str .
+The terminating null byte is considered to be part of the string.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+Upon completion, 
+.BR strchr()
+returns a pointer to the byte, or a null pointer if the byte was not found.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+No errors are defined.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR strrchr(3)

@@ -1,0 +1,67 @@
+.\"
+.\" Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.TH getpgrp 2 "August 2013" "System Calls" "The Nanvix Programmer's Manual"
+.\"
+.\"=============================================================================
+.\"
+.SH NAME
+.\"
+getpgrp \- Gets the process group ID of the calling process.
+.\"
+.\"=============================================================================
+.\"
+.\"
+.SH "SYNOPSIS"
+.\"
+.IR "#include <unistd.h>"
+
+.BI "pid_t getpgrp(void);"
+.\"
+.\"=============================================================================
+.\"
+.SH "DESCRIPTION"
+.\"
+The
+.BR getpgrp()
+system call returns the process group ID of the calling process.
+.\"
+.\"=============================================================================
+.\"
+.SH "RETURN VALUE"
+.\"
+The
+.BR getpgrp()
+system call is always successful and no return value is reserved to indicate an
+error.
+.\"
+.\"=============================================================================
+.\"
+.SH ERRORS
+.\"
+No errors are defined.
+.\"
+.\"=============================================================================
+.\"
+.SH "CONFORMING TO"
+.\"
+POSIX.1-2001
+.\"
+.\"=============================================================================
+.\"
+.SH AUTHOR
+.\"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\"
+.\"=============================================================================
+.\"
+.SH "SEE ALSO"
+.\"
+.BR exec(2) ,
+.BR fork(2) ,
+.BR getpid(2) ,
+.BR getppid(2) ,
+.BR kill(2)
+
