@@ -21,20 +21,11 @@
 .PHONY: init
 
 # Builds everything.
-all: sbin documentation
-
-# Builds superuser utilities.
-sbin: init
-
-# Builds superuser utilities documentation.
-documentation: init-doc
+all: init
 
 # Builds init.
 init:
 	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBDIR)/libc.a
-	
-# Builds init documentation.
-init-doc:
 	
 # Cleans compilations files.
 clean:

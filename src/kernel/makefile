@@ -45,17 +45,6 @@ EXEC = kernel
 # Linker configuration options.
 export LDFLAGS = -Tlink.ld
 
-# Builds everything.
-all: kernel documentation
-
-# Builds the kernel.
-kernel: $(OBJ)
-	$(LD) $(LDFLAGS) $(OBJ)  -o $(BINDIR)/$(EXEC)
-
-# Builds kernel documentation.
-documentation:
-	@cp -f sys/*.2 $(DOCDIR)/man/2
-
 # Builds object file from C source file.
 %.o: %.c
 	$(CC) $< $(CFLAGS) -c -o $@
@@ -63,6 +52,10 @@ documentation:
 # Builds object file from assembly source file.
 %.o: %.S
 	$(CC) $< $(CFLAGS) -c $(ASMFLAGS) -o $@
+
+# Builds Nanvix kernel.
+all: $(OBJ)
+	$(LD) $(LDFLAGS) $(OBJ)  -o $(BINDIR)/$(EXEC)
 
 # Cleans object and executable files.
 clean:

@@ -21,21 +21,11 @@
 .PHONY: libc
 
 # Builds everything.
-all: lib documentation
-
-# Builds libraries
-lib: libc
-
-# Builds documentation.
-documentation: libc-doc
+all: libc
 
 # Builds C library.
 libc:
-	cd libc/ && $(MAKE) libc
-
-# Builds C library documentation.
-libc-doc:
-	cd libc/ && $(MAKE) documentation
+	cd libc/ && $(MAKE) all
 
 # Cleans compilation files.
 clean:
