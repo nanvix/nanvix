@@ -66,11 +66,27 @@
 	 * Converts to address.
 	 */
 	#define ADDR(x) ((addr_t)addr)
+
+	/*
+	 * Flushes the GDT pointed to by gdtptr.
+	 */
+	EXTERN void gdt_flush(struct gdtptr *gdtptr);
 	
-	/* Forward declarations. */
-	EXTERN void processor_drop(void);
-	EXTERN unsigned int_lvl(unsigned irq);
-	EXTERN void processor_raise(unsigned lvl);
+	/*
+	 * Flushes the TSS.
+	 */
+	EXTERN void tss_flush(void);
+	
+	/*
+	 * Flushes the TLB.
+	 */
+	EXTERN void tlb_flush(void);
+	
+	/*
+	 * Flushes the IDT pointed to by idtptr.
+	 */
+	EXTERN void idt_flush(struct idtptr *idtptr);
+	
 
 #endif /* _ASM_FILE_ */
 

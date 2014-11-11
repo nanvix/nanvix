@@ -21,10 +21,12 @@
 *.o
 *.a
 *.img
+*.pdf
 bochsout.txt
 bin/*
 bin/sbin/*
 bin/ubin/*
-doc/html/*
+doc/api/*
+naturaldocs/
 
 # Exceptions.

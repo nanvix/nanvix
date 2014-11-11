@@ -5,8 +5,8 @@
  */
 
 #include <i386/i386.h>
-#include <asm/util.h>
 #include <nanvix/const.h>
+#include <nanvix/hal.h>
 #include <errno.h>
 
 /*
@@ -55,7 +55,7 @@ PUBLIC int set_hwint(int num, void (*handler)(void))
  */
 PUBLIC void do_hwint(unsigned irq)
 {
-	processor_raise(int_lvl(irq));
+	processor_raise(irq_lvl(irq));
 
 	enable_interrupts();
 	hwint_handlers[irq]();

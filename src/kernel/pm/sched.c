@@ -4,12 +4,11 @@
  * sched.c - Process scheduler.
  */
 
-#include <asm/util.h>
-#include <nanvix/const.h>
-#include <nanvix/pm.h>
 #include <nanvix/clock.h>
+#include <nanvix/const.h>
+#include <nanvix/hal.h>
+#include <nanvix/pm.h>
 #include <signal.h>
-#include <nanvix/klib.h>
 
 /*
  * Returns the effective process priority.

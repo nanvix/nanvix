@@ -4,11 +4,10 @@
  * setup.c - Sets up machine
  */
 
-#include <asm/io.h>
-#include <asm/util.h>
 #include <i386/i386.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
+#include <nanvix/hal.h>
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>

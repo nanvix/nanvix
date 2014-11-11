@@ -4,13 +4,12 @@
  * pm.c - Process manager.
  */
 
-#include <asm/util.h>
-#include <i386/i386.h>
 #include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/fs.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>

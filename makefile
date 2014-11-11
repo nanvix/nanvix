@@ -24,6 +24,7 @@ export UBINDIR  = $(BINDIR)/ubin
 export DOCDIR   = $(CURDIR)/doc
 export INCDIR   = $(CURDIR)/include
 export LIBDIR   = $(CURDIR)/lib
+export NDOCSDIR = $(CURDIR)/naturaldocs
 export SRCDIR   = $(CURDIR)/src
 export TOOLSDIR = $(CURDIR)/tools
 
@@ -58,10 +59,12 @@ nanvix:
 
 # Builds documentation.
 documentation:
-	doxygen doxygen.config
+	mkdir -p $(DOCDIR)/api
+	mkdir -p $(NDOCSDIR)
+	naturaldocs -p $(NDOCSDIR) -i include/ -o HTML doc/api -s main hacks
 
 # Cleans compilation files.
 clean:
 	@rm -f nanvix.img
-	@rm -rf $(DOCDIR)/html
+	@rm -rf $(DOCDIR)/api
 	cd $(SRCDIR) && $(MAKE) clean

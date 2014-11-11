@@ -4,9 +4,9 @@
  * dev/tty/console.c - Console device driver
  */
 
-#include <asm/io.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
+#include <nanvix/hal.h>
 #include <sys/types.h>
 #include <stdint.h>
 #include "tty.h"

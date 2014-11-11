@@ -4,9 +4,9 @@
  * sys/execve.c - execve() system call implementation.
  */
 
-#include <asm/util.h>
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>

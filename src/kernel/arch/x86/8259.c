@@ -17,9 +17,9 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <asm/io.h>
 #include <i386/8259.h>
 #include <nanvix/const.h>
+#include <nanvix/hal.h>
 #include <stdint.h>
 
 /**

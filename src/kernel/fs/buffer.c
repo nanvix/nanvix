@@ -19,10 +19,10 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <asm/util.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/fs.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>

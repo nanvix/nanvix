@@ -4,9 +4,9 @@
  * dev/tty/keyboard.c - Keyboard device driver.
  */
  
-#include <asm/io.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
+#include <nanvix/hal.h>
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <signal.h>

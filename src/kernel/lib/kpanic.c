@@ -4,8 +4,8 @@
  * kpanic.c - Kernel panic
  */
 
-#include <asm/util.h>
 #include <nanvix/const.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 
 /*

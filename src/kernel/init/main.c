@@ -4,9 +4,9 @@
  * main.c - Kernel main
  */
 
-#include <asm/util.h>
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/dev.h>
 #include <nanvix/pm.h>

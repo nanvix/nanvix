@@ -19,46 +19,33 @@
 
 #include <i386/8259.h>
 #include <nanvix/const.h>
-
-/* Interrupt priority levels. */
-#define INT_LVL_CLOCK 0
-#define INT_LVL_DISK 1
-#define INT_LVL_NETWORK 2
-#define INT_LVL_TERMINAL 3
-#define INT_LVL_COPROC 4
-#define INT_LVL_LOWEST 5
+#include <nanvix/hal.h>
 
 /**
  * @brief Interrupt priority levels.
  */
 PRIVATE const unsigned int_lvls[16] = {
-	INT_LVL_CLOCK,    /* Programmable interrupt timer.         */
-	INT_LVL_TERMINAL, /* Keyboard.                             */
-	INT_LVL_TERMINAL, /* COM2.                                 */
-	INT_LVL_TERMINAL, /* COM1.                                 */
-	INT_LVL_TERMINAL, /* LPT2.                                 */
-	INT_LVL_DISK,     /* Floppy disk.                          */
-	INT_LVL_TERMINAL, /* LPT1.                                 */
-	INT_LVL_CLOCK,    /* CMOS real-time clock.                 */
-	INT_LVL_NETWORK,  /* Legacy SCSI or NIC.                   */
-	INT_LVL_NETWORK,  /* Legacy SCSI or NIC.                   */
-	INT_LVL_NETWORK,  /* Legacy SCSI or NIC.                   */
-	INT_LVL_TERMINAL, /* PS2 mouse.                            */
-	INT_LVL_COPROC,   /* FPU, co-processor or inter-processor. */
-	INT_LVL_DISK,     /* Primary ATA hard disk.                */
-	INT_LVL_DISK      /* Secondary ATA hard disk.              */
+	INT_LVL_0, /* Programmable interrupt timer.         */
+	INT_LVL_3, /* Keyboard.                             */
+	INT_LVL_3, /* COM2.                                 */
+	INT_LVL_3, /* COM1.                                 */
+	INT_LVL_3, /* LPT2.                                 */
+	INT_LVL_1, /* Floppy disk.                          */
+	INT_LVL_3, /* LPT1.                                 */
+	INT_LVL_0, /* CMOS real-time clock.                 */
+	INT_LVL_2, /* Legacy SCSI or NIC.                   */
+	INT_LVL_2, /* Legacy SCSI or NIC.                   */
+	INT_LVL_2, /* Legacy SCSI or NIC.                   */
+	INT_LVL_3, /* PS2 mouse.                            */
+	INT_LVL_4, /* FPU, co-processor or inter-processor. */
+	INT_LVL_1, /* Primary ATA hard disk.                */
+	INT_LVL_1  /* Secondary ATA hard disk.              */
 };
 
-/**
- * @brief Returns the interrupt priority level of an IRQ.
- *
- * @details Returns the interrupt level that is associated to an IRQ.
- *
- * @param irq IRQ to be queried.
- *
- * @returns The interrupt priority level that is associated to the IRQ.
+/*
+ * Returns the interrupt priority level that is associated to an IRQ.
  */
-PUBLIC unsigned int_lvl(unsigned irq)
+PUBLIC unsigned irq_lvl(unsigned irq)
 {
 	return (int_lvls[irq]);
 }
@@ -78,13 +65,8 @@ PRIVATE const uint16_t int_masks[6] = {
 PRIVATE unsigned stack_lvl[6] = { 5, 5, 5, 5, 5, 5 };
 PRIVATE unsigned stack_ptr = 0;
 
-/**
- * @brief Raises processor execution level
- *
- * @details Raises processor execution level to mask all interrupts that have a
- * priority level bellow or equal to the given threshold.
- *
- * @param lvl Level to raise processor.
+/*
+ * Raises processor execution level.
  */
 PUBLIC void processor_raise(unsigned lvl)
 {
@@ -93,13 +75,8 @@ PUBLIC void processor_raise(unsigned lvl)
 	pic_mask(int_masks[lvl]);
 }
 
-/**
- * @brief Raises processor execution level
- *
- * @details Raises processor execution level to mask all interrupts that have a
- * priority level bellow or equal to the given threshold.
- *
- * @param lvl Level to raise processor.
+/*
+ * Drops processor execution level.
  */
 PUBLIC void processor_drop(void)
 {

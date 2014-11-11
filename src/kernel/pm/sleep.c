@@ -4,8 +4,8 @@
  * ipc.c - Inter-process communication
  */
 
-#include <asm/util.h>
 #include <nanvix/const.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
 

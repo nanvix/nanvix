@@ -17,13 +17,11 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <asm/io.h>
-#include <asm/util.h>
 #include <drivers/ata.h>
-#include <i386/i386.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/fs.h>
+#include <nanvix/hal.h>
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
