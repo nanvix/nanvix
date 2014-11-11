@@ -50,6 +50,7 @@
 .globl hwint14
 .globl hwint15
 .globl leave
+.globl do_hwint
 
 /*----------------------------------------------------------------------------*
  *                                  save()                                    *
@@ -265,8 +266,10 @@ syscall:
 		enter
 		movb $0x20, %al
 		outb %al, $PIC_CTRL_MASTER /* Send reset signal to master. */
-		movl $\num, %eax
-		jmp hwint
+		pushl $(\num)
+		call do_hwint
+		addl $4, %esp
+		jmp leave
 .endm
 
 /*
@@ -278,9 +281,11 @@ syscall:
 		enter
 		movb $0x20, %al
 		outb %al, $PIC_CTRL_MASTER /* Send reset signal to master. */
-		outb %al, $PIC_CTRL_SLAVE  /* Send reset signal to slave. */
-		movl $(\num), %eax
-		jmp hwint
+		outb %al, $PIC_CTRL_SLAVE  /* Send reset signal to slave.  */
+		pushl $(\num)
+		call do_hwint
+		addl $4, %esp
+		jmp leave
 .endm
 
 /* Hardware interrupt hooks. */
@@ -300,15 +305,3 @@ hwint_slave 12
 hwint_slave 13
 hwint_slave 14
 hwint_slave 15
-
-/*
- * Hardware interrupt handler dispatcher.
- */
-hwint:
-	shl $2, %eax
-	addl $hwint_handlers, %eax
-	movl (%eax), %eax
-
-	call *%eax
-	
-	jmp leave

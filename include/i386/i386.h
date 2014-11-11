@@ -11,7 +11,7 @@
 	#include <i386/idt.h>
 	#include <i386/int.h>
 	#include <i386/paging.h>
-	#include <i386/pic.h>
+	#include <i386/8259.h>
 	#include <i386/pit.h>
 	#include <i386/tss.h>
 	#include <stdint.h>
@@ -66,6 +66,11 @@
 	 * Converts to address.
 	 */
 	#define ADDR(x) ((addr_t)addr)
+	
+	/* Forward declarations. */
+	EXTERN void processor_drop(void);
+	EXTERN unsigned int_lvl(unsigned irq);
+	EXTERN void processor_raise(unsigned lvl);
 
 #endif /* _ASM_FILE_ */
 
