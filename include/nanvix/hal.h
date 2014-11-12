@@ -10,13 +10,26 @@
  * 
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
- 
+
+/*
+ * File: nanvix/hal.h
+ * 
+ * Hardware Abstraction Layer
+ * 
+ * Description:
+ * 
+ *     The Hardware Abstraction Layer (HAL) provides an abstraction of the 
+ *     underlying hardware, presenting a uniform interface to the remainder
+ *     portions of the operating system. Thereby, it may operate different
+ *     hardware in a transparent way.
+ */
+
 #ifndef HAL_H_
 #define HAL_H_
 	

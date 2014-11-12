@@ -17,17 +17,17 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <i386/8259.h>
+#include <i386/i386.h>
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <stdint.h>
 
-/**
- * @brief Sets interrupt mask.
- *
- * @details Sets interrupt, preventing masked IRQs to be fired.
- *
- * @param mask Interrupt mask.
+/*============================================================================*
+ *                               pic_mask()                                   *
+ *============================================================================*/
+ 
+/*
+ * Sets interrupt mask.
  */
 PUBLIC void pic_mask(uint16_t mask)
 {
@@ -35,21 +35,46 @@ PUBLIC void pic_mask(uint16_t mask)
 	outputb(PIC_DATA_SLAVE, mask >> 8);
 }
 
-/**
- * @brief Sets up interrupts.
- *
- * @details Sets up interrupts by remapping PIC interrupts.
+/*============================================================================*
+ *                               pic_setup()                                  *
+ *============================================================================*/
+
+/*
+ * Setups the programmable interrupt controller
  */
-PUBLIC void pic_remap(void)
+PUBLIC void pic_setup(uint8_t offset1, uint8_t offset2)
 {
+	/*
+	 * Starts initialization sequence
+	 * in cascade mode.
+	 */
 	outputb(PIC_CTRL_MASTER, 0x11);
+	iowait();
 	outputb(PIC_CTRL_SLAVE, 0x11);
-	outputb(PIC_DATA_MASTER, 0x20);
-	outputb(PIC_DATA_SLAVE, 0x28);
+	iowait();
+	
+	/* Send new vector offset. */
+	outputb(PIC_DATA_MASTER, offset1);
+	iowait();
+	outputb(PIC_DATA_SLAVE, offset2);
+	iowait();
+	
+	/*
+	 * Tell the master that there is a slave
+	 * PIC hired up at IRQ line 2 and tell
+	 * the slave PIC that it is the second PIC. 
+	 */
 	outputb(PIC_DATA_MASTER, 0x04);
+	iowait();
 	outputb(PIC_DATA_SLAVE, 0x02);
+	iowait();
+	
+	/* Set 8086 mode. */
 	outputb(PIC_DATA_MASTER, 0x01);
+	iowait();
 	outputb(PIC_DATA_SLAVE, 0x01);
-	outputb(PIC_DATA_MASTER, 0x00);
-	outputb(PIC_DATA_SLAVE, 0x00);
+	iowait();
+	
+	/* Clears interrupt mask. */
+	pic_mask(0x0000);
 }

@@ -17,12 +17,17 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <i386/8259.h>
+#include <i386/i386.h>
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
+#include <stdint.h>
 
-/**
- * @brief Interrupt priority levels.
+/*============================================================================*
+ *                               irq_lvl()                                    *
+ *============================================================================*/
+
+/*
+ * Interrupt priority levels.
  */
 PRIVATE const unsigned int_lvls[16] = {
 	INT_LVL_0, /* Programmable interrupt timer.         */
@@ -50,27 +55,40 @@ PUBLIC unsigned irq_lvl(unsigned irq)
 	return (int_lvls[irq]);
 }
 
-/**
- * @brief Interrupt masks table.
+/*============================================================================*
+ *                              processor_*()                                 *
+ *============================================================================*/
+
+/*
+ * Interrupt masks table.
  */
 PRIVATE const uint16_t int_masks[6] = {
-	0xfffb, /* Clock priority level.        */
-	0xfefa, /* Disk priority level.         */
-	0x3eba, /* Network priority level.      */
-	0x30ba, /* Terminal priority level.     */
-	0x2000, /* Co-processor priority level. */
-	0x0000  /* Lowest priority level.       */
+	0xfffb, /* Level 0: all hardware interrupts disabled. */
+	0xfefa, /* Level 1: clock interrupts enabled.         */
+	0x3eba, /* Level 2: disk interrupts enabled.          */
+	0x30ba, /* Level 3: network interrupts enabled        */
+	0x2000, /* Level 4: terminal interrupts enabled.      */
+	0x0000  /* Level 5: all hardware interrupts enabled.  */
 };
 
-PRIVATE unsigned stack_lvl[6] = { 5, 5, 5, 5, 5, 5 };
-PRIVATE unsigned stack_ptr = 0;
+/*
+ * Interrupt stack level.
+ */
+PRIVATE struct
+{
+	unsigned data[6]; /* Data.          */
+	unsigned ptr;     /* Stack pointer. */
+} stack = {
+	{ 5, 5, 5, 5, 5, 5 },
+	0
+};
 
 /*
  * Raises processor execution level.
  */
 PUBLIC void processor_raise(unsigned lvl)
 {
-	stack_lvl[++stack_ptr] = lvl;
+	stack.data[++stack.ptr] = lvl;
 
 	pic_mask(int_masks[lvl]);
 }
@@ -82,7 +100,7 @@ PUBLIC void processor_drop(void)
 {
 	unsigned lvl;
 
-	lvl = stack_lvl[--stack_ptr];
+	lvl = stack.data[--stack.ptr];
 
 	pic_mask(int_masks[lvl]);
 }

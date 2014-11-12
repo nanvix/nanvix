@@ -125,18 +125,9 @@ PRIVATE void idt_setup(void)
 	kmemset(idt, 0, sizeof(idt));
 	kmemset(&idtptr, 0, IDTPTR_SIZE);
      
-    /* Program PIC. */
-    outputb(PIC_CTRL_MASTER, 0x11); 
-    outputb(PIC_CTRL_SLAVE,  0x11);
-    outputb(PIC_DATA_MASTER, 0x20);
-    outputb(PIC_DATA_SLAVE,  0x28);
-    outputb(PIC_DATA_MASTER, 0x04);
-    outputb(PIC_DATA_SLAVE,  0x02);
-    outputb(PIC_DATA_MASTER, 0x01);
-    outputb(PIC_DATA_SLAVE,  0x01);
-    outputb(PIC_DATA_MASTER, 0x00);
-    outputb(PIC_DATA_SLAVE,  0x00);
-
+    /* Re-initialize PIC. */
+    pic_setup(0x20, 0x28);
+    
     /* Set software interrupts. */
     set_idte(0, (unsigned)swint0, KERNEL_CS, 0x8, IDT_INT32);
     set_idte(1, (unsigned)swint1, KERNEL_CS, 0x8, IDT_INT32);
