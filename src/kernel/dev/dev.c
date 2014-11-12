@@ -207,18 +207,25 @@ PUBLIC void bdev_writeblk(struct buffer *buf)
 	if (bdevsw[MAJOR(buf->dev)]->writeblk == NULL)
 		kpanic("block device cannot write blocks");
 	
-	/* Write only dirty buffers. */
-	if (buf->flags & BUFFER_DIRTY)
+	/*
+	 * We don't have to write back the buffer
+	 * to disk, so we just release it and we are done.
+	 */
+	if (!(buf->flags & BUFFER_DIRTY))
 	{
-		err = bdevsw[MAJOR(buf->dev)]->writeblk(MINOR(buf->dev), buf);
-		
-		if (err)
-			kpanic("failed to write block to device");
-		
-		buf->flags &= ~BUFFER_DIRTY;
+		brelse(buf);
+		return;
 	}
+		
+	/*
+	 * Write buffer to disk. The low-level I/O function shall
+	 * clean the BUFFER_DIRTY flag and release the buffer.
+	 */
+	err = bdevsw[MAJOR(buf->dev)]->writeblk(MINOR(buf->dev), buf);
 	
-	brelse(buf);
+	/* Failed to write. */
+	if (err)
+		kpanic("failed to write block to device");
 }
 
 /*

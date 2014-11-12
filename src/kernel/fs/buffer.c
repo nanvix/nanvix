@@ -388,7 +388,8 @@ PUBLIC void binit(void)
 		buffers[i].num = 0;
 		buffers[i].data = ptr;
 		buffers[i].count = 0;
-		buffers[i].flags = ~(BUFFER_VALID | BUFFER_LOCKED | BUFFER_DIRTY);
+		buffers[i].flags = 
+			~(BUFFER_VALID | BUFFER_BUSY | BUFFER_LOCKED | BUFFER_DIRTY);
 		buffers[i].chain = NULL;
 		buffers[i].free_next = 
 			(i + 1 == NR_BUFFERS) ? &free_buffers : &buffers[i + 1];

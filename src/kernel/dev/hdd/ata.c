@@ -378,6 +378,9 @@ PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
 	outputb(pio_ports[bus][ATA_REG_CMD], ATA_CMD_FLUSH_CACHE_EXT);
 	ata_bus_wait(bus);
 	iowait();
+	
+	buf->flags &= ~(BUFFER_DIRTY | BUFFER_BUSY);
+	brelse(buf);
 }
 
 /**
@@ -407,6 +410,13 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 	
 		sleep_full(dev);
 		
+		/*
+		 * Mark buffer as busy.
+		 * When the read/write operation completes
+		 * this flag will be cleared.
+		 */
+		buf->flags |= BUFFER_BUSY;
+		
 		/* Insert block on the queue. */
 		dev->queue.blocks[dev->queue.tail].buf = buf;
 		dev->queue.blocks[dev->queue.tail].write = write;
@@ -426,8 +436,6 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 			else
 				ata_read_op(atadevid, addr);
 		}
-	
-	sleep(&dev->chain, PRIO_IO);
 	
 	enable_interrupts();
 }
@@ -455,6 +463,15 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 		return (-EINVAL);
 	
 	ata_sched(minor, buf, 0);
+
+	/*
+	 * Check if the read operation has already
+	 * completed. If not, we need to sleep.
+	 */
+	disable_interrupts();
+	if (buf->flags & BUFFER_BUSY)
+		sleep(&dev->chain, PRIO_IO);
+	enable_interrupts();
 	
 	return (0);
 }
@@ -563,7 +580,7 @@ PRIVATE void ata_handler(int atadevid)
 	if (dev->flags & ATADEV_DISCARD)
 	{
 		dev->flags &= ~ATADEV_DISCARD;
-		goto out;
+		return;
 	}
 	
 	/* Broken block operation queue. */
@@ -616,6 +633,9 @@ PRIVATE void ata_handler(int atadevid)
 	}
 
 out:
+
+	buf->flags &= ~BUFFER_BUSY;
+
 	/*
 	 * Wakeup the process that was waiting for this
 	 * operation and the processes that were waiting

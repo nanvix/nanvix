@@ -27,9 +27,10 @@
 	#define BLOCK_SIZE 1024
 	
 	/* Buffer flags. */
-	#define BUFFER_DIRTY  1 /* Dirty?  */
-	#define BUFFER_VALID  2 /* Valid?  */
-	#define BUFFER_LOCKED 4 /* Locked? */
+	#define BUFFER_DIRTY  (1 << 0) /* Dirty?  */
+	#define BUFFER_VALID  (1 << 1) /* Valid?  */
+	#define BUFFER_BUSY   (1 << 2) /* Busy?   */
+	#define BUFFER_LOCKED (1 << 3) /* Locked? */
 
 	/* Used for block number. */
 	typedef uint16_t block_t;
