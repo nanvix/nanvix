@@ -161,6 +161,18 @@
 	 *     <Interrupt Priority Levels>
 	 */
 	EXTERN void processor_raise(unsigned lvl);
+	
+	/*
+	 * Function: setup
+	 * 
+	 * Sets up machine.
+	 * 
+	 * Description:
+	 * 
+	 *     The <setup> function sets up platform-specific structures, so as the
+	 *     system can correctly operates.
+	 */
+	EXTERN void setup(void);
 
 	/*
 	 * Function: switch_to

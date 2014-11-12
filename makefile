@@ -61,7 +61,7 @@ nanvix:
 documentation:
 	mkdir -p $(DOCDIR)/api
 	mkdir -p $(NDOCSDIR)
-	naturaldocs -p $(NDOCSDIR) -i include/ -o HTML doc/api -s main hacks
+	naturaldocs -r -p $(NDOCSDIR) -i include/ -o HTML doc/api -s main hacks
 
 # Cleans compilation files.
 clean:

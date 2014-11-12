@@ -17,24 +17,32 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Target processor.
+PROCESSOR = i386
+
+# Target platform.
+ARCH = x86
+
 # C source files.
-C_SRC = $(wildcard arch/x86/*.c)    \
-        $(wildcard boot/*.c)        \
-        $(wildcard core/*.c)        \
-        $(wildcard dev/*.c)         \
-        $(wildcard dev/hdd/*.c)     \
-        $(wildcard dev/ramdisk/*.c) \
-        $(wildcard dev/tty/*.c)     \
-        $(wildcard fs/*.c)          \
-        $(wildcard init/*.c)        \
-        $(wildcard lib/*.c)         \
-        $(wildcard mm/*.c)          \
-        $(wildcard pm/*.c)          \
-        $(wildcard sys/*.c)         \
+C_SRC = $(wildcard arch/$(ARCH)/*.c) \
+        $(wildcard core/*.c)         \
+        $(wildcard dev/*.c)          \
+        $(wildcard dev/hdd/*.c)      \
+        $(wildcard dev/ramdisk/*.c)  \
+        $(wildcard dev/tty/*.c)      \
+        $(wildcard fs/*.c)           \
+        $(wildcard init/*.c)         \
+        $(wildcard lib/*.c)          \
+        $(wildcard mm/*.c)           \
+        $(wildcard pm/*.c)           \
+        $(wildcard sys/*.c)          \
 
 # Assembly source files.
-ASM_SRC = $(wildcard boot/*.S) \
-          $(wildcard core/*.S) \
+ASM_SRC = $(wildcard arch/$(ARCH)/*.S) \
+          $(wildcard core/*.S)         \
+
+# Link script source file.
+LD_SRC = link.c
 
 # Object files.
 OBJ = $(ASM_SRC:.S=.o) \
@@ -44,7 +52,7 @@ OBJ = $(ASM_SRC:.S=.o) \
 EXEC = kernel
 
 # Linker configuration options.
-export LDFLAGS = -Tlink.ld
+export LDFLAGS = -T arch/$(ARCH)/link.ld
 
 # Builds object file from C source file.
 %.o: %.c
@@ -56,7 +64,7 @@ export LDFLAGS = -Tlink.ld
 
 # Builds Nanvix kernel.
 all: $(OBJ)
-	$(LD) $(LDFLAGS) $(OBJ)  -o $(BINDIR)/$(EXEC)
+	$(LD) $(LDFLAGS) $(OBJ) -o $(BINDIR)/$(EXEC)
 
 # Cleans object and executable files.
 clean:

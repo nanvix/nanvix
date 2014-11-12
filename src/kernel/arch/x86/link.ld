@@ -16,7 +16,7 @@ SECTIONS
 	/* Bootstrap section. */
 	.bootstrap :
 	{
-		boot/boot.o *(.bootstrap)
+		arch/x86/boot.o *(.bootstrap)
 	}
 	
 	. += 0xc0000000;
