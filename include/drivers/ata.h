@@ -36,18 +36,34 @@
 	#define ATA_BUS_SECONDARY 1 /* Secondary bus. */
 	
 	/* ATA controller registers. */
-	#define ATA_REG_DATA    0 /* Data register.             */
-	#define ATA_REG_ERR     1 /* Error register.            */
-	#define ATA_REG_FEATURE 1 /* Features register.         */
-	#define ATA_REG_NSECT   2 /* Sector count register.     */
-	#define ATA_REG_LBAL    3 /* LBA low register.          */
-	#define ATA_REG_LBAM    4 /* LBA middle register.       */
-	#define ATA_REG_LBAH    5 /* LBA high register.         */
-	#define ATA_REG_DEVICE  6 /* Device register.           */
-	#define ATA_REG_DEVCTL  6 /* Device control register.   */
-	#define ATA_REG_CMD     7 /* Command register.          */
-	#define ATA_REG_STATUS  7 /* Status register.           */
-	#define ATA_REG_ASTATUS 8 /* Alternate status register. */
+	/*
+	 * Constants: ATA controller registers
+	 * 
+	 *     ATA_REG_DATA    - Data register.
+	 *     ATA_REG_ERR     - Error register.
+	 *     ATA_REG_FEATURE - Features register.
+	 *     ATA_REG_NSECT   - Sector count register.
+	 *     ATA_REG_LBAL    - LBA low register.
+	 *     ATA_REG_LBAM    - LBA middle register.
+	 *     ATA_REG_LBAH    - LBA high register.
+	 *     ATA_REG_DEVICE  - Device register.
+	 *     ATA_REG_DEVCTL  - Device control register.
+	 *     ATA_REG_CMD     - Command register.
+	 *     ATA_REG_STATUS  - Status register.
+	 *     ATA_REG_ASTATUS - Alternate status register.
+	 */
+	#define ATA_REG_DATA    0
+	#define ATA_REG_ERR     1
+	#define ATA_REG_FEATURE 1
+	#define ATA_REG_NSECT   2
+	#define ATA_REG_LBAL    3
+	#define ATA_REG_LBAM    4
+	#define ATA_REG_LBAH    5
+	#define ATA_REG_DEVICE  6
+	#define ATA_REG_DEVCTL  6
+	#define ATA_REG_CMD     7
+	#define ATA_REG_STATUS  7
+	#define ATA_REG_ASTATUS 8
 	
 	/* ATA status register. */
 	#define ATA_ERR   (1 << 0) /* Device error. */
@@ -56,15 +72,26 @@
 	#define ATA_READY (1 << 6) /* Device ready. */
 	#define ATA_BUSY  (1 << 7) /* Device busy.  */
 
-	/* ATA commands. */
+	/*
+	 * Constants: ATA device commands
+	 * 
+	 *     ATA_CMD_RESET             - Reset.
+	 *     ATA_CMD_IDENTIFY          - Identify.
+	 *     ATA_CMD_READ_SECTORS      - Read sectors using LBA 28-bit.
+	 *     ATA_CMD_READ_SECTORS_EXT  - Read sectors using LBA 48-bit.
+	 *     ATA_CMD_WRITE_SECTORS     - Write sectors using LBA 28-bit.
+	 *     ATA_CMD_WRITE_SECTORS_EXT - Write sectors using LBA 48-bit.
+	 *     ATA_CMD_FLUSH_CACHE       - Flush cache using LBA 28-bit.
+	 *     ATA_CMD_FLUSH_CACHE_EXT   - Flush cache using LBA 48-bit. 
+	 */
 	#define ATA_CMD_RESET				0x08
-	#define ATA_CMD_IDENTIFY			0xEC /* Identify device. */
+	#define ATA_CMD_IDENTIFY			0xec
 	#define ATA_CMD_READ_SECTORS		0x20
 	#define ATA_CMD_READ_SECTORS_EXT	0x24
 	#define ATA_CMD_WRITE_SECTORS		0x30
 	#define ATA_CMD_WRITE_SECTORS_EXT	0x34
-	#define ATA_CMD_FLUSH_CACHE			0xE7
-	#define ATA_CMD_FLUSH_CACHE_EXT		0xEA
+	#define ATA_CMD_FLUSH_CACHE			0xe7
+	#define ATA_CMD_FLUSH_CACHE_EXT		0xeA
 	
 	/* ATA device information. */
 	#define ATA_INFO_WORDS                 256
@@ -143,35 +170,65 @@
 	#define ata_info_supports_dma(info) \
 		((info)[ATA_INFO_CAPABILITY_1] & (1 << 8))
 	
-	/**
-	 * @brief Returns the bus number of a ATA drive.
+	/*
+	 * Macro: ATA_BUS
+	 * 
+	 * Returns the bus number of a ATA drive.
 	 */
 	#define ATA_BUS(x) \
 		(((x) < 2) ? ATA_BUS_PRIMARY : ATA_BUS_SECONDARY)
 	
-	/* ATA device types. */
-	#define ATADEV_NULL    0 /* Null.                          */
-	#define ATADEV_UNKNOWN 1 /* Unknown.                       */
-	#define ATADEV_PATAPI  2 /* Parallel ATA Packet Interface. */
-	#define ATADEV_SATAPI  3 /* Serial ATA Packet Interface.   */
-	#define ATADEV_PATA    4 /* Parallel ATA.                  */
-	#define ATADEV_SATA    5 /* Serial ATA.                    */
+	/*
+	 * Constants: ATA device types
+	 * 
+	 *     ATADEV_NULL    - Null device.
+	 *     ATADEV_UNKNOWN - Unknown device.
+	 *     ATADEV_PATAPI  - Parallel ATA Packet Interface.
+	 *     ATADEV_SATAPI  - Serial ATA Packet Interface.
+	 *     ATADEV_PATA    - Parallel ATA.
+	 *     ATADEV_SATA    - Serial ATA.
+	 */
+	#define ATADEV_NULL    0
+	#define ATADEV_UNKNOWN 1
+	#define ATADEV_PATAPI  2
+	#define ATADEV_SATAPI  3
+	#define ATADEV_PATA    4
+	#define ATADEV_SATA    5
 	
-	
-	/* ATA device flags. */
-	#define ATADEV_PRESENT (1 << 0) /* Present.     */
-	#define ATADEV_LBA     (1 << 1) /* LBA support. */
-	#define ATADEV_DMA     (1 << 2) /* DMA support. */
+	/*
+	 * Constants: ATA device flags
+	 * 
+	 *     ATADEV_PRESENT - Device present?
+	 *     ATADEV_LBA     - Is LBA supported?
+	 *     ATADEV_DMA     - Is DMA supported?
+	 */
+	#define ATADEV_PRESENT (1 << 0)
+	#define ATADEV_LBA     (1 << 1)
+	#define ATADEV_DMA     (1 << 2)
 
-	/**
-	 * @brief ATA device information.
+	/*
+	 * Structure: ata_info
+	 *
+	 * ATA device information.
+	 *
+	 * Description:
+	 *
+	 *     The <ata_info> structure holds general information about a ATA
+	 *     device.
+	 *	
+	 * Variables:
+	 * 
+	 *     flags    - ATA device flags see <ATA device flags>.
+	 *     nsectors - Number of sectors.
+	 *     type     - Device type see <ATA device types>.
+	 *     rawinfo  - Raw, non parsed information.
 	 */
 	struct ata_info
 	{
-		int flags;                        /* Flags (see above).       */
-		unsigned nsectors;                /* Number of sectors.       */
-		int type;                         /* Device type (see above). */
-		uint16_t rawinfo[ATA_INFO_WORDS]; /* Raw information.         */
+		unsigned flags;
+		unsigned nsectors;
+		unsigned type;
+		uint16_t rawinfo[ATA_INFO_WORDS];
 	};
 
 #endif /* ATA_H_ */
