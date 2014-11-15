@@ -7,6 +7,7 @@
 #include <nanvix/const.h>
 #include <nanvix/pm.h>
 #include <signal.h>
+#include "pm.h"
 
 /*
  * Asserts if a process is ignoring a signal.
@@ -22,7 +23,7 @@
 	((p->handlers[sig] != SIG_DFL) && (p->handlers[sig] != SIG_IGN)) \
 
 /* Default signal handlers. */
-PUBLIC const sighandler_t sigdfl[NR_SIGNALS] = {
+PRIVATE const sighandler_t sigdfl[NR_SIGNALS] = {
 	NULL,                     /* SIGNULL */ (sighandler_t)&terminate, /* SIGKILL */ 
 	(sighandler_t)&stop,      /* SIGSTOP */ SIG_IGN,                  /* SIGURG  */
 	(sighandler_t)&abort,     /* SIGABRT */ (sighandler_t)&abort,     /* SIGBUS  */
@@ -89,7 +90,7 @@ PUBLIC void sndsig(struct process *proc, int sig)
 }
 
 /*
- * Checks there is a pending signal and returns it.
+ * Checks if the current process has a pending signal.
  */
 PUBLIC int issig(void)
 {

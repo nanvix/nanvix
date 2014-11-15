@@ -31,10 +31,10 @@ PUBLIC struct process *curr_proc = IDLE;
 PUBLIC pid_t next_pid = 0;
 
 /* Current number of process in the system. */
-PUBLIC int nprocs = 0;
+PUBLIC unsigned nprocs = 0;
 
 /*
- * Initializes the process manager.
+ * Initializes the process management system.
  */
 PUBLIC void pm_init(void)
 {	

@@ -44,6 +44,8 @@
 	/*
 	 * Constants: Interrupt Priority Levels
 	 * 
+	 * Interrupt priority levels.
+	 * 
 	 * INT_LVL_0 - Level 0: all hardware interrupts disabled.
 	 * INT_LVL_1 - Level 1: clock interrupts enabled.
 	 * INT_LVL_2 - Level 2: disk interrupts enabled.
@@ -68,7 +70,7 @@
 	 *     The <disable_interrupts> function disables all hardware interrupts
 	 *     by effectively clearing the CPU interrupt flag.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <enable_interrupts>
 	 */
@@ -84,7 +86,7 @@
 	 *     The <enable_interrupts> function enables all hardware interrupts
 	 *     by effectively setting the CPU interrupt flag.
 	 * 
-	 * See also:
+	 * See Also:
 	 *     <disable_interrupts>
 	 */
 	EXTERN void enable_interrupts(void);
@@ -99,7 +101,7 @@
 	 *     The <halt> function halts the processor by first disabling all
 	 *     hardware interrupts and then entering in a tight and infinite loop.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <disable_interrupts>
 	 */
@@ -124,7 +126,7 @@
 	 *     The interrupt level that is associated to the requested IRQ is 
 	 *     returned.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <processor_drop>, <processor_raise>
 	 */
@@ -144,7 +146,7 @@
 	 * 
 	 *     - This function must be called in an interrupt-safe environment.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <enable_interrupts>, <disable_interrupts>
 	 */
@@ -168,7 +170,7 @@
 	 * 
 	 *     - This function must be called in an interrupt-safe environment.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <enable_interrupts>, <disable_interrupts>,
 	 *     <Interrupt Priority Levels>
@@ -207,7 +209,7 @@
 	 * 
 	 *     - This function must be called in a interrupt-safe environment.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <user_mode>, <Processor Functions>
 	 */
@@ -229,7 +231,7 @@
 	 *     jumping to the address _entry_ and setting the stack pointer to
 	 *     _sp_.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <switch_to>
 	 */
@@ -256,7 +258,7 @@
 	 * 
 	 *     The byte read is returned.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <iowait>, <outputb>
 	 */
@@ -279,7 +281,7 @@
 	 * 
 	 *     The word read is returned.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <iowait>, <outputw>
 	 */
@@ -312,7 +314,7 @@
 	 * 
 	 *     The <outputb> function writes the byte _byte_ to the I/O port _port_.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <iowait>, <inputb>
 	 */
@@ -332,7 +334,7 @@
 	 * 
 	 *     The <outputw> function writes the word _word_ to the I/O port _port_.
 	 * 
-	 * See also:
+	 * See Also:
 	 * 
 	 *     <iowait>, <inputw>
 	 */

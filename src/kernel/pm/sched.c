@@ -17,9 +17,9 @@
 	(p->priority + p->nice - p->counter) \
 
 /*
- * Handles a signal by stoping the process
+ * Stops the current running process.
  */
-PUBLIC void stop()
+PUBLIC void stop(void)
 {
 	curr_proc->state = PROC_STOPPED;
 	
@@ -27,7 +27,7 @@ PUBLIC void stop()
 }
 
 /*
- * Handles a signal by continuing the process.
+ * Resumes a process.
  */
 PUBLIC void resume(struct process *proc)
 {	
@@ -37,7 +37,7 @@ PUBLIC void resume(struct process *proc)
 }
 
 /*
- * Shedules the execution of a process.
+ * Schedules a process to execution.
  */
 PUBLIC void sched(struct process *proc)
 {

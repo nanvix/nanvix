@@ -9,9 +9,10 @@
 #include <nanvix/pm.h>
 #include <nanvix/paging.h>
 #include <signal.h>
+#include "pm.h"
 
 /*
- * 
+ * Kills the current running process.
  */
 PUBLIC void die(int status)
 {
@@ -67,7 +68,7 @@ PUBLIC void die(int status)
 }
 
 /*
- * Terminates a process.
+ * Terminates the current running process.
  */
 PUBLIC void terminate(int sig)
 {
@@ -75,7 +76,7 @@ PUBLIC void terminate(int sig)
 }
 
 /*
- * Aborts the execution of a process.
+ * Aborts the current running process.
  */
 PUBLIC void abort(int sig)
 {

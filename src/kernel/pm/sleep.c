@@ -15,7 +15,7 @@
 PRIVATE struct process **idle_queue = NULL;
 
 /*
- * Puts a process to sleep in a sleeping chain.
+ * Puts the current process to sleep in a chain.
  */
 PUBLIC void sleep(struct process **chain, int priority)
 {	
@@ -53,7 +53,7 @@ PUBLIC void sleep(struct process **chain, int priority)
 }
 	
 /*
- * Wakes up all process that are sleeping in a chain.
+ * Wakes up all processes that are sleeping in a chain.
  */
 PUBLIC void wakeup(struct process **chain)
 {	
