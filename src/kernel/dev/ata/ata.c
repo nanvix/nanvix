@@ -30,6 +30,89 @@
 /* ATA sector size (in bytes). */
 #define ATA_SECTOR_SIZE 512
 
+/* ATA controller registers. */
+#define ATA_REG_DATA    0 /* Data register.             */
+#define ATA_REG_ERR     1 /* Error register.            */
+#define ATA_REG_FEATURE 1 /* Features register.         */
+#define ATA_REG_NSECT   2 /* Sector count register.     */
+#define ATA_REG_LBAL    3 /* LBA low register.          */
+#define ATA_REG_LBAM    4 /* LBA middle register.       */
+#define ATA_REG_LBAH    5 /* LBA high register.         */
+#define ATA_REG_DEVICE  6 /* Device register.           */
+#define ATA_REG_DEVCTL  6 /* Device control register.   */
+#define ATA_REG_CMD     7 /* Command register.          */
+#define ATA_REG_STATUS  7 /* Status register.           */
+#define ATA_REG_ASTATUS 8 /* Alternate status register. */
+
+/* ATA status register. */
+#define ATA_ERR   (1 << 0) /* Device error. */
+#define ATA_DRQ   (1 << 3) /* Data request. */
+#define ATA_DF    (1 << 5) /* Device fault. */
+#define ATA_READY (1 << 6) /* Device ready. */
+#define ATA_BUSY  (1 << 7) /* Device busy.  */
+
+/* ATA device commands. */
+#define ATA_CMD_RESET				0x08 /* Reset.                          */
+#define ATA_CMD_IDENTIFY			0xec /* Identify.                       */
+#define ATA_CMD_READ_SECTORS		0x20 /* Read sectors using LBA 28-bit.  */
+#define ATA_CMD_READ_SECTORS_EXT	0x24 /* Read sectors using LBA 48-bit.  */
+#define ATA_CMD_WRITE_SECTORS		0x30 /* Write sectors using LBA 28-bit. */
+#define ATA_CMD_WRITE_SECTORS_EXT	0x34 /* Write sectors using LBA 48-bit. */
+#define ATA_CMD_FLUSH_CACHE			0xe7 /* Flush cache using LBA 28-bit.   */
+#define ATA_CMD_FLUSH_CACHE_EXT		0xeA /* Flush cache using LBA 48-bit.   */
+	
+/* ATA device information. */
+#define ATA_INFO_WORDS            256 /* # words returned by identify cmd. */
+#define ATA_INFO_CONFIG             0 /* Configuration.                    */
+#define ATA_INFO_SERNO             10 /* Serial number.                    */
+#define ATA_INFO_FW_REV            23 /* Firmware revision.                */
+#define ATA_INFO_PROD              27 /* Model number.                     */
+#define ATA_INFO_MAX_MULTSECT      47 /* Maximum # sectors trans./int.     */
+#define ATA_INFO_CAPABILITY_1      49 /* Capabilities 0.                   */
+#define ATA_INFO_CAPABILITY_2      50 /* Capabilities 1.                   */
+#define ATA_INFO_FIELD_VALINFO     53 /* Fields validity.                  */
+#define ATA_INFO_MULTSECT          59 /* Multiple sector setting valid.    */
+#define ATA_INFO_LBA_CAPACITY_1    60 /* LBA addressable sectors 0.        */
+#define ATA_INFO_LBA_CAPACITY_2    61 /* LBA addressable sectors 1.        */
+#define ATA_INFO_MWDMA_MODES       63 /* Multiword DMA modes.              */
+#define ATA_INFO_PIO_MODES         64 /* PIO modes supported.              */
+#define ATA_INFO_EINFOE_DMA_MIN    65 /* Min. trans. DMA cycle.            */
+#define ATA_INFO_EINFOE_DMA_TIME   66 /* Recommended DMA trans. cycle.     */
+#define ATA_INFO_EINFOE_PIO        67 /* Min. PIO trans. cycle.            */
+#define ATA_INFO_EINFOE_PIO_IORDY  68 /* Min. PIO trans. cycle IORDY.      */
+#define ATA_INFO_QUEUE_DEPTH       75 /* Queue depth.                      */
+#define ATA_INFO_MAJOR_VER         80 /* Major version number.             */
+#define ATA_INFO_COMMAND_SET_1     82 /* Supported command set 0.          */
+#define ATA_INFO_COMMAND_SET_2     83 /* Supported command set 1.          */
+#define ATA_INFO_CFSSE             84 /* Supported extended command set.   */
+#define ATA_INFO_CFS_ENABLE_1      85 /* Command set enabled 0.            */
+#define ATA_INFO_CFS_ENABLE_2      86 /* Command set enabled 1.            */
+#define ATA_INFO_CSF_DEFAULT       87 /* Default command set.              */
+#define ATA_INFO_UDMA_MODES        88 /* Ultra DMA modes.                  */
+#define ATA_INFO_HW_CONFIG         93 /* Hardware reset result.            */
+#define ATA_INFO_LBA48_CAPACITY   100 /* LBA 48 capacity.                  */
+#define ATA_INFO_DLF              128 /* Security status.                  */
+#define ATA_INFO_CSFO             129 /* Vendor specific.                  */
+#define ATA_INFO_CFA_POWER        160 /* CFA power mode.                   */
+
+/*
+ * Asserts if ATA device is a ATA device.
+ */
+#define ata_info_is_ata(info) \
+	(((info)[ATA_INFO_CONFIG] & (1 << 15)) == 0)
+
+/*
+ * Asserts if ATA device supports LBA.
+ */
+#define ata_info_supports_lba(info) \
+	((info)[ATA_INFO_CAPABILITY_1] & (1 << 9))
+	
+/*
+ * Asserts if ATA device supports DMA.
+ */
+#define ata_info_supports_dma(info) \
+	((info)[ATA_INFO_CAPABILITY_1] & (1 << 8))
+
 /* ATA drives. */
 #define ATA_PRI_MASTER 0 /* Primary master.   */
 #define ATA_PRI_SLAVE  1 /* Primary slave.    */
@@ -40,209 +123,35 @@
 #define ATA_BUS_PRIMARY   0 /* Primary bus.   */
 #define ATA_BUS_SECONDARY 1 /* Secondary bus. */
 
-/* ATA controller registers. */
 /*
- * Constants: ATA controller registers
- * 
- *     ATA_REG_DATA    - Data register.
- *     ATA_REG_ERR     - Error register.
- *     ATA_REG_FEATURE - Features register.
- *     ATA_REG_NSECT   - Sector count register.
- *     ATA_REG_LBAL    - LBA low register.
- *     ATA_REG_LBAM    - LBA middle register.
- *     ATA_REG_LBAH    - LBA high register.
- *     ATA_REG_DEVICE  - Device register.
- *     ATA_REG_DEVCTL  - Device control register.
- *     ATA_REG_CMD     - Command register.
- *     ATA_REG_STATUS  - Status register.
- *     ATA_REG_ASTATUS - Alternate status register.
+ * Returns the bus number of a ATA device.
  */
-#define ATA_REG_DATA    0
-#define ATA_REG_ERR     1
-#define ATA_REG_FEATURE 1
-#define ATA_REG_NSECT   2
-#define ATA_REG_LBAL    3
-#define ATA_REG_LBAM    4
-#define ATA_REG_LBAH    5
-#define ATA_REG_DEVICE  6
-#define ATA_REG_DEVCTL  6
-#define ATA_REG_CMD     7
-#define ATA_REG_STATUS  7
-#define ATA_REG_ASTATUS 8
-
-/* ATA status register. */
-#define ATA_ERR   (1 << 0) /* Device error. */
-#define ATA_DRQ   (1 << 3) /* Data request. */
-#define ATA_DF    (1 << 5) /* Device fault. */
-#define ATA_READY (1 << 6) /* Device ready. */
-#define ATA_BUSY  (1 << 7) /* Device busy.  */
-
-/*
- * Constants: ATA device commands
- * 
- *     ATA_CMD_RESET             - Reset.
- *     ATA_CMD_IDENTIFY          - Identify.
- *     ATA_CMD_READ_SECTORS      - Read sectors using LBA 28-bit.
- *     ATA_CMD_READ_SECTORS_EXT  - Read sectors using LBA 48-bit.
- *     ATA_CMD_WRITE_SECTORS     - Write sectors using LBA 28-bit.
- *     ATA_CMD_WRITE_SECTORS_EXT - Write sectors using LBA 48-bit.
- *     ATA_CMD_FLUSH_CACHE       - Flush cache using LBA 28-bit.
- *     ATA_CMD_FLUSH_CACHE_EXT   - Flush cache using LBA 48-bit. 
- */
-#define ATA_CMD_RESET				0x08
-#define ATA_CMD_IDENTIFY			0xec
-#define ATA_CMD_READ_SECTORS		0x20
-#define ATA_CMD_READ_SECTORS_EXT	0x24
-#define ATA_CMD_WRITE_SECTORS		0x30
-#define ATA_CMD_WRITE_SECTORS_EXT	0x34
-#define ATA_CMD_FLUSH_CACHE			0xe7
-#define ATA_CMD_FLUSH_CACHE_EXT		0xeA
-	
-/* ATA device information. */
-#define ATA_INFO_WORDS                 256
-#define ATA_INFO_CONFIG                  0 /* Configuration. */
-#define ATA_INFO_CYLS                    1
-#define ATA_INFO_HEADS                   3
-#define ATA_INFO_SECTORS                 6
-#define ATA_INFO_SERNO                  10
-#define ATA_INFO_BUF_SIZE               21
-#define ATA_INFO_FW_REV                 23
-#define ATA_INFO_PROD                   27
-#define ATA_INFO_MAX_MULTSECT           47
-#define ATA_INFO_DWORD_IO               48
-#define ATA_INFO_CAPABILITY_1           49 /* Capabilities 0. */
-#define ATA_INFO_CAPABILITY_2           50 /* Capabilities 1. */
-#define ATA_INFO_OLD_PIO_MODES          51
-#define ATA_INFO_OLD_DMA_MODES          52
-#define ATA_INFO_FIELD_VALINFO          53
-#define ATA_INFO_CUR_CYLS               54
-#define ATA_INFO_CUR_HEADS              55
-#define ATA_INFO_CUR_SECTORS            56
-#define ATA_INFO_MULTSECT               59
-#define ATA_INFO_LBA_CAPACITY_1         60 /* LBA addressable sectors 0. */
-#define ATA_INFO_LBA_CAPACITY_2         61 /* LBA addressable sectors 1. */
-#define ATA_INFO_SWDMA_MODES            62
-#define ATA_INFO_MWDMA_MODES            63
-#define ATA_INFO_PIO_MODES              64
-#define ATA_INFO_EINFOE_DMA_MIN         65
-#define ATA_INFO_EINFOE_DMA_TIME        66
-#define ATA_INFO_EINFOE_PIO             67
-#define ATA_INFO_EINFOE_PIO_IORDY       68
-#define ATA_INFO_ADDITIONAL_SUPP        69
-#define ATA_INFO_QUEUE_DEPTH            75
-#define ATA_INFO_SATA_CAPABILITY_1      76
-#define ATA_INFO_SATA_CAPABILITY_2      77
-#define ATA_INFO_FEATURE_SUPP           78
-#define ATA_INFO_MAJOR_VER              80
-#define ATA_INFO_COMMAND_SET_1          82
-#define ATA_INFO_COMMAND_SET_2          83
-#define ATA_INFO_CFSSE                  84
-#define ATA_INFO_CFS_ENABLE_1           85
-#define ATA_INFO_CFS_ENABLE_2           86
-#define ATA_INFO_CSF_DEFAULT            87
-#define ATA_INFO_UDMA_MODES             88
-#define ATA_INFO_HW_CONFIG              93
-#define ATA_INFO_SPG                    98
-#define ATA_INFO_LBA48_CAPACITY        100
-#define ATA_INFO_SECTOR_SIZE           106
-#define ATA_INFO_WWN                   108
-#define ATA_INFO_LOGICAL_SECTOR_SIZE_1 117	
-#define ATA_INFO_LOGICAL_SECTOR_SIZE_2 117
-#define ATA_INFO_LAST_LUN              126
-#define ATA_INFO_DLF                   128
-#define ATA_INFO_CSFO                  129
-#define ATA_INFO_CFA_POWER             160
-#define ATA_INFO_CFA_KEY_MGMT          162
-#define ATA_INFO_CFA_MODES             163
-#define ATA_INFO_DATA_SET_MGMT         169
-#define ATA_INFO_ROT_SPEED             217
-
-/**
- * @brief Asserts if ATA device is a ATA device.
- */
-#define ata_info_is_ata(info) \
-	(((info)[ATA_INFO_CONFIG] & (1 << 15)) == 0)
-
-/**
- * @brief Asserts if ATA device supports LBA.
- */
-#define ata_info_supports_lba(info) \
-	((info)[ATA_INFO_CAPABILITY_1] & (1 << 9))
-	
-/**
- * @briefs Asserts if ATA device supports DMA.
- */
-#define ata_info_supports_dma(info) \
-	((info)[ATA_INFO_CAPABILITY_1] & (1 << 8))
-
-/*
- * Macro: ATA_BUS
- * 
- * Returns the bus number of a ATA drive.
- */
-#define ATA_BUS(x) \
+#define ata_bus(x) \
 	(((x) < 2) ? ATA_BUS_PRIMARY : ATA_BUS_SECONDARY)
 
-/*
- * Constants: ATA device types
- * 
- *     ATADEV_NULL    - Null device.
- *     ATADEV_UNKNOWN - Unknown device.
- *     ATADEV_PATAPI  - Parallel ATA Packet Interface.
- *     ATADEV_SATAPI  - Serial ATA Packet Interface.
- *     ATADEV_PATA    - Parallel ATA.
- *     ATADEV_SATA    - Serial ATA.
- */
-#define ATADEV_NULL    0
-#define ATADEV_UNKNOWN 1
-#define ATADEV_PATAPI  2
-#define ATADEV_SATAPI  3
-#define ATADEV_PATA    4
-#define ATADEV_SATA    5
+/* ATA device types. */
+#define ATADEV_NULL    0 /* Null device.                   */
+#define ATADEV_UNKNOWN 1 /* Unknown device.                */
+#define ATADEV_PATAPI  2 /* Parallel ATA Packet Interface. */
+#define ATADEV_SATAPI  3 /* Serial ATA Packet Interface.   */
+#define ATADEV_PATA    4 /* Parallel ATA.                  */
+#define ATADEV_SATA    5 /* Serial ATA.                    */
+
+/* ATA device flags. */
+#define ATADEV_PRESENT (1 << 0) /* Device present?   */
+#define ATADEV_LBA     (1 << 1) /* Is LBA supported? */
+#define ATADEV_DMA     (1 << 2) /* Is DMA supported? */
 
 /*
- * Constants: ATA device flags
- * 
- *     ATADEV_PRESENT - Device present?
- *     ATADEV_LBA     - Is LBA supported?
- *     ATADEV_DMA     - Is DMA supported?
- */
-#define ATADEV_PRESENT (1 << 0)
-#define ATADEV_LBA     (1 << 1)
-#define ATADEV_DMA     (1 << 2)
-
-/*
- * Structure: ata_info
- *
  * ATA device information.
- *
- * Description:
- *
- *     The <ata_info> structure holds general information about a ATA
- *     device.
- *	
- * Variables:
- * 
- *     flags    - ATA device flags see <ATA device flags>.
- *     nsectors - Number of sectors.
- *     type     - Device type see <ATA device types>.
- *     rawinfo  - Raw, non parsed information.
  */
 struct ata_info
 {
-	unsigned flags;
-	unsigned nsectors;
-	unsigned type;
-	uint16_t rawinfo[ATA_INFO_WORDS];
+	unsigned flags;                   /* ATA device flags (see above).*/
+	unsigned nsectors;                /* Number of sectors.           */
+	unsigned type;                    /* Device type (see above).     */
+	uint16_t rawinfo[ATA_INFO_WORDS]; /* Raw, non parsed information. */
 };
-
-/* Buses. */
-#define PRI_BUS 0 /* Primary.   */
-#define SEC_BUS 1 /* Secondary. */
-
-/* Devices. */
-#define MASTER_DEV 0 /* Master. */
-#define SLAVE_DEV  1 /* Slave.  */
 
 /* ATA device maximum queue size. */
 #define ATADEV_QUEUE_SIZE 64
@@ -251,8 +160,8 @@ struct ata_info
 #define ATADEV_VALID   (1 << 0) /* Valid device?     */
 #define ATADEV_DISCARD (1 << 1) /* Discard next IRQ? */
 
-/**
- * @brief Block device operation.
+/*
+ * Block device operation.
  */
 struct block_op
 {
@@ -260,8 +169,8 @@ struct block_op
 	struct buffer *buf; /* Buffer to use.   */
 }; 
 
-/**
- * @brief ATA devices.
+/*
+ * ATA devices.
  */
 PRIVATE struct atadev
 {
@@ -282,9 +191,8 @@ PRIVATE struct atadev
 	} queue;
 } ata_devices[4];
 
-
-/**
- * @brief Default I/O ports for ATA controller.
+/*
+ * Default I/O ports for ATA controller.
  */
 PRIVATE uint16_t pio_ports[2][9] = {
 	/* Primary Bus */
@@ -293,8 +201,12 @@ PRIVATE uint16_t pio_ports[2][9] = {
 	{ 0x170, 0x171, 0x172, 0x173, 0x174, 0x175, 0x176, 0x177, 0x376 }
 };
 
-/**
- * @brief Forces an 400 ns delay.
+/*============================================================================*
+ *                            Low-Level Routines                              *
+ *============================================================================*/
+
+/*
+ * Forces a 400 ns delay.
  */
 PRIVATE void ata_delay(void)
 {
@@ -305,15 +217,14 @@ PRIVATE void ata_delay(void)
 		iowait();
 }
 
-/**
- * @brief          Selects active device on the ATA bus.
- * @param atadevid ATA device ID.
+/*
+ * Selects active device on the ATA bus.
  */
 PRIVATE void ata_device_select(int atadevid)
 {
 	int bus;
 	
-	bus = ATA_BUS(atadevid);
+	bus = ata_bus(atadevid);
 	
 	/* Parse ATA device ID. */
 	switch (atadevid)
@@ -342,9 +253,8 @@ PRIVATE void ata_device_select(int atadevid)
 	ata_delay();
 }
 
-/**
- * @brief      Waits ATA bus to be ready.
- * @param bus  Bus to wait (primary or secondary).
+/*
+ * Waits ATA bys to be ready.
  */
 PRIVATE void ata_bus_wait(int bus)
 {
@@ -352,11 +262,8 @@ PRIVATE void ata_bus_wait(int bus)
 		/* noop*/ ;
 }
 
-/**
- * @brief          Sets up PATA device.
- * @param atadevid ATA device ID.
- * @returns        On success, zero is returned. On failure, a negative number
- *                 is returned instead.
+/*
+ * Sets up PATA device.
  */
 PRIVATE int pata_setup(int atadevid)
 {
@@ -366,7 +273,7 @@ PRIVATE int pata_setup(int atadevid)
 	struct atadev *dev;       /* ATA device.             */
 	struct ata_info *devinfo; /* ATA device information. */
 	
-	bus = ATA_BUS(atadevid);
+	bus = ata_bus(atadevid);
 	dev = &ata_devices[atadevid];
 	devinfo = &dev->info;
 	
@@ -419,19 +326,15 @@ PRIVATE int pata_setup(int atadevid)
 	return (0);
 }
 
-/**
- * @brief          Attempts to identify the type of the active ATA device by
- *                 issuing an IDENTIFY command.
- * @param atadevid ATA device ID.
- * @returns        ATA device type. Moreover, if ATA device is of type PATA,
- *                 device identification information is ready to be read.
+/*
+ * Issues identify command.
  */
 PRIVATE int ata_identify(int atadevid)
 {
 	int bus;              /* Bus number.       */
 	uint8_t signature[2]; /* Device signature. */
 	
-	bus = ATA_BUS(atadevid);
+	bus = ata_bus(atadevid);
 	
 	/*
 	 * ATA specification says that we should set these
@@ -478,11 +381,8 @@ PRIVATE int ata_identify(int atadevid)
 		return (ATADEV_UNKNOWN);
 }
 
-/**
- * @brief Issues a read operation.
- * 
- * @param atadevid ATA device ID.
- * @param addr     LBA 48-bit address.
+/*
+ * Issues a read operation.
  */
 PRIVATE void ata_read_op(unsigned atadevid, uint64_t addr)
 {
@@ -490,7 +390,7 @@ PRIVATE void ata_read_op(unsigned atadevid, uint64_t addr)
 	byte_t byte; /* Byte used for I/O. */
 	
 	ata_device_select(atadevid);
-	bus = ATA_BUS(atadevid);
+	bus = ata_bus(atadevid);
 
 	addr <<= 1;
 
@@ -521,11 +421,8 @@ PRIVATE void ata_read_op(unsigned atadevid, uint64_t addr)
 		kprintf("ATA: device error");
 }
 
-/**
- * @brief Issues a write operation.
- * 
- * @param atadevid ATA device ID.
- * @param buf      Block buffer to use.
+/*
+ * Issues a write operation.
  */
 PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
 {
@@ -536,7 +433,7 @@ PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
 	word_t word;   /* Word used for I/O.  */
 	
 	ata_device_select(atadevid);
-	bus = ATA_BUS(atadevid);
+	bus = ata_bus(atadevid);
 
 	addr = buf->num << 1;
 
@@ -591,21 +488,8 @@ PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
 	brelse(buf);
 }
 
-/**
- * @brief Sleeps if block operation queue is full.
- */
-PRIVATE void sleep_full(struct atadev *dev)
-{
-	while (dev->queue.size == ATADEV_QUEUE_SIZE)
-		sleep(&dev->queue.chain, PRIO_IO);
-}
-
-/**
- * @brief Schedules a block disk IO operation.
- * 
- * @param atadevid ATA device ID.
- * @param buf      Block buffer to use.
- * @param write    Write operation?
+/*
+ * Schedules a block disk IO operation.
  */
 PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 {
@@ -616,7 +500,9 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 
 	disable_interrupts();
 	
-		sleep_full(dev);
+		/* Wait for a slot in tthe block operation queue. */
+		while (dev->queue.size == ATADEV_QUEUE_SIZE)
+			sleep(&dev->queue.chain, PRIO_IO);
 		
 		/*
 		 * Mark buffer as busy.
@@ -648,13 +534,12 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 	enable_interrupts();
 }
 
-/**
- * @brief Reads a block from a ATA device.
- * 
- * @param minor Minor device number.
- * @param buf   Block buffer to use.
- * 
- * @returns Zero if successful; non-zero otherwise.
+/*============================================================================*
+ *                           High-Level Routines                              *
+ *============================================================================*/
+
+/*
+ * Reads a block from a ATA device.
  */
 PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 {
@@ -684,13 +569,8 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 	return (0);
 }
 
-/**
- * @brief Writes a block to a ATA device.
- * 
- * @param minor Minor device number.
- * @param buf   Block buffer to use.
- * 
- * @returns Zero if successful; non-zero otherwise.
+/*
+ * Writes a block to a ATA device.
  */
 PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
 {
@@ -711,8 +591,8 @@ PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
 	return (0);
 }
 
-/**
- * @brief Reads from a ATA device.
+/*
+ * Reads bytes from a ATA device.
  */
 PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 {
@@ -747,8 +627,8 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	return ((ssize_t)i);
 }
 
-/**
- * @brief ATA device operations.
+/*
+ * ATA device operations.
  */
 PRIVATE const struct bdev ata_ops = {
 	&ata_read,    /* read()     */
@@ -757,10 +637,8 @@ PRIVATE const struct bdev ata_ops = {
 	&ata_writeblk /* writeblk() */
 };
 
-/**
- * @brief Generic ATA interrupt handler.
- * 
- * @param atadevid ATA device ID.
+/*
+ * Generic ATA interrupt handler.
  */
 PRIVATE void ata_handler(int atadevid)
 {
@@ -771,7 +649,7 @@ PRIVATE void ata_handler(int atadevid)
 	struct buffer *buf;     /* Buffer to be used.  */
 	word_t word;
 	
-	bus = ATA_BUS(atadevid);
+	bus = ata_bus(atadevid);
 	dev = &ata_devices[atadevid];
 	
 	/*
@@ -853,16 +731,16 @@ out:
 	wakeup(&dev->chain);
 }
 
-/**
- * @brief Primary ATA interrupt handler.
+/*
+ * Primary ATA interrupt handler.
  */
 PRIVATE void ata1_handler(void)
 {
 	ata_handler(0);
 }
 
-/**
- * @brief Secondary ATA interrupt handler.
+/*
+ * Secondary ATA interrupt handler.
  */
 PRIVATE void ata2_handler(void)
 {
@@ -870,7 +748,7 @@ PRIVATE void ata2_handler(void)
 }
 
 /**
- * @brief Initializes the generic ATA driver.
+ * @brief Initializes the generic ATA device driver.
  */
 PUBLIC void ata_init(void)
 {
