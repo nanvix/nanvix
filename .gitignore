@@ -26,7 +26,6 @@ bochsout.txt
 bin/*
 bin/sbin/*
 bin/ubin/*
-doc/api/*
-naturaldocs/
+doc/xml*
 
 # Exceptions.
