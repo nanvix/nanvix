@@ -20,8 +20,6 @@
 #ifndef HDD_H_
 #define HDD_H_
 
-	#include <nanvix/const.h>
-
-	EXTERN void ata_init(void);
+	extern void ata_init(void);
 
 #endif /* HDD_H_ */

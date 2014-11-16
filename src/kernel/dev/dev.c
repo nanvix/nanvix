@@ -4,7 +4,7 @@
  * dev/dev.c - Uniform device interface.
  */
 
-#include <dev/hdd.h>
+#include <dev/ata.h>
 #include <dev/tty.h>
 #include <dev/ramdisk.h>
 #include <nanvix/const.h>

@@ -27,7 +27,7 @@ ARCH = x86
 C_SRC = $(wildcard arch/$(ARCH)/*.c) \
         $(wildcard core/*.c)         \
         $(wildcard dev/*.c)          \
-        $(wildcard dev/hdd/*.c)      \
+        $(wildcard dev/ata/*.c)      \
         $(wildcard dev/ramdisk/*.c)  \
         $(wildcard dev/tty/*.c)      \
         $(wildcard fs/*.c)           \
