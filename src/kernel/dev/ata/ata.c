@@ -25,6 +25,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
 #include <sys/types.h>
+#include <stdarg.h>
 #include <stdint.h>
 
 /* ATA sector size (in bytes). */
@@ -176,6 +177,7 @@ struct request
 		/* Raw request. */
 		struct
 		{
+			block_t num;           /* Block number.   */
 			size_t size;           /* Buffer size.    */
 			unsigned char *buf;    /* Buffer.         */
 			struct process *chain; /* Sleeping chain. */
@@ -404,15 +406,17 @@ PRIVATE int ata_identify(int atadevid)
 /*
  * Issues a read operation.
  */
-PRIVATE void ata_read_op(unsigned atadevid, uint64_t addr)
+PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 {
-	int bus;     /* Bus number.        */
-	byte_t byte; /* Byte used for I/O. */
+	int bus;       /* Bus number.        */
+	byte_t byte;   /* Byte used for I/O. */
+	uint64_t addr; /* Read address.      */
 	
 	ata_device_select(atadevid);
 	bus = ata_bus(atadevid);
 
-	addr <<= 1;
+	addr = (req->flags & REQ_BUF) ? 
+		req->u.buffered.buf->num << 1 : req->u.raw.num << 1;
 
 	/*
 	 * Set LBA bit, to specify
@@ -444,18 +448,34 @@ PRIVATE void ata_read_op(unsigned atadevid, uint64_t addr)
 /*
  * Issues a write operation.
  */
-PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
+PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 {
-	int bus;       /* Bus number.         */
-	size_t i;      /* Loop index.         */
-	byte_t byte;   /* Byte used for I/O.  */
-	uint64_t addr; /* LBA 48-bit address. */
-	word_t word;   /* Word used for I/O.  */
+	int bus;            /* Bus number.         */
+	size_t i;           /* Loop index.         */
+	size_t size;        /* Write size.         */
+	byte_t byte;        /* Byte used for I/O.  */
+	uint64_t addr;      /* LBA 48-bit address. */
+	word_t word;        /* Word used for I/O.  */
+	unsigned char *buf; /* Buffer to use.      */
 	
 	ata_device_select(atadevid);
 	bus = ata_bus(atadevid);
 
-	addr = buf->num << 1;
+	/* Buffered I/O write. */
+	if (req->flags & REQ_BUF)
+	{
+		buf = req->u.buffered.buf->data;
+		size = BLOCK_SIZE;
+		addr = req->u.buffered.buf->num << 1;
+	}
+	
+	/* Raw I/O write. */
+	else
+	{
+		buf = req->u.raw.buf;
+		size = req->u.raw.size;
+		addr = req->u.raw.num << 1;
+	}
 
 	/*
 	 * Set LBA bit, to specify
@@ -487,11 +507,11 @@ PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
 	}			
 		
 	/* Write block. */
-	for (i = 0; i < BLOCK_SIZE; i += 2)
+	for (i = 0; i < size; i += 2)
 	{
 		ata_bus_wait(bus);
-		word  = (((unsigned char *)(buf->data))[i]);
-		word |= (((unsigned char *)(buf->data))[i + 1] << 8);
+		word = buf[i];
+		word |= buf[i + 1] << 8;
 		outputw(pio_ports[bus][ATA_REG_DATA], word);
 		iowait();
 	}
@@ -504,18 +524,23 @@ PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
 	ata_bus_wait(bus);
 	iowait();
 	
-	buf->flags &= ~(BUFFER_DIRTY | BUFFER_BUSY);
-	brelse(buf);
+	/* Release buffer. */
+	if (req->flags & REQ_BUF)
+	{
+		req->u.buffered.buf->flags &= ~(BUFFER_DIRTY | BUFFER_BUSY);
+		brelse(req->u.buffered.buf);
+	}
 }
 
 /*
  * Schedules a block disk IO operation.
  */
-PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
+PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
 {
-	uint64_t addr;       /* LBA 48-bit address. */
-	struct atadev *dev;  /* ATA device.         */
-	struct request *req; /* Request.            */
+	va_list args;        /* Variable arg list. */
+	struct atadev *dev;  /* ATA device.        */
+	struct buffer *buf;  /* Buffer.            */
+	struct request *req; /* Request.           */
 	
 	dev = &ata_devices[atadevid];
 
@@ -525,17 +550,39 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 		while (dev->queue.size == ATADEV_QUEUE_SIZE)
 			sleep(&dev->queue.chain, PRIO_IO);
 		
-		/*
-		 * Mark buffer as busy.
-		 * When the read/write operation completes
-		 * this flag will be cleared.
-		 */
-		buf->flags |= BUFFER_BUSY;
-		
-		/* Create request. */
 		req = &dev->queue.requests[dev->queue.tail];
-		req->flags = REQ_BUF | ((write) ? REQ_WRITE : 0);
-		req->u.buffered.buf = buf;
+		
+		va_start(args, type);
+		
+		/* Buffered I/O operation. */
+		if (type & REQ_BUF)
+		{
+			buf = va_arg(args, struct buffer *);
+			
+			/*
+			 * Mark buffer as busy.
+			 * When the read/write operation completes
+			 * this flag will be cleared.
+			 */
+			buf->flags |= BUFFER_BUSY;
+			
+			/* Create request. */
+			req->flags = type;
+			req->u.buffered.buf = buf;
+		}
+		
+		/* Raw I/O operation. */
+		else
+		{
+			/* Create request. */
+			req->flags = type;
+			req->u.raw.num = va_arg(args, block_t);
+			req->u.raw.buf = va_arg(args, unsigned char *);
+			req->u.raw.size = va_arg(args, size_t);
+			req->u.raw.chain = NULL;
+		}
+		
+		va_end(args);
 		
 		/* Enqueue request. */
 		dev->queue.tail = (dev->queue.tail + 1)%ATADEV_QUEUE_SIZE;
@@ -547,16 +594,37 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 		 */
 		if (dev->queue.size == 1)
 		{
-			if (write)
-				ata_write_op(atadevid, buf);
+			if (type & REQ_WRITE)
+				ata_write_op(atadevid, req);
 			else
-			{
-				addr = dev->queue.requests[dev->queue.head].u.buffered.buf->num;
-				ata_read_op(atadevid, addr);
-			}
+				ata_read_op(atadevid, req);
 		}
 	
 	enable_interrupts();
+}
+
+/*
+ * Schedules a buffered I/O operation.
+ */
+PRIVATE void
+ata_sched_buffered(unsigned atadevid, struct buffer *buf, int write)
+{
+	ata_sched(atadevid, REQ_BUF | ((write) ? REQ_WRITE : 0), buf);
+}
+
+/*
+ * Schedules a non-buffered I/O operation.
+ */
+PRIVATE void
+ata_sched_raw(unsigned atadevid, block_t num, void *buf, size_t size, int write)
+{
+	/*
+	 * FIXME: this should be checked before.
+	 */
+	if (size > BLOCK_SIZE*4)
+		kpanic("invalid ata write size");
+	
+	ata_sched(atadevid, REQ_BUF | ((write) ? REQ_WRITE : 0), num, buf, size);
 }
 
 /*============================================================================*
@@ -580,7 +648,7 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
-	ata_sched(minor, buf, 0);
+	ata_sched_buffered(minor, buf, 0);
 
 	/*
 	 * Check if the read operation has already
@@ -611,7 +679,7 @@ PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
-	ata_sched(minor, buf, 1);
+	ata_sched_buffered(minor, buf, 1);
 	
 	return (0);
 }
@@ -635,6 +703,8 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	/* Device not valid. */
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
+	
+	((void)(ata_sched_raw));
 	
 	blknum = ALIGN((off & 0xffff), BLOCK_SIZE);
 	n = ALIGN(n, BLOCK_SIZE);
@@ -667,12 +737,13 @@ PRIVATE const struct bdev ata_ops = {
  */
 PRIVATE void ata_handler(int atadevid)
 {
-	int bus;             /* Bus number.        */
-	size_t i;            /* Loop index.        */
-	struct atadev *dev;  /* ATA device.        */
-	struct request *req; /* Request.           */
-	struct buffer *buf;  /* Buffer to be used. */
-	word_t word;
+	int bus;             /* Bus number.    */
+	size_t i;            /* Loop index.    */
+	struct atadev *dev;  /* ATA device.    */
+	struct request *req; /* Request.       */
+	word_t word;         /* Working word.  */
+	size_t size;         /* Write size.    */
+	unsigned char *buf;  /* Buffer to use. */
 	
 	bus = ata_bus(atadevid);
 	dev = &ata_devices[atadevid];
@@ -706,7 +777,19 @@ PRIVATE void ata_handler(int atadevid)
 	dev->queue.head = (dev->queue.head + 1)%ATADEV_QUEUE_SIZE;
 	dev->queue.size--;
 	
-	buf = req->u.buffered.buf;
+	/* Buffered I/O operation. */
+	if (req->flags & REQ_BUF)
+	{
+		buf = req->u.buffered.buf->data;
+		size = BLOCK_SIZE;
+	}
+	
+	/* Raw I/O operation. */
+	else
+	{
+		buf = req->u.raw.buf;
+		size = req->u.raw.size;
+	}
 	
 	/* Write operation. */
 	if (req->flags & REQ_WRITE)
@@ -723,12 +806,12 @@ PRIVATE void ata_handler(int atadevid)
 	else
 	{		
 		/* Read block. */
-		for (i = 0; i < BLOCK_SIZE; i += 2)
+		for (i = 0; i < size; i += 2)
 		{
 			ata_bus_wait(bus);
 			word = inputw(pio_ports[bus][ATA_REG_DATA]);
-			((char *)(buf->data))[i] = word & 0xff;
-			((char *)(buf->data))[i + 1] = (word >> 8) & 0xff;
+			buf[i] = word & 0xff;
+			buf[i + 1] = (word >> 8) & 0xff;
 		}
 	}
 	
@@ -738,14 +821,16 @@ PRIVATE void ata_handler(int atadevid)
 		req = &dev->queue.requests[dev->queue.head];
 		
 		if (req->flags & REQ_WRITE)
-			ata_write_op(atadevid, req->u.buffered.buf);
+			ata_write_op(atadevid, req);
 		else
-			ata_read_op(atadevid, req->u.buffered.buf->num);
+			ata_read_op(atadevid, req);
 	}
 
 out:
-
-	buf->flags &= ~BUFFER_BUSY;
+	
+	/* Mark buffer as not busy. */
+	if (req->flags & REQ_BUF)
+		req->u.buffered.buf->flags &= ~BUFFER_BUSY;
 
 	/*
 	 * Wakeup the process that was waiting for this
