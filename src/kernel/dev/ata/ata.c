@@ -160,14 +160,34 @@ struct ata_info
 #define ATADEV_VALID   (1 << 0) /* Valid device?     */
 #define ATADEV_DISCARD (1 << 1) /* Discard next IRQ? */
 
+/* Request flags. */
+#define REQ_WRITE (1 << 0) /* Write request?    */
+#define REQ_BUF   (1 << 1) /* Buffered request? */
+
 /*
- * Block device operation.
+ * I/O operation request.
  */
-struct block_op
+struct request
 {
-	char write;         /* Write operation? */
-	struct buffer *buf; /* Buffer to use.   */
-}; 
+	unsigned flags; /* Flags (see above). */
+	
+	union
+	{
+		/* Raw request. */
+		struct
+		{
+			size_t size;           /* Buffer size.    */
+			unsigned char *buf;    /* Buffer.         */
+			struct process *chain; /* Sleeping chain. */
+		} raw;
+		
+		/* Buffered request. */
+		struct
+		{
+			struct buffer *buf; /* Underlying buffer. */
+		} buffered;
+	} u;
+};
 
 /*
  * ATA devices.
@@ -182,12 +202,12 @@ PRIVATE struct atadev
 	/* Block operation queue. */
 	struct
 	{
-		int size;                                  /* Current size.          */
-		int head;                                  /* Head.                  */
-		int tail;                                  /* Tail.                  */
-		struct block_op blocks[ATADEV_QUEUE_SIZE]; /* Blocks.                */
-		struct process *chain;                     /* Processes wanting for  *
-		                                            * a slot in the queue.   */
+		int size;                                   /* Current size.         */
+		int head;                                   /* Head.                 */
+		int tail;                                   /* Tail.                 */
+		struct request requests[ATADEV_QUEUE_SIZE]; /* Blocks.               */
+		struct process *chain;                      /* Processes wanting for *
+		                                             * a slot in the queue.  */
 	} queue;
 } ata_devices[4];
 
@@ -493,8 +513,9 @@ PRIVATE void ata_write_op(unsigned atadevid, struct buffer *buf)
  */
 PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 {
-	uint64_t addr;      /* LBA 48-bit address. */
-	struct atadev *dev; /* ATA device.         */
+	uint64_t addr;       /* LBA 48-bit address. */
+	struct atadev *dev;  /* ATA device.         */
+	struct request *req; /* Request.            */
 	
 	dev = &ata_devices[atadevid];
 
@@ -511,9 +532,12 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 		 */
 		buf->flags |= BUFFER_BUSY;
 		
-		/* Insert block on the queue. */
-		dev->queue.blocks[dev->queue.tail].buf = buf;
-		dev->queue.blocks[dev->queue.tail].write = write;
+		/* Create request. */
+		req = &dev->queue.requests[dev->queue.tail];
+		req->flags = REQ_BUF | ((write) ? REQ_WRITE : 0);
+		req->u.buffered.buf = buf;
+		
+		/* Enqueue request. */
 		dev->queue.tail = (dev->queue.tail + 1)%ATADEV_QUEUE_SIZE;
 		dev->queue.size++;
 		
@@ -523,12 +547,13 @@ PRIVATE void ata_sched(unsigned atadevid, struct buffer *buf, int write)
 		 */
 		if (dev->queue.size == 1)
 		{
-			addr = dev->queue.blocks[dev->queue.head].buf->num;
-			
 			if (write)
 				ata_write_op(atadevid, buf);
 			else
+			{
+				addr = dev->queue.requests[dev->queue.head].u.buffered.buf->num;
 				ata_read_op(atadevid, addr);
+			}
 		}
 	
 	enable_interrupts();
@@ -642,11 +667,11 @@ PRIVATE const struct bdev ata_ops = {
  */
 PRIVATE void ata_handler(int atadevid)
 {
-	int bus;                /* Bus number.         */
-	size_t i;               /* Loop index.         */
-	struct atadev *dev;     /* ATA device.         */
-	struct block_op *blkop; /* Block operation.    */
-	struct buffer *buf;     /* Buffer to be used.  */
+	int bus;             /* Bus number.        */
+	size_t i;            /* Loop index.        */
+	struct atadev *dev;  /* ATA device.        */
+	struct request *req; /* Request.           */
+	struct buffer *buf;  /* Buffer to be used. */
 	word_t word;
 	
 	bus = ata_bus(atadevid);
@@ -676,15 +701,15 @@ PRIVATE void ata_handler(int atadevid)
 		goto out;
 	}
 	
-	/* Get first block operation. */
-	blkop = &dev->queue.blocks[dev->queue.head];
+	/* Get first request. */
+	req = &dev->queue.requests[dev->queue.head];
 	dev->queue.head = (dev->queue.head + 1)%ATADEV_QUEUE_SIZE;
 	dev->queue.size--;
 	
-	buf = blkop->buf;
+	buf = req->u.buffered.buf;
 	
 	/* Write operation. */
-	if (blkop->write)
+	if (req->flags & REQ_WRITE)
 	{
 		/*
 		 * Write is done, so 
@@ -710,12 +735,12 @@ PRIVATE void ata_handler(int atadevid)
 	/* Process next operation. */
 	if (dev->queue.size > 0)
 	{
-		blkop = &dev->queue.blocks[dev->queue.head];
+		req = &dev->queue.requests[dev->queue.head];
 		
-		if (blkop->write)
-			ata_write_op(atadevid, blkop->buf);
+		if (req->flags & REQ_WRITE)
+			ata_write_op(atadevid, req->u.buffered.buf);
 		else
-			ata_read_op(atadevid, blkop->buf->num);
+			ata_read_op(atadevid, req->u.buffered.buf->num);
 	}
 
 out:
