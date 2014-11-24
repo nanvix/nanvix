@@ -177,10 +177,9 @@ struct request
 		/* Raw request. */
 		struct
 		{
-			block_t num;           /* Block number.   */
-			size_t size;           /* Buffer size.    */
-			unsigned char *buf;    /* Buffer.         */
-			struct process *chain; /* Sleeping chain. */
+			block_t num;        /* Block number. */
+			size_t size;        /* Buffer size.  */
+			unsigned char *buf; /* Buffer.       */
 		} raw;
 		
 		/* Buffered request. */
@@ -579,7 +578,6 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
 			req->u.raw.num = va_arg(args, block_t);
 			req->u.raw.buf = va_arg(args, unsigned char *);
 			req->u.raw.size = va_arg(args, size_t);
-			req->u.raw.chain = NULL;
 		}
 		
 		va_end(args);
@@ -599,6 +597,10 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
 			else
 				ata_read_op(atadevid, req);
 		}
+		
+		/* Wait read operation to complete. */
+		if (!(req->flags & REQ_WRITE))
+			sleep(&dev->chain, PRIO_IO);
 	
 	enable_interrupts();
 }
@@ -617,13 +619,7 @@ ata_sched_buffered(unsigned atadevid, struct buffer *buf, int write)
  */
 PRIVATE void
 ata_sched_raw(unsigned atadevid, block_t num, void *buf, size_t size, int write)
-{
-	/*
-	 * FIXME: this should be checked before.
-	 */
-	if (size > BLOCK_SIZE*4)
-		kpanic("invalid ata write size");
-	
+{	
 	ata_sched(atadevid, REQ_BUF | ((write) ? REQ_WRITE : 0), num, buf, size);
 }
 
@@ -649,15 +645,6 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 		return (-EINVAL);
 	
 	ata_sched_buffered(minor, buf, 0);
-
-	/*
-	 * Check if the read operation has already
-	 * completed. If not, we need to sleep.
-	 */
-	disable_interrupts();
-	if (buf->flags & BUFFER_BUSY)
-		sleep(&dev->chain, PRIO_IO);
-	enable_interrupts();
 	
 	return (0);
 }
@@ -689,10 +676,10 @@ PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
  */
 PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 {
-	size_t i;              /* Loop index.   */
-	block_t blknum;        /* Block number. */
-	struct atadev *dev;    /* ATA device.   */
-	struct buffer *blkbuf; /* Block buffer. */
+	size_t i;           /* Loop index.   */
+	block_t blknum;     /* Block number. */
+	struct atadev *dev; /* ATA device.   */
+	unsigned char *p;   /* Read pointer. */
 	
 	/* Invalid minor device. */
 	if (minor >= 4)
@@ -706,17 +693,24 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	
 	((void)(ata_sched_raw));
 	
-	blknum = ALIGN((off & 0xffff), BLOCK_SIZE);
+	p = (unsigned char *)buf;
+	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
 	n = ALIGN(n, BLOCK_SIZE);
 	
-	if ((blknum*BLOCK_SIZE + n)/ATA_SECTOR_SIZE > dev->info.nsectors)
-	
-	/* Read blocks. */
+	/*
+	 * Read in bursts.
+	 * 
+	 * TODO: speedup reading by increasing block size.
+	 */
 	for (i = 0; i < n; i += BLOCK_SIZE)
-	{
-		blkbuf = bread(DEVID(ATA_MAJOR, minor, BLKDEV), blknum++);
-		kmemcpy(buf, blkbuf->data, BLOCK_SIZE);
-		brelse(blkbuf);
+	{	
+		ata_sched_raw(minor, blknum, p, BLOCK_SIZE, 0);
+		
+		p += BLOCK_SIZE;
+		
+		/* Avoid starvation. */
+		if (n > 0)
+			yield();
 	}
 	
 	return ((ssize_t)i);
