@@ -40,14 +40,14 @@ PRIVATE int expand(struct region *reg, size_t size)
 	{
 		npages = PAGE_SIZE/PTE_SIZE - npages;
 		for (i = (PAGE_SIZE/PTE_SIZE - 1); i >= npages; i--)
-			zeropg(&reg->pgtab[i]);
+			zeropg(&reg->pgtab[0][i]);
 	}
 
 	/* Expand upwards. */
 	else
 	{
 		for (i = 0; i < npages; i++)
-			zeropg(&reg->pgtab[i]);
+			zeropg(&reg->pgtab[0][i]);
 	}
 	
 	reg->size += size;
@@ -76,13 +76,13 @@ PRIVATE int contract(struct region *reg, size_t size)
 	{
 		npages = PAGE_SIZE/PTE_SIZE - npages;
 		for (i = (PAGE_SIZE/PTE_SIZE - 1); i >= npages; i--)
-			freeupg(&reg->pgtab[i]);
+			freeupg(&reg->pgtab[0][i]);
 	}
 
 	else
 	{
 		for (i = 0; i < npages; i++)
-			freeupg(&reg->pgtab[i]);
+			freeupg(&reg->pgtab[0][i]);
 	}
 	
 	reg->size -= size;
@@ -141,7 +141,7 @@ found:
 	reg->flags = flags & ~(REGION_FREE | REGION_LOCKED);
 	reg->count = 0;
 	reg->size = 0;
-	reg->pgtab = pgtab;
+	reg->pgtab[0] = pgtab;
 	reg->chain = NULL;
 	reg->file.inode = NULL;
 	reg->file.off = 0;
@@ -182,9 +182,9 @@ PUBLIC void freereg(struct region *reg)
 	
 	/* Free underlying pages. */
 	for (i = 0; i < PAGE_SIZE/PTE_SIZE; i++)
-		freeupg(&reg->pgtab[i]);
+		freeupg(&reg->pgtab[0][i]);
 	
-	putkpg(reg->pgtab);
+	putkpg(reg->pgtab[0]);
 	reg->flags = REGION_FREE;
 }
 
@@ -253,7 +253,7 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 	}
 
 	/* Map page table. */
-	if (mappgtab(proc->pgdir, addr, reg->pgtab))
+	if (mappgtab(proc->pgdir, addr, reg->pgtab[0]))
 		return (-1);
 	
 	/* Attach region. */
@@ -310,7 +310,7 @@ PUBLIC struct region *dupreg(struct region *reg)
 	
 	/* Link underlying pages. */
 	for (i = 0; i < PAGE_SIZE/PTE_SIZE; i++)
-		linkupg(&reg->pgtab[i], &new_reg->pgtab[i]);
+		linkupg(&reg->pgtab[0][i], &new_reg->pgtab[0][i]);
 	
 	/* Copy region fields. */
 	if (reg->file.inode != NULL)
@@ -372,19 +372,19 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 	/* Find associated region. */
 	for (preg = &proc->pregs[0]; preg < &proc->pregs[NR_PREGIONS]; preg++)
 	{
-		/* Found. */
-		if ((reg = preg->reg) != NULL)
+		/* Skip invalid regions. */
+		if ((reg = preg->reg) == NULL)
+			continue;
+		
+		if (reg->flags & REGION_DOWNWARDS)
 		{
-			if (reg->flags & REGION_DOWNWARDS)
-			{
-				if ((addr | ~PGTAB_MASK) == preg->start)
-					return (preg);
-			}
-			else
-			{
-				if ((addr & PGTAB_MASK) == preg->start)
-					return (preg);
-			}
+			if ((addr | ~PGTAB_MASK) == preg->start)
+				return (preg);
+		}
+		else
+		{
+			if ((addr & PGTAB_MASK) == preg->start)
+				return (preg);
 		}
 	}
 
@@ -408,7 +408,7 @@ PUBLIC int loadreg(struct inode *inode, struct region *reg, off_t off, size_t si
 	
 	/* Mark pages as demand fill. */
 	for (i = 0; i < npages; i++)
-		fillpg(&reg->pgtab[i]);
+		fillpg(&reg->pgtab[0][i]);
 	
 	return (0);
 }

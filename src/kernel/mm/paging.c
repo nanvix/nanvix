@@ -367,7 +367,7 @@ PUBLIC int vfault(addr_t addr)
 			goto error1;
 	}
 
-	pg = &reg->pgtab[PG(addr)];
+	pg = &reg->pgtab[0][PG(addr)];
 		
 	/* Clear page. */
 	if (pg->zero)
@@ -432,7 +432,7 @@ PUBLIC int pfault(addr_t addr)
 	
 	lockreg(reg = preg->reg);
 	
-	pg = &reg->pgtab[PG(addr)];
+	pg = &reg->pgtab[0][PG(addr)];
 
 	/* Copy on write not enabled. */
 	if (!pg->cow)

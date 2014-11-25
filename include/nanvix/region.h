@@ -30,7 +30,7 @@
 		int flags;             /* Flags (see above).     */
 		int count;             /* Reference count.       */
 		size_t size;           /* Region size.           */
-		struct pte *pgtab;     /* Underlying page table. */
+		struct pte *pgtab[4];  /* Underlying page table. */
 		struct process *chain; /* Sleeping chain.        */
 		
 		/* File information. */
