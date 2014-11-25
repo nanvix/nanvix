@@ -23,10 +23,20 @@
 #include <nanvix/hal.h>
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
+#include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <sys/types.h>
 #include <stdarg.h>
 #include <stdint.h>
+
+/*
+ * The ATA driver expects that page sizes are
+ * multiple of block sizes, so that the page
+ * replacement algorithm performs better.
+ */
+#if (PAGE_SIZE & (BLOCK_SIZE - 1))
+	#error "Bad Page Size";
+#endif
 
 /* ATA sector size (in bytes). */
 #define ATA_SECTOR_SIZE 512
@@ -676,10 +686,11 @@ PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
  */
 PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 {
-	size_t i;           /* Loop index.   */
-	block_t blknum;     /* Block number. */
-	struct atadev *dev; /* ATA device.   */
-	unsigned char *p;   /* Read pointer. */
+	size_t i;           /* Loop index.      */
+	size_t count;       /* # bytes to read. */
+	block_t blknum;     /* Block number.    */
+	struct atadev *dev; /* ATA device.      */
+	unsigned char *p;   /* Read pointer.    */
 	
 	/* Invalid minor device. */
 	if (minor >= 4)
@@ -697,16 +708,14 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
 	n = ALIGN(n, BLOCK_SIZE);
 	
-	/*
-	 * Read in bursts.
-	 * 
-	 * TODO: speedup reading by increasing block size.
-	 */
-	for (i = 0; i < n; i += BLOCK_SIZE)
+	/* Read in bursts. */
+	for (i = 0; i < n; /* noop*/)
 	{	
-		ata_sched_raw(minor, blknum, p, BLOCK_SIZE, 0);
+		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : PAGE_SIZE - (n - i);
+		ata_sched_raw(minor, blknum, p, count, 0);
 		
 		p += BLOCK_SIZE;
+		i += count;
 		
 		/* Avoid starvation. */
 		if (n > 0)
@@ -853,6 +862,8 @@ PRIVATE void ata2_handler(void)
 
 /**
  * @brief Initializes the generic ATA device driver.
+ * 
+ * @todo Check for multiple read/write sectors capability.
  */
 PUBLIC void ata_init(void)
 {
