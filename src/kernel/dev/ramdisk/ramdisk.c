@@ -37,8 +37,9 @@ PRIVATE struct
  */
 PRIVATE ssize_t ramdisk_write(unsigned minor, const char *buf, size_t n, off_t off)
 {
-	addr_t ptr;
-	size_t count;
+	size_t i;     /* Loop index.       */
+	addr_t ptr;   /* Write pointer.    */
+	size_t count; /* # bytes to write. */
 	
 	/* Invalid device. */
 	if (minor >= NR_RAMDISKS)
@@ -55,13 +56,13 @@ PRIVATE ssize_t ramdisk_write(unsigned minor, const char *buf, size_t n, off_t o
 		n = ramdisks[minor].end - ptr;
 	
 	/* Write in bursts. */
-	while (n > 0)
+	for (i = 0; i < n; /* noop */)
 	{
-		count = (n > BLOCK_SIZE) ? BLOCK_SIZE : n;
+		count = ((n - i) > BLOCK_SIZE) ? BLOCK_SIZE : (n - i);
 		
 		kmemcpy((void *)ptr, buf, count);
 		
-		n -= count;
+		i += count;
 		ptr += count;
 		
 		/* Avoid starvation. */
@@ -77,8 +78,9 @@ PRIVATE ssize_t ramdisk_write(unsigned minor, const char *buf, size_t n, off_t o
  */
 PRIVATE ssize_t ramdisk_read(unsigned minor, char *buf, size_t n, off_t off)
 {
-	addr_t ptr;
-	size_t count;
+	size_t i;     /* Loop index.      */
+	addr_t ptr;   /* Write pointer.   */
+	size_t count; /* # bytes to read. */
 	
 	/* Invalid device. */
 	if (minor >= NR_RAMDISKS)
@@ -90,18 +92,18 @@ PRIVATE ssize_t ramdisk_read(unsigned minor, char *buf, size_t n, off_t off)
 	if (ptr >= ramdisks[minor].end)
 		return (-EINVAL);
 	
-	/* Write as much as possible. */
+	/* Read as much as possible. */
 	if (ptr + n >= ramdisks[minor].end)
 		n = ramdisks[minor].end - ptr;
 	
 	/* Read in bursts. */
-	while (n > 0)
+	for (i = 0; i < n; /* noop */)
 	{
-		count = (n > BLOCK_SIZE) ? BLOCK_SIZE : n;
+		count = ((n - i) > BLOCK_SIZE) ? BLOCK_SIZE : (n - i);
 		
 		kmemcpy(buf, (void *)ptr, count);
 		
-		n -= count;
+		i += count;
 		ptr += count;
 		
 		/* Avoid starvation. */
