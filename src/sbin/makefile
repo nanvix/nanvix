@@ -17,17 +17,23 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Conflicts.
+# Resolves conflicts
 .PHONY: init
+.PHONY: test
 
 # Builds everything.
-all: init
+all: init test
 
 # Builds init.
 init:
 	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBDIR)/libc.a
+
+# Builds test.
+test:
+	$(CC) $(CFLAGS) $(LDFLAGS) test/*.c -o $(SBINDIR)/test $(LIBDIR)/libc.a
 	
 # Cleans compilations files.
 clean:
-	@rm -f $(SBINDIR)/init
+	@rm -f $(SBINDIR)/init:
+	@rm -f $(SBINDIR)/test
 	
