@@ -1,7 +1,20 @@
 /*
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * mm/region.c - Memory region library implementation.
+ * Copyright(C) 2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/config.h>
@@ -16,11 +29,16 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-/* Memory region table. */
+/**
+ * @brief Memory region table.
+ */
 PRIVATE struct region regtab[NR_REGIONS];
 
-/*
- * Expands a memory region.
+/**
+ * @brief Expands a memory region.
+ * 
+ * @param reg  Memory region that shall be expanded.
+ * @param size Size in bytes to be added to the memory region.
  */
 PRIVATE int expand(struct region *reg, size_t size)
 {	
@@ -55,8 +73,13 @@ PRIVATE int expand(struct region *reg, size_t size)
 	return (0);
 }
 
-/*
- * Contracts a memory region.
+/**
+ * @brief Contracts a memory region.
+ * 
+ * @param reg  Memory region that shall be contracted.
+ * @param size Size in bytes to be removed from the memory region.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PRIVATE int contract(struct region *reg, size_t size)
 {
@@ -90,8 +113,10 @@ PRIVATE int contract(struct region *reg, size_t size)
 	return (0);
 }
 
-/*
- * Locks a memory region.
+/**
+ * @brief Locks a memory region.
+ * 
+ * @param reg Memory region that shall be locked.
  */
 PUBLIC void lockreg(struct region *reg)
 {	
@@ -102,8 +127,10 @@ PUBLIC void lockreg(struct region *reg)
 	reg->flags |= REGION_LOCKED;
 }
 
-/*
- * Unlocks a memory region.
+/**
+ * @brief Unlocks a memory region.
+ * 
+ * @param reg Memory region to be unlocked.
  */
 PUBLIC void unlockreg(struct region *reg)
 {
@@ -111,8 +138,15 @@ PUBLIC void unlockreg(struct region *reg)
 	wakeup(&reg->chain);
 }
 
-/*
- * Allocates a memory region.
+/**
+ * @brief Allocates a memory region.
+ * 
+ * @param mode  Access permissions.
+ * @param size  Size in bytes.
+ * @param flags Memory region flags.
+ * 
+ * @returns Upon success a pointer to a memory region is returned. Upon failure,
+ *          a NULL pointer is returned instead.
  */
 PUBLIC struct region *allocreg(mode_t mode, size_t size, int flags)
 {
@@ -165,8 +199,10 @@ found:
 	return (reg);
 }
 
-/*
- * Frees a memory region.
+/**
+ * @brief Frees a memory region.
+ * 
+ * @param reg Memory region that shall be freed.
  */
 PUBLIC void freereg(struct region *reg)
 {
@@ -188,8 +224,15 @@ PUBLIC void freereg(struct region *reg)
 	reg->flags = REGION_FREE;
 }
 
-/*
- * Edits permissions on a memory region.
+/**
+ * @brief Edits access permissions on a memory region.
+ * 
+ * @param reg  Memory region to be edited.
+ * @param uid  New user ID.
+ * @param gid  New group ID.
+ * @param mode New access permissions.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode)
 {
@@ -200,8 +243,15 @@ PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode)
 	return (0);
 }
 
-/*
- * Attaches a memory region to a process.
+/**
+ * @brief Attaches a memory region to a process.
+ * 
+ * @param proc Process where the memory region shall be attached.
+ * @param preg Process memory region where the memory shall be attached.
+ * @param addr Address where the memory region shall be attached.
+ * @param reg  Memory region to be attached.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, struct region *reg)
 {	
@@ -265,8 +315,11 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 	return (0);
 }
 
-/*
- * Detaches a memory region from a process.
+/**
+ * @brief Detaches a memory region from a process.
+ * 
+ * @param proc Process where the memory region is attached.
+ * @param preg Process memory region to be used.
  */
 PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 {
@@ -292,8 +345,13 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 		freereg(reg);
 }
 
-/*
- * Duplicates a memory region.
+/**
+ * @brief Duplicates a memory region.
+ * 
+ * @param reg Memory region that shall be duplicated.
+ * 
+ * @returns Upon success a pointer to the (duplicated) memory region is 
+ *          returned. Upon failure, a NULL pointer is returned instead.
  */
 PUBLIC struct region *dupreg(struct region *reg)
 {
@@ -324,8 +382,14 @@ PUBLIC struct region *dupreg(struct region *reg)
 	return (new_reg);
 }
 
-/*
- * Changes the size of a memory region.
+/**
+ * @brief Changes the size of memory region.
+ * 
+ * @param proc Process where the memory region is attached to.
+ * @param preg Process region where the memory region is attached.
+ * @param size Increment/decrement in bytes.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 {
@@ -361,9 +425,14 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 	return (0);
 }
 
-/*
-* Finds a memory region.
-*/
+/**
+ * @brief Finds a memory region.
+ * 
+ * @param proc Process where the memory region shall be searched.
+ * 
+ * @returns Upon success a pointer to the process memory region requested is
+ *          returned. Upon failure, a NULL pointer is returned instead.
+ */
 PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 {        
 	struct region *reg;   /* Working memory region.  */
@@ -391,8 +460,15 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 	return (NULL);
 }
 
-/*
- * Loads a portion of a file into a memory region.
+/**
+ * @brief Loads a portion of a file into a memory region.
+ * 
+ * @param inode Inode associated to the file.
+ * @param reg   Memory region in which the file will be loaded.
+ * @param off   File offset.
+ * @param size  Number of bytes to be loaded.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PUBLIC int loadreg(struct inode *inode, struct region *reg, off_t off, size_t size)
 {
@@ -413,8 +489,8 @@ PUBLIC int loadreg(struct inode *inode, struct region *reg, off_t off, size_t si
 	return (0);
 }
 
-/*
- * Initializes memory regions.
+/**
+ * @brief Initializes memory regions.
  */
 PUBLIC void initreg(void)
 {
