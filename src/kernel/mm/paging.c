@@ -345,7 +345,7 @@ PUBLIC int vfault(addr_t addr)
 	struct pte *pg;       /* Working page.           */
 	struct region *reg;   /* Working region.         */
 	struct pregion *preg; /* Working process region. */
-
+	
 	/* Get associated region. */
 	preg = findreg(curr_proc, addr);
 	if (preg == NULL)
@@ -367,7 +367,9 @@ PUBLIC int vfault(addr_t addr)
 			goto error1;
 	}
 
-	pg = &reg->pgtab[0][PG(addr)];
+	pg = (reg->flags & REGION_DOWNWARDS) ?
+		&reg->pgtab[REGION_PGTABS - 1][PG(addr)] : 
+		&reg->pgtab[0][PG(addr)];
 		
 	/* Clear page. */
 	if (pg->zero)
@@ -381,7 +383,7 @@ PUBLIC int vfault(addr_t addr)
 		
 	/* Load page from executable file. */
 	else if (pg->fill)
-	{	
+	{
 		/* Read page. */
 		if (readpg(pg, reg, addr))
 			goto error1;
@@ -423,7 +425,7 @@ PUBLIC int pfault(addr_t addr)
 	struct pte new_pg;    /* New page.               */
 	struct region *reg;   /* Working memory region.  */
 	struct pregion *preg; /* Working process region. */
-	
+
 	preg = findreg(curr_proc, addr);
 	
 	/* Outside virtual address space. */
@@ -431,8 +433,10 @@ PUBLIC int pfault(addr_t addr)
 		goto error0;
 	
 	lockreg(reg = preg->reg);
-	
-	pg = &reg->pgtab[0][PG(addr)];
+
+	pg = (reg->flags & REGION_DOWNWARDS) ?
+		&reg->pgtab[REGION_PGTABS - 1][PG(addr)] : 
+		&reg->pgtab[0][PG(addr)];
 
 	/* Copy on write not enabled. */
 	if (!pg->cow)
@@ -442,11 +446,11 @@ PUBLIC int pfault(addr_t addr)
 
 	/* Duplicate page. */
 	if (upages[i] > 1)
-	{			
+	{
 		/* Allocate new user page. */
 		if (allocupg(&new_pg, pg->writable))
 			goto error1;
-			
+
 		cpypg(&new_pg, pg);
 		
 		new_pg.cow = 0;
@@ -465,7 +469,6 @@ PUBLIC int pfault(addr_t addr)
 	}
 	
 	unlockreg(reg);
-
 	return(0);
 
 error1:

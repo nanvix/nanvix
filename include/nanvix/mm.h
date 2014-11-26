@@ -15,7 +15,7 @@
 	#define KSTACK_SIZE 4096
 
 	/* Virtual memory layout. */
-	#define UBASE_VIRT   0x00400000 /* User base.        */
+	#define UBASE_VIRT   0x00800000 /* User base.        */
 	#define BUFFERS_VIRT 0xc0008000 /* Buffers.          */
 	#define KBASE_VIRT   0xc0000000 /* Kernel base.      */
 	#define KPOOL_VIRT   0xc0400000 /* Kernel page pool. */
