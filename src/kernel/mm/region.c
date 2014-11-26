@@ -445,15 +445,24 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 		if ((reg = preg->reg) == NULL)
 			continue;
 		
+		/* Region grows downwards. */
 		if (reg->flags & REGION_DOWNWARDS)
 		{
-			if ((addr | ~PGTAB_MASK) == preg->start)
-				return (preg);
+			if (addr <= preg->start)
+			{
+				if (addr >= preg->start - REGION_SIZE)
+					return (preg);
+			}
 		}
+		
+		/* Region grows upwards. */
 		else
 		{
-			if ((addr & PGTAB_MASK) == preg->start)
-				return (preg);
+			if (addr >= preg->start)
+			{
+				if (addr < preg->start + REGION_SIZE)
+					return (preg);
+			}
 		}
 	}
 

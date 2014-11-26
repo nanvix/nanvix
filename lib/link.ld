@@ -14,6 +14,7 @@ SECTIONS
     {
         *(.text)
     }
+	. = 0x10000000;
 
     .data ALIGN(4194304):
     {

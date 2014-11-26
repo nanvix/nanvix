@@ -21,6 +21,10 @@
 	#define REGION_DOWNWARDS 0x10 /* Region grows downwards. */
 	#define REGION_UPWARDS   0x20 /* Region grows upwards.   */
 	
+	/* Memory region dimensions. */
+	#define REGION_PGTABS (4)                        /* # Page tables.   */
+	#define REGION_SIZE   (REGION_PGTABS*PGTAB_SIZE) /* Size (in bytes). */
+	
 	/*
 	 * Memory region.
 	 */
@@ -79,13 +83,21 @@
 	#define accessreg(p, r) \
 		permission(r->mode, r->uid, r->gid, p, MAY_ALL, 0)
 	
-	/*
-	 * Asserts if an address is within a region.
+	/**
+	 * @brief Asserts if an address is withing a memory region.
+	 * 
+	 * @param preg Process region to be queried.
+	 * @param addr Address to be checked.
+	 * 
+	 * @returns True if the address resides inside the memory region, and false
+	 *          otherwise.
 	 */
-	 #define withinreg(reg, addr)                                           \
-		((reg->flags & REGION_DOWNWARDS) ?                                  \
-			(((addr_t)(addr) & ~PGTAB_MASK) > PGTAB_SIZE - reg->size - 1) : \
-		    (((addr_t)(addr) & ~PGTAB_MASK) < reg->size))                  \
+	#define withinreg(preg, addr)                            \
+		(((preg)->reg->flags & REGION_DOWNWARDS) ?           \
+			(((addr) <= (preg)->start) &&                    \
+			((addr) >= (preg)->start - (preg)->reg->size)) : \
+			(((addr) >= (preg)->start) &&                    \
+			((addr) < (preg)->start + (preg)->reg->size)))   \
 
 	/*
 	 * Allocates a memory region.

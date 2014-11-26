@@ -354,7 +354,7 @@ PUBLIC int vfault(addr_t addr)
 	lockreg(reg = preg->reg);
 	
 	/* Outside virtual address space. */
-	if (!withinreg(reg, addr))
+	if (!withinreg(preg, addr))
 	{			
 		/* Not a stack region. */
 		if (preg != STACK(curr_proc))
