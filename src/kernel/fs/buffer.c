@@ -197,7 +197,7 @@ repeat:
  * @details Locks the block buffer by marking it as locked. The calling process
  *          may block here some time, waiting its turn to acquire the lock.
  * 
- * @param Block buffer to lock.
+ * @param buf Block buffer to lock.
  * 
  * @note The block buffer will be locked after that the operation has completed.
  */

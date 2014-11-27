@@ -560,6 +560,7 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
  * @brief Finds a memory region.
  * 
  * @param proc Process where the memory region shall be searched.
+ * @param addr Address to be queried.
  * 
  * @returns Upon success a pointer to the process memory region requested is
  *          returned. Upon failure, a NULL pointer is returned instead.

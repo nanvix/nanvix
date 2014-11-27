@@ -45,7 +45,7 @@ export ARFLAGS   = -vq
 export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 
 # Builds everything.
-all: nanvix image documentation
+all: nanvix documentation
 
 # Builds Nanvix.
 nanvix:
@@ -55,7 +55,7 @@ nanvix:
 	cd $(SRCDIR) && $(MAKE) all
 
 # Builds system's image.
-image: nanvix
+image: $(BINDIR)/kernel
 	bash $(TOOLSDIR)/build/build-img.sh
 
 # Builds documentation.
