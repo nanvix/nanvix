@@ -1,66 +1,95 @@
 
 Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
-TO BE IMPLEMENTED:
+This file is part of Nanvix.
+
+Nanvix is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+Nanvix is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+
+
+                            NANVIX TODO LIST
+
+This files lists all tasks that have not yet been accomplished:
+
+	- Section I lists missing functionalities.
+	- Section II lists bugs to be fixed.
+	- Section III lists tests to be carried on.
+
+Serve your self and enjoy. 
+
+I. TO BE IMPLEMENTED
 	
-	+ text region allocation
-	+ file and record locking
-	+ re-entrant kernel structure locking
-	+ system call mkdir()
-	+ system call mknod()
-	+ system call mount()
-	+ system call time()
-	+ system call umount()
-	+ system call msgctl()
-	+ system call msgget()
-	+ system call msgsnd()
-	+ system call msgrcv()
-	+ system call rmdir()
-	+ system call semctl()
-	+ system call semget()
-	+ system call semop()
-	+ system call shmctl()
-	+ system call shmget()
-	+ system call shmop()
+	1. Text Region Allocation
+	
+	    Implement xalloc(). This function shall allocate and initialize a 
+	    text memory region. Indeed, some of the functionality is already 
+	    implemented in sys_exec(). However, some nice features like text region
+	    caching are not implemented there.
 
-TO BE FIXED:
+	2. File and Record Locking
+	
+		Implement such functionality in sys_fcntl(), It should allows process
+		to access files concurrently in a safe way.
+	
+	3. System Calls for Dealing with Directories
+	
+		Implement mkdir().
+		Implement rmdir().
+	
+	4. System Call for Creating a Special File
+	
+		Implement mknod().
+	
+	5. System Calls for Dealing with a File Systems
+		
+		Implement mount().
+		Implement umount().
+	
+	6. System Call for Getting Time
+	
+		Implement time().		
+	
+	7. System Calls for Handling Messages
+	
+		Implement msgctl().
+		Implement msgget().
+		Implement msgsnd().
+		Implement msgrcv().
+	
+	8. System Calls for Dealing with Semaphores
+	
+		Implement semctl().
+		Implement semget().
+		Implement semop().
+	
+	8. System Calls for Dealing with Shared Memory
+		
+		Implement shmctl().
+		Implement shmget().
+		Implement shmop().
 
-	- death of child signal on signal()
-	- set user ID on execve()
-	- release inode and current directory on close()
-	- allocate inode first when creating a new file on open()
-	- do not change ownership when truncating existing file on open()
-	- check number of processes per user on fork()
-	- race condition on tty driver
+II. TO BE FIXED
 
-TO BE TESTED:
+	1. Race Condition on TTY Driver
+	
+		The input TTY queue is unprotected against race conditions. For 
+		instance, it may happens that a process is reading from the device and
+		suddenly the keyboard driver is fired.
+	
+	2. Set User ID on execve()
+	
+		Currently, exeve() is ignoring setuid flags.
 
-	? block buffer pool
-	? system call access()
-	? system call brk()
-	? system call close()
-	? system call chdir()
-	? system call chmod()
-	? system call chown()
-	? system call chroot()
-	? system call dup()
-	? system call execve()
-	? system call exit()
-	? system call fcntl()
-	? system call fork()
-	? system call ioctl()
-	? system call kill()
-	? system call link()
-	? system call lseek()
-	? system call open()
-	? system call pipe()
-	? system call umask()
-	? system call read()
-	? system call stat()
-	? system call sync()
-	? system call times()
-	? system call uname()
-	? system call unlink()
-	? system call ustat()
-	? system call utime()
-	? system call write()
+III. TO BE TESTED
+
+	Pretty much everything =)
