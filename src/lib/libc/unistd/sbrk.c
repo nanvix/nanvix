@@ -4,12 +4,13 @@
  * unistd/sbrk.c - sbrk() implementation.
  */
 
+#include <nanvix/mm.h>
 #include <sys/types.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 /* Current breakpoint value. */
-static void *current_brk = (void *)0xa0000000;
+static void *current_brk = (void *)UHEAP_ADDR;
 
 /*
  * Changes process's breakpoint value.
@@ -17,6 +18,8 @@ static void *current_brk = (void *)0xa0000000;
 void *sbrk(size_t size)
 {
 	void *old_brk;
+	
+	size = (((size) + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1));
 	
 	old_brk = current_brk;
 	current_brk = (void *)((unsigned)old_brk + size);

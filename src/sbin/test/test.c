@@ -36,12 +36,12 @@ int swap_test(void)
 	
 	ret = 0;
 	
-	a = malloc(2048*2048*sizeof(int));
-	b = malloc(2048*2048*sizeof(int));
-	c = malloc(2048*2048*sizeof(int));
+	a = malloc(1280*1280*sizeof(int));
+	b = malloc(1280*1280*sizeof(int));
+	c = malloc(1280*1280*sizeof(int));
 	
 	/* Initialize matrices. */
-	for (int i = 0; i < 2048*2048; i++)
+	for (int i = 0; i < 1280*1280; i++)
 	{
 		a[i] = 1;
 		b[i] = 1;
@@ -49,17 +49,17 @@ int swap_test(void)
 	}
 	
 	/* Multiply matrices. */
-	for (int i = 0; i < 2048; i++)
+	for (int i = 0; i < 1280; i++)
 	{
-		for (int j = 0; j < 2048; j++)
+		for (int j = 0; j < 1280; j++)
 		{
-			for (int k = 0; k < 2048; k++)
-				c[i*2048 + j] += a[i*2048 + k]*b[k*2048 + j];
+			for (int k = 0; k < 1280; k++)
+				c[i*1280 + j] += a[i*1280 + k]*b[k*1280 + j];
 		}
 	}
 	
 	/* Check values. */
-	for (int i = 0; i < 2048*2048; i++)
+	for (int i = 0; i < 1280*1280; i++)
 	{
 		if (c[i] != 2)
 		{
