@@ -36,7 +36,7 @@ export AR = $(TARGET)-ar
 # Toolchain configuration.
 export CFLAGS    = -I $(INCDIR)
 export CFLAGS   += -m32
-export CFLAGS   += -std=c99 -pedantic-errors
+export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 export CFLAGS   += -Wall -Wextra -Werror
 export CFLAGS   += -D NDEBUG
@@ -45,11 +45,7 @@ export ARFLAGS   = -vq
 export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 
 # Builds everything.
-all: nanvix
-
-# Builds system's image.
-image: $(BINDIR)/kernel
-	bash $(TOOLSDIR)/build/build-img.sh
+all: nanvix image documentation
 
 # Builds Nanvix.
 nanvix:
@@ -58,12 +54,17 @@ nanvix:
 	mkdir -p $(UBINDIR)
 	cd $(SRCDIR) && $(MAKE) all
 
+# Builds system's image.
+image: $(BINDIR)/kernel
+	bash $(TOOLSDIR)/build/build-img.sh
+
 # Builds documentation.
 documentation:
 	doxygen $(DOXYDIR)/kernel.config
 
 # Cleans compilation files.
 clean:
-	@rm -f nanvix.img
+	@rm -f nanvix.img hdd.img
+	@rm -rf $(BINDIR)
 	@rm -rf $(DOCDIR)/xml-*
 	cd $(SRCDIR) && $(MAKE) clean
