@@ -18,6 +18,7 @@
  */
 
 #include <i386/i386.h>
+#include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/clock.h>
 #include <nanvix/fs.h>
@@ -38,14 +39,15 @@ PRIVATE int kpages[NR_KPAGES] = { 0,  }; /* Reference count. */
 #define NR_UPAGES (UMEM_SIZE/PAGE_SIZE)
 
 /**
- * @brief User pages.
+ * @brief Memory frames.
  */
 PRIVATE struct
 {
-	unsigned count; /**< Reference count. */
-	unsigned age;   /**< Age.             */
-	pid_t owner;    /**< Page owner.      */
-} upages[NR_UPAGES] = {{0, 0, 0},  };
+	unsigned count; /**< Reference count.             */
+	unsigned age;   /**< Age.                         */
+	pid_t owner;    /**< Page owner.                  */
+	addr_t vaddr;   /**< Virtual address of the page. */
+} upages[NR_UPAGES] = {{0, 0, 0, 0},  };
 
 /*
  * Allocates a kernel page.
@@ -145,21 +147,16 @@ PUBLIC void umappgtab(struct pde *pgdir, addr_t addr)
 }
 
 /**
- * @brief Allocates a user page.
- * 
- * @param upg      Page table entry that shall be filled.
- * @param writable Is the page writable?
- * 
- * @returns Zero upon success, and non-zero otherwise.
+ * @brief Allocates a frame.
  */
-PRIVATE int allocupg(struct pte *upg, int writable)
+PRIVATE int alloc_frame(void)
 {
 	int i;     /* Loop index. */
 	int older; /* Older page. */
 	
 	older = -1;
 	
-	/* Search for a free user page. */
+	/* Search for a free frame. */
 	for (i = 0; i < NR_UPAGES; i++)
 	{
 		/* Found it. */
@@ -182,23 +179,55 @@ PRIVATE int allocupg(struct pte *upg, int writable)
 	 */
 	if (older < 0)
 	{
-		kprintf("mm: there are no free user pages left");		
-		curr_proc->errno = -EAGAIN;
+		kprintf("mm: there are no free user pages left");
+		return (-1);
 	}
 	
 	return (-1);
 
 found:
-	
-	/* Allocate page. */
+
 	upages[i].count++;
+	
+	return (i);
+}
+
+/**
+ * @brief Allocates a user page.
+ * 
+ * @param upg      Page table entry that shall be filled.
+ * @param writable Is the page writable?
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
+ */
+PRIVATE int allocupg(addr_t addr, int writable)
+{
+	int i;             /* Page frame index.         */
+	struct pte *pg;    /* Working page table entry. */
+	struct pde *pgtab; /* Working page table entry. */
+	
+	/* Failed to allocate page frame. */
+	if ((i = alloc_frame()) < 0)
+	{
+		curr_proc->errno = -EAGAIN;
+		return (-1);
+	}
+	
+	/* Find page table entry. */
+	pgtab = &curr_proc->pgdir[PGTAB(addr)];
+	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
+	
+	/* Initialize page frame. */
 	upages[i].age = ticks;
 	upages[i].owner = curr_proc->pid;
-	kmemset(upg, 0, sizeof(struct pte));
-	upg->present = 1;
-	upg->writable = (writable) ? 1 : 0;
-	upg->user = 1;
-	upg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
+	upages[i].vaddr = addr;
+	
+	/* Allocate page. */
+	kmemset(pg, 0, sizeof(struct pte));
+	pg->present = 1;
+	pg->writable = (writable) ? 1 : 0;
+	pg->user = 1;
+	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
 	tlb_flush();
 	
 	return (0);
@@ -343,16 +372,22 @@ PUBLIC void dstrypgdir(struct process *proc)
 /*
  * Reads page from inode.
  */
-PRIVATE int readpg(struct pte *pg, struct region *reg, addr_t addr)
+PRIVATE int readpg(struct region *reg, addr_t addr)
 {
 	char *p;             /* Read pointer. */
 	off_t off;           /* Block offset. */
 	ssize_t count;       /* Bytes read.   */
 	struct inode *inode; /* File inode.   */
+	struct pte *pg;    /* Working page table entry. */
+	struct pde *pgtab; /* Working page table entry. */
 	
 	/* Assign new user page. */
-	if (allocupg(pg, reg->mode & MAY_WRITE))
+	if (allocupg(addr, reg->mode & MAY_WRITE))
 		return (-1);
+	
+	/* Find page table entry. */
+	pgtab = &curr_proc->pgdir[PGTAB(addr)];
+	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
 	
 	/* Read page. */
 	off = reg->file.off + (PG(addr) << PAGE_SHIFT);
@@ -412,7 +447,7 @@ PUBLIC int vfault(addr_t addr)
 	if (pg->zero)
 	{
 		/* Assign new page to region. */
-		if (allocupg(pg, reg->mode & MAY_WRITE))
+		if (allocupg(addr, reg->mode & MAY_WRITE))
 			goto error1;
 		
 		kmemset((void *)(addr & PAGE_MASK), 0, PAGE_SIZE);
@@ -422,7 +457,7 @@ PUBLIC int vfault(addr_t addr)
 	else if (pg->fill)
 	{
 		/* Read page. */
-		if (readpg(pg, reg, addr))
+		if (readpg(reg, addr))
 			goto error1;
 	}
 		
@@ -442,14 +477,23 @@ error0:
 /*
  * Copies a page.
  */
-EXTERN void cpypg(struct pte *pg1, struct pte *pg2)
+PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 {
+	int i;
+	
+	/* Allocate new user page. */
+	if ((i = alloc_frame()) < 0)
+		return (-1);
+	
 	pg1->present = pg2->present;
 	pg1->writable = pg2->writable;
 	pg1->user = pg2->user;
 	pg1->cow = pg2->cow;
+	pg1->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
 
 	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
+	
+	return (0);
 }
 
 /*
@@ -484,11 +528,8 @@ PUBLIC int pfault(addr_t addr)
 	/* Duplicate page. */
 	if (upages[i].count > 1)
 	{
-		/* Allocate new user page. */
-		if (allocupg(&new_pg, pg->writable))
+		if (cpypg(&new_pg, pg))
 			goto error1;
-
-		cpypg(&new_pg, pg);
 		
 		new_pg.cow = 0;
 		new_pg.writable = 1;
