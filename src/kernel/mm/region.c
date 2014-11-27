@@ -37,36 +37,69 @@ PRIVATE struct region regtab[NR_REGIONS];
 /**
  * @brief Expands a memory region.
  * 
+ * @param proc Process who owns the memory region.
  * @param reg  Memory region that shall be expanded.
  * @param size Size in bytes to be added to the memory region.
  */
-PRIVATE int expand(struct region *reg, size_t size)
+PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 {	
-	unsigned i;      /* Loop index.                    */
-	unsigned npages; /* Number of pages in the region. */
+	unsigned i, j;         /* Loop indexes.                  */
+	unsigned npages;       /* Number of pages in the region. */
+	struct pregion *preg ; /* Working process region.        */
+	
+	((void)proc);
 	
 	size = ALIGN(size, PAGE_SIZE);
 	
 	/* Region too big. */
-	if (reg->size + size > PGTAB_SIZE)
+	if (reg->size + size > REGION_SIZE)
 		return (-1);
 	
+	preg = reg->preg;
 	npages = size >> PAGE_SHIFT;
 	
 	/* Expand downwards. */
 	if (reg->flags & REGION_DOWNWARDS)
 	{
+		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
+		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
+		
 		/* Allocate first page table. */
 		if (reg->size == 0)
 		{
 			reg->pgtab[REGION_PGTABS - 1] = getkpg(1);
 			if (reg->pgtab[REGION_PGTABS - 1] == NULL)
 				return (-1);
+				
+			j = PAGE_SIZE/PTE_SIZE - 1;
 		}
 		
-		npages = PAGE_SIZE/PTE_SIZE - npages;
-		for (i = (PAGE_SIZE/PTE_SIZE - 1); i >= npages; i--)
-			zeropg(&reg->pgtab[REGION_PGTABS - 1][i]);
+		/* Mark pages as demand zero. */
+		while (npages > 0)
+		{
+			/* Create new page table. */
+			if (j == 0)
+			{
+				i--;
+				j = PAGE_SIZE/PTE_SIZE - 1;
+				
+				reg->pgtab[i] = getkpg(1);
+				if (reg->pgtab[i] == NULL)
+					return (-1);
+					
+				/* Map page table. */
+				if (proc != NULL)
+					mappgtab(proc->pgdir, preg->start-reg->size,reg->pgtab[i]);
+				
+				continue;
+			}
+			
+			zeropg(&reg->pgtab[i][j]);
+		
+			j--;
+			npages--;
+			reg->size += PAGE_SIZE;
+		}
 	}
 
 	/* Expand upwards. */
@@ -80,11 +113,36 @@ PRIVATE int expand(struct region *reg, size_t size)
 				return (-1);
 		}
 		
-		for (i = 0; i < npages; i++)
-			zeropg(&reg->pgtab[0][i]);
+		i = 0;
+		j = 0;
+		
+		/* Mark pages as demand zero. */
+		while (npages > 0)
+		{
+			/* Reset. */
+			if (j == PAGE_SIZE/PTE_SIZE)
+			{
+				i++;
+				j = 0;
+				
+				reg->pgtab[i] = getkpg(1);
+				if (reg->pgtab[i] == NULL)
+					return (-1);
+				
+				/* Map page table. */
+				if (proc != NULL)
+					mappgtab(proc->pgdir, preg->start+reg->size,reg->pgtab[i]);
+				
+				continue;
+			}
+			
+			zeropg(&reg->pgtab[i][j]);
+			
+			j++;
+			npages--;
+			reg->size += PAGE_SIZE;
+		}
 	}
-	
-	reg->size += size;
 	
 	return (0);
 }
@@ -200,7 +258,7 @@ found:
 		reg->pgtab[i] = NULL;
 	
 	/* Expand region. */
-	if (expand(reg, size))
+	if (expand(NULL, reg, size))
 	{
 		reg->flags = REGION_FREE;
 		return (NULL);
@@ -266,21 +324,24 @@ PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode)
 /**
  * @brief Attaches a memory region to a process.
  * 
- * @param proc Process where the memory region shall be attached.
- * @param preg Process memory region where the memory shall be attached.
- * @param addr Address where the memory region shall be attached.
- * @param reg  Memory region to be attached.
+ * @param proc  Process where the memory region shall be attached.
+ * @param preg  Process memory region where the memory shall be attached.
+ * @param start Address where the memory region shall be attached.
+ * @param reg   Memory region to be attached.
  * 
  * @returns Zero upon success, and non-zero otherwise.
  */
-PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, struct region *reg)
-{	
+PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t start, struct region *reg)
+{
+	addr_t addr; /* Working address. */
+	unsigned i;  /* Loop index.      */
+	
 	/* Process region is busy. */
 	if (preg->reg != NULL)
 		return (-1);
 	
 	/* Bad address. */
-	if ((addr < UBASE_VIRT) || (addr >= KBASE_VIRT))
+	if ((start < UBASE_VIRT) || (start >= KBASE_VIRT))
 	{
 		curr_proc->errno = -EFAULT;
 		return (-1);
@@ -290,7 +351,7 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 	if (reg->flags & REGION_DOWNWARDS)
 	{
 		/* Address is not properly aligned. */
-		if ((addr & ~PGTAB_MASK) != ~PGTAB_MASK)
+		if ((start & ~PGTAB_MASK) != ~PGTAB_MASK)
 			return (-1);
 	}
 	
@@ -298,7 +359,7 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 	else
 	{
 		/* Address is not properly aligned. */
-		if (addr & ~PGTAB_MASK)
+		if (start & ~PGTAB_MASK)
 			return (-1);
 	}
 	
@@ -322,22 +383,34 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
 			return (-1);
 	}
 
-	/* Map page table. */
+	/* Map page tables. */
+	addr = start;
 	if (reg->flags & REGION_DOWNWARDS)
 	{
-		if (mappgtab(proc->pgdir, addr, reg->pgtab[REGION_PGTABS - 1]))
-			return (-1);
+		for (i = REGION_PGTABS; i > 0 ; i--)
+		{
+			/* Map only valid page tables. */
+			if (reg->pgtab[i - 1] != NULL)
+				mappgtab(proc->pgdir, addr, reg->pgtab[i - 1]);
+			addr -= PGTAB_SIZE;
+		}
 	}
 	else
 	{
-		if (mappgtab(proc->pgdir, addr, reg->pgtab[0]))
-			return (-1);
+		for (i = 0; i < REGION_PGTABS; i++)
+		{
+			/* Map only valid page tables. */
+			if (reg->pgtab[i] != NULL)
+				mappgtab(proc->pgdir, addr, reg->pgtab[i]);
+			addr += PGTAB_SIZE;
+		}
 	}
 	
 	/* Attach region. */
-	preg->start = addr;
+	preg->start = start;
 	preg->reg = reg;
 	reg->count++;
+	reg->preg = preg;
 	proc->size += reg->size;
 	
 	return (0);
@@ -351,7 +424,9 @@ PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t addr, st
  */
 PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 {
-	struct region *reg;
+	unsigned i;         /* Loop index.            */
+	addr_t addr;        /* Working address.       */
+	struct region *reg; /* Working memory region. */
 	
 	/* Nothing to be done. */
 	if ((reg = preg->reg) == NULL)
@@ -360,7 +435,27 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 	lockreg(reg);
 	
 	/* Detach region. */
-	umappgtab(proc->pgdir, preg->start);
+	addr = preg->start;
+	if (reg->flags & REGION_DOWNWARDS)
+	{
+		for (i = REGION_PGTABS; i > 0 ; i--)
+		{
+			/* Unmap only valid page tables. */
+			if (reg->pgtab[i - 1] != NULL)
+				umappgtab(proc->pgdir, addr);
+			addr -= PGTAB_SIZE;
+		}
+	}
+	else
+	{
+		for (i = 0; i < REGION_PGTABS; i++)
+		{
+			/* Unmap only valid page tables. */
+			if (reg->pgtab[i] != NULL)
+				umappgtab(proc->pgdir, addr);
+			addr += PGTAB_SIZE;
+		}
+	}
 	preg->reg = NULL;
 	proc->size -= reg->size;
 	if (--reg->count < 0)
@@ -431,8 +526,6 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 {
 	struct region *reg;
 	
-	size = ALIGN(size, PAGE_SIZE);
-	
 	/* Attached shared regions may not grow. */
 	if ((reg = preg->reg)->flags & REGION_SHARED)
 		return (-EINVAL);
@@ -452,7 +545,9 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 		if (proc->size + size > PROC_SIZE_MAX)
 			return (-ENOMEM);
 		
-		expand(reg, size);
+		/* Failed to expand region.  */
+		if (expand(proc, reg, size))
+			return (-ENOMEM);
 	}
 	
 	/* Change process and region sizse. */
@@ -517,7 +612,7 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
  */
 PUBLIC int loadreg(struct inode *inode, struct region *reg, off_t off, size_t size)
 {
-	unsigned i, j;   /* Loop index.      */
+	unsigned i, j;   /* Loop indexes.    */
 	unsigned npages; /* Number of pages. */
 	
 	reg->file.inode = inode;
@@ -531,14 +626,14 @@ PUBLIC int loadreg(struct inode *inode, struct region *reg, off_t off, size_t si
 	if (reg->flags & REGION_DOWNWARDS)
 	{
 		i = REGION_PGTABS - 1;
-		j = PAGE_SIZE/PTE_SIZE - 1;
+		j = PAGE_SIZE/PTE_SIZE;
 		while (npages > 0)
 		{
 			/* Reset. */
 			if (j == 0)
 			{
 				i--;
-				j = PAGE_SIZE/PTE_SIZE - 1;
+				j = PAGE_SIZE/PTE_SIZE;
 				continue;
 			}
 			

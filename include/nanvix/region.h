@@ -31,11 +31,12 @@
 	struct region
 	{
 		/* General information. */
-		int flags;             /* Flags (see above).     */
-		int count;             /* Reference count.       */
-		size_t size;           /* Region size.           */
-		struct pte *pgtab[4];  /* Underlying page table. */
-		struct process *chain; /* Sleeping chain.        */
+		int flags;             /* Flags (see above).          */
+		int count;             /* Reference count.            */
+		size_t size;           /* Region size.                */
+		struct pte *pgtab[4];  /* Underlying page table.      */
+		struct process *chain; /* Sleeping chain.             */
+		struct pregion *preg;  /* Process region attached to. */
 		
 		/* File information. */
 		struct
@@ -117,7 +118,7 @@
 	/*
 	 * Attaches a memory region to a process.
 	 */
-	EXTERN int attachreg(struct process *proc, struct pregion *preg, addr_t addr, struct region *reg);
+	EXTERN int attachreg(struct process *proc, struct pregion *preg, addr_t start, struct region *reg);
 	
 	/*
 	 * Detaches a memory region from a process.

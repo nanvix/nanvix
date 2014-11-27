@@ -368,8 +368,8 @@ PUBLIC int vfault(addr_t addr)
 	}
 
 	pg = (reg->flags & REGION_DOWNWARDS) ?
-		&reg->pgtab[REGION_PGTABS - 1][PG(addr)] : 
-		&reg->pgtab[0][PG(addr)];
+		&reg->pgtab[REGION_PGTABS-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]: 
+		&reg->pgtab[PGTAB(addr) - PGTAB(preg->start)][PG(addr)];
 		
 	/* Clear page. */
 	if (pg->zero)
@@ -435,8 +435,8 @@ PUBLIC int pfault(addr_t addr)
 	lockreg(reg = preg->reg);
 
 	pg = (reg->flags & REGION_DOWNWARDS) ?
-		&reg->pgtab[REGION_PGTABS - 1][PG(addr)] : 
-		&reg->pgtab[0][PG(addr)];
+		&reg->pgtab[REGION_PGTABS-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]: 
+		&reg->pgtab[PGTAB(addr) - PGTAB(preg->start)][PG(addr)];
 
 	/* Copy on write not enabled. */
 	if (!pg->cow)
