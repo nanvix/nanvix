@@ -47,8 +47,6 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 	unsigned npages;       /* Number of pages in the region. */
 	struct pregion *preg ; /* Working process region.        */
 	
-	((void)proc);
-	
 	size = ALIGN(size, PAGE_SIZE);
 	
 	/* Region too big. */
@@ -60,19 +58,18 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 	
 	/* Expand downwards. */
 	if (reg->flags & REGION_DOWNWARDS)
-	{
-		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
-		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
-		
+	{		
 		/* Allocate first page table. */
 		if (reg->size == 0)
 		{
 			reg->pgtab[REGION_PGTABS - 1] = getkpg(1);
 			if (reg->pgtab[REGION_PGTABS - 1] == NULL)
 				return (-1);
-				
-			j = PAGE_SIZE/PTE_SIZE - 1;
 		}
+		
+		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
+		j = PAGE_SIZE/PTE_SIZE - 
+				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT) - 1;
 		
 		/* Mark pages as demand zero. */
 		while (npages > 0)
@@ -113,8 +110,8 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 				return (-1);
 		}
 		
-		i = 0;
-		j = 0;
+		i = reg->size >> PGTAB_SHIFT;
+		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
 		
 		/* Mark pages as demand zero. */
 		while (npages > 0)

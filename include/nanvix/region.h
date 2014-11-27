@@ -22,7 +22,7 @@
 	#define REGION_UPWARDS   0x20 /* Region grows upwards.   */
 	
 	/* Memory region dimensions. */
-	#define REGION_PGTABS (4)                        /* # Page tables.   */
+	#define REGION_PGTABS (8)                        /* # Page tables.   */
 	#define REGION_SIZE   (REGION_PGTABS*PGTAB_SIZE) /* Size (in bytes). */
 	
 	/*
@@ -31,12 +31,12 @@
 	struct region
 	{
 		/* General information. */
-		int flags;             /* Flags (see above).          */
-		int count;             /* Reference count.            */
-		size_t size;           /* Region size.                */
-		struct pte *pgtab[4];  /* Underlying page table.      */
-		struct process *chain; /* Sleeping chain.             */
-		struct pregion *preg;  /* Process region attached to. */
+		int flags;                        /* Flags (see above).          */
+		int count;                        /* Reference count.            */
+		size_t size;                      /* Region size.                */
+		struct pte *pgtab[REGION_PGTABS]; /* Underlying page table.      */
+		struct process *chain;            /* Sleeping chain.             */
+		struct pregion *preg;             /* Process region attached to. */
 		
 		/* File information. */
 		struct
