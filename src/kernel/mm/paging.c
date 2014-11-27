@@ -47,7 +47,7 @@ PRIVATE struct
 	unsigned age;   /**< Age.                         */
 	pid_t owner;    /**< Page owner.                  */
 	addr_t vaddr;   /**< Virtual address of the page. */
-} upages[NR_UPAGES] = {{0, 0, 0, 0},  };
+} frames[NR_UPAGES] = {{0, 0, 0, 0},  };
 
 /*
  * Allocates a kernel page.
@@ -160,13 +160,13 @@ PRIVATE int alloc_frame(void)
 	for (i = 0; i < NR_UPAGES; i++)
 	{
 		/* Found it. */
-		if (upages[i].count == 0)
+		if (frames[i].count == 0)
 			goto found;
 		
 		/* Local page replacement policy. */
-		if (upages[i].owner == curr_proc->pid)
+		if (frames[i].owner == curr_proc->pid)
 		{
-			if ((older < 0) || (upages[i].age < upages[older].age))
+			if ((older < 0) || (frames[i].age < frames[older].age))
 				older = i;
 		}
 	}
@@ -187,7 +187,7 @@ PRIVATE int alloc_frame(void)
 
 found:
 
-	upages[i].count++;
+	frames[i].count++;
 	
 	return (i);
 }
@@ -218,9 +218,9 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
 	
 	/* Initialize page frame. */
-	upages[i].age = ticks;
-	upages[i].owner = curr_proc->pid;
-	upages[i].vaddr = addr;
+	frames[i].age = ticks;
+	frames[i].owner = curr_proc->pid;
+	frames[i].vaddr = addr;
 	
 	/* Allocate page. */
 	kmemset(pg, 0, sizeof(struct pte));
@@ -250,12 +250,12 @@ PUBLIC void freeupg(struct pte *upg)
 	i = upg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 		
 	/* Double free. */
-	if (upages[i].count == 0)
+	if (frames[i].count == 0)
 		kpanic("freeing user page twice");
 	
 	/* Free user page. */
-	if (--upages[i].count)
-		upages[i].owner = 0;
+	if (--frames[i].count)
+		frames[i].owner = 0;
 	kmemset(upg, 0, sizeof(struct pte));
 	tlb_flush();
 }
@@ -304,7 +304,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		}
 		
 		i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
-		upages[i].count++;
+		frames[i].count++;
 	}
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
@@ -526,7 +526,7 @@ PUBLIC int pfault(addr_t addr)
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 
 	/* Duplicate page. */
-	if (upages[i].count > 1)
+	if (frames[i].count > 1)
 	{
 		if (cpypg(&new_pg, pg))
 			goto error1;
@@ -535,7 +535,7 @@ PUBLIC int pfault(addr_t addr)
 		new_pg.writable = 1;
 		
 		/* Unlik page. */
-		upages[i].count--;
+		frames[i].count--;
 		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 		

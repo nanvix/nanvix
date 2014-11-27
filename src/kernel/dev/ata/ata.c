@@ -172,8 +172,9 @@ struct ata_info
 #define ATADEV_DISCARD (1 << 1) /* Discard next IRQ? */
 
 /* Request flags. */
-#define REQ_WRITE (1 << 0) /* Write request?    */
-#define REQ_BUF   (1 << 1) /* Buffered request? */
+#define REQ_WRITE (1 << 0) /* Write request?         */
+#define REQ_BUF   (1 << 1) /* Buffered request?      */
+#define REQ_SYNC  (1 << 2) /* Synchronous operation? */
 
 /*
  * I/O operation request.
@@ -544,7 +545,7 @@ PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 /*
  * Schedules a block disk IO operation.
  */
-PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
+PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
 {
 	va_list args;        /* Variable arg list. */
 	struct atadev *dev;  /* ATA device.        */
@@ -561,10 +562,10 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
 		
 		req = &dev->queue.requests[dev->queue.tail];
 		
-		va_start(args, type);
+		va_start(args, flags);
 		
 		/* Buffered I/O operation. */
-		if (type & REQ_BUF)
+		if (flags & REQ_BUF)
 		{
 			buf = va_arg(args, struct buffer *);
 			
@@ -576,7 +577,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
 			buf->flags |= BUFFER_BUSY;
 			
 			/* Create request. */
-			req->flags = type;
+			req->flags = flags;
 			req->u.buffered.buf = buf;
 		}
 		
@@ -584,7 +585,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
 		else
 		{
 			/* Create request. */
-			req->flags = type;
+			req->flags = flags;
 			req->u.raw.num = va_arg(args, block_t);
 			req->u.raw.buf = va_arg(args, unsigned char *);
 			req->u.raw.size = va_arg(args, size_t);
@@ -602,14 +603,14 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
 		 */
 		if (dev->queue.size == 1)
 		{
-			if (type & REQ_WRITE)
+			if (flags & REQ_WRITE)
 				ata_write_op(atadevid, req);
 			else
 				ata_read_op(atadevid, req);
 		}
 		
 		/* Wait read operation to complete. */
-		if (!(req->flags & REQ_WRITE))
+		if (req->flags & REQ_SYNC)
 			sleep(&dev->chain, PRIO_IO);
 	
 	enable_interrupts();
@@ -619,18 +620,18 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned type, ...)
  * Schedules a buffered I/O operation.
  */
 PRIVATE void
-ata_sched_buffered(unsigned atadevid, struct buffer *buf, int write)
+ata_sched_buffered(unsigned atadevid, struct buffer *buf, unsigned flags)
 {
-	ata_sched(atadevid, REQ_BUF | ((write) ? REQ_WRITE : 0), buf);
+	ata_sched(atadevid, flags, buf);
 }
 
 /*
  * Schedules a non-buffered I/O operation.
  */
 PRIVATE void
-ata_sched_raw(unsigned atadevid, block_t num, void *buf, size_t size, int write)
+ata_sched_raw(unsigned atadevid, block_t num, void *buf, size_t size, unsigned flags)
 {	
-	ata_sched(atadevid, REQ_BUF | ((write) ? REQ_WRITE : 0), num, buf, size);
+	ata_sched(atadevid, flags, num, buf, size);
 }
 
 /*============================================================================*
@@ -654,7 +655,7 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
-	ata_sched_buffered(minor, buf, 0);
+	ata_sched_buffered(minor, buf, REQ_BUF | REQ_SYNC);
 	
 	return (0);
 }
@@ -676,7 +677,7 @@ PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
-	ata_sched_buffered(minor, buf, 1);
+	ata_sched_buffered(minor, buf, REQ_BUF | REQ_WRITE);
 	
 	return (0);
 }
@@ -702,7 +703,48 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
-	((void)(ata_sched_raw));
+	p = (unsigned char *)buf;
+	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
+	n = ALIGN(n, BLOCK_SIZE);
+	
+	/* Read in bursts. */
+	for (i = 0; i < n; /* noop*/)
+	{	
+		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : PAGE_SIZE - (n - i);
+		ata_sched_raw(minor, blknum, p, count, REQ_SYNC);
+		
+		p += BLOCK_SIZE;
+		i += count;
+		
+		/* Avoid starvation. */
+		if (n > 0)
+			yield();
+	}
+	
+	return ((ssize_t)i);
+}
+
+
+/*
+ * Writes bytes to a ATA device.
+ */
+PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
+{
+	size_t i;           /* Loop index.      */
+	size_t count;       /* # bytes to read. */
+	block_t blknum;     /* Block number.    */
+	struct atadev *dev; /* ATA device.      */
+	unsigned char *p;   /* Write pointer.    */
+	
+	/* Invalid minor device. */
+	if (minor >= 4)
+		return (-EINVAL);
+	
+	dev = &ata_devices[minor];
+	
+	/* Device not valid. */
+	if (!(dev->flags & ATADEV_VALID))
+		return (-EINVAL);
 	
 	p = (unsigned char *)buf;
 	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
@@ -712,7 +754,7 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	for (i = 0; i < n; /* noop*/)
 	{	
 		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : PAGE_SIZE - (n - i);
-		ata_sched_raw(minor, blknum, p, count, 0);
+		ata_sched_raw(minor, blknum, p, count, REQ_SYNC | REQ_WRITE);
 		
 		p += BLOCK_SIZE;
 		i += count;
@@ -730,7 +772,7 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
  */
 PRIVATE const struct bdev ata_ops = {
 	&ata_read,    /* read()     */
-	NULL,         /* write()    */
+	&ata_write,   /* write()    */
 	&ata_readblk, /* readblk()  */
 	&ata_writeblk /* writeblk() */
 };
