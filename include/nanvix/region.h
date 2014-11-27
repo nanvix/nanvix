@@ -1,7 +1,20 @@
 /*
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * <nanvix/region.h> - Memory regions library.
+ * Copyright(C) 2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef REGION_H_
@@ -63,26 +76,16 @@
 		struct region *reg; /* Underlying memory region. */
 	};
 	
-	/*
-	 * Initializes memory regions.
-	 */
-	EXTERN void initreg(void);
-
-	/*
-	 * Locks a memory region.
-	 */
-	EXTERN void lockreg(struct region *reg);
-	
-	/*
-	 * Unlocks a memory region.
-	 */
-	EXTERN void unlockreg(struct region *reg);
-	
-	/*
-	 * Returns access permissions to a memory region.
+	/**
+	 * @brief Returns access permissions to a memory region.
+	 * 
+	 * @brief p Permissions to be queried.
+	 * @brief r Memory region to be queried.
+	 * 
+	 * @returns True if access is allowed and false otherwise.
 	 */
 	#define accessreg(p, r) \
-		permission(r->mode, r->uid, r->gid, p, MAY_ALL, 0)
+		(permission(r->mode, r->uid, r->gid, p, MAY_ALL, 0))
 	
 	/**
 	 * @brief Asserts if an address is withing a memory region.
@@ -99,51 +102,20 @@
 			((addr) >= (preg)->start - (preg)->reg->size)) : \
 			(((addr) >= (preg)->start) &&                    \
 			((addr) < (preg)->start + (preg)->reg->size)))   \
-
-	/*
-	 * Allocates a memory region.
-	 */
-	EXTERN struct region *allocreg(mode_t mode, size_t size, int flags);
 	
-	/*
-	 * Frees a memory region.
-	 */
-	EXTERN void freereg(struct region *reg);
-
-	/*
-	 * Edits permissions on a memory region.
-	 */
-	PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode);
-
-	/*
-	 * Attaches a memory region to a process.
-	 */
-	EXTERN int attachreg(struct process *proc, struct pregion *preg, addr_t start, struct region *reg);
-	
-	/*
-	 * Detaches a memory region from a process.
-	 */
-	EXTERN void detachreg(struct process *proc, struct pregion *preg);
-
-	/*
-	 * Duplicates a memory region.
-	 */
-	EXTERN struct region *dupreg(struct region *reg);
-
-	/*
-	 * Changes the size of a memory region.
-	 */
-	EXTERN int growreg(struct process *proc, struct pregion *preg, ssize_t size);
-	
-	/*
-	 * Finds a memory region
-	 */
-	EXTERN struct pregion *findreg(struct process *proc, addr_t addr);
-	
-	/*
-	 * Loads a portion of a file into a memory region.
-	 */
-	EXTERN int loadreg(struct inode *inode, struct region *reg, off_t off, size_t size);
+	/* Forward definitions. */
+	EXTERN int attachreg(struct process*,struct pregion*,addr_t,struct region*);
+	EXTERN int editreg(struct region *, uid_t, gid_t, mode_t);
+	EXTERN int growreg(struct process *, struct pregion *, ssize_t);
+	EXTERN int loadreg(struct inode *, struct region *, off_t, size_t);
+	EXTERN void detachreg(struct process *, struct pregion *);
+	EXTERN void freereg(struct region *);
+	EXTERN void initreg(void);
+	EXTERN void lockreg(struct region *);
+	EXTERN void unlockreg(struct region *);
+	EXTERN struct region *allocreg(mode_t, size_t, int);
+	EXTERN struct region *dupreg(struct region *);
+	EXTERN struct pregion *findreg(struct process *, addr_t);
 
 #endif /* _ASM_FILE */
 

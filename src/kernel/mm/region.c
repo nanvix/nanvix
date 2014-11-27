@@ -397,7 +397,8 @@ PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode)
  * 
  * @returns Zero upon success, and non-zero otherwise.
  */
-PUBLIC int attachreg(struct process *proc, struct pregion *preg, addr_t start, struct region *reg)
+PUBLIC int attachreg
+(struct process *proc, struct pregion *preg, addr_t start, struct region *reg)
 {
 	addr_t addr; /* Working address. */
 	unsigned i;  /* Loop index.      */
@@ -677,7 +678,8 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
  * 
  * @returns Zero upon success, and non-zero otherwise.
  */
-PUBLIC int loadreg(struct inode *inode, struct region *reg, off_t off, size_t size)
+PUBLIC int loadreg
+(struct inode *inode, struct region *reg, off_t off, size_t size)
 {
 	unsigned i, j;   /* Loop indexes.    */
 	unsigned npages; /* Number of pages. */
