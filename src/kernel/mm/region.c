@@ -43,9 +43,9 @@ PRIVATE struct region regtab[NR_REGIONS];
  */
 PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 {	
-	unsigned i, j;         /* Loop indexes.                  */
-	unsigned npages;       /* Number of pages in the region. */
-	struct pregion *preg ; /* Working process region.        */
+	unsigned i, j;        /* Loop indexes.                  */
+	unsigned npages;      /* Number of pages in the region. */
+	struct pregion *preg; /* Working process region.        */
 	
 	size = ALIGN(size, PAGE_SIZE);
 	
@@ -69,7 +69,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		
 		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
 		j = PAGE_SIZE/PTE_SIZE - 
-				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT) - 1;
+				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT);
 		
 		/* Mark pages as demand zero. */
 		while (npages > 0)
@@ -78,7 +78,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 			if (j == 0)
 			{
 				i--;
-				j = PAGE_SIZE/PTE_SIZE - 1;
+				j = PAGE_SIZE/PTE_SIZE;
 				
 				reg->pgtab[i] = getkpg(1);
 				if (reg->pgtab[i] == NULL)
@@ -90,12 +90,12 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 				
 				continue;
 			}
-			
-			zeropg(&reg->pgtab[i][j]);
 		
 			j--;
 			npages--;
 			reg->size += PAGE_SIZE;
+			
+			zeropg(&reg->pgtab[i][j]);
 		}
 	}
 
@@ -147,15 +147,17 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 /**
  * @brief Contracts a memory region.
  * 
+ * @param proc Process who owns the memory region.
  * @param reg  Memory region that shall be contracted.
  * @param size Size in bytes to be removed from the memory region.
  * 
  * @returns Zero upon success, and non-zero otherwise.
  */
-PRIVATE int contract(struct region *reg, size_t size)
+PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 {
-	int i;      /* Loop index.                    */
-	int npages; /* Number of pages in the region. */
+	unsigned i, j;        /* Loop indexes.                  */
+	unsigned npages;      /* Number of pages in the region. */
+	struct pregion *preg; /* Working process region.        */
 	
 	size = ALIGN(size, PAGE_SIZE);
 	
@@ -163,6 +165,7 @@ PRIVATE int contract(struct region *reg, size_t size)
 	if (size > reg->size)
 		return (-1);
 
+	preg = reg->preg;
 	npages = reg->size >> PAGE_SHIFT;
 	
 	/* Free pages. */
@@ -180,6 +183,72 @@ PRIVATE int contract(struct region *reg, size_t size)
 	}
 	
 	reg->size -= size;
+	
+	/* Contract downwards. */
+	if (reg->flags & REGION_DOWNWARDS)
+	{		
+		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
+		j = PAGE_SIZE/PTE_SIZE - 
+				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT);
+		
+		/* Mark pages as demand zero. */
+		while (npages > 0)
+		{
+			/* Create new page table. */
+			if (j == PAGE_SIZE/PTE_SIZE)
+			{
+				/* Unmap page table. */
+				if (proc != NULL)
+					umappgtab(proc->pgdir, preg->start - reg->size);
+				putkpg(reg->pgtab[i]);
+				reg->pgtab[i] = NULL;
+				
+				i++;
+				j = 0;
+				
+				continue;
+			}
+			
+			freeupg(&reg->pgtab[i][j]);
+			
+			j++;
+			npages--;
+			reg->size -= PAGE_SIZE;
+		
+		}
+	}
+
+	/* Contract upwards. */
+	else
+	{
+		i = reg->size >> PGTAB_SHIFT;
+		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
+		
+		/* Mark pages as demand zero. */
+		while (npages > 0)
+		{
+			/* Reset. */
+			if (j == 0)
+			{
+				/* Unmap page table. */
+				if (proc != NULL)
+					umappgtab(proc->pgdir, preg->start - reg->size);
+				putkpg(reg->pgtab[i]);
+				reg->pgtab[i] = NULL;
+				
+				i--;
+				j = PAGE_SIZE/PTE_SIZE;
+				
+				continue;
+			}
+			
+			j--;
+			npages--;
+			reg->size -= PAGE_SIZE;
+			
+			freeupg(&reg->pgtab[i][j]);
+		}
+	}
 	
 	return (0);
 }
@@ -533,7 +602,7 @@ PUBLIC int growreg(struct process *proc, struct pregion *preg, ssize_t size)
 	
 	/* Contract region */
 	if (size < 0)
-		contract(reg, -size);
+		contract(proc, reg, -size);
 	
 	/* Expand region. */
 	else
