@@ -19,6 +19,7 @@
 
 #include <i386/i386.h>
 #include <nanvix/const.h>
+#include <nanvix/clock.h>
 #include <nanvix/fs.h>
 #include <nanvix/hal.h>
 #include <nanvix/int.h>
@@ -33,9 +34,18 @@
 #define NR_KPAGES (KPOOL_SIZE/PAGE_SIZE) /* Amount.          */
 PRIVATE int kpages[NR_KPAGES] = { 0,  }; /* Reference count. */
 
-/* User pages. */
-#define NR_UPAGES (UMEM_SIZE/PAGE_SIZE)  /* Amount.          */
-PRIVATE int upages[NR_UPAGES] = { 0,  }; /* Reference count. */
+/* Number of user pages. */
+#define NR_UPAGES (UMEM_SIZE/PAGE_SIZE)
+
+/**
+ * @brief User pages.
+ */
+PRIVATE struct
+{
+	unsigned count; /**< Reference count. */
+	unsigned age;   /**< Age.             */
+	pid_t owner;    /**< Page owner.      */
+} upages[NR_UPAGES] = {{0, 0, 0},  };
 
 /*
  * Allocates a kernel page.
@@ -134,31 +144,57 @@ PUBLIC void umappgtab(struct pde *pgdir, addr_t addr)
 	tlb_flush();
 }
 
-/*
- * Allocates a user page.
+/**
+ * @brief Allocates a user page.
+ * 
+ * @param upg      Page table entry that shall be filled.
+ * @param writable Is the page writable?
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
-PUBLIC int allocupg(struct pte *upg, int writable)
+PRIVATE int allocupg(struct pte *upg, int writable)
 {
-	int i;
+	int i;     /* Loop index. */
+	int older; /* Older page. */
+	
+	older = -1;
 	
 	/* Search for a free user page. */
 	for (i = 0; i < NR_UPAGES; i++)
 	{
 		/* Found it. */
-		if (!upages[i])
+		if (upages[i].count == 0)
 			goto found;
+		
+		/* Local page replacement policy. */
+		if (upages[i].owner == curr_proc->pid)
+		{
+			if ((older < 0) || (upages[i].age < upages[older].age))
+				older = i;
+		}
 	}
 	
-	kprintf("mm: there are no free user pages left");
+	/*
+	 * There are no free user pages left for
+	 * this process. If this happens too often,
+	 * we'll have to implement a load balancing
+	 * strategy.
+	 */
+	if (older < 0)
+	{
+		kprintf("mm: there are no free user pages left");		
+		curr_proc->errno = -EAGAIN;
+	}
 	
-	curr_proc->errno = -EAGAIN;
 	return (-1);
 
 found:
 	
 	/* Allocate page. */
+	upages[i].count++;
+	upages[i].age = ticks;
+	upages[i].owner = curr_proc->pid;
 	kmemset(upg, 0, sizeof(struct pte));
-	upages[i]++;
 	upg->present = 1;
 	upg->writable = (writable) ? 1 : 0;
 	upg->user = 1;
@@ -183,15 +219,16 @@ PUBLIC void freeupg(struct pte *upg)
 	}
 		
 	i = upg->frame - (UBASE_PHYS >> PAGE_SHIFT);
-	
-	/* Free user page. */
-	upages[i]--;
-	kmemset(upg, 0, sizeof(struct pte));
-	tlb_flush();
 		
 	/* Double free. */
-	if (upages[i] < 0)
+	if (upages[i].count == 0)
 		kpanic("freeing user page twice");
+	
+	/* Free user page. */
+	if (--upages[i].count)
+		upages[i].owner = 0;
+	kmemset(upg, 0, sizeof(struct pte));
+	tlb_flush();
 }
 
 /*
@@ -238,7 +275,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		}
 		
 		i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
-		upages[i]++;
+		upages[i].count++;
 	}
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
@@ -445,7 +482,7 @@ PUBLIC int pfault(addr_t addr)
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 
 	/* Duplicate page. */
-	if (upages[i] > 1)
+	if (upages[i].count > 1)
 	{
 		/* Allocate new user page. */
 		if (allocupg(&new_pg, pg->writable))
@@ -457,7 +494,7 @@ PUBLIC int pfault(addr_t addr)
 		new_pg.writable = 1;
 		
 		/* Unlik page. */
-		upages[i]--;
+		upages[i].count--;
 		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 		

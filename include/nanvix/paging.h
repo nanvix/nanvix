@@ -32,11 +32,6 @@
 	EXTERN void umappgtab(struct pde *pgdir, addr_t addr);
 	
 	/*
-	 * Allocates a user page.
-	 */
-	EXTERN int allocupg(struct pte *upg, int writable);
-	
-	/*
 	 * Releases a user page.
 	 */
 	EXTERN void freeupg(struct pte *upg);
