@@ -1,23 +1,5 @@
 
-Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
-
-This file is part of Nanvix.
-
-Nanvix is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-Nanvix is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
-
-
-                            NANVIX TODO LIST
+                                TODO LIST
 
 This files lists all tasks that have not yet been accomplished:
 
@@ -25,7 +7,9 @@ This files lists all tasks that have not yet been accomplished:
 	- Section II lists bugs to be fixed.
 	- Section III lists tests to be carried on.
 
-Serve your self and enjoy. 
+Serve your self and enjoy.
+
+======================
 
 I. TO BE IMPLEMENTED
 	
@@ -78,6 +62,8 @@ I. TO BE IMPLEMENTED
 		Implement shmget().
 		Implement shmop().
 
+======================
+
 II. TO BE FIXED
 
 	1. Race Condition on TTY Driver
@@ -89,6 +75,8 @@ II. TO BE FIXED
 	2. Set User ID on execve()
 	
 		Currently, exeve() is ignoring setuid flags.
+
+======================
 
 III. TO BE TESTED
 
