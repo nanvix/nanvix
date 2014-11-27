@@ -55,7 +55,7 @@ nanvix:
 	cd $(SRCDIR) && $(MAKE) all
 
 # Builds system's image.
-image: $(BINDIR)/kernel
+image: nanvix
 	bash $(TOOLSDIR)/build/build-img.sh
 
 # Builds documentation.
