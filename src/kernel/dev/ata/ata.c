@@ -421,12 +421,24 @@ PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 	int bus;       /* Bus number.        */
 	byte_t byte;   /* Byte used for I/O. */
 	uint64_t addr; /* Read address.      */
+	size_t n;      /* # bytes to read.   */
 	
 	ata_device_select(atadevid);
 	bus = ata_bus(atadevid);
 
-	addr = (req->flags & REQ_BUF) ? 
-		req->u.buffered.buf->num << 1 : req->u.raw.num << 1;
+	/* Buffered read. */
+	if (req->flags & REQ_BUF)
+	{
+		addr = req->u.buffered.buf->num << 1;
+		n = BLOCK_SIZE/ATA_SECTOR_SIZE;
+	}
+	
+	/* Raw read. */
+	else
+	{
+		addr = req->u.raw.num << 1;
+		n = req->u.raw.size/ATA_SECTOR_SIZE;
+	}
 
 	/*
 	 * Set LBA bit, to specify
@@ -441,7 +453,7 @@ PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x28) & 0xff);
 
 	/* Send the three lowest bytes of the address. */
-	outputb(pio_ports[bus][ATA_REG_NSECT], 2);
+	outputb(pio_ports[bus][ATA_REG_NSECT], n);
 	outputb(pio_ports[bus][ATA_REG_LBAL], (addr >> 0x00) & 0xff);
 	outputb(pio_ports[bus][ATA_REG_LBAM], (addr >> 0x08) & 0xff);
 	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x10) & 0xff);
@@ -750,7 +762,7 @@ PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
 	n = ALIGN(n, BLOCK_SIZE);
 	
-	/* Read in bursts. */
+	/* Write in bursts. */
 	for (i = 0; i < n; /* noop*/)
 	{	
 		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : PAGE_SIZE - (n - i);
@@ -849,7 +861,7 @@ PRIVATE void ata_handler(int atadevid)
 	
 	/* Read operation. */
 	else
-	{		
+	{			
 		/* Read block. */
 		for (i = 0; i < size; i += 2)
 		{
