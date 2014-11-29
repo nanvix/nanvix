@@ -31,14 +31,17 @@
  */
 int swap_test(void)
 {
-	int ret;        /* Return value. */
-	int *a, *b, *c; /* Matrices.     */
-	
-	ret = 0;
+	int *a, *b, *c;
 	
 	a = malloc(1280*1280*sizeof(int));
+	if (a == NULL)
+		goto error0;
 	b = malloc(1280*1280*sizeof(int));
+	if (a == NULL)
+		goto error1;
 	c = malloc(1280*1280*sizeof(int));
+	if (a == NULL)
+		goto error2;
 	
 	/* Initialize matrices. */
 	for (int i = 0; i < 1280*1280; i++)
@@ -53,6 +56,7 @@ int swap_test(void)
 	{
 		for (int j = 0; j < 1280; j++)
 		{
+				
 			for (int k = 0; k < 1280; k++)
 				c[i*1280 + j] += a[i*1280 + k]*b[k*1280 + j];
 		}
@@ -62,10 +66,7 @@ int swap_test(void)
 	for (int i = 0; i < 1280*1280; i++)
 	{
 		if (c[i] != 2)
-		{
-			ret = -1;
-			break;
-		}
+			goto error3;
 	}
 	
 	/* House keeping. */
@@ -73,7 +74,16 @@ int swap_test(void)
 	free(b);
 	free(c);
 	
-	return (ret);
+	return (0);
+
+error3:
+	free(c);
+error2:
+	free(b);
+error1:
+	free(a);
+error0:
+	return (-1);
 }
 
 /**

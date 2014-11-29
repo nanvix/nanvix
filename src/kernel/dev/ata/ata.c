@@ -512,7 +512,7 @@ PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x28) & 0xff);
 
 	/* Send the three lowest bytes of the address. */
-	outputb(pio_ports[bus][ATA_REG_NSECT], 2);
+	outputb(pio_ports[bus][ATA_REG_NSECT], size/ATA_SECTOR_SIZE);
 	outputb(pio_ports[bus][ATA_REG_LBAL], (addr >> 0x00) & 0xff);
 	outputb(pio_ports[bus][ATA_REG_LBAM], (addr >> 0x08) & 0xff);
 	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x10) & 0xff);
@@ -546,7 +546,9 @@ PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 	ata_bus_wait(bus);
 	iowait();
 	
-	/* Release buffer. */
+	/*
+	 * FIXME release buffer after interrupt.
+	 */
 	if (req->flags & REQ_BUF)
 	{
 		req->u.buffered.buf->flags &= ~(BUFFER_DIRTY | BUFFER_BUSY);
@@ -568,7 +570,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
 
 	disable_interrupts();
 	
-		/* Wait for a slot in tthe block operation queue. */
+		/* Wait for a slot in the block operation queue. */
 		while (dev->queue.size == ATADEV_QUEUE_SIZE)
 			sleep(&dev->queue.chain, PRIO_IO);
 		
@@ -621,7 +623,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
 				ata_read_op(atadevid, req);
 		}
 		
-		/* Wait read operation to complete. */
+		/* Wait operation to complete. */
 		if (req->flags & REQ_SYNC)
 			sleep(&dev->chain, PRIO_IO);
 	
@@ -729,7 +731,7 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 		i += count;
 		
 		/* Avoid starvation. */
-		if (n > 0)
+		if ((n - i) > 0)
 			yield();
 	}
 	
@@ -772,7 +774,7 @@ PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 		i += count;
 		
 		/* Avoid starvation. */
-		if (n > 0)
+		if ((n - i) > 0)
 			yield();
 	}
 	

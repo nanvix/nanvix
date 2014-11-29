@@ -18,9 +18,11 @@
  */
 
 #include <i386/i386.h>
+#include <nanvix/bitmap.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/clock.h>
+#include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/hal.h>
 #include <nanvix/int.h>
@@ -48,6 +50,14 @@ PRIVATE struct
 	pid_t owner;    /**< Page owner.                  */
 	addr_t vaddr;   /**< Virtual address of the page. */
 } frames[NR_UPAGES] = {{0, 0, 0, 0},  };
+
+/**
+ * @brief Swap device.
+ */
+PRIVATE struct
+{
+	uint32_t bitmap[(SWP_SIZE/PAGE_SIZE) >> 5];
+} swapdev = {{0, } };
 
 /*
  * Allocates a kernel page.
@@ -145,6 +155,66 @@ PUBLIC void umappgtab(struct pde *pgdir, addr_t addr)
 	
 	tlb_flush();
 }
+int trigger = 0;
+
+/**
+ * @brief Swaps a page out to disk.
+ */
+PRIVATE int swap_out(addr_t addr)
+{
+	bit_t blk;         /* Block number in swap device. */
+	struct pte *pg;    /* Working page table entry.    */
+	struct pde *pgtab; /* Working page table entry.    */
+	off_t off;         /* Swap device offset.          */
+	ssize_t n;         /* # Bytes written.             */
+	
+	void *kpg;
+	
+	pgtab = &curr_proc->pgdir[PGTAB(addr)];
+	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];	
+	
+	if ((kpg = getkpg(0)) == NULL)
+	{
+		kpanic("swap out: failed to get kernel page");
+		return (-1);
+	}
+	
+	if (!pg->present)
+		kpanic("page not present");
+	
+	/* Get free block in swap device. */
+	blk = bitmap_first_free(swapdev.bitmap, (SWP_SIZE/PAGE_SIZE) >> 3);
+	if (blk == BITMAP_FULL)
+	{
+		kpanic("swap out: no swap on swap device");
+		putkpg(kpg);
+		return (-1);
+	}
+	
+	off = HDD_SIZE + blk*PAGE_SIZE;
+	bitmap_set(swapdev.bitmap, blk);
+	
+	/* Write page to disk. */
+	kmemcpy(kpg, (void *)addr, PAGE_SIZE);
+	n = bdev_write(SWAP_DEV, (void *)addr, PAGE_SIZE, off);
+	if (n != PAGE_SIZE)
+	{
+		kprintf("swap out: I/O error");
+		bitmap_clear(swapdev.bitmap, blk);
+		putkpg(kpg);
+		return (-1);
+	}
+	
+	/* Set page as non-present. */
+	pg->present = 0;
+	pg->frame = blk;
+	pg->accessed = 0;
+	pg->dirty = 0;
+	tlb_flush();
+	
+	putkpg(kpg);
+	return (0);
+}
 
 /**
  * @brief Allocates a frame.
@@ -166,6 +236,10 @@ PRIVATE int alloc_frame(void)
 		/* Local page replacement policy. */
 		if (frames[i].owner == curr_proc->pid)
 		{
+			/* Skip shared pages. */
+			if (frames[i].count > 1)
+				continue;
+			
 			if ((older < 0) || (frames[i].age < frames[older].age))
 				older = i;
 		}
@@ -183,13 +257,87 @@ PRIVATE int alloc_frame(void)
 		return (-1);
 	}
 	
-	return (-1);
+	if (swap_out(frames[older].vaddr))
+		return (-1);
+	
+	frames[older].age = ticks;
+	frames[older].count = 1;
+	
+	return (older);
 
-found:
+found:		
 
-	frames[i].count++;
+	frames[i].age = ticks;
+	frames[i].count = 1;
 	
 	return (i);
+}
+
+/**
+ * @brief Swaps a page in to disk.
+ */
+PRIVATE int swap_in(addr_t addr)
+{
+	bit_t blk;         /* Block number in swap device. */
+	int i;             /* Page frame index.            */
+	struct pte *pg;    /* Working page table entry.    */
+	struct pde *pgtab; /* Working page table entry.    */
+	off_t off;         /* Swap device offset.          */
+	ssize_t n;         /* # Bytes written.             */
+	
+	void *kpg;
+	 
+	addr &= PAGE_MASK;
+	
+	++trigger;
+	
+	pgtab = &curr_proc->pgdir[PGTAB(addr)];
+	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
+	
+	if ((i = alloc_frame()) < 0)
+	{
+		kpanic("swap in: failed to allocate frame.");
+		return (-1);
+	}
+	
+	if ((kpg = getkpg(0)) == NULL)
+	{
+		kpanic("swap in: failed to get kernel page.");
+		frames[i].count = 0;
+		return (-1);
+	}
+	
+	blk = pg->frame;
+	
+	/* Set page as present. */
+	pg->present = 1;
+	pg->accessed = 0;
+	pg->dirty = 0;
+	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
+	tlb_flush();
+	
+	off = HDD_SIZE + blk*PAGE_SIZE;
+	
+	/* Read page from disk. */
+	n = bdev_read(SWAP_DEV, kpg, PAGE_SIZE, off);
+	if (n != PAGE_SIZE)
+	{
+		kpanic("swap in: IO error");
+		pg->present = 0;
+		pg->frame = blk;
+		tlb_flush();
+		frames[i].count = 0;
+		putkpg(kpg);
+		return (-1);
+	}
+	
+	frames[i].vaddr = addr;
+	bitmap_clear(swapdev.bitmap, blk);
+	
+	kmemcpy((void *)addr, kpg, PAGE_SIZE);
+		
+	putkpg(kpg);
+	return (0);
 }
 
 /**
@@ -218,9 +366,8 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
 	
 	/* Initialize page frame. */
-	frames[i].age = ticks;
 	frames[i].owner = curr_proc->pid;
-	frames[i].vaddr = addr;
+	frames[i].vaddr = addr & PAGE_MASK;
 	
 	/* Allocate page. */
 	kmemset(pg, 0, sizeof(struct pte));
@@ -446,7 +593,7 @@ PUBLIC int vfault(addr_t addr)
 	/* Clear page. */
 	if (pg->zero)
 	{
-		/* Assign new page to region. */
+		/* Assign new page to region. */ 
 		if (allocupg(addr, reg->mode & MAY_WRITE))
 			goto error1;
 		
@@ -463,7 +610,10 @@ PUBLIC int vfault(addr_t addr)
 		
 	/* Swap page in. */
 	else
-		kpanic("swap page in");
+	{
+		if (swap_in(addr))
+			goto error1;
+	}
 	
 	unlockreg(reg);
 	return (0);
@@ -519,10 +669,11 @@ PUBLIC int pfault(addr_t addr)
 		&reg->pgtab[REGION_PGTABS-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]: 
 		&reg->pgtab[PGTAB(addr) - PGTAB(preg->start)][PG(addr)];
 
+	
 	/* Copy on write not enabled. */
 	if (!pg->cow)
 		goto error1;
-
+		
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 
 	/* Duplicate page. */

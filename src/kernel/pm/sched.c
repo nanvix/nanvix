@@ -75,21 +75,25 @@ PUBLIC void yield(void)
 	eprio = EPRIO(next);
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
-		/* Ready process. */
-		if (p->state == PROC_READY)
+		/* Skip invalid processes. */
+		if (p->flags & PROC_FREE)
+			continue;
+		
+		/* Skip non-ready process. */
+		if (p->state != PROC_READY)
+			continue;
+		
+		/* Process with higher priority found. */
+		if (EPRIO(p) < eprio)
 		{
-			/* Process with higher priority found. */
-			if (EPRIO(p) < eprio)
-			{
-				next->counter++;
-				next = p;
-				eprio = EPRIO(next);
-			}
-			
-			/* Increment age of process. */
-			else
-				p->counter++;
+			next->counter++;
+			next = p;
+			eprio = EPRIO(next);
 		}
+			
+		/* Increment age of process. */
+		else
+			p->counter++;
 	}
 	
 	/* Switch to process. */

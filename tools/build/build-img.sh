@@ -29,7 +29,7 @@ function eject {
 
 function format {
 	losetup /dev/loop2 $1
-	mkfs.minix -n 14 -i 4096 -1 /dev/loop2 16318
+	mkfs.minix -n 14 -i 4096 -1 /dev/loop2 16384
 	mount /dev/loop2 /mnt
 	mkdir /mnt/sbin/
 	mkdir /mnt/bin/
@@ -44,7 +44,7 @@ function format {
 }
 
 # Build HDD image.
-dd if=/dev/zero of=hdd.img bs=16M count=1
+dd if=/dev/zero of=hdd.img bs=32M count=1
 format hdd.img
 insert hdd.img
 cp bin/sbin/* /mnt/sbin/
@@ -70,4 +70,3 @@ eject
 
 # House keeping.
 rm -f initrd.img
-
