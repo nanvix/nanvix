@@ -14,7 +14,7 @@
 #include <sys/types.h>
 #include <errno.h>
 
-/* Maximul RAM disk size. */
+/* Maximum RAM disk size. */
 #if RAMDISK_SIZE > PGTAB_SIZE
 	#error "RAMDISK_SIZE > PGTAB_SIZE"
 #endif
@@ -170,8 +170,8 @@ PUBLIC void ramdisk_init(void)
 
 	/* ramdisk[0] = INITRD. */
 	ramdisks[0].start = INITRD_VIRT;
-	ramdisks[0].end = INITRD_VIRT + RAMDISK_SIZE;
-	ramdisks[0].size = RAMDISK_SIZE;
+	ramdisks[0].end = INITRD_VIRT + INITRD_SIZE;
+	ramdisks[0].size = INITRD_SIZE;
 	
 	err = bdev_register(RAMDISK_MAJOR, &ramdisk_driver);
 	

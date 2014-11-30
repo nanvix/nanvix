@@ -16,7 +16,8 @@
 	/* Kernel configuration. */
 	#define PROC_MAX                   64 /* Maximum number of process.      */
 	#define PROC_SIZE_MAX       0x4000000 /* Maximum process size.           */
-	#define RAMDISK_SIZE          0x80000 /* RAM disks size.                 */
+	#define RAMDISK_SIZE         0x400000 /* RAM disks size.                 */
+	#define INITRD_SIZE           0x80000 /* Init RAM disk size.             */
 	#define NR_INODES                1024 /* Number of in-core inodes.       */
 	#define NR_SUPERBLOCKS              4 /* Number of in-core super blocks. */
 	#define ROOT_DEV               0x0101 /* Root device number.             */

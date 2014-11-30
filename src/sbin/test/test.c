@@ -65,7 +65,7 @@ int swap_test(void)
 	/* Check values. */
 	for (int i = 0; i < 1280*1280; i++)
 	{
-		if (c[i] != 2)
+		if (c[i] != 1280)
 			goto error3;
 	}
 	

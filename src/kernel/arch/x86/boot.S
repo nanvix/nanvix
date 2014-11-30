@@ -58,7 +58,7 @@ start:
 	movl $initrd_pgtab, %edi
 	addl $7, %eax	
 	movl %eax, %ebx
-	addl $RAMDISK_SIZE, %ebx
+	addl $INITRD_SIZE, %ebx
 	cld
 	start.loop0:
 		cmpl %eax, %ebx

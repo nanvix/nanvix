@@ -17,19 +17,32 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+#
+# Inserts disk in a loop device.
+#   $1 Disk image name.
+#
 function insert {
 	losetup /dev/loop2 $1
 	mount /dev/loop2 /mnt
 }
 
+#
+# Ejects current disk from loop device.
+#
 function eject {
 	umount /dev/loop2
 	losetup -d /dev/loop2
 }
 
+#
+# Formats a disk.
+#   $1 Disk image name.
+#   $2 File system size (in blocks).
+#   $3 Number of inodes.
+#
 function format {
 	losetup /dev/loop2 $1
-	mkfs.minix -n 14 -i 4096 -1 /dev/loop2 16384
+	mkfs.minix -n 14 -i $3 -1 /dev/loop2 $2
 	mount /dev/loop2 /mnt
 	mkdir /mnt/sbin/
 	mkdir /mnt/bin/
@@ -45,28 +58,24 @@ function format {
 
 # Build HDD image.
 dd if=/dev/zero of=hdd.img bs=32M count=1
-format hdd.img
+format hdd.img 16384 4096
 insert hdd.img
 cp bin/sbin/* /mnt/sbin/
 cp bin/ubin/* /mnt/bin/
 eject
 
-# Clone blank images.
-cp -f tools/img/blank.img nanvix.img
-cp -f tools/img/initrd.img initrd.img
-
 # Build initrd image.
+dd if=/dev/zero of=initrd.img bs=512k count=1
+format initrd.img 512 128
 insert initrd.img
 cp bin/sbin/* /mnt/sbin/
 cp bin/ubin/* /mnt/bin/
 eject
 
 # Build nanvix image.
+cp -f tools/img/blank.img nanvix.img
 insert nanvix.img
 cp bin/kernel /mnt/kernel
 cp initrd.img /mnt/initrd.img
 cp tools/img/menu.lst /mnt/boot/menu.lst
 eject
-
-# House keeping.
-rm -f initrd.img

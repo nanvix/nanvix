@@ -64,7 +64,7 @@ documentation:
 
 # Cleans compilation files.
 clean:
-	@rm -f nanvix.img hdd.img
+	@rm -f *.img
 	@rm -rf $(BINDIR)
 	@rm -rf $(DOCDIR)/xml-*
 	cd $(SRCDIR) && $(MAKE) clean
