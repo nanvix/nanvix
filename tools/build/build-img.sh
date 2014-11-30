@@ -65,7 +65,7 @@ cp bin/ubin/* /mnt/bin/
 eject
 
 # Build initrd image.
-dd if=/dev/zero of=initrd.img bs=512k count=1
+dd if=/dev/zero of=initrd.img bs=512K count=1
 format initrd.img 512 128
 insert initrd.img
 cp bin/sbin/* /mnt/sbin/

@@ -21,6 +21,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* Test flags. */
+#define EXTENDED (1 << 0)
+#define FULL     (1 << 1)
+
+/* Test flags. */
+static unsigned flags = 0;
+
 /**
  * @brief Swapping test module.
  * 
@@ -31,20 +38,19 @@
  */
 int swap_test(void)
 {
+	#define N 1280
 	int *a, *b, *c;
 	
-	a = malloc(1280*1280*sizeof(int));
-	if (a == NULL)
+	/* Allocate matrices. */
+	if ((a = malloc(N*N*sizeof(int))) == NULL)
 		goto error0;
-	b = malloc(1280*1280*sizeof(int));
-	if (a == NULL)
+	if ((b = malloc(N*N*sizeof(int))) == NULL)
 		goto error1;
-	c = malloc(1280*1280*sizeof(int));
-	if (a == NULL)
+	if ((c = malloc(N*N*sizeof(int))) == NULL)
 		goto error2;
 	
 	/* Initialize matrices. */
-	for (int i = 0; i < 1280*1280; i++)
+	for (int i = 0; i < N*N; i++)
 	{
 		a[i] = 1;
 		b[i] = 1;
@@ -52,21 +58,27 @@ int swap_test(void)
 	}
 	
 	/* Multiply matrices. */
-	for (int i = 0; i < 1280; i++)
-	{
-		for (int j = 0; j < 1280; j++)
+	if (flags & EXTENDED)
+	{	
+		for (int i = 0; i < N; i++)
 		{
-				
-			for (int k = 0; k < 1280; k++)
-				c[i*1280 + j] += a[i*1280 + k]*b[k*1280 + j];
+			for (int j = 0; j < N; j++)
+			{
+					
+				for (int k = 0; k < N; k++)
+					c[i*N + j] += a[i*N + k]*b[k*N + j];
+			}
 		}
 	}
 	
 	/* Check values. */
-	for (int i = 0; i < 1280*1280; i++)
+	if (flags & FULL)
 	{
-		if (c[i] != 1280)
-			goto error3;
+		for (int i = 0; i < N*N; i++)
+		{
+			if (c[i] != N)
+				goto error3;
+		}
 	}
 	
 	/* House keeping. */

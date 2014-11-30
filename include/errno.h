@@ -93,6 +93,9 @@
 	
 	/* Too many links. */
 	#define EMLINK 29
+	
+	/* I/O error. */
+	#define EIO 30
 
 #ifndef _ASM_FILE_
 

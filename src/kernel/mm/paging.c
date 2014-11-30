@@ -155,42 +155,58 @@ PUBLIC void umappgtab(struct pde *pgdir, addr_t addr)
 	
 	tlb_flush();
 }
-int trigger = 0;
+
+/**
+ * 
+ */
+struct pte *getpte(addr_t addr)
+{
+	struct pte *pg;    /* Page table entry.     */
+	struct pde *pgtab; /* Page directory entry. */
+	
+	pgtab = &curr_proc->pgdir[PGTAB(addr)];
+	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
+	
+	return (pg);
+}
 
 /**
  * @brief Swaps a page out to disk.
+ * 
+ * @param addr Address of the page to be swapped out.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PRIVATE int swap_out(addr_t addr)
 {
-	bit_t blk;         /* Block number in swap device. */
-	struct pte *pg;    /* Working page table entry.    */
-	struct pde *pgtab; /* Working page table entry.    */
-	off_t off;         /* Swap device offset.          */
-	ssize_t n;         /* # Bytes written.             */
+	bit_t blk;      /* Block number in swap device.  */
+	struct pte *pg; /* Page table entry.             */
+	off_t off;      /* Offset in swap device.        */
+	ssize_t n;      /* # Bytes written.              */
+	void *kpg;      /* Kernel page used for copying. */
 	
-	void *kpg;
+	addr &= PAGE_MASK;
+	pg = getpte(addr);
 	
-	pgtab = &curr_proc->pgdir[PGTAB(addr)];
-	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];	
-	
+	/* Get kernel page. */
 	if ((kpg = getkpg(0)) == NULL)
 	{
-		kpanic("swap out: failed to get kernel page");
-		return (-1);
+		curr_proc->errno = -ENOMEM;
+		goto error0;
 	}
-	
-	if (!pg->present)
-		kpanic("page not present");
 	
 	/* Get free block in swap device. */
 	blk = bitmap_first_free(swapdev.bitmap, (SWP_SIZE/PAGE_SIZE) >> 3);
 	if (blk == BITMAP_FULL)
 	{
-		kpanic("swap out: no swap on swap device");
-		putkpg(kpg);
-		return (-1);
+		curr_proc->errno = -ENOSPC;
+		goto error1;
 	}
 	
+	/*
+	 * Set block on swap device as used
+	 * in advance, because we may sleep below.
+	 */
 	off = HDD_SIZE + blk*PAGE_SIZE;
 	bitmap_set(swapdev.bitmap, blk);
 	
@@ -199,34 +215,41 @@ PRIVATE int swap_out(addr_t addr)
 	n = bdev_write(SWAP_DEV, (void *)addr, PAGE_SIZE, off);
 	if (n != PAGE_SIZE)
 	{
-		kprintf("swap out: I/O error");
-		bitmap_clear(swapdev.bitmap, blk);
-		putkpg(kpg);
-		return (-1);
+		curr_proc->errno = -EIO;
+		goto error2;
 	}
 	
 	/* Set page as non-present. */
 	pg->present = 0;
 	pg->frame = blk;
-	pg->accessed = 0;
-	pg->dirty = 0;
 	tlb_flush();
 	
 	putkpg(kpg);
 	return (0);
+
+error2:
+	bitmap_clear(swapdev.bitmap, blk);
+error1:
+	putkpg(kpg);
+error0:
+	return (-1);
 }
 
 /**
  * @brief Allocates a frame.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PRIVATE int alloc_frame(void)
 {
-	int i;     /* Loop index. */
-	int older; /* Older page. */
+	int i;      /* Loop index.  */
+	int oldest; /* Oldest page. */
 	
-	older = -1;
+	#define OLDEST(x, y) \
+		(frames[x].age < frames[y].age)
 	
 	/* Search for a free frame. */
+	oldest = -1;
 	for (i = 0; i < NR_UPAGES; i++)
 	{
 		/* Found it. */
@@ -240,31 +263,23 @@ PRIVATE int alloc_frame(void)
 			if (frames[i].count > 1)
 				continue;
 			
-			if ((older < 0) || (frames[i].age < frames[older].age))
-				older = i;
+			/* Oldest page found. */
+			if ((oldest < 0) || (OLDEST(i, oldest)))
+				oldest = i;
 		}
 	}
 	
-	/*
-	 * There are no free user pages left for
-	 * this process. If this happens too often,
-	 * we'll have to implement a load balancing
-	 * strategy.
-	 */
-	if (older < 0)
+	/* No free user pages left for this process. */
+	if (oldest < 0)
 	{
-		kprintf("mm: there are no free user pages left");
+		curr_proc->errno = -ENOMEM;
 		return (-1);
 	}
 	
-	if (swap_out(frames[older].vaddr))
+	/* Swap page out. */
+	if (swap_out(frames[i = oldest].vaddr))
 		return (-1);
 	
-	frames[older].age = ticks;
-	frames[older].count = 1;
-	
-	return (older);
-
 found:		
 
 	frames[i].age = ticks;
@@ -275,69 +290,67 @@ found:
 
 /**
  * @brief Swaps a page in to disk.
+ * 
+ * @param addr  Address of the page to be swapped in.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PRIVATE int swap_in(addr_t addr)
 {
-	bit_t blk;         /* Block number in swap device. */
-	int i;             /* Page frame index.            */
-	struct pte *pg;    /* Working page table entry.    */
-	struct pde *pgtab; /* Working page table entry.    */
-	off_t off;         /* Swap device offset.          */
-	ssize_t n;         /* # Bytes written.             */
+	int i;          /* Frame index number.           */
+	bit_t blk;      /* Block number in swap device.  */
+	struct pte *pg; /* Page table entry.             */
+	off_t off;      /* Offset in swap device.        */
+	ssize_t n;      /* # Bytes written.              */
+	void *kpg;      /* Kernel page used for copying. */
 	
-	void *kpg;
-	 
 	addr &= PAGE_MASK;
+	pg = getpte(addr);
 	
-	++trigger;
-	
-	pgtab = &curr_proc->pgdir[PGTAB(addr)];
-	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
-	
+	/* Get a free frame. */
 	if ((i = alloc_frame()) < 0)
-	{
-		kpanic("swap in: failed to allocate frame.");
-		return (-1);
-	}
+		goto error0;
 	
+	/* Get kernel page. */
 	if ((kpg = getkpg(0)) == NULL)
 	{
-		kpanic("swap in: failed to get kernel page.");
-		frames[i].count = 0;
-		return (-1);
+		curr_proc->errno = -ENOMEM;
+		goto error1;
 	}
 	
+	/* Get block # in swap device. */
 	blk = pg->frame;
-	
-	/* Set page as present. */
-	pg->present = 1;
-	pg->accessed = 0;
-	pg->dirty = 0;
-	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
-	tlb_flush();
-	
 	off = HDD_SIZE + blk*PAGE_SIZE;
 	
 	/* Read page from disk. */
 	n = bdev_read(SWAP_DEV, kpg, PAGE_SIZE, off);
 	if (n != PAGE_SIZE)
 	{
-		kpanic("swap in: IO error");
-		pg->present = 0;
-		pg->frame = blk;
-		tlb_flush();
-		frames[i].count = 0;
-		putkpg(kpg);
-		return (-1);
+		curr_proc->errno = -EIO;
+		goto error2;
 	}
-	
-	frames[i].vaddr = addr;
 	bitmap_clear(swapdev.bitmap, blk);
 	
+	/* Set page as present. */
+	pg->present = 1;
+	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
+	tlb_flush();
+	frames[i].vaddr = addr;
+	
+	/* Copy page. */
 	kmemcpy((void *)addr, kpg, PAGE_SIZE);
+	pg->accessed = 0;
+	pg->dirty = 0;
 		
 	putkpg(kpg);
 	return (0);
+
+error2:
+	putkpg(kpg);
+error1:
+	frames[i].count = 0;
+error0:
+	return (-1);
 }
 
 /**
@@ -350,26 +363,19 @@ PRIVATE int swap_in(addr_t addr)
  */
 PRIVATE int allocupg(addr_t addr, int writable)
 {
-	int i;             /* Page frame index.         */
-	struct pte *pg;    /* Working page table entry. */
-	struct pde *pgtab; /* Working page table entry. */
+	int i;          /* Page frame index.         */
+	struct pte *pg; /* Working page table entry. */
 	
 	/* Failed to allocate page frame. */
 	if ((i = alloc_frame()) < 0)
-	{
-		curr_proc->errno = -EAGAIN;
 		return (-1);
-	}
-	
-	/* Find page table entry. */
-	pgtab = &curr_proc->pgdir[PGTAB(addr)];
-	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
 	
 	/* Initialize page frame. */
 	frames[i].owner = curr_proc->pid;
 	frames[i].vaddr = addr & PAGE_MASK;
 	
 	/* Allocate page. */
+	pg = getpte(addr);
 	kmemset(pg, 0, sizeof(struct pte));
 	pg->present = 1;
 	pg->writable = (writable) ? 1 : 0;
@@ -611,6 +617,7 @@ PUBLIC int vfault(addr_t addr)
 	/* Swap page in. */
 	else
 	{
+		/* Swap page in. */
 		if (swap_in(addr))
 			goto error1;
 	}
