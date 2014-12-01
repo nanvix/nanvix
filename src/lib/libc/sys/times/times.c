@@ -17,24 +17,37 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SYS_TIMES_H_
-#define SYS_TIMES_H_
-#ifndef _ASM_FILE_
+#include <nanvix/syscall.h>
+#include <sys/times.h>
+#include <sys/types.h>
+#include <errno.h>
 
-	#include <sys/types.h>
-
-	/**
-	 * @brief Process times.
-	 */
-	struct tms
-	{
-		clock_t tms_utime;  /**< User CPU time.                          */
-		clock_t tms_stime;  /**< System CPU time.                        */
-		clock_t tms_cutime; /**< User CPU time of terminated children.   */
-		clock_t tms_cstime; /**< System CPU time of terminated children. */
-	};
+/**
+ * @brief Gets process and waited-for child process times.
+ * 
+ * @param buffer Timing accounting information.
+ * 
+ * @returns Upon successful completion, the elapsed real time, in clock ticks,
+ *          since system start-up time is returned. Upon failure, -1 is
+ *          returned and errno set to indicate the error.
+ */
+extern clock_t times(struct tms *buffer)
+{
+	clock_t elapsed;
 	
-	extern clock_t times(struct tms *buffer);
-
-#endif /* _ASM_FILE_ */
-#endif /* TIMES_H_ */
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (elapsed)
+		: "0" (NR_times),
+		  "b" (buffer)
+	);
+	
+	/* Error. */
+	if (elapsed < 0)
+	{
+		errno = -elapsed;
+		return (-1);
+	}
+	
+	return (elapsed);
+}

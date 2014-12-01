@@ -17,7 +17,6 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-
 # Source files.
 SRC = $(wildcard *.c)          \
       $(wildcard ctype/*.c)    \
@@ -29,6 +28,7 @@ SRC = $(wildcard *.c)          \
       $(wildcard stdlib/*.c)   \
       $(wildcard string/*.c)   \
       $(wildcard stropts/*.c)  \
+      $(wildcard sys/times/*.c)\
       $(wildcard sys/stat/*.c) \
       $(wildcard sys/wait/*.c) \
       $(wildcard termios/*.c)  \
