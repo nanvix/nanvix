@@ -33,31 +33,198 @@
 #include <errno.h>
 #include <signal.h>
 
+/**
+ * @brief Gets page directory entry of a process.
+ * 
+ * @param p Process.
+ * @param a Address.
+ * 
+ * @returns The requested page directory entry.
+ */
+#define getpde(p, a) \
+	(&(p)->pgdir[PGTAB(a)])
+
+/**
+ * @brief Gets page table entry of a process.
+ * 
+ * @param p Process.
+ * @param a Address.
+ * 
+ * @returns The requested page table entry.
+ */
+#define getpte(p, a) \
+	(&((struct pte *)((getpde(p, a)->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(a)])
+
+
+/*============================================================================*
+ *                             Swapping System                                *
+ *============================================================================*/
+
+/**
+ * @brief Swap space.
+ */
+PRIVATE struct
+{
+	unsigned count[SWP_SIZE/PAGE_SIZE];         /**< Reference count. */
+	uint32_t bitmap[(SWP_SIZE/PAGE_SIZE) >> 5]; /**< Bitmap.          */
+} swap = {{0, }, {0, } };
+
+/**
+ * @brief Clears space on swap device that is associated to a page.
+ * 
+ * @param pg Page to be used.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
+ */
+PRIVATE int swap_clear(struct pte *pg)
+{
+	unsigned i;
+	
+	i = pg->frame;
+	
+	/* Free swap space. */
+	if (swap.count[i] > 0)
+	{
+		bitmap_clear(swap.bitmap, i);
+		swap.count[i]--;
+	}
+		
+	return (0);
+}
+
+/**
+ * @brief Swaps a page out to disk.
+ * 
+ * @param addr Address of the page to be swapped out.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
+ */
+PRIVATE int swap_out(addr_t addr)
+{
+	bit_t blk;      /* Block number in swap device.  */
+	struct pte *pg; /* Page table entry.             */
+	off_t off;      /* Offset in swap device.        */
+	ssize_t n;      /* # Bytes written.              */
+	void *kpg;      /* Kernel page used for copying. */
+	
+	addr &= PAGE_MASK;
+	pg = getpte(curr_proc, addr);
+	
+	/* Get kernel page. */
+	if ((kpg = getkpg(0)) == NULL)
+	{
+		curr_proc->errno = -ENOMEM;
+		goto error0;
+	}
+	
+	/* Get free block in swap device. */
+	blk = bitmap_first_free(swap.bitmap, (SWP_SIZE/PAGE_SIZE) >> 3);
+	if (blk == BITMAP_FULL)
+	{
+		curr_proc->errno = -ENOSPC;
+		goto error1;
+	}
+	
+	/*
+	 * Set block on swap device as used
+	 * in advance, because we may sleep below.
+	 */
+	off = HDD_SIZE + blk*PAGE_SIZE;
+	bitmap_set(swap.bitmap, blk);
+	
+	/* Write page to disk. */
+	kmemcpy(kpg, (void *)addr, PAGE_SIZE);
+	n = bdev_write(SWAP_DEV, (void *)addr, PAGE_SIZE, off);
+	if (n != PAGE_SIZE)
+	{
+		curr_proc->errno = -EIO;
+		goto error2;
+	}
+	swap.count[blk]++;
+	
+	/* Set page as non-present. */
+	pg->present = 0;
+	pg->frame = blk;
+	tlb_flush();
+	
+	putkpg(kpg);
+	return (0);
+
+error2:
+	bitmap_clear(swap.bitmap, blk);
+error1:
+	putkpg(kpg);
+error0:
+	return (-1);
+}
+
+/**
+ * @brief Swaps a page in to disk.
+ * 
+ * @param frame Frame number where the page should be placed.
+ * @param addr  Address of the page to be swapped in.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
+ */
+PRIVATE int swap_in(unsigned frame, addr_t addr)
+{
+	bit_t blk;      /* Block number in swap device.  */
+	struct pte *pg; /* Page table entry.             */
+	off_t off;      /* Offset in swap device.        */
+	ssize_t n;      /* # Bytes written.              */
+	void *kpg;      /* Kernel page used for copying. */
+	
+	addr &= PAGE_MASK;
+	pg = getpte(curr_proc, addr);
+	
+	/* Get kernel page. */
+	if ((kpg = getkpg(0)) == NULL)
+	{
+		curr_proc->errno = -ENOMEM;
+		goto error0;
+	}
+	
+	/* Get block # in swap device. */
+	blk = pg->frame;
+	off = HDD_SIZE + blk*PAGE_SIZE;
+	
+	/* Read page from disk. */
+	n = bdev_read(SWAP_DEV, kpg, PAGE_SIZE, off);
+	if (n != PAGE_SIZE)
+	{
+		curr_proc->errno = -EIO;
+		goto error1;
+	}
+	
+	swap_clear(pg);
+	
+	/* Set page as present. */
+	pg->present = 1;
+	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + frame;
+	tlb_flush();
+	
+	/* Copy page. */
+	kmemcpy((void *)addr, kpg, PAGE_SIZE);
+	pg->cow = 0;
+	pg->accessed = 0;
+	pg->dirty = 0;
+		
+	putkpg(kpg);
+	return (0);
+
+error1:
+	putkpg(kpg);
+error0:
+	return (-1);
+}
+
+/*============================================================================*
+ *                             Kernel Page Pool                               *
+ *============================================================================*/
+
 /* Kernel pages. */
 #define NR_KPAGES (KPOOL_SIZE/PAGE_SIZE) /* Amount.          */
 PRIVATE int kpages[NR_KPAGES] = { 0,  }; /* Reference count. */
-
-/* Number of user pages. */
-#define NR_UPAGES (UMEM_SIZE/PAGE_SIZE)
-
-/**
- * @brief Memory frames.
- */
-PRIVATE struct
-{
-	unsigned count; /**< Reference count.             */
-	unsigned age;   /**< Age.                         */
-	pid_t owner;    /**< Page owner.                  */
-	addr_t vaddr;   /**< Virtual address of the page. */
-} frames[NR_UPAGES] = {{0, 0, 0, 0},  };
-
-/**
- * @brief Swap device.
- */
-PRIVATE struct
-{
-	uint32_t bitmap[(SWP_SIZE/PAGE_SIZE) >> 5];
-} swapdev = {{0, } };
 
 /*
  * Allocates a kernel page.
@@ -110,137 +277,32 @@ PUBLIC void putkpg(void *kpg)
 		kpanic("mm: releasing kernel page twice");
 }
 
-/*
- * Maps a kernel page as a user page table.
- */
-PUBLIC int mappgtab(struct pde *pgdir, addr_t addr, void *kpg)
-{
-	int i;
-	
-	i = PGTAB(addr);
-	
-	/* Another page table is mapped here. */
-	if (pgdir[i].present)
-	{
-		curr_proc->errno = -EBUSY;
-		return (-1);
-	}
-	
-	/* Map kernel page. */
-	pgdir[i].present = 1;
-	pgdir[i].writable = 1;
-	pgdir[i].user = 1;
-	pgdir[i].frame = ((addr_t)kpg - KBASE_VIRT) >> PAGE_SHIFT;
-	
-	tlb_flush();
-	
-	return (0);
-}
 
-/*
- * Unmaps a page table from the user address space.
- */
-PUBLIC void umappgtab(struct pde *pgdir, addr_t addr)
-{
-	int i;
-	
-	i = addr >> PGTAB_SHIFT;
-	
-	/* Unmap non present page table. */
-	if (!(pgdir[i].present))
-		kpanic("unmap non present page table");
+/*============================================================================*
+ *                              Paging System                                 *
+ *============================================================================*/
 
-	/* Unmap kernel page. */
-	kmemset(&pgdir[i], 0, sizeof(struct pte));
-	
-	tlb_flush();
-}
+/* Number of user pages. */
+#define NR_UPAGES (UMEM_SIZE/PAGE_SIZE)
 
 /**
- * 
+ * @brief Page frames.
  */
-struct pte *getpte(addr_t addr)
+PRIVATE struct
 {
-	struct pte *pg;    /* Page table entry.     */
-	struct pde *pgtab; /* Page directory entry. */
-	
-	pgtab = &curr_proc->pgdir[PGTAB(addr)];
-	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
-	
-	return (pg);
-}
+	unsigned count; /**< Reference count.             */
+	unsigned age;   /**< Age.                         */
+	pid_t owner;    /**< Page owner.                  */
+	addr_t vaddr;   /**< Virtual address of the page. */
+} frames[NR_UPAGES] = {{0, 0, 0, 0},  };
 
 /**
- * @brief Swaps a page out to disk.
+ * @brief Allocates a page frame.
  * 
- * @param addr Address of the page to be swapped out.
- * 
- * @returns Zero upon success, and non-zero otherwise.
+ * @returns Upon success, the number of the allocated frame is returned. Upon
+ *          failure, a negative number is returned instead.
  */
-PRIVATE int swap_out(addr_t addr)
-{
-	bit_t blk;      /* Block number in swap device.  */
-	struct pte *pg; /* Page table entry.             */
-	off_t off;      /* Offset in swap device.        */
-	ssize_t n;      /* # Bytes written.              */
-	void *kpg;      /* Kernel page used for copying. */
-	
-	addr &= PAGE_MASK;
-	pg = getpte(addr);
-	
-	/* Get kernel page. */
-	if ((kpg = getkpg(0)) == NULL)
-	{
-		curr_proc->errno = -ENOMEM;
-		goto error0;
-	}
-	
-	/* Get free block in swap device. */
-	blk = bitmap_first_free(swapdev.bitmap, (SWP_SIZE/PAGE_SIZE) >> 3);
-	if (blk == BITMAP_FULL)
-	{
-		curr_proc->errno = -ENOSPC;
-		goto error1;
-	}
-	
-	/*
-	 * Set block on swap device as used
-	 * in advance, because we may sleep below.
-	 */
-	off = HDD_SIZE + blk*PAGE_SIZE;
-	bitmap_set(swapdev.bitmap, blk);
-	
-	/* Write page to disk. */
-	kmemcpy(kpg, (void *)addr, PAGE_SIZE);
-	n = bdev_write(SWAP_DEV, (void *)addr, PAGE_SIZE, off);
-	if (n != PAGE_SIZE)
-	{
-		curr_proc->errno = -EIO;
-		goto error2;
-	}
-	
-	/* Set page as non-present. */
-	pg->present = 0;
-	pg->frame = blk;
-	tlb_flush();
-	
-	putkpg(kpg);
-	return (0);
-
-error2:
-	bitmap_clear(swapdev.bitmap, blk);
-error1:
-	putkpg(kpg);
-error0:
-	return (-1);
-}
-
-/**
- * @brief Allocates a frame.
- * 
- * @returns Zero upon success, and non-zero otherwise.
- */
-PRIVATE int alloc_frame(void)
+PRIVATE int allocf(void)
 {
 	int i;      /* Loop index.  */
 	int oldest; /* Oldest page. */
@@ -288,69 +350,26 @@ found:
 	return (i);
 }
 
-/**
- * @brief Swaps a page in to disk.
- * 
- * @param addr  Address of the page to be swapped in.
- * 
- * @returns Zero upon success, and non-zero otherwise.
+/*
+ * Copies a page.
  */
-PRIVATE int swap_in(addr_t addr)
+PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 {
-	int i;          /* Frame index number.           */
-	bit_t blk;      /* Block number in swap device.  */
-	struct pte *pg; /* Page table entry.             */
-	off_t off;      /* Offset in swap device.        */
-	ssize_t n;      /* # Bytes written.              */
-	void *kpg;      /* Kernel page used for copying. */
+	int i;
 	
-	addr &= PAGE_MASK;
-	pg = getpte(addr);
+	/* Allocate new user page. */
+	if ((i = allocf()) < 0)
+		return (-1);
 	
-	/* Get a free frame. */
-	if ((i = alloc_frame()) < 0)
-		goto error0;
-	
-	/* Get kernel page. */
-	if ((kpg = getkpg(0)) == NULL)
-	{
-		curr_proc->errno = -ENOMEM;
-		goto error1;
-	}
-	
-	/* Get block # in swap device. */
-	blk = pg->frame;
-	off = HDD_SIZE + blk*PAGE_SIZE;
-	
-	/* Read page from disk. */
-	n = bdev_read(SWAP_DEV, kpg, PAGE_SIZE, off);
-	if (n != PAGE_SIZE)
-	{
-		curr_proc->errno = -EIO;
-		goto error2;
-	}
-	bitmap_clear(swapdev.bitmap, blk);
-	
-	/* Set page as present. */
-	pg->present = 1;
-	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
-	tlb_flush();
-	frames[i].vaddr = addr;
-	
-	/* Copy page. */
-	kmemcpy((void *)addr, kpg, PAGE_SIZE);
-	pg->accessed = 0;
-	pg->dirty = 0;
-		
-	putkpg(kpg);
-	return (0);
+	pg1->present = pg2->present;
+	pg1->writable = pg2->writable;
+	pg1->user = pg2->user;
+	pg1->cow = pg2->cow;
+	pg1->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
 
-error2:
-	putkpg(kpg);
-error1:
-	frames[i].count = 0;
-error0:
-	return (-1);
+	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
+	
+	return (0);
 }
 
 /**
@@ -367,7 +386,7 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	struct pte *pg; /* Working page table entry. */
 	
 	/* Failed to allocate page frame. */
-	if ((i = alloc_frame()) < 0)
+	if ((i = allocf()) < 0)
 		return (-1);
 	
 	/* Initialize page frame. */
@@ -375,7 +394,7 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	frames[i].vaddr = addr & PAGE_MASK;
 	
 	/* Allocate page. */
-	pg = getpte(addr);
+	pg = getpte(curr_proc, addr);
 	kmemset(pg, 0, sizeof(struct pte));
 	pg->present = 1;
 	pg->writable = (writable) ? 1 : 0;
@@ -386,21 +405,121 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	return (0);
 }
 
-/*
- * Frees a user page.
+/**
+ * @brief Reads page from inode.
+ * 
+ * @param reg  Region where the page resides.
+ * @param addr Address where the page should be loaded. 
+ * 
+ * @returns Zero upon success, and non-zero upon failure.
  */
-PUBLIC void freeupg(struct pte *upg)
+PRIVATE int readpg(struct region *reg, addr_t addr)
 {
-	int i;
+	char *p;             /* Read pointer. */
+	off_t off;           /* Block offset. */
+	ssize_t count;       /* Bytes read.   */
+	struct inode *inode; /* File inode.   */
+	struct pte *pg;    /* Working page table entry. */
+	
+	/* Assign new user page. */
+	if (allocupg(addr, reg->mode & MAY_WRITE))
+		return (-1);
+	
+	/* Find page table entry. */
+	pg = getpte(curr_proc, addr);
+	
+	/* Read page. */
+	off = reg->file.off + (PG(addr) << PAGE_SHIFT);
+	inode = reg->file.inode;
+	p = (char *)(addr & PAGE_MASK);
+	count = file_read(inode, p, PAGE_SIZE, off);
+	
+	/* Failed to read page. */
+	if (count < 0)
+	{
+		freeupg(pg);
+		return (-1);
+	}
+	
+	/* Fill remainder bytes with zero. */
+	else if (count < PAGE_SIZE)
+		kmemset(p + count, 0, PAGE_SIZE - count);
+	
+	return (0);
+}
+
+/**
+ * @brief Maps a page table into user address space.
+ * 
+ * @param proc  Process in which the page table should be mapped.
+ * @param addr  Address where the page should be mapped.
+ * @param pgtab Page table to map.
+ */
+PUBLIC void mappgtab(struct process *proc, addr_t addr, void *pgtab)
+{
+	struct pde *pde;
+	
+	pde = &proc->pgdir[PGTAB(addr)];
+	
+	/* Bad page table. */
+	if (pde->present)
+		kpanic("busy page table entry");
+	
+	/* Map kernel page. */
+	pde->present = 1;
+	pde->writable = 1;
+	pde->user = 1;
+	pde->frame = (ADDR(pgtab) - KBASE_VIRT) >> PAGE_SHIFT;
+	
+	/* Flush changes. */
+	if (proc == curr_proc)
+		tlb_flush();
+}
+
+/**
+ * @brief Unmaps a page table from user address space.
+ * 
+ * @param proc Process in which the page table should be unmapped.
+ * @param addr Address where the page should be unmapped.
+ * 
+ * @returns Zero upon success, and non zero otherwise.
+ */
+PUBLIC void umappgtab(struct process *proc, addr_t addr)
+{
+	struct pde *pde;
+	
+	pde = &proc->pgdir[PGTAB(addr)];
+	
+	/* Bad page table. */
+	if (!(pde->present))
+		kpanic("unmap non present page table");
+
+	/* Unmap kernel page. */
+	kmemset(pde, 0, sizeof(struct pde));
+	
+	/* Flush changes. */
+	if (proc == curr_proc)
+		tlb_flush();
+}
+
+/**
+ * @brief Frees a user page.
+ * 
+ * @param pg Page to be freed.
+ */
+PUBLIC void freeupg(struct pte *pg)
+{
+	unsigned i;
 	
 	/* In-disk page. */
-	if (!upg->present)
+	if (!pg->present)
 	{
-		kmemset(upg, 0, sizeof(struct pte));
+		swap_clear(pg);
+		kmemset(pg, 0, sizeof(struct pte));
 		return;
 	}
 		
-	i = upg->frame - (UBASE_PHYS >> PAGE_SHIFT);
+	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 		
 	/* Double free. */
 	if (frames[i].count == 0)
@@ -409,16 +528,18 @@ PUBLIC void freeupg(struct pte *upg)
 	/* Free user page. */
 	if (--frames[i].count)
 		frames[i].owner = 0;
-	kmemset(upg, 0, sizeof(struct pte));
+	kmemset(pg, 0, sizeof(struct pte));
 	tlb_flush();
 }
 
-/*
- * Marks a page "demand zero".
+/**
+ * @brief Marks a page as "demand zero".
+ * 
+ * @param pg Page to be marked.
  */
 PUBLIC void zeropg(struct pte *pg)
 {
-	/* Bad page table entry. */
+	/* Bad page. */
 	if (pg->present)
 		kpanic("demand zero on a present page");
 	
@@ -426,12 +547,14 @@ PUBLIC void zeropg(struct pte *pg)
 	pg->zero = 1;
 }
 
-/*
- * Marks a page "demand fill"
+/**
+ * @brief Marks a page as "demand fill".
+ * 
+ * @param pg Page to be marked.
  */
 PUBLIC void fillpg(struct pte *pg)
 {
-	/* Bad page table entry. */
+	/* Bad page. */
 	if (pg->present)
 		kpanic("demand fill on a present page");
 	
@@ -439,25 +562,35 @@ PUBLIC void fillpg(struct pte *pg)
 	pg->zero = 0;	
 }
 
-/*
- * Links two user pages.
+/**
+ * @brief Links two page tables
+ * 
+ * @param upg1 Source page.
+ * @param upg2 Target page.
  */
 PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 {	
-	int i;
-	
-	/* Page is present. */
+	unsigned i;
+
+	/* In-core page. */
 	if (upg1->present)
-	{		
+	{
 		/* Set copy on write. */
 		if (upg1->writable)
 		{
 			upg1->writable = 0;
 			upg1->cow = 1;
 		}
-		
+	
 		i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
 		frames[i].count++;
+	}
+	
+	/* In-disk page. */
+	else
+	{
+		 i = upg1->frame;
+		 swap.count[i]++;
 	}
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
@@ -523,53 +656,14 @@ PUBLIC void dstrypgdir(struct process *proc)
 }
 
 /*
- * Reads page from inode.
- */
-PRIVATE int readpg(struct region *reg, addr_t addr)
-{
-	char *p;             /* Read pointer. */
-	off_t off;           /* Block offset. */
-	ssize_t count;       /* Bytes read.   */
-	struct inode *inode; /* File inode.   */
-	struct pte *pg;    /* Working page table entry. */
-	struct pde *pgtab; /* Working page table entry. */
-	
-	/* Assign new user page. */
-	if (allocupg(addr, reg->mode & MAY_WRITE))
-		return (-1);
-	
-	/* Find page table entry. */
-	pgtab = &curr_proc->pgdir[PGTAB(addr)];
-	pg = &((struct pte *)((pgtab->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(addr)];
-	
-	/* Read page. */
-	off = reg->file.off + (PG(addr) << PAGE_SHIFT);
-	inode = reg->file.inode;
-	p = (char *)(addr & PAGE_MASK);
-	count = file_read(inode, p, PAGE_SIZE, off);
-	
-	/* Failed to read page. */
-	if (count < 0)
-	{
-		freeupg(pg);
-		return (-1);
-	}
-	
-	/* Fill remainder bytes with zero. */
-	else if (count < PAGE_SIZE)
-		kmemset(p + count, 0, PAGE_SIZE - count);
-	
-	return (0);
-}
-
-/*
  * Handles a validity page fault.
  */
 PUBLIC int vfault(addr_t addr)
 {
-	struct pte *pg;       /* Working page.           */
-	struct region *reg;   /* Working region.         */
-	struct pregion *preg; /* Working process region. */
+	int frame;            /* Frame index of page to be swapped in. */
+	struct pte *pg;       /* Working page.                         */
+	struct region *reg;   /* Working region.                       */
+	struct pregion *preg; /* Working process region.               */
 	
 	/* Get associated region. */
 	preg = findreg(curr_proc, addr);
@@ -617,40 +711,26 @@ PUBLIC int vfault(addr_t addr)
 	/* Swap page in. */
 	else
 	{
-		/* Swap page in. */
-		if (swap_in(addr))
+		/* Allocate frame for page. */
+		if ((frame = allocf()) < 0)
 			goto error1;
+		
+		/* Swap page in. */
+		if (swap_in(frame, addr))
+			goto error2;
+			
+		frames[frame].vaddr = addr & PAGE_MASK;
 	}
 	
 	unlockreg(reg);
 	return (0);
 
+error2:
+	frames[frame].count = 0;
 error1:
 	unlockreg(reg);
 error0:
 	return (-1);
-}
-
-/*
- * Copies a page.
- */
-PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
-{
-	int i;
-	
-	/* Allocate new user page. */
-	if ((i = alloc_frame()) < 0)
-		return (-1);
-	
-	pg1->present = pg2->present;
-	pg1->writable = pg2->writable;
-	pg1->user = pg2->user;
-	pg1->cow = pg2->cow;
-	pg1->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
-
-	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
-	
-	return (0);
 }
 
 /*

@@ -65,7 +65,7 @@
 	/*
 	 * Converts to address.
 	 */
-	#define ADDR(x) ((addr_t)addr)
+	#define ADDR(x) ((addr_t)(x))
 
 	/*
 	 * Flushes the GDT pointed to by gdtptr.

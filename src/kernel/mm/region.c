@@ -86,7 +86,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 					
 				/* Map page table. */
 				if (proc != NULL)
-					mappgtab(proc->pgdir, preg->start-reg->size,reg->pgtab[i]);
+					mappgtab(proc, preg->start - reg->size,reg->pgtab[i]);
 				
 				continue;
 			}
@@ -128,7 +128,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 				
 				/* Map page table. */
 				if (proc != NULL)
-					mappgtab(proc->pgdir, preg->start+reg->size,reg->pgtab[i]);
+					mappgtab(proc, preg->start + reg->size,reg->pgtab[i]);
 				
 				continue;
 			}
@@ -168,22 +168,6 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 	preg = reg->preg;
 	npages = reg->size >> PAGE_SHIFT;
 	
-	/* Free pages. */
-	if (reg->flags & REGION_DOWNWARDS)
-	{
-		npages = PAGE_SIZE/PTE_SIZE - npages;
-		for (i = (PAGE_SIZE/PTE_SIZE - 1); i >= npages; i--)
-			freeupg(&reg->pgtab[REGION_PGTABS - 1][i]);
-	}
-
-	else
-	{
-		for (i = 0; i < npages; i++)
-			freeupg(&reg->pgtab[0][i]);
-	}
-	
-	reg->size -= size;
-	
 	/* Contract downwards. */
 	if (reg->flags & REGION_DOWNWARDS)
 	{		
@@ -199,7 +183,7 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 			{
 				/* Unmap page table. */
 				if (proc != NULL)
-					umappgtab(proc->pgdir, preg->start - reg->size);
+					umappgtab(proc, preg->start - reg->size);
 				putkpg(reg->pgtab[i]);
 				reg->pgtab[i] = NULL;
 				
@@ -232,7 +216,7 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 			{
 				/* Unmap page table. */
 				if (proc != NULL)
-					umappgtab(proc->pgdir, preg->start - reg->size);
+					umappgtab(proc, preg->start - reg->size);
 				putkpg(reg->pgtab[i]);
 				reg->pgtab[i] = NULL;
 				
@@ -458,7 +442,7 @@ PUBLIC int attachreg
 		{
 			/* Map only valid page tables. */
 			if (reg->pgtab[i - 1] != NULL)
-				mappgtab(proc->pgdir, addr, reg->pgtab[i - 1]);
+				mappgtab(proc, addr, reg->pgtab[i - 1]);
 			addr -= PGTAB_SIZE;
 		}
 	}
@@ -468,7 +452,7 @@ PUBLIC int attachreg
 		{
 			/* Map only valid page tables. */
 			if (reg->pgtab[i] != NULL)
-				mappgtab(proc->pgdir, addr, reg->pgtab[i]);
+				mappgtab(proc, addr, reg->pgtab[i]);
 			addr += PGTAB_SIZE;
 		}
 	}
@@ -509,7 +493,7 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 		{
 			/* Unmap only valid page tables. */
 			if (reg->pgtab[i - 1] != NULL)
-				umappgtab(proc->pgdir, addr);
+				umappgtab(proc, addr);
 			addr -= PGTAB_SIZE;
 		}
 	}
@@ -519,7 +503,7 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 		{
 			/* Unmap only valid page tables. */
 			if (reg->pgtab[i] != NULL)
-				umappgtab(proc->pgdir, addr);
+				umappgtab(proc, addr);
 			addr += PGTAB_SIZE;
 		}
 	}
