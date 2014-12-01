@@ -23,18 +23,21 @@
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
 	
+	/* Page marks. */
+	#define PAGE_FILL 0 /* Demand fill. */
+	#define PAGE_ZERO 1 /* Demand zero. */
+	
 	/* Forward definitions. */
 	EXTERN int crtpgdir(struct process *);
 	EXTERN int pfault(addr_t);
 	EXTERN int vfault(addr_t);
 	EXTERN void dstrypgdir(struct process *);
-	PUBLIC void fillpg(struct pte *);
 	EXTERN void freeupg(struct pte *);
 	EXTERN void linkupg(struct pte *, struct pte *);
 	EXTERN void putkpg(void *);
 	EXTERN void mappgtab(struct process *, addr_t, void *);
+	EXTERN void markpg(struct pte *, int);
 	EXTERN void umappgtab(struct process *, addr_t);
-	EXTERN void zeropg(struct pte *);
 	EXTERN void *getkpg(int);
 
 #endif /* NANVIX_PAGING_H_ */

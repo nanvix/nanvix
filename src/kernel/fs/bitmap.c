@@ -19,7 +19,7 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/bitmap.h>
+#include <nanvix/klib.h>
 #include <nanvix/const.h>
 
 /**

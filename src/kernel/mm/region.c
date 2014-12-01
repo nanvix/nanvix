@@ -86,7 +86,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 					
 				/* Map page table. */
 				if (proc != NULL)
-					mappgtab(proc, preg->start - reg->size,reg->pgtab[i]);
+					mappgtab(proc, preg->start - reg->size, reg->pgtab[i]);
 				
 				continue;
 			}
@@ -95,7 +95,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 			npages--;
 			reg->size += PAGE_SIZE;
 			
-			zeropg(&reg->pgtab[i][j]);
+			markpg(&reg->pgtab[i][j], PAGE_ZERO);
 		}
 	}
 
@@ -128,12 +128,12 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 				
 				/* Map page table. */
 				if (proc != NULL)
-					mappgtab(proc, preg->start + reg->size,reg->pgtab[i]);
+					mappgtab(proc, preg->start + reg->size, reg->pgtab[i]);
 				
 				continue;
 			}
 			
-			zeropg(&reg->pgtab[i][j]);
+			markpg(&reg->pgtab[i][j], PAGE_ZERO);
 			
 			j++;
 			npages--;
@@ -693,7 +693,7 @@ PUBLIC int loadreg
 			j--;
 			npages--;
 			
-			fillpg(&reg->pgtab[i][j]);
+			markpg(&reg->pgtab[i][j], PAGE_FILL);
 		}
 	}
 	else
@@ -710,7 +710,7 @@ PUBLIC int loadreg
 				continue;
 			}
 			
-			fillpg(&reg->pgtab[i][j]);
+			markpg(&reg->pgtab[i][j], PAGE_FILL);
 			
 			j++;
 			npages--;

@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -18,7 +18,6 @@
  */
 
 #include <i386/i386.h>
-#include <nanvix/bitmap.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/clock.h>
@@ -30,11 +29,10 @@
 #include <nanvix/mm.h>
 #include <nanvix/paging.h>
 #include <nanvix/region.h>
-#include <errno.h>
 #include <signal.h>
 
 /**
- * @brief Gets page directory entry of a process.
+ * @brief Gets a page directory entry of a process.
  * 
  * @param p Process.
  * @param a Address.
@@ -45,7 +43,7 @@
 	(&(p)->pgdir[PGTAB(a)])
 
 /**
- * @brief Gets page table entry of a process.
+ * @brief Gets a page table entry of a process.
  * 
  * @param p Process.
  * @param a Address.
@@ -70,13 +68,11 @@ PRIVATE struct
 } swap = {{0, }, {0, } };
 
 /**
- * @brief Clears space on swap device that is associated to a page.
+ * @brief Clears the swap space that is associated to a page.
  * 
- * @param pg Page to be used.
- * 
- * @returns Zero upon success, and non-zero otherwise.
+ * @param pg Page to be inspected.
  */
-PRIVATE int swap_clear(struct pte *pg)
+PRIVATE void swap_clear(struct pte *pg)
 {
 	unsigned i;
 	
@@ -88,42 +84,35 @@ PRIVATE int swap_clear(struct pte *pg)
 		bitmap_clear(swap.bitmap, i);
 		swap.count[i]--;
 	}
-		
-	return (0);
 }
 
 /**
  * @brief Swaps a page out to disk.
  * 
+ * @param proc Process where the page is located.
  * @param addr Address of the page to be swapped out.
  * 
  * @returns Zero upon success, and non-zero otherwise.
  */
-PRIVATE int swap_out(addr_t addr)
+PRIVATE int swap_out(struct process *proc, addr_t addr)
 {
-	bit_t blk;      /* Block number in swap device.  */
+	unsigned blk;   /* Block number in swap device.  */
 	struct pte *pg; /* Page table entry.             */
 	off_t off;      /* Offset in swap device.        */
-	ssize_t n;      /* # Bytes written.              */
+	ssize_t n;      /* # bytes written.              */
 	void *kpg;      /* Kernel page used for copying. */
 	
 	addr &= PAGE_MASK;
-	pg = getpte(curr_proc, addr);
+	pg = getpte(proc, addr);
 	
 	/* Get kernel page. */
 	if ((kpg = getkpg(0)) == NULL)
-	{
-		curr_proc->errno = -ENOMEM;
 		goto error0;
-	}
 	
 	/* Get free block in swap device. */
 	blk = bitmap_first_free(swap.bitmap, (SWP_SIZE/PAGE_SIZE) >> 3);
 	if (blk == BITMAP_FULL)
-	{
-		curr_proc->errno = -ENOSPC;
 		goto error1;
-	}
 	
 	/*
 	 * Set block on swap device as used
@@ -136,10 +125,7 @@ PRIVATE int swap_out(addr_t addr)
 	kmemcpy(kpg, (void *)addr, PAGE_SIZE);
 	n = bdev_write(SWAP_DEV, (void *)addr, PAGE_SIZE, off);
 	if (n != PAGE_SIZE)
-	{
-		curr_proc->errno = -EIO;
 		goto error2;
-	}
 	swap.count[blk]++;
 	
 	/* Set page as non-present. */
@@ -161,6 +147,7 @@ error0:
 /**
  * @brief Swaps a page in to disk.
  * 
+ * @param proc  Process where the page is located.
  * @param frame Frame number where the page should be placed.
  * @param addr  Address of the page to be swapped in.
  * 
@@ -168,10 +155,10 @@ error0:
  */
 PRIVATE int swap_in(unsigned frame, addr_t addr)
 {
-	bit_t blk;      /* Block number in swap device.  */
+	unsigned blk;   /* Block number in swap device.  */
 	struct pte *pg; /* Page table entry.             */
 	off_t off;      /* Offset in swap device.        */
-	ssize_t n;      /* # Bytes written.              */
+	ssize_t n;      /* # bytes read.                 */
 	void *kpg;      /* Kernel page used for copying. */
 	
 	addr &= PAGE_MASK;
@@ -179,10 +166,7 @@ PRIVATE int swap_in(unsigned frame, addr_t addr)
 	
 	/* Get kernel page. */
 	if ((kpg = getkpg(0)) == NULL)
-	{
-		curr_proc->errno = -ENOMEM;
 		goto error0;
-	}
 	
 	/* Get block # in swap device. */
 	blk = pg->frame;
@@ -191,11 +175,7 @@ PRIVATE int swap_in(unsigned frame, addr_t addr)
 	/* Read page from disk. */
 	n = bdev_read(SWAP_DEV, kpg, PAGE_SIZE, off);
 	if (n != PAGE_SIZE)
-	{
-		curr_proc->errno = -EIO;
 		goto error1;
-	}
-	
 	swap_clear(pg);
 	
 	/* Set page as present. */
@@ -205,7 +185,6 @@ PRIVATE int swap_in(unsigned frame, addr_t addr)
 	
 	/* Copy page. */
 	kmemcpy((void *)addr, kpg, PAGE_SIZE);
-	pg->cow = 0;
 	pg->accessed = 0;
 	pg->dirty = 0;
 		
@@ -223,16 +202,21 @@ error0:
  *============================================================================*/
 
 /* Kernel pages. */
-#define NR_KPAGES (KPOOL_SIZE/PAGE_SIZE) /* Amount.          */
-PRIVATE int kpages[NR_KPAGES] = { 0,  }; /* Reference count. */
+#define NR_KPAGES (KPOOL_SIZE/PAGE_SIZE) /* Number of kernel pages.  */
+PRIVATE int kpages[NR_KPAGES] = { 0,  }; /* Reference count.         */
 
-/*
- * Allocates a kernel page.
+/**
+ * @brief Allocates a kernel page.
+ * 
+ * @param clean Should the page be cleaned?
+ * 
+ * @returns Upon success, a pointer to a page is returned. Upon failure, a NULL
+ *          pointer is returned instead.
  */
 PUBLIC void *getkpg(int clean)
 {
-	int i;     /* Loop index.  */
-	void *kpg; /* Kernel page. */
+	unsigned i; /* Loop index.  */
+	void *kpg;  /* Kernel page. */
 	
 	/* Search for a free kernel page. */
 	for (i = 0; i < NR_KPAGES; i++)
@@ -244,7 +228,6 @@ PUBLIC void *getkpg(int clean)
 
 	kprintf("mm: kernel page pool overflow");
 	
-	curr_proc->errno = -EAGAIN;
 	return (NULL);
 
 found:
@@ -260,12 +243,14 @@ found:
 	return (kpg);
 }
 
-/*
- * Releases kernel page.
+/**
+ * @brief Releases kernel page.
+ * 
+ * @param kpg Kernel page to be released.
  */
 PUBLIC void putkpg(void *kpg)
 {
-	int i;
+	unsigned i;
 	
 	i = ((addr_t)kpg - KPOOL_VIRT) >> PAGE_SHIFT;
 	
@@ -277,42 +262,40 @@ PUBLIC void putkpg(void *kpg)
 		kpanic("mm: releasing kernel page twice");
 }
 
-
 /*============================================================================*
  *                              Paging System                                 *
  *============================================================================*/
 
-/* Number of user pages. */
-#define NR_UPAGES (UMEM_SIZE/PAGE_SIZE)
+/* Number of page frames. */
+#define NR_FRAMES (UMEM_SIZE/PAGE_SIZE)
 
 /**
  * @brief Page frames.
  */
 PRIVATE struct
 {
-	unsigned count; /**< Reference count.             */
-	unsigned age;   /**< Age.                         */
-	pid_t owner;    /**< Page owner.                  */
-	addr_t vaddr;   /**< Virtual address of the page. */
-} frames[NR_UPAGES] = {{0, 0, 0, 0},  };
+	unsigned count; /**< Reference count.     */
+	unsigned age;   /**< Age.                 */
+	pid_t owner;    /**< Page owner.          */
+	addr_t addr;    /**< Address of the page. */
+} frames[NR_FRAMES] = {{0, 0, 0, 0},  };
 
 /**
  * @brief Allocates a page frame.
  * 
- * @returns Upon success, the number of the allocated frame is returned. Upon
- *          failure, a negative number is returned instead.
+ * @returns Upon success, the number of the frame is returned. Upon failure, a
+ *          negative number is returned instead.
  */
 PRIVATE int allocf(void)
 {
 	int i;      /* Loop index.  */
 	int oldest; /* Oldest page. */
 	
-	#define OLDEST(x, y) \
-		(frames[x].age < frames[y].age)
+	#define OLDEST(x, y) (frames[x].age < frames[y].age)
 	
 	/* Search for a free frame. */
 	oldest = -1;
-	for (i = 0; i < NR_UPAGES; i++)
+	for (i = 0; i < NR_FRAMES; i++)
 	{
 		/* Found it. */
 		if (frames[i].count == 0)
@@ -331,15 +314,12 @@ PRIVATE int allocf(void)
 		}
 	}
 	
-	/* No free user pages left for this process. */
+	/* No frame left. */
 	if (oldest < 0)
-	{
-		curr_proc->errno = -ENOMEM;
 		return (-1);
-	}
 	
 	/* Swap page out. */
-	if (swap_out(frames[i = oldest].vaddr))
+	if (swap_out(curr_proc, frames[i = oldest].addr))
 		return (-1);
 	
 found:		
@@ -350,8 +330,15 @@ found:
 	return (i);
 }
 
-/*
- * Copies a page.
+/**
+ * @brief Copies a page.
+ * 
+ * @brief pg1 Target page.
+ * @brief pg2 Source page.
+ * 
+ * @returns Zero upon successful completion, and non-zero otherwise.
+ * 
+ * @note The source page is assumed to be in-core.
  */
 PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 {
@@ -361,6 +348,7 @@ PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 	if ((i = allocf()) < 0)
 		return (-1);
 	
+	/* Handcraft page table entry. */
 	pg1->present = pg2->present;
 	pg1->writable = pg2->writable;
 	pg1->user = pg2->user;
@@ -375,10 +363,10 @@ PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 /**
  * @brief Allocates a user page.
  * 
- * @param upg      Page table entry that shall be filled.
+ * @param addr     Address where the page resides.
  * @param writable Is the page writable?
  * 
- * @returns Zero upon success, and non-zero otherwise.
+ * @returns Zero upon successful completion, and non-zero otherwise.
  */
 PRIVATE int allocupg(addr_t addr, int writable)
 {
@@ -391,7 +379,7 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	
 	/* Initialize page frame. */
 	frames[i].owner = curr_proc->pid;
-	frames[i].vaddr = addr & PAGE_MASK;
+	frames[i].addr = addr & PAGE_MASK;
 	
 	/* Allocate page. */
 	pg = getpte(curr_proc, addr);
@@ -406,22 +394,24 @@ PRIVATE int allocupg(addr_t addr, int writable)
 }
 
 /**
- * @brief Reads page from inode.
+ * @brief Reads a page from a file.
  * 
  * @param reg  Region where the page resides.
  * @param addr Address where the page should be loaded. 
  * 
- * @returns Zero upon success, and non-zero upon failure.
+ * @returns Zero upon successful completion, and non-zero upon failure.
  */
 PRIVATE int readpg(struct region *reg, addr_t addr)
 {
-	char *p;             /* Read pointer. */
-	off_t off;           /* Block offset. */
-	ssize_t count;       /* Bytes read.   */
-	struct inode *inode; /* File inode.   */
-	struct pte *pg;    /* Working page table entry. */
+	char *p;             /* Read pointer.             */
+	off_t off;           /* Block offset.             */
+	ssize_t count;       /* Bytes read.               */
+	struct inode *inode; /* File inode.               */
+	struct pte *pg;      /* Working page table entry. */
 	
-	/* Assign new user page. */
+	addr &= PAGE_MASK;
+	
+	/* Assign a user page. */
 	if (allocupg(addr, reg->mode & MAY_WRITE))
 		return (-1);
 	
@@ -492,7 +482,7 @@ PUBLIC void umappgtab(struct process *proc, addr_t addr)
 	
 	/* Bad page table. */
 	if (!(pde->present))
-		kpanic("unmap non present page table");
+		kpanic("unmap non-present page table");
 
 	/* Unmap kernel page. */
 	kmemset(pde, 0, sizeof(struct pde));
@@ -533,37 +523,36 @@ PUBLIC void freeupg(struct pte *pg)
 }
 
 /**
- * @brief Marks a page as "demand zero".
+ * @brief Marks a page.
  * 
- * @param pg Page to be marked.
+ * @param pg   Page to be marked.
+ * @param mark Mark.
  */
-PUBLIC void zeropg(struct pte *pg)
-{
-	/* Bad page. */
-	if (pg->present)
-		kpanic("demand zero on a present page");
-	
-	pg->fill = 0;
-	pg->zero = 1;
-}
-
-/**
- * @brief Marks a page as "demand fill".
- * 
- * @param pg Page to be marked.
- */
-PUBLIC void fillpg(struct pte *pg)
+PUBLIC void markpg(struct pte *pg, int mark)
 {
 	/* Bad page. */
 	if (pg->present)
 		kpanic("demand fill on a present page");
 	
-	pg->fill = 1;
-	pg->zero = 0;	
+	/* Mark page. */
+	switch (mark)
+	{
+		/* Demand fill. */
+		case PAGE_FILL:
+			pg->fill = 1;
+			pg->zero = 0;
+			break;
+		
+		/* Demand zero. */
+		case PAGE_ZERO:
+			pg->fill = 0;
+			pg->zero = 1;
+			break;
+	}
 }
 
 /**
- * @brief Links two page tables
+ * @brief Links two pages.
  * 
  * @param upg1 Source page.
  * @param upg2 Target page.
@@ -596,8 +585,13 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 	kmemcpy(upg2, upg1, sizeof(struct pte));
 }
 
-/*
- * Creates a page directory for a process.
+/**
+ * @brief Creates a page directory for a process.
+ * 
+ * @param proc Target process.
+ * 
+ * @returns Upon successful completion, zero is returned. Upon failure, non-zero
+ *          is returned instead.
  */
 PUBLIC int crtpgdir(struct process *proc)
 {
@@ -632,9 +626,8 @@ PUBLIC int crtpgdir(struct process *proc)
 		s2 = (struct intstack *) proc->kesp;	
 		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
 	}
-	
 	/* Assign page directory. */
-	proc->cr3 = (addr_t)pgdir - KBASE_VIRT;
+	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
 	proc->pgdir = pgdir;
 	proc->kstack = kstack;
 	
@@ -646,8 +639,12 @@ err0:
 	return (-1);
 }
 
-/*
- * Destroys the page directory of a process.
+/**
+ * @brief Destroys the page directory of a process.
+ * 
+ * @param proc Target process.
+ * 
+ * @note The current running process may not be the target process.
  */
 PUBLIC void dstrypgdir(struct process *proc)
 {
@@ -655,8 +652,13 @@ PUBLIC void dstrypgdir(struct process *proc)
 	putkpg(proc->pgdir);
 }
 
-/*
- * Handles a validity page fault.
+/**
+ * @brief Handles a validity page fault.
+ * 
+ * @brief addr Faulting address.
+ * 
+ * @returns Upon successful completion, zero is returned. Upon failure, non-zero
+ *          is returned instead.
  */
 PUBLIC int vfault(addr_t addr)
 {
@@ -682,7 +684,7 @@ PUBLIC int vfault(addr_t addr)
 		kprintf("growing stack");
 		
 		/* Expand region. */
-		if (growreg(curr_proc, preg, (~PGTAB_MASK - reg->size) - (addr & ~PGTAB_MASK)))
+		if (growreg(curr_proc,preg,(preg->start-reg->size)-(addr&~PGTAB_MASK)))
 			goto error1;
 	}
 
@@ -693,10 +695,8 @@ PUBLIC int vfault(addr_t addr)
 	/* Clear page. */
 	if (pg->zero)
 	{
-		/* Assign new page to region. */ 
 		if (allocupg(addr, reg->mode & MAY_WRITE))
 			goto error1;
-		
 		kmemset((void *)(addr & PAGE_MASK), 0, PAGE_SIZE);
 	}
 		
@@ -711,15 +711,11 @@ PUBLIC int vfault(addr_t addr)
 	/* Swap page in. */
 	else
 	{
-		/* Allocate frame for page. */
 		if ((frame = allocf()) < 0)
 			goto error1;
-		
-		/* Swap page in. */
 		if (swap_in(frame, addr))
 			goto error2;
-			
-		frames[frame].vaddr = addr & PAGE_MASK;
+		frames[frame].addr = addr & PAGE_MASK;
 	}
 	
 	unlockreg(reg);
@@ -732,13 +728,17 @@ error1:
 error0:
 	return (-1);
 }
-
-/*
- * Handles a protection page fault.
+/**
+ * @brief Handles a protection page fault.
+ * 
+ * @brief addr Faulting address.
+ * 
+ * @returns Upon successful completion, zero is returned. Upon failure, non-zero
+ *          is returned instead.
  */
 PUBLIC int pfault(addr_t addr)
 {
-	int i;                /* Frame index.            */
+	unsigned i;           /* Frame index.            */
 	struct pte *pg;       /* Faulting page.          */
 	struct pte new_pg;    /* New page.               */
 	struct region *reg;   /* Working memory region.  */
@@ -747,7 +747,7 @@ PUBLIC int pfault(addr_t addr)
 	preg = findreg(curr_proc, addr);
 	
 	/* Outside virtual address space. */
-	if (preg == NULL)
+	if ((preg == NULL) || (!withinreg(preg, addr)))
 		goto error0;
 	
 	lockreg(reg = preg->reg);
@@ -756,7 +756,6 @@ PUBLIC int pfault(addr_t addr)
 		&reg->pgtab[REGION_PGTABS-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]: 
 		&reg->pgtab[PGTAB(addr) - PGTAB(preg->start)][PG(addr)];
 
-	
 	/* Copy on write not enabled. */
 	if (!pg->cow)
 		goto error1;

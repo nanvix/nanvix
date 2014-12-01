@@ -4,9 +4,9 @@
  * sys/stat.c - ustat() system call implementation.
  */
 
-#include <nanvix/bitmap.h>
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
+#include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <sys/types.h>
 #include <ustat.h>

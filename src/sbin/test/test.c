@@ -26,7 +26,7 @@
 #define FULL     (1 << 1)
 
 /* Test flags. */
-static unsigned flags = 0;
+static unsigned flags = FULL;
 
 /**
  * @brief Swapping test module.
@@ -58,7 +58,7 @@ int swap_test(void)
 	}
 	
 	/* Multiply matrices. */
-	if (flags & EXTENDED)
+	if (flags & (EXTENDED | FULL))
 	{	
 		for (int i = 0; i < N; i++)
 		{
