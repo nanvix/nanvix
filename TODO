@@ -66,13 +66,7 @@ I. TO BE IMPLEMENTED
 
 II. TO BE FIXED
 
-	1. Race Condition on TTY Driver
-	
-		The input TTY queue is unprotected against race conditions. For 
-		instance, it may happens that a process is reading from the device and
-		suddenly the keyboard driver is fired.
-	
-	2. Set User ID on execve()
+	1. Set User ID on execve()
 	
 		Currently, exeve() is ignoring setuid flags.
 

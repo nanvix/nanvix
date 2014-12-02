@@ -7,6 +7,7 @@
 #include <dev/tty.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
@@ -18,16 +19,6 @@
  * tty device.
  */
 PUBLIC struct tty tty;
-
-/*
- * Puts process to sleep if tty output buffer is full.
- */
-PRIVATE void sleep_full()
-{
-	/* Sleep while output buffer is full. */
-	while (KBUFFER_FULL(tty.output))
-		sleep(&tty.output.chain, PRIO_TTY);
-}
 
 /*
  * Puts the calling process to sleep it the tty input buffer is full.
@@ -63,9 +54,7 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 	
 	/* Write n characters. */
 	while (n > 0)
-	{
-		sleep_full();
-		
+	{		
 		/* Copy data to output tty buffer. */
 		while ((n > 0) && (!KBUFFER_FULL(tty.output)))
 		{
@@ -75,7 +64,9 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 		}
 		
 		/* Flushes tty output buffer. */
+		disable_interrupts();
 		console_write(&tty.output);
+		enable_interrupts();
 	}
 		
 	return ((ssize_t)(p - buf));
@@ -94,11 +85,15 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 	p = buf;
 	
 	/* Read characters. */
+	disable_interrupts();
 	while (n > 0)
 	{
 		/* Wait for data. */
 		if (sleep_empty())
+		{
+			enable_interrupts();
 			return (-1);
+		}
 		
 		/* Copy data from input buffer. */
 		while ((n > 0) && (!KBUFFER_EMPTY(tty.input)))
@@ -110,9 +105,13 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			
 			/* Done reading. */
 			if ((c == '\n') && (tty.term.c_lflag & ICANON))
-				return ((ssize_t)(p - buf));
+				goto out;
 		}
 	}
+
+out:
+
+	enable_interrupts();
 	
 	return ((ssize_t)(p - buf));
 }

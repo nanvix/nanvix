@@ -179,13 +179,11 @@ PUBLIC void console_write(struct kbuffer *buffer)
  */
 PUBLIC void console_init(void)
 {
-	byte_t value;
-	
 	/* Set cursor shape. */
 	outputb(VIDEO_CRTL_REG, VIDEO_CS);
-	value = inputb(VIDEO_DATA_REG);
-	outputb(VIDEO_CRTL_REG, VIDEO_CS);
-	outputb(VIDEO_DATA_REG, (byte_t) (value & 0xe0));
+	outputb(VIDEO_DATA_REG, 0x00);
+	outputb(VIDEO_CRTL_REG, VIDEO_CE);
+	outputb(VIDEO_DATA_REG, 0x1f);
 	
 	/* Clear the console. */
 	console_clear();
