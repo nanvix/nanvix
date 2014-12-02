@@ -24,6 +24,7 @@
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
+#include <nanvix/paging.h>
 #include <nanvix/pm.h>
 #include <sys/types.h>
 #include <stdarg.h>
@@ -701,11 +702,12 @@ PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
  */
 PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 {
-	size_t i;           /* Loop index.      */
-	size_t count;       /* # bytes to read. */
-	block_t blknum;     /* Block number.    */
-	struct atadev *dev; /* ATA device.      */
-	unsigned char *p;   /* Read pointer.    */
+	size_t i;           /* Loop index.                   */
+	size_t count;       /* # bytes to read.              */
+	block_t blknum;     /* Block number.                 */
+	struct atadev *dev; /* ATA device.                   */
+	unsigned char *p;   /* Read pointer.                 */
+	void *kpg;          /* Kernel page used for copying. */
 	
 	/* Invalid minor device. */
 	if (minor >= 4)
@@ -716,6 +718,11 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	/* Device not valid. */
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
+	
+	/* Get a kernel page. */
+	kpg = getkpg(0);
+	if (kpg == NULL)
+		return (-ENOMEM);
 	
 	p = (unsigned char *)buf;
 	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
@@ -725,16 +732,18 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	for (i = 0; i < n; /* noop*/)
 	{	
 		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : PAGE_SIZE - (n - i);
-		ata_sched_raw(minor, blknum, p, count, REQ_SYNC);
+		ata_sched_raw(minor, blknum, kpg, count, REQ_SYNC);
+		kmemcpy(p, kpg, count);
 		
 		p += BLOCK_SIZE;
 		i += count;
-		
+	
 		/* Avoid starvation. */
 		if ((n - i) > 0)
 			yield();
 	}
 	
+	putkpg(kpg);
 	return ((ssize_t)i);
 }
 
@@ -744,11 +753,12 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
  */
 PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 {
-	size_t i;           /* Loop index.      */
-	size_t count;       /* # bytes to read. */
-	block_t blknum;     /* Block number.    */
-	struct atadev *dev; /* ATA device.      */
-	unsigned char *p;   /* Write pointer.    */
+	size_t i;           /* Loop index.                   */
+	size_t count;       /* # bytes to read.              */
+	block_t blknum;     /* Block number.                 */
+	struct atadev *dev; /* ATA device.                   */
+	unsigned char *p;   /* Write pointer.                */
+	void *kpg;          /* Kernel page used for copying. */
 	
 	/* Invalid minor device. */
 	if (minor >= 4)
@@ -760,6 +770,11 @@ PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
+	/* Get a kernel page. */
+	kpg = getkpg(0);
+	if (kpg == NULL)
+		return (-ENOMEM);
+	
 	p = (unsigned char *)buf;
 	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
 	n = ALIGN(n, BLOCK_SIZE);
@@ -768,7 +783,8 @@ PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 	for (i = 0; i < n; /* noop*/)
 	{	
 		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : PAGE_SIZE - (n - i);
-		ata_sched_raw(minor, blknum, p, count, REQ_SYNC | REQ_WRITE);
+		kmemcpy(kpg, p, count);
+		ata_sched_raw(minor, blknum, kpg, count, REQ_SYNC | REQ_WRITE);
 		
 		p += BLOCK_SIZE;
 		i += count;
@@ -778,6 +794,7 @@ PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 			yield();
 	}
 	
+	putkpg(kpg);
 	return ((ssize_t)i);
 }
 
