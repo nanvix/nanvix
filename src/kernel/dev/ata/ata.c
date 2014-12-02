@@ -24,7 +24,6 @@
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
-#include <nanvix/paging.h>
 #include <nanvix/pm.h>
 #include <sys/types.h>
 #include <stdarg.h>

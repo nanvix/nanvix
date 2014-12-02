@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -17,27 +17,18 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef NANVIX_PAGING_H_
-#define NANVIX_PAGING_H_
+#ifndef _MM_H_
+#define _MM_H_
 
-	#include <nanvix/const.h>
-	#include <nanvix/pm.h>
-	
 	/* Page marks. */
 	#define PAGE_FILL 0 /* Demand fill. */
 	#define PAGE_ZERO 1 /* Demand zero. */
 	
 	/* Forward definitions. */
-	EXTERN int crtpgdir(struct process *);
-	EXTERN int pfault(addr_t);
-	EXTERN int vfault(addr_t);
-	EXTERN void dstrypgdir(struct process *);
 	EXTERN void freeupg(struct pte *);
 	EXTERN void linkupg(struct pte *, struct pte *);
-	EXTERN void putkpg(void *);
 	EXTERN void mappgtab(struct process *, addr_t, void *);
 	EXTERN void markpg(struct pte *, int);
 	EXTERN void umappgtab(struct process *, addr_t);
-	EXTERN void *getkpg(int);
 
-#endif /* NANVIX_PAGING_H_ */
+#endif /* _MM_H_ */

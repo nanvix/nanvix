@@ -22,12 +22,12 @@
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
-#include <nanvix/paging.h>
 #include <nanvix/pm.h>
 #include <nanvix/region.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include "mm.h"
 
 /**
  * @brief Memory region table.

@@ -7,7 +7,6 @@
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
-#include <nanvix/paging.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <errno.h>

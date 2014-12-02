@@ -8,7 +8,7 @@
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
-#include <nanvix/paging.h>
+#include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <sys/types.h>
 #include <errno.h>

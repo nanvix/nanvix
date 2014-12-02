@@ -11,7 +11,6 @@
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
-#include <nanvix/paging.h>
 #include <errno.h>
 #include <unistd.h>
 #include <limits.h>

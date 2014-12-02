@@ -10,6 +10,7 @@
 	#include <i386/i386.h>
 	#include <nanvix/const.h>
 	#include <sys/types.h>
+	#include <nanvix/pm.h>
 	
 	/* Kernel stack size. */
 	#define KSTACK_SIZE 4096
@@ -43,10 +44,16 @@
 #ifndef _ASM_FILE_
 	
 	/* Forward definitions. */
-	EXTERN void mm_init(void);
 	EXTERN int chkmem(const void *, size_t, mode_t);
 	EXTERN int fubyte(const void *);
 	PUBLIC int fudword(const void *);
+	EXTERN int crtpgdir(struct process *);
+	EXTERN int pfault(addr_t);
+	EXTERN int vfault(addr_t);
+	EXTERN void dstrypgdir(struct process *);
+	EXTERN void putkpg(void *);
+	EXTERN void mm_init(void);
+	EXTERN void *getkpg(int);
 
 #endif /* _ASM_FILE_ */
 	

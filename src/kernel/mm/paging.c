@@ -27,9 +27,9 @@
 #include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
-#include <nanvix/paging.h>
 #include <nanvix/region.h>
 #include <signal.h>
+#include "mm.h"
 
 /**
  * @brief Gets a page directory entry of a process.

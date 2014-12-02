@@ -7,7 +7,7 @@
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
-#include <nanvix/paging.h>
+#include <nanvix/mm.h>
 #include <signal.h>
 #include "pm.h"
 
