@@ -42,22 +42,11 @@
 
 #ifndef _ASM_FILE_
 	
+	/* Forward definitions. */
 	EXTERN void mm_init(void);
-	
-	/*
-	 * Checks access permissions to a memory area.
-	 */
-	EXTERN int chkmem(const void *addr, size_t size, mode_t mask);
-
-	/*
-	 * Fetches a byte from user address space.
-	 */
-	EXTERN int fubyte(const void *addr);
-	
-	/*
-	 * Fetches a double word from user address space.
-	 */
-	PUBLIC int fudword(const void *addr);
+	EXTERN int chkmem(const void *, size_t, mode_t);
+	EXTERN int fubyte(const void *);
+	PUBLIC int fudword(const void *);
 
 #endif /* _ASM_FILE_ */
 	

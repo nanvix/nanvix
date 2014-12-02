@@ -1,7 +1,20 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * mm/mm.c - Memory subsystem module.
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/const.h>
@@ -10,17 +23,22 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 
-/*
- * Initializes the memory system module.
+/**
+ * @brief Initializes the memory system.
  */
 PUBLIC void mm_init(void)
 {
-	/* Initialize memory regions. */
 	initreg();
 }
 
-/*
- * Checks access permissions to a memory area.
+/**
+ * @brief Checks access permissions to a memory area.
+ * 
+ * @param addr Address to be checked.
+ * @param size Size of memory area.
+ * @param mask Access permissions mask.
+ * 
+ * @returns Zero if access is authorized, and non-zero otherwise.
  */
 PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
 {
@@ -49,8 +67,13 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
 	return (ret);
 }
 
-/*
- * Fetches a byte from user address space.
+/**
+ * @brief Fetches a byte from user address space.
+ * 
+ * @param addr Address where the byte should be fetched.
+ * 
+ * @returns Upon successful completion the byte fetched is returned 
+ *          (casted to int). Upon failure, -1 is returned instead. 
  */
 PUBLIC int fubyte(const void *addr)
 {	
@@ -75,8 +98,13 @@ PUBLIC int fubyte(const void *addr)
 	return (byte);
 }
 
-/*
- * Fetches a double word from user address space.
+/**
+ * @brief Fetches a double word (4 bytes) from user address space.
+ * 
+ * @param addr Address where the byte should be fetched.
+ * 
+ * @returns Upon successful completion the byte fetched is returned (casted to
+ *          int). Upon failure, -1 is returned instead.
  */
 PUBLIC int fudword(const void *addr)
 {	
