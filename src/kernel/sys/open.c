@@ -136,8 +136,7 @@ PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
 	/* Block special file. */
 	else if (S_ISBLK(i->mode))
 	{
-		curr_proc->errno = -ENOTSUP;
-		goto error;
+		/* TODO: open device? */
 	}
 	
 	/* Pipe file. */
