@@ -23,7 +23,6 @@
 #include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/hal.h>
-#include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/region.h>

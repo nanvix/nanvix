@@ -83,8 +83,12 @@ PRIVATE struct
 	0
 };
 
-/*
- * Raises processor execution level.
+/**
+ * @brief Raises processor execution level.
+ * 
+ * @param lvl Level to raise processor.
+ * 
+ * @note This function must be called in an interrupt-safe environment.
  */
 PUBLIC void processor_raise(unsigned lvl)
 {
@@ -93,8 +97,10 @@ PUBLIC void processor_raise(unsigned lvl)
 	pic_mask(int_masks[lvl]);
 }
 
-/*
- * Drops processor execution level.
+/**
+ * @brief Drops processor execution level.
+ * 
+ * @note This function must be called in an interrupt-safe environment.
  */
 PUBLIC void processor_drop(void)
 {

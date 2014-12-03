@@ -5,10 +5,10 @@
  */
 
 #include <i386/i386.h>
+#include <i386/int.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
-#include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 

@@ -7,7 +7,6 @@
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/hal.h>
-#include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <signal.h>
 #include <stdint.h>

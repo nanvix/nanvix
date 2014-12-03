@@ -4,8 +4,8 @@
  * core/exception.c - Exception handlers.
  */
 
+#include <i386/int.h>
 #include <nanvix/const.h>
-#include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <signal.h>

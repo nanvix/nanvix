@@ -21,11 +21,11 @@
 #include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/hal.h>
-#include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <sys/types.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
 

@@ -8,7 +8,7 @@
 #define _ASM_FILE_
 
 #include <i386/i386.h>
-#include <nanvix/int.h>
+#include <i386/int.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 

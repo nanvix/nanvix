@@ -6,7 +6,6 @@
 
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
-#include <nanvix/int.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
 

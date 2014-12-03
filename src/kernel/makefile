@@ -25,7 +25,6 @@ ARCH = x86
 
 # C source files.
 C_SRC = $(wildcard arch/$(ARCH)/*.c) \
-        $(wildcard core/*.c)         \
         $(wildcard dev/*.c)          \
         $(wildcard dev/ata/*.c)      \
         $(wildcard dev/ramdisk/*.c)  \
