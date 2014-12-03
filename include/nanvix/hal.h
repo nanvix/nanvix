@@ -32,10 +32,16 @@
 
 #ifndef HAL_H_
 #define HAL_H_
-	
+
+#ifndef _ASM_FILE_
+
+	#include <i386/i386.h>
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
 	#include <stdlib.h>
+	
+	/* Forward definitions. */
+	struct process;
  
 /*============================================================================*
  * Section: Processor                                                         *
@@ -360,5 +366,7 @@
 	 *     - The memory areas must not overlap.
 	 */
 	EXTERN void physcpy(addr_t dest, addr_t src, size_t n);
- 
+
+#endif /* _ASM_FILE */
+
 #endif /* HAL_H_ */

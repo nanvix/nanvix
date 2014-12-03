@@ -4,7 +4,6 @@
  * timer.c - Clock device driver.
  */
 
-#include <i386/i386.h>
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <nanvix/int.h>

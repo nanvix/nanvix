@@ -17,7 +17,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <i386/i386.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/clock.h>

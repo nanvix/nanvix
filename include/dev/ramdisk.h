@@ -7,8 +7,8 @@
 #ifndef RAMDISK_H_
 #define RAMDISK_H_
 
-	#include <i386/i386.h>
 	#include <nanvix/const.h>
+	#include <nanvix/hal.h>
 
 	/*
 	 * DESCRIPTION:

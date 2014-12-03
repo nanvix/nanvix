@@ -4,7 +4,6 @@
  * hwint.c - Hardware interrupts.
  */
 
-#include <i386/i386.h>
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <errno.h>

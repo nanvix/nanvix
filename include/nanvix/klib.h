@@ -7,8 +7,8 @@
 #ifndef KLIB_H_
 #define KLIB_H_
 
-	#include <i386/i386.h>
 	#include <nanvix/const.h>
+	#include <nanvix/hal.h>
 	#include <nanvix/pm.h>
 	#include <sys/types.h>
 	#include <stdarg.h>

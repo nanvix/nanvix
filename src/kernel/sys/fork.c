@@ -4,9 +4,9 @@
  * sys/fork.c - fork() system call implementation.
  */
 
-#include <i386/i386.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>

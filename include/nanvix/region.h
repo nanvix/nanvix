@@ -22,8 +22,8 @@
 
 #ifndef _ASM_FILE_
 
-	#include <i386/i386.h>
 	#include <nanvix/const.h>
+	#include <nanvix/hal.h>
 	#include <sys/types.h>
 
 	/* Memory region flags. */

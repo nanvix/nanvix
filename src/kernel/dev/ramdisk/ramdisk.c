@@ -4,11 +4,11 @@
  * dev/ramdisk/ramdisk.c - RAM disk driver implementation.
  */
 
-#include <i386/i386.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/fs.h>
+#include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <sys/types.h>

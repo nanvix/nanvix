@@ -7,8 +7,8 @@
 #ifndef INT_H_
 #define INT_H_
 
-	#include <i386/i386.h>
 	#include <nanvix/const.h>
+	#include <nanvix/hal.h>
 	#include <errno.h>
 	
 	/* Offsets to the registers structure. */
