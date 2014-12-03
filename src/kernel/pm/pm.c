@@ -1,7 +1,20 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * pm.c - Process manager.
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *
+ * This file is part of Nanvix.
+ *
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/clock.h>
@@ -10,31 +23,44 @@
 #include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/hal.h>
-#include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <sys/stat.h>
 #include <signal.h>
 #include <limits.h>
 
-/* init stuff. */
-PUBLIC char init_kstack[KSTACK_SIZE]; /* Kernel stack.   */
-EXTERN struct pde init_pgdir[];       /* Page directory. */
+/**
+ * @brief Idle process page directory.
+ */
+EXTERN struct pde idle_pgdir[];
 
-/* Process table. */
+/**
+ * @brief Idle process kernel stack.
+ */
+PUBLIC char idle_kstack[KSTACK_SIZE];
+
+/**
+ * @brief Process table.
+ */
 PUBLIC struct process proctab[PROC_MAX];
 
-/* Current running process. */
+/**
+ * @brief Current running process. 
+ */
 PUBLIC struct process *curr_proc = IDLE;
 
-/* Next available PID. */
+/**
+ * @brief Next available process ID.
+ */
 PUBLIC pid_t next_pid = 0;
 
-/* Current number of process in the system. */
+/**
+ * @brief Current number of processes in the system.
+ */
 PUBLIC unsigned nprocs = 0;
 
-/*
- * Initializes the process management system.
+/**
+ * @brief Initializes the process management system.
  */
 PUBLIC void pm_init(void)
 {	
@@ -43,17 +69,17 @@ PUBLIC void pm_init(void)
 	
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
-		p->flags = PROC_FREE;
+		p->flags = 0, p->state = PROC_DEAD;
 		
 	/* Handcraft init process. */
-	IDLE->cr3 = (dword_t)init_pgdir;
+	IDLE->cr3 = (dword_t)idle_pgdir;
 	IDLE->intlvl = 1;
 	IDLE->flags = 0;
 	IDLE->received = 0;
-	IDLE->kstack = init_kstack;
+	IDLE->kstack = idle_kstack;
 	for (i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
-	IDLE->pgdir = init_pgdir;
+	IDLE->pgdir = idle_pgdir;
 	for (i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;
 	IDLE->size = 0;

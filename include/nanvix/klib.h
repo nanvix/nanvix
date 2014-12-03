@@ -296,10 +296,9 @@
 	 */
 	#define UNUSED(a) ((void)a)
 	
-	EXTERN int ksetjmp(kjmp_buf *env);
-	
-	EXTERN int klongjmp(kjmp_buf *env, int val);
-	
-	EXTERN void kusetjmp(kjmp_buf *kenv);
+	/**
+	 * @brief No operation.
+	 */
+	#define noop()
 	
 #endif /* KLIB_H_ */

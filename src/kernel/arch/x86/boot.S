@@ -17,7 +17,7 @@
 
 /* Exported symbols. */
 .globl start
-.globl init_pgdir
+.globl idle_pgdir
 
 /*============================================================================*
  *                              bootstrap section                             *
@@ -79,21 +79,21 @@ start:
 	cld
 
 	/* Build init page directory. */
-	movl $kpgtab + 3, init_pgdir + PTE_SIZE*0         /* at: 0x00000000 */
-	movl $kpgtab + 3, init_pgdir + PTE_SIZE*768       /* at: 0xc0000000 */
-	movl $kpool_pgtab + 3, init_pgdir + PTE_SIZE*769  /* at: 0xc0400000 */
-	movl $initrd_pgtab + 3, init_pgdir + PTE_SIZE*770 /* at: 0xc0800000 */
+	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*0         /* at: 0x00000000 */
+	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*768       /* at: 0xc0000000 */
+	movl $kpool_pgtab + 3, idle_pgdir + PTE_SIZE*769  /* at: 0xc0400000 */
+	movl $initrd_pgtab + 3, idle_pgdir + PTE_SIZE*770 /* at: 0xc0800000 */
 	
 	/* Enable paging. */
-	movl $init_pgdir, %eax
+	movl $idle_pgdir, %eax
 	movl %eax, %cr3
 	movl %cr0, %eax
 	orl $0x80000000, %eax
 	movl %eax, %cr0
 	
 	/* Setup stack. */
-	movl $init_kstack + PAGE_SIZE - DWORD_SIZE, %ebp
-	movl $init_kstack + PAGE_SIZE - DWORD_SIZE, %esp
+	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %ebp
+	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %esp
 	
 	call setup
 	
@@ -139,12 +139,12 @@ initrd_pgtab:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*
- *                                  init_pgdir                                *
+ *                                  idle_pgdir                                *
  *----------------------------------------------------------------------------*/
 
 /* 
  * init page directory.
  */
 .align PAGE_SIZE
-init_pgdir:
+idle_pgdir:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0

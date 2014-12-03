@@ -36,7 +36,7 @@ PUBLIC pid_t sys_fork(void)
 	for (proc = FIRST_PROC; proc <= LAST_PROC; proc++)
 	{
 		/* Found. */
-		if (proc->flags & PROC_FREE)
+		if ((proc->state == PROC_DEAD) && !(proc->flags & PROC_NEW))
 			goto found;
 	}
 
@@ -47,7 +47,7 @@ PUBLIC pid_t sys_fork(void)
 found:
 	
 	/* Mark process as beeing created. */
-	proc->flags = PROC_NEW & ~PROC_FREE;
+	proc->flags = PROC_NEW;
 
 	err = crtpgdir(proc);
 	
@@ -156,6 +156,6 @@ error1:
 	}
 error0:
 	dstrypgdir(proc);
-	proc->flags = PROC_FREE;
+	proc->flags = 0;
 	return (-ENOMEM);
 }

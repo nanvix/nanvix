@@ -49,19 +49,6 @@
 	/* Used for addresses. */
 	typedef unsigned addr_t;
 
-	typedef struct
-	{
-		dword_t ebx;
-		dword_t esi;
-		dword_t edi;
-		dword_t eip;
-		dword_t eflags;
-		dword_t ebp;
-		dword_t esp;
-		dword_t kesp;
-		dword_t intlvl;
-	} kjmp_buf;
-
 	/*
 	 * Converts to address.
 	 */

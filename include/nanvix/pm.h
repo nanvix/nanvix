@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -17,15 +17,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-/*
- * File: nanvix/pm.h
- * 
- * Process management system library.
- * 
- * The process management system library provides the abstraction of processes
- * and several function for dealing with them.
- */
-
 #ifndef PM_H_
 #define PM_H_
 
@@ -38,524 +29,181 @@
 	#include <limits.h>
 	#include <signal.h>
 	
-	/*
-	 * Constants: Superuser Credentials
-	 * 
-	 * Credentials used for superuser authentication.
-	 * 
-	 * SUPERUSER  - Superuser ID.
-	 * SUPERGROUP - Superuser group ID.
+	/**
+	 * @brief Superuser credentials.
 	 */
-	#define SUPERUSER  0
-	#define SUPERGROUP 0
+	#define SUPERUSER  0 /**< Superuser ID.       */
+	#define SUPERGROUP 0 /**< Superuser group ID. */
 
-	/*
-	 * Constants: Important System Processes
-	 * 
-	 * Processes that are vital to the system.
-	 * 
-	 * IDLE - idle process.
-	 * INIT - init process.
+	/**
+	 * @brief Important system processes.
 	 */
-	#define IDLE (&proctab[0])
-	#define INIT (&proctab[1])
+	#define IDLE (&proctab[0]) /**< idle process. */
+	#define INIT (&proctab[1]) /**< init process. */
 	
-	/*
-	 * Constants: Process Table Boundaries
-	 * 
-	 * Lower and upper process table boundaries.
-	 * 
-	 * FIRST_PROC - First process in the process table slot.
-	 * LAST_PROC  - Last process in the process table slot.
+	/**
+	 * @brief Process table boundaries.
 	 */
-	#define FIRST_PROC ((&proctab[1]))
-	#define LAST_PROC ((&proctab[PROC_MAX - 1]))
+	#define FIRST_PROC ((&proctab[1]))           /**< First process. */
+	#define LAST_PROC ((&proctab[PROC_MAX - 1])) /**< Last process.  */
 	
-	/*
-	 * Constants: Process Flags
-	 * 
-	 * Process flags.
-	 * 
-	 * PROC_FREE   - Is the process free?
-	 * PROC_NEW    - Is the process new?
-	 * PROC_JMPSET - Process long jump set.
+	/**
+	 * @brief Process flags.
 	 */
-	#define PROC_FREE   (1 << 0)
-	#define PROC_NEW    (1 << 1)
-	#define PROC_JMPSET (1 << 2)
+	#define PROC_NEW (1 << 0) /**< Is the process new? */
 	
-	/*
-	 * Constants: Process Parameters
-	 * 
-	 * Parameter of the <process> structure.
-	 * 
-	 * PROC_QUANTUM - Quantum.
-	 * NR_PREGIONS  - Number of memory regions. 
+	/**
+	 * @brief Process parameters.
 	 */
-	#define PROC_QUANTUM 50
-	#define NR_PREGIONS   4
+	#define PROC_QUANTUM 50 /**< Quantum.                  */
+	#define NR_PREGIONS   4 /**< Number of memory regions. */
 	
-	/*
-	 * Constants: Process Priorities
-	 * 
-	 * Priorities of a process.
-	 * 
-	 * PRIO_IO         - Waiting for block operation.
-	 * PRIO_BUFFER     - Waiting for buffer.
-	 * PRIO_INODE      - Waiting for inode.
-	 * PRIO_SUPERBLOCK - Waiting for super block.
-	 * PRIO_TTY        - Waiting for terminal I/O.
-	 * PRIO_REGION     - Waiting for memory region.
-	 * PRIO_SIG        - Waiting for signal.
-	 * PRIO_USER       - User priority.
+	/**
+	 * @brief Process priorities.
 	 */
-	#define PRIO_IO         -120
-	#define PRIO_BUFFER     -100
-	#define PRIO_INODE       -80
-	#define PRIO_SUPERBLOCK  -60
-	#define PRIO_TTY         -40
-	#define PRIO_REGION      -20
-	#define PRIO_SIG           0
-	#define PRIO_USER         20
+	#define PRIO_IO         -120 /**< Waiting for block operation. */
+	#define PRIO_BUFFER     -100 /**< Waiting for buffer.          */
+	#define PRIO_INODE       -80 /**< Waiting for inode.           */
+	#define PRIO_SUPERBLOCK  -60 /**< Waiting for super block.     */
+	#define PRIO_TTY         -40 /**< Waiting for terminal I/O.    */
+	#define PRIO_REGION      -20 /**< Waiting for memory region.   */
+	#define PRIO_SIG           0 /**< Waiting for signal.          */
+	#define PRIO_USER         20 /**< User priority.               */
 
-	/*
-	 * Constants: Process States
-	 * 
-	 * States of a process.
-	 * 
-	 * PROC_DEAD     - Dead.
-	 * PROC_ZOMBIE   - Zombie.
-	 * PROC_RUNNING  - Running.
-	 * PROC_READY    - Ready to execute.
-	 * PROC_WAITING  - Waiting (interruptible).
-	 * PROC_SLEEPING - Waiting (uninterruptible).
-	 * PROC_STOPPED  - Stopped.
+	/**
+	 * @brief Process states.
 	 */
-	#define PROC_DEAD     0
-	#define PROC_ZOMBIE   1
-	#define PROC_RUNNING  2
-	#define PROC_READY    3
-	#define PROC_WAITING  4
-	#define PROC_SLEEPING 5
-	#define PROC_STOPPED  6
+	#define PROC_DEAD     0 /**< Dead.                      */
+	#define PROC_ZOMBIE   1 /**< Zombie.                    */
+	#define PROC_RUNNING  2 /**< Running.                   */
+	#define PROC_READY    3 /**< Ready to execute.          */
+	#define PROC_WAITING  4 /**< Waiting (interruptible).   */
+	#define PROC_SLEEPING 5 /**< Waiting (uninterruptible). */
+	#define PROC_STOPPED  6 /**< Stopped.                   */
 	
-	/*
-	 * Constants: Offsets to Hard-Coded Fields of a Process
-	 * 
-	 * Offset to hard-coded fields of a <process>.
-	 * 
-	 * PROC_KESP      - Kernel stack pointer offset.
-	 * PROC_CR3       - Page directory pointer offset.
-	 * PROC_INTLVL    - Interrupt level offset.
-	 * PROC_FLAGS     - <Process flags> offset.
-	 * PROC_RECEIVED  - Received signals offset.
-	 * PROC_KSTACK    - Kernel stack pointer offset.
-	 * PROC_HANDLERS  - Sginal handlers offset.
+	/**
+	 * @brief Offsets to hard-coded fields of a process.
 	 */
-	#define PROC_KESP        0
-	#define PROC_CR3         4
-	#define PROC_INTLVL      8
-	#define PROC_FLAGS      12
-	#define PROC_RECEIVED   16
-	#define PROC_KSTACK     20
-	#define PROC_HANDLERS   24
+	#define PROC_KESP      0 /**< Kernel stack pointer offset.   */
+	#define PROC_CR3       4 /**< Page directory pointer offset. */
+	#define PROC_INTLVL    8 /**< Interrupt level offset.        */
+	#define PROC_FLAGS    12 /**< Process flags.                 */
+	#define PROC_RECEIVED 16 /**< Received signals offset.       */
+	#define PROC_KSTACK   20 /**< Kernel stack pointer offset.   */
+	#define PROC_HANDLERS 24 /**< Sginal handlers offset.        */
 
 #ifndef _ASM_FILE_
 
-	/*
-	 * Structure: process
-	 * 
-	 * Process.
-	 * 
-	 * Description:
-	 * 
-	 *     A process is an abstraction of a program in execution, it makes 
-	 *     easier to deal with multiple parallel activities, being a core
-	 *     concept of every operating system.
+	/**
+	 * @brief Process.
 	 */
 	struct process
 	{
-		/*
-		 * Variables: Hard-coded fields
-		 * 
-		 * Hard-coded fields referenced by assembly code.
-		 * 
-		 * kesp     - Kernel stack pointer.
-		 * cr3      - Page directory pointer.
-		 * intlvl   - Interrupt level.
-		 * flags    - <Process Flags>.
-		 * received - Received signals.
-		 * kstack   - Kernel stack pointer.
-		 * handlers - Signal handlers.
-		 */
-    	dword_t kesp;
-    	dword_t cr3;
-		dword_t intlvl;
-		unsigned flags;
-    	unsigned received;
-    	void *kstack;
-		sighandler_t handlers[NR_SIGNALS];
+		/* Hard-coded fields. */
+    	dword_t kesp;                      /**< Kernel stack pointer.   */
+    	dword_t cr3;                       /**< Page directory pointer. */
+		dword_t intlvl;                    /**< Interrupt level.        */
+		unsigned flags;                    /**< Process flags.          */
+    	unsigned received;                 /**< Received signals.       */
+    	void *kstack;                      /**< Kernel stack pointer.   */
+		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		
-    	/*
-    	 * Variables: Memory information
-    	 * 
-    	 * Memory system information.
-    	 * 
-    	 * pgdir - Page directory.
-    	 * pregs - Process memory regions.
-    	 * size  - Process size.
-    	 * kenv  - Environment for klongjmp().
-    	 */
-		struct pde *pgdir;
-		struct pregion pregs[NR_PREGIONS];
-		size_t size;
-		kjmp_buf kenv;
-		
-		/*
-		 * Variables: File system information
-		 * 
-		 * File system information
-		 * 
-		 * pwd    - Working directory.
-		 * root   - Root directory.
-		 * ofiles - Opened files.
-		 * close  - Close on <exec>?
-		 * umask  - User file's creation mask.
-		 * tty    - Associated tty device.
-		 */
-		struct inode *pwd;
-		struct inode *root;
-		struct file *ofiles[OPEN_MAX];
-		int close;
-		mode_t umask;
-		dev_t tty;
-		
-		/*
-		 * Variables: General information
-		 * 
-		 * General information.
-		 * 
-		 * status    - Exit status.
-		 * errno     - Error code.
-		 * nchildren - Number of children.
-		 * uid       - User ID.
-		 * euid      - Effective user ID.
-		 * suid      - Saved set-user-ID.
-		 * gid       - Group ID.
-		 * egid      - Effective group user ID.
-		 * sgid      - Saved set-group-ID.
-		 * pid       - Process ID.
-		 * pgrp      - Process group ID.
-		 * father    - Father process.
-		 */
-		int status;
-		int errno;
-		unsigned nchildren;
-		uid_t uid;
-		uid_t euid;
-		uid_t suid;
-		gid_t gid;
-		gid_t egid;
-		gid_t sgid;
-    	pid_t pid;
-    	struct process *pgrp;
-    	struct process *father;
-    	
-    	/*
-    	 * Variables: Timing information
-    	 * 
-    	 * Timing information.
-    	 * 
-    	 * utime  - User CPU time.
-    	 * ktime  - Kernel CPU time.
-    	 * cutime - User CPU time of terminated child processes.
-    	 * cktime - Kernel CPU time of terminated child processes.
-    	 */
-    	unsigned utime;
-    	unsigned ktime;
-		unsigned cutime;
-		unsigned cktime;
+    	/* Memory information. */
+		struct pde *pgdir;                 /**< Page directory.         */
+		struct pregion pregs[NR_PREGIONS]; /**< Process memory regions. */
+		size_t size;                       /**< Process size.           */
 
-    	/*
-    	 * Variables: Scheduling information
-    	 * 
-    	 * Scheduling information.
-    	 * 
-    	 * state    - Current state.
-    	 * counter  - Remaining quantum.
-    	 * priority - <Process Priorities>.
-    	 * nice     - Nice for scheduling.
-    	 * alarm    - Alarm.
-    	 * next     - Next process in a list.
-    	 * chain    - Sleeping chain.
-    	 */
-    	unsigned state;
-    	int counter;
-    	int priority;
-    	int nice;
-    	unsigned alarm;
-		struct process *next;
-		struct process **chain;
+		/* File system information. */
+		struct inode *pwd;             /**< Working directory.         */
+		struct inode *root;            /**< Root directory.            */
+		struct file *ofiles[OPEN_MAX]; /**< Opened files.              */
+		int close;                     /**< Close on exec()?           */
+		mode_t umask;                  /**< User file's creation mask. */
+		dev_t tty;                     /**< Associated tty device.     */
+		
+		/* General information. */
+		int status;             /**< Exit status.             */
+		int errno;              /**< Error code.              */
+		unsigned nchildren;     /**< Number of children.      */
+		uid_t uid;              /**< User ID.                 */
+		uid_t euid;             /**< Effective user ID.       */
+		uid_t suid;             /**< Saved set-user-ID.       */
+		gid_t gid;              /**< Group ID.                */
+		gid_t egid;             /**< Effective group user ID. */
+		gid_t sgid;             /**< Saved set-group-ID.      */
+    	pid_t pid;              /**< Process ID.              */
+    	struct process *pgrp;   /**< Process group ID.        */
+    	struct process *father; /**< Father process.          */
+
+    	/* Timing information. */
+    	unsigned utime;  /**< User CPU time.                          */
+    	unsigned ktime;  /**< Kernel CPU time.                        */
+		unsigned cutime; /**< User CPU time of terminated children.   */
+		unsigned cktime; /**< Kernel CPU time of terminated children. */
+
+    	/* Scheduling information. */
+    	unsigned state;          /**< Current state.          */
+    	int counter;             /**< Remaining quantum.      */
+    	int priority;            /**< Process priorities.     */
+    	int nice;                /**< Nice for scheduling.    */
+    	unsigned alarm;          /**< Alarm.                  */
+		struct process *next;    /**< Next process in a list. */
+		struct process **chain;  /**< Sleeping chain.         */
 	};
-
-/*============================================================================*
- * Section: Process State Control                                             *
- *============================================================================*/
 	
-	/*
-	 * Function: bury
-	 * 
-	 * Buries a zombie process.
-	 * 
-	 * Parameters:
-	 * 
-	 *     proc - Process to bury.
-	 * 
-	 * Description:
-	 * 
-	 *     The <bury> function releases all remaining resources that are
-	 *     associated to the process pointed to by _proc_ that could not be
-	 *     released before, such as the page table.
-	 * 
-	 * See Also:
-	 * 
-	 *     <die>
-	 */
-	EXTERN void bury(struct process *proc);
-	
-	/*
-	 * Function: die
-	 * 
-	 * Kills the current running process.
-	 * 
-	 * Parameters:
-	 * 
-	 *     status - Exit status code.
-	 * 
-	 * Description:
-	 * 
-	 *     The <die> function kills the current running process, releasing most
-	 *     of the resources that are associated to it, such as opened files and
-	 *     memory regions. 
-	 * 
-	 *     The exit _status_ code is saved in the process table entry so that
-	 *     it can be retrieved later.
-	 * 
-	 * Notes:
-	 * 
-	 *     - Upon completion, a new process is chosen to be executed.
-	 *     - Resources that could not be freed can be deallocated later by
-	 *       calling the <bury> function.
-	 * 
-	 * See Also:
-	 * 
-	 *     <bury>, <yield>
-	 */
-	EXTERN void die(int status);
-	
-	/*
-	 * Function: sched
-	 * 
-	 * Schedules a process to execution.
-	 * 
-	 * Parameters:
-	 * 
-	 *     proc - Process to be schedule.
-	 * 
-	 * Description:
-	 * 
-	 *     The <sched> function schedules the process pointed to by _process_
-	 *     to later execution by effectively inserting it in the ready processes
-	 *     queue.
-	 */
-	EXTERN void sched(struct process *proc);
-	
-	/*
-	 * Function: sleep
-	 * 
-	 * Puts the current process to sleep in a chain.
-	 * 
-	 * Parameters:
-	 * 
-	 *     chain    - Target chain.
-	 *     priority - Priority level.
-	 * 
-	 * Description:
-	 * 
-	 *     The <sleep> function puts the current running process to sleep in
-	 *     the _chain_ of processes using the priority level _priority_.
-	 * 
-	 * Notes:
-	 * 
-	 *    - The calling process will block until it is awaken by another
-	 *      process.
-	 *    - Upon completion, a new process is chosen to be executed.
-	 * 
-	 * See Also:
-	 * 
-	 *    <wakeup>, <yield>
-	 */
-	EXTERN void sleep(struct process **chain, int priority);
-
-	/*
-	 * Function: wakeup
-	 * 
-	 * Wakes up all processes that are sleeping in a chain.
-	 * 
-	 * Parameters:
-	 * 
-	 *     chain - Target chain.
-	 * 
-	 * Description:
-	 * 
-	 *     The <wakeup> function wakes up all processes that are sleeping in the
-	 *     chain of processes pointed to by _chain_.
-	 * 
-	 * See Also:
-	 * 
-	 *     <sleep>
-	 */
-	EXTERN void wakeup(struct process **chain);
-	
-	/*
-	 * Function: yield
-	 * 
-	 * Yields the processor.
-	 * 
-	 * Description:
-	 * 
-	 *     The <yield> function causes the calling process to release the
-	 *     processor and choose another process to execute.
-	 * 
-	 * Notes:
-	 * 
-	 *     - This function must be called in an interrupt-safe environment.
-	 *     - Upon completion, a new process is chosen to be executed.
-	 */
-	EXTERN void yield(void);
-
-/*============================================================================*
- * Section: Signal Handling                                                   *
- *============================================================================*/
-
-	/*
-	 * Function: sndsig
-	 * 
-	 * Sends a signal to a process.
-	 * 
-	 * Parameters:
-	 * 
-	 *     proc - Target process.
-	 *     sing - Signal.
-	 * 
-	 * Description:
-	 * 
-	 *     The <sndsig> function sends the signal _sig_ to the process pointed
-	 *     to by _proc_.
-	 * 
-	 * See Also:
-	 * 
-	 *     <issig>
-	 */
-	EXTERN void sndsig(struct process *proc, int sig);
-	
-	/*
-	 * Function: issig
-	 * 
-	 * Checks if the current process has a pending signal.
-	 * 
-	 * Description:
-	 * 
-	 *     The <issig> function checks if the current process has a pending
-	 *     signal or not.
-	 * 
-	 * Return:
-	 * 
-	 *    If there is no pending signal, <SIGNULL> is returned. However, if
-	 *    there is a pending signal, that signal is returned instead.
-	 */
+	/* Forward definitions. */
+	EXTERN void bury(struct process *);
+	EXTERN void die(int);
 	EXTERN int issig(void);
-	
-/*============================================================================*
- * Section: Miscellaneous                                                     *
- *============================================================================*/
-	
-	/*
-	 * Function: pm_init
-	 * 
-	 * Initializes the process management system.
-	 * 
-	 * Description:
-	 * 
-	 *     The <pm_init> function initializes the process management system by,
-	 *     ultimately initializing the process table and hand-crafting the 
-	 *     <IDLE> process.
-	 */
 	EXTERN void pm_init(void);
+	EXTERN void sched(struct process *);
+	EXTERN void sleep(struct process **, int);
+	EXTERN void sndsig(struct process *, int);
+	EXTERN void wakeup(struct process **);
+	EXTERN void yield(void);
 	
-	/*
-	 * Macros: Process memory regions
-	 * 
-	 * Returns the requested memory region of a process.
-	 * 
-	 * TEXT  - Text region.
-	 * DATA  - Data region.
-	 * STACK - Stack region.
-	 * HEAP  - Heap region.
+	/**
+	 * @brief Process memory regions.
 	 */
-	#define TEXT(p)  (&p->pregs[0])
-	#define DATA(p)  (&p->pregs[1])
-	#define STACK(p) (&p->pregs[2])
-	#define HEAP(p)  (&p->pregs[3])
+	#define TEXT(p)  (&p->pregs[0]) /**< Text region.  */
+	#define DATA(p)  (&p->pregs[1]) /**< Data region.  */
+	#define STACK(p) (&p->pregs[2]) /**< Stack region. */
+	#define HEAP(p)  (&p->pregs[3]) /**< Heap region.  */
 	
-	/*
-	 * Macro: KERNEL_RUNNING
+	/**
+	 * @brief Asserts if a process is running in kernel mode.
 	 * 
-	 * Asserts if a process is running in kernel mode.
+	 * @param p Process to be queried about.
+	 * 
+	 * @returns True if the process is running in kernel mode, and false
+	 *          otherwise.
 	 */
 	#define KERNEL_RUNNING(p) ((p)->intlvl > 1)
 	
-	/*
-	 * Macro: IS_LEADER
+	/**
+	 * @brief Asserts if a process is the sessions leader.
 	 * 
-	 * Asserts if a process is the session leader.
+	 * @param p Process to be queried about.
+	 * 
+	 * @returns True if the process is the session leader, and false otherwise.
 	 */
 	#define IS_LEADER(p) ((p)->pgrp->pid == (p)->pid)
 	
-	/*
-	 * Macro: IS_SUPERUSER
+	/**
+	 * @brief Asserts if a process has superuser privileges.
 	 * 
-	 * Asserts if a process has superuser privileges.
+	 * @param p Process to be queried about.
+	 * 
+	 * @returns True if the process has superuser privileges, and false 
+	 *          otherwise.
 	 */
 	#define IS_SUPERUSER(p) \
 		(((p)->uid == SUPERUSER) || ((p)->euid == SUPERUSER))	
-		
-	/*
-	 * Variable: proctab
-	 * 
-	 * Process table.
-	 */
+	
+	/* Forward definitions. */
 	EXTERN struct process proctab[PROC_MAX];
-	
-	/*
-	 * Variable: curr_proc
-	 * 
-	 * Current running process.
-	 */
 	EXTERN struct process *curr_proc;
-	
-	/*
-	 * Variable: next_pid
-	 * 
-	 * Next available PID.
-	 */
 	EXTERN pid_t next_pid;
-	
-	/*
-	 * Variable: nprocs
-	 * 
-	 * Current number of processes in the system.
-	 */
 	EXTERN unsigned nprocs;
 
 #endif /* _ASM_FILE */
