@@ -66,5 +66,5 @@ documentation:
 clean:
 	@rm -f *.img
 	@rm -rf $(BINDIR)
-	@rm -rf $(DOCDIR)/xml-*
+	@rm -rf $(DOCDIR)/*-kernel
 	cd $(SRCDIR) && $(MAKE) clean
