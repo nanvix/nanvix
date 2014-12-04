@@ -18,23 +18,39 @@
  */
 
 #include <nanvix/const.h>
+#include <nanvix/dev.h>
 #include <nanvix/hal.h>
 #include <nanvix/klib.h>
+#include <stdarg.h>
 
 /**
  * @brief Writes a message to the kernel's output device and panics the kernel.
  * 
- * @param msg Message to be written onto kernel's output device.
+ * @param fmt Formatted message to be written onto kernel's output device.
  */
-PUBLIC void kpanic(const char *msg)
+PUBLIC void kpanic(const char *fmt, ...)
 {
+	int i;                         /* Loop index.              */
+	va_list args;                  /* Variable arguments list. */
+	char buffer[KBUFFER_SIZE + 1]; /* Temporary buffer.        */
+	
+	kstrncpy(buffer, "PANIC: ", 7);
+	
+	/* Convert to raw string. */
+	va_start(args, fmt);
+	i = kvsprintf(buffer + 7, fmt, args) + 7;
+	buffer[i++] = '\n';
+	va_end(args);
+
+	/* Save on kernel log and write on kout. */
+	cdev_write(kout, buffer, i);
+	klog_write(buffer, i);
+	
 	/*
 	 * Disable interrupts, so we cannot
 	 * be bothered.
 	 */
 	disable_interrupts();
-	
-	kprintf("\nPANIC: %s", msg);
 	
 	while(1);
 		halt();

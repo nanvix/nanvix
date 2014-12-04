@@ -26,7 +26,7 @@
 /**
  * @brief Kernel's output device.
  */
-PRIVATE dev_t kout = DEVID(NULL_MAJOR, 0, CHRDEV);
+PUBLIC dev_t kout = DEVID(NULL_MAJOR, 0, CHRDEV);
 
 /**
  * @brief Changes kernel's output device.

@@ -218,6 +218,9 @@
 	 *                            formatted output                            *
 	 *========================================================================*/
 
+	/* Forward definitions. */
+	EXTERN dev_t kout;
+
 	/**
 	 * @name Formated Output Functions
 	 */
@@ -244,7 +247,7 @@
 	/**@{*/
 	EXTERN size_t klog_read(char *, size_t);
 	EXTERN size_t klog_write(const char *, size_t);
-	EXTERN void kpanic(const char *);
+	EXTERN void kpanic(const char *, ...);
 	/**@}*/
 
 	/*========================================================================*
