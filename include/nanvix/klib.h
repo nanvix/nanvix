@@ -1,14 +1,32 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * klib.h - Kernel library
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef KLIB_H_
-#define KLIB_H_
+/**
+ * @file nanvix/klib.h
+ * 
+ * @brief Kernel Library
+ */
+
+#ifndef NANVIX_KLIB_H_
+#define NANVIX_KLIB_H_
 
 	#include <nanvix/const.h>
-	#include <nanvix/hal.h>
 	#include <nanvix/pm.h>
 	#include <sys/types.h>
 	#include <stdarg.h>
@@ -18,170 +36,180 @@
 	 *                                Bitmap                                  *
 	 *========================================================================*/
 
-	/* Bit number. */
+	/**
+	 * @brief Bit number.
+	 */
 	typedef uint32_t bit_t;
 	
-	/* Bitmap is full. */
+	/**
+	 * @brief Full bitmap.
+	 */
 	#define BITMAP_FULL 0xffffffff
 	
-	/* Bitmap operators. */
-	#define IDX(a) ((a) >> 5)   /* Returns the index of the bit.  */
-	#define OFF(a) ((a) & 0x1F) /* Returns the offset of the bit. */
+	/**
+	 * @name Bitmap Operators
+	 */
+	/**@{*/
+	#define IDX(a) ((a) >> 5)   /**< Returns the index of the bit.  */
+	#define OFF(a) ((a) & 0x1F) /**< Returns the offset of the bit. */
+	/**@}*/
 	
-	/*
-	 * Sets a bit in a bitmap.
+	/**
+	 * @brief Sets a bit in a bitmap.
+	 * 
+	 * @param bitmap Bitmap where the bit should be set. 
 	 */
-	#define bitmap_set(block_map, pos) \
-		(((uint32_t *)(block_map))[IDX(pos)] |= (0x1 << OFF(pos)))
+	#define bitmap_set(bitmap, pos) \
+		(((uint32_t *)(bitmap))[IDX(pos)] |= (0x1 << OFF(pos)))
 	
-	/*
-	 * Clears a bit in a bitmap.
+	/**
+	 * @brief Clears a bit in a bitmap.
+	 * 
+	 * @param bitmap Bitmap where the bit should be cleared.
 	 */
-	#define bitmap_clear(block_map, pos) \
-		(((uint32_t *)(block_map))[IDX(pos)] &= ~(0x1 << OFF(pos)))
-		
-	/*
-	 * Finds the first free bit in a bitmap.
-	 */
-	EXTERN bit_t bitmap_first_free(uint32_t *bitmap, size_t size);
+	#define bitmap_clear(bitmap, pos) \
+		(((uint32_t *)(bitmap))[IDX(pos)] &= ~(0x1 << OFF(pos)))
 	
-	/*
-	 * Returns the number of bits clear in a bitmap.
+	/**
+	 * @name Bitmap Functions
 	 */
-	EXTERN unsigned bitmap_nclear(uint32_t *bitmap, size_t size);
+	/**@{*/
+	EXTERN bit_t bitmap_first_free(uint32_t *, size_t);
+	EXTERN unsigned bitmap_nclear(uint32_t *, size_t);
+	/**@}*/
 
 	/*========================================================================*
 	 *                                buffer                                  *
 	 *========================================================================*/
 	 
-	/* Kernel buffer size (in bytes). */
+	/**
+	 * @brief Kernel buffer size (in bytes).
+	 * 
+	 * @note This should be 2^x.
+	 */
 	#define KBUFFER_SIZE 1024
 	
-	/*
-	 * Kernel buffer.
+	/**
+	 * @param Kernel buffer.
 	 */
 	struct kbuffer
 	{
-		int head;                  /* First character in the buffer. */
-		int tail;                  /* Next free slot in the buffer.  */
-		char buffer[KBUFFER_SIZE]; /* Ring buffer.                   */
-		struct process *chain;     /* Sleeping chain.                */
+		int head;                           /**< First character in the buf. */
+		int tail;                           /**< Next free slot in the buf.  */
+		unsigned char buffer[KBUFFER_SIZE]; /**< Ring buffer.                */
+		struct process *chain;              /**< Sleeping chain.             */
 	};
 	
-	/*
-	 * DESCRIPTION:
-	 *   The KBUFFER_FULL() macro asserts if a kernel buffer is full.
+	/**
+	 * @brief Asserts if a kernel buffer is full.
+	 * 
+	 * @param b Buffer to be queried about.
+	 * 
+	 * @returns True if the buffer is full, and false otherwise.
 	 */
 	#define KBUFFER_FULL(b) \
-		(((b.tail + 1)%KBUFFER_SIZE) == b.head)
+		((((b).tail + 1)&(KBUFFER_SIZE - 1)) == (b).head)
 	
-	/*
-	 * DESCRIPTION:
-	 *   The KBUFFER_EMPTY(b) macro asserts if a kernel buffer is empty.
+	/**
+	 * @brief Asserts if a kernel buffer is empty.
+	 * 
+	 * @param b Buffer to be queried about.
 	 */
     #define KBUFFER_EMPTY(b) \
-		(b.head == b.tail)
+		((b).head == (b).tail)
 	
-	/*
-	 * DESCRIPTION:
-	 *   The KBUFFER_PUT() macro puts a character in a kernel buffer.
+	/**
+	 * @brief Puts a character in a kernel buffer.
+	 * 
+	 * @param b  Buffer where the character should be put.
+	 * @param ch Character to be put in the buffer.
 	 */
-    #define KBUFFER_PUT(b, ch) \
-		{b.buffer[b.tail] = ch; b.tail = ((b.tail + 1)%KBUFFER_SIZE);}
-		
-	/*
-	 * DESCRIPTION:
-	 *   The KBUFFER_GET() macro gets a character from a kernel buffer.
+    #define KBUFFER_PUT(b, ch)                          \
+	{                                                   \
+		(b).buffer[(b).tail] = (ch);                    \
+		(b).tail = (((b).tail + 1)&(KBUFFER_SIZE - 1)); \
+	}                                                   \
+
+	/**
+	 * @brief Gets a character from a kernel buffer.
+	 * 
+	 * @param b  Buffer from where the character must be retrieved.
+	 * @param ch Store location for the retrieved character.
 	 */
-    #define KBUFFER_GET(b, ch) \
-		{ch = b.buffer[b.head]; b.head = ((b.head + 1)%KBUFFER_SIZE);}
+    #define KBUFFER_GET(b, ch)                          \
+	{                                                   \
+		(ch) = (b).buffer[b.head];                      \
+		(b).head = (((b).head + 1)&(KBUFFER_SIZE - 1)); \
+	}                                                   \
 	
-	/*
-	 * DESCRIPTION:
-	 *   THe KBUFFER_INIT() macro initializes a kernel buffer.
+	/**
+	 * @brief Initializes a kernel buffer.
+	 * 
+	 * @param b Kernel buffer to be initialized.
 	 */
 	#define KBUFFER_INIT(b) \
-		{b.head = 0, b.tail = 0, b.chain = NULL;}
+	{                       \
+		(b).head = 0;       \
+		(b).tail = 0;       \
+		(b).chain = NULL;   \
+	}                       \
 		
-	/*
-	 * Takes out a character from a kernel buffer.
+	/**
+	 * @brief Takes a character out from a kernel buffer.
+	 * 
+	 * @param b Kernel buffer from where the character must be taken out.
 	 */
-	#define KBUFFER_TAKEOUT(b) \
-		{b.tail = ((b.tail - 1)%KBUFFER_SIZE);}
+	#define KBUFFER_TAKEOUT(b)                          \
+	{                                                   \
+		(b).tail = (((b).tail - 1)&(KBUFFER_SIZE - 1)); \
+	}                                                   \
 
 	/*========================================================================*
 	 *                              strings                                   *
 	 *========================================================================*/
 
-	/*
-	 * Compares two strings.
+	/**
+	 * @name String Functions
 	 */
-	EXTERN int kstrcmp(const char *str1, const char *str2);
-
-	/*
-	 * Compares part of two strings.
-	 */
-	EXTERN int kstrncmp(const char *str1, const char *str2, size_t n);
-	
-	/*
-	 * Copies part of a string.
-	 */
-	EXTERN char *kstrncpy(char *str1, const char *str2, size_t n);
-	
-	/*
-	 * Copies a string.
-	 */
-	EXTERN char *kstrcpy(char *dest, const char *src);
-	
-	/*
-	 * Returns the length of a string.
-	 */
-	EXTERN size_t kstrlen(const char * str);
+	/**@{*/
+	EXTERN int kstrcmp(const char *, const char *);
+	EXTERN int kstrncmp(const char *, const char *, size_t);
+	EXTERN char *kstrcpy(char *, const char *);
+	EXTERN char *kstrncpy(char *, const char *, size_t);
+	EXTERN size_t kstrlen(const char *);
+	/**@}*/
 
 	/*========================================================================*
 	 *                               memory                                   *
 	 *========================================================================*/
 
-	/*
-	 * Aligns a value on a boundary.
+	/**
+	 * @name Memory Functions
+	 */
+	/**@{*/
+	EXTERN void* kmemcpy(void *, const void *, size_t);
+	EXTERN void *kmemset(void *, int, size_t);
+	/**@}*/
+	
+	/**
+	 * @brief Aligns a value on a boundary.
+	 * 
+	 * @param x Value to be aligned.
+	 * @param a Boundary.
+	 * 
+	 * @returns Aligned value.
 	 */
 	#define ALIGN(x, a) \
-		(((x) + (a - 1)) & ~(a - 1))
-
-	/*
-	 * DESCRIPTION:
-	 *   The memset() function copies c (converted to an unsigned char) into 
-	 *   each of the first n bytes of the object pointed to by ptr. 
-	 * 
-	 * RETURN VALUE:
-	 *   The memset() function returns ptr. No return value is reserved to 
-	 *   indicate an error.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
-	 */
-	EXTERN void *kmemset(void *ptr, int c, size_t n);
+		(((x) + ((a) - 1)) & ~((a) - 1))
 	
-	/*
-	 * DESCRIPTION:
-	 *   The memcpy() function shall copy n bytes from the object pointed to by 
-	 *   src into the object pointed to by dest. If copying takes place between 
-	 *   objects that overlap, the behavior is undefined.
-	 *
-	 * RETURN VALUE:
-	 *   The memcpy() function shall return dest. No return value is reserved 
-	 *   to indicate an error.
-	 *
-	 * ERRORS:
-	 *   No errors are defined.
-	 */
-	PUBLIC void* kmemcpy(void* dest, const void *src, size_t n);
-	
-	/*
-	 * DESCRIPTION:
-	 *   The CHKSIZE() macro checks if 'a' agrees on size with 'b'. If 'a' and 
-	 *   'b' have the same size, the compilation proceeds as normal, if they 
-	 *   don't, the compilation gets aborted.
+	/**
+	 * @brief Checks if 'a' agrees on size if 'b'
+	 * 
+	 * @param a Probing size.
+	 * @param b Control size.
+	 * 
+	 * @returns Upon success, compilation proceeds as normal. Upon failure,
+	 *          a compilation error is generated.
 	 */
 	#define CHKSIZE(a, b) \
 		((void)sizeof(char[(((a) == (b)) ? 1 : -1)]))
@@ -190,109 +218,43 @@
 	 *                            formatted output                            *
 	 *========================================================================*/
 
-	/*
-	 * DESCRIPTION:
-	 *   The kvsprintf() function writes formatted data from variable argument 
-	 *   list to string.The following formats are accepted:
-	 *      
-	 *      %c - ASCII character.
-	 *      %d - Unsigned decimal.
-	 *      %x - Unsigned hexadecimal.
-	 *      %s - Null-terminated string.
-	 * 
-	 * RETURN VALUE:
-	 *   The kvsprintf() function returns number of characters actually written.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
+	/**
+	 * @name Formated Output Functions
 	 */
-	EXTERN int kvsprintf(char *str, const char *fmt, va_list args);
-	
-	/*
-	 * DESCRIPTION:
-	 *   The kprintf() function writes formatted data from variable argument 
-	 *   list to kernel's output device.The following formats are accepted:
-	 *      
-	 *      %c - ASCII character.
-	 *      %d - Unsigned decimal.
-	 *      %x - Unsigned hexadecimal.
-	 *      %s - Null-terminated string.
-	 * 
-	 * RETURN VALUE:
-	 *   No return value is defined. 
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
-	 */
-	EXTERN void kprintf(const char *fmt, ...);
-	
-	/*
-	 * DESCRIPTION:
-	 *   The chkout() function changes the kernel's output device.
-	 * 
-	 * RETURN VALUE:
-	 *   No return value is reserved to indicate an error.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
-	 */
-	EXTERN void chkout(dev_t dev);
+	/**@{*/
+	EXTERN int kvsprintf(char *, const char *, va_list);
+	EXTERN void chkout(dev_t);
+	EXTERN void kprintf(const char *, ...);
+	/**@}*/
 
 	/*========================================================================*
 	 *                           logging and debugging                        *
 	 *========================================================================*/
-	
-	/* Kernel log size (in bytes). */
+
+	/**
+	 * @brief Kernel log size (in characters).
+	 * 
+	 * @note This should be 2^x.
+	 */
 	#define KLOG_SIZE 1024
 
-	/*
-	 * DESCRIPTION:
-	 *   The klog_write() function attempts to write n bytes from the buffer 
-	 *   pointed to by buffer into the kernel log.
-	 * 
-	 * RETURN VALUE:
-	 *   The klog_write() function returns the number of bytes actually written.
-	 *   No return value is reserved to indicate an error.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined. 
+	/**
+	 * @name Logging and Debugging Functions
 	 */
-	EXTERN size_t klog_write(const char *buffer, size_t n);
-	
-	/*
-	 * DESCRIPTION:
-	 *   The klog_read() function attempts to read n bytes from the kernel log 
-	 *   into the buffer pointed to by buffer.
-	 * 
-	 * RETURN VALUE:
-	 *   The klog_read() function returns the number of bytes actually read. 
-	 *   No return value is reserved to indicate an error.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined. 
-	 */
-	EXTERN size_t klog_read(char *buffer, size_t n);
-	
-	/*
-	 * DESCRIPTION:
-	 *   The kpanic() function writes the message pointed to by msg to the
-	 *   kernel's output device and panics the kernel.
-	 *
-	 * RETURN VALUE:
-	 *   The kpanic() function has no return value.
-	 * 
-	 * ERRORS:
-	 *   No errors are defined.
-	 */
-	EXTERN void kpanic(const char *msg);
+	/**@{*/
+	EXTERN size_t klog_read(char *, size_t);
+	EXTERN size_t klog_write(const char *, size_t);
+	EXTERN void kpanic(const char *);
+	/**@}*/
 
 	/*========================================================================*
 	 *                                  other                                 *
 	 *========================================================================*/
 
-	/*
-	 * DESCRIPTION:
-	 *   The UNUSED() macro says to the compiler that a variable is unused.
+	/**
+	 * @brief Declares something to be unused.
+	 * 
+	 * @param a Thing.
 	 */
 	#define UNUSED(a) ((void)a)
 	
@@ -301,4 +263,4 @@
 	 */
 	#define noop()
 	
-#endif /* KLIB_H_ */
+#endif /* NANVIX_KLIB_H_ */

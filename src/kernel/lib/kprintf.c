@@ -1,26 +1,42 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * kprintf.c - Kernel printf()
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
 #include <sys/types.h>
 #include <stdarg.h>
 
-/* Kernel's output device. */
+/**
+ * @brief Kernel's output device.
+ */
 PRIVATE dev_t kout = DEVID(NULL_MAJOR, 0, CHRDEV);
 
-/*
- * Change kernel's output device.
+/**
+ * @brief Changes kernel's output device.
+ * 
+ * @param dev New output device.
  */
 PUBLIC void chkout(dev_t dev)
 {	
-	ssize_t n;
-	char buffer[KBUFFER_SIZE];
+	ssize_t n;                 /* Number of bytes to be flushed. */
+	char buffer[KBUFFER_SIZE]; /* Temporary buffer.              */
 	
 	kout = dev;
 	
@@ -30,14 +46,16 @@ PUBLIC void chkout(dev_t dev)
 	cdev_write(kout, buffer, n);
 }
 
-/*
- * Writes on the screen a formated string.
+/**
+ * @brief Writes on the screen a formated string.
+ * 
+ * @param fmt Formated string.
  */
 PUBLIC void kprintf(const char *fmt, ...)
 {
-	int i;
-	va_list args;
-	char buffer[KBUFFER_SIZE + 1];
+	int i;                         /* Loop index.              */
+	va_list args;                  /* Variable arguments list. */
+	char buffer[KBUFFER_SIZE + 1]; /* Temporary buffer.        */
 	
 	/* Convert to raw string. */
 	va_start(args, fmt);

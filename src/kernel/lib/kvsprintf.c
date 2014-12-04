@@ -1,14 +1,33 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * kvsprintf.c - Kernel vsprintf()
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/const.h>
 #include <stdarg.h>
 
-/*
- * Converts integer to string.
+/**
+ * @param Converts an integer to a string.
+ * 
+ * @param str  Output string.
+ * @param num  Number to be converted.
+ * @param base Base to use.
+ * 
+ * @returns The length of the output string.
  */
 PRIVATE int itoa(char *str, unsigned num, int base)
 {
@@ -53,8 +72,14 @@ PRIVATE int itoa(char *str, unsigned num, int base)
 	return(p - str);
 }
 
-/*
- * Writes formatted data from variable argument list to string. 
+/**
+ * @brief Writes formatted data from variable argument list to a string. 
+ * 
+ * @param str  Output string.
+ * @param fmt  Formated string.
+ * @param args Variable arguments list.
+ * 
+ * @returns The length of the output string.
  */
 PUBLIC int kvsprintf(char *str, const char *fmt, va_list args)
 {

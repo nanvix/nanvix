@@ -1,37 +1,55 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * klog.c - Kernel log
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 #include <sys/types.h>
-
-/* Error-size checking. */
+	
+/* Error checking. */
 #if KLOG_SIZE > KBUFFER_SIZE
 	#error "KLOG_SIZE must be smaller than or equal to KBUFFER_SIZE"
 #endif
 
-/*
- * Kernel log.
+/**
+ * @brief Kernel log.
  */
 PRIVATE struct
 {
-	int head;               /* First element in the buffer.  */
-	int tail;               /* Next free slot in the buffer. */
-	char buffer[KLOG_SIZE]; /* Ring buffer.                  */
+	int head;               /**< First element in the buffer.  */
+	int tail;               /**< Next free slot in the buffer. */
+	char buffer[KLOG_SIZE]; /**< Ring buffer.                  */
 } klog = { 0, 0, {0, }};
 
-/*
- * Writes to kernel log.
+/**
+ * @brief Writes to kernel log.
+ * 
+ * @param buffer Buffer to be written in the kernel log.
+ * @param n      Number of characters to be written in the kernel log.
+ * 
+ * @returns The number of characters actually written to the kernel log.
  */
 PUBLIC size_t klog_write(const char *buffer, size_t n)
 {
-	int head;
-	int tail;
-	const char *p;
+	int head;      /* Log head.        */
+	int tail;      /* Log tail.        */
+	const char *p; /* Writing pointer. */
 	
 	p = buffer;
 	
@@ -44,7 +62,7 @@ PUBLIC size_t klog_write(const char *buffer, size_t n)
 	{
 		klog.buffer[tail] = *p++;
 		
-		tail = (tail + 1)%KLOG_SIZE;
+		tail = (tail + 1)&(KLOG_SIZE - 1);
 		
 		if (tail == head)
 			head++;
@@ -57,13 +75,18 @@ PUBLIC size_t klog_write(const char *buffer, size_t n)
 	return ((ssize_t)(p - buffer));
 }
 
-/*
- * Reads from kernel log.
+/**
+ * @brief Reads from kernel log.
+ * 
+ * @param buffer Buffer where the kernel log should be read to.
+ * @param n      Number of characters to read.
+ * 
+ * @returns The number of characters actually read from the kernel log. 
  */
 PUBLIC size_t klog_read(char *buffer, size_t n)
 {
-	int i;
-	char *p;
+	int i;   /* Loop index.      */
+	char *p; /* Reading pointer. */
 	
 	p = buffer;
 	
@@ -74,7 +97,7 @@ PUBLIC size_t klog_read(char *buffer, size_t n)
 	{
 		*p++ = klog.buffer[i];
 		
-		i = (i + 1)%KLOG_SIZE;
+		i = (i + 1)&(KLOG_SIZE - 1);
 	}
 	
 	return ((ssize_t)(p - buffer));
