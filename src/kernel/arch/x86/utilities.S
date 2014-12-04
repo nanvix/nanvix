@@ -22,8 +22,6 @@
 .globl halt
 .globl physcpy
 .globl switch_to
-.globl ksetjmp
-.globl klongjmp
 .globl user_mode
 
 /*----------------------------------------------------------------------------*

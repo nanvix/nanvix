@@ -34,7 +34,7 @@
  *          the child process zero is returned. Upon failure, a negative error
  *          code is returned instead.
  */
-static pid_t fork(void)
+pid_t fork(void)
 {
 	pid_t pid;
 	
@@ -61,7 +61,7 @@ static pid_t fork(void)
  * @returns Upon successful completion, this function shall not return. Upon
  *          failure, it does return with a negative error code.
  */
-static int execve(const char *filename, const char **argv, const char **envp)
+int execve(const char *filename, const char **argv, const char **envp)
 {
 	int ret;
 	
@@ -86,7 +86,7 @@ static int execve(const char *filename, const char **argv, const char **envp)
  * 
  * @param status Exit status.
  */
-static void _exit(int status)
+void _exit(int status)
 {
 	__asm__ volatile(
 		"int $0x80"
@@ -105,7 +105,7 @@ static void _exit(int status)
  * @returns Upon successful completion, zero is returned. Upon failure, a 
  *          negative error code is returned instead.
  */
-static int open(const char *path, int oflag, ...)
+int open(const char *path, int oflag, ...)
 {
 	int ret;
 	

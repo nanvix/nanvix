@@ -50,6 +50,9 @@ PUBLIC void die(int status)
 	/* init adopts orphan processes. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
+		if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+			continue;
+				
 		if (p->father == curr_proc)
 			p->father = INIT;
 	}
@@ -59,6 +62,9 @@ PUBLIC void die(int status)
 	{
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{
+			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+				continue;
+			
 			if (p->pgrp == curr_proc)
 			{
 				p->pgrp = NULL;
