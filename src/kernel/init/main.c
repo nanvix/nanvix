@@ -146,7 +146,8 @@ PRIVATE void init(void)
  */
 PUBLIC void kmain(void)
 {		
-	pid_t pid;
+	pid_t pid;         /* Child process ID. */
+	struct process *p; /* Working process.  */
 	
 	/* Initialize system modules. */
 	dev_init();
@@ -167,6 +168,21 @@ PUBLIC void kmain(void)
 	/* idle process. */	
 	while (1)
 	{
+		/* Halt system. */
+		if (nprocs == 0)
+		{
+			kprintf("system is going to shutdown NOW");
+			for (p = FIRST_PROC; p <= LAST_PROC; p++)
+			{
+				if (p->state == PROC_ZOMBIE)
+					bury(p);
+			}
+			
+			disable_interrupts();
+			while (1)
+				halt();
+		}
+		
 		halt();
 		yield();
 	}
