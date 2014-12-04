@@ -42,7 +42,11 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 	{
 		/* Search for process. */
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
-		{
+		{			
+			/* Skip invalid processes. */
+			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+				continue;
+		
 			/* Found. */
 			if (pid == p->pid)
 			{
@@ -62,7 +66,11 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 	{
 		/* Search for processes. */
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
-		{
+		{			
+			/* Skip invalid processes. */
+			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+				continue;
+			
 			/* Found. */
 			if (curr_proc->pgrp == p->pgrp)
 			{
@@ -84,7 +92,11 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 		
 		/* Search for processes. */
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
-		{
+		{			
+			/* Skip invalid processes. */
+			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+				continue;
+			
 			if (AUTHORIZED(curr_proc, p, sig))
 			{
 				err = 0;
@@ -98,7 +110,11 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 	{
 		/* Search for processes. */
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
-		{			
+		{
+			/* Skip invalid processes. */
+			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+				continue;
+			
 			/* Found. */
 			if (p->pgrp->pid == -pid)
 			{

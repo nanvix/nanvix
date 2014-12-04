@@ -35,6 +35,10 @@ repeat:
 	/* Look for child processes. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
+		/* Skip invalid processes. */
+		if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+			continue;
+			
 		 /* Found. */
 		if (p->father == curr_proc)
 		{
