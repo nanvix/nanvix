@@ -1,7 +1,20 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * main.c - Kernel main
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/const.h>
@@ -14,8 +27,14 @@
 #include <nanvix/syscall.h>
 #include <fcntl.h>
 
-
-pid_t fork(void)
+/**
+ * @brief Forks the current process.
+ * 
+ * @returns For the parent process, the process ID of the child process. For
+ *          the child process zero is returned. Upon failure, a negative error
+ *          code is returned instead.
+ */
+static pid_t fork(void)
 {
 	pid_t pid;
 	
@@ -32,7 +51,17 @@ pid_t fork(void)
 	return (pid);
 }
 
-int execve(const char *filename, const char **argv, const char **envp)
+/**
+ * @brief Executes a program.
+ * 
+ * @param filename Program to be executed.
+ * @param argv     Arguments variables to pass to the program.
+ * @param envp     Environment variables to pass to the program.
+ * 
+ * @returns Upon successful completion, this function shall not return. Upon
+ *          failure, it does return with a negative error code.
+ */
+static int execve(const char *filename, const char **argv, const char **envp)
 {
 	int ret;
 	
@@ -52,7 +81,12 @@ int execve(const char *filename, const char **argv, const char **envp)
 	return (ret);
 }
 
-void _exit(int status)
+/**
+ * @brief Exits the current process.
+ * 
+ * @param status Exit status.
+ */
+static void _exit(int status)
 {
 	__asm__ volatile(
 		"int $0x80"
@@ -62,10 +96,16 @@ void _exit(int status)
 	);
 }
 
-/*
- * Opens a file.
+/**
+ * @brief opens a file.
+ * 
+ * @param path  File path.
+ * @param oflag Open flags.
+ * 
+ * @returns Upon successful completion, zero is returned. Upon failure, a 
+ *          negative error code is returned instead.
  */
-int open(const char *path, int oflag, ...)
+static int open(const char *path, int oflag, ...)
 {
 	int ret;
 	
@@ -85,8 +125,8 @@ int open(const char *path, int oflag, ...)
 	return (ret);
 }
 
-/*
- * Executes init.
+/**
+ * @brief Init process.
  */
 PRIVATE void init(void)
 {
@@ -101,8 +141,8 @@ PRIVATE void init(void)
 	execve("/sbin/init", argv, envp);
 }
 
-/*
- * Initializes the kernel.
+/**
+ * @brief Initializes the kernel.
  */
 PUBLIC void kmain(void)
 {		
@@ -114,13 +154,9 @@ PUBLIC void kmain(void)
 	pm_init();
 	fs_init();
 	
-	pid = fork();
-	
-	/* Should never occur. */
-	if (pid < 0)
+	/* Spawn init process. */
+	if ((pid = fork()) < 0)
 		kpanic("failed to fork idle process");
-	
-	/* init process. */
 	else if (pid == 0)
 	{	
 		init();

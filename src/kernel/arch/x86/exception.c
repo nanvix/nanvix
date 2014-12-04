@@ -97,10 +97,10 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 	
 	if (KERNEL_RUNNING(curr_proc))
 	{
-		kprintf("page fault: %d at %x", err, addr);
 		dumpregs(&s);
-		kpanic("kernel page fault");
+		kpanic("kernel page fault %d at %x", err, addr);
 	}
+	
 	sndsig(curr_proc, SIGSEGV);
 	die(((SIGSEGV & 0xff) << 16) | (1 << 9));
 }
