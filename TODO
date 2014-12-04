@@ -22,7 +22,7 @@ I. TO BE IMPLEMENTED
 
 	2. File and Record Locking
 	
-		Implement such functionality in sys_fcntl(), It should allows process
+		Implement such functionality in sys_fcntl(), It should allow processrd
 		to access files concurrently in a safe way.
 	
 	3. System Calls for Dealing with Directories
