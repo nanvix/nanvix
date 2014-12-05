@@ -182,7 +182,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 	i->num = num;
 	i->sb = sb;
 	i->count = 1;
-	i->flags = (INODE_DIRTY | INODE_MOUNT) & INODE_VALID;
+	i->flags |= ~(INODE_DIRTY | INODE_MOUNT | INODE_PIPE) & INODE_VALID;
 	
 	brelse(buf);
 	superblock_put(sb);
@@ -455,7 +455,7 @@ PUBLIC struct inode *inode_pipe(void)
 	inode->dev = NULL_DEV;
 	inode->num = INODE_NULL;
 	inode->count = 2;
-	inode->flags = ~(INODE_DIRTY | INODE_MOUNT) & (INODE_VALID | INODE_PIPE);
+	inode->flags |= ~(INODE_DIRTY | INODE_MOUNT) & (INODE_VALID | INODE_PIPE);
 	inode->pipe = pipe;
 	inode->head = 0;
 	inode->tail = 0;

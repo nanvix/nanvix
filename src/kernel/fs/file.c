@@ -229,6 +229,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	kstrncpy(d->d_name, name, NAME_MAX);
 	d->d_ino = inode->num;
 	buf->flags |= BUFFER_DIRTY;
+	inode_touch(dinode);
 	brelse(buf);
 	
 	return (0);
