@@ -11,6 +11,7 @@
 #include <i386/int.h>
 #include <nanvix/pm.h>
 #include <nanvix/syscall.h>
+#include <signal.h>
 #include <errno.h>
 
 /* Exported symbols. */
@@ -109,7 +110,15 @@ leave:
 
 	/* Decrement interrupt level. */
     decl PROC_INTLVL(%ebx)
-
+	jnz leave.out
+	
+	/* Check signals. */
+	btrl $SIGKILL, PROC_RECEIVED(%ebx)
+	jnc leave.out
+	push $10200
+	call die
+	
+leave.out:
 	popl %ds
 	popl %edi
 	popl %esi

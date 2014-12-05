@@ -27,6 +27,7 @@
 #include <nanvix/syscall.h>
 #include <fcntl.h>
 
+
 /**
  * @brief Forks the current process.
  * 
@@ -168,19 +169,24 @@ PUBLIC void kmain(void)
 	/* idle process. */	
 	while (1)
 	{
-		/* Halt system. */
-		if (nprocs == 0)
+		/* Shutting down.*/
+		if (shutting_down)
 		{
-			kprintf("system is going to shutdown NOW");
+			/* Bury zombie processes. */
 			for (p = FIRST_PROC; p <= LAST_PROC; p++)
 			{
-				if (p->state == PROC_ZOMBIE)
+				if ((p->state == PROC_ZOMBIE) && (p->father == curr_proc))
 					bury(p);
 			}
 			
-			disable_interrupts();
-			while (1)
-				halt();
+			/* Halt system. */
+			if (nprocs == 1)
+			{	
+				kprintf("you may now turn off your computer");
+				disable_interrupts();
+				while (1)
+					halt();
+			}
 		}
 		
 		halt();

@@ -25,6 +25,11 @@
 #include <signal.h>
 
 /**
+ * @brief Is the system shutting down?
+ */
+PUBLIC int shutting_down = 0;
+
+/**
  * @brief Kills the current running process.
  * 
  * @param status Exit status.
@@ -52,8 +57,10 @@ PUBLIC void die(int status)
 	{
 		if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
 			continue;
-				
-		if (p->father == curr_proc)
+		
+		if (shutting_down)
+			p->father = IDLE;
+		else if (p->father == curr_proc)
 			p->father = INIT;
 	}
 	

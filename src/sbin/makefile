@@ -19,14 +19,19 @@
 
 # Resolves conflicts
 .PHONY: init
+.PHONY: shutdown
 .PHONY: test
 
 # Builds everything.
-all: init test
+all: init shutdown test
 
 # Builds init.
 init:
 	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBDIR)/libc.a
+
+# Builds shutdown.
+shutdown:
+	$(CC) $(CFLAGS) $(LDFLAGS) shutdown/*.c -o $(SBINDIR)/shutdown $(LIBDIR)/libc.a
 
 # Builds test.
 test:
@@ -34,6 +39,7 @@ test:
 	
 # Cleans compilations files.
 clean:
-	@rm -f $(SBINDIR)/init:
+	@rm -f $(SBINDIR)/init
+	@rm -f $(SBINDIR)/shutdown
 	@rm -f $(SBINDIR)/test
 	

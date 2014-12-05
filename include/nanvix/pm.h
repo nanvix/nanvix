@@ -249,6 +249,7 @@
 		(((p)->uid == SUPERUSER) || ((p)->euid == SUPERUSER))	
 	
 	/* Forward definitions. */
+	EXTERN int shutting_down;
 	EXTERN struct process proctab[PROC_MAX];
 	EXTERN struct process *curr_proc;
 	EXTERN pid_t next_pid;
