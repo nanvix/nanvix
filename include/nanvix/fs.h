@@ -4,6 +4,12 @@
  * <nanvix/fs.h> - File system library.
  */
 
+/**
+ * @file 
+ * 
+ * @brief Public file system interface.
+ */
+ 
 #ifndef FS_H_
 #define FS_H_
 
@@ -15,6 +21,7 @@
 	#include <sys/stat.h>
 	#include <sys/types.h>
 	#include <stdint.h>
+	#include <ustat.h>
 
 /*============================================================================*
  *                              Block Buffer Library                          *
@@ -143,7 +150,7 @@
 		block_t blocks[NR_ZONES]; /* Zone numbers.                         */
 		dev_t dev;                /* Underlying device.                    */
 		ino_t num;                /* Inode number.                         */
-		struct superblock *sb;    /* Super block.                          */
+		struct superblock *sb;    /* Superblock.                           */
 		int count;                /* Reference count.                      */
 		unsigned flags;           /* Flags (see above).                    */
 		char *pipe;               /* Pipe page.                            */
@@ -211,86 +218,28 @@
  *                            Super Block Library                             *
  *============================================================================*/
 
-	/* Max. inode map size. */
-	#define IMAP_SIZE (HDD_SIZE/(BLOCK_SIZE*BLOCK_SIZE*8))
-	
-	/* Max. zone map size. */
-	#define ZMAP_SIZE (HDD_SIZE/(BLOCK_SIZE*BLOCK_SIZE*8))
-
-	/* Super block flags. */
-	#define SUPERBLOCK_RDONLY 1 /* Read only?         */
-	#define SUPERBLOCK_LOCKED 2 /* Locked?            */
-	#define SUPERBLOCK_DIRTY  4 /* Dirty?             */
-	#define SUPERBLOCK_VALID  8 /* Valid super block? */
-	
-	/*
-	 * In-core super block.
-	 */
-	struct superblock
-	{
-		int count;                      /* Reference count.              */
-		struct buffer *buf;             /* Buffer disk super block.      */
-		ino_t ninodes;                  /* Number of inodes.             */
-		struct buffer *imap[IMAP_SIZE]; /* Inode map.                    */
-		block_t imap_blocks;            /* Number of inode map blocks.   */
-		struct buffer *zmap[ZMAP_SIZE]; /* Zone map.                     */
-		block_t zmap_blocks;            /* Number of zone map blocks.    */
-		block_t first_data_block;       /* First data block.             */
-		off_t max_size;                 /* Maximum file size.            */
-		block_t zones;                  /* Number of zones.              */
-		struct inode *root;             /* Inode for root directory.     */
-		struct inode *mp;               /* Inode mounted on.             */
-		dev_t dev;                      /* Underlying device.            */
-		unsigned flags;                 /* Flags (see above).            */
-		ino_t isearch;		            /* Inodes below this are in use. */
-		block_t zsearch;		        /* Zones below this are in use.  */
-		struct process *chain;          /* Waiting chain.                */
-	};
-	
 	/**
-	 * @brief Initializes the super block table.
+	 * @addtogroup Superblock
 	 */
+	/**@{*/
+
+	/**
+	 * @brief Opaque pointer to a in-core superblock.
+	 */
+	typedef struct superblock * superblock_t;
+	
+	/* Forward definitions. */
 	EXTERN void superblock_init(void);
-	
-	/*
-	 * Locks a super block.
-	 */
-	EXTERN void superblock_lock(struct superblock *sb);
-	
-	/*
-	 * Unlocks a super block.
-	 */
-	EXTERN void superblock_unlock(struct superblock *sb);
-	
-	/*
-	* Gets super block.
-	 */
-	EXTERN struct superblock *superblock_get(dev_t dev);
-	
-	/*
-	 * Releases a super block.
-	 */
-	EXTERN void superblock_put(struct superblock *sb);
-	
-	/*
-	 * Writes a super block to a device.
-	 */
-	EXTERN void superblock_write(struct superblock *sb);
-	
-	/*
-	 * Reads a super block from a device.
-	 */
-	EXTERN struct superblock *superblock_read(dev_t dev);
-	
-	/*
-	 * Synchronizes super blocks.
-	 */
+	EXTERN void superblock_lock(superblock_t);
+	EXTERN void superblock_unlock(superblock_t);
+	EXTERN superblock_t superblock_get(dev_t);
+	EXTERN void superblock_put(superblock_t);
+	EXTERN void superblock_write(superblock_t);
+	EXTERN superblock_t superblock_read(dev_t);
+	EXTERN void superblock_stat(superblock_t, struct ustat *);
 	EXTERN void superblock_sync(void);
 	
-	/*
-	 * Super block table.
-	 */
-	EXTERN struct superblock superblocks[NR_SUPERBLOCKS];
+	/**@}*/
 	
 /*============================================================================*
  *                                  Block Library                             *
