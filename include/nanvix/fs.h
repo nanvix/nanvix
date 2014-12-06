@@ -1,17 +1,30 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * <nanvix/fs.h> - File system library.
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /**
- * @file 
+ * @file
  * 
  * @brief Public file system interface.
  */
  
-#ifndef FS_H_
-#define FS_H_
+#ifndef NANVIX_FS_H_
+#define NANVIX_FS_H_
 
 #ifndef _ASM_FILE_
 
@@ -234,7 +247,6 @@
 	EXTERN void superblock_unlock(superblock_t);
 	EXTERN superblock_t superblock_get(dev_t);
 	EXTERN void superblock_put(superblock_t);
-	EXTERN void superblock_write(superblock_t);
 	EXTERN superblock_t superblock_read(dev_t);
 	EXTERN void superblock_stat(superblock_t, struct ustat *);
 	EXTERN void superblock_sync(void);
@@ -365,4 +377,4 @@
 
 #endif /* _ASM_FILE */
 
-#endif /* FS_H_ */
+#endif /* NANVIX_FS_H_ */

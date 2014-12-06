@@ -18,7 +18,7 @@
  */
 
 /**
- * @file 
+ * @file
  * 
  * @brief Private file system interface.
  */

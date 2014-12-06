@@ -74,6 +74,44 @@ again:
 }
 
 /**
+ * @brief Writes superblock to underlying device.
+ * 
+ * @details If the superblock is dirty, writes it to the underlying device.
+ *          The inode and block maps are also written back.
+ * 
+ * @param sb Superblock to be written back to disk.
+ * 
+ * @note The superblock must be valid.
+ * @note The superblock must be locked.
+ */
+PRIVATE void superblock_write(struct superblock *sb)
+{
+	/* Nothing to be done. */
+	if (!(sb->flags & SUPERBLOCK_DIRTY))
+		return;
+	
+	/* Write inode map buffers. */
+	for (unsigned i = 0; i < sb->imap_blocks; i++)
+	{
+		sb->imap[i]->count++;
+		bwrite(sb->imap[i]);
+	}
+	
+	/* Write zone map buffers. */
+	for (unsigned i = 0; i < sb->zmap_blocks; i++)
+	{
+		sb->zmap[i]->count++;
+		bwrite(sb->zmap[i]);
+	}
+	
+	/* Write superblock buffer. */
+	sb->buf->count++;
+	bwrite(sb->buf);
+	
+	sb->flags &= ~SUPERBLOCK_DIRTY;
+}
+
+/**
  * @brief Gets a superblock that matches a device number.
  * 
  * @details Searches for a valid superblock in the superblock table which the
@@ -197,44 +235,6 @@ PUBLIC void superblock_put(struct superblock *sb)
 	}
 	
 	superblock_unlock(sb);
-}
-
-/**
- * @brief Writes superblock to underlying device.
- * 
- * @details If the superblock is dirty, writes it to the underlying device.
- *          The inode and block maps are also written back.
- * 
- * @param sb Superblock to be written back to disk.
- * 
- * @note The superblock must be valid.
- * @note The superblock must be locked.
- */
-PUBLIC void superblock_write(struct superblock *sb)
-{
-	/* Nothing to be done. */
-	if (!(sb->flags & SUPERBLOCK_DIRTY))
-		return;
-	
-	/* Write inode map buffers. */
-	for (unsigned i = 0; i < sb->imap_blocks; i++)
-	{
-		sb->imap[i]->count++;
-		bwrite(sb->imap[i]);
-	}
-	
-	/* Write zone map buffers. */
-	for (unsigned i = 0; i < sb->zmap_blocks; i++)
-	{
-		sb->zmap[i]->count++;
-		bwrite(sb->zmap[i]);
-	}
-	
-	/* Write superblock buffer. */
-	sb->buf->count++;
-	bwrite(sb->buf);
-	
-	sb->flags &= ~SUPERBLOCK_DIRTY;
 }
 
 /**
@@ -389,6 +389,8 @@ PUBLIC void superblock_stat(struct superblock *sb, struct ustat *ubuf)
  * 
  * @details Initializes the superblock table by setting all superblocks in
  *          it the table to be invalid and unlocked.
+ * 
+ * @note This function shall be called just once.
  */
 PUBLIC void superblock_init(void)
 {
