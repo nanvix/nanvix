@@ -117,13 +117,13 @@ PRIVATE ssize_t ramdisk_read(unsigned minor, char *buf, size_t n, off_t off)
 /*
  * Reads a block from a RAM disk device.
  */
-PRIVATE int ramdisk_readblk(unsigned minor, struct buffer *buf)
+PRIVATE int ramdisk_readblk(unsigned minor, buffer_t buf)
 {	
 	addr_t ptr;
 	
-	ptr = ramdisks[minor].start + buf->num*BLOCK_SIZE;
+	ptr = ramdisks[minor].start + buffer_num(buf)*BLOCK_SIZE;
 	
-	kmemcpy(buf->data, (void *)ptr, BLOCK_SIZE);
+	kmemcpy(buffer_data(buf), (void *)ptr, BLOCK_SIZE);
 	
 	return (0);
 }
@@ -131,19 +131,15 @@ PRIVATE int ramdisk_readblk(unsigned minor, struct buffer *buf)
 /*
  * Writes a block to a RAM disk device.
  */
-PRIVATE int ramdisk_writeblk(unsigned minor, struct buffer *buf)
+PRIVATE int ramdisk_writeblk(unsigned minor, buffer_t buf)
 {	
 	addr_t ptr;
 	
-	/* Write only dirty buffers. */
-	if (!(buf->flags & BUFFER_DIRTY))
-		return (0);
-		
-	ptr = ramdisks[minor].start + buf->num*BLOCK_SIZE;
+	ptr = ramdisks[minor].start + buffer_num(buf)*BLOCK_SIZE;
 	
-	kmemcpy((void *)ptr, buf->data, BLOCK_SIZE);
+	kmemcpy((void *)ptr, buffer_data(buf), BLOCK_SIZE);
 	
-	buf->flags &= ~BUFFER_DIRTY;
+	buffer_dirty(buf, 0);
 	brelse(buf);
 	
 	return (0);

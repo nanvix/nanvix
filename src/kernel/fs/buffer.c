@@ -1,7 +1,5 @@
 /*
- * Copyright(C) 2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * fs/buffer.c - Block buffer cache library implementation.
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -12,7 +10,7 @@
  * 
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
@@ -26,6 +24,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include "fs.h"
 
 /*
  * Too many buffers. The maximum value depends on
@@ -368,6 +367,98 @@ PUBLIC void bsync(void)
 }
 
 /**
+ * @brief Sets/clears buffer's dirty flag.
+ * 
+ * @details If set equals to non-zero, than the dirty flag of the buffer pointed
+ *          to by buf is set, otherwise the flag is cleared.
+ * 
+ * @param buf Buffer in which the dirty flag shall be set/cleared.
+ * @param set Set dirty flag?
+ * 
+ * @note The buffer must be valid.
+ * @note The buffer must be locked.
+ */
+PUBLIC inline void buffer_dirty(struct buffer *buf, int set)
+{
+	buf->flags = (set) ? buf->flags | BUFFER_DIRTY : buf->flags & ~BUFFER_DIRTY;
+}
+
+/**
+ * @brief Sets/clears buffer's valid flag.
+ * 
+ * @details If set equals to non-zero, than the valid flag of the buffer pointed
+ *          to by buf is set, otherwise the flag is cleared.
+ * 
+ * @param buf Buffer in which the valid flag shall be set/cleared.
+ * @param set Set the dirty flag?
+ * 
+ * @note The buffer must be valid.
+ * @note The buffer must be locked.
+ */
+PUBLIC inline void buffer_valid(struct buffer *buf, int set)
+{
+	buf->flags = (set) ? buf->flags | BUFFER_VALID : buf->flags & ~BUFFER_VALID;
+}
+
+/**
+ * @brief Asserts if the dirty flag of a buffer is set.
+ * 
+ * @details Asserts if the dirty flag of the buffer pointed to by buf is set.
+ * 
+ * @param buf Buffer to be considered.
+ * 
+ * @returns Non-zero if the buffer is set, and zero otherwise.
+ * 
+ * @note The buffer must be valid.
+ */
+PUBLIC inline int buffer_is_dirty(const struct buffer *buf)
+{
+	return (buf->flags & BUFFER_DIRTY);
+}
+
+/**
+ * @brief Returns a pointer to the data in a buffer.
+ * 
+ * @details Returns a pointer to the data in the buffer pointed to by buf.
+ * 
+ * @param buf Buffer to be considered.
+ * 
+ * @returns A pointer to the data in the buffer.
+ */
+PUBLIC inline void *buffer_data(const struct buffer *buf)
+{
+	return (buf->data); 
+}
+
+/**
+ * @brief Returns the device number of a buffer.
+ * 
+ * @details Returns the device number of the buffer pointed to by buf.
+ * 
+ * @param buf Buffer to be considered.
+ * 
+ * @returns The device number of the buffer.
+ */
+PUBLIC inline dev_t buffer_dev(const struct buffer *buf)
+{
+	return (buf->dev);
+}
+
+/**
+ * @brief Returns the block number of a buffer.
+ * 
+ * @details Returns the block number of the buffer pointed to by buf.
+ * 
+ * @param buf Buffer to be considered.
+ * 
+ * @returns The block number of the buffer.
+ */
+PUBLIC inline block_t buffer_num(const struct buffer *buf)
+{
+	return (buf->num);
+}
+
+/**
  * @brief Initializes the bock buffer cache.
  * 
  * @details Initializes the block buffer cache by putting all buffers in the
@@ -388,8 +479,7 @@ PUBLIC void binit(void)
 		buffers[i].num = 0;
 		buffers[i].data = ptr;
 		buffers[i].count = 0;
-		buffers[i].flags = 
-			~(BUFFER_VALID | BUFFER_BUSY | BUFFER_LOCKED | BUFFER_DIRTY);
+		buffers[i].flags = ~(BUFFER_VALID | BUFFER_LOCKED | BUFFER_DIRTY);
 		buffers[i].chain = NULL;
 		buffers[i].free_next = 
 			(i + 1 == NR_BUFFERS) ? &free_buffers : &buffers[i + 1];

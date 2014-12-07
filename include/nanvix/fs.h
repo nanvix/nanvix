@@ -39,78 +39,46 @@
 /*============================================================================*
  *                              Block Buffer Library                          *
  *============================================================================*/
-
-	/* Null block. */
+ 
+	/**
+	 * @brief Null block.
+	 */
 	#define BLOCK_NULL 0
-
-	/* Block size (in bytes). */
+	
+	/**
+	 * @brief Block size (in bytes).
+	 */
 	#define BLOCK_SIZE 1024
 	
-	/* Buffer flags. */
-	#define BUFFER_DIRTY  (1 << 0) /* Dirty?  */
-	#define BUFFER_VALID  (1 << 1) /* Valid?  */
-	#define BUFFER_BUSY   (1 << 2) /* Busy?   */
-	#define BUFFER_LOCKED (1 << 3) /* Locked? */
-
-	/* Used for block number. */
+	/**
+	 * @brief User for block number.
+	 */
 	typedef uint16_t block_t;
-
-	/*
-	 * Block buffer.
-	 */
-	struct buffer
-	{
-		/* General information. */
-		dev_t dev;   /* Device.          */
-		block_t num; /* Block number.    */
-		void *data;  /* Underlying data. */
-		int count;   /* Reference count. */
-		
-		/* Status information. */
-		int flags;             /* Flags (see above). */
-		struct process *chain; /* Sleeping chain.    */
-		
-		/* Cache information. */
-		struct buffer *free_next; /* Next buffer in the free list.      */
-		struct buffer *free_prev; /* Previous buffer in the free list.  */
-		struct buffer *hash_next; /* Next buffer in the hash table.     */
-		struct buffer *hash_prev; /* Previous buffer in the hash table. */
-	};
 	
-	/*
-	 * Initializes the block buffer cache.
+	/**
+	 * @brief Opaque pointer to a block buffer.
 	 */
+	typedef struct buffer * buffer_t;
+	
+	/**
+	 * @brief Opaque pointer to a constant buffer.
+	 */
+	typedef const struct buffer * const_buffer_t;
+	
+	/* Forward definitions. */
 	EXTERN void binit(void);
-	
-	/*
-	 * Synchronizes the block buffers cache.
-	 */
 	EXTERN void bsync(void);
-
-	/*
-	 * Locks a block buffer.
-	 */
-	EXTERN void blklock(struct buffer *buf);
-
-	/*
-	 * Unlocks a block buffer.
-	 */
-	EXTERN void blkunlock(struct buffer *buf);
-
-	/*
-	 * Releases access to a block buffer.
-	 */
-	EXTERN void brelse(struct buffer *buf);
-
-	/*
-	 * Reads a block buffer.
-	 */
-	EXTERN struct buffer *bread(dev_t dev, block_t num);
-
-	/*
-	 * Writes a block buffer.
-	 */
-	EXTERN void bwrite(struct buffer *buf);
+	EXTERN void blklock(buffer_t);
+	EXTERN void blkunlock(buffer_t);
+	EXTERN void brelse(buffer_t);
+	EXTERN buffer_t bread(dev_t, block_t);
+	EXTERN void bwrite(buffer_t);
+	EXTERN void buffer_dirty(buffer_t, int);
+	EXTERN int buffer_is_dirty(const_buffer_t);
+	EXTERN void *buffer_data(const_buffer_t);
+	EXTERN dev_t buffer_dev(const_buffer_t);
+	EXTERN void buffer_valid(buffer_t, int);
+	EXTERN block_t buffer_num(const_buffer_t);
 	
 /*============================================================================*
  *                               Inode Library                                *

@@ -196,7 +196,7 @@ struct request
 		/* Buffered request. */
 		struct
 		{
-			struct buffer *buf; /* Underlying buffer. */
+			buffer_t buf; /* Underlying buffer. */
 		} buffered;
 	} u;
 };
@@ -429,7 +429,7 @@ PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 	/* Buffered read. */
 	if (req->flags & REQ_BUF)
 	{
-		addr = req->u.buffered.buf->num << 1;
+		addr = buffer_num(req->u.buffered.buf) << 1;
 		n = BLOCK_SIZE/ATA_SECTOR_SIZE;
 	}
 	
@@ -486,9 +486,9 @@ PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 	/* Buffered I/O write. */
 	if (req->flags & REQ_BUF)
 	{
-		buf = req->u.buffered.buf->data;
+		buf = buffer_data(req->u.buffered.buf);
 		size = BLOCK_SIZE;
-		addr = req->u.buffered.buf->num << 1;
+		addr = buffer_num(req->u.buffered.buf) << 1;
 	}
 	
 	/* Raw I/O write. */
@@ -545,15 +545,6 @@ PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 	outputb(pio_ports[bus][ATA_REG_CMD], ATA_CMD_FLUSH_CACHE_EXT);
 	ata_bus_wait(bus);
 	iowait();
-	
-	/*
-	 * FIXME release buffer after interrupt.
-	 */
-	if (req->flags & REQ_BUF)
-	{
-		req->u.buffered.buf->flags &= ~(BUFFER_DIRTY | BUFFER_BUSY);
-		brelse(req->u.buffered.buf);
-	}
 }
 
 /*
@@ -563,7 +554,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
 {
 	va_list args;        /* Variable arg list. */
 	struct atadev *dev;  /* ATA device.        */
-	struct buffer *buf;  /* Buffer.            */
+	buffer_t buf;        /* Buffer.            */
 	struct request *req; /* Request.           */
 	
 	dev = &ata_devices[atadevid];
@@ -581,14 +572,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
 		/* Buffered I/O operation. */
 		if (flags & REQ_BUF)
 		{
-			buf = va_arg(args, struct buffer *);
-			
-			/*
-			 * Mark buffer as busy.
-			 * When the read/write operation completes
-			 * this flag will be cleared.
-			 */
-			buf->flags |= BUFFER_BUSY;
+			buf = va_arg(args, buffer_t);
 			
 			/* Create request. */
 			req->flags = flags;
@@ -634,7 +618,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
  * Schedules a buffered I/O operation.
  */
 PRIVATE void
-ata_sched_buffered(unsigned atadevid, struct buffer *buf, unsigned flags)
+ata_sched_buffered(unsigned atadevid, buffer_t buf, unsigned flags)
 {
 	ata_sched(atadevid, flags, buf);
 }
@@ -655,7 +639,7 @@ ata_sched_raw(unsigned atadevid, block_t num, void *buf, size_t size, unsigned f
 /*
  * Reads a block from a ATA device.
  */
-PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
+PRIVATE int ata_readblk(unsigned minor, buffer_t buf)
 {
 	struct atadev *dev;
 	
@@ -677,7 +661,7 @@ PRIVATE int ata_readblk(unsigned minor, struct buffer *buf)
 /*
  * Writes a block to a ATA device.
  */
-PRIVATE int ata_writeblk(unsigned minor, struct buffer *buf)
+PRIVATE int ata_writeblk(unsigned minor, buffer_t buf)
 {
 	struct atadev *dev;
 	
@@ -855,7 +839,7 @@ PRIVATE void ata_handler(int atadevid)
 	/* Buffered I/O operation. */
 	if (req->flags & REQ_BUF)
 	{
-		buf = req->u.buffered.buf->data;
+		buf = buffer_data(req->u.buffered.buf);
 		size = BLOCK_SIZE;
 	}
 	
@@ -875,6 +859,13 @@ PRIVATE void ata_handler(int atadevid)
 		 */
 		ata_bus_wait(bus);
 		dev->flags &= ~ATADEV_DISCARD;
+			
+		/* Release buffer. */
+		if (req->flags & REQ_BUF)
+		{
+			buffer_dirty(req->u.buffered.buf, 0);
+			brelse(req->u.buffered.buf);
+		}
 	}
 	
 	/* Read operation. */
@@ -902,10 +893,6 @@ PRIVATE void ata_handler(int atadevid)
 	}
 
 out:
-	
-	/* Mark buffer as not busy. */
-	if (req->flags & REQ_BUF)
-		req->u.buffered.buf->flags &= ~BUFFER_BUSY;
 
 	/*
 	 * Wakeup the process that was waiting for this

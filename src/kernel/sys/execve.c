@@ -37,7 +37,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 	struct elf32_fhdr *elf; /* ELF file header.               */
 	struct elf32_phdr *seg; /* ELF Program header.            */
 	block_t blk;            /* Working block number.          */
-	struct buffer *header;  /* File headers block buffer.     */
+	buffer_t header;        /* File headers block buffer.     */
 	struct region *reg;     /* Working memory region.         */
 	struct pregion *preg;   /* Working process memory region. */
 	
@@ -52,7 +52,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 	
 	/* Read ELF file header. */
 	header = bread(inode->dev, blk);
-	elf = header->data;
+	elf = buffer_data(header);
 	
 	/* Bad ELF file. */
 	if (!is_elf(elf))
@@ -70,7 +70,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 		return (0);
 	}
 	
-	seg = (struct elf32_phdr *)((char*)header->data + elf->e_phoff);
+	seg = (struct elf32_phdr *)((char *)buffer_data(header) + elf->e_phoff);
 	
 	/* Load segments. */
 	for (i = 0; i < elf->e_phnum; i++)

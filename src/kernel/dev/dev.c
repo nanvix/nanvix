@@ -195,23 +195,23 @@ PUBLIC ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off)
 /*
  * Writes a block to a block device.
  */
-PUBLIC void bdev_writeblk(struct buffer *buf)
+PUBLIC void bdev_writeblk(buffer_t buf)
 {
 	int err;
 	
 	/* Invalid device. */
-	if (bdevsw[MAJOR(buf->dev)] == NULL)
+	if (bdevsw[MAJOR(buffer_dev(buf))] == NULL)
 		kpanic("writing block to invalid device");
 		
 	/* Operation not supported. */
-	if (bdevsw[MAJOR(buf->dev)]->writeblk == NULL)
+	if (bdevsw[MAJOR(buffer_dev(buf))]->writeblk == NULL)
 		kpanic("block device cannot write blocks");
 	
 	/*
 	 * We don't have to write back the buffer
 	 * to disk, so we just release it and we are done.
 	 */
-	if (!(buf->flags & BUFFER_DIRTY))
+	if (!buffer_is_dirty(buf))
 	{
 		brelse(buf);
 		return;
@@ -221,7 +221,7 @@ PUBLIC void bdev_writeblk(struct buffer *buf)
 	 * Write buffer to disk. The low-level I/O function shall
 	 * clean the BUFFER_DIRTY flag and release the buffer.
 	 */
-	err = bdevsw[MAJOR(buf->dev)]->writeblk(MINOR(buf->dev), buf);
+	err = bdevsw[MAJOR(buffer_dev(buf))]->writeblk(MINOR(buffer_dev(buf)), buf);
 	
 	/* Failed to write. */
 	if (err)
@@ -231,26 +231,26 @@ PUBLIC void bdev_writeblk(struct buffer *buf)
 /*
  * Reads a block from a block device.
  */
-PUBLIC void bdev_readblk(struct buffer *buf)
+PUBLIC void bdev_readblk(buffer_t buf)
 {
 	int err;
 	
 	/* Invalid device. */
-	if (bdevsw[MAJOR(buf->dev)] == NULL)
+	if (bdevsw[MAJOR(buffer_dev(buf))] == NULL)
 		kpanic("reading block from invalid device");
 		
 	/* Operation not supported. */
-	if (bdevsw[MAJOR(buf->dev)]->readblk == NULL)
+	if (bdevsw[MAJOR(buffer_dev(buf))]->readblk == NULL)
 		kpanic("block device cannot read blocks");
 		
-	err = bdevsw[MAJOR(buf->dev)]->readblk(MINOR(buf->dev), buf);
+	err = bdevsw[MAJOR(buffer_dev(buf))]->readblk(MINOR(buffer_dev(buf)), buf);
 	
 	if (err)
 		kpanic("failed to read block from device");
 	
 	/* Update buffer flags. */
-	buf->flags |= BUFFER_VALID;
-	buf->flags &= ~BUFFER_DIRTY;
+	buffer_valid(buf, 1);
+	buffer_dirty(buf, 0);
 }
 
 /*============================================================================*
