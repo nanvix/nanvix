@@ -35,10 +35,6 @@
  *                              Buffer Library                                *
  *============================================================================*/
 	
-	/**
-	 * @brief Null block.
-	 */
-	#define BLOCK_NULL 0
 	
 	/**
 	 * @brief Buffer flags.
