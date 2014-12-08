@@ -668,7 +668,8 @@ PRIVATE int ata_readblk(unsigned minor, buffer_t buf)
  */
 PRIVATE int ata_writeblk(unsigned minor, buffer_t buf)
 {
-	struct atadev *dev;
+	unsigned flags;     /* Request flags. */
+	struct atadev *dev; /* ATA device.    */
 	
 	/* Invalid minor device. */
 	if (minor >= 4)
@@ -680,7 +681,9 @@ PRIVATE int ata_writeblk(unsigned minor, buffer_t buf)
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
 	
-	ata_sched_buffered(minor, buf, REQ_BUF | REQ_WRITE);
+	flags = REQ_BUF | REQ_WRITE | (buffer_is_sync(buf) ? REQ_SYNC : 0);
+	
+	ata_sched_buffered(minor, buf, flags);
 	
 	return (0);
 }

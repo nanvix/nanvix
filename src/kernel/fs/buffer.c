@@ -341,6 +341,7 @@ PUBLIC void bwrite(struct buffer *buf)
 	 */
 	if (!(buf->flags & BUFFER_DIRTY))
 	{
+		buf->flags &= ~BUFFER_SYNC;
 		brelse(buf);
 		return;
 	}
@@ -350,6 +351,7 @@ PUBLIC void bwrite(struct buffer *buf)
 	 * the BUFFER_DIRTY flag and release the buffer.
 	 */
 	bdev_writeblk(buf);
+	buf->flags &= ~BUFFER_SYNC;
 }
 
 /**
@@ -382,6 +384,8 @@ PUBLIC void bsync(void)
 			buf->free_next->free_prev = buf->free_prev;
 		}
 		enable_interrupts();
+		
+		buf->flags |= BUFFER_SYNC;
 		
 		/*
 		 * This will cause the buffer to be
@@ -456,6 +460,24 @@ PUBLIC inline block_t buffer_num(const struct buffer *buf)
 }
 
 /**
+ * @brief Asserts if a block buffer is marked as synchronous write.
+ * 
+ * @details Asserts if the block buffer pointed to by buf is marked as 
+ *          synchronous write.
+ * 
+ * @param buf Buffer to be asserted.
+ * 
+ * @returns Non-zero if the buffer is marked as synchronous write, and zero
+ *          otherwise.
+ * 
+ * @note The buffer must be locked.
+ */
+PUBLIC inline int buffer_is_sync(const struct buffer *buf)
+{
+	return (buf->flags & BUFFER_SYNC);
+}
+
+/**
  * @brief Initializes the bock buffer cache.
  * 
  * @details Initializes the block buffer cache by putting all buffers in the
@@ -477,7 +499,8 @@ PUBLIC void binit(void)
 		buffers[i].num = 0;
 		buffers[i].data = ptr;
 		buffers[i].count = 0;
-		buffers[i].flags = ~(BUFFER_VALID | BUFFER_LOCKED | BUFFER_DIRTY);
+		buffers[i].flags = 
+			~(BUFFER_VALID | BUFFER_LOCKED | BUFFER_DIRTY | BUFFER_SYNC);
 		buffers[i].chain = NULL;
 		buffers[i].free_next = 
 			(i + 1 == NR_BUFFERS) ? &free_buffers : &buffers[i + 1];

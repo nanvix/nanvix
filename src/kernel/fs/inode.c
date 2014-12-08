@@ -124,7 +124,7 @@ PRIVATE void inode_write(struct inode *i)
 	for (j = 0; j < NR_ZONES; j++)
 		d_i->i_zones[j] = i->blocks[j];
 	i->flags &= ~INODE_DIRTY;
-	buf->flags |= BUFFER_DIRTY;
+	buffer_dirty(buf, 1);
 	
 	brelse(buf);
 	superblock_unlock(sb);

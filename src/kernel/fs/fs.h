@@ -45,9 +45,10 @@
 	 */
 	enum buffer_flags
 	{
-		BUFFER_DIRTY  = (1 << 0), /**< Dirty?  */
-		BUFFER_VALID  = (1 << 1), /**< Valid?  */
-		BUFFER_LOCKED = (1 << 2)  /**< Locked? */
+		BUFFER_DIRTY  = (1 << 0), /**< Dirty?             */
+		BUFFER_VALID  = (1 << 1), /**< Valid?             */
+		BUFFER_LOCKED = (1 << 2), /**< Locked?            */
+		BUFFER_SYNC   = (1 << 3)  /**< Synchronous write? */
 	};
 
 	/**
