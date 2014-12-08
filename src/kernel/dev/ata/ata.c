@@ -38,8 +38,11 @@
 	#error "Bad Page Size";
 #endif
 
+/* Log 2 of ATA sector size. */
+#define ATA_SECTOR_SIZE_LOG2 9
+
 /* ATA sector size (in bytes). */
-#define ATA_SECTOR_SIZE 512
+#define ATA_SECTOR_SIZE (1 << ATA_SECTOR_SIZE_LOG2)
 
 /* ATA controller registers. */
 #define ATA_REG_DATA    0 /* Data register.             */
@@ -429,7 +432,8 @@ PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 	/* Buffered read. */
 	if (req->flags & REQ_BUF)
 	{
-		addr = buffer_num(req->u.buffered.buf) << 1;
+		addr = buffer_num(req->u.buffered.buf) << 
+			(BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
 		n = BLOCK_SIZE/ATA_SECTOR_SIZE;
 	}
 	
@@ -488,7 +492,8 @@ PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 	{
 		buf = buffer_data(req->u.buffered.buf);
 		size = BLOCK_SIZE;
-		addr = buffer_num(req->u.buffered.buf) << 1;
+		addr = buffer_num(req->u.buffered.buf) << 
+			(BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
 	}
 	
 	/* Raw I/O write. */

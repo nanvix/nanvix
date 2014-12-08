@@ -197,33 +197,21 @@ PUBLIC ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off)
  */
 PUBLIC void bdev_writeblk(buffer_t buf)
 {
-	int err;
+	int err;   /* Error ?        */
+	dev_t dev; /* Device number. */
+	
+	dev = buffer_dev(buf);
 	
 	/* Invalid device. */
-	if (bdevsw[MAJOR(buffer_dev(buf))] == NULL)
+	if (bdevsw[MAJOR(dev)] == NULL)
 		kpanic("writing block to invalid device");
 		
 	/* Operation not supported. */
-	if (bdevsw[MAJOR(buffer_dev(buf))]->writeblk == NULL)
+	if (bdevsw[MAJOR(dev)]->writeblk == NULL)
 		kpanic("block device cannot write blocks");
-	
-	/*
-	 * We don't have to write back the buffer
-	 * to disk, so we just release it and we are done.
-	 */
-	if (!buffer_is_dirty(buf))
-	{
-		brelse(buf);
-		return;
-	}
 		
-	/*
-	 * Write buffer to disk. The low-level I/O function shall
-	 * clean the BUFFER_DIRTY flag and release the buffer.
-	 */
-	err = bdevsw[MAJOR(buffer_dev(buf))]->writeblk(MINOR(buffer_dev(buf)), buf);
-	
-	/* Failed to write. */
+	/* Write block. */
+	err = bdevsw[MAJOR(dev)]->writeblk(MINOR(dev), buf);
 	if (err)
 		kpanic("failed to write block to device");
 }
@@ -233,24 +221,23 @@ PUBLIC void bdev_writeblk(buffer_t buf)
  */
 PUBLIC void bdev_readblk(buffer_t buf)
 {
-	int err;
+	int err;   /* Error ?        */
+	dev_t dev; /* Device number. */
+	
+	dev = buffer_dev(buf);
 	
 	/* Invalid device. */
-	if (bdevsw[MAJOR(buffer_dev(buf))] == NULL)
+	if (bdevsw[MAJOR(dev)] == NULL)
 		kpanic("reading block from invalid device");
 		
 	/* Operation not supported. */
-	if (bdevsw[MAJOR(buffer_dev(buf))]->readblk == NULL)
+	if (bdevsw[MAJOR(dev)]->readblk == NULL)
 		kpanic("block device cannot read blocks");
-		
-	err = bdevsw[MAJOR(buffer_dev(buf))]->readblk(MINOR(buffer_dev(buf)), buf);
 	
+	/* Read block. */
+	err = bdevsw[MAJOR(dev)]->readblk(MINOR(dev), buf);
 	if (err)
 		kpanic("failed to read block from device");
-	
-	/* Update buffer flags. */
-	buffer_valid(buf, 1);
-	buffer_dirty(buf, 0);
 }
 
 /*============================================================================*

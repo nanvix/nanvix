@@ -121,7 +121,7 @@ PRIVATE int ramdisk_readblk(unsigned minor, buffer_t buf)
 {	
 	addr_t ptr;
 	
-	ptr = ramdisks[minor].start + buffer_num(buf)*BLOCK_SIZE;
+	ptr = ramdisks[minor].start + (buffer_num(buf) << BLOCK_SIZE_LOG2);
 	
 	kmemcpy(buffer_data(buf), (void *)ptr, BLOCK_SIZE);
 	
@@ -135,7 +135,7 @@ PRIVATE int ramdisk_writeblk(unsigned minor, buffer_t buf)
 {	
 	addr_t ptr;
 	
-	ptr = ramdisks[minor].start + buffer_num(buf)*BLOCK_SIZE;
+	ptr = ramdisks[minor].start + (buffer_num(buf) << BLOCK_SIZE_LOG2);
 	
 	kmemcpy((void *)ptr, buffer_data(buf), BLOCK_SIZE);
 	

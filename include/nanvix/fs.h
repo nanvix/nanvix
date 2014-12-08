@@ -41,14 +41,24 @@
  *============================================================================*/
  
 	/**
+	 * @addtogroup Buffer
+	 */
+	/**@{*/
+ 
+	/**
 	 * @brief Null block.
 	 */
 	#define BLOCK_NULL 0
 	
 	/**
+	 * @brief Log 2 of block size.
+	 */
+	#define BLOCK_SIZE_LOG2 10
+	
+	/**
 	 * @brief Block size (in bytes).
 	 */
-	#define BLOCK_SIZE 1024
+	#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
 	
 	/**
 	 * @brief User for block number.
@@ -66,7 +76,6 @@
 	typedef const struct buffer * const_buffer_t;
 	
 	/* Forward definitions. */
-	EXTERN void binit(void);
 	EXTERN void bsync(void);
 	EXTERN void blklock(buffer_t);
 	EXTERN void blkunlock(buffer_t);
@@ -74,11 +83,11 @@
 	EXTERN buffer_t bread(dev_t, block_t);
 	EXTERN void bwrite(buffer_t);
 	EXTERN void buffer_dirty(buffer_t, int);
-	EXTERN int buffer_is_dirty(const_buffer_t);
 	EXTERN void *buffer_data(const_buffer_t);
 	EXTERN dev_t buffer_dev(const_buffer_t);
-	EXTERN void buffer_valid(buffer_t, int);
 	EXTERN block_t buffer_num(const_buffer_t);
+	
+	/**@}*/
 	
 /*============================================================================*
  *                               Inode Library                                *
@@ -225,14 +234,8 @@
  *                                  Block Library                             *
  *============================================================================*/
 	
-	/*
-	 * Maps a file byte offset in a block number.
-	 */
+	/* Forward definitions. */
 	EXTERN block_t block_map(struct inode *inode, off_t off, int create);
-
-	/*
-	 * Frees a disk block.
-	 */
 	EXTERN void block_free(struct superblock *sb, block_t num, int lvl);
 	
 /*============================================================================*

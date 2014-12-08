@@ -35,6 +35,10 @@
  *                              Buffer Library                                *
  *============================================================================*/
 	
+ 	/**
+ 	 * @defgroup Buffer
+ 	 */
+	/**@{*/
 	
 	/**
 	 * @brief Buffer flags.
@@ -55,10 +59,10 @@
 		 * @name General information
 		 */
 		/**@{*/
-		dev_t dev;   /**< Device.          */
-		block_t num; /**< Block number.    */
-		void *data;  /**< Underlying data. */
-		int count;   /**< Reference count. */
+		dev_t dev;      /**< Device.          */
+		block_t num;    /**< Block number.    */
+		void *data;     /**< Underlying data. */
+		unsigned count; /**< Reference count. */
 		/**@}*/
 		
 		/**
@@ -80,6 +84,11 @@
 		/**@}*/
 	};
 	
+	/* Forward definitions. */
+	EXTERN void binit(void);
+	
+	/**@}*/
+	
 /*============================================================================*
  *                               Inode Library                                *
  *============================================================================*/
@@ -98,9 +107,6 @@
 		uint16_t i_zones[NR_ZONES]; /* Zone numbers.                         */
 	};
 	
-	/*
-	 * Initializes inodes.
-	 */
 	EXTERN void inode_init(void);
 
 /*============================================================================*

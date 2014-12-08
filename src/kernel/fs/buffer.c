@@ -48,6 +48,11 @@
 #endif
 
 /**
+ * @brief Hash table size of the block buffer cache.
+ */
+#define BUFFERS_HASHTAB_SIZE 53
+
+/**
  * @brief Block buffers.
  */
 PRIVATE struct buffer buffers[NR_BUFFERS];
@@ -92,11 +97,11 @@ PRIVATE struct buffer hashtab[BUFFERS_HASHTAB_SIZE];
  * @returns Upon successful completion, a pointer to a buffer holding the
  *          requested block is returned. In this case, the block buffer is 
  *          ensured to be locked, and may be, or may be not, valid.
- *          Upon failure, NULL is returned instead.
+ *          Upon failure, a null pointer NULL is returned instead.
  */
 PRIVATE struct buffer *getblk(dev_t dev, block_t num)
 {
-	int i;              /* Hash table index. */
+	unsigned i;         /* Hash table index. */
 	struct buffer *buf; /* Buffer.           */
 	
 	/* Should not happen. */
@@ -162,10 +167,9 @@ repeat:
 	 */
 	if (buf->flags & BUFFER_DIRTY)
 	{
-		kpanic("fs: asynchronous write");
 		blklock(buf);
 		enable_interrupts();
-		bdev_writeblk(buf);
+		bwrite(buf);
 		goto repeat;
 	}
 	
@@ -173,7 +177,7 @@ repeat:
 	buf->hash_prev->hash_next = buf->hash_next;
 	buf->hash_next->hash_prev = buf->hash_prev;
 	
-	/* Reassigns device and block number. */
+	/* Reassign device and block number. */
 	buf->dev = dev;
 	buf->num = num;
 	buf->flags &= ~BUFFER_VALID;
@@ -193,12 +197,11 @@ repeat:
 /**
  * @brief Locks a block buffer.
  * 
- * @details Locks the block buffer by marking it as locked. The calling process
- *          may block here some time, waiting its turn to acquire the lock.
+ * @details Locks the block buffer pointed to by buf by marking it as locked.
+ *          The calling process may block here some time, waiting its turn to
+ *          acquire the lock.
  * 
- * @param buf Block buffer to lock.
- * 
- * @note The block buffer will be locked after that the operation has completed.
+ * @param buf Block buffer to be locked.
  */
 PUBLIC void blklock(struct buffer *buf)
 {
@@ -216,12 +219,12 @@ PUBLIC void blklock(struct buffer *buf)
 /**
  * @brief Unlocks a block buffer.
  * 
- * @details Unlocks a block buffer by marking it as not locked and waking up
- *          all processes that were waiting for it.
+ * @details Unlocks the block buffer pointed to by buf by marking it as not
+ *          locked and waking up all processes that were waiting for it.
  *
- * @param buf Block buffer to unlock.
+ * @param buf Block buffer to be unlocked.
  * 
- * @note The block buffer must be locked. Afterwards, it will be unlocked.
+ * @note The block buffer must be locked.
  */
 PUBLIC void blkunlock(struct buffer *buf)
 {
@@ -236,16 +239,20 @@ PUBLIC void blkunlock(struct buffer *buf)
 /**
  * @brief Puts back a block buffer in the block buffer cache.
  * 
- * @details Releases a block buffer. If its reference count drops to zero, 
- *          it puts back the block buffer into the block buffer cache.
+ * @details Releases the block buffer pointed to by buf. If its reference count
+ *          drops to zero, the block buffer is put into the block buffer cache.
  * 
- * @param buf Buffer to release.
+ * @param buf Buffer to be released.
  * 
- * @note The block buffer must be locked. Afterwards, it will be freed.
+ * @note The block buffer must be locked.
  */
 PUBLIC void brelse(struct buffer *buf)
 {
 	disable_interrupts();
+	
+	/* Double free. */
+	if (buf->count == 0)
+		kpanic("freeing buffer twice");
 	
 	/* No more references. */
 	if (--buf->count == 0)
@@ -274,10 +281,6 @@ PUBLIC void brelse(struct buffer *buf)
 			free_buffers.free_next = buf;
 		}
 	}
-	
-	/* Should not happen. */
-	if (buf->count < 0)
-		kpanic("fs: freeing buffer twice");
 
 	blkunlock(buf);
 	enable_interrupts();
@@ -286,16 +289,19 @@ PUBLIC void brelse(struct buffer *buf)
 /**
  * @brief Reads a block from a device.
  * 
- * @details Reads a block synchronously from a device.
+ * @details Reads the block numbered num synchronously from the device numbered
+ *          dev.
  * 
  * @param dev Device number.
  * @param num Block number.
  * 
  * @returns Upon successful completion, a pointer to a buffer holding the
  *          requested block is returned. In this case, the block buffer is 
- *          ensured to be locked. Upon failure, NULL is returned instead.
+ *          ensured to be locked. Upon failure, a NULL pointer is returned
+ *          instead.
  * 
- * \note The device number and the block number should be valid.
+ * @note The device number should be valid.
+ * @note The block number should be valid.
  */
 PUBLIC struct buffer *bread(dev_t dev, block_t num)
 {
@@ -309,34 +315,52 @@ PUBLIC struct buffer *bread(dev_t dev, block_t num)
 
 	bdev_readblk(buf);
 	
+	/* Update buffer flags. */
+	buf->flags |= BUFFER_VALID;
+	buf->flags &= ~BUFFER_DIRTY;
+	
 	return (buf);
 }
 
 /**
- * @brief Writes a block buffer to underlying device.
+ * @brief Writes a block buffer to the underlying device.
  * 
- * @details Writes a block buffer synchronously to underlying.
+ * @details Writes the block buffer pointed to by buf asynchronously to the
+ *          underlying device. After that the operation has completed, the
+ *          buffer is released.
  * 
- * @param buf Block buffer to write.
+ * @param buf Block buffer to be written back.
  * 
  * @note The block buffer must be locked.
  */
 PUBLIC void bwrite(struct buffer *buf)
-{
+{	
+	/*
+	 * We don't have to write back the buffer
+	 * to disk, so we just release it and we are done.
+	 */
+	if (!(buf->flags & BUFFER_DIRTY))
+	{
+		brelse(buf);
+		return;
+	}
+	
+	/*
+	 * The low-level I/O function shall clean
+	 * the BUFFER_DIRTY flag and release the buffer.
+	 */
 	bdev_writeblk(buf);
 }
 
 /**
  * @brief Synchronizes the block buffer cache.
  * 
- * @details Flush all valid and dirty block buffers onto underlying devices.
+ * @details Flushes all valid block buffers onto underlying devices.
  */
 PUBLIC void bsync(void)
 {
-	struct buffer *buf;
-	
 	/* Synchronize buffers. */
-	for (buf = &buffers[0]; buf < &buffers[NR_BUFFERS]; buf++)
+	for (struct buffer *buf = &buffers[0]; buf < &buffers[NR_BUFFERS]; buf++)
 	{
 		blklock(buf);
 			
@@ -351,69 +375,36 @@ PUBLIC void bsync(void)
 		 * Prevent double free, once a call
 		 * to brelse() will follow.
 		 */
+		disable_interrupts();
 		if (buf->count++ == 0)
 		{
 			buf->free_prev->free_next = buf->free_next;
 			buf->free_next->free_prev = buf->free_prev;
 		}
+		enable_interrupts();
 		
 		/*
 		 * This will cause the buffer to be
-		 * written back to disk and then
-		 * released.
+		 * written back to disk and then released.
 		 */
-		bdev_writeblk(buf);
+		bwrite(buf);
 	}
 }
 
 /**
  * @brief Sets/clears buffer's dirty flag.
  * 
- * @details If set equals to non-zero, than the dirty flag of the buffer pointed
+ * @details If set equals to non-zero, then the dirty flag of the buffer pointed
  *          to by buf is set, otherwise the flag is cleared.
  * 
  * @param buf Buffer in which the dirty flag shall be set/cleared.
  * @param set Set dirty flag?
  * 
- * @note The buffer must be valid.
  * @note The buffer must be locked.
  */
 PUBLIC inline void buffer_dirty(struct buffer *buf, int set)
 {
 	buf->flags = (set) ? buf->flags | BUFFER_DIRTY : buf->flags & ~BUFFER_DIRTY;
-}
-
-/**
- * @brief Sets/clears buffer's valid flag.
- * 
- * @details If set equals to non-zero, than the valid flag of the buffer pointed
- *          to by buf is set, otherwise the flag is cleared.
- * 
- * @param buf Buffer in which the valid flag shall be set/cleared.
- * @param set Set the dirty flag?
- * 
- * @note The buffer must be valid.
- * @note The buffer must be locked.
- */
-PUBLIC inline void buffer_valid(struct buffer *buf, int set)
-{
-	buf->flags = (set) ? buf->flags | BUFFER_VALID : buf->flags & ~BUFFER_VALID;
-}
-
-/**
- * @brief Asserts if the dirty flag of a buffer is set.
- * 
- * @details Asserts if the dirty flag of the buffer pointed to by buf is set.
- * 
- * @param buf Buffer to be considered.
- * 
- * @returns Non-zero if the buffer is set, and zero otherwise.
- * 
- * @note The buffer must be valid.
- */
-PUBLIC inline int buffer_is_dirty(const struct buffer *buf)
-{
-	return (buf->flags & BUFFER_DIRTY);
 }
 
 /**
@@ -424,6 +415,8 @@ PUBLIC inline int buffer_is_dirty(const struct buffer *buf)
  * @param buf Buffer to be considered.
  * 
  * @returns A pointer to the data in the buffer.
+ * 
+ * @note The buffer must be locked.
  */
 PUBLIC inline void *buffer_data(const struct buffer *buf)
 {
@@ -438,6 +431,8 @@ PUBLIC inline void *buffer_data(const struct buffer *buf)
  * @param buf Buffer to be considered.
  * 
  * @returns The device number of the buffer.
+ * 
+ * @note The buffer must be locked.
  */
 PUBLIC inline dev_t buffer_dev(const struct buffer *buf)
 {
@@ -452,6 +447,8 @@ PUBLIC inline dev_t buffer_dev(const struct buffer *buf)
  * @param buf Buffer to be considered.
  * 
  * @returns The block number of the buffer.
+ * 
+ * @note The buffer must be locked.
  */
 PUBLIC inline block_t buffer_num(const struct buffer *buf)
 {
@@ -462,18 +459,19 @@ PUBLIC inline block_t buffer_num(const struct buffer *buf)
  * @brief Initializes the bock buffer cache.
  * 
  * @details Initializes the block buffer cache by putting all buffers in the
- *          free list and cleaning the hash table.
+ *          free list and cleaning the block buffer hash table.
+ * 
+ * @note This function shall be called just once. 
  */
 PUBLIC void binit(void)
 {
-	int i;     /* Loop index.          */
-	char *ptr; /* Buffer data pointer. */
+	char *ptr;
 	
 	kprintf("fs: initializing the block buffer cache");
 	
 	/* Initialize block buffers. */
 	ptr = (char *)BUFFERS_VIRT;
-	for (i = 0; i < NR_BUFFERS; i++)
+	for (unsigned i = 0; i < NR_BUFFERS; i++)
 	{
 		buffers[i].dev = 0;
 		buffers[i].num = 0;
@@ -484,7 +482,7 @@ PUBLIC void binit(void)
 		buffers[i].free_next = 
 			(i + 1 == NR_BUFFERS) ? &free_buffers : &buffers[i + 1];
 		buffers[i].free_prev = 
-			(i - 1 < 0) ? &free_buffers : &buffers[i - 1];
+			(i == 0) ? &free_buffers : &buffers[i - 1];
 		buffers[i].hash_next = &buffers[i];
 		buffers[i].hash_prev = &buffers[i];
 		
@@ -494,11 +492,11 @@ PUBLIC void binit(void)
 	/* Initialize the buffer cache. */
 	free_buffers.free_next = &buffers[0];
 	free_buffers.free_prev = &buffers[NR_BUFFERS - 1];
-	for (i = 0; i < BUFFERS_HASHTAB_SIZE; i++)
+	for (unsigned i = 0; i < BUFFERS_HASHTAB_SIZE; i++)
 	{
 		hashtab[i].hash_prev = &hashtab[i];
 		hashtab[i].hash_next = &hashtab[i];
 	}
 	
-	kprintf("fs: %d slots in the block buffer cache");
+	kprintf("fs: %d slots in the block buffer cache", NR_BUFFERS);
 }
