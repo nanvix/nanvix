@@ -22,8 +22,8 @@
 /**
  * @brief Copies a string.
  * 
- * @param str1 Target string.
- * @param str2 Source string.
+ * @param dest Target string.
+ * @param src Source string.
  * 
  * @returns A pointer to the target string.
  */

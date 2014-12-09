@@ -35,36 +35,21 @@
 	#include <sys/types.h>
 	#include <stdint.h>
 	#include <ustat.h>
+	
+	/**
+	 * @brief User for block number.
+	 */
+	typedef uint16_t block_t;
 
 /*============================================================================*
  *                              Block Buffer Library                          *
  *============================================================================*/
  
 	/**
-	 * @addtogroup Buffer
+	 * @defgroup Buffer Buffer Module
 	 */
 	/**@{*/
  
-	/**
-	 * @brief Null block.
-	 */
-	#define BLOCK_NULL 0
-	
-	/**
-	 * @brief Log 2 of block size.
-	 */
-	#define BLOCK_SIZE_LOG2 10
-	
-	/**
-	 * @brief Block size (in bytes).
-	 */
-	#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
-	
-	/**
-	 * @brief User for block number.
-	 */
-	typedef uint16_t block_t;
-	
 	/**
 	 * @brief Opaque pointer to a block buffer.
 	 */
@@ -93,7 +78,12 @@
 /*============================================================================*
  *                               Inode Library                                *
  *============================================================================*/
-		
+	
+	/**
+	 * @defgroup Inode Inode Module
+	 */
+	/**@{*/
+	
 	/* Number of zones. */
 	#define NR_ZONES_DIRECT 7 /* Direct.          */
 	#define NR_ZONES_SINGLE 1 /* Single indirect. */
@@ -114,110 +104,99 @@
 	/* Number of zones in a double indirect zone. */
 	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(block_t))*NR_SINGLE)
 	
-	/* No inode. */
+	/**
+	 * @brief Null inode.
+	 */
 	#define INODE_NULL 0
 	
-	/* Root inode. */
+	/**
+	 * @brief Root inode.
+	 */
 	#define INODE_ROOT 0
 	
-	/* Inode flags. */
-	#define INODE_LOCKED 0x01 /* Locked?      */
-	#define INODE_DIRTY  0x02 /* Dirty?       */
-	#define INODE_MOUNT  0x04 /* Mount point? */
-	#define INODE_VALID  0x08 /* Valid inode? */
-	#define INODE_PIPE   0x10 /* Pipe inode?  */
+	/**
+	 * @brief Inode flags.
+	 */
+	enum inode_flags
+	{
+		INODE_LOCKED = (1 << 0), /**< Locked?      */
+		INODE_DIRTY  = (1 << 1), /**< Dirty?       */
+		INODE_MOUNT  = (1 << 2), /**< Mount point? */
+		INODE_VALID  = (1 << 3), /**< Valid inode? */
+		INODE_PIPE   = (1 << 4)  /**< Pipe inode?  */
+	};
 	 
-	/*
-	 * In-core memory inode.
+	/**
+	 * @brief In-core inode.
 	 */
 	struct inode 
 	{
-		mode_t mode;              /* Acess permissions.                    */
-		nlink_t nlinks;           /* Number of links to the file.          */
-		uid_t uid;                /* User id of the file's owner           */
-		gid_t gid;                /* Group number of owner user.           */
-		off_t size;               /* File size (in bytes).                 */
-		time_t time;              /* Time when the file was last accessed. */
-		block_t blocks[NR_ZONES]; /* Zone numbers.                         */
-		dev_t dev;                /* Underlying device.                    */
-		ino_t num;                /* Inode number.                         */
-		struct superblock *sb;    /* Superblock.                           */
-		int count;                /* Reference count.                      */
-		unsigned flags;           /* Flags (see above).                    */
-		char *pipe;               /* Pipe page.                            */
-		off_t head;               /* Pipe head.                            */
-		off_t tail;               /* Pipe tail.                            */
-		struct inode *free_next;  /* Next inode in the free list.          */
-		struct inode *hash_next;  /* Next inode in the hash table.         */
-		struct inode *hash_prev;  /* Previous unode in the hash table.     */
-		struct process *chain;    /* Sleeping chain.                       */
+		mode_t mode;              /**< Access permissions.                   */
+		nlink_t nlinks;           /**< Number of links to the file.          */
+		uid_t uid;                /**< User id of the file's owner           */
+		gid_t gid;                /**< Group number of owner user.           */
+		off_t size;               /**< File size (in bytes).                 */
+		time_t time;              /**< Time when the file was last accessed. */
+		block_t blocks[NR_ZONES]; /**< Zone numbers.                         */
+		dev_t dev;                /**< Underlying device.                    */
+		ino_t num;                /**< Inode number.                         */
+		struct superblock *sb;    /**< Superblock.                           */
+		int count;                /**< Reference count.                      */
+		enum inode_flags flags;   /**< Flags (see above).                    */
+		char *pipe;               /**< Pipe page.                            */
+		off_t head;               /**< Pipe head.                            */
+		off_t tail;               /**< Pipe tail.                            */
+		struct inode *free_next;  /**< Next inode in the free list.          */
+		struct inode *hash_next;  /**< Next inode in the hash table.         */
+		struct inode *hash_prev;  /**< Previous inode in the hash table.     */
+		struct process *chain;    /**< Sleeping chain.                       */
 	};
 	
+	/* Forward definitions. */
 	EXTERN void inode_touch(struct inode *i);
-	
-	/*
-	 * Locks an inode.
-	 */
 	EXTERN void inode_lock(struct inode *i);
-
-	/*
-	 * Unlocks an inode.
-	 */
 	EXTERN void inode_unlock(struct inode *i);
-
-	/*
-	 * Synchronizes all inodes.
-	 */
 	EXTERN void inode_sync(void);
-
-	/*
-	 * Truncates an inode.
-	 */
 	EXTERN void inode_truncate(struct inode *i);
-
-	/*
-	 * Allocates an inode.
-	 */
 	EXTERN struct inode *inode_alloc(struct superblock *sb);
-
-	/*
-	 * Gets access to inode.
-	 */
 	EXTERN struct inode *inode_get(dev_t dev, ino_t num);
-
-	/*
-	 * Releases access to inode.
-	 */
 	EXTERN void inode_put(struct inode *i);
-	
-	/*
-	 * Gets inode of the topmost directory of a path.
-	 */
 	EXTERN struct inode *inode_dname(const char *path, const char **name);
-	
-	/*
-	 * Converts pathname to inode.
-	 */
 	EXTERN struct inode *inode_name(const char *pathname);
-	
-	/*
-	 * Gets a pipe inode.
-	 */
 	EXTERN struct inode *inode_pipe(void);
+	
+	/**@}*/
 
 /*============================================================================*
  *                            Super Block Library                             *
  *============================================================================*/
 
 	/**
-	 * @addtogroup Superblock
+	 * @defgroup Superblock Superblock Module
 	 */
 	/**@{*/
+	
+	/**
+	 * @brief Null block.
+	 */
+	#define BLOCK_NULL 0
+	
+	/**
+	 * @brief Log 2 of block size.
+	 */
+	#define BLOCK_SIZE_LOG2 10
+	
+	/**
+	 * @brief Block size (in bytes).
+	 */
+	#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
 
 	/**
 	 * @brief Opaque pointer to a in-core superblock.
 	 */
 	typedef struct superblock * superblock_t;
+	
+	/**@}*/
 	
 	/* Forward definitions. */
 	EXTERN void superblock_init(void);
@@ -228,16 +207,9 @@
 	EXTERN superblock_t superblock_read(dev_t);
 	EXTERN void superblock_stat(superblock_t, struct ustat *);
 	EXTERN void superblock_sync(void);
+	EXTERN block_t block_map(struct inode *, off_t, int);
+	EXTERN void block_free(struct superblock *, block_t, int);
 	
-	/**@}*/
-	
-/*============================================================================*
- *                                  Block Library                             *
- *============================================================================*/
-	
-	/* Forward definitions. */
-	EXTERN block_t block_map(struct inode *inode, off_t off, int create);
-	EXTERN void block_free(struct superblock *sb, block_t num, int lvl);
 	
 /*============================================================================*
  *                              File System Manager                           *

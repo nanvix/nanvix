@@ -4,6 +4,12 @@
  * const.h - Kernel constants
  */
 
+/**
+ * @file
+ * 
+ * @brief Kernel constants.
+ */
+
 #ifndef CONST_H_
 #define CONST_H_
 
@@ -14,10 +20,14 @@
 	#define VERSION "beta"          /* Kernel version.        */
 	#define MACHINE "Intel 80386"   /* Hardware name.         */
 
-	/* Scope constants. */
-	#define PUBLIC         /* Global scope       */
-	#define PRIVATE static /* File scope.        */
-	#define EXTERN extern  /* Defined elsewhere. */
+	/**
+	 * @name Scope Constants
+	 */
+	/**@{*/
+	#define PUBLIC         /**< Global scope       */
+	#define PRIVATE static /**< File scope.        */
+	#define EXTERN extern  /**< Defined elsewhere. */
+	/**@}*/
 
 	/* Logic constants. */
 	#define FALSE 0 /* False. */

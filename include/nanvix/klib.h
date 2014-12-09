@@ -58,6 +58,7 @@
 	 * @brief Sets a bit in a bitmap.
 	 * 
 	 * @param bitmap Bitmap where the bit should be set. 
+	 * @param pos    Position of the bit that shall be set.
 	 */
 	#define bitmap_set(bitmap, pos) \
 		(((uint32_t *)(bitmap))[IDX(pos)] |= (0x1 << OFF(pos)))
@@ -66,6 +67,7 @@
 	 * @brief Clears a bit in a bitmap.
 	 * 
 	 * @param bitmap Bitmap where the bit should be cleared.
+	 * @param pos    Position of the bit that shall be cleared.
 	 */
 	#define bitmap_clear(bitmap, pos) \
 		(((uint32_t *)(bitmap))[IDX(pos)] &= ~(0x1 << OFF(pos)))

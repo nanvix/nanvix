@@ -46,8 +46,8 @@ PRIVATE void default_hwint(void)
 /**
  * @brief Sets hardware interrupt handler.
  * 
- * @param num    Interrupt number.
- * @param hander Interrupt handler.
+ * @param num     Interrupt number.
+ * @param handler Interrupt handler.
  * 
  * @returns Upon successful completion, zero is returned. Upon failure, a 
  *          negative number is returned instead.

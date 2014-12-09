@@ -1,7 +1,20 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * fs/inode.c - Inode library implementation.
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <nanvix/clock.h>
@@ -469,13 +482,13 @@ error0:
 }
 
 /**
- * @brief Updates inode time stamp.
+ * @brief Updates the time stamp of an inode.
  * 
- * @details Updates the inode time stamp to current time.
+ * @details Updates the time stamp of the inode pointed to by i to current time.
  * 
  * @param i Inode to be touched.
  * 
- * @note The inode must bhe locked.
+ * @note The inode must be locked.
  */
 PUBLIC void inode_touch(struct inode *i)
 {

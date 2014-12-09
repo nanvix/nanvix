@@ -145,7 +145,6 @@ error0:
 /**
  * @brief Swaps a page in to disk.
  * 
- * @param proc  Process where the page is located.
  * @param frame Frame number where the page should be placed.
  * @param addr  Address of the page to be swapped in.
  * 

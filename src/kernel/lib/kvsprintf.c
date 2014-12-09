@@ -21,7 +21,7 @@
 #include <stdarg.h>
 
 /**
- * @param Converts an integer to a string.
+ * @brief Converts an integer to a string.
  * 
  * @param str  Output string.
  * @param num  Number to be converted.

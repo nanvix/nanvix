@@ -27,6 +27,12 @@
 #include "fs.h"
 
 /**
+ * @file
+ * 
+ * @brief Superblock module implementation.
+ */
+
+/**
  * @brief Allocates a disk block.
  * 
  * @details Allocates a disk block by searching in the bitmap of blocks for a
@@ -340,3 +346,5 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 	
 	return (BLOCK_NULL);
 }
+
+/**@}*/

@@ -24,6 +24,17 @@
 #include "fs.h"
 
 /**
+ * @file
+ * 
+ * @brief Superblock module implementation.
+ */
+
+/**
+ * @addtogroup Superblock
+ */
+/**@{*/
+ 	
+/**
  * @brief Superblock table.
  * 
  * @details The superblock table holds all information about mounted file
@@ -398,8 +409,11 @@ PUBLIC void superblock_init(void)
 	for (unsigned i = 0; i < NR_SUPERBLOCKS; i++)
 	{
 		superblocks[i].count = 0;
-		superblocks[i].flags = ~(SUPERBLOCK_VALID | SUPERBLOCK_LOCKED);
+		superblocks[i].flags = ~(SUPERBLOCK_VALID | SUPERBLOCK_LOCKED | 
+			SUPERBLOCK_DIRTY | SUPERBLOCK_RDONLY);
 	}
 	
 	kprintf("fs: superblock table has %d entries", NR_SUPERBLOCKS);
 }
+
+/**@}*/
