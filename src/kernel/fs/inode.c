@@ -17,6 +17,12 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * @file
+ * 
+ * @brief Inode module implementation.
+ */
+
 #include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
@@ -50,157 +56,206 @@ PRIVATE struct inode *hashtab[HASHTAB_SIZE];
 #define HASH(dev, num) \
 	(((dev)^(num))%HASHTAB_SIZE)
 
-/*
- * Removes an inode from the free list.
+/**
+ * @brief Evicts an free inode from the inode cache
+ * 
+ * @details Searches the inode cache for a free inode and returns it.
+ * 
+ * @returns If a free inode is found, that inode is locked and then returned.
+ *          However, no there is no free inode, a #NULL pointer is returned
+ *          instead.
  */
 PRIVATE struct inode *inode_cache_evict(void)
 {
-	struct inode *i;
+	struct inode *ip;
 	
-	/* No free inodes. */
+	/*
+	 * No free inodes. 
+	 * If this happens too often, it 
+	 * may indicate that inode cache
+	 * is too small.
+	 */
 	if (free_inodes == NULL)
 	{
-		kprintf("inode table overflow");
+		kprintf("fs: inode table overflow");
 		return (NULL);
 	}
 	
 	/* Remove inode from free list. */
-	i = free_inodes;
+	ip = free_inodes;
 	free_inodes = free_inodes->free_next;
 	
-	i->count++;
-	inode_lock(i);
+	ip->count++;
+	inode_lock(ip);
 	
-	return (i);
+	return (ip);
 }
 
-/*
- * Inserts an inode in the cache.
+/**
+ * @brief Inserts an inode in the inode cache.
+ * 
+ * @details Inserts the inode pointed to by @p ip in the inode cache.
+ * 
+ * @param ip Inode to be inserted back in the inode cache.
+ * 
+ * @note The inode must be locked.
  */
-PRIVATE void inode_cache_insert(struct inode *i)
+PRIVATE void inode_cache_insert(struct inode *ip)
 {
-	/* Insert inode in the hash table. */
-	i->hash_next = hashtab[HASH(i->dev, i->num)];
-	i->hash_prev = NULL;
-	hashtab[HASH(i->dev, i->num)] = i;
-	if (i->hash_next != NULL)
-		i->hash_next->hash_prev = i;
+	unsigned i;
+	
+	i = HASH(ip->dev, ip->num);
+	
+	/* Insert the inode in the hash table. */
+	ip->hash_next = hashtab[i];
+	ip->hash_prev = NULL;
+	hashtab[i] = ip;
+	if (ip->hash_next != NULL)
+		ip->hash_next->hash_prev = ip;
 }
 
-/*
- * Removes an inode from the cache.
+/**
+ * @brief Removes an inode from the inode cache.
+ * 
+ * @details Removes the inode pointed to by @p ip form the inode cache.
+ * 
+ * @param ip Inode to be removed from the cache.
+ * 
+ * @note The inode must be locked.
  */
-PRIVATE void inode_cache_remove(struct inode *i)
+PRIVATE void inode_cache_remove(struct inode *ip)
 {
 	/* Remove inode from the hash table. */
-	if (i->hash_prev != NULL)
-		i->hash_prev->hash_next = i->hash_next;
-	if (i->hash_next != NULL)
-		i->hash_next->hash_prev = i->hash_prev;
-	if (hashtab[HASH(i->dev, i->num)] == i)
-		hashtab[HASH(i->dev, i->num)] = i->hash_next;
+	if (ip->hash_prev != NULL)
+		ip->hash_prev->hash_next = ip->hash_next;
+	else
+		hashtab[HASH(ip->dev, ip->num)] = ip->hash_next;
+	if (ip->hash_next != NULL)
+		ip->hash_next->hash_prev = ip->hash_prev;
 }
 
-/*
- * Writes an inode to disk.
+/**
+ * @brief Writes an inode to disk.
+ * 
+ * @details Writes the inode pointed to by @p ip to disk.
+ * 
+ * @param ip Inode to be written to disk.
+ * 
+ * @note The inode must be locked.
  */
-PRIVATE void inode_write(struct inode *i)
+PRIVATE void inode_write(struct inode *ip)
 {
-	int j;                 /* Loop index.  */
-	unsigned blk;          /* Block.       */
+	block_t blk;           /* Block.       */
 	struct buffer *buf;    /* Buffer.      */
 	struct d_inode *d_i;   /* Disk inode.  */
 	struct superblock *sb; /* Super block. */
 	
 	/* Nothing to be done. */
-	if (!(i->flags & INODE_DIRTY))
+	if (!(ip->flags & INODE_DIRTY))
 		return;
 	
-	superblock_lock(sb = i->sb);
+	superblock_lock(sb = ip->sb);
 	
-	blk = 2 + sb->imap_blocks + sb->zmap_blocks + i->num/INODES_PER_BLOCK;
+	blk = 2 + sb->imap_blocks + sb->zmap_blocks + ip->num/INODES_PER_BLOCK;
 	
-	buf = bread(i->dev, blk);
-	
-	/* Failed to read inode. */
+	/* Read chunk of disk inodes. */
+	buf = bread(ip->dev, blk);
 	if (buf == NULL)
-		kpanic("failed to write inode");
+	{
+		kprintf("fs: failed to write inode %d to disk", ip->num);
+		superblock_unlock(sb);
+	}
 	
-	d_i = &(((struct d_inode *)buf->data)[i->num%INODES_PER_BLOCK - 1]);
+	d_i = &(((struct d_inode *)buf->data)[ip->num%INODES_PER_BLOCK - 1]);
 	
-	d_i->i_mode = i->mode;
-	d_i->i_nlinks = i->nlinks;
-	d_i->i_uid = i->uid;
-	d_i->i_gid = i->gid;
-	d_i->i_size = i->size;
-	d_i->i_time = i->time;
-	for (j = 0; j < NR_ZONES; j++)
-		d_i->i_zones[j] = i->blocks[j];
-	i->flags &= ~INODE_DIRTY;
+	/* Write inode to buffer. */
+	d_i->i_mode = ip->mode;
+	d_i->i_nlinks = ip->nlinks;
+	d_i->i_uid = ip->uid;
+	d_i->i_gid = ip->gid;
+	d_i->i_size = ip->size;
+	d_i->i_time = ip->time;
+	for (unsigned i = 0; i < NR_ZONES; i++)
+		d_i->i_zones[i] = ip->blocks[i];
+	ip->flags &= ~INODE_DIRTY;
 	buffer_dirty(buf, 1);
 	
 	brelse(buf);
 	superblock_unlock(sb);
 }
 
-/*
- * Reads an inode from disk.
+/**
+ * @brief Reads an inode from the disk.
+ * 
+ * @details Reads the inode with number @p num from the device @p dev.
+ * 
+ * @param dev Device where the inode is located.
+ * @param num Number of the inode that shall be read.
+ * 
+ * @returns Upon successful completion a pointer to a in-core inode is returned.
+ *          In this case, the inode is ensured to be locked. Upon failure, a
+ *          #NULL pointer is returned instead.
+ * 
+ * @note The device number must be valid.
+ * @note The inode number must be valid.
+ * 
+ * @bug Checking for invalid inode.
  */
 PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 {
-	int j;                 /* Loop index.    */
-	unsigned blk;          /* Block.         */
-	struct inode *i;       /* In-core inode. */
+	block_t blk;           /* Block.         */
+	struct inode *ip;      /* In-core inode. */
 	struct buffer *buf;    /* Buffer.        */
 	struct d_inode *d_i;   /* Disk inode.    */
 	struct superblock *sb; /* Super block.   */
 	
+	/* Get superblock. */
 	sb = superblock_get(dev);
-	
-	/* Invalid device. */
 	if (sb == NULL)
 		goto error0;	
 	
 	/* Calculate block number. */
 	blk = 2 + sb->imap_blocks + sb->zmap_blocks + num/INODES_PER_BLOCK;
 	
+	/* Read chunk of disk inodes. */
 	buf = bread(dev, blk);
-	
-	/* Failed to read inode. */
 	if (buf == NULL)
-		kpanic("failed to read inode");
+	{
+		kprintf("fs: failed to read inode %d from disk", num);
+		goto error1;
+	}
 	
 	d_i = &(((struct d_inode *)buf->data)[num%INODES_PER_BLOCK - 1]);
 	
 	/* Invalid inode. */
 	if (d_i->i_mode == 0)
-		goto error0;
+		goto error1;
 	
-	i = inode_cache_evict();
-	
-	/* No free inode. */
-	if (i == NULL)
+	/* Get a free in-core inode. */
+	ip = inode_cache_evict();
+	if (ip == NULL)
 		goto error1;
 		
 	/* Initialize in-core inode. */
-	i->mode = d_i->i_mode;
-	i->nlinks = d_i->i_nlinks;
-	i->uid = d_i->i_uid;
-	i->gid = d_i->i_gid;
-	i->size = d_i->i_size;
-	i->time = d_i->i_time;
-	for (j = 0; j < NR_ZONES; j++)
-		i->blocks[j] = d_i->i_zones[j];
-	i->dev = dev;
-	i->num = num;
-	i->sb = sb;
-	i->count = 1;
-	i->flags |= ~(INODE_DIRTY | INODE_MOUNT | INODE_PIPE) & INODE_VALID;
+	ip->mode = d_i->i_mode;
+	ip->nlinks = d_i->i_nlinks;
+	ip->uid = d_i->i_uid;
+	ip->gid = d_i->i_gid;
+	ip->size = d_i->i_size;
+	ip->time = d_i->i_time;
+	for (unsigned i = 0; i < NR_ZONES; i++)
+		ip->blocks[i] = d_i->i_zones[i];
+	ip->dev = dev;
+	ip->num = num;
+	ip->sb = sb;
+	ip->chain = NULL;
+	ip->flags &= ~(INODE_DIRTY | INODE_MOUNT | INODE_PIPE);
+	ip->flags |= INODE_VALID;
 	
 	brelse(buf);
 	superblock_put(sb);
 	
-	return (i);
+	return (ip);
 
 error1:
 	superblock_put(sb);
@@ -208,125 +263,157 @@ error0:
 	return (NULL);
 }
 
-/*
- * Frees an inode.
+/**
+ * @brief Frees an inode.
+ * 
+ * @details Frees the inode pointed to by @p ip.
+ * 
+ * @details The inode must be locked.
+ * 
+ * @bug Setting invalid inode.
  */
-PRIVATE void inode_free(struct inode *i)
+PRIVATE void inode_free(struct inode *ip)
 {
 	block_t blk;           /* Block number.           */
 	struct superblock *sb; /* Underlying super block. */
 	
-	blk = i->num/(BLOCK_SIZE << 3);
+	blk = ip->num/(BLOCK_SIZE << 3);
 	
-	superblock_lock(sb = i->sb);
+	superblock_lock(sb = ip->sb);
 	
-	bitmap_clear(sb->imap[blk], i->num%(BLOCK_SIZE << 3));
+	bitmap_clear(sb->imap[blk], ip->num%(BLOCK_SIZE << 3));
 	sb->imap[blk]->flags |= BUFFER_DIRTY;
-	if (i->num < sb->zsearch)
-		sb->zsearch = i->num;
+	if (ip->num < sb->isearch)
+		sb->isearch = ip->num;
 	sb->flags |= SUPERBLOCK_DIRTY;
 	
 	superblock_unlock(sb);
 	
-	i->mode = 0;
-	i->flags |= INODE_DIRTY;
+	ip->mode = 0;
+	ip->flags |= INODE_DIRTY;
 }
 
-/*
- * Waits for an inode to become unlocked.
+/**
+ * @brief Locks an inode.
+ * 
+ * @details Locks the inode pointed to by @p ip.
  */
-PRIVATE void inode_wait(struct inode *i)
+PUBLIC void inode_lock(struct inode *ip)
 {
-	while (i->flags & INODE_LOCKED)
-		sleep(&i->chain, PRIO_INODE);
+	while (ip->flags & INODE_LOCKED)
+		sleep(&ip->chain, PRIO_INODE);
+	ip->flags |= INODE_LOCKED;
 }
 
-/*
- * Locks an inode.
+/**
+ * @brief Unlocks an inode.
+ * 
+ * @details Unlocks the inode pointed to by @p ip.
+ * 
+ * @param ip Inode to be unlocked.
+ * 
+ * @note The inode must be locked.
  */
-PUBLIC void inode_lock(struct inode *i)
+PUBLIC void inode_unlock(struct inode *ip)
 {
-	inode_wait(i);
-	i->flags |= INODE_LOCKED;
+	wakeup(&ip->chain);
+	ip->flags &= ~INODE_LOCKED;
 }
 
-/*
- * Unlocks an inode.
- */
-PUBLIC void inode_unlock(struct inode *i)
-{
-	wakeup(&i->chain);
-	i->flags &= ~INODE_LOCKED;
-}
-
-/*
- * Synchronizes all inodes.
+/**
+ * @brief Synchronizes the in-core inode table.
+ * 
+ * @details Synchronizes the in-core inode table by flushing all valid inodes 
+ *          onto underlying devices.
  */
 PUBLIC void inode_sync(void)
 {
-	struct inode *i;
-	
 	/* Write valid inodes to disk. */
-	for (i = &inodes[0]; i < &inodes[NR_INODES]; i++)
+	for (struct inode *ip = &inodes[0]; ip < &inodes[NR_INODES]; ip++)
 	{
-		if (i->flags & INODE_VALID)
+		inode_lock(ip);
+		
+		/* Write only valid inodes. */
+		if (ip->flags & INODE_VALID)
 		{
-			inode_wait(i);
-			if (!(i->flags & INODE_PIPE))
-				inode_write(i);
+			if (!(ip->flags & INODE_PIPE))
+				inode_write(ip);
 		}
+		
+		inode_unlock(ip);
 	}
 }
 
-/*
- * Truncates an inode.
+/**
+ * @brief Truncates an inode.
+ * 
+ * @details Truncates the inode pointed to by @p ip by freeing all underling 
+ *          blocks.
+ * 
+ * @param ip Inode that shall be truncated.
+ * 
+ * @note The inode must be locked.
  */
-PUBLIC void inode_truncate(struct inode *i)
+PUBLIC void inode_truncate(struct inode *ip)
 {
-	int j;                 /* Loop index.             */
-	struct superblock *sb; /* Underlying super block. */
+	struct superblock *sb;
 	
-	superblock_lock(sb = i->sb);
+	superblock_lock(sb = ip->sb);
 	
-	/* Free file zones. */
-	for (j = 0; j < NR_ZONES_DIRECT; j++)
+	/* Free direct zone. */
+	for (unsigned j = 0; j < NR_ZONES_DIRECT; j++)
 	{
-		block_free(sb, i->blocks[j], 0);
-		i->blocks[j] = BLOCK_NULL;
+		block_free(sb, ip->blocks[j], 0);
+		ip->blocks[j] = BLOCK_NULL;
 	}
-	for (j = 0; j < NR_ZONES_SINGLE; j++)
+	
+	/* Free singly indirect zones. */
+	for (unsigned j = 0; j < NR_ZONES_SINGLE; j++)
 	{
-		block_free(sb, i->blocks[NR_ZONES_DIRECT + j], 1);
-		i->blocks[NR_ZONES_DIRECT + j] = BLOCK_NULL;
+		block_free(sb, ip->blocks[NR_ZONES_DIRECT + j], 1);
+		ip->blocks[NR_ZONES_DIRECT + j] = BLOCK_NULL;
 	}
-	for (j = 0; j < NR_ZONES_DOUBLE; j++)
+	
+	/* Free double indirect zones. */
+	for (unsigned j = 0; j < NR_ZONES_DOUBLE; j++)
 	{
-		block_free(sb, i->blocks[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j], 2);
-		i->blocks[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j] = BLOCK_NULL;
+		block_free(sb, ip->blocks[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j], 2);
+		ip->blocks[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j] = BLOCK_NULL;
 	}
 	
 	superblock_unlock(sb);
 	
-	i->size = 0;
-	inode_touch(i);
+	ip->size = 0;
+	inode_touch(ip);
 }
 
-/*
- * Allocates an inode.
+/**
+ * @brief Allocates an inode.
+ * 
+ * @details Allocates an inode in the file system that is associated to the 
+ *          superblock pointed to by @p sb.
+ * 
+ * @param sb Superblock where the inode shall be allocated.
+ * 
+ * @returns Upon successful completion, a pointed to the inode is returned. In 
+ *          this case, the inode is ensured to be locked. Upon failure, a #NULL
+ *          pointer is returned instead.
+ * 
+ * @note The superblock must not be locked.
+ * 
+ * @bug Setting invalid inode.
  */
 PUBLIC struct inode *inode_alloc(struct superblock *sb)
 {
-	int j;              /* Loop index.               */
-	ino_t num;          /* Inode number.             */
-	bit_t bit;          /* Bit number in the bitmap. */
-	block_t blk;        /* Number of current block.  */
-	struct inode *i;    /* Inode.                    */
+	ino_t num;        /* Inode number.             */
+	bit_t bit;        /* Bit number in the bitmap. */
+	block_t blk;      /* Number of current block.  */
+	struct inode *ip; /* Inode.                    */
 	
 	superblock_lock(sb);
 	
-	blk = sb->isearch/(BLOCK_SIZE << 3);
-	
 	/* Search for free inode. */
+	blk = sb->isearch/(BLOCK_SIZE << 3);
 	do
 	{	
 		bit = bitmap_first_free(sb->imap[blk]->data, BLOCK_SIZE);
@@ -335,107 +422,117 @@ PUBLIC struct inode *inode_alloc(struct superblock *sb)
 		if (bit != BITMAP_FULL)
 			goto found;
 		
-		blk++;
-		if (blk < sb->imap_blocks)
-			blk = 0;
-		
+		/* Wrap around. */
+		blk = (blk + 1 < sb->zmap_blocks) ? blk + 1 : 0;
 	} while (blk != sb->isearch/(BLOCK_SIZE << 3));
 	
-	curr_proc->errno = -ENOSPC;
 	goto error0;
 	
 found:
-
-	i = inode_cache_evict();
-	
-	/* No free inode. */
-	if (i == NULL)
-	{
-		curr_proc->errno = -ENFILE;
-		goto error0;
-	}
 	
 	num = bit + blk*(BLOCK_SIZE << 3);
+
+	/*
+	 * Remember disk block number to
+	 * speedup next allocation. 
+	 */
+	sb->isearch = num;
+
+	/* Get a free in-core inode. */
+	ip = inode_cache_evict();
+	if (ip == NULL)
+		goto error0;
 	
 	/* Allocate inode. */
 	bitmap_set(sb->imap[blk]->data, bit);
 	sb->imap[blk]->flags |= BUFFER_DIRTY;
-	sb->isearch = num;
 	sb->flags |= SUPERBLOCK_DIRTY;
 	
 	/* 
 	 * Initialize inode. 
-	 * mode_t will be initialized later.
+	 * mode will be initialized later.
 	 */
-	i->nlinks = 1;
-	i->uid = curr_proc->euid;
-	i->gid = curr_proc->egid;
-	i->size = 0;
-	for (j = 0; j < NR_ZONES; j++)
-		i->blocks[j] = BLOCK_NULL;
-	i->dev = sb->dev;
-	i->num = num;
-	i->sb = sb;
-	i->count = 1;
-	i->chain = NULL;
-	inode_touch(i);
+	ip->nlinks = 1;
+	ip->uid = curr_proc->euid;
+	ip->gid = curr_proc->egid;
+	ip->size = 0;
+	for (unsigned i = 0; i < NR_ZONES; i++)
+		ip->blocks[i] = BLOCK_NULL;
+	ip->dev = sb->dev;
+	ip->num = num;
+	ip->sb = sb;
+	ip->chain = NULL;
+	ip->flags &= ~(INODE_MOUNT | INODE_PIPE);
+	ip->flags |= INODE_VALID;
+	inode_touch(ip);
 	
-	inode_cache_insert(i);
+	inode_cache_insert(ip);
 	
 	superblock_unlock(sb);
 	
-	return (i);
+	return (ip);
 	
 error0:
 	superblock_unlock(sb);
 	return (NULL);
 }
 
-/*
- * Gets access to inode.
+/**
+ * @brief Gets an inode.
+ * 
+ * @details Gets the inode with number @p num from the device @p dev.
+ * 
+ * @param dev Device where the inode is located.
+ * @param num Number of the inode.
+ * 
+ * @returns Upon successful completion, a pointer to the inode is returned. In
+ *          this case, the inode is ensured to be locked. Upon failure, a #NULL
+ *          pointer is returned instead.
+ * 
+ * @note The device number must be valid.
+ * @note The inode number must be valid.
  */
 PUBLIC struct inode *inode_get(dev_t dev, ino_t num)
 {
-	struct inode *i;
+	struct inode *ip;
 
 repeat:
 
 	/* Search in the hash table. */
-	for (i = hashtab[HASH(dev, num)]; i != NULL; i = i->hash_next)
+	for (ip = hashtab[HASH(dev, num)]; ip != NULL; ip = ip->hash_next)
 	{
-		/* No found. */
-		if (i->dev != dev || i->num != num)
+		/* Not found. */
+		if (ip->dev != dev || ip->num != num)
 			continue;
 					
 		/* Inode is locked. */
-		if (i->flags & INODE_LOCKED)
+		if (ip->flags & INODE_LOCKED)
 		{
-			sleep(&i->chain, PRIO_INODE);
+			sleep(&ip->chain, PRIO_INODE);
 			goto repeat;
 		}
 		
 		/* Cross mount point. */
-		if (i->flags & INODE_MOUNT)
+		if (ip->flags & INODE_MOUNT)
 		{
-			 dev = i->dev;
+			 dev = ip->dev;
 			 goto repeat;
 		}
 		
-		i->count++;
-		inode_lock(i);
+		ip->count++;
+		inode_lock(ip);
 		
-		return (i);
+		return (ip);
 	}
 	
-	i = inode_read(dev, num);
-	
-	/* No free inode. */
-	if (i == NULL)
+	/* Read inode. */
+	ip = inode_read(dev, num);
+	if (ip == NULL)
 		return (NULL);
 	
-	inode_cache_insert(i);
+	inode_cache_insert(ip);
 	
-	return (i);
+	return (ip);
 }
 
 /*
@@ -484,28 +581,45 @@ error0:
 /**
  * @brief Updates the time stamp of an inode.
  * 
- * @details Updates the time stamp of the inode pointed to by i to current time.
+ * @details Updates the time stamp of the inode pointed to by @p ip to current
+ *          time.
  * 
- * @param i Inode to be touched.
+ * @param ip Inode to be touched.
  * 
  * @note The inode must be locked.
  */
-PUBLIC void inode_touch(struct inode *i)
+PUBLIC inline void inode_touch(struct inode *ip)
 {
-	i->time = CURRENT_TIME;
-	i->flags |= INODE_DIRTY;
+	ip->time = CURRENT_TIME;
+	ip->flags |= INODE_DIRTY;
 }
 
-/*
- * Releases access to inode.
+/**
+ * @brief Releases a in-core inode.
+ * 
+ * @details Releases the inc-core inode pointed to by @p ip. If its reference 
+ *          count drops to zero, all underlying resources are freed and then the
+ *          inode is marked as invalid.
+ * 
+ * @param ip Inode that shall be released.
+ * 
+ * @note The inode must be valid
+ * @note The inode must be locked.
  */
 PUBLIC void inode_put(struct inode *i)
 {
-	/* Release in-core inode. */
+	/* Double free. */
+	if (i->count == 0)
+		kpanic("freeing inode twice");
+	
+	/* Release underlying resources. */
 	if (--i->count == 0)
 	{
+		/* Pipe inode. */
 		if (i->flags & INODE_PIPE)
-			putkpg(i->pipe);	
+			putkpg(i->pipe);
+			
+		/* File inode. */
 		else
 		{		
 			/* Free underlying disk blocks. */
@@ -525,10 +639,6 @@ PUBLIC void inode_put(struct inode *i)
 		
 		i->flags = 0;
 	}
-	
-	/* Should not happen. */
-	if (i->count < 0)
-		kpanic("putting inode twice");
 	
 	inode_unlock(i);
 }

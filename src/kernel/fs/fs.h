@@ -85,10 +85,10 @@
 		/**@}*/
 	};
 	
+	/**@}*/
+	
 	/* Forward definitions. */
 	EXTERN void binit(void);
-	
-	/**@}*/
 	
 /*============================================================================*
  *                               Inode Library                                *
@@ -99,23 +99,24 @@
  	 */
 	/**@{*/
 	
-	/*
-	 * Disk inode.
+	/**
+	 * @brief Disk inode.
 	 */
 	struct d_inode 
 	{
-		uint16_t i_mode;            /* Acess permissions.                    */
-		uint16_t i_uid;             /* User id of the file's owner           */
-		uint32_t i_size;            /* File size (in bytes).                 */
-		uint32_t i_time;            /* Time when the file was last accessed. */
-		uint8_t i_gid;              /* Group number of owner user.           */
-		uint8_t i_nlinks;           /* Number of links to the file.          */
-		uint16_t i_zones[NR_ZONES]; /* Zone numbers.                         */
+		uint16_t i_mode;            /**< Access permissions.                  */
+		uint16_t i_uid;             /**< User id of the file's owner          */
+		uint32_t i_size;            /**< File size (in bytes).                */
+		uint32_t i_time;            /**< Time when the file was last accessed.*/
+		uint8_t i_gid;              /**< Group number of owner user.          */
+		uint8_t i_nlinks;           /**< Number of links to the file.         */
+		uint16_t i_zones[NR_ZONES]; /**< Zone numbers.                        */
 	};
 	
-	EXTERN void inode_init(void);
-	
 	/**@}*/
+	
+	/* Forward definitions. */
+	EXTERN void inode_init(void);
 
 /*============================================================================*
  *                            Super Block Library                             *

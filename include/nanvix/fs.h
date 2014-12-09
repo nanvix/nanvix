@@ -84,25 +84,46 @@
 	 */
 	/**@{*/
 	
-	/* Number of zones. */
-	#define NR_ZONES_DIRECT 7 /* Direct.          */
-	#define NR_ZONES_SINGLE 1 /* Single indirect. */
-	#define NR_ZONES_DOUBLE 1 /* Double indirect. */
-	#define NR_ZONES        9 /* Total.           */
+	/**
+	 * @name Number of Zones
+	 * 
+	 * @details Number of zones in an #inode.
+	 */
+	/**@{*/
+	#define NR_ZONES_DIRECT 7 /**< Number of direct zones.          */
+	#define NR_ZONES_SINGLE 1 /**< Number of single indirect zones. */
+	#define NR_ZONES_DOUBLE 1 /**< Number of double indirect zones. */
+	#define NR_ZONES        9 /**< Total of zones.                  */
+	/**@}*/
 	
-	/* Zone indexes. */
-	#define ZONE_DIRECT                               0 /* Direct zone.     */ 
-	#define ZONE_SINGLE               (NR_ZONES_DIRECT) /* Single indirect. */
-	#define ZONE_DOUBLE (ZONE_SINGLE + NR_ZONES_SINGLE) /* Double indirect. */
+	/**
+	 * @name Zone Index
+	 * 
+	 * @details Index of zones in an #inode.
+	 */
+	/**@{*/
+	#define ZONE_DIRECT                               0 /**< Direct zone.     */ 
+	#define ZONE_SINGLE               (NR_ZONES_DIRECT) /**< Single indirect. */
+	#define ZONE_DOUBLE (ZONE_SINGLE + NR_ZONES_SINGLE) /**< Double indirect. */
+	/**@}*/
 	
-	/* Number of zones in a direct zone. */
+	/**
+	 * @name Zone Dimensions
+	 * 
+	 * @details Dimension of zones.
+	 */
+	/**@{*/
+	
+	/** Number of zones in a direct zone. */
 	#define NR_DIRECT 1
 
-	/* Number of zones in a single indirect zone. */
+	/** Number of zones in a single indirect zone. */
 	#define NR_SINGLE (BLOCK_SIZE/sizeof(block_t))
 	
-	/* Number of zones in a double indirect zone. */
+	/** Number of zones in a double indirect zone. */
 	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(block_t))*NR_SINGLE)
+	
+	/**@}*/
 	
 	/**
 	 * @brief Null inode.
@@ -141,8 +162,8 @@
 		dev_t dev;                /**< Underlying device.                    */
 		ino_t num;                /**< Inode number.                         */
 		struct superblock *sb;    /**< Superblock.                           */
-		int count;                /**< Reference count.                      */
-		enum inode_flags flags;   /**< Flags (see above).                    */
+		unsigned count;           /**< Reference count.                      */
+		enum inode_flags flags;   /**< Flags.                                */
 		char *pipe;               /**< Pipe page.                            */
 		off_t head;               /**< Pipe head.                            */
 		off_t tail;               /**< Pipe tail.                            */
@@ -151,6 +172,8 @@
 		struct inode *hash_prev;  /**< Previous inode in the hash table.     */
 		struct process *chain;    /**< Sleeping chain.                       */
 	};
+	
+	/**@}*/
 	
 	/* Forward definitions. */
 	EXTERN void inode_touch(struct inode *i);
@@ -164,8 +187,6 @@
 	EXTERN struct inode *inode_dname(const char *path, const char **name);
 	EXTERN struct inode *inode_name(const char *pathname);
 	EXTERN struct inode *inode_pipe(void);
-	
-	/**@}*/
 
 /*============================================================================*
  *                            Super Block Library                             *
