@@ -31,18 +31,21 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <errno.h>
-#include <unistd.h>
 #include <limits.h>
 #include "fs.h"
 
 /* Number of inodes per block. */
 #define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
 
-/* Hash table size. */
-#define HASHTAB_SIZE 227
-
-/* In-core inodes. */
+/**
+ * @brief In-core inodes table.
+ */
 PRIVATE struct inode inodes[NR_INODES];
+
+/**
+ * @brief Hash table size.
+ */
+#define HASHTAB_SIZE 227
 
 /* Free inodes. */
 PRIVATE struct inode *free_inodes = NULL;
@@ -50,8 +53,8 @@ PRIVATE struct inode *free_inodes = NULL;
 /* Inodes hash table. */
 PRIVATE struct inode *hashtab[HASHTAB_SIZE];
 
-/*
- * Hash function.
+/**
+ * @brief Hash function for the inode cache.
  */
 #define HASH(dev, num) \
 	(((dev)^(num))%HASHTAB_SIZE)
