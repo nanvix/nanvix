@@ -635,13 +635,25 @@ PUBLIC void inode_put(struct inode *ip)
 	inode_unlock(ip);
 }
 
-/*
- * Breaks a path.
+/**
+ * @brief Breaks a path
+ * 
+ * @details Parses the path pointed to by @p pathname extracting the first
+ *          path-part from it. The path-part is stored in the array pointed to
+ *          by @p filename.
+ * 
+ * @param pathname Path that shall be broken.
+ * @param filename Array where the first path-part should be save.
+ * 
+ * @returns Upon successful completion, a pointer to the second path-part is 
+ *          returned, so a new call to this function can be made to parse the
+ *          remainder of the path. Upon failure, a #NULL pointer is returned 
+ *          instead.
  */
 PRIVATE const char *break_path(const char *pathname, char *filename)
 {
-	char *p2;
-	const char *p1;
+	char *p2;       /* Write pointer. */
+	const char *p1; /* Read pointer.  */
 	
 	p1 = pathname;
 	p2 = filename;
@@ -655,10 +667,7 @@ PRIVATE const char *break_path(const char *pathname, char *filename)
 	{
 		/* File name too long. */
 		if ((p2 - filename) > NAME_MAX)
-		{
-			curr_proc->errno = -ENAMETOOLONG;
 			return (NULL);
-		}
 		
 		*p2++ = *p1++;
 	}

@@ -13,8 +13,26 @@
 #include <errno.h>
 #include "fs.h"
 
-/*
- * Searches for a directory entry.
+/**
+ * @brief Searches for a directory entry.
+ * 
+ * @details Searches for a directory entry named @p filename in the directory
+ *          pointed to be @p ip. If @p create is not zero and such file entry
+ *          does not exist, the entry is created.
+ * 
+ * @param ip Directory where the directory entry shall be searched.
+ * @param filename Name of the directory entry that shall be searched.
+ * @param buf      Buffer where the directory entry is loaded.
+ * @param create   Create directory entry?
+ * 
+ * @returns Upon successful completion, the directory entry is returned. In this
+ *          case, @p buf is set to point to the (locked) buffer associated to
+ *          the requested directory entry. However, upon failure, a #NULL
+ *          pointer is returned instead.
+ * 
+ * @note @p ip must be locked.
+ * @note @p filename must point to a valid location.
+ * @note @p buf must point to a valid location
  */
 PRIVATE struct dirent *dirent_search
 (struct inode *dinode, const char *filename, struct buffer **buf, int create)
@@ -36,7 +54,11 @@ PRIVATE struct dirent *dirent_search
 	/* Search directory entry. */
 	while (i < nentries)
 	{
-		/* Get valid block. */
+		/*
+		 * Skip invalid blocks. As directory entries
+		 * are removed from a directory, a whole block
+		 * may become free.
+		 */
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/_SIZEOF_DIRENT;
@@ -78,13 +100,9 @@ PRIVATE struct dirent *dirent_search
 			}
 		}
 
-		/* Creating entry. */
-		else if (create)
-		{
-			/* Remember entry index. */
-			if (entry < 0)
-				entry = i;
-		}
+		/* Remember entry index. */
+		else
+			entry = i;
 		
 		d++; i++;	
 	}
@@ -99,7 +117,7 @@ PRIVATE struct dirent *dirent_search
 	/* Create entry. */
 	if (create)
 	{
-		/* Create entry. */
+		/* Expand directory. */
 		if (entry < 0)
 		{
 			entry = nentries;
@@ -114,7 +132,7 @@ PRIVATE struct dirent *dirent_search
 			}
 			
 			dinode->size += sizeof(struct dirent);
-			dinode->flags |= INODE_DIRTY;
+			inode_touch(dinode);
 		}
 		
 		else
@@ -130,21 +148,34 @@ PRIVATE struct dirent *dirent_search
 	return (NULL);
 }
 
-/*
- * Searchs for a file in a directory.
+/**
+ * @brief Searches for a file in a directory.
+ * 
+ * @details Searches for a file named @p filename in the directory poitned to
+ *          by @p dinode.
+ * 
+ * @param ip Inode where the file that shall be searched.
+ * @param filename Name of the file that shall be searched.
+ * 
+ * @returns If the requested file exists in the directory, than its inode number
+ *          is returned. However, if the file does not exist #INODE_NULL is 
+ *          is returns instead.
+ * 
+ * @note @p ip must be locked.
+ * @note @p filename must point to a valid location.
  */
-PUBLIC ino_t dir_search(struct inode *dinode, const char *filename)
+PUBLIC ino_t dir_search(struct inode *ip, const char *filename)
 {
 	struct buffer *buf; /* Block buffer.    */
 	struct dirent *d;   /* Directory entry. */
 	
-	d = dirent_search(dinode, filename, &buf, 0);
-	
-	/* Not found. */
+	/* Search directory entry. */
+	d = dirent_search(ip, filename, &buf, 0);
 	if (d == NULL)
 		return (INODE_NULL);
 	
 	brelse(buf);
+	
 	return (d->d_ino);
 }
 
@@ -229,7 +260,6 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	kstrncpy(d->d_name, name, NAME_MAX);
 	d->d_ino = inode->num;
 	buf->flags |= BUFFER_DIRTY;
-	inode_touch(dinode);
 	brelse(buf);
 	
 	return (0);
