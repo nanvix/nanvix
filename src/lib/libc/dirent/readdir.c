@@ -43,7 +43,7 @@ struct dirent *readdir(DIR *dirp)
 				return (NULL);
 		}
 		
-		dirp->count = read(dirp->fd, buf, _DIR_BUFSIZ)/_SIZEOF_DIRENT;
+		dirp->count = read(dirp->fd, buf, _DIR_BUFSIZ)/sizeof(struct dirent);
 		
 		/* Reset buffer. */
 		dirp->ptr = buf;

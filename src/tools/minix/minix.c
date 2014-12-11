@@ -401,9 +401,9 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 	int entry;         /* Free entry.                  */
 	block_t blk; /* Working block.               */
 	int nentries; /* Number of directory entries. */
-	struct dirent d;   /* Working directory entry.     */
+	struct d_dirent d;   /* Working directory entry.     */
 	
-	nentries = ip->i_size/sizeof(struct dirent);
+	nentries = ip->i_size/sizeof(struct d_dirent);
 	
 	/* Search for directory entry. */
 	i = 0;
@@ -415,8 +415,8 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		/* Skip invalid block. */
 		if (blk == BLOCK_NULL)
 		{
-			i += block_size/sizeof(struct dirent);
-			blk = minix_block_map(ip, i*sizeof(struct dirent), 0);
+			i += block_size/sizeof(struct d_dirent);
+			blk = minix_block_map(ip, i*sizeof(struct d_dirent), 0);
 			continue;
 		}
 		
@@ -432,11 +432,11 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		else if (off >= block_size)
 		{
 			base = -1;
-			blk = minix_block_map(ip, i*sizeof(struct dirent), 0);
+			blk = minix_block_map(ip, i*sizeof(struct d_dirent), 0);
 			continue;
 		}
 		
-		sread(fd, &d, sizeof(struct dirent));
+		sread(fd, &d, sizeof(struct d_dirent));
 		
 		/* Valid entry. */
 		if (d.d_ino != INODE_NULL)
@@ -457,7 +457,7 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 			entry = i;
 		
 		i++;
-		off += sizeof(struct dirent);
+		off += sizeof(struct d_dirent);
 	}
 	
 	fprintf(stderr, "minix_inode_read: %u %u\n", ip->i_size, ip->i_zones[0]);	
@@ -472,20 +472,20 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 			entry = nentries;
 			
 			/* Allocate block. */
-			blk = minix_block_map(ip, entry*sizeof(struct dirent), 1);
+			blk = minix_block_map(ip, entry*sizeof(struct d_dirent), 1);
 			if (blk == BLOCK_NULL)
 				return (-1);
 			
 			fprintf(stderr, "blk: %u\n", blk);
-			ip->i_size += sizeof(struct dirent);
+			ip->i_size += sizeof(struct d_dirent);
 			ip->i_time = 0;
 		}
 		
 		else
-			blk = minix_block_map(ip, entry*sizeof(struct dirent), 0);
+			blk = minix_block_map(ip, entry*sizeof(struct d_dirent), 0);
 		
 		/* Compute file offset. */
-		off = (entry%(block_size/sizeof(struct dirent)))*sizeof(struct dirent);
+		off = (entry%(block_size/sizeof(struct d_dirent)))*sizeof(struct d_dirent);
 		base = blk*block_size;
 		
 			fprintf(stderr, "ret: %zd, %zd, %u\n", base + off, base, blk);
@@ -510,7 +510,7 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 uint16_t dir_search(struct d_inode *ip, const char *filename)
 {
 	off_t off;       /* File offset where the entry is. */
-	struct dirent d; /* Working directory entry.        */
+	struct d_dirent d; /* Working directory entry.        */
 	
 	/* Search directory entry. */
 	off = dirent_search(ip, filename, 0);
@@ -518,7 +518,7 @@ uint16_t dir_search(struct d_inode *ip, const char *filename)
 		return (INODE_NULL);
 	
 	slseek(fd, off, SEEK_SET);
-	sread(fd, &d, sizeof(struct dirent));
+	sread(fd, &d, sizeof(struct d_dirent));
 	
 	return (d.d_ino);
 }
@@ -526,7 +526,7 @@ uint16_t dir_search(struct d_inode *ip, const char *filename)
 uint16_t minix_mkdir(struct d_inode *ip, const char *filename)
 {
 	off_t off;       /* File offset where the entry is. */
-	struct dirent d; /* Working directory entry.        */
+	struct d_dirent d; /* Working directory entry.        */
 	
 	/* Search directory entry. */
 	off = dirent_search(ip, filename, 1);
@@ -534,7 +534,7 @@ uint16_t minix_mkdir(struct d_inode *ip, const char *filename)
 		return (INODE_NULL);
 	
 	slseek(fd, off, SEEK_SET);
-	sread(fd, &d, sizeof(struct dirent));
+	sread(fd, &d, sizeof(struct d_dirent));
 	
 	if (d.d_ino != INODE_NULL)
 		return (INODE_NULL);
@@ -546,5 +546,5 @@ uint16_t minix_mkdir(struct d_inode *ip, const char *filename)
 	strncpy(d.d_name, filename, MINIX_NAME_MAX);
 	
 	slseek(fd, off, SEEK_SET);
-	swrite(fd, &d, sizeof(struct dirent));
+	swrite(fd, &d, sizeof(struct d_dirent));
 }

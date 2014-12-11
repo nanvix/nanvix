@@ -34,16 +34,16 @@
  * @note @p filename must point to a valid location.
  * @note @p buf must point to a valid location
  */
-PRIVATE struct dirent *dirent_search
+PRIVATE struct d_dirent *dirent_search
 (struct inode *dinode, const char *filename, struct buffer **buf, int create)
 {
 	int i;              /* Working directory entry index.       */
 	int entry;          /* Index of first free directory entry. */
 	block_t blk;        /* Working block number.                */
 	int nentries;       /* Number of directory entries.         */
-	struct dirent *d;   /* Directory entry.                     */
+	struct d_dirent *d; /* Directory entry.                     */
 	
-	nentries = dinode->size/_SIZEOF_DIRENT;
+	nentries = dinode->size/sizeof(struct d_dirent);
 	
 	/* Search from very first block. */
 	i = 0;
@@ -61,8 +61,8 @@ PRIVATE struct dirent *dirent_search
 		 */
 		if (blk == BLOCK_NULL)
 		{
-			i += BLOCK_SIZE/_SIZEOF_DIRENT;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
+			i += BLOCK_SIZE/sizeof(struct d_dirent);
+			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
 			continue;
 		}
 		
@@ -78,7 +78,7 @@ PRIVATE struct dirent *dirent_search
 		{
 			brelse((*buf));
 			(*buf) = NULL;
-			blk = block_map(dinode, i*_SIZEOF_DIRENT, 0);
+			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
 			continue;
 		}
 		
@@ -122,7 +122,7 @@ PRIVATE struct dirent *dirent_search
 		{
 			entry = nentries;
 			
-			blk = block_map(dinode, entry*_SIZEOF_DIRENT, 1);
+			blk = block_map(dinode, entry*sizeof(struct d_dirent), 1);
 			
 			/* Failed to create entry. */
 			if (blk == BLOCK_NULL)
@@ -131,16 +131,16 @@ PRIVATE struct dirent *dirent_search
 				return (NULL);
 			}
 			
-			dinode->size += sizeof(struct dirent);
+			dinode->size += sizeof(struct d_dirent);
 			inode_touch(dinode);
 		}
 		
 		else
-			blk = block_map(dinode, entry*_SIZEOF_DIRENT, 0);
+			blk = block_map(dinode, entry*sizeof(struct d_dirent), 0);
 		
 		(*buf) = bread(dinode->dev, blk);
-		entry %= (BLOCK_SIZE/_SIZEOF_DIRENT);
-		d = &((struct dirent *)((*buf)->data))[entry];
+		entry %= (BLOCK_SIZE/sizeof(struct d_dirent));
+		d = &((struct d_dirent *)((*buf)->data))[entry];
 		
 		return (d);
 	}
@@ -167,7 +167,7 @@ PRIVATE struct dirent *dirent_search
 PUBLIC ino_t dir_search(struct inode *ip, const char *filename)
 {
 	struct buffer *buf; /* Block buffer.    */
-	struct dirent *d;   /* Directory entry. */
+	struct d_dirent *d; /* Directory entry. */
 	
 	/* Search directory entry. */
 	d = dirent_search(ip, filename, &buf, 0);
@@ -185,7 +185,7 @@ PUBLIC ino_t dir_search(struct inode *ip, const char *filename)
 PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 {
 	struct buffer *buf; /* Block buffer.    */
-	struct dirent *d;   /* Directory entry. */
+	struct d_dirent *d; /* Directory entry. */
 	struct inode *file; /* File inode.      */
 	
 	d = dirent_search(dinode, filename, &buf, 0);
@@ -249,7 +249,7 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 {
 	struct buffer *buf; /* Block buffer.         */
-	struct dirent *d;   /* Disk directory entry. */
+	struct d_dirent *d; /* Disk directory entry. */
 	
 	d = dirent_search(dinode, name, &buf, 1);
 	

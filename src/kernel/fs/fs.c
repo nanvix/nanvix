@@ -9,6 +9,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <dirent.h>
 #include <errno.h>
 #include "fs.h"
 
@@ -175,6 +176,9 @@ PUBLIC void fs_init(void)
 	binit();
 	inode_init();
 	superblock_init();
+	
+	/* Sanity check. */
+	CHKSIZE(sizeof(struct d_dirent), sizeof(struct dirent));
 
 	rootdev = superblock_read(ROOT_DEV);
 	

@@ -9,10 +9,7 @@
 
 	#include <sys/types.h>
 	#include <limits.h>
-
-	/* Size of dirent structure. */
-	#define _SIZEOF_DIRENT (sizeof(struct dirent))
-
+	
 	/*
 	 * Directory entry.
 	 */
@@ -23,7 +20,7 @@
 	};
 	
 	/* Directory stream buffer size. */
-	#define _DIR_BUFSIZ ((1024/_SIZEOF_DIRENT)*_SIZEOF_DIRENT)
+	#define _DIR_BUFSIZ ((1024/sizeof(struct dirent))*sizeof(struct dirent))
 
 	/* Directory stream flags. */
 	#define _DIR_VALID 001 /* Valid directory?  */

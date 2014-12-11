@@ -33,13 +33,9 @@
 	#include <nanvix/pm.h>
 	#include <sys/stat.h>
 	#include <sys/types.h>
+	#include <minix.h>
 	#include <stdint.h>
 	#include <ustat.h>
-	
-	/**
-	 * @brief User for block number.
-	 */
-	typedef uint16_t block_t;
 
 /*============================================================================*
  *                              Block Buffer Library                          *
@@ -83,57 +79,6 @@
 	 * @defgroup Inode Inode Module
 	 */
 	/**@{*/
-	
-	/**
-	 * @name Number of Zones
-	 * 
-	 * @details Number of zones in an #inode.
-	 */
-	/**@{*/
-	#define NR_ZONES_DIRECT 7 /**< Number of direct zones.          */
-	#define NR_ZONES_SINGLE 1 /**< Number of single indirect zones. */
-	#define NR_ZONES_DOUBLE 1 /**< Number of double indirect zones. */
-	#define NR_ZONES        9 /**< Total of zones.                  */
-	/**@}*/
-	
-	/**
-	 * @name Zone Index
-	 * 
-	 * @details Index of zones in an #inode.
-	 */
-	/**@{*/
-	#define ZONE_DIRECT                               0 /**< Direct zone.     */ 
-	#define ZONE_SINGLE               (NR_ZONES_DIRECT) /**< Single indirect. */
-	#define ZONE_DOUBLE (ZONE_SINGLE + NR_ZONES_SINGLE) /**< Double indirect. */
-	/**@}*/
-	
-	/**
-	 * @name Zone Dimensions
-	 * 
-	 * @details Dimension of zones.
-	 */
-	/**@{*/
-	
-	/** Number of zones in a direct zone. */
-	#define NR_DIRECT 1
-
-	/** Number of zones in a single indirect zone. */
-	#define NR_SINGLE (BLOCK_SIZE/sizeof(block_t))
-	
-	/** Number of zones in a double indirect zone. */
-	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(block_t))*NR_SINGLE)
-	
-	/**@}*/
-	
-	/**
-	 * @brief Null inode.
-	 */
-	#define INODE_NULL 0
-	
-	/**
-	 * @brief Root inode.
-	 */
-	#define INODE_ROOT 0
 	
 	/**
 	 * @brief Inode flags.
@@ -198,11 +143,6 @@
 	/**@{*/
 	
 	/**
-	 * @brief Null block.
-	 */
-	#define BLOCK_NULL 0
-	
-	/**
 	 * @brief Log 2 of block size.
 	 */
 	#define BLOCK_SIZE_LOG2 10
@@ -252,7 +192,6 @@
 		off_t pos;           /* Read/write cursor's position. */
 		struct inode *inode; /* Underlying inode.             */
 	};
-
 	
 	/*
 	 * File table.
