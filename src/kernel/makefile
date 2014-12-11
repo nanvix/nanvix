@@ -51,7 +51,7 @@ OBJ = $(ASM_SRC:.S=.o) \
 EXEC = kernel
 
 # Linker configuration options.
-export LDFLAGS = -m elf_i386 -T arch/$(ARCH)/link.ld
+export LDFLAGS = -T arch/$(ARCH)/link.ld
 
 # Builds object file from C source file.
 %.o: %.c

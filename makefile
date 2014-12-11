@@ -35,7 +35,6 @@ export AR = $(TARGET)-ar
 
 # Toolchain configuration.
 export CFLAGS    = -I $(INCDIR)
-export CFLAGS   += -m32
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 export CFLAGS   += -Wall -Wextra -Werror
