@@ -50,7 +50,7 @@ PRIVATE struct d_dirent *dirent_search
 	entry = -1;
 	blk = dinode->blocks[0];		
 	(*buf) = NULL;
-	
+	d = NULL;
 	/* Search directory entry. */
 	while (i < nentries)
 	{

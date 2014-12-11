@@ -106,8 +106,7 @@ PRIVATE uint8_t parse_key_hit(void)
 	uint8_t scancode;
 	uint8_t port_value;
 	
-    if(inputb(0x64) & 1)
-        scancode = inputb(0x60);
+    scancode = inputb(0x60);
 
     port_value = inputb(0x61);
     outputb(0x61, port_value | 0x80); 

@@ -12,8 +12,8 @@
  */
 int fputs(const char *str, FILE *stream)
 {
-	int c;   /* Working character. */
-	int ret; /* Return value.      */
+	int c;       /* Working character. */
+	int ret = 0; /* Return value.      */
 	
 	/* Write string. */
 	while ((c = *str++) != '\0')

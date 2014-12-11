@@ -19,10 +19,10 @@
  */
 PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 {
-	dev_t dev;       /* Device number.          */
-	struct file *f;  /* File.                   */
-	struct inode *i; /* Inode.                  */
-	ssize_t count;   /* Bytes actually written. */
+	dev_t dev;         /* Device number.          */
+	struct file *f;    /* File.                   */
+	struct inode *i;   /* Inode.                  */
+	ssize_t count = 0; /* Bytes actually written. */
 	
 	/* Invalid file descriptor. */
 	if ((fd < 0) || (fd >= OPEN_MAX) || ((f = curr_proc->ofiles[fd]) == NULL))
