@@ -111,7 +111,7 @@
 		uint8_t i_gid;              /**< Group number of owner user.          */
 		uint8_t i_nlinks;           /**< Number of links to the file.         */
 		uint16_t i_zones[NR_ZONES]; /**< Zone numbers.                        */
-	};
+	} __attribute__((packed));
 	
 	/**@}*/
 	
@@ -145,7 +145,7 @@
 		uint16_t unused1;            /**< Unused.                     */
 		uint32_t s_max_size;         /**< Maximum file size.          */
 		uint16_t s_magic;            /**< Magic number.               */
-	};
+	} __attribute__((packed));
 	
 	/**
 	 * @brief Maximum inode map size (in bytes).

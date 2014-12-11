@@ -237,20 +237,19 @@ PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
 /**
  * @brief Maps a file byte offset in a disk block number.
  * 
- * @details Maps a file byte offset in a disk block number by traversing the
- *          disk block tree of the related inode. If the associated disk block
- *          does not exist, it may be created, if requested.
+ * @details Maps the offset @p off in the file pointed to by @p ip in a disk
+ *          block number. If @p create is not zero and such file by offset is
+ *          invalid, the file is expanded accordingly to make it valid.
  * 
- * @param inode  Inode to use.
- * @param off    File offset.
- * @param create Zero if the block should be created if it does not exist, and
- *               one otherwise.
+ * @param ip     File to use
+ * @param off    File byte offset.
+ * @param create Create offset?
  * 
  * @returns Upon successful completion, the disk block number that is associated
  *          with the file byte offset is returned. Upon failure, #BLOCK_NULL is
  *          returned instead.
  * 
- * @note The inode must be locked.
+ * @note @p ip must be locked.
  */
 PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 {
@@ -261,7 +260,7 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 	logic = off/BLOCK_SIZE;
 	
 	/* File offset too big. */
-	if (off/BLOCK_SIZE >= (ssize_t)(NR_DIRECT + NR_SINGLE + NR_DOUBLE))
+	if (off >= inode->sb->max_size)
 	{
 		curr_proc->errno = -EFBIG;
 		return (BLOCK_NULL);
