@@ -75,7 +75,7 @@ void slseek(int fd, off_t offset, int whence)
  */
 void sread(int fd, void *buf, size_t count)
 {
-	ssize_t ret;
+	size_t ret;
 	
 	ret = read(fd, buf, count);
 	if (ret != count)
@@ -90,7 +90,7 @@ void sread(int fd, void *buf, size_t count)
  */
 void swrite(int fd, const void *buf, size_t count)
 {
-	ssize_t ret;
+	size_t ret;
 	
 	ret = write(fd, buf, count);
 	if (ret != count)

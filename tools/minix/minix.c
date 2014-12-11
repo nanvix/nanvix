@@ -31,11 +31,6 @@
 #include "safe.h"
 
 /**
- * @brief Block size.
- */
-const size_t block_size = 1024;
-
-/**
  * @brief Mounted superblock.
  */
 static struct d_superblock super;
@@ -77,7 +72,7 @@ static int minix_super_read(void)
 	assert(fd >= 0);
 	
 	/* Read superblock. */
-	slseek(fd, 1*block_size, SEEK_SET);
+	slseek(fd, 1*BLOCK_SIZE, SEEK_SET);
 	sread(fd, &super, sizeof(struct d_superblock));
 	if (super.s_magic != SUPER_MAGIC)
 	{
@@ -86,14 +81,14 @@ static int minix_super_read(void)
 	}
 	
 	/* Read inode map. */
-	imap.bitmap = smalloc(super.s_imap_nblocks*block_size);
-	imap.size = super.s_imap_nblocks*block_size;
-	sread(fd, imap.bitmap, super.s_imap_nblocks*block_size);
+	imap.bitmap = smalloc(super.s_imap_nblocks*BLOCK_SIZE);
+	imap.size = super.s_imap_nblocks*BLOCK_SIZE;
+	sread(fd, imap.bitmap, super.s_imap_nblocks*BLOCK_SIZE);
 	
 	/* Read zone map. */
-	zmap.bitmap = smalloc(super.s_zmap_nblocks*block_size);
-	zmap.size = super.s_zmap_nblocks*block_size;
-	sread(fd, zmap.bitmap, super.s_zmap_nblocks*block_size);
+	zmap.bitmap = smalloc(super.s_bmap_nblocks*BLOCK_SIZE);
+	zmap.size = super.s_bmap_nblocks*BLOCK_SIZE;
+	sread(fd, zmap.bitmap, super.s_bmap_nblocks*BLOCK_SIZE);
 	
 	return (0);
 }
@@ -112,18 +107,18 @@ static int minix_super_write(void)
 	assert(fd >= 0);
 	
 	/* Write superblock. */
-	slseek(fd, 1*block_size, SEEK_SET);
+	slseek(fd, 1*BLOCK_SIZE, SEEK_SET);
 	swrite(fd, &super, sizeof(struct d_superblock));
 	
 	/* Read inode map. */
-	imap.bitmap = smalloc(super.s_imap_nblocks*block_size);
-	imap.size = super.s_imap_nblocks*block_size;
-	swrite(fd, imap.bitmap, super.s_imap_nblocks*block_size);
+	imap.bitmap = smalloc(super.s_imap_nblocks*BLOCK_SIZE);
+	imap.size = super.s_imap_nblocks*BLOCK_SIZE;
+	swrite(fd, imap.bitmap, super.s_imap_nblocks*BLOCK_SIZE);
 	
 	/* Read zone map. */
-	zmap.bitmap = smalloc(super.s_zmap_nblocks*block_size);
-	zmap.size = super.s_zmap_nblocks*block_size;
-	swrite(fd, zmap.bitmap, super.s_zmap_nblocks*block_size);
+	zmap.bitmap = smalloc(super.s_bmap_nblocks*BLOCK_SIZE);
+	zmap.size = super.s_bmap_nblocks*BLOCK_SIZE;
+	swrite(fd, zmap.bitmap, super.s_bmap_nblocks*BLOCK_SIZE);
 	
 	/* House keeping. */
 	free(imap.bitmap);
@@ -196,10 +191,10 @@ struct d_inode *minix_inode_read(uint16_t num)
 	ip = smalloc(sizeof(struct d_inode));
 	
 	/* Compute file offset. */
-	inodes_per_block = block_size/sizeof(struct d_inode);
+	inodes_per_block = BLOCK_SIZE/sizeof(struct d_inode);
 	idx = num/inodes_per_block; 
 	off = num%inodes_per_block;
-	offset = (2 + super.s_imap_nblocks + super.s_zmap_nblocks + idx)*block_size;
+	offset = (2 + super.s_imap_nblocks + super.s_bmap_nblocks + idx)*BLOCK_SIZE;
 	offset += off*sizeof(struct d_inode);
 	
 	/* Read inode. */
@@ -229,10 +224,10 @@ void minix_inode_write(uint16_t num, struct d_inode *ip)
 	assert(ip != NULL);
 	
 	/* Compute file offset. */
-	inodes_per_block = block_size/sizeof(struct d_inode);
+	inodes_per_block = BLOCK_SIZE/sizeof(struct d_inode);
 	idx = num/inodes_per_block; 
 	off = num%inodes_per_block;
-	offset = (2 + super.s_imap_nblocks + super.s_zmap_nblocks + idx)*block_size;
+	offset = (2 + super.s_imap_nblocks + super.s_bmap_nblocks + idx)*BLOCK_SIZE;
 	offset += off*sizeof(struct d_inode);
 	
 	/* Read inode. */
@@ -273,7 +268,7 @@ static block_t minix_inode_alloc(void)
 
 	bitmap_set(imap.bitmap, bit);
 	
-	return (2 + super.s_imap_nblocks + super.s_zmap_nblocks + bit);
+	return (2 + super.s_imap_nblocks + super.s_bmap_nblocks + bit);
 }
 
 /**
@@ -295,9 +290,9 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 {
 	block_t phys;                            /* Phys. blk. #.   */
 	block_t logic;                           /* Logic. blk. #.  */
-	block_t buf[block_size/sizeof(block_t)]; /* Working buffer. */
+	block_t buf[BLOCK_SIZE/sizeof(block_t)]; /* Working buffer. */
 	
-	logic = off/block_size;
+	logic = off/BLOCK_SIZE;
 	
 	/* File offset too big. */
 	if (off >= super.s_max_size)
@@ -349,9 +344,9 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 		if ((phys = ip->i_zones[ZONE_SINGLE]) == BLOCK_NULL)
 			return (BLOCK_NULL);
 	
-		off = phys*block_size;
+		off = phys*BLOCK_SIZE;
 		slseek(fd, off, SEEK_SET);
-		sread(fd, buf, block_size);
+		sread(fd, buf, BLOCK_SIZE);
 		
 		/* Create direct block. */
 		if (buf[logic] == BLOCK_NULL && create)
@@ -364,7 +359,7 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 				ip->i_time = 0;
 				
 				slseek(fd, off, SEEK_SET);
-				swrite(fd, buf, block_size);
+				swrite(fd, buf, BLOCK_SIZE);
 			}
 		}
 		
@@ -415,7 +410,7 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		/* Skip invalid block. */
 		if (blk == BLOCK_NULL)
 		{
-			i += block_size/sizeof(struct d_dirent);
+			i += BLOCK_SIZE/sizeof(struct d_dirent);
 			blk = minix_block_map(ip, i*sizeof(struct d_dirent), 0);
 			continue;
 		}
@@ -424,12 +419,12 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		if (base < 0)
 		{
 			off = 0;
-			base = (super.s_first_data_block + blk)*block_size;
+			base = (super.s_first_data_block + blk)*BLOCK_SIZE;
 			slseek(fd, base, SEEK_SET);
 		}
 		
 		/* Get next block. */
-		else if (off >= block_size)
+		else if (off >= BLOCK_SIZE)
 		{
 			base = -1;
 			blk = minix_block_map(ip, i*sizeof(struct d_dirent), 0);
@@ -485,8 +480,8 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 			blk = minix_block_map(ip, entry*sizeof(struct d_dirent), 0);
 		
 		/* Compute file offset. */
-		off = (entry%(block_size/sizeof(struct d_dirent)))*sizeof(struct d_dirent);
-		base = blk*block_size;
+		off = (entry%(BLOCK_SIZE/sizeof(struct d_dirent)))*sizeof(struct d_dirent);
+		base = blk*BLOCK_SIZE;
 		
 			fprintf(stderr, "ret: %zd, %zd, %u\n", base + off, base, blk);
 		return (base + off);
@@ -525,7 +520,7 @@ uint16_t dir_search(struct d_inode *ip, const char *filename)
 
 uint16_t minix_mkdir(struct d_inode *ip, const char *filename)
 {
-	off_t off;       /* File offset where the entry is. */
+	off_t off;         /* File offset where the entry is. */
 	struct d_dirent d; /* Working directory entry.        */
 	
 	/* Search directory entry. */
@@ -547,4 +542,6 @@ uint16_t minix_mkdir(struct d_inode *ip, const char *filename)
 	
 	slseek(fd, off, SEEK_SET);
 	swrite(fd, &d, sizeof(struct d_dirent));
+	
+	return (d.d_ino);
 }

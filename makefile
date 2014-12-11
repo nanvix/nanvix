@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
-    
+
 # Directories.
 export BINDIR   = $(CURDIR)/bin
 export SBINDIR  = $(BINDIR)/sbin
@@ -44,6 +44,9 @@ export ASMFLAGS  = -Wa,--divide,--warn
 export ARFLAGS   = -vq
 export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 
+# Resolves conflicts.
+.PHONY: tools
+
 # Builds everything.
 all: nanvix documentation
 
@@ -56,11 +59,16 @@ nanvix:
 
 # Builds system's image.
 image: $(BINDIR)/kernel
+	mkdir -p $(BINDIR)
 	bash $(TOOLSDIR)/build/build-img.sh
 
 # Builds documentation.
 documentation:
 	doxygen $(DOXYDIR)/kernel.config
+
+# Builds tools.
+tools:
+	cd $(TOOLSDIR) && $(MAKE) all
 
 # Cleans compilation files.
 clean:
@@ -68,3 +76,4 @@ clean:
 	@rm -rf $(BINDIR)
 	@rm -rf $(DOCDIR)/*-kernel
 	cd $(SRCDIR) && $(MAKE) clean
+	cd $(TOOLSDIR) && $(MAKE) clean

@@ -33,6 +33,16 @@
  *============================================================================*/
  
 	/**
+	 * @brief Log 2 of block size.
+	 */
+	#define BLOCK_SIZE_LOG2 10
+	
+	/**
+	 * @brief Block size (in bytes).
+	 */
+	#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
+	
+	/**
 	 * @brief User for block number.
 	 */
 	typedef uint16_t block_t;
@@ -149,7 +159,7 @@
 	 */
 	struct d_dirent
 	{
-		ino_t d_ino;                 /**< File serial number. */
+		uint16_t d_ino;              /**< File serial number. */
 		char d_name[MINIX_NAME_MAX]; /**< Name of entry.      */
 	} __attribute__((packed));
 

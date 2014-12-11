@@ -28,12 +28,12 @@
 
 #ifndef _ASM_FILE_
 
+	#include <fs/minix.h>
 	#include <nanvix/config.h>
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
 	#include <sys/stat.h>
 	#include <sys/types.h>
-	#include <minix.h>
 	#include <stdint.h>
 	#include <ustat.h>
 
@@ -141,16 +141,6 @@
 	 * @defgroup Superblock Superblock Module
 	 */
 	/**@{*/
-	
-	/**
-	 * @brief Log 2 of block size.
-	 */
-	#define BLOCK_SIZE_LOG2 10
-	
-	/**
-	 * @brief Block size (in bytes).
-	 */
-	#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
 
 	/**
 	 * @brief Opaque pointer to a in-core superblock.
