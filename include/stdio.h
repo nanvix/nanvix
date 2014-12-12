@@ -151,11 +151,6 @@
 	 */
 	extern int vsprintf(char *string, const char *format, va_list args);
 	
-	/*
-	 * Flushes a file stream.
-	 */
-	extern int fflush(FILE *stream);
-	
 	/* Standard file streams. */
 	extern FILE *stdin;  /* Standard input.  */
 	extern FILE *stdout; /* Standard output. */

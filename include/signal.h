@@ -47,7 +47,6 @@
 	typedef void (*sighandler_t)(int);
 	
 	/* Function prototypes. */
-	extern int kill(pid_t pid, int sig);
 	extern sighandler_t signal(int sig, sighandler_t func);
 	extern int kill(pid_t pid, int sig);
 

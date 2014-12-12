@@ -129,11 +129,6 @@
 	EXTERN int sys_close(int fd);
 	
 	/*
-	 * Duplicates a file descriptor.
-	 */
-	EXTERN int sys_dup2(int oldfd, int newfd);
-	
-	/*
 	 * Executes a program.
 	 */
 	EXTERN int sys_execve(const char *filename, const char **argv, const char **envp);
@@ -157,16 +152,6 @@
 	 * Gets the real user group ID of the calling process.
 	 */
 	EXTERN gid_t sys_getgid(void);
-	
-	/*
-	 * Gets the parent process ID of the calling process.
-	 */
-	EXTERN pid_t sys_getppid(void);
-	
-	/*
-	 * Gets the real user ID of the calling process.
-	 */
-	EXTERN uid_t sys_getuid(void);
 
 	/*
 	 * Links a name to a file.
@@ -197,21 +182,6 @@
 	 * Sets the effective user group ID of the calling process.
 	 */
 	EXTERN int sys_setegid(gid_t gid);
-	
-	/*
-	 * Sets the real user group ID of the calling process.
-	 */
-	EXTERN int sys_setgid(gid_t gid);
-	
-	/*
-	 * Sets the effective user ID of the calling process.
-	 */
-	EXTERN int sys_seteuid(uid_t uid);
-	
-	/*
-	 * Sets the real user ID of the calling process.
-	 */
-	EXTERN int sys_setuid(pid_t uid);
 	
 	/*
 	 * Gets file status.
