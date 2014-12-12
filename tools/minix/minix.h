@@ -24,7 +24,6 @@
 
 	/* Forward definitions. */
 	extern void minix_inode_write(uint16_t, struct d_inode *);
-	extern const char *break_path(const char *pathname, char *);
 	extern uint16_t dir_search(struct d_inode *, const char *);
 	extern void minix_mount(const char *);
 	extern void minix_umount(void);

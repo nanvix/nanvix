@@ -29,5 +29,7 @@
 	extern void sread(int, void *, size_t);
 	extern void swrite(int, const void *, size_t);
 	extern void *smalloc(size_t);
+	extern void error(const char *);
+	extern const char *break_path(const char *pathname, char *);
 
 #endif /* _SAFE_H_ */

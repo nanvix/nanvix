@@ -18,9 +18,9 @@
  */
 
 #include <sys/types.h>
-#include <assert.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,7 +28,8 @@
 
 #include "bitmap.h"
 #include "minix.h"
-#include "safe.h"
+#include "stat.h"
+#include "util.h"
 
 /**
  * @brief Mounted superblock.
@@ -45,8 +46,8 @@ static int fd = -1;
  */
 static struct
 {
-	size_t size;     /**< Size of bitmap (in byte). */
-	uint32_t *bitmap; /**< Bitmap.                  */
+	size_t size;      /**< Size of bitmap (in byte). */
+	uint32_t *bitmap; /**< Bitmap.                   */
 } imap;
 
 /**
@@ -54,31 +55,20 @@ static struct
  */
 static struct
 {
-	size_t size;     /**< Size of bitmap (in byte). */
-	uint32_t *bitmap; /**< Bitmap.                  */
+	size_t size;      /**< Size of bitmap (in byte). */
+	uint32_t *bitmap; /**< Bitmap.                   */
 } zmap;
 
 /**
- * @brief Reads Minix superblock.
- * 
- * @details Reads the superblock of the mounted Minix file system
- * 
- * @returns Upon successful completion, zero is returned. Upon failure, a
- *          negative error code is returned instead.
+ * @brief Reads the superblock of a Minix file system.
  */
-static int minix_super_read(void)
-{
-	/* Sanity check. */
-	assert(fd >= 0);
-	
+static void minix_super_read(void)
+{	
 	/* Read superblock. */
 	slseek(fd, 1*BLOCK_SIZE, SEEK_SET);
 	sread(fd, &super, sizeof(struct d_superblock));
 	if (super.s_magic != SUPER_MAGIC)
-	{
-		fprintf(stderr, "bad magic number %x\n", super.s_magic);
-		return (-1);
-	}
+		error("bad magic number");
 	
 	/* Read inode map. */
 	imap.bitmap = smalloc(super.s_imap_nblocks*BLOCK_SIZE);
@@ -89,23 +79,13 @@ static int minix_super_read(void)
 	zmap.bitmap = smalloc(super.s_bmap_nblocks*BLOCK_SIZE);
 	zmap.size = super.s_bmap_nblocks*BLOCK_SIZE;
 	sread(fd, zmap.bitmap, super.s_bmap_nblocks*BLOCK_SIZE);
-	
-	return (0);
 }
 
 /**
- * @brief Writes Minix superblock.
- * 
- * @details Writes the superblock of the mounted Minix file system.
- * 
- * @returns Upon successful completion, zero is returned. Upon failure, a
- *          negative error code is returned instead.
+ * @brief Writes the superblock of a Minix file system.
  */
-static int minix_super_write(void)
+static void minix_super_write(void)
 {
-	/* Sanity check. */
-	assert(fd >= 0);
-	
 	/* Write superblock. */
 	slseek(fd, 1*BLOCK_SIZE, SEEK_SET);
 	swrite(fd, &super, sizeof(struct d_superblock));
@@ -123,60 +103,38 @@ static int minix_super_write(void)
 	/* House keeping. */
 	free(imap.bitmap);
 	free(zmap.bitmap);
-	
-	return (0);
 }
 
 /**
  * @brief Mounts a Minix file system.
  * 
- * @details Mounts the Minix file system that resides in the file @p filename.
- * 
  * @param filename File where the Minix file system resides.
  */
 void minix_mount(const char *filename)
 {
-	int ret;
-	
 	fd = sopen(filename, O_RDWR);
-	
-	/* Read the super block. */
-	ret = minix_super_read();
-	if (ret < 0)
-	{
-		fprintf(stderr, "cannot minix_mount()\n");
-		exit(EXIT_FAILURE);
-	}
+	minix_super_read();
 }
 
 /**
- * @brief Unmounts a Minix file system.
+ * @brief Unmounts the currently mounted Minix file system.
  * 
- * @details Unmounts the currently mounted Minix file system.
+ * @note The Minix file system must be mounted.
  */
 void minix_umount(void)
 {
-	int ret;
-	
-	/* Write the super block. */
-	ret = minix_super_write();
-	if (ret < 0)
-	{
-		fprintf(stderr, "cannot minix_unmount()\n");
-		exit(EXIT_FAILURE);
-	}
-	
+	minix_super_write();
 	sclose(fd);
 }
 
 /**
- * @brief Reads an inode from the mounted Minix file system.
- * 
- * @details Reads the inode numbered @p num from the mounted Minix file system.
+ * @brief Reads an inode from the currently mounted Minix file system.
  * 
  * @param num Number of the inode that shall be read.
  * 
- * @returns A pointer to the requested inode is returned.
+ * @returns A pointer to the requested inode.
+ * 
+ * @note The Minix file system must be mounted.
  */
 struct d_inode *minix_inode_read(uint16_t num)
 {
@@ -185,8 +143,9 @@ struct d_inode *minix_inode_read(uint16_t num)
 	struct d_inode *ip;        /* Inode.                     */
 	unsigned inodes_per_block; /* Inodes per block.          */
 	
-	/* Sanity check. */
-	assert(num < super.s_ninodes);
+	/* Bad inode number. */
+	if (num >= super.s_imap_nblocks*BLOCK_SIZE*8)
+		error("bad inode number");
 	
 	ip = smalloc(sizeof(struct d_inode));
 	
@@ -205,13 +164,12 @@ struct d_inode *minix_inode_read(uint16_t num)
 }
 
 /**
- * @brief Writes an inode to the mounted Minix file system.
- * 
- * @details Writes the inode numbered @p num and pointed to by @p ip to the
- *          mounted Minix file system.
+ * @brief Writes an inode to the currently mounted Minix file system.
  * 
  * @param num Number of the inode that shall be written.
  * @param ip  Inode that shall be written.
+ * 
+ * @note The Minix file system must be mounted.
  */
 void minix_inode_write(uint16_t num, struct d_inode *ip)
 {
@@ -219,9 +177,9 @@ void minix_inode_write(uint16_t num, struct d_inode *ip)
 	off_t offset;              /* Offset in the file system. */
 	unsigned inodes_per_block; /* Inodes per block.          */
 	
-	/* Sanity check. */
-	assert(num < super.s_ninodes);
-	assert(ip != NULL);
+	/* Bad inode number. */
+	if (num >= super.s_imap_nblocks*BLOCK_SIZE*8)
+		error("bad inode number");
 	
 	/* Compute file offset. */
 	inodes_per_block = BLOCK_SIZE/sizeof(struct d_inode);
@@ -240,53 +198,75 @@ void minix_inode_write(uint16_t num, struct d_inode *ip)
 /**
  * @brief Allocates a disk block.
  * 
- * @details Allocates a disk block by searching in the bitmap of zones.
+ * @returns The number of the allocated block.
  * 
- * @return Upon successful completion, the zone number of the allocated zone
- *         is returned. Upon failed, #BLOCK_NULL is returned instead.
+ * @note The Minix file system must be mounted.
  */
 static block_t minix_block_alloc(void)
 {
 	uint32_t bit;
 
+	/* Allocate block. */
 	bit = bitmap_first_free(zmap.bitmap, zmap.size);
 	if (bit == BITMAP_FULL)
-		return (BLOCK_NULL);
-
+		error("block map overflow");
 	bitmap_set(zmap.bitmap, bit);
 	
 	return (super.s_first_data_block + bit);
 }
 
-static block_t minix_inode_alloc(void)
+/**
+ * @brief Allocates an inode.
+ * 
+ * @param mode Access mode.
+ * @param uid  User ID.
+ * @param gid  User group ID.
+ * 
+ * @returns The number of the allocated inode.
+ * 
+ * @note The Minix file system must be mounted.
+ */
+static uint16_t minix_inode_alloc(uint16_t mode, uint16_t uid, uint16_t gid)
 {
-	uint32_t bit;
+	uint16_t num;       /* Inode number.                */
+	uint32_t bit;       /* Bit number if the inode map. */
+	struct d_inode *ip; /* New inode.                   */
 
+	/* Allocate inode. */
 	bit = bitmap_first_free(imap.bitmap, imap.size);
 	if (bit == BITMAP_FULL)
-		return (BLOCK_NULL);
-
+		error("inode map overflow");
 	bitmap_set(imap.bitmap, bit);
+	num = 2 + super.s_imap_nblocks + super.s_bmap_nblocks + bit;
 	
-	return (2 + super.s_imap_nblocks + super.s_bmap_nblocks + bit);
+	/* Initialize inode. */
+	ip = minix_inode_read(num);
+	ip->i_mode = mode;
+	ip->i_uid = uid;
+	ip->i_size = 0;
+	ip->i_time = 0;
+	ip->i_gid = gid;
+	ip->i_nlinks = 1;
+	for (unsigned i; i < NR_ZONES; i++)
+		ip->i_zones[i] = BLOCK_NULL;
+	minix_inode_write(num, ip);
+
+	return (num);
 }
 
 /**
- * @brief Maps a file byte offset in a disk block number.
- * 
- * @details Maps the offset @p off in the file pointed to by @p ip in a disk
- *          block number. If @p create is not zero and such file by offset is
- *          invalid, the file is expanded accordingly to make it valid.
+ * @brief Maps a file byte offset in a block number.
  * 
  * @param ip     File to use
  * @param off    File byte offset.
  * @param create Create offset?
  * 
- * @returns Upon successful completion, the disk block number that is associated
- *          with the file byte offset is returned. Upon failure, #BLOCK_NULL is
- *          returned instead.
+ * @returns The block number that is associated with the file byte offset.
+ * 
+ * @note @p ip must point to a valid inode.
+ * @note The Minix file system must be mounted.
  */
-static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
+static block_t minix_block_map(struct d_inode *ip, off_t off, bool create)
 {
 	block_t phys;                            /* Phys. blk. #.   */
 	block_t logic;                           /* Logic. blk. #.  */
@@ -295,15 +275,15 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 	logic = off/BLOCK_SIZE;
 	
 	/* File offset too big. */
-	if (off >= super.s_max_size)
-		return (BLOCK_NULL);
+	if ((uint32_t)off >= super.s_max_size)
+		error("file too big");
 	
 	/* 
 	 * Create blocks that are
 	 * in a valid offset.
 	 */
-	if (off < ip->i_size)
-		create = 1;
+	if ((uint32_t)off < ip->i_size)
+		create = true;
 	
 	/* Direct block. */
 	if (logic < NR_ZONES_DIRECT)
@@ -312,12 +292,7 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 		if (ip->i_zones[logic] == BLOCK_NULL && create)
 		{
 			phys = minix_block_alloc();
-			
-			if (phys != BLOCK_NULL)
-			{
-				ip->i_zones[logic] = phys;
-				ip->i_time = 0;
-			}
+			ip->i_zones[logic] = phys;
 		}
 		
 		return (ip->i_zones[logic]);
@@ -332,17 +307,12 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 		if (ip->i_zones[ZONE_SINGLE] == BLOCK_NULL && create)
 		{
 			phys = minix_block_alloc();
-			
-			if (phys != BLOCK_NULL)
-			{
-				ip->i_zones[ZONE_SINGLE] = phys;
-				ip->i_time = 0;
-			}
+			ip->i_zones[ZONE_SINGLE] = phys;
 		}
 		
 		/* We cannot go any further. */
 		if ((phys = ip->i_zones[ZONE_SINGLE]) == BLOCK_NULL)
-			return (BLOCK_NULL);
+			error("invalid offset");
 	
 		off = phys*BLOCK_SIZE;
 		slseek(fd, off, SEEK_SET);
@@ -352,15 +322,9 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 		if (buf[logic] == BLOCK_NULL && create)
 		{
 			phys = minix_block_alloc();
-			
-			if (phys != BLOCK_NULL)
-			{
-				buf[logic] = phys;
-				ip->i_time = 0;
-				
-				slseek(fd, off, SEEK_SET);
-				swrite(fd, buf, BLOCK_SIZE);
-			}
+			buf[logic] = phys;
+			slseek(fd, off, SEEK_SET);
+			swrite(fd, buf, BLOCK_SIZE);
 		}
 		
 		return (buf[logic]);
@@ -369,7 +333,7 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 	logic -= NR_SINGLE;
 	
 	/* Double indirect zone. */
-	fprintf(stderr, "double indirect zones not supported yet");
+	error("double indect zone");
 	
 	return (BLOCK_NULL);
 }
@@ -377,26 +341,25 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, int create)
 /**
  * @brief Searches for a directory entry.
  * 
- * @details Searches for a directory entry named @p filename in the directory
- *          pointed to by @p ip. If @p create is not zero and such file entry
- *          does not exist, the entry is created.
- * 
  * @param ip       Directory where the directory entry shall be searched. 
  * @param filename Name of the directory entry that shall be searched.
  * @param create   Create directory entry?
  * 
- * @returns Upon successful completion, the file offset where the directory 
- *          entry is located is returned. Upon failure, (off_t)-1 is returned
- *          instead.
+ * @returns The file offset where the directory entry is located, or -1 if the
+ *          file does not exist.
+ * 
+ * @note @p ip must point to a valid inode
+ * @note @p filename must point to a valid file name.
+ * @note The Minix file system must be mounted.
  */
-static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
+static off_t dirent_search(struct d_inode *ip, const char *filename,bool create)
 {
-	int i;         /* Working entry.              */
+	int i;             /* Working entry.               */
 	off_t base, off;   /* Working file offsets.        */
 	int entry;         /* Free entry.                  */
-	block_t blk; /* Working block.               */
-	int nentries; /* Number of directory entries. */
-	struct d_dirent d;   /* Working directory entry.     */
+	block_t blk;       /* Working block.               */
+	int nentries;      /* Number of directory entries. */
+	struct d_dirent d; /* Working directory entry.     */
 	
 	nentries = ip->i_size/sizeof(struct d_dirent);
 	
@@ -411,7 +374,7 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/sizeof(struct d_dirent);
-			blk = minix_block_map(ip, i*sizeof(struct d_dirent), 0);
+			blk = minix_block_map(ip, i*sizeof(struct d_dirent), false);
 			continue;
 		}
 		
@@ -427,7 +390,7 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		else if (off >= BLOCK_SIZE)
 		{
 			base = -1;
-			blk = minix_block_map(ip, i*sizeof(struct d_dirent), 0);
+			blk = minix_block_map(ip, i*sizeof(struct d_dirent), false);
 			continue;
 		}
 		
@@ -455,57 +418,54 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		off += sizeof(struct d_dirent);
 	}
 	
-	/* Create entry. */
-	if (create)
-	{	
-	
-		/* Expand directory. */
-		if (entry < 0)
-		{
-			entry = nentries;
-			
-			/* Allocate block. */
-			blk = minix_block_map(ip, entry*sizeof(struct d_dirent), 1);
-			if (blk == BLOCK_NULL)
-				return (-1);
-			
-			ip->i_size += sizeof(struct d_dirent);
-			ip->i_time = 0;
-		}
-		
-		else
-			blk = minix_block_map(ip, entry*sizeof(struct d_dirent), 0);
-		
-		/* Compute file offset. */
-		off = (entry%(BLOCK_SIZE/sizeof(struct d_dirent)))*sizeof(struct d_dirent);
-		base = blk*BLOCK_SIZE;
-		
-		return (base + off);
+	/* No entry found. */
+	if (!create)
+		return (-1);
+
+	/* Expand directory. */
+	if (entry < 0)
+	{
+		entry = nentries;
+		blk = minix_block_map(ip, entry*sizeof(struct d_dirent), true);
+		ip->i_size += sizeof(struct d_dirent);
+		ip->i_time = 0;
 	}
 	
-	return (-1);
+	else
+		blk = minix_block_map(ip, entry*sizeof(struct d_dirent), false);
+	
+	/* Compute file offset. */
+	off = (entry%(BLOCK_SIZE/sizeof(struct d_dirent)))*sizeof(struct d_dirent);
+	base = blk*BLOCK_SIZE;
+		
+	return (base + off);
 }
 
 /**
  * @brief Searches for a file in a directory.
  * 
- * @details Searches for a file named @p filename in the directory pointed to by
- *          @p ip.
- * 
- * @param ip       Directory where the file shall be searched.
+ * @param dip       Directory where the file shall be searched.
  * @param filename File that shal be searched.
  * 
- * @returns If the file exits, its inode number is returned. If the file does 
- *          not exist, #INODE_NULL is returned instead.
+ * @returns The inode number of the requested file, or #INODE_NULL, if such
+ *          files does not exist.
+ * 
+ * @note @p dip must point to a valid inode.
+ * @note @p filename must point to a valid file name.
+ * @note The Minix file system must be mounted.
  */
-uint16_t dir_search(struct d_inode *ip, const char *filename)
+uint16_t dir_search(struct d_inode *dip, const char *filename)
 {
-	off_t off;       /* File offset where the entry is. */
+	off_t off;         /* File offset where the entry is. */
 	struct d_dirent d; /* Working directory entry.        */
 	
+	/* Not a directory. */
+	if (!S_ISDIR(dip->i_mode))
+		error("not a directory");
+	
 	/* Search directory entry. */
-	off = dirent_search(ip, filename, 0);
-	if (off < 0)
+	off = dirent_search(dip, filename, false);
+	if (off == -1)
 		return (INODE_NULL);
 	
 	slseek(fd, off, SEEK_SET);
@@ -514,30 +474,62 @@ uint16_t dir_search(struct d_inode *ip, const char *filename)
 	return (d.d_ino);
 }
 
-uint16_t minix_mkdir(struct d_inode *ip, const char *filename)
+/**
+ * @brief Adds an entry in a directory.
+ * 
+ * @param dip       Directory where the entry should be added.
+ * @param filename Name of the entry.
+ * @param num      Inode number of the entry.
+ * 
+ * @note @p dip must point to a valid inode.
+ * @note @p filename must point to a valid file name.
+ * @note The Minix file system must be mounted.
+ */
+static void minix_dirent_add
+(struct d_inode *dip, const char *filename, uint16_t num)
 {
-	off_t off;         /* File offset where the entry is. */
-	struct d_dirent d; /* Working directory entry.        */
+	off_t off;         /* File offset of the entry. */
+	struct d_dirent d; /* Directory entry.          */
 	
-	/* Search directory entry. */
-	off = dirent_search(ip, filename, 1);
-	if (off < 0)
-		return (INODE_NULL);
+	/* Get free entry. */
+	off = dirent_search(dip, filename, true);
 	
+	/* Read directory entry. */
 	slseek(fd, off, SEEK_SET);
 	sread(fd, &d, sizeof(struct d_dirent));
 	
-	if (d.d_ino != INODE_NULL)
-		return (INODE_NULL);
-		
-	d.d_ino = minix_inode_alloc();
-	if (d.d_ino == INODE_NULL)
-		return (INODE_NULL);
-	
+	/* Set attributes. */
+	d.d_ino = num;
 	strncpy(d.d_name, filename, MINIX_NAME_MAX);
 	
+	/* Write directory entry. */
 	slseek(fd, off, SEEK_SET);
 	swrite(fd, &d, sizeof(struct d_dirent));
+}
+
+/**
+ * @brief Creates a directory.
+ * 
+ * @param dip      Directory where the new directory shall be created.
+ * @param filename Name of the new directory.
+ * 
+ * @returns The inode number of the newly created directory.
+ * 
+ * @note @p dip must point to a valid inode.
+ * @note @p filename must point to a valid file name.
+ * @note The Minix file system must be mounted.
+ */
+uint16_t minix_mkdir(struct d_inode *dip, const char *filename)
+{
+	uint16_t num;
 	
-	return (d.d_ino);
+	/* Not a directory. */
+	if (!S_ISDIR(dip->i_mode))
+		error("not a directory");
+	
+	/* Allocate inode. */
+	num = minix_inode_alloc(S_IFDIR, 0, 0);
+	minix_dirent_add(dip, filename, num);
+	
+	return (num);
 }

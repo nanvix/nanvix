@@ -23,7 +23,7 @@
 #include <unistd.h>
 
 #include "minix.h"
-#include "safe.h"
+#include "util.h"
 
 /**
  * @brief Prints program usage and exits.
@@ -54,35 +54,21 @@ int main(int argc, char **argv)
 	
 	dirname = argv[2];
 	
+	/* Traverse file system tree. */
 	ip = minix_inode_read(num1 = 0);
-	
 	do
 	{
-		/* Break path. */
-		dirname = break_path(dirname, filename);
-		if (dirname == NULL)
-		{
-			fprintf(stderr, "minis.mkdir: bad pathname\n");
-			goto out;
-		}
-		
+		dirname = break_path(dirname, filename);	
 		num2 = dir_search(ip, filename);
 		
 		/* Create directory. */
 		if (num2 == INODE_NULL)
-		{
 			num2 = minix_mkdir(ip, filename);
-		
-			if (num2 == INODE_NULL)
-				goto out;
-		}
 		
 		minix_inode_write(num1, ip);
 		ip = minix_inode_read(num1 = num2);
 		
 	} while (*filename != '\0');
-
-out:
 
 	minix_umount();
 	

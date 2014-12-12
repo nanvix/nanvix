@@ -21,7 +21,7 @@
 CC = gcc
 
 # Toolchain configuration.
-CFLAGS    = -I $(INCDIR)/fs/
+CFLAGS    = -I $(INCDIR)/fs
 CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 CFLAGS   += -Wall -Wextra -Werror
 CFLAGS   += -D NDEBUG
@@ -30,7 +30,7 @@ CFLAGS   += -D NDEBUG
 all: mkdir.minix
 
 # Builds mkfs.minix.
-mkdir.minix: bitmap.c minix.c safe.c util.c mkdir.c
+mkdir.minix: bitmap.c minix.c util.c util.c mkdir.c
 	$(CC) $(CFLAGS) $^ -o $(BINDIR)/$@
 
 # Cleans compilation files.

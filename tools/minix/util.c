@@ -17,24 +17,127 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sys/types.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "minix.h"
 
 /**
- * @brief Breaks a path
+ * @brief Safe open().
+ */
+int sopen(const char *pathname, int flags)
+{
+	int fd;
+	
+	fd = open(pathname, flags);
+	if (fd == -1)
+	{
+		fprintf(stderr, "cannot open()\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	return (fd);
+}
+
+/**
+ * @brief Safe close().
+ */
+void sclose(int fd)
+{
+	int ret;
+	
+	ret = close(fd);
+	if (ret == -1)
+	{
+		fprintf(stderr, "cannot close()\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+/**
+ * @brief Safe lseek().
+ */
+void slseek(int fd, off_t offset, int whence)
+{
+	off_t ret;
+	
+	ret = lseek(fd, offset, whence);
+	if (ret == (-1))
+	{
+		fprintf(stderr, "cannot lseek()\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+/**
+ * @brief Safe read().
+ */
+void sread(int fd, void *buf, size_t count)
+{
+	size_t ret;
+	
+	ret = read(fd, buf, count);
+	if (ret != count)
+	{
+		fprintf(stderr, "cannot read()\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+/**
+ * @brief Safe write().
+ */
+void swrite(int fd, const void *buf, size_t count)
+{
+	size_t ret;
+	
+	ret = write(fd, buf, count);
+	if (ret != count)
+	{
+		fprintf(stderr, "cannot write()\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+/**
+ * @brief Safe malloc();
+ */
+void *smalloc(size_t n)
+{
+	void *p;
+	
+	p = malloc(n);
+	if (p == NULL)
+	{
+		fprintf(stderr, "cannot malloc()\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	return (p);
+}
+
+/**
+ * @brief Prints an error message and exits.
  * 
- * @details Parses the path pointed to by @p pathname extracting the first
- *          path-part from it. The path-part is stored in the array pointed to
- *          by @p filename.
+ * @param msg Error message to be printed.
+ */
+void error(const char *msg)
+{
+	fprintf(stderr, "error: %s\n", msg);
+	exit(EXIT_FAILURE);
+}
+
+/**
+ * @brief Breaks a path.
  * 
  * @param pathname Path that shall be broken.
  * @param filename Array where the first path-part should be save.
  * 
- * @returns Upon successful completion, a pointer to the second path-part is 
- *          returned, so a new call to this function can be made to parse the
- *          remainder of the path. Upon failure, a null pointer is returned 
- *          instead.
+ * @returns A pointer to the second path-part is returned, so a new call to this
+ *          function can be made to parse the remainder of the path.
  */
 const char *break_path(const char *pathname, char *filename)
 {
@@ -51,10 +154,8 @@ const char *break_path(const char *pathname, char *filename)
 	/* Get file name. */
 	while ((*p1 != '\0') && (*p1 != '/'))
 	{
-		/* File name too long. */
 		if ((p2 - filename) > MINIX_NAME_MAX)
-			return (NULL);
-		
+			error("file name too long");
 		*p2++ = *p1++;
 	}
 	
