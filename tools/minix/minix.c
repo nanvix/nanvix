@@ -455,8 +455,6 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		off += sizeof(struct d_dirent);
 	}
 	
-	fprintf(stderr, "minix_inode_read: %u %u\n", ip->i_size, ip->i_zones[0]);	
-	
 	/* Create entry. */
 	if (create)
 	{	
@@ -471,7 +469,6 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 			if (blk == BLOCK_NULL)
 				return (-1);
 			
-			fprintf(stderr, "blk: %u\n", blk);
 			ip->i_size += sizeof(struct d_dirent);
 			ip->i_time = 0;
 		}
@@ -483,7 +480,6 @@ static off_t dirent_search(struct d_inode *ip, const char *filename, int create)
 		off = (entry%(BLOCK_SIZE/sizeof(struct d_dirent)))*sizeof(struct d_dirent);
 		base = blk*BLOCK_SIZE;
 		
-			fprintf(stderr, "ret: %zd, %zd, %u\n", base + off, base, blk);
 		return (base + off);
 	}
 	

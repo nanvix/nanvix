@@ -27,12 +27,12 @@ CFLAGS   += -Wall -Wextra -Werror
 CFLAGS   += -D NDEBUG
 
 # Builds everything.
-all: mkfs.minix
+all: mkdir.minix
 
 # Builds mkfs.minix.
-mkfs.minix: bitmap.c minix.c safe.c util.c mkdir.c
+mkdir.minix: bitmap.c minix.c safe.c util.c mkdir.c
 	$(CC) $(CFLAGS) $^ -o $(BINDIR)/$@
 
 # Cleans compilation files.
 clean:
-	@rm -f $(BINDIR)/mkfs.minix
+	@rm -f $(BINDIR)/mkdir.minix
