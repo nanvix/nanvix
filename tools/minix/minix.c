@@ -71,14 +71,16 @@ static void minix_super_read(void)
 		error("bad magic number");
 	
 	/* Read inode map. */
-	imap.bitmap = smalloc(super.s_imap_nblocks*BLOCK_SIZE);
+	slseek(fd, 2*BLOCK_SIZE, SEEK_SET);
 	imap.size = super.s_imap_nblocks*BLOCK_SIZE;
-	sread(fd, imap.bitmap, super.s_imap_nblocks*BLOCK_SIZE);
+	imap.bitmap = smalloc(imap.size);
+	sread(fd, imap.bitmap, imap.size);
 	
 	/* Read zone map. */
-	zmap.bitmap = smalloc(super.s_bmap_nblocks*BLOCK_SIZE);
+	slseek(fd, (2 + super.s_imap_nblocks)*BLOCK_SIZE, SEEK_SET);
 	zmap.size = super.s_bmap_nblocks*BLOCK_SIZE;
-	sread(fd, zmap.bitmap, super.s_bmap_nblocks*BLOCK_SIZE);
+	zmap.bitmap = smalloc(zmap.size);
+	sread(fd, zmap.bitmap, zmap.size);
 }
 
 /**
@@ -90,15 +92,13 @@ static void minix_super_write(void)
 	slseek(fd, 1*BLOCK_SIZE, SEEK_SET);
 	swrite(fd, &super, sizeof(struct d_superblock));
 	
-	/* Read inode map. */
-	imap.bitmap = smalloc(super.s_imap_nblocks*BLOCK_SIZE);
-	imap.size = super.s_imap_nblocks*BLOCK_SIZE;
-	swrite(fd, imap.bitmap, super.s_imap_nblocks*BLOCK_SIZE);
+	/* Write inode map. */
+	slseek(fd, 2*BLOCK_SIZE, SEEK_SET);
+	swrite(fd, imap.bitmap, imap.size);
 	
-	/* Read zone map. */
-	zmap.bitmap = smalloc(super.s_bmap_nblocks*BLOCK_SIZE);
-	zmap.size = super.s_bmap_nblocks*BLOCK_SIZE;
-	swrite(fd, zmap.bitmap, super.s_bmap_nblocks*BLOCK_SIZE);
+	/* Write zone map. */
+	slseek(fd, (2 + super.s_imap_nblocks)*BLOCK_SIZE, SEEK_SET);
+	swrite(fd, zmap.bitmap, zmap.size);
 	
 	/* House keeping. */
 	free(imap.bitmap);
@@ -143,6 +143,8 @@ struct d_inode *minix_inode_read(uint16_t num)
 	struct d_inode *ip;        /* Inode.                     */
 	unsigned inodes_per_block; /* Inodes per block.          */
 	
+	num--;
+	
 	/* Bad inode number. */
 	if (num >= super.s_imap_nblocks*BLOCK_SIZE*8)
 		error("bad inode number");
@@ -177,6 +179,8 @@ void minix_inode_write(uint16_t num, struct d_inode *ip)
 	off_t offset;              /* Offset in the file system. */
 	unsigned inodes_per_block; /* Inodes per block.          */
 	
+	num--;
+	
 	/* Bad inode number. */
 	if (num >= super.s_imap_nblocks*BLOCK_SIZE*8)
 		error("bad inode number");
@@ -188,7 +192,7 @@ void minix_inode_write(uint16_t num, struct d_inode *ip)
 	offset = (2 + super.s_imap_nblocks + super.s_bmap_nblocks + idx)*BLOCK_SIZE;
 	offset += off*sizeof(struct d_inode);
 	
-	/* Read inode. */
+	/* Write inode. */
 	slseek(fd, offset, SEEK_SET);
 	swrite(fd, ip, sizeof(struct d_inode));
 	
@@ -205,7 +209,7 @@ void minix_inode_write(uint16_t num, struct d_inode *ip)
 static block_t minix_block_alloc(void)
 {
 	uint32_t bit;
-
+	
 	/* Allocate block. */
 	bit = bitmap_first_free(zmap.bitmap, zmap.size);
 	if (bit == BITMAP_FULL)
@@ -237,7 +241,7 @@ static uint16_t minix_inode_alloc(uint16_t mode, uint16_t uid, uint16_t gid)
 	if (bit == BITMAP_FULL)
 		error("inode map overflow");
 	bitmap_set(imap.bitmap, bit);
-	num = 2 + super.s_imap_nblocks + super.s_bmap_nblocks + bit;
+	num = bit + 1;
 	
 	/* Initialize inode. */
 	ip = minix_inode_read(num);
@@ -247,7 +251,7 @@ static uint16_t minix_inode_alloc(uint16_t mode, uint16_t uid, uint16_t gid)
 	ip->i_time = 0;
 	ip->i_gid = gid;
 	ip->i_nlinks = 1;
-	for (unsigned i; i < NR_ZONES; i++)
+	for (unsigned i = 0; i < NR_ZONES; i++)
 		ip->i_zones[i] = BLOCK_NULL;
 	minix_inode_write(num, ip);
 
@@ -382,7 +386,7 @@ static off_t dirent_search(struct d_inode *ip, const char *filename,bool create)
 		if (base < 0)
 		{
 			off = 0;
-			base = (super.s_first_data_block + blk)*BLOCK_SIZE;
+			base = blk*BLOCK_SIZE;
 			slseek(fd, base, SEEK_SET);
 		}
 		
@@ -404,7 +408,7 @@ static off_t dirent_search(struct d_inode *ip, const char *filename,bool create)
 			{
 				/* Duplicate entry. */
 				if (create)
-					return (-1);
+					error("duplicate entry");
 				
 				return (base + off);
 			}
@@ -428,7 +432,6 @@ static off_t dirent_search(struct d_inode *ip, const char *filename,bool create)
 		entry = nentries;
 		blk = minix_block_map(ip, entry*sizeof(struct d_dirent), true);
 		ip->i_size += sizeof(struct d_dirent);
-		ip->i_time = 0;
 	}
 	
 	else
@@ -437,7 +440,7 @@ static off_t dirent_search(struct d_inode *ip, const char *filename,bool create)
 	/* Compute file offset. */
 	off = (entry%(BLOCK_SIZE/sizeof(struct d_dirent)))*sizeof(struct d_dirent);
 	base = blk*BLOCK_SIZE;
-		
+	
 	return (base + off);
 }
 
@@ -462,7 +465,7 @@ uint16_t dir_search(struct d_inode *dip, const char *filename)
 	/* Not a directory. */
 	if (!S_ISDIR(dip->i_mode))
 		error("not a directory");
-	
+		
 	/* Search directory entry. */
 	off = dirent_search(dip, filename, false);
 	if (off == -1)
@@ -505,12 +508,16 @@ static void minix_dirent_add
 	/* Write directory entry. */
 	slseek(fd, off, SEEK_SET);
 	swrite(fd, &d, sizeof(struct d_dirent));
+	
+	dip->i_nlinks++;
+	dip->i_time = 0;
 }
 
 /**
  * @brief Creates a directory.
  * 
  * @param dip      Directory where the new directory shall be created.
+ * @param dnum     Inode number of @p dip.
  * @param filename Name of the new directory.
  * 
  * @returns The inode number of the newly created directory.
@@ -519,17 +526,61 @@ static void minix_dirent_add
  * @note @p filename must point to a valid file name.
  * @note The Minix file system must be mounted.
  */
-uint16_t minix_mkdir(struct d_inode *dip, const char *filename)
+uint16_t minix_mkdir(struct d_inode *dip, uint16_t dnum, const char *filename)
 {
+	uint16_t mode;
 	uint16_t num;
+	struct d_inode *ip;
 	
 	/* Not a directory. */
 	if (!S_ISDIR(dip->i_mode))
 		error("not a directory");
 	
+	mode  = S_IFDIR;
+	mode |= S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+	
 	/* Allocate inode. */
-	num = minix_inode_alloc(S_IFDIR, 0, 0);
+	num = minix_inode_alloc(mode, 0, 0);
 	minix_dirent_add(dip, filename, num);
 	
+	/* Create "." and ".." */
+	ip = minix_inode_read(num);
+	minix_dirent_add(ip, ".", num);
+	minix_dirent_add(ip, "..", dnum);
+	ip->i_nlinks--;
+	minix_inode_write(num, ip);
+	
 	return (num);
+}
+
+/**
+ * @brief Creates a special file.
+ * 
+ * @param dip      Directory where the new special file shall be created.
+ * @param filename Name of the new special file.
+ * 
+ * @note @p dip must point to a valid inode.
+ * @note @p filename must point to a valid file name.
+ * @note The Minix file system must be mounted.
+ */
+void minix_mknod
+(struct d_inode *dip, const char *filename, uint16_t mode, uint16_t dev)
+{
+	uint16_t num;       /* Inode number of special file. */
+	struct d_inode *ip; /* Special file.                 */
+	
+	/* Not a directory. */
+	if (!S_ISDIR(dip->i_mode))
+		error("not a directory");
+	
+	mode = (mode & ~S_IFMT) | ((dev & 1) ? S_IFBLK : S_IFCHR);
+	
+	/* Allocate inode. */
+	num = minix_inode_alloc(mode, 0, 0);
+	minix_dirent_add(dip, filename, num);
+	
+	/* Write device number. */
+	ip = minix_inode_read(num);
+	ip->i_zones[0] = dev;
+	minix_inode_write(num, ip);
 }

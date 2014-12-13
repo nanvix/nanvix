@@ -55,7 +55,7 @@ int main(int argc, char **argv)
 	dirname = argv[2];
 	
 	/* Traverse file system tree. */
-	ip = minix_inode_read(num1 = 0);
+	ip = minix_inode_read(num1 = INODE_ROOT);
 	do
 	{
 		dirname = break_path(dirname, filename);	
@@ -63,12 +63,13 @@ int main(int argc, char **argv)
 		
 		/* Create directory. */
 		if (num2 == INODE_NULL)
-			num2 = minix_mkdir(ip, filename);
+			num2 = minix_mkdir(ip, num1, filename);
 		
 		minix_inode_write(num1, ip);
 		ip = minix_inode_read(num1 = num2);
-		
-	} while (*filename != '\0');
+	} while (*dirname != '\0');
+
+	minix_inode_write(num1, ip);
 
 	minix_umount();
 	

@@ -28,6 +28,7 @@
 	extern void minix_mount(const char *);
 	extern void minix_umount(void);
 	extern struct d_inode *minix_inode_read(uint16_t);
-	extern uint16_t minix_mkdir(struct d_inode *, const char *);
+	extern uint16_t minix_mkdir(struct d_inode *, uint16_t, const char *);
+	extern void minix_mknod(struct d_inode *, const char *, uint16_t, uint16_t);
 
 #endif /* _MINIX_H_ */
