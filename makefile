@@ -69,6 +69,7 @@ documentation:
 
 # Builds tools.
 tools:
+	mkdir -p $(BINDIR)
 	cd $(TOOLSDIR) && $(MAKE) all
 
 # Cleans compilation files.

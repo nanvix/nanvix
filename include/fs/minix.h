@@ -88,7 +88,7 @@
 	/**
 	 * @brief Root inode.
 	 */
-	#define INODE_ROOT 0
+	#define INODE_ROOT 1
 
 	/**
 	 * @name Number of Zones
