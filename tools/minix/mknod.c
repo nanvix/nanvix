@@ -31,7 +31,7 @@
  */
 static void usage(void)
 {
-	printf("usage: minix.mknod ");
+	printf("usage: mknod.minix ");
 	printf("<input file> <file name> <mode> <type> <minor> <major>\n");
 	exit(EXIT_SUCCESS);
 }
@@ -55,52 +55,29 @@ static inline uint16_t devnum(char type, unsigned major, unsigned minor)
  */
 int main(int argc, char **argv)
 {
-	const char *pathname;              /* Directory where create file.       */
-	uint16_t num1, num2;               /* Working inode numbers.             */
-	struct d_inode *ip;                /* Working inode.                     */
-	char filename[MINIX_NAME_MAX + 1]; /* Working file name.                 */
-	unsigned mode;                     /* Access mode of the special file.   */
-	unsigned major, minor;             /* Major and minor numbers.           */
-	char type;                         /* Character type.                    */
+	const char *pathname;              /* Directory where create file.     */
+	uint16_t num;                      /* Working inode number.            */
+	struct d_inode *dip;               /* Working inode.                   */
+	char filename[MINIX_NAME_MAX + 1]; /* Working file name.               */
+	unsigned mode;                     /* Access mode of the special file. */
+	unsigned major, minor;             /* Major and minor numbers.         */
+	char type;                         /* Character type.                  */
 	
 	/* Wrong usage. */
 	if (argc != 7)
 		usage();
-
-	minix_mount(argv[1]);
 	
 	pathname = argv[2];
 	sscanf(argv[3], "%o", &mode);
 	sscanf(argv[4], "%c", &type);
 	sscanf(argv[5], "%u", &minor);
 	sscanf(argv[6], "%u", &major);
-	
-	/* Traverse file system tree. */
-	ip = minix_inode_read(num1 = INODE_ROOT);
-	do
-	{
-		pathname = break_path(pathname, filename);	
-		num2 = dir_search(ip, filename);
-		
-		/* Create special file. */
-		if (num2 == INODE_NULL)
-		{
-			uint16_t dev = devnum(type, major, minor);
-			
-			/* Bad path. */
-			if (*pathname != '\0')
-				error("is a directory");
-				
-			minix_mknod(ip, filename, mode, dev);
-			goto out;
-		}
-		
-		minix_inode_write(num1, ip);
-		ip = minix_inode_read(num1 = num2);
-	} while (*pathname != '\0');
 
-out:
-	minix_inode_write(num1, ip);
+	minix_mount(argv[1]);	
+	num = minix_inode_dname(pathname, filename);
+	dip = minix_inode_read(num);
+	minix_mknod(dip, filename, mode, devnum(type, major, minor));
+	minix_inode_write(num, dip);
 	minix_umount();
 	
 	return (EXIT_SUCCESS);

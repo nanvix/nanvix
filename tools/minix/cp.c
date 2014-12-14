@@ -17,61 +17,69 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 
 #include "minix.h"
 #include "util.h"
 
 /**
+ * @brief Safe stat().
+ */
+void sstat(const char *pathname, struct stat *buf)
+{
+	int ret;
+	
+	ret = stat(pathname, buf);
+	if (ret != 0)
+		error("cannot stat()");
+}
+
+/**
  * @brief Prints program usage and exits.
- * 
- * @details Prints program usage and exits.
  */
 static void usage(void)
 {
-	printf("usage: mkdir.minix <input file> <directory>\n");
+	printf("usage: cp.minix <input file> <source file> <dest file>\n");
 	exit(EXIT_SUCCESS);
 }
 
 /**
- * @brief Creates a directory in a Minix file system.
+ * @brief Copies a file to a Minix file system.
  */
 int main(int argc, char **argv)
 {
-	const char *dirname;               /* Directory that shall be created. */
-	uint16_t num1, num2;               /* Working inode numbers.           */
-	struct d_inode *ip;                /* Working inode.                   */
-	char filename[MINIX_NAME_MAX + 1]; /* Working file name.               */
+	int fd;                 /* File ID of source file.       */
+	struct stat stbuf;      /* Buffer for stat().            */
+	char *buf;              /* Buffer used for copying.      */
+	const char *src, *dest; /* Source and destination files. */
+	uint16_t num;           /* Working inode number.         */
 	
 	/* Wrong usage. */
-	if (argc != 3)
+	if (argc != 4)
 		usage();
-
+	
+	src = argv[2];
+	dest = argv[3];
+	
+	sstat(src, &stbuf);
+	
+	buf = smalloc(stbuf.st_size);
 	minix_mount(argv[1]);
 	
-	dirname = argv[2];
+	/* Copy file. */
+	fd = sopen(src, O_RDONLY);
+	sread(fd, buf, stbuf.st_size);
+	sclose(fd);
+	num = minix_create(dest, stbuf.st_mode);
+	minix_write(num, buf, stbuf.st_size);
 	
-	/* Traverse file system tree. */
-	ip = minix_inode_read(num1 = INODE_ROOT);
-	do
-	{
-		dirname = break_path(dirname, filename);	
-		num2 = dir_search(ip, filename);
-		
-		/* Create directory. */
-		if (num2 == INODE_NULL)
-			num2 = minix_mkdir(ip, num1, filename);
-		
-		minix_inode_write(num1, ip);
-		ip = minix_inode_read(num1 = num2);
-	} while (*dirname != '\0');
-
-	minix_inode_write(num1, ip);
-
 	minix_umount();
+	free(buf);
 	
 	return (EXIT_SUCCESS);
 }

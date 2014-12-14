@@ -514,6 +514,50 @@ static void minix_dirent_add
 }
 
 /**
+ * @brief Gets inode number of the bottom-most directory of a path.
+ * 
+ * @param pathname Path name that shall be converted.
+ * @param filename Place to save last component of path.
+ * @param num      Inode number of bottom-most directory.
+ * 
+ * @returns The inode number of the bottom-most directory of the path.
+ * 
+ * @note @p pathname must point to a valid path name.
+ * @note The Minix file system must be mounted.
+ */
+uint16_t minix_inode_dname(const char *pathname, char *filename)
+{
+	struct d_inode *ip;   /* Working inode.         */
+	uint16_t num1, num2;  /* Working inode numbers. */
+	
+	/* Traverse file system tree. */
+	ip = minix_inode_read(num1 = INODE_ROOT);
+	do
+	{
+		pathname = break_path(pathname, filename);	
+		num2 = dir_search(ip, filename);
+		
+		/* Bottom-most directory reached. */
+		if (num2 == INODE_NULL)
+		{
+			/* Bad path. */
+			if (*pathname != '\0')
+				error("is a directory");
+			
+			goto out;
+		}
+		
+		minix_inode_write(num1, ip);
+		ip = minix_inode_read(num1 = num2);
+	} while (*pathname != '\0');
+
+out:
+	minix_inode_write(num1, ip);
+	
+	return (num1);
+}
+
+/**
  * @brief Creates a directory.
  * 
  * @param dip      Directory where the new directory shall be created.
@@ -582,5 +626,82 @@ void minix_mknod
 	/* Write device number. */
 	ip = minix_inode_read(num);
 	ip->i_zones[0] = dev;
+	minix_inode_write(num, ip);
+}
+
+/**
+ * @brief Creates a file.
+ * 
+ * @param pathname Name of the file that shall be created.
+ * @param mode     File access mode.
+ * 
+ * @returns The inode number of newly created file.
+ * 
+ * @note @p pathname must refer to a valid path name.
+ * @note @p num must refer to a valid inode.
+ * @note The Minix file system must be mounted.
+ */
+uint16_t minix_create(const char *pathname, uint16_t mode)
+{
+	uint16_t num;                      /* Inode number of file. */
+	uint16_t dnum;                     /* Inode number of directory. */
+	struct d_inode *dip;               /* Directory.            */
+	char filename[MINIX_NAME_MAX + 1]; /* Name of the file.     */
+	
+	mode = (mode & ~S_IFMT) | S_IFREG;
+	
+	dnum = minix_inode_dname(pathname, filename);
+	dip = minix_inode_read(dnum);
+	num = minix_inode_alloc(mode, 0, 0);
+	minix_dirent_add(dip, filename, num);
+	minix_inode_write(dnum, dip);
+	
+	return (num);
+}
+
+/**
+ * @brief Writes data to a file.
+ * 
+ * @param num Inode number of the file.
+ * @param buf Buffer to be written.
+ * @param n   Number of bytes to be written.
+ * 
+ * @note num must refer  to a valid inode.
+ * @note buf must point to a valid buffer.
+ * @note The Minix file system must be mounted.
+ */
+void minix_write(uint16_t num, const void *buf, size_t n)
+{
+	const char *p;      /* Writing pointer.     */
+	off_t off;          /* Current file offset. */
+	struct d_inode *ip; /* File.                */
+	
+	p = buf;
+	
+	ip = minix_inode_read(num);
+	
+	off = ip->i_size;
+	
+	/* Write data. */
+	for (size_t i = 0; i < n; /* noop */)
+	{
+		size_t blkoff;
+		size_t chunk;
+		uint16_t blk;
+		
+		blk = minix_block_map(ip, off, true);
+		blkoff = off % BLOCK_SIZE;
+		chunk = ((n - i) < (BLOCK_SIZE - blkoff)) ? n - i : BLOCK_SIZE - blkoff;
+		
+		/* Write data to file. */
+		slseek(fd, blk*BLOCK_SIZE + blkoff, SEEK_SET);
+		swrite(fd, p, chunk);
+		
+		ip->i_size += chunk;
+		off += chunk;
+		p += chunk;
+		i += chunk;
+	}
+	
 	minix_inode_write(num, ip);
 }

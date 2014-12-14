@@ -26,6 +26,17 @@
 #include "minix.h"
 
 /**
+ * @brief Prints an error message and exits.
+ * 
+ * @param msg Error message to be printed.
+ */
+void error(const char *msg)
+{
+	fprintf(stderr, "error: %s\n", msg);
+	exit(EXIT_FAILURE);
+}
+
+/**
  * @brief Safe open().
  */
 int sopen(const char *pathname, int flags)
@@ -117,17 +128,6 @@ void *smalloc(size_t n)
 	}
 	
 	return (p);
-}
-
-/**
- * @brief Prints an error message and exits.
- * 
- * @param msg Error message to be printed.
- */
-void error(const char *msg)
-{
-	fprintf(stderr, "error: %s\n", msg);
-	exit(EXIT_FAILURE);
 }
 
 /**

@@ -27,7 +27,11 @@ CFLAGS   += -Wall -Wextra -Werror
 CFLAGS   += -D NDEBUG
 
 # Builds everything.
-all: mkdir.minix mknod.minix
+all: cp.minix mkdir.minix mknod.minix
+
+# Builds cp.minix.
+cp.minix: bitmap.c minix.c util.c util.c cp.c
+	$(CC) $(CFLAGS) $^ -o $(BINDIR)/$@
 
 # Builds mkdir.minix.
 mkdir.minix: bitmap.c minix.c util.c util.c mkdir.c
