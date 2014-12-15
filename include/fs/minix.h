@@ -69,7 +69,7 @@
 		uint16_t s_ninodes;          /**< Number of inodes.           */
 		uint16_t s_nblocks;          /**< Number of blocks.           */
 		uint16_t s_imap_nblocks;     /**< Number of inode map blocks. */
-		uint16_t s_bmap_nblocks;     /**< Number of zone map blocks.  */
+		uint16_t s_bmap_nblocks;     /**< Number of block map blocks. */
 		uint16_t s_first_data_block; /**< Unused.                     */
 		uint16_t unused1;            /**< Unused.                     */
 		uint32_t s_max_size;         /**< Maximum file size.          */

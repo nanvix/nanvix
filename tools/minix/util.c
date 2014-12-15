@@ -131,6 +131,23 @@ void *smalloc(size_t n)
 }
 
 /**
+ * @brief Safe calloc();
+ */
+void *scalloc(size_t nmemb, size_t n)
+{
+	void *p;
+	
+	p = calloc(nmemb, n);
+	if (p == NULL)
+	{
+		fprintf(stderr, "cannot calloc()\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	return (p);
+}
+
+/**
  * @brief Breaks a path.
  * 
  * @param pathname Path that shall be broken.

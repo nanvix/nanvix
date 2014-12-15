@@ -20,10 +20,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "minix.h"
+
 /**
  * @brief Prints program usage and exits.
  */
-static usage(void)
+static void usage(void)
 {
 	printf("usage: mkfs.minix <input file> <ninodes> <nblocks>\n");
 	exit(EXIT_SUCCESS);
@@ -45,7 +47,7 @@ int main(int argc, char **argv)
 	/* Extract arguments. */
 	diskfile = argv[1];
 	sscanf(argv[2], "%u", &ninodes);
-	sscanf(argv[2], "%u", &nblocks);
+	sscanf(argv[3], "%u", &nblocks);
 	
 	minix_mkfs(diskfile, ninodes, nblocks);
 	

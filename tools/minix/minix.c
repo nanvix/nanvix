@@ -76,7 +76,7 @@ static void minix_super_read(void)
 	imap.bitmap = smalloc(imap.size);
 	sread(fd, imap.bitmap, imap.size);
 	
-	/* Read zone map. */
+	/* Read block map. */
 	slseek(fd, (2 + super.s_imap_nblocks)*BLOCK_SIZE, SEEK_SET);
 	zmap.size = super.s_bmap_nblocks*BLOCK_SIZE;
 	zmap.bitmap = smalloc(zmap.size);
@@ -704,4 +704,81 @@ void minix_write(uint16_t num, const void *buf, size_t n)
 	}
 	
 	minix_inode_write(num, ip);
+}
+
+/**
+ * @brief Creates a Minix file system.
+ * 
+ * @param diskfile File where the minix file system shall be created.
+ * @param ninodes  Number of inodes.
+ * @param nblocks  Number of blocks.
+ * 
+ * @note @p diskfile must refer to a valid file.
+ * @note @p ninodes must be valid.
+ * @note @p nblocks must be valid.
+ */
+void minix_mkfs(const char *diskfile, uint16_t ninodes, uint16_t nblocks)
+{
+	size_t size;            /* Size of file system.            */
+	char buf[BLOCK_SIZE];   /* Writing buffer.                 */
+	uint16_t imap_nblocks;  /* Number of inodes map blocks.    */
+	uint16_t bmap_nblocks;  /* Number of block map blocks.     */
+	uint16_t inode_nblocks; /* Number of inode blocks.         */
+	struct d_inode *root;   /* Root directory.                 */
+	mode_t mode;            /* Access permissions to root dir. */
+	uint16_t num;           /* Inode number of root directory. */
+	
+	fd = sopen(diskfile, O_RDWR | O_CREAT);
+	
+	#define ROUND(x) (((x) == 0) ? 1 : (x))
+	
+	/* Compute dimensions of file sytem. */
+	imap_nblocks = ROUND(ninodes/(8*BLOCK_SIZE));
+	bmap_nblocks = ROUND(nblocks/(8*BLOCK_SIZE));
+	inode_nblocks = ROUND( (ninodes*sizeof(struct d_inode))/BLOCK_SIZE);
+	
+	/* Compute size of file system. */
+	size  = 1;             /* boot block   */
+	size += 1;             /* superblock   */
+	size += imap_nblocks;  /* inode map    */
+	size += bmap_nblocks;  /* block map    */
+	size += inode_nblocks; /* inode blocks */
+	size += nblocks;       /* data blocks  */
+	size <<= BLOCK_SIZE_LOG2;
+	
+	/* Fill file system with zeros. */
+	memset(buf, 0, BLOCK_SIZE);
+	for (size_t i = 0; i < size; i += BLOCK_SIZE)
+		swrite(fd, buf, BLOCK_SIZE);
+	
+	/* Write superblock. */
+	super.s_ninodes = ninodes;
+	super.s_nblocks = nblocks;
+	super.s_imap_nblocks = imap_nblocks;
+	super.s_bmap_nblocks = bmap_nblocks;
+	super.s_first_data_block = 2 + imap_nblocks + bmap_nblocks + inode_nblocks;
+	super.s_max_size = 532480;
+	super.s_magic = SUPER_MAGIC;
+	
+	/* Create inode map. */
+	imap.size = imap_nblocks*BLOCK_SIZE;
+	imap.bitmap = scalloc(imap_nblocks, BLOCK_SIZE);
+	
+	/* Create block map. */
+	zmap.size = bmap_nblocks*BLOCK_SIZE;
+	zmap.bitmap = scalloc(bmap_nblocks, BLOCK_SIZE);
+	
+	/* Access permission to root directory. */
+	mode  = S_IFDIR;
+	mode |= S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+	
+	/* Create root directory. */
+	num = minix_inode_alloc(mode, 0, 0);
+	root = minix_inode_read(num);
+	minix_dirent_add(root, ".", num);
+	minix_dirent_add(root, "..", num);
+	root->i_nlinks--;
+	minix_inode_write(num, root);
+	
+	minix_umount();
 }

@@ -34,5 +34,6 @@
 	extern uint16_t minix_inode_dname(const char *, char *);
 	extern uint16_t minix_create(const char *, uint16_t);
 	extern void minix_write(uint16_t, const void *, size_t);
+	extern void minix_mkfs(const char *, uint16_t, uint16_t);
 
 #endif /* _MINIX_H_ */

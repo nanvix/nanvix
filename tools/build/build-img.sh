@@ -41,36 +41,43 @@ function eject {
 #   $3 Number of inodes.
 #
 function format {
-	losetup /dev/loop2 $1
-	mkfs.minix -n 14 -i $3 -1 /dev/loop2 $2
-	mount /dev/loop2 /mnt
-	mkdir /mnt/sbin/
-	mkdir /mnt/bin/
-	mkdir /mnt/home
-	mkdir /mnt/dev
-	mknod -m 666 /mnt/dev/null c 0 0
-	mknod -m 666 /mnt/dev/tty c 1 0
-	mknod -m 666 /mnt/dev/ramdisk b 0 0
-	mknod -m 666 /mnt/dev/hdd b 1 0
-	umount /dev/loop2
-	losetup -d /dev/loop2
+	bin/mkfs.minix $1 $2 $3
+	bin/mkdir.minix $1 /sbin
+	bin/mkdir.minix $1 /bin
+	bin/mkdir.minix $1 /home
+	bin/mkdir.minix $1 /dev
+	bin/mknod.minix $1 /dev/null 666 c 0 0
+	bin/mknod.minix $1 /dev/tty 666 c 0 1
+	bin/mknod.minix $1 /dev/ramdisk 666 b 0 0
+	bin/mknod.minix $1 /dev/hdd 666 b 0 1
+}
+
+#
+# Copy files to a disk image.
+#   $1 Target disk image.
+#
+function copy_files {
+	
+	for file in bin/sbin/*; do
+		filename=`basename $file`
+		bin/cp.minix $1 $file /sbin/$filename
+	done
+	
+	for file in bin/ubin/*; do
+		filename=`basename $file`
+		bin/cp.minix $1 $file /bin/$filename
+	done
 }
 
 # Build HDD image.
 dd if=/dev/zero of=hdd.img bs=32M count=1
-format hdd.img 16384 4096
-insert hdd.img
-cp bin/sbin/* /mnt/sbin/
-cp bin/ubin/* /mnt/bin/
-eject
+format hdd.img 4096 16384
+copy_files hdd.img
 
 # Build initrd image.
 dd if=/dev/zero of=initrd.img bs=512K count=1
-format initrd.img 512 128
-insert initrd.img
-cp bin/sbin/* /mnt/sbin/
-cp bin/ubin/* /mnt/bin/
-eject
+format initrd.img 128 512
+copy_files initrd.img
 
 # Build nanvix image.
 cp -f tools/img/blank.img nanvix.img

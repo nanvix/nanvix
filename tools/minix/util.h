@@ -30,6 +30,7 @@
 	extern void swrite(int, const void *, size_t);
 	extern void *smalloc(size_t);
 	extern void error(const char *);
-	extern const char *break_path(const char *pathname, char *);
+	extern const char *break_path(const char *, char *);
+	extern void *scalloc(size_t, size_t);
 
 #endif /* _SAFE_H_ */

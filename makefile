@@ -59,7 +59,7 @@ nanvix:
 	cd $(SRCDIR) && $(MAKE) all
 
 # Builds system's image.
-image: $(BINDIR)/kernel
+image: $(BINDIR)/kernel tools
 	mkdir -p $(BINDIR)
 	bash $(TOOLSDIR)/build/build-img.sh
 
