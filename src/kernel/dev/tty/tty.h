@@ -30,16 +30,19 @@
     #define LIGHT_BROWN   0x0E
     #define WHITE         0x0F
 
-	/*
-	 * tty device.
+	/**
+	 * @brief TTY device.
 	 */
 	struct tty
 	{
-		struct termios term;   /* Terminal I/O.  */
-		struct process *pgrp;  /* Process group. */
-		struct kbuffer output; /* Output buffer. */
-		struct kbuffer input;  /* Input buffer.  */
+		struct termios term;   /**< Terminal I/O.  */
+		struct process *pgrp;  /**< Process group. */
+		struct kbuffer output; /**< Output buffer. */
+		struct kbuffer input;  /**< Input buffer.  */
 	};
+	
+	/* Forward definitions. */
+	EXTERN void tty_int(unsigned char);
 	
 	/*
 	 * Outputs a colored ASCII character on the console device.
@@ -65,10 +68,5 @@
 	 * Flushes a buffer on the console device.
 	 */
 	EXTERN void console_write(struct kbuffer *buffer);
-	
-	/*
-	 * tty device.
-	 */
-	EXTERN struct tty tty;
 
 #endif /* _TTY_H_ */

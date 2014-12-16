@@ -20,6 +20,23 @@
 	#define IEXTEN	0040 /* Enable extended input character processing. */	
 	#define ISIG	0100 /* Enable signals.                             */
 
+	/**
+	 * @name Control Characters.
+	 */
+	/**@{*/
+	#define VEOF    0 /**< EOF character.   */
+	#define VEOL    1 /**< EOL character.   */
+	#define VERASE  2 /**< ERASE character. */
+	#define VINTR   3 /**< INTR character.  */
+	#define VKILL   4 /**< KILL character.  */
+	#define VMIN    5 /**< MIN value.       */
+	#define VQUIT   6 /**< QUIT character.  */
+	#define VSTART  7 /**< START character. */
+	#define VSTOP   8 /**< STOP character.  */
+	#define VSUSP   9 /**< SUSP character.  */
+	#define VTIME  10 /**< TIME value.      */
+	/**@}*/
+
 	/* Size of c_cc[] */
 	#define NCCS 11
 
@@ -37,7 +54,7 @@
 		tcflag_t c_oflag;    /* Output mode flags (see above).  */
 		tcflag_t c_cflag;    /* Control mode flags (see above). */
 		tcflag_t c_lflag;    /* Local mode flags (see above).   */
-		tcflag_t c_cc[NCCS]; /* Control characters. */
+		tcflag_t c_cc[NCCS]; /* Control characters.             */
     };
     
 	/*

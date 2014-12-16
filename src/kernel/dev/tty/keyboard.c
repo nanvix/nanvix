@@ -37,16 +37,17 @@
 #define KF12 (KF11 + 1)
 
 /* Cursor keys. */
-#define KINS   0x90
-#define KDEL    (KINS + 1)
-#define KHOME   (KDEL + 1)
-#define KEND   (KHOME + 1)
-#define KPGUP   (KEND + 1)
-#define KPGDN  (KPGUP + 1)
-#define KLEFT  (KPGDN + 1)
-#define KUP    (KLEFT + 1)
-#define KDOWN    (KUP + 1)
-#define KRIGHT (KDOWN + 1)
+#define KINS           0x90
+#define KDEL     (KINS + 1)
+#define KHOME    (KDEL + 1)
+#define KEND    (KHOME + 1)
+#define KPGUP    (KEND + 1)
+#define KPGDN   (KPGUP + 1)
+#define KLEFT   (KPGDN + 1)
+#define KUP     (KLEFT + 1)
+#define KDOWN     (KUP + 1)
+#define KRIGHT  (KDOWN + 1)
+#define KCTRL  (KRIGHT + 1)
 
 /* Meta keys. */
 #define KMETA_ALT   0x0200
@@ -55,7 +56,7 @@
 #define KMETA_CAPS  0x1000
 #define KMETA_NUM   0x2000
 #define KMETA_SCRL  0x4000
-#define KMETA_ANY   KMETA_ALT | KMETA_CTRL | KMETA_SHIFT)
+#define KMETA_ANY   (KMETA_ALT | KMETA_CTRL | KMETA_SHIFT)
 
 /* Other keys. */
 #define KRLEFT_CTRL   0x1D
@@ -74,7 +75,7 @@
 PRIVATE uint8_t ascii_non_shift[] = {
 									    '\0', ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9',
                                         '0', '-', '=', BACKSPACE, TAB, 'q', 'w',   'e', 'r', 't',
-                                        'y', 'u', 'i', 'o', 'p',   '[', ']', ENTER, 0,'a', 's',
+                                        'y', 'u', 'i', 'o', 'p',   '[', ']', ENTER, KCTRL,'a', 's',
                                         'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0, '\\',
                                         'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0, 0, 0,
                                         ' ', 0, KF1, KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
@@ -86,7 +87,7 @@ PRIVATE uint8_t ascii_non_shift[] = {
 PRIVATE uint8_t ascii_shift[] = {
 									'\0', ESC, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
                                     '_', '+', BACKSPACE, TAB, 'Q', 'W',   'E', 'R', 'T', 'Y', 'U',
-                                    'I', 'O', 'P',   '{', '}', ENTER, 0, 'A', 'S', 'D', 'F', 'G',
+                                    'I', 'O', 'P',   '{', '}', ENTER, KCTRL, 'A', 'S', 'D', 'F', 'G',
                                     'H', 'J', 'K', 'L', ':', '\"', '~', 0, '|','Z', 'X', 'C', 'V',
                                     'B', 'N', 'M', '<', '>', '?', 0, 0, 0, ' ', 0, KF1,   KF2,
                                     KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10, 0, 0, KHOME, KUP,
@@ -94,9 +95,19 @@ PRIVATE uint8_t ascii_shift[] = {
                                     KINS, KDEL, 0, 0, 0, KF11, KF12
                                 };
 
+
+/**
+ * @brief Keyboard flags.
+ */
+enum flags
+{
+	ANY   = (1 << 0), /**< Any key pressed.   */
+	SHIFT = (1 << 1), /**< Shift key pressed. */
+	CTRL  = (1 << 2)  /**< CTRL key pressed.  */
+};
+
 /* Pressed key flags. */
-PRIVATE int key_pressed = 0;       /* A key has been pressed.     */
-PRIVATE int shift_key_pressed = 0; /* Shift key has been pressed. */
+PRIVATE enum flags mode = 0;
 
 /*
  * Parses key hit and decodes it to a scan code.
@@ -115,21 +126,51 @@ PRIVATE uint8_t parse_key_hit(void)
 	/* A key was released. */
     if(scancode & 0x80)
     {
-        key_pressed = 0;
-        
         scancode &= 0x7F; 
         
-        if ((scancode == KRLEFT_SHIFT) || (scancode == KRRIGHT_SHIFT))
-            shift_key_pressed = 0;                           
+        /* Parse scan code. */
+        switch (scancode)
+        {
+			/* Shift. */
+			case KRLEFT_SHIFT:
+			case KRRIGHT_SHIFT:
+				mode &= ~SHIFT;
+				break;
+			
+			/* CTRL. */
+			case KRLEFT_CTRL:
+				mode &= ~CTRL;
+				break;
+			
+			/* Any other. */
+			default:
+				mode &= ~ANY;
+				break;
+		}
     }
    
    	/* A key was pressed. */ 
     else 
-    {
-        key_pressed = 1;
-        
-        if((scancode == KRLEFT_SHIFT) || (scancode == KRRIGHT_SHIFT))
-            shift_key_pressed = 1;
+    {   
+        /* Parse scan code. */
+        switch (scancode)
+        {
+			/* Shift. */
+			case KRLEFT_SHIFT:
+			case KRRIGHT_SHIFT:
+				mode |= SHIFT;
+				break;
+			
+			/* CTRL. */
+			case KRLEFT_CTRL:
+				mode |= CTRL;
+				break;
+			
+			/* Any other. */
+			default:
+				mode |= ANY;
+				break;
+		}
     }
     
     return (scancode);
@@ -140,16 +181,22 @@ PRIVATE uint8_t parse_key_hit(void)
  */
 PRIVATE uint8_t get_ascii(void)
 {
-    uint8_t ch;
     uint8_t scancode;
+    uint8_t code;
     
     scancode = parse_key_hit();
 
-	ch = (shift_key_pressed) ? ascii_shift[scancode]:ascii_non_shift[scancode];
-
-    /* Filter shift key and key release. */
-    if ((!(scancode == KRLEFT_SHIFT || scancode == KRRIGHT_SHIFT)) && (key_pressed)) 
-        return ch; 
+	/* Printable character. */
+    if (mode & ANY)
+    {
+		code = (mode & SHIFT) ? ascii_shift[scancode]:ascii_non_shift[scancode];
+									
+		/* CTRL pressed. */
+		if (mode & CTRL)
+			return ((code < 64) ? code - 64 : code - 96);
+		
+		return (code);
+	}
         
     return (0);
 }
@@ -185,37 +232,7 @@ PUBLIC void do_keyboard_hit(void)
             break;
 
 		default:
-		
-		    /* Canonical mode. */
-		    if (tty.term.c_lflag & ICANON)
-		    {
-		        if (ascii_code == '\b')
-		        {
-		            if (!KBUFFER_EMPTY(tty.input))
-		            	KBUFFER_TAKEOUT(tty.input)
-		            else
-		            	return;
-		        }
-		        else
-		        {
-					KBUFFER_PUT(tty.input, ascii_code);
-					
-					if (ascii_code == '\n')
-						wakeup(&tty.input.chain);
-		        }
-		    }
-
-		    /* Non canonical mode. */
-		    else
-		    {
-		        KBUFFER_PUT(tty.input, ascii_code);
-				wakeup(&tty.input.chain);
-		    }
-
-		    /* Output echo character. */
-		    if (tty.term.c_lflag  & ECHO)
-		        console_put(ascii_code, WHITE);
-
+		    tty_int(ascii_code);
         	break;
 	}
 }

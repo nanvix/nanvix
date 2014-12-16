@@ -15,10 +15,67 @@
 #include <termios.h>
 #include "tty.h"
 
-/*
- * tty device.
+/**
+ * @brief TTY devices.
  */
-PUBLIC struct tty tty;
+PRIVATE struct tty tty;
+
+/**
+ * @brief Handles a TTY interrupt.
+ * 
+ * @details Handles a TTY interrupt, parsing the received character @p ch.
+ * 
+ * @param ttyp Interrupted TTY device.
+ */
+PUBLIC void tty_int(unsigned char ch)
+{
+	/* Signal. */
+	if (tty.term.c_lflag & ISIG)
+	{
+		if (ch == tty.term.c_cc[VINTR])
+		{
+			/* Output echo character. */
+			if (tty.term.c_lflag & ECHO)
+			{
+				console_put('^', WHITE);
+				console_put(ch + 64, WHITE);
+			}
+			
+			return;
+		}
+	}
+	
+	/* Canonical mode. */
+	if (tty.term.c_lflag & ICANON)
+	{
+		if (ch == '\b')
+		{
+			if (!KBUFFER_EMPTY(tty.input))
+				KBUFFER_TAKEOUT(tty.input)
+			else
+				return;
+		}
+		
+		else
+		{
+			KBUFFER_PUT(tty.input, ch);
+			
+			if (ch == '\n')
+				wakeup(&tty.input.chain);
+		}
+	}
+	
+	/* Non canonical mode. */
+	else
+	{
+		KBUFFER_PUT(tty.input, ch);
+		wakeup(&tty.input.chain);
+	}
+
+	/* Output echo character. */
+	if (tty.term.c_lflag & ECHO)
+		console_put(ch, WHITE);
+}
 
 /*
  * Puts the calling process to sleep it the tty input buffer is full.
@@ -200,6 +257,23 @@ PRIVATE struct cdev tty_driver = {
 	&tty_ioctl  /* ioctl(). */
 };
 
+/**
+ * @brief Initial control characters.
+ */
+tcflag_t init_c_cc[NCCS] = {
+	0x00, /**< EOF character.   */
+	0x00, /**< EOL character.   */
+	0x7f, /**< ERASE character. */
+	0x03, /**< INTR character.  */
+	0x15, /**< KILL character.  */
+	0x00, /**< MIN value.       */
+	0x4e, /**< QUIT character.  */
+	0x17, /**< START character. */
+	0x13, /**< STOP character.  */
+	0x19, /**< SUSP character.  */
+	0x00  /**< TIME value.      */
+};
+
 /*
  * Initializes the tty device driver.
  */
@@ -208,10 +282,12 @@ PUBLIC void tty_init(void)
 	kprintf("dev: initializing tty device driver");
 	
 	/* Initialize tty. */
-	tty.pgrp = NULL;
+	tty.pgrp = curr_proc;
 	KBUFFER_INIT(tty.output);
 	KBUFFER_INIT(tty.input);
-	tty.term.c_lflag |= ICANON | ECHO;
+	tty.term.c_lflag = ICANON | ECHO | ISIG;
+	for (unsigned i = 0; i < NCCS; i++)
+		tty.term.c_cc[i] = init_c_cc[i];
 	
 	/* Initialize device drivers. */
 	console_init();
