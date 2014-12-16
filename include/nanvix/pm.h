@@ -63,7 +63,8 @@
 	 * @name Process flags
 	 */
 	/**@{*/
-	#define PROC_NEW (1 << 0) /**< Is the process new? */
+	#define PROC_NEW (1 << 0) /**< Is the process new?     */
+	#define PROC_SYS (1 << 1) /**< Handling a system call? */
 	/**@}*/
 	
 	/**

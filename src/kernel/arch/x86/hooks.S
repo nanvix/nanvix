@@ -1,7 +1,20 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * hooks.S - Interrupt hooks.
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /* Must come first. */
@@ -52,6 +65,7 @@
 .globl hwint15
 .globl leave
 .globl do_hwint
+.globl yield
 
 /*----------------------------------------------------------------------------*
  *                                  save()                                    *
@@ -110,7 +124,19 @@ leave:
 
 	/* Decrement interrupt level. */
     decl PROC_INTLVL(%ebx)
-	jnz leave.out
+	
+	/* Check if we were handling a system call. */ 
+	btrl $PROC_SYS, PROC_FLAGS(%ebx)
+	jnc leave.out
+	
+	/*
+	 * The kernel is non-preemptive.
+	 * So, let us be nice with other processes
+	 * and give them a chance to run.
+	 */
+	call yield
+
+	movl curr_proc, %ebx
 	
 	/* Check signals. */
 	btrl $SIGKILL, PROC_RECEIVED(%ebx)
@@ -225,6 +251,9 @@ _do_page_fault:
 syscall:
 	save
 	enter
+	
+	/* Set 'handling system call' flag. */
+	orl $PROC_SYS, PROC_FLAGS(%ebx)
 	
 	/* Leave critical region. */
 	sti
