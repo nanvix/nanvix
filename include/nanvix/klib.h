@@ -96,8 +96,8 @@
 	 */
 	struct kbuffer
 	{
-		int head;                           /**< First character in the buf. */
-		int tail;                           /**< Next free slot in the buf.  */
+		unsigned head;                      /**< First character in the buf. */
+		unsigned tail;                      /**< Next free slot in the buf.  */
 		unsigned char buffer[KBUFFER_SIZE]; /**< Ring buffer.                */
 		struct process *chain;              /**< Sleeping chain.             */
 	};

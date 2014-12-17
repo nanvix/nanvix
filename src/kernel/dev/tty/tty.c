@@ -34,20 +34,36 @@
 PRIVATE struct tty tty;
 
 /**
+ * @brief Currently active TTY device.
+ */
+PRIVATE struct tty *active = &tty;
+
+/**
  * @brief Handles a TTY interrupt.
  * 
- * @details Handles a TTY interrupt, parsing the received character @p ch.
+ * @details Handles a TTY interrupt, putting the received character @p ch in the
+ *          raw input buffer of the currently active TTY device. Addiitonally, 
+ *          if echo is  enable for such device, @p ch is output to the terminal.
  * 
- * @param ttyp Interrupted TTY device.
+ * @param ch Received character.
  */
 PUBLIC void tty_int(unsigned char ch)
 {
-	KBUFFER_PUT(tty.rinput, ch);
-	wakeup(&tty.rinput.chain);
+	KBUFFER_PUT(active->rinput, ch);
+	wakeup(&active->rinput.chain);
 
 	/* Output echo character. */
-	if (tty.term.c_lflag & ECHO)
+	if (active->term.c_lflag & ECHO)
+	{
+		/* 
+		 * Let backspace be handled 
+		 * when the line is being parsed
+		 */
+		if (ch == '\b')
+			return;
+			
 		console_put(ch, WHITE);
+	}
 }
 
 /**
@@ -115,8 +131,13 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 	return ((ssize_t)(p - buf));
 }
 
-/*
- * Reads from a tty device.
+/**
+ * @brief Reads data from a TTY device.
+ * 
+ * @details Reads @p n bytes data from the TTY device, which minor device number
+ *          is @p minor, to the buffer pointed to by @p buf.
+ * 
+ * @returns The number of bytes actually read to the TTY device.
  */
 PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 {
@@ -151,31 +172,44 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 		/* Canonical mode. */
 		if (tty.term.c_lflag & ICANON)
 		{
+			/* Erase. */
 			if (ch == '\b')
 			{
 				if (!KBUFFER_EMPTY(tty.cinput))
-					KBUFFER_TAKEOUT(tty.cinput)
+				{
+					KBUFFER_TAKEOUT(tty.cinput);
+					console_put(ch, WHITE);
+				}
 			}
 			
 			else
+			{
 				KBUFFER_PUT(tty.cinput, ch);
+			
+				/* Copy data to input buffer. */
+				if ((ch == '\n') || (KBUFFER_FULL(tty.cinput)))
+				{		
+					/* Copy data from input buffer. */
+					while ((n > 0) && (!KBUFFER_EMPTY(tty.cinput)))
+					{
+						KBUFFER_GET(tty.cinput, *p);
+						
+						n--;
+						ch = *p++;
+						
+						/* Done reading. */
+						if ((ch == '\n') && (tty.term.c_lflag & ICANON))
+							goto out;
+					}
+				}
+			}
 		}
 		
 		/* Non canonical mode. */
 		else
-			KBUFFER_PUT(tty.cinput, ch);
-		
-		/* Copy data from input buffer. */
-		while ((n > 0) && (!KBUFFER_EMPTY(tty.cinput)))
 		{
-			KBUFFER_GET(tty.cinput, *p);
-			
+			*p++ = ch;
 			n--;
-			ch = *p++;
-			
-			/* Done reading. */
-			if ((ch == '\n') && (tty.term.c_lflag & ICANON))
-				goto out;
 		}
 	}
 
