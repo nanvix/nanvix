@@ -36,8 +36,7 @@ PUBLIC int shutting_down = 0;
  */
 PUBLIC void die(int status)
 {
-	int i;             /* Loop index.      */
-	struct process *p; /* Working process. */
+	struct process *p;
 	
 	/* Shall not occour. */
 	if (curr_proc == IDLE)
@@ -49,8 +48,12 @@ PUBLIC void die(int status)
 	 * Ignore all signals since, 
 	 * process may sleep below.
 	 */
-	for (i = 0; i < NR_SIGNALS; i++)
+	for (unsigned i = 0; i < NR_SIGNALS; i++)
 		curr_proc->handlers[i] = SIG_IGN;
+	
+	/* Close file descriptors. */
+	for (unsigned i = 0; i < OPEN_MAX; i++)
+		do_close(i);
 	
 	/* init adopts orphan processes. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
@@ -82,7 +85,7 @@ PUBLIC void die(int status)
 	}
 	
 	/* Detach process memory regions. */
-	for (i = 0; i < NR_PREGIONS; i++)
+	for (unsigned i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
 	
 	/* Release root and pwd. */

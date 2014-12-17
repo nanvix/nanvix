@@ -79,6 +79,10 @@ PUBLIC void do_close(int fd)
 	
 	f = curr_proc->ofiles[fd];
 	
+	/* Not opened. */
+	if (f == NULL)
+		return;
+	
 	curr_proc->close &= ~(1 << fd);
 	curr_proc->ofiles[fd] = NULL;	
 	
