@@ -1,7 +1,20 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * tty.c - tty device driver
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <dev/tty.h>
@@ -29,63 +42,36 @@ PRIVATE struct tty tty;
  */
 PUBLIC void tty_int(unsigned char ch)
 {
-	/* Signal. */
-	if (tty.term.c_lflag & ISIG)
-	{
-		if (ch == tty.term.c_cc[VINTR])
-		{
-			/* Output echo character. */
-			if (tty.term.c_lflag & ECHO)
-			{
-				console_put('^', WHITE);
-				console_put(ch + 64, WHITE);
-			}
-			
-			return;
-		}
-	}
-	
-	/* Canonical mode. */
-	if (tty.term.c_lflag & ICANON)
-	{
-		if (ch == '\b')
-		{
-			if (!KBUFFER_EMPTY(tty.input))
-				KBUFFER_TAKEOUT(tty.input)
-			else
-				return;
-		}
-		
-		else
-		{
-			KBUFFER_PUT(tty.input, ch);
-			
-			if (ch == '\n')
-				wakeup(&tty.input.chain);
-		}
-	}
-	
-	/* Non canonical mode. */
-	else
-	{
-		KBUFFER_PUT(tty.input, ch);
-		wakeup(&tty.input.chain);
-	}
+	KBUFFER_PUT(tty.rinput, ch);
+	wakeup(&tty.rinput.chain);
 
 	/* Output echo character. */
 	if (tty.term.c_lflag & ECHO)
 		console_put(ch, WHITE);
 }
 
-/*
- * Puts the calling process to sleep it the tty input buffer is full.
+/**
+ * @brief Sleeps if the raw input buffer of a TTY device is empty.
+ * 
+ * @details Puts the calling process to sleep if the raw input buffer of the TTY
+ *          device pointed to by @p ttyp is empty.
+ * 
+ * @param ttyp TTY device to sleep for.
+ * 
+ * @returns Upon sucessfull completion, zero is returned, meaning that the 
+ *          input buffer of the target TTY device is no longer empty. If the 
+ *          process has awaken because it has been interrupted by a signal, 
+ *          non-zero is returned instead. In this later case, it is undefined
+ *          whether the buffer is no longer empty.
+ * 
+ * @note @p ttyp must point to a valid TTY device.
  */
-PRIVATE int sleep_empty(void)
+PRIVATE int sleep_empty(struct tty *ttyp)
 {
 	/* Sleep while input buffer is empty. */
-	while (KBUFFER_EMPTY(tty.input))
+	while (KBUFFER_EMPTY(ttyp->rinput))
 	{
-		sleep(&tty.input.chain, PRIO_TTY);
+		sleep(&ttyp->rinput.chain, PRIO_TTY);
 		
 		/* Awaken by signal. */
 		if (issig())
@@ -134,34 +120,61 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
  */
 PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 {
-	char c;  /* Working character. */
-	char *p; /* Write pointer.     */
+	unsigned char ch; /* Working character. */
+	unsigned char *p; /* Write pointer.     */
 	
 	UNUSED(minor);
 	
-	p = buf;
+	p = (unsigned char *)buf;
 	
 	/* Read characters. */
 	disable_interrupts();
 	while (n > 0)
 	{
 		/* Wait for data. */
-		if (sleep_empty())
+		if (sleep_empty(&tty))
 		{
 			enable_interrupts();
 			return (-1);
 		}
 		
-		/* Copy data from input buffer. */
-		while ((n > 0) && (!KBUFFER_EMPTY(tty.input)))
+		KBUFFER_GET(tty.rinput, ch);
+		
+		/* Check signals. */
+		if (tty.term.c_lflag & ISIG)
 		{
-			KBUFFER_GET(tty.input, *p);
+			/* Interrupt. */
+			if (ch == tty.term.c_cc[VINTR])
+				continue;
+		}
+		
+		/* Canonical mode. */
+		if (tty.term.c_lflag & ICANON)
+		{
+			if (ch == '\b')
+			{
+				if (!KBUFFER_EMPTY(tty.cinput))
+					KBUFFER_TAKEOUT(tty.cinput)
+			}
+			
+			else
+				KBUFFER_PUT(tty.cinput, ch);
+		}
+		
+		/* Non canonical mode. */
+		else
+			KBUFFER_PUT(tty.cinput, ch);
+		
+		/* Copy data from input buffer. */
+		while ((n > 0) && (!KBUFFER_EMPTY(tty.cinput)))
+		{
+			KBUFFER_GET(tty.cinput, *p);
 			
 			n--;
-			c = *p++;
+			ch = *p++;
 			
 			/* Done reading. */
-			if ((c == '\n') && (tty.term.c_lflag & ICANON))
+			if ((ch == '\n') && (tty.term.c_lflag & ICANON))
 				goto out;
 		}
 	}
@@ -170,7 +183,7 @@ out:
 
 	enable_interrupts();
 	
-	return ((ssize_t)(p - buf));
+	return ((ssize_t)((char *)p - buf));
 }
 
 /*
@@ -284,7 +297,8 @@ PUBLIC void tty_init(void)
 	/* Initialize tty. */
 	tty.pgrp = curr_proc;
 	KBUFFER_INIT(tty.output);
-	KBUFFER_INIT(tty.input);
+	KBUFFER_INIT(tty.cinput);
+	KBUFFER_INIT(tty.rinput);
 	tty.term.c_lflag = ICANON | ECHO | ISIG;
 	for (unsigned i = 0; i < NCCS; i++)
 		tty.term.c_cc[i] = init_c_cc[i];

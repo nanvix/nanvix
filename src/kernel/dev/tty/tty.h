@@ -1,7 +1,20 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *
- * tty.h - tty device driver
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef _TTY_H_
@@ -35,38 +48,35 @@
 	 */
 	struct tty
 	{
-		struct termios term;   /**< Terminal I/O.  */
-		struct process *pgrp;  /**< Process group. */
-		struct kbuffer output; /**< Output buffer. */
-		struct kbuffer input;  /**< Input buffer.  */
+		struct termios term;   /**< Terminal I/O.        */
+		struct process *pgrp;  /**< Process group.       */
+		struct kbuffer output; /**< Output buffer.       */
+		struct kbuffer rinput; /**< Cooked input buffer. */
+		struct kbuffer cinput; /**< Raw input buffer.    */
 	};
 	
-	/* Forward definitions. */
+	/**
+	 * @name TTY Functions
+	 */
+	/**@{*/
 	EXTERN void tty_int(unsigned char);
+	/**@}*/
 	
-	/*
-	 * Outputs a colored ASCII character on the console device.
+	/**
+	 * @name Console Functions
 	 */
-	EXTERN void console_put(uint8_t ch, uint8_t color);
-	
-	/*
-	 * Initializes the console driver.
-	 */
-	EXTERN void console_init();
-	
-	/*
-	 * Clears the console.
-	 */
+	/**@{*/
+	EXTERN void console_put(uint8_t, uint8_t);
+	EXTERN void console_init(void);
 	EXTERN void console_clear(void);
+	EXTERN void console_write(struct kbuffer *);
+	/**@}*/
 	
-	/*
-	 * Initializes the keyboard driver.
+	/**
+	 * @name Keyboard Functions
 	 */
+	/**@{*/
 	EXTERN void keyboard_init(void);
-	
-	/*
-	 * Flushes a buffer on the console device.
-	 */
-	EXTERN void console_write(struct kbuffer *buffer);
+	/**@}*/
 
 #endif /* _TTY_H_ */

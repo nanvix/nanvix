@@ -1,7 +1,20 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
- * dev/tty/keyboard.c - Keyboard device driver.
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
  
 #include <nanvix/const.h>
@@ -70,18 +83,19 @@
 #define KRNUM_LOCK    0x45
 #define KRDEL         0x53
 
-
-/* Keymap: US International Non-Shifted scan codes to ASCII. */
+/**
+ * @brief US International non-shifted key map. 
+ */
 PRIVATE uint8_t ascii_non_shift[] = {
-									    '\0', ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9',
-                                        '0', '-', '=', BACKSPACE, TAB, 'q', 'w',   'e', 'r', 't',
-                                        'y', 'u', 'i', 'o', 'p',   '[', ']', ENTER, KCTRL,'a', 's',
-                                        'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0, '\\',
-                                        'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0, 0, 0,
-                                        ' ', 0, KF1, KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
-                                        0, 0, KHOME, KUP, KPGUP,'-', KLEFT, '5', KRIGHT, '+', KEND,
-                                        KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
-                                    };
+	'\0', ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9',
+	'0', '-', '=', BACKSPACE, TAB, 'q', 'w', 'e', 'r', 't',
+	'y', 'u', 'i', 'o', 'p',  '[', ']', ENTER, 0, 'a', 's',
+	'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0, '\\',
+	'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0, 0, 0,
+	' ', 0, KF1, KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
+	0, 0, KHOME, KUP, KPGUP,'-', KLEFT, '5', KRIGHT, '+', KEND,
+	KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
+};
                                     
 /* Keymap: US International  shifted scan codes to ASCII. */
 PRIVATE uint8_t ascii_shift[] = {
@@ -106,7 +120,9 @@ enum flags
 	CTRL  = (1 << 2)  /**< CTRL key pressed.  */
 };
 
-/* Pressed key flags. */
+/**
+ * @brief Keyboard flags.
+ */
 PRIVATE enum flags mode = 0;
 
 /*
@@ -201,8 +217,11 @@ PRIVATE uint8_t get_ascii(void)
     return (0);
 }
 
-/*
- * Keyboard interrupt handler.
+/**
+ * @brief Handles a keyboard interrupt.
+ * 
+ * @details Handles a keyboard interrupt, parsing scan codes received from the
+ *          keyboard controller to ascii codes.
  */
 PUBLIC void do_keyboard_hit(void)
 {
@@ -210,7 +229,7 @@ PUBLIC void do_keyboard_hit(void)
 	
 	ascii_code = get_ascii();
    
-	/* Unknown. */
+	/* Ignore. */
 	if (ascii_code == 0)
 		return;
    
