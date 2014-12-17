@@ -45,6 +45,29 @@ PUBLIC void sched(struct process *proc)
 }
 
 /**
+ * @brief Stops the current running process.
+ */
+PUBLIC void stop(void)
+{
+	curr_proc->state = PROC_STOPPED;
+	yield();
+}
+
+/**
+ * @brief Resumes a process.
+ * 
+ * @param proc Process to be resumed.
+ * 
+ * @note The process must stopped to be resumed.
+ */
+PUBLIC void resume(struct process *proc)
+{	
+	/* Resume only if process has stopped. */
+	if (proc->state == PROC_STOPPED)
+		sched(proc);
+}
+
+/**
  * @brief Yields the processor.
  */
 PUBLIC void yield(void)

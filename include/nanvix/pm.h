@@ -249,6 +249,10 @@
 	#define IS_SUPERUSER(p) \
 		(((p)->uid == SUPERUSER) || ((p)->euid == SUPERUSER))	
 	
+	/* Forward definitions. */	
+	EXTERN void resume(struct process *);
+	EXTERN void stop(void);
+	
 	/* Forward definitions. */
 	EXTERN int shutting_down;
 	EXTERN struct process proctab[PROC_MAX];

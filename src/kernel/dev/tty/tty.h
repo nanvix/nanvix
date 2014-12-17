@@ -44,10 +44,19 @@
     #define WHITE         0x0F
 
 	/**
+	 * @brief TTY flags.
+	 */
+	enum tty_flags
+	{
+		TTY_STOPPED = (1 << 0) /**< Stopped? */
+	};
+
+	/**
 	 * @brief TTY device.
 	 */
 	struct tty
 	{
+		enum tty_flags flags;  /**< Flags.               */
 		struct termios term;   /**< Terminal I/O.        */
 		struct process *pgrp;  /**< Process group.       */
 		struct kbuffer output; /**< Output buffer.       */

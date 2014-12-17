@@ -24,8 +24,6 @@
 
 /* Forward definitions. */
 PRIVATE void abort(int);
-PRIVATE void resume(struct process *);
-PRIVATE void stop(void);
 PRIVATE void terminate(int);
 	
 /**
@@ -96,29 +94,6 @@ PRIVATE void terminate(int sig)
 PRIVATE void abort(int sig)
 {
 	die(((sig & 0xff) << 16) | (1 << 9));
-}
-
-/**
- * @brief Stops the current running process.
- */
-PRIVATE void stop(void)
-{
-	curr_proc->state = PROC_STOPPED;
-	yield();
-}
-
-/**
- * @brief Resumes a process.
- * 
- * @param proc Process to be resumed.
- * 
- * @note The process must stopped to be resumed.
- */
-PRIVATE void resume(struct process *proc)
-{	
-	/* Resume only if process has stopped. */
-	if (proc->state == PROC_STOPPED)
-		sched(proc);
 }
 
 /**

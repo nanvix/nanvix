@@ -40,6 +40,18 @@ PRIVATE struct tty tty;
 PRIVATE struct tty *active = &tty;
 
 /**
+ * @name Control Characters
+ */
+/**@{*/
+#define EOF_CHAR(tty) ((tty).term.c_cc[VEOF])
+#define INTR_CHAR(tty) ((tty).term.c_cc[VINTR])
+#define STOP_CHAR(tty) ((tty).term.c_cc[VSTOP])
+#define SUSP_CHAR(tty) ((tty).term.c_cc[VSUSP])
+#define START_CHAR(tty) ((tty).term.c_cc[VSTART])
+#define ERASE_CHAR(tty) ((tty).term.c_cc[VERASE])
+/**@}*/
+
+/**
  * @brief Handles a TTY interrupt.
  * 
  * @details Handles a TTY interrupt, putting the received character @p ch in the
@@ -60,17 +72,16 @@ PUBLIC void tty_int(unsigned char ch)
 		 * Let ERASE character be handled 
 		 * when the line is being parsed.
 		 */
-		if (ch == tty.term.c_cc[VERASE])
+		if (ch == ERASE_CHAR(*active))
 			return;
-		
+
 		/*
-		 * Special treatment for INTR character.
+		 * Special treatment for
+		 * controlling characters.
 		 */
-		else if (ch == tty.term.c_cc[VINTR])
+		if ((ch < 32) && (ch != '\n') && (ch != '\t'))
 		{
-			/* Make it printable. */
-			if (ch < 32)
-				ch += 64;
+			ch += 64;
 			
 			console_put('^', WHITE);
 			console_put(ch, WHITE);
@@ -90,9 +101,9 @@ PUBLIC void tty_int(unsigned char ch)
  * 
  * @param ttyp TTY device to sleep for.
  * 
- * @returns Upon sucessfull completion, zero is returned, meaning that the 
- *          input buffer of the target TTY device is no longer empty. If the 
- *          process has awaken because it has been interrupted by a signal, 
+ * @returns Upon sucessful completion, zero is returned, meaning that the 
+ *          input buffer of the target TTY device is no longer empty. If while
+ *          sleeping, the process gets awaken due to the deliver of a signal,
  *          non-zero is returned instead. In this later case, it is undefined
  *          whether the buffer is no longer empty.
  * 
@@ -100,10 +111,42 @@ PUBLIC void tty_int(unsigned char ch)
  */
 PRIVATE int sleep_empty(struct tty *ttyp)
 {
-	/* Sleep while input buffer is empty. */
+	/* Sleep while raw input buffer is empty. */
 	while (KBUFFER_EMPTY(ttyp->rinput))
 	{
 		sleep(&ttyp->rinput.chain, PRIO_TTY);
+		
+		/* Awaken by signal. */
+		if (issig())
+		{
+			curr_proc->errno = -EINTR;
+			return (-1);
+		}
+	}
+	
+	return (0);
+}
+
+/**
+ * @brief Sleeps if the output buffer of a TTY device is full.
+ * 
+ * @details Puts the calling process to sleep if the output buffer of the TTY
+ *          device pointed to by @p ttyp is full.
+ * 
+ * @param ttyp TTY device to sleep for.
+ * 
+ * @returns Upon successful completion, zero is returned, meaning that the 
+ *          output buffer of the target TTY device is no longer full. If while
+ *          sleeping, the process gets awaken due to the deliver of a signal,
+ *          non-zero is returned instead. In this later case, it is undefined
+ *          whether the buffer is no longer full.
+ */
+PRIVATE int sleep_full(struct tty *ttyp)
+{
+	/* Sleep while output buffer is full. */
+	while (KBUFFER_FULL(ttyp->rinput))
+	{
+		sleep(&ttyp->output.chain, PRIO_TTY);
 		
 		/* Awaken by signal. */
 		if (issig())
@@ -129,7 +172,14 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 	
 	/* Write n characters. */
 	while (n > 0)
-	{		
+	{
+		/*
+		 * Wait for free slots
+		 * in the output buffer.
+		 */
+		if (sleep_full(&tty))
+			return (-EINTR);
+		
 		/* Copy data to output tty buffer. */
 		while ((n > 0) && (!KBUFFER_FULL(tty.output)))
 		{
@@ -139,9 +189,12 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 		}
 		
 		/* Flushes tty output buffer. */
-		disable_interrupts();
-		console_write(&tty.output);
-		enable_interrupts();
+		if (!(tty.flags & TTY_STOPPED))
+		{
+			disable_interrupts();
+			console_write(&tty.output);
+			enable_interrupts();
+		}
 	}
 		
 	return ((ssize_t)(p - buf));
@@ -190,13 +243,27 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 				sys_kill(0, SIGINT);
 				return (-EINTR);
 			}
+			
+			/* Stop. */
+			else if (ch == STOP_CHAR(tty))
+			{
+				tty.flags |= TTY_STOPPED;
+				continue;
+			}
+				
+			/* Start. */
+			else if (ch == START_CHAR(tty))
+			{
+				tty.flags &= ~TTY_STOPPED;
+				continue;
+			}
 		}
 		
 		/* Canonical mode. */
 		if (tty.term.c_lflag & ICANON)
 		{
 			/* Erase. */
-			if (ch == tty.term.c_cc[VERASE])
+			if (ch == ERASE_CHAR(tty))
 			{
 				if (!KBUFFER_EMPTY(tty.cinput))
 				{
@@ -207,6 +274,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			
 			else
 			{
+					
 				KBUFFER_PUT(tty.cinput, ch);
 			
 				/* Copy data to input buffer. */
@@ -360,9 +428,9 @@ tcflag_t init_c_cc[NCCS] = {
 	0x15, /**< KILL character.  */
 	0x00, /**< MIN value.       */
 	0x4e, /**< QUIT character.  */
-	0x17, /**< START character. */
+	0x11, /**< START character. */
 	0x13, /**< STOP character.  */
-	0x19, /**< SUSP character.  */
+	0x00, /**< SUSP character.  */
 	0x00  /**< TIME value.      */
 };
 
@@ -374,6 +442,7 @@ PUBLIC void tty_init(void)
 	kprintf("dev: initializing tty device driver");
 	
 	/* Initialize tty. */
+	tty.flags = 0;
 	tty.pgrp = NULL;
 	KBUFFER_INIT(tty.output);
 	KBUFFER_INIT(tty.cinput);
