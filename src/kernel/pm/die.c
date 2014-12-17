@@ -18,6 +18,7 @@
  */
 
 #include <nanvix/const.h>
+#include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
@@ -55,6 +56,10 @@ PUBLIC void die(int status)
 	for (unsigned i = 0; i < OPEN_MAX; i++)
 		do_close(i);
 	
+	/* Hangup terminal. */
+	if (IS_LEADER(curr_proc) && (curr_proc->tty != NULL_DEV))
+		cdev_close(curr_proc->tty);
+		
 	/* init adopts orphan processes. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{

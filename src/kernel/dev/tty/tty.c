@@ -24,6 +24,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/syscall.h>
 #include <errno.h>
 #include <termios.h>
 #include "tty.h"
@@ -56,10 +57,10 @@ PUBLIC void tty_int(unsigned char ch)
 	if (active->term.c_lflag & ECHO)
 	{
 		/* 
-		 * Let backspace be handled 
-		 * when the line is being parsed
+		 * Let ERASE character be handled 
+		 * when the line is being parsed.
 		 */
-		if (ch == '\b')
+		if (ch == tty.term.c_cc[VERASE])
 			return;
 			
 		console_put(ch, WHITE);
@@ -137,6 +138,10 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
  * @details Reads @p n bytes data from the TTY device, which minor device number
  *          is @p minor, to the buffer pointed to by @p buf.
  * 
+ * @param minor Minor device number of target TTY device.
+ * @param buf   Buffer where data shall be placed.
+ * @param n     Number of bytes to be read.
+ * 
  * @returns The number of bytes actually read to the TTY device.
  */
 PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
@@ -173,7 +178,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 		if (tty.term.c_lflag & ICANON)
 		{
 			/* Erase. */
-			if (ch == '\b')
+			if (ch == tty.term.c_cc[VERASE])
 			{
 				if (!KBUFFER_EMPTY(tty.cinput))
 				{
@@ -294,6 +299,27 @@ PRIVATE int tty_ioctl(unsigned minor, unsigned cmd, unsigned arg)
 	return (ret);
 }
 
+/**
+ * @brief Closes a TTY device.
+ * 
+ * @details Closes the TTY device with minor device number @p minor.
+ * 
+ * @param minor Minor device number of target TTY device.
+ * 
+ * @returns Zero is always returned.
+ */
+PRIVATE int tty_close(unsigned minor)
+{
+	UNUSED(minor);
+	
+	tty.pgrp = NULL;
+	
+	sys_kill(SIGHUP, 0);
+	
+	return (0);
+}
+
+
 /*
  * tty device driver interface.
  */
@@ -301,7 +327,8 @@ PRIVATE struct cdev tty_driver = {
 	&tty_open,  /* open().  */
 	&tty_read,  /* read().  */
 	&tty_write, /* write(). */
-	&tty_ioctl  /* ioctl(). */
+	&tty_ioctl, /* ioctl(). */
+	&tty_close  /* ioctl(). */
 };
 
 /**
@@ -310,7 +337,7 @@ PRIVATE struct cdev tty_driver = {
 tcflag_t init_c_cc[NCCS] = {
 	0x00, /**< EOF character.   */
 	0x00, /**< EOL character.   */
-	0x7f, /**< ERASE character. */
+	'\b', /**< ERASE character. */
 	0x03, /**< INTR character.  */
 	0x15, /**< KILL character.  */
 	0x00, /**< MIN value.       */
@@ -329,7 +356,7 @@ PUBLIC void tty_init(void)
 	kprintf("dev: initializing tty device driver");
 	
 	/* Initialize tty. */
-	tty.pgrp = curr_proc;
+	tty.pgrp = NULL;
 	KBUFFER_INIT(tty.output);
 	KBUFFER_INIT(tty.cinput);
 	KBUFFER_INIT(tty.rinput);

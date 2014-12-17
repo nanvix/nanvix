@@ -68,6 +68,7 @@
 		ssize_t (*read)(unsigned, char *, size_t);        /* Read.    */
 		ssize_t (*write)(unsigned, const char *, size_t); /* Write.   */
 		int (*ioctl)(unsigned, unsigned, unsigned);       /* Control. */
+		int (*close)(dev_t);                              /* Close.   */
 	};
 	
 	/*
@@ -117,10 +118,9 @@
 	 */
 	EXTERN ssize_t cdev_read(dev_t dev, void *buf, size_t n);
 
-	/*
-	 * Opens a character device.
-	 */
-	EXTERN int cdev_open(dev_t dev);
+	/* Forward definitions. */
+	EXTERN int cdev_open(dev_t);
+	EXTERN int cdev_close(dev_t);
 	
 	/*
 	 * Performs control operations on a character device.

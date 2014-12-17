@@ -126,6 +126,32 @@ PUBLIC int cdev_ioctl(dev_t dev, unsigned cmd, unsigned arg)
 	return (cdevsw[MAJOR(dev)]->ioctl(MINOR(dev), cmd, arg));
 }
 
+/**
+ * @brief Closes a character device.
+ * 
+ * @details Closes the character device @p dev.
+ * 
+ * @returns Upon successful completion zero is returned. Upon failure, a 
+ *          negative error code is returned instead.
+ */
+PUBLIC int cdev_close(dev_t dev)
+{
+	/* Null device. */
+	if (MAJOR(dev) == NULL_MAJOR)
+		return (0);
+		
+	/* Invalid device. */
+	if (cdevsw[MAJOR(dev)] == NULL)
+		return (-EINVAL);
+	
+	/* Operation not supported. */
+	if (cdevsw[MAJOR(dev)]->close == NULL)
+		return (-ENOTSUP);
+		
+	return (cdevsw[MAJOR(dev)]->close(MINOR(dev)));
+}
+
+
 /*============================================================================*
  *                              Block Devices                                 *
  *============================================================================*/
