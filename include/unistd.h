@@ -175,6 +175,8 @@
 	 */
 	extern int setuid(pid_t uid);
 	
+	extern pid_t setpgrp(void);
+	
 	/*
 	 * Schedules file system updates.
 	 */

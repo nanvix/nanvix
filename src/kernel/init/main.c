@@ -98,46 +98,12 @@ void _exit(int status)
 }
 
 /**
- * @brief opens a file.
- * 
- * @param path  File path.
- * @param oflag Open flags.
- * 
- * @returns Upon successful completion, zero is returned. Upon failure, a 
- *          negative error code is returned instead.
- */
-int open(const char *path, int oflag, ...)
-{
-	int ret;
-	
-	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_open),
-		  "b" (path),
-		  "c" (oflag),
-		  "d" (0)
-	);
-	
-	/* Error. */
-	if (ret < 0)
-		return (-1);
-	
-	return (ret);
-}
-
-/**
  * @brief Init process.
  */
 PRIVATE void init(void)
 {
 	const char *argv[] = { "init", "/etc/inittab", NULL };
 	const char *envp[] = { "PATH=/bin:/sbin", "HOME=/", NULL };
-	
-	/* Open standard output streams. */
-	open("/dev/tty", O_RDONLY);
-	open("/dev/tty", O_WRONLY);
-	open("/dev/tty", O_WRONLY);
 		
 	execve("/sbin/init", argv, envp);
 }

@@ -10,7 +10,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 /*
@@ -23,8 +22,6 @@ int main(int argc, char **argv)
 
 	((void)argc);
 	((void)argv);
-	
-	setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
 	arg[0] = "login";
 	arg[1] = NULL;
@@ -36,15 +33,21 @@ int main(int argc, char **argv)
 			
 		/* Failed to fork. */
 		if (pid < 0)
-		{
-			puts("fork() failed on init");
-			continue;
-		}
+			return (-1);
 			
 		/* Child process. */
 		if (pid == 0)
-			_exit(execve("/bin/login", (char *const*)arg, (char *const*)environ));			
+		{	
+			setpgrp();
 			
+			/* Open standard output streams. */
+			open("/dev/tty", O_RDONLY);
+			open("/dev/tty", O_WRONLY);
+			open("/dev/tty", O_WRONLY);
+			
+			_exit(execve("/bin/login", (char *const*)arg, (char *const*)environ));			
+		}
+		
 		/* Wait child processes. */
 		while (1)
 		{

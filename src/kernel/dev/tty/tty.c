@@ -62,7 +62,22 @@ PUBLIC void tty_int(unsigned char ch)
 		 */
 		if (ch == tty.term.c_cc[VERASE])
 			return;
+		
+		/*
+		 * Special treatment for INTR character.
+		 */
+		else if (ch == tty.term.c_cc[VINTR])
+		{
+			/* Make it printable. */
+			if (ch < 32)
+				ch += 64;
 			
+			console_put('^', WHITE);
+			console_put(ch, WHITE);
+			console_put('\n', WHITE);
+			return;
+		}
+		
 		console_put(ch, WHITE);
 	}
 }
@@ -161,7 +176,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 		if (sleep_empty(&tty))
 		{
 			enable_interrupts();
-			return (-1);
+			return (-EINTR);
 		}
 		
 		KBUFFER_GET(tty.rinput, ch);
@@ -171,7 +186,10 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 		{
 			/* Interrupt. */
 			if (ch == tty.term.c_cc[VINTR])
-				continue;
+			{
+				sys_kill(0, SIGINT);
+				return (-EINTR);
+			}
 		}
 		
 		/* Canonical mode. */
@@ -314,7 +332,7 @@ PRIVATE int tty_close(unsigned minor)
 	
 	tty.pgrp = NULL;
 	
-	sys_kill(SIGHUP, 0);
+	sys_kill(0, SIGHUP);
 	
 	return (0);
 }
