@@ -122,6 +122,8 @@ PUBLIC void kmain(void)
 	pm_init();
 	fs_init();
 	
+	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
+	
 	/* Spawn init process. */
 	if ((pid = fork()) < 0)
 		kpanic("failed to fork idle process");

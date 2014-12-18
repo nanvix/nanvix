@@ -477,7 +477,4 @@ PUBLIC void tty_init(void)
 	/* Register charecter device. */
 	if (cdev_register(TTY_MAJOR, &tty_driver))
 		kpanic("failed to register tty device driver");
-	
-	/* Change kernel's output device. */
-	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 }
