@@ -239,6 +239,15 @@
 	#define IS_LEADER(p) ((p)->pgrp->pid == (p)->pid)
 	
 	/**
+	 * @brief Asserts if a process is valid.
+	 * 
+	 * @param p Process to be queried about.
+	 * 
+	 * @returns True if the process is valid, and false otherwise.
+	 */
+	#define IS_VALID(p) (((p)->state != PROC_DEAD) || ((p)->flags & PROC_NEW))
+	
+	/**
 	 * @brief Asserts if a process has superuser privileges.
 	 * 
 	 * @param p Process to be queried about.
@@ -247,7 +256,7 @@
 	 *          otherwise.
 	 */
 	#define IS_SUPERUSER(p) \
-		(((p)->uid == SUPERUSER) || ((p)->euid == SUPERUSER))	
+		(((p)->uid == SUPERUSER) || ((p)->euid == SUPERUSER))
 	
 	/* Forward definitions. */	
 	EXTERN void resume(struct process *);

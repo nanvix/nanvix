@@ -56,15 +56,12 @@ PRIVATE struct tty *active = &tty;
  * 
  * @details Handles a TTY interrupt, putting the received character @p ch in the
  *          raw input buffer of the currently active TTY device. Addiitonally, 
- *          if echo is  enable for such device, @p ch is output to the terminal.
+ *          if echo is enable for such device, @p ch is output to the terminal.
  * 
  * @param ch Received character.
  */
 PUBLIC void tty_int(unsigned char ch)
 {
-	KBUFFER_PUT(active->rinput, ch);
-	wakeup(&active->rinput.chain);
-
 	/* Output echo character. */
 	if (active->term.c_lflag & ECHO)
 	{
@@ -73,24 +70,67 @@ PUBLIC void tty_int(unsigned char ch)
 		 * when the line is being parsed.
 		 */
 		if (ch == ERASE_CHAR(*active))
-			return;
+			goto out1;
 
-		/*
-		 * Special treatment for
-		 * controlling characters.
-		 */
+		/* Non-printable characters. */
 		if ((ch < 32) && (ch != '\n') && (ch != '\t'))
 		{
-			ch += 64;
-			
 			console_put('^', WHITE);
-			console_put(ch, WHITE);
+			console_put(ch + 64, WHITE);
 			console_put('\n', WHITE);
-			return;
 		}
 		
-		console_put(ch, WHITE);
+		/* Any character. */
+		else
+			console_put(ch, WHITE);
 	}
+	
+	/*
+	 * Handle signals. Note that if a signal is
+	 * received, no character is put in the raw
+	 * input buffer. Otherwise, we could mess it up.
+	 */
+	if (active->term.c_lflag & ISIG)
+	{
+		/*
+		 * Interrupt. Send signal to all
+		 * process in the same group.
+		 */
+		if (ch == INTR_CHAR(*active))
+		{
+			for (struct process *p = FIRST_PROC; p <= LAST_PROC; p++)
+			{
+				/* Skip invalid processes. */
+				if (!IS_VALID(p))
+					continue;
+				
+				if (active->pgrp == p->pgrp)
+					sndsig(p, SIGINT);
+			}
+			
+			goto out0;
+		}
+		
+		/* Stop. */
+		else if (ch == STOP_CHAR(*active))
+		{
+			active->flags |= TTY_STOPPED;
+			return;
+		}
+				
+		/* Start. */
+		else if (ch == START_CHAR(*active))
+		{
+			active->flags &= ~TTY_STOPPED;
+			wakeup(&active->output.chain);
+			return;
+		}
+	}
+
+out1:		
+	KBUFFER_PUT(active->rinput, ch);
+out0:
+	wakeup(&active->rinput.chain);
 }
 
 /**
@@ -117,7 +157,7 @@ PRIVATE int sleep_empty(struct tty *ttyp)
 		sleep(&ttyp->rinput.chain, PRIO_TTY);
 		
 		/* Awaken by signal. */
-		if (issig())
+		if (issig() != SIGNULL)
 		{
 			curr_proc->errno = -EINTR;
 			return (-1);
@@ -144,7 +184,7 @@ PRIVATE int sleep_empty(struct tty *ttyp)
 PRIVATE int sleep_full(struct tty *ttyp)
 {
 	/* Sleep while output buffer is full. */
-	while (KBUFFER_FULL(ttyp->rinput))
+	while (KBUFFER_FULL(ttyp->output))
 	{
 		sleep(&ttyp->output.chain, PRIO_TTY);
 		
@@ -154,6 +194,11 @@ PRIVATE int sleep_full(struct tty *ttyp)
 			curr_proc->errno = -EINTR;
 			return (-1);
 		}
+		
+		/* Awaken by START character. */
+		disable_interrupts();
+		console_write(&ttyp->output);
+		enable_interrupts();
 	}
 	
 	return (0);
@@ -234,31 +279,6 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 		
 		KBUFFER_GET(tty.rinput, ch);
 		
-		/* Check signals. */
-		if (tty.term.c_lflag & ISIG)
-		{
-			/* Interrupt. */
-			if (ch == tty.term.c_cc[VINTR])
-			{
-				sys_kill(0, SIGINT);
-				return (-EINTR);
-			}
-			
-			/* Stop. */
-			else if (ch == STOP_CHAR(tty))
-			{
-				tty.flags |= TTY_STOPPED;
-				continue;
-			}
-				
-			/* Start. */
-			else if (ch == START_CHAR(tty))
-			{
-				tty.flags &= ~TTY_STOPPED;
-				continue;
-			}
-		}
-		
 		/* Canonical mode. */
 		if (tty.term.c_lflag & ICANON)
 		{
@@ -274,7 +294,6 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			
 			else
 			{
-					
 				KBUFFER_PUT(tty.cinput, ch);
 			
 				/* Copy data to input buffer. */
