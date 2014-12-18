@@ -694,11 +694,10 @@ PRIVATE int ata_writeblk(unsigned minor, buffer_t buf)
 PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 {
 	size_t i;           /* Loop index.                   */
-	size_t count;       /* # bytes to read.              */
-	block_t blknum;     /* Block number.                 */
 	struct atadev *dev; /* ATA device.                   */
 	unsigned char *p;   /* Read pointer.                 */
-	void *kpg;          /* Kernel page used for copying. */
+	unsigned char *kpg; /* Kernel page used for copying. */
+	block_t lastblk;    /* Last block.                   */
 	
 	/* Invalid minor device. */
 	if (minor >= 4)
@@ -709,6 +708,16 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	/* Device not valid. */
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
+		
+	/* Bad offset. */
+	if (off & (BLOCK_SIZE - 1))
+		return (-EINVAL);
+	
+	/* Bad read size. */
+	if (n & (BLOCK_SIZE - 1))
+		return (-EINVAL);
+	
+	lastblk = dev->info.nsectors >> (BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
 	
 	/* Get a kernel page. */
 	kpg = getkpg(0);
@@ -716,18 +725,34 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 		return (-ENOMEM);
 	
 	p = (unsigned char *)buf;
-	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
-	n = ALIGN(n, BLOCK_SIZE);
 	
 	/* Read in bursts. */
-	for (i = 0; i < n; /* noop*/)
-	{	
-		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : PAGE_SIZE - (n - i);
+	for (i = 0; i < n; noop())
+	{
+		size_t count;   /* # bytes to read. */
+		block_t blknum; /* Block number.    */
+		
+		blknum = off >> BLOCK_SIZE_LOG2;
+		
+		/* End of disk. */
+		if (blknum >= lastblk)
+			break;
+			
+		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : (n - i);
+		
+		/* Read as much as we can. */
+		if (blknum + (count >> BLOCK_SIZE_LOG2) >= lastblk)
+		{
+		    count -= ((blknum + (count >> BLOCK_SIZE_LOG2)) - lastblk) <<
+																BLOCK_SIZE_LOG2;
+		}
+		    
 		ata_sched_raw(minor, blknum, kpg, count, REQ_SYNC);
 		kmemcpy(p, kpg, count);
 		
-		p += BLOCK_SIZE;
+		p += count;
 		i += count;
+		off += count;
 	
 		/* Avoid starvation. */
 		if ((n - i) > 0)
@@ -745,11 +770,10 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 {
 	size_t i;           /* Loop index.                   */
-	size_t count;       /* # bytes to read.              */
-	block_t blknum;     /* Block number.                 */
 	struct atadev *dev; /* ATA device.                   */
 	unsigned char *p;   /* Write pointer.                */
-	void *kpg;          /* Kernel page used for copying. */
+	unsigned char *kpg; /* Kernel page used for copying. */
+	block_t lastblk;    /* Last block.                   */
 	
 	/* Invalid minor device. */
 	if (minor >= 4)
@@ -760,6 +784,16 @@ PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 	/* Device not valid. */
 	if (!(dev->flags & ATADEV_VALID))
 		return (-EINVAL);
+		
+	/* Bad offset. */
+	if (off & (BLOCK_SIZE - 1))
+		return (-EINVAL);
+	
+	/* Bad write size. */
+	if (n & (BLOCK_SIZE - 1))
+		return (-EINVAL);
+	
+	lastblk = dev->info.nsectors >> (BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
 	
 	/* Get a kernel page. */
 	kpg = getkpg(0);
@@ -767,18 +801,34 @@ PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 		return (-ENOMEM);
 	
 	p = (unsigned char *)buf;
-	blknum = ALIGN(off, BLOCK_SIZE)/BLOCK_SIZE;
-	n = ALIGN(n, BLOCK_SIZE);
 	
 	/* Write in bursts. */
-	for (i = 0; i < n; /* noop*/)
+	for (i = 0; i < n; noop())
 	{	
-		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : PAGE_SIZE - (n - i);
+		size_t count;   /* # bytes to read. */
+		block_t blknum; /* Block number.    */
+		
+		blknum = off >> BLOCK_SIZE_LOG2;
+		
+		/* End of disk. */
+		if (blknum >= lastblk)
+			break;
+		
+		count = ((n - i) >= PAGE_SIZE) ? PAGE_SIZE : (n - i);
+		
+		/* Write as much as we can. */
+		if (blknum + (count >> BLOCK_SIZE_LOG2) >= lastblk)
+		{
+		    count -= ((blknum + (count >> BLOCK_SIZE_LOG2)) - lastblk) <<
+																BLOCK_SIZE_LOG2;
+		}
+		
 		kmemcpy(kpg, p, count);
 		ata_sched_raw(minor, blknum, kpg, count, REQ_SYNC | REQ_WRITE);
 		
-		p += BLOCK_SIZE;
+		p += count;
 		i += count;
+		off += count;
 		
 		/* Avoid starvation. */
 		if ((n - i) > 0)

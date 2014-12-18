@@ -12,7 +12,7 @@
 	#include <stdarg.h>
 
 	/* Standard buffer size. */
-	#define BUFSIZ 256
+	#define BUFSIZ 1024
 
 	/* End of file. */
 	#define EOF -1
