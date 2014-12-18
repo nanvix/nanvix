@@ -35,11 +35,14 @@
 	#define SIGTRAP 22
 	
 	/* Handlers. */
-	#define SIG_DFL (sighandler_t)(1)
-    #define SIG_IGN (sighandler_t)(2)
+	#define _SIG_DFL 1
+	#define SIG_DFL (sighandler_t)(_SIG_DFL)
+    #define _SIG_IGN 2
+    #define SIG_IGN (sighandler_t)(_SIG_IGN)
     
     /* Other constants. */
-    #define SIG_ERR (sighandler_t)(0)
+    #define _SIG_ERR 0
+    #define SIG_ERR (sighandler_t)(_SIG_ERR)
 
 #ifndef _ASM_FILE_
 

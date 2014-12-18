@@ -50,7 +50,7 @@ PRIVATE void terminate(int);
 /**
  * @brief Default signal handlers.
  */
-PRIVATE const sighandler_t sigdfl[NR_SIGNALS] = {
+PUBLIC const sighandler_t sigdfl[NR_SIGNALS] = {
 	NULL,                     /* SIGNULL */
 	(sighandler_t)&terminate, /* SIGKILL */ 
 	(sighandler_t)&stop,      /* SIGSTOP */

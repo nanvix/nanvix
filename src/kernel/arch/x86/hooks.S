@@ -65,7 +65,6 @@
 .globl hwint15
 .globl leave
 .globl do_hwint
-.globl yield
 
 /*----------------------------------------------------------------------------*
  *                                  save()                                    *
@@ -140,10 +139,20 @@ leave:
 	movl curr_proc, %ebx
 	
 	/* Check signals. */
-	btrl $SIGKILL, PROC_RECEIVED(%ebx)
-	jnc leave.out
-	push $10200
-	call die
+	check_signals:
+		bsfl PROC_RECEIVED(%ebx), %eax
+		jz leave.out
+		btrl %eax, PROC_RECEIVED(%ebx)
+		movl PROC_HANDLERS(%ebx, %eax, 4), %ecx
+		cmpl $_SIG_DFL, %ecx
+		je default_signal
+		cmpl $_SIG_IGN, %ecx
+		je check_signals
+		
+			/* User signal. */
+			movl $_SIG_DFL, PROC_HANDLERS(%ebx, %eax, 4)
+			push $(((SIGKILL & 0xff) << 16) | (1 << 9))
+			call die
 	
 leave.out:
 	popl %ds
@@ -156,6 +165,12 @@ leave.out:
 	popl %eax
 	
 	iret
+
+default_signal:
+	pushl %eax
+	call *sigdfl(, %eax, 4)
+	addl $4, %esp
+	jmp leave.out
 
 /*----------------------------------------------------------------------------*
  *                                  swint()                                   *
