@@ -207,9 +207,8 @@ switch_to:
 	/* Load process context. */
 	movl PROC_KESP(%ecx), %esp
 	
-	movl PROC_FLAGS(%ecx), %eax
-	andl $PROC_NEW, %eax
-	jnz fork_return
+	btrl $PROC_NEW, PROC_FLAGS(%ecx)
+	jc fork_return
 	
 	popl PROC_KESP(%ecx)
 	

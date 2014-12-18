@@ -44,7 +44,7 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{			
 			/* Skip invalid processes. */
-			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+			if (!IS_VALID(p))
 				continue;
 		
 			/* Found. */
@@ -68,7 +68,7 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{			
 			/* Skip invalid processes. */
-			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+			if (!IS_VALID(p))
 				continue;
 			
 			/* Found. */
@@ -94,7 +94,7 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{			
 			/* Skip invalid processes. */
-			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+			if (!IS_VALID(p))
 				continue;
 			
 			if (AUTHORIZED(curr_proc, p, sig))
@@ -112,7 +112,7 @@ PUBLIC int sys_kill(pid_t pid, int sig)
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{
 			/* Skip invalid processes. */
-			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+			if (!IS_VALID(p))
 				continue;
 			
 			/* Found. */

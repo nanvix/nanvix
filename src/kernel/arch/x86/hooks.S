@@ -124,6 +124,7 @@ leave:
 
 	/* Decrement interrupt level. */
     decl PROC_INTLVL(%ebx)
+    jnz leave.out
 	
 	/* Check if we were handling a system call. */ 
 	btrl $PROC_SYS, PROC_FLAGS(%ebx)
@@ -253,7 +254,7 @@ syscall:
 	enter
 	
 	/* Set 'handling system call' flag. */
-	orl $PROC_SYS, PROC_FLAGS(%ebx)
+	btsl $PROC_SYS, PROC_FLAGS(%ebx)
 	
 	/* Leave critical region. */
 	sti

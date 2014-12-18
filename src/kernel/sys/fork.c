@@ -36,7 +36,7 @@ PUBLIC pid_t sys_fork(void)
 	for (proc = FIRST_PROC; proc <= LAST_PROC; proc++)
 	{
 		/* Found. */
-		if ((proc->state == PROC_DEAD) && !(proc->flags & PROC_NEW))
+		if (!IS_VALID(proc))
 			goto found;
 	}
 
@@ -47,7 +47,7 @@ PUBLIC pid_t sys_fork(void)
 found:
 	
 	/* Mark process as beeing created. */
-	proc->flags = PROC_NEW;
+	proc->flags = 1 << PROC_NEW;
 
 	err = crtpgdir(proc);
 	

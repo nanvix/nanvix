@@ -84,7 +84,7 @@ PUBLIC void yield(void)
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
 		/* Skip invalid processes. */
-		if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+		if (!IS_VALID(p))
 			continue;
 		
 		/* Alarm has expired. */

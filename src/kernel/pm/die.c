@@ -63,7 +63,8 @@ PUBLIC void die(int status)
 	/* init adopts orphan processes. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
-		if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+		/* Skip invalid processes. */
+		if (!IS_VALID(p))
 			continue;
 		
 		if (shutting_down)
@@ -77,7 +78,8 @@ PUBLIC void die(int status)
 	{
 		for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		{
-			if ((p->state == PROC_DEAD) && !(p->flags & PROC_NEW))
+			/* Skip invalid processes. */
+			if (!IS_VALID(p))
 				continue;
 			
 			if (p->pgrp == curr_proc)

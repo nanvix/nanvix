@@ -63,8 +63,8 @@
 	 * @name Process flags
 	 */
 	/**@{*/
-	#define PROC_NEW (1 << 0) /**< Is the process new?     */
-	#define PROC_SYS (1 << 1) /**< Handling a system call? */
+	#define PROC_NEW 0 /**< Is the process new?     */
+	#define PROC_SYS 1 /**< Handling a system call? */
 	/**@}*/
 	
 	/**
@@ -245,7 +245,8 @@
 	 * 
 	 * @returns True if the process is valid, and false otherwise.
 	 */
-	#define IS_VALID(p) (((p)->state != PROC_DEAD) || ((p)->flags & PROC_NEW))
+	#define IS_VALID(p) \
+		(((p)->state != PROC_DEAD) || ((p)->flags & (1 << PROC_NEW)))
 	
 	/**
 	 * @brief Asserts if a process has superuser privileges.
