@@ -71,6 +71,8 @@ PUBLIC void die(int status)
 			p->father = IDLE;
 		else if (p->father == curr_proc)
 			p->father = INIT;
+		
+		p->father->nchildren++;
 	}
 	
 	/* init adotps process in the same group. */
