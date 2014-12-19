@@ -144,12 +144,12 @@ out0:
  * @returns Upon sucessful completion, zero is returned, meaning that the 
  *          input buffer of the target TTY device is no longer empty. If while
  *          sleeping, the process gets awaken due to the deliver of a signal,
- *          non-zero is returned instead. In this later case, it is undefined
+ *          -#EINTR is returned instead. In this later case, it is undefined
  *          whether the buffer is no longer empty.
  * 
  * @note @p ttyp must point to a valid TTY device.
  */
-PRIVATE int sleep_empty(struct tty *ttyp)
+PRIVATE int tty_sleep_empty(struct tty *ttyp)
 {
 	/* Sleep while raw input buffer is empty. */
 	while (KBUFFER_EMPTY(ttyp->rinput))
@@ -158,10 +158,7 @@ PRIVATE int sleep_empty(struct tty *ttyp)
 		
 		/* Awaken by signal. */
 		if (issig() != SIGNULL)
-		{
-			curr_proc->errno = -EINTR;
-			return (-1);
-		}
+			return (-EINTR);
 	}
 	
 	return (0);
@@ -178,10 +175,10 @@ PRIVATE int sleep_empty(struct tty *ttyp)
  * @returns Upon successful completion, zero is returned, meaning that the 
  *          output buffer of the target TTY device is no longer full. If while
  *          sleeping, the process gets awaken due to the deliver of a signal,
- *          non-zero is returned instead. In this later case, it is undefined
+ *          -#EINTR is returned instead. In this later case, it is undefined
  *          whether the buffer is no longer full.
  */
-PRIVATE int sleep_full(struct tty *ttyp)
+PRIVATE int tty_sleep_full(struct tty *ttyp)
 {
 	/* Sleep while output buffer is full. */
 	while (KBUFFER_FULL(ttyp->output))
@@ -189,11 +186,8 @@ PRIVATE int sleep_full(struct tty *ttyp)
 		sleep(&ttyp->output.chain, PRIO_TTY);
 		
 		/* Awaken by signal. */
-		if (issig())
-		{
-			curr_proc->errno = -EINTR;
-			return (-1);
-		}
+		if (issig() != SIGNULL)
+			return (-EINTR);
 		
 		/* Awaken by START character. */
 		disable_interrupts();

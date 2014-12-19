@@ -30,6 +30,13 @@ PRIVATE struct process **idle_chain = NULL;
 /**
  * @brief Puts the current process to sleep in a chain of sleeping processes.
  * 
+ * @details Puts the current process to sleep in the chain of processes pointed
+ *          to by @p chain, with a  priority @p priority.
+ * 
+ *          If @p priority if greater than or equal to zero, then the process
+ *          is set to an interruptible sleeping state. Otherwise, it is put is
+ *          an uninterruptible sleeping state.
+ * 
  * @param chain    Sleeping chain where the process should be put.
  * @param priority Priority that the process shall assume after waking up.
  */
