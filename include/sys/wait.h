@@ -17,6 +17,9 @@
     
     #define WIFSIGNALED(status) \
 		((status >> 9) & 1)     \
+		
+	#define WIFSTOPPED(status) \
+		(((status) >> 10) & 1) \
 
     #define WTERMSIG(status)    \
 		((status >> 16) & 0xff) \

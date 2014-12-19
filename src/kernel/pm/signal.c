@@ -51,7 +51,7 @@ PRIVATE void terminate(int);
  * @brief Default signal handlers.
  */
 PUBLIC const sighandler_t sigdfl[NR_SIGNALS] = {
-	NULL,                     /* SIGNULL */
+	SIG_IGN,                  /* SIGNULL */
 	(sighandler_t)&terminate, /* SIGKILL */ 
 	(sighandler_t)&stop,      /* SIGSTOP */
 	SIG_IGN,                  /* SIGURG  */
@@ -104,10 +104,8 @@ PRIVATE void abort(int sig)
  */
 PUBLIC void sndsig(struct process *proc, int sig)
 {
-	struct process *p;
-	
-	/* Ignore SIGNULL. */
-	if (sig == SIGNULL)
+	/* Ignore this. */
+	if (IGNORING(proc, sig) && (sig != SIGCHLD))
 		return;
 	
 	/* Set signal flag. */
@@ -141,7 +139,8 @@ PUBLIC void sndsig(struct process *proc, int sig)
 			*proc->chain = proc->next;
 		else
 		{
-			for (p = *proc->chain; p->next != proc; p = p->next);
+			struct process *p;
+			for (p = *proc->chain; p->next != proc; p = p->next)
 				noop() ;
 			p->next = proc->next;
 		}
@@ -157,11 +156,8 @@ PUBLIC void sndsig(struct process *proc, int sig)
  */
 PUBLIC int issig(void)
 {
-	int i;
-	struct process *p;
-
 	/* Find a pending signal that is not being ignored. */
-	for (i = 1; i < NR_SIGNALS; i++)
+	for (int i = 1; i < NR_SIGNALS; i++)
 	{
 		/* Skip. */
 		if (!(curr_proc->received & (1 << i)))
@@ -183,7 +179,7 @@ PUBLIC int issig(void)
 				curr_proc->received &= ~(1 << i);
 			
 				/* Bury zombie child processes. */
-				for (p = FIRST_PROC; p <= LAST_PROC; p++)
+				for (struct process *p = FIRST_PROC; p <= LAST_PROC; p++)
 				{
 					if ((p->father == curr_proc) && (p->state==PROC_ZOMBIE))
 						bury(p);
@@ -214,12 +210,21 @@ PUBLIC int issig(void)
 			return (SIGCHLD);
 		}
 		
-		/* Found. */
-		else if (!IGNORING(curr_proc, i))
-			return (i);
+		/*
+		 * Check if the default action for this signal
+		 * is to stop execution. If so, we do it now.
+		 */
+		if (curr_proc->handlers[i] == SIG_DFL)
+		{
+			if (sigdfl[i] == (sighandler_t)&stop)
+			{
+				curr_proc->received &= ~(1 << i);
+				stop();
+				return (SIGNULL);
+			}
+		}
 		
-		/* Clear signal flag. */
-		curr_proc->received &= ~(1 << i);
+		return (i);
 	}
 	
 	return (SIGNULL);

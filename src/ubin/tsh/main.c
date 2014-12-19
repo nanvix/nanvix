@@ -125,10 +125,10 @@ static void runcmd(const char **args, int argc, int *redir, int flags)
 			printf("[%d]+\n", pid);
 			return;
 		}
-	
+
 		/* Wait child. */
 		while (wait(&status) != pid)
-			/* empty. */ ;
+			/* noop */;
 		
 		/* Abnormal termination. */
 		if (status != EXIT_SUCCESS)
@@ -140,6 +140,10 @@ static void runcmd(const char **args, int argc, int *redir, int flags)
 			/* Voluntary. */
 			else if (WIFEXITED(status))
 				shret = WEXITSTATUS(status);
+			
+			/* Stopped. */
+			else if  (WIFSTOPPED(status))
+				printf("[%d]+\tStopped\n", pid);
 		}
 		
 		return;
@@ -153,6 +157,7 @@ static void runcmd(const char **args, int argc, int *redir, int flags)
 	signal(SIGINT, SIG_DFL);
 	signal(SIGQUIT, SIG_DFL);
 	signal(SIGTERM, SIG_DFL);
+	signal(SIGTSTP, SIG_DFL);
 	if (flags & CMD_ASYNC)
 	{
 		signal(SIGINT, SIG_IGN);
@@ -579,6 +584,7 @@ static void readargs(int argc, char **argv)
 			signal(SIGINT, SIG_IGN);
 			signal(SIGQUIT, SIG_IGN);
 			signal(SIGTERM, SIG_IGN);
+			signal(SIGTSTP, SIG_IGN);
 			setvbuf(stdout, NULL, _IONBF, 0);
 		}
 	}

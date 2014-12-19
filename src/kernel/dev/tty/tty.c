@@ -52,6 +52,27 @@ PRIVATE struct tty *active = &tty;
 /**@}*/
 
 /**
+ * @brief Sends a signal to process group.
+ * 
+ * @details Sends the signal @p sig to the process group of the currently active
+ *          TTY device.
+ * 
+ * @param sig Signal to be sent.         
+ */
+PRIVATE void tty_signal(int sig)
+{
+	for (struct process *p = FIRST_PROC; p <= LAST_PROC; p++)
+	{
+		/* Skip invalid processes. */
+		if (!IS_VALID(p))
+			continue;
+			
+		if (active->pgrp == p->pgrp)
+			sndsig(p, sig);
+	}
+}
+
+/**
  * @brief Handles a TTY interrupt.
  * 
  * @details Handles a TTY interrupt, putting the received character @p ch in the
@@ -98,16 +119,7 @@ PUBLIC void tty_int(unsigned char ch)
 		 */
 		if (ch == INTR_CHAR(*active))
 		{
-			for (struct process *p = FIRST_PROC; p <= LAST_PROC; p++)
-			{
-				/* Skip invalid processes. */
-				if (!IS_VALID(p))
-					continue;
-				
-				if (active->pgrp == p->pgrp)
-					sndsig(p, SIGINT);
-			}
-			
+			tty_signal(SIGINT);
 			goto out0;
 		}
 		
@@ -124,6 +136,13 @@ PUBLIC void tty_int(unsigned char ch)
 			active->flags &= ~TTY_STOPPED;
 			wakeup(&active->output.chain);
 			return;
+		}
+		
+		/* Suspend. */
+		else if (ch == SUSP_CHAR(*active))
+		{
+			tty_signal(SIGTSTP);
+			goto out0;
 		}
 	}
 
@@ -418,7 +437,6 @@ PRIVATE int tty_close(unsigned minor)
 	return (0);
 }
 
-
 /*
  * tty device driver interface.
  */
@@ -433,7 +451,7 @@ PRIVATE struct cdev tty_driver = {
 /**
  * @brief Initial control characters.
  */
-tcflag_t init_c_cc[NCCS] = {
+PRIVATE tcflag_t init_c_cc[NCCS] = {
 	0x00, /**< EOF character.   */
 	0x00, /**< EOL character.   */
 	'\b', /**< ERASE character. */
@@ -443,7 +461,7 @@ tcflag_t init_c_cc[NCCS] = {
 	0x4e, /**< QUIT character.  */
 	0x11, /**< START character. */
 	0x13, /**< STOP character.  */
-	0x00, /**< SUSP character.  */
+	0x1a, /**< SUSP character.  */
 	0x00  /**< TIME value.      */
 };
 

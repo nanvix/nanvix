@@ -50,6 +50,7 @@ PUBLIC void sched(struct process *proc)
 PUBLIC void stop(void)
 {
 	curr_proc->state = PROC_STOPPED;
+	sndsig(curr_proc->father, SIGCHLD);
 	yield();
 }
 

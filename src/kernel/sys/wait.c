@@ -42,8 +42,24 @@ repeat:
 		 /* Found. */
 		if (p->father == curr_proc)
 		{
-			/* Task has already terminated. */
-			if (p->state == PROC_ZOMBIE)
+			/* Stopped. */
+			if (p->state == PROC_STOPPED)
+			{
+				/* Already reported. */
+				if (p->status)
+					continue;
+				
+				p->status = 1 << 10;
+				
+				/* Get exit code. */
+				if (stat_loc != NULL)
+					*stat_loc = p->status;
+				
+				return (p->pid);
+			}
+			
+			/* Terminated. */
+			else if (p->state == PROC_ZOMBIE)
 			{
 				/* Get exit code. */
 				if (stat_loc != NULL)
