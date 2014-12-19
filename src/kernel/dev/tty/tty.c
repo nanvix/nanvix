@@ -216,7 +216,7 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 		 * Wait for free slots
 		 * in the output buffer.
 		 */
-		if (sleep_full(&tty))
+		if (tty_sleep_full(&tty))
 			return (-EINTR);
 		
 		/* Copy data to output tty buffer. */
@@ -265,7 +265,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 	while (n > 0)
 	{
 		/* Wait for data. */
-		if (sleep_empty(&tty))
+		if (tty_sleep_empty(&tty))
 		{
 			enable_interrupts();
 			return (-EINTR);
