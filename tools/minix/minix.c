@@ -518,7 +518,6 @@ static void minix_dirent_add
  * 
  * @param pathname Path name that shall be converted.
  * @param filename Place to save last component of path.
- * @param num      Inode number of bottom-most directory.
  * 
  * @returns The inode number of the bottom-most directory of the path.
  * 
@@ -602,6 +601,8 @@ uint16_t minix_mkdir(struct d_inode *dip, uint16_t dnum, const char *filename)
  * 
  * @param dip      Directory where the new special file shall be created.
  * @param filename Name of the new special file.
+ * @param mode     Access mode to new special file.
+ * @param dev      Device which the new special file refers to.
  * 
  * @note @p dip must point to a valid inode.
  * @note @p filename must point to a valid file name.

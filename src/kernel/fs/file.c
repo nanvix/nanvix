@@ -17,10 +17,10 @@
  * @brief Searches for a directory entry.
  * 
  * @details Searches for a directory entry named @p filename in the directory
- *          pointed to be @p ip. If @p create is not zero and such file entry
+ *          pointed to be @p dip. If @p create is not zero and such file entry
  *          does not exist, the entry is created.
  * 
- * @param ip Directory where the directory entry shall be searched.
+ * @param dip      Directory where the directory entry shall be searched.
  * @param filename Name of the directory entry that shall be searched.
  * @param buf      Buffer where the directory entry is loaded.
  * @param create   Create directory entry?
@@ -30,12 +30,12 @@
  *          the requested directory entry. However, upon failure, a #NULL
  *          pointer is returned instead.
  * 
- * @note @p ip must be locked.
+ * @note @p dip must be locked.
  * @note @p filename must point to a valid location.
  * @note @p buf must point to a valid location
  */
 PRIVATE struct d_dirent *dirent_search
-(struct inode *dinode, const char *filename, struct buffer **buf, int create)
+(struct inode *dip, const char *filename, struct buffer **buf, int create)
 {
 	int i;              /* Working directory entry index.       */
 	int entry;          /* Index of first free directory entry. */
@@ -43,12 +43,12 @@ PRIVATE struct d_dirent *dirent_search
 	int nentries;       /* Number of directory entries.         */
 	struct d_dirent *d; /* Directory entry.                     */
 	
-	nentries = dinode->size/sizeof(struct d_dirent);
+	nentries = dip->size/sizeof(struct d_dirent);
 	
 	/* Search from very first block. */
 	i = 0;
 	entry = -1;
-	blk = dinode->blocks[0];		
+	blk = dip->blocks[0];		
 	(*buf) = NULL;
 	d = NULL;
 	/* Search directory entry. */
@@ -62,14 +62,14 @@ PRIVATE struct d_dirent *dirent_search
 		if (blk == BLOCK_NULL)
 		{
 			i += BLOCK_SIZE/sizeof(struct d_dirent);
-			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			blk = block_map(dip, i*sizeof(struct d_dirent), 0);
 			continue;
 		}
 		
 		/* Get buffer. */
 		if ((*buf) == NULL)
 		{
-			(*buf) = bread(dinode->dev, blk);
+			(*buf) = bread(dip->dev, blk);
 			d = (*buf)->data;
 		}
 		
@@ -78,7 +78,7 @@ PRIVATE struct d_dirent *dirent_search
 		{
 			brelse((*buf));
 			(*buf) = NULL;
-			blk = block_map(dinode, i*sizeof(struct d_dirent), 0);
+			blk = block_map(dip, i*sizeof(struct d_dirent), 0);
 			continue;
 		}
 		
@@ -122,7 +122,7 @@ PRIVATE struct d_dirent *dirent_search
 		{
 			entry = nentries;
 			
-			blk = block_map(dinode, entry*sizeof(struct d_dirent), 1);
+			blk = block_map(dip, entry*sizeof(struct d_dirent), 1);
 			
 			/* Failed to create entry. */
 			if (blk == BLOCK_NULL)
@@ -131,14 +131,14 @@ PRIVATE struct d_dirent *dirent_search
 				return (NULL);
 			}
 			
-			dinode->size += sizeof(struct d_dirent);
-			inode_touch(dinode);
+			dip->size += sizeof(struct d_dirent);
+			inode_touch(dip);
 		}
 		
 		else
-			blk = block_map(dinode, entry*sizeof(struct d_dirent), 0);
+			blk = block_map(dip, entry*sizeof(struct d_dirent), 0);
 		
-		(*buf) = bread(dinode->dev, blk);
+		(*buf) = bread(dip->dev, blk);
 		entry %= (BLOCK_SIZE/sizeof(struct d_dirent));
 		d = &((struct d_dirent *)((*buf)->data))[entry];
 		

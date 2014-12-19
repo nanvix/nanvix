@@ -251,7 +251,7 @@ PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
  * 
  * @note @p ip must be locked.
  */
-PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
+PUBLIC block_t block_map(struct inode *ip, off_t off, int create)
 {
 	block_t phys;       /* Physical block number. */
 	block_t logic;      /* Logical block number.  */
@@ -260,7 +260,7 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 	logic = off/BLOCK_SIZE;
 	
 	/* File offset too big. */
-	if (off >= inode->sb->max_size)
+	if (off >= ip->sb->max_size)
 	{
 		curr_proc->errno = -EFBIG;
 		return (BLOCK_NULL);
@@ -270,27 +270,27 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 	 * Create blocks that are
 	 * in a valid offset.
 	 */
-	if (off < inode->size)
+	if (off < ip->size)
 		create = 1;
 	
 	/* Direct block. */
 	if (logic < NR_ZONES_DIRECT)
 	{
 		/* Create direct block. */
-		if (inode->blocks[logic] == BLOCK_NULL && create)
+		if (ip->blocks[logic] == BLOCK_NULL && create)
 		{
-			superblock_lock(inode->sb);
-			phys = block_alloc(inode->sb);
-			superblock_unlock(inode->sb);
+			superblock_lock(ip->sb);
+			phys = block_alloc(ip->sb);
+			superblock_unlock(ip->sb);
 			
 			if (phys != BLOCK_NULL)
 			{
-				inode->blocks[logic] = phys;
-				inode_touch(inode);
+				ip->blocks[logic] = phys;
+				inode_touch(ip);
 			}
 		}
 		
-		return (inode->blocks[logic]);
+		return (ip->blocks[logic]);
 	}
 	
 	logic -= NR_ZONES_DIRECT;
@@ -299,37 +299,37 @@ PUBLIC block_t block_map(struct inode *inode, off_t off, int create)
 	if (logic < NR_SINGLE)
 	{
 		/* Create single indirect block. */
-		if (inode->blocks[ZONE_SINGLE] == BLOCK_NULL && create)
+		if (ip->blocks[ZONE_SINGLE] == BLOCK_NULL && create)
 		{
-			superblock_lock(inode->sb);
-			phys = block_alloc(inode->sb);
-			superblock_unlock(inode->sb);
+			superblock_lock(ip->sb);
+			phys = block_alloc(ip->sb);
+			superblock_unlock(ip->sb);
 			
 			if (phys != BLOCK_NULL)
 			{
-				inode->blocks[ZONE_SINGLE] = phys;
-				inode_touch(inode);
+				ip->blocks[ZONE_SINGLE] = phys;
+				inode_touch(ip);
 			}
 		}
 		
 		/* We cannot go any further. */
-		if ((phys = inode->blocks[ZONE_SINGLE]) == BLOCK_NULL)
+		if ((phys = ip->blocks[ZONE_SINGLE]) == BLOCK_NULL)
 			return (BLOCK_NULL);
 	
-		buf = bread(inode->dev, phys);
+		buf = bread(ip->dev, phys);
 		
 		/* Create direct block. */
 		if (((block_t *)buf->data)[logic] == BLOCK_NULL && create)
 		{
-			superblock_lock(inode->sb);
-			phys = block_alloc(inode->sb);
-			superblock_unlock(inode->sb);
+			superblock_lock(ip->sb);
+			phys = block_alloc(ip->sb);
+			superblock_unlock(ip->sb);
 			
 			if (phys != BLOCK_NULL)
 			{
 				((block_t *)buf->data)[logic] = phys;
 				buf->flags |= BUFFER_DIRTY;
-				inode_touch(inode);
+				inode_touch(ip);
 			}
 		}
 		
