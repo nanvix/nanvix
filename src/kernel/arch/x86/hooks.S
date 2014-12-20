@@ -167,6 +167,8 @@ leave.out:
 	iret
 
 default_signal:
+	cmpl $SIGCHLD, %eax
+	je leave.out
 	pushl %eax
 	call *sigdfl(, %eax, 4)
 	addl $4, %esp
