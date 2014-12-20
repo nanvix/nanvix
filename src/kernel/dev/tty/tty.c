@@ -50,6 +50,7 @@ PRIVATE struct tty *active = &tty;
 #define START_CHAR(tty) ((tty).term.c_cc[VSTART])
 #define ERASE_CHAR(tty) ((tty).term.c_cc[VERASE])
 #define QUIT_CHAR(tty) ((tty).term.c_cc[VQUIT])
+#define KILL_CHAR(tty) ((tty).term.c_cc[VKILL])
 /**@}*/
 
 /**
@@ -88,10 +89,13 @@ PUBLIC void tty_int(unsigned char ch)
 	if (active->term.c_lflag & ECHO)
 	{
 		/* 
-		 * Let ERASE character be handled 
-		 * when the line is being parsed.
+		 * Let ERASE  and KILL characters
+		 * be handled when the line is being
+		 * parsed.
 		 */
 		if (ch == ERASE_CHAR(*active))
+			goto out1;
+		else if (ch == KILL_CHAR(*active))
 			goto out1;
 		
 		/* Non-printable characters. */
@@ -280,16 +284,18 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
  */
 PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 {
+	size_t i;         /* # bytes read.      */
 	unsigned char ch; /* Working character. */
 	unsigned char *p; /* Write pointer.     */
 	
 	UNUSED(minor);
 	
+	i = n;
 	p = (unsigned char *)buf;
 	
 	/* Read characters. */
 	disable_interrupts();
-	while (n > 0)
+	while (i > 0)
 	{
 		/* Wait for data. */
 		if (tty_sleep_empty(&tty))
@@ -313,6 +319,18 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 				}
 			}
 			
+			/* Kill. */
+			else if (ch == KILL_CHAR(tty))
+			{
+				while (!KBUFFER_EMPTY(tty.cinput))
+				{
+					i = n;
+					p = (unsigned char *)buf;
+					KBUFFER_TAKEOUT(tty.cinput);
+					console_put('\b', WHITE);
+				}
+			}
+			
 			else
 			{
 				KBUFFER_PUT(tty.cinput, ch);
@@ -321,11 +339,11 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 				if ((ch == '\n') || (KBUFFER_FULL(tty.cinput)))
 				{		
 					/* Copy data from input buffer. */
-					while ((n > 0) && (!KBUFFER_EMPTY(tty.cinput)))
+					while ((i > 0) && (!KBUFFER_EMPTY(tty.cinput)))
 					{
 						KBUFFER_GET(tty.cinput, *p);
 						
-						n--;
+						i--;
 						ch = *p++;
 						
 						/* Done reading. */
@@ -340,7 +358,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 		else
 		{
 			*p++ = ch;
-			n--;
+			i--;
 		}
 	}
 
@@ -463,13 +481,13 @@ PRIVATE tcflag_t init_c_cc[NCCS] = {
 	0x00,      /**< EOF character.   */
 	0x00,      /**< EOL character.   */
 	'\b',      /**< ERASE character. */
-	'C' - 64,  /**< INTR character.  */
-	0x00,      /**< KILL character.  */
+	'c' - 96,  /**< INTR character.  */
+	'u' - 96,  /**< KILL character.  */
 	0x00,      /**< MIN value.       */
 	'\\' - 64, /**< QUIT character.  */
-	'Q' - 64,  /**< START character. */
-	'S' - 64,  /**< STOP character.  */
-	'Z' - 64,  /**< SUSP character.  */
+	'q' - 96,  /**< START character. */
+	's' - 96,  /**< STOP character.  */
+	'z' - 96,  /**< SUSP character.  */
 	0x00       /**< TIME value.      */
 };
 
