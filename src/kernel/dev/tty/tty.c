@@ -49,6 +49,7 @@ PRIVATE struct tty *active = &tty;
 #define SUSP_CHAR(tty) ((tty).term.c_cc[VSUSP])
 #define START_CHAR(tty) ((tty).term.c_cc[VSTART])
 #define ERASE_CHAR(tty) ((tty).term.c_cc[VERASE])
+#define QUIT_CHAR(tty) ((tty).term.c_cc[VQUIT])
 /**@}*/
 
 /**
@@ -92,7 +93,7 @@ PUBLIC void tty_int(unsigned char ch)
 		 */
 		if (ch == ERASE_CHAR(*active))
 			goto out1;
-
+		
 		/* Non-printable characters. */
 		if ((ch < 32) && (ch != '\n') && (ch != '\t'))
 		{
@@ -142,6 +143,13 @@ PUBLIC void tty_int(unsigned char ch)
 		else if (ch == SUSP_CHAR(*active))
 		{
 			tty_signal(SIGTSTP);
+			goto out0;
+		}
+		
+		/* Quit. */
+		else if (ch == QUIT_CHAR(*active))
+		{
+			tty_signal(SIGQUIT);
 			goto out0;
 		}
 	}
@@ -452,17 +460,17 @@ PRIVATE struct cdev tty_driver = {
  * @brief Initial control characters.
  */
 PRIVATE tcflag_t init_c_cc[NCCS] = {
-	0x00, /**< EOF character.   */
-	0x00, /**< EOL character.   */
-	'\b', /**< ERASE character. */
-	0x03, /**< INTR character.  */
-	0x15, /**< KILL character.  */
-	0x00, /**< MIN value.       */
-	0x4e, /**< QUIT character.  */
-	0x11, /**< START character. */
-	0x13, /**< STOP character.  */
-	0x1a, /**< SUSP character.  */
-	0x00  /**< TIME value.      */
+	0x00,      /**< EOF character.   */
+	0x00,      /**< EOL character.   */
+	'\b',      /**< ERASE character. */
+	'C' - 64,  /**< INTR character.  */
+	0x00,      /**< KILL character.  */
+	0x00,      /**< MIN value.       */
+	'\\' - 64, /**< QUIT character.  */
+	'Q' - 64,  /**< START character. */
+	'S' - 64,  /**< STOP character.  */
+	'Z' - 64,  /**< SUSP character.  */
+	0x00       /**< TIME value.      */
 };
 
 /*

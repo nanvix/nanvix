@@ -209,7 +209,7 @@ PRIVATE uint8_t get_ascii(void)
 									
 		/* CTRL pressed. */
 		if (mode & CTRL)
-			return ((code < 64) ? code - 64 : code - 96);
+			return ((code < 96) ? code - 64 : code - 96);
 		
 		return (code);
 	}

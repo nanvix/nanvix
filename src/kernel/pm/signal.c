@@ -93,6 +93,7 @@ PRIVATE void terminate(int sig)
  */
 PRIVATE void abort(int sig)
 {
+	kprintf("core dumped");
 	die(((sig & 0xff) << 16) | (1 << 9));
 }
 
