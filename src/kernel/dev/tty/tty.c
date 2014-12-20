@@ -43,14 +43,15 @@ PRIVATE struct tty *active = &tty;
  * @name Control Characters
  */
 /**@{*/
-#define EOF_CHAR(tty) ((tty).term.c_cc[VEOF])
 #define INTR_CHAR(tty) ((tty).term.c_cc[VINTR])
 #define STOP_CHAR(tty) ((tty).term.c_cc[VSTOP])
 #define SUSP_CHAR(tty) ((tty).term.c_cc[VSUSP])
 #define START_CHAR(tty) ((tty).term.c_cc[VSTART])
-#define ERASE_CHAR(tty) ((tty).term.c_cc[VERASE])
 #define QUIT_CHAR(tty) ((tty).term.c_cc[VQUIT])
+#define ERASE_CHAR(tty) ((tty).term.c_cc[VERASE])
 #define KILL_CHAR(tty) ((tty).term.c_cc[VKILL])
+#define EOL_CHAR(tty) ((tty).term.c_cc[VEOL])
+#define EOF_CHAR(tty) ((tty).term.c_cc[VEOF])
 /**@}*/
 
 /**
@@ -88,15 +89,19 @@ PUBLIC void tty_int(unsigned char ch)
 	/* Output echo character. */
 	if (active->term.c_lflag & ECHO)
 	{
-		/* 
-		 * Let ERASE  and KILL characters
-		 * be handled when the line is being
-		 * parsed.
-		 */
-		if (ch == ERASE_CHAR(*active))
-			goto out1;
-		else if (ch == KILL_CHAR(*active))
-			goto out1;
+		/* Canonical mode. */
+		if (active->term.c_lflag & ICANON)
+		{		
+			/* 
+			 * Let these characters be handled
+			 * when the line is being parsed.
+			 */
+			if ((ch == ERASE_CHAR(*active)) ||
+				(ch == KILL_CHAR(*active)) ||
+				(ch == EOL_CHAR(*active)) ||
+				(ch == EOF_CHAR(*active)))
+				goto out1;
+		}
 		
 		/* Non-printable characters. */
 		if ((ch < 32) && (ch != '\n') && (ch != '\t'))
@@ -331,23 +336,38 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 				}
 			}
 			
+			/* End of line. */
+			else if (ch == EOL_CHAR(tty))
+			{
+				console_put('\n', WHITE);
+				continue;
+			}
+			
 			else
 			{
+				/* End of file. */
+				if (ch == EOF_CHAR(tty))
+					ch = '\0';
+			
 				KBUFFER_PUT(tty.cinput, ch);
 			
 				/* Copy data to input buffer. */
-				if ((ch == '\n') || (KBUFFER_FULL(tty.cinput)))
+				if ((ch == '\n') || (KBUFFER_FULL(tty.cinput)) || (ch == '\0'))
 				{		
 					/* Copy data from input buffer. */
 					while ((i > 0) && (!KBUFFER_EMPTY(tty.cinput)))
 					{
-						KBUFFER_GET(tty.cinput, *p);
+						KBUFFER_GET(tty.cinput, ch);
+						
+						/* EOF. */
+						if (ch == '\0')
+							goto out;
 						
 						i--;
-						ch = *p++;
+						*p++ = ch;
 						
 						/* Done reading. */
-						if ((ch == '\n') && (tty.term.c_lflag & ICANON))
+						if (ch == '\n')
 							goto out;
 					}
 				}
@@ -478,8 +498,8 @@ PRIVATE struct cdev tty_driver = {
  * @brief Initial control characters.
  */
 PRIVATE tcflag_t init_c_cc[NCCS] = {
-	0x00,      /**< EOF character.   */
-	0x00,      /**< EOL character.   */
+	'd' - 96,  /**< EOF character.   */
+	'\n' + 96, /**< EOL character.   */
 	'\b',      /**< ERASE character. */
 	'c' - 96,  /**< INTR character.  */
 	'u' - 96,  /**< KILL character.  */
