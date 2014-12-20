@@ -127,7 +127,7 @@ leave:
 	
 	/* Check if we were handling a system call. */ 
 	btrl $PROC_SYS, PROC_FLAGS(%ebx)
-	jnc leave.out
+	jnc check_signals
 	
 	/*
 	 * The kernel is non-preemptive.
