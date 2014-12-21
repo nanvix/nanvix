@@ -52,6 +52,8 @@ PRIVATE struct tty *active = &tty;
 #define KILL_CHAR(tty) ((tty).term.c_cc[VKILL])
 #define EOL_CHAR(tty) ((tty).term.c_cc[VEOL])
 #define EOF_CHAR(tty) ((tty).term.c_cc[VEOF])
+#define MIN_CHAR(tty) ((tty).term.c_cc[VMIN])
+#define TIME_CHAR(tty) ((tty).term.c_cc[VTIME])
 /**@}*/
 
 /**
@@ -302,18 +304,18 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 	disable_interrupts();
 	while (i > 0)
 	{
-		/* Wait for data. */
-		if (tty_sleep_empty(&tty))
-		{
-			enable_interrupts();
-			return (-EINTR);
-		}
-		
-		KBUFFER_GET(tty.rinput, ch);
-		
 		/* Canonical mode. */
 		if (tty.term.c_lflag & ICANON)
 		{
+			/* Wait for data to become available. */
+			if (tty_sleep_empty(&tty))
+			{
+				enable_interrupts();
+				return (-EINTR);
+			}
+			
+			KBUFFER_GET(tty.rinput, ch);
+			
 			/* Erase. */
 			if (ch == ERASE_CHAR(tty))
 			{
@@ -377,8 +379,58 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 		/* Non canonical mode. */
 		else
 		{
-			*p++ = ch;
-			i--;
+			if (MIN_CHAR(tty) > 0)
+			{
+				/* Case A: MIN>0, TIME>0 */
+				if (TIME_CHAR(tty) > 0)
+				{
+					kprintf("tty: MIN>0, TIME>0");
+					goto out;
+				}
+				
+				/* Case B: MIN>0, TIME=0 */
+				else
+				{
+					/* Wait for data to become available. */
+					if (tty_sleep_empty(&tty))
+					{
+						enable_interrupts();
+						return (-EINTR);
+					}
+					
+					/* Copy data from input buffer. */
+					while ((i > 0) && (!KBUFFER_EMPTY(tty.cinput)))
+					{
+						KBUFFER_GET(tty.rinput, ch);
+						
+						i--;
+						*p++ = ch;
+					}
+				}
+			}
+			
+			else
+			{
+				/* Case C: MIN=0, TIME>0 */
+				if (TIME_CHAR(tty) > 0)
+				{
+					kprintf("tty: MIN=0, TIME>0");
+					goto out;
+				}
+				
+				/* Case D: MIN=0, TIME=0 */
+				else
+				{
+					/* Done reading. */
+					if (KBUFFER_EMPTY(tty.cinput))
+						goto out;
+					
+					KBUFFER_GET(tty.rinput, ch);
+						
+					i--;
+					*p++ = ch;
+				}
+			}			
 		}
 	}
 
