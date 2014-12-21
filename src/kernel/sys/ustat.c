@@ -40,7 +40,7 @@ PUBLIC int sys_ustat(dev_t dev, struct ustat *ubuf)
 	struct superblock *sb;
 
 	/* Valid buffer. */
-	if (chkmem(ubuf, sizeof(struct ustat), MAY_WRITE))
+	if (!chkmem(ubuf, sizeof(struct ustat), MAY_WRITE))
 		return (-EINVAL);
 	
 	sb = superblock_get(dev);

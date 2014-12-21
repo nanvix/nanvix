@@ -38,7 +38,7 @@ PUBLIC void mm_init(void)
  * @param size Size of memory area.
  * @param mask Access permissions mask.
  * 
- * @returns Zero if access is authorized, and non-zero otherwise.
+ * @returns Non-zero if access is authorized, and zero otherwise.
  */
 PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
 {

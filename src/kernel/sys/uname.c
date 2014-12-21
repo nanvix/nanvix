@@ -8,6 +8,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <sys/utsname.h>
+#include <errno.h>
 
 /*
  * Internal uname().
@@ -27,17 +28,11 @@ PRIVATE void do_uname(struct utsname *name)
  */
 PUBLIC int sys_uname(struct utsname *name)
 {
-	/*
-	 * Reset errno, since we may
-	 * use it in kernel routines.
-	 */
-	curr_proc->errno = 0;
-	
 	/* Invalid buffer. */
-	if (chkmem(name, sizeof(struct utsname), MAY_WRITE))
-	{
-		do_uname(name);
-	}
+	if (!chkmem(name, sizeof(struct utsname), MAY_WRITE))
+		return (-EINVAL);
 	
-	return (curr_proc->errno);
+	do_uname(name);
+	
+	return (0);
 }
