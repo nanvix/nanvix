@@ -17,8 +17,8 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Source files.
-SRC = $(wildcard *.c)          \
+# C source files.
+C_SRC = $(wildcard *.c)        \
       $(wildcard ctype/*.c)    \
       $(wildcard dirent/*.c)   \
       $(wildcard errno/*.c)    \
@@ -34,8 +34,12 @@ SRC = $(wildcard *.c)          \
       $(wildcard termios/*.c)  \
       $(wildcard unistd/*.c)   \
 
+# Assembly source files.
+ASM_SRC = $(wildcard signal/*.S) \
+
 # Object files.
-OBJ = $(SRC:.c=.o)
+OBJ = $(ASM_SRC:.S=.o) \
+	  $(C_SRC:.c=.o)   \
 
 # Library name.
 LIB = libc.a
@@ -47,6 +51,10 @@ all: $(OBJ)
 # Builds object file from C source file.
 %.o: %.c
 	$(CC) $< $(CFLAGS) -c -o $@
+
+# Builds object file from assembly source file.
+%.o: %.S
+	$(CC) $< $(CFLAGS) -c $(ASMFLAGS) -o $@
 
 # Cleans compilation files.
 clean:

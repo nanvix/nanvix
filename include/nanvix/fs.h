@@ -26,6 +26,13 @@
 #ifndef NANVIX_FS_H_
 #define NANVIX_FS_H_
 
+	
+	/* General file permissions. */
+	#define MAY_READ  (S_IRUSR | S_IRGRP | S_IROTH)     /* May read.        */
+	#define MAY_WRITE (S_IWUSR | S_IWGRP | S_IWOTH)     /* May write.       */
+	#define MAY_EXEC  (S_IXUSR | S_IXGRP | S_IXOTH)     /* May exec/search. */
+	#define MAY_ALL   (MAY_READ | MAY_WRITE | MAY_EXEC) /* May anything.    */
+
 #ifndef _ASM_FILE_
 
 	#include <fs/minix.h>
@@ -165,12 +172,6 @@
 /*============================================================================*
  *                              File System Manager                           *
  *============================================================================*/
-
-	/* General file permissions. */
-	#define MAY_READ  (S_IRUSR | S_IRGRP | S_IROTH)     /* May read.        */
-	#define MAY_WRITE (S_IWUSR | S_IWGRP | S_IWOTH)     /* May write.       */
-	#define MAY_EXEC  (S_IXUSR | S_IXGRP | S_IXOTH)     /* May exec/search. */
-	#define MAY_ALL   (MAY_READ | MAY_WRITE | MAY_EXEC) /* May anything.    */
 
 	/*
 	 * File.

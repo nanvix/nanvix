@@ -77,6 +77,7 @@ PUBLIC void pm_init(void)
 	IDLE->flags = 0;
 	IDLE->received = 0;
 	IDLE->kstack = idle_kstack;
+	IDLE->restorer = NULL;
 	for (i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
 	IDLE->pgdir = idle_pgdir;

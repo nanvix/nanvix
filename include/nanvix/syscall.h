@@ -83,7 +83,7 @@
 	EXTERN void sys_pause(void);
 	EXTERN int sys_seteuid(uid_t uid);
 	EXTERN int sys_setgid(gid_t uid);	
-	EXTERN sighandler_t sys_signal(int sig, sighandler_t func);
+	EXTERN sighandler_t sys_signal(int, sighandler_t , void (*)(void));
 	EXTERN pid_t sys_setpgrp(void);
 	EXTERN int sys_setuid(pid_t uid);
 	EXTERN pid_t sys_wait(int *stat_loc);

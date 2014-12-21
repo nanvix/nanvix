@@ -112,7 +112,8 @@
 	#define PROC_FLAGS    12 /**< Process flags.                 */
 	#define PROC_RECEIVED 16 /**< Received signals offset.       */
 	#define PROC_KSTACK   20 /**< Kernel stack pointer offset.   */
-	#define PROC_HANDLERS 24 /**< Signal handlers offset.        */
+	#define PROC_RESTORER 24 /**< Signal restorer.               */
+	#define PROC_HANDLERS 28 /**< Signal handlers offset.        */
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -132,6 +133,7 @@
 		unsigned flags;                    /**< Process flags.          */
     	unsigned received;                 /**< Received signals.       */
     	void *kstack;                      /**< Kernel stack pointer.   */
+    	void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		/**@}*/
 		

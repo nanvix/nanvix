@@ -5,8 +5,12 @@
  */
 
 #include <nanvix/syscall.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <errno.h>
+
+/* Forward definitions. */
+extern void restorer(void);
 
 /*
  * Manages signal handling.
@@ -20,7 +24,8 @@ sighandler_t signal(int sig, sighandler_t func)
 		: "=a" (ret)
 		: "0" (NR_signal),
 		  "b" (sig),
-		  "c" (func)
+		  "c" (func),
+		  "d" (restorer)
 	);
 	
 	/* Error. */

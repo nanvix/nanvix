@@ -352,6 +352,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		detachreg(curr_proc, &curr_proc->pregs[i]);
 	
 	/* Reset signal handlers. */
+	curr_proc->restorer = NULL;
 	for (i = 0; i < NR_SIGNALS; i++)
 	{
 		if (curr_proc->handlers[i] != SIG_DFL)

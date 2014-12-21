@@ -14,7 +14,8 @@
 /*
  * Manages signal handling.
  */
-PUBLIC sighandler_t sys_signal(int sig, sighandler_t func)
+PUBLIC sighandler_t sys_signal
+(int sig, sighandler_t func, void (*restorer)(void))
 {
 	sighandler_t old_func;
 	
@@ -28,6 +29,7 @@ PUBLIC sighandler_t sys_signal(int sig, sighandler_t func)
 	
 	/* Set signal handler. */
 	old_func = curr_proc->handlers[sig];
+	curr_proc->restorer = restorer;
 	curr_proc->handlers[sig] = func;
 	
 	return (old_func);

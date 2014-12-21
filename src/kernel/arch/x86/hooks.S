@@ -22,6 +22,7 @@
 
 #include <i386/i386.h>
 #include <i386/int.h>
+#include <nanvix/fs.h>
 #include <nanvix/pm.h>
 #include <nanvix/syscall.h>
 #include <signal.h>
@@ -151,9 +152,46 @@ leave:
 		
 			/* User signal. */
 			movl $_SIG_DFL, PROC_HANDLERS(%ebx, %eax, 4)
-			push $(((SIGKILL & 0xff) << 16) | (1 << 9))
-			call die
-	
+			movl PROC_RESTORER(%ebx), %esi
+			movl USERESP - 4(%esp), %edx
+			pushl %eax
+			pushl %ecx
+			pushl $MAY_WRITE
+			pushl $44
+			pushl %edx
+			call chkmem
+			addl $12, %esp
+			pop %ecx
+			pop %ebx
+			cmpl $0, %eax
+			je leave.out
+			
+			/* Build stack for signal handler. */
+			movl USERESP - 4(%esp), %eax
+			movl EIP - 4(%esp), %edx
+			movl %edx, -4(%eax)           # eip
+			movl EFLAGS - 4(%esp), %edx
+			movl %edx, -8(%eax)           # eflags
+			movl EAX - 4(%esp), %edx
+			movl %edx, -12(%eax)          # eax
+			movl ECX - 4(%esp), %edx
+			movl %edx, -16(%eax)          # ecx
+			movl EDX - 4(%esp), %edx
+			movl %edx, -20(%eax)          # edx
+			movl EBX - 4(%esp), %edx
+			movl %edx, -24(%eax)          # ebx
+			movl EBP - 4(%esp), %edx
+			movl %edx, -28(%eax)          # ebp
+			movl ESI - 4(%esp), %edx
+			movl %edx, -32(%eax)          # esi
+			movl EDI - 4(%esp), %edx
+			movl %edx, -36(%eax)          # edi
+			movl %ebx, -40(%eax)          # Signal number.
+			movl %esi, -44(%eax)          # Restorer address.
+			
+			movl %ecx, EIP - 4(%esp)
+			subl $44, USERESP - 4(%esp)
+
 leave.out:
 	popl %ds
 	popl %edi
@@ -163,7 +201,6 @@ leave.out:
 	popl %edx
 	popl %ecx
 	popl %eax
-	
 	iret
 
 default_signal:

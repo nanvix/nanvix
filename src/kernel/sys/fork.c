@@ -95,6 +95,7 @@ found:
 	/* Initialize process. */
 	proc->intlvl = curr_proc->intlvl;
 	proc->received = 0;
+	proc->restorer = curr_proc->restorer;
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
 	proc->size = curr_proc->size;
