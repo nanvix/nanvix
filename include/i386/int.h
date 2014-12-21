@@ -37,8 +37,8 @@
 	#define EAX     32
 	#define EIP     36
 	#define CS      40
-	#define USERESP 44
-	#define EFLAGS  48
+	#define EFLAGS  44
+	#define USERESP 48
 	#define SS      52
 
 #ifndef _ASM_FILE_
@@ -51,7 +51,7 @@
 		dword_t old_kesp;
         dword_t ds;
         dword_t edi, esi, ebp, ebx, edx, ecx, eax;
-        dword_t eip, cs, useresp, eflags, ss;	
+        dword_t eip, cs, eflags, useresp, ss;	
 	};
 
 	/* Software interrupt hooks. */
