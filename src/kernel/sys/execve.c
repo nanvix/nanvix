@@ -351,6 +351,16 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	for (i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
 	
+	/* Reset signal handlers. */
+	for (i = 0; i < NR_SIGNALS; i++)
+	{
+		if (curr_proc->handlers[i] != SIG_DFL)
+		{
+			if (curr_proc->handlers[i] != SIG_IGN)
+				curr_proc->handlers[i] = SIG_DFL;
+		}
+	}
+	
 	/* Load executable. */
 	if (!(entry = load_elf32(inode)))
 		goto die0;
