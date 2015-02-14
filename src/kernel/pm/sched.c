@@ -24,16 +24,6 @@
 #include <signal.h>
 
 /**
- * @brief Returns the effective priority of a process.
- * 
- * @param p Process to be considered.
- * 
- * @returns The effective priority of a process.
- */
-#define EPRIO(p)                               \
-	((p)->priority + (p)->nice - (p)->counter) \
-
-/**
  * @brief Schedules a process to execution.
  * 
  * @param proc Process to be scheduled.
@@ -73,7 +63,6 @@ PUBLIC void resume(struct process *proc)
  */
 PUBLIC void yield(void)
 {
-	int eprio;            /* Effective priority.  */
 	struct process *p;    /* Working process.     */
 	struct process *next; /* Next process to run. */
 
@@ -94,28 +83,32 @@ PUBLIC void yield(void)
 	}
 
 	/* Choose a process to run next. */
-	next = IDLE; eprio = EPRIO(next);
+	next = IDLE;
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
 		/* Skip non-ready process. */
 		if (p->state != PROC_READY)
 			continue;
 		
-		/* Process with higher priority found. */
-		if (EPRIO(p) < eprio)
+		/*
+		 * Process with higher
+		 * waiting time found.
+		 */
+		if (p->counter > next->counter)
 		{
 			next->counter++;
 			next = p;
-			eprio = EPRIO(next);
 		}
 			
-		/* Increment age of process. */
+		/*
+		 * Increment waiting
+		 * time of process.
+		 */
 		else
 			p->counter++;
 	}
 	
 	/* Switch to next process. */
-	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
 	next->counter = PROC_QUANTUM;
 	switch_to(next);
