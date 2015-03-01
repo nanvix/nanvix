@@ -36,11 +36,12 @@
 .PHONY: rmdir
 .PHONY: stat
 .PHONY: sync
+.PHONY: touch
 .PHONY: tsh
 
 # Builds everything.
 all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat sync \
-	 tsh
+	 touch tsh
 
 # Builds cat.
 cat: 
@@ -114,6 +115,10 @@ stat:
 sync: 
 	$(CC) $(CFLAGS) $(LDFLAGS) sync/*.c -o $(UBINDIR)/sync $(LIBDIR)/libc.a
 	
+# Builds touch.
+touch: 
+	$(CC) $(CFLAGS) $(LDFLAGS) touch/*.c -o $(UBINDIR)/touch $(LIBDIR)/libc.a
+	
 # Builds tsh.
 tsh: 
 	$(CC) $(CFLAGS) $(LDFLAGS) tsh/*.c -o $(UBINDIR)/tsh $(LIBDIR)/libc.a
@@ -138,4 +143,5 @@ clean:
 	@rm -f $(UBINDIR)/rmdir
 	@rm -f $(UBINDIR)/stat
 	@rm -f $(UBINDIR)/sync
+	@rm -f $(UBINDIR)/touch
 	@rm -f $(UBINDIR)/tsh
