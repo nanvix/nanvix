@@ -275,11 +275,12 @@ PRIVATE void inode_free(struct inode *ip)
 	block_t blk;           /* Block number.           */
 	struct superblock *sb; /* Underlying super block. */
 	
-	blk = ip->num/(BLOCK_SIZE << 3);
+	blk = (ip->num - 1)/(BLOCK_SIZE << 3);
 	
 	superblock_lock(sb = ip->sb);
 	
-	bitmap_clear(sb->imap[blk], ip->num%(BLOCK_SIZE << 3) - 1);
+	bitmap_clear(sb->imap[blk]->data, (ip->num - 1)%(BLOCK_SIZE << 3));
+	
 	sb->imap[blk]->flags |= BUFFER_DIRTY;
 	if (ip->num < sb->isearch)
 		sb->isearch = ip->num;
