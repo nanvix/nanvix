@@ -279,7 +279,7 @@ PRIVATE void inode_free(struct inode *ip)
 	
 	superblock_lock(sb = ip->sb);
 	
-	bitmap_clear(sb->imap[blk], ip->num%(BLOCK_SIZE << 3));
+	bitmap_clear(sb->imap[blk], ip->num%(BLOCK_SIZE << 3) - 1);
 	sb->imap[blk]->flags |= BUFFER_DIRTY;
 	if (ip->num < sb->isearch)
 		sb->isearch = ip->num;
@@ -395,35 +395,33 @@ PUBLIC void inode_truncate(struct inode *ip)
  *          pointer is returned instead.
  * 
  * @note The superblock must not be locked.
+ * 
+ * @todo Use isearch.
  */
 PUBLIC struct inode *inode_alloc(struct superblock *sb)
 {
 	ino_t num;        /* Inode number.             */
 	bit_t bit;        /* Bit number in the bitmap. */
-	block_t blk;      /* Number of current block.  */
+	unsigned i;       /* Number of current block.  */
 	struct inode *ip; /* Inode.                    */
 	
 	superblock_lock(sb);
 	
 	/* Search for free inode. */
-	blk = sb->isearch/(BLOCK_SIZE << 3);
-	do
-	{	
-		bit = bitmap_first_free(sb->imap[blk]->data, BLOCK_SIZE);
-	
+	for (i = 0; i < sb->imap_blocks; i++)
+	{
+		bit = bitmap_first_free(sb->imap[i]->data, BLOCK_SIZE);
+		
 		/* Found. */
 		if (bit != BITMAP_FULL)
 			goto found;
-		
-		/* Wrap around. */
-		blk = (blk + 1 < sb->zmap_blocks) ? blk + 1 : 0;
-	} while (blk != sb->isearch/(BLOCK_SIZE << 3));
+	}
 	
 	goto error0;
 	
 found:
 	
-	num = bit + blk*(BLOCK_SIZE << 3);
+	num = bit + i*(BLOCK_SIZE << 3) + 1;
 
 	/*
 	 * Remember disk block number to
@@ -437,8 +435,8 @@ found:
 		goto error0;
 	
 	/* Allocate inode. */
-	bitmap_set(sb->imap[blk]->data, bit);
-	sb->imap[blk]->flags |= BUFFER_DIRTY;
+	bitmap_set(sb->imap[i]->data, bit);
+	sb->imap[i]->flags |= BUFFER_DIRTY;
 	sb->flags |= SUPERBLOCK_DIRTY;
 	
 	/* 
@@ -449,8 +447,8 @@ found:
 	ip->uid = curr_proc->euid;
 	ip->gid = curr_proc->egid;
 	ip->size = 0;
-	for (unsigned i = 0; i < NR_ZONES; i++)
-		ip->blocks[i] = BLOCK_NULL;
+	for (unsigned j = 0; j < NR_ZONES; j++)
+		ip->blocks[j] = BLOCK_NULL;
 	ip->dev = sb->dev;
 	ip->num = num;
 	ip->sb = sb;
