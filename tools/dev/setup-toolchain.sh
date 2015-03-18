@@ -1,4 +1,6 @@
-# 
+#!/bin/sh
+
+#
 # Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
 # This file is part of Nanvix.

@@ -1,4 +1,6 @@
-# 
+#!/bin/sh
+
+#
 # Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
 # scripts/setup-bochs.sh - Setup Bochs.
