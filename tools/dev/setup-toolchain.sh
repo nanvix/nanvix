@@ -26,7 +26,7 @@ mkdir -p $WORKDIR
 cd $WORKDIR
 
 # Get binutils and GCC.
-wget "http://ftp.gnu.org/gnu/binutils/binutils-2.24.tar.bz2"
+wget "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
 wget "http://ftp.gnu.org/gnu/gcc/gcc-4.9.0/gcc-4.9.0.tar.bz2"
 
 # Export variables.
@@ -36,8 +36,8 @@ sh -c "echo 'export TARGET=$TARGET' > /etc/profile.d/var.sh"
 sh -c "echo 'export PATH=$PATH:$PREFIX/bin' >> /etc/profile.d/var.sh"
 
 # Build binutils.
-tar -xjvf binutils-2.24.tar.bz2
-cd binutils-2.24/
+tar -xjvf binutils-2.25.tar.bz2
+cd binutils-2.25/
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls
 make all
 make install
