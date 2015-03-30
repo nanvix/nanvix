@@ -1,5 +1,5 @@
 /* 
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -50,10 +50,12 @@
  * SUCH DAMAGE.
  */
 
-/*
- * Upper character map.
+/**
+ * @brief Upper character map.
+ * 
+ * @todo Consider current locale.
  */
-char _mapupper[1 + 256] = {
+const char _mapupper[1 + 256] = {
 	0,
 	0000,	0001,	0002,	0003,	0004,	0005,	0006,	0007,
 	0010,	0011,	0012,	0013,	0014,	0015,	0016,	0017,

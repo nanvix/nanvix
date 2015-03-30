@@ -1,5 +1,5 @@
 /* 
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -52,7 +52,12 @@
 
 #include <ctype.h>
 
-unsigned char _ctype[1 + 256] = {
+/**
+ * @brief Character type table.
+ * 
+ * @todo Consider current locale.
+ */
+const unsigned char _ctype[1 + 256] = {
 	0,
 	_C,   _C,    _C,    _C,    _C,    _C,    _C,    _C,
 	_C,   _C|_S, _C|_S, _C|_S, _C|_S, _C|_S, _C,    _C,

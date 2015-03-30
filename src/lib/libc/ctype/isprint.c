@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+ 
 /*
  * Copyright (c) 1990 Regents of the University of California.
  * All rights reserved.
@@ -50,38 +50,16 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _CTYPE_H_
-#define _CTYPE_H_
-
-	/* Character types. */
-	#define	_U	0x01 /* Upper-case character.         */
-	#define	_L	0x02 /* Lower-case character.         */
-	#define	_N	0x04 /* Decimal number character.     */
-	#define	_S	0x08 /* White-space character.        */
-	#define	_P	0x10 /* Punctuation character.        */
-	#define	_C	0x20 /* Control character.            */
-	#define	_X	0x40 /* Hexadecimal number character. */
-	#define	_B	0x80 /* Blank space character.        */
+#include <ctype.h>
 	
-	/* Forward definitions. */
-	extern int isalnum(int);
-	extern int isalpha(int);
-	extern int isblank(int);
-	extern int iscntrl(int);
-	extern int isdigit(int);
-	extern int isgraph(int);
-	extern int islower(int);
-	extern int isprint(int);
-	extern int ispunct(int);
-	extern int isspace(int);
-	extern int isupper(int);
-	extern int isxdigit(int);
-	extern int tolower(int);
-	extern int toupper(int);
+/**
+ * @brief Checks for a printable character.
+ * 
+ * @todo Consider current locale.
+ */
+int isprint(int c)
+{
+	return ((_ctype + 1)[(unsigned)c] & (_P|_U|_L|_N|_B));
+}
 	
-	/* Forward definitions. */
-	extern const unsigned char _ctype[];
-	extern char _maplower[];
-	extern char _mapupper[];
 
-#endif /* !_CTYPE_H_ */
