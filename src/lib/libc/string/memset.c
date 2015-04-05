@@ -64,7 +64,7 @@
 /**@{*/
 
 /**
- * @brief Set bytes in memory.
+ * @brief Sets bytes in memory.
  * 
  * @details Copies @p c (converted to an unsigned char) into each of the first
  *          @p n bytes of the object pointed to by @p s.
