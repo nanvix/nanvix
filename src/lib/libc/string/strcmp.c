@@ -23,9 +23,6 @@
  * @brief strcmp() implementation.
  */
 
-#include <stdlib.h>
-#include <sys/types.h>
-
 /**
  * @addtogroup string
  */

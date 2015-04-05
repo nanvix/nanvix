@@ -32,6 +32,8 @@
 	 * @defgroup string
 	 * 
 	 * @brief String library.
+	 * 
+	 * @todo strcoll()
 	 */
 	/**@{*/
 
@@ -44,8 +46,9 @@
 	extern char *strcat(char *, const char *);
 	extern char *strchr(const char *, int);
 	extern int strcmp(const char *, const char *);
+	extern char *strcpy(char *, const char *);
+	extern size_t strcspn(const char *, const char *);
 	extern int strncmp(const char *str1, const char *str2, size_t n);
-	extern char *strcpy(char *dest, const char *src);
 	extern size_t strlen(const char * str);
 	extern char *strncpy(char *dest, const char *src, size_t n);
 	extern size_t strnlen(const char *str, size_t maxlen);
