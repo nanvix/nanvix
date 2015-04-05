@@ -42,7 +42,7 @@
 	extern void *memmove(void *, const void *, size_t);
 	extern void *memset(void *, int, size_t);
 	extern char *strcat(char *, const char *);
-	extern char *strchr(const char *str, int c);
+	extern char *strchr(const char *, int);
 	extern int strcmp(const char *str1, const char *str2);
 	extern int strncmp(const char *str1, const char *str2, size_t n);
 	extern char *strcpy(char *dest, const char *src);
