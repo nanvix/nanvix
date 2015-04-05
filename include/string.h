@@ -48,6 +48,7 @@
 	extern int strcmp(const char *, const char *);
 	extern char *strcpy(char *, const char *);
 	extern size_t strcspn(const char *, const char *);
+	extern char *strdup(const char *);
 	extern int strncmp(const char *str1, const char *str2, size_t n);
 	extern size_t strlen(const char * str);
 	extern char *strncpy(char *dest, const char *src, size_t n);
