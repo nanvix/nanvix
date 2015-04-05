@@ -53,10 +53,27 @@
 /**
  * @file
  * 
- * @brief memccpy() implementation.
+ * @brief memmove() implementation.
  */
 
 #include <sys/types.h>
+
+/**
+ * @brief Used for optimal copy speed.
+ * 
+ * @note sizeof(word) must be a power of two so that wmask is all ones.
+ */
+typedef	int word;
+
+/**
+ * @brief Word size.
+ */
+#define	wsize sizeof(word)
+
+/**
+ * @brief Word mask.
+ */
+#define	wmask (wsize - 1)
 
 /**
  * @addtogroup string
@@ -64,30 +81,89 @@
 /**@{*/
 
 /**
- * @brief Copies a memory area.
+ * @brief Copies bytes in memory with overlapping areas.
  * 
- * @details Copies no more than @p n bytes from memory area @p src to memory
- *          area @p dest, stopping when the character @p c is found.
+ * @details Copies @p n bytes from the object pointed to by @p s2 into the
+ *          object pointed to by @p s1. Copying takes place as if the @p n bytes
+ *          from the object pointed to by @p s2 are first copied into a
+ *          temporary array of @p n bytes that does not overlap the objects
+ *          pointed to by @p s1 and @p s2, and then the @p n bytes from the
+ *          temporary array are copied into the object pointed to by @p s1. 
  * 
- * @returns A pointer to the next character in @p dest after @p c, or #NULL if
- *          @p c was not found in the first @p n characters of @p src.
- * 
- * @note Does not check for the overflow of the receiving memory area. 
+ * @returns @p s1 is returned.
  */
-void *memccpy(void *dest, const void *src, int c, size_t n)
+void *memmove(void *s1, const void *s2, size_t n)
 {
-	if (n)
+	char *dst = s1;
+	const char *src = s2;
+	size_t t;
+
+	/* nothing to do */
+	if (n == 0 || dst == src)
+		return (s1);
+
+	/*
+	 * Macros: loop-t-times; and loop-t-times, t>0
+	 */
+	#define	TLOOP(s) if (t) TLOOP1(s)
+	#define	TLOOP1(s) do { s; } while (--t)
+
+	/*
+	 * Copy forward.
+	 */
+	if ((unsigned)dst < (unsigned)src)
 	{
-		unsigned char *destp = dest;
-		const unsigned char *srcp = src;
 		
-		do {
-			if ((*destp++ = *srcp++) == c)
-				return (dest);
-		} while (--n != 0);
+		/*
+		 * Try to align operands. This cannot be done
+		 * unless the low bits match.
+		 */
+		t = (int)src;
+		if ((t | (int)dst) & wmask)
+		{
+			
+			if ((t ^ (int)dst) & wmask || n < wsize)
+				t = n;
+			else
+				t = wsize - (t & wmask);
+			n -= t;
+			TLOOP1(*dst++ = *src++);
+		}
+		
+		/* Copy whole words, then mop up any trailing bytes. */
+		t = n / wsize;
+		TLOOP(*(word *)dst = *(word *)src; src += wsize; dst += wsize);
+		t = n & wmask;
+		TLOOP(*dst++ = *src++);
 	}
 	
-	return (0);
+	/*
+	 * Copy backwards.  Otherwise essentially the same.
+	 * Alignment works as before, except that it takes
+	 * (t&wmask) bytes to align, not wsize-(t&wmask).
+	 */
+	else
+	{
+		src += n;
+		dst += n;
+		t = (int)src;
+		if ((t | (int)dst) & wmask)
+		{
+			if ((t ^ (int)dst) & wmask || n <= wsize)
+				t = n;
+			else
+				t &= wmask;
+			n -= t;
+			TLOOP1(*--dst = *--src);
+		}
+		
+		t = n / wsize;
+		TLOOP(src -= wsize; dst -= wsize; *(word *)dst = *(word *)src);
+		t = n & wmask;
+		TLOOP(*--dst = *--src);
+	}
+
+	return (s1);
 }
 
 /**@}*/

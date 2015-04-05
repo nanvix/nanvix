@@ -71,10 +71,6 @@
  *          in the initial @p n bytes (each interpreted as unsigned char)
  *          of the object pointed to by @p s.
  * 
- * @param s Object.
- * @param c Byte to search.
- * @param n Number of bytes.
- * 
  * @returns A pointer to the located byte, or a null pointer if the byte does
  *          not occur in the object. 
  */

@@ -38,7 +38,8 @@
 	extern void *memccpy(void *, const void *, int, size_t);
 	extern void *memchr(const void *, int, size_t);
 	extern int memcmp(const void *, const void *, size_t);
-	extern void *memcpy (void* dest, const void *src, size_t n);
+	extern void *memcpy (void *, const void *, size_t);
+	extern void *memmove(void *, const void *, size_t);
 	extern char *strchr(const char *str, int c);
 	extern int strcmp(const char *str1, const char *str2);
 	extern int strncmp(const char *str1, const char *str2, size_t n);

@@ -53,7 +53,7 @@
 /**
  * @file
  * 
- * @brief memchr() implementation.
+ * @brief memcmp() implementation.
  */
 
 #include <sys/types.h>
@@ -64,9 +64,9 @@
 /**@{*/
 
 /**
- * @brief Compare bytes in memory.
+ * @brief Compares bytes in memory.
  * 
- * @details compares the first @p n bytes (each interpreted as unsigned char)
+ * @details Compares the first @p n bytes (each interpreted as unsigned char)
  *          of the object pointed to by @p s1 to the first @p n bytes of the
  *          object pointed to by @p s2.
  * 
