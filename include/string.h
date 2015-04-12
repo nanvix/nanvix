@@ -53,7 +53,7 @@
 	extern size_t strlen(const char *);
 	extern char *strncat(char *, const char *, size_t);
 	extern int strncmp(const char *, const char *, size_t);
-	extern char *strncpy(char *dest, const char *src, size_t n);
+	extern char *strncpy(char *, const char *, size_t);
 	extern size_t strnlen(const char *str, size_t maxlen);
 	
 	/**@}*/
