@@ -29,9 +29,9 @@
 	#include <sys/types.h>
 
 	/**
-	 * @defgroup string
+	 * @defgroup stringlib String Library
 	 * 
-	 * @brief String library.
+	 * @brief String operations.
 	 * 
 	 * @todo strcoll()
 	 */

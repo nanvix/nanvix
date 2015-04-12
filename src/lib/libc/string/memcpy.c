@@ -26,7 +26,7 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup string
+ * @addtogroup stringlib
  */
 /**@{*/
 

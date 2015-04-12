@@ -76,7 +76,7 @@ typedef	int word;
 #define	wmask (wsize - 1)
 
 /**
- * @addtogroup string
+ * @addtogroup stringlib
  */
 /**@{*/
 

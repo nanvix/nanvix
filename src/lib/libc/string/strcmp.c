@@ -24,7 +24,7 @@
  */
 
 /**
- * @addtogroup string
+ * @addtogroup stringlib
  */
 /**@{*/
 

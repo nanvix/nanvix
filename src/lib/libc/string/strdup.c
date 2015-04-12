@@ -27,7 +27,7 @@
 #include <string.h>
 
 /**
- * @addtogroup string
+ * @addtogroup stringlib
  */
 /**@{*/
 

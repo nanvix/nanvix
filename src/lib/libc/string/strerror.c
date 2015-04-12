@@ -59,7 +59,7 @@
 #include <errno.h>
 
 /**
- * @addtogroup string
+ * @addtogroup stringlib
  */
 /**@{*/
 
