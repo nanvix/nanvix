@@ -65,7 +65,7 @@
 	extern size_t strnlen(const char *, size_t);
 	extern char *strsignal(int);
 	extern char *strtok_r(char *restrict, const char *restrict,char **restrict);
-	extern size_t strxfrm_l(char *restrict,const char *restrict,size_t, locale_t);
+	extern size_t strxfrm_l(char *restrict,const char *restrict,size_t,locale_t);
 #endif /* _CX */
 
 	extern void *memchr(const void *, int, size_t);
