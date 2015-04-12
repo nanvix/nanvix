@@ -27,11 +27,6 @@
 #include <string.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Duplicates a string.
  * 
  * @details Returns a pointer to a new string, which is a duplicate of the
@@ -55,5 +50,3 @@ char *strdup(const char *s1)
 	strcpy(copy, s1);	
 	return(copy);
 }
-
-/**@}*/

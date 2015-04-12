@@ -27,11 +27,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Finds byte in string.
  * 
  * @details Locates the first occurrence of @p c (converted to an unsigned char)
@@ -54,5 +49,3 @@ char *strchr(const char *s, int c)
 	
 	return ((c == '\0') ? (char *) s : NULL);
 }
-
-/**@}*/

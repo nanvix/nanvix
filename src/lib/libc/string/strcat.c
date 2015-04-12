@@ -59,11 +59,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Concatenates two strings.
  * 
  * @details Appends a copy of the string pointed to by @p s2 (including the
@@ -86,5 +81,3 @@ char *strcat(char *s1, const char *s2)
 		
 	return(save);
 }
-
-/**@}*/

@@ -24,11 +24,6 @@
  */
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Copies a string.
  * 
  * @param Copies the string pointed to by @p s2 (including the terminating null
@@ -50,5 +45,3 @@ char *strcpy(char *s1, const char *s2)
 	
 	return (s1);
 }
-
-/**@}*/

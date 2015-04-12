@@ -26,11 +26,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Gets string length.
  * 
  * @details Computes the number of bytes in the string to which @p str points,
@@ -49,5 +44,3 @@ size_t strlen(const char * str)
 	
 	return (p - str);
 }
-
-/**@}*/

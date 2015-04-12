@@ -24,11 +24,6 @@
  */
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Compares two strings.
  * 
  * @details Compares the string pointed to by @p s1 to the string pointed to by
@@ -58,5 +53,3 @@ int strcmp(const char *s1, const char *s2)
 	
 	return ((*(unsigned char *)s1 < *(unsigned char *)s2) ? -1 : 1);
 }
-
-/**@}*/

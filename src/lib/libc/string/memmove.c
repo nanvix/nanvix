@@ -76,11 +76,6 @@ typedef	int word;
 #define	wmask (wsize - 1)
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Copies bytes in memory with overlapping areas.
  * 
  * @details Copies @p n bytes from the object pointed to by @p s2 into the
@@ -165,5 +160,3 @@ void *memmove(void *s1, const void *s2, size_t n)
 
 	return (s1);
 }
-
-/**@}*/

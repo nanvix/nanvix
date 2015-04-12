@@ -59,11 +59,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Compares bytes in memory.
  * 
  * @details Compares the first @p n bytes (each interpreted as unsigned char)
@@ -93,6 +88,4 @@ int memcmp(const void *s1, const void *s2, size_t n)
 	
 	return (0);
 }
-
-/**@}*/
 

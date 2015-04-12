@@ -60,11 +60,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Finds byte in memory.
  * 
  * @details Locates the first occurrence of @p c (converted to an unsigned char)
@@ -88,6 +83,4 @@ void *memchr(const void *s, int c, size_t n)
 	
 	return (NULL);
 }
-
-/**@}*/
 

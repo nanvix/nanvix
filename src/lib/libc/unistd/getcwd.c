@@ -49,7 +49,9 @@ static int prepend(char *pathname, const char *dirname, size_t n)
 	size_t dirlen;  /* Directory name length. */
 	
 	pathlen = strlen(pathname);
-	dirlen = strnlen(dirname, NAME_MAX);
+	dirlen = strlen(dirname);
+	if (dirlen > NAME_MAX)
+		dirlen = NAME_MAX;
 	
 	/* Out of space. */
 	if (pathlen + dirlen + 2 > n)

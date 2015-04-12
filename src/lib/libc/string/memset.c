@@ -59,11 +59,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Sets bytes in memory.
  * 
  * @details Copies @p c (converted to an unsigned char) into each of the first
@@ -85,5 +80,3 @@ void *memset(void *s, int c, size_t n)
 	
 	return (s);
 }
-
-/**@}*/

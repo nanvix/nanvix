@@ -26,11 +26,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Copies bytes in memory.
  * 
  * @details Copies @p n bytes from the object pointed to by @p s2 into the
@@ -54,5 +49,3 @@ void *memcpy(void *s1, const void *s2, size_t n)
  
     return (d);
 }
-
-/**@}*/

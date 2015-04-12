@@ -59,11 +59,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Copies a memory area.
  * 
  * @details Copies no more than @p n bytes from memory area @p src to memory
@@ -89,5 +84,3 @@ void *memccpy(void *dest, const void *src, int c, size_t n)
 	
 	return (0);
 }
-
-/**@}*/

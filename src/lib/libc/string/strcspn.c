@@ -60,11 +60,6 @@
 #include <sys/types.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Gets length of a complementary substring.
  * 
  * @details Computes the length of the maximum initial segment of the string
@@ -97,5 +92,3 @@ size_t strcspn(const char *s1, const char *s2)
 	/* Not reached. */
 	return (0);
 }
-
-/**@}*/

@@ -59,11 +59,6 @@
 #include <errno.h>
 
 /**
- * @addtogroup stringlib
- */
-/**@{*/
-
-/**
  * @brief Gets error message string.
  * 
  * @details Maps the error number in @p errnum to an error message string and
@@ -307,5 +302,3 @@ char *strerror(int errnum)
 
 	return error;
 }
-
-/**@}*/
