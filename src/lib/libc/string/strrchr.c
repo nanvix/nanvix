@@ -53,43 +53,35 @@
 /**
  * @file
  * 
- * @brief strpbrk() implementation.
+ * @brief strrchr() implementation.
  */
-
+ 
 #include <stdlib.h>
 
 /**
- * @brief Scans string for byte.
+ * @brief String scanning operation.
  * 
- * @details Locates the first occurrence in the string pointed to by @p s1 of
- *          any byte from the string pointed to by @p s2. 
+ * @details Locates the last occurrence of @p i (converted to a char) in the
+ *          string pointed to by @p s. The terminating null byte is considered
+ *          to be part of the string.
  * 
- * @returns A pointer to the byte or a null pointer if no byte from @p s2
- *          occurs in @p s1. 
+ * @returns A pointer to the byte or a null pointer if @p i does not occur in
+ *          the string. 
  */
-char *strpbrk(const char *s1, const char *s2)
+char *strrchr(const char *s, int i)
 {
-	const char *c = s2;
-	
-	if (*s1 == '\0')
-		return ((char *) NULL);
+	const char *last = NULL;
+	char c = i;
 
-	while (*s1 != '\0')
+	while (*s != '\0')
 	{
-		for (c = s2; *c; c++)
-		{
-			if (*s1 == *c)
-				break;
-		}
-		
-		if (*c != '\0')
-			break;
-		
-		s1++;
+		if (*s == c)
+			last = s;
+		s++;
 	}
 
-	if (*c == '\0')
-		s1 = NULL;
+	if (*s == c)
+		last = s;
 
-	return ((char *) s1);
+	return ((char *) last);
 }
