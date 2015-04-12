@@ -54,13 +54,13 @@
 	extern char *strncat(char *, const char *, size_t);
 	extern int strncmp(const char *, const char *, size_t);
 	extern char *strncpy(char *, const char *, size_t);
+	extern size_t strnlen(const char *, size_t);
 	extern char *strpbrk(const char *, const char *);
 	extern char *strrchr(const char *, int);
 	extern size_t strspn(const char *, const char *);
 	extern char *strstr(const char *, const char *);
 	extern char *strtok(char *, const char *);
 	extern size_t strxfrm(char *, const char *, size_t);
-	extern size_t strnlen(const char *str, size_t maxlen);
 	
 	/**@}*/
 
