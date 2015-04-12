@@ -107,10 +107,10 @@
 	#define ENOTSOCK        69 /**< Not a socket.                                   */
 	#define EOPNOTSUPP      70 /**< Operation not supported on socket.              */
 	#define EOVERFLOW       71 /**< value too large to be stored in data type.      */
-	#define EPROTONOSUPPORT 72 /**< Protocol not supported.                          */
-	#define EPROTOTYPE      73 /**< Protocol wrong type for socket.                  */
-	#define ETIMEDOUT       74 /**< Connection timed out.                            */
-	#define EWOULDBLOCK     75 /**< Operation would block.                           */
+	#define EPROTONOSUPPORT 72 /**< Protocol not supported.                         */
+	#define EPROTOTYPE      73 /**< Protocol wrong type for socket.                 */
+	#define ETIMEDOUT       74 /**< Connection timed out.                           */
+	#define EWOULDBLOCK     75 /**< Operation would block.                          */
 	/**@}*/
 	
 	/**@}*/
