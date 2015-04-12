@@ -32,8 +32,6 @@
 	 * @defgroup stringlib String Library
 	 * 
 	 * @brief String operations.
-	 * 
-	 * @todo strcoll()
 	 */
 	/**@{*/
 
@@ -46,6 +44,7 @@
 	extern char *strcat(char *, const char *);
 	extern char *strchr(const char *, int);
 	extern int strcmp(const char *, const char *);
+	extern int strcoll(const char *, const char *);
 	extern char *strcpy(char *, const char *);
 	extern size_t strcspn(const char *, const char *);
 	extern char *strdup(const char *);
