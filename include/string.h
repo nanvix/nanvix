@@ -51,7 +51,8 @@
 	extern char *strdup(const char *);
 	extern char *strerror(int);
 	extern size_t strlen(const char *);
-	extern int strncmp(const char *str1, const char *str2, size_t n);
+	extern char *strncat(char *, const char *, size_t);
+	extern int strncmp(const char *, const char *, size_t);
 	extern char *strncpy(char *dest, const char *src, size_t n);
 	extern size_t strnlen(const char *str, size_t maxlen);
 	
