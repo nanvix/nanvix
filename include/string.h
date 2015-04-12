@@ -59,6 +59,7 @@
 	extern size_t strspn(const char *, const char *);
 	extern char *strstr(const char *, const char *);
 	extern char *strtok(char *, const char *);
+	extern size_t strxfrm(char *, const char *, size_t);
 	extern size_t strnlen(const char *str, size_t maxlen);
 	
 	/**@}*/
