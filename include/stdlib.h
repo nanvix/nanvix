@@ -8,17 +8,13 @@
 #define STDLIB_H_
 
 	#include <sys/types.h>
+	#include <stddef.h>
 
 	/* Unsuccessful termination. */
 	#define EXIT_FAILURE 1
 	
 	/* Successful termination. */
 	#define EXIT_SUCCESS 0
-
-	/* Null pointer. */
-	#ifndef NULL
-		#define NULL ((void *)0)
-	#endif
 	
 	/*
 	 * Registers a function to run at process termination.
