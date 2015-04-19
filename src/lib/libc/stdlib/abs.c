@@ -29,7 +29,7 @@
  * @details Computers the absolute value of its integer operand, @p i. If the
  *          result cannot be represented, the behavior is undefined.
  * 
- * @returns the absolute value of its integer operand.
+ * @returns The absolute value of its integer operand.
  */
 int abs(int i)
 {

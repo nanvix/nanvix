@@ -22,6 +22,12 @@
 	/* Minimum value of type long. */
 	#define LONG_MIN -2147483647
 	
+	/* Maximum value for an object of type int. */
+	#define INT_MAX 2147483647
+	
+	/* Minimum value for an object of type int. */
+	#define INT_MIN -2147483647
+	
 	/* Bytes in a filename. */
 	#define NAME_MAX 14
 	
