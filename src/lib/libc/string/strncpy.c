@@ -39,7 +39,7 @@
  * 
  * @returns @p s1 is returned; no return value is reserved to indicate an error. 
  */
-char *strncpy(char *s1, const char *s2, size_t n)
+char *strncpy(char *restrict s1, const char *restrict s2, size_t n)
 {
 	char *p1;       /* Indexes s1. */
 	const char *p2; /* Indexes s2.  */

@@ -42,7 +42,7 @@
  *          or less than the possibly null-terminated array pointed to by @p s2
  *          respectively. 
  */
-int strncmp(const char *s1, const char *s2, size_t n)
+int strncmp(const char *restrict s1, const char *restrict s2, size_t n)
 {
 	/* Compare strings. */
 	while (n > 0)

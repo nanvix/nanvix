@@ -32,7 +32,7 @@
  * 
  * @returns s1 is returned.
  */
-char *strcpy(char *s1, const char *s2)
+char *strcpy(char *restrict s1, const char *restrict s2)
 {
 	char *p;
 	

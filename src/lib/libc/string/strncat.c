@@ -70,7 +70,7 @@
  * 
  * @returns @p s1 is returned; no return value is reserved to indicate an error. 
  */
-char *strncat(char *s1, const char *s2, size_t n)
+char *strncat(char *restrict s1, const char *restrict s2, size_t n)
 {
 	char *s = s1;
 

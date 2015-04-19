@@ -36,6 +36,8 @@
  *          whether the string pointed to by @p s1 is greater than, equal to or
  *          less than the string pointed to by @p s2 when both are interpreted
  *          as appropriate to the current locale.
+ * 
+ * @todo Perform comparison using collating information.
  */
 int strcoll(const char *s1, const char *s2)
 {

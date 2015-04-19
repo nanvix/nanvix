@@ -36,7 +36,7 @@
  * 
  * @note Does not check for the overflowing of the receiving memory area. 
  */
-void *memcpy(void *s1, const void *s2, size_t n)
+void *memcpy(void *restrict s1, const void *restrict s2, size_t n)
 {
     const char* s;
     char *d;

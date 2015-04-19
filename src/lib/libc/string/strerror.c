@@ -66,6 +66,8 @@
  *          modified by the program.
  * 
  * @returns A pointer to the generated message string.
+ * 
+ * @todo Use collating information.
  */
 char *strerror(int errnum)
 {

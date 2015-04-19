@@ -69,7 +69,7 @@
  * 
  * @returns s1 is returned.
  */
-char *strcat(char *s1, const char *s2)
+char *strcat(char *restrict s1, const char *restrict s2)
 {
 	char *save = s1;
 

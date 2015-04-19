@@ -77,7 +77,9 @@
  *          contents of the array pointed to by @p s1 are indeterminate.
  * 
  *          On error, errno is set, but no return value is reserved to indicate
- *          an error. 
+ *          an error.
+ * 
+ * @note Use collating information.
  */
 size_t strxfrm(char *s1, const char *s2, size_t n)
 {

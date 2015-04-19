@@ -69,7 +69,7 @@
  * 
  * @note Does not check for the overflow of the receiving memory area. 
  */
-void *memccpy(void *dest, const void *src, int c, size_t n)
+void *memccpy(void *restrict dest, const void *restrict src, int c, size_t n)
 {
 	if (n)
 	{
