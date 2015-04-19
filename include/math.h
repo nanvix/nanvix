@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -10,7 +10,7 @@
  * 
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
@@ -20,22 +20,10 @@
 /**
  * @file
  * 
- * @brief Standard type definitions.
+ * @brief Mathematical declarations.
  */
 
-#ifndef _STDDEF_H_
-#define _STDDEF_H_
+#ifndef MATH_H_
+#define MATH_H_
 
-	/**
-	 * @brief Null pointer.
-	 */
-	#ifndef NULL
-		#define NULL ((void *) 0)
-	#endif
-	
-	/**
-	 * @brief Codes for all members of the largest extended character set.
-	 */
-	typedef unsigned wchar_t;
-
-#endif /* _STDDEF_H_ */
+#endif /* MATH_H_ */

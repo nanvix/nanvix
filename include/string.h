@@ -47,6 +47,7 @@
 	 */
 	/**@{*/
 
+	/* Forward definitions. */
 	extern void *memchr(const void *, int, size_t);
 	extern int memcmp(const void *, const void *, size_t);
 	extern void *memcpy (void *restrict, const void *restrict, size_t);
@@ -82,6 +83,7 @@
 	extern size_t strxfrm_l(char *restrict,const char *restrict,size_t,locale_t);
 
 #if defined(_XOPEN_SOURCE)
+	/* Forward definitions. */
 	extern void *memccpy(void *restrict , const void *restrict , int, size_t);
 #endif
 	

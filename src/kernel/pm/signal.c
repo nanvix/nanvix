@@ -23,8 +23,8 @@
 #include <signal.h>
 
 /* Forward definitions. */
-PRIVATE void abort(int);
-PRIVATE void terminate(int);
+PRIVATE void _abort(int);
+PRIVATE void _terminate(int);
 	
 /**
  * @brief Asserts if a process is ignoring a signal.
@@ -51,29 +51,29 @@ PRIVATE void terminate(int);
  * @brief Default signal handlers.
  */
 PUBLIC const sighandler_t sigdfl[NR_SIGNALS] = {
-	SIG_IGN,                  /* SIGNULL */
-	(sighandler_t)&terminate, /* SIGKILL */ 
-	(sighandler_t)&stop,      /* SIGSTOP */
-	SIG_IGN,                  /* SIGURG  */
-	(sighandler_t)&abort,     /* SIGABRT */
-	(sighandler_t)&abort,     /* SIGBUS  */
-	SIG_IGN,                  /* SIGCHLD */
-	NULL,                     /* SIGCONT */
-	(sighandler_t)&terminate, /* SIGFPE  */
-	(sighandler_t)&terminate, /* SIGHUP  */
-	(sighandler_t)&abort,     /* SIGILL  */
-	(sighandler_t)&terminate, /* SIGINT  */
-	(sighandler_t)&abort,     /* SIGPIPE */
-	(sighandler_t)&abort,     /* SIGQUIT */
-	(sighandler_t)&abort,     /* SIGSEGV */
-	(sighandler_t)&terminate, /* SIGTERM */
-	(sighandler_t)&stop,      /* SIGTSTP */
-	(sighandler_t)&stop,      /* SIGTTIN */
-	(sighandler_t)&stop,      /* SIGTTOU */
-	(sighandler_t)&terminate, /* SIGALRM */
-	(sighandler_t)&terminate, /* SIGUSR1 */
-	(sighandler_t)&terminate, /* SIGUSR2 */
-	(sighandler_t)&abort,     /* SIGTRAP */
+	SIG_IGN,                   /* SIGNULL */
+	(sighandler_t)&_terminate, /* SIGKILL */ 
+	(sighandler_t)&stop,       /* SIGSTOP */
+	SIG_IGN,                   /* SIGURG  */
+	(sighandler_t)&_abort,     /* SIGABRT */
+	(sighandler_t)&_abort,     /* SIGBUS  */
+	SIG_IGN,                   /* SIGCHLD */
+	NULL,                      /* SIGCONT */
+	(sighandler_t)&_terminate, /* SIGFPE  */
+	(sighandler_t)&_terminate, /* SIGHUP  */
+	(sighandler_t)&_abort,     /* SIGILL  */
+	(sighandler_t)&_terminate, /* SIGINT  */
+	(sighandler_t)&_abort,     /* SIGPIPE */
+	(sighandler_t)&_abort,     /* SIGQUIT */
+	(sighandler_t)&_abort,     /* SIGSEGV */
+	(sighandler_t)&_terminate, /* SIGTERM */
+	(sighandler_t)&stop,       /* SIGTSTP */
+	(sighandler_t)&stop,       /* SIGTTIN */
+	(sighandler_t)&stop,       /* SIGTTOU */
+	(sighandler_t)&_terminate, /* SIGALRM */
+	(sighandler_t)&_terminate, /* SIGUSR1 */
+	(sighandler_t)&_terminate, /* SIGUSR2 */
+	(sighandler_t)&_abort,     /* SIGTRAP */
 };
 
 /**
@@ -81,7 +81,7 @@ PUBLIC const sighandler_t sigdfl[NR_SIGNALS] = {
  * 
  * @param sig Signal number that caused termination.
  */
-PRIVATE void terminate(int sig)
+PRIVATE void _terminate(int sig)
 {
 	die(((sig & 0xff) << 16) | (1 << 9));
 }
@@ -91,7 +91,7 @@ PRIVATE void terminate(int sig)
  * 
  * @param sig Signal number that caused abortion.
  */
-PRIVATE void abort(int sig)
+PRIVATE void _abort(int sig)
 {
 	kprintf("core dumped");
 	die(((sig & 0xff) << 16) | (1 << 9));
