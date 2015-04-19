@@ -111,6 +111,16 @@
 	#define EPROTOTYPE      73 /**< Protocol wrong type for socket.                 */
 	#define ETIMEDOUT       74 /**< Connection timed out.                           */
 	#define EWOULDBLOCK     75 /**< Operation would block.                          */
+	#define ENOTRECOVERABLE 76 /**< State not recoverable.                          */
+	#define EOWNERDEAD      77 /**< Previous owner died.                            */
+	#define ESTALE          78 /**< Stale NFS file handle.                          */
+
+#if defined(_XOPEN_SOURCE)
+	#define ENODATA 79 /**< No message is available on the stream head read queue. */
+	#define ENOSR   80 /**< No stream resources.                                   */
+	#define ENOSTR  81 /**< Not a stream.                                          */
+	#define ETIME   82 /**< Stream ioctl() timeout.                                */
+#endif
 	/**@}*/
 	
 	/**@}*/

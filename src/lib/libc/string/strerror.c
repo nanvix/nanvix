@@ -75,6 +75,9 @@ char *strerror(int errnum)
 
 	switch (errnum)
 	{
+		case 0:
+			error = "No error";
+			break;
 		case EPERM:
 			error = "Operation not permitted";
 			break;
@@ -297,8 +300,32 @@ char *strerror(int errnum)
 		case EWOULDBLOCK:
 			error = "Operation would block";
 			break;
+		case ENOTRECOVERABLE:
+			error = "State not recoverable";
+			break;
+		case EOWNERDEAD:
+			error = "Previous owner died.";
+			break;
+		case ESTALE:
+			error = "Stale NFS file handle";
+			break;
+#if defined(_XOPEN_SOURCE)			
+		case ENODATA:
+			error = "No message is available on the stream head read queue";
+			break;
+		case ENOSR:
+			error = "No stream resources";
+			break;
+		case ENOSTR:
+			error = "Not a stream";
+			break;
+		case ETIME:
+			error = "Stream ioctl() timeout";
+			break;
+#endif
 		default:
-			error = "";
+			errno = EINVAL;
+			error = "Not a valid error number";
 			break;
 	}
 
