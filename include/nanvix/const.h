@@ -56,7 +56,9 @@
 	 * @name Other Constants
 	 */
 	/**@{*/
-	#define NULL ((void *)0) /**< Null pointer. */
+	#ifndef NULL
+		#define NULL ((void *)0) /**< Null pointer. */
+	#endif
 	/**@}*/
 
 #endif /* CONST_H_ */
