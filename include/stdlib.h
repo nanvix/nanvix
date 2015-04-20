@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -10,7 +10,7 @@
  * 
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
@@ -31,6 +31,20 @@
 	#include <sys/wait.h>
 	#include <limits.h>
 	#include <math.h>
+
+	/**
+	 * @brief Number of functions that may be registered with atexit().
+	 */
+	#define	_ATEXIT_SIZE 32
+
+	/**
+	 * @brief atexit() information.
+	 */
+	extern struct _atexit
+	{
+		int	_ind;				          /**< Next available index. */
+		void (*_fns[_ATEXIT_SIZE])(void); /**< atexit() table.       */
+	} _atexit;
 	
 	/**
 	 * @defgroup stdlib Standard Library
