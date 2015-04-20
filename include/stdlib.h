@@ -31,20 +31,6 @@
 	#include <sys/wait.h>
 	#include <limits.h>
 	#include <math.h>
-
-	/**
-	 * @brief Number of functions that may be registered with atexit().
-	 */
-	#define	_ATEXIT_SIZE 32
-
-	/**
-	 * @brief atexit() information.
-	 */
-	extern struct _atexit
-	{
-		int	_ind;				          /**< Next available index. */
-		void (*_fns[_ATEXIT_SIZE])(void); /**< atexit() table.       */
-	} _atexit;
 	
 	/**
 	 * @defgroup stdlib Standard Library

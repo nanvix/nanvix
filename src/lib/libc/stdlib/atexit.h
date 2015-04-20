@@ -53,42 +53,24 @@
 /**
  * @file
  * 
- * @brief atexit() implementation.
- */
-
-#include <stddef.h>
-#include "atexit.h"
-
-/**
  * @brief atexit() information.
  */
-struct _atexit _atexit = { 0, };
 
-/**
- * @brief Registers a function to run at process termination.
- * 
- * @details Registers the function pointed to by @p func, to be called without
- *          arguments at normal program termination. At normal program
- *          termination, all functions registered by the atexit() function
- *          are called, in the reverse order of their registration, except that
- *          a function is called after any previously registered functions that
- *          had already been called at the time it was registered. Normal
- *          termination occurs either by a call to exit() or a return from
- *          main().
- * 
- *          After a successful call to any of the exec functions, any functions
- *          previously registered by atexit() are no longer registered.
- * 
- * @returns Upon successful completion 0 is returned; otherwise, a non-zero
- *          value is returned.
- */
-int atexit(void (*func)(void))
-{
-	/* Too many functions registed. */
-	if (_atexit._ind >= _ATEXIT_SIZE)
-		return -1;
+#ifndef _ATEXIT_H_
+#define _ATEXIT_H_
 
-	_atexit._fns[_atexit._ind++] = func;
-	
-	return (0);
-}
+	/**
+	 * @brief Number of functions that may be registered with atexit().
+	 */
+	#define	_ATEXIT_SIZE 32
+
+	/**
+	 * @brief atexit() information.
+	 */
+	extern struct _atexit
+	{
+		int	_ind;				          /**< Next available index. */
+		void (*_fns[_ATEXIT_SIZE])(void); /**< atexit() table.       */
+	} _atexit;
+
+#endif /* _ATEXIT_H_ */

@@ -6,11 +6,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-/**
- * @brief atexit() information.
- */
-struct _atexit _atexit = { 0, };
-
 /*
  * Main routine.
  */
