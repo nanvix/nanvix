@@ -53,105 +53,145 @@
 /**
  * @file
  * 
- * @brief atexit() implementation.
+ * @brief qsort() implementation.
  */
 
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
-static int find_pivot(void *base, int i, int j, size_t size, int (*compar)(const void *, const void *))
+/**
+ * @brief Compare function.
+ */
+static int (*_cmp)(const void *, const void *) = NULL;
+
+/**
+ * @brief Finds sorting pivot.
+ */
+static int find_pivot(void *base, int i, int j, size_t size)
 {
-  void *first_key;
-  void *next_key;
-  int k, res;
+	void *first_key;
+	void *next_key;
 
-  first_key = (void *) (((char *) base) + (i * size));
-  next_key = first_key;
+	first_key = (void *) (((char *) base) + (i*size));
+	next_key = first_key;
 
-  for (k = i + 1; k <= j; k++)
+	for (int k = i + 1; k <= j; k++)
     {
-      next_key = (void *) (((char *) next_key) + size);
-      res = (*compar) (next_key, first_key);
+		int res;
+		
+		next_key = (void *) (((char *) next_key) + size);
+		res = (*_cmp) (next_key, first_key);
 
-      if (res > 0)
-	return k;
-      else if (res < 0)
-	return i;
-    }
+		if (res > 0)
+			return (k);
+		else if (res < 0)
+			return (i);
+	}
 
-  return -1;
+	return (-1);
 }
 
+/**
+ * @brief Swaps two elements.
+ */
 static void swap(void *base, int i, int j, size_t size)
 {
-  static void *temp = NULL;
-  static size_t max_size = 0;
+	static void *temp = NULL;
+	static size_t max_size = 0;
+	void *elem1, *elem2;
 
-  void *elem1, *elem2;
+	if (size > max_size)
+	{
+		temp = realloc(temp, size);
+		max_size = size;
+	}
 
-  if (size > max_size)
-    {
-      temp = realloc (temp, size);
-      max_size = size;
-    }
+	elem1 = ((char *) base) + (i * size);
+	elem2 = ((char *) base) + (j * size);
 
-  elem1 = (void *) (((char *) base) + (i * size));
-  elem2 = (void *) (((char *) base) + (j * size));
-
-  memcpy (temp, elem1, size);
-  memcpy (elem1, elem2, size);
-  memcpy (elem2, temp, size);
+	memcpy (temp, elem1, size);
+	memcpy (elem1, elem2, size);
+	memcpy (elem2, temp, size);
 }
 
-static int partition(void *base, int i, int j, int pivot_index, size_t size, int (*compar)(const void *, const void *))
+/**
+ * @brief Partitions the array.
+ */
+static int partition(void *base, int i, int j, int pivot_index, size_t size)
 {
-  int left, right;
+	int left, right;
 
-  left = i;
-  right = j;
+	left = i;
+	right = j;
 
-  do
-    {
-      swap (base, left, right, size);
+	do
+	{
+		swap (base, left, right, size);
 
-      if (pivot_index == left)
-	pivot_index = right;
-      else if (pivot_index == right)
-	pivot_index = left;
+		if (pivot_index == left)
+			pivot_index = right;
+		else if (pivot_index == right)
+			pivot_index = left;
 
-      while (compar ((void *) (((char *) base) + (left * size)),
-		     (void *) (((char *) base) + (pivot_index * size))) < 0)
-	left++;
+		while (_cmp ((void *) (((char *) base) + (left * size)),
+			(void *) (((char *) base) + (pivot_index * size))) < 0)
+			left++;
 
-      while (compar ((void *) (((char *) base) + (right * size)),
-		     (void *) (((char *) base) + (pivot_index * size))) >= 0)
-	right--;
+		while (_cmp ((void *) (((char *) base) + (right * size)),
+			(void *) (((char *) base) + (pivot_index * size))) >= 0)
+			right--;
+	} while (left <= right);
 
-    }
-  while (left <= right);
-
-  return left;
+	return (left);
 }
 
-static void inside_qsort(void *base, int i, int j, size_t size, int (*compar)(const void *, const void *))
+/**
+ * @brief Internal qsort().
+ */
+static void _qsort(void *base, int i, int j, size_t size)
 {
-  int pivot_index, mid;
+	int pivot_index, mid;
 
-  if ((pivot_index = find_pivot (base, i, j, size, compar)) != -1)
-    {
-      mid = partition (base, i, j, pivot_index, size, compar);
+	pivot_index = find_pivot(base, i, j, size);
 
-      inside_qsort (base, i, mid - 1, size, compar);
-      inside_qsort (base, mid, j, size, compar);
-    }
+	if (pivot_index == -1)
+		return;
+
+	/* Sort. */
+	mid = partition (base, i, j, pivot_index, size);
+	_qsort (base, i, mid - 1, size);
+	_qsort (base, mid, j, size);
 }
 
 /**
  * @brief Sorts a table of data.
+ * 
+ * @details Sorts an array of @p nmemb objects, the initial element of which is
+ *          pointed to by @p base. The size of each object, in bytes, is
+ *          specified by the @p size argument. If the @p nmemb argument has the
+ *          value zero, the comparison function pointed to by @p cmp is not
+ *          called and no rearrangement takes place.
+ * 
+ *          The application shall ensure that the comparison function pointed
+ *          to by @p cmp does not alter the contents of the array.
+ * 
+ *          When the same objects are passed more than once to the comparison
+ *          function, the results are consistent with one another. That is,
+ *          they define a total ordering on the array.
+ * 
+ *          The contents of the array are sorted in ascending order according
+ *          to a comparison function. The @p cmp argument is a pointer to the
+ *          comparison function, which is called with two arguments that point
+ *          to the elements being compared. The application shall ensure that
+ *          the function returns an integer less than, equal to, or greater
+ *          than 0, if the first argument is considered respectively less than,
+ *          equal to, or greater than the second. If two members compare as
+ *          equal, their order in the sorted array is unspecified.
  */
 void qsort
-(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *))
+(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const void *))
 {
-  inside_qsort(base, 0, nmemb - 1, size, compar);
+	_cmp = cmp;
+	_qsort(base, 0, nmemb - 1, size);
 }
