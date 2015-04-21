@@ -57,38 +57,101 @@
  */
 
 #include <stddef.h>
-#include "atexit.h"
+#include <stdlib.h>
+#include <string.h>
 
-/**
- * @brief atexit() information.
- */
-struct _atexit _atexit = { 0, };
-
-/**
- * @brief Registers a function to run at process termination.
- * 
- * @details Registers the function pointed to by @p func, to be called without
- *          arguments at normal program termination. At normal program
- *          termination, all functions registered by the atexit() function
- *          are called, in the reverse order of their registration, except that
- *          a function is called after any previously registered functions that
- *          had already been called at the time it was registered. Normal
- *          termination occurs either by a call to exit() or a return from
- *          main().
- * 
- *          After a successful call to any of the exec functions, any functions
- *          previously registered by atexit() are no longer registered.
- * 
- * @returns Upon successful completion 0 is returned; otherwise, a non-zero
- *          value is returned.
- */
-int atexit(void (*func)(void))
+static int find_pivot(void *base, int i, int j, size_t size, int (*compar)(const void *, const void *))
 {
-	/* Too many functions registered. */
-	if (_atexit._ind >= _ATEXIT_SIZE)
-		return -1;
+  void *first_key;
+  void *next_key;
+  int k, res;
 
-	_atexit._fns[_atexit._ind++] = func;
-	
-	return (0);
+  first_key = (void *) (((char *) base) + (i * size));
+  next_key = first_key;
+
+  for (k = i + 1; k <= j; k++)
+    {
+      next_key = (void *) (((char *) next_key) + size);
+      res = (*compar) (next_key, first_key);
+
+      if (res > 0)
+	return k;
+      else if (res < 0)
+	return i;
+    }
+
+  return -1;
+}
+
+static void swap(void *base, int i, int j, size_t size)
+{
+  static void *temp = NULL;
+  static size_t max_size = 0;
+
+  void *elem1, *elem2;
+
+  if (size > max_size)
+    {
+      temp = realloc (temp, size);
+      max_size = size;
+    }
+
+  elem1 = (void *) (((char *) base) + (i * size));
+  elem2 = (void *) (((char *) base) + (j * size));
+
+  memcpy (temp, elem1, size);
+  memcpy (elem1, elem2, size);
+  memcpy (elem2, temp, size);
+}
+
+static int partition(void *base, int i, int j, int pivot_index, size_t size, int (*compar)(const void *, const void *))
+{
+  int left, right;
+
+  left = i;
+  right = j;
+
+  do
+    {
+      swap (base, left, right, size);
+
+      if (pivot_index == left)
+	pivot_index = right;
+      else if (pivot_index == right)
+	pivot_index = left;
+
+      while (compar ((void *) (((char *) base) + (left * size)),
+		     (void *) (((char *) base) + (pivot_index * size))) < 0)
+	left++;
+
+      while (compar ((void *) (((char *) base) + (right * size)),
+		     (void *) (((char *) base) + (pivot_index * size))) >= 0)
+	right--;
+
+    }
+  while (left <= right);
+
+  return left;
+}
+
+static void inside_qsort(void *base, int i, int j, size_t size, int (*compar)(const void *, const void *))
+{
+  int pivot_index, mid;
+
+  if ((pivot_index = find_pivot (base, i, j, size, compar)) != -1)
+    {
+      mid = partition (base, i, j, pivot_index, size, compar);
+
+      inside_qsort (base, i, mid - 1, size, compar);
+      inside_qsort (base, mid, j, size, compar);
+    }
+}
+
+/**
+ * @brief Sorts a table of data.
+ */
+void qsort
+(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *))
+{
+  inside_qsort(base, 0, nmemb - 1, size, compar);
 }
