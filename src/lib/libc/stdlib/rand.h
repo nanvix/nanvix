@@ -20,7 +20,7 @@
 /**
  * @file
  * 
- * @brief Seed for rand().
+ * @brief Definitions for srand() and rand().
  */
 
 #ifndef _RAND_H_

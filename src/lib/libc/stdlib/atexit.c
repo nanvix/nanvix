@@ -56,6 +56,7 @@
  * @brief atexit() implementation.
  */
 
+#include <limits.h>
 #include <stddef.h>
 #include "atexit.h"
 
@@ -85,8 +86,8 @@ struct _atexit _atexit = { 0, };
 int atexit(void (*func)(void))
 {
 	/* Too many functions registered. */
-	if (_atexit._ind >= _ATEXIT_SIZE)
-		return -1;
+	if (_atexit._ind >= ATEXIT_MAX)
+		return (-1);
 
 	_atexit._fns[_atexit._ind++] = func;
 	

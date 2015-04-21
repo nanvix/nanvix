@@ -59,18 +59,15 @@
 #ifndef _ATEXIT_H_
 #define _ATEXIT_H_
 
-	/**
-	 * @brief Number of functions that may be registered with atexit().
-	 */
-	#define	_ATEXIT_SIZE 32
-
+	#include <limits.h>
+	
 	/**
 	 * @brief atexit() information.
 	 */
 	extern struct _atexit
 	{
-		int	_ind;				          /**< Next available index. */
-		void (*_fns[_ATEXIT_SIZE])(void); /**< atexit() table.       */
+		int	_ind;				        /**< Next available index. */
+		void (*_fns[ATEXIT_MAX])(void); /**< atexit() table.       */
 	} _atexit;
 
 #endif /* _ATEXIT_H_ */
