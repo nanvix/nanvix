@@ -53,28 +53,28 @@
 /**
  * @file
  * 
- * @brief div() implementation.
+ * @brief ldiv() implementation.
  */
 
-#include <stdlib.h>
 #include <limits.h>
+#include <stdlib.h>
 
 /**
- * @brief Computes the quotient and remainder of an integer division.
+ * @brief Computes quotient and remainder of a long division.
  * 
  * @details Computes the quotient and remainder of the division of the numerator
- *          @p numer by the denominator @p denom. If the division is inexact,
- *          the resulting quotient is the integer of lesser magnitude that is
- *          the nearest to the algebraic quotient. If the result cannot be
+ *          @p numer by the denominator denom. If the division is inexact,
+ *          the resulting quotient is the long integer of lesser magnitude that
+ *          is the nearest to the algebraic quotient. If the result cannot be
  *          represented, the behavior is undefined; otherwise, quotient*@p denom
  *          + remainder shall equal @p numer.
  * 
- * @returns A structure of type div_t, comprising both the quotient and the
+ * @returns A structure of type ldiv_t, comprising both the quotient and the
  *          remainder.
  */
-div_t div(int numer, int denom)
+ldiv_t ldiv(long numer, long denom)
 {
-	div_t res;
+	ldiv_t res;
 
 	if (denom != 0)
 	{
@@ -89,9 +89,9 @@ div_t div(int numer, int denom)
 	else
 	{
 		if (numer < 0)
-			res.quot = INT_MIN;
+			res.quot = LONG_MIN;
 		else
-			res.quot = INT_MAX;
+			res.quot = LONG_MAX;
 		res.rem = 0;
     }
 
