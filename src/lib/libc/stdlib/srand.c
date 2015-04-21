@@ -1,0 +1,46 @@
+/*
+ * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/**
+ * @file
+ * 
+ * @brief srand() implementation.
+ */
+
+#include "rand.h"
+
+/**
+ * @brief Next pseudo-random number if the sequence.
+ */
+unsigned _next = 1;
+
+/**
+ * @brief Sets seed value for pseudo-random number generator.
+ * 
+ * @details Uses the argument as a seed for a new sequence of pseudo-random
+ *          numbers to be returned by subsequent calls to rand(). If srand() is
+ *          then called with the same seed value, the sequence of pseudo-random
+ *          numbers is repeated. If rand() is called before any calls to srand()
+ *          are made, the same sequence is generated as when srand() is first
+ *          called with a seed value of 1.
+ */
+void srand(unsigned seed)
+{
+	_next = seed;
+}
