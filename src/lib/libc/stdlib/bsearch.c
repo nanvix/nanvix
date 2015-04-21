@@ -53,7 +53,7 @@
 /**
  * @file
  * 
- * @brief _Exit() implementation.
+ * @brief bsearch() implementation.
  */
 
 #include <stddef.h>
