@@ -50,7 +50,6 @@
 	 * @todo strtold()
 	 * @todo strtof()
 	 * @todo strtold()
-	 * @todo strtoull()
 	 * @todo system()
 	 * @todo wcstombs()
 	 * @todo wctomb()

@@ -52,5 +52,10 @@
 	
 	/* Maximum value for unsigned long. */
 	#define ULONG_MAX 4294967295u
+	
+	/**
+	 * @brief Maximum value for an object of type unsigned long long.
+	 */
+	#define ULLONG_MAX 18446744073709551615u
 
 #endif /* LIMITS_H_ */

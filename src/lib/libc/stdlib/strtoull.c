@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 1990 Regents of the University of California.
+ * Copyright (c) 1992 Regents of the University of California.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,33 +50,51 @@
  * SUCH DAMAGE.
  */
 
-#include <limits.h>
+/**
+ * @file
+ * 
+ * @brief strtoull() implementation.
+ */
+
+#include <sys/types.h>
+
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 
 /*
- * Converts a string to an unsigned long.
+ * Converts a string to an unsigned long long.
  */
-unsigned long strtoul(const char *str, char **endptr, int base)
+unsigned long long strtoull(const char *nptr, char **endptr, int base)
 {
-	const char *s = str;
-	unsigned long acc;
+	const char *s;
+	unsigned long long acc, cutoff;
 	int c;
-	unsigned long cutoff;
-	int neg = 0, any, cutlim;
+	int neg, any, cutlim;
 
 	/*
-	 * See strtol for comments as to the logic used.
+	 * See strtoll for comments as to the logic used.
 	 */
+	if (base < 0 || base == 1 || base > 36) {
+		if (endptr != 0)
+			*endptr = (char *)nptr;
+		errno = EINVAL;
+		return 0;
+	}
+
+	s = nptr;
 	do {
-		c = *s++;
+		c = (unsigned char) *s++;
 	} while (isspace(c));
 	if (c == '-') {
 		neg = 1;
 		c = *s++;
-	} else if (c == '+')
-		c = *s++;
+	} else {
+		neg = 0;
+		if (c == '+')
+			c = *s++;
+	}
 	if ((base == 0 || base == 16) &&
 	    c == '0' && (*s == 'x' || *s == 'X')) {
 		c = s[1];
@@ -85,9 +103,10 @@ unsigned long strtoul(const char *str, char **endptr, int base)
 	}
 	if (base == 0)
 		base = c == '0' ? 8 : 10;
-	cutoff = (unsigned long)ULONG_MAX / (unsigned long)base;
-	cutlim = (unsigned long)ULONG_MAX % (unsigned long)base;
-	for (acc = 0, any = 0;; c = *s++) {
+
+	cutoff = ULLONG_MAX / (unsigned long long)base;
+	cutlim = ULLONG_MAX % (unsigned long long)base;
+	for (acc = 0, any = 0;; c = (unsigned char) *s++) {
 		if (isdigit(c))
 			c -= '0';
 		else if (isalpha(c))
@@ -96,20 +115,21 @@ unsigned long strtoul(const char *str, char **endptr, int base)
 			break;
 		if (c >= base)
 			break;
-		if (((any < 0) || (acc > cutoff)) || ((acc == cutoff) && (c > cutlim)))
+		if (any < 0)
+			continue;
+		if (acc > cutoff || (acc == cutoff && c > cutlim)) {
 			any = -1;
-		else {
+			acc = ULLONG_MAX;
+			errno = ERANGE;
+		} else {
 			any = 1;
-			acc *= base;
+			acc *= (unsigned long long)base;
 			acc += c;
 		}
 	}
-	if (any < 0) {
-		acc = ULONG_MAX;
-		errno = ERANGE;
-	} else if (neg)
+	if (neg && any > 0)
 		acc = -acc;
 	if (endptr != 0)
-		*endptr = (any) ? (char *)(s - 1) : (char *)str;
+		*endptr = (char *) (any ? s - 1 : nptr);
 	return (acc);
 }
