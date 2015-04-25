@@ -112,6 +112,26 @@
 		typedef unsigned wchar_t;
 	#endif
 	
+	/**
+	 * @todo abort()
+	 * @todo atof()
+	 * @todo atoll()
+	 * @todo llabs()
+	 * @todo lldiv()
+	 * @todo mblen()
+	 * @todo mbstowcs()
+	 * @todo mbtowc()
+	 * @todo strtod()
+	 * @todo strtold()
+	 * @todo strtof()
+	 * @todo strtold()
+	 * @todo strtoll()
+	 * @todo strtoull()
+	 * @todo system()
+	 * @todo wcstombs()
+	 * @todo wctomb()
+	 */
+	
 	/* Forward definitions. */
 	extern void _Exit(int);
 	extern void abort(void);
@@ -149,11 +169,20 @@
 	extern unsigned long strtoul(const char *restrict, char **restrict, int);
 	extern unsigned long long strtoull(const char *restrict, char **restrict, int);
 	extern int system(const char *);
-	
 	extern size_t wcstombs(char *restrict, const wchar_t *restrict, size_t);
 	extern int wctomb(char *, wchar_t);
 
 #if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+	/**
+	 * @todo getsubopt()
+	 * @todo mkdtemp()
+	 * @todo mkstemp()
+	 * @todo posix_memalign()
+	 * @todo rand_r()
+	 * @todo setenv()
+	 * @todo unsetenv()
+	 */
 
 	/* Forward definitions. */
 	extern int getsubopt(char **, char *const *, char **);
@@ -167,6 +196,31 @@
 #endif
 
 #if defined(_XOPEN_SOURCE)
+
+	/**
+	 * @todo a64l()
+	 * @todo drand48()
+	 * @todo erand48()
+	 * @todo grantpt()
+	 * @todo initstate()
+	 * @todo jrand48()
+	 * @todo l64a()
+	 * @todo lcong48()
+	 * @todo lrand48()
+	 * @todo mrand48()
+	 * @todo nrand48()
+	 * @todo posix_openpt()
+	 * @todo ptsname()
+	 * @todo putenv()
+	 * @todo random()
+	 * @todo realpath()
+	 * @todo seed48()
+	 * @todo setkey()
+	 * @todo setstate()
+	 * @todo srand48()
+	 * @todo srandom()
+	 * @todo unlockpt()
+	 */
 
 	/* Forward definitions. */
 	extern long a64l(const char *);
