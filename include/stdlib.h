@@ -43,7 +43,6 @@
 	 * 
 	 * @todo abort()
 	 * @todo atof()
-	 * @todo atoll()
 	 * @todo llabs()
 	 * @todo lldiv()
 	 * @todo mblen()
