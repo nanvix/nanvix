@@ -56,8 +56,13 @@
 	 * @name Other Constants
 	 */
 	/**@{*/
-	#ifndef NULL
-		#define NULL ((void *)0) /**< Null pointer. */
+
+	/**
+	 * @brief Null pointer.
+	 */
+	#ifndef _NULL
+	#define _NULL
+		#define NULL ((void *) 0)
 	#endif
 	/**@}*/
 

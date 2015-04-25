@@ -26,11 +26,15 @@
 #ifndef STDLIB_H_
 #define STDLIB_H_
 
+#if defined(_POSIX_C_SOURCE)
+
 	#include <sys/types.h>
 	#include <stddef.h>
 	#include <sys/wait.h>
 	#include <limits.h>
 	#include <math.h>
+
+#endif
 	
 	/**
 	 * @defgroup stdlib Standard Library
@@ -53,9 +57,17 @@
 	#define RAND_MAX 0x7fffffff
 	
 	/**
-	 * @brief Maximum number of bytes in a current locale character.
+	 * @brief Maximum number of bytes in a locale character.
 	 */
-	#define MB_CUR_MAX 1
+	#define MB_CUR_MAX ((size_t)1)
+	
+	/**
+	 * @brief Null pointer.
+	 */
+	#ifndef _NULL
+	#define _NULL
+		#define NULL ((void *) 0)
+	#endif
 	
 	/**
 	 * @brief Structure type returned by the div() function.
@@ -83,6 +95,22 @@
 		int quot; /**< Quotient.  */
 		int rem;  /**< Remainder. */
 	} lldiv_t;
+
+	/**
+	 * @brief Used for sizes of objects.
+	 */
+	#ifndef SIZE_T
+	#define SIZE_T
+		typedef unsigned size_t;
+	#endif
+	
+	/**
+	 * @brief Codes for all members of the largest extended character set.
+	 */
+	#ifndef _WCHAR_T	
+	#define _WCHAR_T
+		typedef unsigned wchar_t;
+	#endif
 	
 	/* Forward definitions. */
 	extern void _Exit(int);
@@ -94,13 +122,12 @@
 	extern long atol(const char *);
 	extern long long atoll(const char *);
 	extern void *bsearch(const void *, const void *, size_t, size_t,
-					int (*)(const void *, const void *));
+						 int (*)(const void *, const void *));
 	extern void *calloc(size_t, size_t);
 	extern div_t div(int, int);
 	extern void exit(int);
 	extern void free(void *);
 	extern char *getenv(const char *);
-	extern int getsubopt(char **, char *const *, char **);
 	extern long labs(long);
 	extern ldiv_t ldiv(long, long);
 	extern long long llabs(long long);
@@ -109,15 +136,10 @@
 	extern int mblen(const char *, size_t);
 	extern size_t mbstowcs(wchar_t *restrict, const char *restrict, size_t);
 	extern int mbtowc(wchar_t *restrict, const char *restrict, size_t);
-	extern char *mkdtemp(char *);
-	extern int mkstemp(char *);
-	extern int posix_memalign(void **, size_t, size_t);
 	extern void qsort(void *, size_t, size_t, int (*)(const void *,
-				const void *));
+					  const void *));
 	extern int rand(void);
-	extern int rand_r(unsigned *);
 	extern void *realloc(void *, size_t);
-	extern int setenv(const char *, const char *, int);
 	extern void srand(unsigned);
 	extern double strtod(const char *restrict, char **restrict);
 	extern float strtof(const char *restrict, char **restrict);
@@ -127,9 +149,22 @@
 	extern unsigned long strtoul(const char *restrict, char **restrict, int);
 	extern unsigned long long strtoull(const char *restrict, char **restrict, int);
 	extern int system(const char *);
-	extern int unsetenv(const char *);
+	
 	extern size_t wcstombs(char *restrict, const wchar_t *restrict, size_t);
 	extern int wctomb(char *, wchar_t);
+
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+	/* Forward definitions. */
+	extern int getsubopt(char **, char *const *, char **);
+	extern char *mkdtemp(char *);
+	extern int mkstemp(char *);
+	extern int posix_memalign(void **, size_t, size_t);
+	extern int rand_r(unsigned *);
+	extern int setenv(const char *, const char *, int);
+	extern int unsetenv(const char *);
+	
+#endif
 
 #if defined(_XOPEN_SOURCE)
 

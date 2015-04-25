@@ -29,13 +29,25 @@
 	/**
 	 * @brief Null pointer.
 	 */
-	#ifndef NULL
+	#ifndef _NULL
+	#define _NULL
 		#define NULL ((void *) 0)
 	#endif
-	
+
 	/**
 	 * @brief Codes for all members of the largest extended character set.
 	 */
-	typedef unsigned wchar_t;
+	#ifndef _WCHAR_T	
+	#define _WCHAR_T
+		typedef unsigned wchar_t;
+	#endif
+
+	/**
+	 * @brief Used for sizes of objects.
+	 */
+	#ifndef SIZE_T
+	#define SIZE_T
+		typedef unsigned size_t;
+	#endif
 
 #endif /* _STDDEF_H_ */
