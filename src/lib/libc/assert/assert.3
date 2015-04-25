@@ -1,0 +1,65 @@
+.TH "assert" "3" "April 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+assert \- Asserts a condition
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+
+.BI "#include <" "assert.h" >
+
+.BI "void assert(scalar " expression ")"
+
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+The 
+.BR assert()
+macro inserts diagnostics into programs; it expands to a void expression. When
+it is executed, if expression is false,
+.BR assert()
+writes information about the particular call that failed on 
+.IR stderr
+and calls
+.BR abort() .
+
+Forcing a definition of the name
+.BR NDEBUG ,
+stops assertions from being compiled into the program.
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+The
+.BR assert()
+macro does not return a value.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+No errors are defined.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+
+.BR abort , 
+.BR stderr 
