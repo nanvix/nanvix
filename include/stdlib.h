@@ -45,7 +45,6 @@
 	 * @todo atof()
 	 * @todo mblen()
 	 * @todo mbstowcs()
-	 * @todo mbtowc()
 	 * @todo strtod()
 	 * @todo strtold()
 	 * @todo strtof()
