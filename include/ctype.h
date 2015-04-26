@@ -60,7 +60,8 @@
 #define _CTYPE_H_
 
 	#ifdef _POSIX_C_SOURCE
-		#include <locale.h>
+		#define _NEED_LOCALE_T
+		#include <decl.h>
 	#endif /* _POSIX_C_SOURCE */
 
 	/* Character types. */
