@@ -50,14 +50,22 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief islower() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Checks for a lowercase character.
+ * @brief Checks for a lowercase character in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is a lowercase letter; otherwise, zero is returned.
  */
 int islower(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & _L);
+	return ((_ctype + 1)[(unsigned) c] & _L);
 }

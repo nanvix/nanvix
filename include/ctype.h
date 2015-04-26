@@ -50,8 +50,18 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief Character types library.
+ */
+
 #ifndef _CTYPE_H_
 #define _CTYPE_H_
+
+	#ifdef _POSIX_C_SOURCE
+		#include <locale.h>
+	#endif /* _POSIX_C_SOURCE */
 
 	/* Character types. */
 	#define	_U	0x01 /* Upper-case character.         */
@@ -62,6 +72,16 @@
 	#define	_C	0x20 /* Control character.            */
 	#define	_X	0x40 /* Hexadecimal number character. */
 	#define	_B	0x80 /* Blank space character.        */
+	
+	/**
+	 * @defgroup ctype ctype.h
+	 * 
+	 * @brief Character types library.
+	 * 
+	 * @todo Do not ignore current locale.
+	 * @todo Implement all extensions to the ISO C standard.
+	 */
+	/**@{*/
 	
 	/* Forward definitions. */
 	extern int isalnum(int);
@@ -79,9 +99,31 @@
 	extern int tolower(int);
 	extern int toupper(int);
 	
+#ifdef _POSIX_C_SOURCE
+	
+	/* Forward definitions. */
+	extern int isalnum_l(int, locale_t);
+	extern int isalpha_l(int, locale_t);
+	extern int isblank_l(int, locale_t);
+	extern int iscntrl_l(int, locale_t);
+	extern int isdigit_l(int, locale_t);
+	extern int isgraph_l(int, locale_t);
+	extern int islower_l(int, locale_t);
+	extern int isprint_l(int, locale_t);
+	extern int ispunct_l(int, locale_t);
+	extern int isspace_l(int, locale_t);
+	extern int isupper_l(int, locale_t);
+	extern int isxdigit_l(int, locale_t);
+	extern int tolower_l(int, locale_t);
+	extern int toupper_l(int, locale_t);
+
+#endif /* _POSIX_C_SOURCE */
+	
+	/**@}*/
+	
 	/* Forward definitions. */
 	extern const unsigned char _ctype[];
 	extern char _maplower[];
 	extern char _mapupper[];
 
-#endif /* !_CTYPE_H_ */
+#endif /* _CTYPE_H_ */

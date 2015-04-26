@@ -50,14 +50,23 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief ispunct() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Checks for a punctuation character.
+ * @brief Checks for a punctuation character in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is a punctuation character; otherwise, zero is
+ *          returned.
  */
 int ispunct(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & _P);
+	return ((_ctype + 1)[(unsigned) c] & _P);
 }

@@ -16,13 +16,21 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+/**
+ * @file
+ * 
+ * @brief isblank() implementation.
+ */
  
 #include <ctype.h>
 
 /**
- * @brief Checks for a blank character.
+ * @brief Checks for a blank character in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is a <blank>; otherwise, zero is returned.
  */
 int isblank(int c)
 {

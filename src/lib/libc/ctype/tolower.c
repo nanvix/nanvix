@@ -50,14 +50,24 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief tolower() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Transliterates an uppercase character to a lowercase character.
+ * @brief Transliterates an uppercase character to a lowercase character in the
+ *        current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to transliterate.
+ * 
+ * @returns The lowercase letter corresponding to the argument passed;
+ *          otherwise, the argument unchanged is returned.
  */
 int tolower(int c)
 {
-	return ((_maplower + 1)[(unsigned)c]);
+	return ((_maplower + 1)[(unsigned) c]);
 }

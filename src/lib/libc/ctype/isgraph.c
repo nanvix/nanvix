@@ -50,14 +50,23 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief isgraph() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Checks for a visible character.
+ * @brief Checks for a visible character in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is a character with a visible representation; 
+ *          otherwise, zero is returned.
  */
 int isgraph(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & (_P|_U|_L|_N));
+	return ((_ctype + 1)[(unsigned) c] & (_P|_U|_L|_N));
 }

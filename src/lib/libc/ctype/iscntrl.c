@@ -50,14 +50,23 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief iscntrl() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Checks for a control character.
+ * @brief Checks for a control character in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is a control character; otherwise, zero is
+ *          returned.
  */
 int iscntrl(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & _C);
+	return ((_ctype + 1)[(unsigned) c] & _C);
 }

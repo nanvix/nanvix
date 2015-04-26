@@ -51,9 +51,7 @@
  */
 
 /**
- * @brief Lower character map.
- * 
- * @todo Consider current locale.
+ * @brief Lowercase character map.
  */
 const char _maplower[1 + 256] = {
 	0,

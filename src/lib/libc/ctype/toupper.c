@@ -50,14 +50,24 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief toupper() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Transliterates a lowercase character to an uppercase character.
+ * @brief Transliterates a lowercase character to an uppercase character in the
+ *        current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to transliterate.
+ * 
+ * @returns The uppercase letter corresponding to the argument passed;
+ *          otherwise, the argument unchanged is returned.
  */
 int toupper(int c)
 {
-	return (((_mapupper + 1)[(unsigned)c]));
+	return (((_mapupper + 1)[(unsigned) c]));
 }

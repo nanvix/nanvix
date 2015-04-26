@@ -50,16 +50,25 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief isprint() implementation.
+ */
+
 #include <ctype.h>
 	
 /**
- * @brief Checks for a printable character.
+ * @brief Checks for a printable character in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is a printable character; otherwise, zero is
+ *          returned.
  */
 int isprint(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & (_P|_U|_L|_N|_B));
+	return ((_ctype + 1)[(unsigned) c] & (_P|_U|_L|_N|_B));
 }
 	
 

@@ -50,14 +50,23 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief isxdigit() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Checks for a hexadecimal digit.
+ * @brief Checks for a hexadecimal digit in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is a hexadecimal digit; otherwise, zero is
+ *          returned.
  */
 int isxdigit(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & (_N|_X));
+	return ((_ctype + 1)[(unsigned) c] & (_N|_X));
 }

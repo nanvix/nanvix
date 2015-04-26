@@ -50,14 +50,23 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief isupper() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Checks for an uppercase letter.
+ * @brief Checks for an uppercase character in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is an uppercase letter; otherwise, zero is
+ *          returned.
  */
 int isupper(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & _U);
+	return ((_ctype + 1)[(unsigned) c] & _U);
 }

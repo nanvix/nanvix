@@ -50,14 +50,23 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief isalnum() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Checks for an alphanumeric character.
+ * @brief Checks for an alphanumeric character in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is an alphanumeric character; otherwise, zero is
+ *          returned.
  */
 int isalnum(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & (_U|_L|_N));
+	return ((_ctype + 1)[(unsigned) c] & (_U|_L|_N));
 }

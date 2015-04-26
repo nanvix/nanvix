@@ -51,9 +51,7 @@
  */
 
 /**
- * @brief Upper character map.
- * 
- * @todo Consider current locale.
+ * @brief Uppercase character map.
  */
 const char _mapupper[1 + 256] = {
 	0,

@@ -27,7 +27,7 @@
 #define ASSERT_H_
 
 	/**
-	 * @defgroup assert Assert Library
+	 * @defgroup assert assert.h
 	 * 
 	 * @brief Program diagnostics library.
 	 */

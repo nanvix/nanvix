@@ -54,8 +54,6 @@
 
 /**
  * @brief Character type table.
- * 
- * @todo Consider current locale.
  */
 const unsigned char _ctype[1 + 256] = {
 	0,

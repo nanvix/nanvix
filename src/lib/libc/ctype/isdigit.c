@@ -50,14 +50,22 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * 
+ * @brief isdigit() implementation.
+ */
+
 #include <ctype.h>
 
 /**
- * @brief Checks for a decimal digit.
+ * @brief Checks for a decimal digit in the current locale.
  * 
- * @todo Consider current locale.
+ * @param c Character to check.
+ * 
+ * @returns Non-zero if @p c is a decimal digit; otherwise, zero is returned.
  */
 int isdigit(int c)
 {
-	return ((_ctype + 1)[(unsigned)c] & _N);
+	return ((_ctype + 1)[(unsigned) c] & _N);
 }
