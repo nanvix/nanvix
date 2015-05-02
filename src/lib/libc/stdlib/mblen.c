@@ -49,8 +49,8 @@
 /**
  * @brief Gets number of bytes in a character.
  * 
- * @param s Multi-byte string.
- * @param n Number of bytes to consider.
+ * @param s Multi-byte character.
+ * @param n Maximum number of bytes to consider.
  * 
  * @returns If s is a null pointer, mblen() returns a non-zero or 0 value, if
  *          character encodings, respectively, do or do not have state-dependent
