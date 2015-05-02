@@ -26,8 +26,7 @@
 /**
  * @brief Returns a long integer absolute value.
  * 
- * @details Computes the absolute value of the long integer operand @p x.
- *          If the result cannot be represented, the behavior is undefined.
+ * @param x Operand.
  * 
  * @returns The absolute value of the long integer operand.
  */
