@@ -30,17 +30,7 @@
 /**
  * @brief Gets value of an environment variable.
  * 
- * @details Searches the environment of the calling process for the environment
- *          variable @p name. If it exists, it returns a pointer to the value of
- *          the environment variable. If the specified environment variable
- *          cannot be found, a null pointer is returned. The application shall
- *          ensure that it does not modify the string pointed to by the getenv()
- *          function.
- * 
- *          The returned string pointer might be invalidated or the string
- *          content might be overwritten by a subsequent call to getenv(),
- *          setenv(), unsetenv(), or (if supported) putenv() but it is not
- *          affected by a call to any other function.
+ * @param name Variable name.
  * 
  * @returns Upon successful completion, getenv() returns a pointer to a string
  *          containing the value for the specified name. If the specified
