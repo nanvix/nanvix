@@ -28,8 +28,7 @@
 /**
  * @brief Converts a string to a long long integer.
  * 
- * @details Converts the initial portion of the string pointed to by @p nptr to
- *          long long.
+ * @param nptr String to convert.
  * 
  * @returns The converted value if the value can be represented.
  */
