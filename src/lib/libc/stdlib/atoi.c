@@ -28,8 +28,7 @@
 /**
  * @brief Converts a string to an integer.
  * 
- * @details Converts the initial portion of the string pointed to by @p str to
- *          int.
+ * @param str String to convert.
  * 
  * @returns The converted value if the value can be represented.
  */
