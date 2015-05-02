@@ -26,8 +26,7 @@
 /**
  * @brief Returns an integer absolute value.
  * 
- * @details Computers the absolute value of its integer operand, @p i. If the
- *          result cannot be represented, the behavior is undefined.
+ * @param i Integer operand.
  * 
  * @returns The absolute value of its integer operand.
  */
