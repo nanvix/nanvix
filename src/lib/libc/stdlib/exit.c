@@ -35,22 +35,7 @@ extern void dirent_cleanup(void); /* <dirent.h> */
 /**
  * @brief Terminates the calling process.
  * 
- * @details Calls functions registered by atexit(), in the reverse order of
- *          their registration, except that a function is called after any
- *          previously registered functions that had already been called at
- *          the time it was registered. Each function is called as many times
- *          as it was registered. If, during the call to any such function, a
- *          call to the longjmp() function is made that would terminate the
- *          call to the registered function, the behavior is undefined.
- * 
- *          If a function registered by a call to atexit() fails to return,
- *          the remaining registered functions are not called and the rest of
- *          the exit() processing is completed. If exit() is called more than
- *          once, the behavior is undefined.
- * 
- *          The exit() function then flushes all open streams with unwritten
- *          buffered data and close all open streams. Finally, the process is 
- *          terminated
+ * @param status Exit status.
  */
 void exit(int status)
 {
