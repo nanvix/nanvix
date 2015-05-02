@@ -62,37 +62,11 @@
 /**
  * @brief Performs a binary search on a sorted table.
  * 
- * @details Searches an array of @p nmemb objects, the initial element of which
- *          is pointed to by @p base, for an element that matches the object
- *          pointed to by @p key. The size of each element in the array is
- *          specified by @p size. If the @p nmemb argument has the value zero,
- *          the comparison function pointed to by @p compar is not called and no
- *          match is found.
- * 
- *         The comparison function pointed to by @p compar is called with two
- *         arguments that point to the key object and to an array element, in
- *         that order.
- * 
- *         The application shall ensure that the comparison function pointed to
- *         by @p compar does not alter the contents of the array. The
- *         implementation reorders elements of the array between calls to the
- *         comparison function, but it does not alter the contents of any
- *         individual element.
- * 
- *         The application shall ensure that the first argument is always a
- *         pointer to the key.
- * 
- *         When the same objects are passed more than once to the comparison
- *         function, the results shall be consistent with one another. That is,
- *         the same object always compare the same way with the key.
- * 
- *         The application shall ensure that the function returns an integer
- *         less than, equal to, or greater than 0 if the key object is
- *         considered, respectively, to be less than, to match, or to be greater
- *         than the array element. The application shall ensure that the array
- *         consists of all the elements that compare less than, all the elements
- *         that compare equal to, and all the elements that compare greater than
- *         the key object, in that order.
+ * @param key    Key to compare.
+ * @param base   Base of the array.
+ * @param nmemb  Number of elements in the array.
+ * @param size   Size of each element.
+ * @param compar Comparison function.
  *
  * @returns A pointer to a matching member of the array, or a null pointer if
  *          no match is found. If two or more members compare equal, which
