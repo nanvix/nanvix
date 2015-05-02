@@ -28,16 +28,7 @@
 /**
  * @brief Terminates the calling process.
  * 
- * @details Terminates the calling process. Functions registered with atexit()
- *          nor any registered signal handlers are not called. Open streams are
- *          flushed. Open streams are not closed. Finally, the calling process
- *          is terminated.
- * 
- *          The value of status may be 0, EXIT_SUCCESS, EXIT_FAILURE, or any
- *          other value, though only the least significant 8 bits are available
- *          to a waiting parent process.
- * 
- * @note The _Exit() and _exit() functions are functionally equivalent.
+ * @param status Exiting status.
  */
 void _Exit(int status)
 {
