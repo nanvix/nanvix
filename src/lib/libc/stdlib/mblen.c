@@ -49,21 +49,8 @@
 /**
  * @brief Gets number of bytes in a character.
  * 
- * @details If @p s is not a null pointer, mblen() determines the number of
- *          bytes constituting the character pointed to by @p s.
- * 
- *          The behavior of this function is affected by the LC_CTYPE category
- *          of the current locale. For a state-dependent encoding, this function
- *          is placed into its initial state by a call for which its character
- *          pointer argument, @p s, is a null pointer. Subsequent calls with
- *          @p s as other than a null pointer cause the internal state of the
- *          function to be altered as necessary. A call with @p s as a null
- *          pointer cause this function to return a non-zero value if encodings
- *          have state dependency, and 0 otherwise. If the implementation
- *          employs special bytes to change the shift state, these bytes do
- *          not produce separate wide-character codes, but are grouped with an
- *          adjacent character. Changing the LC_CTYPE category causes the shift
- *          state of this function to be unspecified.
+ * @param s Multi-byte string.
+ * @param n Number of bytes to consider.
  * 
  * @returns If s is a null pointer, mblen() returns a non-zero or 0 value, if
  *          character encodings, respectively, do or do not have state-dependent
