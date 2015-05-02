@@ -47,12 +47,11 @@
 /**
  * @brief Returns a long long integer absolute value.
  * 
- * @details Computes the absolute value of the long long integer operand @p i.
- *          If the result cannot be represented, the behavior is undefined.
+ * @param x Operand.
  * 
  * @returns The absolute value of the long integer operand.
  */
-long long int llabs(long long int i)
+long long int llabs(long long int x)
 {
-	return ((i < 0) ? -i : i);
+	return ((x < 0) ? -x : x);
 }
