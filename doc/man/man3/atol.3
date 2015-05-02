@@ -17,13 +17,13 @@
 .\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 .\"
 
-.TH "atoi" "3" "April 2015" "Nanvix" "The Nanvix Programmer's Manual"
+.TH "atol" "3" "April 2015" "Nanvix" "The Nanvix Programmer's Manual"
 
 .\ "============================================================================
 
 .SH "NAME"
 
-atoi \- Converts a string to an integer
+atol \- Converts a string to a long integer
 
 .\ "============================================================================
 
@@ -31,17 +31,25 @@ atoi \- Converts a string to an integer
 
 .BI "#include <" "stdlib.h" >
 
-.BI "int atoi(const char *" str ");"
+.BI "long atol(const char *" str ");"
+
+.BI "long long atoll(const char *" nptr ");"
 
 .\ "============================================================================
 
 .SH "DESCRIPTION"
 
 The call
-.BI "atoi(" str ")"
+.BI "atol(" str ")" 
 is equivalent to:
 
-.BI "(int) strtol(" str ", (char **) " NULL ", " 10 ")"
+.BI "strtol(" str ", (char **) " NULL ", " 10 ")"
+
+The call
+.BI "atoll(" nptr ")"
+is equivalent to:
+
+.BI "strtoll(" nptr ", (char **) " NULL ", " 10 ")"
 
 except that the handling of errors may differ. If the value cannot be
 represented, the behavior is undefined.
@@ -50,9 +58,7 @@ represented, the behavior is undefined.
 
 .SH "RETURN VALUE"
 
-The
-.BR atoi()
-function returns the converted value if the value can be represented.
+These functions return the converted value if the value can be represented.
 
 .\ "============================================================================
 
@@ -75,4 +81,5 @@ Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 .SH "SEE ALSO"
 
-.BR strtol(3)
+.BR strtol(3) ,
+.BR strtoll(3)
