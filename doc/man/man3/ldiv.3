@@ -17,13 +17,13 @@
 .\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 .\"
 
-.TH "labs" "3" "April 2015" "Nanvix" "The Nanvix Programmer's Manual"
+.TH "ldiv" "3" "April 2015" "Nanvix" "The Nanvix Programmer's Manual"
 
 .\ "============================================================================
 
 .SH "NAME"
 
-labs, llabs \- Return a long integer absolute value
+ldiv, lldiv \- Compute quotient and remainder of a long division
 
 .\ "============================================================================
 
@@ -31,35 +31,45 @@ labs, llabs \- Return a long integer absolute value
 
 .BI "#include <" "stdlib.h" >
 
-.BI "long labs(long " x ");"
+.BI "ldiv_t ldiv(long " numer ", long " denom ");"
 
-.BI "long long llabs(long long " x ");"
+.BI "lldiv_t lldiv(long long " numer ", long long " denom ");"
 
 .\ "============================================================================
 
 .SH "DESCRIPTION"
 
-The
-.BR labs()
-function computes the absolute value of the long integer operand
-.IR x .
-The
-.BR llabs()
-function computes the absolute value of the long long integer operand
-.IR x .
-If the result cannot be represented, the behavior is undefined.
+These functions compute the quotient and remainder of the division of the
+numerator
+.IR numer
+by the denominator
+.IR denom .
+If the division is inexact, the resulting quotient is the long integer
+(for the
+.BR ldiv()
+function) or long long integer (for the
+.BR lldiv()
+function) of lesser magnitude that is the nearest to the algebraic quotient. If
+the result cannot be represented, the behavior is undefined; otherwise, 
+.RI quotient* denom
++ remainder equal
+.IR numer .
 
 .\ "============================================================================
 
 .SH "RETURN VALUE"
 
 The
-.BR labs()
-function returns the absolute value of the long integer operand.
+.BR ldiv()
+function returns a structure of type
+.BR ldiv_t ,
+comprising both the quotient and the remainder.
 
 The
-.BR llabs()
-function returns the absolute value of the long long integer operand.
+.BR lldiv()
+function returns a structure of type
+.BR lldiv_t ,
+comprising both the quotient and the remainder.
 
 .\ "============================================================================
 
@@ -82,4 +92,4 @@ Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
 .SH "SEE ALSO"
 
-.BR abs(3)
+.BR div(3)

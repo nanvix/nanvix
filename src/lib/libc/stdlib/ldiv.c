@@ -62,12 +62,8 @@
 /**
  * @brief Computes quotient and remainder of a long division.
  * 
- * @details Computes the quotient and remainder of the division of the numerator
- *          @p numer by the denominator denom. If the division is inexact,
- *          the resulting quotient is the long integer of lesser magnitude that
- *          is the nearest to the algebraic quotient. If the result cannot be
- *          represented, the behavior is undefined; otherwise, quotient*@p denom
- *          + remainder shall equal @p numer.
+ * @param numer Numerator.
+ * @param denom Denominator.
  * 
  * @returns A structure of type ldiv_t, comprising both the quotient and the
  *          remainder.
