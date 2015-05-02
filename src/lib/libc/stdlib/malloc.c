@@ -158,6 +158,10 @@ void *malloc(size_t size)
 	struct block *prevp; /* Previous working block.   */
 	unsigned nblocks;    /* Request size (in blocks). */
 	
+	/* Nothing to be done. */
+	if (size == 0)
+		return (NULL);
+	
 	/* Too big request. */
 	if (size > size + (SIZEOF_BLOCK - 1))
 	{
@@ -198,7 +202,8 @@ void *malloc(size_t size)
 		}
 		
 		/* Wrapped around free list. */
-		if (p == freep) {
+		if (p == freep)
+		{
 			/* Expand heap. */
 			if ((p = expand(nblocks)) == NULL)
 				break;
