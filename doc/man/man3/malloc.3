@@ -1,0 +1,97 @@
+.\" 
+.\" Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This file is part of Nanvix.
+.\" 
+.\" Nanvix is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" Nanvix is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+
+.TH "malloc" "3" "April 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+malloc \- A memory allocator
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+
+.BI "#include <" "stdlib.h" >
+
+.BI "void *malloc(size_t " size ");"
+
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+The
+.BR malloc()
+function allocates unused space for an object whose size in bytes is specified
+by
+.IR size
+and whose value is unspecified.
+
+The order and contiguity of storage allocated by successive calls to
+.BR malloc()
+is unspecified. The pointer returned if the allocation succeeds is suitably
+aligned so that it may be assigned to a pointer to any type of object and then
+used to access such an object in the space allocated (until the space is
+explicitly freed or reallocated). Each such allocation yields a pointer to an
+object disjoint from any other object. The pointer returned points to the start
+of the allocated space. If the space cannot be allocated, a null pointer is
+returned. If the size of the space requested is 0, the behavior is
+implementation-defined: the value returned is either a null pointer or a unique
+pointer.
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+Upon successful completion with size not equal to 0,
+.BR malloc()
+Returns a pointer to the allocated space. If size is 0, either a null pointer
+or a unique pointer that can be successfully passed to
+.BR free()
+is returned. Otherwise, it returns a null pointer and set
+.BR errno
+to indicate the error.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+.TP
+.BR ENOMEM
+Insufficient memory is available.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+
+.BR calloc(3) ,
+.BR free(3) ,
+.BR realloc(3)
