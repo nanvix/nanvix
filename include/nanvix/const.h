@@ -57,13 +57,9 @@
 	 */
 	/**@{*/
 
-	/**
-	 * @brief Null pointer.
-	 */
-	#ifndef _NULL
-	#define _NULL
-		#define NULL ((void *) 0)
-	#endif
+	#define _NEED_NULL
+	#include <decl.h>
+	
 	/**@}*/
 
 #endif /* CONST_H_ */

@@ -44,13 +44,8 @@
 	/* Used for link counts. */
 	typedef int nlink_t;
 
-	/**
-	 * @brief Used for sizes of objects.
-	 */
-	#ifndef SIZE_T
-	#define SIZE_T
-		typedef unsigned size_t;
-	#endif
+	#define _NEED_SIZE_T
+	#include <decl.h>
 	
 	/* Used for a count of bytes or an error indication. */
 	typedef signed ssize_t;

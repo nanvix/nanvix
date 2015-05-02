@@ -8,21 +8,9 @@
 #define SYS_WAIT_H_
 
 	#include <sys/types.h>
-
-	#define WEXITSTATUS(status) \
-		(status & 0xff)         \
-    
-    #define WIFEXITED(status) \
-		((status >> 8) & 1)   \
-    
-    #define WIFSIGNALED(status) \
-		((status >> 9) & 1)     \
-		
-	#define WIFSTOPPED(status) \
-		(((status) >> 10) & 1) \
-
-    #define WTERMSIG(status)    \
-		((status >> 16) & 0xff) \
+	
+	#define _NEED_WSTATUS
+	#include <decl.h>
     
     /*
 	 * Waits for a child process to stop or terminate.

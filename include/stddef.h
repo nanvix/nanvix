@@ -26,28 +26,9 @@
 #ifndef _STDDEF_H_
 #define _STDDEF_H_
 
-	/**
-	 * @brief Null pointer.
-	 */
-	#ifndef _NULL
-	#define _NULL
-		#define NULL ((void *) 0)
-	#endif
-
-	/**
-	 * @brief Codes for all members of the largest extended character set.
-	 */
-	#ifndef _WCHAR_T	
-	#define _WCHAR_T
-		typedef unsigned wchar_t;
-	#endif
-
-	/**
-	 * @brief Used for sizes of objects.
-	 */
-	#ifndef SIZE_T
-	#define SIZE_T
-		typedef unsigned size_t;
-	#endif
+	#define _NEED_NULL
+	#define _NEED_WCHAR_T
+	#define _NEED_SIZE_T
+	#include <decl.h>
 
 #endif /* _STDDEF_H_ */

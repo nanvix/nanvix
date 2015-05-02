@@ -26,13 +26,8 @@
 #ifndef _WCHAR_H_
 #define _WCHAR_H_
 
-	/**
-	 * @brief Codes for all members of the largest extended character set.
-	 */
-	#ifndef _WCHAR_T	
-	#define _WCHAR_T
-		typedef unsigned wchar_t;
-	#endif
+	#define _NEED_WCHAR_T
+	#include <decl.h>
 
 	 /**
 	  * @brief Stores any valid value of wchar_t or WEOF.

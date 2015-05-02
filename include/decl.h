@@ -23,10 +23,9 @@
  * @brief Common declarations library.
  */
 
-#ifndef DECL_H_
-#define DECL_H_
-
 #ifdef _NEED_LOCALE_T
+#ifndef _LOCALE_T
+#define _LOCALE_T
 
 	/**
 	 * @brief Used for locale objects.
@@ -34,5 +33,63 @@
 	typedef unsigned locale_t;
 
 #endif
+#endif
 
-#endif /* DECL_H_ */
+#ifdef _NEED_NULL
+#ifndef _NULL
+#define _NULL
+
+	/**
+	 * @brief Null pointer.
+	 */
+	#define NULL ((void *) 0)
+
+#endif
+#endif
+
+
+#ifdef _NEED_SIZE_T
+#ifndef SIZE_T
+#define SIZE_T
+
+	/**
+	 * @brief Used for sizes of objects.
+	 */
+	typedef unsigned size_t;
+
+#endif
+#endif
+
+#ifdef _NEED_WCHAR_T
+#ifndef _WCHAR_T	
+#define _WCHAR_T
+
+	/**
+	 * @brief Codes for all members of the largest extended character set.
+	 */
+	typedef unsigned wchar_t;
+
+#endif
+#endif
+
+#ifdef _NEED_WSTATUS
+#ifndef _WSTATUS
+#define _WSTATUS
+	
+	#define WEXITSTATUS(status) \
+		(status & 0xff)         \
+    
+    #define WIFEXITED(status) \
+		((status >> 8) & 1)   \
+    
+    #define WIFSIGNALED(status) \
+		((status >> 9) & 1)     \
+		
+	#define WIFSTOPPED(status) \
+		(((status) >> 10) & 1) \
+
+    #define WTERMSIG(status)    \
+		((status >> 16) & 0xff) \
+
+#endif
+#endif

@@ -28,11 +28,10 @@
 
 #if defined(_POSIX_C_SOURCE)
 
-	#include <sys/types.h>
 	#include <stddef.h>
-	#include <sys/wait.h>
 	#include <limits.h>
 	#include <math.h>
+	#include <sys/wait.h>
 
 #endif
 	
@@ -99,15 +98,10 @@
 	/**
 	 * @brief Maximum number of bytes in a locale character.
 	 */
-	#define MB_CUR_MAX ((size_t)1)
+	#define MB_CUR_MAX ((size_t) 1)
 	
-	/**
-	 * @brief Null pointer.
-	 */
-	#ifndef _NULL
-	#define _NULL
-		#define NULL ((void *) 0)
-	#endif
+	#define _NEED_NULL
+	#include <decl.h>
 	
 	/**
 	 * @brief Structure type returned by the div() function.
@@ -135,22 +129,11 @@
 		int quot; /**< Quotient.  */
 		int rem;  /**< Remainder. */
 	} lldiv_t;
-
-	/**
-	 * @brief Used for sizes of objects.
-	 */
-	#ifndef SIZE_T
-	#define SIZE_T
-		typedef unsigned size_t;
-	#endif
 	
-	/**
-	 * @brief Codes for all members of the largest extended character set.
-	 */
-	#ifndef _WCHAR_T	
-	#define _WCHAR_T
-		typedef unsigned wchar_t;
-	#endif
+	#define _NEED_SIZE_T
+	#define _NEED_WCHAR_T
+	#define _NEED_WSTATUS
+	#include <decl.h>
 	
 	/* Forward definitions. */
 	extern void _Exit(int);
