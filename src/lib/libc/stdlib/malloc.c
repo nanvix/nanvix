@@ -57,15 +57,7 @@ static struct block *freep = NULL;
 /**
  * @brief Frees allocated memory.
  * 
- * @details Causes the space pointed to by @p ptr to be deallocated; that is,
- *          made available for further allocation. If @p ptr is a null pointer,
- *          no action occurs. Otherwise, if the argument does not match a
- *          pointer earlier returned by a function that allocates memory as if
- *          by malloc(), or if the space has been deallocated by a call to 
- *          ree() or realloc(), the behavior is undefined.
- * 
- *          Any use of a pointer that refers to freed space results in
- *          undefined behavior.
+ * @param ptr Memory area to free.
  */
 void free(void *ptr)
 {

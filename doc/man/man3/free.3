@@ -1,0 +1,88 @@
+.\" 
+.\" Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This file is part of Nanvix.
+.\" 
+.\" Nanvix is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" Nanvix is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+
+.TH "free" "3" "April 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+free \- Free allocated memory
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+
+.BI "#include <" "stdlib.h" >
+
+.BI "void free(void *" ptr ");"
+
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+The
+.BR free()
+function causes the space pointed to by 
+.IR ptr
+to be deallocated; that is, made available for further allocation. If
+.IR ptr
+is a null pointer, no action occur. Otherwise, if the argument does not match a
+pointer earlier returned by a function that allocates memory as if by
+.BR malloc() ,
+or if the space has been deallocated by a call to
+.BR free()
+or
+.BR realloc() ,
+the behavior is undefined.
+
+Any use of a pointer that refers to freed space results in undefined behavior.
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+The
+.BR free()
+function returns no value.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+No errors are defined.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+
+.BR calloc(3) ,
+.BR malloc(3) ,
+.BR realloc(3)
