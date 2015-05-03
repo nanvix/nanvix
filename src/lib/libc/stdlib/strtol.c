@@ -56,8 +56,14 @@
 #include <stdlib.h>
 
 
-/*
- * Converta a string to a long integer.
+/**
+ * @brief Converts a string to a long integer.
+ *
+ * @param nptr   Start of string.
+ * @param endptr End of string.
+ * @param base   Base.
+ *
+ * @returns The converted value.
  */
 long strtol(const char *nptr, char **endptr, int base)
 {
