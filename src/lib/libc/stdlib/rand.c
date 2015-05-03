@@ -61,9 +61,6 @@
 /**
  * @brief Generates a pseudo-random number.
  * 
- * @details Computes a sequence of pseudo-random integers in the range
- *          [0, {RAND_MAX}].
- * 
  * @returns A pseudo-random integer.
  */
 int rand(void)

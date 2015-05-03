@@ -1,0 +1,102 @@
+.\" 
+.\" Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This file is part of Nanvix.
+.\" 
+.\" Nanvix is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" Nanvix is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+
+.TH "rand" "3" "May 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+rand, srand \- Pseudo-random number generator
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+.nf
+.BI "#include <" "stdlib.h" >
+.sp
+.BI "int rand(void);"
+.BI "void srand(unsigned " seed ");"
+.fi
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+The 
+.BR rand() 
+function computes a sequence of pseudo-random integers in the range 
+.RB "[0, " RAND_MAX ]
+with a period of at least 2^32.
+
+The rand() function is not thread-safe.
+
+The 
+.BR srand() 
+function uses the argument as a 
+.IR seed 
+for a new sequence of pseudo-random numbers to be returned by subsequent calls to 
+.BR rand() . 
+If 
+.BR srand() 
+is then called with the same 
+.IR seed 
+value, the sequence of pseudo-random numbers is repeated. If 
+.BR rand() 
+is called before any calls to 
+.IR srand() 
+are made, the same sequence is generated as when 
+.BR srand() 
+is first called with a 
+.IR seed 
+value of 1.
+
+The implementation behaves as if no function defined calls 
+.BR rand() 
+or 
+.BR srand() .
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+The 
+.BR rand() 
+function returns the next pseudo-random number in the sequence.
+
+The 
+.BR srand() 
+function does not return a value.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+No errors are defined.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+

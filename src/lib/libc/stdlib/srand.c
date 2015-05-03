@@ -32,13 +32,8 @@ unsigned _next = 1;
 
 /**
  * @brief Sets seed value for pseudo-random number generator.
- * 
- * @details Uses the argument as a seed for a new sequence of pseudo-random
- *          numbers to be returned by subsequent calls to rand(). If srand() is
- *          then called with the same seed value, the sequence of pseudo-random
- *          numbers is repeated. If rand() is called before any calls to srand()
- *          are made, the same sequence is generated as when srand() is first
- *          called with a seed value of 1.
+ *
+ * @param seed Pseudo-random number sequence's seed value. 
  */
 void srand(unsigned seed)
 {
