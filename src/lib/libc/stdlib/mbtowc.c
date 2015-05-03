@@ -158,27 +158,10 @@ static size_t _mbtowc(wchar_t *pwc, const char *s, size_t n)
 
 /**
  * @brief Converts a character to a wide-character code.
- * 
- * @details If @p s is not a null pointer, mbtowc() determines the number of
- *          bytes that constitute the character pointed to by @p s. Then, it
- *          determines the wide-character code for the value of type wchar_t
- *          that corresponds to that character. If the character is valid and
- *          @p pwc is not a null pointer, mbtowc() stores the wide-character
- *          code in the object pointed to by @p pwc.
- * 
- *          The behavior of this function is affected by the LC_CTYPE
- *          category of the current locale. For a state-dependent encoding,
- *          this function is placed into its initial state by a call for
- *          which its character pointer argument, @p s, is a null pointer.
- *          Subsequent calls with @p s as other than a null pointer cause
- *          the internal state of the function to be altered as necessary. A
- *          call with @p s as a null pointer causes this function to return a
- *          non-zero value if encodings have state dependency, and 0 otherwise.
- *          If the implementation employs special bytes to change the shift
- *          state, these bytes do not produce separate wide-character codes,
- *          but are grouped with an adjacent character. Changing the LC_CTYPE
- *          category causes the shift state of this function to be unspecified.
- *          At most @p n bytes of the array pointed to by @p s are examined.
+ *
+ * @param pwc Wide-character code.
+ * @param s   Wide-character.
+ * @param n   Number of bytes to consider.
  * 
  * @returns If @p s is a null pointer, mbtowc() returns a non-zero or 0 value,
  *          if character encodings, respectively, do or do not have state-
