@@ -55,8 +55,14 @@
 #include <errno.h>
 #include <stdlib.h>
 
-/*
- * Converts a string to an unsigned long.
+/**
+ * @brief Converts a string to an unsigned long.
+ *
+ * @param str    Start of string.
+ * @param endptr End of string.
+ * @param base   Base.
+ *
+ * @returns The converted value.
  */
 unsigned long strtoul(const char *str, char **endptr, int base)
 {

@@ -63,10 +63,16 @@
 #include <limits.h>
 #include <stdlib.h>
 
-/*
- * Converts a string to an unsigned long long.
+/**
+ * @brief Converts a string to an unsigned long long.
+ *
+ * @param str    Start of string.
+ * @param endptr End of string.
+ * @param base   Base.
+ *
+ * @returns The converted value.
  */
-unsigned long long strtoull(const char *nptr, char **endptr, int base)
+unsigned long long strtoull(const char *str, char **endptr, int base)
 {
 	const char *s;
 	unsigned long long acc, cutoff;
@@ -78,12 +84,12 @@ unsigned long long strtoull(const char *nptr, char **endptr, int base)
 	 */
 	if (base < 0 || base == 1 || base > 36) {
 		if (endptr != 0)
-			*endptr = (char *)nptr;
+			*endptr = (char *)str;
 		errno = EINVAL;
 		return 0;
 	}
 
-	s = nptr;
+	s = str;
 	do {
 		c = (unsigned char) *s++;
 	} while (isspace(c));
@@ -130,6 +136,6 @@ unsigned long long strtoull(const char *nptr, char **endptr, int base)
 	if (neg && any > 0)
 		acc = -acc;
 	if (endptr != 0)
-		*endptr = (char *) (any ? s - 1 : nptr);
+		*endptr = (char *) (any ? s - 1 : str);
 	return (acc);
 }
