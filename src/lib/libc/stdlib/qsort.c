@@ -166,28 +166,11 @@ static void _qsort(void *base, int i, int j, size_t size)
 
 /**
  * @brief Sorts a table of data.
- * 
- * @details Sorts an array of @p nmemb objects, the initial element of which is
- *          pointed to by @p base. The size of each object, in bytes, is
- *          specified by the @p size argument. If the @p nmemb argument has the
- *          value zero, the comparison function pointed to by @p cmp is not
- *          called and no rearrangement takes place.
- * 
- *          The application shall ensure that the comparison function pointed
- *          to by @p cmp does not alter the contents of the array.
- * 
- *          When the same objects are passed more than once to the comparison
- *          function, the results are consistent with one another. That is,
- *          they define a total ordering on the array.
- * 
- *          The contents of the array are sorted in ascending order according
- *          to a comparison function. The @p cmp argument is a pointer to the
- *          comparison function, which is called with two arguments that point
- *          to the elements being compared. The application shall ensure that
- *          the function returns an integer less than, equal to, or greater
- *          than 0, if the first argument is considered respectively less than,
- *          equal to, or greater than the second. If two members compare as
- *          equal, their order in the sorted array is unspecified.
+ *
+ * @param base  Array to sort.
+ * @param nmemb Number of elements in the array. 
+ * @param size  Size of each element.
+ * @param cmp   Comparison function.
  */
 void qsort
 (void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const void *))
