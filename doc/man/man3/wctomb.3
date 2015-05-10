@@ -1,0 +1,127 @@
+.\" 
+.\" Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This file is part of Nanvix.
+.\" 
+.\" Nanvix is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" Nanvix is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+
+.TH "wctomb" "3" "May 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+wctomb \- Converts a wide-character code to a character
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+
+.BI "#include <" "stdlib.h" >
+
+.BI "int wctomb(char *" s ", wchar_t " wchar ");"
+
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+The
+.BR wctomb()
+function determines the number of bytes needed to represent the character
+corresponding to the wide-character code whose value is
+.IR wchar
+(including any change in the shift state). It stores the character
+representation (possibly multiple bytes and any special bytes to change shift
+state) in the array object pointed to by 
+.IR s .
+At most
+.BR MB_CUR_MAX
+bytes are stored. If
+.IR wchar
+is 0, a null byte is stored, preceded by any shift sequence needed to restore
+the initial shift state, and
+.BR wctomb()
+is left in the initial shift state.
+
+The behavior of this function is affected by the
+.BR LC_CTYPE
+category of the current locale. For a state-dependent encoding, this function
+is placed into its initial state by a call for which its character pointer
+argument, 
+.IR s ,
+is a null pointer. Subsequent calls with
+.IR s
+as other than a null pointer cause the internal state of the function to be
+altered as necessary. A call with
+.IR s
+as a null pointer causes this function to return a non-zero value if encodings
+have state dependency, and 0 otherwise. Changing the
+.BR LC_CTYPE
+category causes the shift state of this function to be unspecified.
+
+The
+.BR wctomb()
+function need is not thread-safe.
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+If 
+.IR s
+is a null pointer,
+.BR wctomb()
+returns a non-zero or 0 value, if character encodings, respectively, do or do
+not have state-dependent encodings. If
+.IR s
+is not a null pointer,
+.BR wctomb()
+returns -1 if the value of
+.IR wchar
+does not correspond to a valid character, or return the number of bytes that
+constitute the character corresponding to the value of
+.IR wchar .
+
+In no case the value returned is greater than the value of the 
+.BR MB_CUR_MAX 
+macro.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+.TP
+.BR EILSEQ
+An invalid wide-character code is detected.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+
+.BR mblen(3) ,
+.BR mbtowc(3) ,
+.BR mbstowcs(3),
+.BR wcstombs(3)
