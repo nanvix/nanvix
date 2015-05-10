@@ -1,0 +1,93 @@
+.\" 
+.\" Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This file is part of Nanvix.
+.\" 
+.\" Nanvix is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" Nanvix is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+
+.TH "unsetenv" "3" "May 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+unsetenv \- Removes an environment variable
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+
+.BI "#include <" "stdlib.h" >
+
+.BI "int unsetenv(const char *" name ");"
+
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+The
+.BR unsetenv()
+function removes an environment variable from the environment of the calling
+process. The
+.IR name
+argument points to a string, which is the name of the variable to be removed.
+The named argument shall not contain an '=' character. If the named variable
+does not exist in the current environment, the environment is unchanged and the
+function is considered to have completed successfully.
+
+The
+.BR unsetenv()
+function updates the list of pointers to which environ points.
+
+The
+.BR unsetenv()
+function is not thread-safe.
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+Upon successful completion, zero is returned. Otherwise, -1 is returned,
+.BR errno
+set to indicate the error, and the environment is unchanged.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+.TP
+.BR EINVAL
+The
+.IR name
+argument points to an empty string, or points to a string containing an '='
+character.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+
+.BR getenv(3) ,
+.BR setenv(3)
