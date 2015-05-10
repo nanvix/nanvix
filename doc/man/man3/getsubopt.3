@@ -1,0 +1,146 @@
+.\" 
+.\" Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This file is part of Nanvix.
+.\" 
+.\" Nanvix is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" Nanvix is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+
+.TH "getsubopt" "3" "May 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+getsubopt \- Parses suboption arguments from a string
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+
+.BI "#include <" "stdlib.h" >
+
+.BI "int getsubopt(char **" optionp ", char * const *" keylistp ", char **" \
+valuep ");"
+
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+
+The
+.BR getsubopt()
+function parses suboption arguments in a flag argument. Such options often
+result from the use of
+.BR getopt() .
+
+The
+.BR getsubopt()
+argument
+.IR optionp
+is a pointer to a pointer to the option argument string. The suboption arguments
+are separated by <comma> characters and each may consist of either a single
+token, or a token-value pair separated by an <equals-sign>.
+
+The
+.IR keylistp
+argument is a pointer to a vector of strings. The end of the vector is
+identified by a null pointer. Each entry in the vector is one of the possible
+tokens that might be found in 
+.RI * optionp .
+Since <comma> characters delimit suboption arguments in
+.IR optionp ,
+they do not appear in any of the strings pointed to by
+.IR keylistp .
+Similarly, because an <equals-sign> separates a token from its value, the
+application should not include an <equals-sign> in any of the strings pointed to
+by
+.IR keylistp .
+The
+.BR getsubopt()
+function do not modify the
+.IR keylistp
+vector.
+
+The
+.IR valuep
+argument is the address of a value string pointer.
+
+If a <comma> appears in
+.IR optionp ,
+it is interpreted as a suboption separator. After <comma> characters have been
+processed, if there are one or more <equals-sign> characters in a suboption
+string, the first <equals-sign> in any suboption string is interpreted as a
+separator between a token and a value. Subsequent <equals-sign> characters in a
+suboption string are interpreted as part of the value.
+
+If the string at
+.RI * optionp
+contains only one suboption argument (equivalently, no <comma> characters),
+.BR getsubopt()
+updates
+.RI * optionp
+to point to the null character at the end of the string. Otherwise, it isolates
+the suboption argument by replacing the <comma> separator with a null character,
+and updates
+.RI * optionp
+to point to the start of the next suboption argument. If the suboption
+argument has an associated value (equivalently, contains an <equals-sign>),
+.BR getsubopt()
+updates
+.RI * valuep
+to point to the value's first character. Otherwise, it sets
+.RI * valuep
+to a null pointer. The calling application may use this information to
+determine whether the presence or absence of a value for the suboption is an
+error.
+
+Additionally, when
+.BR getsubopt()
+fails to match the suboption argument with a token in the
+.RI keylistp
+array, the calling application should decide if this is an error, or if the
+unrecognized option should be processed in another way.
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+The
+.BR getsubopt()
+function returns the index of the matched token string, or -1 if no token
+strings were matched.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+No errors are defined.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+
+.BR getopt(3)
