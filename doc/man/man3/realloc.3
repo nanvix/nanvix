@@ -1,0 +1,133 @@
+.\" 
+.\" Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This file is part of Nanvix.
+.\" 
+.\" Nanvix is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" Nanvix is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+
+.TH "realloc" "3" "May 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+realloc \- Memory reallocator
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+
+.BI "#include <" "stdlib.h" >
+
+.BI "void *realloc(void *" ptr ", size_t " size ");"
+
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+The
+.BR realloc()
+function deallocates the old object pointed to by
+.IR ptr
+and returns a pointer to a new object that has the size specified by
+.IR size .
+The contents of the new object is the same as that of the old object prior to
+deallocation, up to the lesser of the new and old sizes. Any bytes in the new
+object beyond the size of the old object have indeterminate values. If the size
+of the space requested is zero, a null pointer is returned. If the space cannot
+be allocated, the object remains unchanged.
+
+If
+.IR ptr
+is a null pointer,
+.BR realloc()
+is equivalent to
+.BR malloc()
+for the specified size.
+
+If
+.IR ptr
+does not match a pointer returned earlier by
+.BR calloc() ,
+.BR malloc() ,
+or
+.BR realloc()
+or if the space has previously been deallocated by a call to
+.BR free()
+or
+.BR realloc() ,
+the behavior is undefined.
+
+The order and contiguity of storage allocated by successive calls to
+.BR realloc()
+is unspecified. The pointer returned if the allocation succeeds is suitably
+aligned so that it may be assigned to a pointer to any type of object and then
+used to access such an object in the space allocated (until the space is
+explicitly freed or reallocated). Each such allocation yields a pointer to an
+object disjoint from any other object. The pointer returned points to the start
+(lowest byte address) of the allocated space. If the space cannot be allocated,
+a null pointer is returned.
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+Upon successful completion,
+.BR realloc()
+returns a pointer to the (possibly moved) allocated space. If size is 0 a null
+pointer is returned and errno set to an implementation-defined value.
+
+If there is not enough available memory,
+.BR realloc()
+returns  a null pointer and set
+.BR errno
+to
+.BR ENOMEM .
+If
+.BR realloc()
+returns a null pointer and
+.BR errno
+has been set to
+.BR  ENOMEM ,
+the memory referenced by
+.iR ptr
+is not changed.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+.TP
+.BR ENOMEM
+Insufficient memory is available.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+
+.BR calloc(3) ,
+.BR free(3) ,
+.BR malloc(3)

@@ -85,7 +85,7 @@ char *findenv(const char *name, int *offset)
 	for (p = environ; *p != NULL; p++)
 	{
 		/* Found. */
-		if (!strncmp (name, *p, length))
+		if (!strncmp(name, *p, length))
 		{
 			if (*(c = *p + length) == '=')
 			{

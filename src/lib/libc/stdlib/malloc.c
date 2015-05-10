@@ -203,55 +203,24 @@ void *malloc(size_t size)
 /**
  * @brief Reallocates a memory chunk.
  * 
- * @details Deallocates the old object pointed to by @p ptr and return a pointer
- *          to a new object that has the size specified by @p size. The contents
- *          of the new object are the same as that of the old object prior to
- *          deallocation, up to the lesser of the new and old sizes. Any bytes
- *          in the new object beyond the size of the old object have
- *          indeterminate values. If the size of the space requested is zero,
- *          the behavior is implementation-defined: either a null pointer is
- *          returned, or the behavior is as if the size were some non-zero
- *          value, except that the returned pointer is not used to access an
- *          object. If the space cannot be allocated, the object remains
- *          unchanged.
- * 
- *          If ptr is a null pointer, realloc() shall be equivalent to malloc()
- *          for the specified size.
- * 
- *          If ptr does not match a pointer returned earlier by calloc(),
- *          malloc(), or realloc() or if the space has previously been
- *          deallocated by a call to free() or realloc(), the behavior is
- *          undefined.
- * 
- *          The order and contiguity of storage allocated by successive calls
- *          to realloc() is unspecified. The pointer returned if the allocation 
- *          succeeds is suitably aligned so that it may be assigned to a pointer
- *          to any type of object and then used to access such an object in the
- *          space allocated - until the space is explicitly freed or
- *          reallocated. Each such allocation yields a pointer to an object
- *          disjoint from any other object. The pointer returned points to the
- *          start (lowest byte address) of the allocated space. If the space
- *          cannot be allocated, a null pointer is returned.
+ * @param ptr  Pointer to old object.
+ * @param size Size of new object.
  * 
  * @returns Upon successful completion, realloc() returns a pointer to the
- *          (possibly moved) allocated space.  If size is 0, either:
- *          	- A null pointer is returned and errno set to an implementation-
- *                defined value.
- *              - A unique pointer that can be successfully passed to free() is
- *                returned, and the memory object pointed to by ptr is freed.
- *                The application shall ensure that the pointer is not used to
- *                access an object.
- * 
- *          If there is not enough available memory, realloc() returns  a null
- *          pointer and set errno to ENOMEM. If realloc() returns a null pointer
- *          and errno has been set to ENOMEM, the memory referenced by @p ptr
- *          is not changed.
+ *           allocated space. Upon failure, a null pointer is returned instead.
  * 
  * @todo Check if we can simply expand.
  */
 void *realloc(void *ptr, size_t size)
 {
 	void *newptr;
+	
+	/* Nothing to be done. */
+	if (size == 0)
+	{
+		errno = EINVAL;
+		return (NULL);
+	}
 	
 	newptr = malloc(size);
 	if (ptr != NULL)
