@@ -717,7 +717,7 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	if (n & (BLOCK_SIZE - 1))
 		return (-EINVAL);
 	
-	lastblk = dev->info.nsectors >> (BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
+	lastblk = (dev->info.nsectors>>(BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2))-1;
 	
 	/* Get a kernel page. */
 	kpg = getkpg(0);
@@ -793,7 +793,7 @@ PRIVATE ssize_t ata_write(unsigned minor, const char *buf, size_t n, off_t off)
 	if (n & (BLOCK_SIZE - 1))
 		return (-EINVAL);
 	
-	lastblk = dev->info.nsectors >> (BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
+	lastblk = (dev->info.nsectors>>(BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2))-1;
 	
 	/* Get a kernel page. */
 	kpg = getkpg(0);
