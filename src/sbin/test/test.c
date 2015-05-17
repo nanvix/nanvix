@@ -117,6 +117,54 @@ error0:
 }
 
 /*============================================================================*
+ *                                  io_test                                   *
+ *============================================================================*/
+
+/**
+ * @brief I/O testing module.
+ * 
+ * @details Reads sequentially the contents of the hard disk
+            to a in-memory buffer.
+ * 
+ * @returns Zero if passed on test, and non-zero otherwise.
+ */
+static int io_test(void)
+{
+	int fd;            /* File descriptor.    */
+	struct tms timing; /* Timing information. */
+	clock_t t0, t1;    /* Elapsed times.      */
+	char *buffer;      /* Buffer.             */
+	
+	/* Allocate buffer. */
+	buffer = malloc(HDD_SIZE);
+	if (buffer == NULL)
+		exit(EXIT_FAILURE);
+	
+	/* Open hdd. */
+	fd = open("/dev/hdd", O_RDONLY);
+	if (fd < 0)
+		exit(EXIT_FAILURE);
+	
+	t0 = times(&timing);
+	
+	/* Read hdd. */
+	if (read(fd, buffer, HDD_SIZE) != HDD_SIZE)
+		exit(EXIT_FAILURE);
+	
+	t1 = times(&timing);
+	
+	/* House keeping. */
+	free(buffer);
+	close(fd);
+	
+	/* Print timing statistics. */
+	if (flags & VERBOSE)
+		printf("  Elapsed: %d\n", t1 - t0);
+	
+	return (0);
+}
+
+/*============================================================================*
  *                                sched_test                                  *
  *============================================================================*/
 
@@ -213,6 +261,9 @@ int main(int argc, char **argv)
 {
 	((void)argc);
 	((void)argv);
+
+	printf("I/O Test\n");
+	printf("  Result:  [%s]\n", (!io_test()) ? "PASSED" : "FAILED");
 
 	printf("Scheduling Test\n");
 	printf("  Result:  [%s]\n", (!sched_test()) ? "PASSED" : "FAILED");
