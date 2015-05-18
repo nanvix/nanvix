@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 
 /* Test flags. */
 #define EXTENDED (1 << 0)
@@ -30,7 +31,7 @@
 #define VERBOSE  (1 << 2)
 
 /* Test flags. */
-static unsigned flags = VERBOSE;
+static unsigned flags = VERBOSE | FULL;
 
 /*============================================================================*
  *                               swap_test                                    *
@@ -48,6 +49,7 @@ static int swap_test(void)
 {
 	#define N 1280
 	int *a, *b, *c;
+	clock_t t0, t1;
 	struct tms timing;
 
 	/* Allocate matrices. */
@@ -57,6 +59,8 @@ static int swap_test(void)
 		goto error1;
 	if ((c = malloc(N*N*sizeof(int))) == NULL)
 		goto error2;
+		
+	t0 = times(&timing);
 	
 	/* Initialize matrices. */
 	for (int i = 0; i < N*N; i++)
@@ -95,14 +99,11 @@ static int swap_test(void)
 	free(b);
 	free(c);
 	
-	times(&timing);
+	t1 = times(&timing);
 	
 	/* Print timing statistics. */
 	if (flags & VERBOSE)
-	{
-		printf("  User:    %d\n", timing.tms_utime);
-		printf("  System:  %d\n", timing.tms_stime);
-	}
+		printf("  Elapsed: %d\n", t1 - t0);
 	
 	return (0);
 
@@ -136,7 +137,7 @@ static int io_test(void)
 	char *buffer;      /* Buffer.             */
 	
 	/* Allocate buffer. */
-	buffer = malloc(HDD_SIZE);
+	buffer = malloc(MEMORY_SIZE);
 	if (buffer == NULL)
 		exit(EXIT_FAILURE);
 	
@@ -148,7 +149,7 @@ static int io_test(void)
 	t0 = times(&timing);
 	
 	/* Read hdd. */
-	if (read(fd, buffer, HDD_SIZE) != HDD_SIZE)
+	if (read(fd, buffer, MEMORY_SIZE) != MEMORY_SIZE)
 		exit(EXIT_FAILURE);
 	
 	t1 = times(&timing);
@@ -178,13 +179,9 @@ static int io_test(void)
  */
 static int sched_test(void)
 {
-	int i;             /* Loop index.                 */
-	int a, b, c;       /* Used for dummy computation. */
-	int fd;            /* File descriptor.            */
-	pid_t pid;         /* Child process ID.           */
-	struct tms timing; /* Timing information.         */
-	clock_t t0, t1;    /* Elapsed times.              */
-	char *buffer;      /* Buffer.                     */
+	pid_t pid;         /* Child process ID.   */
+	struct tms timing; /* Timing information. */
+	clock_t t0, t1;    /* Elapsed times.      */
 	
 	t0 = times(&timing);
 		
@@ -197,31 +194,34 @@ static int sched_test(void)
 	/* Parent process. */
 	else if (pid > 0)
 	{
+		int c;
+		
 		nice(0);
 		
 		/* Perform some computation. */
 		c = 0;
-		for (i = 0; i < 1024; i++)
+		for (int i = 0; i < 1024; i++)
 		{
-			a = 1 + i;
-			for (b = 2; b < i; b++)
+			int a = 1 + i;
+			for (int b = 2; b < i; b++)
 			{
 				if ((i%b) == 0)
 					a += b;
 			}
 			c += a;
 		}
-		
-		wait(NULL);
 	}
 	
 	/* Child process. */
 	else
 	{
+		int fd;       /* File descriptor. */
+		char *buffer; /* Buffer.          */
+		
 		nice(2*NZERO);
 		
 		/* Allocate buffer. */
-		buffer = malloc(HDD_SIZE);
+		buffer = malloc(MEMORY_SIZE);
 		if (buffer == NULL)
 			exit(EXIT_FAILURE);
 		
@@ -231,7 +231,7 @@ static int sched_test(void)
 			exit(EXIT_FAILURE);
 		
 		/* Read hdd. */
-		if (read(fd, buffer, HDD_SIZE) != HDD_SIZE)
+		if (read(fd, buffer, MEMORY_SIZE) != MEMORY_SIZE)
 			exit(EXIT_FAILURE);
 		
 		/* House keeping. */
@@ -240,6 +240,8 @@ static int sched_test(void)
 		
 		exit(EXIT_SUCCESS);
 	}
+		
+	wait(NULL);
 	
 	t1 = times(&timing);
 	
@@ -255,21 +257,58 @@ static int sched_test(void)
  *============================================================================*/
 
 /**
+ * @brief Prints program usage and exits.
+ * 
+ * @details Prints the program usage and exists gracefully.
+ */
+static void usage(void)
+{
+	printf("Usage: test [options]\n\n");
+	printf("Brief: Performs regression tests on Nanvix.\n\n");
+	printf("Options:\n");
+	printf("  io    I/O test\n");
+	printf("  swp   Swapping test\n");
+	printf("  sched Scheduling test\n");
+	
+	exit(EXIT_SUCCESS);
+}
+
+/**
  * @brief System testing utility.
  */
 int main(int argc, char **argv)
 {
-	((void)argc);
-	((void)argv);
+	/* Missing arguments? */
+	if (argc <= 1)
+		usage();
 
-	printf("I/O Test\n");
-	printf("  Result:  [%s]\n", (!io_test()) ? "PASSED" : "FAILED");
-
-	printf("Scheduling Test\n");
-	printf("  Result:  [%s]\n", (!sched_test()) ? "PASSED" : "FAILED");
-
-	printf("Swapping Test\n");
-	printf("  Result:  [%s]\n", (!swap_test()) ? "PASSED" : "FAILED");
-
+	for (int i = 1; i < argc; i++)
+	{
+		/* I/O test. */
+		if (!strcmp(argv[i], "io"))
+		{
+			printf("I/O Test\n");
+			printf("  Result:  [%s]\n", (!io_test()) ? "PASSED" : "FAILED");
+		}
+		
+		/* Swapping test. */
+		else if (!strcmp(argv[i], "swp"))
+		{
+			printf("Swapping Test\n");
+			printf("  Result:  [%s]\n", (!swap_test()) ? "PASSED" : "FAILED");
+		}
+		
+		/* Scheduling test. */
+		else if (!strcmp(argv[i], "sched"))
+		{
+			printf("Scheduling Test\n");
+			printf("  Result:  [%s]\n", (!sched_test()) ? "PASSED" : "FAILED");
+		}
+	
+		/* Wrong usage. */
+		else
+			usage();
+	}
+	
 	return (EXIT_SUCCESS);
 }
