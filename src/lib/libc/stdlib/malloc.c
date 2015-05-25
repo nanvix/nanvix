@@ -149,13 +149,6 @@ void *malloc(size_t size)
 	if (size == 0)
 		return (NULL);
 	
-	/* Too big request. */
-	if (size > size + (SIZEOF_BLOCK - 1))
-	{
-		errno = -ENOMEM;
-		return (NULL);
-	}
-	
 	nblocks = (size + (SIZEOF_BLOCK - 1))/SIZEOF_BLOCK + 1;
 	
 	/* Create free list. */
