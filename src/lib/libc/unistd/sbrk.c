@@ -24,6 +24,10 @@ void *sbrk(size_t size)
 	old_brk = current_brk;
 	current_brk = (void *)((unsigned)old_brk + size);
 	if (brk(current_brk))
+	{
 		current_brk = old_brk;
+		return ((void *) -1);
+	}
+	
 	return (old_brk);
 }
