@@ -1,0 +1,131 @@
+.\" 
+.\" Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+.\" 
+.\" This file is part of Nanvix.
+.\" 
+.\" Nanvix is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" Nanvix is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+
+.TH "system" "3" "June 2015" "Nanvix" "The Nanvix Programmer's Manual"
+
+.\ "============================================================================
+
+.SH "NAME"
+
+system \- Issues a command
+
+.\ "============================================================================
+
+.SH "SYNOPSIS"
+
+.BI "#include <" "stdlib.h" >
+
+.BI "int system(const char *" command ");"
+
+.\ "============================================================================
+
+.SH "DESCRIPTION"
+
+If command is a null pointer, the
+.BR system()
+function determines whether the host environment has a command processor. If
+command is not a null pointer, the
+.BR system()
+function passes the string pointed to by
+.IR command
+to that command processor to be executed in an implementation-defined manner;
+this might then cause the program calling
+.BR system()
+to behave in a non-conforming manner or to terminate.
+
+The
+.BR system()
+function ignores the SIGINT and SIGQUIT signals, and blocks the SIGCHLD signal,
+while waiting for the command to terminate. If this might cause the application
+to miss a signal that would have killed it, then the application should examine
+the return value from
+.BR system()
+and take whatever action is appropriate to the application if the
+.IR command
+terminated due to receipt of a signal.
+
+The 
+.BR system()
+function does not affect the termination status of any child of the calling
+processes other than the process or processes it itself creates.
+
+The
+.BR system()
+function does not return until the child process has terminated
+
+.\ "============================================================================
+
+.SH "RETURN VALUE"
+
+If
+.IR command
+is a null pointer,
+.BR system()
+retursn non-zero to indicate that a command processor is available, or zero if
+none is available.
+
+If
+.IR command
+is not a null pointer,
+.BR system()
+returns the termination status of the command language interpreter. The
+termination status shall be as defined for the sh utility; otherwise, the
+termination status is unspecified. If some error prevents the command language
+interpreter from executing after the child process is created, the return value
+from
+.BR system()
+is as if the command language interpreter had terminated using
+.BR exit(127)
+or
+.BR _exit(127) .
+If a child process cannot be created, or if the termination status for the
+command language interpreter cannot be obtained,
+.BR system()
+returns -1 and set
+.BR errno
+to indicate the error.
+
+.\ "============================================================================
+
+.SH "ERRORS"
+
+.TP
+.BR ECHILD
+The status of the child process created by
+.BR system()
+is no longer available.
+
+.\ "============================================================================
+
+.SH "CONFORMING TO"
+
+POSIX.1-2008
+
+.\ "============================================================================
+
+.SH "AUTHOR"
+Pedro H. Penna <pedrohenriquepenna@gmail.com>
+
+.\ "============================================================================
+
+.SH "SEE ALSO"
+
+.BR exec() ,
+.BR pipe() ,
+.BR wait()
