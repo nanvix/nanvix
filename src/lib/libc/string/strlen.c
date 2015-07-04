@@ -28,13 +28,11 @@
 /**
  * @brief Gets string length.
  * 
- * @details Computes the number of bytes in the string to which @p str points,
- *          not including the terminating null byte.
+ * @param str Target string.
  * 
- * @returns The length of @p str; no return value is reserved to indicate an
- *          error.
+ * @returns The length of @p str.
  */
-size_t strlen(const char * str)
+size_t strlen(const char *str)
 {
 	const char *p;
 	

@@ -29,10 +29,6 @@
  * @param s1 Pointer to target string.
  * @param s2 Pointer to source string.
  * 
- * @param Copies the string pointed to by @p s2 (including the terminating null
- *        byte) into the array pointed to by @p s1. If copying takes place
- *        between objects that overlap, the behavior is undefined.
- * 
  * @returns s1 is returned.
  */
 char *strcpy(char *restrict s1, const char *restrict s2)
