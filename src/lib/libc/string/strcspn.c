@@ -60,19 +60,18 @@
 #include <sys/types.h>
 
 /**
- * @brief Gets length of a complementary substring.
+ * @brief Gets the length of a complementary substring.
  * 
- * @details Computes the length of the maximum initial segment of the string
- *          pointed to by @p s1 which consists entirely of bytes not from the
- *          string pointed to by @p s2. 
+ * @param s1 Pointer to string to search.
+ * @param s2 Pointer to string to be checked against.
  * 
  * @returns The length of the computed segment of the string pointed to by
-            @p s1; no return value is reserved to indicate an error.
+            @p s1.
  */
 size_t strcspn(const char *s1, const char *s2)
 {
-	const char *p, *spanp;
 	char c, sc;
+	const char *p, *spanp;
 
 	/*
 	 * Stop as soon as we find any character from s2.  Note that there
