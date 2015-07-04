@@ -26,6 +26,9 @@
 /**
  * @brief Copies a string.
  * 
+ * @param s1 Pointer to target string.
+ * @param s2 Pointer to source string.
+ * 
  * @param Copies the string pointed to by @p s2 (including the terminating null
  *        byte) into the array pointed to by @p s1. If copying takes place
  *        between objects that overlap, the behavior is undefined.
@@ -34,14 +37,13 @@
  */
 char *strcpy(char *restrict s1, const char *restrict s2)
 {
-	char *p;
+	char *p1;
 	
-	p = s1;
+	p1 = s1;
 	
 	/* Copy strings. */
-	while (*s2 != '\0')
-		*p++ = *s2++;
-	*p = '\0';
+	while ((*p1++ = *s2++) != '\0')
+		/* noop */;
 	
 	return (s1);
 }
