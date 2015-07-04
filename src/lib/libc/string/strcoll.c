@@ -28,14 +28,16 @@
 /**
  * @brief String comparison using collating information.
  * 
- * @details Compares the string pointed to by @p s1 to the string pointed to by
- *          @p s2, both interpreted as appropriate to the LC_COLLATE category
- *          of the current locale.
+ * @param s1 Pointer to first string.
+ * @param s2 Pointer to second string.
  * 
- * @returns An integer greater than, equal to or less than 0, according to
- *          whether the string pointed to by @p s1 is greater than, equal to or
- *          less than the string pointed to by @p s2 when both are interpreted
- *          as appropriate to the current locale.
+ * @returns An integer greater than, equal to, or less than 0, according to
+ *          whether the string pointed to by @p s1 is greater than, equal to,
+ *          or less than the string pointed to by @p s2 when both are
+ *          interpreted as appropriate to the current locale.
+ * 
+ * @note On error errno may be set, but no return value is reserved to indicate
+ *       an error.
  * 
  * @todo Perform comparison using collating information.
  */

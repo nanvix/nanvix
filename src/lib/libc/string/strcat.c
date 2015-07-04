@@ -31,7 +31,7 @@
  * @param s1 Pointer to target string.
  * @param s2 Pointer to source string.
  * 
- * @returns s1 is returned.
+ * @returns @p s1 is returned.
  */
 char *strcat(char *restrict s1, const char *restrict s2)
 {
