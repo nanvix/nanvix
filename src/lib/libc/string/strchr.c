@@ -27,11 +27,10 @@
 #include <sys/types.h>
 
 /**
- * @brief Finds byte in string.
+ * @brief Finds a byte in string.
  * 
- * @details Locates the first occurrence of @p c (converted to an unsigned char)
- *          in the string pointed to by @p s. The terminating null byte is
- *          considered to be part of the string.
+ * @param s String to search.
+ * @param c Character to search.
  * 
  * @returns A pointer to the byte, or a null pointer if the byte was not found. 
  */
@@ -42,7 +41,7 @@ char *strchr(const char *s, int c)
 	{
 		/* Found. */
 		if (*s == c)
-			return ((char*)s);
+			return ((char *) s);
 		
 		s++;
 	}
