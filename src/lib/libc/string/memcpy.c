@@ -28,24 +28,25 @@
 /**
  * @brief Copies bytes in memory.
  * 
- * @details Copies @p n bytes from the object pointed to by @p s2 into the
- *          object pointed to by @p s1. If copying takes place between objects
- *          that overlap, the behavior is undefined. 
+ * @param s1 Pointer to target object.
+ * @param s2 Pointer to source object.
+ * @param n  Number of bytes to copy.
  * 
  * @returns @p s1 is returned.
  * 
- * @note Does not check for the overflowing of the receiving memory area. 
+ * @note If copying takes place between objects that overlap, the behavior is
+ *       undefined.
  */
 void *memcpy(void *restrict s1, const void *restrict s2, size_t n)
 {
-    const char* s;
-    char *d;
+    char *p1;
+    const char* p2;
     
-    s = s2;
-    d = s1;
+    p1 = s1;
+    p2 = s2;
     
     while (n-- > 0)
-    	*d++ = *s++;
+    	*p1++ = *p2++;
  
-    return (d);
+    return (p1);
 }
