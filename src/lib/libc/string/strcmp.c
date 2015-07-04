@@ -26,7 +26,7 @@
 /**
  * @brief Compares two strings.
  * 
- * @param s1 Pointer to first string. 
+ * @param s1 Pointer to first string.
  * @param s2 Pointer to second string.
  * 
  * @returns An integer greater than, equal to or less than 0, if the string

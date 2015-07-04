@@ -28,14 +28,9 @@
 /**
  * @brief Compares part of two strings.
  * 
- * @details Compares not more than @p n bytes (bytes that follow a null byte are
- *          not compared) from the array pointed to by @p s1 to the array
- *          pointed to by @p s2.
- * 
- *          The sign of a non-zero return value is determined by the sign of
- *          the difference between the values of the first pair of bytes
- *          (both interpreted as type unsigned char) that differ in the strings
- *          being compared.
+ * @param s1 Pointer to first string.
+ * @param s2 Pointer to second string.
+ * @param n  Number of characters to consider.
  * 
  * @returns An integer greater than, equal to or less than 0, if the possibly
  *          null-terminated array pointed to by @p s1 is greater than, equal to
@@ -49,7 +44,7 @@ int strncmp(const char *restrict s1, const char *restrict s2, size_t n)
 	{
 		/* Strings differ. */
 		if (*s1 != *s2)
-			return ((*(unsigned char *)s1 < *(unsigned char *)s2) ? -1 : 1);
+			return ((*(unsigned char *) s1 - *(unsigned char *) s2));
 		
 		/* End of string. */
 		else if (*s1 == '\0')
