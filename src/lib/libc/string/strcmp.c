@@ -26,13 +26,8 @@
 /**
  * @brief Compares two strings.
  * 
- * @details Compares the string pointed to by @p s1 to the string pointed to by
- *          @p s2.
- * 
- *          The sign of a non-zero return value is determined by the sign of
- *          the difference between the values of the first pair of bytes
- *          (both interpreted as type unsigned char) that differ in the strings
- *          being compared.
+ * @param s1 Pointer to first string. 
+ * @param s2 Pointer to second string.
  * 
  * @returns An integer greater than, equal to or less than 0, if the string
  *          pointed to by @p s1 is greater than, equal to or less than the
@@ -51,5 +46,5 @@ int strcmp(const char *s1, const char *s2)
 		s2++;
 	}
 	
-	return ((*(unsigned char *)s1 < *(unsigned char *)s2) ? -1 : 1);
+	return ((*(unsigned char *) s1 - *(unsigned char *) s2));
 }
