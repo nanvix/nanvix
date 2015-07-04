@@ -61,23 +61,24 @@
 /**
  * @brief Concatenates part of two strings.
  * 
- * @details Appends not more than @p n bytes (a null byte and bytes that follow
- *          it are not appended) from the array pointed to by @p s2 to the end
- *          of the string pointed to by @p s1. The initial byte of @p s2
- *          overwrites the null byte at the end of @p s1. A terminating null
- *          byte is always appended to the result. If copying takes place
- *          between objects that overlap, the behaviour is undefined.
+ * @param s1 Pointer to target string.
+ * @param s2 Pointer to source string.
+ * @param n  Number of characters to consider.
  * 
- * @returns @p s1 is returned; no return value is reserved to indicate an error. 
+ * @returns @p s1 is returned.
  */
 char *strncat(char *restrict s1, const char *restrict s2, size_t n)
 {
 	char *s = s1;
 
-	while (*s1)
+	/* Eat target string. */
+	while (*s1 != '\0')
 		s1++;
-	while (n-- != 0 && (*s1++ = *s2++))
+		
+	/* Concatenate strings. */
+	while ((n-- != 0) && ((*s1++ = *s2++) != '\0'))
 	{
+		/* Terminating null character. */
 		if (n == 0)
 			*s1 = '\0';
 	}
