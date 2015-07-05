@@ -28,16 +28,11 @@
 /**
  * @brief Copies part of a string.
  * 
- * @details Copies not more than @p n bytes (bytes that follow a null byte are
- *          not copied) from the array pointed to by @p s2 to the array pointed
- *          to by @p s1. If copying takes place between objects that overlap,
- *          the behavior is undefined.
+ * @param s1 Pointer to target string.
+ * @param s2 Pointer to source string.
+ * @param n  Number of characters to copy.
  * 
- *          If the array pointed to by @p s2 is a string that is shorter than
- *          @p n bytes, null bytes are appended to the copy in the array pointed
- *          to by @p s1, until @p n bytes in all are written.
- * 
- * @returns @p s1 is returned; no return value is reserved to indicate an error. 
+ * @param @p s1 is returned.
  */
 char *strncpy(char *restrict s1, const char *restrict s2, size_t n)
 {
