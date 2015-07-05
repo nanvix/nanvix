@@ -59,27 +59,15 @@
 #include <sys/types.h>
 
 /**
- * @brief String transformation.
+ * @brief Transforms a string into another.
  * 
- * @details Transforms the string pointed to by @p s2 and places the resulting
- *          string into the array pointed to by @p s1. The transformation is
- *          such that if strcmp() is applied to two transformed strings,
- *          it returns a value greater than, equal to or less than 0,
- *          corresponding to the result of strcoll() applied to the same two
- *          original strings. No more than @p n bytes are placed into the
- *          resulting array pointed to by @p s1, including the terminating null
- *          byte. If @p n is 0, @p s1 is permitted to be a null pointer. If
- *          copying takes place between objects that overlap, the behavior is
- *          undefined.
+ * @param s1 Pointer to target string.
+ * @param s2 Pointer to source string.
+ * @param n  Maximum bytes to consider.
  * 
  * @returns The length of the transformed string (not including the terminating
  *          null byte) is returned. If the value returned is @p n or more, the
  *          contents of the array pointed to by @p s1 are indeterminate.
- * 
- *          On error, errno is set, but no return value is reserved to indicate
- *          an error.
- * 
- * @note Use collating information.
  */
 size_t strxfrm(char *s1, const char *s2, size_t n)
 {
