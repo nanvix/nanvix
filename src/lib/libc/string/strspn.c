@@ -62,21 +62,21 @@
 /**
  * @brief Gets the length of a substring.
  * 
- * @details Computes the length of the maximum initial segment of the string
- *          pointed to by @p s1 which consists entirely of bytes from the string
- *          pointed to by @p s2.
+ * @param Pointer to string.
+ * @param Pointer to substring.
  * 
- * @returns The length of @p s1 is returned; no return value is reserved to
- *          indicate an error. 
+ * @returns The length of @p s1 is returned.
  */
 size_t strspn(const char *s1, const char *s2)
 {
-	const char *s = s1;
+	const char *s;
 	const char *c;
+	
+	s = s1;
 
 	while (*s1 != '\0')
 	{
-		for (c = s2; *c; c++)
+		for (c = s2; *c != '\0'; c++)
 		{
 			if (*s1 == *c)
 				break;
