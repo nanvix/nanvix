@@ -61,15 +61,12 @@
 /**
  * @brief Finds a substring.
  * 
- * @details Locates the first occurrence in the string pointed to by @p s1 of
- *          the sequence of bytes (excluding the terminating null byte) in the
- *          string pointed to by @p s2.
+ * @param s1 Pointer to string to search.
+ * @param s2 Pointer to substring to search for.
  * 
  * @returns A pointer to the located string or a null pointer if the string is
- *          not found.
- * 
- *          If @p s2 points to a string with zero length, the function returns
- *          @p s1. 
+ *          not found. If @p s2 points to a string with zero length, the
+ *          function returns @p s1. 
  */
 char *strstr(const char *s1, const char *s2)
 {
@@ -83,6 +80,7 @@ char *strstr(const char *s1, const char *s2)
 	while (*s1 != '\0')
 	{
 		size_t i;
+		
 		i = 0;
 
 		while (1)
