@@ -61,17 +61,17 @@
 /**
  * @brief String scanning operation.
  * 
- * @details Locates the last occurrence of @p i (converted to a char) in the
- *          string pointed to by @p s. The terminating null byte is considered
- *          to be part of the string.
+ * @param s Pointer to string to search.
+ * @param c Character to search for.
  * 
- * @returns A pointer to the byte or a null pointer if @p i does not occur in
+ * @returns A pointer to the byte, or a null pointer if @p c does not occur in
  *          the string. 
  */
-char *strrchr(const char *s, int i)
+char *strrchr(const char *s, int c)
 {
-	const char *last = NULL;
-	char c = i;
+	const char *last;
+	
+	last = NULL;
 
 	while (*s != '\0')
 	{
