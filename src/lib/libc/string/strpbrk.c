@@ -59,24 +59,26 @@
 #include <stdlib.h>
 
 /**
- * @brief Scans string for byte.
+ * @brief Scans a string for a byte.
  * 
- * @details Locates the first occurrence in the string pointed to by @p s1 of
- *          any byte from the string pointed to by @p s2. 
+ * @param s1 Pointer to string to scan.
+ * @param s2 Pointer to string of bytes to scan for.
  * 
  * @returns A pointer to the byte or a null pointer if no byte from @p s2
  *          occurs in @p s1. 
  */
 char *strpbrk(const char *s1, const char *s2)
 {
-	const char *c = s2;
+	const char *c;
+	
+	c = s2;
 	
 	if (*s1 == '\0')
 		return ((char *) NULL);
 
 	while (*s1 != '\0')
 	{
-		for (c = s2; *c; c++)
+		for (c = s2; *c != '\0'; c++)
 		{
 			if (*s1 == *c)
 				break;
