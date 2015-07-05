@@ -66,35 +66,11 @@ static char *_scanpoint = NULL;
 /**
  * @brief Splits string into tokens.
  * 
- * @details Breaks the string pointed to by @p s1 into a sequence of tokens,
- *          each of which is delimited by a byte from the string pointed to by
- *          @p s2. The first call in the sequence has @p s1 as its first
- *          argument, and is followed by calls with a null pointer as their
- *          first argument. The separator string pointed to by @p s2 may be
- *          different from call to call.
- * 
- *          The first call in the sequence searches the string pointed to by
- *          @p s1 for the first byte that is not contained in the current
- *          separator string pointed to by @p s2. If no such byte is found,
- *          then there are no tokens in the string pointed to by @p s1 and
- *          strtok() returns a null pointer. If such a byte is found, it is the
- *          start of the first token. 
- * 
- *          The strtok() function then searches from there for a byte that is
- *          contained in the current separator string. If no such byte is
- *          found, the current token extends to the end of the string pointed to
- *          by @p s1, and subsequent searches for a token will return a null
- *          pointer. If such a byte is found, it is overwritten by a null byte,
- *          which terminates the current token. The strtok() function saves a
- *          pointer to the following byte, from which the next search for a
- *          token will start.
- * 
- *          Each subsequent call, with a null pointer as the value of the first
- *          argument, starts searching from the saved pointer and behaves as
- *          described above.
+ * @param s1 Pointer to string to split.
+ * @param s2 Pointer to token string.
  * 
  * @returns A pointer to the first byte of a token. Otherwise, if there is no
- *          token, strtok() returns a null pointer. 
+ *          token a null pointer is returned.
  */
 char *strtok(char *s1, const char *s2)
 {
@@ -102,7 +78,7 @@ char *strtok(char *s1, const char *s2)
 	char *tok;
 	const char *dscan;
 
-	if (s1 == NULL && _scanpoint == NULL)
+	if ((s1 == NULL) && (_scanpoint == NULL))
       return (NULL);
       
 	if (s1 != NULL)
