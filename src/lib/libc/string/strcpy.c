@@ -30,6 +30,8 @@
  * @param s2 Pointer to source string.
  * 
  * @returns s1 is returned.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strcpy(char *restrict s1, const char *restrict s2)
 {

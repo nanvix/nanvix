@@ -66,6 +66,8 @@
  * @param n  Number of characters to consider.
  * 
  * @returns @p s1 is returned.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strncat(char *restrict s1, const char *restrict s2, size_t n)
 {

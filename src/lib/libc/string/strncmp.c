@@ -35,7 +35,9 @@
  * @returns An integer greater than, equal to or less than 0, if the possibly
  *          null-terminated array pointed to by @p s1 is greater than, equal to
  *          or less than the possibly null-terminated array pointed to by @p s2
- *          respectively. 
+ *          respectively.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 int strncmp(const char *restrict s1, const char *restrict s2, size_t n)
 {

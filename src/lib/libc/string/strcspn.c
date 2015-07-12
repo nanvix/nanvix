@@ -67,6 +67,8 @@
  * 
  * @returns The length of the computed segment of the string pointed to by
             @p s1.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 size_t strcspn(const char *s1, const char *s2)
 {

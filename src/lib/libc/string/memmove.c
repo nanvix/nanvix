@@ -66,6 +66,8 @@
  * @param n  Number of bytes to copy.
  * 
  * @returns @p s1 is returned.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 void *memmove(void *s1, const void *s2, size_t n)
 {

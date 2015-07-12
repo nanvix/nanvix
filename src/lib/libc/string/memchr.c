@@ -35,6 +35,8 @@
  * 
  * @returns A pointer to the located byte, or a null pointer if the byte does 
  *          not occur in the object.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 void *memchr(const void *s, int c, size_t n)
 {	

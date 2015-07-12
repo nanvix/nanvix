@@ -31,6 +31,8 @@
  * @param str Target string.
  * 
  * @returns The length of @p str.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 size_t strlen(const char *str)
 {

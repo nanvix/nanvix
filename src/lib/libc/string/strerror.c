@@ -61,13 +61,11 @@
 /**
  * @brief Gets error message string.
  * 
- * @details Maps the error number in @p errnum to an error message string and
- *          returns a pointer thereto. The string pointed to must not be
- *          modified by the program.
- * 
  * @returns A pointer to the generated message string.
  * 
  * @todo Use collating information.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strerror(int errnum)
 {

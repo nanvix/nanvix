@@ -31,7 +31,9 @@
  * 
  * @returns An integer greater than, equal to or less than 0, if the string
  *          pointed to by @p s1 is greater than, equal to or less than the
- *          string pointed to by @p s2 respectively. 
+ *          string pointed to by @p s2 respectively.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 int strcmp(const char *s1, const char *s2)
 {

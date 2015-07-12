@@ -68,6 +68,8 @@
  * @returns The length of the transformed string (not including the terminating
  *          null byte) is returned. If the value returned is @p n or more, the
  *          contents of the array pointed to by @p s1 are indeterminate.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 size_t strxfrm(char *s1, const char *s2, size_t n)
 {

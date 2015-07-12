@@ -40,6 +40,8 @@
  *       an error.
  * 
  * @todo Perform comparison using collating information.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 int strcoll(const char *s1, const char *s2)
 {

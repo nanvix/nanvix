@@ -65,7 +65,9 @@
  * @param s2 Pointer to string of bytes to scan for.
  * 
  * @returns A pointer to the byte or a null pointer if no byte from @p s2
- *          occurs in @p s1. 
+ *          occurs in @p s1.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strpbrk(const char *s1, const char *s2)
 {

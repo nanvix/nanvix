@@ -34,7 +34,9 @@
  * 
  * @returns An integer greater than, equal to or less than 0, if the object
  *          pointed to by @p s1 is greater than, equal to or less than the
- *          object pointed to by @p s2 respectively. 
+ *          object pointed to by @p s2 respectively.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 int memcmp(const void *s1, const void *s2, size_t n)
 {

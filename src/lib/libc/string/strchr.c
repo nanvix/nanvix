@@ -32,7 +32,9 @@
  * @param s String to search.
  * @param c Character to search.
  * 
- * @returns A pointer to the byte, or a null pointer if the byte was not found. 
+ * @returns A pointer to the byte, or a null pointer if the byte was not found.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strchr(const char *s, int c)
 {

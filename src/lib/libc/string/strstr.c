@@ -66,7 +66,9 @@
  * 
  * @returns A pointer to the located string or a null pointer if the string is
  *          not found. If @p s2 points to a string with zero length, the
- *          function returns @p s1. 
+ *          function returns @p s1.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strstr(const char *s1, const char *s2)
 {

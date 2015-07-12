@@ -32,6 +32,8 @@
  * @param s2 Pointer to source string.
  * 
  * @returns @p s1 is returned.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strcat(char *restrict s1, const char *restrict s2)
 {

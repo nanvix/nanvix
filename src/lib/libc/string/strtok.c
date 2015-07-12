@@ -71,6 +71,8 @@ static char *_scanpoint = NULL;
  * 
  * @returns A pointer to the first byte of a token. Otherwise, if there is no
  *          token a null pointer is returned.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strtok(char *s1, const char *s2)
 {

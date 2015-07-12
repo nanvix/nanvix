@@ -65,7 +65,9 @@
  * @param c Character to search for.
  * 
  * @returns A pointer to the byte, or a null pointer if @p c does not occur in
- *          the string. 
+ *          the string.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strrchr(const char *s, int c)
 {

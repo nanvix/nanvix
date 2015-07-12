@@ -21,14 +21,24 @@
  * @file
  * 
  * @brief String library.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 
 #ifndef STRING_H_
 #define STRING_H_
 
-	#include <sys/types.h>
-	#include <locale.h>
+	#define _NEED_NULL
+	#define _NEED_SIZE_T
+
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+	#define _NEED_LOCALE_T
 	#include <stddef.h>
+
+#endif
+
+	#include <decl.h>
 
 	/**
 	 * @defgroup stringlib String Library
@@ -37,7 +47,6 @@
 	 */
 	/**@{*/
 	
-	/* ISO C */
 	extern void *memchr(const void *, int, size_t);
 	extern int memcmp(const void *, const void *, size_t);
 	extern void *memcpy (void *restrict, const void *restrict, size_t);
@@ -61,8 +70,8 @@
 	extern char *strtok(char *, const char *);
 	extern size_t strxfrm(char *, const char *, size_t);
 	
-	/* POSIX C */
 #if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+#warning "POSIX C source not fully implemented"
 
 	extern char *stpcpy(char *restrict, const char *restrict);
 	extern char *stpncpy(char *restrict, const char *restrict, size_t);
@@ -73,13 +82,13 @@
 	extern char *strndup(const char *, size_t);
 	extern size_t strnlen(const char *, size_t);
 	extern char *strsignal(int);
-	extern char *strtok_r(char *restrict, const char *restrict,char **restrict);
-	extern size_t strxfrm_l(char *restrict,const char *restrict,size_t,locale_t);
+	extern char *strtok_r(char *restrict, const char *restrict, char **restrict);
+	extern size_t strxfrm_l(char *restrict, const char *restrict, size_t, locale_t);
 
 #endif
 	
-	/* XSI C */
 #if defined(_XOPEN_SOURCE)
+#warning "XOPEN source not fully implemented"
 
 	extern void *memccpy(void *restrict , const void *restrict , int, size_t);
 

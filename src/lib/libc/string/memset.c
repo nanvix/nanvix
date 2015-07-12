@@ -33,6 +33,8 @@
  * @param n Number of bytes to set.
  * 
  * @returns @p s is returned.
+ * 
+ * @version IEEE Std 1003.1, 2013 Edition
  */
 void *memset(void *s, int c, size_t n)
 {
