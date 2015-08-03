@@ -39,3 +39,4 @@ doc/*-kernel
 
 # Exceptions.
 !doc/paper/img/*.pdf
+!doc/paper/*.pdf
