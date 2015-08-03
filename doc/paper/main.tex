@@ -41,10 +41,20 @@
 Nanvix is an operating system created by Pedro H. Penna for educational purposes. It was designed from scratch to be small and simple, and yet modern and fully featured, so that it could help both, novices and experienced enthusiasts in operating systems, to learn about kernel hacking. The first release of Nanvix came out in early 2011, and since then the system has gone through several changes. This paper details the internals of Nanvix 1.2. All previous and future releases are available at \url{github.com/ppenna/nanvix}, under the GPLv3 license.
 
 % Paper organization.
-In this section, we present an overview of Nanvix, starting with the system architecture, then presenting the system services, and finally discussing the required hardware to run the system. In later sections, we present a detailed description of each system module.
+In this section, we present an overview of Nanvix, starting with the system architecture, then presenting the system services, and finally discussing the required hardware to run the system. In later sections, we present a more detailed description of the system.
 
 \subsection{System Architecture}
 \label{section: system architecture}
+
+% Nanvix and System V.
+The architecture of Nanvix is outlined in Figure \ref{figure: nanvix architecture}. It presents a similar structure to Unix System V, and it has been intentionally designed to be so due to two points. First, several successful operating systems, such as Aix, Linux and Solaris, are based on this architecture. Second, System V has earned Dennis Ritchie and Kenneth Thompson the 1983 Turing Award. These points indicate that System V is a well-architected and reliable system, thus being a good baseline for a new educational operating system, such as Nanvix.
+
+\begin{figure}[t]
+	\centering
+	\includegraphics[scale=0.65]{img/nanvix-architecture}
+	\caption{Nanvix architecture.}
+	\label{figure: nanvix architecture}
+\end{figure}
 
 \subsection{System Services}
 \label{section: system services}
