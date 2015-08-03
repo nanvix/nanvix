@@ -27,5 +27,14 @@ bin/*
 bin/sbin/*
 bin/ubin/*
 doc/*-kernel
+*.aux
+*.swp
+*.bcf
+*.blg
+*.fls
+*.log
+*.xml
+*.gz
+*.fdb_latexmk
 
 # Exceptions.
