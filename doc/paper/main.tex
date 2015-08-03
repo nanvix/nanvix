@@ -49,6 +49,9 @@ In this section, we present an overview of Nanvix, starting with the system arch
 % Nanvix and System V.
 The architecture of Nanvix is outlined in Figure \ref{figure: nanvix architecture}. It presents a similar structure to Unix System V, and it has been intentionally designed to be so due to two points. First, several successful operating systems, such as Aix, Linux and Solaris, are based on this architecture. Second, System V has earned Dennis Ritchie and Kenneth Thompson the 1983 Turing Award. These points indicate that System V is a well-architected and reliable system, thus being a good baseline for a new educational operating system, such as Nanvix.
 
+% Architecture overview.
+Nanvix is structured in two layers. The kernel, the bottom layer, seats on the top of the hardware and runs in privileged mode, with full access to all resources. Its job is to extended the underlying hardware so that: (i) a more pleasant interface, which is easier to program, is exported to the higher level; and (ii) resources can be shared among users, fairly and concurrently. The userland, the higher layer, is where all user software (programs) run in unprivileged mode, and the place where the user itself interacts with the system.
+
 \begin{figure}[t]
 	\centering
 	\includegraphics[scale=0.65]{img/nanvix-architecture}
