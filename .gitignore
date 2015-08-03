@@ -38,3 +38,4 @@ doc/*-kernel
 *.fdb_latexmk
 
 # Exceptions.
+!doc/paper/img/*.pdf
