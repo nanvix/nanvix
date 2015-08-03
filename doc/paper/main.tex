@@ -53,7 +53,7 @@ The architecture of Nanvix is outlined in Figure \ref{figure: nanvix architectur
 Nanvix is structured in two layers. The kernel, the bottom layer, seats on the top of the hardware and runs in privileged mode, with full access to all resources. Its job is to extended the underlying hardware so that: (i) a more pleasant interface, which is easier to program, is exported to the higher level; and (ii) resources can be shared among users, fairly and concurrently. The userland, the higher layer, is where all user software (programs) run in unprivileged mode, with limited access to the hardware, and the place where the user itself interacts with the system.
 
 % Kernel architecture.
-The kernel presents a monolithic architecture, and it is structured in four subsystems: the hardware abstraction layer; the memory management system; the process management system; and the file system. The hardware abstraction layer directly interacts with the hardware and exports a set of well defined low-level routines, such as those for dealing with IO devices, context switching and interrupt handling. Its main job is to isolate, as much as possible, the other subsystems from hardware intricacies, so that the kernel can be easily ported to other compatible platforms, by simply replacing the hardware abstraction layer.
+The kernel presents a monolithic architecture, and it is structured in four subsystems: the hardware abstraction layer; the memory management system; the process management system; and the file system. The hardware abstraction layer interacts directly with the hardware and exports to the other subsystems a set of well defined low-level routines, such as those for dealing with IO devices, context switching and interrupt handling. Its job is to isolate, as much as possible, hardware intricacies, so that the kernel can be easily ported to other compatible platforms, by simply replacing the hardware abstraction layer.
 
 \begin{figure}[t]
 	\centering
@@ -61,6 +61,9 @@ The kernel presents a monolithic architecture, and it is structured in four subs
 	\caption{Nanvix architecture.}
 	\label{figure: nanvix architecture}
 \end{figure}
+
+% Memory management system.
+The memory management subsystem provides a flat virtual memory abstraction to the system. It does so by having two modules working together: the swapping and virtual memory modules. The swapping module deals with paging, keeping in memory those pages that are more frequently used, and swapping out to disk those that are not. The virtual memory system, on the other hand, relies on the paging module to manage higher-level abstractions called memory regions, and thus enable advanced features such as shared memory regions, on-demand loading, lazy coping and memory pinning.
 
 \subsection{System Services}
 \label{section: system services}
