@@ -84,6 +84,10 @@ The userland relies on the system calls exported by the kernel. User libraries w
 % System calls overview.
 The main job of the kernel is to extend the underlying hardware and offer the userland a set of services that are easier to deal with, than those provided by the bare machine. These services are indeed exported as system calls, which user applications invoke just as normal functions and procedures. Nanvix implements 45 system calls, being the majority of them derived from the Posix 1 specification [??]. The most relevant system calls that are present in Nanvix are listed in Table \ref{table: most relevant system calls in nanvix}, grouped by category. In the paragraphs that follow, we briefly discussed each of them. For further information about system calls in Nanvix, refer to the man pages of the system.
 
+% File system system calls: manipulating files.
+Files are high-level abstractions created for modeling resources, being primarily designed and used to provide a natural way to manipulate disks. One program that wants to manipulate a file, shall first open it by calling \texttt{open()}, with the desired filename and some flags. Then, it may call \texttt{read()} and/or \texttt{write()} to read and write data to the file. If the file corresponds to either a regular file, directory, or block device, the read/write file offset may be moved through the \texttt{lseek()} system call. Finally, when the program is done with that file, it may explicitly close it by calling \texttt{close()}, and have its contents flushed to the underlying device.
+
+
 \begin{table}[b]
 \small
 \centering
@@ -93,13 +97,12 @@ The main job of the kernel is to extend the underlying hardware and offer the us
 	\toprule
 	Category & System Call & Description \\
 	\midrule
-	\multirow{17}{*}{File System}        & \texttt{chdir}    & Changes the current working directory               \\
+	\multirow{16}{*}{File System}        & \texttt{chdir}    & Changes the current working directory               \\
 	                                     & \texttt{close}    & Closes a file descriptor                            \\
 	                                     & \texttt{dup}      & Duplicates an opened file descriptor                \\
 	                                     & \texttt{fcntl}    & File control                                        \\
 	                                     & \texttt{link}     & Creates a new link to a file                        \\
-	                                     & \texttt{lseek}    & Closes a file                                       \\
-	                                     & \texttt{pipe}     & Creates an interprocess communication channel       \\
+	                                     & \texttt{lseek}    & Moves the read/write file offset                    \\
 	                                     & \texttt{open}     & Opens a file descriptor                             \\
 	                                     & \texttt{read}     & Reads from a file                                   \\
 	                                     & \texttt{stat}     & Gets the status of a file                           \\
@@ -117,7 +120,7 @@ The main job of the kernel is to extend the underlying hardware and offer the us
 	\multirow{2}{*}{Memory Management}   & \texttt{brk}      & Changes the amount of heap space allocated          \\
 	                                     & \texttt{execve}   & Executes a program                                  \\
 	\midrule
-	\multirow{13}{*}{Process Management} & \texttt{alarm}    & Schedules an alarm signal                           \\
+	\multirow{14}{*}{Process Management} & \texttt{alarm}    & Schedules an alarm signal                           \\
 	                                     & \texttt{exit}     & Terminates the current process                      \\
 	                                     & \texttt{fork}     & Creates a new process                               \\
 	                                     & \texttt{getgid}   & Gets the group ID                                   \\
@@ -126,6 +129,7 @@ The main job of the kernel is to extend the underlying hardware and offer the us
 	                                     & \texttt{kill}     & Sends a signal to a process or a group of processes \\
 	                                     & \texttt{nice}     & Change the scheduling priority of a process         \\
 	                                     & \texttt{pause}    & Suspends the process until a signal is received     \\
+	                                     & \texttt{pipe}     & Creates an interprocess communication channel       \\
 	                                     & \texttt{times}    & Gets the process times                              \\
 	                                     & \texttt{setgid}   & Sets the group ID                                   \\
 	                                     & \texttt{signal}   & Signal management                                   \\
