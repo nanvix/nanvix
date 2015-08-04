@@ -27,6 +27,7 @@ bin/*
 bin/sbin/*
 bin/ubin/*
 doc/*-kernel
+*.bbl
 *.aux
 *.swp
 *.bcf

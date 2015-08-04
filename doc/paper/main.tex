@@ -27,6 +27,10 @@
 % References.
 \usepackage[backend=biber]{biblatex}
 
+% Tables.
+\usepackage{booktabs}
+\usepackage{multirow}
+
 \author{Pedro H. Penna}
 \title{The Nanvix Operating System}
 
@@ -76,6 +80,64 @@ The userland relies on the system calls exported by the kernel. User libraries w
 
 \subsection{System Services}
 \label{section: system services}
+
+% System calls overview.
+The main job of the kernel is to extend the underlying hardware and offer the userland a set of services that are easier to deal with, than those provided by the bare machine. These services are indeed exported as system calls, which user applications invoke just as normal functions and procedures. Nanvix implements 45 system calls, being the majority of them derived from the Posix 1 specification [??]. The most relevant system calls that are present in Nanvix are listed in Table \ref{table: most relevant system calls in nanvix}, grouped by category. In the paragraphs that follow, we briefly discussed each of them. For further information about system calls in Nanvix, refer to the man pages of the system.
+
+\begin{table}[b]
+\small
+\centering
+\caption{Most relevant system calls that are present in Nanvix.}
+\label{table: most relevant system calls in nanvix}
+\begin{tabular}{l l l}
+	\toprule
+	Category & System Call & Description \\
+	\midrule
+	\multirow{17}{*}{File System}        & \texttt{chdir}    & Changes the current working directory               \\
+	                                     & \texttt{close}    & Closes a file descriptor                            \\
+	                                     & \texttt{dup}      & Duplicates an opened file descriptor                \\
+	                                     & \texttt{fcntl}    & File control                                        \\
+	                                     & \texttt{link}     & Creates a new link to a file                        \\
+	                                     & \texttt{lseek}    & Closes a file                                       \\
+	                                     & \texttt{pipe}     & Creates an interprocess communication channel       \\
+	                                     & \texttt{open}     & Opens a file descriptor                             \\
+	                                     & \texttt{read}     & Reads from a file                                   \\
+	                                     & \texttt{stat}     & Gets the status of a file                           \\
+	                                     & \texttt{sync}     & Schedules file system updates                       \\
+	                                     & \texttt{uname}    & Gets the name of the current system                 \\
+	                                     & \texttt{umask}    & Gets or sets the file mode creation mask            \\
+	                                     & \texttt{unlink}   & Removes a file                                      \\
+	                                     & \texttt{utime}    & Sets file access and modification times             \\
+	                                     & \texttt{ustat}    & Gets file system statistics                         \\
+	                                     & \texttt{write}    & Writes to a file                                    \\
+	\midrule
+	\multirow{2}{*}{Hardware Management} & \texttt{ioctl}    & Device control                                      \\
+	                                     & \texttt{shutdown} & Shutdowns the system                                \\
+	\midrule
+	\multirow{2}{*}{Memory Management}   & \texttt{brk}      & Changes the amount of heap space allocated          \\
+	                                     & \texttt{execve}   & Executes a program                                  \\
+	\midrule
+	\multirow{13}{*}{Process Management} & \texttt{alarm}    & Schedules an alarm signal                           \\
+	                                     & \texttt{exit}     & Terminates the current process                      \\
+	                                     & \texttt{fork}     & Creates a new process                               \\
+	                                     & \texttt{getgid}   & Gets the group ID                                   \\
+	                                     & \texttt{getpid}   & Gets the process ID                                 \\
+	                                     & \texttt{getppid}  & Gets the parent process ID                          \\
+	                                     & \texttt{kill}     & Sends a signal to a process or a group of processes \\
+	                                     & \texttt{nice}     & Change the scheduling priority of a process         \\
+	                                     & \texttt{pause}    & Suspends the process until a signal is received     \\
+	                                     & \texttt{times}    & Gets the process times                              \\
+	                                     & \texttt{setgid}   & Sets the group ID                                   \\
+	                                     & \texttt{signal}   & Signal management                                   \\
+	                                     & \texttt{wait}     & Waits for a child process                           \\
+	\midrule
+	\multirow{2}{*}{Security}            & \texttt{access}   & Checks user's permissions for a file                \\
+	                                     & \texttt{chmod}    & Changes the file permissions                        \\
+	                                     & \texttt{chown}    & Changes the file ownership                          \\
+	\bottomrule
+\end{tabular}
+\end{table}
+
 
 \subsection{Hardware Requirements}
 \label{section: hardware requirements}
