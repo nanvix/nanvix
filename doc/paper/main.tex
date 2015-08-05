@@ -23,6 +23,7 @@
 
 % Figures.
 \usepackage{graphicx}
+\usepackage{subcaption}
 
 % References.
 \usepackage[backend=biber]{biblatex}
@@ -30,6 +31,8 @@
 % Tables.
 \usepackage{booktabs}
 \usepackage{multirow}
+\newcommand{\specialcell}[2][c]%
+{\begin{tabular}[#1]{@{}c@{}}#2\end{tabular}}
 
 \author{Pedro H. Penna}
 \title{The Nanvix Operating System}
@@ -82,24 +85,38 @@ The userland relies on the system calls exported by the kernel. User libraries w
 \label{section: system services}
 
 % System calls overview.
-The main job of the kernel is to extend the underlying hardware and offer the userland a set of services that are easier to deal with, than those provided by the bare machine. These services are indeed exported as system calls, which user applications invoke just as normal functions and procedures. Nanvix implements 45 system calls, being the majority of them derived from the Posix 1 specification [??]. The most relevant system calls that are present in Nanvix are listed in Table \ref{table: most relevant system calls in nanvix}, grouped by category. In the paragraphs that follow, we briefly discussed each of them. For further information about system calls in Nanvix, refer to the man pages of the system.
+The main job of the kernel is to extend the underlying hardware and offer the userland a set of services that are easier to deal with, than those provided by the bare machine. These services are indeed exported as system calls, which user applications invoke just as normal functions and procedures. Nanvix implements 45 system calls, being the majority of them derived from the Posix 1 specification [??]. The most relevant system calls that are present in Nanvix are listed in Table \ref{table: most relevant system calls in nanvix}. In the paragraphs that follow, we briefly discussed each of them. For further information about system calls in Nanvix, refer to the man pages.
 
 % File system system calls: manipulating files.
-Files are high-level abstractions created for modeling resources, being primarily designed and used to provide a natural way to manipulate disks. One program that wants to manipulate a file, shall first open it by calling \texttt{open()}, with the desired filename and some flags. Then, it may call \texttt{read()} and/or \texttt{write()} to read and write data to the file. If the file corresponds to either a regular file, directory, or block device, the read/write file offset may be moved through the \texttt{lseek()} system call. Finally, when the program is done with that file, it may explicitly close it by calling \texttt{close()}, and have its contents flushed to the underlying device.
+Files are high-level abstractions created for modeling resources, being primarily designed and used to provide a natural way to manipulate disks. One program that wants to manipulate a file, shall first open it by calling \texttt{open()}. Then, it may call \texttt{read()} and/or \texttt{write()} to read and/or write data to the file. If the file supports random access, the read/write file offset may be moved through the \texttt{lseek()} system call. Finally, when the program is done with that file, it may explicitly close it by calling \texttt{close()}, and have its contents flushed to the underlying device.
 
 % File system system calls: manipulating the file system.
-Files are organized hierarchically, in a tree-like structure, and are uniquely identified by their pathnames. Programs may refer to them either by using an absolute pathname, which starts in the root directory; or by using an relative pathname, that is relative to the current working directory of the program. Programs may change their current working directory by invoking \texttt{chdir()}. Alternatively, users can create links to files by calling \texttt{link()}, and then refer to the linked file by referring to the link. Links may be destroyed through the \texttt{unlink()} system call.
+Files are organized hierarchically, in a tree-like structure, and are uniquely identified by their pathnames. Programs may refer to them either by using an absolute pathname, which starts in the root directory; or by using an relative pathname to the current working directory of the program. Programs may change their current working directory by invoking \texttt{chdir()}. Alternatively, users can create links to files by calling \texttt{link()}, and then refer to the linked file by referring to the link (Figure \ref{figure: link system call}). Links and files may be destroyed through the \texttt{unlink()} system call.
+
+\begin{figure}[b]
+	\centering
+	\begin{subfigure}[b]{0.35\linewidth}
+		\includegraphics[width=\textwidth]{img/link-1}
+		\caption{Before.}
+	\end{subfigure} ~ 
+	\begin{subfigure}[b]{0.35\linewidth}
+		\includegraphics[width=\textwidth]{img/link-2}
+		\caption{After.}
+	\end{subfigure}
+	\caption{\texttt{link()} system call.}
+	\label{figure: link system call}
+\end{figure}
 
 % File system system calls: file permissions.
-Every file in the system has a owner user and a 9-bit flag assigned to it. These flags state what are the permissions to read, write and execute it, for the owner user, the owner's group users and all other users. If a program wants to read, write, or execute a file, it must have enough permissions to execute the desired permission. Programs may change the file ownership and permissions by calling \texttt{chown()} and \texttt{chmod()}, respectively. Users can query the ownership and access permissions of a file through the \texttt{stat()} system call.
+Every file has a owner user and a 9-bit flag assigned to it. These flags state what are the read, write and execution permissions for the file, for the owner user, the owner's group users and all others. If a program wants to perform any of these operations it must have enough permissions to do it. The file ownership and permissions may be changed through the \texttt{chown()} and \texttt{chmod()} system calls, respectively, and users can query these information by calling \texttt{stat()}.
 
 % Process management system calls: dealing with processes.
-Processes are abstraction of running programs and play a central role in Nanvix. Programs may create new processes by calling \texttt{fork()}, which creates an exact copy of the current running process. The primal process is called the parent and the new process is called child, and they have the same core\footnote{code, stack and data segments}, opened files, pending signals and execution flow, differing only differ in their ID number. Processes may query about their ID by calling \texttt{getpid()} and may change replace their core by another executable file through the \texttt{execve()} system call. When the process is done, it invokes \texttt{exit()} to relinquish all resources that it was using.
+Processes are abstraction of running programs and play a central role in Nanvix. Programs may create new processes by calling \texttt{fork()}, which creates an exact copy of the current running process. The primal process is called the parent and the new process is called child, and they have the same code, stack and data segments, opened files, pending signals and execution flow, differing only differ in their ID number. Processes may query about their ID by calling \texttt{getpid()} and may change replace their core by another executable file through the \texttt{execve()} system call. When the process is done, it invokes \texttt{exit()} to relinquish all resources that it was using.
 
 % Process management system calls: signals and synchronization.
 Processes may synchronize their activities using two approaches: through signals or synchronization primitives. In the former, the intend recipient process A first registers a callback function that will handle some specific signal, by calling \texttt{signal()}. If the process has nothing more to do than waiting for a signal to arrive, it may invoke \texttt{pause()} to block until such event happens. Later, another process may send a signal to A by calling \texttt{kill}, triggering the handler function in A. In the second approach, two processes may open a pipe, a dedicate communication channel, and effectively exchange data with one another. A process in one end of the pipe writes data to it, and in the other end a second processes reads data from the pipe, with the required producer-consumer synchronization being handled by the kernel.
 
-\begin{table}[h]
+\begin{table}[t]
 \small
 \centering
 \caption{Most relevant system calls that are present in Nanvix.}
@@ -108,27 +125,29 @@ Processes may synchronize their activities using two approaches: through signals
 	\toprule
 	Category & System Call & Description \\
 	\midrule
-	\multirow{12}{*}{File System}        & \texttt{chdir}    & Changes the current working directory               \\%
-	                                     & \texttt{close}    & Closes a file descriptor                            \\%
-	                                     & \texttt{chmod}    & Changes the file permissions                        \\%
-	                                     & \texttt{chown}    & Changes the file ownership                          \\%
-	                                     & \texttt{ioctl}    & Device control                                      \\%
-	                                     & \texttt{link}     & Creates a new link to a file                        \\%
-	                                     & \texttt{lseek}    & Moves the read/write file offset                    \\%
-	                                     & \texttt{open}     & Opens a file descriptor                             \\%
-	                                     & \texttt{read}     & Reads from a file                                   \\%
-	                                     & \texttt{stat}     & Gets the status of a file                           \\%
-	                                     & \texttt{unlink}   & Removes a file                                      \\%
-	                                     & \texttt{write}    & Writes to a file                                    \\%
+	\multirow{12}{*}{File System}        
+	                                     & \texttt{chdir}    & Changes the current working directory           \\
+	                                     & \texttt{close}    & Closes a file descriptor                        \\
+	                                     & \texttt{chmod}    & Changes the file permissions                    \\
+	                                     & \texttt{chown}    & Changes the file ownership                      \\
+	                                     & \texttt{ioctl}    & Device control                                  \\
+	                                     & \texttt{link}     & Creates a new link to a file                    \\
+	                                     & \texttt{lseek}    & Moves the read/write file offset                \\
+	                                     & \texttt{open}     & Opens a file descriptor                         \\
+	                                     & \texttt{read}     & Reads from a file                               \\
+	                                     & \texttt{stat}     & Gets the status of a file                       \\
+	                                     & \texttt{unlink}   & Removes a file                                  \\
+	                                     & \texttt{write}    & Writes to a file                                \\
 	\midrule
-	\multirow{7}{*}{Process Management}  & \texttt{execve}   & Executes a program                                  \\%
-	                                     & \texttt{exit}     & Terminates the current process                      \\%
-	                                     & \texttt{fork}     & Creates a new process                               \\%
-	                                     & \texttt{getpid}   & Gets the process ID                                 \\%
-	                                     & \texttt{kill}     & Sends a signal to a process or a group of processes \\%
-	                                     & \texttt{pause}    & Suspends the process until a signal is received     \\%
-	                                     & \texttt{pipe}     & Creates an interprocess communication channel       \\
-	                                     & \texttt{signal}   & Signal management                                   \\%
+	\multirow{7}{*}{\specialcell{Process\\Management}}
+	                                     & \texttt{execve}   & Executes a program                              \\
+	                                     & \texttt{exit}     & Terminates the current process                  \\
+	                                     & \texttt{fork}     & Creates a new process                           \\
+	                                     & \texttt{getpid}   & Gets the process ID                             \\
+	                                     & \texttt{kill}     & Sends a signal to a process                     \\
+	                                     & \texttt{pause}    & Suspends the process until a signal is received \\
+	                                     & \texttt{pipe}     & Creates an interprocess communication channel   \\
+	                                     & \texttt{signal}   & Signal management                               \\
 	\bottomrule
 \end{tabular}
 \end{table}
