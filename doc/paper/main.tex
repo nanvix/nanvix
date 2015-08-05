@@ -87,6 +87,11 @@ The main job of the kernel is to extend the underlying hardware and offer the us
 % File system system calls: manipulating files.
 Files are high-level abstractions created for modeling resources, being primarily designed and used to provide a natural way to manipulate disks. One program that wants to manipulate a file, shall first open it by calling \texttt{open()}, with the desired filename and some flags. Then, it may call \texttt{read()} and/or \texttt{write()} to read and write data to the file. If the file corresponds to either a regular file, directory, or block device, the read/write file offset may be moved through the \texttt{lseek()} system call. Finally, when the program is done with that file, it may explicitly close it by calling \texttt{close()}, and have its contents flushed to the underlying device.
 
+% File system system calls: manipulating the file system.
+Files are organized hierarchically, in a tree-like structure, and are uniquely identified by their pathnames. Programs may refer to them either by using an absolute pathname, which starts in the root directory; or by using an relative pathname, that is relative to the current working directory of the program. Programs may change their current working directory by invoking \texttt{chdir()}. Alternatively, users can create links to files by calling \texttt{link()}, and then refer to the linked file by referring to the link. Links may be destroyed through the \texttt{unlink()} system call.
+
+% File system system calls: file permissions.
+Every file in the system has a owner user and a 9-bit flag assigned to it. These flags state what are the permissions to read, write and execute it, for the owner user, the owner's group users and all other users. If a program wants to read, write, or execute a file, it must have enough permissions to execute the desired permission. Programs may change the file ownership and permissions by calling \texttt{chown()} and \texttt{chmod()}, respectively. Users can query the ownership and access permissions of a file through the \texttt{stat()} system call.
 
 \begin{table}[b]
 \small
@@ -97,25 +102,18 @@ Files are high-level abstractions created for modeling resources, being primaril
 	\toprule
 	Category & System Call & Description \\
 	\midrule
-	\multirow{16}{*}{File System}        & \texttt{chdir}    & Changes the current working directory               \\
-	                                     & \texttt{close}    & Closes a file descriptor                            \\
-	                                     & \texttt{dup}      & Duplicates an opened file descriptor                \\
-	                                     & \texttt{fcntl}    & File control                                        \\
-	                                     & \texttt{link}     & Creates a new link to a file                        \\
-	                                     & \texttt{lseek}    & Moves the read/write file offset                    \\
-	                                     & \texttt{open}     & Opens a file descriptor                             \\
-	                                     & \texttt{read}     & Reads from a file                                   \\
-	                                     & \texttt{stat}     & Gets the status of a file                           \\
-	                                     & \texttt{sync}     & Schedules file system updates                       \\
-	                                     & \texttt{uname}    & Gets the name of the current system                 \\
-	                                     & \texttt{umask}    & Gets or sets the file mode creation mask            \\
-	                                     & \texttt{unlink}   & Removes a file                                      \\
-	                                     & \texttt{utime}    & Sets file access and modification times             \\
-	                                     & \texttt{ustat}    & Gets file system statistics                         \\
-	                                     & \texttt{write}    & Writes to a file                                    \\
-	\midrule
-	\multirow{2}{*}{Hardware Management} & \texttt{ioctl}    & Device control                                      \\
-	                                     & \texttt{shutdown} & Shutdowns the system                                \\
+	\multirow{12}{*}{File System}        & \texttt{chdir}    & Changes the current working directory               \\%
+	                                     & \texttt{close}    & Closes a file descriptor                            \\%
+	                                     & \texttt{chmod}    & Changes the file permissions                        \\%
+	                                     & \texttt{chown}    & Changes the file ownership                          \\%
+	                                     & \texttt{ioctl}    & Device control                                      \\%
+	                                     & \texttt{link}     & Creates a new link to a file                        \\%
+	                                     & \texttt{lseek}    & Moves the read/write file offset                    \\%
+	                                     & \texttt{open}     & Opens a file descriptor                             \\%
+	                                     & \texttt{read}     & Reads from a file                                   \\%
+	                                     & \texttt{stat}     & Gets the status of a file                           \\%
+	                                     & \texttt{unlink}   & Removes a file                                      \\%
+	                                     & \texttt{write}    & Writes to a file                                    \\%
 	\midrule
 	\multirow{2}{*}{Memory Management}   & \texttt{brk}      & Changes the amount of heap space allocated          \\
 	                                     & \texttt{execve}   & Executes a program                                  \\
@@ -134,10 +132,6 @@ Files are high-level abstractions created for modeling resources, being primaril
 	                                     & \texttt{setgid}   & Sets the group ID                                   \\
 	                                     & \texttt{signal}   & Signal management                                   \\
 	                                     & \texttt{wait}     & Waits for a child process                           \\
-	\midrule
-	\multirow{2}{*}{Security}            & \texttt{access}   & Checks user's permissions for a file                \\
-	                                     & \texttt{chmod}    & Changes the file permissions                        \\
-	                                     & \texttt{chown}    & Changes the file ownership                          \\
 	\bottomrule
 \end{tabular}
 \end{table}
