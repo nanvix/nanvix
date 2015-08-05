@@ -111,10 +111,10 @@ Files are organized hierarchically, in a tree-like structure, and are uniquely i
 Every file has a owner user and a 9-bit flag assigned to it. These flags state what are the read, write and execution permissions for the file, for the owner user, the owner's group users and all others. If a program wants to perform any of these operations it must have enough permissions to do it. The file ownership and permissions may be changed through the \texttt{chown()} and \texttt{chmod()} system calls, respectively, and users can query these information by calling \texttt{stat()}.
 
 % Process management system calls: dealing with processes.
-Processes are abstraction of running programs and play a central role in Nanvix. Programs may create new processes by calling \texttt{fork()}, which creates an exact copy of the current running process. The primal process is called the parent and the new process is called child, and they have the same code, stack and data segments, opened files, pending signals and execution flow, differing only differ in their ID number. Processes may query about their ID by calling \texttt{getpid()} and may change replace their core by another executable file through the \texttt{execve()} system call. When the process is done, it invokes \texttt{exit()} to relinquish all resources that it was using.
+Processes are abstraction of running programs and play a central role in Nanvix. Programs may create new processes by calling \texttt{fork()}, which creates an exact copy of the current running process. The primal process is called the parent and the new process is called child, and they have the same code, stack and data segments, opened files and execution flow, differing only differ in their ID number. Processes may query about their ID by calling \texttt{getpid()} and may change their core through the \texttt{execve()} system call. When the process is done, it invokes \texttt{exit()} to relinquish all resources that it was using.
 
 % Process management system calls: signals and synchronization.
-Processes may synchronize their activities using two approaches: through signals or synchronization primitives. In the former, the intend recipient process A first registers a callback function that will handle some specific signal, by calling \texttt{signal()}. If the process has nothing more to do than waiting for a signal to arrive, it may invoke \texttt{pause()} to block until such event happens. Later, another process may send a signal to A by calling \texttt{kill}, triggering the handler function in A. In the second approach, two processes may open a pipe, a dedicate communication channel, and effectively exchange data with one another. A process in one end of the pipe writes data to it, and in the other end a second processes reads data from the pipe, with the required producer-consumer synchronization being handled by the kernel.
+Processes may synchronize their activities using two approaches: through signals or synchronization primitives. In the former, the intend recipient process A first registers a callback function that will handle some specific signal, by calling \texttt{signal()}. If the process has nothing more to do than waiting for a signal to arrive, it may invoke \texttt{pause()} to block until such event happens. Later, another process may send a signal to A by calling \texttt{kill()}, triggering the handler function in A. In the second approach, two processes may open a pipe, a dedicate communication channel, and effectively exchange data with one another. A process in one end of the pipe writes data to it, and in the other end a second processes reads data from the pipe, with the required producer-consumer synchronization being handled by the kernel.
 
 \begin{table}[t]
 \small
@@ -152,8 +152,16 @@ Processes may synchronize their activities using two approaches: through signals
 \end{tabular}
 \end{table}
 
-
 \subsection{Hardware Requirements}
 \label{section: hardware requirements}
+
+% Target architecture.
+Nanvix has been primarily designed to target the x86 architecture. Nevertheless, thanks to the hardware abstraction layer, it may be easily ported to other platforms. Still, the new platform shall meet some requirements to enable this smooth transition.
+
+% Paging.
+First, paging shall be somehow supported, since the memory management subsystem relies on this feature to enable virtual memory. Additionally, the hardware shall provide a protection mechanism that would point out whether a page fault has been caused due to a missing page or to a permission violation. Nanvix uses this information to easy the creation of new processes through copy-on-write.
+
+% Interrupts
+Second, the hardware shall support interrupts, because Nanvix a preemptive system. More precisely, the hardware shall provide some clock device that would generate interrupts at regular time intervals. The scheduler completely relies on this feature, and the system would not even boot without it, because it would got stuck in the idle process. Additionally, the hardware should offer a mechanism to enable and disable interrupts. The kernel uses this to achieve mutual exclusion on critical regions, and thus avoid race conditions.
 
 \end{document}
