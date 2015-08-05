@@ -93,7 +93,13 @@ Files are organized hierarchically, in a tree-like structure, and are uniquely i
 % File system system calls: file permissions.
 Every file in the system has a owner user and a 9-bit flag assigned to it. These flags state what are the permissions to read, write and execute it, for the owner user, the owner's group users and all other users. If a program wants to read, write, or execute a file, it must have enough permissions to execute the desired permission. Programs may change the file ownership and permissions by calling \texttt{chown()} and \texttt{chmod()}, respectively. Users can query the ownership and access permissions of a file through the \texttt{stat()} system call.
 
-\begin{table}[b]
+% Process management system calls: dealing with processes.
+Processes are abstraction of running programs and play a central role in Nanvix. Programs may create new processes by calling \texttt{fork()}, which creates an exact copy of the current running process. The primal process is called the parent and the new process is called child, and they have the same core\footnote{code, stack and data segments}, opened files, pending signals and execution flow, differing only differ in their ID number. Processes may query about their ID by calling \texttt{getpid()} and may change replace their core by another executable file through the \texttt{execve()} system call. When the process is done, it invokes \texttt{exit()} to relinquish all resources that it was using.
+
+% Process management system calls: signals and synchronization.
+Processes may synchronize their activities using two approaches: through signals or synchronization primitives. In the former, the intend recipient process A first registers a callback function that will handle some specific signal, by calling \texttt{signal()}. If the process has nothing more to do than waiting for a signal to arrive, it may invoke \texttt{pause()} to block until such event happens. Later, another process may send a signal to A by calling \texttt{kill}, triggering the handler function in A. In the second approach, two processes may open a pipe, a dedicate communication channel, and effectively exchange data with one another. A process in one end of the pipe writes data to it, and in the other end a second processes reads data from the pipe, with the required producer-consumer synchronization being handled by the kernel.
+
+\begin{table}[h]
 \small
 \centering
 \caption{Most relevant system calls that are present in Nanvix.}
@@ -115,23 +121,14 @@ Every file in the system has a owner user and a 9-bit flag assigned to it. These
 	                                     & \texttt{unlink}   & Removes a file                                      \\%
 	                                     & \texttt{write}    & Writes to a file                                    \\%
 	\midrule
-	\multirow{2}{*}{Memory Management}   & \texttt{brk}      & Changes the amount of heap space allocated          \\
-	                                     & \texttt{execve}   & Executes a program                                  \\
-	\midrule
-	\multirow{14}{*}{Process Management} & \texttt{alarm}    & Schedules an alarm signal                           \\
-	                                     & \texttt{exit}     & Terminates the current process                      \\
-	                                     & \texttt{fork}     & Creates a new process                               \\
-	                                     & \texttt{getgid}   & Gets the group ID                                   \\
-	                                     & \texttt{getpid}   & Gets the process ID                                 \\
-	                                     & \texttt{getppid}  & Gets the parent process ID                          \\
-	                                     & \texttt{kill}     & Sends a signal to a process or a group of processes \\
-	                                     & \texttt{nice}     & Change the scheduling priority of a process         \\
-	                                     & \texttt{pause}    & Suspends the process until a signal is received     \\
+	\multirow{7}{*}{Process Management}  & \texttt{execve}   & Executes a program                                  \\%
+	                                     & \texttt{exit}     & Terminates the current process                      \\%
+	                                     & \texttt{fork}     & Creates a new process                               \\%
+	                                     & \texttt{getpid}   & Gets the process ID                                 \\%
+	                                     & \texttt{kill}     & Sends a signal to a process or a group of processes \\%
+	                                     & \texttt{pause}    & Suspends the process until a signal is received     \\%
 	                                     & \texttt{pipe}     & Creates an interprocess communication channel       \\
-	                                     & \texttt{times}    & Gets the process times                              \\
-	                                     & \texttt{setgid}   & Sets the group ID                                   \\
-	                                     & \texttt{signal}   & Signal management                                   \\
-	                                     & \texttt{wait}     & Waits for a child process                           \\
+	                                     & \texttt{signal}   & Signal management                                   \\%
 	\bottomrule
 \end{tabular}
 \end{table}
