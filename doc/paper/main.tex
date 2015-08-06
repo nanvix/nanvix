@@ -28,6 +28,9 @@
 % References.
 \usepackage[backend=biber]{biblatex}
 
+% Booksmarks.
+\usepackage[bookmarks=true,hidelinks]{hyperref}
+
 % Tables.
 \usepackage{booktabs}
 \usepackage{multirow}
@@ -73,7 +76,7 @@ The kernel presents a monolithic architecture, and it is structured in four subs
 The memory management subsystem provides a flat virtual memory abstraction to the system. It does so by having two modules working together: the swapping and virtual memory modules. The swapping module deals with paging, keeping in memory those pages that are more frequently used and swapping out to disk those that are not. The virtual memory system, on the other hand, relies on the paging module to manage higher-level abstractions called memory regions, and thus enable advanced features such as shared memory regions, on-demand loading, lazy coping and memory pinning.
 
 % Process management system.
-The process management system handles creation, destruction, scheduling, synchronization and communication of processes. Processes are single thread entities and are created on demand, either by the system itself or the user. Scheduling is based on preemption and happens in userland whenever a process runs out of quantum or blocks awaiting for a resource. In kernel land, on the other hand, processes run in nonpreemptive mode and scheduling occurs only when a processes voluntarily relinquishes the processor. Finally, processes many synchronize their activities using semaphores, and communicate with one another through pipes and shared memory regions.
+The process management system handles creation, termination, scheduling, synchronization and communication of processes. Processes are single thread entities and are created on demand, either by the system itself or the user. Scheduling is based on preemption and happens in userland whenever a process runs out of quantum or blocks awaiting for a resource. In kernel land, on the other hand, processes run in nonpreemptive mode and scheduling occurs only when a processes voluntarily relinquishes the processor. Finally, processes many synchronize their activities using semaphores, and communicate with one another through pipes and shared memory regions.
 
 % File system.
 The file system provides a uniform interface for dealing with resources. It extends the device driver interface and creates on top of it the file abstraction. Files can be accessed through a unique pathname, and may be shared among several processes transparently.   The file system is compatible with the one present in the Minix 1 operating system, it adopts an hierarchical inode structure, and supports mounting points and disk block caching.
@@ -163,5 +166,62 @@ First, paging shall be somehow supported, since the memory management subsystem 
 
 % Interrupts
 Second, the hardware shall support interrupts, because Nanvix a preemptive system. More precisely, the hardware shall provide some clock device that would generate interrupts at regular time intervals. The scheduler completely relies on this feature, and the system would not even boot without it, getting stuck on the idle process. Additionally, the hardware should also offer a mechanism to enable and disable interrupts. The kernel uses this to achieve mutual exclusion on critical regions, and thus avoid race conditions.
+
+\section{Process Management}
+
+% Section overview.
+In this section, we take a close look in the process management subsystem. We start by first presenting the process structure itself; then highlighting how process scheduling and switching happens; and finally discussing the main mechanisms offered by this subsystem.
+
+\subsection{The Process Structure}
+
+% Process abstraction overview.
+A process is an abstraction of a running program. It depicts the memory core, opened files, execution flow, access permissions, current state and every other relevant information about a program. Table \ref{table: process structure} outlines the (simplified) structure of a process in Nanvix. The information about all processes is kept in a kernel table, named the process table, and it is visible to all subsystems.
+
+\begin{table}[h]
+\footnotesize
+\centering
+\caption{Simplified structure of a process in Nanvix.}
+\label{table: process structure}
+\begin{tabular}{l l l}
+	\toprule
+	Category & Field & Description \\
+	\midrule
+	\multirow{3}{*}{\specialcell{Context Switch\\Information}} & \texttt{kesp}   & Kernel Stack pointer \\
+	                                                           & \texttt{kstack} & Kernel Stack         \\
+	                                                           & \texttt{intlvl} & Interrupt Level      \\
+	\midrule
+	\multirow{3}{*}{\specialcell{File System\\Information}} & \texttt{pwd}    & Current Working Directory \\
+	                                                        & \texttt{ofiles} & Opened Files              \\	
+	                                                        & \texttt{tty}    & Output Terminal Device    \\
+	\midrule
+	\multirow{2}{*}{\specialcell{General\\Information}} & \texttt{status} & Exit status                                          \\
+	                                                    & \texttt{pid}, \texttt{gid}, \texttt{uid} & Process, group and user IDs \\
+	\midrule
+	\multirow{2}{*}{\specialcell{Memory\\Information}} & \texttt{pregs} & Code, data, stack and heap segment regions \\
+	                                                   & \texttt{pgdir} & Page directory       \\
+	\midrule
+	\multirow{4}{*}{\specialcell{Scheduling\\Information}} & \texttt{state}    & Current state       \\
+	                                                       & \texttt{counter}  & Remaining quantum   \\
+	                                                       & \texttt{nice}     & Priority adjustment \\	
+	                                                       & \texttt{priority} & Priority            \\
+	\midrule
+	\multirow{3}{*}{\specialcell{Signal\\Information}} & \texttt{received} & Received signals \\
+	                                                   & \texttt{handler}  & Signal handlers  \\
+	\midrule
+	\multirow{2}{*}{\specialcell{Timing\\Information}} & \texttt{utime} & User CPU Time   \\
+	                                                   & \texttt{ktime} & Kernel CPU Time \\
+	
+	\bottomrule
+\end{tabular}
+\end{table}
+
+% Process table maintenance.
+The process management subsystem maintains the process table. Whenever a new process is created, a new entry is added to it; and when a process terminates, its corresponding entry is erased. Nevertheless, each subsystem is in charge of maintaining its own fields in the process structure. For instance, the memory management subsystem is the one that fills up information regarding the segment regions and page directory, wheres the file system keeps track of the current working directory and opened files fields.
+
+\subsection{Process Scheduling and Switching}
+
+\subsection{Process Creation and Termination}
+
+\subsection{Process Communication and Synchronization}
 
 \end{document}
