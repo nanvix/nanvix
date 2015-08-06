@@ -216,7 +216,7 @@ A process is an abstraction of a running program. It depicts the memory core, op
 \end{table}
 
 % Process table maintenance.
-The process management subsystem maintains the process table. Whenever a new process is created, a new entry is added to it; and when a process terminates, its corresponding entry is erased. Nevertheless, each subsystem is in charge of maintaining its own fields in the process structure. For instance, the memory management subsystem is the one that fills up information regarding the segment regions and page directory, wheres the file system keeps track of the current working directory and opened files fields.
+The process management subsystem maintains the process table. Whenever a new process is created, a new entry is added to it; and when a process terminates, its corresponding entry is erased. Nevertheless, each subsystem is in charge of maintaining its own fields in the process structure. For instance, the memory management subsystem is the one that fills up information regarding the segment regions and page directory, whereas the file system keeps track of the current working directory and opened files fields.
 
 \subsection{Process Scheduling and Switching}
 
