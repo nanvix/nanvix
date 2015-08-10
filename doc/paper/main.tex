@@ -233,8 +233,8 @@ Initially this new processes is ready to execute (state 1), and it is eventually
 
 \subsection{Process Scheduling and Switching}
 
-% Process scheduling.
-%Several processes may be active in the system, but only one can be running at a time\footnote{Nanvix does not support multiprocessor systems, thus process are not indeed running in parallel.}. The scheduler chooses what process to run next whenever the running process either gets preempted, blocks awating for a resource, or terminates. When the new processes is selected, it is assigned a new quantum of time. When the process is running in user mode, this time is preempted and after that it gets preempted.
+% Process scheduling overview.
+Several processes may be active in the system, but only one can be running at a time\footnote{Nanvix does not support multiprocessor systems, thus processes are indeed not running in parallel.}. The scheduler chooses what process to run next whenever the running process gets preempted or blocks. In user mode, that happens when the running process runs out of quantum and gets preempted by the kernel, or it issues a system call. In kernel mode however, scheduling occurs only when the running process voluntarily relinquishes the processor and goes wait for a resource to be released.
 
 
 \subsection{Process Creation and Termination}
