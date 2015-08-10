@@ -219,7 +219,17 @@ A process is an abstraction of a running program. It depicts the memory core, op
 The process management subsystem maintains the process table. Whenever a new process is created, a new entry is added to it; and when a process terminates, its corresponding entry is erased. Nevertheless, each subsystem is in charge of maintaining its own fields in the process structure. For instance, the memory management subsystem is the one that fills up information regarding the segment regions and page directory, whereas the file system keeps track of the current working directory and opened files fields.
 
 % Process states.
-A process is created whenever a user launches a program, or the system itself spawns a new daemon. After that, the new process goes through a complex lifetime before it terminates (Figure (??)). Initially this new processes is ready to execute (state ??), and it is eventually selected to run by the scheduler, moving to state (??). At this moment, the process resumes back its execution in kernel land (state ??) and realizes that it should jump to userland, going to state ??. There, the process performs some computation, and it may either gets preempted if it runs out of quantum time, moving to state ??, or gets blocked waiting for a resource, going to state ??. Either way, the process later resumes its work, and loops back on these states. However, when the process finally gets his job done, or it somehow crashes, it terminates and becomes a zombie process (state ??). A zombie process awaits to gets all resources assigned to it to be taken away by the kernel, and then it is turned to a dead process (state ??).
+A process is created whenever a user launches a program or the system itself spawns a new daemon. After that, the new process goes through a complex lifetime before it terminates, as it is shown in Figure \ref{figure: states of a process in nanvix}.
+
+% State transitions
+Initially this new processes is ready to execute (state 1), and it is eventually selected to run by the scheduler. At this moment, the process resumes back its execution in kernel land (state 2) and jumps to userland (state 3). There, the process performs some computation, and it may either gets preempted if it runs out of quantum time (state 4), or gets blocked waiting for a resource (state 5). Either way, the process later resumes its work, and loops back on these states. However, when the process finally gets his job done, or it somehow crashes, it terminates and becomes a zombie process (state 6). A zombie process awaits to gets all resources assigned to it to be taken away by the kernel, and then it is turned to a dead process (state 7).
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=1.2]{img/process-states}
+	\caption{States of a process in Nanvix.}
+	\label{figure: states of a process in nanvix}
+\end{figure}
 
 \subsection{Process Scheduling and Switching}
 
