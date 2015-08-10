@@ -234,14 +234,16 @@ Initially this new processes is ready to execute (state 1), and it is eventually
 \subsection{Process Scheduling and Switching}
 
 % Process scheduling overview.
-Several processes may be active in the system, but only one can be running at a time\footnote{Nanvix does not support multiprocessor systems, thus processes are indeed not running in parallel.}. The scheduler chooses what process to run next whenever the running process gets preempted or blocks. In user mode, that happens when the running process runs out of quantum and gets preempted by the kernel, or when it issues a system call. In kernel mode however, scheduling occurs only when the running process voluntarily relinquishes the processor and goes wait for a resource to be released.
+Several processes may be active in the system, but only one can be running at a time\footnote{Nanvix does not support multiprocessor systems, thus processes are indeed not running in parallel.}. The scheduler chooses which process to run next whenever the running process gets preempted or blocks. In user mode, that happens when the running process runs out of quantum and gets preempted by the kernel, or when it issues a system call. In kernel mode however, scheduling occurs only when the running process voluntarily relinquishes the processor and goes wait for a resource to be released.
 
 % Scheduling policy.
 The scheduler uses a priority based criteria to choose the next process to run, with processes with higher priorities being scheduled to run before those with lower priorities\footnote{Nanvix adopts the Unix priority style, in which lower values mean higher priorities.}. Processes with equal priorities are chained in a queue and are selected in a round-robin fashion, as it is shown if Figure (??).
 
 % Priorities of a process.
-The priority of a process changes over the time and it is given by the sum of tree numbers: base priority; dynamic priority; and nice value. The base priority is assigned by the kernel itself and changes as the process sleeps and wakes up from resource queues, and leaves the kernel or enters it. The dynamic priority is increased by the scheduler as the process waits longer in the ready queue. Finally, the nice value is adjusted by the users, offering them a mechanism to control what processes are more priority over others.
+The priority of a process changes over the time and it is given by the sum of tree numbers: base priority; dynamic priority; and nice value. The base priority is assigned by the kernel itself and changes as the process sleeps and wakes up from resource queues, and leaves the kernel or enters it. The dynamic priority is increased by the scheduler as the process waits longer in the ready queue. Finally, the nice value is adjusted by the users, offering them a mechanism to control which processes are more priority over others.
 
+% Process switching.
+Once the scheduler choses which process to run next, it performs the context switching operation. It first pushes the contents of all machine registers in the kernel stack. Then, it instructs the memory management unit hardware to switch to the address space of the selected process. Finally, the state of the machine registers are restored from the kernel stack of the selected process. The context switching operation is machine dependent and it is actually carried on by the hardware abstraction layer.
 
 \subsection{Process Creation and Termination}
 
