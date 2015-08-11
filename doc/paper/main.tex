@@ -205,7 +205,7 @@ A process is an abstraction of a running program. It depicts the memory core, op
 	                                                       & \texttt{nice}     & Priority adjustment \\	
 	                                                       & \texttt{priority} & Priority            \\
 	\midrule
-	\multirow{3}{*}{\specialcell{Signal\\Information}} & \texttt{received} & Received signals \\
+	\multirow{2}{*}{\specialcell{Signal\\Information}} & \texttt{received} & Received signals \\
 	                                                   & \texttt{handler}  & Signal handlers  \\
 	\midrule
 	\multirow{2}{*}{\specialcell{Timing\\Information}} & \texttt{utime} & User CPU Time   \\
@@ -237,7 +237,7 @@ Initially this new processes is ready to execute (state 1), and it is eventually
 Several processes may be active in the system, but only one can be running at a time\footnote{Nanvix does not support multiprocessor systems, thus processes are indeed not running in parallel.}. The scheduler chooses which process to run next whenever the running process gets preempted or blocks. In user mode, that happens when the running process runs out of quantum and gets preempted by the kernel, or when it issues a system call. In kernel mode however, scheduling occurs only when the running process voluntarily relinquishes the processor and goes wait for a resource to be released.
 
 % Scheduling policy.
-The scheduler uses a priority based criteria to choose the next process to run, with processes with higher priorities being scheduled to run before those with lower priorities\footnote{Nanvix adopts the Unix priority style, in which lower values mean higher priorities.}. Processes with equal priorities are chained in a queue and are selected in a round-robin fashion, as it is shown if Figure \ref{figure: scheduler}.
+The scheduler uses a priority based criteria to choose the next process to run, with processes with higher priorities being scheduled to run before those with lower priorities\footnote{Nanvix adopts the Unix's priority system style, in which lower values mean higher priorities.}. Processes with equal priorities are chained in a queue and are selected in a round-robin fashion, as it is shown if Figure \ref{figure: scheduler}.
 
 % Priorities of a process.
 The priority of a process changes over the time and it is given by the sum of tree numbers: base priority, dynamic priority and nice value. The base priority is assigned by the kernel itself and changes as the process sleeps and wakes up from resource queues, and leaves the kernel or enters it. The dynamic priority is increased by the scheduler as the process waits longer in the ready queue. Finally, the nice value is adjusted by the users, offering them a mechanism to control which processes are more priority over others.
@@ -253,6 +253,12 @@ Once the scheduler choses which process to run next, it performs the context swi
 \end{figure}
 
 \subsection{Process Creation and Termination}
+
+% Process creation.
+In Nanvix, processes are created through the \texttt{fork()} system call. This call instructs the process management system to create a new process that is an exact copy of the calling process. The primal process is called the parent and the new process is called child, and they have the same code, stack and data segments, opened files and execution flow, differing only differ in their ID number. The \texttt{fork()} system call is a complex and expensive operation, and in order to get it done the process management subsystem heavily interacts with the memory management system and the file system.
+
+% fork() in a nutshell.
+First the kernel searches for an empty slot in the process table, to store there all the information about the new process. Then, a new address space for the child process is created: page tables are initialized, the kernel code and data segments are attached to the process' core, and a kernel stack for the process is created. After that, the kernel duplicates every memory region of the parent process and attaches them to the address space of the child process. In this operation, underlying pages are not actually copied, but they are rather linked and copied on demand. This technique, called copy-on-write, greatly speeds up the \texttt{fork()} system call, and it is covered in Section ??. Then, when the address space of the new process is built, file descriptors for all opened files are cloned, and every other information is handcrafted. Finally, the process management system marks the child process as new, so that the scheduler can properly handles this situation, and schedules it in the ready queue for later execution.
 
 \subsection{Process Communication and Synchronization}
 
