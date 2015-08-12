@@ -173,6 +173,7 @@ Second, the hardware shall support interrupts, because Nanvix a preemptive syste
 In this section, we take a close look in the process management subsystem. We start by first presenting the process structure itself; then highlighting how process scheduling and switching happens; and finally discussing the main mechanisms offered by this subsystem.
 
 \subsection{The Process Structure}
+\label{subsection: the process structure}
 
 % Process abstraction overview.
 A process is an abstraction of a running program. It depicts the memory core, opened files, execution flow, access permissions, current state and every other relevant information about a program. Table \ref{table: process structure} outlines the (simplified) structure of a process in Nanvix. The information about all processes is kept in a kernel table, named the process table, and it is visible to all subsystems.
@@ -259,6 +260,13 @@ In Nanvix, processes are created through the \texttt{fork()} system call. This c
 
 % fork() in a nutshell.
 First the kernel searches for an empty slot in the process table, to store there all the information about the new process. Then, a new address space for the child process is created: page tables are initialized, the kernel code and data segments are attached to the process' core, and a kernel stack for the process is created. After that, the kernel duplicates every memory region of the parent process and attaches them to the address space of the child process. In this operation, underlying pages are not actually copied, but they are rather linked and copied on demand. This technique, called copy-on-write, greatly speeds up the \texttt{fork()} system call, and it is covered in Section ??. Then, when the address space of the new process is built, file descriptors for all opened files are cloned, and every other information is handcrafted. Finally, the process management system marks the child process as new, so that the scheduler can properly handles this situation, and schedules it in the ready queue for later execution.
+
+% Process termination.
+The process then performs some computation and undergoes through a complex lifetime, which we depict in Section \ref{subsection: the process structure}. When the process finally finishes its job it invokes the \texttt{exit()} system call to terminate. This call orders the process management system to actually kill the process and release all resources that are assigned to it.
+
+% exit() in a nutshell.
+To do so, several steps are involved. First, the kernel masks out signals and closes all files that are still opened. After that, all child processes of the process that is about to terminate are assigned to a special process, called \texttt{init}\footnote{\texttt{init} is a daemon process whose job is to spawn the logging processes.}. This ensures that no process becomes orphan, and thus become unreachable by signals (see Section ??). Then, the kernel detaches all memory regions from the dying process and marks it as a zombie. At this moment, the dying process still has an address space and a slot in the process table, and it has no way to wipe off these information. The process then hands out this task to the parent process, and sends a death of child (\texttt{SIGCHLD}) to it. This signal cannot be 
+blocked or ignored, and it is eventually handled by the corresponding parent process. At this time, the parent process destroys the address space of its zombie child process, and marks the corresponding slot in the process table as not used.
 
 \subsection{Process Communication and Synchronization}
 
