@@ -279,4 +279,10 @@ When running in kernel land, processes often need to acquire and later release r
 % wait() in a nutshell.
 In userland, processes may coordinate their activities by through the \texttt{wait()} system call. This call causes a process to block until one of its child process terminates. When such event happens, the parent process is awaken and the exit status of the terminated child is made available to it. This information can be later parsed by the parent process and it is useful for determining why exactly its child process has terminated.
 
+% Process communication.
+All these mechanisms enable processes to syncrhonize their acitivities and friendly work together towards a common goal. Notwithstanding, they also have to somehow be able to communicate with one another to exhange valuable information about their progress. Nanvix offers two main mechanisms to do that: signals and pipes.
+
+% Signals in a nutshell.
+Signals are short messages that processes can send and receive assynchronously. They are mainly used to notify about the occurence of interesting events, such as that a process has to be killed, a remote terminal has hangup and a breakpoint has been reached. The process management subsystem exports two system calls to deal with signals: \texttt{signal()} and \texttt{kill()}. The former allows a process to actually control how signals shall be handled. A process can either choose to ignore a signal, and not be notified at all about it, or else handle a signal, by registering a callback function that will do the job. The \texttt{kill()} system call on the other hand, allows a process to raise a signal, either to another process or to itself. Additionally to these system calls, the kernel also provides a system call, named \texttt{pause()}, which allows process to wait for the receipt of a signal. Signals are implemented by having the kernel to instrument the user stack, carefully inserting hooks to the registered signal handlers in it.
+
 \end{document}
