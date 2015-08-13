@@ -271,9 +271,12 @@ blocked or ignored, and it is eventually handled by the corresponding parent pro
 \subsection{Process Synchronization and Communication}
 
 % Process synchronization.
-In Nanvix, processes may cooperate to one another to accomplish a common goal. To enable this, the kernel provides a set of synchronization primitives, so that processes can work together without messing up each other's job. In the current version of the system, four primitives are available: \texttt{sleep()}, \texttt{wakeup()}, \texttt{signal()} and \texttt{pause()}.
+In Nanvix, processes may cooperate to one another to accomplish a common goal. To enable this, the kernel provides a set of synchronization primitives, so that processes can work together without messing up each other's job. In the current version of the system, three primitives are available: \texttt{sleep()}, \texttt{wakeup()} and \texttt{wait()}.
 
 % sleep() and wakeup() in a nutshell.
 When running in kernel land, processes often need to acquire and later release resources, such as slots in the system's tables and some temporary memory. The \texttt{sleep()} and \texttt{wakeup()} routines are used under this situation to avoid race conditions in the kernel. The former puts the calling process to wait in a chain; whereas the later causes all processes that are sleeping in a process chain to be moved to the ready-to-execute scheduling queue. These routines support two different sleeping states: one that is interrupted by the receipt of signals, and another that is not. Thanks to this mechanism, users can interact with foreground processes, such as those that read/write to the terminal.
+
+% wait() in a nutshell.
+In userland, processes may coordinate their activities by through the \texttt{wait()} system call. This call causes a process to block until one of its child process terminates. When such event happens, the parent process is awaken and the exit status of the terminated child is made available to it. This information can be later parsed by the parent process and it is useful for determining why exactly its child process has terminated.
 
 \end{document}
