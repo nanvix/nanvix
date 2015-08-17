@@ -38,6 +38,9 @@
 \newcommand{\specialcell}[2][c]%
 {\begin{tabular}[#1]{@{}c@{}}#2\end{tabular}}
 
+% Dummy text.
+\usepackage{lipsum}
+
 \author{Pedro H. Penna}
 \title{The Nanvix Operating System}
 
@@ -290,9 +293,16 @@ Signals are useful for exchanging small amount of information. However, if proce
 \section{Memory Management}
 
 % Section overview.
-In this section, we detail the internals of the memory management subsystem. We first present the memory layout, then we introduce the memory region abstraction, and finally we detail the virtual memory and paging systems.
+In this section, we detail the internals of the memory management subsystem. We first present the memory layout of a process in Nanvix, then we introduce the memory region abstraction, and finally we detail the virtual memory and paging systems.
 
 \subsection{Memory Layout}
+
+\begin{figure}[t]
+	\centering
+	\includegraphics[scale=0.61]{img/memory-layout}
+	\caption{Virtual memory layout of a process in Nanvix.}
+	\label{figure: virtual memory layout}
+\end{figure}
 
 \subsection{Memory Regions}
 
