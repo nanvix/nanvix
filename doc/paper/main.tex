@@ -287,6 +287,19 @@ Signals are short messages that processes can send/receive asynchronously. They 
 % Pipes in a nutshell.
 Signals are useful for exchanging small amount of information. However, if processes want to carry on more verbose conversations, they can use pipes instead. A pipe is a virtual file that serves as a dedicated communication channel between two processes. At one end of the pipe, a writer process puts data on the pipe, and at the other end a reader processes takes data out from it. Processes can open pipes through the \texttt{pipe()} system call, and after that they can read/write data to it by using the \texttt{read()} and \texttt{write()} system calls, as they normally do. In all these operations, data transfers take place entirely in memory, with the kernel borrowing a page frame from the kernel page pool and pinning it in memory. Additionally, the kernel handles the required producer-consumer synchronization with the help of the \texttt{sleep()} and \texttt{wakeup()} routines.
 
+\section{Memory Management}
+
+% Section overview.
+In this section, we detail the internals of the memory management subsystem. We first present the memory layout, then we introduce the memory region abstraction, and finally we detail the virtual memory and paging systems.
+
+\subsection{Memory Layout}
+
+\subsection{Memory Regions}
+
+\subsection{The Virtual Memory System}
+
+\subsection{The Paging System}
+
 \printbibliography
 
 \end{document}
