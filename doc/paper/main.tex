@@ -297,6 +297,9 @@ In this section, we detail the internals of the memory management subsystem. We 
 
 \subsection{Memory Layout}
 
+% Memory layout overview.
+The virtual memory layout of typical process in Nanvix is presented in Figure \ref{figure: virtual memory layout}. The overall address space is divided in two great portions: one that is owned by the kernel and is shared among all processes; and a second one that is private and belongs to the process itself. The kernel is the only one that has full access to the address space of a process. While running in user mode, if a process touches any kernel memory, a protection fault is raised. This way, the kernel can isolate and protect itself against malicious software, thus increasing the system's security and reliability.
+
 \begin{figure}[t]
 	\centering
 	\includegraphics[scale=0.61]{img/memory-layout}
