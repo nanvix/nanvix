@@ -307,12 +307,19 @@ In this section, we detail the internals of the memory management subsystem. We 
 % Memory layout overview.
 The virtual memory layout of typical process in Nanvix is presented in Figure \ref{figure: virtual memory layout}. The overall address space is divided in two great portions: one that is owned by the kernel and is shared among all processes; and a second one that is private and belongs to the process itself. The kernel is the only one that has full access to the address space of a process. While running in user mode, if a process touches any kernel memory, a protection fault is raised. This way, the kernel can isolate and protect itself against malicious software, thus increasing the system's security and reliability.
 
-\begin{figure}[t]
+\begin{figure}[!b]
 	\centering
 	\includegraphics[scale=0.60]{img/memory-layout}
 	\caption{Virtual memory layout of a process in Nanvix.}
 	\label{figure: virtual memory layout}
 \end{figure}
+
+% Kernel code and data segments.
+The kernel address space is carefully handcrafted so that it looks as transparent as possible to user processes. The kernel code and data segments are placed to two different locations: identity mapped at the bottom of the memory, and virtually linked just after the user memory. Some operations performed by the kernel, like physical memory copy and context switching, require the virtual memory system to be shutdown momentarily. Placing the kernel code and data segments at the bottom of the memory, enables physical address access; whereas positioning the whole kernel just after user memory ensures that future enhancements on the kernel will not affect the user memory layout.
+
+% Kernel buffers, kernel page pool init ramdisk.
+The kernel buffers, kernel page pool and init ramdisk are accessed exclusively through virtual addresses. The kernel buffer area provides the file system with some temporary memory to hold disk data. The kernel page pool feeds the kernel memory allocator with some memory that will indeed be used to build dynamic structures in the kernel, such as page tables. Finally, the init ramdisk is a static memory area that functions as a in-memory file system and stores configuration files and (eventually) dynamic loadable drivers, which are all used during system's startup.
+
 
 \subsection{Memory Regions}
 
