@@ -320,6 +320,8 @@ The kernel address space is carefully handcrafted so that it looks as transparen
 % Kernel buffers, kernel page pool init ramdisk.
 The kernel buffers, kernel page pool and init ramdisk are accessed exclusively through virtual addresses. The kernel buffer area provides the file system with some temporary memory to hold disk data. The kernel page pool feeds the kernel memory allocator with some memory that will indeed be used to build dynamic structures in the kernel, such as page tables. Finally, the init ramdisk is a static memory area that functions as a in-memory file system and stores configuration files and (eventually) dynamic loadable drivers, which are all used during system's startup.
 
+% User memory layout.
+The user memory portion occupies most of the overall virtual address space and it is divided in several regions. The user code and data regions are statically allocated and hold the text and static data segments of the binary file, respectively. The user stack and heap regions on the other hand, dynamically grow and shrink with the course of time. The former is used to store temporary variables and it is managed by the kernel's memory management subsystem. The heap region however, holds long-term variables and it is handled by the process itself. User libraries rely on the \texttt{brk()} system call to request the kernel to attach, or detach, some memory to the heap.
 
 \subsection{Memory Regions}
 
