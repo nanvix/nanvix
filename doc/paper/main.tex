@@ -303,6 +303,7 @@ Signals are useful for exchanging small amount of information. However, if proce
 In this section, we detail the internals of the memory management subsystem. We first present the memory layout of a process in Nanvix, then we introduce the memory region abstraction, and finally we detail the virtual memory and paging systems.
 
 \subsection{Memory Layout}
+\label{subsection: memory layout}
 
 % Memory layout overview.
 The virtual memory layout of typical process in Nanvix is presented in Figure \ref{figure: virtual memory layout}. The overall address space is divided in two great portions: one that is owned by the kernel and is shared among all processes; and a second one that is private and belongs to the process itself. The kernel is the only one that has full access to the address space of a process. While running in user mode, if a process touches any kernel memory, a protection fault is raised. This way, the kernel can isolate and protect itself against malicious software, thus increasing the system's security and reliability.
@@ -324,6 +325,9 @@ The kernel buffers, kernel page pool and init ramdisk are accessed exclusively t
 The user memory portion occupies most of the overall virtual address space and it is divided in several regions. The user code and data regions are statically allocated and hold the text and static data segments of the binary file, respectively. The user stack and heap regions on the other hand, dynamically grow and shrink with the course of time. The former is used to store temporary variables and it is managed by the kernel's memory management subsystem. The heap region however, holds long-term variables and it is handled by the process itself. User libraries rely on the \texttt{brk()} system call to request the kernel to attach, or detach, some memory to the heap.
 
 \subsection{Memory Regions}
+
+% Memory regions in a nutshell.
+In Section \ref{subsection: memory layout} we have seen that the user memory portion of a process is divided in four regions, namely code, data stack and heap regions. A region is a high-level abstraction created by the memory subsystem to easy the management of user memory and abstract away the underlying techinique that is used to enable virtual memory (\ie segmentation, paging or hybrid). This abstraction is presented in Figure (??) and briefly discussed in the paragraphs below.
 
 \subsection{The Virtual Memory System}
 
