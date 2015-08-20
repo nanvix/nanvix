@@ -37,6 +37,8 @@ doc/*-kernel
 *.xml
 *.gz
 *.fdb_latexmk
+*.out
+*.dvi
 
 # Exceptions.
 !doc/paper/img/*.pdf
