@@ -336,8 +336,7 @@ In Section \ref{subsection: memory layout} we have seen that the user memory por
 From a design perspective, a memory region is indeed a collection of page tables\footnote{Nanvix has been formally designed to paging based systems, but the memory region concept equally applies to segment-based or hybrid-based machines.}, with some extra metainformation about the region itself. A table stores pointers to underlying page tables, which limits the maximum size of a region. The owner and group IDs, and access permissions fields are used to determine what processes can read or write to the memory region. Finally, the flags field indicate the growing direction of the region, wether or not the region can be swapped out to disk, and wether or not the region is shared among several processes.
 
 % Provided interface.
-The memory management subsystem maintains memory regions on a global table and exports a well to other subsystems a well defined interface for dealing with them. Some routines provided by this interface are listed in Table (??) and briefly detailed next. 
-
+The memory management subsystem maintains memory regions in a global table and exports a well defined interface for dealing with them. Some routines provided by this interface are listed in Table (??) and briefly detailed next. The \texttt{allocreg()} allocates a new memory region, by searching an empty slot in the memory regions table. Conversely, \texttt{freereg()} frees a region table by erasing the corresponding entry from the table. After a region has been created, \texttt{loadreg()} may be invoked to actually load it with some data, most likely from a binary file. 
 
 \subsection{The Virtual Memory System}
 
