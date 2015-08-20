@@ -38,6 +38,9 @@
 \newcommand{\specialcell}[2][c]%
 {\begin{tabular}[#1]{@{}c@{}}#2\end{tabular}}
 
+% Abbreviations.
+\newcommand{\ie}{\textit{ie.\ }}
+
 % Dummy text.
 \usepackage{lipsum}
 
@@ -327,7 +330,14 @@ The user memory portion occupies most of the overall virtual address space and i
 \subsection{Memory Regions}
 
 % Memory regions in a nutshell.
-In Section \ref{subsection: memory layout} we have seen that the user memory portion of a process is divided in four regions, namely code, data stack and heap regions. A region is a high-level abstraction created by the memory subsystem to easy the management of user memory and abstract away the underlying techinique that is used to enable virtual memory (\ie segmentation, paging or hybrid). This abstraction is presented in Figure (??) and briefly discussed in the paragraphs below.
+In Section \ref{subsection: memory layout} we have seen that the user memory portion of a process is divided in four regions, namely code, data, stack and heap regions. A region is a high-level abstraction created by the memory subsystem to easy the management of user memory and abstract away the underlying techinique that is used to enable virtual memory (\ie segmentation, paging or hybrid). This abstraction is presented in Figure (??) and briefly discussed bellow.
+
+% Memory regions in a paging system.
+From a design perspective, a memory region is indeed a collection of page tables\footnote{Nanvix has been formally designed to paging based systems, but the memory region concept equally applies to segment-based or hybrid-based machines.}, with some extra metainformation about the region itself. A table stores pointers to underlying page tables, which limits the maximum size of a region. The owner and group IDs, and access permissions fields are used to determine what processes can read or write to the memory region. Finally, the flags field indicate the growing direction of the region, wether or not the region can be swapped out to disk, and wether or not the region is shared among several processes.
+
+% Provided interface.
+The memory management subsystem maintains memory regions on a global table and exports a well to other subsystems a well defined interface for dealing with them. Some routines provided by this interface are listed in Table (??) and briefly detailed next. 
+
 
 \subsection{The Virtual Memory System}
 
