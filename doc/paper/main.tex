@@ -340,11 +340,13 @@ The user memory portion occupies most of the overall virtual address space and i
 In Section \ref{subsection: memory layout} we have seen that the user memory portion of a process is divided in four regions, namely code, data, stack and heap regions. A region is a high-level abstraction created by the memory subsystem to easy the management of user memory and abstract away the underlying techinique that is used to enable virtual memory (\ie segmentation and paging). This abstraction is presented in Figure \ref{figure: memory region} and briefly discussed bellow.
 
 % Memory regions in a paging system.
-From a design perspective, a memory region is indeed a collection of page tables\footnote{Nanvix has been formally designed to paging based systems, but the memory region concept equally applies to segment-based or hybrid-based machines.}, with some extra metainformation about the region itself. A table stores pointers to underlying page tables, which limits the maximum size of a region. The owner and group IDs, and access permissions fields are used to determine what processes can read or write to the memory region. Finally, the flags field indicate the growing direction of the region, wether or not the region can be swapped out to disk, and wether or not the region is shared among several processes.
+From a design perspective, a memory region is indeed a collection of page tables\footnote{Nanvix has been formally designed to paging based systems. Nevertheless, the memory region abstraction equally applies to segment-based platforms.}, with some extra metainformation about the region itself. Pointers to underlying page tables are stored in a table, so that the virtual memory system can quickly retrieve low-level information about pages in that region. The owner and group IDs, and access permissions fields are used together to determine what processes can read or write to the memory region. Finally, the flags field indicate the growing direction of the region, whether or not the region can be swapped out to disk, and whether or not the region is shared among several processes.
 
+% Provided interface #1.
+The memory management subsystem maintains memory regions in a global table and exports a well defined interface for dealing with them. Some routines provided by this interface are listed in Table \ref{table: memory region interface} and briefly detailed next. The \texttt{allocreg()} allocates a new memory region, by searching an empty slot in the memory regions table and properly initializing its fields. It is important to point out however, that underlying pages are not actually allocated to the memory region at this moment, but they are rather allocated on demand (see Section \ref{subsection: the virtual memory system}.
 
-% Provided interface.
-The memory management subsystem maintains memory regions in a global table and exports a well defined interface for dealing with them. Some routines provided by this interface are listed in Table \ref{table: memory region interface} and briefly detailed next. The \texttt{allocreg()} allocates a new memory region, by searching an empty slot in the memory regions table and properly initializing it. Conversely, \texttt{freereg()} frees a region table by releasing underlying page tables and erasing the corresponding entry from the memory regions table. The \texttt{loadreg()} routine is used to load a newly created region with some data from a binary file. This routine internally invokes raw I/O procedures exported by the file system to actually find the corresponding inode and perform the read operation. Finally, the \texttt{attachreg()} and \texttt{detachreg()} routines attach and detach a memory region to the address space of a process, respectively. They do so by effectively linking/unlinking the underlying page tables to the page directory of a process.
+% Provided interface #2.
+Conversely, \texttt{freereg()} frees a region table by releasing underlying page tables and erasing the corresponding entry from the memory regions table. The \texttt{loadreg()} routine is used to load a newly created region with some data from a binary file. This routine internally invokes raw I/O procedures exported by the file system to actually find the corresponding inode and perform the read operation. Finally, the \texttt{attachreg()} and \texttt{detachreg()} routines attach and detach a memory region to the address space of a process, respectively. They do so by effectively linking/unlinking the underlying page tables to the page directory of a process.
 
 \begin{table}[!t]
 \small
@@ -364,6 +366,7 @@ The memory management subsystem maintains memory regions in a global table and e
 \end{table}
 
 \subsection{The Virtual Memory System}
+\label{subsection: the virtual memory system}
 
 \subsection{The Paging System}
 
