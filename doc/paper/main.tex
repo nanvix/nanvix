@@ -358,6 +358,23 @@ The \texttt{loadreg()} routine is used to load a region with some data from a bi
 \subsection{The Virtual Memory and Paging Systems}
 \label{subsection: the virtual memory and paging systems}
 
+% Virtual memory system overview.
+While the memory management system exports the memory region interface to other system modules, internally it works with paging and swapping to enable virtual memory. The former technique delivers a flat memory abstraction, whereas the latter effectively enables the physical memory to be virtually extended.
+
+% Paging system overview.
+The paging system relies on a two-level page table that is depicted in Figure (??) and detailed next. Each process has a single page directory, and each entry in this directory in turn points to a page table. Whenever a virtual address is generated, the memory management unit (MMU) breaks it in three portions. The upper portion is used to index the currently active page directory, and thus to find out the corresponding page table. Then, the middle portion is used to index the page table, and hence to discover the physical frame where the requested page is placed. Finally, the third portion is added to the address of the memory frame to build the ultimate target physical address.
+
+% Paging system internals.
+%The memory management system intentionally keeps the page directory of all process in kernel memory, carefully bookkeeps physical addresses of these structures and finally pins down in memory all underlying memory frames. This way, the kernel can access any address space from whatever processes, handle physical memory copying; and do not run into troubles whiles
+
+% Demand paging.
+
+% Copy-on-write.
+
+% Page eviction.
+
+% Swapping.
+
 \printbibliography
 
 \end{document}
