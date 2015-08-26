@@ -365,9 +365,12 @@ While the memory management system exports the memory region interface to other 
 The paging system relies on a two-level page table that is depicted in Figure (??) and detailed next. Each process has a single page directory, and each entry in this directory in turn points to a page table. Whenever a virtual address is generated, the memory management unit (MMU) breaks it in three portions. The upper portion is used to index the currently active page directory, and thus to find out the corresponding page table. Then, the middle portion is used to index the page table, and hence to discover the physical frame where the requested page is placed. Finally, the third portion is added to the address of the memory frame to build the ultimate target physical address.
 
 % Paging system internals.
-Page directories and page tables of all processes are pinned down in kernel memory, and the paging system carefully bookkeeps physical addresses of these structures by actually using the kernel page pool to allocate them. This way, the kernel can access any address space from whatever process is running, handle physical memory copying, and step away from live locks when performing swapping.
+Page directories and page tables of all processes are pinned down in kernel memory, and the paging system carefully bookkeeps the physical addresses of these structures. This way, the kernel can access any address space from whatever process is running, handle physical memory copying, and step away from live locks when performing swapping.
 
-% Demand paging and copy-on-write.
+% Demand paging.
+Aside from managing page directories and page tables, the paging system also implements two fundamental mechanisms: demand paging and copy-on-write. The former is extensively used in the \texttt{exec()} system call and work as follows. Whenever an executable file needs to be loaded to memory, the paging system does not copy any data from disk nor allocate any space in memory at first. Instead, it marks all corresponding entries in the page table as ``not present, demanded paging''. Later, when a attempt to access an address that falls in such kind of page is made, a page fault occurs, and then the paging system allocates a frame to that page and loads it to memory. 
+
+% Copy-on-write.
 
 % Page eviction.
 
