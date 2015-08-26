@@ -365,11 +365,9 @@ While the memory management system exports the memory region interface to other 
 The paging system relies on a two-level page table that is depicted in Figure (??) and detailed next. Each process has a single page directory, and each entry in this directory in turn points to a page table. Whenever a virtual address is generated, the memory management unit (MMU) breaks it in three portions. The upper portion is used to index the currently active page directory, and thus to find out the corresponding page table. Then, the middle portion is used to index the page table, and hence to discover the physical frame where the requested page is placed. Finally, the third portion is added to the address of the memory frame to build the ultimate target physical address.
 
 % Paging system internals.
-%The memory management system intentionally keeps the page directory of all process in kernel memory, carefully bookkeeps physical addresses of these structures and finally pins down in memory all underlying memory frames. This way, the kernel can access any address space from whatever processes, handle physical memory copying; and do not run into troubles whiles
+Page directories and page tables of all processes are pinned down in kernel memory, and the paging system carefully bookkeeps physical addresses of these structures by actually using the kernel page pool to allocate them. This way, the kernel can access any address space from whatever process is running, handle physical memory copying, and step away from live locks when performing swapping.
 
-% Demand paging.
-
-% Copy-on-write.
+% Demand paging and copy-on-write.
 
 % Page eviction.
 
