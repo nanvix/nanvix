@@ -170,14 +170,103 @@ static int io_test(void)
  *============================================================================*/
 
 /**
- * @brief Scheduling testing module.
+ * @brief Performs some dummy CPU-intensive computation.
+ */
+static void work_cpu(void)
+{
+	int c;
+	
+	c = 0;
+		
+	/* Perform some computation. */
+	for (int i = 0; i < 4096; i++)
+	{
+		int a = 1 + i;
+		for (int b = 2; b < i; b++)
+		{
+			if ((i%b) == 0)
+				a += b;
+		}
+		c += a;
+	}
+}
+
+/**
+ * @brief Performs some dummy IO-intensive computation.
+ */
+static void work_io(void)
+{
+	int fd;       /* File descriptor. */
+	char *buffer; /* Buffer.          */
+	
+	/* Allocate buffer. */
+	buffer = malloc(MEMORY_SIZE);
+	if (buffer == NULL)
+		exit(EXIT_FAILURE);
+	
+	/* Open hdd. */
+	fd = open("/dev/hdd", O_RDONLY);
+	if (fd < 0)
+		exit(EXIT_FAILURE);
+	
+	/* Read hdd. */
+	if (read(fd, buffer, MEMORY_SIZE) != MEMORY_SIZE)
+		exit(EXIT_FAILURE);
+	
+	/* House keeping. */
+	free(buffer);
+	close(fd);
+}
+
+
+/**
+ * @brief Scheduling test 0.
+ * 
+ * @details Spawns two processes and tests wait() system call.
+ * 
+ * @return Zero if passed on test, and non-zero otherwise.
+ */
+static int sched_test0(void)
+{
+	pid_t pid;         /* Child process ID.   */
+	struct tms timing; /* Timing information. */
+	clock_t t0, t1;    /* Elapsed times.      */
+	
+	t0 = times(&timing);
+	
+	pid = fork();
+	
+	/* Failed to fork(). */
+	if (pid < 0)
+		return (-1);
+	
+	/* Child process. */
+	else if (pid == 0)
+	{
+		work_cpu();
+		exit(EXIT_SUCCESS);
+	}
+	
+	wait(NULL);
+	
+	t1 = times(&timing);
+	
+	/* Print timing statistics. */
+	if (flags & VERBOSE)
+		printf("  Elapsed: %d\n", t1 - t0);
+	
+	return (0);
+}
+
+/**
+ * @brief Scheduling test 2.
  * 
  * @details Forces the priority inversion problem, to check how well the system
  *          performs on dynamic priorities.
  * 
  * @returns Zero if passed on test, and non-zero otherwise.
  */
-static int sched_test(void)
+static int sched_test2(void)
 {
 	pid_t pid;         /* Child process ID.   */
 	struct tms timing; /* Timing information. */
@@ -194,50 +283,15 @@ static int sched_test(void)
 	/* Parent process. */
 	else if (pid > 0)
 	{
-		int c;
-		
-		nice(0);
-		
-		/* Perform some computation. */
-		c = 0;
-		for (int i = 0; i < 1024; i++)
-		{
-			int a = 1 + i;
-			for (int b = 2; b < i; b++)
-			{
-				if ((i%b) == 0)
-					a += b;
-			}
-			c += a;
-		}
+		nice(-2*NZERO);
+		work_cpu();
 	}
 	
 	/* Child process. */
 	else
 	{
-		int fd;       /* File descriptor. */
-		char *buffer; /* Buffer.          */
-		
 		nice(2*NZERO);
-		
-		/* Allocate buffer. */
-		buffer = malloc(MEMORY_SIZE);
-		if (buffer == NULL)
-			exit(EXIT_FAILURE);
-		
-		/* Open hdd. */
-		fd = open("/dev/hdd", O_RDONLY);
-		if (fd < 0)
-			exit(EXIT_FAILURE);
-		
-		/* Read hdd. */
-		if (read(fd, buffer, MEMORY_SIZE) != MEMORY_SIZE)
-			exit(EXIT_FAILURE);
-		
-		/* House keeping. */
-		free(buffer);
-		close(fd);
-		
+		work_io();
 		exit(EXIT_SUCCESS);
 	}
 		
@@ -288,21 +342,26 @@ int main(int argc, char **argv)
 		if (!strcmp(argv[i], "io"))
 		{
 			printf("I/O Test\n");
-			printf("  Result:  [%s]\n", (!io_test()) ? "PASSED" : "FAILED");
+			printf("  Result:             [%s]\n", 
+				(!io_test()) ? "PASSED" : "FAILED");
 		}
 		
 		/* Swapping test. */
 		else if (!strcmp(argv[i], "swp"))
 		{
 			printf("Swapping Test\n");
-			printf("  Result:  [%s]\n", (!swap_test()) ? "PASSED" : "FAILED");
+			printf("  Result:             [%s]\n",
+				(!swap_test()) ? "PASSED" : "FAILED");
 		}
 		
 		/* Scheduling test. */
 		else if (!strcmp(argv[i], "sched"))
 		{
-			printf("Scheduling Test\n");
-			printf("  Result:  [%s]\n", (!sched_test()) ? "PASSED" : "FAILED");
+			printf("Scheduling Tests\n");
+			printf("  waiting for child:  [%s]\n",
+				(!sched_test0()) ? "PASSED" : "FAILED");
+			printf("  dynamic priorities:  [%s]\n",
+				(!sched_test2()) ? "PASSED" : "FAILED");
 		}
 	
 		/* Wrong usage. */
