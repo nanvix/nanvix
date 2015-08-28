@@ -196,25 +196,22 @@ static void work_cpu(void)
  */
 static void work_io(void)
 {
-	int fd;       /* File descriptor. */
-	char *buffer; /* Buffer.          */
-	
-	/* Allocate buffer. */
-	buffer = malloc(MEMORY_SIZE);
-	if (buffer == NULL)
-		exit(EXIT_FAILURE);
+	int fd;            /* File descriptor. */
+	char buffer[2048]; /* Buffer.          */
 	
 	/* Open hdd. */
 	fd = open("/dev/hdd", O_RDONLY);
 	if (fd < 0)
 		exit(EXIT_FAILURE);
 	
-	/* Read hdd. */
-	if (read(fd, buffer, MEMORY_SIZE) != MEMORY_SIZE)
-		exit(EXIT_FAILURE);
+	/* Read data. */
+	for (size_t i = 0; i < MEMORY_SIZE; i += sizeof(buffer))
+	{
+		if (read(fd, buffer, sizeof(buffer)) != MEMORY_SIZE)
+			exit(EXIT_FAILURE);
+	}
 	
 	/* House keeping. */
-	free(buffer);
 	close(fd);
 }
 
@@ -360,7 +357,7 @@ int main(int argc, char **argv)
 			printf("Scheduling Tests\n");
 			printf("  waiting for child:  [%s]\n",
 				(!sched_test0()) ? "PASSED" : "FAILED");
-			printf("  dynamic priorities:  [%s]\n",
+			printf("  dynamic priorities: [%s]\n",
 				(!sched_test2()) ? "PASSED" : "FAILED");
 		}
 	
