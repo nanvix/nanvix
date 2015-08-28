@@ -383,7 +383,7 @@ The second mechanism, namely copy-on-write, is heavily employed in the \texttt{f
 % Swapping system overview.
 So far, we have detailed the internals of the paging system, which delivers a flat memory abstraction to the whole system, but now it is time to turn our attentions to the swapping system. The ultimate goal of this later one is to keep in memory those pages that are more frequently used, and use some disk space to store those that are not. This way, it is possible to execute a process whose memory footprint is larger than the physical memory available. In other words, the physical memory is virtual extended, enabling the maximum memory footprint of a process to be bounded by the size of the virtual address space, rather than the physical one.
 
-% Page allocation and eviction.
+% Page eviction.
 To achieve such goal, the swapping system relies on a First-in-First-out (FiFo) strategy to evict pages to disk. For each in-memory page, the swapping system bookkeeps the timestamp in which that page has been brought into memory. Whenever the swapper is invoked, the page that has the oldest timestamp is selected and it is evicted to the swapping area, in disk. When a page is brought in to memory from the swapping area, a shadow copy is kept there, so that if no modifications are done to that page, no extra I/O operation needs to carry on. As a final remark, it is worthy to point out that the swapping system selects pages using a local-policy, and it implements no load control mechanism that would prevent a user from hugging all memory for himself. 
 
 \printbibliography
