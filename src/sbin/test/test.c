@@ -422,9 +422,8 @@ int main(int argc, char **argv)
 				(!sched_test0()) ? "PASSED" : "FAILED");
 			printf("  dynamic priorities: [%s]\n",
 				(!sched_test1()) ? "PASSED" : "FAILED");
-			if (0){
 			printf("  scheduler stress:   [%s]\n",
-				(!sched_test2()) ? "PASSED" : "FAILED");}
+				(!sched_test2()) ? "PASSED" : "FAILED");
 		}
 	
 		/* Wrong usage. */
