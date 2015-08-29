@@ -21,6 +21,7 @@
 #include <sys/times.h>
 #include <sys/wait.h>
 #include <stdio.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -202,19 +203,18 @@ static void work_io(void)
 	/* Open hdd. */
 	fd = open("/dev/hdd", O_RDONLY);
 	if (fd < 0)
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	
 	/* Read data. */
 	for (size_t i = 0; i < MEMORY_SIZE; i += sizeof(buffer))
 	{
-		if (read(fd, buffer, sizeof(buffer)) != MEMORY_SIZE)
-			exit(EXIT_FAILURE);
+		if (read(fd, buffer, sizeof(buffer)) < 0)
+			_exit(EXIT_FAILURE);
 	}
 	
 	/* House keeping. */
 	close(fd);
 }
-
 
 /**
  * @brief Scheduling test 0.
@@ -241,7 +241,7 @@ static int sched_test0(void)
 	else if (pid == 0)
 	{
 		work_cpu();
-		exit(EXIT_SUCCESS);
+		_exit(EXIT_SUCCESS);
 	}
 	
 	wait(NULL);
@@ -256,14 +256,14 @@ static int sched_test0(void)
 }
 
 /**
- * @brief Scheduling test 2.
+ * @brief Scheduling test 1.
  * 
  * @details Forces the priority inversion problem, to check how well the system
  *          performs on dynamic priorities.
  * 
  * @returns Zero if passed on test, and non-zero otherwise.
  */
-static int sched_test2(void)
+static int sched_test1(void)
 {
 	pid_t pid;         /* Child process ID.   */
 	struct tms timing; /* Timing information. */
@@ -289,10 +289,73 @@ static int sched_test2(void)
 	{
 		nice(2*NZERO);
 		work_io();
-		exit(EXIT_SUCCESS);
+		_exit(EXIT_SUCCESS);
 	}
 		
 	wait(NULL);
+	
+	t1 = times(&timing);
+	
+	/* Print timing statistics. */
+	if (flags & VERBOSE)
+		printf("  Elapsed: %d\n", t1 - t0);
+	
+	return (0);
+}
+
+/**
+ * @brief Scheduling test 1.
+ * 
+ * @details Spawns several processes and stresses the scheduler.
+ * 
+ * @returns Zero if passed on test, and non-zero otherwise.
+ */
+static int sched_test2(void)
+{
+	pid_t pid[4];      /* Child process ID.    */
+	struct tms timing; /* Timing information.  */
+	clock_t t0, t1;    /* Elapsed times.       */
+	
+	t0 = times(&timing);
+	
+	for (int i = 0; i < 4; i++)
+	{
+		pid[i] = fork();
+	
+		/* Failed to fork(). */
+		if (pid[i] < 0)
+			return (-1);
+		
+		/* Child process. */
+		else if (pid[i] == 0)
+		{
+			if (i & 1)
+			{
+				nice(2*NZERO);
+				work_cpu();
+				_exit(EXIT_SUCCESS);
+			}
+			
+			else
+			{	
+				nice(-2*NZERO);
+				pause();
+				_exit(EXIT_SUCCESS);
+			}
+		}
+	}
+	
+	for (int i = 0; i < 4; i++)
+	{
+		if (i & 1)
+			wait(NULL);
+			
+		else
+		{	
+			kill(pid[i], SIGCONT);
+			wait(NULL);
+		}
+	}
 	
 	t1 = times(&timing);
 	
@@ -358,7 +421,10 @@ int main(int argc, char **argv)
 			printf("  waiting for child:  [%s]\n",
 				(!sched_test0()) ? "PASSED" : "FAILED");
 			printf("  dynamic priorities: [%s]\n",
-				(!sched_test2()) ? "PASSED" : "FAILED");
+				(!sched_test1()) ? "PASSED" : "FAILED");
+			if (0){
+			printf("  scheduler stress:   [%s]\n",
+				(!sched_test2()) ? "PASSED" : "FAILED");}
 		}
 	
 		/* Wrong usage. */
