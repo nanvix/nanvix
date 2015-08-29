@@ -225,11 +225,7 @@ static void work_io(void)
  */
 static int sched_test0(void)
 {
-	pid_t pid;         /* Child process ID.   */
-	struct tms timing; /* Timing information. */
-	clock_t t0, t1;    /* Elapsed times.      */
-	
-	t0 = times(&timing);
+	pid_t pid;
 	
 	pid = fork();
 	
@@ -246,12 +242,6 @@ static int sched_test0(void)
 	
 	wait(NULL);
 	
-	t1 = times(&timing);
-	
-	/* Print timing statistics. */
-	if (flags & VERBOSE)
-		printf("  Elapsed: %d\n", t1 - t0);
-	
 	return (0);
 }
 
@@ -265,11 +255,7 @@ static int sched_test0(void)
  */
 static int sched_test1(void)
 {
-	pid_t pid;         /* Child process ID.   */
-	struct tms timing; /* Timing information. */
-	clock_t t0, t1;    /* Elapsed times.      */
-	
-	t0 = times(&timing);
+	pid_t pid;
 		
 	pid = fork();
 	
@@ -294,12 +280,6 @@ static int sched_test1(void)
 		
 	wait(NULL);
 	
-	t1 = times(&timing);
-	
-	/* Print timing statistics. */
-	if (flags & VERBOSE)
-		printf("  Elapsed: %d\n", t1 - t0);
-	
 	return (0);
 }
 
@@ -312,11 +292,7 @@ static int sched_test1(void)
  */
 static int sched_test2(void)
 {
-	pid_t pid[4];      /* Child process ID.    */
-	struct tms timing; /* Timing information.  */
-	clock_t t0, t1;    /* Elapsed times.       */
-	
-	t0 = times(&timing);
+	pid_t pid[4];
 	
 	for (int i = 0; i < 4; i++)
 	{
@@ -356,12 +332,6 @@ static int sched_test2(void)
 			wait(NULL);
 		}
 	}
-	
-	t1 = times(&timing);
-	
-	/* Print timing statistics. */
-	if (flags & VERBOSE)
-		printf("  Elapsed: %d\n", t1 - t0);
 	
 	return (0);
 }
@@ -418,11 +388,11 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[i], "sched"))
 		{
 			printf("Scheduling Tests\n");
-			printf("  waiting for child:  [%s]\n",
+			printf("  waiting for child  [%s]\n",
 				(!sched_test0()) ? "PASSED" : "FAILED");
-			printf("  dynamic priorities: [%s]\n",
+			printf("  dynamic priorities [%s]\n",
 				(!sched_test1()) ? "PASSED" : "FAILED");
-			printf("  scheduler stress:   [%s]\n",
+			printf("  scheduler stress   [%s]\n",
 				(!sched_test2()) ? "PASSED" : "FAILED");
 		}
 	
