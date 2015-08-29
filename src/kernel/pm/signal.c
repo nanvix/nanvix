@@ -105,33 +105,19 @@ PRIVATE void _abort(int sig)
  */
 PUBLIC void sndsig(struct process *proc, int sig)
 {
-	/* Ignore this. */
-	if (IGNORING(proc, sig) && (sig != SIGCHLD))
-		return;
+	/* 
+	 * SIGCHLD and SIGCONT are somewhat special. The receiving
+	 * process is resumed even if these signals are being ignored,
+	 * otherwise caos might follow.
+	 */
+	if ((sig != SIGCHLD) && (sig != SIGCONT))
+	{
+		if (IGNORING(proc, sig))
+			return;
+	}
 	
 	/* Set signal flag. */
 	proc->received |= (1 << sig);
-	
-	/* 
-	 * SIGCONT is somewhat special. The receiving process
-	 * is resumed even if SIGCONT is being ignored,
-	 * otherwise it could stop forever.
-	 */
-	if (sig == SIGCONT)
-	{
-		resume(proc);
-		
-		/* 
-		 * The process is not catching SIGCONT and the
-		 * default action for this signal has just been
-		 * taken.
-		 */
-		if (!CATCHING(proc, sig))
-		{
-			proc->received &= ~(1 << sig);
-			return;
-		}
-	}
 	
 	/* Wake up process. */
 	if (proc->state == PROC_WAITING)
@@ -157,12 +143,29 @@ PUBLIC void sndsig(struct process *proc, int sig)
  */
 PUBLIC int issig(void)
 {
+	int ret;
+	
+	ret = SIGNULL;
+	
 	/* Find a pending signal that is not being ignored. */
 	for (int i = 1; i < NR_SIGNALS; i++)
 	{
 		/* Skip. */
 		if (!(curr_proc->received & (1 << i)))
 			continue;
+		
+		/*
+		 * Default action for SIGCONT has already been taken. If the current
+		 * process is not catching SIGCONT, we have to clear the signal flag.
+		 */
+		if (i == SIGCONT)
+		{
+			if (CATCHING(curr_proc, i))
+				return (SIGCONT);
+			
+			ret = SIGCONT;
+			curr_proc->received &= ~(1 << i);
+		}
 		
 		/*
 		 * SIGCHLD is somewhat special. If the current process
@@ -172,7 +175,7 @@ PUBLIC int issig(void)
 		 * with the default handler (SIG_DFL), child processes do
 		 * become zombie processes and they are buried in wait().
 		 */
-		if (i == SIGCHLD)
+		else if (i == SIGCHLD)
 		{
 			/* The current process has set SIG_IGN to handle SIGCHLD. */
 			if (curr_proc->handlers[SIGCHLD] == SIG_IGN)
@@ -228,5 +231,5 @@ PUBLIC int issig(void)
 		return (i);
 	}
 	
-	return (SIGNULL);
+	return (ret);
 }
