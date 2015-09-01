@@ -37,6 +37,13 @@
 	#error "bad UBASE_PHYS"
 #endif
 
+/*
+ * Bad KPOOL_VIRT ?
+ */
+#if ((KBASE_VIRT + KMEM_SIZE) != KPOOL_VIRT)
+	#error "bad KPOOL_VIRT"
+#endif
+
 /**
  * @brief Initializes the memory system.
  */
