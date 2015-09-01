@@ -378,19 +378,46 @@ Page directories and page tables of all processes are pinned down in kernel memo
 Aside from managing page directories and page tables, and dealing with page allocation, it is worthy to note that the paging system also implements two fundamental mechanisms: demand paging and copy-on-write. The former is extensively used in the \texttt{exec()} system call and works as follows. Whenever an executable file needs to be loaded to memory, the paging system does not copy any data from disk nor allocate any space in memory at first. Instead, it marks all corresponding entries in the page table as ``not present, demanded paging''. Later, when an attempt to access an address that falls in such kind of page is made, a page fault occurs and then the paging system allocates a frame to that page and loads it in to memory. 
 
 % Copy-on-write.
-The second mechanism, namely copy-on-write, is heavily employed in the \texttt{fork()} system call to easy the overall task of creating a new process. In a nutshell, this system call creates a child process that is an exact copy of the calling process by duplicating every opened file descriptor and cloning the memory address space of the parent process. The former step can be completed in a handful of time as it comes down to iterate over the file descriptors table incrementing the reference count for each opened file. On the other hand, cloning the address space of a process can be a real time-consuming endeavor, since that involves copying a massive amount of data. When copy-on-write is enabled however, such operation is greatly speed up by having the copy operation to happen on demand, rather than immediately. To enable so, at first, the kernel marks writable pages of the parent process as ``read-only, copy-on-write''. Later, when a write attempt is made to such marked page, a protection page fault is fired and the paging system performs the actual cloning, marking both pages as writable in the end.
+The second mechanism, namely copy-on-write, is heavily employed in the \texttt{fork()} system call to easy the overall task of creating a new process. In a nutshell, this system call creates a child process that is an exact copy of the calling process by duplicating every opened file descriptor and cloning the memory address space of the parent process. The former step can be completed in a handful of time as it comes down to iterate over the file descriptors table incrementing the reference count for each opened file. On the other hand, cloning the address space of a process can be a real time-consuming endeavor, since that involves copying a massive amount of data. When copy-on-write is enabled however, such operation is greatly speed up by having the copy operation to happen on demand, rather than immediately. To enable so, at first, the kernel marks writable pages of the parent process as ``read-only, copy-on-write''. Later, when a write attempt is made to a marked page, a protection fault is fired and the kernel performs the actual cloning, marking both pages as writable in the end.
 
 % Swapping system overview.
 So far, we have detailed the internals of the paging system, which delivers a flat memory abstraction to the whole system, but now it is time to turn our attentions to the swapping system. The ultimate goal of this later one is to keep in memory those pages that are more frequently used, and use some disk space to store those that are not. This way, it is possible to execute a process whose memory footprint is larger than the physical memory available. In other words, the physical memory is virtual extended, enabling the maximum memory footprint of a process to be bounded by the size of the virtual address space, rather than the physical one.
 
 % Page eviction.
-To achieve such goal, the swapping system relies on a First-in-First-out (FiFo) strategy to evict pages to disk. For each in-memory page, the swapping system bookkeeps the timestamp in which that page has been brought into memory. Whenever the swapper is invoked, the page that has the oldest timestamp is selected and it is evicted to the swapping area, in disk. The swapping system selects pages using a local-policy, and it implements no load control mechanism that would prevent a user from hugging all memory for himself. On the other way around, when a page is brought in to memory from the swapping area, a shadow copy is kept there. This way, if no modifications are done to that page, no extra I/O operation to write the page back to disk needs to be performed.
+To achieve such goal, the swapping system relies on a First-in-First-out (FiFo) strategy to evict pages to disk. For each in-memory page, the swapping system bookkeeps the timestamp in which that page has been brought into memory. Whenever the swapper is invoked, the page with the oldest timestamp is evicted to the swapping area, in disk. The swapping system selects pages using a local-policy and implements no load control mechanism. On the other way around, when a page is brought in to memory from the swapping area, a shadow copy is kept there. This way, if no modifications are done to that page, no extra I/O operation to write the page back to disk needs to be performed.
 
 \section{File System}
 \label{section: file system}
 
 % Section overview.
-The file system is the largest and most complex subsystem in Nanvix. It extends the hardware abstraction layer and exports through the file abstraction a uniform interface for dealing with bare resources. In this section we take a closer look in the internals of this subsystem. We first present the buffer cache, an internal module that speedups the performance of the file system, and then we move our discussion to the file system's layout and internals.
+The file system is certainly the largest and most complex subsystem in Nanvix. It extends the hardware abstraction layer and exports through the file abstraction a uniform interface for dealing with bare resources. In this section we take a closer look in this subsystem. We first present the buffer cache, an internal module that speedups the performance of the file system, and then we move our discussion to the file system's layout, structure and internals.
+
+\subsection{The Buffer Cache Module}
+\label{subsection: the buffer cache module}
+
+% Buffer cache module overview.
+Most requests that arrive at the file system involve disk I/O operations. If, in order to handle each of them, the file system would have to issue an I/O operation, the system's performance would be awful. Therefore, to get around this problem, the file system buffers disk blocks in memory and maintains a cache of most frequently used buffers, as shown in Figure \ref{figure: buffer cache}. All buffers are hashed in a table according to the number of the disk block that they currently hold, and buffers that are not in use are linked in a list structure. This way, the cache can be quickly searched for a in-use buffer through the hash table, and the kernel can easily get a free buffer from the list of free buffers, whenever it needs one.
+
+% Buffer cache routines #1.
+The buffer cache module exports a set of routines to actually enable other subsystems to manipulate buffers. To read a buffer from the cache, the \texttt{bread()} routine is provided. It searches the buffer cache for a specific block and, if the block is there, a pointer to that block is simply returned. However, if the buffer is not found, the contents of the requested block must be read to some buffer. If the list of free buffers is not empty, a buffer is immediately retrieved from there to be used. On the other hand, if the list is empty, a buffer from the cache is evicted to disk, according to a least-recently used policy, and then the buffer is used to handle the \texttt{bread()} request.
+
+% Buffer cache routines #2.
+After retrieving a block buffer from the buffer cache, subsystems may freely read/write data from/to it. Nevertheless, it is worthy to point out that buffers are indeed shared resources. Therefore, to consistently operate these structures, subsystems should carefully use the locking mechanisms that are provided by the buffer cache module. The \texttt{blklock()} and \texttt{blkunlock()} routines enable buffers to be locked and unlocked, respectively. Finally, when the subsystem is done with a buffer, it calls \texttt{bwrite()} to release it. If no more processes are using that buffer, its contents are flushed to the underlying device, and then the buffer is marked as ``not used''.
+
+% Asynchronous read, delayed write.
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=1]{img/buffer-cache}
+	\caption{Buffer cache.}
+	\label{figure: buffer cache}
+\end{figure}
+
+\subsection{File System Layout and Structure}
+\label{subsection: file system layout and structure}
+
+\subsection{File System Internals}
+\label{subsection: file system internals}
 
 \printbibliography
 
