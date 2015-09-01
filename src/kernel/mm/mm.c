@@ -44,6 +44,13 @@
 	#error "bad KPOOL_VIRT"
 #endif
 
+/*
+ * Bad INITRD_VIRT ?
+ */
+#if ((KBASE_VIRT + KMEM_SIZE + KPOOL_SIZE) != INITRD_VIRT)
+	#error "bad INITRD_VIRT"
+#endif
+
 /**
  * @brief Initializes the memory system.
  */
