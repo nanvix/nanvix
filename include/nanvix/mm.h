@@ -46,7 +46,7 @@
 	#define UHEAP_ADDR  0xa0000000 /* User heap.  */
 
 	/* Kernel memory size: 4 MB. */
-	#define KMEM_SIZE 0x00800000
+	#define KMEM_SIZE 0x00400000
 	
 	/* Kernel page pool size: 4 MB. */
 	#define KPOOL_SIZE 0x00400000

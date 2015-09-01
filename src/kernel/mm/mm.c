@@ -24,9 +24,16 @@
 #include <nanvix/mm.h>
 
 /*
+ * Bad KPOOL_PHYS ?
+ */
+#if ((KBASE_PHYS + KMEM_SIZE) != KPOOL_PHYS)
+	#error "bad KPOOL_PHYS"
+#endif
+
+/*
  * Bad UBASE_PHYS ?
  */
-#if ((KBASE_PHYS + KMEM_SIZE) != UBASE_PHYS)
+#if ((KBASE_PHYS + KMEM_SIZE + KPOOL_SIZE) != UBASE_PHYS)
 	#error "bad UBASE_PHYS"
 #endif
 
