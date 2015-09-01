@@ -23,6 +23,13 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 
+/*
+ * Bad UBASE_PHYS ?
+ */
+#if ((KBASE_PHYS + KMEM_SIZE) != UBASE_PHYS)
+	#error "bad UBASE_PHYS"
+#endif
+
 /**
  * @brief Initializes the memory system.
  */
