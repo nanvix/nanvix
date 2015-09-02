@@ -29,6 +29,13 @@
 #include <signal.h>
 #include "mm.h"
 
+/*
+ * Swapping area too small?
+ */
+#if (SWP_SIZE < MEMORY_SIZE)
+	#error "swapping area to small"
+#endif
+
 /**
  * @brief Gets a page directory entry of a process.
  * 
