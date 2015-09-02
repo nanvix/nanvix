@@ -51,6 +51,21 @@
 	#error "bad INITRD_VIRT"
 #endif
 
+/*
+ * Bad UBASE_VIRT ?
+ */
+#if ((UBASE_VIRT < (KMEM_SIZE + KPOOL_SIZE)))
+	#error "bad UBASE_VIRT"
+#endif
+
+/*
+ * Bad identity mapping?
+ */
+#if (((KPOOL_VIRT   - KBASE_VIRT) != KPOOL_PHYS) || \
+    ((BUFFERS_VIRT - KBASE_VIRT) != BUFFERS_PHYS))
+	#error "bad identity mapping"
+#endif
+
 /**
  * @brief Initializes the memory system.
  */
