@@ -417,6 +417,16 @@ As a final remark, it is worthy to note two techniques that are supported by the
 \subsection{File System Layout and Structure}
 \label{subsection: file system layout and structure}
 
+% File system layout overview.
+Nanvix adopts an hierarchical file system based on inodes, which heavily resembles the original System V file system reported in \cite{Bach:86}. Indeed, the Nanvix file system has been intentionally designed to be somewhat compatible with the Minix 1 file system. This way, existing user-level utilities specifically designed to manipulate this file system could be used in early development phases, thus saving extra development efforts\footnote{Since version 1.1 Nanvix is shipped with its own utilities for sake of portability.}. In the Nanvix file system there are two main structures that are outlined in Figures \ref{figure: inode structure}-(??) and presented next.
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=1.1]{img/inode-structure}
+	\caption{Inode structure.}
+	\label{figure: inode structure}
+\end{figure}
+
 \subsection{File System Internals}
 \label{subsection: file system internals}
 
