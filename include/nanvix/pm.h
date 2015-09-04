@@ -277,6 +277,7 @@
 	EXTERN int shutting_down;
 	EXTERN struct process proctab[PROC_MAX];
 	EXTERN struct process *curr_proc;
+	EXTERN struct process *last_proc;
 	EXTERN pid_t next_pid;
 	EXTERN unsigned nprocs;
 
