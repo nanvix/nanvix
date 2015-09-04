@@ -112,6 +112,7 @@ PUBLIC void yield(void)
 	}
 	
 	/* Switch to next process. */
+	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
 	next->counter = PROC_QUANTUM;
 	switch_to(next);
