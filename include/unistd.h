@@ -198,6 +198,11 @@
 	 * Gets process information
 	 */
 	extern int ps(void);
+
+	/*
+	 * Clear the screen
+	 */
+	extern int clear(void);
 	
 	/* Environment variables. */
 	extern char **environ;

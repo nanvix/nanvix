@@ -17,7 +17,7 @@
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 47
+	#define NR_SYSCALLS 48
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -67,6 +67,7 @@
 	#define NR_times    44
 	#define NR_shutdown 45
  	#define NR_ps       46
+ 	#define NR_clear    47
 
 #ifndef _ASM_FILE_
 
@@ -235,6 +236,11 @@
 	 * Gets process information
 	 */
 	EXTERN int sys_ps(void);
+
+	/*
+	 * Clear the screen
+	 */
+	EXTERN int sys_clear(void);
 
 #endif /* _ASM_FILE_ */
 
