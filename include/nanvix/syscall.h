@@ -17,7 +17,7 @@
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 46
+	#define NR_SYSCALLS 47
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -66,6 +66,7 @@
 	#define NR_ustat    43
 	#define NR_times    44
 	#define NR_shutdown 45
+ 	#define NR_ps       46
 
 #ifndef _ASM_FILE_
 
@@ -229,6 +230,11 @@
 	EXTERN ssize_t sys_write(int fd, const void *buf, size_t n);
 	
 	EXTERN int sys_shutdown(void);
+
+	/*
+	 * Gets process information
+	 */
+	EXTERN int sys_ps(void);
 
 #endif /* _ASM_FILE_ */
 
