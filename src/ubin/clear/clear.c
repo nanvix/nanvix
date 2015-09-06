@@ -21,12 +21,90 @@
 #include <dev/tty.h>
 #include <stropts.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-/*
- * Clear the screen
+/**
+ * @name Program Versioning
  */
-int main()
+/**@{*/
+#define PROG_NAME  "clear" /**< Program name.         */
+#define VERSION_MINOR 0    /**< Minor version number. */    
+#define VERSION_MAJOR 1    /**< Major version number. */
+/**@}*/
+
+/**
+ * @brief Prints program version and exits.
+ * 
+ * @details Prints program version and exits gracefully.
+ */
+static void version(void)
 {
+	printf("%s (Nanvix Coreutils) %d.%d\n\n", PROG_NAME, VERSION_MAJOR, VERSION_MINOR);
+	printf("Copyright(C) 2011-2015 Pedro H. Penna\n");
+	printf("This is free software under the "); 
+	printf("GNU General Public License Version 3.\n");
+	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
+	
+	exit(EXIT_SUCCESS);
+}
+
+/**
+ * @brief Prints program usage and exits.
+ * 
+ * @details Prints program usage and exits gracefully.
+ */
+static void usage(void)
+{
+	printf("Usage: %s\n\n", PROG_NAME);
+	printf("Brief: Clears the screen.\n\n");
+	printf("Options:\n");
+	printf("      --help    Display this information and exit\n");
+	printf("      --version Display program version and exit\n");
+	
+	exit(EXIT_SUCCESS);
+}
+
+/**
+ * @brief Gets command line arguments.
+ * 
+ * @details Parses @p argc and @p argv in order to get command line arguments.
+ * 
+ * @param argc Argument count.
+ * @param argv Argument list.
+ */
+static void getargs(int argc, char *const argv[])
+{
+	char *arg;
+	
+	/* Get program arguments. */
+	for (int i = 1; i < argc; i++)
+	{
+		arg = argv[i];
+		
+		/* Display help information. */
+		if (!strcmp(arg, "--help"))
+			usage();
+		
+		/* Display program version. */
+		else if (!strcmp(arg, "--version"))
+			version();
+	}
+}
+
+/**
+ * @brief Clears the screen.
+ * 
+ * @details Clears the screen.
+ * 
+ * @returns Upon successful completion EXIT_SUCCESS is returned.
+ */
+int main(int argc, char **argv)
+{
+	getargs(argc, argv);
+	
+	/* Clears the screen. */
 	ioctl(1, TTY_CLEAR);
-	return 0;
+
+	return (EXIT_SUCCESS);
 }

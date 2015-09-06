@@ -53,7 +53,7 @@ static void version(void)
  */
 static void usage(void)
 {
-	printf("Usage: %s <file>\n\n", PROG_NAME);
+	printf("Usage: %s\n\n", PROG_NAME);
 	printf("Brief: Eats CPU time.\n\n");
 	printf("Options:\n");
 	printf("      --help    Display this information and exit\n");
