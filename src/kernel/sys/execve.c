@@ -309,6 +309,9 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	if ((name = getname(filename)) == NULL)
 		return (curr_proc->errno);
 
+	/* Associates file name to the process name. */
+	kstrcpy(curr_proc->name, name);
+
 	/* Build arguments before freeing user memory. */
 	kmemset(stack, 0, ARG_MAX);
 	if (!(sp = buildargs(stack, ARG_MAX, argv, envp)))

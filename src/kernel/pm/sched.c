@@ -70,6 +70,9 @@ PUBLIC void yield(void)
 	if (curr_proc->state == PROC_RUNNING)
 		sched(curr_proc);
 
+	/* Stores a reference to the last executed process */
+	last_proc = curr_proc;
+
 	/* Check alarm. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
@@ -109,6 +112,7 @@ PUBLIC void yield(void)
 	}
 	
 	/* Switch to next process. */
+	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
 	next->counter = PROC_QUANTUM;
 	switch_to(next);

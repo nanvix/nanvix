@@ -25,6 +25,7 @@
 #include <nanvix/hal.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/klib.h>
 #include <sys/stat.h>
 #include <signal.h>
 #include <limits.h>
@@ -48,6 +49,11 @@ PUBLIC struct process proctab[PROC_MAX];
  * @brief Current running process. 
  */
 PUBLIC struct process *curr_proc = IDLE;
+
+/**
+ * @brief Last running process. 
+ */
+PUBLIC struct process *last_proc = IDLE;
 
 /**
  * @brief Next available process ID.
@@ -112,6 +118,7 @@ PUBLIC void pm_init(void)
 	IDLE->next = NULL;
 	IDLE->chain = NULL;
 	
+	kstrncpy(IDLE->name, "IDLE", 4);
 	nprocs++;
 	
 	clock_init(CLOCK_FREQ);

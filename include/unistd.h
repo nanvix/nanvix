@@ -193,6 +193,21 @@
 	extern ssize_t write(int fd, const void *buf, size_t n);
 	
 	extern int shutdown(void);
+
+	/*
+	 * Gets process information
+	 */
+	extern int ps(void);
+
+	/*
+	 * Clear the screen
+	 */
+	extern int clear(void);
+
+	/*
+	 * Get system ticks
+	 */
+	extern int gticks(void);
 	
 	/* Environment variables. */
 	extern char **environ;
