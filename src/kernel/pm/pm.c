@@ -107,6 +107,7 @@ PUBLIC void pm_init(void)
 	IDLE->pid = next_pid++;
 	IDLE->pgrp = IDLE;
 	IDLE->father = NULL;
+	kstrncpy(IDLE->name, "idle", NAME_MAX);
 	IDLE->utime = 0;
 	IDLE->ktime = 0;
 	IDLE->cutime = 0;
@@ -119,7 +120,6 @@ PUBLIC void pm_init(void)
 	IDLE->next = NULL;
 	IDLE->chain = NULL;
 	
-	kstrncpy(IDLE->name, "IDLE", 4);
 	nprocs++;
 	
 	clock_init(CLOCK_FREQ);

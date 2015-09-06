@@ -323,9 +323,6 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	if ((name = getname(filename)) == NULL)
 		return (curr_proc->errno);
 
-	/* Associates file name to the process name. */
-	kstrcpy(curr_proc->name, name);
-
 	/* Build arguments before freeing user memory. */
 	kmemset(stack, 0, ARG_MAX);
 	if (!(sp = buildargs(stack, ARG_MAX, argv, envp)))
@@ -396,6 +393,9 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	if (attachreg(curr_proc, HEAP(curr_proc), UHEAP_ADDR, reg))
 		goto die1;
 	unlockreg(reg);
+
+	/* Associates file name to the process name. */
+	kstrncpy(curr_proc->name, name, NAME_MAX);
 	
 	inode_put(inode);
 	putname(name);

@@ -125,6 +125,7 @@ found:
 	proc->pid = next_pid++;
 	proc->pgrp = curr_proc->pgrp;
 	proc->father = curr_proc;
+	kstrncpy(proc->name, curr_proc->name, NAME_MAX);
 	proc->utime = 0;
 	proc->ktime = 0;
 	proc->cutime = 0;

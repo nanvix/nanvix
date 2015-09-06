@@ -117,13 +117,6 @@
 	#define PROC_HANDLERS 28 /**< Signal handlers offset.        */
 	/**@}*/
 
-	/**
-	 * @name Process general information
-	 */
-	/**@{*/
-	#define PROC_MAX_FILENAME 20 /**< Maximum size to identify process name */
-	/**@}*/
-
 #ifndef _ASM_FILE_
 
 	/**
@@ -170,19 +163,19 @@
 		 * @name General information
 		 */
 		/**@{*/
-		int status;                   /**< Exit status.             */
-		int errno;                    /**< Error code.              */
-		unsigned nchildren;           /**< Number of children.      */
-		uid_t uid;                    /**< User ID.                 */
-		uid_t euid;                   /**< Effective user ID.       */
-		uid_t suid;                   /**< Saved set-user-ID.       */
-		gid_t gid;                    /**< Group ID.                */
-		gid_t egid;                   /**< Effective group user ID. */
-		gid_t sgid;                   /**< Saved set-group-ID.      */
-    	pid_t pid;                    /**< Process ID.              */
-    	struct process *pgrp;         /**< Process group ID.        */
-    	struct process *father;       /**< Father process.          */
-		char name[PROC_MAX_FILENAME]; /**< Process name length.      */
+		int status;             /**< Exit status.             */
+		int errno;              /**< Error code.              */
+		unsigned nchildren;     /**< Number of children.      */
+		uid_t uid;              /**< User ID.                 */
+		uid_t euid;             /**< Effective user ID.       */
+		uid_t suid;             /**< Saved set-user-ID.       */
+		gid_t gid;              /**< Group ID.                */
+		gid_t egid;             /**< Effective group user ID. */
+		gid_t sgid;             /**< Saved set-group-ID.      */
+    	pid_t pid;              /**< Process ID.              */
+    	struct process *pgrp;   /**< Process group ID.        */
+    	struct process *father; /**< Father process.          */
+		char name[NAME_MAX];    /**< Process name.            */
 		/**@}*/
 
     	/**

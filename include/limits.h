@@ -38,7 +38,9 @@
 	 */
 	#define LLONG_MIN -9223372036854775807
 	
-	/* Bytes in a filename. */
+	/**
+	 * @brief Maximum number of bytes in a filename.
+	 */
 	#define NAME_MAX 14
 	
 	/* Files that one process can have open simultaneously. */
@@ -47,7 +49,9 @@
 	/* Length of argument to the execve(). */
 	#define ARG_MAX 2048
 	
-	/* Number of bytes in pathname. */
+	/**
+	 * @brief Maximum number of bytes in a pathname.
+	 */
 	#define PATH_MAX 512
 	
 	/* Maximum value for unsigned long. */
