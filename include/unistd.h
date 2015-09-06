@@ -203,6 +203,11 @@
 	 * Clear the screen
 	 */
 	extern int clear(void);
+
+	/*
+	 * Get system ticks
+	 */
+	extern int gticks(void);
 	
 	/* Environment variables. */
 	extern char **environ;
