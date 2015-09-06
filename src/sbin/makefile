@@ -18,12 +18,17 @@
 #
 
 # Resolves conflicts
+.PHONY: foobar
 .PHONY: init
 .PHONY: shutdown
 .PHONY: test
 
 # Builds everything.
-all: init shutdown test
+all: foobar init shutdown test
+
+# Builds foobar.
+foobar:
+	$(CC) $(CFLAGS) $(LDFLAGS) foobar/*.c -o $(SBINDIR)/foobar $(LIBDIR)/libc.a
 
 # Builds init.
 init:
@@ -39,6 +44,7 @@ test:
 	
 # Cleans compilations files.
 clean:
+	@rm -f $(SBINDIR)/foobar
 	@rm -f $(SBINDIR)/init
 	@rm -f $(SBINDIR)/shutdown
 	@rm -f $(SBINDIR)/test
