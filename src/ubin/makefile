@@ -40,10 +40,11 @@
 .PHONY: tsh
 .PHONY: ps
 .PHONY: clear
+.PHONY: nim
 
 # Builds everything.
 all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat sync \
-	 touch tsh ps clear
+	 touch tsh ps clear nim
 
 # Builds cat.
 cat: 
@@ -133,6 +134,10 @@ ps:
 clear: 
 	$(CC) $(CFLAGS) $(LDFLAGS) clear/*.c -o $(UBINDIR)/clear $(LIBDIR)/libc.a
 
+# Builds nim.
+nim: 
+	$(CC) $(CFLAGS) $(LDFLAGS) nim/*.c -o $(UBINDIR)/nim $(LIBDIR)/libc.a
+
 # Clean compilation files.
 clean:
 	@rm -f $(UBINDIR)/cat
@@ -157,3 +162,4 @@ clean:
 	@rm -f $(UBINDIR)/tsh
 	@rm -f $(UBINDIR)/ps
 	@rm -f $(UBINDIR)/clear
+	@rm -f $(UBINDIR)/nim
