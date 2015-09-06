@@ -38,10 +38,11 @@
 .PHONY: sync
 .PHONY: touch
 .PHONY: tsh
+.PHONY: ps
 
 # Builds everything.
 all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat sync \
-	 touch tsh
+	 touch tsh ps
 
 # Builds cat.
 cat: 
@@ -123,6 +124,10 @@ touch:
 tsh: 
 	$(CC) $(CFLAGS) $(LDFLAGS) tsh/*.c -o $(UBINDIR)/tsh $(LIBDIR)/libc.a
 
+# Builds ps.
+ps: 
+	$(CC) $(CFLAGS) $(LDFLAGS) ps/*.c -o $(UBINDIR)/ps $(LIBDIR)/libc.a
+
 # Clean compilation files.
 clean:
 	@rm -f $(UBINDIR)/cat
@@ -145,3 +150,4 @@ clean:
 	@rm -f $(UBINDIR)/sync
 	@rm -f $(UBINDIR)/touch
 	@rm -f $(UBINDIR)/tsh
+	@rm -f $(UBINDIR)/ps
