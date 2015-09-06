@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2015-2015 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2015 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -17,13 +18,15 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <unistd.h>
+#include <dev/tty.h>
+#include <stropts.h>
+#include <stdio.h>
 
 /*
  * Clear the screen
  */
 int main()
 {
-	clear();
+	ioctl(1, TTY_CLEAR);
 	return 0;
 }

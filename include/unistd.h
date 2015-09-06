@@ -214,11 +214,6 @@
 	extern int ps(void);
 
 	/*
-	 * Clear the screen
-	 */
-	extern int clear(void);
-
-	/*
 	 * Get system ticks
 	 */
 	extern int gticks(void);

@@ -71,7 +71,7 @@ PUBLIC void yield(void)
 	if (curr_proc->state == PROC_RUNNING)
 		sched(curr_proc);
 
-	/* Stores a reference to the last executed process */
+	/* Remember this process. */
 	last_proc = curr_proc;
 
 	/* Check alarm. */

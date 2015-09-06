@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2015-2015 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2015 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -16,9 +17,14 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
+
+#include <dev/tty.h>
+#include <stropts.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
+#define clear() ioctl(1, TTY_CLEAR)
 
 #define COMPUTER 1
 #define PLAYER   2
