@@ -419,16 +419,26 @@ As a final remark, it is worthy to note two techniques that are supported by the
 
 \begin{figure}
 	\centering
-	\includegraphics[scale=1.0]{img/file-system-layout}
+	\includegraphics[scale=1.05]{img/file-system-layout}
 	\caption{File system layout.}
 	\label{figure: file system layout}
 \end{figure}
 
 % File system overview.
-Nanvix adopts an hierarchical file system based on inodes, which heavily resembles the original System V file system reported in \cite{Bach:86}. Indeed, the Nanvix file system has been intentionally designed to be somewhat compatible with the Minix 1 file system. This way, existing user-level utilities specifically designed to manipulate this file system could be used in early development phases, thus saving extra development efforts\footnote{Since version 1.1 Nanvix is shipped with its own utilities for sake of portability.}. The Nanvix file system is outlined in Figure \ref{figure: file system layout} and detailed next.
+Nanvix adopts an hierarchical file system based on inodes, which heavily resembles the original System V file system reported in \cite{Bach:86}. Indeed, the Nanvix file system has been intentionally designed to be somewhat compatible with the Minix 1 file system, so that existing user-level utilities specifically designed to manipulate this file system could be used in early development phases\footnote{Since version 1.1 Nanvix is shipped with its own utilities for sake of portability.}. The Nanvix file system is outlined in Figure \ref{figure: file system layout} and detailed next.
 
 % File system layout.
-The Nanvix file system works with 1 KB blocks and it is divided in two major zones, one that stores meta information about the file system itself and another one that actually holds user data. The very first block in the meta information zone stores the bootloader, a very small and special program that setups all machine dependent features and actually loads the kernel. Following the boot block, is the superblock, the place where information concerning the file system's peculiarities are kept. For instance, it holds how many data blocks and inodes the file system has, and which what is the maximum size for a file size and what is the file system version. After this block, there are the inode-map (imap) and block-map (bmpap) blocks, which are used for managing disk space; and finally the inode blocks, which store all inodes of the file system. Data blocks on the other hand, hold user data, and are linked to the file system hierarchy through the inode structure.
+The Nanvix file system works with 1 KB blocks and it is divided in two major zones, one that stores meta information about the file system itself and another one that actually holds user data. The very first block in the meta information zone stores the bootloader, a very small and special program that setups all machine dependent features and actually loads the kernel. Following the boot block, is the superblock, the place where information concerning the file system's peculiarities are kept. For instance, it holds how many data blocks and inodes the file system has, what is the maximum size for a file size and what is the file system version. After this block, there are the inode-map (imap) and block-map (bmpap) blocks, which are used for managing disk space; and the inode blocks, which store all inodes of the file system. Finally, data blocks hold user data, and are linked to the file system hierarchy through the inode structure.
+
+% Inode structure.
+In turn, an inode is a low-level abstraction of a file. It stores information concerning the file's type, owner, access permissions, current size, time of last modification, and blocks pointers, as it is shown in Figure \ref{figure: inode structure}. Data blocks are assigned using an hierarchical addressing scheme, where the first seven data blocks are directly addressed, and next ones are addressed via either double or triple indirections. The way that blocks pointers are actually used depend on the type of the file itself. If it is a regular file, then blocks pointers point to data blocks filled with user data. If the file is a directory, however, block pointers point to data blocks that store directory entries. Finally, if the file is a special file, the block pointers hold the minor and major numbers of the referred device.
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=1.1]{img/inode-structure}
+	\caption{Inode Structure.}
+	\label{figure: inode structure}
+\end{figure}
 
 \subsection{File System Internals}
 \label{subsection: file system internals}
