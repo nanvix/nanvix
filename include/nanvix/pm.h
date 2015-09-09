@@ -136,6 +136,7 @@
     	void *kstack;                      /**< Kernel stack pointer.   */
     	void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
+		unsigned irqlvl;                   /**< Current IRQ level.      */
 		/**@}*/
 		
     	/**

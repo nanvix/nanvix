@@ -87,6 +87,7 @@ PUBLIC void pm_init(void)
 	IDLE->restorer = NULL;
 	for (i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
+	IDLE->irqlvl = INT_LVL_5;
 	IDLE->pgdir = idle_pgdir;
 	for (i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;

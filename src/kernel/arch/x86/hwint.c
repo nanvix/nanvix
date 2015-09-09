@@ -80,11 +80,13 @@ PUBLIC int set_hwint(int num, void (*handler)(void))
  */
 PUBLIC void do_hwint(unsigned irq)
 {
-	processor_raise(irq_lvl(irq));
+	unsigned old_irqlvl;
+	
+	old_irqlvl = processor_raise(irq_lvl(irq));
 
 	enable_interrupts();
 	hwint_handlers[irq]();
 	disable_interrupts();
 
-	processor_drop();
+	processor_drop(old_irqlvl);
 }

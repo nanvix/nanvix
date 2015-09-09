@@ -58,8 +58,8 @@
 	EXTERN void enable_interrupts(void);
 	EXTERN void disable_interrupts(void);
 	EXTERN void halt(void);
-	EXTERN void processor_drop(void);
-	EXTERN void processor_raise(unsigned);
+	EXTERN void processor_drop(unsigned);
+	EXTERN unsigned processor_raise(unsigned);
 	EXTERN void setup(void);
 	EXTERN void user_mode(addr_t, addr_t);
 	EXTERN void switch_to(struct process *);
