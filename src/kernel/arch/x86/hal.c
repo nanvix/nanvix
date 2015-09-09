@@ -79,7 +79,7 @@ PRIVATE struct
 	unsigned data[6]; /* Data.          */
 	unsigned ptr;     /* Stack pointer. */
 } stack = {
-	{ 5, 5, 5, 5, 5, 5 },
+	{ INT_LVL_5, INT_LVL_5, INT_LVL_5, INT_LVL_5, INT_LVL_5, INT_LVL_5 },
 	0
 };
 
