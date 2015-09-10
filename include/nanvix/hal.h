@@ -60,6 +60,7 @@
 	EXTERN void halt(void);
 	EXTERN void processor_drop(unsigned);
 	EXTERN unsigned processor_raise(unsigned);
+	EXTERN void processor_reload(void);
 	EXTERN void setup(void);
 	EXTERN void user_mode(addr_t, addr_t);
 	EXTERN void switch_to(struct process *);

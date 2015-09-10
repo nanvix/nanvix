@@ -96,3 +96,13 @@ PUBLIC void processor_drop(unsigned irqlvl)
 {
 	pic_mask(int_masks[curr_proc->irqlvl = irqlvl]);
 }
+
+/**
+ * @brief Reloads the processor execution level.
+ * 
+ * @note This function must be called in an interrupt-safe environment.
+ */
+PUBLIC void processor_reload(void)
+{
+	pic_mask(int_masks[curr_proc->irqlvl]);
+}

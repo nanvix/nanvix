@@ -93,7 +93,7 @@ found:
 	}
 	
 	/* Initialize process. */
-	proc->intlvl = curr_proc->intlvl;
+	proc->intlvl = INT_LVL_5;
 	proc->received = 0;
 	proc->restorer = curr_proc->restorer;
 	for (i = 0; i < NR_SIGNALS; i++)

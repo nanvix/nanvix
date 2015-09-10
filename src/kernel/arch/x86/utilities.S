@@ -23,6 +23,7 @@
 .globl physcpy
 .globl switch_to
 .globl user_mode
+.globl processor_reload
 
 /*----------------------------------------------------------------------------*
  *                                 gdt_flush                                  *
@@ -206,6 +207,8 @@ switch_to:
 	
 	/* Load process context. */
 	movl PROC_KESP(%ecx), %esp
+	
+	call processor_reload
 	
 	btrl $PROC_NEW, PROC_FLAGS(%ecx)
 	jc fork_return
