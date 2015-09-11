@@ -30,6 +30,7 @@ C_SRC = $(wildcard *.c)        \
       $(wildcard string/*.c)   \
       $(wildcard stropts/*.c)  \
       $(wildcard sys/times/*.c)\
+      $(wildcard sys/sem/*.c) \
       $(wildcard sys/stat/*.c) \
       $(wildcard sys/wait/*.c) \
       $(wildcard termios/*.c)  \

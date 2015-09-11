@@ -82,6 +82,9 @@
 	#define NR_shutdown 45
  	#define NR_ps       46
  	#define NR_gticks   47
+ 	#define NR_semget   48
+ 	#define NR_semctl   49
+ 	#define NR_semop    50
 
 #ifndef _ASM_FILE_
 
