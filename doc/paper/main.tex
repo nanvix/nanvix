@@ -444,7 +444,10 @@ In turn, an inode is a low-level abstraction of a file. It stores information co
 \label{subsection: file system internals}
 
 % File system internals section overview.
-So far we have explored the buffer cache module and the file system layout. In this section, however, we turn our attentions to the file system internals. We first discuss how disk space is actually managed, then we introduce the interface for dealing with inodes, and finally we detail some kernel routines for manipulating files
+So far we have explored the buffer cache module and the file system layout. In this section, however, we turn our attentions to the file system internals. We first discuss how disk space is actually managed, then we introduce the interface that is exported for dealing with inodes, and finally we detail some kernel routines for manipulating files.
+
+% Disk space management.
+The file system manages disk space with the help of the \texttt{bmap} and \texttt{imap} blocks (see Section \ref{subsection: file system layout and structure}). These are indeed bitmaps that point out which data blocks and inodes are currently in use in the file system, respectively. Whenever an inode or a data block needs to bee allocated, the correspondent bitmap is sequentially searched for an inode/data block that is available. To speedup the search, the kernel maintains these bitmaps in memory and from time to time it writes them back to disk. Additionally, the kernel keeps track of the last allocated bit in each bitmap and uses bitwise operations to perform the search. This way, the first free bit in the bitmaps can be find slightly fast in disks that are not heavily fragmented, and search time is decreased by a factor of $n$, where $n$ is the width in bits of the largest machine register.
 
 \printbibliography
 
