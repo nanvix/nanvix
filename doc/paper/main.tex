@@ -447,7 +447,41 @@ In turn, an inode is a low-level abstraction of a file. It stores information co
 So far we have explored the buffer cache module and the file system layout. In this section, however, we turn our attentions to the file system internals. We first discuss how disk space is actually managed, then we introduce the interface that is exported for dealing with inodes, and finally we detail some kernel routines for manipulating files.
 
 % Disk space management.
-The file system manages disk space with the help of the \texttt{bmap} and \texttt{imap} blocks (see Section \ref{subsection: file system layout and structure}). These are indeed bitmaps that point out which data blocks and inodes are currently in use in the file system, respectively. Whenever an inode or a data block needs to bee allocated, the correspondent bitmap is sequentially searched for an inode/data block that is available. To speedup the search, the kernel maintains these bitmaps in memory and from time to time it writes them back to disk. Additionally, the kernel keeps track of the last allocated bit in each bitmap and uses bitwise operations to perform the search. This way, the first free bit in the bitmaps can be find slightly fast in disks that are not heavily fragmented, and search time is decreased by a factor of $n$, where $n$ is the width in bits of the largest machine register.
+The file system manages disk space with the help of the \texttt{bmap} and \texttt{imap} blocks (see Section \ref{subsection: file system layout and structure}). These are indeed bitmaps that point out which data blocks and inodes are currently in use in the file system, respectively. Whenever an inode or a data block needs to bee allocated, the correspondent bitmap is sequentially searched for an inode/data block that is available. To speedup the search, the kernel maintains these bitmaps in memory and from time to time it writes them back to disk. Additionally, the kernel keeps track of the last allocated bit in each bitmap and uses bitwise operations to perform the search. This way, the first free bit in a bitmap can be find slightly fast, if the disk is not heavily fragmented, and search time is decreased by a factor of $n$, where $n$ is the width in bits of the largest machine register. To allocate and free data blocks the kernel exports two routines, namely \texttt{block\_alloc()} and \texttt{block\_free()}; and conversely does the same for inodes, through the \texttt{inode\_alloc()} and \texttt{inode\_free()} routines.
+
+% Inode interface #1.
+Inodes are low-level abstractions for files, and are used to model regular files, directories and devices. The most relevant routines for manipulating such structures are presented in Table \ref{table: inodes interface} and briefly discussed next. Ultimately, inodes are stored in disk, so that changes in the file system can persist over time. However, to further improve the file system's performance, the kernel caches in memory the most recently used inodes, in a similar way as it does with disk blocks (see Section \ref{figure: buffer cache}). To get an inode from the inode cache, the file system exports the \texttt{inode\_get()} routine. If the requested inode is in the cache, a pointer to it is immediately returned. However, if the inode is not in the cache, the kernel reads it from the disk, first evicting not-in-use inodes using a least recently used strategy if needed. Conversely, the \texttt{inode\_put()} routine is provided to release an in-memory inode, making available the correspondent slot in the inode cache. Finally, to sync the in-memory inodes with in-disk inodes, the file system provides the \texttt{inode\_sync()} routine. This call iterates over the cache, writing back to disk every inode that is dirty.
+
+% Inode interface #2.
+The \texttt{inode\_get()} routine is handful in situations where the serial number of the target inode is known in advance. For instance, when mounting a device or reading/writing data to a file that has been already opened. On the other hand, if the serial inode number is not known, but its pathname is, one can use either \texttt{inode\_name()} or \texttt{inode\_dname()} routines. The first one retrieves the inode that matches a given pathname, and the second when gets the inode for the topmost directory in the pathname. These routines work by having the pathname to be parsed and the file system hierarchy to be traversed, differing essentially in their stop criteria.
+
+% Inode interface #3.
+The last two routines exported by the file system, namely \texttt{inode\_lock()} and \texttt{inode\_unlock()}, are provided for locking purposes. The first one causes the calling process to block until it acquires exclusive access to a target inode, and the second routine releases the lock that a process owns over an inode and wakes up all processes that were awaiting for this event. Having a process to call \texttt{inode\_lock()} before using and inode and \texttt{inode\_unlock()} when it is done with it enables processes to consistently operate over inodes, thus promoting the file system's integrity.
+
+\begin{table}
+\small
+\centering
+\caption{Interface for dealing with inodes.}
+\label{table: inodes interface}
+\begin{tabular}{l l l}
+	\toprule
+	Category & Routine & Description \\
+	\midrule
+	\multirow{2}{*}{Locking}
+	                               & \texttt{inode\_lock}     & Locks in inode                                \\
+	                               & \texttt{inode\_unlock}   & Unlocks an inode                              \\
+	\midrule
+	\multirow{3}{*}{Inode Cache}
+	                               & \texttt{inode\_get}      & Gets an inode                                  \\
+	                               & \texttt{inode\_put}      & Releases an inode                              \\
+	                               & \texttt{inode\_sync}     & Synchronizes the in-core inode table           \\
+	\midrule
+	\multirow{2}{*}{Traversal}
+	                               & \texttt{inode\_name}     & Converts a path name to inode                  \\
+	                               & \texttt{inode\_dname}    & Gets inode of the topmost directory of a path  \\
+	\bottomrule
+\end{tabular}
+\end{table}
 
 \printbibliography
 
