@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * <termios.h> - 
  */
@@ -40,6 +41,17 @@
 	/* Size of c_cc[] */
 	#define NCCS 11
 
+	/* tcsetattr uses these */
+	#define	TCSANOW		0 /* The change occurs immediately. */
+	#define	TCSADRAIN	1 /* The change occurs after all output written to the
+	                         object referred to by FileDescriptor has been 
+	                         transmitted. */
+
+	#define	TCSAFLUSH	2 /* The change occurs after all output written to the
+	                         object referred to by FileDescriptor has been 
+	                         transmitted. All input that has been received but
+	                         not read is discarded before the change is made.*/
+
     /* Terminal input output data types. */
     typedef unsigned cc_t;     /* Used for terminal special characters. */
     typedef unsigned speed_t;  /* Used for terminal baud rates.         */
@@ -56,10 +68,25 @@
 		tcflag_t c_lflag;    /* Local mode flags (see above).   */
 		tcflag_t c_cc[NCCS]; /* Control characters.             */
     };
+
+    /*
+     * Aditional parameters from tcsetattr
+     */
+    struct set_termios_attr
+    {
+    	int optional_actions;
+    	const struct termios *termiosp;
+    };
     
 	/*
 	 * Gets the parameters associated with the terminal
 	 */
 	extern int tcgetattr(int fd, struct termios *termiosp);
+
+	/*
+	 * Sets the parameters associated with the terminal
+	 */
+	extern int tcsetattr(int fd, int optional_actions,
+		const struct termios *termiosp);
 
 #endif /* TERMIOS_H_ */

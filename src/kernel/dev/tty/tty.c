@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -344,7 +345,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 				console_put('\n', WHITE);
 				continue;
 			}
-			
+
 			else
 			{
 				/* End of file. */
@@ -397,12 +398,14 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 						enable_interrupts();
 						return (-EINTR);
 					}
-					
+
+					/* I'm pretty sure that was supposed to be rinput
+						rather than cinput :) */
+
 					/* Copy data from input buffer. */
-					while ((i > 0) && (!KBUFFER_EMPTY(tty.cinput)))
+					while ((i > 0) && (!KBUFFER_EMPTY(tty.rinput)))
 					{
 						KBUFFER_GET(tty.rinput, ch);
-						
 						i--;
 						*p++ = ch;
 					}
@@ -422,7 +425,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 				else
 				{
 					/* Done reading. */
-					if (KBUFFER_EMPTY(tty.cinput))
+					if (KBUFFER_EMPTY(tty.rinput))
 						goto out;
 					
 					KBUFFER_GET(tty.rinput, ch);
@@ -475,6 +478,43 @@ PRIVATE int tty_gets(struct tty *tty, struct termios *termiosp)
 }
 
 /*
+ * Sets tty settings
+ */
+PRIVATE int tty_sets(struct tty *tty, struct set_termios_attr *sta)
+{
+	int ret;
+
+	/* Invalid termios pointer. */	
+	if (!chkmem(sta->termiosp, sizeof(struct termios), MAY_READ))
+		return (-EINVAL);
+
+	/* For now, it's only processed TCSANOW option, the options:
+		TCSADRAIN and TCSAFLUSH should be added later. */
+	switch(sta->optional_actions)
+	{
+		/* The change occurs immediately. */
+		case TCSANOW:
+			tty->term.c_iflag = sta->termiosp->c_iflag;
+			tty->term.c_oflag = sta->termiosp->c_oflag;
+			tty->term.c_cflag = sta->termiosp->c_cflag;
+			tty->term.c_lflag = sta->termiosp->c_lflag;
+
+			for(int i=0; i<NCCS; i++)
+				tty->term.c_cc[i] = sta->termiosp->c_cc[i];
+
+			ret = 0;
+			break;
+
+		/* Invalid operation. */
+		default:
+			ret = -EINVAL;
+			break;
+	}
+
+	return (ret);
+}
+
+/*
  * Cleans the console.
  */
 PRIVATE int tty_clear(struct tty *tty)
@@ -499,6 +539,11 @@ PRIVATE int tty_ioctl(unsigned minor, unsigned cmd, unsigned arg)
 		/* Get tty settings. */
 		case TTY_GETS:
 			ret = tty_gets(&tty, (struct termios *)arg);
+			break;
+
+		/* Set tty settings */
+		case TTY_SETS:
+			ret = tty_sets(&tty, (struct set_termios_attr *)arg);
 			break;
 		
 		/* Clear console. */
