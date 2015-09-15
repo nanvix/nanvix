@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -244,11 +245,17 @@ PUBLIC void do_keyboard_hit(void)
 		case KPGUP:
         case KPGDN:
         case KLEFT:
-        case KUP:
-        case KDOWN:
         case KRIGHT:
         	/*  TODO: implement. */
             break;
+
+        case KUP:
+        	tty_int(ascii_code);
+        	break;
+
+        case KDOWN:
+        	tty_int(ascii_code);
+        	break;
 
 		default:
 		    tty_int(ascii_code);
