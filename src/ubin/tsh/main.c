@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
  *
  * tsh - Tiny UNIX Shell.
  */
@@ -15,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <termios.h>
 #include "builtin.h"
 #include "tsh.h"
 
@@ -26,6 +28,79 @@ int shret = EXIT_SUCCESS;
 
 /* Input file. */
 FILE *input = NULL;
+
+/* TTY modes */
+struct termios canonical;
+struct termios raw;
+
+/* Command stack */
+char stack[STACK_SIZE][LINELEN];
+int  stackp;
+int  stack_count;
+
+/*
+ * Switch to canonical (default) mode
+ */
+static void switch_canonical(void)
+{
+	if (tcsetattr(fileno(stdin),TCSANOW,&canonical) < 0)
+	{
+		fprintf(stderr, "%s: failed to switch to canonical mode\n", 
+			TSH_NAME);
+
+		exit(EXIT_FAILURE);
+	}
+}
+
+/*
+ * Switch to raw mode
+ */
+static void switch_raw(void)
+{
+	if (tcsetattr(fileno(stdin),TCSANOW,&raw) < 0)
+	{
+		fprintf(stderr, "%s: failed to switch to raw mode\n", 
+			TSH_NAME);
+
+		exit(EXIT_FAILURE);
+	}
+}
+
+/*
+ * Get tty options and configure to raw mode for the
+ * first time.
+ */
+static void configure_tty(void)
+{
+	/* Get termios and configure raw mode. */
+	if (tcgetattr(fileno(stdin),&canonical) < 0 || 
+		tcgetattr(fileno(stdin),&raw) < 0)
+	{
+		fprintf(stderr, "%s: failed to get tty options\n", 
+			TSH_NAME);
+
+		exit(EXIT_FAILURE);
+	}
+
+	raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+	raw.c_cc[VMIN] = 1;
+	raw.c_cc[VTIME] = 0;
+
+	switch_raw();
+}
+
+/*
+ * Initializes the command stack to be used for the 
+ * first time.
+ */
+static void initialize_stack(void)
+{
+	for(int i=0; i<STACK_SIZE; i++)
+		strcpy(stack[i], "\0");
+
+	stackp = -1;
+	stack_count = 0;
+}
 
 /*
  * Prints a syntax error message.
@@ -504,24 +579,123 @@ static void pline(char *line)
  */
 static int readline(char *line, int length, FILE *stream)
 {
-	line = fgets(line, length, stream);		
-		
-	/* Error while reading? */
-	if (line  == NULL)
+	int fd;
+	int bytesread;
+	int size;
+	int pointer;
+	int counter;
+	unsigned char ch;
+	unsigned char *p;
+
+	fd = fileno(stream);
+	size = length;
+	p = (unsigned char *)line;
+
+	pointer = ((stackp + 1)&(STACK_SIZE - 1));
+	counter = 0;
+
+	while(size > 0)
 	{
-		/* End of file reached. */
-		if (feof(stream))
+		bytesread = read(fd, &ch, 1);
+
+		/* Nothing to be read. */
+		if(bytesread == 0)
+			return (-1);
+
+		/* Control characters. */
+		if (ch == ERASE_CHAR(raw) && size < length)
+		{
+			*p-- = 0;
+			size++;
+			putchar(ch);
+		}
+
+		else if (ch == KILL_CHAR(raw))
+		{
+			CLEAR_BUFFER();
+			size = length;
+		}
+
+		else if (ch == EOF_CHAR(raw))
 			return (0);
-			
-		clearerr(stream);
-		shret = errno;
-		return (-1);
+
+		/* Keys */
+		else if (ch == ENTER)
+		{
+			*p++ = '\0';
+
+			/* Guarantee that doesn't add empty command. */
+			if(size < length)
+			{
+				/* Checks if command has not only whitespace. */
+				int check = 0;
+				for(int i=0; *(line+i) != '\0'; i++)
+				{
+					if( *(line+i) > 32 && *(line+i) < 126)
+						check++;
+				}
+
+				/* Add command in stack. */
+				if(check > 0)
+				{
+					stackp = ((stackp + 1)&(STACK_SIZE - 1));
+					stack_count++;
+					strcpy(stack[stackp], line);
+				}
+			}
+
+			size--;
+			putchar(NEWLINE);
+			goto success;
+		}
+
+		/* Keys UP and DOWN from stack command. */
+		else if (ch == KUP || ch == KDOWN)
+		{
+			if(ch == KUP)
+			{
+				/* Prevents go up in empty positions. */
+				int min = (stack_count < STACK_SIZE) ? 
+					stack_count : STACK_SIZE;
+
+				if(counter < min)
+				{
+					pointer = ((pointer - 1)&(STACK_SIZE - 1));
+					counter++;
+				}
+			}
+			else
+			{
+				/* Avoid from getting the same start command. */
+				if(counter > 1)
+				{
+					pointer = ((pointer + 1)&(STACK_SIZE - 1));
+					counter--;
+				}
+			}
+				
+			/* Clear the actual command and screen. */
+			CLEAR_BUFFER();
+			size = length-strlen( stack[pointer] );
+
+			/* Copy command into buffer. */
+			for(int i=0; stack[pointer][i] != '\0'; i++)
+				*p++ = stack[pointer][i];
+
+			/* Print on the screen. */
+			printf("%s", stack[pointer] );
+		}
+
+		/* Printable characters. */
+		else if (ch > 31)
+		{
+			*p++ = ch;
+			size--;
+			putchar(ch);
+		}
 	}
-	
-	/* Remove trailing newline. */
-	if ((line = strchr(line, '\n')) != NULL)
-		*line = '\0';
-	
+
+success:
 	return (1);
 }
 
@@ -632,7 +806,13 @@ int main(int argc, char **argv)
 	/* Print copyright message. */
 	if (shflags & SH_INTERACTIVE)
 		puts(SH_COPYRIGHT);
-	
+
+	/* Configure tty to work in raw mode. */
+	configure_tty();
+
+	/* Initialize command stack. */
+	initialize_stack();
+
 	/* Read and interpret commands. */
 	while (1)
 	{
@@ -655,12 +835,15 @@ int main(int argc, char **argv)
 			
 			/* Parse command line. */
 			case 1:
+				switch_canonical();
 				pline(line);
+				switch_raw();
 				break;
 		}
 	}
 	
 out:
 
+	switch_canonical();
 	return (shret);
 }
