@@ -102,8 +102,7 @@ PUBLIC void tty_int(unsigned char ch)
 			if ((ch == ERASE_CHAR(*active)) ||
 				(ch == KILL_CHAR(*active)) ||
 				(ch == EOL_CHAR(*active)) ||
-				(ch == EOF_CHAR(*active)) ||
-				((ch > 0x8F) && (ch < 0x9B))) /* Cursor keys */
+				(ch == EOF_CHAR(*active)))
 				goto out1;
 		}
 		
@@ -345,13 +344,6 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			{
 				console_put('\n', WHITE);
 				continue;
-			}
-
-			/* Cursor keys, for now, we just ignore them in
-			Canonical mode, yes, it's an ugly solution. */
-			else if ( (ch > 0x8F) && (ch < 0x9B) )
-			{
-				;
 			}
 
 			else
