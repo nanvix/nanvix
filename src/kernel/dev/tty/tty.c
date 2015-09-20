@@ -483,26 +483,21 @@ PRIVATE int tty_gets(struct tty *tty, struct termios *termiosp)
 PRIVATE int tty_sets(struct tty *tty, struct set_termios_attr *sta)
 {
 	int ret;
+	
+	ret = 0;
 
 	/* Invalid termios pointer. */	
 	if (!chkmem(sta->termiosp, sizeof(struct termios), MAY_READ))
 		return (-EINVAL);
 
-	/* For now, it's only processed TCSANOW option, the options:
-		TCSADRAIN and TCSAFLUSH should be added later. */
+	/*
+	 * For now, only TCSANOW is supported.
+	 */
 	switch(sta->optional_actions)
 	{
 		/* The change occurs immediately. */
 		case TCSANOW:
-			tty->term.c_iflag = sta->termiosp->c_iflag;
-			tty->term.c_oflag = sta->termiosp->c_oflag;
-			tty->term.c_cflag = sta->termiosp->c_cflag;
-			tty->term.c_lflag = sta->termiosp->c_lflag;
-
-			for(int i=0; i<NCCS; i++)
-				tty->term.c_cc[i] = sta->termiosp->c_cc[i];
-
-			ret = 0;
+			kmemcpy(&tty->term, sta->termiosp, sizeof(struct termios));
 			break;
 
 		/* Invalid operation. */
