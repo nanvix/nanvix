@@ -249,10 +249,8 @@ PUBLIC void do_keyboard_hit(void)
         	/*  TODO: implement. */
             break;
 
+		/* Fall through. */
         case KUP:
-        	tty_int(ascii_code);
-        	break;
-
         case KDOWN:
         	tty_int(ascii_code);
         	break;
