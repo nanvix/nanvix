@@ -458,6 +458,9 @@ The \texttt{inode\_get()} routine is handful in situations where the serial numb
 % Inode interface #3.
 The last two routines exported by the file system, namely \texttt{inode\_lock()} and \texttt{inode\_unlock()}, are provided for locking purposes. The first one causes the calling process to block until it acquires exclusive access to a target inode, and the second routine releases the lock that a process owns over an inode and wakes up all processes that were awaiting for this event. Having a process to call \texttt{inode\_lock()} before using and inode and \texttt{inode\_unlock()} when it is done with it enables processes to consistently operate over inodes, thus promoting the file system's integrity.
 
+% High-level file system routines.
+On top of the inode interface, the kernel builds higher-level abstractions and routines. A table, namely the opened file descriptors table, is used to bookkeep all files that are opened in the system. Each entry in this table stores a pointer to the underlying in-memory inode and tracks the current read/write cursor in the file. The opened file descriptors table is heavily manipulated by the \texttt{open()} and \texttt{close()} system calls. For reading/writing to a file, the kernel provides \texttt{file\_read()} and \texttt{file\_write()}. These routines take as parameters a target inode and buffer, and transparently handle a read/write request by traversing the data-block tree in the inode structure. Conversely, to add and remove entries from a directory, the file system exports the \texttt{dir\_add()} and \texttt{dir\_remove()} routines. 
+
 \begin{table}
 \small
 \centering
