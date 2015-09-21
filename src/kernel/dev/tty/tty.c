@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
@@ -398,10 +398,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 						enable_interrupts();
 						return (-EINTR);
 					}
-
-					/* I'm pretty sure that was supposed to be rinput
-						rather than cinput :) */
-
+					
 					/* Copy data from input buffer. */
 					while ((i > 0) && (!KBUFFER_EMPTY(tty.rinput)))
 					{

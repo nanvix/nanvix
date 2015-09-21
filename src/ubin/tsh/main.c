@@ -1,9 +1,23 @@
 /*
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
- *
- * tsh - Tiny UNIX Shell.
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
+
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -39,49 +53,43 @@ int  stackp;
 int  stack_count;
 
 /*
- * Switch to canonical (default) mode
+ * Switches to canonical (default) mode.
  */
 static void switch_canonical(void)
 {
-	if (tcsetattr(fileno(stdin),TCSANOW,&canonical) < 0)
+	if (tcsetattr(fileno(stdin), TCSANOW, &canonical) < 0)
 	{
-		fprintf(stderr, "%s: failed to switch to canonical mode\n", 
-			TSH_NAME);
-
+		fprintf(stderr, "%s: failed to switch to canonical mode\n", TSH_NAME);
 		exit(EXIT_FAILURE);
 	}
 }
 
 /*
- * Switch to raw mode
+ * Switches to raw mode
  */
 static void switch_raw(void)
 {
-	if (tcsetattr(fileno(stdin),TCSANOW,&raw) < 0)
+	if (tcsetattr(fileno(stdin), TCSANOW, &raw) < 0)
 	{
-		fprintf(stderr, "%s: failed to switch to raw mode\n", 
-			TSH_NAME);
-
+		fprintf(stderr, "%s: failed to switch to raw mode\n", TSH_NAME);
 		exit(EXIT_FAILURE);
 	}
 }
 
 /*
- * Get tty options and configure to raw mode for the
- * first time.
+ * Configures raw mode.
  */
 static void configure_tty(void)
 {
-	/* Get termios and configure raw mode. */
-	if (tcgetattr(fileno(stdin),&canonical) < 0 || 
-		tcgetattr(fileno(stdin),&raw) < 0)
+	/* Get current termios */
+	if (tcgetattr(fileno(stdin), &canonical) < 0)
 	{
-		fprintf(stderr, "%s: failed to get tty options\n", 
-			TSH_NAME);
-
+		fprintf(stderr, "%s: failed to get tty options\n", TSH_NAME);
 		exit(EXIT_FAILURE);
 	}
 
+	/* Configure raw mode. */
+	memcpy(&raw, &canonical, sizeof(struct termios));
 	raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
 	raw.c_cc[VMIN] = 1;
 	raw.c_cc[VTIME] = 0;
@@ -90,14 +98,12 @@ static void configure_tty(void)
 }
 
 /*
- * Initializes the command stack to be used for the 
- * first time.
+ * Initializes the command stack.
  */
 static void initialize_stack(void)
 {
-	for(int i=0; i<STACK_SIZE; i++)
-		strcpy(stack[i], "\0");
-
+	for (int i = 0; i < STACK_SIZE; i++)
+		stack[i][0] = '\0';
 	stackp = -1;
 	stack_count = 0;
 }
@@ -646,7 +652,7 @@ static int readline(char *line, int length, FILE *stream)
 
 			size--;
 			putchar(NEWLINE);
-			goto success;
+			break;
 		}
 
 		/* Keys UP and DOWN from stack command. */
@@ -695,7 +701,6 @@ static int readline(char *line, int length, FILE *stream)
 		}
 	}
 
-success:
 	return (1);
 }
 
