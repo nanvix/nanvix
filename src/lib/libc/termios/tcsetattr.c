@@ -19,17 +19,19 @@
  */
 
 
-#ifndef TTY_H_
-#define TTY_H_
+#include <dev/tty.h>
+#include <stropts.h>
+#include <termios.h>
 
-	/* tty ioctl() commands. */
-	#define TTY_CLEAR 0x54000100 /* Clear console.    */
-	#define TTY_GETS  0x54000201 /* Get tty settings. */
- 	#define TTY_SETS  0x54000301 /* Set tty settings. */
+/*
+ * Sets the parameters associated with the terminal
+ */
+int tcsetattr(int fd, int optional_actions, 
+	const struct termios *termiosp)
+{
+	struct set_termios_attr sta;
+	sta.optional_actions = optional_actions;
+	sta.termiosp = termiosp;
 
-	/*
-	 * Initializes the tty device driver.
-	 */
-	extern void tty_init(void);
-
-#endif /* TTY_H_ */
+	return (ioctl(fd, TTY_SETS, &sta));
+}
