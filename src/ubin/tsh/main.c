@@ -31,6 +31,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <termios.h>
+#include <ctype.h>
 #include "builtin.h"
 #include "tsh.h"
 
@@ -581,19 +582,33 @@ static void pline(char *line)
 }
 
 /*
+ * Cheks if a string has at least one graph character.
+ */
+static int has_graph(const char *str)
+{
+	for (/* noop */; *str != '\0'; str++)
+	{
+		if (isgraph(*str))
+				return (1);
+	}
+	
+	return (0);
+}
+
+/*
  * Reads a command line.
  */
 static int readline(char *line, int length, FILE *stream)
 {
-	int fd;            /* File descriptor associated with the stream. */
-	int size;          /* Number of characters left in the buffer.    */
+	int fd;       /* File descriptor associated with the stream. */
+	int size;     /* Number of characters left in the buffer.    */
 	int pointer;
 	int counter;
-	unsigned char *p; /* Write pointer. */
+	char *p;      /* Write pointer.                              */
 
 	fd = fileno(stream);
 	size = length;
-	p = (unsigned char *)line;
+	p =  line;
 
 	pointer = ((stackp + 1)&(STACK_SIZE - 1));
 	counter = 0;
@@ -607,7 +622,7 @@ static int readline(char *line, int length, FILE *stream)
 			return (-1);
 
 		/* Erase. */
-		if (ch == ERASE_CHAR(raw))
+		if ((ch == ERASE_CHAR(raw)) && (p != line))
 		{
 			*p-- = '\0';
 			size++;
@@ -616,10 +631,7 @@ static int readline(char *line, int length, FILE *stream)
 
 		/* Kill. */
 		else if (ch == KILL_CHAR(raw))
-		{
-			CLEAR_BUFFER();
-			size = length;
-		}
+			return (0);
 
 		/* End of file. */
 		else if (ch == EOF_CHAR(raw))
@@ -665,31 +677,24 @@ static int readline(char *line, int length, FILE *stream)
 		/* Keys */
 		else
 		{
+			/* Check for line overflow. */
+			if (size == 1)
+			{
+				*p++ = '\0';
+				break;
+			}
+			
 			/* End of line. */
 			if (ch == NEWLINE)
 			{
 				*p++ = '\0';
-			
-				/*
-				 * Make sure that it is not an empty line.
-				 */
-				if (size < length)
+				
+				/* Add command to stack. */
+				if (has_graph(line))
 				{
-					/* Checks if command has not only whitespace. */
-					int check = 0;
-					for(int i = 0; *(line + i) != '\0'; i++)
-					{
-						if (*(line + i) > 32 && *(line + i) < 126)
-							check++;
-					}
-
-					/* Add command in stack. */
-					if (check > 0)
-					{
-						stackp = ((stackp + 1)&(STACK_SIZE - 1));
-						stack_count++;
-						strcpy(stack[stackp], line);
-					}
+					stackp = ((stackp + 1)&(STACK_SIZE - 1));
+					stack_count++;
+					strcpy(stack[stackp], line);
 				}
 
 				size--;
@@ -697,14 +702,13 @@ static int readline(char *line, int length, FILE *stream)
 				break;
 			}
 			
-			/*
-			 * There is no need to check for printable
-			 * characters let the kernel handle
-			 * locale-dependent stuff.
-			 */
-			*p++ = ch;
-			size--;
-			putchar(ch);
+			/* Printable character. */
+			if (isprint(ch))
+			{
+				*p++ = ch;
+				size--;
+				putchar(ch);
+			}
 		}
 	}
 	
