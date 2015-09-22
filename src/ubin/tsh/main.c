@@ -585,13 +585,11 @@ static void pline(char *line)
  */
 static int readline(char *line, int length, FILE *stream)
 {
-	int fd;
-	int bytesread;
-	int size;
+	int fd;            /* File descriptor associated with the stream. */
+	int size;          /* Number of characters left in the buffer.    */
 	int pointer;
 	int counter;
-	unsigned char ch;
-	unsigned char *p;
+	unsigned char *p; /* Write pointer. */
 
 	fd = fileno(stream);
 	size = length;
@@ -600,80 +598,52 @@ static int readline(char *line, int length, FILE *stream)
 	pointer = ((stackp + 1)&(STACK_SIZE - 1));
 	counter = 0;
 
-	while(size > 0)
+	while (size > 0)
 	{
-		bytesread = read(fd, &ch, 1);
-
-		/* Nothing to be read. */
-		if(bytesread == 0)
+		unsigned char ch;
+	
+		/* Nothing read. */
+		if (read(fd, &ch, 1) != 1)
 			return (-1);
 
-		/* Control characters. */
-		if (ch == ERASE_CHAR(raw) && size < length)
+		/* Erase. */
+		if (ch == ERASE_CHAR(raw))
 		{
-			*p-- = 0;
+			*p-- = '\0';
 			size++;
 			putchar(ch);
 		}
 
+		/* Kill. */
 		else if (ch == KILL_CHAR(raw))
 		{
 			CLEAR_BUFFER();
 			size = length;
 		}
 
+		/* End of file. */
 		else if (ch == EOF_CHAR(raw))
 			return (0);
 
-		/* Keys */
-		else if (ch == ENTER)
-		{
-			*p++ = '\0';
-
-			/* Guarantee that doesn't add empty command. */
-			if(size < length)
-			{
-				/* Checks if command has not only whitespace. */
-				int check = 0;
-				for(int i=0; *(line+i) != '\0'; i++)
-				{
-					if( *(line+i) > 32 && *(line+i) < 126)
-						check++;
-				}
-
-				/* Add command in stack. */
-				if(check > 0)
-				{
-					stackp = ((stackp + 1)&(STACK_SIZE - 1));
-					stack_count++;
-					strcpy(stack[stackp], line);
-				}
-			}
-
-			size--;
-			putchar(NEWLINE);
-			break;
-		}
-
-		/* Keys UP and DOWN from stack command. */
+		/* UP and DOWN. */
 		else if (ch == KUP || ch == KDOWN)
 		{
 			if(ch == KUP)
 			{
 				/* Prevents go up in empty positions. */
-				int min = (stack_count < STACK_SIZE) ? 
-					stack_count : STACK_SIZE;
+				int min = (stack_count < STACK_SIZE) ? stack_count : STACK_SIZE;
 
-				if(counter < min)
+				if (counter < min)
 				{
 					pointer = ((pointer - 1)&(STACK_SIZE - 1));
 					counter++;
 				}
 			}
+			
 			else
 			{
 				/* Avoid from getting the same start command. */
-				if(counter > 1)
+				if (counter > 1)
 				{
 					pointer = ((pointer + 1)&(STACK_SIZE - 1));
 					counter--;
@@ -685,22 +655,59 @@ static int readline(char *line, int length, FILE *stream)
 			size = length-strlen( stack[pointer] );
 
 			/* Copy command into buffer. */
-			for(int i=0; stack[pointer][i] != '\0'; i++)
+			for (int i=0; stack[pointer][i] != '\0'; i++)
 				*p++ = stack[pointer][i];
 
 			/* Print on the screen. */
-			printf("%s", stack[pointer] );
+			printf("%s", stack[pointer]);
 		}
 
-		/* Printable characters. */
-		else if (ch > 31)
+		/* Keys */
+		else
 		{
+			/* End of line. */
+			if (ch == NEWLINE)
+			{
+				*p++ = '\0';
+			
+				/*
+				 * Make sure that it is not an empty line.
+				 */
+				if (size < length)
+				{
+					/* Checks if command has not only whitespace. */
+					int check = 0;
+					for(int i = 0; *(line + i) != '\0'; i++)
+					{
+						if (*(line + i) > 32 && *(line + i) < 126)
+							check++;
+					}
+
+					/* Add command in stack. */
+					if (check > 0)
+					{
+						stackp = ((stackp + 1)&(STACK_SIZE - 1));
+						stack_count++;
+						strcpy(stack[stackp], line);
+					}
+				}
+
+				size--;
+				putchar(NEWLINE);
+				break;
+			}
+			
+			/*
+			 * There is no need to check for printable
+			 * characters let the kernel handle
+			 * locale-dependent stuff.
+			 */
 			*p++ = ch;
 			size--;
 			putchar(ch);
 		}
 	}
-
+	
 	return (1);
 }
 
