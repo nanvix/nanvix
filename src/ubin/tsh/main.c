@@ -622,7 +622,7 @@ static int readline(char *line, int length, FILE *stream)
 			return (-1);
 
 		/* Erase. */
-		if ((ch == ERASE_CHAR(raw)) && (p != line))
+		if ((ch == ERASE_CHAR(raw)) && (size < length))
 		{
 			*p-- = '\0';
 			size++;
@@ -631,7 +631,12 @@ static int readline(char *line, int length, FILE *stream)
 
 		/* Kill. */
 		else if (ch == KILL_CHAR(raw))
-			return (0);
+		{
+			/* Clear buffer. */
+			while (size++ < length)
+				putchar('\b');
+			p = line;
+		}
 
 		/* End of file. */
 		else if (ch == EOF_CHAR(raw))
