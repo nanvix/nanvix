@@ -68,5 +68,5 @@
  */
 int iscntrl(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & _C);
+	return (_ctype[(unsigned) c] & _C);
 }

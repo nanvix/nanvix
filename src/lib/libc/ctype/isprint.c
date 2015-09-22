@@ -68,7 +68,7 @@
  */
 int isprint(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & (_P|_U|_L|_N|_B));
+	return (_ctype[(unsigned) c] & (_P|_U|_L|_N|_B));
 }
 	
 

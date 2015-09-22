@@ -68,5 +68,5 @@
  */
 int isupper(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & _U);
+	return (_ctype[(unsigned) c] & _U);
 }

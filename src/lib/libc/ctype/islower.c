@@ -67,5 +67,5 @@
  */
 int islower(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & _L);
+	return (_ctype[(unsigned) c] & _L);
 }

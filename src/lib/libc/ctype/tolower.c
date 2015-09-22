@@ -69,5 +69,5 @@
  */
 int tolower(int c)
 {
-	return ((_maplower + 1)[(unsigned) c]);
+	return (_maplower[(unsigned) c]);
 }

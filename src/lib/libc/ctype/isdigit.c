@@ -67,5 +67,5 @@
  */
 int isdigit(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & _N);
+	return (_ctype[(unsigned) c] & _N);
 }

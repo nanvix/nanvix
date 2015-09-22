@@ -68,5 +68,5 @@
  */
 int isalpha(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & (_U|_L));
+	return (_ctype[(unsigned) c] & (_U|_L));
 }

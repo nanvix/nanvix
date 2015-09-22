@@ -68,5 +68,5 @@
  */
 int ispunct(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & _P);
+	return (_ctype[(unsigned) c] & _P);
 }

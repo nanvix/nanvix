@@ -68,5 +68,5 @@
  */
 int isxdigit(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & (_N|_X));
+	return (_ctype[(unsigned) c] & (_N|_X));
 }

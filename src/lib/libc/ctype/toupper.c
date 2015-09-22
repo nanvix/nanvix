@@ -69,5 +69,5 @@
  */
 int toupper(int c)
 {
-	return (((_mapupper + 1)[(unsigned) c]));
+	return (_mapupper[(unsigned) c]);
 }

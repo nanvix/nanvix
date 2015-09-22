@@ -68,5 +68,5 @@
  */
 int isgraph(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & (_P|_U|_L|_N));
+	return (_ctype[(unsigned) c] & (_P|_U|_L|_N));
 }

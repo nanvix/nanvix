@@ -68,5 +68,5 @@
  */
 int isspace(int c)
 {
-	return ((_ctype + 1)[(unsigned) c] & _S);
+	return (_ctype[(unsigned) c] & _S);
 }
