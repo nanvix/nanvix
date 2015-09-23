@@ -56,12 +56,12 @@
 	#define NCCS 11
 
 	/* tcsetattr uses these */
-	#define	TCSANOW		0 /* The change occurs immediately. */
-	#define	TCSADRAIN	1 /* The change occurs after all output written to the
+	#define	TCSANOW		1 /* The change occurs immediately. */
+	#define	TCSADRAIN	2 /* The change occurs after all output written to the
 	                         object referred to by FileDescriptor has been 
 	                         transmitted. */
 
-	#define	TCSAFLUSH	2 /* The change occurs after all output written to the
+	#define	TCSAFLUSH	3 /* The change occurs after all output written to the
 	                         object referred to by FileDescriptor has been 
 	                         transmitted. All input that has been received but
 	                         not read is discarded before the change is made.*/
@@ -83,24 +83,8 @@
 		tcflag_t c_cc[NCCS]; /* Control characters.             */
     };
 
-    /*
-     * Aditional parameters from tcsetattr
-     */
-    struct set_termios_attr
-    {
-    	int optional_actions;
-    	const struct termios *termiosp;
-    };
-    
-	/*
-	 * Gets the parameters associated with the terminal
-	 */
-	extern int tcgetattr(int fd, struct termios *termiosp);
-
-	/*
-	 * Sets the parameters associated with the terminal
-	 */
-	extern int tcsetattr(int fd, int optional_actions,
-		const struct termios *termiosp);
+	/* Forward definitions. */
+	extern int tcgetattr(int, struct termios *);
+	extern int tcsetattr(int, int, const struct termios *);
 
 #endif /* TERMIOS_H_ */

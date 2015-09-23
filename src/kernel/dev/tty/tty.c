@@ -28,6 +28,7 @@
 #include <nanvix/syscall.h>
 #include <errno.h>
 #include <termios.h>
+#include <stropts.h>
 #include "tty.h"
 
 /**
@@ -477,24 +478,24 @@ PRIVATE int tty_gets(struct tty *tty, struct termios *termiosp)
 /*
  * Sets tty settings
  */
-PRIVATE int tty_sets(struct tty *tty, struct set_termios_attr *sta)
+PRIVATE int tty_sets(struct tty *tty, int options, struct termios *termiosp)
 {
 	int ret;
 	
 	ret = 0;
 
 	/* Invalid termios pointer. */	
-	if (!chkmem(sta->termiosp, sizeof(struct termios), MAY_READ))
+	if (!chkmem(termiosp, sizeof(struct termios), MAY_READ))
 		return (-EINVAL);
 
 	/*
 	 * For now, only TCSANOW is supported.
 	 */
-	switch(sta->optional_actions)
+	switch (options)
 	{
 		/* The change occurs immediately. */
 		case TCSANOW:
-			kmemcpy(&tty->term, sta->termiosp, sizeof(struct termios));
+			kmemcpy(&tty->term, termiosp, sizeof(struct termios));
 			break;
 
 		/* Invalid operation. */
@@ -526,20 +527,20 @@ PRIVATE int tty_ioctl(unsigned minor, unsigned cmd, unsigned arg)
 	UNUSED(minor);
 	
 	/* Parse command. */
-	switch (cmd)
+	switch (IOCTL_MAJOR(cmd))
 	{
 		/* Get tty settings. */
-		case TTY_GETS:
+		case IOCTL_MAJOR(TTY_GETS):
 			ret = tty_gets(&tty, (struct termios *)arg);
 			break;
 
 		/* Set tty settings */
-		case TTY_SETS:
-			ret = tty_sets(&tty, (struct set_termios_attr *)arg);
+		case IOCTL_MAJOR(TTY_SETS):
+			ret = tty_sets(&tty, IOCTL_MINOR(cmd), (struct termios *)arg);
 			break;
 		
 		/* Clear console. */
-		case TTY_CLEAR:
+		case IOCTL_MAJOR(TTY_CLEAR):
 			ret = tty_clear(&tty);
 			break;
 		

@@ -18,7 +18,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #include <dev/tty.h>
 #include <stropts.h>
 #include <termios.h>
@@ -26,12 +25,8 @@
 /*
  * Sets the parameters associated with the terminal
  */
-int tcsetattr(int fd, int optional_actions, 
-	const struct termios *termiosp)
+int tcsetattr(int fd, int optional_actions, const struct termios *termiosp)
 {
-	struct set_termios_attr sta;
-	sta.optional_actions = optional_actions;
-	sta.termiosp = termiosp;
 
-	return (ioctl(fd, TTY_SETS, &sta));
+	return (ioctl(fd, TTY_SETS | IOCTL_MINOR(optional_actions), termiosp));
 }

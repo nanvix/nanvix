@@ -7,6 +7,7 @@
 #include <nanvix/syscall.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <stropts.h>
 #include <unistd.h>
 
 /*
@@ -19,7 +20,7 @@ int ioctl(int fd, int cmd, ...)
 	va_list arg;   /* Variable argument. */
 	
 	carg = 0;
-	if (cmd & 1)
+	if (IOCTL_MAJOR(cmd) & 1)
 	{
 		va_start(arg, cmd);
 		carg = va_arg(arg, unsigned)
