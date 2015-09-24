@@ -350,7 +350,7 @@ static int sched_test2(void)
 /**
  * @brief Initializes a semaphore.
  */
-#define SEM_INIT(a, b) (semctl((a), SETVAL, (b)))
+#define SEM_INIT(a, b) (assert(semctl((a), SETVAL, (b)) == 0))
 
 /**
  * @brief Destroys a semaphore.
@@ -370,20 +370,20 @@ static int sched_test2(void)
 /**
  * @brief Puts an item in a buffer.
  */
-#define PUT_ITEM(a, b)                               \
-{                                                    \
-	assert(lseek((a), 0, SEEK_SET) != -1);           \
-	assert(write((a), (b), sizeof(b)) != sizeof(b)); \
-}                                                    \
+#define PUT_ITEM(a, b)                                \
+{                                                     \
+	assert(lseek((a), 0, SEEK_SET) != -1);            \
+	assert(write((a), &(b), sizeof(b)) == sizeof(b)); \
+}                                                     \
 
 /**
  * @brief Gets an item from a buffer.
  */
-#define GET_ITEM(a, b)                              \
-{                                                   \
-	assert(lseek((a), 0, SEEK_SET) != -1);          \
-	assert(read((a), (b), sizeof(b)) != sizeof(b)); \
-}                                                   \
+#define GET_ITEM(a, b)                               \
+{                                                    \
+	assert(lseek((a), 0, SEEK_SET) != -1);           \
+	assert(read((a), &(b), sizeof(b)) == sizeof(b)); \
+}                                                    \
 
 /**
  * @brief Producer-Consumer problem with semaphores.
@@ -403,7 +403,7 @@ int semaphore_test3(void)
 	const int NR_ITEMS = 512;   /* Number of items to send. */
 	
 	/* Create buffer.*/
-	buffer_fd = open("buffer", O_RDWR | O_CREAT);
+	buffer_fd = open("buffer", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
 	if (buffer_fd < 0)
 		return (-1);
 	
@@ -428,7 +428,7 @@ int semaphore_test3(void)
 			SEM_DOWN(empty);
 			SEM_DOWN(mutex);
 			
-			PUT_ITEM(buffer_fd, &item);
+			PUT_ITEM(buffer_fd, item);
 				
 			SEM_UP(mutex);
 			SEM_UP(full);
@@ -439,7 +439,7 @@ int semaphore_test3(void)
 		SEM_DESTROY(empty);
 		SEM_DESTROY(full);
 		
-		exit(0);
+		_exit(EXIT_SUCCESS);
 	}
 	
 	/* Consumer. */
@@ -452,7 +452,7 @@ int semaphore_test3(void)
 			SEM_DOWN(full);
 			SEM_DOWN(mutex);
 			
-			GET_ITEM(buffer_fd, &item);
+			GET_ITEM(buffer_fd, item);
 				
 			SEM_UP(mutex);
 			SEM_UP(empty);
