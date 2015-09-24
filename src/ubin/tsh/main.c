@@ -659,7 +659,7 @@ static int readline(char *line, int length, FILE *stream)
 
 				if (counter < min)
 				{
-					pointer = ((pointer - 1)&(STACK_SIZE - 1));
+					pointer = ((pointer - 1) & (STACK_SIZE - 1));
 					counter++;
 				}
 			}
@@ -669,7 +669,7 @@ static int readline(char *line, int length, FILE *stream)
 				/* Avoid from getting the same start command. */
 				if (counter > 1)
 				{
-					pointer = ((pointer + 1)&(STACK_SIZE - 1));
+					pointer = ((pointer + 1) & (STACK_SIZE - 1));
 					counter--;
 				}
 			}
@@ -680,7 +680,8 @@ static int readline(char *line, int length, FILE *stream)
 				
 			/* Restore last command. */
 			size = length - strlen(stack[pointer]);
-			strcpy(p = line, stack[pointer]);
+			p = line + strlen(stack[pointer]) + 1;
+			strcpy(line, stack[pointer]);
 			printf("%s", stack[pointer]);
 		}
 
@@ -702,7 +703,7 @@ static int readline(char *line, int length, FILE *stream)
 				/* Add command to stack. */
 				if (has_graph(line))
 				{
-					stackp = ((stackp + 1)&(STACK_SIZE - 1));
+					stackp = ((stackp + 1) & (STACK_SIZE - 1));
 					stack_count++;
 					strcpy(stack[stackp], line);
 				}
