@@ -633,8 +633,8 @@ static int readline(char *line, int length, FILE *stream)
 		else if (ch == KILL_CHAR(raw))
 		{
 			/* Clear buffer. */
-			while (size++ < length)
-				putchar('\b');
+			while (size < length)
+				putchar('\b'), size++;
 			p = line;
 		}
 
