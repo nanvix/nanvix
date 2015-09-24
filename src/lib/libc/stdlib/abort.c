@@ -24,11 +24,12 @@
  */
 
 #include <signal.h>
+#include <unistd.h>
 
 /**
- * @brief Causes abnormal process termination
+ * @brief Causes abnormal process termination.
  */
 void abort(void)
 {
-	kill(0, SIGABRT);
+	kill(getpid(), SIGABRT);
 }
