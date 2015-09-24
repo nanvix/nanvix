@@ -26,11 +26,11 @@
 	/**@{*/
 	#define GETVAL   0 /**< Returns the value of a semaphore. */
 	#define SETVAL   1 /**< Sets the value of a semaphore.    */
-	#define IPC_RMID 3 /**< Destroys a semaphores.            */
+	#define IPC_RMID 3 /**< Destroys a semaphore.            */
 	/**@}*/
 
 	/* Forward definitions. */
-	int semget(unsigned)
+	int semget(unsigned);
 	int semctl(int, int, int);
 	int semop(int, int);
 
