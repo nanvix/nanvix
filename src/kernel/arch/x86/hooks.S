@@ -319,9 +319,11 @@ syscall:
 	movl ECX(%esp), %ecx
 	movl EDX(%esp), %edx
 	
+	/* Check for bad system call. */
 	cmpl $NR_SYSCALLS, %eax
 	jl good_syscall
-		movl %eax, -ENOSYS
+		movl $ENOSYS, %eax 
+		negl %eax
 	jmp bad_syscall
 	
 	good_syscall:	
