@@ -690,7 +690,7 @@ static int readline(char *line, int length, FILE *stream)
 			}
 			
 			/* End of line. */
-			if (ch == NEWLINE)
+			if (ch == EOL_CHAR(raw))
 			{
 				*p++ = '\0';
 				

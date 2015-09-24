@@ -339,19 +339,16 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 					console_put('\b', WHITE);
 				}
 			}
-			
-			/* End of line. */
-			else if (ch == EOL_CHAR(tty))
-			{
-				console_put('\n', WHITE);
-				continue;
-			}
 
 			else
 			{
 				/* End of file. */
 				if (ch == EOF_CHAR(tty))
 					ch = '\0';
+				
+				/* End of line. */
+				else if (ch == EOL_CHAR(tty))
+					console_put(ch = '\n', WHITE);
 			
 				KBUFFER_PUT(tty.cinput, ch);
 			
@@ -589,7 +586,7 @@ PRIVATE struct cdev tty_driver = {
  */
 PRIVATE tcflag_t init_c_cc[NCCS] = {
 	'd' - 96,  /**< EOF character.   */
-	'\n' + 96, /**< EOL character.   */
+	'\n',      /**< EOL character.   */
 	'\b',      /**< ERASE character. */
 	'c' - 96,  /**< INTR character.  */
 	'u' - 96,  /**< KILL character.  */
