@@ -82,6 +82,7 @@ int execvp(const char *file, char *const argv[])
 		name[p - path] = '/';
 		memcpy (&name[(p - path) + 1], file, length);
 		
+		errno = 0;
 		execv(name, argv);
 		
 		/* Failed to execute. */
