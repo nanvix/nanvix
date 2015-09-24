@@ -229,7 +229,7 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 			return (-EBUSY);			
 		}
 	}
-
+	
 	/* Remove directory entry. */
 	d->d_ino = INODE_NULL;
 	buf->flags |= BUFFER_DIRTY;
@@ -238,7 +238,6 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 	inode_touch(file);
 	inode_put(file);
 	brelse(buf);
-	inode_put(dinode);
 	
 	return (0);
 }
