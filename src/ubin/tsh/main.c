@@ -35,6 +35,13 @@
 #include "builtin.h"
 #include "tsh.h"
 
+/* Cursor keys. */
+#define KUP    0x97
+#define KDOWN  0x98
+
+/* Command stack. */
+#define STACK_SIZE  16
+
 /* Shell flags. */
 int shflags = 0;
 
@@ -668,14 +675,12 @@ static int readline(char *line, int length, FILE *stream)
 			}
 				
 			/* Clear the actual command and screen. */
-			CLEAR_BUFFER();
-			size = length-strlen( stack[pointer] );
-
-			/* Copy command into buffer. */
-			for (int i=0; stack[pointer][i] != '\0'; i++)
-				*p++ = stack[pointer][i];
-
-			/* Print on the screen. */
+			while (size < length)
+				putchar('\b'), size++;
+				
+			/* Restore last command. */
+			size = length - strlen(stack[pointer]);
+			strcpy(p = line, stack[pointer]);
 			printf("%s", stack[pointer]);
 		}
 
@@ -703,7 +708,7 @@ static int readline(char *line, int length, FILE *stream)
 				}
 
 				size--;
-				putchar(NEWLINE);
+				putchar('\n');
 				break;
 			}
 			

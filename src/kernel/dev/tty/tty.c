@@ -42,23 +42,6 @@ PRIVATE struct tty tty;
 PRIVATE struct tty *active = &tty;
 
 /**
- * @name Control Characters
- */
-/**@{*/
-#define INTR_CHAR(tty) ((tty).term.c_cc[VINTR])
-#define STOP_CHAR(tty) ((tty).term.c_cc[VSTOP])
-#define SUSP_CHAR(tty) ((tty).term.c_cc[VSUSP])
-#define START_CHAR(tty) ((tty).term.c_cc[VSTART])
-#define QUIT_CHAR(tty) ((tty).term.c_cc[VQUIT])
-#define ERASE_CHAR(tty) ((tty).term.c_cc[VERASE])
-#define KILL_CHAR(tty) ((tty).term.c_cc[VKILL])
-#define EOL_CHAR(tty) ((tty).term.c_cc[VEOL])
-#define EOF_CHAR(tty) ((tty).term.c_cc[VEOF])
-#define MIN_CHAR(tty) ((tty).term.c_cc[VMIN])
-#define TIME_CHAR(tty) ((tty).term.c_cc[VTIME])
-/**@}*/
-
-/**
  * @brief Sends a signal to process group.
  * 
  * @details Sends the signal @p sig to the process group of the currently active
@@ -100,10 +83,10 @@ PUBLIC void tty_int(unsigned char ch)
 			 * Let these characters be handled
 			 * when the line is being parsed.
 			 */
-			if ((ch == ERASE_CHAR(*active)) ||
-				(ch == KILL_CHAR(*active)) ||
-				(ch == EOL_CHAR(*active)) ||
-				(ch == EOF_CHAR(*active)))
+			if ((ch == ERASE_CHAR(active->term)) ||
+				(ch == KILL_CHAR(active->term)) ||
+				(ch == EOL_CHAR(active->term)) ||
+				(ch == EOF_CHAR(active->term)))
 				goto out1;
 		}
 		
@@ -131,21 +114,21 @@ PUBLIC void tty_int(unsigned char ch)
 		 * Interrupt. Send signal to all
 		 * process in the same group.
 		 */
-		if (ch == INTR_CHAR(*active))
+		if (ch == INTR_CHAR(active->term))
 		{
 			tty_signal(SIGINT);
 			goto out0;
 		}
 		
 		/* Stop. */
-		else if (ch == STOP_CHAR(*active))
+		else if (ch == STOP_CHAR(active->term))
 		{
 			active->flags |= TTY_STOPPED;
 			return;
 		}
 				
 		/* Start. */
-		else if (ch == START_CHAR(*active))
+		else if (ch == START_CHAR(active->term))
 		{
 			active->flags &= ~TTY_STOPPED;
 			wakeup(&active->output.chain);
@@ -153,14 +136,14 @@ PUBLIC void tty_int(unsigned char ch)
 		}
 		
 		/* Suspend. */
-		else if (ch == SUSP_CHAR(*active))
+		else if (ch == SUSP_CHAR(active->term))
 		{
 			tty_signal(SIGTSTP);
 			goto out0;
 		}
 		
 		/* Quit. */
-		else if (ch == QUIT_CHAR(*active))
+		else if (ch == QUIT_CHAR(active->term))
 		{
 			tty_signal(SIGQUIT);
 			goto out0;
@@ -319,7 +302,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			KBUFFER_GET(tty.rinput, ch);
 			
 			/* Erase. */
-			if (ch == ERASE_CHAR(tty))
+			if (ch == ERASE_CHAR(tty.term))
 			{
 				if (!KBUFFER_EMPTY(tty.cinput))
 				{
@@ -329,7 +312,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			}
 			
 			/* Kill. */
-			else if (ch == KILL_CHAR(tty))
+			else if (ch == KILL_CHAR(tty.term))
 			{
 				while (!KBUFFER_EMPTY(tty.cinput))
 				{
@@ -343,11 +326,11 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			else
 			{
 				/* End of file. */
-				if (ch == EOF_CHAR(tty))
+				if (ch == EOF_CHAR(tty.term))
 					ch = '\0';
 				
 				/* End of line. */
-				else if (ch == EOL_CHAR(tty))
+				else if (ch == EOL_CHAR(tty.term))
 					console_put(ch = '\n', WHITE);
 			
 				KBUFFER_PUT(tty.cinput, ch);
@@ -378,10 +361,10 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 		/* Non canonical mode. */
 		else
 		{
-			if (MIN_CHAR(tty) > 0)
+			if (MIN_CHAR(tty.term) > 0)
 			{
 				/* Case A: MIN>0, TIME>0 */
-				if (TIME_CHAR(tty) > 0)
+				if (TIME_CHAR(tty.term) > 0)
 				{
 					kprintf("tty: MIN>0, TIME>0");
 					goto out;
@@ -410,7 +393,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			else
 			{
 				/* Case C: MIN=0, TIME>0 */
-				if (TIME_CHAR(tty) > 0)
+				if (TIME_CHAR(tty.term) > 0)
 				{
 					kprintf("tty: MIN=0, TIME>0");
 					goto out;

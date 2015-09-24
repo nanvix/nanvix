@@ -51,6 +51,23 @@
 	#define VSUSP   9 /**< SUSP character.  */
 	#define VTIME  10 /**< TIME value.      */
 	/**@}*/
+	
+	/**
+	 * @name Control Characters
+	 */
+	/**@{*/
+	#define INTR_CHAR(term) ((term).c_cc[VINTR])
+	#define STOP_CHAR(term) ((term).c_cc[VSTOP])
+	#define SUSP_CHAR(term) ((term).c_cc[VSUSP])
+	#define START_CHAR(term) ((term).c_cc[VSTART])
+	#define QUIT_CHAR(term) ((term).c_cc[VQUIT])
+	#define ERASE_CHAR(term) ((term).c_cc[VERASE])
+	#define KILL_CHAR(term) ((term).c_cc[VKILL])
+	#define EOL_CHAR(term) ((term).c_cc[VEOL])
+	#define EOF_CHAR(term) ((term).c_cc[VEOF])
+	#define MIN_CHAR(term) ((term).c_cc[VMIN])
+	#define TIME_CHAR(term) ((term).c_cc[VTIME])
+	/**@}*/
 
 	/* Size of c_cc[] */
 	#define NCCS 11

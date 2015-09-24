@@ -27,6 +27,5 @@
  */
 int tcsetattr(int fd, int optional_actions, const struct termios *termiosp)
 {
-
 	return (ioctl(fd, TTY_SETS | IOCTL_MINOR(optional_actions), termiosp));
 }

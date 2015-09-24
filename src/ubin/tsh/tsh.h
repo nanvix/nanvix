@@ -58,31 +58,4 @@
 	/* Shell return value. */
 	extern int shret;
 
-	/* Control Characters. */
-	#define ERASE_CHAR(termios) ((termios).c_cc[VERASE])
-	#define KILL_CHAR(termios) ((termios).c_cc[VKILL])
-	#define EOL_CHAR(termios) ((termios).c_cc[VEOL])
-	#define EOF_CHAR(termios) ((termios).c_cc[VEOF])
-
-	/* ASCII characters. */
-	#define ESC         27
-	#define BACKSPACE  '\b'
-	#define TAB        '\t'
-	#define ENTER      '\n'
-	#define NEWLINE   ENTER
-
-	/* Cursor keys. */
-	#define KUP    0x97
-	#define KDOWN  0x98
-
-	/* Command stack. */
-	#define STACK_SIZE  16
-
-	#define CLEAR_BUFFER()             \
-		for(int i=size; i<length; i++) \
-		{                              \
-			*p-- = 0;                  \
-			putchar(BACKSPACE);        \
-		}                
-
 #endif /* TSH_H_ */
