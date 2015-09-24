@@ -46,6 +46,8 @@
 
 #ifndef _ASM_FILE_
 
+	#include <sys/types.h>
+
 	/* Types. */
 	typedef void (*sighandler_t)(int);
 	
