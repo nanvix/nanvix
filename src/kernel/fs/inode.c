@@ -159,7 +159,7 @@ PRIVATE void inode_write(struct inode *ip)
 	
 	superblock_lock(sb = ip->sb);
 	
-	blk = 2 + sb->imap_blocks + sb->zmap_blocks + ip->num/INODES_PER_BLOCK;
+	blk = 2 + sb->imap_blocks + sb->zmap_blocks + (ip->num - 1)/INODES_PER_BLOCK;
 	
 	/* Read chunk of disk inodes. */
 	buf = bread(ip->dev, blk);
@@ -169,7 +169,7 @@ PRIVATE void inode_write(struct inode *ip)
 		superblock_unlock(sb);
 	}
 	
-	d_i = &(((struct d_inode *)buf->data)[ip->num%INODES_PER_BLOCK - 1]);
+	d_i = &(((struct d_inode *)buf->data)[(ip->num - 1)%INODES_PER_BLOCK]);
 	
 	/* Write inode to buffer. */
 	d_i->i_mode = ip->mode;
@@ -216,7 +216,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 		goto error0;	
 	
 	/* Calculate block number. */
-	blk = 2 + sb->imap_blocks + sb->zmap_blocks + num/INODES_PER_BLOCK;
+	blk = 2 + sb->imap_blocks + sb->zmap_blocks + (num - 1)/INODES_PER_BLOCK;
 	
 	/* Read chunk of disk inodes. */
 	buf = bread(dev, blk);
@@ -226,7 +226,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 		goto error1;
 	}
 	
-	d_i = &(((struct d_inode *)buf->data)[num%INODES_PER_BLOCK - 1]);
+	d_i = &(((struct d_inode *)buf->data)[(num - 1)%INODES_PER_BLOCK]);
 	
 	/* Invalid disk inode. */ 
 	if (d_i->i_nlinks == 0)
