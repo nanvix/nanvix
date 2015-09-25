@@ -250,6 +250,7 @@
 	EXTERN size_t klog_read(char *, size_t);
 	EXTERN size_t klog_write(const char *, size_t);
 	EXTERN void kpanic(const char *, ...);
+	EXTERN void kmemdump(const void *s, size_t n);
 	/**@}*/
 
 	/*========================================================================*
