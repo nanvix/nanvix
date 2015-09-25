@@ -424,7 +424,7 @@ PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 	int bus;       /* Bus number.        */
 	byte_t byte;   /* Byte used for I/O. */
 	uint64_t addr; /* Read address.      */
-	size_t n;      /* # bytes to read.   */
+	size_t size;    /* # bytes to read.   */
 	
 	ata_device_select(atadevid);
 	bus = ata_bus(atadevid);
@@ -432,16 +432,16 @@ PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 	/* Buffered read. */
 	if (req->flags & REQ_BUF)
 	{
+		size = BLOCK_SIZE;
 		addr = buffer_num(req->u.buffered.buf) << 
 			(BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
-		n = BLOCK_SIZE/ATA_SECTOR_SIZE;
 	}
 	
 	/* Raw read. */
 	else
 	{
-		addr = req->u.raw.num << 1;
-		n = req->u.raw.size/ATA_SECTOR_SIZE;
+		size = req->u.raw.size;
+		addr = req->u.raw.num << (BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
 	}
 
 	/*
@@ -457,7 +457,7 @@ PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x28) & 0xff);
 
 	/* Send the three lowest bytes of the address. */
-	outputb(pio_ports[bus][ATA_REG_NSECT], n);
+	outputb(pio_ports[bus][ATA_REG_NSECT], size/ATA_SECTOR_SIZE);
 	outputb(pio_ports[bus][ATA_REG_LBAL], (addr >> 0x00) & 0xff);
 	outputb(pio_ports[bus][ATA_REG_LBAM], (addr >> 0x08) & 0xff);
 	outputb(pio_ports[bus][ATA_REG_LBAH], (addr >> 0x10) & 0xff);
@@ -501,7 +501,7 @@ PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 	{
 		buf = req->u.raw.buf;
 		size = req->u.raw.size;
-		addr = req->u.raw.num << 1;
+		addr = req->u.raw.num << (BLOCK_SIZE_LOG2 - ATA_SECTOR_SIZE_LOG2);
 	}
 
 	/*

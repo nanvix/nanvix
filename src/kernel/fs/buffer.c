@@ -116,7 +116,7 @@ repeat:
 
 	/* Search in hash table. */
 	for (buf = hashtab[i].hash_next; buf != &hashtab[i]; buf = buf->hash_next)
-	{
+	{		
 		/* Not found. */
 		if ((buf->dev != dev) || (buf->num != num))
 			continue;
@@ -140,7 +140,7 @@ repeat:
 		
 		blklock(buf);
 		enable_interrupts();
-
+		
 		return (buf);
 	}
 
@@ -341,7 +341,6 @@ PUBLIC void bwrite(struct buffer *buf)
 	 */
 	if (!(buf->flags & BUFFER_DIRTY))
 	{
-		buf->flags &= ~BUFFER_SYNC;
 		brelse(buf);
 		return;
 	}
@@ -351,7 +350,6 @@ PUBLIC void bwrite(struct buffer *buf)
 	 * the BUFFER_DIRTY flag and release the buffer.
 	 */
 	bdev_writeblk(buf);
-	buf->flags &= ~BUFFER_SYNC;
 }
 
 /**
@@ -374,7 +372,7 @@ PUBLIC void bsync(void)
 		}
 		
 		/*
-		 * Prevent double free, once a call
+		 * Prevent double free, since a call
 		 * to brelse() will follow.
 		 */
 		disable_interrupts();
@@ -384,8 +382,6 @@ PUBLIC void bsync(void)
 			buf->free_next->free_prev = buf->free_prev;
 		}
 		enable_interrupts();
-		
-		buf->flags |= BUFFER_SYNC;
 		
 		/*
 		 * This will cause the buffer to be

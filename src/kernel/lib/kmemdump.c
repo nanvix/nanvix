@@ -24,18 +24,17 @@
 /**
  * @brief Dumps the contents of a memory area.
  * 
- * @details Dumps the contents of a target memory area pointed to by @p s.
+ * @details Dumps the contents of the memory area pointed to by @p s.
  * 
  * @param s Target memory area.
- * @param n Number of bytes to run.
+ * @param n Number of bytes to dump.
  */
 PUBLIC void kmemdump(const void *s, size_t n)
 {
 	const unsigned *p  = s;
 	
 	/* Dump memory area in chunks. */
-	n >>= 4;
-	for (size_t i = 0; i < n; i++)
+	for (size_t i = 0; i < n; i += 16, p += 4)
 	{
 		/* Do not print zero lines. */
 		if (*(p + 0) || *(p + 1) || *(p + 2) || *(p + 3))
