@@ -345,7 +345,7 @@ static int sched_test2(void)
 /**
  * @brief Creates a semaphore.
  */
-#define SEM_CREATE(a, b) (assert((a) = semget(b) >= 0))
+#define SEM_CREATE(a, b) (assert(((a) = semget(b)) >= 0))
 
 /**
  * @brief Initializes a semaphore.
@@ -433,12 +433,7 @@ int semaphore_test3(void)
 			SEM_UP(mutex);
 			SEM_UP(full);
 		}
-					
-		/* Destroy semaphores. */
-		SEM_DESTROY(mutex);
-		SEM_DESTROY(empty);
-		SEM_DESTROY(full);
-		
+
 		_exit(EXIT_SUCCESS);
 	}
 	
@@ -456,7 +451,7 @@ int semaphore_test3(void)
 				
 			SEM_UP(mutex);
 			SEM_UP(empty);
-		} while (item != NR_ITEMS);
+		} while (item != (NR_ITEMS - 1));
 	}
 					
 	/* Destroy semaphores. */
