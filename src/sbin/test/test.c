@@ -479,9 +479,10 @@ static void usage(void)
 	printf("Usage: test [options]\n\n");
 	printf("Brief: Performs regression tests on Nanvix.\n\n");
 	printf("Options:\n");
-	printf("  io    I/O test\n");
-	printf("  swp   Swapping test\n");
-	printf("  sched Scheduling test\n");
+	printf("  io    I/O Test\n");
+	printf("  ipc   Interprocess Communication Test\n");
+	printf("  swp   Swapping Test\n");
+	printf("  sched Scheduling Test\n");
 	
 	exit(EXIT_SUCCESS);
 }
