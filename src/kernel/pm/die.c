@@ -70,7 +70,10 @@ PUBLIC void die(int status)
 		if (shutting_down)
 			p->father = IDLE;
 		else if (p->father == curr_proc)
+		{
 			p->father = INIT;
+			sndsig(INIT, SIGCHLD);
+		}
 		
 		p->father->nchildren++;
 	}
