@@ -18,7 +18,7 @@
 	{
 		char sysname[_UTSNAME_LENGTH];  /* Operating system name. */
 		char nodename[_UTSNAME_LENGTH]; /* Network node name.     */
-		char release[_UTSNAME_LENGTH]; /* Kernel release.        */
+		char release[_UTSNAME_LENGTH];  /* Kernel release.        */
 		char version[_UTSNAME_LENGTH];  /* Kernel version.        */
 		char machine[_UTSNAME_LENGTH];  /* Hardware name.         */
 	};

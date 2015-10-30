@@ -18,24 +18,25 @@
 #
 
 # C source files.
-C_SRC = $(wildcard *.c)        \
-      $(wildcard assert/*.c)   \
-      $(wildcard ctype/*.c)    \
-      $(wildcard dirent/*.c)   \
-      $(wildcard errno/*.c)    \
-      $(wildcard fcntl/*.c)    \
-      $(wildcard signal/*.c)   \
-      $(wildcard stdio/*.c)    \
-      $(wildcard stdlib/*.c)   \
-      $(wildcard string/*.c)   \
-      $(wildcard stropts/*.c)  \
-      $(wildcard sys/times/*.c)\
-      $(wildcard sys/sem/*.c) \
-      $(wildcard sys/stat/*.c) \
-      $(wildcard sys/wait/*.c) \
-      $(wildcard termios/*.c)  \
-      $(wildcard unistd/*.c)   \
-      $(wildcard utime/*.c)    \
+C_SRC = $(wildcard *.c)           \
+      $(wildcard assert/*.c)      \
+      $(wildcard ctype/*.c)       \
+      $(wildcard dirent/*.c)      \
+      $(wildcard errno/*.c)       \
+      $(wildcard fcntl/*.c)       \
+      $(wildcard signal/*.c)      \
+      $(wildcard stdio/*.c)       \
+      $(wildcard stdlib/*.c)      \
+      $(wildcard string/*.c)      \
+      $(wildcard stropts/*.c)     \
+      $(wildcard sys/times/*.c)   \
+      $(wildcard sys/sem/*.c)     \
+      $(wildcard sys/stat/*.c)    \
+      $(wildcard sys/utsname/*.c) \
+      $(wildcard sys/wait/*.c)    \
+      $(wildcard termios/*.c)     \
+      $(wildcard unistd/*.c)      \
+      $(wildcard utime/*.c)       \
 
 # Assembly source files.
 ASM_SRC = $(wildcard signal/*.S) \

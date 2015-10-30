@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-201 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -18,36 +18,34 @@
  */
 
 #include <nanvix/syscall.h>
-#include <sys/times.h>
-#include <sys/types.h>
+#include <sys/utsname.h>
 #include <errno.h>
 
 /**
- * @brief Gets process and waited-for child process times.
+ * @brief Gets the name of the current system
  * 
- * @param buffer Timing accounting information.
+ * @param uname System information.
  * 
- * @returns Upon successful completion, the elapsed real time, in clock ticks,
- *          since system start-up time is returned. Upon failure, -1 is
- *          returned and errno set to indicate the error.
+ * @returns Upon successful completion, a non-negative value is returned.
+ *          Otherwise, -1 is returned and errno set to indicate the error.
  */
-clock_t times(struct tms *buffer)
+int uname(struct utsname *name)
 {
-	clock_t elapsed;
+	int ret;
 	
 	__asm__ volatile (
 		"int $0x80"
-		: "=a" (elapsed)
-		: "0" (NR_times),
-		  "b" (buffer)
+		: "=a" (ret)
+		: "0" (NR_uname),
+		  "b" (name)
 	);
 	
 	/* Error. */
-	if (elapsed < 0)
+	if (ret < 0)
 	{
-		errno = -elapsed;
+		errno = -ret;
 		return (-1);
 	}
 	
-	return (elapsed);
+	return (ret);
 }

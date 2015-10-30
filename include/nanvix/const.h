@@ -31,9 +31,9 @@
 	 */
 	/**@{*/
 	#define SYSNAME "Nanvix"      /**< Operating system name. */
-	#define NODENAME ""           /**< Network node name.     */
-	#define RELEASE "1.0"         /**< Kernel release.        */
-	#define VERSION "beta"        /**< Kernel version.        */
+	#define NODENAME "valhalla"   /**< Network node name.     */
+	#define RELEASE "beta"        /**< Kernel release.        */
+	#define VERSION "1.2"         /**< Kernel version.        */
 	#define MACHINE "Intel 80386" /**< Hardware name.         */
 	/**@}*/
 
