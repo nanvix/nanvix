@@ -21,6 +21,10 @@
 ROOTUID=0
 ROOTGID=0
 
+# User credentials.
+NOOBUID=1
+NOOBUID=1
+
 #
 # Inserts disk in a loop device.
 #   $1 Disk image name.
@@ -39,6 +43,41 @@ function eject {
 }
 
 #
+# Hash function.
+#  $1 Key.
+#  $2 String.
+function hashfn
+{
+	A=$(echo {a..z} | sed -r 's/ //g')
+	C=$(echo $A | sed -r "s/^.{$1}//g")$(echo $A | sed -r "s/.{$( expr 26 - $1 )}$//g")
+
+	echo $2 | tr '[A-Z]' $A  | tr $A $C
+}
+
+#
+# Generate passwords file.
+#  $1 File name.
+#
+function passwords
+{
+	file="passwords"
+	
+	key=$RANDOM
+	let "key %= 26"
+	
+	# Root user.
+	echo $(hashfn $key "root root $ROOTGID $ROOTUID") >> $file
+	
+	# Noob user.
+	echo $(hashfn $key "noob noob $NOOBUID $NOOBUID") >> $file
+	
+	bin/cp.minix $1 $file /etc/$file $ROOTUID $ROOTGID
+	
+	# House keeping.
+	rm -f $file
+}
+
+#
 # Formats a disk.
 #   $1 Disk image name.
 #   $2 File system size (in blocks).
@@ -46,6 +85,7 @@ function eject {
 #
 function format {
 	bin/mkfs.minix $1 $2 $3 $ROOTUID $ROOTGID
+	bin/mkdir.minix $1 /etc $ROOTUID $ROOTGID
 	bin/mkdir.minix $1 /sbin $ROOTUID $ROOTGID
 	bin/mkdir.minix $1 /bin $ROOTUID $ROOTGID
 	bin/mkdir.minix $1 /home $ROOTUID $ROOTGID
@@ -61,6 +101,8 @@ function format {
 #   $1 Target disk image.
 #
 function copy_files {
+	
+	passwords $1
 	
 	for file in bin/sbin/*; do
 		filename=`basename $file`
