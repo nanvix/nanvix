@@ -44,7 +44,7 @@ void sstat(const char *pathname, struct stat *buf)
  */
 static void usage(void)
 {
-	printf("usage: cp.minix <input file> <source file> <dest file>\n");
+	printf("usage: cp.minix <input file> <source file> <dest file> <uid> <gid> \n");
 	exit(EXIT_SUCCESS);
 }
 
@@ -60,7 +60,7 @@ int main(int argc, char **argv)
 	uint16_t num;           /* Working inode number.         */
 	
 	/* Wrong usage. */
-	if (argc != 4)
+	if (argc != 6)
 		usage();
 	
 	src = argv[2];
@@ -75,7 +75,7 @@ int main(int argc, char **argv)
 	fd = sopen(src, O_RDONLY);
 	sread(fd, buf, stbuf.st_size);
 	sclose(fd);
-	num = minix_create(dest, stbuf.st_mode);
+	num = minix_create(dest, stbuf.st_mode, atoi(argv[4]), atoi(argv[5]));
 	minix_write(num, buf, stbuf.st_size);
 	
 	minix_umount();

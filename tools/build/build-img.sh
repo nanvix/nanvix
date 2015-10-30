@@ -17,6 +17,10 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Root credentials.
+ROOTUID=0
+ROOTGID=0
+
 #
 # Inserts disk in a loop device.
 #   $1 Disk image name.
@@ -41,15 +45,15 @@ function eject {
 #   $3 Number of inodes.
 #
 function format {
-	bin/mkfs.minix $1 $2 $3
-	bin/mkdir.minix $1 /sbin
-	bin/mkdir.minix $1 /bin
-	bin/mkdir.minix $1 /home
-	bin/mkdir.minix $1 /dev
-	bin/mknod.minix $1 /dev/null 666 c 0 0
-	bin/mknod.minix $1 /dev/tty 666 c 0 1
-	bin/mknod.minix $1 /dev/ramdisk 666 b 0 0
-	bin/mknod.minix $1 /dev/hdd 666 b 0 1
+	bin/mkfs.minix $1 $2 $3 $ROOTUID $ROOTGID
+	bin/mkdir.minix $1 /sbin $ROOTUID $ROOTGID
+	bin/mkdir.minix $1 /bin $ROOTUID $ROOTGID
+	bin/mkdir.minix $1 /home $ROOTUID $ROOTGID
+	bin/mkdir.minix $1 /dev $ROOTUID $ROOTGID
+	bin/mknod.minix $1 /dev/null 666 c 0 0 $ROOTUID $ROOTGID
+	bin/mknod.minix $1 /dev/tty 666 c 0 1 $ROOTUID $ROOTGID
+	bin/mknod.minix $1 /dev/ramdisk 666 b 0 0 $ROOTUID $ROOTGID
+	bin/mknod.minix $1 /dev/hdd 666 b 0 1 $ROOTUID $ROOTGID
 }
 
 #
@@ -60,12 +64,12 @@ function copy_files {
 	
 	for file in bin/sbin/*; do
 		filename=`basename $file`
-		bin/cp.minix $1 $file /sbin/$filename
+		bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
 	done
 	
 	for file in bin/ubin/*; do
 		filename=`basename $file`
-		bin/cp.minix $1 $file /bin/$filename
+		bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
 	done
 }
 

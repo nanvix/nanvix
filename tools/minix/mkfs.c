@@ -27,7 +27,7 @@
  */
 static void usage(void)
 {
-	printf("usage: mkfs.minix <input file> <ninodes> <nblocks>\n");
+	printf("usage: mkfs.minix <input file> <ninodes> <nblocks> <uid> <gid>\n");
 	exit(EXIT_SUCCESS);
 }
 
@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 	const char *diskfile; /* Disk file name.                   */
 	
 	/* Missing arguments. */
-	if (argc < 4)
+	if (argc < 6)
 		usage();
 	
 	/* Extract arguments. */
@@ -49,7 +49,7 @@ int main(int argc, char **argv)
 	sscanf(argv[2], "%u", &ninodes);
 	sscanf(argv[3], "%u", &nblocks);
 	
-	minix_mkfs(diskfile, ninodes, nblocks);
+	minix_mkfs(diskfile, ninodes, nblocks, atoi(argv[4]), atoi(argv[5]));
 	
 	return (EXIT_SUCCESS);
 }

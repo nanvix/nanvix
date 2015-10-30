@@ -32,7 +32,7 @@
  */
 static void usage(void)
 {
-	printf("usage: mkdir.minix <input file> <directory>\n");
+	printf("usage: mkdir.minix <input file> <directory> <uid> <gid>\n");
 	exit(EXIT_SUCCESS);
 }
 
@@ -47,7 +47,7 @@ int main(int argc, char **argv)
 	char filename[MINIX_NAME_MAX + 1]; /* Working file name.               */
 	
 	/* Wrong usage. */
-	if (argc != 3)
+	if (argc != 5)
 		usage();
 
 	minix_mount(argv[1]);
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
 		
 		/* Create directory. */
 		if (num2 == INODE_NULL)
-			num2 = minix_mkdir(ip, num1, filename);
+			num2 = minix_mkdir(ip, num1, filename, atoi(argv[3]), atoi(argv[4]));
 		
 		minix_inode_write(num1, ip);
 		ip = minix_inode_read(num1 = num2);

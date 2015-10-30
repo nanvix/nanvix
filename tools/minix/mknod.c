@@ -32,7 +32,7 @@
 static void usage(void)
 {
 	printf("usage: mknod.minix ");
-	printf("<input file> <file name> <mode> <type> <minor> <major>\n");
+	printf("<input file> <file name> <mode> <type> <minor> <major> <uid> <gid>\n");
 	exit(EXIT_SUCCESS);
 }
 
@@ -64,7 +64,7 @@ int main(int argc, char **argv)
 	char type;                         /* Character type.                  */
 	
 	/* Wrong usage. */
-	if (argc != 7)
+	if (argc != 9)
 		usage();
 	
 	pathname = argv[2];
@@ -76,7 +76,7 @@ int main(int argc, char **argv)
 	minix_mount(argv[1]);	
 	num = minix_inode_dname(pathname, filename);
 	dip = minix_inode_read(num);
-	minix_mknod(dip, filename, mode, devnum(type, major, minor));
+	minix_mknod(dip, filename, mode, devnum(type, major, minor), atoi(argv[7]), atoi(argv[8]));
 	minix_inode_write(num, dip);
 	minix_umount();
 	

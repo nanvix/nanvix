@@ -562,6 +562,8 @@ out:
  * @param dip      Directory where the new directory shall be created.
  * @param dnum     Inode number of @p dip.
  * @param filename Name of the new directory.
+ * @param uid  User ID.
+ * @param gid  User group ID.
  * 
  * @returns The inode number of the newly created directory.
  * 
@@ -569,7 +571,8 @@ out:
  * @note @p filename must point to a valid file name.
  * @note The Minix file system must be mounted.
  */
-uint16_t minix_mkdir(struct d_inode *dip, uint16_t dnum, const char *filename)
+uint16_t minix_mkdir
+(struct d_inode *dip, uint16_t dnum, const char *filename, uint16_t uid, uint16_t gid)
 {
 	uint16_t mode;
 	uint16_t num;
@@ -583,7 +586,7 @@ uint16_t minix_mkdir(struct d_inode *dip, uint16_t dnum, const char *filename)
 	mode |= S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
 	
 	/* Allocate inode. */
-	num = minix_inode_alloc(mode, 0, 0);
+	num = minix_inode_alloc(mode, uid, gid);
 	minix_dirent_add(dip, filename, num);
 	
 	/* Create "." and ".." */
@@ -603,13 +606,15 @@ uint16_t minix_mkdir(struct d_inode *dip, uint16_t dnum, const char *filename)
  * @param filename Name of the new special file.
  * @param mode     Access mode to new special file.
  * @param dev      Device which the new special file refers to.
+ * @param uid  User ID.
+ * @param gid  User group ID.
  * 
  * @note @p dip must point to a valid inode.
  * @note @p filename must point to a valid file name.
  * @note The Minix file system must be mounted.
  */
 void minix_mknod
-(struct d_inode *dip, const char *filename, uint16_t mode, uint16_t dev)
+(struct d_inode *dip, const char *filename, uint16_t mode, uint16_t dev, uint16_t uid, uint16_t gid)
 {
 	uint16_t num;       /* Inode number of special file. */
 	struct d_inode *ip; /* Special file.                 */
@@ -621,7 +626,7 @@ void minix_mknod
 	mode = (mode & ~S_IFMT) | ((dev & 1) ? S_IFBLK : S_IFCHR);
 	
 	/* Allocate inode. */
-	num = minix_inode_alloc(mode, 0, 0);
+	num = minix_inode_alloc(mode, uid, gid);
 	minix_dirent_add(dip, filename, num);
 	
 	/* Write device number. */
@@ -635,6 +640,8 @@ void minix_mknod
  * 
  * @param pathname Name of the file that shall be created.
  * @param mode     File access mode.
+ * @param uid  User ID.
+ * @param gid  User group ID.
  * 
  * @returns The inode number of newly created file.
  * 
@@ -642,7 +649,8 @@ void minix_mknod
  * @note @p num must refer to a valid inode.
  * @note The Minix file system must be mounted.
  */
-uint16_t minix_create(const char *pathname, uint16_t mode)
+uint16_t minix_create
+(const char *pathname, uint16_t mode, uint16_t uid, uint16_t gid)
 {
 	uint16_t num;                      /* Inode number of file. */
 	uint16_t dnum;                     /* Inode number of directory. */
@@ -653,7 +661,7 @@ uint16_t minix_create(const char *pathname, uint16_t mode)
 	
 	dnum = minix_inode_dname(pathname, filename);
 	dip = minix_inode_read(dnum);
-	num = minix_inode_alloc(mode, 0, 0);
+	num = minix_inode_alloc(mode, uid, gid);
 	minix_dirent_add(dip, filename, num);
 	minix_inode_write(dnum, dip);
 	
@@ -713,12 +721,15 @@ void minix_write(uint16_t num, const void *buf, size_t n)
  * @param diskfile File where the minix file system shall be created.
  * @param ninodes  Number of inodes.
  * @param nblocks  Number of blocks.
+ * @param uid  User ID.
+ * @param gid  User group ID.
  * 
  * @note @p diskfile must refer to a valid file.
  * @note @p ninodes must be valid.
  * @note @p nblocks must be valid.
  */
-void minix_mkfs(const char *diskfile, uint16_t ninodes, uint16_t nblocks)
+void minix_mkfs
+(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid)
 {
 	size_t size;            /* Size of file system.            */
 	char buf[BLOCK_SIZE];   /* Writing buffer.                 */
@@ -774,7 +785,7 @@ void minix_mkfs(const char *diskfile, uint16_t ninodes, uint16_t nblocks)
 	mode |= S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
 	
 	/* Create root directory. */
-	num = minix_inode_alloc(mode, 0, 0);
+	num = minix_inode_alloc(mode, uid, gid);
 	root = minix_inode_read(num);
 	minix_dirent_add(root, ".", num);
 	minix_dirent_add(root, "..", num);
