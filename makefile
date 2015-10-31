@@ -33,8 +33,13 @@ export CC = $(TARGET)-gcc
 export LD = $(TARGET)-ld
 export AR = $(TARGET)-ar
 
+# Random number for chaos.
+NUMBER = $(shell bash -c 'echo $$RANDOM')
+MOD = 26
+export KEY = $(shell echo ${NUMBER}%${MOD} | bc)
+
 # Toolchain configuration.
-export CFLAGS    = -I $(INCDIR)
+export CFLAGS    = -I $(INCDIR) -DKERNEL_HASH=$(KEY)
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 export CFLAGS   += -Wall -Wextra -Werror
@@ -60,7 +65,7 @@ nanvix:
 # Builds system's image.
 image: $(BINDIR)/kernel tools
 	mkdir -p $(BINDIR)
-	bash $(TOOLSDIR)/build/build-img.sh
+	bash $(TOOLSDIR)/build/build-img.sh $(KEY)
 
 # Builds documentation.
 documentation:

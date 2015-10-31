@@ -17,6 +17,12 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+#
+# Script parameters.
+#  $1 Key for chaos.
+#
+KEY=$1
+
 # Root credentials.
 ROOTUID=0
 ROOTGID=0
@@ -62,14 +68,11 @@ function passwords
 {
 	file="passwords"
 	
-	key=$RANDOM
-	let "key %= 26"
-	
 	# Root user.
-	echo $(hashfn $key "root root $ROOTGID $ROOTUID") >> $file
+	echo $(hashfn $KEY "root root $ROOTGID $ROOTUID") >> $file
 	
 	# Noob user.
-	echo $(hashfn $key "noob noob $NOOBUID $NOOBUID") >> $file
+	echo $(hashfn $KEY "noob noob $NOOBUID $NOOBUID") >> $file
 	
 	bin/cp.minix $1 $file /etc/$file $ROOTUID $ROOTGID
 	
