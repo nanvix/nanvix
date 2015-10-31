@@ -9,6 +9,10 @@
 
 	#include <stdio.h>
 	
+	/* Forward definitions. */
+	extern FILE *_getstream(void);
+	extern int _sflags(const char *, int *);
+	
 	/* File streams table. */
 	extern FILE streams[FOPEN_MAX];
 

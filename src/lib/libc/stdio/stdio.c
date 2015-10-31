@@ -34,3 +34,23 @@ void stdio_cleanup(void)
 			fclose(stream);
 	}
 }
+
+/**
+ * @brief Finds a file stream that is not in use.
+ * 
+ * @returns A file stream that is not in use. If no such stream is found, NULL
+ *          is returned otherwise.
+ */
+FILE *_getstream(void)
+{
+	for (FILE *stream = &streams[0]; stream < &streams[FOPEN_MAX]; stream++)
+	{
+		/* Valid stream. */
+		if (!(stream->flags & (_IORW | _IOREAD | _IOWRITE)))
+			return (stream);
+	}
+	
+	return (NULL);
+}
+
+

@@ -110,9 +110,8 @@
 	 */
 	extern int fputs(const char *str, FILE *stream);
 	
-	/*
-	 * Reopens a file stream.
-	 */
+	/* Forward definitions. */
+	extern FILE *fopen(const char *, const char *);
 	extern FILE *freopen(const char *filename, const char *mode, FILE *stream);
 	
 	/*

@@ -11,15 +11,16 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "stdio.h"
+
 /*
  * Reopens a file stream.
  */
 FILE *freopen(const char *filename, const char *mode, FILE *stream)
 {	
-	int rw;    /* Read/Write?       */
 	int fd;    /* File descriptor.  */
 	int flags; /* Stream flags.     */
-	int oflag; /* Flags for open(). */
+	int oflags;/* Flags for open(). */
 	
 	/* File permissions. */
 	#define MAY_READ (S_IRUSR | S_IRGRP | S_IROTH)
@@ -27,39 +28,16 @@ FILE *freopen(const char *filename, const char *mode, FILE *stream)
 	
 	fclose(stream);
 	
-	rw = (mode[1] == '+');
-	flags = _IOFBF;
-	
-	/* Get open mode. */
-	switch (*mode)
-	{
-		/* Opend file for reading. */
-		case 'r':
-			oflag = (rw) ? O_RDWR : O_RDONLY;
-			break;
-		
-		/* Open file for writing. */
-		case 'w':
-			oflag = O_CREAT | O_TRUNC | (rw) ? O_RDWR : O_WRONLY;
-			break;
-			
-		/* Open file for appending. */
-		case 'a':
-			flags |= _IOAPPEND | _IOSYNC;
-			oflag = O_CREAT | (rw) ? O_RDWR : O_WRONLY;
-			break;
-			
-		default:
-			errno = EINVAL;
-			return (NULL);
-	}
+	/* Bad opening mode. */
+	if ((flags = _sflags(mode, &oflags)) == 0)
+		return (NULL);
 	
 	/* Failed to open file. */
-	if ((fd = open(filename, oflag, MAY_READ | MAY_WRITE)) == -1)
+	if ((fd = open(filename, oflags, MAY_READ | MAY_WRITE)) == -1)
 		return (NULL);
 	
 	stream->fd = fd;
-	stream->flags = (rw) ? _IORW : (*mode == 'r') ? _IOREAD : _IOWRITE | flags;
+	stream->flags = flags;
 	stream->buf = NULL;
 	stream->count = 0;
 	
