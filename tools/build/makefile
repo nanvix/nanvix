@@ -1,5 +1,5 @@
 # 
-# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-201 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
 #
 # This file is part of Nanvix.
 #
@@ -17,22 +17,22 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Resolves conflicts.
-.PHONY: build
-.PHONY: minix
+# Toolchain
+CC = gcc
+
+# Toolchain configuration.
+CFLAGS    = -I $(INCDIR)/nanvix -DKERNEL_HASH=$(KEY)
+CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
+CFLAGS   += -Wall -Wextra -Werror
+CFLAGS   += -D NDEBUG
 
 # Builds everything.
-all: minix build
+all: useradd
 
-# Builds Minix utilities.
-minix:
-	cd minix/ && $(MAKE) all
-
-# Builds build utilities.
-build:
-	cd build/ && $(MAKE) all
+# Builds cp.minix.
+useradd: useradd.c
+	$(CC) $(CFLAGS) $^ -o $(BINDIR)/$@
 
 # Cleans compilation files.
 clean:
-	cd build/ && $(MAKE) clean
-	cd minix/ && $(MAKE) clean
+	@rm -f $(BINDIR)/useradd

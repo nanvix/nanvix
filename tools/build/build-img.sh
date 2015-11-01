@@ -61,18 +61,15 @@ function hashfn
 }
 
 #
-# Generate passwords file.
-#  $1 File name.
+# Generate passwords file
+#   $1 Disk image name.
 #
 function passwords
 {
 	file="passwords"
 	
-	# Root user.
-	echo $(hashfn $KEY "root root $ROOTGID $ROOTUID") >> $file
-	
-	# Noob user.
-	echo $(hashfn $KEY "noob noob $NOOBUID $NOOBUID") >> $file
+	bin/useradd $file root root $ROOTGID $ROOTUID
+	bin/useradd $file noob noob $NOOBUID $NOOBUID
 	
 	bin/cp.minix $1 $file /etc/$file $ROOTUID $ROOTGID
 	
