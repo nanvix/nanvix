@@ -24,6 +24,8 @@ PUBLIC pid_t sys_fork(void)
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
 
+#if (EDUCATIONAL_KERNEL == 0)
+
 	/*
 	 * Prevent non-privileged user from using the last 
 	 * available slot in the process table, so a privileged
@@ -31,6 +33,8 @@ PUBLIC pid_t sys_fork(void)
 	 */
 	if ((nprocs + 1 >= PROC_MAX) && (!IS_SUPERUSER(curr_proc)))
 		return (-EAGAIN);
+
+#endif
 
 	/* Search for a free process. */
 	for (proc = FIRST_PROC; proc <= LAST_PROC; proc++)

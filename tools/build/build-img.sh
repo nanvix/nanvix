@@ -59,7 +59,7 @@ function passwords
 	bin/useradd $file noob noob $NOOBUID $NOOBUID
 
 	# Let's pray for security...
-	if [ $EDUCATIONAL_KERNEL == "no" ]; then
+	if [ "$EDUCATIONAL_KERNEL" == "0" ]; then
 		chmod 600 $file
 	fi
 	

@@ -18,10 +18,10 @@
 #
 
 #
-# Change this to "no" if you wanna a
-# a non-educational version of the system.
+# Change this to zero if you wanna a
+# non-educational version of the system.
 #
-export EDUCATIONAL_KERNEL="yes"
+export EDUCATIONAL_KERNEL=1
 
 # Directories.
 export BINDIR   = $(CURDIR)/bin
@@ -43,7 +43,8 @@ export AR = $(TARGET)-ar
 export KEY = 13
 
 # Toolchain configuration.
-export CFLAGS    = -I $(INCDIR) -DKERNEL_HASH=$(KEY)
+export CFLAGS    = -I $(INCDIR)
+export CFLAGS   += -DKERNEL_HASH=$(KEY) -DEDUCATIONAL_KERNEL=$(EDUCATIONAL_KERNEL)
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 export CFLAGS   += -Wall -Wextra -Werror
