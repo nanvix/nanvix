@@ -106,11 +106,11 @@ PUBLIC mode_t permission(mode_t mode, uid_t uid, gid_t gid, struct process *proc
 	
 	/* Owner user. */
 	else if ((proc->uid == uid) || ((!oreal && proc->euid == uid)))
-		mode &= S_IRWXU;
+		mode &= S_IRWXU | S_IRWXG | S_IRWXO;
 	
 	/* Owner's group user. */
 	else if ((proc->gid == gid) || ((!oreal && proc->egid == gid)))
-		mode &= S_IRWXG;
+		mode &= S_IRWXG | S_IRWXO;
 	
 	/* Other user. */
 	else

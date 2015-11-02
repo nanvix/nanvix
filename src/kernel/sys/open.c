@@ -17,8 +17,8 @@
  */
 #define PERM(o)                                        \
 	((ACCMODE(o) == O_RDWR) ? (MAY_READ | MAY_WRITE) : \
-	(ACCMODE(o) == O_WRONLY) ? MAY_WRITE :             \
-	MAY_READ | (o & O_TRUNC) ? MAY_WRITE : 0)          \
+	((ACCMODE(o) == O_WRONLY) ? MAY_WRITE :            \
+	(MAY_READ | ((o & O_TRUNC) ? MAY_WRITE : 0))))     \
 
 /*
  * Creates a file.
