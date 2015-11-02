@@ -24,7 +24,7 @@
 #include <sys/utsname.h>
 
 #include <nanvix/accounts.h>
-
+#include <nanvix/config.h>
 #include <dev/tty.h>
 
 #if (MULTIUSER == 1)
@@ -43,13 +43,13 @@ static int authenticate(const char *name, const char *password)
 	int file;         /* Passwords file.  */
 	struct account a; /* Working account. */
 	
-	ret = 0;
+	ret = 1;
 	
 	/* Open passwords file. */
 	if ((file = open("/etc/passwords", O_RDONLY)) == -1)
 	{
 		fprintf(stderr, "cannot open password file\n");
-		return (ret);
+		return (0);
 	}
 	
 	/* Search in the  passwords file. */
@@ -68,11 +68,13 @@ static int authenticate(const char *name, const char *password)
 		/* Found. */
 		if (!strcmp(password, a.password))
 		{
-			ret = 1;
+			setuid(a.uid);
+			setgid(a.gid);
 			goto found;
 		}
 	}
 
+	ret = 0;
 	fprintf(stderr, "\nwrong login or password\n\n");
 
 found:
