@@ -77,13 +77,13 @@ PUBLIC int sys_ps()
 
 	kprintf("------------------------------- Process Status"
 			" -------------------------------\n"
-		    "NAME               PID   COUNTER   PRIORITY   NICE"
+		    "NAME               PID   UID       PRIORITY   NICE"
 		    "   UTIME   KTIME     STATUS");
 
 
 	char name    [26];
 	char pid     [26];
-	char counter [26];
+	char uid     [26];
 	char priority[26];
 	char nice    [26];
 	char utime   [26];
@@ -122,7 +122,7 @@ PUBLIC int sys_ps()
 		prepareValue(p->pid, pid, 6);
 
 		/* Remaining Quantum */
-		prepareValue(p->counter, counter, 10);
+		prepareValue(p->uid, uid, 10);
 
 		/* Priority */
 		prepareValue(p->priority, priority, 11);
@@ -137,7 +137,7 @@ PUBLIC int sys_ps()
 		prepareValue(p->ktime, ktime, 10);
 		
 		kprintf("%s%s%s%s%s%s%s%s",name, pid, 
-			counter, priority, nice, utime, ktime, states[(int)p->state] );
+			uid, priority, nice, utime, ktime, states[(int)p->state] );
 	}
 
 	kprintf("\nLast process: %s, pid: %d\n",last_proc->name, last_proc->pid);
