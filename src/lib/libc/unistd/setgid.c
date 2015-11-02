@@ -22,22 +22,22 @@
 #include <errno.h>
 
 /**
- * @brief Sets user ID.
+ * @brief Sets user's group ID.
  * 
- * @param uid New user ID.
+ * @param gid New user's group ID.
  * 
  * @returns Upon successful completion, 0 is returned. Otherwise, -1 is returned
  *          and errno set to indicate the error.
  */
-int setuid(uid_t uid)
+int setgid(gid_t gid)
 {
 	int ret;
 	
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)
-		: "0" (NR_setuid),
-		  "b" (uid)
+		: "0" (NR_setgid),
+		  "b" (gid)
 	);
 	
 	/* Error. */
