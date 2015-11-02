@@ -63,13 +63,11 @@ static int authenticate(const char *name, const char *password)
 			
 		account_decrypt(a.password, PASSWORD_MAX, KERNEL_HASH);
 		
-		puts(a.password);
-		
 		/* Found. */
 		if (!strcmp(password, a.password))
 		{
-			setuid(a.uid);
 			setgid(a.gid);
+			setuid(a.uid);
 			goto found;
 		}
 	}
