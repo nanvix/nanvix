@@ -76,6 +76,5 @@
 			str[i] -= key;
 		}
 	}
-	
 
 #endif /* ACCOUNTS_H_ */

@@ -17,12 +17,6 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-#
-# Script parameters.
-#  $1 Key for chaos.
-#
-KEY=$1
-
 # Root credentials.
 ROOTUID=0
 ROOTGID=0
@@ -48,19 +42,6 @@ function eject {
 	losetup -d /dev/loop2
 }
 
-#
-# Hash function.
-#  $1 Key.
-#  $2 String.
-function hashfn
-{
-	A=$(echo {a..z} | sed -r 's/ //g')
-	C=$(echo $A | sed -r "s/^.{$1}//g")$(echo $A | sed -r "s/.{$( expr 26 - $1 )}$//g")
-
-	echo $2 | tr '[A-Z]' $A  | tr $A $C
-}
-
-#
 # Generate passwords file
 #   $1 Disk image name.
 #

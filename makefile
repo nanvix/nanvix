@@ -34,9 +34,7 @@ export LD = $(TARGET)-ld
 export AR = $(TARGET)-ar
 
 # Random number for chaos.
-NUMBER = $(shell bash -c 'echo $$RANDOM')
-MOD = 26
-export KEY = $(shell echo ${NUMBER}%${MOD} | bc)
+export KEY = 13
 
 # Toolchain configuration.
 export CFLAGS    = -I $(INCDIR) -DKERNEL_HASH=$(KEY)
@@ -65,7 +63,7 @@ nanvix:
 # Builds system's image.
 image: $(BINDIR)/kernel tools
 	mkdir -p $(BINDIR)
-	bash $(TOOLSDIR)/build/build-img.sh $(KEY)
+	bash $(TOOLSDIR)/build/build-img.sh
 
 # Builds documentation.
 documentation:
