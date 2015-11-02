@@ -15,6 +15,7 @@
 	#define SWP_SIZE      0x1000000 /* Swap disk size (in bytes). */
 	
 	/* Kernel configuration. */
+	#define MULTIUSER              0 /* Multiuser support?              */
 	#define KERNEL_VERSION     "1.2" /* Kernel version.                 */
 	#define PROC_MAX              64 /* Maximum number of process.      */
 	#define PROC_SIZE_MAX  0x4000000 /* Maximum process size.           */

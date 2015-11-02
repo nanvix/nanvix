@@ -23,9 +23,11 @@
 
 #include <sys/utsname.h>
 
+#include <nanvix/accounts.h>
+
 #include <dev/tty.h>
 
-#include <nanvix/accounts.h>
+#if (MULTIUSER == 1)
 
 /**
  * @brief Authenticates a user in the system.
@@ -99,6 +101,8 @@ static int login(void)
 	return (authenticate(name, password));
 }
 
+#endif
+
 /*
  * Logins a user.
  */
@@ -126,10 +130,14 @@ int main(int argc, char *const argv[])
 	}
 	
 	printf("%s %s on %s\n\n", name.sysname, name.version, name.nodename);
+
+#if (MULTIUSER == 1)
 	
 	while (!login())
 		/* noop */;
-	
+
+#endif
+
 	ioctl(fileno(stdout), TTY_CLEAR);
 	
 	printf("Nanvix - A Free Educational Operating System\n\n");
