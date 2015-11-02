@@ -17,6 +17,12 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+#
+# Script parameters.
+#   $1 Educational kernel?
+#
+EDUCATIONAL_KERNEL=$1
+
 # Root credentials.
 ROOTUID=0
 ROOTGID=0
@@ -51,6 +57,11 @@ function passwords
 	
 	bin/useradd $file root root $ROOTGID $ROOTUID
 	bin/useradd $file noob noob $NOOBUID $NOOBUID
+
+	# Let's pray for security...
+	if [ $EDUCATIONAL_KERNEL == "no" ]; then
+		chmod 600 $file
+	fi
 	
 	bin/cp.minix $1 $file /etc/$file $ROOTUID $ROOTGID
 	

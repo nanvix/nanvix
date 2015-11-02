@@ -17,6 +17,12 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+#
+# Change this to "no" if you wanna a
+# a non-educational version of the system.
+#
+export EDUCATIONAL_KERNEL="yes"
+
 # Directories.
 export BINDIR   = $(CURDIR)/bin
 export SBINDIR  = $(BINDIR)/sbin
@@ -63,7 +69,7 @@ nanvix:
 # Builds system's image.
 image: $(BINDIR)/kernel tools
 	mkdir -p $(BINDIR)
-	bash $(TOOLSDIR)/build/build-img.sh
+	bash $(TOOLSDIR)/build/build-img.sh $(EDUCATIONAL_KERNEL)
 
 # Builds documentation.
 documentation:
