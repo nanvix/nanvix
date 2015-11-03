@@ -58,7 +58,7 @@ function passwords
 	bin/useradd $file root root $ROOTGID $ROOTUID
 	bin/useradd $file noob noob $NOOBUID $NOOBUID
 
-	# Let's pray for security...
+	# Let's care about security...
 	if [ "$EDUCATIONAL_KERNEL" == "0" ]; then
 		chmod 600 $file
 	fi
@@ -92,8 +92,14 @@ function format {
 # Copy files to a disk image.
 #   $1 Target disk image.
 #
-function copy_files {
+function copy_files
+{
+	chmod 666 tools/img/inittab
 	
+	# Let's care for security...
+	if [ "$EDUCATIONAL_KERNEL" == "0" ]; then
+		chmod 600 tools/img/inittab
+	fi
 	bin/cp.minix $1 tools/img/inittab /etc/inittab $ROOTUID $ROOTGID
 	
 	passwords $1
