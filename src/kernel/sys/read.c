@@ -31,10 +31,14 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 	/* File not opened for reading. */
 	if (ACCMODE(f->oflag) == O_WRONLY)
 		return (-EBADF);
+
+#if (EDUCATIONAL_KERNEL == 0)
 	
 	/* Invalid buffer. */	
 	if (!chkmem(buf, n, MAY_WRITE))
 		return (-EINVAL);
+
+#endif
 	
 	 i = f->inode;
 	
