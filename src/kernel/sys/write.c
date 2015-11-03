@@ -31,11 +31,15 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	/* File not opened for writing. */
 	if (ACCMODE(f->oflag) == O_RDONLY)
 		return (-EBADF);
+
+#if (EDUCATIONAL_KERNEL == 0)
 	
 	/* Invalid buffer. */
 	if (!chkmem(buf, n, MAY_READ))
 		return (-EINVAL);
 	
+#endif
+
 	i = f->inode;
 	
 	/* Append mode. */
@@ -75,5 +79,4 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	f->pos += count;
 	
 	return (count);
-	
 }
