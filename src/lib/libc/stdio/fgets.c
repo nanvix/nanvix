@@ -20,8 +20,7 @@ char *fgets(char *str, int n, FILE *stream)
 	while ((--n > 0) && ((c = getc(stream)) != EOF))
 	{
 		if (c == '\n')
-			break
-			;
+			break;
 		*p++ = c;
 	}
 	

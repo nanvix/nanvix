@@ -94,6 +94,8 @@ function format {
 #
 function copy_files {
 	
+	bin/cp.minix $1 tools/img/inittab /etc/inittab $ROOTUID $ROOTGID
+	
 	passwords $1
 	
 	for file in bin/sbin/*; do
