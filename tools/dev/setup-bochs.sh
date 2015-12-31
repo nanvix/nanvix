@@ -20,11 +20,11 @@ cd $WORKDIR
 apt-get install libgtk2.0-dev
 
 # Get bochs.
-wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.5/bochs-2.6.5.tar.gz"
+wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.8/bochs-2.6.8.tar.gz"
 
 # Build Bochs
-tar -xvf bochs-2.6.5.tar.gz
-cd bochs-2.6.5/
+tar -xvf bochs-2.6.8.tar.gz
+cd bochs-2.6.8/
 ./configure --enable-x86-debugger --enable-debugger --enable-debugger-gui
 sed -i '/^\<LIBS\>/ s/$/ -lpthread/' Makefile
 make all
