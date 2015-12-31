@@ -27,7 +27,7 @@ cd $WORKDIR
 
 # Get binutils and GCC.
 wget "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
-wget "http://ftp.gnu.org/gnu/gcc/gcc-4.9.0/gcc-4.9.0.tar.bz2"
+wget "http://ftp.gnu.org/gnu/gcc/gcc-5.3.0/gcc-5.3.0.tar.bz2"
 
 # Export variables.
 export PREFIX=/usr/local/cross
@@ -44,8 +44,8 @@ make install
 
 # Build GCC.
 cd $WORKDIR
-tar -xjvf gcc-4.9.0.tar.bz2
-cd gcc-4.9.0/
+tar -xjvf gcc-5.3.0.tar.bz2
+cd gcc-5.3.0/
 ./contrib/download_prerequisites
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c --without-headers
 make all-gcc
