@@ -32,8 +32,11 @@
 	#define SH_COPYRIGHT \
 		"Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>\n"
 	
+	/* Maximum stack size */
+	#define STACK_SIZE	50
+
 	/* Maximum line length. */
-	#define LINELEN 256
+	#define LINELEN 	256
 	
 	/* Max arguments of a command. */
 	#define CMD_MAXARGS 32
@@ -51,6 +54,13 @@
 	#define sherror()                    \
 		if (!(shflags & SH_INTERACTIVE)) \
 			exit(EXIT_FAILURE);          \
+
+	/* Command stack data structure */
+	typedef struct _TSH_HIST_S {
+		int top;
+		int capacity;
+		char *hist[STACK_SIZE];
+	} TSH_HIST;
 	
 	/* Shell flags. */
 	extern int shflags;
