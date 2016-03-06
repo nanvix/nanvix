@@ -39,8 +39,10 @@
 #define KUP    0x97
 #define KDOWN  0x98
 
+#if 0
 /* Command stack. */
 #define STACK_SIZE  16
+#endif
 
 /* Shell flags. */
 int shflags = 0;
@@ -55,10 +57,15 @@ FILE *input = NULL;
 struct termios canonical;
 struct termios raw;
 
+/* TSH command history stack */
+static TSH_HIST *tsh_hist;
+
+#if 0
 /* Command stack */
 char stack[STACK_SIZE][LINELEN];
 int  stackp;
 int  stack_count;
+#endif
 
 /*
  * Switches to canonical (default) mode.
@@ -108,12 +115,27 @@ static void configure_tty(void)
 /*
  * Initializes the command stack.
  */
-static void initialize_stack(void)
+static void initialize_stack(unsigned int capacity)
 {
-	for (int i = 0; i < STACK_SIZE; i++)
-		stack[i][0] = '\0';
-	stackp = -1;
-	stack_count = 0;
+	unsigned int i = 0;
+	tsh_hist = malloc(sizeof(TSH_HIST));
+	if(!tsh_hist)
+	{
+		fprintf(stderr, "tsh command history stack initialization failure\n");
+		exit(0);
+	}
+
+	tsh_hist->top = -1;
+	tsh_hist->capacity = capacity;
+	for(; i < capacity; i++)
+	{
+		tsh_hist->hist[i] = calloc(LINELEN, sizeof(char));
+		if(!tsh_hist->hist[i])
+		{
+			fprintf(stderr, "tsh command history array memory allocation failed\n");
+			exit(0);
+		}
+	}
 }
 
 /*
@@ -603,13 +625,47 @@ static int has_graph(const char *str)
 }
 
 /*
+ * Utility to check if the stack is full
+ */
+
+static int is_full(TSH_HIST *stack)
+{
+	return (stack->top == (stack->capacity - 1));
+}
+
+/*
+ * Utility to add new elements to the stack if it's full already
+ */
+
+static void shift_n_add(TSH_HIST *stack, char *s)
+{
+	unsigned int i = 0;
+	for(; i < (STACK_SIZE - 1); i++)
+		stack->hist[i] = stack->hist[i + 1];
+	stack->top = i;
+	stack->hist[i] = s;
+}
+
+/*
+ * Utility to push a new element to the stack
+ */
+
+static void push_hist(TSH_HIST *stack, char *s)
+{
+	if(is_full(stack))
+		shift_n_add(stack, s);
+	else
+		stack->hist[++stack->top] = s;
+}
+
+/*
  * Reads a command line.
  */
 static int readline(char *line, int length, FILE *stream)
 {
 	int fd;       /* File descriptor associated with the stream. */
 	int size;     /* Number of characters left in the buffer.    */
-	int pointer;
+	// int pointer;
 	int counter;
 	char *p;      /* Write pointer.                              */
 
@@ -617,8 +673,9 @@ static int readline(char *line, int length, FILE *stream)
 	size = length;
 	p =  line;
 
-	pointer = ((stackp + 1)&(STACK_SIZE - 1));
-	counter = 0;
+	/* Stack related */
+	// pointer = tsh_hist->top;
+	counter = tsh_hist->top;
 
 	while (size > 0)
 	{
@@ -652,10 +709,23 @@ static int readline(char *line, int length, FILE *stream)
 		/* UP and DOWN. */
 		else if (ch == KUP || ch == KDOWN)
 		{
+			switch(ch)
+			{
+				case KUP:
+					if(counter > 0)
+						counter--;
+					break;
+				case KDOWN:
+					if(counter < tsh_hist->top)
+						counter++;
+
+			}
+			printf("%s", tsh_hist->hist[counter]);
+#if 0
 			if(ch == KUP)
 			{
 				/* Prevents go up in empty positions. */
-				int min = (stack_count < STACK_SIZE) ? stack_count : STACK_SIZE;
+				int min = (tsh_hist->top < STACK_SIZE) ? tsh_hist->top : STACK_SIZE;
 
 				if (counter < min)
 				{
@@ -673,16 +743,19 @@ static int readline(char *line, int length, FILE *stream)
 					counter--;
 				}
 			}
+#endif
 				
 			/* Clear the actual command and screen. */
 			while (size < length)
 				putchar('\b'), size++;
-				
+
+#if 0
 			/* Restore last command. */
-			size = length - strlen(stack[pointer]);
-			p = line + strlen(stack[pointer]) + 1;
-			strcpy(line, stack[pointer]);
-			printf("%s", stack[pointer]);
+			size = length - strlen(tsh_hist->hist[pointer]);
+			p = line + strlen(tsh_hist->hist[pointer]) + 1;
+			strcpy(line, tsh_hist->hist[pointer]);
+			printf("%s", tsh_hist->hist[pointer]);
+#endif
 		}
 
 		/* Keys */
@@ -703,9 +776,13 @@ static int readline(char *line, int length, FILE *stream)
 				/* Add command to stack. */
 				if (has_graph(line))
 				{
+					/* Add code to push new elements on to the stack */
+					push_hist(tsh_hist, line);
+#if 0
 					stackp = ((stackp + 1) & (STACK_SIZE - 1));
 					stack_count++;
 					strcpy(stack[stackp], line);
+#endif
 				}
 
 				size--;
@@ -838,7 +915,7 @@ int main(int argc, char **argv)
 	configure_tty();
 
 	/* Initialize command stack. */
-	initialize_stack();
+	initialize_stack(STACK_SIZE);
 
 	/* Read and interpret commands. */
 	while (1)
