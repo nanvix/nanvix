@@ -40,7 +40,7 @@ static void cat(char *filename)
 	int fd;           /* File descriptor.        */
 	int off;          /* Buffer offset.          */
 	char buf[BUFSIZ]; /* Buffer.                 */
-	ssize_t nread;    /* Bytes actually read.    */
+	ssize_t n, nread; /* Bytes actually read.    */
 	ssize_t nwritten; /* Bytes actually written. */
 	
 	fd = open(filename, O_RDONLY);
@@ -53,8 +53,14 @@ static void cat(char *filename)
 	}
 	
 	/* Concatenate file. */
-	while ((nread = read(fd, buf, BUFSIZ)) > 0)
-	{
+	do
+	{	
+		/* Error while reading. */
+		if ((nread = read(fd, buf, BUFSIZ)) < 0)
+			fprintf(stderr, "cat: cannot read %s\n", filename);
+		
+		n = nread;
+		
 		off = 0;
 		do
 		{
@@ -68,11 +74,7 @@ static void cat(char *filename)
 			}
 			off += nwritten;
 		} while ((nread -= nwritten) > 0);
-	}
-	
-	/* Error while reading. */
-	if (nread < 0)
-		fprintf(stderr, "cat: cannot read %s\n", filename);
+	} while (n == BUFSIZ);	
 	
 	close(fd);
 }
