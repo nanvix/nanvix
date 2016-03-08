@@ -134,7 +134,7 @@ PRIVATE int klog_close(unsigned minor)
 PRIVATE struct cdev klog_driver = {
 	&klog_open,  /* open()  */
 	&klog_read,  /* read()  */
-	&klog_write, /* write() */
+	NULL,        /* write() */
 	NULL,        /* ioctl() */
 	&klog_close  /* close() */
 };
