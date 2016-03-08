@@ -39,6 +39,10 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 		return (-EINVAL);
 
 #endif
+
+	/* Nothing to do. */
+	if (n == 0)
+		return (0);
 	
 	 i = f->inode;
 	

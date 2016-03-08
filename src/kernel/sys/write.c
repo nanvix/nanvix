@@ -40,6 +40,10 @@ PUBLIC ssize_t sys_write(int fd, const void *buf, size_t n)
 	
 #endif
 
+	/* Nothing to do. */
+	if (n == 0)
+		return (0);
+
 	i = f->inode;
 	
 	/* Append mode. */
