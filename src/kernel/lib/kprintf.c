@@ -41,7 +41,7 @@ PUBLIC void chkout(dev_t dev)
 	kout = dev;
 	
 	/* Flush the content of kernel log. */
-	n = klog_read(buffer, KLOG_SIZE);
+	n = klog_read(0, buffer, KLOG_SIZE);
 	
 	cdev_write(kout, buffer, n);
 }
@@ -65,5 +65,5 @@ PUBLIC void kprintf(const char *fmt, ...)
 
 	/* Save on kernel log and write on kout. */
 	cdev_write(kout, buffer, i);
-	klog_write(buffer, i);
+	klog_write(0, buffer, i);
 }

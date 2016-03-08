@@ -53,8 +53,9 @@
 	 *========================================================================*/
 	
 	/* Character device major numbers. */
-	#define NULL_MAJOR 0x0 /* Null device. */
-	#define TTY_MAJOR  0x1 /* tty device.  */
+	#define NULL_MAJOR 0x0 /* Null device.       */
+	#define TTY_MAJOR  0x1 /* tty device.        */
+	#define KLOG_MAJOR 0x2 /* kernel log device. */
 	
 	/* NULL device. */
 	#define NULL_DEV DEVID(NULL_MAJOR, 0, CHRDEV)

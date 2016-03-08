@@ -5,6 +5,7 @@
  */
 
 #include <dev/ata.h>
+#include <dev/klog.h>
 #include <dev/tty.h>
 #include <dev/ramdisk.h>
 #include <nanvix/const.h>
@@ -17,14 +18,15 @@
  *============================================================================*/
 
 /* Number of character devices. */
-#define NR_CHRDEV 2
+#define NR_CHRDEV 3
 
 /*
  * Character devices table.
  */
 PRIVATE const struct cdev *cdevsw[NR_CHRDEV] = {
 	NULL, /* /dev/null */
-	NULL  /* /dev/tty  */
+	NULL, /* /dev/tty  */
+	NULL  /* /dev/klog */
 };
 
 /*
@@ -275,6 +277,7 @@ PUBLIC void bdev_readblk(buffer_t buf)
  */
 PUBLIC void dev_init(void)
 {
+	klog_init();
 	ata_init();
 	tty_init();
 	ramdisk_init();

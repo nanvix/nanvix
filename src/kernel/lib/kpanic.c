@@ -44,7 +44,7 @@ PUBLIC void kpanic(const char *fmt, ...)
 
 	/* Save on kernel log and write on kout. */
 	cdev_write(kout, buffer, i);
-	klog_write(buffer, i);
+	klog_write(0, buffer, i);
 	
 	/*
 	 * Disable interrupts, so we cannot

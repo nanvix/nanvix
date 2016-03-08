@@ -84,6 +84,7 @@ function format {
 	bin/mkdir.minix $1 /dev $ROOTUID $ROOTGID
 	bin/mknod.minix $1 /dev/null 666 c 0 0 $ROOTUID $ROOTGID
 	bin/mknod.minix $1 /dev/tty 666 c 0 1 $ROOTUID $ROOTGID
+	bin/mknod.minix $1 /dev/klog 666 c 0 2 $ROOTUID $ROOTGID
 	bin/mknod.minix $1 /dev/ramdisk 666 b 0 0 $ROOTUID $ROOTGID
 	bin/mknod.minix $1 /dev/hdd 666 b 0 1 $ROOTUID $ROOTGID
 }

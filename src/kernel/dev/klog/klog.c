@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -19,6 +19,7 @@
 
 #include <nanvix/config.h>
 #include <nanvix/const.h>
+#include <nanvix/dev.h>
 #include <nanvix/klib.h>
 #include <sys/types.h>
 	
@@ -45,11 +46,13 @@ PRIVATE struct
  * 
  * @returns The number of characters actually written to the kernel log.
  */
-PUBLIC size_t klog_write(const char *buffer, size_t n)
+PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 {
 	int head;      /* Log head.        */
 	int tail;      /* Log tail.        */
 	const char *p; /* Writing pointer. */
+	
+	UNUSED(minor);
 	
 	p = buffer;
 	
@@ -83,10 +86,12 @@ PUBLIC size_t klog_write(const char *buffer, size_t n)
  * 
  * @returns The number of characters actually read from the kernel log. 
  */
-PUBLIC size_t klog_read(char *buffer, size_t n)
+PUBLIC ssize_t klog_read(unsigned minor, char *buffer, size_t n)
 {
 	int i;   /* Loop index.      */
 	char *p; /* Reading pointer. */
+	
+	UNUSED(minor);
 	
 	p = buffer;
 	
@@ -101,4 +106,43 @@ PUBLIC size_t klog_read(char *buffer, size_t n)
 	}
 	
 	return ((ssize_t)(p - buffer));
+}
+
+/**
+ * @brief Dummy open() operation.
+ */
+PRIVATE int klog_open(unsigned minor)
+{
+	UNUSED(minor);
+	
+	return (0);
+}
+
+/**
+ * @brief Dummy close() operation.
+ */
+PRIVATE int klog_close(unsigned minor)
+{
+	UNUSED(minor);
+	
+	return (0);
+}
+
+/**
+ * @brief Kernel driver
+ */
+PRIVATE struct cdev klog_driver = {
+	&klog_open,  /* open()  */
+	&klog_read,  /* read()  */
+	&klog_write, /* write() */
+	NULL,        /* ioctl() */
+	&klog_close  /* close() */
+};
+
+/**
+ * @brief Initializes the kernel log driver.
+ */
+PUBLIC void klog_init(void)
+{
+	cdev_register(KLOG_MAJOR, &klog_driver);
 }
