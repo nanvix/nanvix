@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -466,6 +467,75 @@ int semaphore_test3(void)
 }
 
 /*============================================================================*
+ *                                FPU test                                    *
+ *============================================================================*/
+
+/**
+ * @brief FPU test module.
+ * 
+ * @details Performs a floating point operation, and tries to
+            ruin the stack from another process.
+ * 
+ * @returns Zero if passed on test, and non-zero otherwise.
+ */
+int fpu_test(void)
+{
+	float a = 6.7, b = 1.2;
+
+	union ud
+	{
+		float c;
+		int cc;
+	};
+
+	union ud u;
+	
+	/* Realize a/b */
+	__asm__ __volatile__(
+		"flds %1;"
+		"flds %0;"
+		"fdivrp %%st,%%st(1);"
+		:
+		: "m" (b), "m" (a)
+	);
+
+	/* Child process tries screw up the stack. */
+	pid_t pid;
+	if ( (pid = fork()) == 0 )
+	{
+		float t;
+		__asm__ __volatile__(
+			"fstps %0;"
+			"fldz;"
+			"fldz;"
+			"fldz;"
+			"fldz;"
+			"fldz;"
+			"fldz;"
+			"fldz;"
+			"fldz;"
+			: "=m" (t)
+			:
+		);
+		exit(0);
+	}
+	wait(NULL);
+
+	/* But it's only in your context, so nothing changed
+	 * for father process.
+	 */
+	__asm__ __volatile__(
+		"fstps %0;"
+		: "=m" (u.c)
+		:
+	);
+
+	/* 0x40b2aaaa = 6.7/1.2 = 5.5833.. */
+	return !(u.cc == 0x40b2aaaa);
+}
+
+
+/*============================================================================*
  *                                   main                                     *
  *============================================================================*/
 
@@ -533,6 +603,15 @@ int main(int argc, char **argv)
 			printf("  producer consumer [%s]\n",
 				(!semaphore_test3()) ? "PASSED" : "FAILED");
 		}
+
+		/* FPU test. */
+		else if (!strcmp(argv[i], "fpu"))
+		{
+			printf("Float Point Unit Test\n");
+			printf("  Result [%s]\n",
+				(!fpu_test()) ? "PASSED" : "FAILED");
+		}
+	
 	
 		/* Wrong usage. */
 		else
