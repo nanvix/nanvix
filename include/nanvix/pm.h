@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2015 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2015 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -32,6 +32,7 @@
 	#include <nanvix/fs.h>
 	#include <nanvix/hal.h>
 	#include <nanvix/region.h>
+ 	#include <i386/fpu.h>
 	#include <sys/types.h>
 	#include <limits.h>
 	#include <signal.h>
@@ -115,6 +116,9 @@
 	#define PROC_KSTACK   20 /**< Kernel stack pointer offset.   */
 	#define PROC_RESTORER 24 /**< Signal restorer.               */
 	#define PROC_HANDLERS 28 /**< Signal handlers offset.        */
+
+	#define PROC_IRQLVL 120  /**< IRQ Level offset.              */
+	#define PROC_FSS    124  /**< FPU Saved Status offset.       */
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -139,6 +143,13 @@
 		unsigned irqlvl;                   /**< Current IRQ level.      */
 		/**@}*/
 		
+		/**
+    	 * @name Float Point Unit information
+    	 */
+		/**@{*/
+    	struct fpu fss; /**< FPU Saved Status. */
+    	/**@}*/
+
     	/**
     	 * @name Memory information
     	 */
