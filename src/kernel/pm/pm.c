@@ -123,8 +123,8 @@ PUBLIC void pm_init(void)
 	
 	nprocs++;
 	
-	clock_init(CLOCK_FREQ);
 	fpu_init();
+	clock_init(CLOCK_FREQ);
 	
 	enable_interrupts();
 }

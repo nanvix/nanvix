@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright (C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *               2015-2016 Davidson Francis <davidsondfgl@gmail.com>
  *
  * utilities.S - Low-level utilities
