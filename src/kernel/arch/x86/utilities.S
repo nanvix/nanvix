@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2011-2013 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright (C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *               2015-2016 Davidson Francis <davidsondfgl@gmail.com>
  *
  * utilities.S - Low-level utilities
  */
@@ -23,6 +24,9 @@
 .globl physcpy
 .globl switch_to
 .globl user_mode
+.globl fpu_init
+
+/* Imported symbols. */
 .globl processor_reload
 
 /*----------------------------------------------------------------------------*
@@ -194,6 +198,7 @@ switch_to:
 	pushl %ebp
 	pushl PROC_KESP(%eax)
 	movl %esp, PROC_KESP(%eax)
+	fnsave PROC_FSS(%eax)
 	
 	/* Switch processes. */
 	movl %ecx, curr_proc
@@ -207,7 +212,8 @@ switch_to:
 	
 	/* Load process context. */
 	movl PROC_KESP(%ecx), %esp
-	
+	frstor PROC_FSS(%ecx)
+
 	call processor_reload
 	
 	btrl $PROC_NEW, PROC_FLAGS(%ecx)
@@ -260,3 +266,16 @@ user_mode:
 	pushl $USER_CS
 	pushl %ecx
 	iret
+
+/*----------------------------------------------------------------------------*
+ *                                 fpu_init()                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Initializes the FPU.
+ */
+fpu_init:
+	fninit
+	movl curr_proc, %eax
+	fnsave  PROC_FSS(%eax)
+	ret

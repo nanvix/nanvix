@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright (C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *               2015-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * sys/fork.c - fork() system call implementation.
  */
@@ -100,6 +101,7 @@ found:
 	proc->intlvl = INT_LVL_5;
 	proc->received = 0;
 	proc->restorer = curr_proc->restorer;
+	kmemcpy(&proc->fss, &curr_proc->fss, sizeof(struct fpu));
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
 	proc->irqlvl = curr_proc->irqlvl;

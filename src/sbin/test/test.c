@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2014-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2016      Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -466,6 +467,97 @@ int semaphore_test3(void)
 }
 
 /*============================================================================*
+ *                                FPU test                                    *
+ *============================================================================*/
+
+/**
+ * @brief Performs some dummy FPU-intensive computation.
+ */
+static void work_fpu(void)
+{
+	const int n = 16; /* Matrix size.    */
+	float a[16][16];  /* First operand.  */
+	float b[16][16];  /* Second operand. */
+	float c[16][16];  /* Result.         */
+	
+	/* Initialize matrices. */
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			a[i][j] = 1.0;
+			a[i][j] = 2.0;
+			c[i][j] = 0.0;
+		}
+	}
+	
+	/* Perform matrix multiplication. */
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			for (int k = 0; k < n; k++)
+				c[i][j] += a[i][k]*b[k][i];
+		}
+	}
+}
+
+/**
+ * @brief FPU testing module.
+ * 
+ * @details Performs a floating point operation, while trying to
+            mess up the stack from another process.
+ * 
+ * @returns Zero if passed on test, and non-zero otherwise.
+ */
+int fpu_test(void)
+{
+	pid_t pid;     /* Child process ID.     */
+	float a = 6.7; /* First dummy operand.  */
+	float b = 1.2; /* Second dummy operand. */
+	float result;  /* Result.               */
+	
+	/* Perform a/b */
+	__asm__ volatile(
+		"flds %1;"
+		"flds %0;"
+		"fdivrp %%st,%%st(1);"
+		: /* noop. */
+		: "m" (b), "m" (a)
+	);
+
+	pid = fork();
+	
+	/* Failed to fork(). */
+	if (pid < 0)
+		return (-1);
+	
+	/*
+	 * Child process tries
+	 * to mess up the stack.
+	 */
+	else if (pid == 0)
+	{
+		work_fpu();
+		_exit(EXIT_SUCCESS);
+	}
+	
+	wait(NULL);
+
+	/* But it's only in your context,
+	 * so nothing changed for father process.
+	 */
+	__asm__ volatile(
+		"fstps %0;"
+		: "=m" (result)
+	);
+
+	/* 0x40b2aaaa = 6.7/1.2 = 5.5833.. */
+	return (result == 0x40b2aaaa);
+}
+
+
+/*============================================================================*
  *                                   main                                     *
  *============================================================================*/
 
@@ -479,6 +571,7 @@ static void usage(void)
 	printf("Usage: test [options]\n\n");
 	printf("Brief: Performs regression tests on Nanvix.\n\n");
 	printf("Options:\n");
+	printf("  fpu   Floating Point Unit Test\n");
 	printf("  io    I/O Test\n");
 	printf("  ipc   Interprocess Communication Test\n");
 	printf("  swp   Swapping Test\n");
@@ -533,6 +626,15 @@ int main(int argc, char **argv)
 			printf("  producer consumer [%s]\n",
 				(!semaphore_test3()) ? "PASSED" : "FAILED");
 		}
+
+		/* FPU test. */
+		else if (!strcmp(argv[i], "fpu"))
+		{
+			printf("Float Point Unit Test\n");
+			printf("  Result [%s]\n",
+				(!fpu_test()) ? "PASSED" : "FAILED");
+		}
+	
 	
 		/* Wrong usage. */
 		else

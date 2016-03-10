@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2015 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2015 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -123,6 +123,7 @@ PUBLIC void pm_init(void)
 	
 	nprocs++;
 	
+	fpu_init();
 	clock_init(CLOCK_FREQ);
 	
 	enable_interrupts();
