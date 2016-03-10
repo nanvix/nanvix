@@ -24,6 +24,9 @@
 .globl physcpy
 .globl switch_to
 .globl user_mode
+.globl fpu_init
+
+/* Imported symbols. */
 .globl processor_reload
 
 /*----------------------------------------------------------------------------*
@@ -263,3 +266,16 @@ user_mode:
 	pushl $USER_CS
 	pushl %ecx
 	iret
+
+/*----------------------------------------------------------------------------*
+ *                                 fpu_init()                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Initializes the FPU.
+ */
+fpu_init:
+	fninit
+	movl curr_proc, %eax
+	fnsave  PROC_FSS(%eax)
+	ret

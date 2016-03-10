@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2015 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
  *
  * This file is part of Nanvix.
@@ -116,7 +116,6 @@
 	#define PROC_KSTACK   20 /**< Kernel stack pointer offset.   */
 	#define PROC_RESTORER 24 /**< Signal restorer.               */
 	#define PROC_HANDLERS 28 /**< Signal handlers offset.        */
-
 	#define PROC_IRQLVL 120  /**< IRQ Level offset.              */
 	#define PROC_FSS    124  /**< FPU Saved Status offset.       */
 	/**@}*/
@@ -129,7 +128,7 @@
 	struct process
 	{
 		/**
-		 * @name Hard-coded fields
+		 * @name Hard-coded Fields
 		 */
 		/**@{*/
     	dword_t kesp;                      /**< Kernel stack pointer.   */
@@ -141,14 +140,8 @@
     	void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		unsigned irqlvl;                   /**< Current IRQ level.      */
+    	struct fpu fss;                    /**< FPU Saved Status.       */
 		/**@}*/
-		
-		/**
-    	 * @name Float Point Unit information
-    	 */
-		/**@{*/
-    	struct fpu fss; /**< FPU Saved Status. */
-    	/**@}*/
 
     	/**
     	 * @name Memory information
