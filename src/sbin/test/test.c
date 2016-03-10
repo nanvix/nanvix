@@ -471,6 +471,38 @@ int semaphore_test3(void)
  *============================================================================*/
 
 /**
+ * @brief Performs some dummy FPU-intensive computation.
+ */
+static void work_fpu(void)
+{
+	const int n = 16; /* Matrix size.    */
+	float a[16][16];  /* First operand.  */
+	float b[16][16];  /* Second operand. */
+	float c[16][16];  /* Result.         */
+	
+	/* Initialize matrices. */
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			a[i][j] = 1.0;
+			a[i][j] = 2.0;
+			c[i][j] = 0.0;
+		}
+	}
+	
+	/* Perform matrix multiplication. */
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			for (int k = 0; k < n; k++)
+				c[i][j] += a[i][k]*b[k][i];
+		}
+	}
+}
+
+/**
  * @brief FPU testing module.
  * 
  * @details Performs a floating point operation, while trying to
@@ -483,21 +515,14 @@ int fpu_test(void)
 	pid_t pid;     /* Child process ID.     */
 	float a = 6.7; /* First dummy operand.  */
 	float b = 1.2; /* Second dummy operand. */
-
-	union ud
-	{
-		float c;
-		int cc;
-	};
-
-	union ud u;
+	float result;  /* Result.               */
 	
-	/* Realize a/b */
-	__asm__ __volatile__(
+	/* Perform a/b */
+	__asm__ volatile(
 		"flds %1;"
 		"flds %0;"
 		"fdivrp %%st,%%st(1);"
-		:
+		: /* noop. */
 		: "m" (b), "m" (a)
 	);
 
@@ -513,36 +538,22 @@ int fpu_test(void)
 	 */
 	else if (pid == 0)
 	{
-		float t;
-		__asm__ __volatile__(
-			"fstps %0;"
-			"fldz;"
-			"fldz;"
-			"fldz;"
-			"fldz;"
-			"fldz;"
-			"fldz;"
-			"fldz;"
-			"fldz;"
-			: "=m" (t)
-			:
-		);
-		exit(EXIT_SUCCESS)
+		work_fpu();
+		_exit(EXIT_SUCCESS);
 	}
 	
 	wait(NULL);
 
-	/* But it's only in your context, so nothing changed
-	 * for father process.
+	/* But it's only in your context,
+	 * so nothing changed for father process.
 	 */
-	__asm__ __volatile__(
+	__asm__ volatile(
 		"fstps %0;"
-		: "=m" (u.c)
-		:
+		: "=m" (result)
 	);
 
 	/* 0x40b2aaaa = 6.7/1.2 = 5.5833.. */
-	return !(u.cc == 0x40b2aaaa);
+	return (result == 0x40b2aaaa);
 }
 
 
