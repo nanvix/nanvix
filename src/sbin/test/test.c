@@ -549,6 +549,7 @@ static void usage(void)
 	printf("Usage: test [options]\n\n");
 	printf("Brief: Performs regression tests on Nanvix.\n\n");
 	printf("Options:\n");
+	printf("  fpu   Floating Point Unit Test\n");
 	printf("  io    I/O Test\n");
 	printf("  ipc   Interprocess Communication Test\n");
 	printf("  swp   Swapping Test\n");
