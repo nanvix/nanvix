@@ -471,16 +471,18 @@ int semaphore_test3(void)
  *============================================================================*/
 
 /**
- * @brief FPU test module.
+ * @brief FPU testing module.
  * 
- * @details Performs a floating point operation, and tries to
-            ruin the stack from another process.
+ * @details Performs a floating point operation, while trying to
+            mess up the stack from another process.
  * 
  * @returns Zero if passed on test, and non-zero otherwise.
  */
 int fpu_test(void)
 {
-	float a = 6.7, b = 1.2;
+	pid_t pid;     /* Child process ID.     */
+	float a = 6.7; /* First dummy operand.  */
+	float b = 1.2; /* Second dummy operand. */
 
 	union ud
 	{
@@ -499,9 +501,17 @@ int fpu_test(void)
 		: "m" (b), "m" (a)
 	);
 
-	/* Child process tries screw up the stack. */
-	pid_t pid;
-	if ( (pid = fork()) == 0 )
+	pid = fork();
+	
+	/* Failed to fork(). */
+	if (pid < 0)
+		return (-1);
+	
+	/*
+	 * Child process tries
+	 * to mess up the stack.
+	 */
+	else if (pid == 0)
 	{
 		float t;
 		__asm__ __volatile__(
@@ -517,8 +527,9 @@ int fpu_test(void)
 			: "=m" (t)
 			:
 		);
-		exit(0);
+		exit(EXIT_SUCCESS)
 	}
+	
 	wait(NULL);
 
 	/* But it's only in your context, so nothing changed
