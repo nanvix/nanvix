@@ -29,8 +29,14 @@ PRIVATE const struct cdev *cdevsw[NR_CHRDEV] = {
 	NULL  /* /dev/klog */
 };
 
-/*
- * Registers a character device.
+/**
+ * @brief Registers a character device.
+ * 
+ * @details Attempts to register a character device with the major number @p
+ *          major.
+ * 
+ * @returns Upon successful completion, zero is returned. Upon failure, a
+ *          negative error code is returned instead.
  */
 PUBLIC int cdev_register(unsigned major, const struct cdev *dev)
 {
@@ -48,8 +54,14 @@ PUBLIC int cdev_register(unsigned major, const struct cdev *dev)
 	return (0);
 }
 
-/*
- * Writes to a character device.
+/**
+ * @brief Writes bytes to a character device.
+ * 
+ * @details Attempts to write @p n bytes from the buffer pointed to by @p buf
+ *          to the character device identified by @p dev.
+ * 
+ * @returns The number of bytes actually written to the device. Upon failure, a
+ *          negative error code is returned.
  */
 PUBLIC ssize_t cdev_write(dev_t dev, const void *buf, size_t n)
 {	

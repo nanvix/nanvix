@@ -60,8 +60,8 @@
 	/* NULL device. */
 	#define NULL_DEV DEVID(NULL_MAJOR, 0, CHRDEV)
 	
-	/*
-	 * Character device.
+	/**
+	 * @brief Character device.
 	 */
 	struct cdev
 	{
@@ -72,36 +72,9 @@
 		int (*close)(dev_t);                              /* Close.   */
 	};
 	
-	/*
-	 * DESCRIPTION:
-	 *   The cdev_register() function attempts to register a character device
-	 *   with major number major.
-	 * 
-	 * RETURN VALUE:
-	 *   Upon successfull completion, the cdev_register() function returns 0. 
-	 *   Upon failure, a negative error code is returned.
-	 * 
-	 * ERRORS:
-	 *   - EINVAL: invalid major number.
-	 *   - EBUSY: there is a device registered with the same major number.
-	 */
-	EXTERN int cdev_register(unsigned major, const struct cdev *dev);
-	
-	/*
-	 * DESCRIPTION:
-	 *   The cdev_write() function attempts to write n bytes from the buffer 
-	 *   pointed to by buf to the character device identified by dev.
-	 * 
-	 * RETURN VALUE:
-	 *   Upon successful completion, the cdev_write() function returns the 
-	 *   number of bytes actually written to the device. Upon failure, a 
-	 *   negative error code is returned.
-	 * 
-	 * ERRORS:
-	 *   - EINVAL: invalid character device.
-	 *   - ENOTSUP: operation not supported.
-	 */
-	EXTERN ssize_t cdev_write(dev_t dev, const void *buf, size_t n);
+
+	EXTERN int cdev_register(unsigned, const struct cdev *);
+	EXTERN ssize_t cdev_write(dev_t, const void *, size_t);
 	
 	/*
 	 * DESCRIPTION:
