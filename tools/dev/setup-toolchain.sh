@@ -27,6 +27,9 @@ cd $WORKDIR
 wget "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
 wget "http://ftp.gnu.org/gnu/gcc/gcc-5.3.0/gcc-5.3.0.tar.bz2"
 
+# Get required packages.
+apt-get install g++
+
 # Export variables.
 export PREFIX=/usr/local/cross
 export TARGET=i386-elf
