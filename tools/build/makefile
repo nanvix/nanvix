@@ -1,5 +1,5 @@
 # 
-# Copyright(C) 2011-201 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
 #
 # This file is part of Nanvix.
 #

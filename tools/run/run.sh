@@ -1,5 +1,5 @@
 # 
-# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
 #
 # This file is part of Nanvix.
 #
@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
+
 # NOTES:
 #   - This script should work in any Linux distribution.
 #   - You should run this script with superuser privileges.

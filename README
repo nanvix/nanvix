@@ -1,4 +1,4 @@
-Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 
                                  NANVIX
 
@@ -28,7 +28,7 @@ BUILDING
 	
 	When done, you can build Nanvix by typing, at the root directory:
 	
-		$ make all
+		$ make nanvix
 	
 	Or you can build a Live System's Image by typing, at the same directory:
 	
