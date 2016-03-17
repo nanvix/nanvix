@@ -33,8 +33,6 @@
 	#define SH_COPYRIGHT \
 		"Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>\n"
 
-	#define STACK_SIZE 50
-
 	/* Maximum line length. */
 	#define LINELEN 256
 
@@ -53,22 +51,7 @@
 	 */
 	#define sherror()                    \
 		if (!(shflags & SH_INTERACTIVE)) \
-			exit(EXIT_FAILURE);          \
-
-	/*
- 	 * Command stack data structure
- 	 *
- 	 * Note: This implementation is NOT a true stack per se. It acts as a
- 	 *       stack till new additions reach STACK->top. After that, for each 
- 	 *       addition, the stack will remove an element from the bottom of
- 	 *       it to accommodate the new element at the top (assuming the
- 	 *       stack grows upwards).
- 	 */
-	struct STACK {
-		int top;
-		int capacity;
-		char *hist[STACK_SIZE];
-	};
+			exit(EXIT_FAILURE);
 
 	/* Shell flags. */
 	extern int shflags;

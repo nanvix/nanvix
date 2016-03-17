@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
@@ -32,9 +32,10 @@
 #include <unistd.h>
 #include <termios.h>
 #include <ctype.h>
-#include <assert.h>
+
 #include "builtin.h"
 #include "tsh.h"
+#include "history.h"
 
 /* Cursor keys. */
 #define KUP    0x97
@@ -99,26 +100,6 @@ static void configure_tty(void)
 	raw.c_cc[VTIME] = 0;
 
 	switch_raw();
-}
-
-/*
- * Initializes the command stack
- */
-struct STACK *initialize_stack(int capacity)
-{
-	int i = 0;
-	tsh_hist = malloc(sizeof(struct STACK));
-	assert(tsh_hist != NULL);
-
-	tsh_hist->top = -1;
-	tsh_hist->capacity = capacity;
-	for (; i < tsh_hist->capacity; i++)
-	{
-		tsh_hist->hist[i] = calloc(LINELEN, sizeof(char));
-		assert(tsh_hist->hist[i] != NULL);
-	}
-
-	return tsh_hist;
 }
 
 /*
@@ -608,46 +589,15 @@ static int has_graph(const char *str)
 }
 
 /*
- * Utility to determine if the stack is full
- */
-int is_full(struct STACK *stack)
-{
-	return (stack->top == (stack->capacity - 1));
-}
-
-/*
- * Pushing new elements when the stack is full
- */
-void shift_n_add(struct STACK *stack, char *s)
-{
-	unsigned i = 0;
-	for (; i < (STACK_SIZE - 1); i++)
-		strncpy(stack->hist[i], stack->hist[i + 1], LINELEN);
-	stack->top = i;
-	strncpy(stack->hist[i], s, LINELEN);
-}
-
-/*
- * To push an element on to the stack
- */
-void push_hist(struct STACK *stack, char *s)
-{
-	if (is_full(stack))
-		shift_n_add(stack, s);
-	else
-		strncpy(stack->hist[++stack->top], s, LINELEN);
-}
-
-/*
  * Reads a command line.
  */
 static int readline(char *line, int length, FILE *stream)
 {
-	int fd;       					/* File descriptor */
-	int size;     					/* # of characters left in buffer */
-	char *p;      					/* Write pointer */
-	int pointer = tsh_hist->top;	/* To hold current position on stack */
-	int tmp = 0;					/* Variable to hold value of pointer */
+	int fd;                         /* File descriptor                      */
+	int size;                       /* # of characters left in buffer       */
+	char *p;                        /* Write pointer                        */
+	int pointer = tsh_hist->top;    /* To hold current position on stack    */
+	int tmp = 0;                    /* Variable to hold value of pointer    */
 	int counter = 0;                /* For checking if we reached stack top */
 
 	fd = fileno(stream);
