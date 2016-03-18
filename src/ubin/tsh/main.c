@@ -55,7 +55,7 @@ struct termios canonical;
 struct termios raw;
 
 /* Global command history stack struct */
-static struct STACK *tsh_hist = NULL;
+static struct history *hist = NULL;
 
 /*
  * Switches to canonical (default) mode.
@@ -593,12 +593,9 @@ static int has_graph(const char *str)
  */
 static int readline(char *line, int length, FILE *stream)
 {
-	int fd;                         /* File descriptor                      */
-	int size;                       /* # of characters left in buffer       */
-	char *p;                        /* Write pointer                        */
-	int pointer = tsh_hist->top;    /* To hold current position on stack    */
-	int tmp = 0;                    /* Variable to hold value of pointer    */
-	int counter = 0;                /* For checking if we reached stack top */
+	int fd;   /* File descriptor.                */
+	int size; /* # of characters left in buffer. */
+	char *p;  /* Write pointer.                  */
 
 	fd = fileno(stream);
 	size = length;
@@ -607,9 +604,11 @@ static int readline(char *line, int length, FILE *stream)
 	while (size > 0)
 	{
 		unsigned char ch;
+		
 		/* Nothing read. */
 		if (read(fd, &ch, 1) != 1)
 			return (-1);
+		
 		/* Erase. */
 		if ((ch == ERASE_CHAR(raw)) && (size < length))
 		{
@@ -617,6 +616,7 @@ static int readline(char *line, int length, FILE *stream)
 			size++;
 			putchar(ch);
 		}
+	
 		/* Kill. */
 		else if (ch == KILL_CHAR(raw))
 		{
@@ -625,42 +625,29 @@ static int readline(char *line, int length, FILE *stream)
 				putchar('\b'), size++;
 			p = line;
 		}
-		/* End of file. */
+		
+		/* End of file. */	
 		else if (ch == EOF_CHAR(raw))
 			return (0);
+	
 		/* UP and DOWN. */
-		else if (ch == KUP || ch == KDOWN)
+		else if ((ch == KUP) || (ch == KDOWN))
 		{
-			tmp = pointer;
-			if (ch == KUP)
-			{
-				if (tmp > 0)
-					pointer--;
-			}
-			else
-			{
-				if (tmp < tsh_hist->top)
-					tmp = ++pointer;
-				else
-					counter++;
-			}
+			char *oldline;
+			
+			oldline = (ch == KUP) ? history_previous(hist) : history_next(hist);
+			
 			/* Clear actual command & screen */
 			while (size < length)
 				putchar('\b'), size++;
 
 			/* Restore last command */
-			size = length - strlen(tsh_hist->hist[tmp]);
-			p = line + strlen(tsh_hist->hist[tmp]);
-			strncpy(line, tsh_hist->hist[tmp], LINELEN);
-			printf("%s", tsh_hist->hist[tmp]);
-			if (counter > 0)
-			{
-				while (size < length)
-					putchar('\b'), size++;
-				p = line;
-				counter = 0;
-			}
+			size = length - strlen(oldline);
+			p = line + strlen(oldline);
+			strncpy(line, oldline, LINELEN);
+			printf("%s", line);
 		}
+	
 		/* Keys */
 		else
 		{
@@ -677,7 +664,7 @@ static int readline(char *line, int length, FILE *stream)
 				*p++ = '\0';
 				/* Add command to stack. */
 				if (has_graph(line))
-					push_hist(tsh_hist, line);
+					history_push(hist, line);
 				size--;
 				putchar('\n');
 				break;
@@ -808,7 +795,7 @@ int main(int argc, char **argv)
 	configure_tty();
 
 	/* Initialize command stack. */
-	tsh_hist = initialize_stack(STACK_SIZE);
+	hist = history_init(HISTORY_SIZE);
 
 	/* Read and interpret commands. */
 	while (1)

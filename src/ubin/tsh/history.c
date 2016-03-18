@@ -25,26 +25,27 @@
 #include "tsh.h"
 #include "history.h"
 
-/*
- * Initializes the command stack
+/**
+ * @brief Creates a command history.
  */
-struct STACK *initialize_stack(int capacity)
+struct history *history_init(int size)
 {
-	struct STACK *hist;
+	struct history *hist;
 	
-	hist = malloc(sizeof(struct STACK));
+	hist = malloc(sizeof(struct history));
 	if (hist == NULL)
 	{
 		fprintf(stderr, "%s: failed to allocate history buffer\n", TSH_NAME);
 		exit(EXIT_FAILURE);
 	}
 
-	hist->top = -1;
-	hist->capacity = capacity;
-	for (int i = 0; i < hist->capacity; i++)
+	hist->top = 0;
+	hist->size = size;
+	hist->p = -1;
+	for (int i = 0; i < hist->size; i++)
 	{
-		hist->hist[i] = calloc(LINELEN, sizeof(char));
-		if (hist->hist[i] == NULL)
+		hist->log[i] = calloc(LINELEN, sizeof(char));
+		if (hist->log[i] == NULL)
 		{
 			fprintf(stderr, "%s: failed to allocate history buffer\n", TSH_NAME);
 			exit(EXIT_FAILURE);
@@ -54,25 +55,73 @@ struct STACK *initialize_stack(int capacity)
 	return (hist);
 }
 
-/*
- * Utility to determine if the stack is full
+/**
+ * @brief Destroys a command history.
+ * 
+ * @brief hist Target command history.
  */
-static int is_full(struct STACK *stack)
+void history_destroy(struct history *hist)
+{	
+	for (int i = 0; i < hist->size; i++)
+		free(hist->log[i]);
+		
+	free(hist);
+}
+
+/**
+ * @brief Asserts if a command history is full.
+ * 
+ * @param hist Target command history.
+ */
+static inline int history_full(struct history *hist)
 {
-	return (stack->top == (stack->capacity - 1));
+	return (hist->top == hist->size);
+}
+
+/**
+ * @brief Returns the next command on a command history.
+ */
+char *history_next(struct history *hist)
+{
+	if (hist->top == 0)
+		return ("");
+	
+	if (hist->p == (hist->top - 1))
+		return (hist->log[hist->p]);
+	
+	return (hist->log[++hist->p]);
+}
+
+/**
+ * @brief Returns the previous command on a command history.
+ */
+char *history_previous(struct history *hist)
+{
+	if (hist->top == 0)
+		return ("");
+			
+	if (hist->p < 0)
+		return (hist->log[0]);
+
+	return (hist->log[hist->p--]);
 }
 
 /**
  * @brief Pushes a new element on the history.
  */
-void push_hist(struct STACK *stack, char *s)
+void history_push(struct history *hist, char *s)
 {
-	if (is_full(stack))
+	/* Dont do that. */
+	if (*s == '\0')
+		return;
+
+	/* Shift elements. */
+	if (history_full(hist))
 	{
-		/* Shift elements. */
-		for (int i = 0; i < (STACK_SIZE - 1); i++)
-			strncpy(stack->hist[i], stack->hist [i + 1], LINELEN);
+		for (int i = 0; i < hist->top; i++)
+			strncpy(hist->log[i], hist->log[i + 1], LINELEN);
+		hist->top--;
 	}
 	
-	strncpy(stack->hist[++stack->top], s, LINELEN);
+	strncpy(hist->log[hist->p = hist->top++], s, LINELEN);
 }

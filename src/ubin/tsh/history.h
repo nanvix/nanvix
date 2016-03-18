@@ -20,26 +20,29 @@
 
 #ifndef _HISTORY_H_
 #define _HISTORY_H_
-
-	#define STACK_SIZE 50
-
-	/*
- 	 * Command stack data structure
- 	 *
- 	 * Note: This implementation is NOT a true stack per se. It acts as a
- 	 *       stack till new additions reach STACK->top. After that, for each 
- 	 *       addition, the stack will remove an element from the bottom of
- 	 *       it to accommodate the new element at the top (assuming the
- 	 *       stack grows upwards).
+      
+ 	/**
+ 	 * @brief Command history.
+ 	 * 
+ 	 * @note  This implementation is NOT a true stack per se. It acts as a
+ 	 *        stack till new additions reach STACK->top. After that, for each 
+ 	 *        addition, the stack will remove an element from the bottom of
+ 	 *        it to accommodate the new element at the top (assuming the
+ 	 *        stack grows upwards).
  	 */
-	struct STACK {
-		int top;
-		int capacity;
-		char *hist[STACK_SIZE];
+	struct history
+	{
+		int top;                 /**< Last logged command.  */
+		int p;                   /**< Read pointer.         */
+		int size;                /**< Maximum history size. */
+		char *log[HISTORY_SIZE]; /**< History log.          */
 	};
 	
 	/* Forward definitions. */
-	extern struct STACK *initialize_stack(int );
-	extern void push_hist(struct STACK *, char *);
+	extern struct history *history_init(int);
+	extern void history_destroy(struct history *);
+	extern void history_push(struct history *, char *);
+	extern char *history_previous(struct history *);
+	extern char *history_next(struct history *);
 
 #endif /* _HISTORY_H_ */

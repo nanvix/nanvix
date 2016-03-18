@@ -35,6 +35,11 @@
 
 	/* Maximum line length. */
 	#define LINELEN 256
+	
+	/**
+	 * @brief History size.
+	 */
+	#define HISTORY_SIZE 50
 
 	/* Max arguments of a command. */
 	#define CMD_MAXARGS 32
