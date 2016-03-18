@@ -62,25 +62,17 @@ static int is_full(struct STACK *stack)
 	return (stack->top == (stack->capacity - 1));
 }
 
-
-/*
- * Pushing new elements when the stack is full
- */
-static void shift_n_add(struct STACK *stack, char *s)
-{
-	for (int i = 0; i < (STACK_SIZE - 1); i++)
-		strncpy(stack->hist[i], stack->hist[i + 1], LINELEN);
-	stack->top = STACK_SIZE;
-	strncpy(stack->hist[STACK_SIZE], s, LINELEN);
-}
-
-/*
- * To push an element on to the stack
+/**
+ * @brief Pushes a new element on the history.
  */
 void push_hist(struct STACK *stack, char *s)
 {
 	if (is_full(stack))
-		shift_n_add(stack, s);
-	else
-		strncpy(stack->hist[++stack->top], s, LINELEN);
+	{
+		/* Shift elements. */
+		for (int i = 0; i < (STACK_SIZE - 1); i++)
+			strncpy(stack->hist[i], stack->hist [i + 1], LINELEN);
+	}
+	
+	strncpy(stack->hist[++stack->top], s, LINELEN);
 }
