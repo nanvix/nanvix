@@ -1,6 +1,7 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
+ *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -23,18 +24,18 @@
 #define TSH_H_
 
 	#include <stdlib.h>
-	
+
 	/* Software versioning. */
 	#define TSH_NAME    "tsh" /* Name.    */
 	#define TSH_VERSION "1.0" /* Version. */
-	
+
 	/* Software copyright message. */
 	#define SH_COPYRIGHT \
 		"Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>\n"
-	
+
 	/* Maximum line length. */
 	#define LINELEN 256
-	
+
 	/* Max arguments of a command. */
 	#define CMD_MAXARGS 32
 
@@ -50,11 +51,11 @@
 	 */
 	#define sherror()                    \
 		if (!(shflags & SH_INTERACTIVE)) \
-			exit(EXIT_FAILURE);          \
-	
+			exit(EXIT_FAILURE);
+
 	/* Shell flags. */
 	extern int shflags;
-	
+
 	/* Shell return value. */
 	extern int shret;
 

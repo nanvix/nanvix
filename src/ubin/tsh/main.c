@@ -1,6 +1,7 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -18,7 +19,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -32,15 +32,14 @@
 #include <unistd.h>
 #include <termios.h>
 #include <ctype.h>
+
 #include "builtin.h"
 #include "tsh.h"
+#include "history.h"
 
 /* Cursor keys. */
 #define KUP    0x97
 #define KDOWN  0x98
-
-/* Command stack. */
-#define STACK_SIZE  16
 
 /* Shell flags. */
 int shflags = 0;
@@ -55,10 +54,8 @@ FILE *input = NULL;
 struct termios canonical;
 struct termios raw;
 
-/* Command stack */
-char stack[STACK_SIZE][LINELEN];
-int  stackp;
-int  stack_count;
+/* Global command history stack struct */
+static struct STACK *tsh_hist = NULL;
 
 /*
  * Switches to canonical (default) mode.
@@ -103,17 +100,6 @@ static void configure_tty(void)
 	raw.c_cc[VTIME] = 0;
 
 	switch_raw();
-}
-
-/*
- * Initializes the command stack.
- */
-static void initialize_stack(void)
-{
-	for (int i = 0; i < STACK_SIZE; i++)
-		stack[i][0] = '\0';
-	stackp = -1;
-	stack_count = 0;
 }
 
 /*
@@ -607,27 +593,23 @@ static int has_graph(const char *str)
  */
 static int readline(char *line, int length, FILE *stream)
 {
-	int fd;       /* File descriptor associated with the stream. */
-	int size;     /* Number of characters left in the buffer.    */
-	int pointer;
-	int counter;
-	char *p;      /* Write pointer.                              */
+	int fd;                         /* File descriptor                      */
+	int size;                       /* # of characters left in buffer       */
+	char *p;                        /* Write pointer                        */
+	int pointer = tsh_hist->top;    /* To hold current position on stack    */
+	int tmp = 0;                    /* Variable to hold value of pointer    */
+	int counter = 0;                /* For checking if we reached stack top */
 
 	fd = fileno(stream);
 	size = length;
 	p =  line;
 
-	pointer = ((stackp + 1)&(STACK_SIZE - 1));
-	counter = 0;
-
 	while (size > 0)
 	{
 		unsigned char ch;
-	
 		/* Nothing read. */
 		if (read(fd, &ch, 1) != 1)
 			return (-1);
-
 		/* Erase. */
 		if ((ch == ERASE_CHAR(raw)) && (size < length))
 		{
@@ -635,7 +617,6 @@ static int readline(char *line, int length, FILE *stream)
 			size++;
 			putchar(ch);
 		}
-
 		/* Kill. */
 		else if (ch == KILL_CHAR(raw))
 		{
@@ -644,47 +625,42 @@ static int readline(char *line, int length, FILE *stream)
 				putchar('\b'), size++;
 			p = line;
 		}
-
 		/* End of file. */
 		else if (ch == EOF_CHAR(raw))
 			return (0);
-
 		/* UP and DOWN. */
 		else if (ch == KUP || ch == KDOWN)
 		{
-			if(ch == KUP)
+			tmp = pointer;
+			if (ch == KUP)
 			{
-				/* Prevents go up in empty positions. */
-				int min = (stack_count < STACK_SIZE) ? stack_count : STACK_SIZE;
-
-				if (counter < min)
-				{
-					pointer = ((pointer - 1) & (STACK_SIZE - 1));
-					counter++;
-				}
+				if (tmp > 0)
+					pointer--;
 			}
-			
 			else
 			{
-				/* Avoid from getting the same start command. */
-				if (counter > 1)
-				{
-					pointer = ((pointer + 1) & (STACK_SIZE - 1));
-					counter--;
-				}
+				if (tmp < tsh_hist->top)
+					tmp = ++pointer;
+				else
+					counter++;
 			}
-				
-			/* Clear the actual command and screen. */
+			/* Clear actual command & screen */
 			while (size < length)
 				putchar('\b'), size++;
-				
-			/* Restore last command. */
-			size = length - strlen(stack[pointer]);
-			p = line + strlen(stack[pointer]) + 1;
-			strcpy(line, stack[pointer]);
-			printf("%s", stack[pointer]);
-		}
 
+			/* Restore last command */
+			size = length - strlen(tsh_hist->hist[tmp]);
+			p = line + strlen(tsh_hist->hist[tmp]);
+			strncpy(line, tsh_hist->hist[tmp], LINELEN);
+			printf("%s", tsh_hist->hist[tmp]);
+			if (counter > 0)
+			{
+				while (size < length)
+					putchar('\b'), size++;
+				p = line;
+				counter = 0;
+			}
+		}
 		/* Keys */
 		else
 		{
@@ -694,20 +670,14 @@ static int readline(char *line, int length, FILE *stream)
 				*p++ = '\0';
 				break;
 			}
-			
+
 			/* End of line. */
 			if (ch == EOL_CHAR(raw))
 			{
 				*p++ = '\0';
-				
 				/* Add command to stack. */
 				if (has_graph(line))
-				{
-					stackp = ((stackp + 1) & (STACK_SIZE - 1));
-					stack_count++;
-					strcpy(stack[stackp], line);
-				}
-
+					push_hist(tsh_hist, line);
 				size--;
 				putchar('\n');
 				break;
@@ -838,7 +808,7 @@ int main(int argc, char **argv)
 	configure_tty();
 
 	/* Initialize command stack. */
-	initialize_stack();
+	tsh_hist = initialize_stack(STACK_SIZE);
 
 	/* Read and interpret commands. */
 	while (1)
