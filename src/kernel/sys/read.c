@@ -45,13 +45,9 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 	if (ACCMODE(f->oflag) == O_WRONLY)
 		return (-EBADF);
 
-#if (EDUCATIONAL_KERNEL == 0)
-	
 	/* Invalid buffer. */	
 	if (!chkmem(buf, n, MAY_WRITE))
 		return (-EINVAL);
-
-#endif
 
 	/* Nothing to do. */
 	if (n == 0)
