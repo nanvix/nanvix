@@ -83,11 +83,20 @@ static inline int history_full(struct history *hist)
  */
 char *history_next(struct history *hist)
 {
+	/* History is empty. */
 	if (hist->top == 0)
 		return ("");
 	
+	/*
+	 * We've printed command at
+	 * index 0 before.
+	 */
+	if (hist->p < 0)
+		hist->p = 0;
+	
+	/* End of the history. */
 	if (hist->p == (hist->top - 1))
-		return (hist->log[hist->p]);
+		return ("");
 	
 	return (hist->log[++hist->p]);
 }
@@ -97,9 +106,11 @@ char *history_next(struct history *hist)
  */
 char *history_previous(struct history *hist)
 {
+	/* History is empty. */
 	if (hist->top == 0)
 		return ("");
-			
+	
+	/* Start of the history. */	
 	if (hist->p < 0)
 		return (hist->log[0]);
 
