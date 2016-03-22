@@ -293,7 +293,7 @@ PRIVATE void ata_device_select(int atadevid)
  */
 PRIVATE void ata_bus_wait(int bus)
 {
-	while (inputb(pio_ports[bus][ATA_REG_ASTATUS] & ATA_BUSY))
+	while (inputb(pio_ports[bus][ATA_REG_ASTATUS]) & ATA_BUSY)
 		/* noop*/ ;
 }
 
@@ -468,7 +468,7 @@ PRIVATE void ata_read_op(unsigned atadevid, struct request *req)
 	/* Query return value. */
 	byte = inputb(pio_ports[bus][ATA_REG_ASTATUS]);
 	if (byte & ATA_DF)
-		kprintf("ATA: device error");
+		kprintf("ata: device error");
 }
 
 /*
@@ -529,7 +529,7 @@ PRIVATE void ata_write_op(unsigned atadevid, struct request *req)
 	byte = inputb(pio_ports[bus][ATA_REG_ASTATUS]);
 	if (byte & ATA_DF)
 	{
-		kprintf("ATA: device error");
+		kprintf("ata: device error");
 		return;
 	}			
 		
@@ -871,7 +871,7 @@ PRIVATE void ata_handler(int atadevid)
 	 */
 	if (!(dev->flags & ATADEV_VALID))
 	{
-		kprintf("ATA: non valid device %d fired an IRQ", atadevid);
+		kprintf("ata: non valid device %d fired an IRQ", atadevid);
 		return;
 	}
 		
@@ -885,7 +885,7 @@ PRIVATE void ata_handler(int atadevid)
 	/* Broken block operation queue. */
 	if (dev->queue.size == 0)
 	{
-		kpanic("ATA: broken block operation queue?");
+		kpanic("ata: broken block operation queue?");
 		goto out;
 	}
 	
@@ -989,7 +989,7 @@ PUBLIC void ata_init(void)
 	
 	/* Detect devices. */
 	for (i = 0, dvrl = 'a'; i < 4; i++, dvrl++)
-	{
+	{		
 		kmemset(&ata_devices[i], 0, sizeof(struct atadev));
 		
 		ata_device_select(i);
@@ -999,27 +999,27 @@ PUBLIC void ata_init(void)
 		{
 			/* ATAPI.  */
 			case ATADEV_PATAPI:
-				kprintf("hd%c: ATAPI CD/DVD detected.", dvrl);
+				kprintf("ata: hd%c ATAPI CD/DVD detected.", dvrl);
 				break;
 				
 			/* SATAPI. */
 			case ATADEV_SATAPI:
-				kprintf("hd%c: SATAPI CD/DVD detected.", dvrl);
+				kprintf("ata: hd%c SATAPI CD/DVD detected.", dvrl);
 				break;
 					
 			/* SATA. */
 			case ATADEV_SATA:
-				kprintf("hd%c: SATA HDD detected.", dvrl);
+				kprintf("ata: hd%c: SATA HDD detected.", dvrl);
 				break;
 			
 			/* PATA. */
 			case ATADEV_PATA:
 				if (pata_setup(i))
-					kprintf("hd%c: device not found.", dvrl);
+					kprintf("ata: hd%c device not found.", dvrl);
 				else
 				{
-					kprintf("hd%c: PATA HDD detected.", dvrl);
-					kprintf("hd%c: %d sectors.", dvrl, 
+					kprintf("ata: hd%c PATA HDD detected.", dvrl);
+					kprintf("ata: hd%c %d sectors.", dvrl, 
 												ata_devices[i].info.nsectors);
 				}
 				break;
@@ -1027,6 +1027,10 @@ PUBLIC void ata_init(void)
 			/* UNKNOWN. */
 			case ATADEV_UNKNOWN:
 				kprintf("hd?: unknown ATA device.");
+				break;
+
+			/* No Device. */
+			default:
 				break;
 		}
 	}
@@ -1036,6 +1040,6 @@ PUBLIC void ata_init(void)
 		kpanic("INT_ATA1 busy");
 	if (set_hwint(INT_ATA2, &ata2_handler))
 		kpanic("INT_ATA2 busy");
-	
+		
 	bdev_register(ATA_MAJOR, &ata_ops);
 }
