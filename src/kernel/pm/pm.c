@@ -77,6 +77,8 @@ PUBLIC void pm_init(void)
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		p->flags = 0, p->state = PROC_DEAD;
+	
+	kprintf("pm: handcrafting idle process");
 		
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;
@@ -123,8 +125,11 @@ PUBLIC void pm_init(void)
 	
 	nprocs++;
 	
+	kprintf("pm: initializing the FPU");
 	fpu_init();
 	clock_init(CLOCK_FREQ);
+	
+	kprintf("pm: enabling time sharing");
 	
 	enable_interrupts();
 }
