@@ -755,7 +755,7 @@ void minix_mkfs
 	size += imap_nblocks;  /* inode map    */
 	size += bmap_nblocks;  /* block map    */
 	size += inode_nblocks; /* inode blocks */
-	size += nblocks;       /* data blocks  */
+	size = nblocks - size;       /* data blocks  */
 	size <<= BLOCK_SIZE_LOG2;
 	
 	/* Fill file system with zeros. */
