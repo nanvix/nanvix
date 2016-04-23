@@ -35,8 +35,9 @@
 	#define REGION_UPWARDS   0x20 /* Region grows upwards.   */
 	
 	/* Memory region dimensions. */
-	#define REGION_PGTABS (8)                        /* # Page tables.   */
-	#define REGION_SIZE   (REGION_PGTABS*PGTAB_SIZE) /* Size (in bytes). */
+	#define REGION_PGTABS (8)                        /* # Page tables.     */
+	#define REGION_SIZE   (REGION_PGTABS*PGTAB_SIZE) /* Size (in bytes).   */
+ 	#define REGION_GAP    0x4000000                  /* Region gap, 64 MB. */
 	
 	/*
 	 * Memory region.
@@ -73,6 +74,7 @@
 	struct pregion
 	{
 		addr_t start;       /* Starting address.         */
+		size_t maxsize;     /* Max region size.          */
 		struct region *reg; /* Underlying memory region. */
 	};
 	
