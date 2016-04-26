@@ -19,7 +19,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
