@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 				2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -24,6 +25,8 @@
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
+#include <nanvix/clock.h>
+#include <nanvix/pm.h>
 #include <errno.h>
 
 /*============================================================================*
@@ -304,6 +307,8 @@ PUBLIC void dev_init(void)
 {
 	klog_init();
 	ata_init();
+	clock_init(CLOCK_FREQ);
+	fpu_init();
 	tty_init();
 	ramdisk_init();
 }
