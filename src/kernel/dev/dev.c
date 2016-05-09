@@ -307,6 +307,7 @@ PUBLIC void dev_init(void)
 {
 	klog_init();
 	ata_init();
+	cmos_init();
 	clock_init(CLOCK_FREQ);
 	fpu_init();
 	tty_init();
