@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -27,6 +28,26 @@
 	
 	/* Current time. */
 	#define CURRENT_TIME (startup_time + ticks/CLOCK_FREQ)
+
+	/* CMOS data structure */
+	struct cmos {
+		unsigned int cmos_sec;		/** Second			*/
+		unsigned int cmos_min;		/** Minutes			*/
+		unsigned int cmos_hour;		/** Hour			*/
+		unsigned int cmos_dom;		/** Day of month	*/
+		unsigned int cmos_mon;		/** Month			*/
+		unsigned int cmos_year;		/** Year			*/
+	};
+
+	/*
+ 	 * Initializes the CMOS timer
+ 	 */
+	EXTERN void cmos_init(void);
+
+	/*
+ 	 * Get the current time
+ 	 */
+	EXTERN int cmos_read(void);
 
 	/*
 	 * Initializes the timer interrupt.
