@@ -46,6 +46,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 	unsigned i, j;        /* Loop indexes.                  */
 	unsigned npages;      /* Number of pages in the region. */
 	struct pregion *preg; /* Working process region.        */
+	size_t newmaxsize;    /* New maximum size of the region.*/
 	
 	size = ALIGN(size, PAGE_SIZE);
 	preg = reg->preg;
@@ -70,7 +71,12 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
 		j = PAGE_SIZE/PTE_SIZE - 
 				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT);
-		
+
+		/* Verifies that will not overlap. */
+		newmaxsize = reg->size + size + REGION_GAP;
+		if (proc != NULL && findreg(proc, preg->start - newmaxsize) != NULL)
+			return (-1);
+
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{
@@ -114,7 +120,12 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		
 		i = reg->size >> PGTAB_SHIFT;
 		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
-		
+
+		/* Verifies that will not overlap. */
+		newmaxsize = reg->size + size + REGION_GAP;
+		if (proc != NULL && findreg(proc, preg->start + newmaxsize) != NULL)
+			return (-1);
+
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{
