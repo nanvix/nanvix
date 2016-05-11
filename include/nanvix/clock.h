@@ -31,12 +31,12 @@
 
 	/* CMOS data structure */
 	struct cmos {
-		unsigned int cmos_sec;		/** Second			*/
-		unsigned int cmos_min;		/** Minutes			*/
-		unsigned int cmos_hour;		/** Hour			*/
-		unsigned int cmos_dom;		/** Day of month	*/
-		unsigned int cmos_mon;		/** Month			*/
-		unsigned int cmos_year;		/** Year			*/
+		unsigned int sec;		/** Second       */
+		unsigned int min;		/** Minutes      */
+		unsigned int hour;		/** Hour         */
+		unsigned int dom;		/** Day of month */
+		unsigned int mon;		/** Month        */
+		unsigned int year;		/** Year         */
 	};
 
 	/*
