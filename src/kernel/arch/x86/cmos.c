@@ -32,8 +32,9 @@ static unsigned int read_cmos_reg(unsigned int addr)
 
 PUBLIC void cmos_init(void)
 {
-	struct cmos cmos_tm;
+	PRIVATE struct cmos cmos_tm;
 	unsigned int registerB;		/* Controls format of RTC bytes */
+	PUBLIC struct cmos *start_time = &cmos_tm;
 	/* Well, ideally we should add checks for all cmos attributes */
  	/* to ensure we don't get the same value twice                */
 	/* NOTE: Need to discuss this with the group                  */
@@ -66,4 +67,10 @@ PUBLIC void cmos_init(void)
 	/* Convert 12 hr clock to 24 hr clock if necessary */
 	if (!(registerB & 0x02) && (cmos_tm.hour & 0x80))
 		cmos_tm.hour = ((cmos_tm.hour & 0x7F) + 12) % 24;
+
+#if 0
+	/* Finally, making the global start time structure point to this cmos_tm structure */
+	start_time = &cmos_tm;
+	((void)start_time);
+#endif
 }

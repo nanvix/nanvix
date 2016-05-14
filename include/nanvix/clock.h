@@ -59,5 +59,6 @@
 	
 	/* Time at system startup. */
 	EXTERN unsigned startup_time;
+	EXTERN struct cmos *start_time;
 	
 #endif /* TIMER_H_ */
