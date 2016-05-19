@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -35,22 +36,41 @@
 	#define REGION_UPWARDS   0x20 /* Region grows upwards.   */
 	
 	/* Memory region dimensions. */
-	#define REGION_PGTABS (8)                        /* # Page tables.     */
-	#define REGION_SIZE   (REGION_PGTABS*PGTAB_SIZE) /* Size (in bytes).   */
- 	#define REGION_GAP    0x4000000                  /* Region gap, 64 MB. */
+	#define REGION_PGTABS (16) /* # Page tables.     */
+
+	/* Size (in bytes). */
+	#define REGION_SIZE   ((size_t)REGION_PGTABS*MREGIONS*PGTAB_SIZE)
+ 	#define REGION_GAP    0x4000000 /* Region gap, 64 MB. */
+
+ 	/* Mini region dimensions. */
+	#define NR_MINIREGIONS (32) /* # Mini regions.            */
+	#define MREGIONS       (32) /* # Mini regions per region. */
+	#define MREGION_SHIFT  (26) /* Mini region shift.         */
+
+	/* Mini region flags. */
+	#define MREGION_FREE 0x01 /* Mini region is free. */
 	
+	/*
+	 * Mini region.
+	 */
+	struct miniregion
+	{
+		int flags;                        /* Flags.                 */
+		struct pte *pgtab[REGION_PGTABS]; /* Underlying page table. */
+	};
+
 	/*
 	 * Memory region.
 	 */
 	struct region
 	{
 		/* General information. */
-		int flags;                        /* Flags (see above).          */
-		int count;                        /* Reference count.            */
-		size_t size;                      /* Region size.                */
-		struct pte *pgtab[REGION_PGTABS]; /* Underlying page table.      */
-		struct process *chain;            /* Sleeping chain.             */
-		struct pregion *preg;             /* Process region attached to. */
+		int flags;                         /* Flags (see above).          */
+		int count;                         /* Reference count.            */
+		size_t size;                       /* Region size.                */
+		struct miniregion *mtab[MREGIONS]; /* Mini region.                */
+		struct process *chain;             /* Sleeping chain.             */
+		struct pregion *preg;              /* Process region attached to. */
 		
 		/* File information. */
 		struct
@@ -105,6 +125,15 @@
 			(((addr) >= (preg)->start) &&                    \
 			((addr) < (preg)->start + (preg)->reg->size)))   \
 	
+	/**
+	 * @brief Gets the mini region entry given an virtual address.
+	 *
+	 * @param a Virtual address.
+	 *
+	 * @returns Mini region entry.
+	 */
+	#define MRTAB(a) ((unsigned)(a) >> MREGION_SHIFT)
+
 	/* Forward definitions. */
 	EXTERN int attachreg(struct process*,struct pregion*,addr_t,struct region*);
 	EXTERN int editreg(struct region *, uid_t, gid_t, mode_t);
