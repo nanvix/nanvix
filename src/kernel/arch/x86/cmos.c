@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 				2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ * 		2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -23,21 +23,22 @@
 
 #define BCD_TO_BIN(value)	((value)=((value)&15)+((value)>>4)*10)
 
+PRIVATE struct cmos cmos_tm;
+PUBLIC struct cmos *start_time = &cmos_tm;
+
 static unsigned int read_cmos_reg(unsigned int addr)
 {
 	/* Don't forget to disable NMI at the highest order bit */
-	outputb(0x80 | addr, 0x70);
+	outputb(0x70, 0x80 | addr);
 	return inputb(0x71);
 }
 
 PUBLIC void cmos_init(void)
 {
-	PRIVATE struct cmos cmos_tm;
 	unsigned int registerB;		/* Controls format of RTC bytes */
-	PUBLIC struct cmos *start_time = &cmos_tm;
-	/* Well, ideally we should add checks for all cmos attributes */
- 	/* to ensure we don't get the same value twice                */
-	/* NOTE: Need to discuss this with the group                  */
+
+	/* Repeatedly read the register values and store them into */
+ 	/* global cmos structure till you find duplicate values    */
 	do
 	{
 		cmos_tm.sec  = read_cmos_reg(0x00);
@@ -54,23 +55,22 @@ PUBLIC void cmos_init(void)
 	/* If output is in BCD format, convert it to binary */
 	if (!(registerB & 0x04))
 	{
-		cmos_tm.sec  = (cmos_tm.sec & 0x0F) + ((cmos_tm.sec / 16) * 10);
-		cmos_tm.min  = (cmos_tm.min & 0x0F) + ((cmos_tm.min / 16) * 10);
+		cmos_tm.sec  = (cmos_tm.sec & 0x0F) + \
+				((cmos_tm.sec / 16) * 10);
+		cmos_tm.min  = (cmos_tm.min & 0x0F) + \
+				((cmos_tm.min / 16) * 10);
 		cmos_tm.hour = ( (cmos_tm.hour & 0x0F) + \
-						(((cmos_tm.hour & 0x70) / 16) * 10) ) | \
-						(cmos_tm.hour & 0x80);
-		cmos_tm.dom  = (cmos_tm.dom & 0x0F) + ((cmos_tm.dom / 16) * 10);
-		cmos_tm.mon  = (cmos_tm.mon & 0x0F) + ((cmos_tm.mon / 16) * 10);
-		cmos_tm.year = (cmos_tm.year & 0x0F) + ((cmos_tm.year / 16) * 10);
+				(((cmos_tm.hour & 0x70) / 16) * 10) ) | \
+				(cmos_tm.hour & 0x80);
+		cmos_tm.dom  = (cmos_tm.dom & 0x0F) + \
+				((cmos_tm.dom / 16) * 10);
+		cmos_tm.mon  = (cmos_tm.mon & 0x0F) + \
+				((cmos_tm.mon / 16) * 10);
+		cmos_tm.year = (cmos_tm.year & 0x0F) + \
+				((cmos_tm.year / 16) * 10);
 	}
 
 	/* Convert 12 hr clock to 24 hr clock if necessary */
 	if (!(registerB & 0x02) && (cmos_tm.hour & 0x80))
 		cmos_tm.hour = ((cmos_tm.hour & 0x7F) + 12) % 24;
-
-#if 0
-	/* Finally, making the global start time structure point to this cmos_tm structure */
-	start_time = &cmos_tm;
-	((void)start_time);
-#endif
 }
