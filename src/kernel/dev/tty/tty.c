@@ -495,9 +495,9 @@ PRIVATE int tty_clear(struct tty *tty)
 {
 	UNUSED(tty);
 	console_clear();
-	kprintf("HH:%d MM:%d SS:%d MON:%d DATE:%d YEAR: %d\n", \
-			start_time->hour, start_time->min, start_time->sec, \
-			start_time->mon, start_time->dom, start_time->year);
+	kprintf("Bootup time(GMT): %d:%d:%d %d/%d/20%d\n", start_time->hour, \
+		start_time->min, start_time->sec, start_time->mon, \
+		start_time->dom, start_time->year);
 	return (0);
 }
 
