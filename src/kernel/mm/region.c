@@ -87,10 +87,11 @@ PRIVATE inline void freemreg(struct miniregion *mreg)
  */
 PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 {	
-	unsigned i, j;        /* Loop indexes.                  */
+	unsigned i, j, k;     /* Loop indexes.                  */
 	unsigned npages;      /* Number of pages in the region. */
 	struct pregion *preg; /* Working process region.        */
 	size_t newmaxsize;    /* New maximum size of the region.*/
+	struct pte *pgtab;    /* Working page table entry.      */
 	
 	size = ALIGN(size, PAGE_SIZE);
 	preg = reg->preg;
@@ -104,16 +105,23 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 	/* Expand downwards. */
 	if (reg->flags & REGION_DOWNWARDS)
 	{		
-		/* Allocate first page table. */
+		/* Allocate first mini region and page table. */
 		if (reg->size == 0)
 		{
-			reg->pgtab[REGION_PGTABS - 1] = getkpg(1);
-			if (reg->pgtab[REGION_PGTABS - 1] == NULL)
+			reg->mtab[MREGIONS - 1] = allocmreg();
+			if (reg->mtab[MREGIONS - 1] == NULL)
 				return (-1);
+
+			pgtab = getkpg(1);
+			if (pgtab == NULL)
+ 				return (-1);
+
+			reg->mtab[MREGIONS - 1]->pgtab[REGION_PGTABS - 1] = pgtab;
 		}
 		
-		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
-		j = PAGE_SIZE/PTE_SIZE - 
+		i = MREGIONS - (reg->size >> MREGION_SHIFT) - 1;
+		j = (REGION_PGTABS * (MREGIONS - i)) - (reg->size >> PGTAB_SHIFT) - 1;
+		k = PAGE_SIZE/PTE_SIZE - 
 				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT);
 
 		/* Verifies that will not overlap. */
@@ -124,28 +132,42 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{
-			/* Create new page table. */
-			if (j == 0)
+			/* Create new page table and/or mini region. */
+			if (k == 0)
 			{
-				i--;
-				j = PAGE_SIZE/PTE_SIZE;
+				j--;
+				k = PAGE_SIZE/PTE_SIZE;
+
+				/* Create mini region. */
+				if (j == 0)
+				{
+					i--;
+					j = REGION_PGTABS - 1;
+
+					reg->mtab[i] = allocmreg();
+					if (reg->mtab[i] == NULL)
+						return (-1);
+				}
 				
-				reg->pgtab[i] = getkpg(1);
-				if (reg->pgtab[i] == NULL)
+				/* Create page table. */
+				pgtab = getkpg(1);
+				if (pgtab == NULL)
 					return (-1);
-					
+
+				reg->mtab[i]->pgtab[j] = pgtab;
+
 				/* Map page table. */
 				if (proc != NULL)
-					mappgtab(proc, preg->start - reg->size, reg->pgtab[i]);
-				
-				continue;
+					mappgtab(proc, preg->start - reg->size, pgtab);
+					
+				continue;	
 			}
 		
-			j--;
+			k--;
 			npages--;
 			reg->size += PAGE_SIZE;
 			
-			markpg(&reg->pgtab[i][j], PAGE_ZERO);
+			markpg(&reg->mtab[i]->pgtab[j][k], PAGE_ZERO);
 		}
 
 		preg->maxsize = reg->size + REGION_GAP;
@@ -154,16 +176,23 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 	/* Expand upwards. */
 	else
 	{
-		/* Allocate first page table. */
+		/* Allocate first mini region and page table. */
 		if (reg->size == 0)
 		{
-			reg->pgtab[0] = getkpg(1);
-			if (reg->pgtab[0] == NULL)
+			reg->mtab[0] = allocmreg();
+			if (reg->mtab[0] == NULL)
 				return (-1);
+
+			pgtab = getkpg(1);
+			if (pgtab == NULL)
+				return (-1);
+
+			reg->mtab[0]->pgtab[0] = pgtab;
 		}
 		
-		i = reg->size >> PGTAB_SHIFT;
-		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
+		i = reg->size >> MREGION_SHIFT;
+		j = (reg->size >> PGTAB_SHIFT) - (REGION_PGTABS*i);
+		k = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
 
 		/* Verifies that will not overlap. */
 		newmaxsize = reg->size + size + REGION_GAP;
@@ -174,25 +203,39 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		while (npages > 0)
 		{
 			/* Reset. */
-			if (j == PAGE_SIZE/PTE_SIZE)
+			if (k == PAGE_SIZE/PTE_SIZE)
 			{
-				i++;
-				j = 0;
+				j++;
+				k = 0;
+			
+				/* Create mini region. */
+				if (j == REGION_PGTABS)
+				{
+					i++;
+					j = 0;
+
+					reg->mtab[i] = allocmreg();
+					if (reg->mtab[i] == NULL)
+						return (-1);
+				}
 				
-				reg->pgtab[i] = getkpg(1);
-				if (reg->pgtab[i] == NULL)
+				/* Create page table. */
+				pgtab = getkpg(1);
+				if (pgtab == NULL)
 					return (-1);
-				
+
+				reg->mtab[i]->pgtab[j] = pgtab;
+
 				/* Map page table. */
 				if (proc != NULL)
-					mappgtab(proc, preg->start + reg->size, reg->pgtab[i]);
-				
-				continue;
+					mappgtab(proc, preg->start + reg->size, pgtab);
+					
+				continue;	
 			}
 			
-			markpg(&reg->pgtab[i][j], PAGE_ZERO);
+			markpg(&reg->mtab[i]->pgtab[j][k], PAGE_ZERO);
 			
-			j++;
+			k++;
 			npages--;
 			reg->size += PAGE_SIZE;
 		}
@@ -214,7 +257,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
  */
 PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 {
-	unsigned i, j;        /* Loop indexes.                  */
+	unsigned i, j, k;     /* Loop indexes.                  */
 	unsigned npages;      /* Number of pages in the region. */
 	struct pregion *preg; /* Working process region.        */
 	
@@ -230,31 +273,44 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 	/* Contract downwards. */
 	if (reg->flags & REGION_DOWNWARDS)
 	{		
-		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
-		j = PAGE_SIZE/PTE_SIZE - 
+		i = MREGIONS - (reg->size >> MREGION_SHIFT) - 1;
+		j = (REGION_PGTABS * (MREGIONS - i)) - (reg->size >> PGTAB_SHIFT) - 1;
+		k = PAGE_SIZE/PTE_SIZE - 
 				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT);
 		
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{
-			/* Create new page table. */
-			if (j == PAGE_SIZE/PTE_SIZE)
+			/* Remove page table and/or mini region. */
+			if (k == PAGE_SIZE/PTE_SIZE)
 			{
+				k = 0;
+
 				/* Unmap page table. */
 				if (proc != NULL)
 					umappgtab(proc, preg->start - reg->size);
-				putkpg(reg->pgtab[i]);
-				reg->pgtab[i] = NULL;
-				
-				i++;
-				j = 0;
+					
+				putkpg(reg->mtab[i]->pgtab[j]);
+				reg->mtab[i]->pgtab[j] = NULL;
+
+				j++;
+
+				/* Remove mini region. */
+				if (j == REGION_PGTABS)
+				{
+					freemreg(reg->mtab[i]);
+					reg->mtab[i] = NULL;
+
+					i++;
+					j = 0;
+				}
 				
 				continue;
 			}
 			
-			freeupg(&reg->pgtab[i][j]);
+			freeupg(&reg->mtab[i]->pgtab[j][k]);
 			
-			j++;
+			k++;
 			npages--;
 			reg->size -= PAGE_SIZE;
 		
@@ -266,32 +322,45 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 	/* Contract upwards. */
 	else
 	{
-		i = reg->size >> PGTAB_SHIFT;
-		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
+		i = reg->size >> MREGION_SHIFT;
+		j = (reg->size >> PGTAB_SHIFT) - (REGION_PGTABS*i);
+		k = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
 		
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{
 			/* Reset. */
-			if (j == 0)
+			if (k == 0)
 			{
+				k = PAGE_SIZE/PTE_SIZE;
+
 				/* Unmap page table. */
 				if (proc != NULL)
 					umappgtab(proc, preg->start - reg->size);
-				putkpg(reg->pgtab[i]);
-				reg->pgtab[i] = NULL;
+					
+				putkpg(reg->mtab[i]->pgtab[j]);
+				reg->mtab[i]->pgtab[j] = NULL;
 				
-				i--;
-				j = PAGE_SIZE/PTE_SIZE;
+				/* Remove mini region. */
+				if (j == 0)
+				{
+					freemreg(reg->mtab[i]);
+					reg->mtab[i] = NULL;
+
+					i--;
+					j = REGION_PGTABS - 1;
+				}
+
+				j--;
 				
 				continue;
 			}
 			
-			j--;
+			k--;
 			npages--;
 			reg->size -= PAGE_SIZE;
 			
-			freeupg(&reg->pgtab[i][j]);
+			freeupg(&reg->mtab[i]->pgtab[j][k]);
 		}
 
 		preg->maxsize = reg->size + REGION_GAP;
