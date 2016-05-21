@@ -527,8 +527,8 @@ PUBLIC int editreg(struct region *reg, uid_t uid, gid_t gid, mode_t mode)
 PUBLIC int attachreg
 (struct process *proc, struct pregion *preg, addr_t start, struct region *reg)
 {
-	addr_t addr; /* Working address. */
-	unsigned i;  /* Loop index.      */
+	addr_t addr;    /* Working address. */
+	unsigned i, j;  /* Loop indexes.    */
 	
 	/* Process region is busy. */
 	if (preg->reg != NULL)
@@ -581,22 +581,40 @@ PUBLIC int attachreg
 	addr = start;
 	if (reg->flags & REGION_DOWNWARDS)
 	{
-		for (i = REGION_PGTABS; i > 0 ; i--)
+		for (i = MREGIONS; i > 0; i--)
 		{
-			/* Map only valid page tables. */
-			if (reg->pgtab[i - 1] != NULL)
-				mappgtab(proc, addr, reg->pgtab[i - 1]);
-			addr -= PGTAB_SIZE;
+			/* Only valid mini regions. */
+			if (reg->mtab[i - 1] != NULL)
+			{
+				for(j = REGION_PGTABS; j > 0; j--)
+				{
+					/* Map only valid page tables. */
+					if (reg->mtab[i - 1]->pgtab[j - 1] != NULL)
+						mappgtab(proc, addr, reg->mtab[i - 1]->pgtab[j - 1]);
+					addr -= PGTAB_SIZE;
+				}
+			}
+			else
+				addr -= (PGTAB_SIZE * REGION_PGTABS);
 		}
 	}
 	else
 	{
-		for (i = 0; i < REGION_PGTABS; i++)
+		for (i = 0; i < MREGIONS; i++)
 		{
-			/* Map only valid page tables. */
-			if (reg->pgtab[i] != NULL)
-				mappgtab(proc, addr, reg->pgtab[i]);
-			addr += PGTAB_SIZE;
+			/* Only valid mini regions. */
+			if (reg->mtab[i] != NULL)
+			{
+				for (j = 0; j < REGION_PGTABS; j++)
+				{
+					/* Map only valid page tables. */
+					if (reg->mtab[i]->pgtab[j] != NULL)
+						mappgtab(proc, addr, reg->mtab[i]->pgtab[j]);
+					addr += PGTAB_SIZE;
+				}
+			}
+			else
+				addr += (PGTAB_SIZE * REGION_PGTABS);
 		}
 	}
 	
@@ -619,7 +637,7 @@ PUBLIC int attachreg
  */
 PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 {
-	unsigned i;         /* Loop index.            */
+	unsigned i, j;      /* Loop indexes.          */
 	addr_t addr;        /* Working address.       */
 	struct region *reg; /* Working memory region. */
 	
@@ -633,22 +651,40 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 	addr = preg->start;
 	if (reg->flags & REGION_DOWNWARDS)
 	{
-		for (i = REGION_PGTABS; i > 0 ; i--)
+		for (i = MREGIONS; i > 0; i--)
 		{
-			/* Unmap only valid page tables. */
-			if (reg->pgtab[i - 1] != NULL)
-				umappgtab(proc, addr);
-			addr -= PGTAB_SIZE;
+			/* Only valid mini regions. */
+			if (reg->mtab[i - 1] != NULL)
+			{
+				for(j = REGION_PGTABS; j > 0; j--)
+				{
+					/* Unmap only valid page tables. */
+					if (reg->mtab[i - 1]->pgtab[j - 1] != NULL)
+						umappgtab(proc, addr);
+					addr -= PGTAB_SIZE;
+				}
+			}
+			else
+				addr -= (PGTAB_SIZE * REGION_PGTABS);
 		}
 	}
 	else
 	{
-		for (i = 0; i < REGION_PGTABS; i++)
+		for (i = 0; i < MREGIONS; i++)
 		{
-			/* Unmap only valid page tables. */
-			if (reg->pgtab[i] != NULL)
-				umappgtab(proc, addr);
-			addr += PGTAB_SIZE;
+			/* Only valid mini regions. */
+			if (reg->mtab[i] != NULL)
+			{
+				for (j = 0; j < REGION_PGTABS; j++)
+				{
+					/* Unmap only valid page tables. */
+					if (reg->mtab[i]->pgtab[j] != NULL)
+						umappgtab(proc, addr);
+					addr += PGTAB_SIZE;
+				}
+			}
+			else
+				addr += (PGTAB_SIZE * REGION_PGTABS);
 		}
 	}
 	preg->reg = NULL;
