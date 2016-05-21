@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -33,6 +34,49 @@
  * @brief Memory region table.
  */
 PRIVATE struct region regtab[NR_REGIONS];
+
+/*
+ * @brief Mini region table.
+ */
+PRIVATE struct miniregion mregtab[NR_MINIREGIONS];
+
+/**
+ * @brief Allocates a mini region.
+ * 
+ * @returns Upon success a pointer to a mini region is returned. Upon failure,
+ *          a NULL pointer is returned instead.
+ */
+PRIVATE struct miniregion *allocmreg()
+{
+	struct miniregion *mreg; /* Mini region. */
+
+	/* Search for free position. */
+	for (mreg = &mregtab[0]; mreg < &mregtab[NR_MINIREGIONS]; mreg++)
+	{
+		if (mreg->flags & MREGION_FREE)
+			goto found;
+	}
+
+	kprintf("mini region table overflow");
+
+	return (NULL);
+
+found:
+	/* Initialize. */
+	mreg->flags = ~MREGION_FREE;
+
+	return (mreg);
+}
+
+/**
+ * @brief Frees a mini region.
+ * 
+ * @param mreg Mini region that shall be freed.
+ */
+PRIVATE inline void freemreg(struct miniregion *mreg)
+{
+	mreg->flags = MREGION_FREE;
+}
 
 /**
  * @brief Expands a memory region.
@@ -323,8 +367,8 @@ found:
 	reg->cgid = curr_proc->gid;
 	reg->uid = curr_proc->uid;
 	reg->gid = curr_proc->gid;
-	for (i = 0; i < REGION_PGTABS; i++)
-		reg->pgtab[i] = NULL;
+	for (i = 0; i < MREGIONS; i++)
+		reg->mtab[i] = NULL;
 	
 	/* Expand region. */
 	if (expand(NULL, reg, size))
@@ -345,7 +389,7 @@ found:
  */
 PUBLIC void freereg(struct region *reg)
 {
-	unsigned i, j;
+	unsigned i, j, k;
 	
 	/* Sticky region. */
 	if (reg->flags & REGION_STICKY)
@@ -355,17 +399,28 @@ PUBLIC void freereg(struct region *reg)
 	if (reg->file.inode != NULL)
 		inode_put(reg->file.inode);
 	
-	/* Free underlying page tables. */
-	for (i = 0; i < REGION_PGTABS; i++)
+	/* Free underlying mini regions and page tables. */
+	for (i = 0; i < MREGIONS; i++)
 	{
-		/* Skip invalid page tables. */
-		if (reg->pgtab[i] == NULL)
+		/* Skip invalid mini regions. */
+		if (reg->mtab[i] == NULL)
 			continue;
-		
-		/* Free underlying pages. */
-		for (j = 0; j < PAGE_SIZE/PTE_SIZE; j++)	
-			freeupg(&reg->pgtab[i][j]);
-		putkpg(reg->pgtab[i]);
+
+		for (j = 0; j < REGION_PGTABS; j++)
+		{
+			/* Skip invalid page tables. */
+			if (reg->mtab[i]->pgtab[j] == NULL)
+				continue;
+
+			/* Free underlying pages. */
+			for (k = 0; k < PAGE_SIZE/PTE_SIZE; k++)	
+				freeupg(&reg->mtab[i]->pgtab[j][k]);
+			
+			putkpg(reg->mtab[i]->pgtab[j]);
+		}
+
+		freemreg(reg->mtab[i]);
+		reg->mtab[i] = NULL;
 	}
 	
 	reg->flags = REGION_FREE;
@@ -741,15 +796,22 @@ PUBLIC int loadreg
 }
 
 /**
- * @brief Initializes memory regions.
+ * @brief Initializes memory regions and mini regions.
  */
 PUBLIC void initreg(void)
 {
 	struct region *reg;
+	struct miniregion *mreg;
 	
 	/* Initialize memory region table. */
 	for (reg = &regtab[0]; reg < &regtab[NR_REGIONS]; reg++)
 		reg->flags = REGION_FREE;
 	
 	kprintf("mm: %d regions in memory regions table", NR_REGIONS);
+
+	/* Initialize mini region table. */
+	for (mreg = &mregtab[0]; mreg < &mregtab[NR_MINIREGIONS]; mreg++)
+		mreg->flags = MREGION_FREE;
+	
+	kprintf("mm: %d mini regions in mini regions table", NR_MINIREGIONS);
 }
