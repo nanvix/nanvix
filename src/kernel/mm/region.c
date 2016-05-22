@@ -709,7 +709,7 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
  */
 PUBLIC struct region *dupreg(struct region *reg)
 {
-	unsigned i, j;          /* Loop index.        */
+	unsigned i, j, k;       /* Loop indexes.      */
 	struct region *new_reg; /* New memory region. */
 		
 	/* Shared region. */
@@ -721,15 +721,21 @@ PUBLIC struct region *dupreg(struct region *reg)
 		return (NULL);
 	
 	/* Link underlying page tables. */
-	for (i = 0; i < REGION_PGTABS; i++)
+	for (i = 0; i < MREGIONS; i++)
 	{
-		/* Skip invalid page tables. */
-		if (reg->pgtab[i] == NULL)
+		if (reg->mtab[i] == NULL)
 			continue;
-			
-		/* Link underlying pages. */
-		for (j = 0; j < PAGE_SIZE/PTE_SIZE; j++)
-			linkupg(&reg->pgtab[i][j], &new_reg->pgtab[i][j]);
+
+		for (j = 0; j < REGION_PGTABS; j++)
+		{
+			/* Skip invalid page tables. */
+			if (reg->mtab[i]->pgtab[j] == NULL)
+				continue;
+				
+			/* Link underlying pages. */
+			for (k = 0; k < PAGE_SIZE/PTE_SIZE; k++)
+				linkupg(&reg->mtab[i]->pgtab[j][k], &new_reg->mtab[i]->pgtab[j][k]);
+		}
 	}
 	
 	/* Copy region fields. */
@@ -845,8 +851,8 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 PUBLIC int loadreg
 (struct inode *inode, struct region *reg, off_t off, size_t size)
 {
-	unsigned i, j;   /* Loop indexes.    */
-	unsigned npages; /* Number of pages. */
+	unsigned i, j, k; /* Loop indexes.    */
+	unsigned npages;  /* Number of pages. */
 	
 	reg->file.inode = inode;
 	reg->file.off = off;
@@ -858,41 +864,57 @@ PUBLIC int loadreg
 	/* Mark pages as demand fill. */
 	if (reg->flags & REGION_DOWNWARDS)
 	{
-		i = REGION_PGTABS - 1;
-		j = PAGE_SIZE/PTE_SIZE;
+		i = MREGIONS - 1;
+		j = REGION_PGTABS - 1;
+		k = PAGE_SIZE/PTE_SIZE;
 		while (npages > 0)
 		{
 			/* Reset. */
-			if (j == 0)
+			if (k == 0)
 			{
-				i--;
-				j = PAGE_SIZE/PTE_SIZE;
+				if (j == 0)
+				{
+					i--;
+					j = REGION_PGTABS - 1;
+				}
+				else
+					j--;
+
+				k = PAGE_SIZE/PTE_SIZE;
 				continue;
 			}
 			
-			j--;
+			k--;
 			npages--;
 			
-			markpg(&reg->pgtab[i][j], PAGE_FILL);
+			markpg(&reg->mtab[i]->pgtab[j][k], PAGE_FILL);
 		}
 	}
 	else
 	{
 		i = 0;
 		j = 0;
+		k = 0;
 		while (npages > 0)
 		{
 			/* Reset. */
-			if (j == PAGE_SIZE/PTE_SIZE)
+			if (k == PAGE_SIZE/PTE_SIZE)
 			{
-				i++;
-				j = 0;
+				j++;
+				k = 0;
+
+				if (j == REGION_PGTABS)
+				{
+					i++;
+					j = 0;
+				}
+
 				continue;
 			}
 			
-			markpg(&reg->pgtab[i][j], PAGE_FILL);
+			markpg(&reg->mtab[i]->pgtab[j][k], PAGE_FILL);
 			
-			j++;
+			k++;
 			npages--;
 		}
 	}
