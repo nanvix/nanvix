@@ -1,6 +1,7 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2015-2016 Davidson Francis <davidsondfgl@gmail.com> 
+ *
  * This file is part of Nanvix.
  * 
  * Nanvix is free software; you can redistribute it and/or modify
@@ -670,6 +671,8 @@ PUBLIC int vfault(addr_t addr)
 	struct pte *pg;       /* Working page.                         */
 	struct region *reg;   /* Working region.                       */
 	struct pregion *preg; /* Working process region.               */
+	unsigned mrde;        /* Mini region downwards entry.          */
+	unsigned mrue;        /* Mini region upwards entry.            */
 	
 	/* Get associated region. */
 	preg = findreg(curr_proc, addr);
@@ -692,9 +695,15 @@ PUBLIC int vfault(addr_t addr)
 			goto error1;
 	}
 
+	mrde = MREGIONS - (MRTAB(addr) - MRTAB(preg->start)) - 1;
+	mrue = MRTAB(addr) - MRTAB(preg->start);
+
 	pg = (reg->flags & REGION_DOWNWARDS) ?
-		&reg->pgtab[REGION_PGTABS-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]: 
-		&reg->pgtab[PGTAB(addr) - PGTAB(preg->start)][PG(addr)];
+		&reg->mtab[mrde]
+		->pgtab[(REGION_PGTABS*(MREGIONS-mrde))-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]:
+
+		&reg->mtab[mrue]
+		->pgtab[PGTAB(addr)-PGTAB(preg->start)-(REGION_PGTABS*mrue)][PG(addr)];
 		
 	/* Clear page. */
 	if (pg->zero)
@@ -742,11 +751,13 @@ error0:
  */
 PUBLIC int pfault(addr_t addr)
 {
-	unsigned i;           /* Frame index.            */
-	struct pte *pg;       /* Faulting page.          */
-	struct pte new_pg;    /* New page.               */
-	struct region *reg;   /* Working memory region.  */
-	struct pregion *preg; /* Working process region. */
+	unsigned i;           /* Frame index.                 */
+	struct pte *pg;       /* Faulting page.               */
+	struct pte new_pg;    /* New page.                    */
+	struct region *reg;   /* Working memory region.       */
+	struct pregion *preg; /* Working process region.      */
+	unsigned mrde;        /* Mini region downwards entry. */
+	unsigned mrue;        /* Mini region upwards entry.   */
 
 	preg = findreg(curr_proc, addr);
 	
@@ -756,9 +767,15 @@ PUBLIC int pfault(addr_t addr)
 	
 	lockreg(reg = preg->reg);
 
-	pg = (reg->flags & REGION_DOWNWARDS) ?
-		&reg->pgtab[REGION_PGTABS-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]: 
-		&reg->pgtab[PGTAB(addr) - PGTAB(preg->start)][PG(addr)];
+	mrde = MREGIONS - (MRTAB(addr) - MRTAB(preg->start)) - 1;
+ 	mrue = MRTAB(addr) - MRTAB(preg->start);
+
+	pg = (reg->flags & REGION_DOWNWARDS) ?	
+		&reg->mtab[mrde]
+		->pgtab[(REGION_PGTABS*(MREGIONS-mrde))-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]:
+
+		&reg->mtab[mrue]
+		->pgtab[PGTAB(addr)-PGTAB(preg->start)-(REGION_PGTABS*mrue)][PG(addr)];
 
 	/* Copy on write not enabled. */
 	if (!pg->cow)
