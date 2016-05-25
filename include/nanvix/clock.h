@@ -23,37 +23,41 @@
 
 	#include <nanvix/const.h>
 	
-	/* Clock frequency (in hertz). */
+	/**
+	 * @brief Clock interrupt frequency (in Hz)
+	 */
 	#define CLOCK_FREQ 100
 	
-	/* Current time. */
-	#define CURRENT_TIME (startup_time + ticks/CLOCK_FREQ)
+	/**
+	 * @brief Current time.
+	 */
+	#define CURRENT_TIME \
+		(startup_time + ticks/CLOCK_FREQ)
 
-	/* CMOS data structure */
-	struct cmos {
-		unsigned int sec;		/** Second       */
-		unsigned int min;		/** Minutes      */
-		unsigned int hour;		/** Hour         */
-		unsigned int dom;		/** Day of month */
-		unsigned int mon;		/** Month        */
-		unsigned int year;		/** Year         */
+	/**
+	 * @brief CMOS Time structure.
+	 */
+	struct cmos
+	{
+		unsigned sec;  /**< Seconds.      */
+		unsigned min;  /**< Minutes.      */
+		unsigned hour; /**< Hour.         */
+		unsigned dom;  /**< Day of Month. */
+		unsigned mon;  /**< Month.        */
+		unsigned year; /**< Year.         */
 	};
 
-	/*
- 	 * Initializes the CMOS timer
- 	 */
+ 	/* Forward definitions. */
 	EXTERN void cmos_init(void);
+	EXTERN void clock_init(unsigned);
 
-	/*
-	 * Initializes the timer interrupt.
+	/**
+	 * @brief Clock interrupts since system initialization.
 	 */
-	EXTERN void clock_init(unsigned freq);
-
-	/* Ticks since system initialization. */
 	EXTERN unsigned ticks;
 	
-	/* Time at system startup. */
+	/* Forward definitions. */
 	EXTERN unsigned startup_time;
-	EXTERN struct cmos *start_time;
+	EXTERN const struct cmos *boot_time;
 	
 #endif /* TIMER_H_ */

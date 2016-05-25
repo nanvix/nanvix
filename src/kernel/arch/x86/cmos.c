@@ -22,14 +22,14 @@
 #include <nanvix/clock.h>
 
 /**
- * @brief CMOS time structure.
+ * @brief Bootup time.
  */
-PRIVATE struct cmos cmos_tm;
+PUBLIC const struct cmos *boot_time;
 
 /**
- * @brief Start time.
+ * @brief Private _boot_time.
  */
-PUBLIC struct cmos *start_time = &cmos_tm;
+PRIVATE struct cmos _boot_time;
 
 /**
  * @brief Read CMOS device.
@@ -59,30 +59,32 @@ PUBLIC void cmos_init(void)
 	 */
 	do
 	{
-		cmos_tm.sec  = cmos_read(0x00);
-		cmos_tm.min  = cmos_read(0x02);
-		cmos_tm.hour = cmos_read(0x04);
-		cmos_tm.dom  = cmos_read(0x07);
-		cmos_tm.mon  = cmos_read(0x08);
-		cmos_tm.year = cmos_read(0x09);
-	} while (cmos_tm.sec != cmos_read(0));
+		_boot_time.sec  = cmos_read(0x00);
+		_boot_time.min  = cmos_read(0x02);
+		_boot_time.hour = cmos_read(0x04);
+		_boot_time.dom  = cmos_read(0x07);
+		_boot_time.mon  = cmos_read(0x08);
+		_boot_time.year = cmos_read(0x09);
+	} while (_boot_time.sec != cmos_read(0));
 
-	/* Read output format information from CMOS registers */
+	/* Read output format information from CMOS registers. */
 	registerB = cmos_read(0x0B);
 
-	/* If output is in BCD format, convert it to binary */
+	/* If output is in BCD format, convert it to binary. */
 	if (!(registerB & 0x04))
 	{
-		cmos_tm.sec  = (cmos_tm.sec & 0x0f) + ((cmos_tm.sec/16)*10);
-		cmos_tm.min  = (cmos_tm.min & 0x0f) + ((cmos_tm.min/16)*10);
-		cmos_tm.hour = ((cmos_tm.hour & 0x0f) + (((cmos_tm.hour & 0x70)/16)*10))
-		               | (cmos_tm.hour & 0x80);
-		cmos_tm.dom  = (cmos_tm.dom & 0x0f) + ((cmos_tm.dom/16)*10);
-		cmos_tm.mon  = (cmos_tm.mon & 0x0f) + ((cmos_tm.mon/16)*10);
-		cmos_tm.year = (cmos_tm.year & 0x0f) + ((cmos_tm.year/16)*10);
+		_boot_time.sec  = (_boot_time.sec & 0x0f) + ((_boot_time.sec/16)*10);
+		_boot_time.min  = (_boot_time.min & 0x0f) + ((_boot_time.min/16)*10);
+		_boot_time.hour = ((_boot_time.hour & 0x0f) + (((_boot_time.hour & 0x70)/16)*10))
+		               | (_boot_time.hour & 0x80);
+		_boot_time.dom  = (_boot_time.dom & 0x0f) + ((_boot_time.dom/16)*10);
+		_boot_time.mon  = (_boot_time.mon & 0x0f) + ((_boot_time.mon/16)*10);
+		_boot_time.year = (_boot_time.year & 0x0f) + ((_boot_time.year/16)*10);
 	}
 
-	/* Convert 12 hr clock to 24 hr clock if necessary */
-	if (!(registerB & 0x02) && (cmos_tm.hour & 0x80))
-		cmos_tm.hour = ((cmos_tm.hour & 0x7f) + 12)%24;
+	/* Convert 12 hr clock to 24 hr clock if necessary. */
+	if (!(registerB & 0x02) && (_boot_time.hour & 0x80))
+		_boot_time.hour = ((_boot_time.hour & 0x7f) + 12)%24;
+	
+	boot_time = &_boot_time;
 }

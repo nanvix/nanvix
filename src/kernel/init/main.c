@@ -126,12 +126,12 @@ PUBLIC void kmain(void)
 	
 	/* Print bootup time. */
 	kprintf("Bootup Time (GMT): %d:%d:%d %d/%d/20%d\n",
-		start_time->hour,
-		start_time->min,
-		start_time->sec,
-		start_time->dom,
-		start_time->mon,
-		start_time->year);
+		boot_time->hour,
+		boot_time->min,
+		boot_time->sec,
+		boot_time->dom,
+		boot_time->mon,
+		boot_time->year);
 	
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 	
