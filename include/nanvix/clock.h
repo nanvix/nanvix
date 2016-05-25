@@ -45,11 +45,6 @@
 	EXTERN void cmos_init(void);
 
 	/*
- 	 * Get the current time
- 	 */
-	EXTERN int cmos_read(void);
-
-	/*
 	 * Initializes the timer interrupt.
 	 */
 	EXTERN void clock_init(unsigned freq);
