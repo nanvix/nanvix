@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -22,21 +23,41 @@
 
 	#include <nanvix/const.h>
 	
-	/* Clock frequency (in hertz). */
+	/**
+	 * @brief Clock interrupt frequency (in Hz)
+	 */
 	#define CLOCK_FREQ 100
 	
-	/* Current time. */
-	#define CURRENT_TIME (startup_time + ticks/CLOCK_FREQ)
-
-	/*
-	 * Initializes the timer interrupt.
+	/**
+	 * @brief Current time.
 	 */
-	EXTERN void clock_init(unsigned freq);
+	#define CURRENT_TIME \
+		(startup_time + ticks/CLOCK_FREQ)
 
-	/* Ticks since system initialization. */
+	/**
+	 * @brief CMOS Time structure.
+	 */
+	struct cmos
+	{
+		unsigned sec;  /**< Seconds.      */
+		unsigned min;  /**< Minutes.      */
+		unsigned hour; /**< Hour.         */
+		unsigned dom;  /**< Day of Month. */
+		unsigned mon;  /**< Month.        */
+		unsigned year; /**< Year.         */
+	};
+
+ 	/* Forward definitions. */
+	EXTERN void cmos_init(void);
+	EXTERN void clock_init(unsigned);
+
+	/**
+	 * @brief Clock interrupts since system initialization.
+	 */
 	EXTERN unsigned ticks;
 	
-	/* Time at system startup. */
+	/* Forward definitions. */
 	EXTERN unsigned startup_time;
+	EXTERN const struct cmos *boot_time;
 	
 #endif /* TIMER_H_ */

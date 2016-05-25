@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -25,6 +26,7 @@
 #include <nanvix/pm.h>
 #include <nanvix/mm.h>
 #include <nanvix/syscall.h>
+#include <nanvix/clock.h>
 #include <fcntl.h>
 
 
@@ -121,6 +123,15 @@ PUBLIC void kmain(void)
 	mm_init();
 	pm_init();
 	fs_init();
+	
+	/* Print bootup time. */
+	kprintf("Bootup Time (GMT): %d:%d:%d %d/%d/20%d\n",
+		boot_time->hour,
+		boot_time->min,
+		boot_time->sec,
+		boot_time->dom,
+		boot_time->mon,
+		boot_time->year);
 	
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 	

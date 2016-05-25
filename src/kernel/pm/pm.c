@@ -1,6 +1,7 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -18,7 +19,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
@@ -124,12 +124,6 @@ PUBLIC void pm_init(void)
 	IDLE->chain = NULL;
 	
 	nprocs++;
-	
-	kprintf("pm: initializing the FPU");
-	fpu_init();
-	clock_init(CLOCK_FREQ);
-	
-	kprintf("pm: enabling time sharing");
 	
 	enable_interrupts();
 }
