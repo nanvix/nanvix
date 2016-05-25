@@ -39,6 +39,7 @@ doc/*-kernel
 *.fdb_latexmk
 *.out
 *.dvi
+*.ini
 
 # Exceptions.
 !doc/paper/img/*.pdf
