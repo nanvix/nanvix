@@ -25,6 +25,7 @@
 #include <nanvix/pm.h>
 #include <nanvix/mm.h>
 #include <nanvix/syscall.h>
+#include <nanvix/clock.h>
 #include <fcntl.h>
 
 
@@ -121,6 +122,15 @@ PUBLIC void kmain(void)
 	mm_init();
 	pm_init();
 	fs_init();
+	
+	/* Print bootup time. */
+	kprintf("Bootup Time (GMT): %d:%d:%d %d/%d/20%d\n",
+		start_time->hour,
+		start_time->min,
+		start_time->sec,
+		start_time->dom,
+		start_time->mon,
+		start_time->year);
 	
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 	
