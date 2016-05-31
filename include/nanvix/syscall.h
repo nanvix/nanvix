@@ -21,6 +21,7 @@
 #ifndef NANVIX_SYSCALL_H_
 #define NANVIX_SYSCALL_H_
 
+	#include <stdint.h>
 	#include <nanvix/const.h>
 	#include <sys/stat.h>
 	#include <sys/times.h>
@@ -31,7 +32,7 @@
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 48
+	#define NR_SYSCALLS 52
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -85,6 +86,7 @@
  	#define NR_semget   48
  	#define NR_semctl   49
  	#define NR_semop    50
+ 	#define NR_time	    51
 
 #ifndef _ASM_FILE_
 
@@ -263,6 +265,11 @@
 	 * Get system ticks since initialization
 	 */
 	EXTERN int sys_gticks(void);
+
+	/*
+ 	 * Get current system time since Epoch (00:00:00 UTC 1st Jan, 1970)
+ 	 */
+	EXTERN uint64_t sys_time(void);
 
 #endif /* _ASM_FILE_ */
 
