@@ -51,7 +51,7 @@
  	/* Forward definitions. */
 	EXTERN void cmos_init(void);
 	EXTERN void clock_init(unsigned);
-	EXTERN uint64_t cmos_getticks(void);
+	EXTERN uint64_t cmos_gettime(void);
 
 	/**
 	 * @brief Clock interrupts since system initialization.
