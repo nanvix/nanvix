@@ -22,6 +22,7 @@
 #define TIMER_H_
 
 	#include <nanvix/const.h>
+	#include <stdint.h>
 	
 	/**
 	 * @brief Clock interrupt frequency (in Hz)
@@ -50,6 +51,7 @@
  	/* Forward definitions. */
 	EXTERN void cmos_init(void);
 	EXTERN void clock_init(unsigned);
+	EXTERN uint64_t cmos_getticks(void);
 
 	/**
 	 * @brief Clock interrupts since system initialization.
