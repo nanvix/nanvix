@@ -20,6 +20,7 @@
 
 #include <nanvix/hal.h>
 #include <nanvix/clock.h>
+#include <stdint.h>
 
 /**
  * @brief Bootup time.
@@ -44,6 +45,38 @@ PRIVATE unsigned int cmos_read(unsigned addr)
 	outputb(0x70, 0x80 | addr);
 	
 	return (inputb(0x71));
+}
+
+/**
+ * @brief Returns time in clock ticks since Epoch (00:00:00 UTC, 1st Jan,1970)
+ */
+PUBLIC uint64_t cmos_getticks(void)
+{
+	/* Local variable declarations */
+	int yy  = boot_time->year;
+	int mm  = boot_time->mon;
+	int dd  = boot_time->dom;
+	int hh  = boot_time->hour;
+	int min = boot_time->min;
+	int ss  = boot_time->sec;
+
+	int era = 0;			/* Era is a 400 yr period 	*/
+	unsigned int yoe = 0;		/* Year of era [0, 399]		*/
+	unsigned int doy = 0;		/* Day of year [0, 365]		*/
+	unsigned int doe = 0;		/* Day of era  [0, 146096]	*/
+	unsigned int num_days = 0;	/* # of days since Epoch	*/
+	uint64_t num_ticks = 0;		/* # of clock-ticks since Epoch	*/
+
+	yy -= mm <= 2;
+	era = (yy >= 0 ? yy : yy - 399) / 400;
+	yoe = (unsigned int)(yy - era * 400);
+	doy = (153 * (mm + (mm > 2 ? -3 : 9)) + 2) / 5 + dd - 1;
+	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+	num_days = era * 146097 + doe - 719468;
+	num_ticks = (uint64_t)(((num_days * 86400) + (hh * 3600) +\
+			 (min * 60) + ss) * CLOCK_FREQ);
+
+	return num_ticks;
 }
 
 /**
