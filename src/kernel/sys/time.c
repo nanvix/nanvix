@@ -26,5 +26,5 @@
  */
 PUBLIC uint64_t sys_time(void)
 {
-	return ((uint64_t)(cmos_getticks() + ticks));
+	return ((uint64_t)(cmos_gettime() + ticks));
 }
