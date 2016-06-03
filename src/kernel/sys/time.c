@@ -18,13 +18,23 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sys/types.h>
 #include <nanvix/clock.h>
-#include <stdint.h>
 
 /*
  * @brief Returns the current time since Epoch (00:00:00 UTC 1st Jan, 1970)
  */
-PUBLIC uint64_t sys_time(void)
+PUBLIC time_t sys_time(time_t *tloc)
 {
-	return ((uint64_t)(cmos_gettime() + ticks));
+	time_t ret = -1;
+
+	/* Invalid argument check */
+	if (tloc == NULL)
+		return ret;
+
+	/* current time = time since Epoch to bootup + time since bootup */
+	ret = (cmos_gettime() + (ticks / CLOCK_FREQ));
+	tloc = &ret;
+
+	return ret;
 }
