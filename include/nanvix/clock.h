@@ -22,7 +22,6 @@
 #define TIMER_H_
 
 	#include <nanvix/const.h>
-	#include <stdint.h>
 	
 	/**
 	 * @brief Clock interrupt frequency (in Hz)
@@ -48,7 +47,7 @@
 		unsigned year; /**< Year.         */
 	};
 
- 	/* Forward definitions. */
+ 	/* Forward declarations. */
 	EXTERN void cmos_init(void);
 	EXTERN void clock_init(unsigned);
 	EXTERN signed cmos_gettime(void);
@@ -58,7 +57,7 @@
 	 */
 	EXTERN unsigned ticks;
 	
-	/* Forward definitions. */
+	/* Forward declarations. */
 	EXTERN unsigned startup_time;
 	EXTERN const struct cmos *boot_time;
 	
