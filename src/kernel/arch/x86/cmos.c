@@ -20,7 +20,6 @@
 
 #include <nanvix/hal.h>
 #include <nanvix/clock.h>
-#include <stdint.h>
 
 /**
  * @brief Bootup time.
@@ -48,7 +47,7 @@ PRIVATE unsigned int cmos_read(unsigned addr)
 }
 
 /**
- * @brief Returns time in clock ticks since Epoch (00:00:00 UTC, 1st Jan,1970)
+ * @brief Returns time in clock ticks since Epoch (00:00:00 UTC, 1st Jan,1970).
  */
 PUBLIC signed cmos_gettime(void)
 {
