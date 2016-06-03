@@ -31,7 +31,7 @@
 
 	/* Software copyright message. */
 	#define SH_COPYRIGHT \
-		"Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>\n"
+		"Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>\n"
 
 	/* Maximum line length. */
 	#define LINELEN 256
