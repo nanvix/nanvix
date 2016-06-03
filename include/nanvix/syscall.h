@@ -21,7 +21,6 @@
 #ifndef NANVIX_SYSCALL_H_
 #define NANVIX_SYSCALL_H_
 
-	#include <stdint.h>
 	#include <nanvix/const.h>
 	#include <sys/stat.h>
 	#include <sys/times.h>
@@ -269,7 +268,7 @@
 	/*
  	 * Get current system time since Epoch (00:00:00 UTC 1st Jan, 1970)
  	 */
-	EXTERN uint64_t sys_time(void);
+	EXTERN time_t sys_time(void);
 
 #endif /* _ASM_FILE_ */
 
