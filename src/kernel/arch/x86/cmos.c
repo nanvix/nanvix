@@ -47,7 +47,8 @@ PRIVATE unsigned int cmos_read(unsigned addr)
 }
 
 /**
- * @brief Returns time in clock ticks since Epoch (00:00:00 UTC, 1st Jan,1970).
+ * @brief Returns time in seconds since Epoch (00:00:00 UTC, 1st Jan,1970) till bootup.
+ *
  */
 PUBLIC signed cmos_gettime(void)
 {
