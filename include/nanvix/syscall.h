@@ -268,7 +268,7 @@
 	/*
  	 * Get current system time since Epoch (00:00:00 UTC 1st Jan, 1970)
  	 */
-	EXTERN time_t sys_time(void);
+	EXTERN time_t sys_time(time_t *tloc);
 
 #endif /* _ASM_FILE_ */
 
