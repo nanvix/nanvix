@@ -34,22 +34,8 @@
 	#define CURRENT_TIME \
 		(startup_time + ticks/CLOCK_FREQ)
 
-	/**
-	 * @brief CMOS Time structure.
-	 */
-	struct cmos
-	{
-		unsigned sec;  /**< Seconds.      */
-		unsigned min;  /**< Minutes.      */
-		unsigned hour; /**< Hour.         */
-		unsigned dom;  /**< Day of Month. */
-		unsigned mon;  /**< Month.        */
-		unsigned year; /**< Year.         */
-	};
 
  	/* Forward declarations. */
-	EXTERN void cmos_init(void);
-	EXTERN signed cmos_gettime(void);
 	EXTERN void clock_init(unsigned);
 
 	/**
@@ -57,8 +43,9 @@
 	 */
 	EXTERN unsigned ticks;
 	
-	/* Forward declarations. */
+	/**
+	 * @brief Start up time (in seconds).
+	 */
 	EXTERN unsigned startup_time;
-	EXTERN const struct cmos *boot_time;
 	
 #endif /* TIMER_H_ */

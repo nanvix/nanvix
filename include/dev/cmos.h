@@ -1,6 +1,5 @@
 /*
- * Copyright(C) 2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
- *              2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -18,25 +17,10 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <sys/types.h>
-#include <nanvix/clock.h>
+#ifndef CMOS_H_
+#define CMOS_H_
 
-/**
- * @brief Returns the elapsed time since Epoch (00:00:00 UTC 1st Jan, 1970).
- *
- * @param Pointer to where the return value to be stored or NULL.
- */
-PUBLIC time_t sys_time(time_t *tloc)
-{
-	time_t ret = -1;
+	/* Forward definitions. */
+	extern void cmos_init(void);
 
-	/* Invalid argument check */
-	if (tloc == NULL)
-		return ret;
-
-	/* current time = time since Epoch to bootup + time since bootup */
-	ret = CURRENT_TIME;
-	tloc = &ret;
-
-	return ret;
-}
+#endif /* CMOS_H_ */

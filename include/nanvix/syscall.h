@@ -265,11 +265,9 @@
 	 * Get system ticks since initialization
 	 */
 	EXTERN int sys_gticks(void);
-
-	/*
- 	 * Get current system time since Epoch (00:00:00 UTC 1st Jan, 1970)
- 	 */
-	EXTERN time_t sys_time(time_t *tloc);
+	
+	/* Forward definitions. */
+	EXTERN time_t sys_time(time_t *);
 
 #endif /* _ASM_FILE_ */
 
