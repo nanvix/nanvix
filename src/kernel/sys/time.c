@@ -22,7 +22,7 @@
 #include <nanvix/clock.h>
 
 /*
- * @brief Returns the current time since Epoch (00:00:00 UTC 1st Jan, 1970).
+ * @brief Returns the elapsed time since Epoch (00:00:00 UTC 1st Jan, 1970).
  *
  * @param Pointer to where the return value to be stored or NULL.
  */
