@@ -21,12 +21,13 @@
 #include <dev/ata.h>
 #include <dev/klog.h>
 #include <dev/tty.h>
+#include <dev/cmos.h>
 #include <dev/ramdisk.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
-#include <nanvix/clock.h>
 #include <nanvix/pm.h>
+#include <nanvix/clock.h>
 #include <errno.h>
 
 /*============================================================================*

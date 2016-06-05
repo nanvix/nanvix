@@ -1,6 +1,7 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -31,7 +32,7 @@
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 48
+	#define NR_SYSCALLS 52
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -85,6 +86,7 @@
  	#define NR_semget   48
  	#define NR_semctl   49
  	#define NR_semop    50
+ 	#define NR_time	    51
 
 #ifndef _ASM_FILE_
 
@@ -263,6 +265,9 @@
 	 * Get system ticks since initialization
 	 */
 	EXTERN int sys_gticks(void);
+	
+	/* Forward definitions. */
+	EXTERN time_t sys_time(time_t *);
 
 #endif /* _ASM_FILE_ */
 

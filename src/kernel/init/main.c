@@ -124,15 +124,6 @@ PUBLIC void kmain(void)
 	pm_init();
 	fs_init();
 	
-	/* Print bootup time. */
-	kprintf("Bootup Time (GMT): %d:%d:%d %d/%d/20%d\n",
-		boot_time->hour,
-		boot_time->min,
-		boot_time->sec,
-		boot_time->dom,
-		boot_time->mon,
-		boot_time->year);
-	
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 	
 	/* Spawn init process. */
