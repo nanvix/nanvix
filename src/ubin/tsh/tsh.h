@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2015 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2015 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
@@ -31,7 +31,9 @@
 
 	/* Software copyright message. */
 	#define SH_COPYRIGHT \
-		"Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>\n"
+		"Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>\n\
+		              2015-2015 Davidson Francis <davidsondfgl@gmail.com>\n\
+		              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>\n"
 
 	/* Maximum line length. */
 	#define LINELEN 256
