@@ -20,23 +20,30 @@
 
 #include <sys/types.h>
 #include <nanvix/clock.h>
+#include <nanvix/mm.h>
+#include <errno.h>
 
 /**
- * @brief Returns the elapsed time since Epoch (00:00:00 UTC 1st Jan, 1970).
+ * @brief Returns the value of time in seconds since the Epoch.
  *
- * @param Pointer to where the return value to be stored or NULL.
+ * @param Upon successful completion, the value of time is returned. Otherwise,
+ *        (time_t)-1 is returned.
  */
 PUBLIC time_t sys_time(time_t *tloc)
 {
-	time_t ret = -1;
-
-	/* Invalid argument check */
-	if (tloc == NULL)
-		return ret;
-
-	/* current time = time since Epoch to bootup + time since bootup */
+	time_t ret;
+	
 	ret = CURRENT_TIME;
-	tloc = &ret;
 
-	return ret;
+	/* Store value in tloc. */
+	if (tloc != NULL)
+	{
+		/* Invalid buffer. */
+		if (!chkmem(tloc, sizeof(time_t), MAY_WRITE))
+			return (-EFAULT);
+	
+		*tloc = ret;
+	}
+
+	return (ret);
 }
