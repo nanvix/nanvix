@@ -35,6 +35,7 @@ C_SRC = $(wildcard *.c)           \
       $(wildcard sys/utsname/*.c) \
       $(wildcard sys/wait/*.c)    \
       $(wildcard termios/*.c)     \
+      $(wildcard time/*.c)        \
       $(wildcard unistd/*.c)      \
       $(wildcard utime/*.c)       \
 
