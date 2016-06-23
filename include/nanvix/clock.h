@@ -46,6 +46,6 @@
 	/**
 	 * @brief Start up time (in seconds).
 	 */
-	EXTERN unsigned startup_time;
+	EXTERN signed startup_time;
 	
 #endif /* TIMER_H_ */
