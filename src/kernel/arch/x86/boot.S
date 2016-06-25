@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -91,11 +92,27 @@ start:
 		jge start.loop1
 	cld
 
+	/* Build Linear Frame Buffer page tables. */
+	movl $lfb_pgtab, %edi
+	movl $0xE0000000, %eax
+	addl $7, %eax	
+	movl %eax, %ebx
+	addl $LFB_SIZE, %ebx
+	cld
+	start.loop2:
+		cmpl %eax, %ebx
+		je start.endloop2
+		stosl
+		addl $PAGE_SIZE, %eax
+		jmp start.loop2
+	start.endloop2:
+
 	/* Build init page directory. */
 	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*0         /* Kernel code + data at 0x00000000 */
 	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*768       /* Kernel code + data at 0xc0000000 */
 	movl $kpool_pgtab + 3, idle_pgdir + PTE_SIZE*769  /* Kernel page pool at 0xc0400000   */
 	movl $initrd_pgtab + 3, idle_pgdir + PTE_SIZE*770 /* Init RAM disk at 0xc0800000      */
+	movl $lfb_pgtab + 3, idle_pgdir + PTE_SIZE*896    /* LFB at 0xe0000000                */
 	
 	/* Enable paging. */
 	movl $idle_pgdir, %eax
@@ -149,6 +166,17 @@ kpool_pgtab:
  */
 .align PAGE_SIZE
 initrd_pgtab:
+	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
+
+/*----------------------------------------------------------------------------*
+ *                                lfb_pgtab                                   *
+ *----------------------------------------------------------------------------*/
+
+/* 
+ * Linear Frame Buffer page table.
+ */
+.align PAGE_SIZE
+lfb_pgtab:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*

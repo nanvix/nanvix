@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -34,6 +35,7 @@
 	#define PROC_SIZE_MAX  0x4000000 /* Maximum process size.           */
 	#define RAMDISK_SIZE    0x400000 /* RAM disks size.                 */
 	#define INITRD_SIZE      0x80000 /* Init RAM disk size.             */
+ 	#define LFB_SIZE        0x400000 /* Linear Frame Buffer size.       */
 	#define NR_INODES           1024 /* Number of in-core inodes.       */
 	#define NR_SUPERBLOCKS         4 /* Number of in-core super blocks. */
 	#define ROOT_DEV          0x0101 /* Root device number.             */
@@ -41,5 +43,6 @@
 	#define NR_FILES             256 /* Number of opened files.         */
 	#define NR_REGIONS           128 /* Number of memory regions.       */
 	#define NR_BUFFERS           256 /* Number of block buffers.        */
+ 	#define VIDEO_MODE             0 /* Video mode: 0(80x25) or 1(VBE). */
 	
 #endif /* CONFIG_H_ */
