@@ -77,5 +77,6 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	NULL,
 	NULL,
 	NULL,
-	(void (*)(void))&sys_time
+	(void (*)(void))&sys_time,
+	(void (*)(void))&sys_drawBuffer
 };
