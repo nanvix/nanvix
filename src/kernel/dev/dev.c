@@ -1,6 +1,7 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -23,6 +24,7 @@
 #include <dev/tty.h>
 #include <dev/cmos.h>
 #include <dev/ramdisk.h>
+#include <dev/vga.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
@@ -311,6 +313,7 @@ PUBLIC void dev_init(void)
 	cmos_init();
 	clock_init(CLOCK_FREQ);
 	fpu_init();
+	vga_init();
 	tty_init();
 	ramdisk_init();
 }

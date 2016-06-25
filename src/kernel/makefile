@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -24,18 +25,20 @@ PROCESSOR = i386
 ARCH = x86
 
 # C source files.
-C_SRC = $(wildcard arch/$(ARCH)/*.c) \
-        $(wildcard dev/*.c)          \
-        $(wildcard dev/ata/*.c)      \
-        $(wildcard dev/klog/*.c)     \
-        $(wildcard dev/ramdisk/*.c)  \
-        $(wildcard dev/tty/*.c)      \
-        $(wildcard fs/*.c)           \
-        $(wildcard init/*.c)         \
-        $(wildcard lib/*.c)          \
-        $(wildcard mm/*.c)           \
-        $(wildcard pm/*.c)           \
-        $(wildcard sys/*.c)          \
+C_SRC = $(wildcard arch/$(ARCH)/*.c)    \
+        $(wildcard dev/*.c)             \
+        $(wildcard dev/ata/*.c)         \
+        $(wildcard dev/klog/*.c)        \
+        $(wildcard dev/ramdisk/*.c)     \
+        $(wildcard dev/tty/*.c)         \
+        $(wildcard dev/tty/console/*.c) \
+        $(wildcard dev/vga/*.c)         \
+        $(wildcard fs/*.c)              \
+        $(wildcard init/*.c)            \
+        $(wildcard lib/*.c)             \
+        $(wildcard mm/*.c)              \
+        $(wildcard pm/*.c)              \
+        $(wildcard sys/*.c)             \
 
 # Assembly source files.
 ASM_SRC = $(wildcard arch/$(ARCH)/*.S) \
