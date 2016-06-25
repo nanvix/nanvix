@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -24,6 +25,7 @@
 	#include <nanvix/klib.h>
 	#include <nanvix/pm.h>
 	#include <termios.h>
+ 	#include "console/console.h"
 
 	/* Console colors. */
     #define BLACK         0x00
@@ -39,9 +41,17 @@
     #define LIGHT_GREEN   0x0A
     #define LIGHT_CYAN    0x0B
     #define LIGHT_RED     0x0C
-    #define LIGHT_MAGNETA 0x0D
+    #define LIGHT_MAGENTA 0x0D
     #define LIGHT_BROWN   0x0E
     #define WHITE         0x0F
+
+ 	#if VIDEO_MODE == 1
+ 		#undef BLACK
+ 		#undef WHITE
+
+ 		#define BLACK     0x000000
+ 		#define WHITE     0xFFFFFF
+ 	#endif
 
 	/**
 	 * @brief TTY flags.
@@ -75,10 +85,11 @@
 	 * @name Console Functions
 	 */
 	/**@{*/
-	EXTERN void console_put(uint8_t, uint8_t);
+	EXTERN void console_put(uint8_t, uint32_t);
 	EXTERN void console_init(void);
 	EXTERN void console_clear(void);
 	EXTERN void console_write(struct kbuffer *);
+	EXTERN int  console_register(struct console_handler *);
 	/**@}*/
 	
 	/**

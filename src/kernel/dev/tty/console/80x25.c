@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -22,8 +23,7 @@
 #include <nanvix/hal.h>
 #include <sys/types.h>
 #include <stdint.h>
-#include "tty.h"
-
+#include "../tty.h"
 
 /* Video specifications (Text mode). */
 #define VIDEO_ADDR  0xb8000 /* Video memory address. */
@@ -108,7 +108,7 @@ PRIVATE void console_scrolldown(void)
 /*
  * Outputs a colored ASCII character on the console device.
  */
-PUBLIC void console_put(uint8_t ch, uint8_t color)
+PRIVATE void c_put(uint8_t ch, uint32_t color)
 {	
 	/* Parse character. */
     switch (ch)
@@ -158,7 +158,7 @@ PUBLIC void console_put(uint8_t ch, uint8_t color)
 /*
  * Clears the console.
  */
-PUBLIC void console_clear(void)
+PRIVATE void c_clear(void)
 {
 	uint16_t *p;
 	
@@ -174,7 +174,7 @@ PUBLIC void console_clear(void)
 /*
  * Flushes a buffer on the console device.
  */
-PUBLIC void console_write(struct kbuffer *buffer)
+PRIVATE void c_write(struct kbuffer *buffer)
 {
 	uint8_t ch;
 	
@@ -183,21 +183,34 @@ PUBLIC void console_write(struct kbuffer *buffer)
 	{ 
 		KBUFFER_GET((*buffer), ch);
 	
-		console_put(ch, WHITE);
+		c_put(ch, WHITE);
 	}
 }
 
 /*
+ * Console handler interface.
+ */
+PRIVATE struct console_handler chandler = {
+	&c_put,   /* console_put().   */
+	&c_clear, /* console_clear(). */
+	&c_write  /* console_write(). */
+};
+
+/*
  * Initializes the console driver.
  */
-PUBLIC void console_init(void)
+PUBLIC void ctextmode_init(void)
 {
+	/* Register the handler. */
+	if ( console_register(&chandler) )
+		kpanic("failed to set console handler");
+
 	/* Set cursor shape. */
 	outputb(VIDEO_CRTL_REG, VIDEO_CS);
 	outputb(VIDEO_DATA_REG, 0x00);
 	outputb(VIDEO_CRTL_REG, VIDEO_CE);
 	outputb(VIDEO_DATA_REG, 0x1f);
-	
+
 	/* Clear the console. */
-	console_clear();
+	c_clear();
 }

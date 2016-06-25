@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -23,6 +24,7 @@ C_SRC = $(wildcard *.c)           \
       $(wildcard ctype/*.c)       \
       $(wildcard dirent/*.c)      \
       $(wildcard errno/*.c)       \
+      $(wildcard framebuffer/*.c) \
       $(wildcard fcntl/*.c)       \
       $(wildcard signal/*.c)      \
       $(wildcard stdio/*.c)       \

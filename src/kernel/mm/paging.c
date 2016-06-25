@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -618,6 +619,7 @@ PUBLIC int crtpgdir(struct process *proc)
 	pgdir[PGTAB(KBASE_VIRT)] = curr_proc->pgdir[PGTAB(KBASE_VIRT)];
 	pgdir[PGTAB(KPOOL_VIRT)] = curr_proc->pgdir[PGTAB(KPOOL_VIRT)];
 	pgdir[PGTAB(INITRD_VIRT)] = curr_proc->pgdir[PGTAB(INITRD_VIRT)];
+	pgdir[PGTAB(LFB_VIRT)] = curr_proc->pgdir[PGTAB(LFB_VIRT)];
 	
 	/* Clone kernel stack. */
 	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);

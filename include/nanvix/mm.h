@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -34,6 +35,7 @@
 	#define KBASE_VIRT   0xc0000000 /* Kernel base.      */
 	#define KPOOL_VIRT   0xc0400000 /* Kernel page pool. */
 	#define INITRD_VIRT  0xc0800000 /* Initial RAM disk. */
+ 	#define LFB_VIRT     0xe0000000 /* LFB base.         */
 	
 	/* Physical memory layout. */
 	#define KBASE_PHYS   0x00000000 /* Kernel base.      */

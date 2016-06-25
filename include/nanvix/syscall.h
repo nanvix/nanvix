@@ -30,9 +30,10 @@
 	#include <signal.h>
 	#include <ustat.h>
 	#include <utime.h>
+	#include <framebuffer.h> 
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 52
+	#define NR_SYSCALLS 53
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -87,6 +88,7 @@
  	#define NR_semctl   49
  	#define NR_semop    50
  	#define NR_time	    51
+ 	#define NR_drawBuffer 52
 
 #ifndef _ASM_FILE_
 
@@ -268,6 +270,11 @@
 	
 	/* Forward definitions. */
 	EXTERN time_t sys_time(time_t *);
+
+	/*
+	 * Draws on the screen buffer an given buffer as a parameter.
+	 */
+	EXTERN int sys_drawBuffer(struct frameBuff_opts *);
 
 #endif /* _ASM_FILE_ */
 
