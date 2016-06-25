@@ -32,6 +32,7 @@
 .PHONY: mkdir
 .PHONY: mv
 .PHONY: nice
+.PHONY: ppmv
 .PHONY: pwd
 .PHONY: rm
 .PHONY: rmdir
@@ -44,8 +45,8 @@
 .PHONY: nim
 
 # Builds everything.
-all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat sync \
-	 touch tsh ps clear nim
+all: cat chgrp chmod chown cp echo kill ln login ls mv nice ppmv pwd rm stat \
+	 sync touch tsh ps clear nim
 
 # Builds cat.
 cat: 
@@ -99,6 +100,10 @@ mv:
 nice: 
 	$(CC) $(CFLAGS) $(LDFLAGS) nice/*.c -o $(UBINDIR)/nice $(LIBDIR)/libc.a
 	
+# Builds ppmv.
+ppmv: 
+	$(CC) $(CFLAGS) $(LDFLAGS) ppmv/*.c -o $(UBINDIR)/ppmv $(LIBDIR)/libc.a
+
 # Builds pwd.
 pwd: 
 	$(CC) $(CFLAGS) $(LDFLAGS) pwd/*.c -o $(UBINDIR)/pwd $(LIBDIR)/libc.a
@@ -139,6 +144,7 @@ clear:
 nim: 
 	$(CC) $(CFLAGS) $(LDFLAGS) nim/*.c -o $(UBINDIR)/nim $(LIBDIR)/libc.a
 
+
 # Clean compilation files.
 clean:
 	@rm -f $(UBINDIR)/cat
@@ -154,6 +160,7 @@ clean:
 	@rm -f $(UBINDIR)/mkdir
 	@rm -f $(UBINDIR)/mv
 	@rm -f $(UBINDIR)/nice
+	@rm -f $(UBINDIR)/ppmv
 	@rm -f $(UBINDIR)/pwd
 	@rm -f $(UBINDIR)/rm
 	@rm -f $(UBINDIR)/rmdir
