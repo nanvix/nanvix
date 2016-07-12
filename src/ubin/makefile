@@ -24,6 +24,7 @@
 .PHONY: chmod
 .PHONY: chown
 .PHONY: cp
+.PHONY: date
 .PHONY: echo
 .PHONY: kill
 .PHONY: ln
@@ -44,8 +45,8 @@
 .PHONY: nim
 
 # Builds everything.
-all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat sync \
-	 touch tsh ps clear nim
+all: cat chgrp chmod chown cp date echo kill ln login ls mv nice pwd rm stat \
+	sync touch tsh ps clear nim
 
 # Builds cat.
 cat: 
@@ -66,7 +67,11 @@ chown:
 # Builds cp.
 cp: 
 	$(CC) $(CFLAGS) $(LDFLAGS) cp/*.c -o $(UBINDIR)/cp $(LIBDIR)/libc.a
-	
+
+# Builds date.
+date: 
+	$(CC) $(CFLAGS) $(LDFLAGS) date/*.c -o $(UBINDIR)/date $(LIBDIR)/libc.a
+
 # Builds echo.
 echo: 
 	$(CC) $(CFLAGS) $(LDFLAGS) echo/*.c -o $(UBINDIR)/echo $(LIBDIR)/libc.a

@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 		2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -18,34 +18,16 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TIMER_H_
-#define TIMER_H_
+#ifndef TIME_H_
+#define TIME_H_
+#ifndef _ASM_FILE_
 
-	#include <nanvix/const.h>
-	
-	/**
-	 * @brief Clock interrupt frequency (in Hz)
-	 */
-	#define CLOCK_FREQ 100
-	
-	/**
-	 * @brief Current time.
-	 */
-	#define CURRENT_TIME \
-		(startup_time + ticks/CLOCK_FREQ)
+	#include <sys/types.h>
 
+	/*
+ 	 * Returns time in seconds since Epoch
+ 	 */
+	extern time_t time(time_t *tloc);
 
- 	/* Forward declarations. */
-	EXTERN void clock_init(unsigned);
-
-	/**
-	 * @brief Clock interrupts since system initialization.
-	 */
-	EXTERN unsigned ticks;
-	
-	/**
-	 * @brief Start up time (in seconds).
-	 */
-	EXTERN signed startup_time;
-	
-#endif /* TIMER_H_ */
+#endif	/* _ASM_FILE_ */
+#endif	/* TIME_H_ */
