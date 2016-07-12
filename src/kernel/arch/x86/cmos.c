@@ -22,6 +22,11 @@
 #include <nanvix/clock.h>
 
 /**
+ * @brief Current millennium.
+ */
+#define CURR_MILLENNIUM 2000
+
+/**
  * @brief CMOS Time Structure.
  */
 PRIVATE struct
@@ -50,13 +55,17 @@ PRIVATE unsigned cmos_read(unsigned addr)
 }
 
 /**
- * @brief Returns time in seconds since Epoch (00:00:00 UTC, 1st Jan,1970) till bootup.
+ * @brief Returns time in seconds since Epoch (00:00:00 UTC, 1st Jan,1970) till
+ *        bootup.
+ *
+ * @NOTE  Since register 0x09 gives only last 2 digits of the year, it's our
+ *        responsibility to add it with right offset.
  *
  */
 PRIVATE signed cmos_gettime(void)
 {
 	/* Local variable declarations */
-	int yy  = boot_time.year;
+	int yy  = CURR_MILLENNIUM + boot_time.year;
 	int mm  = boot_time.mon;
 	int dd  = boot_time.dom;
 	int hh  = boot_time.hour;
@@ -110,8 +119,9 @@ PUBLIC void cmos_init(void)
 	{
 		boot_time.sec  = (boot_time.sec & 0x0f) + ((boot_time.sec/16)*10);
 		boot_time.min  = (boot_time.min & 0x0f) + ((boot_time.min/16)*10);
-		boot_time.hour = ((boot_time.hour & 0x0f) + (((boot_time.hour & 0x70)/16)*10))
-		               | (boot_time.hour & 0x80);
+		boot_time.hour = ((boot_time.hour & 0x0f) +
+							(((boot_time.hour & 0x70)/16)*10)) |
+							(boot_time.hour & 0x80);
 		boot_time.dom  = (boot_time.dom & 0x0f) + ((boot_time.dom/16)*10);
 		boot_time.mon  = (boot_time.mon & 0x0f) + ((boot_time.mon/16)*10);
 		boot_time.year = (boot_time.year & 0x0f) + ((boot_time.year/16)*10);
