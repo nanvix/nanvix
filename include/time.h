@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 		2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ * Copyright(C) 2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -24,9 +24,7 @@
 
 	#include <sys/types.h>
 
-	/*
- 	 * Returns time in seconds since Epoch
- 	 */
+	/* Forward definitions. */
 	extern time_t time(time_t *tloc);
 
 #endif	/* _ASM_FILE_ */

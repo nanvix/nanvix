@@ -1,7 +1,7 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 		2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
- * 
+ * Copyright(C) 2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              
  * This file is part of Nanvix.
  * 
  * Nanvix is free software; you can redistribute it and/or modify
@@ -22,8 +22,12 @@
 #include <sys/types.h>
 #include <errno.h>
 
-/*
- * Get the time elapsed since Epoch in seconds
+/**
+ * @brief Get the time elapsed since Epoch in seconds
+ * 
+ * @param Time structure.
+ * 
+ * @returns Elapsed time since Epoch in seconds.
  */
 time_t time(time_t *tloc)
 {

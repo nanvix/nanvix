@@ -1,6 +1,5 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 		2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ * Copyright(C) 2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  *
  * This file is part of Nanvix.
  * 
@@ -57,7 +56,7 @@ static void version(void)
 {
 	printf("%s (Nanvix Coreutils) %d.%d\n\n", PROG_NAME, VERSION_MAJOR,\
 		VERSION_MINOR);
-	printf("Copyright(C) 2011-2016 Pedro H. Penna\n");
+	printf("Copyright(C) 2016-2016 Subhra S. Sarkar\n");
 	printf("This is free software under the "); 
 	printf("GNU General Public License Version 3.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
