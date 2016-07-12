@@ -21,6 +21,9 @@
 #include <nanvix/hal.h>
 #include <nanvix/clock.h>
 
+/**
+ * @brief Current millennium.
+ */
 #define CURR_MILLENNIUM 2000
 
 /**
@@ -114,19 +117,14 @@ PUBLIC void cmos_init(void)
 	/* If output is in BCD format, convert it to binary. */
 	if (!(registerB & 0x04))
 	{
-		boot_time.sec  = (boot_time.sec & 0x0f) +\
-                              ((boot_time.sec / 16) * 10);
-		boot_time.min  = (boot_time.min & 0x0f) +\
-                              ((boot_time.min / 16) * 10);
-		boot_time.hour = ((boot_time.hour & 0x0f) +\
-                   (((boot_time.hour & 0x70) / 16) * 10)) |\
-                                    (boot_time.hour & 0x80);
-		boot_time.dom  = (boot_time.dom & 0x0f) +\
-                              ((boot_time.dom / 16) * 10);
-		boot_time.mon  = (boot_time.mon & 0x0f) +\
-                              ((boot_time.mon / 16) * 10);
-		boot_time.year = (boot_time.year & 0x0f) +\
-                              ((boot_time.year / 16) * 10);
+		boot_time.sec  = (boot_time.sec & 0x0f) + ((boot_time.sec/16)*10);
+		boot_time.min  = (boot_time.min & 0x0f) + ((boot_time.min/16)*10);
+		boot_time.hour = ((boot_time.hour & 0x0f) +
+							(((boot_time.hour & 0x70)/16)*10)) |
+							(boot_time.hour & 0x80);
+		boot_time.dom  = (boot_time.dom & 0x0f) + ((boot_time.dom/16)*10);
+		boot_time.mon  = (boot_time.mon & 0x0f) + ((boot_time.mon/16)*10);
+		boot_time.year = (boot_time.year & 0x0f) + ((boot_time.year/16)*10);
 	}
 
 	/* Convert 12 hr clock to 24 hr clock if necessary. */
