@@ -486,6 +486,7 @@ PUBLIC void freereg(struct region *reg)
 				freeupg(&reg->mtab[i]->pgtab[j][k]);
 			
 			putkpg(reg->mtab[i]->pgtab[j]);
+			reg->mtab[i]->pgtab[j] = NULL;
 		}
 
 		freemreg(reg->mtab[i]);
