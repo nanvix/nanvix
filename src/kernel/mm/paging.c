@@ -518,28 +518,7 @@ PUBLIC void freeupg(struct pte *pg)
 		
 	/* Double free. */
 	if (frames[i].count == 0)
-	{
-		struct pregion *preg;
-
-		__asm__ volatile
-		(
-			//"xchg %%bx, %%bx;"
-			"mov (%%ebp), %%eax;"
-			"mov (%%eax), %%eax;"
-			"mov 12(%%eax), %%eax;"
-			"mov %%eax, %0;"
-			"nop;"
-			: "=m" (preg)
-		);
-
-		kprintf("pregstart: %x | maxsize: %x | size: %x | refcount: %x", preg->start,
-			preg->maxsize, preg->reg->size, preg->reg->count);
-
-		if(preg->reg == NULL)
-			kprintf("null");
-
 		kpanic("freeing user page twice");
-	}
 	
 	/* Free user page. */
 	if (--frames[i].count)

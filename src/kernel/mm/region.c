@@ -626,8 +626,6 @@ PUBLIC int attachreg
 	reg->preg = preg;
 	proc->size += reg->size;
 	
-	kprintf("pid: %d | reg: %x",curr_proc->pid, preg->start);
-
 	return (0);
 }
 
