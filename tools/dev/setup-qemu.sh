@@ -1,5 +1,5 @@
 # 
-# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
 #
 # This file is part of Nanvix.
 #
@@ -17,30 +17,27 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Default rules.
-*.o
-*.a
-*.img
-*.pdf
-bochsout.txt
-bin/*
-bin/sbin/*
-bin/ubin/*
-doc/*-kernel
-*.bbl
-*.aux
-*.swp
-*.bcf
-*.blg
-*.fls
-*.log
-*.xml
-*.gz
-*.fdb_latexmk
-*.out
-*.dvi
-*.ini
+# NOTES:
+#   - This script should work in any Debian-based Linux distribution.
+#   - You should run this script with superuser privileges.
+#
 
-# Exceptions.
-!doc/paper/img/*.pdf
-!doc/paper/*.pdf
+# Set working directory.
+export CURDIR=`pwd`
+export WORKDIR=$CURDIR/nanvix-toolchain
+mkdir -p $WORKDIR
+cd $WORKDIR
+
+# Get bochs.
+wget "http://wiki.qemu-project.org/download/qemu-2.5.0.tar.bz2"
+
+# Build Bochs
+tar -xjvf qemu-2.5.0.tar.bz2
+./configure
+make all
+make install
+
+# Cleans files.
+cd $WORKDIR
+cd ..
+rm -R -f $WORKDIR

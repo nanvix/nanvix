@@ -46,14 +46,15 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 	unsigned i, j;        /* Loop indexes.                  */
 	unsigned npages;      /* Number of pages in the region. */
 	struct pregion *preg; /* Working process region.        */
+	size_t newmaxsize;    /* New maximum size of the region.*/
 	
 	size = ALIGN(size, PAGE_SIZE);
-	
+	preg = reg->preg;
+
 	/* Region too big. */
-	if (reg->size + size > REGION_SIZE)
+	if (reg->size + size > preg->maxsize)
 		return (-1);
 	
-	preg = reg->preg;
 	npages = size >> PAGE_SHIFT;
 	
 	/* Expand downwards. */
@@ -70,7 +71,12 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
 		j = PAGE_SIZE/PTE_SIZE - 
 				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT);
-		
+
+		/* Verifies that will not overlap. */
+		newmaxsize = reg->size + size + REGION_GAP;
+		if (proc != NULL && findreg(proc, preg->start - newmaxsize) != NULL)
+			return (-1);
+
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{
@@ -97,6 +103,8 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 			
 			markpg(&reg->pgtab[i][j], PAGE_ZERO);
 		}
+
+		preg->maxsize = reg->size + REGION_GAP;
 	}
 
 	/* Expand upwards. */
@@ -112,7 +120,12 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		
 		i = reg->size >> PGTAB_SHIFT;
 		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
-		
+
+		/* Verifies that will not overlap. */
+		newmaxsize = reg->size + size + REGION_GAP;
+		if (proc != NULL && findreg(proc, preg->start + newmaxsize) != NULL)
+			return (-1);
+
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{
@@ -139,6 +152,8 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 			npages--;
 			reg->size += PAGE_SIZE;
 		}
+
+		preg->maxsize = reg->size + REGION_GAP;
 	}
 	
 	return (0);
@@ -200,6 +215,8 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 			reg->size -= PAGE_SIZE;
 		
 		}
+
+		preg->maxsize = reg->size + REGION_GAP;
 	}
 
 	/* Contract upwards. */
@@ -232,6 +249,8 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 			
 			freeupg(&reg->pgtab[i][j]);
 		}
+
+		preg->maxsize = reg->size + REGION_GAP;
 	}
 	
 	return (0);
@@ -460,6 +479,7 @@ PUBLIC int attachreg
 	/* Attach region. */
 	preg->start = start;
 	preg->reg = reg;
+	preg->maxsize = REGION_GAP;
 	reg->count++;
 	reg->preg = preg;
 	proc->size += reg->size;
@@ -633,7 +653,7 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 		{
 			if (addr <= preg->start)
 			{
-				if (addr >= preg->start - REGION_SIZE)
+				if (addr >= preg->start - preg->maxsize)
 					return (preg);
 			}
 		}
@@ -643,7 +663,7 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 		{
 			if (addr >= preg->start)
 			{
-				if (addr < preg->start + REGION_SIZE)
+				if (addr < preg->start + preg->maxsize)
 					return (preg);
 			}
 		}

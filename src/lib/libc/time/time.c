@@ -1,7 +1,7 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
- * 
+ * Copyright(C) 2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              
  * This file is part of Nanvix.
  * 
  * Nanvix is free software; you can redistribute it and/or modify
@@ -18,34 +18,34 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TIMER_H_
-#define TIMER_H_
+#include <nanvix/syscall.h>
+#include <sys/types.h>
+#include <errno.h>
 
-	#include <nanvix/const.h>
-	
-	/**
-	 * @brief Clock interrupt frequency (in Hz)
-	 */
-	#define CLOCK_FREQ 100
-	
-	/**
-	 * @brief Current time.
-	 */
-	#define CURRENT_TIME \
-		(startup_time + ticks/CLOCK_FREQ)
+/**
+ * @brief Get the time elapsed since Epoch in seconds
+ * 
+ * @param Time structure.
+ * 
+ * @returns Elapsed time since Epoch in seconds.
+ */
+time_t time(time_t *tloc)
+{
+	int ret;
 
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_time),
+		  "b" (tloc)
+	);
 
- 	/* Forward declarations. */
-	EXTERN void clock_init(unsigned);
+	/* Error. */
+	if (ret < 0)
+	{
+		errno = -ret;
+		return (-1);
+	}
 
-	/**
-	 * @brief Clock interrupts since system initialization.
-	 */
-	EXTERN unsigned ticks;
-	
-	/**
-	 * @brief Start up time (in seconds).
-	 */
-	EXTERN signed startup_time;
-	
-#endif /* TIMER_H_ */
+	return (ret);
+}

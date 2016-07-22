@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ * Copyright(C) 2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -18,34 +18,32 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TIMER_H_
-#define TIMER_H_
+#include <sys/types.h>
+#include <nanvix/clock.h>
+#include <nanvix/mm.h>
+#include <errno.h>
 
-	#include <nanvix/const.h>
+/**
+ * @brief Returns the value of time in seconds since the Epoch.
+ *
+ * @param Upon successful completion, the value of time is returned. Otherwise,
+ *        (time_t)-1 is returned.
+ */
+PUBLIC time_t sys_time(time_t *tloc)
+{
+	time_t ret;
 	
-	/**
-	 * @brief Clock interrupt frequency (in Hz)
-	 */
-	#define CLOCK_FREQ 100
-	
-	/**
-	 * @brief Current time.
-	 */
-	#define CURRENT_TIME \
-		(startup_time + ticks/CLOCK_FREQ)
+	ret = CURRENT_TIME;
 
-
- 	/* Forward declarations. */
-	EXTERN void clock_init(unsigned);
-
-	/**
-	 * @brief Clock interrupts since system initialization.
-	 */
-	EXTERN unsigned ticks;
+	/* Store value in tloc. */
+	if (tloc != NULL)
+	{
+		/* Invalid buffer. */
+		if (!chkmem(tloc, sizeof(time_t), MAY_WRITE))
+			return (-EFAULT);
 	
-	/**
-	 * @brief Start up time (in seconds).
-	 */
-	EXTERN signed startup_time;
-	
-#endif /* TIMER_H_ */
+		*tloc = ret;
+	}
+
+	return (ret);
+}

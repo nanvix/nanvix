@@ -1,6 +1,5 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -18,34 +17,10 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TIMER_H_
-#define TIMER_H_
+#ifndef CMOS_H_
+#define CMOS_H_
 
-	#include <nanvix/const.h>
-	
-	/**
-	 * @brief Clock interrupt frequency (in Hz)
-	 */
-	#define CLOCK_FREQ 100
-	
-	/**
-	 * @brief Current time.
-	 */
-	#define CURRENT_TIME \
-		(startup_time + ticks/CLOCK_FREQ)
+	/* Forward definitions. */
+	extern void cmos_init(void);
 
-
- 	/* Forward declarations. */
-	EXTERN void clock_init(unsigned);
-
-	/**
-	 * @brief Clock interrupts since system initialization.
-	 */
-	EXTERN unsigned ticks;
-	
-	/**
-	 * @brief Start up time (in seconds).
-	 */
-	EXTERN signed startup_time;
-	
-#endif /* TIMER_H_ */
+#endif /* CMOS_H_ */

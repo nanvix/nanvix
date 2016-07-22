@@ -17,12 +17,6 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-#
-# Script parameters.
-#   $1 Educational kernel?
-#
-EDUCATIONAL_KERNEL=$1
-
 # Root credentials.
 ROOTUID=0
 ROOTGID=0
@@ -58,10 +52,7 @@ function passwords
 	bin/useradd $file root root $ROOTGID $ROOTUID
 	bin/useradd $file noob noob $NOOBUID $NOOBUID
 
-	# Let's care about security...
-	if [ "$EDUCATIONAL_KERNEL" == "0" ]; then
-		chmod 600 $file
-	fi
+	chmod 600 $file
 	
 	bin/cp.minix $1 $file /etc/$file $ROOTUID $ROOTGID
 	
@@ -96,11 +87,8 @@ function format {
 function copy_files
 {
 	chmod 666 tools/img/inittab
+	chmod 600 tools/img/inittab
 	
-	# Let's care for security...
-	if [ "$EDUCATIONAL_KERNEL" == "0" ]; then
-		chmod 600 tools/img/inittab
-	fi
 	bin/cp.minix $1 tools/img/inittab /etc/inittab $ROOTUID $ROOTGID
 	
 	passwords $1

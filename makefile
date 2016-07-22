@@ -17,12 +17,6 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-#
-# Change this to zero if you wanna a
-# non-educational version of the system.
-#
-export EDUCATIONAL_KERNEL=1
-
 # Directories.
 export BINDIR   = $(CURDIR)/bin
 export SBINDIR  = $(BINDIR)/sbin
@@ -44,7 +38,7 @@ export KEY = 13
 
 # Toolchain configuration.
 export CFLAGS    = -I $(INCDIR)
-export CFLAGS   += -DKERNEL_HASH=$(KEY) -DEDUCATIONAL_KERNEL=$(EDUCATIONAL_KERNEL)
+export CFLAGS   += -DKERNEL_HASH=$(KEY)
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 export CFLAGS   += -Wall -Wextra -Werror
@@ -70,7 +64,7 @@ nanvix:
 # Builds system's image.
 image: $(BINDIR)/kernel tools
 	mkdir -p $(BINDIR)
-	bash $(TOOLSDIR)/build/build-img.sh $(EDUCATIONAL_KERNEL)
+	bash $(TOOLSDIR)/build/build-img.sh
 
 # Builds documentation.
 documentation:
