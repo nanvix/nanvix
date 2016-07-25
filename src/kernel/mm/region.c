@@ -30,6 +30,10 @@
 #include <errno.h>
 #include "mm.h"
 
+#if (REGION_GAP < 0x400000)
+	#error "region gap too small"
+#endif
+
 /**
  * @brief Memory region table.
  */
