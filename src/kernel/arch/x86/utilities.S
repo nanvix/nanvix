@@ -270,6 +270,9 @@ user_mode:
 	/* Load data segment selector. */
 	movw $USER_DS, %ax
 	movw %ax, %ds
+	movw %ax, %es
+	movw %ax, %fs
+	movw %ax, %gs
 	
 	/* Build fake interrupt stack. */
 	pushl $USER_DS
