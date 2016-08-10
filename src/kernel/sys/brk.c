@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -30,14 +31,16 @@ PUBLIC int sys_brk(void *addr)
 	ssize_t size;         /* Increment size.     */
 	struct pregion *heap; /* Heap process region.*/
 	
-	heap = findreg(curr_proc, (addr_t)addr);
-	
-	/* Bad address. */
-	if (heap != HEAP(curr_proc))
-		return (-EFAULT);
-	
+	heap = HEAP(curr_proc);
 	size = (addr_t)addr - (heap->start + heap->reg->size);
 	
+	/* Bad address. */
+	if (size < 0 && findreg(curr_proc, (addr_t)addr) != HEAP(curr_proc))
+		return (-EFAULT);
+
+	else if (findreg(curr_proc, (addr_t)addr) != NULL)
+		return (-EFAULT);
+
 	/*
 	 * There is no need to lock the heap region
 	 * since it is a private region.
