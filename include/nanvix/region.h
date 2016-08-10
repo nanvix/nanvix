@@ -40,7 +40,6 @@
 
 	/* Size (in bytes). */
 	#define REGION_SIZE   ((size_t)REGION_PGTABS*MREGIONS*PGTAB_SIZE)
- 	#define REGION_GAP    0x400000 /* Region gap, 4 MB. */
 
  	/* Mini region dimensions. */
 	#define NR_MINIREGIONS (32) /* # Mini regions.            */
@@ -94,7 +93,6 @@
 	struct pregion
 	{
 		addr_t start;       /* Starting address.         */
-		size_t maxsize;     /* Max region size.          */
 		struct region *reg; /* Underlying memory region. */
 	};
 	
