@@ -30,10 +30,6 @@
 #include <errno.h>
 #include "mm.h"
 
-#if (REGION_GAP < 0x400000)
-	#error "region gap too small"
-#endif
-
 /**
  * @brief Memory region table.
  */
@@ -101,7 +97,7 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 	preg = reg->preg;
 
 	/* Region too big. */
-	if (reg->size + size > preg->maxsize)
+	if (reg->size + size > REGION_SIZE)
 		return (-1);
 	
 	npages = size >> PAGE_SHIFT;
@@ -129,8 +125,9 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT);
 
 		/* Verifies that will not overlap. */
-		newmaxsize = reg->size + size + REGION_GAP;
-		if (proc != NULL && findreg(proc, preg->start - newmaxsize) != NULL)
+		newmaxsize = reg->size + size;
+		if (size != 0 && proc != NULL && 
+			findreg(proc, preg->start - newmaxsize) != NULL)
 			return (-1);
 
 		/* Mark pages as demand zero. */
@@ -173,8 +170,6 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 			
 			markpg(&reg->mtab[i]->pgtab[j][k], PAGE_ZERO);
 		}
-
-		preg->maxsize = reg->size + REGION_GAP;
 	}
 
 	/* Expand upwards. */
@@ -199,8 +194,9 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		k = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
 
 		/* Verifies that will not overlap. */
-		newmaxsize = reg->size + size + REGION_GAP;
-		if (proc != NULL && findreg(proc, preg->start + newmaxsize) != NULL)
+		newmaxsize = reg->size + size;
+		if (size != 0 && proc != NULL && 
+			findreg(proc, preg->start + newmaxsize) != NULL)
 			return (-1);
 
 		/* Mark pages as demand zero. */
@@ -243,8 +239,6 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 			npages--;
 			reg->size += PAGE_SIZE;
 		}
-
-		preg->maxsize = reg->size + REGION_GAP;
 	}
 	
 	return (0);
@@ -319,8 +313,6 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 			reg->size -= PAGE_SIZE;
 		
 		}
-
-		preg->maxsize = reg->size + REGION_GAP;
 	}
 
 	/* Contract upwards. */
@@ -366,8 +358,6 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 			
 			freeupg(&reg->mtab[i]->pgtab[j][k]);
 		}
-
-		preg->maxsize = reg->size + REGION_GAP;
 	}
 	
 	return (0);
@@ -626,7 +616,6 @@ PUBLIC int attachreg
 	/* Attach region. */
 	preg->start = start;
 	preg->reg = reg;
-	preg->maxsize = REGION_GAP;
 	reg->count++;
 	reg->preg = preg;
 	proc->size += reg->size;
@@ -824,7 +813,7 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 		{
 			if (addr <= preg->start)
 			{
-				if (addr >= preg->start - preg->maxsize)
+				if (addr >= preg->start - reg->size)
 					return (preg);
 			}
 		}
@@ -834,7 +823,7 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 		{
 			if (addr >= preg->start)
 			{
-				if (addr < preg->start + preg->maxsize)
+				if (addr < preg->start + reg->size)
 					return (preg);
 			}
 		}
