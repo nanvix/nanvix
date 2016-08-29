@@ -20,7 +20,6 @@ void	_EXFUN(_exit, (int __status ) _ATTRIBUTE ((__noreturn__)));
 int	_EXFUN(access,(const char *__path, int __amode ));
 unsigned  _EXFUN(alarm, (unsigned __secs ));
 int     _EXFUN(chdir, (const char *__path ));
-int     _EXFUN(chmod, (const char *__path, mode_t __mode ));
 #if !defined(__INSIDE_CYGWIN__)
 int     _EXFUN(chown, (const char *__path, uid_t __owner, gid_t __group ));
 #endif
@@ -62,7 +61,6 @@ int	_EXFUN(faccessat, (int __dirfd, const char *__path, int __mode, int __flags)
 #if defined(__CYGWIN__) || defined(__rtems__) || defined(__SPU__)
 int     _EXFUN(fchdir, (int __fildes));
 #endif
-int     _EXFUN(fchmod, (int __fildes, mode_t __mode ));
 #if !defined(__INSIDE_CYGWIN__)
 int     _EXFUN(fchown, (int __fildes, uid_t __owner, gid_t __group ));
 #endif
