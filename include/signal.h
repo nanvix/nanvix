@@ -1,25 +1,8 @@
-/*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
-#ifndef SIGNAL_H_
-#define SIGNAL_H_
+#ifndef _SIGNAL_H_
+#define _SIGNAL_H_
 
 	#define NR_SIGNALS 23
+	#define NSIG       23
 
 	/* Signals. */
 	#define SIGNULL  0
@@ -45,28 +28,43 @@
 	#define SIGUSR1 20
 	#define SIGUSR2 21
 	#define SIGTRAP 22
-	
+
 	/* Handlers. */
 	#define _SIG_DFL 1
-	#define SIG_DFL (sighandler_t)(_SIG_DFL)
-    #define _SIG_IGN 2
-    #define SIG_IGN (sighandler_t)(_SIG_IGN)
-    
-    /* Other constants. */
-    #define _SIG_ERR 0
-    #define SIG_ERR (sighandler_t)(_SIG_ERR)
+	#define SIG_DFL ((_sig_func_ptr)_SIG_DFL)	/* Default action */
+	#define _SIG_IGN 2
+	#define SIG_IGN ((_sig_func_ptr)_SIG_IGN)	/* Ignore action */
+
+	/* Other constants. */
+	#define _SIG_ERR 0
+	#define SIG_ERR ((_sig_func_ptr)_SIG_ERR)	/* Error return */
 
 #ifndef _ASM_FILE_
 
-	#include <sys/types.h>
+	#include "_ansi.h"
+	#include <sys/signal.h>
 
-	/* Types. */
-	typedef void (*sighandler_t)(int);
-	
-	/* Function prototypes. */
-	extern sighandler_t signal(int sig, sighandler_t func);
-	extern int kill(pid_t pid, int sig);
+	_BEGIN_STD_C
+
+	typedef int	sig_atomic_t;		/* Atomic entity type (ANSI) */
+	#ifndef _POSIX_SOURCE
+	typedef _sig_func_ptr sig_t;		/* BSD naming */
+	typedef _sig_func_ptr sighandler_t;	/* glibc naming */
+	#endif /* !_POSIX_SOURCE */
+
+	struct _reent;
+
+	_sig_func_ptr _EXFUN(_signal_r, (struct _reent *, int, _sig_func_ptr));
+	int	_EXFUN(_raise_r, (struct _reent *, int));
+
+	#ifndef _REENT_ONLY
+	_sig_func_ptr _EXFUN(signal, (int, _sig_func_ptr));
+	int	_EXFUN(raise, (int));
+	void	_EXFUN(psignal, (int, const char *));
+	#endif
+
+	_END_STD_C
 
 #endif /* _ASM_FILE_ */
 
-#endif /* SIGNAL_H_ */
+#endif /* _SIGNAL_H_ */

@@ -1,130 +1,113 @@
-/*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
-
-/*
- * Copyright (c) 1990 Regents of the University of California.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *	This product includes software developed by the University of
- *	California, Berkeley and its contributors.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
-
-/**
- * @file
- * 
- * @brief Character types library.
- */
-
 #ifndef _CTYPE_H_
 #define _CTYPE_H_
 
-	#ifdef _POSIX_C_SOURCE
-		#define _NEED_LOCALE_T
-		#include <decl.h>
-	#endif /* _POSIX_C_SOURCE */
+#include "_ansi.h"
 
-	/* Character types. */
-	#define	_U	0x01 /* Upper-case character.         */
-	#define	_L	0x02 /* Lower-case character.         */
-	#define	_N	0x04 /* Decimal number character.     */
-	#define	_S	0x08 /* White-space character.        */
-	#define	_P	0x10 /* Punctuation character.        */
-	#define	_C	0x20 /* Control character.            */
-	#define	_X	0x40 /* Hexadecimal number character. */
-	#define	_B	0x80 /* Blank space character.        */
-	
-	/**
-	 * @defgroup ctype ctype.h
-	 * 
-	 * @brief Character types library.
-	 * 
-	 * @todo Do not ignore current locale.
-	 * @todo Implement all extensions to the ISO C standard.
-	 */
-	/**@{*/
-	
-	/* Forward definitions. */
-	extern int isalnum(int);
-	extern int isalpha(int);
-	extern int isblank(int);
-	extern int iscntrl(int);
-	extern int isdigit(int);
-	extern int isgraph(int);
-	extern int islower(int);
-	extern int isprint(int);
-	extern int ispunct(int);
-	extern int isspace(int);
-	extern int isupper(int);
-	extern int isxdigit(int);
-	extern int tolower(int);
-	extern int toupper(int);
-	
-#ifdef _POSIX_C_SOURCE
-	
-	/* Forward definitions. */
-	extern int isalnum_l(int, locale_t);
-	extern int isalpha_l(int, locale_t);
-	extern int isblank_l(int, locale_t);
-	extern int iscntrl_l(int, locale_t);
-	extern int isdigit_l(int, locale_t);
-	extern int isgraph_l(int, locale_t);
-	extern int islower_l(int, locale_t);
-	extern int isprint_l(int, locale_t);
-	extern int ispunct_l(int, locale_t);
-	extern int isspace_l(int, locale_t);
-	extern int isupper_l(int, locale_t);
-	extern int isxdigit_l(int, locale_t);
-	extern int tolower_l(int, locale_t);
-	extern int toupper_l(int, locale_t);
+_BEGIN_STD_C
 
-#endif /* _POSIX_C_SOURCE */
-	
-	/**@}*/
-	
-	/* Forward definitions. */
-	extern const unsigned char _ctype[];
-	extern char _maplower[];
-	extern char _mapupper[];
+int _EXFUN(isalnum, (int __c));
+int _EXFUN(isalpha, (int __c));
+int _EXFUN(iscntrl, (int __c));
+int _EXFUN(isdigit, (int __c));
+int _EXFUN(isgraph, (int __c));
+int _EXFUN(islower, (int __c));
+int _EXFUN(isprint, (int __c));
+int _EXFUN(ispunct, (int __c));
+int _EXFUN(isspace, (int __c));
+int _EXFUN(isupper, (int __c));
+int _EXFUN(isxdigit,(int __c));
+int _EXFUN(tolower, (int __c));
+int _EXFUN(toupper, (int __c));
+
+#if !defined(__STRICT_ANSI__) || defined(__cplusplus) || __STDC_VERSION__ >= 199901L
+int _EXFUN(isblank, (int __c));
+#endif
+
+#ifndef __STRICT_ANSI__
+int _EXFUN(isascii, (int __c));
+int _EXFUN(toascii, (int __c));
+#define _tolower(__c) ((unsigned char)(__c) - 'A' + 'a')
+#define _toupper(__c) ((unsigned char)(__c) - 'a' + 'A')
+#endif
+
+#define	_U	01
+#define	_L	02
+#define	_N	04
+#define	_S	010
+#define _P	020
+#define _C	040
+#define _X	0100
+#define	_B	0200
+
+#ifndef _MB_CAPABLE
+_CONST
+#endif
+extern	__IMPORT char	*__ctype_ptr__;
+
+#ifndef __cplusplus
+/* These macros are intentionally written in a manner that will trigger
+   a gcc -Wall warning if the user mistakenly passes a 'char' instead
+   of an int containing an 'unsigned char'.  Note that the sizeof will
+   always be 1, which is what we want for mapping EOF to __ctype_ptr__[0];
+   the use of a raw index inside the sizeof triggers the gcc warning if
+   __c was of type char, and sizeof masks side effects of the extra __c.
+   Meanwhile, the real index to __ctype_ptr__+1 must be cast to int,
+   since isalpha(0x100000001LL) must equal isalpha(1), rather than being
+   an out-of-bounds reference on a 64-bit machine.  */
+#define __ctype_lookup(__c) ((__ctype_ptr__+sizeof(""[__c]))[(int)(__c)])
+
+#define	isalpha(__c)	(__ctype_lookup(__c)&(_U|_L))
+#define	isupper(__c)	((__ctype_lookup(__c)&(_U|_L))==_U)
+#define	islower(__c)	((__ctype_lookup(__c)&(_U|_L))==_L)
+#define	isdigit(__c)	(__ctype_lookup(__c)&_N)
+#define	isxdigit(__c)	(__ctype_lookup(__c)&(_X|_N))
+#define	isspace(__c)	(__ctype_lookup(__c)&_S)
+#define ispunct(__c)	(__ctype_lookup(__c)&_P)
+#define isalnum(__c)	(__ctype_lookup(__c)&(_U|_L|_N))
+#define isprint(__c)	(__ctype_lookup(__c)&(_P|_U|_L|_N|_B))
+#define	isgraph(__c)	(__ctype_lookup(__c)&(_P|_U|_L|_N))
+#define iscntrl(__c)	(__ctype_lookup(__c)&_C)
+
+#if defined(__GNUC__) && \
+    (!defined(__STRICT_ANSI__) || __STDC_VERSION__ >= 199901L)
+#define isblank(__c) \
+  __extension__ ({ __typeof__ (__c) __x = (__c);		\
+        (__ctype_lookup(__x)&_B) || (int) (__x) == '\t';})
+#endif
+
+
+/* Non-gcc versions will get the library versions, and will be
+   slightly slower.  These macros are not NLS-aware so they are
+   disabled if the system supports the extended character sets. */
+# if defined(__GNUC__)
+#  if !defined (_MB_EXTENDED_CHARSETS_ISO) && !defined (_MB_EXTENDED_CHARSETS_WINDOWS)
+#   define toupper(__c) \
+  __extension__ ({ __typeof__ (__c) __x = (__c);	\
+      islower (__x) ? (int) __x - 'a' + 'A' : (int) __x;})
+#   define tolower(__c) \
+  __extension__ ({ __typeof__ (__c) __x = (__c);	\
+      isupper (__x) ? (int) __x - 'A' + 'a' : (int) __x;})
+#  else /* _MB_EXTENDED_CHARSETS* */
+/* Allow a gcc warning if the user passed 'char', but defer to the
+   function.  */
+#   define toupper(__c) \
+  __extension__ ({ __typeof__ (__c) __x = (__c);	\
+      (void) __ctype_ptr__[__x]; (toupper) (__x);})
+#   define tolower(__c) \
+  __extension__ ({ __typeof__ (__c) __x = (__c);	\
+      (void) __ctype_ptr__[__x]; (tolower) (__x);})
+#  endif /* _MB_EXTENDED_CHARSETS* */
+# endif /* __GNUC__ */
+#endif /* !__cplusplus */
+
+#ifndef __STRICT_ANSI__
+#define isascii(__c)	((unsigned)(__c)<=0177)
+#define toascii(__c)	((__c)&0177)
+#endif
+
+/* For C++ backward-compatibility only.  */
+extern	__IMPORT _CONST char	_ctype_[];
+
+_END_STD_C
 
 #endif /* _CTYPE_H_ */

@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -23,12 +24,11 @@
  * @brief Standard type definitions.
  */
 
-#ifndef _STDDEF_H_
-#define _STDDEF_H_
 
-	#define _NEED_NULL
-	#define _NEED_WCHAR_T
-	#define _NEED_SIZE_T
-	#include <decl.h>
+#define __need_NULL
+#define __need_wchar_t
+#define __need_size_t
+#define __need_ptrdiff_t
+#include <decl.h>
 
-#endif /* _STDDEF_H_ */
+#define offsetof(TYPE, MEMBER) __builtin_offsetof (TYPE, MEMBER)

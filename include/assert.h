@@ -1,57 +1,50 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+	assert.h
+*/
 
-/**
- * @file
- * 
- * @brief Program diagnostics library.
- */
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#ifndef ASSERT_H_
-#define ASSERT_H_
+#include "_ansi.h"
 
-	/**
-	 * @defgroup assert assert.h
-	 * 
-	 * @brief Program diagnostics library.
-	 */
-	/**@{*/
-	
-	/**
-	 * @brief Asserts a condition.
-	 * 
-	 * @param cond Condition to assert.
-	 */
-	#define assert(cond) ((cond) ?                                        \
-			(void) 0 :                                                    \
-			(void) _assertfail("assertion failed: %s, file %s, line %d\n",\
-									#cond, __FILE__, __LINE__ ))
+#undef assert
 
-	/**@}*/
-	
-	/* Ignore assertions. */
-	#ifdef NDEBUG
-	#undef assert
-		#define assert(ignore)((void) 0)
-	#endif
-	
-	/* Forward definitions. */
-	extern void _assertfail(const char *, const char *, const char *, int);
+#ifdef NDEBUG           /* required by ANSI standard */
+# define assert(__e) ((void)0)
+#else
+# define assert(__e) ((__e) ? (void)0 : __assert_func (__FILE__, __LINE__, \
+						       __ASSERT_FUNC, #__e))
 
-#endif /* ASSERT_H_ */
+# ifndef __ASSERT_FUNC
+  /* Use g++'s demangled names in C++.  */
+#  if defined __cplusplus && defined __GNUC__
+#   define __ASSERT_FUNC __PRETTY_FUNCTION__
+
+  /* C99 requires the use of __func__.  */
+#  elif __STDC_VERSION__ >= 199901L
+#   define __ASSERT_FUNC __func__
+
+  /* Older versions of gcc don't have __func__ but can use __FUNCTION__.  */
+#  elif __GNUC__ >= 2
+#   define __ASSERT_FUNC __FUNCTION__
+
+  /* failed to detect __func__ support.  */
+#  else
+#   define __ASSERT_FUNC ((char *) 0)
+#  endif
+# endif /* !__ASSERT_FUNC */
+#endif /* !NDEBUG */
+
+void _EXFUN(__assert, (const char *, int, const char *)
+	    _ATTRIBUTE ((__noreturn__)));
+void _EXFUN(__assert_func, (const char *, int, const char *, const char *)
+	    _ATTRIBUTE ((__noreturn__)));
+
+#if __STDC_VERSION__ >= 201112L && !defined __cplusplus
+# define static_assert _Static_assert
+#endif
+
+#ifdef __cplusplus
+}
+#endif
