@@ -105,12 +105,12 @@ function copy_files
 }
 
 # Build HDD image.
-dd if=/dev/zero of=hdd.img bs=512 count=131072
-format hdd.img 32708 16384
+dd if=/dev/zero of=hdd.img bs=1024 count=65536
+format hdd.img 1024 32768
 copy_files hdd.img
 
 # Build initrd image.
-dd if=/dev/zero of=initrd.img bs=512K count=1
+dd if=/dev/zero of=initrd.img bs=1024 count=512
 format initrd.img 128 512
 copy_files initrd.img
 
