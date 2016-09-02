@@ -38,8 +38,10 @@
  * 
  * @returns The requested page directory entry.
  */
-#define getpde(p, a) \
-	(&(p)->pgdir[PGTAB(a)])
+PUBLIC struct pde *getpde(struct process *p, addr_t a)
+{
+	return (&(p)->pgdir[PGTAB(a)]);
+}
 
 /**
  * @brief Gets a page table entry of a process.
@@ -49,161 +51,14 @@
  * 
  * @returns The requested page table entry.
  */
-#define getpte(p, a) \
-	(&((struct pte *)((getpde(p, a)->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(a)])
-
-/*============================================================================*
- *                             Swapping System                                *
- *============================================================================*/
-
-#if (LIVE_IMAGE != 1)
-
-/*
- * Swapping area too small?
- */
-#if (SWP_SIZE < MEMORY_SIZE)
-	#error "swapping area to small"
-#endif
-
-/**
- * @brief Swap space.
- */
-PRIVATE struct
+PUBLIC struct pte *getpte(struct process *p, addr_t a)
 {
-	unsigned count[SWP_SIZE/PAGE_SIZE];         /**< Reference count. */
-	uint32_t bitmap[(SWP_SIZE/PAGE_SIZE) >> 5]; /**< Bitmap.          */
-} swap = {{0, }, {0, } };
+	addr_t vaddr;
 
-/**
- * @brief Clears the swap space that is associated to a page.
- * 
- * @param pg Page to be inspected.
- */
-PRIVATE void swap_clear(struct pte *pg)
-{
-	unsigned i;
-	
-	i = pg->frame;
-	
-	/* Free swap space. */
-	if (swap.count[i] > 0)
-	{
-		bitmap_clear(swap.bitmap, i);
-		swap.count[i]--;
-	}
+	vaddr = (getpde(p, a)->frame << PAGE_SHIFT) + KBASE_VIRT;
+
+	return (&((struct pte *)(vaddr))[PG(a)]);
 }
-
-/**
- * @brief Swaps a page out to disk.
- * 
- * @param proc Process where the page is located.
- * @param addr Address of the page to be swapped out.
- * 
- * @returns Zero upon success, and non-zero otherwise.
- */
-PRIVATE int swap_out(struct process *proc, addr_t addr)
-{
-	unsigned blk;   /* Block number in swap device.  */
-	struct pte *pg; /* Page table entry.             */
-	off_t off;      /* Offset in swap device.        */
-	ssize_t n;      /* # bytes written.              */
-	void *kpg;      /* Kernel page used for copying. */
-	
-	addr &= PAGE_MASK;
-	pg = getpte(proc, addr);
-	
-	/* Get kernel page. */
-	if ((kpg = getkpg(0)) == NULL)
-		goto error0;
-	
-	/* Get free block in swap device. */
-	blk = bitmap_first_free(swap.bitmap, (SWP_SIZE/PAGE_SIZE) >> 3);
-	if (blk == BITMAP_FULL)
-		goto error1;
-	
-	/*
-	 * Set block on swap device as used
-	 * in advance, because we may sleep below.
-	 */
-	off = HDD_SIZE + blk*PAGE_SIZE;
-	bitmap_set(swap.bitmap, blk);
-	
-	/* Write page to disk. */
-	kmemcpy(kpg, (void *)addr, PAGE_SIZE);
-	n = bdev_write(SWAP_DEV, (void *)addr, PAGE_SIZE, off);
-	if (n != PAGE_SIZE)
-		goto error2;
-	swap.count[blk]++;
-	
-	/* Set page as non-present. */
-	pg->present = 0;
-	pg->frame = blk;
-	tlb_flush();
-	
-	putkpg(kpg);
-	return (0);
-
-error2:
-	bitmap_clear(swap.bitmap, blk);
-error1:
-	putkpg(kpg);
-error0:
-	return (-1);
-}
-
-/**
- * @brief Swaps a page in to disk.
- * 
- * @param frame Frame number where the page should be placed.
- * @param addr  Address of the page to be swapped in.
- * 
- * @returns Zero upon success, and non-zero otherwise.
- */
-PRIVATE int swap_in(unsigned frame, addr_t addr)
-{
-	unsigned blk;   /* Block number in swap device.  */
-	struct pte *pg; /* Page table entry.             */
-	off_t off;      /* Offset in swap device.        */
-	ssize_t n;      /* # bytes read.                 */
-	void *kpg;      /* Kernel page used for copying. */
-	
-	addr &= PAGE_MASK;
-	pg = getpte(curr_proc, addr);
-	
-	/* Get kernel page. */
-	if ((kpg = getkpg(0)) == NULL)
-		goto error0;
-	
-	/* Get block # in swap device. */
-	blk = pg->frame;
-	off = HDD_SIZE + blk*PAGE_SIZE;
-	
-	/* Read page from disk. */
-	n = bdev_read(SWAP_DEV, kpg, PAGE_SIZE, off);
-	if (n != PAGE_SIZE)
-		goto error1;
-	swap_clear(pg);
-	
-	/* Set page as present. */
-	pg->present = 1;
-	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + frame;
-	tlb_flush();
-	
-	/* Copy page. */
-	kmemcpy((void *)addr, kpg, PAGE_SIZE);
-	pg->accessed = 0;
-	pg->dirty = 0;
-		
-	putkpg(kpg);
-	return (0);
-
-error1:
-	putkpg(kpg);
-error0:
-	return (-1);
-}
-
-#endif
 
 /*============================================================================*
  *                             Kernel Page Pool                               *
@@ -348,6 +203,7 @@ found:
 			goto found;
 	}
 
+	kprintf("no free frames left");
 	return (-1);
 	
 found:		
@@ -610,13 +466,10 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		frames[i].count++;
 	}
 	
-#if (LIVE_IMAGE != 1)
 	/* In-disk page. */
+#if (LIVE_IMAGE != 1)
 	else
-	{
-		 i = upg1->frame;
-		 swap.count[i]++;
-	}
+		 swap_inc(upg1->frame);
 #endif
 
 	kmemcpy(upg2, upg1, sizeof(struct pte));
