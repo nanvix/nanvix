@@ -30,13 +30,6 @@
 #include <signal.h>
 #include "mm.h"
 
-/*
- * Swapping area too small?
- */
-#if (SWP_SIZE < MEMORY_SIZE)
-	#error "swapping area to small"
-#endif
-
 /**
  * @brief Gets a page directory entry of a process.
  * 
@@ -59,10 +52,18 @@
 #define getpte(p, a) \
 	(&((struct pte *)((getpde(p, a)->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(a)])
 
-
 /*============================================================================*
  *                             Swapping System                                *
  *============================================================================*/
+
+#if (LIVE_IMAGE != 1)
+
+/*
+ * Swapping area too small?
+ */
+#if (SWP_SIZE < MEMORY_SIZE)
+	#error "swapping area to small"
+#endif
 
 /**
  * @brief Swap space.
@@ -202,6 +203,8 @@ error0:
 	return (-1);
 }
 
+#endif
+
 /*============================================================================*
  *                             Kernel Page Pool                               *
  *============================================================================*/
@@ -293,6 +296,7 @@ PRIVATE struct
  */
 PRIVATE int allocf(void)
 {
+#if (LIVE_IMAGE != 1)
 	int i;      /* Loop index.  */
 	int oldest; /* Oldest page. */
 	
@@ -318,7 +322,7 @@ PRIVATE int allocf(void)
 				oldest = i;
 		}
 	}
-	
+
 	/* No frame left. */
 	if (oldest < 0)
 		return (-1);
@@ -333,7 +337,28 @@ found:
 	frames[i].count = 1;
 	
 	return (i);
+#else
+	int i;
+	
+	/* Search for a free frame. */
+	for (i = 0; i < NR_FRAMES; i++)
+	{
+		/* Found it. */
+		if (frames[i].count == 0)
+			goto found;
+	}
+
+	return (-1);
+	
+found:		
+
+	frames[i].age = ticks;
+	frames[i].count = 1;
+	
+	return (i);
+#endif
 }
+
 
 /**
  * @brief Copies a page.
@@ -506,14 +531,19 @@ PUBLIC void freeupg(struct pte *pg)
 {
 	unsigned i;
 	
-	/* In-disk page. */
 	if (!pg->present)
 	{
+	/* In-disk page. */
+	#if (LIVE_IMAGE != 1)
 		swap_clear(pg);
 		kmemset(pg, 0, sizeof(struct pte));
 		return;
+	/* Non-present page. */
+	#else
+		return;
+	#endif
 	}
-		
+
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 		
 	/* Double free. */
@@ -580,13 +610,15 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		frames[i].count++;
 	}
 	
+#if (LIVE_IMAGE != 1)
 	/* In-disk page. */
 	else
 	{
 		 i = upg1->frame;
 		 swap.count[i]++;
 	}
-	
+#endif
+
 	kmemcpy(upg2, upg1, sizeof(struct pte));
 }
 
@@ -667,7 +699,6 @@ PUBLIC void dstrypgdir(struct process *proc)
  */
 PUBLIC int vfault(addr_t addr)
 {
-	int frame;            /* Frame index of page to be swapped in. */
 	struct pte *pg;       /* Working page.                         */
 	struct region *reg;   /* Working region.                       */
 	struct pregion *preg; /* Working process region.               */
@@ -721,21 +752,28 @@ PUBLIC int vfault(addr_t addr)
 			goto error1;
 	}
 		
-	/* Swap page in. */
 	else
 	{
+	/* Swap page in. */
+	#if (LIVE_IMAGE != 1)
+		int frame;
+
 		if ((frame = allocf()) < 0)
 			goto error1;
 		if (swap_in(frame, addr))
-			goto error2;
+		{
+			frames[frame].count = 0;
+			goto error1;
+		}
 		frames[frame].addr = addr & PAGE_MASK;
+	#else
+			goto error1;
+	#endif
 	}
 	
 	unlockreg(reg);
 	return (0);
 
-error2:
-	frames[frame].count = 0;
 error1:
 	unlockreg(reg);
 error0:
