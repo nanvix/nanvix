@@ -78,28 +78,21 @@ PRIVATE struct
 	addr_t addr;    /**< Address of the page. */
 } frames[NR_FRAMES] = {{0, 0, 0, 0},  };
 
-/**
- * @brief Allocates a page frame.
- * 
- * @returns Upon success, the number of the frame is returned. Upon failure, a
- *          negative number is returned instead.
- */
-PRIVATE int allocf(void)
-{
 #if (LIVE_IMAGE != 1)
-	int i;      /* Loop index.  */
-	int oldest; /* Oldest page. */
+
+/**
+ * @brief Chooses a page to evict from memory.
+ */
+PRIVATE int evictupg(void)
+{
+	int oldest;
 	
 	#define OLDEST(x, y) (frames[x].age < frames[y].age)
 	
 	/* Search for a free frame. */
 	oldest = -1;
-	for (i = 0; i < NR_FRAMES; i++)
+	for (int i = 0; i < NR_FRAMES; i++)
 	{
-		/* Found it. */
-		if (frames[i].count == 0)
-			goto found;
-		
 		/* Local page replacement policy. */
 		if (frames[i].owner == curr_proc->pid)
 		{
@@ -113,21 +106,19 @@ PRIVATE int allocf(void)
 		}
 	}
 
-	/* No frame left. */
-	if (oldest < 0)
-		return (-1);
-	
-	/* Swap page out. */
-	if (swap_out(curr_proc, frames[i = oldest].addr))
-		return (-1);
-	
-found:		
+	return (oldest);
+}
 
-	frames[i].age = ticks;
-	frames[i].count = 1;
-	
-	return (i);
-#else
+#endif
+
+/**
+ * @brief Allocates a page frame.
+ * 
+ * @returns Upon success, the number of the frame is returned. Upon failure, a
+ *          negative number is returned instead.
+ */
+PRIVATE int allocf(void)
+{
 	int i;
 	
 	/* Search for a free frame. */
@@ -138,16 +129,33 @@ found:
 			goto found;
 	}
 
-	kprintf("no free frames left");
-	return (-1);
+#if (LIVE_IMAGE != 1)
 	
+	int oldest;
+
+	oldest = evictupg();
+	
+	/* No frame left. */
+	if (oldest < 0)
+		return (-1);
+	
+	/* Swap page out. */
+	if (swap_out(curr_proc, frames[i = oldest].addr))
+		return (-1);
+#else
+
+	kprintf("no free memory frames left");
+
+	return (-1);
+
+#endif
+
 found:		
 
 	frames[i].age = ticks;
 	frames[i].count = 1;
 	
 	return (i);
-#endif
 }
 
 
@@ -322,17 +330,14 @@ PUBLIC void freeupg(struct pte *pg)
 {
 	unsigned i;
 	
+	/* Clear swap space? */
 	if (!pg->present)
 	{
-	/* In-disk page. */
-	#if (LIVE_IMAGE != 1)
+#if (LIVE_IMAGE != 1)
 		swap_clear(pg);
 		kmemset(pg, 0, sizeof(struct pte));
+#endif
 		return;
-	/* Non-present page. */
-	#else
-		return;
-	#endif
 	}
 
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
@@ -385,11 +390,11 @@ PUBLIC void markpg(struct pte *pg, int mark)
  */
 PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 {	
-	unsigned i;
-
 	/* In-core page. */
 	if (upg1->present)
 	{
+		unsigned i;
+		
 		/* Set copy on write. */
 		if (upg1->writable)
 		{
@@ -540,9 +545,9 @@ PUBLIC int vfault(addr_t addr)
 			goto error1;
 	}
 		
+	/* Swap page in? */
 	else
 	{
-	/* Swap page in. */
 	#if (LIVE_IMAGE != 1)
 		int frame;
 
@@ -555,7 +560,7 @@ PUBLIC int vfault(addr_t addr)
 		}
 		frames[frame].addr = addr & PAGE_MASK;
 	#else
-			goto error1;
+		goto error1;
 	#endif
 	}
 	
@@ -567,6 +572,7 @@ error1:
 error0:
 	return (-1);
 }
+
 /**
  * @brief Handles a protection page fault.
  * 
