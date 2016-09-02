@@ -335,7 +335,7 @@ PUBLIC void freeupg(struct pte *pg)
 	{
 #if (LIVE_IMAGE != 1)
 		swap_clear(pg);
-		kmemset(pg, 0, sizeof(struct pte));
+		goto out;
 #endif
 		return;
 	}
@@ -349,6 +349,11 @@ PUBLIC void freeupg(struct pte *pg)
 	/* Free user page. */
 	if (--frames[i].count)
 		frames[i].owner = 0;
+
+#if (LIVE_IMAGE != 1)
+out:
+#endif
+
 	kmemset(pg, 0, sizeof(struct pte));
 	tlb_flush();
 }
