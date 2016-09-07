@@ -180,7 +180,9 @@ int     _EXFUN(setuid, (uid_t __uid ));
 #if defined(__CYGWIN__)
 void	_EXFUN(setusershell, (void));
 #endif
+#if !defined(BUILDING_KERNEL)
 unsigned _EXFUN(sleep, (unsigned int __seconds ));
+#endif
 void    _EXFUN(swab, (const void *__restrict, void *__restrict, ssize_t));
 long    _EXFUN(sysconf, (int __name ));
 pid_t   _EXFUN(tcgetpgrp, (int __fildes ));
