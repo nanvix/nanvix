@@ -46,13 +46,6 @@ size_t	 _EXFUN(strxfrm,(char *__restrict, const char *__restrict, size_t));
 #if __POSIX_VISIBLE
 char 	*_EXFUN(strtok_r,(char *__restrict, const char *__restrict, char **__restrict));
 #endif
-#if __BSD_VISIBLE
-int	 _EXFUN(bcmp,(const void *, const void *, size_t));
-void	 _EXFUN(bcopy,(const void *, void *, size_t));
-void	 _EXFUN(bzero,(void *, size_t));
-int	 _EXFUN(ffs,(int));
-char 	*_EXFUN(index,(const char *, int));
-#endif
 #if __BSD_VISIBLE || __XSI_VISIBLE
 _PTR	 _EXFUN(memccpy,(_PTR __restrict, const _PTR __restrict, int, size_t));
 #endif
