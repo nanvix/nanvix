@@ -109,9 +109,7 @@ char *	_EXFUN(_strerror_r, (struct _reent *, int, int, int *));
 size_t	_EXFUN(strlcat,(char *, const char *, size_t));
 size_t	_EXFUN(strlcpy,(char *, const char *, size_t));
 #endif
-#if __BSD_VISIBLE || __POSIX_VISIBLE
-int	_EXFUN(strncasecmp,(const char *, const char *, size_t));
-#endif
+
 #if !defined(__STRICT_ANSI__) || __POSIX_VISIBLE >= 200809 || \
     __XSI_VISIBLE >= 700
 size_t	 _EXFUN(strnlen,(const char *, size_t));
