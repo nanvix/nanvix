@@ -1,51 +1,53 @@
 /*
- * Copyright(C) 2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
- *              2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<time>>---get current calendar time (as single number)
 
-#include <nanvix/syscall.h>
+INDEX
+	time
+
+ANSI_SYNOPSIS
+	#include <time.h>
+	time_t time(time_t *<[t]>);
+
+TRAD_SYNOPSIS
+	#include <time.h>
+	time_t time(<[t]>)
+	time_t *<[t]>;
+
+DESCRIPTION
+<<time>> looks up the best available representation of the current
+time and returns it, encoded as a <<time_t>>.  It stores the same
+value at <[t]> unless the argument is <<NULL>>.
+
+RETURNS
+A <<-1>> result means the current time is not available; otherwise the
+result represents the current time.
+
+PORTABILITY
+ANSI C requires <<time>>.
+
+Supporting OS subroutine required: Some implementations require
+<<gettimeofday>>.
+*/
+
+/* Most times we have a system call in newlib/libc/sys/.. to do this job */
+
+#include <_ansi.h>
+#include <reent.h>
 #include <sys/types.h>
-#include <errno.h>
+#include <sys/time.h>
 
-/**
- * @brief Get the time elapsed since Epoch in seconds
- * 
- * @param Time structure.
- * 
- * @returns Elapsed time since Epoch in seconds.
- */
-time_t time(time_t *tloc)
+time_t
+_DEFUN (time, (t),
+	time_t * t)
 {
-	int ret;
+  struct timeval now;
 
-	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_time),
-		  "b" (tloc)
-	);
-
-	/* Error. */
-	if (ret < 0)
-	{
-		errno = -ret;
-		return (-1);
-	}
-
-	return (ret);
+  if (_gettimeofday_r (_REENT, &now, NULL) >= 0)
+    {
+      if (t)
+	*t = now.tv_sec;
+      return now.tv_sec;
+    }
+  return -1;
 }
