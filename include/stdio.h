@@ -425,8 +425,6 @@ int	_EXFUN(_putchar_unlocked_r, (struct _reent *, int));
 int	_EXFUN(_putchar_r, (struct _reent *, int));
 int	_EXFUN(_puts_r, (struct _reent *, const char *));
 int	_EXFUN(_remove_r, (struct _reent *, const char *));
-int	_EXFUN(_rename_r, (struct _reent *,
-			   const char *_old, const char *_new));
 int	_EXFUN(_scanf_r, (struct _reent *, const char *__restrict, ...)
                _ATTRIBUTE ((__format__ (__scanf__, 2, 3))));
 int	_EXFUN(_siprintf_r, (struct _reent *, char *, const char *, ...)
