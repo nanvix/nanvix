@@ -48,8 +48,10 @@
 #include <sys/types.h>
 
 _BEGIN_STD_C
-
+#ifndef FILE_T
+#define FILE_T
 typedef __FILE FILE;
+#endif
 
 #ifdef __CYGWIN__
 typedef _fpos64_t fpos_t;
