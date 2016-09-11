@@ -42,7 +42,7 @@ int _EXFUN(toascii, (int __c));
 #ifndef _MB_CAPABLE
 _CONST
 #endif
-extern	__IMPORT char	*__ctype_ptr__;
+__IMPORT char	*__ctype_ptr__;
 
 #ifndef __cplusplus
 /* These macros are intentionally written in a manner that will trigger
