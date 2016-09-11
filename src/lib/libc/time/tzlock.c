@@ -35,8 +35,14 @@ until the corresponding <<__tz_unlock>> call on the same thread is made.
 #include "local.h"
 #include <sys/lock.h>
 
+#ifdef __GNUC__
+#define UNUSED_VAR __attribute__ ((unused))
+#else
+#define UNUSED_VAR
+#endif
+
 #ifndef __SINGLE_THREAD__
-__LOCK_INIT(static, __tz_lock_object);
+UNUSED_VAR __LOCK_INIT(static, __tz_lock_object)
 #endif
 
 _VOID
