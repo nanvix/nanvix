@@ -285,7 +285,7 @@ the "C" locale settings.
 #  define CHAR		char		/* string type basis */
 #  define CQ(a)		a		/* character constant qualifier */
 #  define SFLG				/* %s flag (null for normal char) */
-#  define _ctloc(x) (ctloclen = strlen (ctloc = _CurrentTimeLocale->x), ctloc)
+#  define _ctloc(x) (ctloclen = strlen (ctloc = _CurrentTimeLocale->x))
 #  define snprintf	sniprintf	/* avoid to pull in FP functions. */
 #  define TOLOWER(c)	tolower((int)(unsigned char)(c))
 #  define STRTOUL(c,p,b) strtoul((c),(p),(b))
@@ -1097,7 +1097,7 @@ recurse:
 	  for (i = 0; i < ctloclen; i++)
 	    {
 	      if (count < maxsize - 1)
-		s[count++] = (*format == CQ('P') ? TOLOWER (ctloc[i])
+		s[count++] = (*format == CQ('P') ? (char)(TOLOWER (ctloc[i]))
 						 : ctloc[i]);
 	      else
 		return 0;
