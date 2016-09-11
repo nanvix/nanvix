@@ -58,6 +58,7 @@ __ctype_load_locale(const char *name, void *f_wctomb, const char *charset,
 		    int mb_cur_max)
 {
 	int ret;
+	((void)f_wctomb);
 
 #ifdef __CYGWIN__
 	extern int __set_lc_ctype_from_win (const char *,

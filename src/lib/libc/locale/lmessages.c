@@ -60,6 +60,8 @@ static char	*_messages_locale_buf;
 int
 __messages_load_locale (const char *name, void *f_wctomb, const char *charset)
 {
+	((void)f_wctomb);
+	((void)charset);
 #ifdef __CYGWIN__
 	extern int __set_lc_messages_from_win (const char *,
 					       const struct lc_messages_T *,

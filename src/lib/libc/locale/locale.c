@@ -278,6 +278,8 @@ _DEFUN(_setlocale_r, (p, category, locale),
        int category _AND
        _CONST char *locale)
 {
+  ((void)p);
+  ((void)category);
 #ifndef _MB_CAPABLE
   if (locale)
     { 
@@ -972,6 +974,7 @@ struct lconv *
 _DEFUN(_localeconv_r, (data), 
       struct _reent *data)
 {
+  ((void)data);
 #ifdef __HAVE_LOCALE_INFO__
   if (__nlocale_changed)
     {

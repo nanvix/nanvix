@@ -160,6 +160,8 @@ int
 __time_load_locale(const char *name, void *f_wctomb, const char *charset) {
 
 	int	ret;
+	((void)f_wctomb);
+	((void)charset);
 
 #ifdef __CYGWIN__
 	extern int __set_lc_time_from_win (const char *,
