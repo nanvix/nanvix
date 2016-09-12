@@ -30,6 +30,7 @@
 */
 
 #include <newlib.h>
+typedef int avoids_empty_translation_unit;
 
 #ifdef _MB_CAPABLE
 /* Under Cygwin, the incoming wide character is already given in UTF due
