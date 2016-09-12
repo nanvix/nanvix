@@ -105,8 +105,6 @@ __IMPORT char	*__ctype_ptr__;
 #define toascii(__c)	((__c)&0177)
 #endif
 
-/* For C++ backward-compatibility only.  */
-extern	__IMPORT _CONST char	_ctype_[];
 
 _END_STD_C
 
