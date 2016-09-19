@@ -1,101 +1,121 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
- 
-/*
- * Copyright (c) 1990 The Regents of the University of California.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *	This product includes software developed by the University of
- *	California, Berkeley and its contributors.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
+FUNCTION
+	<<strstr>>---find string segment
 
-/**
- * @file
- * 
- * @brief strstr() implementation.
- */
- 
-#include <stdlib.h>
+INDEX
+	strstr
 
-/**
- * @brief Finds a substring.
- * 
- * @param s1 Pointer to string to search.
- * @param s2 Pointer to substring to search for.
- * 
- * @returns A pointer to the located string or a null pointer if the string is
- *          not found. If @p s2 points to a string with zero length, the
- *          function returns @p s1.
- * 
- * @version IEEE Std 1003.1, 2013 Edition
- */
-char *strstr(const char *s1, const char *s2)
+ANSI_SYNOPSIS
+	#include <string.h>
+	char *strstr(const char *<[s1]>, const char *<[s2]>);
+
+TRAD_SYNOPSIS
+	#include <string.h>
+	char *strstr(<[s1]>, <[s2]>)
+	char *<[s1]>;
+	char *<[s2]>;
+
+DESCRIPTION
+	Locates the first occurrence in the string pointed to by <[s1]> of
+	the sequence of characters in the string pointed to by <[s2]>
+	(excluding the terminating null character).
+
+RETURNS
+	Returns a pointer to the located string segment, or a null
+	pointer if the string <[s2]> is not found. If <[s2]> points to
+	a string with zero length, <[s1]> is returned.
+
+PORTABILITY
+<<strstr>> is ANSI C.
+
+<<strstr>> requires no supporting OS subroutines.
+
+QUICKREF
+	strstr ansi pure
+*/
+
+#include <string.h>
+
+#if !defined(PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__)
+# define RETURN_TYPE char *
+# define AVAILABLE(h, h_l, j, n_l)			\
+  (!memchr ((h) + (h_l), '\0', (j) + (n_l) - (h_l))	\
+   && ((h_l) = (j) + (n_l)))
+# include "str-two-way.h"
+#endif
+
+char *
+_DEFUN (strstr, (searchee, lookfor),
+	_CONST char *searchee _AND
+	_CONST char *lookfor)
 {
-	if (*s1 == '\0')
+#if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
+
+  /* Less code size, but quadratic performance in the worst case.  */
+  if (*searchee == 0)
+    {
+      if (*lookfor)
+	return (char *) NULL;
+      return (char *) searchee;
+    }
+
+  while (*searchee)
+    {
+      size_t i;
+      i = 0;
+
+      while (1)
 	{
-		if (*s2 != '\0')
-			return ((char *) NULL);
-		return ((char *) s1);
+	  if (lookfor[i] == 0)
+	    {
+	      return (char *) searchee;
+	    }
+
+	  if (lookfor[i] != searchee[i])
+	    {
+	      break;
+	    }
+	  i++;
 	}
+      searchee++;
+    }
 
-	while (*s1 != '\0')
-	{
-		size_t i;
-		
-		i = 0;
+  return (char *) NULL;
 
-		while (1)
-		{
-			if (s2[i] == '\0')
-				return ((char *) s1);
+#else /* compilation for speed */
 
-			if (s2[i] != s1[i])
-				break;
-			i++;
-		}
-		s1++;
-	}
+  /* Larger code size, but guaranteed linear performance.  */
+  const char *haystack = searchee;
+  const char *needle = lookfor;
+  size_t needle_len; /* Length of NEEDLE.  */
+  size_t haystack_len; /* Known minimum length of HAYSTACK.  */
+  int ok = 1; /* True if NEEDLE is prefix of HAYSTACK.  */
 
-	return ((char *) NULL);
+  /* Determine length of NEEDLE, and in the process, make sure
+     HAYSTACK is at least as long (no point processing all of a long
+     NEEDLE if HAYSTACK is too short).  */
+  while (*haystack && *needle)
+    ok &= *haystack++ == *needle++;
+  if (*needle)
+    return NULL;
+  if (ok)
+    return (char *) searchee;
+
+  /* Reduce the size of haystack using strchr, since it has a smaller
+     linear coefficient than the Two-Way algorithm.  */
+  needle_len = needle - lookfor;
+  haystack = strchr (searchee + 1, *lookfor);
+  if (!haystack || needle_len == 1)
+    return (char *) haystack;
+  haystack_len = (haystack > searchee + needle_len ? 1
+		  : needle_len + searchee - haystack);
+
+  /* Perform the search.  */
+  if (needle_len < LONG_NEEDLE_THRESHOLD)
+    return two_way_short_needle ((const unsigned char *) haystack,
+				 haystack_len,
+				 (const unsigned char *) lookfor, needle_len);
+  return two_way_long_needle ((const unsigned char *) haystack, haystack_len,
+			      (const unsigned char *) lookfor, needle_len);
+#endif /* compilation for speed */
 }

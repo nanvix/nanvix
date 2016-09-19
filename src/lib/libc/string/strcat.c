@@ -1,51 +1,104 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+	<<strcat>>---concatenate strings
 
-/**
- * @file
- * 
- * @brief strcat() implementation.
- */
+INDEX
+	strcat
 
-#include <sys/types.h>
+ANSI_SYNOPSIS
+	#include <string.h>
+	char *strcat(char *restrict <[dst]>, const char *restrict <[src]>);
 
-/**
- * @brief Concatenates two strings.
- * 
- * @param s1 Pointer to target string.
- * @param s2 Pointer to source string.
- * 
- * @returns @p s1 is returned.
- * 
- * @version IEEE Std 1003.1, 2013 Edition
- */
-char *strcat(char *restrict s1, const char *restrict s2)
+TRAD_SYNOPSIS
+	#include <string.h>
+	char *strcat(<[dst]>, <[src]>)
+	char *<[dst]>;
+	char *<[src]>;
+
+DESCRIPTION
+	<<strcat>> appends a copy of the string pointed to by <[src]>
+	(including the terminating null character) to the end of the
+	string pointed to by <[dst]>.  The initial character of
+	<[src]> overwrites the null character at the end of <[dst]>.
+
+RETURNS
+	This function returns the initial value of <[dst]>
+
+PORTABILITY
+<<strcat>> is ANSI C.
+
+<<strcat>> requires no supporting OS subroutines.
+
+QUICKREF
+	strcat ansi pure
+*/
+
+#include <string.h>
+#include <limits.h>
+
+/* Nonzero if X is aligned on a "long" boundary.  */
+#define ALIGNED(X) \
+  (((long)X & (sizeof (long) - 1)) == 0)
+
+#if LONG_MAX == 2147483647L
+#define DETECTNULL(X) (((X) - 0x01010101) & ~(X) & 0x80808080)
+#else
+#if LONG_MAX == 9223372036854775807L
+/* Nonzero if X (a long int) contains a NULL byte. */
+#define DETECTNULL(X) (((X) - 0x0101010101010101) & ~(X) & 0x8080808080808080)
+#else
+#error long int is not a 32bit or 64bit type.
+#endif
+#endif
+
+#ifndef DETECTNULL
+#error long int is not a 32bit or 64bit byte
+#endif
+
+
+/*SUPPRESS 560*/
+/*SUPPRESS 530*/
+
+char *
+_DEFUN (strcat, (s1, s2),
+	char *__restrict s1 _AND
+	_CONST char *__restrict s2)
 {
-	char *save = s1;
+#if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
+  char *s = s1;
 
-	/* Eat target string. */
-	for (; *s1; s1++)
-		/* noop*/ ;
+  while (*s1)
+    s1++;
+
+  while (*s1++ = *s2++)
+    ;
+  return s;
+#else
+  char *s = s1;
+
+
+  /* Skip over the data in s1 as quickly as possible.  */
+  if (ALIGNED (s1))
+    {
+      unsigned long *aligned_s1 = (unsigned long *)s1;
+      while (!DETECTNULL (*aligned_s1))
+	aligned_s1++;
+
+      s1 = (char *)aligned_s1;
+    }
+
+  while (*s1)
+    s1++;
+
+  /* s1 now points to the its trailing null character, we can
+     just use strcpy to do the work for us now.
+
+     ?!? We might want to just include strcpy here.
+     Also, this will cause many more unaligned string copies because
+     s1 is much less likely to be aligned.  I don't know if its worth
+     tweaking strcpy to handle this better.  */
+  strcpy (s1, s2);
 	
-	/* Concatenate strings. */
-	while ((*s1++ = *s2++) != '\0')
-		/* noop */;
-		
-	return(save);
+  return s;
+#endif /* not PREFER_SIZE_OVER_SPEED */
 }
