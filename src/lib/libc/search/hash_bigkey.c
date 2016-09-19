@@ -150,7 +150,7 @@ __big_insert(hashp, bufp, key, val)
 		 * Here's the hack to make sure that if the data ends on the
 		 * same page as the key ends, FREESPACE is at least one.
 		 */
-		if (space == val_size && val_size == val->size)
+		if (space == val_size && val_size == (int)val->size)
 			move_bytes--;
 		off = OFFSET(p) - move_bytes;
 		memmove(cp + off, val_data, move_bytes);
@@ -434,7 +434,7 @@ __big_return(hashp, bufp, ndx, val, set_current)
 		}
 
 	val->size = collect_data(hashp, bufp, (int)len, set_current);
-	if (val->size == -1)
+	if ((int)val->size == -1)
 		return (-1);
 	if (save_p->addr != save_addr) {
 		/* We are pretty short on buffers. */
@@ -513,7 +513,7 @@ __big_keydata(hashp, bufp, key, val, set)
 	int set;
 {
 	key->size = collect_key(hashp, bufp, 0, val, set);
-	if (key->size == -1)
+	if ((int)key->size == -1)
 		return (-1);
 	key->data = (u_char *)hashp->tmp_key;
 	return (0);

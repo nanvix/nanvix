@@ -145,11 +145,9 @@ _DEFUN(med3, (a, b, c, cmp, thunk),
 	char *c _AND
 	cmp_t *cmp _AND
 	void *thunk
-#if !defined(I_AM_QSORT_R) && !defined(I_AM_GNU_QSORT_R)
-__unused
-#endif
 )
 {
+	((void)thunk);
 	return CMP(thunk, a, b) < 0 ?
 	       (CMP(thunk, b, c) < 0 ? b : (CMP(thunk, a, c) < 0 ? c : a ))
               :(CMP(thunk, b, c) > 0 ? b : (CMP(thunk, a, c) < 0 ? a : c ));
@@ -246,7 +244,7 @@ loop:	SWAPINIT(a, es);
 	pn = (char *) a + n * es;
 	r = min(pa - (char *)a, pb - pa);
 	vecswap(a, pb - r, r);
-	r = min(pd - pc, pn - pd - es);
+	r = min((size_t)(pd - pc), (size_t)(pn - pd - es));
 	vecswap(pb, pn - r, r);
 	if ((r = pb - pa) > es)
 #if defined(I_AM_QSORT_R)
