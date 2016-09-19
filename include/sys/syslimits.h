@@ -37,19 +37,14 @@
 #ifndef _SYS_SYSLIMITS_H_
 #define _SYS_SYSLIMITS_H_
 
-#define	ARG_MAX			65536	/* max bytes for an exec function */
+#include <limits.h>
+
 #ifndef CHILD_MAX
 #define	CHILD_MAX		   40	/* max simultaneous processes */
 #endif
-#define	LINK_MAX		32767	/* max file link count */
 #define	MAX_CANON		  255	/* max bytes in term canon input line */
 #define	MAX_INPUT		  255	/* max bytes in terminal input */
-#define	NAME_MAX		  255	/* max bytes in a file name */
 #define	NGROUPS_MAX		   16	/* max supplemental group id's */
-#ifndef OPEN_MAX
-#define	OPEN_MAX		   64	/* max open files per process */
-#endif
-#define	PATH_MAX		 1024	/* max bytes in pathname */
 #define	PIPE_BUF		  512	/* max bytes for atomic pipe writes */
 #define	IOV_MAX			 1024	/* max elements in i/o vector */
 
