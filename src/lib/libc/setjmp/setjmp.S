@@ -24,12 +24,12 @@
 
        #include "i386mach.h"
 
-        .global SYM (setjmp)
-        .global SYM (longjmp)
+        .global setjmp
+        .global longjmp
        SOTYPE_FUNCTION(setjmp)
        SOTYPE_FUNCTION(longjmp)
  
-SYM (setjmp):
+setjmp:
 
 	pushl	ebp
 	movl	esp,ebp
@@ -61,7 +61,7 @@ SYM (setjmp):
 	leave
 	ret
 
-SYM (longjmp):
+longjmp:
 	pushl	ebp
 	movl	esp,ebp
 
