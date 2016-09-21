@@ -55,6 +55,7 @@ _DEFUN (_times_r, (ptr, ptms),
      struct _reent *ptr _AND
      struct tms *ptms)
 {
+  ((void)ptr);
   clock_t ret;
 
   ret = _times (ptms);

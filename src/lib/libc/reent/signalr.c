@@ -55,6 +55,7 @@ _DEFUN (_kill_r, (ptr, pid, sig),
      int pid _AND
      int sig)
 {
+  ((void)ptr);	
   int ret;
 
   errno = 0;
@@ -92,6 +93,7 @@ int
 _DEFUN (_getpid_r, (ptr),
      struct _reent *ptr)
 {
+  ((void)ptr);	
   int ret;
   ret = _getpid ();
   return ret;
