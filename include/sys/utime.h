@@ -15,6 +15,11 @@ struct utimbuf
   time_t modtime; 
 };
 
+/*
+ * Set file access and modification times
+ */
+extern int utime(const char *path, struct utimbuf *times);
+
 #ifdef __cplusplus
 };
 #endif
