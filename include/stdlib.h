@@ -82,7 +82,7 @@ _PTR	_EXFUN(bsearch,(const _PTR __key,
 		       __compar_fn_t _compar));
 _PTR	_EXFUN_NOTHROW(calloc,(size_t __nmemb, size_t __size));
 div_t	_EXFUN(div,(int __numer, int __denom));
-_VOID	_EXFUN(exit,(int __status) _ATTRIBUTE ((__noreturn__)));
+_VOID	_EXFUN(exit,(int __status));
 _VOID	_EXFUN_NOTHROW(free,(_PTR));
 char *  _EXFUN(getenv,(const char *__string));
 char *	_EXFUN(_getenv_r,(struct _reent *, const char *__string));
@@ -158,7 +158,7 @@ int	_EXFUN(on_exit,(_VOID (*__func)(int, _PTR),_PTR __arg));
 #if !defined(__STRICT_ANSI__) || \
   (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) || \
   (defined(__cplusplus) && __cplusplus >= 201103L)
-_VOID	_EXFUN(_Exit,(int __status) _ATTRIBUTE ((__noreturn__)));
+_VOID	_EXFUN(_Exit,(int __status));
 #endif
 #ifndef __STRICT_ANSI__
 int	_EXFUN(putenv,(char *__string));
