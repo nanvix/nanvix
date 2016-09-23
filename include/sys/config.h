@@ -252,13 +252,13 @@
    for read()/write() is "ssize_t" but legacy newlib code has been using
    "int" for some time.  If not specified, "int" is defaulted.  */
 #ifndef _READ_WRITE_RETURN_TYPE
-#define _READ_WRITE_RETURN_TYPE int
+#define _READ_WRITE_RETURN_TYPE _ssize_t
 #endif
 /* Define `count' parameter of read/write routines.  In POSIX, the `count'
    parameter is "size_t" but legacy newlib code has been using "int" for some
    time.  If not specified, "int" is defaulted.  */
 #ifndef _READ_WRITE_BUFSIZE_TYPE
-#define _READ_WRITE_BUFSIZE_TYPE int
+#define _READ_WRITE_BUFSIZE_TYPE _ssize_t
 #endif
 
 #ifndef __WCHAR_MAX__
