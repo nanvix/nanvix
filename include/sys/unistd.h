@@ -154,6 +154,7 @@ int     _EXFUN(rmdir, (const char *__path ));
 int	_EXFUN(ruserok, (const char *rhost, int superuser, const char *ruser, const char *luser));
 #endif
 void *  _EXFUN(sbrk,  (ptrdiff_t __incr));
+int     _EXFUN(brk, (void *ptr));
 #if !defined(__INSIDE_CYGWIN__)
 #if defined(__CYGWIN__) || defined(__rtems__)
 int     _EXFUN(setegid, (gid_t __gid ));
