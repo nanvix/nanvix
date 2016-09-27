@@ -34,36 +34,28 @@ struct mallinfo {
 
 /* The routines.  */
 
-extern _PTR malloc _PARAMS ((size_t));
 #ifdef __CYGWIN__
 #undef _malloc_r
 #define _malloc_r(r, s) malloc (s)
 #else
-extern _PTR _malloc_r _PARAMS ((struct _reent *, size_t));
 #endif
 
-extern _VOID free _PARAMS ((_PTR));
 #ifdef __CYGWIN__
 #undef _free_r
 #define _free_r(r, p) free (p)
 #else
-extern _VOID _free_r _PARAMS ((struct _reent *, _PTR));
 #endif
 
-extern _PTR realloc _PARAMS ((_PTR, size_t));
 #ifdef __CYGWIN__
 #undef _realloc_r
 #define _realloc_r(r, p, s) realloc (p, s)
 #else
-extern _PTR _realloc_r _PARAMS ((struct _reent *, _PTR, size_t));
 #endif
 
-extern _PTR calloc _PARAMS ((size_t, size_t));
 #ifdef __CYGWIN__
 #undef _calloc_r
 #define _calloc_r(r, s1, s2) calloc (s1, s2);
 #else
-extern _PTR _calloc_r _PARAMS ((struct _reent *, size_t, size_t));
 #endif
 
 extern _PTR memalign _PARAMS ((size_t, size_t));
@@ -140,7 +132,6 @@ extern _VOID mstats _PARAMS ((char *));
 #undef _mstats_r
 #define _mstats_r(r, p) mstats (p)
 #else
-extern _VOID _mstats_r _PARAMS ((struct _reent *, char *));
 #endif
 
 /* SVID2/XPG mallopt options */
@@ -159,7 +150,6 @@ extern _VOID _mstats_r _PARAMS ((struct _reent *, char *));
 
 #ifndef __CYGWIN__
 /* Some systems provide this, so do too for compatibility.  */
-extern void cfree _PARAMS ((_PTR));
 #endif /* __CYGWIN__ */
 
 #ifdef __cplusplus
