@@ -240,7 +240,7 @@ int _dummy_mallocr = 1;
 
 /* Just to avoid passing flags in gcc. */
 #define INTERNAL_NEWLIB
-#define DEFINE_MALLOC
+#define DEFINE_CFREE
 
 /* Preliminaries */
 
