@@ -8,10 +8,13 @@
 #include <sys/lock.h>
 #include "atexit.h"
 
-/* Make this a weak reference to avoid pulling in free.  */
-void free(void *) _ATTRIBUTE((__weak__));
+#ifdef __GNUC__
+#define UNUSED_VAR __attribute__ ((unused))
+#else
+#define UNUSED_VAR
+#endif
 
-__LOCK_INIT_RECURSIVE(, __atexit_lock);
+UNUSED_VAR __LOCK_INIT_RECURSIVE(, __atexit_lock)
 
 #ifdef _REENT_GLOBAL_ATEXIT
 struct _atexit *_global_atexit = _NULL;
