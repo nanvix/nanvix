@@ -36,6 +36,9 @@ _DEFUN (__ascii_mbtowc, (r, pwc, s, n, charset, state),
 	const char    *charset _AND
         mbstate_t      *state)
 {
+  ((void)r);
+  ((void)charset);
+  ((void)state);
   wchar_t dummy;
   unsigned char *t = (unsigned char *)s;
 

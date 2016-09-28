@@ -70,6 +70,7 @@ _DEFUN(_system_r, (ptr, s),
      struct _reent *ptr _AND
      _CONST char *s)
 {
+  ((void)ptr);
 #if defined(HAVE_SYSTEM)
   return _system (s);
   ptr = ptr;

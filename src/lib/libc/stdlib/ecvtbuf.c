@@ -84,6 +84,7 @@ _DEFUN (print_f, (ptr, buf, invalue, ndigit, type, dot, mode),
 	int dot _AND
 	int mode)
 {
+  ((void)type);
   int decpt;
   int sign;
   char *p, *start, *end;
@@ -451,6 +452,7 @@ _DEFUN (_dcvt, (ptr, buffer, invalue, precision, width, type, dot),
 	char type _AND
 	int dot)
 {
+  ((void)width);
   switch (type)
     {
     case 'f':

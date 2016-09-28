@@ -38,14 +38,21 @@ that it already holds.
 #include "envlock.h"
 #include <sys/lock.h>
 
+#ifdef __GNUC__
+#define UNUSED_VAR __attribute__ ((unused))
+#else
+#define UNUSED_VAR
+#endif
+
 #ifndef __SINGLE_THREAD__
-__LOCK_INIT_RECURSIVE(static, __env_lock_object);
+UNUSED_VAR __LOCK_INIT_RECURSIVE(static, __env_lock_object)
 #endif
 
 void
 __env_lock (ptr)
      struct _reent *ptr;
 {
+	((void)ptr);
 #ifndef __SINGLE_THREAD__
   __lock_acquire_recursive (__env_lock_object);
 #endif
@@ -55,6 +62,7 @@ void
 __env_unlock (ptr)
      struct _reent *ptr;
 {
+	((void)ptr);
 #ifndef __SINGLE_THREAD__
   __lock_release_recursive (__env_lock_object);
 #endif
