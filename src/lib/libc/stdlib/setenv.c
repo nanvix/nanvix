@@ -23,7 +23,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern int _unsetenv_r _PARAMS ((struct _reent *, const char *));
 
 /*
  * setenv --

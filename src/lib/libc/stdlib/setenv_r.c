@@ -37,8 +37,6 @@ extern char **environ;
    'environ'.  */
 static char ***p_environ = &environ;
 
-/* _findenv_r is defined in getenv_r.c.  */
-extern char *_findenv_r _PARAMS ((struct _reent *, const char *, int *));
 
 /*
  * _setenv_r --
@@ -75,7 +73,7 @@ _DEFUN (_setenv_r, (reent_ptr, name, value, rewrite),
           ENV_UNLOCK;
 	  return 0;
         }
-      if (strlen (C) >= l_value)
+      if (strlen (C) >= (size_t)l_value)
 	{			/* old larger; copy over */
 	  while ((*C++ = *value++) != 0);
           ENV_UNLOCK;
