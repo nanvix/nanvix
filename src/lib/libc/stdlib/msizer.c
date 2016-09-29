@@ -3391,6 +3391,7 @@ size_t malloc_usable_size(RARG Void_t* mem)
 size_t malloc_usable_size(RARG mem) RDECL Void_t* mem;
 #endif
 {
+  ((void)reent_ptr);
   mchunkptr p;
   if (mem == 0)
     return 0;

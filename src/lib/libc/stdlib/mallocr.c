@@ -2153,8 +2153,8 @@ static void malloc_extend_top(RARG nb) RDECL INTERNAL_SIZE_T nb;
   INTERNAL_SIZE_T old_top_size = chunksize(old_top);
   char*     old_end      = (char*)(chunk_at_offset(old_top, old_top_size));
 
+  ((void)correction_failed);
   /* Pad request with top_pad plus minimal overhead */
-  
   INTERNAL_SIZE_T    sbrk_size     = nb + top_pad + MINSIZE;
   unsigned long pagesz    = malloc_getpagesize;
 

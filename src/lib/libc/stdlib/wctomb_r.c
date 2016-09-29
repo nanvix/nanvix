@@ -33,6 +33,8 @@ _DEFUN (__ascii_wctomb, (r, s, wchar, charset, state),
 	const char    *charset _AND
         mbstate_t     *state)
 {
+  ((void)charset);
+  ((void)state);
   /* Avoids compiler warnings about comparisons that are always false
      due to limited range when sizeof(wchar_t) is 2 but sizeof(wint_t)
      is 4, as is the case on cygwin.  */
