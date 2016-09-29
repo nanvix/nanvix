@@ -34,12 +34,12 @@ _DEFUN (_wcstombs_r, (reent, s, pwcs, n, state),
           bytes = __wctomb (r, buff, *pwcs, __locale_charset (), state);
           if (bytes == -1)
             return -1;
-          num_to_copy = (n > bytes ? bytes : (int)n);
+          num_to_copy = (n > (size_t)bytes ? bytes : (int)n);
           for (i = 0; i < num_to_copy; ++i)
             *ptr++ = buff[i];
           
           if (*pwcs == 0x00)
-            return ptr - s - (n >= bytes);
+            return ptr - s - (n >= (size_t)bytes);
           ++pwcs;
           n -= num_to_copy;
         }

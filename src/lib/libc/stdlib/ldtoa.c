@@ -2842,7 +2842,7 @@ else /* account for sign + max precision digs + E + exp sign + exponent */
   i = orig_ndigits + MAX_EXP_DIGITS + 4;
 
 j = sizeof (__ULong);
-for (_REENT_MP_RESULT_K(ptr) = 0; sizeof (_Bigint) - sizeof (__ULong) + j <= i; j <<= 1)
+for (_REENT_MP_RESULT_K(ptr) = 0; sizeof (_Bigint) - sizeof (__ULong) + j <= (size_t)i; j <<= 1)
   _REENT_MP_RESULT_K(ptr)++;
 _REENT_MP_RESULT(ptr) = Balloc (ptr, _REENT_MP_RESULT_K(ptr));
 

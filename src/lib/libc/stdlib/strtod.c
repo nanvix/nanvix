@@ -999,8 +999,8 @@ _DEFUN (_strtod_r, (ptr, s00, se),
 #ifdef Avoid_Underflow
 				if (scale) {
 					L = dword0(rv) & Exp_mask;
-					if (L <= (2*P+1)*Exp_msk1) {
-						if (L > (P+2)*Exp_msk1)
+					if ((size_t)L <= (2*P+1)*Exp_msk1) {
+						if ((size_t)L > (P+2)*Exp_msk1)
 							/* round even ==> */
 							/* accept rv */
 							break;
