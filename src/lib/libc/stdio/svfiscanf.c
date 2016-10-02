@@ -403,7 +403,7 @@ _DEFUN(_sfread_r, (ptr, buf, size, count, fp),
   total = resid;
   p = buf;
 
-  while (resid > (r = fp->_r))
+  while (resid > (size_t)(r = fp->_r))
     {
       _CAST_VOID memcpy ((_PTR) p, (_PTR) fp->_p, (size_t) r);
       fp->_p += r;
@@ -477,7 +477,7 @@ _DEFUN(__SVFSCANF_R, (rptr, fp, fmt0, ap),
 #ifndef _NO_LONGLONG
   long long *llp;
 #endif
-
+  ((void)cp);
   /* `basefix' is used to avoid `if' tests in the integer scanner */
   static _CONST short basefix[17] =
     {10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};

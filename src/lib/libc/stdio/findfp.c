@@ -83,6 +83,7 @@ _DEFUN(std, (ptr, flags, file, data),
   if (__stextmode (ptr->_file))
     ptr->_flags |= __SCLE;
 #endif
+  ((void)data);
 }
 
 struct glue_with_file {
@@ -261,8 +262,14 @@ _DEFUN(__sinit, (s),
 
 #ifndef __SINGLE_THREAD__
 
-__LOCK_INIT_RECURSIVE(static, __sfp_lock);
-__LOCK_INIT_RECURSIVE(static, __sinit_lock);
+#ifdef __GNUC__
+#define UNUSED_VAR __attribute__ ((unused))
+#else
+#define UNUSED_VAR
+#endif
+
+UNUSED_VAR __LOCK_INIT_RECURSIVE(static, __sfp_lock)
+UNUSED_VAR __LOCK_INIT_RECURSIVE(static, __sinit_lock)
 
 _VOID
 _DEFUN_VOID(__sfp_lock_acquire)

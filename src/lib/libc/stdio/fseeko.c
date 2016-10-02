@@ -134,6 +134,10 @@ _DEFUN(_fseeko_r, (ptr, fp, offset, whence),
 #endif
   int havepos;
 
+  ((void)havepos);
+  ((void)st);
+  ((void)n);
+  ((void)target);
   /* Make sure stdio is set up.  */
 
   CHECK_INIT (ptr, fp);
@@ -354,7 +358,9 @@ _DEFUN(_fseeko_r, (ptr, fp, offset, whence),
    */
 #endif
 
+#ifdef _FSEEK_OPTIMIZATION
 dumb:
+#endif
   if (_fflush_r (ptr, fp)
       || seekfn (ptr, fp->_cookie, offset, whence) == POS_ERR)
     {
