@@ -149,7 +149,6 @@ SEEALSO
 # undef _NO_LONGLONG
 #endif
 
-int _EXFUN(_VFWPRINTF_R, (struct _reent *, FILE *, _CONST wchar_t *, va_list));
 /* Defined in vfprintf.c. */
 #ifdef _FVWRITE_IN_STREAMIO
 # ifdef STRING_ONLY
@@ -228,8 +227,6 @@ _DEFUN(__sbwprintf, (rptr, fp, fmt, ap),
 
 # ifdef _NO_LONGDBL
 
-extern char *_dtoa_r _PARAMS((struct _reent *, double, int,
-			      int, int *, int *, char **));
 
 #  define _PRINTF_FLOAT_TYPE double
 #  define _DTOA_R _dtoa_r
@@ -445,7 +442,7 @@ _DEFUN(_VFWPRINTF_R, (data, fp, fmt0, ap),
 	wchar_t buf[BUF];	/* space for %c, %ls/%S, %[diouxX], %[aA] */
 	wchar_t ox[2];		/* space for 0x hex-prefix */
 	wchar_t *malloc_buf = NULL;/* handy pointer for malloced buffers */
-
+	((void)fmt_anchor);
 	/*
 	 * Choose PADSIZE to trade efficiency vs. size.  If larger printf
 	 * fields occur frequently, increase PADSIZE and make the initialisers
@@ -1256,7 +1253,7 @@ string:
 					cp = malloc_buf;
 				} else
 					cp = buf;
-				for (size = 0; size < insize; ++size)
+				for (size = 0; size < (int)insize; ++size)
 					cp[size] = arg[size];
 				cp[size] = L'\0';
 			}

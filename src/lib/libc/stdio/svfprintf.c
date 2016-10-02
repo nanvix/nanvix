@@ -513,8 +513,6 @@ _DEFUN(__sbprintf, (rptr, fp, fmt, ap),
 
 # ifdef _NO_LONGDBL
 
-extern char *_dtoa_r _PARAMS((struct _reent *, double, int,
-			      int, int *, int *, char **));
 
 #  define _PRINTF_FLOAT_TYPE double
 #  define _DTOA_R _dtoa_r
@@ -647,7 +645,6 @@ _EXFUN(get_arg, (struct _reent *data, int n, char *fmt,
 # define GROUPING	0x400		/* use grouping ("'" flag) */
 #endif
 
-int _EXFUN(_VFPRINTF_R, (struct _reent *, FILE *, _CONST char *, va_list));
 
 #ifndef STRING_ONLY
 int
@@ -732,7 +729,7 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 	mbstate_t state;        /* mbtowc calls from library must not change state */
 #endif
 	char *malloc_buf = NULL;/* handy pointer for malloced buffers */
-
+	((void)fmt_anchor);
 	/*
 	 * Choose PADSIZE to trade efficiency vs. size.  If larger printf
 	 * fields occur frequently, increase PADSIZE and make the initialisers
@@ -1831,7 +1828,7 @@ cvt(struct _reent *data, _PRINTF_FLOAT_TYPE value, int ndigits, int flags,
 	} else
 		*sign = '\000';
 # endif /* !_NO_LONGDBL */
-
+	((void)buf);
 # ifdef _WANT_IO_C99_FORMATS
 	if (ch == 'a' || ch == 'A') {
 		/* This code assumes FLT_RADIX is a power of 2.  The initial

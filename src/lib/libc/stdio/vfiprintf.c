@@ -393,7 +393,7 @@ _DEFUN(__sfputs_r, (ptr, fp, buf, len),
 #else
 	{
 #endif
-		for (i = 0; i < len; i++) {
+		for (i = 0; i < (int)len; i++) {
 			if (_fputc_r (ptr, buf[i], fp) == EOF)
 				return -1;
 		}
@@ -438,7 +438,9 @@ _DEFUN(__sprint_r, (ptr, fp, uio),
 	} else
 #endif
 		err = __sfvwrite_r(ptr, fp, uio);
+#ifdef _WIDE_ORIENT
 out:
+#endif
 	uio->uio_resid = 0;
 	uio->uio_iovcnt = 0;
 	return (err);
@@ -647,7 +649,6 @@ _EXFUN(get_arg, (struct _reent *data, int n, char *fmt,
 # define GROUPING	0x400		/* use grouping ("'" flag) */
 #endif
 
-int _EXFUN(_VFPRINTF_R, (struct _reent *, FILE *, _CONST char *, va_list));
 
 #ifndef STRING_ONLY
 int
@@ -733,6 +734,7 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 #endif
 	char *malloc_buf = NULL;/* handy pointer for malloced buffers */
 
+	((void)fmt_anchor);
 	/*
 	 * Choose PADSIZE to trade efficiency vs. size.  If larger printf
 	 * fields occur frequently, increase PADSIZE and make the initialisers

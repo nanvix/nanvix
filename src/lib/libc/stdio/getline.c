@@ -41,7 +41,6 @@ No supporting OS subroutines are directly required.
 #include <_ansi.h>
 #include <stdio.h>
 
-extern ssize_t _EXFUN(__getdelim, (char **, size_t *, int, FILE *));
 
 ssize_t
 _DEFUN(__getline, (lptr, n, fp),
