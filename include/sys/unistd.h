@@ -49,7 +49,13 @@ int     _EXFUN(execlp, (const char *__file, const char *, ... ));
 #if defined(__CYGWIN__)
 int     _EXFUN(execlpe, (const char *__file, const char *, ... ));
 #endif
-int     _EXFUN(execv, (const char *__path, char * const __argv[] ));
+
+/*
+ * Executes a program.
+ */
+#define execv(path, argv) \
+	execve(path, argv, (char *const*)environ);
+
 int     _EXFUN(execve, (const char *__path, char * const __argv[], char * const __envp[] ));
 int     _EXFUN(execvp, (const char *__file, char * const __argv[] ));
 #if defined(__CYGWIN__)
@@ -249,9 +255,9 @@ useconds_t _EXFUN(ualarm, (useconds_t __useconds, useconds_t __interval));
 char *	_EXFUN(mktemp, (char *));
 #endif
 
-#if defined(__CYGWIN__) || defined(__SPU__) || defined(__rtems__)
+int     _EXFUN(ps, (void));
 void    _EXFUN(sync, (void));
-#endif
+int     _EXFUN(shutdown, (void));
 
 ssize_t _EXFUN(readlink, (const char *__restrict __path,
                           char *__restrict __buf, size_t __buflen));
