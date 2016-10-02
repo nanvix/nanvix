@@ -69,6 +69,10 @@ _DEFUN(__seofread, (ptr, cookie, buf, len),
        char *buf   _AND
        _READ_WRITE_BUFSIZE_TYPE len)
 {
+  ((void)_ptr);
+  ((void)cookie);
+  ((void)buf);
+  ((void)len);
   return 0;
 }
 

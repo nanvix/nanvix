@@ -204,7 +204,7 @@ _DEFUN(_fread_r, (ptr, buf, size, count, fp),
   if (fp->_flags & __SNBF)
     {
       /* First copy any available characters from ungetc buffer.  */
-      int copy_size = resid > fp->_r ? fp->_r : resid;
+      int copy_size = resid > (size_t)fp->_r ? fp->_r : (int)resid;
       _CAST_VOID memcpy ((_PTR) p, (_PTR) fp->_p, (size_t) copy_size);
       fp->_p += copy_size;
       fp->_r -= copy_size;
@@ -252,7 +252,7 @@ _DEFUN(_fread_r, (ptr, buf, size, count, fp),
   else
 #endif /* !PREFER_SIZE_OVER_SPEED && !__OPTIMIZE_SIZE__ */
     {
-      while (resid > (r = fp->_r))
+      while (resid > (size_t)(r = fp->_r))
 	{
 	  _CAST_VOID memcpy ((_PTR) p, (_PTR) fp->_p, (size_t) r);
 	  fp->_p += r;

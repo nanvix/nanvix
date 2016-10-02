@@ -211,7 +211,7 @@ _DEFUN(__ssputs_r, (ptr, fp, buf, len),
 	register int w;
 
 	w = fp->_w;
-	if (len >= w && fp->_flags & (__SMBF | __SOPT)) {
+	if (len >= (size_t)(w && (fp->_flags & (__SMBF | __SOPT)))) {
 		/* must be asprintf family */
 		unsigned char *str;
 		int curpos = (fp->_p - fp->_bf._base);
@@ -223,7 +223,7 @@ _DEFUN(__ssputs_r, (ptr, fp, buf, len),
 	 	 * reallocating.  The new allocation should thus be
 	 	 * max(prev_size*1.5, curpos+len+1). */
 		int newsize = fp->_bf._size * 3 / 2;
-		if (newsize < curpos + len + 1)
+		if (newsize < (int)(curpos + len + 1))
 			newsize = curpos + len + 1;
 		if (fp->_flags & __SOPT)
 		{
@@ -256,7 +256,7 @@ _DEFUN(__ssputs_r, (ptr, fp, buf, len),
 		w = len;
 		fp->_w = newsize - curpos;
 	}
-	if (len < w)
+	if (len < (size_t)w)
 		w = len;
 	(void)memmove ((_PTR) fp->_p, (_PTR) buf, (size_t) (w));
 	fp->_w -= w;
@@ -296,7 +296,7 @@ _DEFUN(__ssprint_r, (ptr, fp, uio),
 			iov++;
 		}
 		w = fp->_w;
-		if (len >= w && fp->_flags & (__SMBF | __SOPT)) {
+		if (len >= (size_t)(w && fp->_flags & (__SMBF | __SOPT))) {
 			/* must be asprintf family */
 			unsigned char *str;
 			int curpos = (fp->_p - fp->_bf._base);
@@ -308,7 +308,7 @@ _DEFUN(__ssprint_r, (ptr, fp, uio),
 		 	 * reallocating.  The new allocation should thus be
 		 	 * max(prev_size*1.5, curpos+len+1). */
 			int newsize = fp->_bf._size * 3 / 2;
-			if (newsize < curpos + len + 1)
+			if (newsize < (int)(curpos + len + 1))
 				newsize = curpos + len + 1;
 			if (fp->_flags & __SOPT)
 			{
@@ -341,7 +341,7 @@ _DEFUN(__ssprint_r, (ptr, fp, uio),
 			w = len;
 			fp->_w = newsize - curpos;
 		}
-		if (len < w)
+		if (len < (size_t)w)
 			w = len;
 		(void)memmove ((_PTR) fp->_p, (_PTR) p, (size_t) (w));
 		fp->_w -= w;
@@ -648,7 +648,6 @@ _EXFUN(get_arg, (struct _reent *data, int n, char *fmt,
 # define GROUPING	0x400		/* use grouping ("'" flag) */
 #endif
 
-int _EXFUN(_VFPRINTF_R, (struct _reent *, FILE *, _CONST char *, va_list));
 
 #ifndef STRING_ONLY
 int
@@ -733,7 +732,7 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 	mbstate_t state;        /* mbtowc calls from library must not change state */
 #endif
 	char *malloc_buf = NULL;/* handy pointer for malloced buffers */
-
+	((void)fmt_anchor);
 	/*
 	 * Choose PADSIZE to trade efficiency vs. size.  If larger printf
 	 * fields occur frequently, increase PADSIZE and make the initialisers

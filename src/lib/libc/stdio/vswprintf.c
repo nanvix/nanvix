@@ -57,7 +57,7 @@ _DEFUN(_vswprintf_r, (ptr, str, size, fmt, ap),
   if (size > 0)  {
     *(wchar_t *)f._p = L'\0';	/* terminate the string */
   }
-  if(ret >= size)  {
+  if(ret >= (int)size)  {
     /* _svfwprintf_r() returns how many wide characters it would have printed
      * if there were enough space.  Return an error if too big to fit in str,
      * unlike snprintf, which returns the size needed.  */

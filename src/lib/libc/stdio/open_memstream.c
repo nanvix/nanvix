@@ -165,7 +165,7 @@ _DEFUN(memseeker, (ptr, cookie, pos, whence),
       ptr->_errno = EINVAL;
       offset = -1;
     }
-  else if ((size_t) offset != offset)
+  else if ((size_t) offset != (size_t)offset)
     {
       ptr->_errno = ENOSPC;
       offset = -1;

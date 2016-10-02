@@ -190,7 +190,7 @@ _DEFUN(_fgets_r, (ptr, buf, n, fp),
        * newline, and stop.  Otherwise, copy entire chunk
        * and loop.
        */
-      if (len > n)
+      if (len > (size_t)n)
 	len = n;
       t = (unsigned char *) memchr ((_PTR) p, '\n', len);
       if (t != 0)

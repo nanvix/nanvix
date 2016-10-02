@@ -126,7 +126,7 @@ _DEFUN(__sfvwrite_r, (ptr, fp, uio),
 	  w = fp->_w;
 	  if (fp->_flags & __SSTR)
 	    {
-	      if (len >= w && fp->_flags & (__SMBF | __SOPT))
+	      if (len >= (size_t)(w && fp->_flags & (__SMBF | __SOPT)))
 		{ /* must be asprintf family */
 		  unsigned char *str;
 		  int curpos = (fp->_p - fp->_bf._base);
@@ -138,7 +138,7 @@ _DEFUN(__sfvwrite_r, (ptr, fp, uio),
 		     reallocating.  The new allocation should thus be
 		     max(prev_size*1.5, curpos+len+1). */
 		  int newsize = fp->_bf._size * 3 / 2;
-		  if (newsize < curpos + len + 1)
+		  if (newsize < (int)(curpos + len + 1))
 		    newsize = curpos + len + 1;
 		  if (fp->_flags & __SOPT)
 		    {
@@ -173,17 +173,17 @@ _DEFUN(__sfvwrite_r, (ptr, fp, uio),
 		  w = len;
 		  fp->_w = newsize - curpos;
 		}
-	      if (len < w)
+	      if (len < (size_t)w)
 		w = len;
 	      COPY (w);		/* copy MIN(fp->_w,len), */
 	      fp->_w -= w;
 	      fp->_p += w;
 	      w = len;		/* but pretend copied all */
 	    }
-	  else if (fp->_p > fp->_bf._base || len < fp->_bf._size)
+	  else if (fp->_p > fp->_bf._base || len < (size_t)fp->_bf._size)
 	    {
 	      /* pass through the buffer */
-	      w = MIN (len, w);
+	      w = MIN (len, (size_t)w);
 	      COPY (w);
 	      fp->_w -= w;
 	      fp->_p += w;
@@ -220,10 +220,10 @@ _DEFUN(__sfvwrite_r, (ptr, fp, uio),
 	  if (!nlknown)
 	    {
 	      nl = memchr ((_PTR) p, '\n', len);
-	      nldist = nl ? nl + 1 - p : len + 1;
+	      nldist = nl ? nl + 1 - p : (int)(len + 1);
 	      nlknown = 1;
 	    }
-	  s = MIN (len, nldist);
+	  s = MIN ((int)len, nldist);
 	  w = fp->_w + fp->_bf._size;
 	  if (fp->_p > fp->_bf._base && s > w)
 	    {

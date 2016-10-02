@@ -424,7 +424,7 @@ _DEFUN(__SVFWSCANF_R, (rptr, fp, fmt0, ap),
 #ifndef _NO_LONGLONG
   long long *llp;
 #endif
-
+  ((void)cp);
   /* `basefix' is used to avoid `if' tests in the integer scanner */
   static _CONST short basefix[17] =
     {10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
@@ -799,7 +799,7 @@ _DEFUN(__SVFWSCANF_R, (rptr, fp, fmt0, ap),
 	      memset ((_PTR)&mbs, '\0', sizeof (mbstate_t));
 	      while (width != 0 && (wi = _fgetwc_r (rptr, fp)) != WEOF)
 		{
-		  if (width >= MB_CUR_MAX && !(flags & SUPPRESS))
+		  if (width >= (size_t)(MB_CUR_MAX && !(flags & SUPPRESS)))
 		    {
 		      nconv = _wcrtomb_r (rptr, mbp, wi, &mbs);
 		      if (nconv == (size_t) -1)
@@ -868,7 +868,7 @@ _DEFUN(__SVFWSCANF_R, (rptr, fp, fmt0, ap),
 	      while ((wi = _fgetwc_r (rptr, fp)) != WEOF
 		     && width-- != 0 && INCCL (wi))
 		{
-		  if (width >= MB_CUR_MAX && !(flags & SUPPRESS))
+		  if (width >= (size_t)(MB_CUR_MAX && !(flags & SUPPRESS)))
 		    {
 		      nconv = _wcrtomb_r (rptr, mbp, wi, &mbs);
 		      if (nconv == (size_t) -1)
@@ -934,7 +934,7 @@ _DEFUN(__SVFWSCANF_R, (rptr, fp, fmt0, ap),
 	      while ((wi = _fgetwc_r (rptr, fp)) != WEOF
 		     && width != 0 && !iswspace (wi))
 		{
-		  if (width >= MB_CUR_MAX && !(flags & SUPPRESS))
+		  if (width >= (size_t)(MB_CUR_MAX && !(flags & SUPPRESS)))
 		    {
 		      nconv = wcrtomb(mbp, wi, &mbs);
 		      if (nconv == (size_t)-1)

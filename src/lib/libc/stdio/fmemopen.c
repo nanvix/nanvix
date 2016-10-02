@@ -89,11 +89,12 @@ _DEFUN(fmemreader, (ptr, cookie, buf, n),
        char *buf _AND
        _READ_WRITE_BUFSIZE_TYPE n)
 {
+  ((void)ptr);
   fmemcookie *c = (fmemcookie *) cookie;
   /* Can't read beyond current size, but EOF condition is not an error.  */
   if (c->pos > c->eof)
     return 0;
-  if (n >= c->eof - c->pos)
+  if (n >= (int)(c->eof - c->pos))
     n = c->eof - c->pos;
   memcpy (buf, c->buf + c->pos, n);
   c->pos += n;
@@ -181,7 +182,7 @@ _DEFUN(fmemseeker, (ptr, cookie, pos, whence),
       ptr->_errno = EINVAL;
       offset = -1;
     }
-  else if (offset > c->max)
+  else if (offset > (off_t)c->max)
     {
       ptr->_errno = ENOSPC;
       offset = -1;
@@ -322,7 +323,7 @@ _DEFUN(_fmemopen_r, (ptr, buf, size, mode),
 	case 'a':
 	  /* a/a+ and buf: position and size at first NUL.  */
 	  buf = memchr (c->buf, '\0', size);
-	  c->eof = c->pos = buf ? (char *) buf - c->buf : size;
+	  c->eof = c->pos = buf ? (size_t)((char *) buf - c->buf) : size;
 	  if (!buf && c->writeonly)
 	    /* a: guarantee a NUL within size even if no writes.  */
 	    c->buf[size - 1] = '\0';

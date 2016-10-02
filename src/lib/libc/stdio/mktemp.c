@@ -159,7 +159,7 @@ _DEFUN(_gettemp, (ptr, path, doopen, domkdir, suffixlen, flags),
   pid = _getpid_r (ptr);
   for (trv = path; *trv; ++trv)		/* extra X's get set to 0's */
     continue;
-  if (trv - path < suffixlen)
+  if (trv - path < (int)suffixlen)
     {
       ptr->_errno = EINVAL;
       return 0;
