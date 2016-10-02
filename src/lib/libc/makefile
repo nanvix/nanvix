@@ -35,6 +35,8 @@ C_SRC = $(wildcard *.c)         \
 	$(wildcard reent/*.c)       \
 	$(wildcard search/*.c)      \
 	$(wildcard signal/*.c)      \
+	$(wildcard stdio/*.c)       \
+	$(wildcard stdlib/*.c)      \
 	$(wildcard string/*.c)      \
 	$(wildcard stropts/*.c)     \
 	$(wildcard sys/sem/*.c)     \
