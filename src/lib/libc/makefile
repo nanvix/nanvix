@@ -27,6 +27,7 @@ export CFLAGS += -U__STRICT_ANSI__
 # C source files.
 C_SRC = $(wildcard *.c)         \
 	$(wildcard assert/*.c)      \
+	$(wildcard common/*.c)      \
 	$(wildcard ctype/*.c)       \
 	$(wildcard dirent/*.c)      \
 	$(wildcard errno/*.c)       \
