@@ -581,7 +581,7 @@ static int has_graph(const char *str)
 {
 	for (/* noop */; *str != '\0'; str++)
 	{
-		if (isgraph(*str))
+		if (isgraph((int)*str))
 				return (1);
 	}
 	
