@@ -1,5 +1,5 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
 #              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
@@ -18,22 +18,29 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Conflicts.
-.PHONY: libc
-.PHONY: libm
+#Newlib defines
+export CFLAGS += -DSIGNAL_PROVIDED
+export CFLAGS += -DMISSING_SYSCALL_NAMES
+export CFLAGS += -U__STRICT_ANSI__
 
-# Builds everything.
-all: libc libm
+# C source files.
+C_SRC = $(wildcard math/*.c) \
 
-# Builds C library.
-libc:
-	cd libc/ && $(MAKE) all
+# Object files.
+OBJ = $(C_SRC:.c=.o)   \
 
-# Builds Math library.
-libm:
-	cd libm/ && $(MAKE) all
+# Library name.
+LIB = libm.a
+
+# Builds the C library.
+all: $(OBJ)
+	$(AR) $(ARFLAGS) $(LIBDIR)/$(LIB) $^
+
+# Builds object file from C source file.
+%.o: %.c
+	$(CC) $< $(CFLAGS) -c -o $@
 
 # Cleans compilation files.
 clean:
-	cd libc && $(MAKE) clean
-	cd libm && $(MAKE) clean
+	@rm -f $(LIBDIR)/$(LIB)
+	@rm -f $(OBJ)
