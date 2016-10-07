@@ -58,7 +58,7 @@
 #define S_ISLNK(m)  (((m)&_IFMT) == _IFLNK)
 #define S_ISSOCK(m) (((m)&_IFMT) == _IFSOCK)
 
-#ifndef _ASM_FILE_
+#if !defined(_ASM_FILE_) && !defined(BUILDING_TOOLS)
 #ifdef __cplusplus
 extern "C" {
 #endif
