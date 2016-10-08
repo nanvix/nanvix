@@ -170,7 +170,9 @@
  * first.  It is only available with ANSI C.
  */
 #if defined(__STDC__) || defined(__cplusplus)
+#ifndef __P
 #define	__P(protos)	protos		/* full-blown ANSI C */
+#endif
 #define	__CONCAT1(x,y)	x ## y
 #define	__CONCAT(x,y)	__CONCAT1(x,y)
 #define	__STRING(x)	#x		/* stringify without expanding x */
@@ -188,7 +190,9 @@
 #endif /* !__cplusplus */
 
 #else	/* !(__STDC__ || __cplusplus) */
+#ifndef __P
 #define	__P(protos)	()		/* traditional C preprocessor */
+#endif
 #define	__CONCAT(x,y)	x/**/y
 #define	__STRING(x)	"x"
 
