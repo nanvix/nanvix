@@ -160,7 +160,7 @@ static	double	one	= 1.0, tiny=1.0e-300;
 	    t  = s0;
 	    if((t<ix0)||((t==ix0)&&(t1<=ix1))) { 
 		s1  = t1+r;
-		if(((t1&sign)==sign)&&(s1&sign)==0) s0 += 1;
+		if(((t1&sign)==(__uint32_t)sign)&&(s1&sign)==0) s0 += 1;
 		ix0 -= t;
 		if (ix1 < t1) ix0 -= 1;
 		ix1 -= t1;

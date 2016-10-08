@@ -142,7 +142,7 @@ pio2_3t =  6.1232342629e-17; /* 0x248d3132 */
 	    fn = (float)n;
 	    r  = t-fn*pio2_1;
 	    w  = fn*pio2_1t;	/* 1st round good to 40 bit */
-	    if(n<32&&(ix&0xffffff00)!=npio2_hw[n-1]) {	
+	    if(n<32&&(__int32_t)(ix&0xffffff00)!=npio2_hw[n-1]) {	
 		y[0] = r-w;	/* quick check no cancellation */
 	    } else {
 	        __uint32_t high;
