@@ -9,7 +9,7 @@
 #define	_COMPLEX_H
 
 #define complex _Complex
-#define _Complex_I 1.0fi
+#define _Complex_I (__extension__ 1.0iF)
 #define I _Complex_I
 
 #include <sys/cdefs.h>
