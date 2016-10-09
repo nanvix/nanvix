@@ -24,10 +24,12 @@ export CFLAGS += -DMISSING_SYSCALL_NAMES
 export CFLAGS += -U__STRICT_ANSI__
 
 # C source files.
-C_SRC = $(wildcard math/*.c) \
+C_SRC = $(wildcard common/*.c) \
+	$(wildcard complex/*.c)    \
+	$(wildcard math/*.c)       \
 
 # Object files.
-OBJ = $(C_SRC:.c=.o)   \
+OBJ = $(C_SRC:.c=.o)
 
 # Library name.
 LIB = libm.a
