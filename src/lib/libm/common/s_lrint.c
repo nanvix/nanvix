@@ -152,7 +152,7 @@ TWO52[2]={
           /* ***32bit return: right shift amt in [32,21] */
           /* ***64bit return: right shift amt in [32,0] */
           result = ((long int) i0 << (j0 - 20))
-			| SAFE_RIGHT_SHIFT (i1, (52 - j0));
+			| SAFE_RIGHT_SHIFT (i1, (__uint32_t)(52 - j0));
         }
     }
   else

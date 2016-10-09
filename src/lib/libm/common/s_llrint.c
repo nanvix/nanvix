@@ -110,7 +110,7 @@ long long int
 	  /* 64bit return: left shift amt in [0,32] */
           /* ***64bit return: right shift amt in [32,0] */
           result = ((long long int) i0 << (j0 - 20))
-			| SAFE_RIGHT_SHIFT (i1, (52 - j0));
+			| SAFE_RIGHT_SHIFT (i1, (__uint32_t)(52 - j0));
         }
     }
   else

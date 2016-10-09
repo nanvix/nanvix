@@ -91,7 +91,7 @@ ANSI C, POSIX
           result = msw >> (20 - exponent_less_1023);
         }
     }
-  else if (exponent_less_1023 < (8 * sizeof (long int)) - 1)
+  else if ((size_t)exponent_less_1023 < (8 * sizeof (long int)) - 1)
     {
       /* 32bit long: exponent_less_1023 in [20,30] */
       /* 64bit long: exponent_less_1023 in [20,62] */
@@ -116,7 +116,7 @@ ANSI C, POSIX
           result = ((long int) msw << (exponent_less_1023 - 20))
 		    /* ***32bit long: shift amt in [32,22] */
 		    /* ***64bit long: shift amt in [32,1] */
-                    | SAFE_RIGHT_SHIFT (tmp, (52 - exponent_less_1023));
+                    | SAFE_RIGHT_SHIFT (tmp, (__uint32_t)(52 - exponent_less_1023));
         }
     }
   else
