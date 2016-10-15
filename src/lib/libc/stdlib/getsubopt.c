@@ -1,106 +1,101 @@
-/*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+/*-
+ * Copyright (c) 1990, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
-/*
- * Copyright (C) 1991-1996 Free Software Foundation, Inc.
- * 
- * This file is part of the GNU C Library.
- * 
- * The GNU C Library free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- * 
- * The GNU C Library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA 02110-1301, USA.
- */
+#if defined(LIBC_SCCS) && !defined(lint)
+static char sccsid[] = "@(#)getsubopt.c	8.1 (Berkeley) 6/4/93";
+#endif /* LIBC_SCCS and not lint */
+#include <sys/cdefs.h>
 
-/**
- * @file
- * 
- * @brief getsubopt() implementation.
- */
-
+#include <unistd.h>
+#include <stdlib.h>
 #include <string.h>
 
-/**
- * @brief Parses suboption arguments from a string.
- * 
- * @param keylistp List of strings to parse.
- * @param valuep   Address of a value string.
- * 
- * @returns The index of the matched token string, or -1 if no token strings
- *          were matched.
+/*
+ * The SVID interface to getsubopt provides no way of figuring out which
+ * part of the suboptions list wasn't matched.  This makes error messages
+ * tricky...  The extern variable suboptarg is a pointer to the token
+ * which didn't match.
  */
-int getsubopt(char **optionp, char *const *keylistp, char **valuep)
+char *suboptarg;
+
+int
+getsubopt(optionp, tokens, valuep)
+	char **optionp, **valuep;
+	char * const *tokens;
 {
-	char *endp, *vstart;
 	int cnt;
+	char *p;
 
-	if (**optionp == '\0')
-		return (-1);
+	suboptarg = *valuep = NULL;
 
-	/* Find end of next token.  */
-	endp = strchr(*optionp, ',');
-	if (endp == NULL)
-		endp = *optionp + strlen(*optionp);
+	if (!optionp || !*optionp)
+		return(-1);
 
-	/* Find start of value.  */
-	vstart = memchr(*optionp, '=', endp - *optionp);
-	if (vstart == NULL)
-		vstart = endp;
+	/* skip leading white-space, commas */
+	for (p = *optionp; *p && (*p == ',' || *p == ' ' || *p == '\t'); ++p);
 
-	/*
-	 * Try to match the characters between *OPTIONP
-	 * and VSTART against one of the keylistp.
-	 */
-	for (cnt = 0; keylistp[cnt] != NULL; cnt++)
-	{
-		/* We found the current option in keylistp.  */
-		if ((strncmp(*optionp, keylistp[cnt], vstart - *optionp) == 0)
-			&& (keylistp[cnt][vstart - *optionp] == '\0'))
-		{
-			*valuep = vstart != endp ? vstart + 1 : NULL;
-
-			if (*endp != '\0')
-				*endp++ = '\0';
-			*optionp = endp;
-
-			return (cnt);
-		}
+	if (!*p) {
+		*optionp = p;
+		return(-1);
 	}
 
-	/*
-	 * The current suboption does not
-	 * match any option.
-	 */
-	*valuep = *optionp;
-	if (*endp != '\0')
-		*endp++ = '\0';
-	*optionp = endp;
+	/* save the start of the token, and skip the rest of the token. */
+	for (suboptarg = p;
+	    *++p && *p != ',' && *p != '=' && *p != ' ' && *p != '\t';);
 
-	return (-1);
+	if (*p) {
+		/*
+		 * If there's an equals sign, set the value pointer, and
+		 * skip over the value part of the token.  Terminate the
+		 * token.
+		 */
+		if (*p == '=') {
+			*p = '\0';
+			for (*valuep = ++p;
+			    *p && *p != ',' && *p != ' ' && *p != '\t'; ++p);
+			if (*p)
+				*p++ = '\0';
+		} else
+			*p++ = '\0';
+		/* Skip any whitespace or commas after this token. */
+		for (; *p && (*p == ',' || *p == ' ' || *p == '\t'); ++p);
+	}
+
+	/* set optionp for next round. */
+	*optionp = p;
+
+	for (cnt = 0; *tokens; ++tokens, ++cnt)
+		if (!strcmp(suboptarg, *tokens))
+			return(cnt);
+	return(-1);
 }

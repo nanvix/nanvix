@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -24,7 +25,7 @@ CC = gcc
 CFLAGS    = -I $(INCDIR)/fs
 CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 CFLAGS   += -Wall -Wextra -Werror
-CFLAGS   += -D NDEBUG
+CFLAGS   += -D NDEBUG -D BUILDING_TOOLS
 
 # Builds everything.
 all: cp.minix mkdir.minix mkfs.minix mknod.minix

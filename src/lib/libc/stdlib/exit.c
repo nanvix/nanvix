@@ -1,53 +1,71 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ * Copyright (c) 1990 Regents of the University of California.
+ * All rights reserved.
+ *
+ * %sccs.include.redist.c%
  */
 
-/**
- * @file
- * 
- * @brief exit() implementation.
- */
+/*
+FUNCTION
+<<exit>>---end program execution
 
-#include <limits.h>
+INDEX
+	exit
+
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	void exit(int <[code]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	void exit(<[code]>)
+	int <[code]>;
+
+DESCRIPTION
+Use <<exit>> to return control from a program to the host operating
+environment.  Use the argument <[code]> to pass an exit status to the
+operating environment: two particular values, <<EXIT_SUCCESS>> and
+<<EXIT_FAILURE>>, are defined in `<<stdlib.h>>' to indicate success or
+failure in a portable fashion.
+
+<<exit>> does two kinds of cleanup before ending execution of your
+program.  First, it calls all application-defined cleanup functions
+you have enrolled with <<atexit>>.  Second, files and streams are
+cleaned up: any pending output is delivered to the host system, each
+open file or stream is closed, and files created by <<tmpfile>> are
+deleted.
+
+RETURNS
+<<exit>> does not return to its caller.
+
+PORTABILITY
+ANSI C requires <<exit>>, and specifies that <<EXIT_SUCCESS>> and
+<<EXIT_FAILURE>> must be defined.
+
+Supporting OS subroutines required: <<_exit>>.
+*/
+
 #include <stdlib.h>
-#include <unistd.h>
+#include <unistd.h>	/* for _exit() declaration */
+#include <reent.h>
 #include "atexit.h"
 
-/* Cleanup functions. */
-extern void stdio_cleanup(void);  /* <stdio.h>  */
-extern void dirent_cleanup(void); /* <dirent.h> */
-
-/**
- * @brief Terminates the calling process.
- * 
- * @param status Exit status.
+/*
+ * Exit, flushing stdio buffers if necessary.
  */
-void exit(int status)
+
+void
+_DEFUN (exit, (code),
+	int code)
 {
-	/*
-	 * Call registered atexit() functions
-	 * in the reverse order in which they were
-	 * registered.
-	 */
-	while (_atexit._ind-- > 0)
-		_atexit._fns[_atexit._ind]();
-	
-	stdio_cleanup();
-	
-	_exit(status);
+#ifdef _LITE_EXIT
+  /* Refer to comments in __atexit.c for more details of lite exit.  */
+  void __call_exitprocs _PARAMS ((int, _PTR)) __attribute__((weak));
+  if (__call_exitprocs)
+#endif
+    __call_exitprocs (code, NULL);
+
+  if (_GLOBAL_REENT->__cleanup)
+    (*_GLOBAL_REENT->__cleanup) (_GLOBAL_REENT);
+  _exit (code);
 }

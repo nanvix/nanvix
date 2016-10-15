@@ -1,134 +1,105 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+	<<strtok>>, <<strtok_r>>, <<strsep>>---get next token from a string
 
-/*
- * Copyright (c) 1990 The Regents of the University of California.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *	This product includes software developed by the University of
- *	California, Berkeley and its contributors.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
+INDEX
+	strtok
 
-/**
- * @file
- * 
- * @brief strtok() implementation.
- */
- 
-#include <stdlib.h>
+INDEX
+	strtok_r
 
-/**
- * @brief Scan point.
- */
-static char *_scanpoint = NULL;
+INDEX
+	strsep
 
-/**
- * @brief Splits string into tokens.
- * 
- * @param s1 Pointer to string to split.
- * @param s2 Pointer to token string.
- * 
- * @returns A pointer to the first byte of a token. Otherwise, if there is no
- *          token a null pointer is returned.
- * 
- * @version IEEE Std 1003.1, 2013 Edition
- */
-char *strtok(char *s1, const char *s2)
+ANSI_SYNOPSIS
+	#include <string.h>
+      	char *strtok(char *restrict <[source]>,
+                     const char *restrict <[delimiters]>)
+      	char *strtok_r(char *restrict <[source]>,
+                       const char *restrict <[delimiters]>,
+                       char **<[lasts]>)
+      	char *strsep(char **<[source_ptr]>, const char *<[delimiters]>)
+
+TRAD_SYNOPSIS
+	#include <string.h>
+	char *strtok(<[source]>, <[delimiters]>)
+	char *<[source]>;
+	char *<[delimiters]>;
+
+	char *strtok_r(<[source]>, <[delimiters]>, <[lasts]>)
+	char *<[source]>;
+	char *<[delimiters]>;
+	char **<[lasts]>;
+
+	char *strsep(<[source_ptr]>, <[delimiters]>)
+	char **<[source_ptr]>;
+	char *<[delimiters]>;
+
+DESCRIPTION
+	The <<strtok>> function is used to isolate sequential tokens in a 
+	null-terminated string, <<*<[source]>>>. These tokens are delimited 
+	in the string by at least one of the characters in <<*<[delimiters]>>>.
+	The first time that <<strtok>> is called, <<*<[source]>>> should be
+	specified; subsequent calls, wishing to obtain further tokens from
+	the same string, should pass a null pointer instead.  The separator
+	string, <<*<[delimiters]>>>, must be supplied each time and may 
+	change between calls.
+
+	The <<strtok>> function returns a pointer to the beginning of each 
+	subsequent token in the string, after replacing the separator 
+	character itself with a null character.  When no more tokens remain, 
+	a null pointer is returned.
+
+	The <<strtok_r>> function has the same behavior as <<strtok>>, except
+	a pointer to placeholder <<*<[lasts]>>> must be supplied by the caller.
+
+	The <<strsep>> function is similar in behavior to <<strtok>>, except
+	a pointer to the string pointer must be supplied <<<[source_ptr]>>> and
+	the function does not skip leading delimiters.  When the string starts
+	with a delimiter, the delimiter is changed to the null character and
+	the empty string is returned.  Like <<strtok_r>> and <<strtok>>, the
+	<<*<[source_ptr]>>> is updated to the next character following the
+	last delimiter found or NULL if the end of string is reached with
+	no more delimiters.
+
+RETURNS
+	<<strtok>>, <<strtok_r>>, and <<strsep>> all return a pointer to the 
+	next token, or <<NULL>> if no more tokens can be found.  For
+	<<strsep>>, a token may be the empty string.
+
+NOTES
+	<<strtok>> is unsafe for multi-threaded applications.  <<strtok_r>>
+	and <<strsep>> are thread-safe and should be used instead.
+
+PORTABILITY
+<<strtok>> is ANSI C.
+<<strtok_r>> is POSIX.
+<<strsep>> is a BSD extension.
+
+<<strtok>>, <<strtok_r>>, and <<strsep>> require no supporting OS subroutines.
+
+QUICKREF
+	strtok ansi impure
+*/
+
+/* undef STRICT_ANSI so that strtok_r prototype will be defined */
+#undef  __STRICT_ANSI__
+#include <string.h>
+#include <_ansi.h>
+#include <reent.h>
+
+#ifndef _REENT_ONLY
+
+extern char *__strtok_r (char *, const char *, char **, int);
+
+char *
+_DEFUN (strtok, (s, delim),
+	register char *__restrict s _AND
+	register const char *__restrict delim)
 {
-	char *scan;
-	char *tok;
-	const char *dscan;
+	struct _reent *reent = _REENT;
 
-	if ((s1 == NULL) && (_scanpoint == NULL))
-      return (NULL);
-      
-	if (s1 != NULL)
-		scan = s1;
-	else
-		scan = _scanpoint;
-
-	/*
-	 * Scan leading delimiters.
-	 */
-	for (/* noop*/ ; *scan != '\0'; scan++)
-	{
-		for (dscan = s2; *dscan != '\0'; dscan++)
-		{
-			if (*scan == *dscan)
-				break;
-		}
-
-		if (*dscan == '\0')
-			break;
-	}
-	if (*scan == '\0')
-	{
-		_scanpoint = NULL;
-		return (NULL);
-    }
-
-	tok = scan;
-
-	/*
-	 * Scan token.
-	 */
-	for (/* noop */; *scan != '\0'; scan++)
-	{
-		/* ++ moved down. */
-		for (dscan = s2; *dscan != '\0';)
-		{
-			if (*scan == *dscan++)
-			{
-				_scanpoint = scan + 1;
-				*scan = '\0';
-				return (tok);
-			}
-		}
-	}
-
-	/* Reached end of string. */
-	_scanpoint = NULL;
-	
-	return (tok);
+	_REENT_CHECK_MISC(reent);
+	return __strtok_r (s, delim, &(_REENT_STRTOK_LAST(reent)), 1);
 }
+#endif

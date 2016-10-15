@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <utime.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 /* Software version. */
 #define VERSION_MAJOR 1 /* Major version. */

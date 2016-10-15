@@ -1,38 +1,81 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+   <<atoi>>, <<atol>>---string to integer
 
-/**
- * @file
- * 
- * @brief atoi() implementation.
+INDEX
+	atoi
+INDEX
+	atol
+INDEX
+	_atoi_r
+INDEX
+	_atol_r
+
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+        int atoi(const char *<[s]>);
+	long atol(const char *<[s]>);
+        int _atoi_r(struct _reent *<[ptr]>, const char *<[s]>);
+        long _atol_r(struct _reent *<[ptr]>, const char *<[s]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+       int atoi(<[s]>)
+       char *<[s]>;
+
+       long atol(<[s]>)
+       char *<[s]>;
+
+       int _atoi_r(<[ptr]>, <[s]>)
+       struct _reent *<[ptr]>;
+       char *<[s]>;
+
+       long _atol_r(<[ptr]>, <[s]>)
+       struct _reent *<[ptr]>;
+       char *<[s]>;
+
+
+DESCRIPTION
+   <<atoi>> converts the initial portion of a string to an <<int>>.
+   <<atol>> converts the initial portion of a string to a <<long>>.
+
+   <<atoi(s)>> is implemented as <<(int)strtol(s, NULL, 10).>>
+   <<atol(s)>> is implemented as <<strtol(s, NULL, 10).>>
+
+   <<_atoi_r>> and <<_atol_r>> are reentrant versions of <<atoi>> and
+   <<atol>> respectively, passing the reentrancy struct pointer.
+
+RETURNS
+   The functions return the converted value, if any. If no conversion was
+   made, <<0>> is returned.
+
+PORTABILITY
+<<atoi>>, <<atol>> are ANSI.
+
+No supporting OS subroutines are required.
+*/
+
+/*
+ * Andy Wilson, 2-Oct-89.
  */
 
 #include <stdlib.h>
+#include <_ansi.h>
 
-/**
- * @brief Converts a string to an integer.
- * 
- * @param str String to convert.
- * 
- * @returns The converted value if the value can be represented.
- */
-int atoi(const char *str)
+#ifndef _REENT_ONLY
+int
+_DEFUN (atoi, (s),
+	_CONST char *s)
 {
-	return ((int)strtol(str, (char **) NULL, 10));
+  return (int) strtol (s, NULL, 10);
 }
+#endif /* !_REENT_ONLY */
+
+int
+_DEFUN (_atoi_r, (s),
+	struct _reent *ptr _AND
+	_CONST char *s)
+{
+  return (int) _strtol_r (ptr, s, NULL, 10);
+}
+

@@ -1,70 +1,95 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<rand>>, <<srand>>---pseudo-random numbers
 
-/*
- * Copyright (c) 1990 The Regents of the University of California.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *	This product includes software developed by the University of
- *	California, Berkeley and its contributors.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
+INDEX
+	rand
+INDEX
+	srand
+INDEX
+	rand_r
 
-/**
- * @file
- * 
- * @brief rand() implementation.
- */
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	int rand(void);
+	void srand(unsigned int <[seed]>);
+	int rand_r(unsigned int *<[seed]>);
 
-#include "rand.h"
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	int rand();
 
-/**
- * @brief Generates a pseudo-random number.
- * 
- * @returns A pseudo-random integer.
- */
-int rand(void)
+	void srand(<[seed]>)
+	unsigned int <[seed]>;
+
+	void rand_r(<[seed]>)
+	unsigned int *<[seed]>;
+
+
+DESCRIPTION
+<<rand>> returns a different integer each time it is called; each
+integer is chosen by an algorithm designed to be unpredictable, so
+that you can use <<rand>> when you require a random number.
+The algorithm depends on a static variable called the ``random seed'';
+starting with a given value of the random seed always produces the
+same sequence of numbers in successive calls to <<rand>>.
+
+You can set the random seed using <<srand>>; it does nothing beyond
+storing its argument in the static variable used by <<rand>>.  You can
+exploit this to make the pseudo-random sequence less predictable, if
+you wish, by using some other unpredictable value (often the least
+significant parts of a time-varying value) as the random seed before
+beginning a sequence of calls to <<rand>>; or, if you wish to ensure
+(for example, while debugging) that successive runs of your program
+use the same ``random'' numbers, you can use <<srand>> to set the same
+random seed at the outset.
+
+RETURNS
+<<rand>> returns the next pseudo-random integer in sequence; it is a
+number between <<0>> and <<RAND_MAX>> (inclusive).
+
+<<srand>> does not return a result.
+
+NOTES
+<<rand>> and <<srand>> are unsafe for multi-threaded applications.
+<<rand_r>> is thread-safe and should be used instead.
+
+
+PORTABILITY
+<<rand>> is required by ANSI, but the algorithm for pseudo-random
+number generation is not specified; therefore, even if you use
+the same random seed, you cannot expect the same sequence of results
+on two different systems.
+
+<<rand>> requires no supporting OS subroutines.
+*/
+
+#ifndef _REENT_ONLY
+
+#include <stdlib.h>
+#include <reent.h>
+
+void
+_DEFUN (srand, (seed), unsigned int seed)
 {
-	_next = (_next * 1103515245) + 12345;
-	return ((_next >> 16) & 0x7fff);
+  struct _reent *reent = _REENT;
+
+  _REENT_CHECK_RAND48(reent);
+  _REENT_RAND_NEXT(reent) = seed;
 }
+
+int
+_DEFUN_VOID (rand)
+{
+  struct _reent *reent = _REENT;
+
+  /* This multiplier was obtained from Knuth, D.E., "The Art of
+     Computer Programming," Vol 2, Seminumerical Algorithms, Third
+     Edition, Addison-Wesley, 1998, p. 106 (line 26) & p. 108 */
+  _REENT_CHECK_RAND48(reent);
+  _REENT_RAND_NEXT(reent) =
+     _REENT_RAND_NEXT(reent) * __extension__ 6364136223846793005LL + 1;
+  return (int)((_REENT_RAND_NEXT(reent) >> 32) & RAND_MAX);
+}
+
+#endif /* _REENT_ONLY */

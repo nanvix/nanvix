@@ -1,36 +1,46 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<_Exit>>---end program execution with no cleanup processing
 
-/**
- * @file
- * 
- * @brief _Exit() implementation.
- */
+INDEX
+	_Exit
 
-#include <unistd.h>
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	void _Exit(int <[code]>);
 
-/**
- * @brief Terminates the calling process.
- * 
- * @param status Exiting status.
- */
-void _Exit(int status)
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	void _Exit(<[code]>)
+	int <[code]>;
+
+DESCRIPTION
+Use <<_Exit>> to return control from a program to the host operating
+environment.  Use the argument <[code]> to pass an exit status to the
+operating environment: two particular values, <<EXIT_SUCCESS>> and
+<<EXIT_FAILURE>>, are defined in `<<stdlib.h>>' to indicate success or
+failure in a portable fashion.
+
+<<_Exit>> differs from <<exit>> in that it does not run any
+application-defined cleanup functions registered with <<atexit>> and
+it does not clean up files and streams.  It is identical to <<_exit>>.
+
+RETURNS
+<<_Exit>> does not return to its caller.
+
+PORTABILITY
+<<_Exit>> is defined by the C99 standard.
+
+Supporting OS subroutines required: <<_exit>>.
+*/
+
+#include <stdlib.h>
+#include <unistd.h>	/* for _exit() declaration */
+#include <reent.h>
+
+void 
+_DEFUN (_Exit, (code),
+	int code)
 {
-	_exit(status);
+  _exit (code);
 }

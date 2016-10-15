@@ -1,57 +1,113 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+	<<memcmp>>---compare two memory areas
 
-/**
- * @file
- * 
- * @brief memcmp() implementation.
- */
+INDEX
+	memcmp
 
-#include <sys/types.h>
+ANSI_SYNOPSIS
+	#include <string.h>
+	int memcmp(const void *<[s1]>, const void *<[s2]>, size_t <[n]>);
 
-/**
- * @brief Compares bytes in memory.
- * 
- * @param s1 Pointer to object 1.
- * @param s2 Pointer to object 2.
- * @param n  Number of bytes to compare.
- * 
- * @returns An integer greater than, equal to or less than 0, if the object
- *          pointed to by @p s1 is greater than, equal to or less than the
- *          object pointed to by @p s2 respectively.
- * 
- * @version IEEE Std 1003.1, 2013 Edition
- */
-int memcmp(const void *s1, const void *s2, size_t n)
+TRAD_SYNOPSIS
+	#include <string.h>
+	int memcmp(<[s1]>, <[s2]>, <[n]>)
+	void *<[s1]>;
+	void *<[s2]>;
+	size_t <[n]>;
+
+DESCRIPTION
+	This function compares not more than <[n]> characters of the
+	object pointed to by <[s1]> with the object pointed to by <[s2]>.
+
+
+RETURNS
+	The function returns an integer greater than, equal to or
+	less than zero 	according to whether the object pointed to by
+	<[s1]> is greater than, equal to or less than the object
+	pointed to by <[s2]>.
+
+PORTABILITY
+<<memcmp>> is ANSI C.
+
+<<memcmp>> requires no supporting OS subroutines.
+
+QUICKREF
+	memcmp ansi pure
+*/
+
+#include <string.h>
+
+
+/* Nonzero if either X or Y is not aligned on a "long" boundary.  */
+#define UNALIGNED(X, Y) \
+  (((long)X & (sizeof (long) - 1)) | ((long)Y & (sizeof (long) - 1)))
+
+/* How many bytes are copied each iteration of the word copy loop.  */
+#define LBLOCKSIZE (sizeof (long))
+
+/* Threshhold for punting to the byte copier.  */
+#define TOO_SMALL(LEN)  ((LEN) < LBLOCKSIZE)
+
+int
+_DEFUN (memcmp, (m1, m2, n),
+	_CONST _PTR m1 _AND
+	_CONST _PTR m2 _AND
+	size_t n)
 {
-	const unsigned char *p1;
-	const unsigned char *p2;
-	
-	p1 = s1;
-	p2 = s2;
-	
-	while (n-- > 0)
+#if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
+  unsigned char *s1 = (unsigned char *) m1;
+  unsigned char *s2 = (unsigned char *) m2;
+
+  while (n--)
+    {
+      if (*s1 != *s2)
 	{
-		if (*p1++ != *p2++)
-			return (*--p1 - *--p2);
+	  return *s1 - *s2;
 	}
-	
-	return (0);
+      s1++;
+      s2++;
+    }
+  return 0;
+#else  
+  unsigned char *s1 = (unsigned char *) m1;
+  unsigned char *s2 = (unsigned char *) m2;
+  unsigned long *a1;
+  unsigned long *a2;
+
+  /* If the size is too small, or either pointer is unaligned,
+     then we punt to the byte compare loop.  Hopefully this will
+     not turn up in inner loops.  */
+  if (!TOO_SMALL(n) && !UNALIGNED(s1,s2))
+    {
+      /* Otherwise, load and compare the blocks of memory one 
+         word at a time.  */
+      a1 = (unsigned long*) s1;
+      a2 = (unsigned long*) s2;
+      while (n >= LBLOCKSIZE)
+        {
+          if (*a1 != *a2) 
+   	    break;
+          a1++;
+          a2++;
+          n -= LBLOCKSIZE;
+        }
+
+      /* check m mod LBLOCKSIZE remaining characters */
+
+      s1 = (unsigned char*)a1;
+      s2 = (unsigned char*)a2;
+    }
+
+  while (n--)
+    {
+      if (*s1 != *s2)
+	return *s1 - *s2;
+      s1++;
+      s2++;
+    }
+
+  return 0;
+#endif /* not PREFER_SIZE_OVER_SPEED */
 }
 

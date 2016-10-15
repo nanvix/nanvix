@@ -1,137 +1,126 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ * Copyright (c) 1990 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms are permitted
+ * provided that the above copyright notice and this paragraph are
+ * duplicated in all such forms and that any documentation,
+ * advertising materials, and other materials related to such
+ * distribution and use acknowledge that the software was developed
+ * by the University of California, Berkeley.  The name of the
+ * University may not be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include "stdio.h"
 
 /*
- * Writes a character to a file.
+FUNCTION
+<<putc>>---write a character (macro)
+
+INDEX
+	putc
+INDEX
+	_putc_r
+
+ANSI_SYNOPSIS
+	#include <stdio.h>
+	int putc(int <[ch]>, FILE *<[fp]>);
+
+	#include <stdio.h>
+	int _putc_r(struct _reent *<[ptr]>, int <[ch]>, FILE *<[fp]>);
+
+TRAD_SYNOPSIS
+	#include <stdio.h>
+	int putc(<[ch]>, <[fp]>)
+	int <[ch]>;
+	FILE *<[fp]>;
+
+	#include <stdio.h>
+	int _putc_r(<[ptr]>, <[ch]>, <[fp]>)
+	struct _reent *<[ptr]>;
+	int <[ch]>;
+	FILE *<[fp]>;
+
+DESCRIPTION
+<<putc>> is a macro, defined in <<stdio.h>>.  <<putc>>
+writes the argument <[ch]> to the file or stream identified by
+<[fp]>, after converting it from an <<int>> to an <<unsigned char>>.
+
+If the file was opened with append mode (or if the stream cannot
+support positioning), then the new character goes at the end of the
+file or stream.  Otherwise, the new character is written at the
+current value of the position indicator, and the position indicator
+advances by one.
+
+For a subroutine version of this macro, see <<fputc>>.
+
+The <<_putc_r>> function is simply the reentrant version of
+<<putc>> that takes an additional reentrant structure argument: <[ptr]>.
+
+RETURNS
+If successful, <<putc>> returns its argument <[ch]>.  If an error
+intervenes, the result is <<EOF>>.  You can use `<<ferror(<[fp]>)>>' to
+query for errors.
+
+PORTABILITY
+ANSI C requires <<putc>>; it suggests, but does not require, that
+<<putc>> be implemented as a macro.  The standard explicitly permits
+macro implementations of <<putc>> to use the <[fp]> argument more than once;
+therefore, in a portable program, you should not use an expression
+with side effects as this argument.
+
+Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
+<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
+*/
+
+#if defined(LIBC_SCCS) && !defined(lint)
+static char sccsid[] = "%W% (Berkeley) %G%";
+#endif /* LIBC_SCCS and not lint */
+
+#include <_ansi.h>
+#include <stdio.h>
+#include "local.h"
+
+/*
+ * A subroutine version of the macro putc.
  */
-int putc(int c, FILE *stream)
+
+#undef putc
+
+int
+_DEFUN(_putc_r, (ptr, c, fp),
+       struct _reent *ptr _AND
+       int c _AND
+       register FILE *fp)
 {
-	int n;     /* Characters actually written. */
-	int count; /* Characters to write.         */
-	char *buf; /* Buffer.                      */
-	
-	/* Buffer is not full. */
-	if (--stream->count >= 0)
-		return (*stream->ptr++ = c);
-	
-	/* Now writing. */
-	if (stream->flags & _IORW)
-	{
-		stream->flags &= ~_IOREAD;
-		stream->flags |= _IOWRITE;
-	}
-	
-	/* File is not writable. */
-	if (!(stream->flags & _IOWRITE))
-		return (EOF);
-
-	/* Synchronize file position. */
-	if (!(stream->flags & _IOEOF))
-	{
-		if ((stream->flags & (_IOSYNC | _IOAPPEND)) == (_IOSYNC | _IOAPPEND))
-		{
-			/* Failed. */
-			if (lseek(fileno(stream), 0, SEEK_END) < 0)
-			{
-				stream->flags |= _IOERROR;
-				return (EOF);
-			}
-		}
-	}
-
-again:
-	count = n = 0;
-
-	/* Not buffered. */
-	if (stream->flags & _IONBF)
-	{
-		/* Reset buffer. */
-		stream->count = 0;
-		
-		n = write(fileno(stream), &c, count = 1);
-	}
-	
-	/* Buffered. */
-	else
-	{	
-		/* Assign buffer. */
-		if ((buf = stream->buf) == NULL)
-		{
-			/* Failed to allocate buffer. */
-			if ((buf = malloc(BUFSIZ)) == NULL)
-			{
-				stream->flags &= ~(_IOLBF | _IOFBF);
-				stream->flags |= _IONBF;
-				goto again;
-			}
-			
-			/* Initialize buffer. */
-			stream->flags |= _IOMYBUF;
-			stream->buf = buf;
-			stream->ptr = buf;
-			stream->bufsiz = BUFSIZ;
-		}
-		
-		/* Line buffered. */
-		if (stream->flags & _IOLBF)
-		{
-			*stream->ptr++ = c;
-		
-			/* Reset buffer. */
-			stream->count = 0;
-			
-			/* Flush buffer. */
-			if ((stream->ptr == (buf + stream->bufsiz)) || (c == '\n'))
-			{			
-				n = write(fileno(stream), buf, count = stream->ptr - buf);
-				stream->ptr = buf;
-			}
-		}
-		
-		/* Fully buffered. */
-		else
-		{	
-			/* Flush buffer. */
-			if (stream->ptr == (buf + stream->bufsiz))
-			{
-				n = write(fileno(stream), buf, count = stream->bufsiz);
-				stream->ptr = buf;
-			}
-			
-			*stream->ptr++ = c;
-		
-			/* Reset buffer. */
-			stream->count = stream->bufsiz - 1;
-		}
-	}
-		
-	/* Failed to write. */
-	if (n != count)
-	{
-		stream->flags |= _IOERROR;
-		return (EOF);
-	}
-	
-	return (c);
+  int result;
+  CHECK_INIT (ptr, fp);
+  _newlib_flockfile_start (fp);
+  result = __sputc_r (ptr, c, fp);
+  _newlib_flockfile_end (fp);
+  return result;
 }
+
+#ifndef _REENT_ONLY
+int
+_DEFUN(putc, (c, fp),
+       int c _AND
+       register FILE *fp)
+{
+#if !defined(PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__)
+  int result;
+  struct _reent *reent = _REENT;
+
+  CHECK_INIT (reent, fp);
+  _newlib_flockfile_start (fp);
+  result = __sputc_r (reent, c, fp);
+  _newlib_flockfile_end (fp);
+  return result;
+#else
+  return _putc_r (_REENT, c, fp);
+#endif
+}
+#endif /* !_REENT_ONLY */
+

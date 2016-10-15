@@ -1,69 +1,154 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ * Copyright (c) 1990 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms are permitted
+ * provided that the above copyright notice and this paragraph are
+ * duplicated in all such forms and that any documentation,
+ * advertising materials, and other materials related to such
+ * distribution and use acknowledge that the software was developed
+ * by the University of California, Berkeley.  The name of the
+ * University may not be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
+/* No user fns here.  Pesch 15apr92. */
 
-#include <stdlib.h>
+#include <_ansi.h>
+#include <reent.h>
 #include <stdio.h>
-
-/* File streams table. */
-FILE streams[FOPEN_MAX] = {
-	{ 0, _IOREAD  | _IOLBF, NULL, NULL, 0, 0 },
-	{ 1, _IOWRITE | _IOFBF, NULL, NULL, 0, 0 },
-	{ 2, _IOWRITE | _IONBF, NULL, NULL, 0, 0 },
-};
-
-/* Standard file streams. */
-FILE *stdin = &streams[0];  /* Standard input.  */
-FILE *stdout = &streams[1]; /* Standard output. */
-FILE *stderr = &streams[2]; /* Standard error.  */
+#include <sys/types.h>
+#include <fcntl.h>
+#include <sys/unistd.h>
+#include "local.h"
 
 /*
- * Stdio library house keeping.
+ * Small standard I/O/seek/close functions.
+ * These maintain the `known seek offset' for seek optimisation.
  */
-void stdio_cleanup(void)
+
+_READ_WRITE_RETURN_TYPE
+_DEFUN(__sread, (ptr, cookie, buf, n),
+       struct _reent *ptr _AND
+       void *cookie _AND
+       char *buf _AND
+       _READ_WRITE_BUFSIZE_TYPE n)
 {
-	FILE *stream;
-	
-	/* Close all streams. */
-	for (stream = &streams[0]; stream < &streams[FOPEN_MAX]; stream++)
-	{
-		/* Valid stream. */
-		if (stream->flags & (_IORW | _IOREAD | _IOWRITE))
-			fclose(stream);
-	}
+  register FILE *fp = (FILE *) cookie;
+  register ssize_t ret;
+
+#ifdef __SCLE
+  int oldmode = 0;
+  if (fp->_flags & __SCLE)
+    oldmode = setmode (fp->_file, O_BINARY);
+#endif
+
+  ret = _read_r (ptr, fp->_file, buf, n);
+
+#ifdef __SCLE
+  if (oldmode)
+    setmode (fp->_file, oldmode);
+#endif
+
+  /* If the read succeeded, update the current offset.  */
+
+  if (ret >= 0)
+    fp->_offset += ret;
+  else
+    fp->_flags &= ~__SOFF;	/* paranoia */
+  return ret;
 }
 
-/**
- * @brief Finds a file stream that is not in use.
- * 
- * @returns A file stream that is not in use. If no such stream is found, NULL
- *          is returned otherwise.
- */
-FILE *_getstream(void)
+/* Dummy function used in sscanf/swscanf. */
+_READ_WRITE_RETURN_TYPE
+_DEFUN(__seofread, (ptr, cookie, buf, len),
+       struct _reent *_ptr _AND
+       _PTR cookie _AND
+       char *buf   _AND
+       _READ_WRITE_BUFSIZE_TYPE len)
 {
-	for (FILE *stream = &streams[0]; stream < &streams[FOPEN_MAX]; stream++)
-	{
-		/* Valid stream. */
-		if (!(stream->flags & (_IORW | _IOREAD | _IOWRITE)))
-			return (stream);
-	}
-	
-	return (NULL);
+  ((void)_ptr);
+  ((void)cookie);
+  ((void)buf);
+  ((void)len);
+  return 0;
 }
 
+_READ_WRITE_RETURN_TYPE
+_DEFUN(__swrite, (ptr, cookie, buf, n),
+       struct _reent *ptr _AND
+       void *cookie _AND
+       char const *buf _AND
+       _READ_WRITE_BUFSIZE_TYPE n)
+{
+  register FILE *fp = (FILE *) cookie;
+  ssize_t w;
+#ifdef __SCLE
+  int oldmode=0;
+#endif
 
+  if (fp->_flags & __SAPP)
+    _lseek_r (ptr, fp->_file, (_off_t) 0, SEEK_END);
+  fp->_flags &= ~__SOFF;	/* in case O_APPEND mode is set */
+
+#ifdef __SCLE
+  if (fp->_flags & __SCLE)
+    oldmode = setmode (fp->_file, O_BINARY);
+#endif
+
+  w = _write_r (ptr, fp->_file, buf, n);
+
+#ifdef __SCLE
+  if (oldmode)
+    setmode (fp->_file, oldmode);
+#endif
+
+  return w;
+}
+
+_fpos_t
+_DEFUN(__sseek, (ptr, cookie, offset, whence),
+       struct _reent *ptr _AND
+       void *cookie _AND
+       _fpos_t offset _AND
+       int whence)
+{
+  register FILE *fp = (FILE *) cookie;
+  register _off_t ret;
+
+  ret = _lseek_r (ptr, fp->_file, (_off_t) offset, whence);
+  if (ret == -1L)
+    fp->_flags &= ~__SOFF;
+  else
+    {
+      fp->_flags |= __SOFF;
+      fp->_offset = ret;
+    }
+  return ret;
+}
+
+int
+_DEFUN(__sclose, (ptr, cookie),
+       struct _reent *ptr _AND
+       void *cookie)
+{
+  FILE *fp = (FILE *) cookie;
+
+  return _close_r (ptr, fp->_file);
+}
+
+#ifdef __SCLE
+int
+_DEFUN(__stextmode, (fd),
+       int fd)
+{
+#ifdef __CYGWIN__
+  extern int _cygwin_istext_for_stdio (int);
+  return _cygwin_istext_for_stdio (fd);
+#else
+  return 0;
+#endif
+}
+#endif

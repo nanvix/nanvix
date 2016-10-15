@@ -1,35 +1,67 @@
+/* NetWare can not use this implementation of abort.  It provides its
+   own version of abort in clib.nlm.  If we can not use clib.nlm, then
+   we must write abort in sys/netware.  */
+
+#ifdef ABORT_PROVIDED
+
+int _dummy_abort = 1;
+
+#else
+
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<abort>>---abnormal termination of a program
 
-/**
- * @file
- * 
- * @brief abort() implementation.
- */
+INDEX
+	abort
 
-#include <signal.h>
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	void abort(void);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	void abort();
+
+DESCRIPTION
+Use <<abort>> to signal that your program has detected a condition it
+cannot deal with.  Normally, <<abort>> ends your program's execution.
+
+Before terminating your program, <<abort>> raises the exception <<SIGABRT>>
+(using `<<raise(SIGABRT)>>').  If you have used <<signal>> to register
+an exception handler for this condition, that handler has the
+opportunity to retain control, thereby avoiding program termination.
+
+In this implementation, <<abort>> does not perform any stream- or
+file-related cleanup (the host environment may do so; if not, you can
+arrange for your program to do its own cleanup with a <<SIGABRT>>
+exception handler).
+
+RETURNS
+<<abort>> does not return to its caller.
+
+PORTABILITY
+ANSI C requires <<abort>>.
+
+Supporting OS subroutines required: <<_exit>> and optionally, <<write>>.
+*/
+
+#include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 
-/**
- * @brief Causes abnormal process termination.
- */
-void abort(void)
+_VOID
+_DEFUN_VOID (abort)
 {
-	kill(getpid(), SIGABRT);
+#ifdef ABORT_MESSAGE
+  write (2, "Abort called\n", sizeof ("Abort called\n")-1);
+#endif
+
+  while (1)
+    {
+      raise (SIGABRT);
+      _exit (1);
+    }
 }
+
+#endif

@@ -1,71 +1,81 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<wctomb>>---minimal wide char to multibyte converter
 
-/*
- * Copyright (C) 1991-1996 Free Software Foundation, Inc.
- * 
- * This file is part of the GNU C Library.
- * 
- * The GNU C Library free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- * 
- * The GNU C Library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA 02110-1301, USA.
- */
+INDEX
+	wctomb
 
-/**
- * @file
- * 
- * @brief wctomb() implementation.
- */
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	int wctomb(char *<[s]>, wchar_t <[wchar]>);
 
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	int wctomb(<[s]>, <[wchar]>)
+	char *<[s]>;
+	wchar_t <[wchar]>;
+
+DESCRIPTION
+When _MB_CAPABLE is not defined, this is a minimal ANSI-conforming 
+implementation of <<wctomb>>.  The
+only ``wide characters'' recognized are single bytes,
+and they are ``converted'' to themselves.  
+
+When _MB_CAPABLE is defined, this routine calls <<_wctomb_r>> to perform
+the conversion, passing a state variable to allow state dependent
+decoding.  The result is based on the locale setting which may
+be restricted to a defined set of locales.
+
+Each call to <<wctomb>> modifies <<*<[s]>>> unless <[s]> is a null
+pointer or _MB_CAPABLE is defined and <[wchar]> is invalid.
+
+RETURNS
+This implementation of <<wctomb>> returns <<0>> if
+<[s]> is <<NULL>>; it returns <<-1>> if _MB_CAPABLE is enabled
+and the wchar is not a valid multi-byte character, it returns <<1>>
+if _MB_CAPABLE is not defined or the wchar is in reality a single
+byte character, otherwise it returns the number of bytes in the
+multi-byte character.
+
+PORTABILITY
+<<wctomb>> is required in the ANSI C standard.  However, the precise
+effects vary with the locale.
+
+<<wctomb>> requires no supporting OS subroutines.
+*/
+
+#ifndef _REENT_ONLY
+
+#include <newlib.h>
 #include <stdlib.h>
+#include <errno.h>
+#include "local.h"
 
-/**
- * @brief Cconverts a wide-character code to a character.
- * 
- * @param s     Store location.
- * @param wchar Wide-character to convert.
- * 
- * @returns If @p s is a null pointer,a non-zero or 0 value is returns, if
- *          character encodings, respectively, do or do not have state-dependent
- *          encodings. If @p s is not a null pointer, -1 is returned if the
- *          value of @p wchar does not correspond to a valid character, or
- *          return the number of bytes that constitute the character
- *          corresponding to the value of @p wchar.
- */
-int wctomb(char *s, wchar_t wchar)
+int
+_DEFUN (wctomb, (s, wchar),
+        char *s _AND
+        wchar_t wchar)
 {
-	if (s != NULL)
-    {
-		*s = wchar;
-		return (1);
-    }
-    
-	return (0);
+#ifdef _MB_CAPABLE
+	struct _reent *reent = _REENT;
+
+        _REENT_CHECK_MISC(reent);
+
+        return __wctomb (reent, s, wchar, __locale_charset (),
+			 &(_REENT_WCTOMB_STATE(reent)));
+#else /* not _MB_CAPABLE */
+        if (s == NULL)
+                return 0;
+
+	/* Verify that wchar is a valid single-byte character.  */
+	if ((size_t)wchar >= 0x100) {
+		errno = EILSEQ;
+		return -1;
+	}
+
+        *s = (char) wchar;
+        return 1;
+#endif /* not _MB_CAPABLE */
 }
+
+#endif /* !_REENT_ONLY */

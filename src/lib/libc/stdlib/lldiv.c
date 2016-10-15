@@ -1,89 +1,115 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<lldiv>>---divide two long long integers
 
-/*
- * Copyright (C) 1991, 1996 Free Software Foundation, Inc.
- * 
- * This file is part of the GNU C Library.
- * 
- * The GNU C Library free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- * 
- * The GNU C Library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA 02110-1301, USA.
- */
+INDEX
+        lldiv
 
-/**
- * @file
- * 
- * @brief lldiv() implementation.
+ANSI_SYNOPSIS
+        #include <stdlib.h>
+        lldiv_t lldiv(long long <[n]>, long long <[d]>);
+
+TRAD_SYNOPSIS
+        #include <stdlib.h>
+        lldiv_t lldiv(<[n]>, <[d]>)
+        long long <[n]>, <[d]>;
+
+DESCRIPTION
+Divide
+@tex
+$n/d$,
+@end tex
+@ifnottex
+<[n]>/<[d]>,
+@end ifnottex
+returning quotient and remainder as two long long integers in a structure 
+<<lldiv_t>>.
+
+RETURNS
+The result is represented with the structure
+
+. typedef struct
+. {
+.  long long quot;
+.  long long rem;
+. } lldiv_t;
+
+where the <<quot>> field represents the quotient, and <<rem>> the
+remainder.  For nonzero <[d]>, if `<<<[r]> = ldiv(<[n]>,<[d]>);>>' then
+<[n]> equals `<<<[r]>.rem + <[d]>*<[r]>.quot>>'.
+
+To divide <<long>> rather than <<long long>> values, use the similar
+function <<ldiv>>.
+
+PORTABILITY
+<<lldiv>> is ISO 9899 (C99) compatable.
+
+No supporting OS subroutines are required.
+*/
+
+/*-
+ * Copyright (c) 2001 Mike Barcroft <mike@FreeBSD.org>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 #include <stdlib.h>
 
-/**
- * @brief Computes quotient and remainder of a long long division.
- * 
- * @param numer Numerator.
- * @param denom Denominator.
- * 
- * @returns A structure of type lldiv_t, comprising both the quotient and the
- *          remainder.
+/*
+ * The ANSI standard says that |r.quot| <= |n/d|, where
+ * n/d is to be computed in infinite precision.  In other
+ * words, we should always truncate the quotient towards
+ * 0, never -infinity.
+ *
+ * Machine division and remainer may work either way when
+ * one or both of n or d is negative.  If only one is
+ * negative and r.quot has been truncated towards -inf,
+ * r.rem will have the same sign as denom and the opposite
+ * sign of num; if both are negative and r.quot has been
+ * truncated towards -inf, r.rem will be positive (will
+ * have the opposite sign of num).  These are considered
+ * `wrong'.
+ *
+ * If both are num and denom are positive, r will always
+ * be positive.
+ *
+ * This all boils down to:
+ *      if num >= 0, but r.rem < 0, we got the wrong answer.
+ * In that case, to get the right answer, add 1 to r.quot and
+ * subtract denom from r.rem.
  */
-lldiv_t lldiv (long long int numer, long long int denom)
+lldiv_t
+_DEFUN (lldiv, (number, denom), 
+       long long numer _AND long long denom)
 {
-	lldiv_t result;
+	lldiv_t retval;
 
-	result.quot = numer/denom;
-	result.rem = numer%denom;
-
-	/*
-	 * The ANSI standard says that |QUOT| <= |NUMER / DENOM|, where
-	 * NUMER / DENOM is to be computed in infinite precision.  In
-	 * other words, we should always truncate the quotient towards
-	 * zero, never -infinity.  Machine division and remainer may
-	 * work either way when one or both of NUMER or DENOM is
-	 * negative.  If only one is negative and QUOT has been
-	 * truncated towards -infinity, REM will have the same sign as
-	 * DENOM and the opposite sign of NUMER; if both are negative
-	 * and QUOT has been truncated towards -infinity, REM will be
-	 * positive (will have the opposite sign of NUMER).  These are
-	 * considered `wrong'.  If both are NUM and DENOM are positive,
-	 * RESULT will always be positive.  This all boils down to: if
-	 * NUMER >= 0, but REM < 0, we got the wrong answer.  In that
-	 * case, to get the right answer, add 1 to QUOT and subtract
-	 * DENOM from REM.
-	 */
-	if (numer >= 0 && result.rem < 0)
-	{
-		++result.quot;
-		result.rem -= denom;
+	retval.quot = numer / denom;
+	retval.rem = numer % denom;
+	if (numer >= 0 && retval.rem < 0) {
+		retval.quot++;
+		retval.rem -= denom;
 	}
-
-	return (result);
+	return (retval);
 }
+

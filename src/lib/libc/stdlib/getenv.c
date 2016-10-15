@@ -1,116 +1,93 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<getenv>>---look up environment variable
+
+INDEX
+	getenv
+INDEX
+	environ
+
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	char *getenv(const char *<[name]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	char *getenv(<[name]>)
+	char *<[name]>;
+
+DESCRIPTION
+<<getenv>> searches the list of environment variable names and values
+(using the global pointer ``<<char **environ>>'') for a variable whose
+name matches the string at <[name]>.  If a variable name matches,
+<<getenv>> returns a pointer to the associated value.
+
+RETURNS
+A pointer to the (string) value of the environment variable, or
+<<NULL>> if there is no such environment variable.
+
+PORTABILITY
+<<getenv>> is ANSI, but the rules for properly forming names of environment
+variables vary from one system to another.
+
+<<getenv>> requires a global pointer <<environ>>.
+*/
 
 /*
- * Copyright (c) 1992 The Regents of the University of California.
+ * Copyright (c) 1987, 2000 Regents of the University of California.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
+ * Redistribution and use in source and binary forms are permitted
+ * provided that: (1) source distributions retain this entire copyright
+ * notice and comment, and (2) distributions including binaries display
+ * the following acknowledgement:  ``This product includes software
+ * developed by the University of California, Berkeley and its contributors''
+ * in the documentation or other materials provided with the distribution
+ * and in all advertising materials mentioning features or use of this
+ * software. Neither the name of the University nor the names of its
+ * contributors may be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/**
- * @file
- * 
- * @brief getenv() implementation.
- */
+#ifndef _REENT_ONLY
 
-#include <unistd.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
-/**
- * @brief Finds environment variable.
- * 
- * @param name   Variable name.
- * @param offset Variable offset store location.
- * 
- * @returns A pointer to a string containing the value for the specified name,
- *          upon successful completion. If the specified name cannot be found
- *          in the environment of the calling process, a null pointer is
- *          returned instead.
+/*
+ * _findenv --
+ *	Returns pointer to value associated with name, if any, else NULL.
+ *	Sets offset to be the offset of the name/value combination in the
+ *	environmental array, for use by setenv(3) and unsetenv(3).
+ *	Explicitly removes '=' in argument name.
+ *
+ *	This routine *should* be a static; don't use it.
  */
-char *findenv(const char *name, int *offset)
+
+char *
+_DEFUN (_findenv, (name, offset),
+	register _CONST char *name _AND
+	int *offset)
 {
-	register int length; /* Variable name length.         */
-	const char *c;       /* Environment variable name.    */
-	register char **p;   /* Working environment variable. */
-
-	c = name;
-	length = 0;
-	while ((*c != '\0') && (*c != '='))
-	{
-		c++;
-		length++;
-	}
-
-	/* Search for environment variable. */
-	for (p = environ; *p != NULL; p++)
-	{
-		/* Found. */
-		if (!strncmp(name, *p, length))
-		{
-			if (*(c = *p + length) == '=')
-			{
-				*offset = p - environ;
-				return ((char *) (++c));
-			}
-		}
-	}
-	
-	return (NULL);
+  return _findenv_r (_REENT, name, offset);
 }
 
-/**
- * @brief Gets value of an environment variable.
- * 
- * @param name Variable name.
- * 
- * @returns A pointer to a string containing the value for the specified name,
- *          upon successful completion. If the specified name cannot be found
- *          in the environment of the calling process, a null pointer is
- *          returned instead.
+/*
+ * getenv --
+ *	Returns ptr to value associated with name, if any, else NULL.
  */
-char *getenv(const char *name)
+
+char *
+_DEFUN (getenv, (name),
+	_CONST char *name)
 {
-	int offset;
- 
-	return (findenv(name, &offset));
+  int offset;
+
+  return _findenv_r (_REENT, name, &offset);
 }
+
+#endif /* !_REENT_ONLY */

@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -34,5 +35,11 @@
     #define va_arg(AP, TYPE)                        \
       (AP += __va_rounded_size (TYPE),              \
       *((TYPE *) (AP - __va_rounded_size (TYPE))))  \
+
+    #ifdef __need___va_list
+    #ifndef __VALIST
+    #define __VALIST char*
+    #endif
+    #endif
 
 #endif /* STDARG_H_ */

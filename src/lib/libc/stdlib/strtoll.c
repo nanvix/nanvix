@@ -1,24 +1,90 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+   <<strtoll>>---string to long long
 
-/*
- * Copyright (c) 1992 The Regents of the University of California.
+INDEX
+	strtoll
+INDEX
+	_strtoll_r
+
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+        long long strtoll(const char *restrict <[s]>, char **restrict <[ptr]>,int <[base]>);
+
+        long long _strtoll_r(void *<[reent]>, 
+                       const char *restrict <[s]>, char **restrict <[ptr]>,int <[base]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	long long strtoll (<[s]>, <[ptr]>, <[base]>)
+        const char *<[s]>;
+        char **<[ptr]>;
+        int <[base]>;
+
+	long long _strtoll_r (<[reent]>, <[s]>, <[ptr]>, <[base]>)
+	char *<[reent]>;
+        const char *<[s]>;
+        char **<[ptr]>;
+        int <[base]>;
+
+DESCRIPTION
+The function <<strtoll>> converts the string <<*<[s]>>> to
+a <<long long>>. First, it breaks down the string into three parts:
+leading whitespace, which is ignored; a subject string consisting
+of characters resembling an integer in the radix specified by <[base]>;
+and a trailing portion consisting of zero or more unparseable characters,
+and always including the terminating null character. Then, it attempts
+to convert the subject string into a <<long long>> and returns the
+result.
+
+If the value of <[base]> is 0, the subject string is expected to look
+like a normal C integer constant: an optional sign, a possible `<<0x>>'
+indicating a hexadecimal base, and a number. If <[base]> is between
+2 and 36, the expected form of the subject is a sequence of letters
+and digits representing an integer in the radix specified by <[base]>,
+with an optional plus or minus sign. The letters <<a>>--<<z>> (or,
+equivalently, <<A>>--<<Z>>) are used to signify values from 10 to 35;
+only letters whose ascribed values are less than <[base]> are
+permitted. If <[base]> is 16, a leading <<0x>> is permitted.
+
+The subject sequence is the longest initial sequence of the input
+string that has the expected form, starting with the first
+non-whitespace character.  If the string is empty or consists entirely
+of whitespace, or if the first non-whitespace character is not a
+permissible letter or digit, the subject string is empty.
+
+If the subject string is acceptable, and the value of <[base]> is zero,
+<<strtoll>> attempts to determine the radix from the input string. A
+string with a leading <<0x>> is treated as a hexadecimal value; a string with
+a leading 0 and no <<x>> is treated as octal; all other strings are
+treated as decimal. If <[base]> is between 2 and 36, it is used as the
+conversion radix, as described above. If the subject string begins with
+a minus sign, the value is negated. Finally, a pointer to the first
+character past the converted subject string is stored in <[ptr]>, if
+<[ptr]> is not <<NULL>>.
+
+If the subject string is empty (or not in acceptable form), no conversion
+is performed and the value of <[s]> is stored in <[ptr]> (if <[ptr]> is
+not <<NULL>>).
+
+The alternate function <<_strtoll_r>> is a reentrant version.  The
+extra argument <[reent]> is a pointer to a reentrancy structure.
+
+RETURNS
+<<strtoll>> returns the converted value, if any. If no conversion was
+made, 0 is returned.
+
+<<strtoll>> returns <<LONG_LONG_MAX>> or <<LONG_LONG_MIN>> if the magnitude of
+the converted value is too large, and sets <<errno>> to <<ERANGE>>.
+
+PORTABILITY
+<<strtoll>> is ANSI.
+
+No supporting OS subroutines are required.
+*/
+
+/*-
+ * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,7 +95,11 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. Neither the name of the University nor the names of its contributors
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -46,139 +116,23 @@
  * SUCH DAMAGE.
  */
 
-/**
- * @file
- * 
- * @brief strtoll() implementation.
- */
 
-#include <sys/types.h>
-
+#include <_ansi.h>
+#include <limits.h>
 #include <ctype.h>
 #include <errno.h>
-#include <limits.h>
 #include <stdlib.h>
+#include <reent.h>
 
-/**
- * @brief Converts a string to a long long integer.
- *
- * @param nptr   Start of string
- * @param endptr End of string.
- * @param base   Base
- *
- * @returns The converted value 
- */
-long long strtoll(const char *nptr, char **endptr, int base)
+#ifndef _REENT_ONLY
+
+long long
+_DEFUN (strtoll, (s, ptr, base),
+	_CONST char *__restrict s _AND
+	char **__restrict ptr _AND
+	int base)
 {
-	const char *s;
-	long long acc, cutoff;
-	int c;
-	int neg, any, cutlim;
-
-	/*
-	 * Skip white space and pick up leading +/- sign if any.
-	 * If base is 0, allow 0x for hex and 0 for octal, else
-	 * assume decimal; if base is already 16, allow 0x.
-	 */
-	s = nptr;
-	do
-	{
-		c = (unsigned char) *s++;
-	} while (isspace(c));
-	if (c == '-')
-	{
-		neg = 1;
-		c = *s++;
-	}
-	else
-	{
-		neg = 0;
-		if (c == '+')
-			c = *s++;
-	}
-	if ((base == 0 || base == 16) && c == '0' && (*s == 'x' || *s == 'X'))
-	{
-		c = s[1];
-		s += 2;
-		base = 16;
-	}
-	if (base == 0)
-		base = c == '0' ? 8 : 10;
-
-	/*
-	 * Compute the cutoff value between legal numbers and illegal
-	 * numbers.  That is the largest legal value, divided by the
-	 * base.  An input number that is greater than this value, if
-	 * followed by a legal input character, is too big.  One that
-	 * is equal to this value may be valid or not; the limit
-	 * between valid and invalid numbers is then based on the last
-	 * digit.  For instance, if the range for long longs is
-	 * [-9223372036854775808..9223372036854775807] and the input base
-	 * is 10, cutoff will be set to 922337203685477580 and cutlim to
-	 * either 7 (neg==0) or 8 (neg==1), meaning that if we have
-	 * accumulated a value > 922337203685477580, or equal but the
-	 * next digit is > 7 (or 8), the number is too big, and we will
-	 * return a range error.
-	 *
-	 * Set any if any `digits' consumed; make it negative to indicate
-	 * overflow.
-	 */
-	cutoff = neg ? LLONG_MIN : LLONG_MAX;
-	cutlim = cutoff % base;
-	cutoff /= base;
-	if (neg)
-	{
-		if (cutlim > 0)
-		{
-			cutlim -= base;
-			cutoff += 1;
-		}
-		cutlim = -cutlim;
-	}
-	for (acc = 0, any = 0;; c = (unsigned char) *s++)
-	{
-		if (isdigit(c))
-			c -= '0';
-		else if (isalpha(c))
-			c -= isupper(c) ? 'A' - 10 : 'a' - 10;
-		else
-			break;
-		if (c >= base)
-			break;
-		if (any < 0)
-			continue;
-		if (neg)
-		{
-			if (acc < cutoff || (acc == cutoff && c > cutlim))
-			{
-				any = -1;
-				acc = LLONG_MIN;
-				errno = ERANGE;
-			}
-			else
-			{
-				any = 1;
-				acc *= base;
-				acc -= c;
-			}
-		}
-		else
-		{
-			if (acc > cutoff || (acc == cutoff && c > cutlim))
-			{
-				any = -1;
-				acc = LLONG_MAX;
-				errno = ERANGE;
-			}
-			else
-			{
-				any = 1;
-				acc *= base;
-				acc += c;
-			}
-		}
-	}
-	if (endptr != 0)
-		*endptr = (char *) (any ? s - 1 : nptr);
-	return (acc);
+	return _strtoll_r (_REENT, s, ptr, base);
 }
+
+#endif
