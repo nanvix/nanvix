@@ -48,8 +48,8 @@
 export CFLAGS += -U__STRICT_ANSI__
 
 # Builds everything.
-all: cat chgrp chmod chown cp date echo kill ln login ls mv nice pwd rm stat \
-	sync touch tsh ps clear nim
+all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat \
+	sync tsh ps 
 
 # Builds cat.
 cat: 
