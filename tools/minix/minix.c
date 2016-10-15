@@ -259,6 +259,65 @@ static uint16_t minix_inode_alloc(uint16_t mode, uint16_t uid, uint16_t gid)
 }
 
 /**
+ * @brief Create an indirect block.
+ *
+ * @details Creates a indirect block and saves in @param dest.
+ *
+ * @param dest Destination buffer, It is the corresponding disk block to be changed.
+ * @param offset Offset to be calculated the block.
+ * @param off File byte offset.
+ * @param creat If 1, creates an block, otherwise, just return this value.
+ *
+ * @returns If successful, the block number created / obtained, otherwise BLOCK_NULL is 
+ *          returned.
+ */
+static block_t create_indirect_block
+(block_t *dest, off_t offset, off_t off, int create)
+{
+	block_t phys; /* Physical block number. */
+
+	if (dest[offset] == BLOCK_NULL && create)
+	{
+		/* Allocate an block. */
+		phys = minix_block_alloc();
+		dest[offset] = phys;
+		
+		slseek(fd, off , SEEK_SET);
+		swrite(fd, dest, BLOCK_SIZE);
+		return (phys);
+	}
+	else
+		return (dest[offset]);
+}
+
+/**
+ * @brief Create an direct block.
+ *
+ * @details Creates a direct block and saves in @param dest.
+ *
+ * @param ip File to use.
+ * @param offset Offset to be calculated the block.
+ * @param creat If 1, creates an block, otherwise, just return this value.
+ *
+ * @returns If successful, the block number created/obtained, otherwise BLOCK_NULL
+ *          is returned.
+ */
+static block_t create_direct_block(struct d_inode *ip, off_t offset, bool create)
+{
+	block_t phys; /* Physical block number. */
+
+	if (ip->i_zones[offset] == BLOCK_NULL && create)
+	{
+		/* Allocate an block. */
+		phys = minix_block_alloc();
+		ip->i_zones[offset] = phys;
+		return (phys);
+	}
+	else
+		return (ip->i_zones[offset]);
+}
+
+/**
  * @brief Maps a file byte offset in a block number.
  * 
  * @param ip     File to use
@@ -272,10 +331,11 @@ static uint16_t minix_inode_alloc(uint16_t mode, uint16_t uid, uint16_t gid)
  */
 static block_t minix_block_map(struct d_inode *ip, off_t off, bool create)
 {
-	block_t phys;                            /* Phys. blk. #.   */
-	block_t logic;                           /* Logic. blk. #.  */
-	block_t buf[BLOCK_SIZE/sizeof(block_t)]; /* Working buffer. */
-	
+	block_t phys;                            /* Phys. blk. #.      */
+	block_t logic;                           /* Logic. blk. #.     */
+	block_t buf[BLOCK_SIZE/sizeof(block_t)]; /* Working buffer.    */
+	unsigned tmp;                            /* Logic. blk. #. tmp */
+
 	logic = off/BLOCK_SIZE;
 	
 	/* File offset too big. */
@@ -293,13 +353,10 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, bool create)
 	if (logic < NR_ZONES_DIRECT)
 	{
 		/* Create direct block. */
-		if (ip->i_zones[logic] == BLOCK_NULL && create)
-		{
-			phys = minix_block_alloc();
-			ip->i_zones[logic] = phys;
-		}
-		
-		return (ip->i_zones[logic]);
+		if ( (phys = create_direct_block(ip,logic,create)) != BLOCK_NULL)
+			return (phys);
+		else
+			return (BLOCK_NULL);
 	}
 	
 	logic -= NR_ZONES_DIRECT;
@@ -307,37 +364,59 @@ static block_t minix_block_map(struct d_inode *ip, off_t off, bool create)
 	/* Single indirect block. */
 	if (logic < NR_SINGLE)
 	{
-		/* Create single indirect block. */
-		if (ip->i_zones[ZONE_SINGLE] == BLOCK_NULL && create)
+		if ( (phys = create_direct_block(ip,ZONE_SINGLE,create)) != BLOCK_NULL)
 		{
-			phys = minix_block_alloc();
-			ip->i_zones[ZONE_SINGLE] = phys;
-		}
-		
-		/* We cannot go any further. */
-		if ((phys = ip->i_zones[ZONE_SINGLE]) == BLOCK_NULL)
-			error("invalid offset");
-	
-		off = phys*BLOCK_SIZE;
-		slseek(fd, off, SEEK_SET);
-		sread(fd, buf, BLOCK_SIZE);
-		
-		/* Create direct block. */
-		if (buf[logic] == BLOCK_NULL && create)
-		{
-			phys = minix_block_alloc();
-			buf[logic] = phys;
+			off = phys*BLOCK_SIZE;
 			slseek(fd, off, SEEK_SET);
-			swrite(fd, buf, BLOCK_SIZE);
+			sread(fd, buf, BLOCK_SIZE);
+			
+			if ( (phys = create_indirect_block(buf,logic,off,create)) != BLOCK_NULL)
+				return (phys);
+			else
+				return (BLOCK_NULL);
 		}
-		
-		return (buf[logic]);
+		else
+			return (BLOCK_NULL);
+	}
+
+	logic = off - REMAINING_OFFSET;
+
+	/* Double indirect block. */
+	tmp = logic / BLOCK_SIZE;
+	if (tmp < NR_DOUBLE)
+	{
+		size_t logicSingle = logic / (NR_SINGLE * BLOCK_SIZE);
+		size_t logicDouble = logic / BLOCK_SIZE;
+
+		/* Create single, double and/or direct block. */
+		if ( (phys = create_direct_block(ip,ZONE_DOUBLE,create)) != BLOCK_NULL)
+		{
+			off = phys*BLOCK_SIZE;
+			slseek(fd, off, SEEK_SET);
+			sread(fd, buf, BLOCK_SIZE);
+			
+			if ( (phys = create_indirect_block(buf,logicSingle,off,create)) 
+				!= BLOCK_NULL)
+			{
+				off = phys*BLOCK_SIZE;
+				slseek(fd, off, SEEK_SET);
+				sread(fd, buf, BLOCK_SIZE);
+
+				if ( (phys = create_indirect_block(buf,logicDouble,off,create)) 
+					!= BLOCK_NULL)
+					return (phys);
+				else
+					return (BLOCK_NULL);
+			}
+			else
+				return (BLOCK_NULL);
+		}
+		else
+			return (BLOCK_NULL);
 	}
 	
-	logic -= NR_SINGLE;
-	
-	/* Double indirect zone. */
-	error("double indect zone");
+	/* Triple indirect zone. */
+	error("triple indirect zone");
 	
 	return (BLOCK_NULL);
 }
@@ -769,7 +848,7 @@ void minix_mkfs
 	super.s_imap_nblocks = imap_nblocks;
 	super.s_bmap_nblocks = bmap_nblocks;
 	super.s_first_data_block = 2 + imap_nblocks + bmap_nblocks + inode_nblocks;
-	super.s_max_size = 532480;
+	super.s_max_size = 67641344;
 	super.s_magic = SUPER_MAGIC;
 	
 	/* Create inode map. */
