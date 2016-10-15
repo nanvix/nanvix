@@ -128,6 +128,9 @@
 	
 	/** Number of zones in a double indirect zone. */
 	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(block_t))*NR_SINGLE)
+
+	/** Offset remaining to use in double indirect zone. */
+	#define REMAINING_OFFSET ((NR_ZONES_DIRECT+NR_SINGLE)*BLOCK_SIZE)
 	
 	/**@}*/
 

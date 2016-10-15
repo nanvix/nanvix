@@ -233,6 +233,92 @@ PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
 }
 
 /**
+ * @brief Create an indirect block.
+ *
+ * @details Creates a indirect block and saves in @param dest.
+ *
+ * @param dest Destination buffer, It is the corresponding disk block to be changed.
+ * @param ip File to use.
+ * @param offset Offset to be calculated the block.
+ * @param creat If 1, creates an block, otherwise, just return this value.
+ *
+ * @returns If successful, the block number created / obtained, otherwise BLOCK_NULL is 
+ *          returned.
+ *
+ * @note @p ip must be locked.
+ */
+PUBLIC block_t create_indirect_block
+(struct buffer *dest, struct inode *ip, off_t offset, int create)
+{
+	block_t phys; /* Physical block number. */
+
+	if (((block_t *)dest->data)[offset] == BLOCK_NULL && create)
+	{
+		/* Allocate an block. */
+		superblock_lock(ip->sb);
+		phys = block_alloc(ip->sb);
+		superblock_unlock(ip->sb);
+
+		if (phys != BLOCK_NULL)
+		{
+			((block_t *)dest->data)[offset] = phys;
+			dest->flags |= BUFFER_DIRTY;
+			inode_touch(ip);
+			brelse(dest);
+			return (phys);
+		}
+		else
+		{
+			brelse(dest);
+			return (phys);
+		}
+	}
+	else
+	{
+		brelse(dest);
+		return ((block_t *)dest->data)[offset];
+	}
+}
+
+/**
+ * @brief Create an direct block.
+ *
+ * @details Creates a direct block and saves in @param dest.
+ *
+ * @param ip File to use.
+ * @param offset Offset to be calculated the block.
+ * @param creat If 1, creates an block, otherwise, just return this value.
+ *
+ * @returns If successful, the block number created/obtained, otherwise BLOCK_NULL is 
+ *          returned.
+ *
+ * @note @p ip must be locked.
+ */
+PUBLIC block_t create_direct_block(struct inode *ip, off_t offset, int create)
+{
+	block_t phys; /* Physical block number. */
+
+	if (ip->blocks[offset] == BLOCK_NULL && create)
+	{
+		/* Allocate an block. */
+		superblock_lock(ip->sb);
+		phys = block_alloc(ip->sb);
+		superblock_unlock(ip->sb);
+
+		if (phys != BLOCK_NULL)
+		{
+			ip->blocks[offset] = phys;
+			inode_touch(ip);
+			return (phys);
+		}
+		else
+			return (phys);
+	}
+	else
+		return (ip->blocks[offset]);
+}
+
+/**
  * @brief Maps a file byte offset in a disk block number.
  * 
  * @details Maps the offset @p off in the file pointed to by @p ip in a disk
@@ -251,9 +337,10 @@ PUBLIC void block_free(struct superblock *sb, block_t num, int lvl)
  */
 PUBLIC block_t block_map(struct inode *ip, off_t off, int create)
 {
-	block_t phys;       /* Physical block number. */
-	block_t logic;      /* Logical block number.  */
-	struct buffer *buf; /* Underlying buffer.     */
+	block_t phys;       /* Physical block number.    */
+	block_t logic;      /* Logical block number.     */
+	struct buffer *buf; /* Underlying buffer.        */
+	unsigned tmp;       /* Logical block number tmp. */
 	
 	logic = off/BLOCK_SIZE;
 	
@@ -336,10 +423,38 @@ PUBLIC block_t block_map(struct inode *ip, off_t off, int create)
 		return (((block_t *)buf->data)[logic]);
 	}
 	
-	logic -= NR_SINGLE;
+	logic = off - REMAINING_OFFSET;
 	
-	/* Double indirect zone. */
-	kpanic("double indirect zones not supported yet");
+	/* Double indirect block. */
+	tmp = logic / BLOCK_SIZE;
+	if (tmp < NR_DOUBLE)
+	{
+		size_t logicSingle = logic / (NR_SINGLE * BLOCK_SIZE);
+		size_t logicDouble = logic / BLOCK_SIZE;
+		
+		/* Create single, double and/or direct block. */
+		if ( (phys = create_direct_block(ip,ZONE_DOUBLE,create)) != BLOCK_NULL)
+		{
+			buf = bread(ip->dev, phys);
+			if ( (phys = create_indirect_block(buf,ip,logicSingle,create)) 
+				!= BLOCK_NULL)
+			{
+				buf = bread(ip->dev, phys);
+				if ( (phys = create_indirect_block(buf,ip,logicDouble,create)) 
+					!= BLOCK_NULL)
+					return (phys);
+				else
+					return (BLOCK_NULL);
+			}
+			else
+				return (BLOCK_NULL);
+		}
+		else
+			return (BLOCK_NULL);
+	}
+
+	/* Triple indirect zone. */
+	kpanic("triple indirect zones not supported");
 	
 	return (BLOCK_NULL);
 }
