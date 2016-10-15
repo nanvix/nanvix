@@ -85,6 +85,9 @@
 	
 	/* Save data segment. */
 	pushl %ds
+	pushl %es
+	pushl %fs
+	pushl %gs
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -193,6 +196,9 @@ leave:
 			subl $44, USERESP - 4(%esp)
 
 leave.out:
+	popl %gs
+	popl %fs
+	popl %es
 	popl %ds
 	popl %edi
 	popl %esi
@@ -269,6 +275,9 @@ swint:
 	pushl %esi
 	pushl %edi
 	pushl %ds
+	pushl %es
+	pushl %fs
+	pushl %gs
 	
 	enter
 	

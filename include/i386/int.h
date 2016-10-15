@@ -40,19 +40,22 @@
 	#define INT_ATA2    15 /* Secondary ATA hard disk.                   */
 
 	/* Offsets to the registers structure. */
-	#define DS       4
-	#define EDI      8
-	#define ESI     12
-	#define EBP     16
-	#define EBX     20
-	#define EDX     24
-	#define ECX     28
-	#define EAX     32
-	#define EIP     36
-	#define CS      40
-	#define EFLAGS  44
-	#define USERESP 48
-	#define SS      52
+	#define GS       4
+	#define FS       8
+	#define ES      12
+	#define DS      16
+	#define EDI     20
+	#define ESI     24
+	#define EBP     28
+	#define EBX     32
+	#define EDX     36
+	#define ECX     40
+	#define EAX     44
+	#define EIP     48
+	#define CS      52
+	#define EFLAGS  56
+	#define USERESP 60
+	#define SS      64
 
 #ifndef _ASM_FILE_
 
@@ -62,7 +65,7 @@
 	struct intstack
 	{   
 		dword_t old_kesp;
-        dword_t ds;
+        dword_t gs, fs, es, ds;
         dword_t edi, esi, ebp, ebx, edx, ecx, eax;
         dword_t eip, cs, eflags, useresp, ss;	
 	};
