@@ -1,72 +1,99 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ * Copyright (c) 1990 Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms are permitted
+ * provided that the above copyright notice and this paragraph are
+ * duplicated in all such forms and that any documentation,
+ * advertising materials, and other materials related to such
+ * distribution and use acknowledge that the software was developed
+ * by the University of California, Berkeley.  The name of the
+ * University may not be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
+/* No user fns here. Pesch 15apr92 */
 
-#include <fcntl.h>
+#include <_ansi.h>
 #include <stdio.h>
+#include <time.h>
+#include <fcntl.h>
 #include <errno.h>
+#include <sys/types.h>
 
-
-/**
- * @brief Returns the (stdio) flags for a given mode.
- * 
- * @param mode   Opening mode.
- * @param oflags Opening flags.
- * 
- * @returns Flags for an opening mode.
+/*
+ * Return the (stdio) flags for a given mode.  Store the flags
+ * to be passed to an open() syscall through *optr.
+ * Return 0 on error.
  */
-int _sflags(const char *mode, int *oflags)
+
+int
+_DEFUN(__sflags, (ptr, mode, optr),
+       struct _reent *ptr  _AND
+       register char *mode _AND
+       int *optr)
 {
-	int flags;
-	
-	/* Get open mode. */
-	switch (*mode++)
+  register int ret, m, o;
+
+  switch (mode[0])
+    {
+    case 'r':			/* open for reading */
+      ret = __SRD;
+      m = O_RDONLY;
+      o = 0;
+      break;
+
+    case 'w':			/* open for writing */
+      ret = __SWR;
+      m = O_WRONLY;
+      o = O_CREAT | O_TRUNC;
+      break;
+
+    case 'a':			/* open for appending */
+      ret = __SWR | __SAPP;
+      m = O_WRONLY;
+      o = O_CREAT | O_APPEND;
+      break;
+    default:			/* illegal mode */
+      ptr->_errno = EINVAL;
+      return (0);
+    }
+  while (*++mode)
+    {
+      switch (*mode)
 	{
-		/* Opend file for reading. */
-		case 'r':
-			flags = _IOREAD;
-			*oflags = O_RDONLY;
-			break;
-		
-		/* Open file for writing. */
-		case 'w':
-			flags = _IOWRITE;
-			*oflags = O_CREAT | O_TRUNC | O_WRONLY;
-			break;
-			
-		/* Open file for appending. */
-		case 'a':
-			flags = _IOWRITE | _IOAPPEND | _IOSYNC;
-			*oflags = O_CREAT | O_WRONLY;
-			break;
-		
-		/* Illegal mode. */
-		default:
-			errno = EINVAL;
-			return (0);
+	case '+':
+	  ret = (ret & ~(__SRD | __SWR)) | __SRW;
+	  m = (m & ~O_ACCMODE) | O_RDWR;
+	  break;
+	case 'b':
+#ifdef O_BINARY
+	  m |= O_BINARY;
+#endif
+	  break;
+#ifdef __CYGWIN__
+	case 't':
+	  m |= O_TEXT;
+	  break;
+#endif
+#if defined (O_CLOEXEC) && defined (_GLIBC_EXTENSION)
+	case 'e':
+	  m |= O_CLOEXEC;
+	  break;
+#endif
+	case 'x':
+	  m |= O_EXCL;
+	  break;
+	default:
+	  break;
 	}
-	
-	/* Read/write. */
-	if ((*mode == '+') || ((*mode == 'b') && mode[1] == '+'))
-	{
-		flags = (flags & ~(_IOREAD |_IOWRITE)) | _IORW;
-		*oflags = O_RDWR;
-	}
-	
-	return (flags | _IOFBF);
+    }
+#if defined (O_TEXT) && !defined (__CYGWIN__)
+  if (!(m | O_BINARY))
+    m |= O_TEXT;
+#endif
+  *optr = m | o;
+  return ret;
 }

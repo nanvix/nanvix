@@ -28,6 +28,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
+#include <limits.h>
 
 /* Test flags. */
 #define EXTENDED (1 << 0)

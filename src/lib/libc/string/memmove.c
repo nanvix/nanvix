@@ -1,96 +1,144 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+	<<memmove>>---move possibly overlapping memory
 
-/*
- * Copyright (c) 1990 The Regents of the University of California.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *	This product includes software developed by the University of
- *	California, Berkeley and its contributors.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
+INDEX
+	memmove
 
-/**
- * @file
- * 
- * @brief memmove() implementation.
- */
+ANSI_SYNOPSIS
+	#include <string.h>
+	void *memmove(void *<[dst]>, const void *<[src]>, size_t <[length]>);
 
-#include <sys/types.h>
+TRAD_SYNOPSIS
+	#include <string.h>
+	void *memmove(<[dst]>, <[src]>, <[length]>)
+	void *<[dst]>;
+	void *<[src]>;
+	size_t <[length]>;
 
-/**
- * @brief Copies bytes in memory with overlapping areas.
- * 
- * @param s1 Pointer to target object.
- * @param s2 Pointer to source object.
- * @param n  Number of bytes to copy.
- * 
- * @returns @p s1 is returned.
- * 
- * @version IEEE Std 1003.1, 2013 Edition
- */
-void *memmove(void *s1, const void *s2, size_t n)
+DESCRIPTION
+	This function moves <[length]> characters from the block of
+	memory starting at <<*<[src]>>> to the memory starting at
+	<<*<[dst]>>>. <<memmove>> reproduces the characters correctly
+	at <<*<[dst]>>> even if the two areas overlap.
+
+
+RETURNS
+	The function returns <[dst]> as passed.
+
+PORTABILITY
+<<memmove>> is ANSI C.
+
+<<memmove>> requires no supporting OS subroutines.
+
+QUICKREF
+	memmove ansi pure
+*/
+
+#include <string.h>
+#include <_ansi.h>
+#include <stddef.h>
+#include <limits.h>
+#include "local.h"
+
+/* Nonzero if either X or Y is not aligned on a "long" boundary.  */
+#define UNALIGNED(X, Y) \
+  (((long)X & (sizeof (long) - 1)) | ((long)Y & (sizeof (long) - 1)))
+
+/* How many bytes are copied each iteration of the 4X unrolled loop.  */
+#define BIGBLOCKSIZE    (sizeof (long) << 2)
+
+/* How many bytes are copied each iteration of the word copy loop.  */
+#define LITTLEBLOCKSIZE (sizeof (long))
+
+/* Threshhold for punting to the byte copier.  */
+#define TOO_SMALL(LEN)  ((LEN) < BIGBLOCKSIZE)
+
+/*SUPPRESS 20*/
+_PTR
+__inhibit_loop_to_libcall
+_DEFUN (memmove, (dst_void, src_void, length),
+	_PTR dst_void _AND
+	_CONST _PTR src_void _AND
+	size_t length)
 {
-	char *p1;
-	const char *p2;
-  
-	p1 = s1;
-	p2 = s2;
+#if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
+  char *dst = dst_void;
+  _CONST char *src = src_void;
 
-	/* Have to copy backwards */
-	if (p2 < p1 && p1 < p2 + n)
+  if (src < dst && dst < src + length)
+    {
+      /* Have to copy backwards */
+      src += length;
+      dst += length;
+      while (length--)
 	{
-		p2 += n; p1 += n;
-		
-		while (n-- > 0)
-			*--p1 = *--p2;
+	  *--dst = *--src;
 	}
-	
-	else
+    }
+  else
+    {
+      while (length--)
 	{
-		while (n-- > 0)
-			*p1++ = *p2++;
+	  *dst++ = *src++;
 	}
+    }
 
-	return (s1);
+  return dst_void;
+#else
+  char *dst = dst_void;
+  _CONST char *src = src_void;
+  long *aligned_dst;
+  _CONST long *aligned_src;
+
+  if (src < dst && dst < src + length)
+    {
+      /* Destructive overlap...have to copy backwards */
+      src += length;
+      dst += length;
+      while (length--)
+	{
+	  *--dst = *--src;
+	}
+    }
+  else
+    {
+      /* Use optimizing algorithm for a non-destructive copy to closely 
+         match memcpy. If the size is small or either SRC or DST is unaligned,
+         then punt into the byte copy loop.  This should be rare.  */
+      if (!TOO_SMALL(length) && !UNALIGNED (src, dst))
+        {
+          aligned_dst = (long*)dst;
+          aligned_src = (long*)src;
+
+          /* Copy 4X long words at a time if possible.  */
+          while (length >= BIGBLOCKSIZE)
+            {
+              *aligned_dst++ = *aligned_src++;
+              *aligned_dst++ = *aligned_src++;
+              *aligned_dst++ = *aligned_src++;
+              *aligned_dst++ = *aligned_src++;
+              length -= BIGBLOCKSIZE;
+            }
+
+          /* Copy one long word at a time if possible.  */
+          while (length >= LITTLEBLOCKSIZE)
+            {
+              *aligned_dst++ = *aligned_src++;
+              length -= LITTLEBLOCKSIZE;
+            }
+
+          /* Pick up any residual with a byte copier.  */
+          dst = (char*)aligned_dst;
+          src = (char*)aligned_src;
+        }
+
+      while (length--)
+        {
+          *dst++ = *src++;
+        }
+    }
+
+  return dst_void;
+#endif /* not PREFER_SIZE_OVER_SPEED */
 }

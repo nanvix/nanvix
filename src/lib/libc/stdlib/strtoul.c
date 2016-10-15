@@ -1,21 +1,89 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+	<<strtoul>>---string to unsigned long
+
+INDEX
+	strtoul
+INDEX
+	_strtoul_r
+
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+        unsigned long strtoul(const char *restrict <[s]>, char **restrict <[ptr]>,
+                              int <[base]>);
+
+        unsigned long _strtoul_r(void *<[reent]>, const char *restrict <[s]>,
+                              char **restrict <[ptr]>, int <[base]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+        unsigned long strtoul(<[s]>, <[ptr]>, <[base]>)
+        char *<[s]>;
+        char **<[ptr]>;
+        int <[base]>;
+
+        unsigned long _strtoul_r(<[reent]>, <[s]>, <[ptr]>, <[base]>)
+	char *<[reent]>;
+        char *<[s]>;
+        char **<[ptr]>;
+        int <[base]>;
+
+DESCRIPTION
+The function <<strtoul>> converts the string <<*<[s]>>> to
+an <<unsigned long>>. First, it breaks down the string into three parts:
+leading whitespace, which is ignored; a subject string consisting
+of the digits meaningful in the radix specified by <[base]>
+(for example, <<0>> through <<7>> if the value of <[base]> is 8);
+and a trailing portion consisting of one or more unparseable characters,
+which always includes the terminating null character. Then, it attempts
+to convert the subject string into an unsigned long integer, and returns the
+result.
+
+If the value of <[base]> is zero, the subject string is expected to look
+like a normal C integer constant (save that no optional sign is permitted):
+a possible <<0x>> indicating hexadecimal radix, and a number.
+If <[base]> is between 2 and 36, the expected form of the subject is a
+sequence of digits (which may include letters, depending on the
+base) representing an integer in the radix specified by <[base]>.
+The letters <<a>>--<<z>> (or <<A>>--<<Z>>) are used as digits valued from
+10 to 35. If <[base]> is 16, a leading <<0x>> is permitted.
+
+The subject sequence is the longest initial sequence of the input
+string that has the expected form, starting with the first
+non-whitespace character.  If the string is empty or consists entirely
+of whitespace, or if the first non-whitespace character is not a
+permissible digit, the subject string is empty.
+
+If the subject string is acceptable, and the value of <[base]> is zero,
+<<strtoul>> attempts to determine the radix from the input string. A
+string with a leading <<0x>> is treated as a hexadecimal value; a string with
+a leading <<0>> and no <<x>> is treated as octal; all other strings are
+treated as decimal. If <[base]> is between 2 and 36, it is used as the
+conversion radix, as described above. Finally, a pointer to the first
+character past the converted subject string is stored in <[ptr]>, if
+<[ptr]> is not <<NULL>>.
+
+If the subject string is empty (that is, if <<*>><[s]> does not start
+with a substring in acceptable form), no conversion
+is performed and the value of <[s]> is stored in <[ptr]> (if <[ptr]> is
+not <<NULL>>).
+
+The alternate function <<_strtoul_r>> is a reentrant version.  The
+extra argument <[reent]> is a pointer to a reentrancy structure.
+
+
+RETURNS
+<<strtoul>> returns the converted value, if any. If no conversion was
+made, <<0>> is returned.
+
+<<strtoul>> returns <<ULONG_MAX>> if the magnitude of the converted
+value is too large, and sets <<errno>> to <<ERANGE>>.
+
+PORTABILITY
+<<strtoul>> is ANSI.
+
+<<strtoul>> requires no supporting OS subroutines.
+*/
 
 /*
  * Copyright (c) 1990 Regents of the University of California.
@@ -50,27 +118,31 @@
  * SUCH DAMAGE.
  */
 
+#include <_ansi.h>
 #include <limits.h>
 #include <ctype.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <reent.h>
 
-/**
- * @brief Converts a string to an unsigned long.
+/*
+ * Convert a string to an unsigned long integer.
  *
- * @param str    Start of string.
- * @param endptr End of string.
- * @param base   Base.
- *
- * @returns The converted value.
+ * Ignores `locale' stuff.  Assumes that the upper and lower case
+ * alphabets and digits are each contiguous.
  */
-unsigned long strtoul(const char *str, char **endptr, int base)
+unsigned long
+_DEFUN (_strtoul_r, (rptr, nptr, endptr, base),
+	struct _reent *rptr _AND
+	_CONST char *__restrict nptr _AND
+	char **__restrict endptr _AND
+	int base)
 {
-	const char *s = str;
-	unsigned long acc;
-	int c;
-	unsigned long cutoff;
-	int neg = 0, any, cutlim;
+	register const unsigned char *s = (const unsigned char *)nptr;
+	register unsigned long acc;
+	register int c;
+	register unsigned long cutoff;
+	register int neg = 0, any, cutlim;
 
 	/*
 	 * See strtol for comments as to the logic used.
@@ -102,7 +174,7 @@ unsigned long strtoul(const char *str, char **endptr, int base)
 			break;
 		if (c >= base)
 			break;
-		if (((any < 0) || (acc > cutoff)) || ((acc == cutoff) && (c > cutlim)))
+               if (any < 0 || acc > cutoff || (acc == cutoff && c > cutlim))
 			any = -1;
 		else {
 			any = 1;
@@ -112,10 +184,23 @@ unsigned long strtoul(const char *str, char **endptr, int base)
 	}
 	if (any < 0) {
 		acc = ULONG_MAX;
-		errno = ERANGE;
+		rptr->_errno = ERANGE;
 	} else if (neg)
 		acc = -acc;
 	if (endptr != 0)
-		*endptr = (any) ? (char *)(s - 1) : (char *)str;
+		*endptr = (char *) (any ? (char *)s - 1 : nptr);
 	return (acc);
 }
+
+#ifndef _REENT_ONLY
+
+unsigned long
+_DEFUN (strtoul, (s, ptr, base),
+	_CONST char *__restrict s _AND
+	char **__restrict ptr _AND
+	int base)
+{
+	return _strtoul_r (_REENT, s, ptr, base);
+}
+
+#endif

@@ -1,225 +1,227 @@
+/* VxWorks provides its own version of malloc, and we can't use this
+   one because VxWorks does not provide sbrk.  So we have a hook to
+   not compile this code.  */
+
+/* The routines here are simple cover fns to the routines that do the real
+   work (the reentrant versions).  */
+/* FIXME: Does the warning below (see WARNINGS) about non-reentrancy still
+   apply?  A first guess would be "no", but how about reentrancy in the *same*
+   thread?  */
+
+#ifdef MALLOC_PROVIDED
+
+int _dummy_malloc = 1;
+
+#else
+
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<malloc>>, <<realloc>>, <<free>>---manage memory
 
-/**
- * @file
- * 
- * @brief malloc() and free() implementation.
- */
+INDEX
+	malloc
+INDEX
+	realloc
+INDEX
+	reallocf
+INDEX
+	free
+INDEX
+	memalign
+INDEX
+	malloc_usable_size
+INDEX
+	_malloc_r
+INDEX
+	_realloc_r
+INDEX
+	_reallocf_r
+INDEX
+	_free_r
+INDEX
+	_memalign_r
+INDEX
+	_malloc_usable_size_r
 
-#include <sys/types.h>
-#include <errno.h>
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	void *malloc(size_t <[nbytes]>);
+	void *realloc(void *<[aptr]>, size_t <[nbytes]>);
+	void *reallocf(void *<[aptr]>, size_t <[nbytes]>);
+	void free(void *<[aptr]>);
+
+	void *memalign(size_t <[align]>, size_t <[nbytes]>);
+
+	size_t malloc_usable_size(void *<[aptr]>);
+
+	void *_malloc_r(void *<[reent]>, size_t <[nbytes]>);
+	void *_realloc_r(void *<[reent]>, 
+                         void *<[aptr]>, size_t <[nbytes]>);
+	void *_reallocf_r(void *<[reent]>, 
+                         void *<[aptr]>, size_t <[nbytes]>);
+	void _free_r(void *<[reent]>, void *<[aptr]>);
+
+	void *_memalign_r(void *<[reent]>,
+			  size_t <[align]>, size_t <[nbytes]>);
+
+	size_t _malloc_usable_size_r(void *<[reent]>, void *<[aptr]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	char *malloc(<[nbytes]>)
+	size_t <[nbytes]>;
+
+	char *realloc(<[aptr]>, <[nbytes]>)
+	char *<[aptr]>;
+	size_t <[nbytes]>;
+
+	char *reallocf(<[aptr]>, <[nbytes]>)
+	char *<[aptr]>;
+	size_t <[nbytes]>;
+
+	void free(<[aptr]>)
+	char *<[aptr]>;
+
+	char *memalign(<[align]>, <[nbytes]>)
+	size_t <[align]>;
+	size_t <[nbytes]>;
+
+	size_t malloc_usable_size(<[aptr]>)
+	char *<[aptr]>;
+
+	char *_malloc_r(<[reent]>,<[nbytes]>)
+	char *<[reent]>;
+	size_t <[nbytes]>;
+
+	char *_realloc_r(<[reent]>, <[aptr]>, <[nbytes]>)
+	char *<[reent]>;
+	char *<[aptr]>;
+	size_t <[nbytes]>;
+
+	char *_reallocf_r(<[reent]>, <[aptr]>, <[nbytes]>)
+	char *<[reent]>;
+	char *<[aptr]>;
+	size_t <[nbytes]>;
+
+	void _free_r(<[reent]>, <[aptr]>)
+	char *<[reent]>;
+	char *<[aptr]>;
+
+	char *_memalign_r(<[reent]>, <[align]>, <[nbytes]>)
+	char *<[reent]>;
+	size_t <[align]>;
+	size_t <[nbytes]>;
+
+	size_t malloc_usable_size(<[reent]>, <[aptr]>)
+	char *<[reent]>;
+	char *<[aptr]>;
+
+DESCRIPTION
+These functions manage a pool of system memory.
+
+Use <<malloc>> to request allocation of an object with at least
+<[nbytes]> bytes of storage available.  If the space is available,
+<<malloc>> returns a pointer to a newly allocated block as its result.
+
+If you already have a block of storage allocated by <<malloc>>, but
+you no longer need all the space allocated to it, you can make it
+smaller by calling <<realloc>> with both the object pointer and the
+new desired size as arguments.  <<realloc>> guarantees that the
+contents of the smaller object match the beginning of the original object.
+
+Similarly, if you need more space for an object, use <<realloc>> to
+request the larger size; again, <<realloc>> guarantees that the
+beginning of the new, larger object matches the contents of the
+original object.
+
+When you no longer need an object originally allocated by <<malloc>>
+or <<realloc>> (or the related function <<calloc>>), return it to the
+memory storage pool by calling <<free>> with the address of the object
+as the argument.  You can also use <<realloc>> for this purpose by
+calling it with <<0>> as the <[nbytes]> argument.
+
+The <<reallocf>> function behaves just like <<realloc>> except if the
+function is required to allocate new storage and this fails.  In this
+case <<reallocf>> will free the original object passed in whereas
+<<realloc>> will not.
+
+The <<memalign>> function returns a block of size <[nbytes]> aligned
+to a <[align]> boundary.  The <[align]> argument must be a power of
+two.
+
+The <<malloc_usable_size>> function takes a pointer to a block
+allocated by <<malloc>>.  It returns the amount of space that is
+available in the block.  This may or may not be more than the size
+requested from <<malloc>>, due to alignment or minimum size
+constraints.
+
+The alternate functions <<_malloc_r>>, <<_realloc_r>>, <<_reallocf_r>>, 
+<<_free_r>>, <<_memalign_r>>, and <<_malloc_usable_size_r>> are reentrant
+versions.  The extra argument <[reent]> is a pointer to a reentrancy structure.
+
+If you have multiple threads of execution which may call any of these
+routines, or if any of these routines may be called reentrantly, then
+you must provide implementations of the <<__malloc_lock>> and
+<<__malloc_unlock>> functions for your system.  See the documentation
+for those functions.
+
+These functions operate by calling the function <<_sbrk_r>> or
+<<sbrk>>, which allocates space.  You may need to provide one of these
+functions for your system.  <<_sbrk_r>> is called with a positive
+value to allocate more space, and with a negative value to release
+previously allocated space if it is no longer required.
+@xref{Stubs}.
+
+RETURNS
+<<malloc>> returns a pointer to the newly allocated space, if
+successful; otherwise it returns <<NULL>>.  If your application needs
+to generate empty objects, you may use <<malloc(0)>> for this purpose.
+
+<<realloc>> returns a pointer to the new block of memory, or <<NULL>>
+if a new block could not be allocated.  <<NULL>> is also the result
+when you use `<<realloc(<[aptr]>,0)>>' (which has the same effect as
+`<<free(<[aptr]>)>>').  You should always check the result of
+<<realloc>>; successful reallocation is not guaranteed even when
+you request a smaller object.
+
+<<free>> does not return a result.
+
+<<memalign>> returns a pointer to the newly allocated space.
+
+<<malloc_usable_size>> returns the usable size.
+
+PORTABILITY
+<<malloc>>, <<realloc>>, and <<free>> are specified by the ANSI C
+standard, but other conforming implementations of <<malloc>> may
+behave differently when <[nbytes]> is zero.
+
+<<memalign>> is part of SVR4.
+
+<<malloc_usable_size>> is not portable.
+
+Supporting OS subroutines required: <<sbrk>>.  */
+
+#include <_ansi.h>
+#include <reent.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <malloc.h>
 
-/**
- * @brief expand() in at least NALLOC blocks.
- */
-#define NALLOC 511
+#ifndef _REENT_ONLY
 
-/**
- * @brief Size of block structure.
- */
-#define SIZEOF_BLOCK (sizeof(struct block))
-
-/**
- * @brief Memory block.
- */
-struct block
+_PTR
+_DEFUN (malloc, (nbytes),
+	size_t nbytes)		/* get a block */
 {
-	struct block *nextp; /* Next free block.  */
-	unsigned nblocks;    /* Size (in blocks). */
-};
-
-/**
- * @brief Free list of blocks.
- */
-static struct block head;
-static struct block *freep = NULL;
-
-/**
- * @brief Frees allocated memory.
- * 
- * @param ptr Memory area to free.
- */
-void free(void *ptr)
-{
-	struct block *p;  /* Working block.     */
-	struct block *bp; /* Block being freed. */
-	
-	/* Nothing to be done. */
-	if (ptr == NULL)
-		return;
-	
-	bp = (struct block *)ptr - 1;
-	
-	/* Look for insertion point. */
-	for (p = freep; p > bp || p->nextp < bp; p = p->nextp)
-	{
-		/* Freed block at start or end. */
-		if (p >= p->nextp && (bp > p || bp < p->nextp))
-			break;
-	}
-	
-	/* Merge with upper block. */
-	if (bp + bp->nblocks == p->nextp)
-	{
-		bp->nblocks += p->nextp->nblocks + 1;
-		bp->nextp = p->nextp->nextp;
-	}
-	else
-		bp->nextp = p->nextp;
-	
-	/* Merge with lower block. */
-	if (p + p->nblocks == bp)
-	{
-		p->nblocks += bp->nblocks + 1;
-		p->nextp = bp->nextp;
-	}
-	else
-		p->nextp = bp;
-	
-	freep = p;
+  return _malloc_r (_REENT, nbytes);
 }
 
-/**
- * @brief Expands the heap.
- * 
- * @details Expands the heap by @p nblocks.
- * 
- * @param nblocks Number of blocks to expand.
- * 
- * @returns Upon successful completion a pointed to the expansion is returned.
- *          Upon failure, a null pointed is returned instead and errno is set
- *          to indicate the error.
- */
-static void *expand(unsigned nblocks)
+void
+_DEFUN (free, (aptr),
+	_PTR aptr)
 {
-	struct block *p;
-
-	/* Expand in at least NALLOC blocks. */
-	if (nblocks < NALLOC)
-		nblocks = NALLOC;
-	
-	/* Request more memory to the kernel. */
-	if ((p = sbrk((nblocks + 1)*SIZEOF_BLOCK)) == (void *)-1)
-		return (NULL);
-	
-	p->nblocks = nblocks;
-	free(p + 1);
-	
-	return (freep);
+  _free_r (_REENT, aptr);
 }
 
-/**
- * @brief Allocates memory.
- * 
- * @param size Number of bytes to allocate.
- * 
- * @returns Upon successful completion with size not equal to 0, malloc() 
- *          returns a pointer to the allocated space. If size is 0, either a
- *          null pointer or a unique pointer that can be successfully passed to
- *          free() is returned. Otherwise, it returns a null pointer and set
- *          errno to indicate the error.
- */
-void *malloc(size_t size)
-{
-	struct block *p;     /* Working block.            */
-	struct block *prevp; /* Previous working block.   */
-	unsigned nblocks;    /* Request size (in blocks). */
-	
-	/* Nothing to be done. */
-	if (size == 0)
-		return (NULL);
-	
-	nblocks = (size + (SIZEOF_BLOCK - 1))/SIZEOF_BLOCK + 1;
-	
-	/* Create free list. */
-	if ((prevp = freep) == NULL)
-	{
-		head.nextp = freep = prevp = &head;
-		head.nblocks = 0;
-	}
-	
-	/* Look for a free block that is big enough. */
-	for (p = prevp->nextp; /* void */ ; prevp = p, p = p->nextp)
-	{
-		/* Found. */
-		if (p->nblocks >= nblocks) 
-		{
-			/* Exact. */
-			if (p->nblocks == nblocks)
-				prevp->nextp = p->nextp;
-			
-			/* Split block. */
-			else 
-			{
-				p->nblocks -= nblocks;
-				p += p->nblocks;
-				p->nblocks = nblocks;
-			}
-			
-			freep = prevp;
-			
-			return (p + 1);
-		}
-		
-		/* Wrapped around free list. */
-		if (p == freep)
-		{
-			/* Expand heap. */
-			if ((p = expand(nblocks)) == NULL)
-				break;
-		}
-	}
-	
-	return (NULL);
-}
+#endif
 
-/**
- * @brief Reallocates a memory chunk.
- * 
- * @param ptr  Pointer to old object.
- * @param size Size of new object.
- * 
- * @returns Upon successful completion, realloc() returns a pointer to the
- *           allocated space. Upon failure, a null pointer is returned instead.
- * 
- * @todo Check if we can simply expand.
- */
-void *realloc(void *ptr, size_t size)
-{
-	void *newptr;
-	
-	/* Nothing to be done. */
-	if (size == 0)
-	{
-		errno = EINVAL;
-		return (NULL);
-	}
-	
-	newptr = malloc(size);
-	if (ptr != NULL)
-		memcpy(newptr, ptr, size);
-		
-	free(ptr);
-	
-	return (newptr);
-}
+#endif /* ! defined (MALLOC_PROVIDED) */

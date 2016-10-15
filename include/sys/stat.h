@@ -1,94 +1,181 @@
-/*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+#ifndef	_SYS_STAT_H
+#define	_SYS_STAT_H
 
-#ifndef STAT_H_
-#define STAT_H_
-	
-	#include <sys/types.h>
-	
-	/* File types. */
-	#define S_IFMT  00170000
-	#define S_IFREG  0100000
-	#define S_IFBLK  0060000
-	#define S_IFDIR  0040000
-	#define S_IFCHR  0020000
-	#define S_IFIFO  0010000
+#define _IFMT   0170000 /* type of file */
+#define   _IFDIR  0040000 /* directory */
+#define   _IFCHR  0020000 /* character special */
+#define   _IFBLK  0060000 /* block special */
+#define   _IFREG  0100000 /* regular */
+#define   _IFLNK  0120000 /* symbolic link */
+#define   _IFSOCK 0140000 /* socket */
+#define   _IFIFO  0010000 /* fifo */
 
-	#define S_ISREG(m)	(((m) & S_IFMT) == S_IFREG) /* Regular file?       */
-	#define S_ISDIR(m)	(((m) & S_IFMT) == S_IFDIR) /* Directory?          */
-	#define S_ISCHR(m)	(((m) & S_IFMT) == S_IFCHR) /* Char. special file? */
-	#define S_ISBLK(m)	(((m) & S_IFMT) == S_IFBLK) /* Block special file? */
-	#define S_ISFIFO(m)	(((m) & S_IFMT) == S_IFIFO) /* FIFO special file?  */
+#define   S_BLKSIZE  1024 /* size of a block */
 
-	/* Mode bits. */
-	#define S_IRWXU  0700 /* Read, write, execute/search by owner.     */
-	#define S_IRUSR  0400 /* Read permission, owner.                   */
-	#define S_IWUSR  0200 /* Write permission, owner.                  */
-	#define S_IXUSR  0100 /* Execute/search permission, owner.         */
-	#define S_IRWXG   070 /* Read, write, execute/search by group.     */
-	#define S_IRGRP   040 /* Read permission, group.                   */
-	#define S_IWGRP   020 /* Write permission, group.                  */
-	#define S_IXGRP   010 /* Execute/search permission, group.         */
-	#define S_IRWXO    07 /* Read, write, execute/search by others.    */
-	#define S_IROTH    04 /* Read permission, others.                  */
-	#define S_IWOTH    02 /* Write permission, others.                 */
-	#define S_IXOTH    01 /* Execute/search permission, others.        */
-	#define S_ISUID 04000 /* Set-user-ID on execution.                 */
-	#define S_ISGID 02000 /* Set-group-ID on execution.                */
-	#define S_ISVTX 01000 /* On directories, restricted deletion flag. */
+#define S_ISUID   0004000 /* set user id on execution */
+#define S_ISGID   0002000 /* set group id on execution */
+#define S_ISVTX   0001000 /* save swapped text even after use */
+#ifndef _POSIX_SOURCE
+#define S_IREAD   0000400 /* read permission, owner */
+#define S_IWRITE  0000200 /* write permission, owner */
+#define S_IEXEC   0000100 /* execute/search permission, owner */
+#define S_ENFMT   0002000 /* enforcement-mode locking */
+#endif  /* !_POSIX_SOURCE */
 
-#ifndef _ASM_FILE_
-	
-	/*
-	 * File status.
-	 */
-	struct stat
-	{
-		dev_t st_dev;     /* Device ID of the containing file.              */
-		ino_t st_ino;     /* File serial number.                            */
-		mode_t st_mode;   /* File mode (see above).                         */
-		nlink_t st_nlink; /* Number of hard links to the file.              */
-		uid_t st_uid;     /* User ID of file.                               */
-		gid_t st_gid;     /* Group ID of file.                              */
-		off_t st_size;    /* For regular files, the file size in bytes.     
-                           * For symbolic links, the length in bytes of the 
-                           * pathname contained in the symbolic link.       */
-		time_t st_atime;  /* Time of last access.                           */
-		time_t st_mtime;  /* Time of last data modification.                */
-		time_t st_ctime;  /* Time of last status change.                    */
-	};
-	
-	/*
-	 * Changes permissions of a file.
-	 */
-	extern int chmod(const char *path, mode_t mode);
-	
-	/*
-	 * Gets file status.
-	 */
-	extern int stat(const char *path, struct stat *buf);
-	
-	/*
-	 * Sets and gets the file mode creation mask.
-	 */
-	extern mode_t umask(mode_t cmask);
+#define S_IFMT    _IFMT
+#define S_IFDIR   _IFDIR
+#define S_IFCHR   _IFCHR
+#define S_IFBLK   _IFBLK
+#define S_IFREG   _IFREG
+#define S_IFLNK   _IFLNK
+#define S_IFSOCK  _IFSOCK
+#define S_IFIFO   _IFIFO
 
+#define S_IRWXU   (S_IRUSR | S_IWUSR | S_IXUSR)
+#define   S_IRUSR 0000400 /* read permission, owner */
+#define   S_IWUSR 0000200 /* write permission, owner */
+#define   S_IXUSR 0000100/* execute/search permission, owner */
+#define S_IRWXG   (S_IRGRP | S_IWGRP | S_IXGRP)
+#define   S_IRGRP 0000040 /* read permission, group */
+#define   S_IWGRP 0000020 /* write permission, grougroup */
+#define   S_IXGRP 0000010/* execute/search permission, group */
+#define S_IRWXO   (S_IROTH | S_IWOTH | S_IXOTH)
+#define   S_IROTH 0000004 /* read permission, other */
+#define   S_IWOTH 0000002 /* write permission, other */
+#define   S_IXOTH 0000001/* execute/search permission, other */
+
+#ifndef _POSIX_SOURCE
+#define ACCESSPERMS (S_IRWXU | S_IRWXG | S_IRWXO) /* 0777 */
+#define ALLPERMS (S_ISUID | S_ISGID | S_ISVTX | S_IRWXU | S_IRWXG | S_IRWXO) /* 07777 */
+#define DEFFILEMODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) /* 0666 */
+#endif
+
+#define S_ISBLK(m)  (((m)&_IFMT) == _IFBLK)
+#define S_ISCHR(m)  (((m)&_IFMT) == _IFCHR)
+#define S_ISDIR(m)  (((m)&_IFMT) == _IFDIR)
+#define S_ISFIFO(m) (((m)&_IFMT) == _IFIFO)
+#define S_ISREG(m)  (((m)&_IFMT) == _IFREG)
+#define S_ISLNK(m)  (((m)&_IFMT) == _IFLNK)
+#define S_ISSOCK(m) (((m)&_IFMT) == _IFSOCK)
+
+#if !defined(_ASM_FILE_) && !defined(BUILDING_TOOLS)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <_ansi.h>
+#include <time.h>
+#include <sys/cdefs.h>
+#include <sys/types.h>
+
+/* dj's stat defines _STAT_H_ */
+#ifndef _STAT_H_
+
+/* It is intended that the layout of this structure not change when the
+   sizes of any of the basic types change (short, int, long) [via a compile
+   time option].  */
+
+#ifdef __CYGWIN__
+#include <cygwin/stat.h>
+#ifdef _COMPILING_NEWLIB
+#define stat64 stat
+#endif
+#else
+struct	stat 
+{
+  dev_t		st_dev;
+  ino_t		st_ino;
+  mode_t	st_mode;
+  nlink_t	st_nlink;
+  uid_t		st_uid;
+  gid_t		st_gid;
+  dev_t		st_rdev;
+  off_t		st_size;
+#if defined(__rtems__)
+  struct timespec st_atim;
+  struct timespec st_mtim;
+  struct timespec st_ctim;
+  blksize_t     st_blksize;
+  blkcnt_t	st_blocks;
+#else
+  /* SysV/sco doesn't have the rest... But Solaris, eabi does.  */
+#if defined(__svr4__) && !defined(__PPC__) && !defined(__sun__)
+  time_t	st_atime;
+  time_t	st_mtime;
+  time_t	st_ctime;
+#else
+  time_t	st_atime;
+  long		st_spare1;
+  time_t	st_mtime;
+  long		st_spare2;
+  time_t	st_ctime;
+  long		st_spare3;
+  long		st_blksize;
+  long		st_blocks;
+  long	st_spare4[2];
+#endif
+#endif
+};
+
+#if defined(__rtems__)
+#define st_atime st_atim.tv_sec
+#define st_ctime st_ctim.tv_sec
+#define st_mtime st_mtim.tv_sec
+#endif
+
+#endif
+
+#if defined(__CYGWIN__)
+/* Special tv_nsec values for futimens(2) and utimensat(2). */
+#define UTIME_NOW	-2L
+#define UTIME_OMIT	-1L
+#endif
+
+int	_EXFUN(chmod,( const char *__path, mode_t __mode ));
+int     _EXFUN(fchmod,(int __fd, mode_t __mode));
+int	_EXFUN(fstat,( int __fd, struct stat *__sbuf ));
+int	_EXFUN(mkdir,( const char *_path, mode_t __mode ));
+int	_EXFUN(mkfifo,( const char *__path, mode_t __mode ));
+int	_EXFUN(stat,( const char *__restrict __path, struct stat *__restrict __sbuf ));
+mode_t	_EXFUN(umask,( mode_t __mask ));
+
+#if defined (__SPU__) || defined(__rtems__) || defined(__CYGWIN__) && !defined(__INSIDE_CYGWIN__)
+int	_EXFUN(lstat,( const char *__restrict __path, struct stat *__restrict __buf ));
+int	_EXFUN(mknod,( const char *__path, mode_t __mode, dev_t __dev ));
+#endif
+
+#if (__POSIX_VISIBLE >= 200809 || defined (__CYGWIN__)) && !defined(__INSIDE_CYGWIN__)
+int	_EXFUN(fchmodat, (int, const char *, mode_t, int));
+#endif
+#if (__BSD_VISIBLE || __POSIX_VISIBLE >= 200809 || defined (__CYGWIN__)) && !defined(__INSIDE_CYGWIN__)
+int	_EXFUN(fstatat, (int, const char *__restrict , struct stat *__restrict, int));
+int	_EXFUN(mkdirat, (int, const char *, mode_t));
+int	_EXFUN(mkfifoat, (int, const char *, mode_t));
+#endif
+#if (__BSD_VISIBLE || __XSI_VISIBLE >= 700 || defined (__CYGWIN__)) && !defined(__INSIDE_CYGWIN__)
+int	_EXFUN(mknodat, (int, const char *, mode_t, dev_t));
+#endif
+#if (__BSD_VISIBLE || __POSIX_VISIBLE >= 200809 || defined (__CYGWIN__)) && !defined(__INSIDE_CYGWIN__)
+int	_EXFUN(utimensat, (int, const char *, const struct timespec *, int));
+int	_EXFUN(futimens, (int, const struct timespec *));
+#endif
+
+/* Provide prototypes for most of the _<systemcall> names that are
+   provided in newlib for some compilers.  */
+#ifdef _COMPILING_NEWLIB
+int	_EXFUN(_fstat,( int __fd, struct stat *__sbuf ));
+int	_EXFUN(_stat,( const char *__restrict __path, struct stat *__restrict __sbuf ));
+int	_EXFUN(_mkdir,( const char *_path, mode_t __mode ));
+#ifdef __LARGE64_FILES
+struct stat64;
+int	_EXFUN(_stat64,( const char *__restrict __path, struct stat64 *__restrict __sbuf ));
+int	_EXFUN(_fstat64,( int __fd, struct stat64 *__sbuf ));
+#endif
+#endif
+
+#endif /* !_STAT_H_ */
+#ifdef __cplusplus
+}
+#endif
 #endif /* _ASM_FILE_ */
-
-#endif /* STAT_H_ */
+#endif /* _SYS_STAT_H */

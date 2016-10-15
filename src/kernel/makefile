@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -16,6 +17,9 @@
 # You should have received a copy of the GNU General Public License
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
+
+#Building kernel
+export CFLAGS += -DBUILDING_KERNEL
 
 # Target processor.
 PROCESSOR = i386

@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -35,9 +36,9 @@
 #endif
 #endif
 
-#ifdef _NEED_NULL
-#ifndef _NULL
-#define _NULL
+#ifdef __need_NULL
+#ifndef __null
+#define __null
 
 	/**
 	 * @brief Null pointer.
@@ -48,9 +49,9 @@
 #endif
 
 
-#ifdef _NEED_SIZE_T
-#ifndef SIZE_T
-#define SIZE_T
+#ifdef __need_size_t
+#ifndef __size_t
+#define __size_t
 
 	/**
 	 * @brief Used for sizes of objects.
@@ -60,14 +61,40 @@
 #endif
 #endif
 
-#ifdef _NEED_WCHAR_T
-#ifndef _WCHAR_T	
-#define _WCHAR_T
+#ifdef __need_wchar_t
+#ifndef _wchar_t	
+#define _wchar_t
 
 	/**
 	 * @brief Codes for all members of the largest extended character set.
 	 */
-	typedef unsigned wchar_t;
+	typedef signed wchar_t;
+
+#endif
+#endif
+
+
+#ifdef __need_wint_t
+#ifndef _wint_t	
+#define _wint_t
+
+	/**
+	 * @brief An integral type capable of storing any valid value of wchar_t, or WEOF.
+	 */
+	typedef unsigned wint_t;
+
+#endif
+#endif
+
+
+#ifdef __need_ptrdiff_t
+#ifndef _ptrdiff_t
+#define _ptrdiff_t
+
+	/**
+	 * @brief Signed integer type of the result of subtracting two pointers.
+	 */
+	typedef signed ptrdiff_t;
 
 #endif
 #endif

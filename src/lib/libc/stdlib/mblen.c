@@ -1,69 +1,81 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<mblen>>---minimal multibyte length function
 
-/*
- * Copyright (C) 1991-1996 Free Software Foundation, Inc.
- * 
- * This file is part of the GNU C Library.
- * 
- * The GNU C Library free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- * 
- * The GNU C Library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA 02110-1301, USA.
- */
+INDEX
+	mblen
 
-/**
- * @file
- * 
- * @brief mblen() implementation.
- */
- 
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	int mblen(const char *<[s]>, size_t <[n]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	int mblen(<[s]>, <[n]>)
+	const char *<[s]>;
+	size_t <[n]>;
+
+DESCRIPTION
+When _MB_CAPABLE is not defined, this is a minimal ANSI-conforming 
+implementation of <<mblen>>.  In this case, the
+only ``multi-byte character sequences'' recognized are single bytes,
+and thus <<1>> is returned unless <[s]> is the null pointer or
+has a length of 0 or is the empty string.
+
+When _MB_CAPABLE is defined, this routine calls <<_mbtowc_r>> to perform
+the conversion, passing a state variable to allow state dependent
+decoding.  The result is based on the locale setting which may
+be restricted to a defined set of locales.
+
+RETURNS
+This implementation of <<mblen>> returns <<0>> if
+<[s]> is <<NULL>> or the empty string; it returns <<1>> if not _MB_CAPABLE or
+the character is a single-byte character; it returns <<-1>>
+if the multi-byte character is invalid; otherwise it returns
+the number of bytes in the multibyte character.
+
+PORTABILITY
+<<mblen>> is required in the ANSI C standard.  However, the precise
+effects vary with the locale.
+
+<<mblen>> requires no supporting OS subroutines.
+*/
+
+#ifndef _REENT_ONLY
+
+#include <newlib.h>
 #include <stdlib.h>
+#include <wchar.h>
+#include "local.h"
 
-/**
- * @brief Gets number of bytes in a character.
- * 
- * @param s Multi-byte character.
- * @param n Maximum number of bytes to consider.
- * 
- * @returns If s is a null pointer, mblen() returns a non-zero or 0 value, if
- *          character encodings, respectively, do or do not have state-dependent
- *          encodings. If s is not a null pointer, mblen() either returns 0
- *          (if s points to the null byte), or returns the number of bytes that
- *          constitute the character (if the next n or fewer bytes form a valid
- *          character), or return -1 (if they do not form a valid character) and
- *          is set errno to indicate the error. In no case shall the value
- *          returned be greater than @p n or the value of the MB_CUR_MAX macro.
- * 
- * @note The mblen() function is not thread-safe.
- */
-int mblen(const char *s, size_t n)
+int
+_DEFUN (mblen, (s, n), 
+        const char *s _AND
+        size_t n)
 {
-	return(mbtowc((wchar_t *) NULL, s, n));
+#ifdef _MB_CAPABLE
+  int retval = 0;
+  struct _reent *reent = _REENT;
+  mbstate_t *state;
+  
+  _REENT_CHECK_MISC(reent);
+  state = &(_REENT_MBLEN_STATE(reent));
+  retval = __mbtowc (reent, NULL, s, n, __locale_charset (), state);
+  if (retval < 0)
+    {
+      state->__count = 0;
+      return -1;
+    }
+  else
+    return retval;
+  
+#else /* not _MB_CAPABLE */
+  if (s == NULL || *s == '\0')
+    return 0;
+  if (n == 0)
+    return -1;
+  return 1;
+#endif /* not _MB_CAPABLE */
 }
+
+#endif /* !_REENT_ONLY */

@@ -1,132 +1,73 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ * Copyright (c) 1990 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms are permitted
+ * provided that the above copyright notice and this paragraph are
+ * duplicated in all such forms and that any documentation,
+ * advertising materials, and other materials related to such
+ * distribution and use acknowledge that the software was developed
+ * by the University of California, Berkeley.  The name of the
+ * University may not be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
+/* doc in vfprintf.c */
 
-#include <stdarg.h>
+#if defined(LIBC_SCCS) && !defined(lint)
+static char sccsid[] = "%W% (Berkeley) %G%";
+#endif /* LIBC_SCCS and not lint */
+
+#include <_ansi.h>
+#include <reent.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <limits.h>
+#include <stdarg.h>
 
-/*
- * Converts an integer to a string.
- */
-static int itoa(char *string, unsigned num, int base)
+#include "local.h"
+
+#ifndef _REENT_ONLY
+
+int
+_DEFUN(vsprintf, (str, fmt, ap),
+       char *__restrict str        _AND
+       const char *__restrict fmt _AND
+       va_list ap)
 {
-	char tmp;          /* Temporary variable. */
-	char *s;           /* Working substring.  */
-	char *p, *p1, *p2; /* Working characters. */
-	unsigned divisor;  /* Base divisor.       */
-
-	s = string;
-
-	if (strchr("ud", base) != NULL)
-		divisor = 10;
-
-	else
-	{
-		*s++ = '0'; *s++ = 'x';
-		divisor = 16;
-	}
-
-	p = s;
-
-	/* Convert number. */
-	do
-	{
-		int remainder = num % divisor;
-
-		*p++ = (remainder < 10) ? remainder + '0' : 
-		                          remainder + 'a' - 10;
-	} while (num /= divisor);
-
-	/* Fill up with zeros. */
-	if (divisor == 16)
-		while ((p - s) < 8)
-			*p++ = '0';
-
-	/* Reverse BUF. */
-	p1 = s; p2 = p - 1;
-	while (p1 < p2)
-	{
-		tmp = *p1;
-		*p1++ = *p2;
-		*p2-- = tmp;
-	}
-
-	return(p - string);
+  return _vsprintf_r (_REENT, str, fmt, ap);
 }
 
-/*
- * Writes format output of a stdarg argument list to a string. 
- */
-int vsprintf(char *string, const char *format, va_list ap)
+#ifdef _NANO_FORMATTED_IO
+int
+_EXFUN(vsiprintf, (char *, const char *, __VALIST)
+       _ATTRIBUTE ((__alias__("vsprintf"))));
+#endif
+
+#endif /* !_REENT_ONLY */
+
+int
+_DEFUN(_vsprintf_r, (ptr, str, fmt, ap),
+       struct _reent *ptr _AND
+       char *__restrict str          _AND
+       const char *__restrict fmt   _AND
+       va_list ap)
 {
-	char *s;    /* Working string. */
-	char *base; /* Base string.    */
-	
-	base = string;
-	
-    /* Format string. */
-    while (*format != '\0')
-    {
-        /* No conversion needed. */
-        if (*format != '%')
-            *string++ = *format;
-        
-        /* Parse format. */
-        else
-        {
-            switch (*(++format))
-            {
-				/* Character. */
-                case 'c':
-					*string++ = va_arg(ap, char);
-					break;
-				
-				/* Decimal. */
-				case 'd':
-				case 'u':
-					string += itoa(string, va_arg(ap, unsigned int), *format);
-					break;
-				
-				/* Hexadecimal. */
-				case 'X':
-				case 'x':
-					string += itoa(string, va_arg(ap, unsigned int), *format);
-					break;
-				
-				/* String. */
-                case 's':
-					s = va_arg(ap, char*);
-                    while (*s != '\0')
-						*string++ = *s++;
-					break;
-                
-                /* Ignore. */
-                default:
-                    break;
-            }
-		}
-		
-        format++;
-    }
+  int ret;
+  FILE f;
 
-    *string++ = '\0';
-
-    return (string - base);
+  f._flags = __SWR | __SSTR;
+  f._bf._base = f._p = (unsigned char *) str;
+  f._bf._size = f._w = INT_MAX;
+  f._file = -1;  /* No file. */
+  ret = _svfprintf_r (ptr, &f, fmt, ap);
+  *f._p = 0;
+  return ret;
 }
+
+#ifdef _NANO_FORMATTED_IO
+int
+_EXFUN(_vsiprintf_r, (struct _reent *, char *, const char *, __VALIST)
+       _ATTRIBUTE ((__alias__("_vsprintf_r"))));
+#endif

@@ -1,24 +1,92 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+	<<strtoull>>---string to unsigned long long
+
+INDEX
+	strtoull
+INDEX
+	_strtoull_r
+
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+        unsigned long long strtoull(const char *restrict <[s]>, char **restrict <[ptr]>,
+                              int <[base]>);
+
+        unsigned long long _strtoull_r(void *<[reent]>, const char *restrict <[s]>,
+                              char **restrict <[ptr]>, int <[base]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+        unsigned long long strtoull(<[s]>, <[ptr]>, <[base]>)
+        char *<[s]>;
+        char **<[ptr]>;
+        int <[base]>;
+
+        unsigned long long _strtoull_r(<[reent]>, <[s]>, <[ptr]>, <[base]>)
+	char *<[reent]>;
+        char *<[s]>;
+        char **<[ptr]>;
+        int <[base]>;
+
+DESCRIPTION
+The function <<strtoull>> converts the string <<*<[s]>>> to
+an <<unsigned long long>>. First, it breaks down the string into three parts:
+leading whitespace, which is ignored; a subject string consisting
+of the digits meaningful in the radix specified by <[base]>
+(for example, <<0>> through <<7>> if the value of <[base]> is 8);
+and a trailing portion consisting of one or more unparseable characters,
+which always includes the terminating null character. Then, it attempts
+to convert the subject string into an unsigned long long integer, and returns the
+result.
+
+If the value of <[base]> is zero, the subject string is expected to look
+like a normal C integer constant (save that no optional sign is permitted):
+a possible <<0x>> indicating hexadecimal radix, and a number.
+If <[base]> is between 2 and 36, the expected form of the subject is a
+sequence of digits (which may include letters, depending on the
+base) representing an integer in the radix specified by <[base]>.
+The letters <<a>>--<<z>> (or <<A>>--<<Z>>) are used as digits valued from
+10 to 35. If <[base]> is 16, a leading <<0x>> is permitted.
+
+The subject sequence is the longest initial sequence of the input
+string that has the expected form, starting with the first
+non-whitespace character.  If the string is empty or consists entirely
+of whitespace, or if the first non-whitespace character is not a
+permissible digit, the subject string is empty.
+
+If the subject string is acceptable, and the value of <[base]> is zero,
+<<strtoull>> attempts to determine the radix from the input string. A
+string with a leading <<0x>> is treated as a hexadecimal value; a string with
+a leading <<0>> and no <<x>> is treated as octal; all other strings are
+treated as decimal. If <[base]> is between 2 and 36, it is used as the
+conversion radix, as described above. Finally, a pointer to the first
+character past the converted subject string is stored in <[ptr]>, if
+<[ptr]> is not <<NULL>>.
+
+If the subject string is empty (that is, if <<*>><[s]> does not start
+with a substring in acceptable form), no conversion
+is performed and the value of <[s]> is stored in <[ptr]> (if <[ptr]> is
+not <<NULL>>).
+
+The alternate function <<_strtoull_r>> is a reentrant version.  The
+extra argument <[reent]> is a pointer to a reentrancy structure.
+
+
+RETURNS
+<<strtoull>> returns the converted value, if any. If no conversion was
+made, <<0>> is returned.
+
+<<strtoull>> returns <<ULONG_LONG_MAX>> if the magnitude of the converted
+value is too large, and sets <<errno>> to <<ERANGE>>.
+
+PORTABILITY
+<<strtoull>> is ANSI.
+
+<<strtoull>> requires no supporting OS subroutines.
+*/
 
 /*
- * Copyright (c) 1992 Regents of the University of California.
+ * Copyright (c) 1990 Regents of the University of California.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,92 +118,22 @@
  * SUCH DAMAGE.
  */
 
-/**
- * @file
- * 
- * @brief strtoull() implementation.
- */
-
-#include <sys/types.h>
-
+#include <_ansi.h>
+#include <limits.h>
 #include <ctype.h>
 #include <errno.h>
-#include <limits.h>
 #include <stdlib.h>
+#include <reent.h>
 
-/**
- * @brief Converts a string to an unsigned long long.
- *
- * @param str    Start of string.
- * @param endptr End of string.
- * @param base   Base.
- *
- * @returns The converted value.
- */
-unsigned long long strtoull(const char *str, char **endptr, int base)
+#ifndef _REENT_ONLY
+
+unsigned long long
+_DEFUN (strtoull, (s, ptr, base),
+	_CONST char *__restrict s _AND
+	char **__restrict ptr _AND
+	int base)
 {
-	const char *s;
-	unsigned long long acc, cutoff;
-	int c;
-	int neg, any, cutlim;
-
-	/*
-	 * See strtoll for comments as to the logic used.
-	 */
-	if (base < 0 || base == 1 || base > 36) {
-		if (endptr != 0)
-			*endptr = (char *)str;
-		errno = EINVAL;
-		return 0;
-	}
-
-	s = str;
-	do {
-		c = (unsigned char) *s++;
-	} while (isspace(c));
-	if (c == '-') {
-		neg = 1;
-		c = *s++;
-	} else {
-		neg = 0;
-		if (c == '+')
-			c = *s++;
-	}
-	if ((base == 0 || base == 16) &&
-	    c == '0' && (*s == 'x' || *s == 'X')) {
-		c = s[1];
-		s += 2;
-		base = 16;
-	}
-	if (base == 0)
-		base = c == '0' ? 8 : 10;
-
-	cutoff = ULLONG_MAX / (unsigned long long)base;
-	cutlim = ULLONG_MAX % (unsigned long long)base;
-	for (acc = 0, any = 0;; c = (unsigned char) *s++) {
-		if (isdigit(c))
-			c -= '0';
-		else if (isalpha(c))
-			c -= isupper(c) ? 'A' - 10 : 'a' - 10;
-		else
-			break;
-		if (c >= base)
-			break;
-		if (any < 0)
-			continue;
-		if (acc > cutoff || (acc == cutoff && c > cutlim)) {
-			any = -1;
-			acc = ULLONG_MAX;
-			errno = ERANGE;
-		} else {
-			any = 1;
-			acc *= (unsigned long long)base;
-			acc += c;
-		}
-	}
-	if (neg && any > 0)
-		acc = -acc;
-	if (endptr != 0)
-		*endptr = (char *) (any ? s - 1 : str);
-	return (acc);
+	return _strtoull_r (_REENT, s, ptr, base);
 }
+
+#endif

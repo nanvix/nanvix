@@ -1,36 +1,66 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ * Copyright (c) 1990 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms are permitted
+ * provided that the above copyright notice and this paragraph are
+ * duplicated in all such forms and that any documentation,
+ * advertising materials, and other materials related to such
+ * distribution and use acknowledge that the software was developed
+ * by the University of California, Berkeley.  The name of the
+ * University may not be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
+/* doc in sprintf.c */
 
+#include <_ansi.h>
+#include <reent.h>
 #include <stdio.h>
 #include <stdarg.h>
 
-/*
- * Writes a formated string to a file.
- */
-int fprintf(FILE *stream, const char *format, ...)
+int
+_DEFUN(_fprintf_r, (ptr, fp, fmt),
+       struct _reent *ptr _AND
+       FILE *__restrict fp _AND
+       const char *__restrict fmt _DOTS)
 {
-	int n;        /* Characters written. */
-	va_list args; /* Arguments.          */
-	
-	va_start(args, format);
-	n = vfprintf(stream, format, args);
-	va_end(args);
-	
-	return (n);
+  int ret;
+  va_list ap;
+
+  va_start (ap, fmt);
+  ret = _vfprintf_r (ptr, fp, fmt, ap);
+  va_end (ap);
+  return ret;
 }
+
+#ifdef _NANO_FORMATTED_IO
+int
+_EXFUN(_fiprintf_r, (struct _reent *, FILE *, const char *, ...)
+       _ATTRIBUTE ((__alias__("_fprintf_r"))));
+#endif
+
+#ifndef _REENT_ONLY
+
+int
+_DEFUN(fprintf, (fp, fmt),
+       FILE *__restrict fp _AND
+       const char *__restrict fmt _DOTS)
+{
+  int ret;
+  va_list ap;
+
+  va_start (ap, fmt);
+  ret = _vfprintf_r (_REENT, fp, fmt, ap);
+  va_end (ap);
+  return ret;
+}
+
+#ifdef _NANO_FORMATTED_IO
+int
+_EXFUN(fiprintf, (FILE *, const char *, ...)
+       _ATTRIBUTE ((__alias__("fprintf"))));
+#endif
+#endif /* ! _REENT_ONLY */

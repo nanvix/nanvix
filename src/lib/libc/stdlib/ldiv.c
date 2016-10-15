@@ -1,25 +1,58 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<ldiv>>---divide two long integers
+
+INDEX
+	ldiv
+
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	ldiv_t ldiv(long <[n]>, long <[d]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	ldiv_t ldiv(<[n]>, <[d]>)
+	long <[n]>, <[d]>;
+
+DESCRIPTION
+Divide
+@tex
+$n/d$,
+@end tex
+@ifnottex
+<[n]>/<[d]>,
+@end ifnottex
+returning quotient and remainder as two long integers in a structure <<ldiv_t>>.
+
+RETURNS
+The result is represented with the structure
+
+. typedef struct
+. {
+.  long quot;
+.  long rem;
+. } ldiv_t;
+
+where the <<quot>> field represents the quotient, and <<rem>> the
+remainder.  For nonzero <[d]>, if `<<<[r]> = ldiv(<[n]>,<[d]>);>>' then
+<[n]> equals `<<<[r]>.rem + <[d]>*<[r]>.quot>>'.
+
+To divide <<int>> rather than <<long>> values, use the similar
+function <<div>>.
+
+PORTABILITY
+<<ldiv>> is ANSI.
+
+No supporting OS subroutines are required.
+*/
+
 
 /*
- * Copyright (c) 1990 The Regents of the University of California.
+ * Copyright (c) 1990 Regents of the University of California.
  * All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Chris Torek.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,46 +83,27 @@
  * SUCH DAMAGE.
  */
 
-/**
- * @file
- * 
- * @brief ldiv() implementation.
- */
+#include <_ansi.h>
+#include <stdlib.h>		/* ldiv_t */
 
-#include <limits.h>
-#include <stdlib.h>
-
-/**
- * @brief Computes quotient and remainder of a long division.
- * 
- * @param numer Numerator.
- * @param denom Denominator.
- * 
- * @returns A structure of type ldiv_t, comprising both the quotient and the
- *          remainder.
- */
-ldiv_t ldiv(long numer, long denom)
+ldiv_t
+_DEFUN (ldiv, (num, denom),
+        long num _AND
+        long denom)
 {
-	ldiv_t res;
+	ldiv_t r;
 
-	if (denom != 0)
-	{
-		res.quot = abs (numer) / abs(denom);
-		res.rem = abs (numer) % abs(denom);
+	/* see div.c for comments */
 
-		if ((numer < 0 && denom > 0) || (numer >= 0 && denom < 0))
-			res.quot = -res.quot;
-		if (numer < 0)
-			res.rem = -res.rem;
+	r.quot = num / denom;
+	r.rem = num % denom;
+	if (num >= 0 && r.rem < 0) {
+		++r.quot;
+		r.rem -= denom;
 	}
-	else
-	{
-		if (numer < 0)
-			res.quot = LONG_MIN;
-		else
-			res.quot = LONG_MAX;
-		res.rem = 0;
-    }
-
-	return (res);
+	else if (num < 0 && r.rem > 0) {
+		--r.quot;
+		r.rem += denom;
+	}
+	return (r);
 }

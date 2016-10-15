@@ -28,7 +28,7 @@ static void *current_brk = (void *)UHEAP_ADDR;
 /*
  * Changes process's breakpoint value.
  */
-void *sbrk(size_t size)
+void *sbrk(ptrdiff_t size)
 {
 	void *old_brk;
 	

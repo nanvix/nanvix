@@ -1,6 +1,7 @@
 # 
 # Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
 #              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -18,30 +19,41 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+#Newlib defines
+export CFLAGS += -DSIGNAL_PROVIDED
+export CFLAGS += -DMISSING_SYSCALL_NAMES
+export CFLAGS += -U__STRICT_ANSI__
+
 # C source files.
-C_SRC = $(wildcard *.c)           \
-      $(wildcard assert/*.c)      \
-      $(wildcard ctype/*.c)       \
-      $(wildcard dirent/*.c)      \
-      $(wildcard errno/*.c)       \
-      $(wildcard fcntl/*.c)       \
-      $(wildcard signal/*.c)      \
-      $(wildcard stdio/*.c)       \
-      $(wildcard stdlib/*.c)      \
-      $(wildcard string/*.c)      \
-      $(wildcard stropts/*.c)     \
-      $(wildcard sys/times/*.c)   \
-      $(wildcard sys/sem/*.c)     \
-      $(wildcard sys/stat/*.c)    \
-      $(wildcard sys/utsname/*.c) \
-      $(wildcard sys/wait/*.c)    \
-      $(wildcard termios/*.c)     \
-      $(wildcard time/*.c)        \
-      $(wildcard unistd/*.c)      \
-      $(wildcard utime/*.c)       \
+C_SRC = $(wildcard *.c)         \
+	$(wildcard assert/*.c)      \
+	$(wildcard common/*.c)      \
+	$(wildcard ctype/*.c)       \
+	$(wildcard dirent/*.c)      \
+	$(wildcard errno/*.c)       \
+	$(wildcard fcntl/*.c)       \
+	$(wildcard locale/*.c)      \
+	$(wildcard reent/*.c)       \
+	$(wildcard search/*.c)      \
+	$(wildcard signal/*.c)      \
+	$(wildcard stdio/*.c)       \
+	$(wildcard stdlib/*.c)      \
+	$(wildcard string/*.c)      \
+	$(wildcard stropts/*.c)     \
+	$(wildcard sys/sem/*.c)     \
+	$(wildcard sys/stat/*.c)    \
+	$(wildcard sys/time/*.c)    \
+	$(wildcard sys/times/*.c)   \
+	$(wildcard sys/utsname/*.c) \
+	$(wildcard sys/wait/*.c)    \
+	$(wildcard termios/*.c)     \
+	$(wildcard time/*.c)        \
+	$(wildcard unistd/*.c)      \
+	$(wildcard utime/*.c)       \
 
 # Assembly source files.
-ASM_SRC = $(wildcard signal/*.S) \
+ASM_SRC = $(wildcard setjmp/*.S) \
+	$(wildcard signal/*.S)       \
 
 # Object files.
 OBJ = $(ASM_SRC:.S=.o) \

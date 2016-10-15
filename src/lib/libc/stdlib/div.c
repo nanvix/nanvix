@@ -1,25 +1,57 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+FUNCTION
+<<div>>---divide two integers
+
+INDEX
+	div
+
+ANSI_SYNOPSIS
+	#include <stdlib.h>
+	div_t div(int <[n]>, int <[d]>);
+
+TRAD_SYNOPSIS
+	#include <stdlib.h>
+	div_t div(<[n]>, <[d]>)
+	int <[n]>, <[d]>;
+
+DESCRIPTION
+Divide
+@tex
+$n/d$,
+@end tex
+@ifnottex
+<[n]>/<[d]>,
+@end ifnottex
+returning quotient and remainder as two integers in a structure <<div_t>>.
+
+RETURNS
+The result is represented with the structure
+
+. typedef struct
+. {
+.  int quot;
+.  int rem;
+. } div_t;
+
+where the <<quot>> field represents the quotient, and <<rem>> the
+remainder.  For nonzero <[d]>, if `<<<[r]> = div(<[n]>,<[d]>);>>' then
+<[n]> equals `<<<[r]>.rem + <[d]>*<[r]>.quot>>'.
+
+To divide <<long>> rather than <<int>> values, use the similar
+function <<ldiv>>.
+
+PORTABILITY
+<<div>> is ANSI.
+
+No supporting OS subroutines are required.
+*/
 
 /*
- * Copyright (c) 1990 The Regents of the University of California.
+ * Copyright (c) 1990 Regents of the University of California.
  * All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Chris Torek.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,46 +82,51 @@
  * SUCH DAMAGE.
  */
 
-/**
- * @file
- * 
- * @brief div() implementation.
- */
+#include <_ansi.h>
+#include <stdlib.h>		/* div_t */
 
-#include <stdlib.h>
-#include <limits.h>
-
-/**
- * @brief Computes the quotient and remainder of an integer division.
- * 
- * @param numer Numerator.
- * @param denom Denominator.
- * 
- * @returns A structure of type div_t, comprising both the quotient and the
- *          remainder.
- */
-div_t div(int numer, int denom)
+div_t
+_DEFUN (div, (num, denom),
+	int num _AND
+	int denom)
 {
-	div_t res;
+	div_t r;
 
-	if (denom != 0)
-	{
-		res.quot = abs (numer) / abs(denom);
-		res.rem = abs (numer) % abs(denom);
-
-		if ((numer < 0 && denom > 0) || (numer >= 0 && denom < 0))
-			res.quot = -res.quot;
-		if (numer < 0)
-			res.rem = -res.rem;
+	r.quot = num / denom;
+	r.rem = num % denom;
+	/*
+	 * The ANSI standard says that |r.quot| <= |n/d|, where
+	 * n/d is to be computed in infinite precision.  In other
+	 * words, we should always truncate the quotient towards
+	 * 0, never -infinity or +infinity.
+	 *
+	 * Machine division and remainer may work either way when
+	 * one or both of n or d is negative.  If only one is
+	 * negative and r.quot has been truncated towards -inf,
+	 * r.rem will have the same sign as denom and the opposite
+	 * sign of num; if both are negative and r.quot has been
+	 * truncated towards -inf, r.rem will be positive (will
+	 * have the opposite sign of num).  These are considered
+	 * `wrong'.
+	 *
+	 * If both are num and denom are positive, r will always
+	 * be positive.
+	 *
+	 * This all boils down to:
+	 *	if num >= 0, but r.rem < 0, we got the wrong answer.
+	 * In that case, to get the right answer, add 1 to r.quot and
+	 * subtract denom from r.rem.
+	 *      if num < 0, but r.rem > 0, we also have the wrong answer.
+	 * In this case, to get the right answer, subtract 1 from r.quot and
+	 * add denom to r.rem.
+	 */
+	if (num >= 0 && r.rem < 0) {
+		++r.quot;
+		r.rem -= denom;
 	}
-	else
-	{
-		if (numer < 0)
-			res.quot = INT_MIN;
-		else
-			res.quot = INT_MAX;
-		res.rem = 0;
-    }
-
-	return (res);
+	else if (num < 0 && r.rem > 0) {
+		--r.quot;
+		r.rem += denom;
+	}
+	return (r);
 }

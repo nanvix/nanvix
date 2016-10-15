@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -19,14 +20,20 @@
 
 # Conflicts.
 .PHONY: libc
+.PHONY: libm
 
 # Builds everything.
-all: libc
+all: libc libm
 
 # Builds C library.
 libc:
 	cd libc/ && $(MAKE) all
 
+# Builds Math library.
+libm:
+	cd libm/ && $(MAKE) all
+
 # Cleans compilation files.
 clean:
 	cd libc && $(MAKE) clean
+	cd libm && $(MAKE) clean
