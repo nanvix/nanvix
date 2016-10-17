@@ -25,16 +25,10 @@
 	#define PAGE_ZERO 1 /* Demand zero. */
 	
 	/* Forward definitions. */
-	EXTERN struct pde *getpde(struct process *, addr_t);
-	EXTERN struct pte *getpte(struct process *, addr_t);
 	EXTERN void freeupg(struct pte *);
 	EXTERN void linkupg(struct pte *, struct pte *);
 	EXTERN void mappgtab(struct process *, addr_t, void *);
 	EXTERN void markpg(struct pte *, int);
 	EXTERN void umappgtab(struct process *, addr_t);
-	EXTERN void swap_clear(struct pte *);
-	EXTERN int swap_out(struct process *, addr_t);
-	EXTERN int swap_in(unsigned, addr_t);
-	EXTERN void swap_inc(unsigned);
 
 #endif /* _MM_H_ */

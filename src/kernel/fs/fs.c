@@ -18,7 +18,6 @@
  */
 
 #include <nanvix/const.h>
-#include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>

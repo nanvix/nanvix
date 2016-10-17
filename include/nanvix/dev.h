@@ -20,7 +20,6 @@
 #ifndef DEV_H_
 #define DEV_H_
 
-	#include <nanvix/config.h>
 	#include <nanvix/const.h>
 	#include <nanvix/fs.h>
 	#include <sys/types.h>
@@ -49,23 +48,7 @@
 	 */
 	#define DEVID(major, minor, type) \
 		(((major) << 8) | ((minor) << 4) | (type))
-
-	/**
-	 * @brief Block device number for root file system.
-	 */
-	#if (LIVE_IMAGE == 1)
-		#define ROOT_DEV 0x0001
-	#else
-		#define ROOT_DEV 0x0101
-	#endif
-
-	/**
-	 * @brief Block device number for swap file system.
-	 */
-	#if (LIVE_IMAGE != 1)
-		#define SWAP_DEV 0x0101
-	#endif
-
+		
 	/*
 	 * DESCRIPTION:
 	 *   The dev_init() function initializes the device drivers.
