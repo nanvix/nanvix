@@ -33,6 +33,7 @@ wget "http://wiki.qemu-project.org/download/qemu-2.5.0.tar.bz2"
 
 # Build Bochs
 tar -xjvf qemu-2.5.0.tar.bz2
+cd qemu-2.5.0
 ./configure
 make all
 make install
