@@ -28,7 +28,9 @@ PORTABILITY
 
 No supporting OS subroutines are required.
 */
+typedef int toascii_avoids_empty_translation_unit;
 
+#ifdef __STRICT_ANSI__
 #include <_ansi.h>
 #include <ctype.h>
 #undef toascii
@@ -39,3 +41,4 @@ _DEFUN(toascii,(c),int c)
   return (c)&0177;
 }
 
+#endif /* __STRICT_ANSI__ */
