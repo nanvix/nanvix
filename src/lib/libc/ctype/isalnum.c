@@ -36,8 +36,6 @@ No OS subroutines are required.
 #include <_ansi.h>
 #include <ctype.h>
 
-#undef isalnum
-
 int
 _DEFUN(isalnum,(c),int c)
 {

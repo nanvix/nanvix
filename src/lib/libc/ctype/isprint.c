@@ -44,7 +44,6 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <ctype.h>
 
-#undef isgraph
 int
 _DEFUN(isgraph,(c),int c)
 {
@@ -52,7 +51,6 @@ _DEFUN(isgraph,(c),int c)
 }
 
 
-#undef isprint
 int
 _DEFUN(isprint,(c),int c)
 {

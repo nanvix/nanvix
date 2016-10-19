@@ -35,7 +35,6 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <ctype.h>
 
-#undef isalpha
 int
 _DEFUN(isalpha,(c),int c)
 {

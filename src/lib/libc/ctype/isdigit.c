@@ -34,8 +34,6 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <ctype.h>
 
-
-#undef isdigit
 int
 _DEFUN(isdigit,(c),int c)
 {

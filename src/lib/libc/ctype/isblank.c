@@ -32,9 +32,6 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <ctype.h>
 
-
-
-#undef isblank
 int
 _DEFUN(isblank,(c),int c)
 {

@@ -53,7 +53,6 @@ No supporting OS subroutines are required.
 #include <wchar.h>
 #endif
 
-#undef toupper
 int
 _DEFUN(toupper,(c),int c)
 {

@@ -36,9 +36,6 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <ctype.h>
 
-
-
-#undef iscntrl
 int
 _DEFUN(iscntrl,(c),int c)
 {

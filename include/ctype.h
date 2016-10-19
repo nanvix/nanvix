@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ *                   Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -17,70 +18,45 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _CTYPE_H_
-#define _CTYPE_H_
+#ifndef CTYPE_H_
+#define CTYPE_H_
 
-#include <_ansi.h>
+	#include <_ansi.h>
 
-#define _U  01
-#define _L  02
-#define _N  04
-#define _S  010
-#define _P  020
-#define _C  040
-#define _X  0100
-#define _B  0200
+	#define _U  01
+	#define _L  02
+	#define _N  04
+	#define _S  010
+	#define _P  020
+	#define _C  040
+	#define _X  0100
+	#define _B  0200
 
-extern int isalnum(int __c);
-extern int isalpha(int __c);
-extern int isascii(int __c);
-extern int isblank(int __c);
-extern int iscntrl(int __c);
-extern int isdigit(int __c);
-extern int isgraph(int __c);
-extern int islower(int __c);
-extern int isprint(int __c);
-extern int ispunct(int __c);
-extern int isspace(int __c);
-extern int isupper(int __c);
-extern int isxdigit(int __c);
-extern int tolower(int __c);
-extern int toupper(int __c);
+	/* Forward definitions. */
+	extern int isalnum(int __c);
+	extern int isalpha(int __c);
+	extern int isascii(int __c);
+	extern int isblank(int __c);
+	extern int iscntrl(int __c);
+	extern int isdigit(int __c);
+	extern int isgraph(int __c);
+	extern int islower(int __c);
+	extern int isprint(int __c);
+	extern int ispunct(int __c);
+	extern int isspace(int __c);
+	extern int isupper(int __c);
+	extern int isxdigit(int __c);
+	extern int tolower(int __c);
+	extern int toupper(int __c);
 
-const char *__ctype_ptr__;
-
-/* 
-  These macros are intentionally written in a manner that will trigger
-  a gcc -Wall warning if the user mistakenly passes a 'char' instead
-  of an int containing an 'unsigned char'.  Note that the sizeof will
-  always be 1, which is what we want for mapping EOF to __ctype_ptr__[0];
-  the use of a raw index inside the sizeof triggers the gcc warning if
-  __c was of type char, and sizeof masks side effects of the extra __c.
-  Meanwhile, the real index to __ctype_ptr__+1 must be cast to int,
-  since isalpha(0x100000001LL) must equal isalpha(1), rather than being
-  an out-of-bounds reference on a 64-bit machine.  
-*/
-#define __ctype_lookup(__c) ((__ctype_ptr__+sizeof(""[__c]))[(int)(__c)])
-
-#define isalpha(__c)  (__ctype_lookup(__c)&(_U|_L))
-#define isascii(__c)  ((unsigned)(__c)<=0177)
-#define isupper(__c)  ((__ctype_lookup(__c)&(_U|_L))==_U)
-#define islower(__c)  ((__ctype_lookup(__c)&(_U|_L))==_L)
-#define isdigit(__c)  (__ctype_lookup(__c)&_N)
-#define isxdigit(__c) (__ctype_lookup(__c)&(_X|_N))
-#define isspace(__c)  (__ctype_lookup(__c)&_S)
-#define ispunct(__c)  (__ctype_lookup(__c)&_P)
-#define isalnum(__c)  (__ctype_lookup(__c)&(_U|_L|_N))
-#define isprint(__c)  (__ctype_lookup(__c)&(_P|_U|_L|_N|_B))
-#define isgraph(__c)  (__ctype_lookup(__c)&(_P|_U|_L|_N))
-#define iscntrl(__c)  (__ctype_lookup(__c)&_C)
-
+	/* Forward Definitions. */
+	const char *__ctype_ptr__;
 
 #ifndef __STRICT_ANSI__
-extern int toascii(int __c);
-#define _tolower(__c) ((unsigned char)(__c) - 'A' + 'a')
-#define _toupper(__c) ((unsigned char)(__c) - 'a' + 'A')
-#define toascii(__c)  ((__c)&0177)
+
+	/* Forward definitions. */
+	extern int toascii(int __c);
+
 #endif
 
 #endif /* _CTYPE_H_ */

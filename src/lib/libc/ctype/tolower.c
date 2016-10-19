@@ -54,7 +54,6 @@ No supporting OS subroutines are required.
 #include <wchar.h>
 #endif
 
-#undef tolower
 int
 _DEFUN(tolower,(c),int c)
 {

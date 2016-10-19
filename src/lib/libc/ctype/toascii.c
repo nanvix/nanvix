@@ -33,7 +33,6 @@ typedef int toascii_avoids_empty_translation_unit;
 #ifdef __STRICT_ANSI__
 #include <_ansi.h>
 #include <ctype.h>
-#undef toascii
 
 int
 _DEFUN(toascii,(c),int c)
