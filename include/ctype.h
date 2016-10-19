@@ -52,11 +52,11 @@
 	/* Forward Definitions. */
 	const char *__ctype_ptr__;
 
-#ifndef __STRICT_ANSI__
+#ifndef _XOPEN_SOURCE
 
 	/* Forward definitions. */
 	extern int toascii(int __c);
 
 #endif
 
-#endif /* _CTYPE_H_ */
+#endif /* CTYPE_H_ */

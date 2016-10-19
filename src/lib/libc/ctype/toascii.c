@@ -30,7 +30,8 @@ No supporting OS subroutines are required.
 */
 typedef int toascii_avoids_empty_translation_unit;
 
-#ifdef __STRICT_ANSI__
+#ifdef _XOPEN_SOURCE
+
 #include <_ansi.h>
 #include <ctype.h>
 
@@ -40,4 +41,4 @@ _DEFUN(toascii,(c),int c)
   return (c)&0177;
 }
 
-#endif /* __STRICT_ANSI__ */
+#endif /* _XOPEN_SOURCE */
