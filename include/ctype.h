@@ -33,21 +33,21 @@
 	#define _B  0200
 
 	/* Forward definitions. */
-	extern int isalnum(int __c);
-	extern int isalpha(int __c);
-	extern int isascii(int __c);
-	extern int isblank(int __c);
-	extern int iscntrl(int __c);
-	extern int isdigit(int __c);
-	extern int isgraph(int __c);
-	extern int islower(int __c);
-	extern int isprint(int __c);
-	extern int ispunct(int __c);
-	extern int isspace(int __c);
-	extern int isupper(int __c);
-	extern int isxdigit(int __c);
-	extern int tolower(int __c);
-	extern int toupper(int __c);
+	extern int isalnum(int);
+	extern int isalpha(int);
+	extern int isascii(int);
+	extern int isblank(int);
+	extern int iscntrl(int);
+	extern int isdigit(int);
+	extern int isgraph(int);
+	extern int islower(int);
+	extern int isprint(int);
+	extern int ispunct(int);
+	extern int isspace(int);
+	extern int isupper(int);
+	extern int isxdigit(int);
+	extern int tolower(int);
+	extern int toupper(int);
 
 	/* Forward Definitions. */
 	const char *__ctype_ptr__;
@@ -55,7 +55,7 @@
 #ifndef _XOPEN_SOURCE
 
 	/* Forward definitions. */
-	extern int toascii(int __c);
+	extern int toascii(int);
 
 #endif
 
