@@ -16,51 +16,6 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
-/*
-FUNCTION
-	<<tolower>>---translate characters to lowercase
-
-INDEX
-	tolower
-INDEX
-	_tolower
-
-ANSI_SYNOPSIS
-	#include <ctype.h>
-	int tolower(int <[c]>);
-	int _tolower(int <[c]>);
-
-TRAD_SYNOPSIS
-	#include <ctype.h>
-	int tolower(<[c]>);
-	int _tolower(<[c]>);
-
-
-DESCRIPTION
-<<tolower>> is a macro which converts uppercase characters to lowercase,
-leaving all other characters unchanged.  It is only defined when
-<[c]> is an integer in the range <<EOF>> to <<255>>.
-
-You can use a compiled subroutine instead of the macro definition by
-undefining this macro using `<<#undef tolower>>'.
-
-<<_tolower>> performs the same conversion as <<tolower>>, but should
-only be used when <[c]> is known to be an uppercase character (<<A>>--<<Z>>).
-
-RETURNS
-<<tolower>> returns the lowercase equivalent of <[c]> when it is a
-character between <<A>> and <<Z>>, and <[c]> otherwise.
-
-<<_tolower>> returns the lowercase equivalent of <[c]> when it is a
-character between <<A>> and <<Z>>.  If <[c]> is not one of these
-characters, the behaviour of <<_tolower>> is undefined.
-
-PORTABILITY
-<<tolower>> is ANSI C.  <<_tolower>> is not recommended for portable
-programs.
-
-No supporting OS subroutines are required.
-*/ 
 
 #include <_ansi.h>
 #include <ctype.h>
@@ -72,8 +27,20 @@ No supporting OS subroutines are required.
 #include <wchar.h>
 #endif
 
-int
-_DEFUN(tolower,(c),int c)
+/**
+ * @brief Transliterates uppercase characters to lowercase. 
+ *
+ * @details If @p c represents an uppercase letter, and there exists a
+ * corresponding lowercase letter as defined by character type
+ * information in the current locale, the result is the corresponding
+ * lowercase letter.
+ *
+ * @param Character to transliterate.
+ *
+ * @returns Returns the lowercase letter corresponding to the argument
+ * passed; otherwise, they returns the argument unchanged.
+ */
+int tolower(int c)
 {
 #if defined (_MB_EXTENDED_CHARSETS_ISO) || defined (_MB_EXTENDED_CHARSETS_WINDOWS)
   if ((unsigned char) c <= 0x7f) 
