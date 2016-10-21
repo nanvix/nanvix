@@ -16,50 +16,6 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
-/*
-FUNCTION
-	<<toupper>>---translate characters to uppercase
-
-INDEX
-	toupper
-INDEX
-	_toupper
-
-ANSI_SYNOPSIS
-	#include <ctype.h>
-	int toupper(int <[c]>);
-	int _toupper(int <[c]>);
-
-TRAD_SYNOPSIS
-	#include <ctype.h>
-	int toupper(<[c]>);
-	int _toupper(<[c]>);
-
-
-DESCRIPTION
-<<toupper>> is a macro which converts lowercase characters to uppercase,
-leaving all other characters unchanged.  It is only defined when
-<[c]> is an integer in the range <<EOF>> to <<255>>.
-
-You can use a compiled subroutine instead of the macro definition by
-undefining this macro using `<<#undef toupper>>'.
-
-<<_toupper>> performs the same conversion as <<toupper>>, but should
-only be used when <[c]> is known to be a lowercase character (<<a>>--<<z>>).
-
-RETURNS
-<<toupper>> returns the uppercase equivalent of <[c]> when it is a
-character between <<a>> and <<z>>, and <[c]> otherwise.
-
-<<_toupper>> returns the uppercase equivalent of <[c]> when it is a
-character between <<a>> and <<z>>.  If <[c]> is not one of these
-characters, the behaviour of <<_toupper>> is undefined.
-
-PORTABILITY
-<<toupper>> is ANSI C.  <<_toupper>> is not recommended for portable programs.
-
-No supporting OS subroutines are required.
-*/
 
 #include <_ansi.h>
 #include <ctype.h>
@@ -71,8 +27,20 @@ No supporting OS subroutines are required.
 #include <wchar.h>
 #endif
 
-int
-_DEFUN(toupper,(c),int c)
+/**
+ * @brief Transliterates lowercase characters to uppercase. 
+ *
+ * @details If @p c represents an lowercase letter, and there exists a
+ * corresponding uppercase letter as defined by character type
+ * information in the current locale, the result is the corresponding
+ * uppercase letter.
+ *
+ * @param Character to transliterate.
+ *
+ * @returns Returns the uppercase letter corresponding to the argument
+ * passed; otherwise, they returns the argument unchanged.
+ */
+int toupper(int c)
 {
 #if defined (_MB_EXTENDED_CHARSETS_ISO) || defined (_MB_EXTENDED_CHARSETS_WINDOWS)
   if ((unsigned char) c <= 0x7f)
