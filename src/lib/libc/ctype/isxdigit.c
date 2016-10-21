@@ -16,44 +16,25 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
-/*
-FUNCTION
-<<isxdigit>>---hexadecimal digit predicate
 
-INDEX
-isxdigit
-
-ANSI_SYNOPSIS
-#include <ctype.h>
-int isxdigit(int <[c]>);
-
-TRAD_SYNOPSIS
-#include <ctype.h>
-int isxdigit(int <[c]>);
-
-DESCRIPTION
-<<isxdigit>> is a macro which classifies ASCII integer values by table
-lookup.  It is a predicate returning non-zero for hexadecimal digits,
-and <<0>> for other characters.  It is defined only if <[c]> is
-representable as an unsigned char or if <[c]> is EOF.
-
-You can use a compiled subroutine instead of the macro definition by
-undefining the macro using `<<#undef isxdigit>>'.
-
-RETURNS
-<<isxdigit>> returns non-zero if <[c]> is a hexadecimal digit
-(<<0>>--<<9>>, <<a>>--<<f>>, or <<A>>--<<F>>).
-
-PORTABILITY
-<<isxdigit>> is ANSI C.
-
-No supporting OS subroutines are required.
-*/
 #include <_ansi.h>
 #include <ctype.h>
 
-int
-_DEFUN(isxdigit,(c),int c)
+/**
+ * @brief Tests for a hexadecimal digit. 
+ *
+ * @details Tests whether @p c is a character of class xdigit in the
+ * current locale. The @p c argument is an int, the value of which the
+ * application shall ensure is representable as an unsigned char or
+ * equal to the value of the macro #EOF. If the argument has any other
+ * value, the behavior is undefined.
+ *
+ * @param Character to test.
+ *
+ * @returns Returns non-zero if @p c is a hexadecimal digit;
+ * otherwise, it returns 0.
+ */
+int isxdigit(int c)
 {
 	return(__ctype_ptr__[c+1] & ((_X)|(_N)));
 }
