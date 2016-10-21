@@ -18,6 +18,12 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * @file
+ *
+ * @brief Character types library.
+ */
+
 #ifndef CTYPE_H_
 #define CTYPE_H_
 
