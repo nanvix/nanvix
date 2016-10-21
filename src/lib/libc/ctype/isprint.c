@@ -1,51 +1,40 @@
-
 /*
-FUNCTION
-	<<isprint>>, <<isgraph>>---printable character predicates
-
-INDEX
-	isprint
-INDEX
-	isgraph
-
-ANSI_SYNOPSIS
-	#include <ctype.h>
-	int isprint(int <[c]>);
-	int isgraph(int <[c]>);
-
-TRAD_SYNOPSIS
-	#include <ctype.h>
-	int isprint(<[c]>);
-	int isgraph(<[c]>);
-
-
-DESCRIPTION
-<<isprint>> is a macro which classifies ASCII integer values by table
-lookup.  It is a predicate returning non-zero for printable
-characters, and 0 for other character arguments. 
-It is defined only if <[c]> is representable as an unsigned char or if
-<[c]> is EOF.
-
-You can use a compiled subroutine instead of the macro definition by
-undefining either macro using `<<#undef isprint>>' or `<<#undef isgraph>>'.
-
-RETURNS
-<<isprint>> returns non-zero if <[c]> is a printing character,
-(<<0x20>>--<<0x7E>>).
-<<isgraph>> behaves identically to <<isprint>>, except that the space
-character (<<0x20>>) is excluded.
-
-PORTABILITY
-<<isprint>> and <<isgraph>> are ANSI C.
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <ctype.h>
 
-int
-_DEFUN(isgraph,(c),int c)
+/**
+ * @brief Tests for a printable character. 
+ *
+ * @details Tests whether @p c is a character of class print in the
+ * current locale. The @p c argument is an int, the value of which the
+ * application shall ensure is representable as an unsigned char or
+ * equal to the value of the macro #EOF. If the argument has any other
+ * value, the behavior is undefined.
+ *
+ * @param Character to test.
+ *
+ * @returns Returns non-zero if @p c is a printable character;
+ * otherwise, it returns 0.
+ */
+int isgraph(int c)
 {
 	return(__ctype_ptr__[c+1] & (_P|_U|_L|_N));
 }
