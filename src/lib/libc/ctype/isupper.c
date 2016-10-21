@@ -16,43 +16,25 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
-/*
-FUNCTION
-<<isupper>>---uppercase character predicate
 
-INDEX
-isupper
-
-ANSI_SYNOPSIS
-#include <ctype.h>
-int isupper(int <[c]>);
-
-TRAD_SYNOPSIS
-#include <ctype.h>
-int isupper(<[c]>);
-
-DESCRIPTION
-<<isupper>> is a macro which classifies ASCII integer values by table
-lookup.  It is a predicate returning non-zero for uppercase letters
-(<<A>>--<<Z>>), and 0 for other characters.  It is defined only when
-<<isascii>>(<[c]>) is true or <[c]> is EOF.
-
-You can use a compiled subroutine instead of the macro definition by
-undefining the macro using `<<#undef isupper>>'.
-
-RETURNS
-<<isupper>> returns non-zero if <[c]> is a uppercase letter (A-Z).
-
-PORTABILITY
-<<isupper>> is ANSI C.
-
-No supporting OS subroutines are required.
-*/
 #include <_ansi.h>
 #include <ctype.h>
 
-int
-_DEFUN(isupper,(c),int c)
+/**
+ * @brief Tests for an uppercase letter. 
+ *
+ * @details Tests whether @p c is a character of class upper in the
+ * current locale. The @p c argument is an int, the value of which the
+ * application shall ensure is representable as an unsigned char or
+ * equal to the value of the macro #EOF. If the argument has any other
+ * value, the behavior is undefined.
+ *
+ * @param Character to test.
+ *
+ * @returns Returns non-zero if @p c is an uppercase letter;
+ * otherwise, it returns 0.
+ */
+int isupper(int c)
 {
 	return ((__ctype_ptr__[c+1] & (_U|_L)) == _U);
 }
