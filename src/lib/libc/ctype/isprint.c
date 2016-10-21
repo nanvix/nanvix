@@ -49,11 +49,3 @@ _DEFUN(isgraph,(c),int c)
 {
 	return(__ctype_ptr__[c+1] & (_P|_U|_L|_N));
 }
-
-
-int
-_DEFUN(isprint,(c),int c)
-{
-	return(__ctype_ptr__[c+1] & (_P|_U|_L|_N|_B));
-}
-
