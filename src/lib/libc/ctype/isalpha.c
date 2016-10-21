@@ -21,7 +21,7 @@
 #include <ctype.h>
 
 /**
- * @brief Tests for an alpha numeric character.
+ * @brief Tests for an alphabetic character.
  *
  * @details Tests whether @p c is a character of class alpha in the
  * current locale. The @p c argument is an int, the value of which the
