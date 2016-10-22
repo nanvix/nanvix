@@ -227,15 +227,18 @@ PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 PRIVATE int allocupg(addr_t addr, int writable)
 {
 	int i;          /* Page frame index.         */
+	addr_t paddr;   /* Page address.             */
 	struct pte *pg; /* Working page table entry. */
 	
 	/* Failed to allocate page frame. */
 	if ((i = allocf()) < 0)
 		return (-1);
 	
+	paddr = addr & PAGE_MASK;
+
 	/* Initialize page frame. */
 	frames[i].owner = curr_proc->pid;
-	frames[i].addr = addr & PAGE_MASK;
+	frames[i].addr = paddr;
 	
 	/* Allocate page. */
 	pg = getpte(curr_proc, addr);
@@ -245,6 +248,8 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	pg->user = 1;
 	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
 	tlb_flush();
+	
+	kmemset((void *)paddr, 0, PAGE_SIZE);
 	
 	return (0);
 }
@@ -527,8 +532,8 @@ PUBLIC void dstrypgdir(struct process *proc)
  * 
  * @brief addr Faulting address.
  * 
- * @returns Upon successful completion, zero is returned. Upon failure, non-zero
- *          is returned instead.
+ * @returns Upon successful completion, zero is returned. Upon
+ * failure, non-zero is returned instead.
  */
 PUBLIC int vfault(addr_t addr)
 {
@@ -536,24 +541,26 @@ PUBLIC int vfault(addr_t addr)
 	struct region *reg;   /* Working region.         */
 	struct pregion *preg; /* Working process region. */
 	
-	/* Get associated region. */
-	preg = findreg(curr_proc, addr);
-	if (preg == NULL)
+	/* Get region. */
+	if ((preg = findreg(curr_proc, addr)) == NULL)
 		goto error0;
 	
 	lockreg(reg = preg->reg);
 	
 	/* Outside virtual address space. */
 	if (!withinreg(preg, addr))
-	{			
+	{
+		ssize_t size;
+
 		/* Not a stack region. */
 		if (preg != STACK(curr_proc))
 			goto error1;
 	
 		kprintf("growing stack");
-		
+
 		/* Expand region. */
-		if (growreg(curr_proc,preg,(preg->start-reg->size)-(addr&~PGTAB_MASK)))
+		size = (preg->start - reg->size) - (addr & ~PGTAB_MASK);
+		if (growreg(curr_proc, preg, size))
 			goto error1;
 	}
 
@@ -564,7 +571,6 @@ PUBLIC int vfault(addr_t addr)
 	{
 		if (allocupg(addr, reg->mode & MAY_WRITE))
 			goto error1;
-		kmemset((void *)(addr & PAGE_MASK), 0, PAGE_SIZE);
 	}
 		
 	/* Load page from executable file. */
@@ -586,6 +592,7 @@ error1:
 error0:
 	return (-1);
 }
+
 /**
  * @brief Handles a protection page fault.
  * 
@@ -596,10 +603,10 @@ error0:
  */
 PUBLIC int pfault(addr_t addr)
 {
-	unsigned i;           /* Frame index.                 */
-	struct pte *pg;       /* Faulting page.               */
-	struct pte new_pg;    /* New page.                    */
-	struct pregion *preg; /* Working process region.      */
+	unsigned i;           /* Frame index.            */
+	struct pte *pg;       /* Faulting page.          */
+	struct pte new_pg;    /* New page.               */
+	struct pregion *preg; /* Working process region. */
 
 	preg = findreg(curr_proc, addr);
 	
