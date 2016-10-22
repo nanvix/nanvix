@@ -391,6 +391,26 @@ PUBLIC void markpg(struct pte *pg, int mark)
 }
 
 /**
+ * @brief Enables/disable copy-on-write on a page.
+ *
+ * @param pg     Target page.
+ * @param enable Enable copy-on-write?
+ */
+PRIVATE void pgcow(struct pte *pg, int enable)
+{
+	/* Disable cow. */
+	if (!enable)
+	{
+		pg->cow = 0;
+		pg->writable = 1;
+		return;
+	}
+
+	pg->cow = 1;
+	pg->writable = 0;
+}
+
+/**
  * @brief Links two pages.
  * 
  * @param upg1 Source page.
@@ -419,10 +439,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 
 	/* Set copy on write. */
 	if (upg1->writable)
-	{
-		upg1->writable = 0;
-		upg1->cow = 1;
-	}
+		pgcow(upg1, 1);
 
 	i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
 	frames[i].count++;
@@ -602,8 +619,7 @@ PUBLIC int pfault(addr_t addr)
 		if (cpypg(&new_pg, pg))
 			goto error1;
 		
-		new_pg.cow = 0;
-		new_pg.writable = 1;
+		pgcow(&new_pg, 0);
 		
 		/* Unlik page. */
 		frames[i].count--;
@@ -612,10 +628,7 @@ PUBLIC int pfault(addr_t addr)
 		
 	/* Steal page. */
 	else
-	{
-		pg->cow = 0;
-		pg->writable = 1;
-	}
+		pgcow(pg, 0);
 	
 	unlockreg(preg->reg);
 	return(0);
