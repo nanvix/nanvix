@@ -536,24 +536,26 @@ PUBLIC int vfault(addr_t addr)
 
 	pg = getpte(curr_proc, addr);
 		
-	/* Clear page. */
-	if (pg->zero)
+	/* Not demand zero. */
+	if (!pg->zero)
 	{
-		if (allocupg(addr, reg->mode & MAY_WRITE))
+		/* Not demand fill. */
+		if (!pg->fill)
 			goto error1;
-	}
-		
-	/* Load page from executable file. */
-	else if (pg->fill)
-	{
-		/* Read page. */
+
+		/* Demand fill. */
 		if (readpg(reg, addr))
 			goto error1;
+		
+		goto ok;
 	}
 		
-	else
+	/* Demand zero. */
+	if (allocupg(addr, reg->mode & MAY_WRITE))
 		goto error1;
-	
+
+ok:
+
 	unlockreg(reg);
 	return (0);
 
