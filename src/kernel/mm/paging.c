@@ -619,7 +619,7 @@ PUBLIC int pfault(addr_t addr)
 		pgcow(pg, 0);
 		goto ok;
 	}
-
+		
 	/* Copy page. */
 	if (cpypg(&new_pg, pg))
 		goto error1;
