@@ -19,7 +19,7 @@
 #
 
 #Building kernel
-export CFLAGS += -DBUILDING_KERNEL
+export CFLAGS += -DBUILDING_KERNEL -Wstack-usage=3192 
 
 # Target processor.
 PROCESSOR = i386

@@ -42,7 +42,7 @@ export CFLAGS   += -DKERNEL_HASH=$(KEY)
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 export CFLAGS   += -Wall -Wextra -Werror
-export CFLAGS   += -Wstack-usage=3192 -Wlogical-op
+export CFLAGS   += -Wlogical-op
 export CFLAGS   += -Wredundant-decls -Wvla
 export ASMFLAGS  = -Wa,--divide,--warn
 export ARFLAGS   = -vq
