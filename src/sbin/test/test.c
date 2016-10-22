@@ -32,78 +32,35 @@
 #include <limits.h>
 
 /* Test flags. */
-#define EXTENDED (1 << 0)
-#define FULL     (1 << 1)
-#define VERBOSE  (1 << 2)
+#define VERBOSE  (1 << 10)
 
 /* Test flags. */
-static unsigned flags = VERBOSE | FULL;
+static unsigned flags = VERBOSE;
 
 /*============================================================================*
- *                               swap_test                                    *
+ *                               demand_zero_test                             *
  *============================================================================*/
 
 /**
- * @brief Swapping test module.
- * 
- * @details Forces swapping algorithms to be activated by performing a large
- *          matrix multiplication operation that does not fit on memory.
+ * @brief Demand zero test module.
  * 
  * @returns Zero if passed on test, and non-zero otherwise.
  */
-static int swap_test(void)
+static int demand_zero_test(void)
 {
-	#define N 1280
-	int *a, *b, *c;
-	clock_t t0, t1;
-	struct tms timing;
+	const size_t size = PROC_SIZE_MAX/2; /* Buffer size.        */
+	char *buffer;                        /* Buffer.             */
+	struct tms timing;                   /* Timing information. */
+	clock_t t0, t1;                      /* Elapsed times.      */
 
-	/* Allocate matrices. */
-	if ((a = malloc(N*N*sizeof(int))) == NULL)
-		goto error0;
-	if ((b = malloc(N*N*sizeof(int))) == NULL)
-		goto error1;
-	if ((c = malloc(N*N*sizeof(int))) == NULL)
-		goto error2;
-		
+	buffer = malloc(size);
+	assert(buffer != NULL);
+
 	t0 = times(&timing);
 	
-	/* Initialize matrices. */
-	for (int i = 0; i < N*N; i++)
-	{
-		a[i] = 1;
-		b[i] = 1;
-		c[i] = 0;
-	}
-	
-	/* Multiply matrices. */
-	if (flags & (EXTENDED | FULL))
-	{	
-		for (int i = 0; i < N; i++)
-		{
-			for (int j = 0; j < N; j++)
-			{
-					
-				for (int k = 0; k < N; k++)
-					c[i*N + j] += a[i*N + k]*b[k*N + j];
-			}
-		}
-	}
-	
-	/* Check values. */
-	if (flags & FULL)
-	{
-		for (int i = 0; i < N*N; i++)
-		{
-			if (c[i] != N)
-				goto error3;
-		}
-	}
-	
-	/* House keeping. */
-	free(a);
-	free(b);
-	free(c);
+	/* Fill buffer. */
+	for (size_t i = 0; i < size; i++)
+		buffer[i] = 1;
 	
 	t1 = times(&timing);
 	
@@ -111,16 +68,10 @@ static int swap_test(void)
 	if (flags & VERBOSE)
 		printf("  Elapsed: %d\n", t1 - t0);
 	
-	return (0);
+	/* House keeping. */
+	free(buffer);
 
-error3:
-	free(c);
-error2:
-	free(b);
-error1:
-	free(a);
-error0:
-	return (-1);
+	return (0);
 }
 
 /*============================================================================*
@@ -573,11 +524,11 @@ static void usage(void)
 	printf("Usage: test [options]\n\n");
 	printf("Brief: Performs regression tests on Nanvix.\n\n");
 	printf("Options:\n");
-	printf("  fpu   Floating Point Unit Test\n");
-	printf("  io    I/O Test\n");
-	printf("  ipc   Interprocess Communication Test\n");
-	printf("  swp   Swapping Test\n");
-	printf("  sched Scheduling Test\n");
+	printf("  fpu    Floating Point Unit Test\n");
+	printf("  io     I/O Test\n");
+	printf("  ipc    Interprocess Communication Test\n");
+	printf("  paging Paging System Test\n");
+	printf("  sched  Scheduling Test\n");
 	
 	exit(EXIT_SUCCESS);
 }
@@ -601,12 +552,12 @@ int main(int argc, char **argv)
 				(!io_test()) ? "PASSED" : "FAILED");
 		}
 		
-		/* Swapping test. */
-		else if (!strcmp(argv[i], "swp"))
+		/* Paging system test. */
+		else if (!strcmp(argv[i], "paging"))
 		{
-			printf("Swapping Test\n");
+			printf("Demand Zero Test\n");
 			printf("  Result:             [%s]\n",
-				(!swap_test()) ? "PASSED" : "FAILED");
+				(!demand_zero_test()) ? "PASSED" : "FAILED");
 		}
 		
 		/* Scheduling test. */
