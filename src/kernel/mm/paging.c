@@ -52,6 +52,36 @@
 #define getpte(p, a) \
 	(&((struct pte *)((getpde(p, a)->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(a)])
 
+/**
+ * @brief Gets the page wherein an address resides.
+ *
+ * @param preg Target process region.
+ * @param addr Target address.
+ *
+ * @returns The page wherein an address resides.
+ */
+PRIVATE struct pte *getpg(struct pregion *preg, addr_t addr)
+{
+	unsigned mrde;      /* Mini region downwards entry.  */
+	unsigned mrue;      /* Mini region upwards entry.    */
+	struct region *reg; /* Working memory region.        */
+	struct pte *pg;     /* Working page.                 */
+
+	reg = preg->reg;
+
+	mrde = MREGIONS - (MRTAB(addr) - MRTAB(preg->start)) - 1;
+	mrue = MRTAB(addr) - MRTAB(preg->start);
+
+	pg = (reg->flags & REGION_DOWNWARDS) ?
+		&reg->mtab[mrde]
+		->pgtab[(REGION_PGTABS*(MREGIONS-mrde))-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]:
+
+		&reg->mtab[mrue]
+		->pgtab[PGTAB(addr)-PGTAB(preg->start)-(REGION_PGTABS*mrue)][PG(addr)];
+
+	return (pg);
+}
+
 /*============================================================================*
  *                             Kernel Page Pool                               *
  *============================================================================*/
@@ -502,11 +532,9 @@ PUBLIC void dstrypgdir(struct process *proc)
  */
 PUBLIC int vfault(addr_t addr)
 {
-	struct pte *pg;       /* Working page.                         */
-	struct region *reg;   /* Working region.                       */
-	struct pregion *preg; /* Working process region.               */
-	unsigned mrde;        /* Mini region downwards entry.          */
-	unsigned mrue;        /* Mini region upwards entry.            */
+	struct pte *pg;       /* Working page.           */
+	struct region *reg;   /* Working region.         */
+	struct pregion *preg; /* Working process region. */
 	
 	/* Get associated region. */
 	preg = findreg(curr_proc, addr);
@@ -529,15 +557,7 @@ PUBLIC int vfault(addr_t addr)
 			goto error1;
 	}
 
-	mrde = MREGIONS - (MRTAB(addr) - MRTAB(preg->start)) - 1;
-	mrue = MRTAB(addr) - MRTAB(preg->start);
-
-	pg = (reg->flags & REGION_DOWNWARDS) ?
-		&reg->mtab[mrde]
-		->pgtab[(REGION_PGTABS*(MREGIONS-mrde))-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]:
-
-		&reg->mtab[mrue]
-		->pgtab[PGTAB(addr)-PGTAB(preg->start)-(REGION_PGTABS*mrue)][PG(addr)];
+	pg = getpg(preg, addr);
 		
 	/* Clear page. */
 	if (pg->zero)
@@ -579,10 +599,7 @@ PUBLIC int pfault(addr_t addr)
 	unsigned i;           /* Frame index.                 */
 	struct pte *pg;       /* Faulting page.               */
 	struct pte new_pg;    /* New page.                    */
-	struct region *reg;   /* Working memory region.       */
 	struct pregion *preg; /* Working process region.      */
-	unsigned mrde;        /* Mini region downwards entry. */
-	unsigned mrue;        /* Mini region upwards entry.   */
 
 	preg = findreg(curr_proc, addr);
 	
@@ -590,17 +607,9 @@ PUBLIC int pfault(addr_t addr)
 	if ((preg == NULL) || (!withinreg(preg, addr)))
 		goto error0;
 	
-	lockreg(reg = preg->reg);
+	lockreg(preg->reg);
 
-	mrde = MREGIONS - (MRTAB(addr) - MRTAB(preg->start)) - 1;
- 	mrue = MRTAB(addr) - MRTAB(preg->start);
-
-	pg = (reg->flags & REGION_DOWNWARDS) ?	
-		&reg->mtab[mrde]
-		->pgtab[(REGION_PGTABS*(MREGIONS-mrde))-(PGTAB(preg->start)-PGTAB(addr))-1][PG(addr)]:
-
-		&reg->mtab[mrue]
-		->pgtab[PGTAB(addr)-PGTAB(preg->start)-(REGION_PGTABS*mrue)][PG(addr)];
+	pg = getpg(preg, addr);
 
 	/* Copy on write not enabled. */
 	if (!pg->cow)
@@ -629,11 +638,11 @@ PUBLIC int pfault(addr_t addr)
 		pg->writable = 1;
 	}
 	
-	unlockreg(reg);
+	unlockreg(preg->reg);
 	return(0);
 
 error1:
-	unlockreg(reg);
+	unlockreg(preg->reg);
 error0:
 	return (-1);
 }
