@@ -38,7 +38,7 @@
 static unsigned flags = VERBOSE;
 
 /*============================================================================*
- *                               demand_zero_test                             *
+ *                             Paging System Tests                            *
  *============================================================================*/
 
 /**
@@ -70,6 +70,42 @@ static int demand_zero_test(void)
 	
 	/* House keeping. */
 	free(buffer);
+
+	return (0);
+}
+
+/**
+ * @brief Dummy function used by stack_grow_test().
+ *
+ * @param i Dummy variable.
+ *
+ * @returns Dummy value.
+ */
+static int foobar(size_t i)
+{
+	return ((i == 0) ? 0 : foobar(i - 1) + 1);
+}
+
+/**
+ * @brief Stack grow test module.
+ *
+ * @returns Zero if passed on test, and non-zero otherwise.
+ */
+static int stack_grow_test(void)
+{
+	struct tms timing;                   /* Timing information. */
+	clock_t t0, t1;                      /* Elapsed times.      */
+	const size_t size = PROC_SIZE_MAX/8; /* Buffer size.        */
+
+	t0 = times(&timing);
+	
+	foobar(size);
+	
+	t1 = times(&timing);
+	
+	/* Print timing statistics. */
+	if (flags & VERBOSE)
+		printf("  Elapsed: %d\n", t1 - t0);
 
 	return (0);
 }
@@ -558,6 +594,9 @@ int main(int argc, char **argv)
 			printf("Demand Zero Test\n");
 			printf("  Result:             [%s]\n",
 				(!demand_zero_test()) ? "PASSED" : "FAILED");
+			printf("Stack Grow Test\n");
+			printf("  Result:             [%s]\n",
+				(!stack_grow_test()) ? "PASSED" : "FAILED");
 		}
 		
 		/* Scheduling test. */
