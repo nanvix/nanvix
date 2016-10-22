@@ -613,23 +613,24 @@ PUBLIC int pfault(addr_t addr)
 		
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 
-	/* Duplicate page. */
-	if (frames[i].count > 1)
-	{
-		if (cpypg(&new_pg, pg))
-			goto error1;
-		
-		pgcow(&new_pg, 0);
-		
-		/* Unlik page. */
-		frames[i].count--;
-		kmemcpy(pg, &new_pg, sizeof(struct pte));
-	}
-		
 	/* Steal page. */
-	else
+	if (frames[i].count == 1)
+	{
 		pgcow(pg, 0);
+		goto ok;
+	}
+
+	/* Copy page. */
+	if (cpypg(&new_pg, pg))
+		goto error1;
 	
+	pgcow(&new_pg, 0);
+	
+	/* Unlik page. */
+	frames[i].count--;
+	kmemcpy(pg, &new_pg, sizeof(struct pte));
+
+ok:
 	unlockreg(preg->reg);
 	return(0);
 
