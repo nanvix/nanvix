@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ *                   Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -896,21 +897,20 @@ struct lconv *_localeconv_r(struct _reent *data)
 #ifndef _REENT_ONLY
 
 /**
- * @brief Set program locale.
+ * @brief Sets program locale.
  *
- * @details Selects the appropriate piece of the global locale, as 
- * specified by the @p category and @p locale, and can be used
- * to change or query the entire global locale or portions thereof.
- * The value LC_ALL for category names the entire global locale; 
- * other values for category name only a part of the global locale.
+ * @details Selects the appropriate piece of the global locale, as
+ * specified by the @p category and @p locale, and can be used to
+ * change or query the entire global locale or portions thereof.  The
+ * value LC_ALL for category names the entire global locale; other
+ * values for category name only a part of the global locale.
  *
- * @param category Portion of the locale affected.
- * @param locale Pointer to a character string containing
- * the required setting of category.
+ * @param category Locale category.
+ * @param locale   Target character string.
  *
  * @return Returns the string associated with the specified category
- * for the new locale. Otherwise, setlocale() shall return a null 
- * pointer and the global locale shall not be changed.
+ * for the new locale. Otherwise, setlocale() returns a #NULL pointer
+ * and the global locale is not changed.
  */
 char *setlocale(int category, const char *locale)
 {
@@ -918,11 +918,11 @@ char *setlocale(int category, const char *locale)
 }
 
 /**
- * @brief Return locale-specific information.
+ * @brief Returns locale-specific information.
  *
- * @details The function shall set the components of an object with the
- * type struct lconv with the values appropriate for the formatting of 
- * numeric quantities (monetary and otherwise) according to the rules 
+ * @details The function sets the components of an object with the
+ * type struct lconv with the values appropriate for the formatting of
+ * numeric quantities (monetary and otherwise) according to the rules
  * of the current locale.
  *
  * @return Returns a pointer to the filled-in object.

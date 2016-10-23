@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ *                   Pedro H. Penna <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -32,21 +33,23 @@
 	#include <stddef.h>
 
  	/**
- 	 * @brief Macros definitions.
+ 	 * @brief Locale selection.
  	 */
-	#define LC_ALL	    0
-	#define LC_COLLATE  1
-	#define LC_CTYPE    2
-	#define LC_MONETARY 3
-	#define LC_NUMERIC  4
-	#define LC_TIME     5
-
+	/**@{*/
+	#define LC_ALL	    0 /**< All categories.                                                                           */
+	#define LC_COLLATE  1 /**< Regular expressions and collation functions.                                              */
+	#define LC_CTYPE    2 /**< Regular expressions, character classification, character conversion, and wide-characters. */
+	#define LC_MONETARY 3 /**< Monetary values.                                                                          */
+	#define LC_NUMERIC  4 /**< Numeric values.                                                                           */
+	#define LC_TIME     5 /**< Time conversion.                                                                          */
 #ifdef _POSIX_C_SOURCE
-	#define LC_MESSAGES 6
+	#define LC_MESSAGES 6 /**< Response expressions, message catalogs and read/writes.                                   */
 #endif
+	/**@}*/
+
 
  	/**
- 	 * @brief Locale structure lconv.
+ 	 * @brief Locale structure.
  	 */
 	struct lconv
 	{
@@ -78,12 +81,12 @@
 
 	/* Forward definitions. */
 	#ifndef _REENT_ONLY
-		extern char *setlocale(int category, const char *locale);
+		extern char *setlocale(int, const char *);
 		extern struct lconv *localeconv(void);
 	#endif
+	extern char *_setlocale_r(struct _reent *, int, const char *);
+	extern struct lconv *_localeconv_r(struct _reent *);
 
 	struct _reent;
-	extern char *_setlocale_r(struct _reent *, int category, const char *locale);
-	extern struct lconv *_localeconv_r(struct _reent *);
 
 #endif /* LOCALE_H_ */
