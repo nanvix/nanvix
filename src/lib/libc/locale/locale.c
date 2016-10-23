@@ -1,142 +1,23 @@
 /*
-FUNCTION
-<<setlocale>>, <<localeconv>>---select or query locale
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ *                   Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
-INDEX
-	setlocale
-INDEX
-	localeconv
-INDEX
-	_setlocale_r
-INDEX
-	_localeconv_r
-
-ANSI_SYNOPSIS
-	#include <locale.h>
-	char *setlocale(int <[category]>, const char *<[locale]>);
-	lconv *localeconv(void);
-
-	char *_setlocale_r(void *<[reent]>,
-                        int <[category]>, const char *<[locale]>);
-	lconv *_localeconv_r(void *<[reent]>);
-
-TRAD_SYNOPSIS
-	#include <locale.h>
-	char *setlocale(<[category]>, <[locale]>)
-	int <[category]>;
-	char *<[locale]>;
-
-	lconv *localeconv();
-
-	char *_setlocale_r(<[reent]>, <[category]>, <[locale]>)
-	char *<[reent]>;
-	int <[category]>;
-	char *<[locale]>;
-
-	lconv *_localeconv_r(<[reent]>);
-	char *<[reent]>;
-
-DESCRIPTION
-<<setlocale>> is the facility defined by ANSI C to condition the
-execution environment for international collating and formatting
-information; <<localeconv>> reports on the settings of the current
-locale.
-
-This is a minimal implementation, supporting only the required <<"POSIX">>
-and <<"C">> values for <[locale]>; strings representing other locales are not
-honored unless _MB_CAPABLE is defined.
-
-If _MB_CAPABLE is defined, POSIX locale strings are allowed, following
-the form
-
-  language[_TERRITORY][.charset][@@modifier]
-
-<<"language">> is a two character string per ISO 639, or, if not available
-for a given language, a three character string per ISO 639-3.
-<<"TERRITORY">> is a country code per ISO 3166.  For <<"charset">> and
-<<"modifier">> see below.
-
-Additionally to the POSIX specifier, the following extension is supported
-for backward compatibility with older implementations using newlib:
-<<"C-charset">>.
-Instead of <<"C-">>, you can also specify <<"C.">>.  Both variations allow
-to specify language neutral locales while using other charsets than ASCII,
-for instance <<"C.UTF-8">>, which keeps all settings as in the C locale,
-but uses the UTF-8 charset.
-
-The following charsets are recognized:
-<<"UTF-8">>, <<"JIS">>, <<"EUCJP">>, <<"SJIS">>, <<"KOI8-R">>, <<"KOI8-U">>,
-<<"GEORGIAN-PS">>, <<"PT154">>, <<"TIS-620">>, <<"ISO-8859-x">> with
-1 <= x <= 16, or <<"CPxxx">> with xxx in [437, 720, 737, 775, 850, 852, 855,
-857, 858, 862, 866, 874, 932, 1125, 1250, 1251, 1252, 1253, 1254, 1255, 1256,
-1257, 1258].
-
-Charsets are case insensitive.  For instance, <<"EUCJP">> and <<"eucJP">>
-are equivalent.  Charset names with dashes can also be written without
-dashes, as in <<"UTF8">>, <<"iso88591">> or <<"koi8r">>.  <<"EUCJP">> and
-<<"EUCKR">> are also recognized with dash, <<"EUC-JP">> and <<"EUC-KR">>.
-
-Full support for all of the above charsets requires that newlib has been
-build with multibyte support and support for all ISO and Windows Codepage.
-Otherwise all singlebyte charsets are simply mapped to ASCII.  Right now,
-only newlib for Cygwin is built with full charset support by default.
-Under Cygwin, this implementation additionally supports the charsets
-<<"GBK">>, <<"GB2312">>, <<"eucCN">>, <<"eucKR">>, and <<"Big5">>.  Cygwin
-does not support <<"JIS">>.
-
-Cygwin additionally supports locales from the file
-/usr/share/locale/locale.alias.
-
-(<<"">> is also accepted; if given, the settings are read from the
-corresponding LC_* environment variables and $LANG according to POSIX rules.
-
-This implementation also supports the modifier <<"cjknarrow">>, which
-affects how the functions <<wcwidth>> and <<wcswidth>> handle characters
-from the "CJK Ambiguous Width" category of characters described at
-http://www.unicode.org/reports/tr11/#Ambiguous. These characters have a width
-of 1 for singlebyte charsets and a width of 2 for multibyte charsets
-other than UTF-8. For UTF-8, their width depends on the language specifier:
-it is 2 for <<"zh">> (Chinese), <<"ja">> (Japanese), and <<"ko">> (Korean),
-and 1 for everything else. Specifying <<"cjknarrow">> forces a width of 1,
-independent of charset and language.
-
-If you use <<NULL>> as the <[locale]> argument, <<setlocale>> returns a
-pointer to the string representing the current locale.  The acceptable
-values for <[category]> are defined in `<<locale.h>>' as macros
-beginning with <<"LC_">>.
-
-<<localeconv>> returns a pointer to a structure (also defined in
-`<<locale.h>>') describing the locale-specific conventions currently
-in effect.  
-
-<<_localeconv_r>> and <<_setlocale_r>> are reentrant versions of
-<<localeconv>> and <<setlocale>> respectively.  The extra argument
-<[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-A successful call to <<setlocale>> returns a pointer to a string
-associated with the specified category for the new locale.  The string
-returned by <<setlocale>> is such that a subsequent call using that
-string will restore that category (or all categories in case of LC_ALL),
-to that state.  The application shall not modify the string returned
-which may be overwritten by a subsequent call to <<setlocale>>.
-On error, <<setlocale>> returns <<NULL>>.
-
-<<localeconv>> returns a pointer to a structure of type <<lconv>>,
-which describes the formatting and collating conventions in effect (in
-this implementation, always those of the C locale).
-
-PORTABILITY
-ANSI C requires <<setlocale>>, but the only locale required across all
-implementations is the C locale.
-
-NOTES
-There is no ISO-8859-12 codepage.  It's also refused by this implementation.
-
-No supporting OS subroutines are required.
-*/
-
-/* Parts of this code are originally taken from FreeBSD. */
 /*
  * Copyright (c) 1996 - 2002 FreeBSD Project
  * Copyright (c) 1991, 1993
@@ -272,11 +153,7 @@ static char lc_ctype_charset[ENCODING_LEN + 1] = "ASCII";
 static char lc_message_charset[ENCODING_LEN + 1] = "ASCII";
 static int lc_ctype_cjk_lang = 0;
 
-char *
-_DEFUN(_setlocale_r, (p, category, locale),
-       struct _reent *p _AND
-       int category _AND
-       _CONST char *locale)
+char *_setlocale_r(struct _reent *p, int category, const char *locale)
 {
   ((void)p);
   ((void)category);
@@ -933,8 +810,7 @@ __get_locale_env(struct _reent *p, int category)
 }
 #endif /* _MB_CAPABLE */
 
-char *
-_DEFUN_VOID(__locale_charset)
+char *__locale_charset(void)
 {
 #if 0//def __HAVE_LOCALE_INFO__
   return __get_current_ctype_locale ()->codeset;
@@ -943,8 +819,7 @@ _DEFUN_VOID(__locale_charset)
 #endif
 }
 
-int
-_DEFUN_VOID(__locale_mb_cur_max)
+int __locale_mb_cur_max(void)
 {
 #if 0//def __HAVE_LOCALE_INFO__
   return __get_current_ctype_locale ()->mb_cur_max[0];
@@ -954,8 +829,7 @@ _DEFUN_VOID(__locale_mb_cur_max)
 }
 
 
-char *
-_DEFUN_VOID(__locale_msgcharset)
+char *__locale_msgcharset(void)
 {
 #ifdef __HAVE_LOCALE_INFO__
   return (char *) __get_current_messages_locale ()->codeset;
@@ -964,15 +838,12 @@ _DEFUN_VOID(__locale_msgcharset)
 #endif
 }
 
-int
-_DEFUN_VOID(__locale_cjk_lang)
+int __locale_cjk_lang(void)
 {
   return lc_ctype_cjk_lang;
 }
 
-struct lconv *
-_DEFUN(_localeconv_r, (data), 
-      struct _reent *data)
+struct lconv *_localeconv_r(struct _reent *data)
 {
   ((void)data);
 #ifdef __HAVE_LOCALE_INFO__
@@ -1025,20 +896,38 @@ _DEFUN(_localeconv_r, (data),
 
 #ifndef _REENT_ONLY
 
-#ifndef __CYGWIN__
-/* Cygwin provides its own version of setlocale to perform some more
-   initialization work.  It calls _setlocale_r, though. */
-char *
-_DEFUN(setlocale, (category, locale),
-       int category _AND
-       _CONST char *locale)
+/**
+ * @brief Sets program locale.
+ *
+ * @details Selects the appropriate piece of the global locale, as
+ * specified by the @p category and @p locale, and can be used to
+ * change or query the entire global locale or portions thereof.  The
+ * value LC_ALL for category names the entire global locale; other
+ * values for category name only a part of the global locale.
+ *
+ * @param category Locale category.
+ * @param locale   Target character string.
+ *
+ * @return Returns the string associated with the specified category
+ * for the new locale. Otherwise, setlocale() returns a #NULL pointer
+ * and the global locale is not changed.
+ */
+char *setlocale(int category, const char *locale)
 {
   return _setlocale_r (_REENT, category, locale);
 }
-#endif /* __CYGWIN__ */
 
-struct lconv *
-_DEFUN_VOID(localeconv)
+/**
+ * @brief Returns locale-specific information.
+ *
+ * @details The function sets the components of an object with the
+ * type struct lconv with the values appropriate for the formatting of
+ * numeric quantities (monetary and otherwise) according to the rules
+ * of the current locale.
+ *
+ * @return Returns a pointer to the filled-in object.
+ */
+struct lconv *localeconv(void)
 {
   return _localeconv_r (_REENT);
 }
