@@ -527,30 +527,31 @@ PUBLIC int vfault(addr_t addr)
 	struct pte *pg;       /* Working page.           */
 	struct region *reg;   /* Working region.         */
 	struct pregion *preg; /* Working process region. */
-	
-	/* Get region. */
-	if ((preg = findreg(curr_proc, addr)) == NULL)
-		goto error0;
-	
-	lockreg(reg = preg->reg);
-	
-	/* Outside virtual address space. */
-	if (!withinreg(preg, addr))
+
+	/* Get process region. */
+	if ((preg = findreg(curr_proc, addr)) != NULL)
+		lockreg(reg = preg->reg);
+	else
 	{
-		ssize_t size;
+		addr_t addr2;
+
+		addr2 = addr + PAGE_SIZE;
+
+		/* Check for stack growth. */
+		if ((preg = findreg(curr_proc, addr2)) == NULL)
+			goto error0;
+
+		lockreg(reg = preg->reg);
 
 		/* Not a stack region. */
 		if (preg != STACK(curr_proc))
 			goto error1;
-	
-		kprintf("growing stack");
 
 		/* Expand region. */
-		size = (preg->start - reg->size) - (addr & ~PGTAB_MASK);
-		if (growreg(curr_proc, preg, size))
+		if (growreg(curr_proc, preg, PAGE_SIZE))
 			goto error1;
 	}
-
+	
 	pg = getpte(curr_proc, addr);
 		
 	/* Not demand zero. */
