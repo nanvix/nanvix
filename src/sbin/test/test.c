@@ -81,7 +81,7 @@ static int demand_zero_test(void)
  *
  * @returns Dummy value.
  */
-static int foobar(size_t i)
+static int foobar(int i)
 {
 	return ((i == 0) ? 0 : foobar(i - 1) + 1);
 }
@@ -93,9 +93,9 @@ static int foobar(size_t i)
  */
 static int stack_grow_test(void)
 {
-	struct tms timing;                   /* Timing information. */
-	clock_t t0, t1;                      /* Elapsed times.      */
-	const size_t size = PROC_SIZE_MAX/8; /* Buffer size.        */
+	struct tms timing;     /* Timing information. */
+	clock_t t0, t1;        /* Elapsed times.      */
+	const int size = 1024; /* Recursion size.     */
 
 	t0 = times(&timing);
 	
@@ -564,6 +564,7 @@ static void usage(void)
 	printf("  io     I/O Test\n");
 	printf("  ipc    Interprocess Communication Test\n");
 	printf("  paging Paging System Test\n");
+	printf("  stack  Stack growth Test\n");
 	printf("  sched  Scheduling Test\n");
 	
 	exit(EXIT_SUCCESS);
@@ -594,6 +595,11 @@ int main(int argc, char **argv)
 			printf("Demand Zero Test\n");
 			printf("  Result:             [%s]\n",
 				(!demand_zero_test()) ? "PASSED" : "FAILED");
+		}
+
+		/* Stack growth test. */
+		else if (!strcmp(argv[i], "stack"))
+		{
 			printf("Stack Grow Test\n");
 			printf("  Result:             [%s]\n",
 				(!stack_grow_test()) ? "PASSED" : "FAILED");
