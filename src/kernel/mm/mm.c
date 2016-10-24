@@ -102,8 +102,7 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
 		return (-1);
 	}
 		
-	ret = withinreg(preg, ADDR(addr));
-	ret &= withinreg(preg, ADDR(addr) + size);
+	ret = withinreg(preg, ADDR(addr) + size);
 
 	unlockreg(reg);
 	
@@ -136,7 +135,7 @@ PUBLIC int fubyte(const void *addr)
 	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
 		return (-1);
 	
-	byte = (withinreg(preg, ADDR(addr))) ? (*((char *)addr)) : -1;
+	byte = *((char *)addr);
 	
 	return (byte);
 }
@@ -167,7 +166,7 @@ PUBLIC int fudword(const void *addr)
 	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
 		return (-1);
 	
-	dword = (withinreg(preg, ADDR(addr))) ? (*((int *)addr)) : -1;
+	dword = *((int *)addr);
 	
 	return (dword);
 }

@@ -598,10 +598,8 @@ PUBLIC int pfault(addr_t addr)
 	struct pte new_pg;    /* New page.               */
 	struct pregion *preg; /* Working process region. */
 
-	preg = findreg(curr_proc, addr);
-	
 	/* Outside virtual address space. */
-	if ((preg == NULL) || (!withinreg(preg, addr)))
+	if ((preg = findreg(curr_proc, addr)) == NULL)
 		goto error0;
 	
 	lockreg(preg->reg);
