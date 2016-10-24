@@ -80,6 +80,9 @@
 	};
 
 	/* Forward definitions. */
+	struct _reent;
+
+	/* Forward definitions. */
 	#ifndef _REENT_ONLY
 		extern char *setlocale(int, const char *);
 		extern struct lconv *localeconv(void);
@@ -87,6 +90,5 @@
 	extern char *_setlocale_r(struct _reent *, int, const char *);
 	extern struct lconv *_localeconv_r(struct _reent *);
 
-	struct _reent;
 
 #endif /* LOCALE_H_ */
