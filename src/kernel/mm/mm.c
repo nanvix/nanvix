@@ -119,8 +119,7 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
  */
 PUBLIC int fubyte(const void *addr)
 {	
-	int byte;             /* User byte.              */
-	struct pregion *preg; /* Working process region. */
+	struct pregion *preg;
 	
 	/* Kernel address space. */
 	if (IN_KERNEL(addr))
@@ -135,9 +134,7 @@ PUBLIC int fubyte(const void *addr)
 	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
 		return (-1);
 	
-	byte = *((char *)addr);
-	
-	return (byte);
+	return (*((char *)addr));
 }
 
 /**
@@ -145,14 +142,13 @@ PUBLIC int fubyte(const void *addr)
  * 
  * @param addr Address where the byte should be fetched.
  * 
- * @returns Upon successful completion the byte fetched is returned (casted to
- *          int). Upon failure, -1 is returned instead.
+ * @returns Upon successful completion the byte fetched is returned
+ * (casted to int). Upon failure, -1 is returned instead.
  */
 PUBLIC int fudword(const void *addr)
 {	
-	int dword;            /* User double word.       */
-	struct pregion *preg; /* Working process region. */
-	
+	struct pregion *preg;
+		
 	/* Kernel address space. */
 	if (IN_KERNEL(addr))
 	{
@@ -166,7 +162,5 @@ PUBLIC int fudword(const void *addr)
 	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
 		return (-1);
 	
-	dword = *((int *)addr);
-	
-	return (dword);
+	return (*((int *)addr));
 }
