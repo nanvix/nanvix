@@ -65,8 +65,8 @@ PRIVATE int kpages[NR_KPAGES] = { 0,  }; /* Reference count.         */
  * 
  * @param clean Should the page be cleaned?
  * 
- * @returns Upon success, a pointer to a page is returned. Upon failure, a NULL
- *          pointer is returned instead.
+ * @returns Upon success, a pointer to a page is returned. Upon
+ * failure, a NULL pointer is returned instead.
  */
 PUBLIC void *getkpg(int clean)
 {
@@ -109,11 +109,8 @@ PUBLIC void putkpg(void *kpg)
 	
 	i = ((addr_t)kpg - KPOOL_VIRT) >> PAGE_SHIFT;
 	
-	/* Release page. */
-	kpages[i]--;
-	
 	/* Double free. */
-	if (kpages[i] < 0)
+	if (--kpages[i] < 0)
 		kpanic("mm: releasing kernel page twice");
 }
 
@@ -137,8 +134,8 @@ PRIVATE struct
 /**
  * @brief Allocates a page frame.
  * 
- * @returns Upon success, the number of the frame is returned. Upon failure, a
- *          negative number is returned instead.
+ * @returns Upon success, the number of the frame is returned. Upon
+ * failure, a negative number is returned instead.
  */
 PRIVATE int allocf(void)
 {
@@ -452,8 +449,8 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
  * 
  * @param proc Target process.
  * 
- * @returns Upon successful completion, zero is returned. Upon failure, non-zero
- *          is returned instead.
+ * @returns Upon successful completion, zero is returned. Upon
+ * failure, non-zero is returned instead.
  */
 PUBLIC int crtpgdir(struct process *proc)
 {
@@ -588,8 +585,8 @@ error0:
  * 
  * @brief addr Faulting address.
  * 
- * @returns Upon successful completion, zero is returned. Upon failure, non-zero
- *          is returned instead.
+ * @returns Upon successful completion, zero is returned. Upon
+ * failure, non-zero is returned instead.
  */
 PUBLIC int pfault(addr_t addr)
 {
