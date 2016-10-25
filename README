@@ -1,23 +1,16 @@
-                                NANVIX
-
-
 WHAT IS NANVIX?
 
-	Nanvix is a Unix like operating system created by Pedro H. Penna,
-	to address emerging demands of High Performance Computing
-	applications. It is designed to be simple, small, modern and fully
-	featured, thereby enabling cutting edge performance while
-	delivering backward compatibility with existing software.  
+	Nanvix is a Unix like operating system created by Pedro H. Penna
+	to address the demands of emerging manycore processors. It targets
+	cluster-based architectures that rely on distributed and shared
+	memory, and it was designed from scratch to deliver cutting edge
+	performance, while enabling backward compatibility with existing
+	software.
 	
-WHAT HARDWARE IS REQUIRED?
+BUILDING AND RUNNING
 
-	Nanvix targets multiple platforms, but the current version of the
-	operating system offers full support only to 32-bit x86-based PCs.
-	You can run Nanvix either in a real platform or in a virtual
-	machine, using any Live System Image, available at:
-	sourceforge.net/projects/nanvix/files/
-	
-BUILDING
+	Nanvix currently supports x86-based PC platforms. You can run it
+	either in a real platform or in a real machine.
 
 	To properly build Nanvix, you need a Linux like programming
 	environment, the x86 GNU C Compiler and the x86 GNU Binutils.
