@@ -36,7 +36,6 @@
 	#define NR_INODES                 1024 /* Number of in-core inodes.       */
 	#define NR_SUPERBLOCKS               4 /* Number of in-core super blocks. */
 	#define ROOT_DEV                0x0101 /* Root device number.             */
-	#define SWAP_DEV                0x0101 /* Swap device number.             */
 	#define NR_FILES                   256 /* Number of opened files.         */
 	#define NR_REGIONS                 128 /* Number of memory regions.       */
 	#define NR_BUFFERS                 256 /* Number of block buffers.        */
