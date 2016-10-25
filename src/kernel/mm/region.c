@@ -43,8 +43,8 @@ PRIVATE struct miniregion mregtab[NR_MINIREGIONS];
 /**
  * @brief Allocates a mini region.
  * 
- * @returns Upon success a pointer to a mini region is returned. Upon failure,
- *          a NULL pointer is returned instead.
+ * @returns Upon success a pointer to a mini region is returned. Upon
+ * failure, a NULL pointer is returned instead.
  */
 PRIVATE struct miniregion *allocmreg()
 {
@@ -84,6 +84,8 @@ PRIVATE inline void freemreg(struct miniregion *mreg)
  * @param proc Process who owns the memory region.
  * @param reg  Memory region that shall be expanded.
  * @param size Size in bytes to be added to the memory region.
+ * 
+ * @returns Zero upon success, and non-zero otherwise.
  */
 PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 {	
@@ -366,7 +368,7 @@ PRIVATE int contract(struct process *proc, struct region *reg, size_t size)
 /**
  * @brief Locks a memory region.
  * 
- * @param reg Memory region that shall be locked.
+ * @param reg Target memory region.
  */
 PUBLIC void lockreg(struct region *reg)
 {	
@@ -380,7 +382,7 @@ PUBLIC void lockreg(struct region *reg)
 /**
  * @brief Unlocks a memory region.
  * 
- * @param reg Memory region to be unlocked.
+ * @param reg Target memory region.
  */
 PUBLIC void unlockreg(struct region *reg)
 {
@@ -395,8 +397,8 @@ PUBLIC void unlockreg(struct region *reg)
  * @param size  Size in bytes.
  * @param flags Memory region flags.
  * 
- * @returns Upon success a pointer to a memory region is returned. Upon failure,
- *          a NULL pointer is returned instead.
+ * @returns Upon success a pointer to a memory region is returned.
+ * Upon failure, a #NULL pointer is returned instead.
  */
 PUBLIC struct region *allocreg(mode_t mode, size_t size, int flags)
 {
@@ -530,7 +532,7 @@ PUBLIC int attachreg
 		return (-1);
 	
 	/* Bad address. */
-	if ((start < UBASE_VIRT) || (start >= KBASE_VIRT))
+	if (IN_KERNEL(start))
 	{
 		curr_proc->errno = -EFAULT;
 		return (-1);
