@@ -114,16 +114,16 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
  * 
  * @param addr Address where the byte should be fetched.
  * 
- * @returns Upon successful completion the byte fetched is returned 
- *          (casted to int). Upon failure, -1 is returned instead. 
+ * @returns Upon successful completion the byte fetched is returned
+ * (casted to int). Upon failure, -1 is returned instead. 
  */
 PUBLIC int fubyte(const void *addr)
 {	
-	int byte;            /* User byte.               */
+	int byte;             /* User byte.              */
 	struct pregion *preg; /* Working process region. */
 	
 	/* Kernel address space. */
-	if (((addr_t)addr < UBASE_VIRT) || ((addr_t)addr >= KBASE_VIRT))
+	if (IN_KERNEL(addr))
 	{
 		if (KERNEL_RUNNING(curr_proc))
 			return (*((char *)addr));
@@ -154,7 +154,7 @@ PUBLIC int fudword(const void *addr)
 	struct pregion *preg; /* Working process region. */
 	
 	/* Kernel address space. */
-	if (((addr_t)addr < UBASE_VIRT) || ((addr_t)addr >= KBASE_VIRT))
+	if (IN_KERNEL(addr))
 	{
 		if (KERNEL_RUNNING(curr_proc))
 			return (*((int *)addr));
