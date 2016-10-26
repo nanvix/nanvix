@@ -30,36 +30,6 @@
 #include <signal.h>
 #include "mm.h"
 
-/**
- * @brief Gets a page directory entry.
- * 
- * @param proc Target process.
- * @param addr Target address.
- * 
- * @returns The requested page directory entry.
- */
-static inline struct pde *getpde(struct process *proc, addr_t addr)
-{
-	return (&proc->pgdir[PGTAB(addr)]);
-}
-
-/**
- * @brief Gets a page table entry of a process.
- * 
- * @param proc Target process.
- * @param addr Target address.
- * 
- * @returns The requested page table entry.
- */
-static inline struct pte *getpte(struct process *proc, addr_t addr)
-{
-	addr_t base;
-
-	base = (getpde(proc, addr)->frame << PAGE_SHIFT) + KBASE_VIRT;
-
-	return (&((struct pte *) base)[PG(addr)]);
-}
-
 /*============================================================================*
  *                             Kernel Page Pool                               *
  *============================================================================*/
@@ -138,6 +108,36 @@ PRIVATE struct
 	pid_t owner;    /**< Page owner.          */
 	addr_t addr;    /**< Address of the page. */
 } frames[NR_FRAMES] = {{0, 0, 0},  };
+
+/**
+ * @brief Gets a page directory entry.
+ * 
+ * @param proc Target process.
+ * @param addr Target address.
+ * 
+ * @returns The requested page directory entry.
+ */
+PRIVATE inline struct pde *getpde(struct process *proc, addr_t addr)
+{
+	return (&proc->pgdir[PGTAB(addr)]);
+}
+
+/**
+ * @brief Gets a page table entry of a process.
+ * 
+ * @param proc Target process.
+ * @param addr Target address.
+ * 
+ * @returns The requested page table entry.
+ */
+PRIVATE inline struct pte *getpte(struct process *proc, addr_t addr)
+{
+	addr_t base;
+
+	base = (getpde(proc, addr)->frame << PAGE_SHIFT) + KBASE_VIRT;
+
+	return (&((struct pte *) base)[PG(addr)]);
+}
 
 /**
  * @brief Allocates a page frame.
