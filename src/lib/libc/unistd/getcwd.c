@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -23,6 +24,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <reent.h>
 
 /*
  * Looks up for a specific directory entry.
@@ -68,7 +70,10 @@ static int prepend(char *pathname, const char *dirname, size_t n)
 	
 	/* Out of space. */
 	if (pathlen + dirlen + 2 > n)
+	{
+		_REENT->_errno = ERANGE;
 		return (errno = ERANGE);
+	}
 	
 	/* Push pathname. */
 	for (p = pathname + pathlen;  p >= pathname; p--)
@@ -98,6 +103,7 @@ char *getcwd(char *buf, size_t size)
 	if (size == 0)
 	{
 		errno = EINVAL;
+		_REENT->_errno = EINVAL;
 		return (NULL);
 	}
 

@@ -19,6 +19,8 @@
 
 #include <nanvix/syscall.h>
 #include <sys/time.h>
+#include <errno.h>
+#include <reent.h>
 
 /*
  * @brief Get the time expressed as seconds and microseconds since
@@ -47,7 +49,11 @@ int gettimeofday(struct timeval *tp, void *tzp)
 
 	/* Error. */
 	if (ret < 0)
+	{
+		errno = -ret;
+		_REENT->_errno = -ret;
 		return (-1);
+	}
 	
 	tp->tv_usec = 0;
 	tp->tv_sec  = ret;

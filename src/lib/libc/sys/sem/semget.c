@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -19,6 +20,7 @@
 
 #include <nanvix/syscall.h>
 #include <errno.h>
+#include <reent.h>
 
 /**
  * @brief Creates a semaphore.
@@ -38,6 +40,7 @@ int semget(unsigned key)
 	if (ret < 0)
 	{
 		errno = -ret;
+		_REENT->_errno = -ret;
 		return (-1);
 	}
 	

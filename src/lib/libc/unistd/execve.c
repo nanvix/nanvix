@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -22,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <reent.h>
 
 /*
  * Executes a program.
@@ -43,6 +45,7 @@ int execve(const char *filename, char *const argv[],  char *const envp[])
 	if (ret < 0)
 	{
 		errno = -ret;
+		_REENT->_errno = -ret;
 		return (-1);
 	}
 	

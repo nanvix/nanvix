@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -21,6 +22,7 @@
 #include <sys/times.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <reent.h>
 
 /**
  * @brief Gets process and waited-for child process times.
@@ -46,6 +48,7 @@ clock_t times(struct tms *buffer)
 	if (elapsed < 0)
 	{
 		errno = -elapsed;
+		_REENT->_errno = -elapsed;
 		return (-1);
 	}
 	
