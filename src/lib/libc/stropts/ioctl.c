@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -22,6 +23,7 @@
 #include <stdarg.h>
 #include <stropts.h>
 #include <unistd.h>
+#include <reent.h>
 
 /*
  * Performs control operations on a device.
@@ -53,6 +55,7 @@ int ioctl(int fd, int cmd, ...)
 	if (ret < 0)
 	{
 		errno = -ret;
+		_REENT->_errno = -ret;
 		return (-1);
 	}
 	

@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -20,6 +21,7 @@
 #include <nanvix/syscall.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <reent.h>
 
 /*
  * Sends a signal to a process or a process group.
@@ -40,6 +42,7 @@ int kill(pid_t pid, int sig)
 	if (ret < 0)
 	{
 		errno = -ret;
+		_REENT->_errno = -ret;
 		return (-1);
 	}
 	

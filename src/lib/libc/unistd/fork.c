@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -19,6 +20,7 @@
 
 #include <nanvix/syscall.h>
 #include <errno.h>
+#include <reent.h>
 
 /*
  * Creates a new process.
@@ -37,6 +39,7 @@ pid_t fork(void)
 	if (pid < 0)
 	{
 		errno = -pid;
+		_REENT->_errno = -pid;
 		return (-1);
 	}
 	

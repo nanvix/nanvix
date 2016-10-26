@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -21,6 +22,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <errno.h>
+#include <reent.h>
 
 /* Forward definitions. */
 extern void restorer(void);
@@ -45,6 +47,7 @@ sighandler_t signal(int sig, sighandler_t func)
 	if (ret == SIG_ERR)
 	{
 		errno = EINVAL;
+		_REENT->_errno = EINVAL;
 		return (SIG_ERR);
 	}
 	
