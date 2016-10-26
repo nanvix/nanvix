@@ -352,8 +352,6 @@ static _CONST char * _CONST ermsg[7] = {
 #define TLOSS		5	/* total loss of precision */
 #define PLOSS		6	/* partial loss of precision */
 
-#define EDOM		33
-#define ERANGE		34
 
 typedef struct
 	{
