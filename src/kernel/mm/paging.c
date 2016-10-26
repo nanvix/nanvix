@@ -31,26 +31,34 @@
 #include "mm.h"
 
 /**
- * @brief Gets a page directory entry of a process.
+ * @brief Gets a page directory entry.
  * 
- * @param p Process.
- * @param a Address.
+ * @param proc Target process.
+ * @param addr Target address.
  * 
  * @returns The requested page directory entry.
  */
-#define getpde(p, a) \
-	(&(p)->pgdir[PGTAB(a)])
+static inline struct pde *getpde(struct process *proc, addr_t addr)
+{
+	return (&proc->pgdir[PGTAB(addr)]);
+}
 
 /**
  * @brief Gets a page table entry of a process.
  * 
- * @param p Process.
- * @param a Address.
+ * @param proc Target process.
+ * @param addr Target address.
  * 
  * @returns The requested page table entry.
  */
-#define getpte(p, a) \
-	(&((struct pte *)((getpde(p, a)->frame << PAGE_SHIFT) + KBASE_VIRT))[PG(a)])
+static inline struct pte *getpte(struct process *proc, addr_t addr)
+{
+	addr_t base;
+
+	base = (getpde(proc, addr)->frame << PAGE_SHIFT) + KBASE_VIRT;
+
+	return (&((struct pte *) base)[PG(addr)]);
+}
 
 /*============================================================================*
  *                             Kernel Page Pool                               *
