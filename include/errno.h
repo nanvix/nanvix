@@ -105,16 +105,16 @@
 	#define ESRCH           72  /**< No such process.                                */
 	#define ESTALE          73  /**< Stale NFS file handle.                          */
 	#define ETIMEDOUT       74  /**< Connection timed out.                           */
-
-	/* Newlib extends. */
-	#define EFTYPE          75  /**< Inappropriate file type or format.              */
-
 #ifdef _XOPEN_SOURCE
 	#define ENODATA 76 /**< No message is available on the stream head read queue.   */
 	#define ENOSR   77 /**< No stream resources.                                     */
 	#define ENOSTR  78 /**< Not a stream.                                            */
 	#define ETIME   79 /**< Stream ioctl() timeout.                                  */
 #endif
+
+	/* Newlib extends. */
+	#define EFTYPE          75  /**< Inappropriate file type or format.              */
+
 	/**@}*/
 	
 	/**@}*/

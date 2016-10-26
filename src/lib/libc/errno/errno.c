@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ *                   Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -27,12 +28,6 @@
  */
 
 #ifndef _REENT_ONLY
-
-int *
-__errno ()
-{
-  return &_REENT->_errno;
-}
 
 /**
  * @brief Number of last error.
