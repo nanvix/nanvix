@@ -346,10 +346,8 @@ PUBLIC void freeupg(struct pte *pg)
 	{
 		/* Demand page. */
 		if (pg->fill || pg->zero)
-		{
-			kmemset(pg, 0, sizeof(struct pte));
-			return;
-		}
+			goto done;
+
 		kpanic("freeing invalid user page");
 	}
 		
@@ -362,6 +360,8 @@ PUBLIC void freeupg(struct pte *pg)
 	/* Free user page. */
 	if (--frames[i].count)
 		frames[i].owner = 0;
+
+done:
 	kmemset(pg, 0, sizeof(struct pte));
 	tlb_flush();
 }
@@ -396,23 +396,59 @@ PUBLIC void markpg(struct pte *pg, int mark)
 }
 
 /**
- * @brief Enables/disable copy-on-write on a page.
+ * @brief Enables copy-on-write on a page.
  *
- * @param pg     Target page.
- * @param enable Enable copy-on-write?
+ * @param pg Target page.
  */
-PRIVATE void pgcow(struct pte *pg, int enable)
+PRIVATE void cow_enable(struct pte *pg)
 {
-	/* Disable cow. */
-	if (!enable)
-	{
-		pg->cow = 0;
-		pg->writable = 1;
-		return;
-	}
-
 	pg->cow = 1;
 	pg->writable = 0;
+}
+
+/**
+ * @brief Disables copy-on-write on a page.
+ *
+ * @param pg Target page.
+ *
+ * @returns Zero on success, and non zero otherwise.
+ */
+PRIVATE int cow_disable(struct pte *pg)
+{
+	unsigned i;
+		
+	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
+
+	/* Steal page. */
+	if (frames[i].count > 1)
+	{
+		struct pte new_pg;
+
+		/* Copy page. */
+		if (cpypg(&new_pg, pg))
+			return (-1);
+		
+		/* Unlik page. */
+		frames[i].count--;
+		kmemcpy(pg, &new_pg, sizeof(struct pte));
+	}
+
+	pg->cow = 0;
+	pg->writable = 1;
+
+	return (0);
+}
+
+/**
+ * @brief Asserts if copy-on-write is enabled on a page.
+ *
+ * @param pg Target page.
+ *
+ * @returns Non zero if copy-on-write is enabled, and zero otherwise.
+ */
+PRIVATE int cow_enabled(struct pte *pg)
+{
+	return ((pg->cow) && (!pg->writable));
 }
 
 /**
@@ -444,7 +480,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 
 	/* Set copy on write. */
 	if (upg1->writable)
-		pgcow(upg1, 1);
+		cow_enable(upg1);
 
 	i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
 	frames[i].count++;
@@ -598,9 +634,7 @@ error0:
  */
 PUBLIC int pfault(addr_t addr)
 {
-	unsigned i;           /* Frame index.            */
 	struct pte *pg;       /* Faulting page.          */
-	struct pte new_pg;    /* New page.               */
 	struct pregion *preg; /* Working process region. */
 
 	/* Outside virtual address space. */
@@ -612,29 +646,13 @@ PUBLIC int pfault(addr_t addr)
 	pg = getpte(curr_proc, addr);
 
 	/* Copy on write not enabled. */
-	if (!pg->cow)
+	if (!cow_enabled(pg))
 		goto error1;
-		
-	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
-
-	/* Steal page. */
-	if (frames[i].count == 1)
-	{
-		pgcow(pg, 0);
-		goto ok;
-	}
 		
 	/* Copy page. */
-	if (cpypg(&new_pg, pg))
+	if (cow_disable(pg))
 		goto error1;
-	
-	pgcow(&new_pg, 0);
-	
-	/* Unlik page. */
-	frames[i].count--;
-	kmemcpy(pg, &new_pg, sizeof(struct pte));
 
-ok:
 	unlockreg(preg->reg);
 	return(0);
 
