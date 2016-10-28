@@ -384,7 +384,7 @@ PUBLIC void umappgtab(struct process *proc, addr_t addr)
 PUBLIC void freeupg(struct pte *pg)
 {
 	/* Do nothing. */
-	if (*((unsigned *) pg) == 0)
+	if (pte_is_clear(pg))
 		return;
 	
 	/* Check for demand page. */
