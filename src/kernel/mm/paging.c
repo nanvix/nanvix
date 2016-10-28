@@ -96,18 +96,15 @@ PUBLIC void putkpg(void *kpg)
  *                              Paging System                                 *
  *============================================================================*/
 
-/* Number of page frames. */
+/**
+ * @brief Number of page frames.
+ */
 #define NR_FRAMES (UMEM_SIZE/PAGE_SIZE)
 
 /**
- * @brief Page frames.
+ * @brief Reference count for page frames.
  */
-PRIVATE struct
-{
-	unsigned count; /**< Reference count.     */
-	pid_t owner;    /**< Page owner.          */
-	addr_t addr;    /**< Address of the page. */
-} frames[NR_FRAMES] = {{0, 0, 0},  };
+PRIVATE unsigned frames[NR_FRAMES] = {0, };
 
 /**
  * @brief Gets a page directory entry.
@@ -151,9 +148,10 @@ PRIVATE int allocf(void)
 	for (int i = 0; i < NR_FRAMES; i++)
 	{
 		/* Found it. */
-		if (frames[i].count == 0)
+		if (frames[i] == 0)
 		{
-			frames[i].count = 1;
+			frames[i] = 1;
+			
 			return (i);
 		}
 	}
@@ -211,10 +209,6 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	
 	paddr = addr & PAGE_MASK;
 
-	/* Initialize page frame. */
-	frames[i].owner = curr_proc->pid;
-	frames[i].addr = paddr;
-	
 	/* Allocate page. */
 	pg = getpte(curr_proc, addr);
 	kmemset(pg, 0, sizeof(struct pte));
@@ -354,12 +348,8 @@ PUBLIC void freeupg(struct pte *pg)
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 		
 	/* Double free. */
-	if (frames[i].count == 0)
+	if (frames[i]-- == 0)
 		kpanic("freeing user page twice");
-	
-	/* Free user page. */
-	if (--frames[i].count)
-		frames[i].owner = 0;
 
 done:
 	kmemset(pg, 0, sizeof(struct pte));
@@ -420,7 +410,7 @@ PRIVATE int cow_disable(struct pte *pg)
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 
 	/* Steal page. */
-	if (frames[i].count > 1)
+	if (frames[i] > 1)
 	{
 		struct pte new_pg;
 
@@ -428,8 +418,8 @@ PRIVATE int cow_disable(struct pte *pg)
 		if (cpypg(&new_pg, pg))
 			return (-1);
 		
-		/* Unlik page. */
-		frames[i].count--;
+		/* Unlink page. */
+		frames[i]--;
 		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 
@@ -483,7 +473,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		cow_enable(upg1);
 
 	i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
-	frames[i].count++;
+	frames[i]++;
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
 }
