@@ -144,14 +144,24 @@ PRIVATE inline void freef(int i)
 /**
  * @brief Asserts if a page frame is begin shared.
  *
- * @param i ID of target frame.
+ * @param i ID of target page frame.
  *
  * @returns Non zero if the page frame is being shared, and zero
  * otherwise.
  */
-PRIVATE inline int frame_shared(int i)
+PRIVATE inline int frame_is_shared(int i)
 {
 	return (frames[i] > 1);
+}
+
+/**
+ * @brief Increments the reference count of a page frame.
+ *
+ * @param i ID of target page frame.
+ */
+PRIVATE inline void frame_share(int i)
+{
+	frames[i]++;
 }
 
 /*============================================================================*
@@ -433,7 +443,7 @@ PRIVATE int cow_disable(struct pte *pg)
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 
 	/* Steal page. */
-	if (frame_shared(i))
+	if (frame_is_shared(i))
 	{
 		struct pte new_pg;
 
@@ -496,7 +506,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		cow_enable(upg1);
 
 	i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
-	frames[i]++;
+	frame_share(i);
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
 }
