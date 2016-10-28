@@ -134,7 +134,7 @@ PRIVATE int frame_alloc(void)
  *
  * @param i ID of target frame.
  */
-PRIVATE inline void freef(int i)
+PRIVATE inline void frame_free(int i)
 {
 	/* Double free? */
 	if (frames[i]-- == 0)
@@ -382,7 +382,7 @@ PUBLIC void freeupg(struct pte *pg)
 		kpanic("freeing invalid user page");
 	}
 		
-	freef(pg->frame - (UBASE_PHYS >> PAGE_SHIFT));
+	frame_free(pg->frame - (UBASE_PHYS >> PAGE_SHIFT));
 
 done:
 	kmemset(pg, 0, sizeof(struct pte));
@@ -452,7 +452,7 @@ PRIVATE int cow_disable(struct pte *pg)
 			return (-1);
 		
 		/* Unlink page. */
-		freef(i);
+		frame_free(i);
 		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 
