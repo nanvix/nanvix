@@ -271,7 +271,7 @@ PRIVATE int allocupg(addr_t vaddr, int writable)
 	pg = getpte(curr_proc, vaddr);
 	pte_clear(pg);
 	pte_present_set(pg, 1);
-	pg->writable = (writable) ? 1 : 0;
+	pte_write_set(pg, writable);
 	pg->frame = paddr;
 	tlb_flush();
 	
@@ -440,7 +440,7 @@ PUBLIC void markpg(struct pte *pg, int mark)
 PRIVATE void cow_enable(struct pte *pg)
 {
 	pg->cow = 1;
-	pg->writable = 0;
+	pte_write_set(pg, 0);
 }
 
 /**
@@ -467,7 +467,7 @@ PRIVATE int cow_disable(struct pte *pg)
 	}
 
 	pg->cow = 0;
-	pg->writable = 1;
+	pte_write_set(pg, 1);
 
 	return (0);
 }
@@ -481,7 +481,7 @@ PRIVATE int cow_disable(struct pte *pg)
  */
 PRIVATE int cow_enabled(struct pte *pg)
 {
-	return ((pg->cow) && (!pg->writable));
+	return ((pg->cow) && (!pte_is_write(pg)));
 }
 
 /**
@@ -510,7 +510,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 	}
 
 	/* Set copy on write. */
-	if (upg1->writable)
+	if (pte_is_write(upg1))
 		cow_enable(upg1);
 
 	frame_share(upg1->frame);

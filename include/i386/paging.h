@@ -76,12 +76,10 @@
 	static inline void pte_clear(struct pte *pte)
 	{
 		pte->present = 0;
-		pte->writable = 0;
 		pte->user = 1;
 		pte->cow = 0;
 		pte->zero = 0;
 		pte->fill = 0;
-		pte->frame = 0;
 	}
 
 	/**
@@ -184,6 +182,30 @@
 	static inline int pte_is_zero(struct pte *pte)
 	{
 		return (pte->zero);
+	}
+
+	/**
+	 * @brief Sets/clears the write bit of a page table entry.
+	 *
+	 * @param pte Target page table entry.
+	 * @param set Set bit?
+	 */
+	static inline void pte_write_set(struct pte *pte, int set)
+	{
+		pte->writable = (set) ? 1 : 0;
+	}
+
+	/**
+	 * @brief Asserts if the write bit of a page table entry is set.
+	 *
+	 * @param pte Target page table entry.
+	 *
+	 * @returns Non zero if the write bit of the target page table
+	 * entry is set, and false otherwise.
+	 */
+	static inline int pte_is_write(struct pte *pte)
+	{
+		return (pte->writable);
 	}
 
 	/*
