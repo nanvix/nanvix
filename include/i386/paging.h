@@ -135,6 +135,31 @@
 		return (pte->fill);
 	}
 
+	/**
+	 * @brief Sets/clears the demand zero bit of a page table entry.
+	 *
+	 * @param pte Target page table entry.
+	 * @param set Set bit?
+	 */
+	static inline void pte_zero_set(struct pte *pte, int set)
+	{
+		pte->zero = (set) ? 1 : 0;
+	}
+
+	/**
+	 * @brief Asserts if the demand zero bit of a page table entry is
+	 * set.
+	 *
+	 * @param pte Target page table entry.
+	 *
+	 * @returns Non zero if the demand zero bit of the target page
+	 * table entry is set, and false otherwise.
+	 */
+	static inline int pte_zero(struct pte *pte)
+	{
+		return (pte->zero);
+	}
+
 	/*
 	 * DESCRIPTION;
 	 *   The PG() macro returns the page number where a given virtual address.
