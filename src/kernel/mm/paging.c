@@ -112,7 +112,7 @@ PRIVATE unsigned frames[NR_FRAMES] = {0, };
  * @returns Upon success, the number of the frame is returned. Upon
  * failure, a negative number is returned instead.
  */
-PRIVATE int allocf(void)
+PRIVATE int frame_alloc(void)
 {
 	/* Search for a free frame. */
 	for (int i = 0; i < NR_FRAMES; i++)
@@ -213,7 +213,7 @@ PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 	int i;
 	
 	/* Allocate new user page. */
-	if ((i = allocf()) < 0)
+	if ((i = frame_alloc()) < 0)
 		return (-1);
 	
 	/* Handcraft page table entry. */
@@ -243,7 +243,7 @@ PRIVATE int allocupg(addr_t addr, int writable)
 	struct pte *pg; /* Working page table entry. */
 	
 	/* Failed to allocate page frame. */
-	if ((i = allocf()) < 0)
+	if ((i = frame_alloc()) < 0)
 		return (-1);
 	
 	paddr = addr & PAGE_MASK;
