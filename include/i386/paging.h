@@ -68,6 +68,24 @@
 		unsigned frame    : 20; /* Frame number.      */
 	};
 
+	/**
+	 * @brief Clears a page table entry.
+	 *
+	 * @param pte Target page table entry.
+	 */
+	static inline void pte_clear(struct pte *pte)
+	{
+		pte->present = 0;
+		pte->writable = 0;
+		pte->user = 0;
+		pte->accessed = 0;
+		pte->dirty = 0;
+		pte->cow = 0;
+		pte->zero = 0;
+		pte->fill = 0;
+		pte->frame = 0;
+	}
+
 	/*
 	 * DESCRIPTION;
 	 *   The PG() macro returns the page number where a given virtual address.

@@ -272,7 +272,7 @@ PRIVATE int allocupg(addr_t vaddr, int writable)
 	
 	/* Allocate page. */
 	pg = getpte(curr_proc, vaddr);
-	kmemset(pg, 0, sizeof(struct pte));
+	pte_clear(pg);
 	pg->present = 1;
 	pg->writable = (writable) ? 1 : 0;
 	pg->user = 1;
@@ -403,7 +403,7 @@ PUBLIC void freeupg(struct pte *pg)
 	frame_free(pg->frame);
 
 done:
-	kmemset(pg, 0, sizeof(struct pte));
+	pte_clear(pg);
 	tlb_flush();
 }
 
