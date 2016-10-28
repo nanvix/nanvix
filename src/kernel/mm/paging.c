@@ -93,7 +93,7 @@ PUBLIC void putkpg(void *kpg)
 }
 
 /*============================================================================*
- *                              Paging System                                 *
+ *                             Page Frames Subsystem                          *
  *============================================================================*/
 
 /**
@@ -105,6 +105,45 @@ PUBLIC void putkpg(void *kpg)
  * @brief Reference count for page frames.
  */
 PRIVATE unsigned frames[NR_FRAMES] = {0, };
+
+/**
+ * @brief Allocates a page frame.
+ * 
+ * @returns Upon success, the number of the frame is returned. Upon
+ * failure, a negative number is returned instead.
+ */
+PRIVATE int allocf(void)
+{
+	/* Search for a free frame. */
+	for (int i = 0; i < NR_FRAMES; i++)
+	{
+		/* Found it. */
+		if (frames[i] == 0)
+		{
+			frames[i] = 1;
+			
+			return (i);
+		}
+	}
+	
+	return (-1);
+}
+
+/**
+ * @brief Frees a page frame.
+ *
+ * @param i ID of target frame.
+ */
+PRIVATE inline void freef(int i)
+{
+	/* Double free? */
+	if (frames[i]-- == 0)
+		kpanic("mm: double free on page frame");
+}
+
+/*============================================================================*
+ *                              Paging System                                 *
+ *============================================================================*/
 
 /**
  * @brief Gets a page directory entry.
@@ -134,29 +173,6 @@ PRIVATE inline struct pte *getpte(struct process *proc, addr_t addr)
 	base = (getpde(proc, addr)->frame << PAGE_SHIFT) + KBASE_VIRT;
 
 	return (&((struct pte *) base)[PG(addr)]);
-}
-
-/**
- * @brief Allocates a page frame.
- * 
- * @returns Upon success, the number of the frame is returned. Upon
- * failure, a negative number is returned instead.
- */
-PRIVATE int allocf(void)
-{
-	/* Search for a free frame. */
-	for (int i = 0; i < NR_FRAMES; i++)
-	{
-		/* Found it. */
-		if (frames[i] == 0)
-		{
-			frames[i] = 1;
-			
-			return (i);
-		}
-	}
-	
-	return (-1);
 }
 
 /**
@@ -329,8 +345,6 @@ PUBLIC void umappgtab(struct process *proc, addr_t addr)
  */
 PUBLIC void freeupg(struct pte *pg)
 {
-	unsigned i;
-
 	/* Do nothing. */
 	if (*((unsigned *) pg) == 0)
 		return;
@@ -345,11 +359,7 @@ PUBLIC void freeupg(struct pte *pg)
 		kpanic("freeing invalid user page");
 	}
 		
-	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
-		
-	/* Double free. */
-	if (frames[i]-- == 0)
-		kpanic("freeing user page twice");
+	freef(pg->frame - (UBASE_PHYS >> PAGE_SHIFT));
 
 done:
 	kmemset(pg, 0, sizeof(struct pte));
@@ -419,7 +429,7 @@ PRIVATE int cow_disable(struct pte *pg)
 			return (-1);
 		
 		/* Unlink page. */
-		frames[i]--;
+		freef(i);
 		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 
