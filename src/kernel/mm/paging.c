@@ -273,7 +273,7 @@ PRIVATE int allocupg(addr_t vaddr, int writable)
 	/* Allocate page. */
 	pg = getpte(curr_proc, vaddr);
 	pte_clear(pg);
-	pg->present = 1;
+	pte_present_set(pg, 1);
 	pg->writable = (writable) ? 1 : 0;
 	pg->user = 1;
 	pg->frame = paddr;
@@ -391,7 +391,7 @@ PUBLIC void freeupg(struct pte *pg)
 		return;
 	
 	/* Check for demand page. */
-	if (!pg->present)
+	if (!pte_present(pg))
 	{
 		/* Demand page. */
 		if (pg->fill || pg->zero)
@@ -416,7 +416,7 @@ done:
 PUBLIC void markpg(struct pte *pg, int mark)
 {
 	/* Bad page. */
-	if (pg->present)
+	if (pte_present(pg))
 		kpanic("mm: demand fill on a present page");
 	
 	/* Mark page. */
@@ -501,7 +501,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		return;
 
 	/* Invalid. */
-	if (!upg1->present)
+	if (!pte_present(upg1))
 	{
 		/* Demand page. */
 		if (upg1->fill || upg1->zero)
