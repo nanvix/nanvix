@@ -267,6 +267,8 @@ PRIVATE int allocupg(addr_t vaddr, int writable)
 	/* Failed to allocate page frame. */
 	if (!(paddr = frame_alloc()))
 		return (-1);
+
+	vaddr &= PAGE_MASK;
 	
 	/* Allocate page. */
 	pg = getpte(curr_proc, vaddr);
@@ -277,7 +279,7 @@ PRIVATE int allocupg(addr_t vaddr, int writable)
 	pg->frame = paddr;
 	tlb_flush();
 	
-	kmemset((void *)(vaddr & PAGE_MASK), 0, PAGE_SIZE);
+	kmemset((void *)(vaddr), 0, PAGE_SIZE);
 	
 	return (0);
 }
