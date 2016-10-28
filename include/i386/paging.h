@@ -231,6 +231,31 @@
 		return (pte->user);
 	}
 
+	/**
+	 * @brief Sets/clears the copy-on-write bit of a page table entry.
+	 *
+	 * @param pte Target page table entry.
+	 * @param set Set bit?
+	 */
+	static inline void pte_cow_set(struct pte *pte, int set)
+	{
+		pte->cow = (set) ? 1 : 0;
+	}
+
+	/**
+	 * @brief Asserts if the copy-on-write bit of a page table entry
+	 * is set.
+	 *
+	 * @param pte Target page table entry.
+	 *
+	 * @returns Non zero if the copy-on-write bit of the target page
+	 * table entry is set, and false otherwise.
+	 */
+	static inline int pte_is_cow(struct pte *pte)
+	{
+		return (pte->cow);
+	}
+
 	/*
 	 * DESCRIPTION;
 	 *   The PG() macro returns the page number where a given virtual address.

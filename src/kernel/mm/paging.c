@@ -440,7 +440,7 @@ PUBLIC void markpg(struct pte *pg, int mark)
  */
 PRIVATE void cow_enable(struct pte *pg)
 {
-	pg->cow = 1;
+	pte_cow_set(pg, 1);
 	pte_write_set(pg, 0);
 }
 
@@ -467,7 +467,7 @@ PRIVATE int cow_disable(struct pte *pg)
 		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 
-	pg->cow = 0;
+	pte_cow_set(pg, 0);
 	pte_write_set(pg, 1);
 
 	return (0);
@@ -482,7 +482,7 @@ PRIVATE int cow_disable(struct pte *pg)
  */
 PRIVATE int cow_enabled(struct pte *pg)
 {
-	return ((pg->cow) && (!pte_is_write(pg)));
+	return ((pte_is_cow(pg)) && (!pte_is_write(pg)));
 }
 
 /**
