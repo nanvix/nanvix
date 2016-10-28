@@ -369,7 +369,7 @@ PUBLIC void umappgtab(struct process *proc, addr_t addr)
 	
 	/* Bad page table. */
 	if (!(pde->present))
-		kpanic("unmap non-present page table");
+		kpanic("mm: unmap non-present page table");
 
 	/* Unmap kernel page. */
 	kmemset(pde, 0, sizeof(struct pde));
@@ -397,7 +397,7 @@ PUBLIC void freeupg(struct pte *pg)
 		if (pg->fill || pg->zero)
 			goto done;
 
-		kpanic("freeing invalid user page");
+		kpanic("mm: freeing invalid user page");
 	}
 		
 	frame_free(pg->frame);
@@ -417,7 +417,7 @@ PUBLIC void markpg(struct pte *pg, int mark)
 {
 	/* Bad page. */
 	if (pg->present)
-		kpanic("demand fill on a present page");
+		kpanic("mm: demand fill on a present page");
 	
 	/* Mark page. */
 	switch (mark)
@@ -628,22 +628,24 @@ PUBLIC int vfault(addr_t addr)
 	}
 	
 	pg = getpte(curr_proc, addr);
-		
-	/* Not demand zero. */
-	if (!pg->zero)
+	
+	/* Should be demand fill or demand zero. */
+	if (!(pg->fill || pg->zero))
+		goto error1;
+	
+	/* Demand fill. */
+	else if (pg->fill)
 	{
-		/* Not demand fill. */
-		if (!pg->fill)
-			goto error1;
-
-		/* Demand fill. */
 		if (readpg(reg, addr))
 			goto error1;
 	}
 
 	/* Demand zero. */
-	else if (allocupg(addr, reg->mode & MAY_WRITE))
-		goto error1;
+	else
+	{
+		if (allocupg(addr, reg->mode & MAY_WRITE))
+			goto error1;
+	}
 
 	unlockreg(reg);
 	return (0);
