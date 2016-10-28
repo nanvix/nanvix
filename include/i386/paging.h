@@ -87,7 +87,7 @@
 	}
 
 	/**
-	 * @brief Sets/clears the present bit of a page table entry
+	 * @brief Sets/clears the present bit of a page table entry.
 	 *
 	 * @param pte Target page table entry.
 	 * @param set Set bit?
@@ -108,6 +108,31 @@
 	static inline int pte_present(struct pte *pte)
 	{
 		return (pte->present);
+	}
+
+	/**
+	 * @brief Sets/clears the demand fill bit of a page table entry.
+	 *
+	 * @param pte Target page table entry.
+	 * @param set Set bit?
+	 */
+	static inline void pte_fill_set(struct pte *pte, int set)
+	{
+		pte->fill = (set) ? 1 : 0;
+	}
+
+	/**
+	 * @brief Asserts if the demand fill bit of a page table entry is
+	 * set.
+	 *
+	 * @param pte Target page table entry.
+	 *
+	 * @returns Non zero if the demand fill bit of the target page
+	 * table entry is set, and false otherwise.
+	 */
+	static inline int pte_fill(struct pte *pte)
+	{
+		return (pte->fill);
 	}
 
 	/*
