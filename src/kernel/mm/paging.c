@@ -165,6 +165,16 @@ PRIVATE inline void frame_free(addr_t addr)
 }
 
 /**
+ * @brief Increments the reference count of a page frame.
+ *
+ * @param i ID of target page frame.
+ */
+PRIVATE inline void frame_share(addr_t addr)
+{
+	frames[frame_addr_to_id(addr)]++;
+}
+
+/**
  * @brief Asserts if a page frame is begin shared.
  *
  * @param addr Frame number of target page frame.
@@ -175,16 +185,6 @@ PRIVATE inline void frame_free(addr_t addr)
 PRIVATE inline int frame_is_shared(addr_t addr)
 {
 	return (frames[frame_addr_to_id(addr)] > 1);
-}
-
-/**
- * @brief Increments the reference count of a page frame.
- *
- * @param i ID of target page frame.
- */
-PRIVATE inline void frame_share(addr_t addr)
-{
-	frames[frame_addr_to_id(addr)]++;
 }
 
 /*============================================================================*
@@ -310,7 +310,7 @@ PRIVATE int readpg(struct region *reg, addr_t addr)
 	/* Read page. */
 	off = reg->file.off + (PG(addr) << PAGE_SHIFT);
 	inode = reg->file.inode;
-	p = (char *)(addr & PAGE_MASK);
+	p = (char *)(addr);
 	count = file_read(inode, p, PAGE_SIZE, off);
 	
 	/* Failed to read page. */
