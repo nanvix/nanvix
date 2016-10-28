@@ -77,9 +77,7 @@
 	{
 		pte->present = 0;
 		pte->writable = 0;
-		pte->user = 0;
-		pte->accessed = 0;
-		pte->dirty = 0;
+		pte->user = 1;
 		pte->cow = 0;
 		pte->zero = 0;
 		pte->fill = 0;
@@ -109,8 +107,6 @@
 		dest->present = src->present;
 		dest->writable = src->writable;
 		dest->user = src->user;
-		dest->accessed = src->accessed;
-		dest->dirty = src->dirty;
 		dest->cow = src->cow;
 		dest->zero = src->zero;
 		dest->fill = src->fill;
