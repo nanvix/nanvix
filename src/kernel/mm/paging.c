@@ -322,10 +322,6 @@ PRIVATE int readpg(struct region *reg, addr_t addr)
 		return (-1);
 	}
 	
-	/* Fill remainder bytes with zero. */
-	else if (count < PAGE_SIZE)
-		kmemset(p + count, 0, PAGE_SIZE - count);
-	
 	return (0);
 }
 
@@ -643,15 +639,11 @@ PUBLIC int vfault(addr_t addr)
 		/* Demand fill. */
 		if (readpg(reg, addr))
 			goto error1;
-		
-		goto ok;
 	}
-		
-	/* Demand zero. */
-	if (allocupg(addr, reg->mode & MAY_WRITE))
-		goto error1;
 
-ok:
+	/* Demand zero. */
+	else if (allocupg(addr, reg->mode & MAY_WRITE))
+		goto error1;
 
 	unlockreg(reg);
 	return (0);
