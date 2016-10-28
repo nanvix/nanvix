@@ -117,7 +117,7 @@
 	 * @returns Non zero if the present bit of the target page table
 	 * entry is set, and false otherwise.
 	 */
-	static inline int pte_present(struct pte *pte)
+	static inline int pte_is_present(struct pte *pte)
 	{
 		return (pte->present);
 	}
@@ -142,7 +142,7 @@
 	 * @returns Non zero if the demand fill bit of the target page
 	 * table entry is set, and false otherwise.
 	 */
-	static inline int pte_fill(struct pte *pte)
+	static inline int pte_is_fill(struct pte *pte)
 	{
 		return (pte->fill);
 	}
@@ -167,7 +167,7 @@
 	 * @returns Non zero if the demand zero bit of the target page
 	 * table entry is set, and false otherwise.
 	 */
-	static inline int pte_zero(struct pte *pte)
+	static inline int pte_is_zero(struct pte *pte)
 	{
 		return (pte->zero);
 	}

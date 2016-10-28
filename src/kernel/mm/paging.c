@@ -391,10 +391,10 @@ PUBLIC void freeupg(struct pte *pg)
 		return;
 	
 	/* Check for demand page. */
-	if (!pte_present(pg))
+	if (!pte_is_present(pg))
 	{
 		/* Demand page. */
-		if (pte_fill(pg) || pte_zero(pg))
+		if (pte_is_fill(pg) || pte_is_zero(pg))
 			goto done;
 
 		kpanic("mm: freeing invalid user page");
@@ -416,7 +416,7 @@ done:
 PUBLIC void markpg(struct pte *pg, int mark)
 {
 	/* Bad page. */
-	if (pte_present(pg))
+	if (pte_is_present(pg))
 		kpanic("mm: demand fill on a present page");
 	
 	/* Mark page. */
@@ -501,10 +501,10 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 		return;
 
 	/* Invalid. */
-	if (!pte_present(upg1))
+	if (!pte_is_present(upg1))
 	{
 		/* Demand page. */
-		if (pte_fill(upg1) || pte_zero(upg1))
+		if (pte_is_fill(upg1) || pte_is_zero(upg1))
 		{
 			kmemcpy(upg2, upg1, sizeof(struct pte));
 			return;
@@ -630,11 +630,11 @@ PUBLIC int vfault(addr_t addr)
 	pg = getpte(curr_proc, addr);
 	
 	/* Should be demand fill or demand zero. */
-	if (!(pte_fill(pg) || pte_zero(pg)))
+	if (!(pte_is_fill(pg) || pte_is_zero(pg)))
 		goto error1;
 	
 	/* Demand fill. */
-	else if (pte_fill(pg))
+	else if (pte_is_fill(pg))
 	{
 		if (readpg(reg, addr))
 			goto error1;
