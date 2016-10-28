@@ -87,6 +87,18 @@
 	}
 
 	/**
+	 * @brief Asserts if a page table entry is cleared.
+	 *
+	 * @param pte Target page table entry.
+	 *
+	 * @returns Non zero if the page is cleared, and zero otherwise.
+	 */
+	static inline int pte_is_clear(struct pte *pte)
+	{
+		return (!(pte->present | pte->fill | pte->zero));
+	}
+
+	/**
 	 * @brief Sets/clears the present bit of a page table entry.
 	 *
 	 * @param pte Target page table entry.

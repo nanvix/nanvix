@@ -497,7 +497,7 @@ PRIVATE int cow_enabled(struct pte *pg)
 PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 {	
 	/* Nothing to do. */
-	if (*((unsigned *) upg1) == 0)
+	if (pte_is_clear(upg1))
 		return;
 
 	/* Invalid. */
