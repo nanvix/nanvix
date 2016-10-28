@@ -240,10 +240,7 @@ PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 		return (-1);
 	
 	/* Handcraft page table entry. */
-	pg1->present = pg2->present;
-	pg1->writable = pg2->writable;
-	pg1->user = pg2->user;
-	pg1->cow = pg2->cow;
+	pte_copy(pg1, pg2);
 	pg1->frame = addr;
 
 	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);

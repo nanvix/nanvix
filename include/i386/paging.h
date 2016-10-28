@@ -99,6 +99,24 @@
 	}
 
 	/**
+	 * @brief Clones a page table entry.
+	 *
+	 * @param dest Target page table entry.
+	 * @param src  Source page table entry.
+	 */
+	static inline void pte_copy(struct pte *dest, struct pte *src)
+	{
+		dest->present = src->present;
+		dest->writable = src->writable;
+		dest->user = src->user;
+		dest->accessed = src->accessed;
+		dest->dirty = src->dirty;
+		dest->cow = src->cow;
+		dest->zero = src->zero;
+		dest->fill = src->fill;
+	}
+
+	/**
 	 * @brief Sets/clears the present bit of a page table entry.
 	 *
 	 * @param pte Target page table entry.
