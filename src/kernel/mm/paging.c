@@ -141,6 +141,19 @@ PRIVATE inline void freef(int i)
 		kpanic("mm: double free on page frame");
 }
 
+/**
+ * @brief Asserts if a page frame is begin shared.
+ *
+ * @param i ID of target frame.
+ *
+ * @returns Non zero if the page frame is being shared, and zero
+ * otherwise.
+ */
+PRIVATE inline int frame_shared(int i)
+{
+	return (frames[i] > 1);
+}
+
 /*============================================================================*
  *                              Paging System                                 *
  *============================================================================*/
@@ -420,7 +433,7 @@ PRIVATE int cow_disable(struct pte *pg)
 	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
 
 	/* Steal page. */
-	if (frames[i] > 1)
+	if (frame_shared(i))
 	{
 		struct pte new_pg;
 
