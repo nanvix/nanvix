@@ -76,7 +76,6 @@
 	static inline void pte_clear(struct pte *pte)
 	{
 		pte->present = 0;
-		pte->user = 1;
 		pte->cow = 0;
 		pte->zero = 0;
 		pte->fill = 0;
@@ -206,6 +205,30 @@
 	static inline int pte_is_write(struct pte *pte)
 	{
 		return (pte->writable);
+	}
+
+	/**
+	 * @brief Sets/clears the user bit of a page table entry.
+	 *
+	 * @param pte Target page table entry.
+	 * @param set Set bit?
+	 */
+	static inline void pte_user_set(struct pte *pte, int set)
+	{
+		pte->user = (set) ? 1 : 0;
+	}
+
+	/**
+	 * @brief Asserts if the user bit of a page table entry is set.
+	 *
+	 * @param pte Target page table entry.
+	 *
+	 * @returns Non zero if the user bit of the target page table
+	 * entry is set, and false otherwise.
+	 */
+	static inline int pte_is_user(struct pte *pte)
+	{
+		return (pte->user);
 	}
 
 	/*

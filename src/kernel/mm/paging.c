@@ -272,6 +272,7 @@ PRIVATE int allocupg(addr_t vaddr, int writable)
 	pte_clear(pg);
 	pte_present_set(pg, 1);
 	pte_write_set(pg, writable);
+	pte_user_set(pg, 1);
 	pg->frame = paddr;
 	tlb_flush();
 	
