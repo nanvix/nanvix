@@ -107,12 +107,35 @@ PUBLIC void putkpg(void *kpg)
 PRIVATE unsigned frames[NR_FRAMES] = {0, };
 
 /**
+ * @brief Converts a frame ID to a frame number.
+ *
+ * @param id ID of target page frame.
+ *
+ * @returns Frame number of target page frame.
+ */
+PRIVATE inline addr_t frame_id_to_addr(int id)
+{
+	return ((UBASE_PHYS >> PAGE_SHIFT) + id);
+}
+
+/**
+ * @brief Converts a frame number to a frame ID.
+ *
+ * @param addr Frame number of target page frame
+ *
+ * @returns ID of target page frame.
+ */
+PRIVATE inline int frame_addr_to_id(addr_t addr)
+{
+	return (addr - (UBASE_PHYS >> PAGE_SHIFT));
+}
+
+/**
  * @brief Allocates a page frame.
  * 
- * @returns Upon success, the number of the frame is returned. Upon
- * failure, a negative number is returned instead.
+ * @returns The page frame number upon success, and zero upon failure.
  */
-PRIVATE int frame_alloc(void)
+PRIVATE addr_t frame_alloc(void)
 {
 	/* Search for a free frame. */
 	for (int i = 0; i < NR_FRAMES; i++)
@@ -122,36 +145,36 @@ PRIVATE int frame_alloc(void)
 		{
 			frames[i] = 1;
 			
-			return (i);
+			return (frame_id_to_addr(i));
 		}
 	}
 	
-	return (-1);
+	return (0);
 }
 
 /**
  * @brief Frees a page frame.
  *
- * @param i ID of target frame.
+ * @param addr Frame number of target page frame.
  */
-PRIVATE inline void frame_free(int i)
+PRIVATE inline void frame_free(addr_t addr)
 {
 	/* Double free? */
-	if (frames[i]-- == 0)
+	if (frames[frame_addr_to_id(addr)]-- == 0)
 		kpanic("mm: double free on page frame");
 }
 
 /**
  * @brief Asserts if a page frame is begin shared.
  *
- * @param i ID of target page frame.
+ * @param addr Frame number of target page frame.
  *
  * @returns Non zero if the page frame is being shared, and zero
  * otherwise.
  */
-PRIVATE inline int frame_is_shared(int i)
+PRIVATE inline int frame_is_shared(addr_t addr)
 {
-	return (frames[i] > 1);
+	return (frames[frame_addr_to_id(addr)] > 1);
 }
 
 /**
@@ -159,9 +182,9 @@ PRIVATE inline int frame_is_shared(int i)
  *
  * @param i ID of target page frame.
  */
-PRIVATE inline void frame_share(int i)
+PRIVATE inline void frame_share(addr_t addr)
 {
-	frames[i]++;
+	frames[frame_addr_to_id(addr)]++;
 }
 
 /*============================================================================*
@@ -210,10 +233,10 @@ PRIVATE inline struct pte *getpte(struct process *proc, addr_t addr)
  */
 PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 {
-	int i;
+	addr_t addr;
 	
 	/* Allocate new user page. */
-	if ((i = frame_alloc()) < 0)
+	if (!(addr = frame_alloc()))
 		return (-1);
 	
 	/* Handcraft page table entry. */
@@ -221,7 +244,7 @@ PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
 	pg1->writable = pg2->writable;
 	pg1->user = pg2->user;
 	pg1->cow = pg2->cow;
-	pg1->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
+	pg1->frame = addr;
 
 	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
 	
@@ -236,28 +259,25 @@ PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
  * 
  * @returns Zero upon successful completion, and non-zero otherwise.
  */
-PRIVATE int allocupg(addr_t addr, int writable)
+PRIVATE int allocupg(addr_t vaddr, int writable)
 {
-	int i;          /* Page frame index.         */
 	addr_t paddr;   /* Page address.             */
 	struct pte *pg; /* Working page table entry. */
 	
 	/* Failed to allocate page frame. */
-	if ((i = frame_alloc()) < 0)
+	if (!(paddr = frame_alloc()))
 		return (-1);
 	
-	paddr = addr & PAGE_MASK;
-
 	/* Allocate page. */
-	pg = getpte(curr_proc, addr);
+	pg = getpte(curr_proc, vaddr);
 	kmemset(pg, 0, sizeof(struct pte));
 	pg->present = 1;
 	pg->writable = (writable) ? 1 : 0;
 	pg->user = 1;
-	pg->frame = (UBASE_PHYS >> PAGE_SHIFT) + i;
+	pg->frame = paddr;
 	tlb_flush();
 	
-	kmemset((void *)paddr, 0, PAGE_SIZE);
+	kmemset((void *)(vaddr & PAGE_MASK), 0, PAGE_SIZE);
 	
 	return (0);
 }
@@ -382,7 +402,7 @@ PUBLIC void freeupg(struct pte *pg)
 		kpanic("freeing invalid user page");
 	}
 		
-	frame_free(pg->frame - (UBASE_PHYS >> PAGE_SHIFT));
+	frame_free(pg->frame);
 
 done:
 	kmemset(pg, 0, sizeof(struct pte));
@@ -438,12 +458,8 @@ PRIVATE void cow_enable(struct pte *pg)
  */
 PRIVATE int cow_disable(struct pte *pg)
 {
-	unsigned i;
-		
-	i = pg->frame - (UBASE_PHYS >> PAGE_SHIFT);
-
 	/* Steal page. */
-	if (frame_is_shared(i))
+	if (frame_is_shared(pg->frame))
 	{
 		struct pte new_pg;
 
@@ -452,7 +468,7 @@ PRIVATE int cow_disable(struct pte *pg)
 			return (-1);
 		
 		/* Unlink page. */
-		frame_free(i);
+		frame_free(pg->frame);
 		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 
@@ -482,8 +498,6 @@ PRIVATE int cow_enabled(struct pte *pg)
  */
 PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 {	
-	unsigned i;
-
 	/* Nothing to do. */
 	if (*((unsigned *) upg1) == 0)
 		return;
@@ -505,8 +519,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 	if (upg1->writable)
 		cow_enable(upg1);
 
-	i = upg1->frame - (UBASE_PHYS >> PAGE_SHIFT);
-	frame_share(i);
+	frame_share(upg1->frame);
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
 }
