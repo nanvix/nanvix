@@ -69,6 +69,30 @@
 	};
 
 	/**
+	 * @brief Sets/clears the present bit of a page table directory entry.
+	 *
+	 * @param pde Target page table directory entry.
+	 * @param set Set bit?
+	 */
+	static inline void pde_present_set(struct pde *pde, int set)
+	{
+		pde->present = (set) ? 1 : 0;
+	}
+
+	/**
+	 * @brief Asserts if the present bit of a page table directory entry is set.
+	 *
+	 * @param pde Target page table directory entry.
+	 *
+	 * @returns Non zero if the present bit of the target page table
+	 * directory entry is set, and false otherwise.
+	 */
+	static inline int pde_is_present(struct pde *pde)
+	{
+		return (pde->present);
+	}
+
+	/**
 	 * @brief Clears a page table entry.
 	 *
 	 * @param pte Target page table entry.

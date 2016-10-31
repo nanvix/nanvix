@@ -336,11 +336,11 @@ PUBLIC void mappgtab(struct process *proc, addr_t addr, void *pgtab)
 	pde = &proc->pgdir[PGTAB(addr)];
 	
 	/* Bad page table. */
-	if (pde->present)
+	if (pde_is_present(pde))
 		kpanic("busy page table entry");
 	
 	/* Map kernel page. */
-	pde->present = 1;
+	pde_present_set(pde, 1);
 	pde->writable = 1;
 	pde->user = 1;
 	pde->frame = (ADDR(pgtab) - KBASE_VIRT) >> PAGE_SHIFT;
@@ -365,7 +365,7 @@ PUBLIC void umappgtab(struct process *proc, addr_t addr)
 	pde = &proc->pgdir[PGTAB(addr)];
 	
 	/* Bad page table. */
-	if (!(pde->present))
+	if (!(pde_is_present(pde)))
 		kpanic("mm: unmap non-present page table");
 
 	/* Unmap kernel page. */
