@@ -93,6 +93,31 @@
 	}
 
 	/**
+	 * @brief Sets/clears the write bit of a page table directory entry.
+	 *
+	 * @param pde Target page table directory entry.
+	 * @param set Set bit?
+	 */
+	static inline void pde_write_set(struct pde *pde, int set)
+	{
+		pde->writable = (set) ? 1 : 0;
+	}
+
+	/**
+	 * @brief Asserts if the write bit of a page table directory entry is
+	 * set.
+	 *
+	 * @param pte Target page table directory entry.
+	 *
+	 * @returns Non zero if the write bit of the target page table
+	 * directory entry is set, and false otherwise.
+	 */
+	static inline int pde_is_write(struct pde *pde)
+	{
+		return (pde->writable);
+	}
+
+	/**
 	 * @brief Clears a page table entry.
 	 *
 	 * @param pte Target page table entry.
