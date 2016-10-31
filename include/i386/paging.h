@@ -107,7 +107,7 @@
 	 * @brief Asserts if the write bit of a page table directory entry is
 	 * set.
 	 *
-	 * @param pte Target page table directory entry.
+	 * @param pde Target page table directory entry.
 	 *
 	 * @returns Non zero if the write bit of the target page table
 	 * directory entry is set, and false otherwise.
@@ -115,6 +115,30 @@
 	static inline int pde_is_write(struct pde *pde)
 	{
 		return (pde->writable);
+	}
+
+	/**
+	 * @brief Sets/clears the user bit of a page table directory entry.
+	 *
+	 * @param pde Target page table directory entry.
+	 * @param set Set bit?
+	 */
+	static inline void pde_user_set(struct pde *pde, int set)
+	{
+		pde->user = (set) ? 1 : 0;
+	}
+
+	/**
+	 * @brief Asserts if the user bit of a page table directory entry is set.
+	 *
+	 * @param pde Target page table entry.
+	 *
+	 * @returns Non zero if the user bit of the target page table
+	 * directory entry is set, and false otherwise.
+	 */
+	static inline int pde_is_user(struct pde *pde)
+	{
+		return (pde->user);
 	}
 
 	/**

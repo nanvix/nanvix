@@ -342,7 +342,7 @@ PUBLIC void mappgtab(struct process *proc, addr_t addr, void *pgtab)
 	/* Map kernel page. */
 	pde_present_set(pde, 1);
 	pde_write_set(pde, 1);
-	pde->user = 1;
+	pde_user_set(pde, 1);
 	pde->frame = (ADDR(pgtab) - KBASE_VIRT) >> PAGE_SHIFT;
 	
 	/* Flush changes. */
