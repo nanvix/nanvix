@@ -323,6 +323,16 @@ PRIVATE int readpg(struct region *reg, addr_t addr)
 }
 
 /**
+ * @brief Initializes a page table directory entry.i
+ */
+PRIVATE void pde_init(struct pde *pde)
+{
+	pde_present_set(pde, 1);
+	pde_write_set(pde, 1);
+	pde_user_set(pde, 1);
+}
+
+/**
  * @brief Maps a page table into user address space.
  * 
  * @param proc  Process in which the page table should be mapped.
@@ -340,9 +350,7 @@ PUBLIC void mappgtab(struct process *proc, addr_t addr, void *pgtab)
 		kpanic("busy page table entry");
 	
 	/* Map kernel page. */
-	pde_present_set(pde, 1);
-	pde_write_set(pde, 1);
-	pde_user_set(pde, 1);
+	pde_init(pde);
 	pde->frame = (ADDR(pgtab) - KBASE_VIRT) >> PAGE_SHIFT;
 	
 	/* Flush changes. */
