@@ -34,16 +34,47 @@
  *                             Kernel Page Pool                               *
  *============================================================================*/
 
-/* Kernel pages. */
-#define NR_KPAGES (KPOOL_SIZE/PAGE_SIZE) /* Number of kernel pages.  */
-PRIVATE int kpages[NR_KPAGES] = { 0,  }; /* Reference count.         */
+/**
+ * @brief Number of kernel pages.
+ */
+#define NR_KPAGES (KPOOL_SIZE/PAGE_SIZE)
+ 
+ 
+/**
+ * @brief Reference count for kernel pages.
+ */
+PRIVATE int kpages[NR_KPAGES] = { 0,  };
+
+/**
+ * @brief Translates a kernel page ID into a virtual address.
+ *
+ * @param id ID of target kernel page.
+ *
+ * @returns The virtual address of the target kernel page.
+ */
+PRIVATE inline addr_t kpg_id_to_addr(unsigned id)
+{
+	return (KPOOL_VIRT + (id << PAGE_SHIFT));
+}
+
+/**
+ * @brief Translates a virtual address into a kernel page ID.
+ *
+ * @para vaddr Target virtual address.
+ *
+ * @returns The kernel page ID of the target virtual address.
+ */
+PRIVATE inline unsigned kpg_addr_to_id(addr_t addr)
+{
+	return ((addr - KPOOL_VIRT) >> PAGE_SHIFT);
+}
 
 /**
  * @brief Allocates a kernel page.
  * 
  * @param clean Should the page be cleaned?
  * 
- * @returns Upon success, a pointer to a page is returned. Upon
+ * @returns Upon success, a pointer to a kernel page is returned. Upon
  * failure, a NULL pointer is returned instead.
  */
 PUBLIC void *getkpg(int clean)
@@ -66,7 +97,7 @@ PUBLIC void *getkpg(int clean)
 found:
 
 	/* Set page as used. */
-	kpg = (void *)(KPOOL_VIRT + (i << PAGE_SHIFT));
+	kpg = (void *) kpg_id_to_addr(i);
 	kpages[i]++;
 	
 	/* Clean page. */
@@ -85,11 +116,11 @@ PUBLIC void putkpg(void *kpg)
 {
 	unsigned i;
 	
-	i = ((addr_t)kpg - KPOOL_VIRT) >> PAGE_SHIFT;
+	i = kpg_addr_to_id((addr_t) kpg);
 	
 	/* Double free. */
 	if (--kpages[i] < 0)
-		kpanic("mm: releasing kernel page twice");
+		kpanic("mm: double free on kernel page");
 }
 
 /*============================================================================*
