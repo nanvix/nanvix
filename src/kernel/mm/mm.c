@@ -102,8 +102,7 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
 		return (-1);
 	}
 		
-	ret = withinreg(preg, ADDR(addr));
-	ret &= withinreg(preg, ADDR(addr) + size);
+	ret = withinreg(preg, ADDR(addr) + size);
 
 	unlockreg(reg);
 	
@@ -115,16 +114,15 @@ PUBLIC int chkmem(const void *addr, size_t size, mode_t mask)
  * 
  * @param addr Address where the byte should be fetched.
  * 
- * @returns Upon successful completion the byte fetched is returned 
- *          (casted to int). Upon failure, -1 is returned instead. 
+ * @returns Upon successful completion the byte fetched is returned
+ * (casted to int). Upon failure, -1 is returned instead. 
  */
 PUBLIC int fubyte(const void *addr)
 {	
-	int byte;            /* User byte.               */
-	struct pregion *preg; /* Working process region. */
+	struct pregion *preg;
 	
 	/* Kernel address space. */
-	if (((addr_t)addr < UBASE_VIRT) || ((addr_t)addr >= KBASE_VIRT))
+	if (IN_KERNEL(addr))
 	{
 		if (KERNEL_RUNNING(curr_proc))
 			return (*((char *)addr));
@@ -136,9 +134,7 @@ PUBLIC int fubyte(const void *addr)
 	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
 		return (-1);
 	
-	byte = (withinreg(preg, ADDR(addr))) ? (*((char *)addr)) : -1;
-	
-	return (byte);
+	return (*((char *)addr));
 }
 
 /**
@@ -146,16 +142,15 @@ PUBLIC int fubyte(const void *addr)
  * 
  * @param addr Address where the byte should be fetched.
  * 
- * @returns Upon successful completion the byte fetched is returned (casted to
- *          int). Upon failure, -1 is returned instead.
+ * @returns Upon successful completion the byte fetched is returned
+ * (casted to int). Upon failure, -1 is returned instead.
  */
 PUBLIC int fudword(const void *addr)
 {	
-	int dword;            /* User double word.       */
-	struct pregion *preg; /* Working process region. */
-	
+	struct pregion *preg;
+		
 	/* Kernel address space. */
-	if (((addr_t)addr < UBASE_VIRT) || ((addr_t)addr >= KBASE_VIRT))
+	if (IN_KERNEL(addr))
 	{
 		if (KERNEL_RUNNING(curr_proc))
 			return (*((int *)addr));
@@ -167,7 +162,5 @@ PUBLIC int fudword(const void *addr)
 	if ((preg = findreg(curr_proc, (addr_t)addr)) == NULL)
 		return (-1);
 	
-	dword = (withinreg(preg, ADDR(addr))) ? (*((int *)addr)) : -1;
-	
-	return (dword);
+	return (*((int *)addr));
 }

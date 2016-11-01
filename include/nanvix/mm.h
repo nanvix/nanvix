@@ -54,6 +54,18 @@
 	/* User memory size. */
 	#define UMEM_SIZE (MEMORY_SIZE - KMEM_SIZE - KPOOL_SIZE)
 
+	/**
+	 * @brief Asserts if an address lies on kernel space.
+	 *
+	 * @param addr Target address.
+	 *
+	 * @returns True if address lies on kernel space and false
+	 * otherwise.
+	 */
+	#define IN_KERNEL(addr)               \
+		(((addr_t)(addr) < UBASE_VIRT) || \
+		 ((addr_t)(addr) >= KBASE_VIRT))
+
 #ifndef _ASM_FILE_
 	
 	/* Forward definitions. */
