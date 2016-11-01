@@ -282,7 +282,7 @@ PRIVATE inline void pde_clear(struct pde *pde)
  */
 PRIVATE inline int pde_is_clear(struct pde *pde)
 {
-	return (!(pde_is_present(pde)));
+	return (pde_is_present(pde));
 }
 
 /**
