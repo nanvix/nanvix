@@ -327,22 +327,6 @@ PRIVATE inline int pte_is_clear(struct pte *pte)
 }
 
 /**
- * @brief Clones a page table entry.
- *
- * @param dest Target page table entry.
- * @param src  Source page table entry.
- */
-PRIVATE inline void pte_copy(struct pte *dest, struct pte *src)
-{
-	pte_present_set(dest, pte_is_present(src));
-	pte_write_set(dest, pte_is_write(src));
-	pte_user_set(dest, pte_is_user(src));
-	pte_cow_set(dest, pte_is_cow(src));
-	pte_zero_set(dest, pte_is_zero(src));
-	pte_fill_set(dest, pte_is_fill(src));
-}
-
-/**
  * @brief Maps a page table into user address space.
  * 
  * @param proc  Process in which the page table should be mapped.
@@ -449,28 +433,27 @@ err0:
 }
 
 /**
- * @brief Copies a page.
+ * @brief Clones a page.
  * 
- * @brief pg1 Target page.
- * @brief pg2 Source page.
+ * @brief pg Target page.
  * 
  * @returns Zero upon successful completion, and non-zero otherwise.
- * 
- * @note The source page is assumed to be in-core.
  */
-PRIVATE int cpypg(struct pte *pg1, struct pte *pg2)
+PRIVATE int clonepg(struct pte *pg)
 {
-	addr_t addr;
+	addr_t newframe; /* New page frame. */
+	addr_t oldframe; /* Old page frame. */
 	
-	/* Allocate new user page. */
-	if (!(addr = frame_alloc()))
+	/* Grab a page frame. */
+	if (!(newframe = frame_alloc()))
 		return (-1);
 	
-	/* Handcraft page table entry. */
-	pte_copy(pg1, pg2);
-	pg1->frame = addr;
+	/* Unlink old frame. */
+	oldframe = pg->frame;
+	pg->frame = newframe;
+	frame_free(oldframe);
 
-	physcpy(pg1->frame << PAGE_SHIFT, pg2->frame << PAGE_SHIFT, PAGE_SIZE);
+	physcpy(newframe << PAGE_SHIFT, oldframe << PAGE_SHIFT, PAGE_SIZE);
 	
 	return (0);
 }
@@ -626,15 +609,9 @@ PRIVATE int cow_disable(struct pte *pg)
 	/* Steal page. */
 	if (frame_is_shared(pg->frame))
 	{
-		struct pte new_pg;
-
-		/* Copy page. */
-		if (cpypg(&new_pg, pg))
+		/* Clone page. */
+		if (clonepg(pg))
 			return (-1);
-		
-		/* Unlink page. */
-		frame_free(pg->frame);
-		kmemcpy(pg, &new_pg, sizeof(struct pte));
 	}
 
 	pte_cow_set(pg, 0);
