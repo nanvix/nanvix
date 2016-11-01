@@ -142,47 +142,6 @@
 	}
 
 	/**
-	 * @brief Clears a page table entry.
-	 *
-	 * @param pte Target page table entry.
-	 */
-	static inline void pte_clear(struct pte *pte)
-	{
-		pte->present = 0;
-		pte->cow = 0;
-		pte->zero = 0;
-		pte->fill = 0;
-	}
-
-	/**
-	 * @brief Asserts if a page table entry is cleared.
-	 *
-	 * @param pte Target page table entry.
-	 *
-	 * @returns Non zero if the page is cleared, and zero otherwise.
-	 */
-	static inline int pte_is_clear(struct pte *pte)
-	{
-		return (!(pte->present | pte->fill | pte->zero));
-	}
-
-	/**
-	 * @brief Clones a page table entry.
-	 *
-	 * @param dest Target page table entry.
-	 * @param src  Source page table entry.
-	 */
-	static inline void pte_copy(struct pte *dest, struct pte *src)
-	{
-		dest->present = src->present;
-		dest->writable = src->writable;
-		dest->user = src->user;
-		dest->cow = src->cow;
-		dest->zero = src->zero;
-		dest->fill = src->fill;
-	}
-
-	/**
 	 * @brief Sets/clears the present bit of a page table entry.
 	 *
 	 * @param pte Target page table entry.

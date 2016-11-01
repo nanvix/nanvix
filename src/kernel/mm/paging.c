@@ -276,6 +276,57 @@ PRIVATE inline void pde_clear(struct pde *pde)
 }
 
 /**
+ * @brief Asserts if a page table directory entry is cleared.
+ *
+ * @param pde Target page table directory entry.
+ */
+PRIVATE inline int pde_is_clear(struct pde *pde)
+{
+	return (!(pde_is_present(pde)));
+}
+
+/**
+ * @brief Clears a page table entry.
+ *
+ * @param pte Target page table entry.
+ */
+PRIVATE inline void pte_clear(struct pte *pte)
+{
+	pte_present_set(pte, 0);
+	pte_cow_set(pte, 0);
+	pte_zero_set(pte, 0);
+	pte_fill_set(pte, 0);
+}
+
+/**
+ * @brief Asserts if a page table entry is cleared.
+ *
+ * @param pte Target page table entry.
+ *
+ * @returns Non zero if the page is cleared, and zero otherwise.
+ */
+PRIVATE inline int pte_is_clear(struct pte *pte)
+{
+	return (!(pte_is_present(pte) | pte_is_fill(pte) | pte_is_zero(pte)));
+}
+
+/**
+ * @brief Clones a page table entry.
+ *
+ * @param dest Target page table entry.
+ * @param src  Source page table entry.
+ */
+PRIVATE inline void pte_copy(struct pte *dest, struct pte *src)
+{
+	pte_present_set(dest, pte_is_present(src));
+	pte_write_set(dest, pte_is_write(src));
+	pte_user_set(dest, pte_is_user(src));
+	pte_cow_set(dest, pte_is_cow(src));
+	pte_zero_set(dest, pte_is_zero(src));
+	pte_fill_set(dest, pte_is_fill(src));
+}
+
+/**
  * @brief Maps a page table into user address space.
  * 
  * @param proc  Process in which the page table should be mapped.
@@ -289,8 +340,8 @@ PUBLIC void mappgtab(struct process *proc, addr_t addr, void *pgtab)
 	pde = &proc->pgdir[PGTAB(addr)];
 	
 	/* Bad page table. */
-	if (pde_is_present(pde))
-		kpanic("busy page table entry");
+	if (pde_is_clear(pde))
+		kpanic("mm: busy page table directory entry");
 	
 	/* Map kernel page. */
 	pde_init(pde);
@@ -316,8 +367,8 @@ PUBLIC void umappgtab(struct process *proc, addr_t addr)
 	pde = &proc->pgdir[PGTAB(addr)];
 	
 	/* Bad page table. */
-	if (!(pde_is_present(pde)))
-		kpanic("mm: unmap non-present page table");
+	if (!(pde_is_clear(pde)))
+		kpanic("mm: invalid page table directory entry");
 
 	/* Unmap kernel page. */
 	pde_clear(pde);
