@@ -252,6 +252,136 @@ PRIVATE inline struct pte *getpte(struct process *proc, addr_t addr)
 }
 
 /**
+ * @brief Initializes a page table directory entry.
+ *
+ * @param pde Target page table directory entry.
+ */
+PRIVATE inline void pde_init(struct pde *pde)
+{
+	pde_present_set(pde, 1);
+	pde_write_set(pde, 1);
+	pde_user_set(pde, 1);
+}
+
+/**
+ * @brief Clears a page table directory entry.
+ *
+ * @param pde Target page table directory entry.
+ */
+PRIVATE inline void pde_clear(struct pde *pde)
+{
+	pde_present_set(pde, 0);
+	pde_write_set(pde, 0);
+	pde_user_set(pde, 0);
+}
+
+/**
+ * @brief Maps a page table into user address space.
+ * 
+ * @param proc  Process in which the page table should be mapped.
+ * @param addr  Address where the page should be mapped.
+ * @param pgtab Page table to map.
+ */
+PUBLIC void mappgtab(struct process *proc, addr_t addr, void *pgtab)
+{
+	struct pde *pde;
+	
+	pde = &proc->pgdir[PGTAB(addr)];
+	
+	/* Bad page table. */
+	if (pde_is_present(pde))
+		kpanic("busy page table entry");
+	
+	/* Map kernel page. */
+	pde_init(pde);
+	pde->frame = (ADDR(pgtab) - KBASE_VIRT) >> PAGE_SHIFT;
+	
+	/* Flush changes. */
+	if (proc == curr_proc)
+		tlb_flush();
+}
+
+/**
+ * @brief Unmaps a page table from user address space.
+ * 
+ * @param proc Process in which the page table should be unmapped.
+ * @param addr Address where the page should be unmapped.
+ * 
+ * @returns Zero upon success, and non zero otherwise.
+ */
+PUBLIC void umappgtab(struct process *proc, addr_t addr)
+{
+	struct pde *pde;
+	
+	pde = &proc->pgdir[PGTAB(addr)];
+	
+	/* Bad page table. */
+	if (!(pde_is_present(pde)))
+		kpanic("mm: unmap non-present page table");
+
+	/* Unmap kernel page. */
+	pde_clear(pde);
+	
+	/* Flush changes. */
+	if (proc == curr_proc)
+		tlb_flush();
+}
+
+/**
+ * @brief Creates a page directory for a process.
+ * 
+ * @param proc Target process.
+ * 
+ * @returns Upon successful completion, zero is returned. Upon
+ * failure, non-zero is returned instead.
+ */
+PUBLIC int crtpgdir(struct process *proc)
+{
+	void *kstack;             /* Kernel stack.     */
+	struct pde *pgdir;        /* Page directory.   */
+	struct intstack *s1, *s2; /* Interrupt stacks. */
+	
+	/* Get kernel page for page directory. */
+	pgdir = getkpg(1);
+	if (pgdir == NULL)
+		goto err0;
+
+	/* Get kernel page for kernel stack. */
+	kstack = getkpg(0);
+	if (kstack == NULL)
+		goto err1;
+
+	/* Build page directory. */
+	pgdir[0] = curr_proc->pgdir[0];
+	pgdir[PGTAB(KBASE_VIRT)] = curr_proc->pgdir[PGTAB(KBASE_VIRT)];
+	pgdir[PGTAB(KPOOL_VIRT)] = curr_proc->pgdir[PGTAB(KPOOL_VIRT)];
+	pgdir[PGTAB(INITRD_VIRT)] = curr_proc->pgdir[PGTAB(INITRD_VIRT)];
+	
+	/* Clone kernel stack. */
+	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
+	
+	/* Adjust stack pointers. */
+	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
+	if (KERNEL_RUNNING(curr_proc))
+	{
+		s1 = (struct intstack *) curr_proc->kesp;
+		s2 = (struct intstack *) proc->kesp;	
+		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+	}
+	/* Assign page directory. */
+	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
+	proc->pgdir = pgdir;
+	proc->kstack = kstack;
+	
+	return (0);
+
+err1:
+	putkpg(pgdir);
+err0:
+	return (-1);
+}
+
+/**
  * @brief Copies a page.
  * 
  * @brief pg1 Target page.
@@ -350,68 +480,6 @@ PRIVATE int readpg(struct region *reg, addr_t addr)
 	}
 	
 	return (0);
-}
-
-/**
- * @brief Initializes a page table directory entry.i
- */
-PRIVATE void pde_init(struct pde *pde)
-{
-	pde_present_set(pde, 1);
-	pde_write_set(pde, 1);
-	pde_user_set(pde, 1);
-}
-
-/**
- * @brief Maps a page table into user address space.
- * 
- * @param proc  Process in which the page table should be mapped.
- * @param addr  Address where the page should be mapped.
- * @param pgtab Page table to map.
- */
-PUBLIC void mappgtab(struct process *proc, addr_t addr, void *pgtab)
-{
-	struct pde *pde;
-	
-	pde = &proc->pgdir[PGTAB(addr)];
-	
-	/* Bad page table. */
-	if (pde_is_present(pde))
-		kpanic("busy page table entry");
-	
-	/* Map kernel page. */
-	pde_init(pde);
-	pde->frame = (ADDR(pgtab) - KBASE_VIRT) >> PAGE_SHIFT;
-	
-	/* Flush changes. */
-	if (proc == curr_proc)
-		tlb_flush();
-}
-
-/**
- * @brief Unmaps a page table from user address space.
- * 
- * @param proc Process in which the page table should be unmapped.
- * @param addr Address where the page should be unmapped.
- * 
- * @returns Zero upon success, and non zero otherwise.
- */
-PUBLIC void umappgtab(struct process *proc, addr_t addr)
-{
-	struct pde *pde;
-	
-	pde = &proc->pgdir[PGTAB(addr)];
-	
-	/* Bad page table. */
-	if (!(pde_is_present(pde)))
-		kpanic("mm: unmap non-present page table");
-
-	/* Unmap kernel page. */
-	kmemset(pde, 0, sizeof(struct pde));
-	
-	/* Flush changes. */
-	if (proc == curr_proc)
-		tlb_flush();
 }
 
 /**
@@ -555,60 +623,6 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
 	frame_share(upg1->frame);
 	
 	kmemcpy(upg2, upg1, sizeof(struct pte));
-}
-
-/**
- * @brief Creates a page directory for a process.
- * 
- * @param proc Target process.
- * 
- * @returns Upon successful completion, zero is returned. Upon
- * failure, non-zero is returned instead.
- */
-PUBLIC int crtpgdir(struct process *proc)
-{
-	void *kstack;             /* Kernel stack.     */
-	struct pde *pgdir;        /* Page directory.   */
-	struct intstack *s1, *s2; /* Interrupt stacks. */
-	
-	/* Get kernel page for page directory. */
-	pgdir = getkpg(1);
-	if (pgdir == NULL)
-		goto err0;
-
-	/* Get kernel page for kernel stack. */
-	kstack = getkpg(0);
-	if (kstack == NULL)
-		goto err1;
-
-	/* Build page directory. */
-	pgdir[0] = curr_proc->pgdir[0];
-	pgdir[PGTAB(KBASE_VIRT)] = curr_proc->pgdir[PGTAB(KBASE_VIRT)];
-	pgdir[PGTAB(KPOOL_VIRT)] = curr_proc->pgdir[PGTAB(KPOOL_VIRT)];
-	pgdir[PGTAB(INITRD_VIRT)] = curr_proc->pgdir[PGTAB(INITRD_VIRT)];
-	
-	/* Clone kernel stack. */
-	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
-	
-	/* Adjust stack pointers. */
-	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
-	if (KERNEL_RUNNING(curr_proc))
-	{
-		s1 = (struct intstack *) curr_proc->kesp;
-		s2 = (struct intstack *) proc->kesp;	
-		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
-	}
-	/* Assign page directory. */
-	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
-	proc->pgdir = pgdir;
-	proc->kstack = kstack;
-	
-	return (0);
-
-err1:
-	putkpg(pgdir);
-err0:
-	return (-1);
 }
 
 /**
