@@ -650,7 +650,7 @@ PRIVATE int cow_disable(struct pte *pg)
  *
  * @returns Non zero if copy-on-write is enabled, and zero otherwise.
  */
-PRIVATE int cow_enabled(struct pte *pg)
+PRIVATE int cow_is_enabled(struct pte *pg)
 {
 	return ((pte_is_cow(pg)) && (!pte_is_write(pg)));
 }
@@ -791,7 +791,7 @@ PUBLIC int pfault(addr_t addr)
 	pg = getpte(curr_proc, addr);
 
 	/* Copy on write not enabled. */
-	if (!cow_enabled(pg))
+	if (!cow_is_enabled(pg))
 		goto error1;
 		
 	/* Copy page. */
