@@ -286,6 +286,22 @@ PRIVATE inline int pde_is_clear(struct pde *pde)
 }
 
 /**
+ * @brief Initializes a page table entry.
+ *
+ * @param pte      Target page table entry.
+ * @param writable Is target page table entry writable?
+ */
+PRIVATE inline void pte_init(struct pte *pte, int writable)
+{
+	pte_present_set(pte, 1);
+	pte_cow_set(pte, 0);
+	pte_zero_set(pte, 0);
+	pte_fill_set(pte, 0);
+	pte_write_set(pte, writable);
+	pte_user_set(pte, 1);
+}
+
+/**
  * @brief Clears a page table entry.
  *
  * @param pte Target page table entry.
@@ -480,10 +496,7 @@ PRIVATE int allocupg(addr_t vaddr, int writable)
 	
 	/* Allocate page. */
 	pg = getpte(curr_proc, vaddr);
-	pte_clear(pg);
-	pte_present_set(pg, 1);
-	pte_write_set(pg, writable);
-	pte_user_set(pg, 1);
+	pte_init(pg, writable);
 	pg->frame = paddr;
 	tlb_flush();
 	
