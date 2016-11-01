@@ -119,7 +119,7 @@ PUBLIC void putkpg(void *kpg)
 	i = kpg_addr_to_id((addr_t) kpg);
 	
 	/* Double free. */
-	if (--kpages[i] < 0)
+	if (kpages[i]-- == 0)
 		kpanic("mm: double free on kernel page");
 }
 
@@ -144,7 +144,7 @@ PRIVATE unsigned frames[NR_FRAMES] = {0, };
  *
  * @returns Frame number of target page frame.
  */
-PRIVATE inline addr_t frame_id_to_addr(int id)
+PRIVATE inline addr_t frame_id_to_addr(unsigned id)
 {
 	return ((UBASE_PHYS >> PAGE_SHIFT) + id);
 }
@@ -169,7 +169,7 @@ PRIVATE inline int frame_addr_to_id(addr_t addr)
 PRIVATE addr_t frame_alloc(void)
 {
 	/* Search for a free frame. */
-	for (int i = 0; i < NR_FRAMES; i++)
+	for (unsigned i = 0; i < NR_FRAMES; i++)
 	{
 		/* Found it. */
 		if (frames[i] == 0)
@@ -190,7 +190,6 @@ PRIVATE addr_t frame_alloc(void)
  */
 PRIVATE inline void frame_free(addr_t addr)
 {
-	/* Double free? */
 	if (frames[frame_addr_to_id(addr)]-- == 0)
 		kpanic("mm: double free on page frame");
 }
