@@ -127,6 +127,101 @@ PRIVATE struct process *chain = NULL;
  */
 PRIVATE struct buffer hashtab[BUFFERS_HASHTAB_SIZE];
 
+/**
+ * @brief Sets/clears buffer's dirty flag.
+ * 
+ * @details If set equals to non-zero, then the dirty flag of the
+ * buffer pointed to by buf is set, otherwise the flag is cleared.
+ * 
+ * @param buf Buffer in which the dirty flag shall be set/cleared.
+ * @param set Set dirty flag?
+ * 
+ * @note The buffer must be locked.
+ */
+PUBLIC inline void buffer_dirty(struct buffer *buf, int set)
+{
+	buf->flags = (set) ? buf->flags | BUFFER_DIRTY : buf->flags & ~BUFFER_DIRTY;
+}
+
+/**
+ * @brief Returns a pointer to the data in a buffer.
+ * 
+ * @details Returns a pointer to the data in the buffer pointed to by
+ * buf.
+ * 
+ * @param buf Buffer to be considered.
+ * 
+ * @returns A pointer to the data in the buffer.
+ * 
+ * @note The buffer must be locked.
+ */
+PUBLIC inline void *buffer_data(const struct buffer *buf)
+{
+	return (buf->data); 
+}
+
+/**
+ * @brief Returns the device number of a buffer.
+ * 
+ * @details Returns the device number of the buffer pointed to by buf.
+ * 
+ * @param buf Buffer to be considered.
+ * 
+ * @returns The device number of the buffer.
+ * 
+ * @note The buffer must be locked.
+ */
+PUBLIC inline dev_t buffer_dev(const struct buffer *buf)
+{
+	return (buf->dev);
+}
+
+/**
+ * @brief Returns the block number of a buffer.
+ * 
+ * @details Returns the block number of the buffer pointed to by buf.
+ * 
+ * @param buf Buffer to be considered.
+ * 
+ * @returns The block number of the buffer.
+ * 
+ * @note The buffer must be locked.
+ */
+PUBLIC inline block_t buffer_num(const struct buffer *buf)
+{
+	return (buf->num);
+}
+
+/**
+ * @brief Asserts if a block buffer is marked as synchronous write.
+ * 
+ * @details Asserts if the block buffer pointed to by buf is marked as
+ * synchronous write.
+ * 
+ * @param buf Buffer to be asserted.
+ * 
+ * @returns Non-zero if the buffer is marked as synchronous write, and
+ * zero otherwise.
+ * 
+ * @note The buffer must be locked.
+ */
+PUBLIC inline int buffer_is_sync(const struct buffer *buf)
+{
+	return (buf->flags & BUFFER_SYNC);
+}
+
+/**
+ * @brief Increments reference counter of a block buffer. 
+ *
+ * @details Increments the reference counter of the block buffer
+ * pointed to by @p buf.
+ *
+ * @param param buf Target buffer.
+ */
+PUBLIC void buffer_share(struct buffer *buf)
+{
+	buf->count++;
+}
 
 /**
  * @brief Hash function for block buffer hash table.
@@ -146,10 +241,10 @@ PRIVATE struct buffer hashtab[BUFFERS_HASHTAB_SIZE];
  * @param dev Device number.
  * @param num Block number.
  * 
- * @returns Upon successful completion, a pointer to a buffer holding the
- *          requested block is returned. In this case, the block buffer is 
- *          ensured to be locked, and may be, or may be not, valid.
- *          Upon failure, a null pointer NULL is returned instead.
+ * @returns Upon successful completion, a pointer to a buffer holding
+ * the requested block is returned. In this case, the block buffer is
+ * ensured to be locked, and may be, or may be not, valid.  Upon
+ * failure, a null pointer NULL is returned instead.
  */
 PRIVATE struct buffer *getblk(dev_t dev, block_t num)
 {
@@ -377,9 +472,9 @@ PUBLIC struct buffer *bread(dev_t dev, block_t num)
 /**
  * @brief Writes a block buffer to the underlying device.
  * 
- * @details Writes the block buffer pointed to by buf asynchronously to the
- *          underlying device. After that the operation has completed, the
- *          buffer is released.
+ * @details Writes the block buffer pointed to by @p buf
+ * asynchronously to the underlying device. After that the operation
+ * has completed, the buffer is released.
  * 
  * @param buf Block buffer to be written back.
  * 
@@ -442,99 +537,6 @@ PUBLIC void bsync(void)
 		bwrite(buf);
 	}
 }
-
-/**
- * @brief Sets/clears buffer's dirty flag.
- * 
- * @details If set equals to non-zero, then the dirty flag of the buffer pointed
- *          to by buf is set, otherwise the flag is cleared.
- * 
- * @param buf Buffer in which the dirty flag shall be set/cleared.
- * @param set Set dirty flag?
- * 
- * @note The buffer must be locked.
- */
-PUBLIC inline void buffer_dirty(struct buffer *buf, int set)
-{
-	buf->flags = (set) ? buf->flags | BUFFER_DIRTY : buf->flags & ~BUFFER_DIRTY;
-}
-
-/**
- * @brief Returns a pointer to the data in a buffer.
- * 
- * @details Returns a pointer to the data in the buffer pointed to by buf.
- * 
- * @param buf Buffer to be considered.
- * 
- * @returns A pointer to the data in the buffer.
- * 
- * @note The buffer must be locked.
- */
-PUBLIC inline void *buffer_data(const struct buffer *buf)
-{
-	return (buf->data); 
-}
-
-/**
- * @brief Returns the device number of a buffer.
- * 
- * @details Returns the device number of the buffer pointed to by buf.
- * 
- * @param buf Buffer to be considered.
- * 
- * @returns The device number of the buffer.
- * 
- * @note The buffer must be locked.
- */
-PUBLIC inline dev_t buffer_dev(const struct buffer *buf)
-{
-	return (buf->dev);
-}
-
-/**
- * @brief Returns the block number of a buffer.
- * 
- * @details Returns the block number of the buffer pointed to by buf.
- * 
- * @param buf Buffer to be considered.
- * 
- * @returns The block number of the buffer.
- * 
- * @note The buffer must be locked.
- */
-PUBLIC inline block_t buffer_num(const struct buffer *buf)
-{
-	return (buf->num);
-}
-
-/**
- * @brief Asserts if a block buffer is marked as synchronous write.
- * 
- * @details Asserts if the block buffer pointed to by buf is marked as 
- *          synchronous write.
- * 
- * @param buf Buffer to be asserted.
- * 
- * @returns Non-zero if the buffer is marked as synchronous write, and zero
- *          otherwise.
- * 
- * @note The buffer must be locked.
- */
-PUBLIC inline int buffer_is_sync(const struct buffer *buf)
-{
-	return (buf->flags & BUFFER_SYNC);
-}
-
-/**
- * @brief Increments reference counter of a block buffer. 
- *
- * @param param buf Target buffer.
- */
-PUBLIC void buffer_share(struct buffer *buf)
-{
-	buf->count++;
-}
-
 
 /**
  * @brief Initializes the bock buffer cache.
