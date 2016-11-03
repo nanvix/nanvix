@@ -114,7 +114,9 @@ dd if=/dev/zero of=initrd.img bs=1024 count=1152
 format initrd.img 1152 512
 copy_files initrd.img
 initrdsize=`stat -c %s initrd.img`
-if [ $initrdsize -gt 1310720 ]; then
+maxsize=`grep "INITRD_SIZE" include/nanvix/config.h | cut -d" " -f 13`
+maxsize=`printf "%d\n" $maxsize`
+if [ $initrdsize -gt $maxsize ]; then
 	echo "NOT ENOUGH SPACE ON INITRD"
 	echo "INITRD SIZE is $initrdsize"
 	rm *.img
