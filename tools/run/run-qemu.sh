@@ -21,4 +21,8 @@
 #   - This script should work in any Linux distribution.
 #   - You should run this script with superuser privileges.
 #
-qemu-system-i386 -drive file=nanvix.img,if=floppy,format=raw -m size=256
+
+qemu-system-i386                                \
+	-drive file=nanvix.img,format=raw,if=floppy \
+	-m size=256                                 \
+	-mem-prealloc
