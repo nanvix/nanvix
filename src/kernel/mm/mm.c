@@ -67,6 +67,13 @@
 #endif
 
 /**
+ * Too large INITRD?
+ */
+#if (INITRD_SIZE > PGTAB_SIZE)
+ 	#error "initrd too large"
+#endif
+
+/**
  * @brief Initializes the memory system.
  */
 PUBLIC void mm_init(void)
