@@ -113,6 +113,13 @@ copy_files hdd.img
 dd if=/dev/zero of=initrd.img bs=1024 count=1152
 format initrd.img 1152 512
 copy_files initrd.img
+initrdsize=`stat -c %s initrd.img`
+if [ $initrdsize -gt 1310720 ]; then
+	echo "NOT ENOUGH SPACE ON INITRD"
+	echo "INITRD SIZE is $initrdsize"
+	rm *.img
+	exit -1
+fi 
 
 # Build nanvix image.
 cp -f tools/img/blank.img nanvix.img
