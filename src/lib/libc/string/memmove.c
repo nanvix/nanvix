@@ -1,39 +1,21 @@
 /*
-FUNCTION
-	<<memmove>>---move possibly overlapping memory
-
-INDEX
-	memmove
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	void *memmove(void *<[dst]>, const void *<[src]>, size_t <[length]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	void *memmove(<[dst]>, <[src]>, <[length]>)
-	void *<[dst]>;
-	void *<[src]>;
-	size_t <[length]>;
-
-DESCRIPTION
-	This function moves <[length]> characters from the block of
-	memory starting at <<*<[src]>>> to the memory starting at
-	<<*<[dst]>>>. <<memmove>> reproduces the characters correctly
-	at <<*<[dst]>>> even if the two areas overlap.
-
-
-RETURNS
-	The function returns <[dst]> as passed.
-
-PORTABILITY
-<<memmove>> is ANSI C.
-
-<<memmove>> requires no supporting OS subroutines.
-
-QUICKREF
-	memmove ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <_ansi.h>
@@ -54,13 +36,15 @@ QUICKREF
 /* Threshhold for punting to the byte copier.  */
 #define TOO_SMALL(LEN)  ((LEN) < BIGBLOCKSIZE)
 
-/*SUPPRESS 20*/
-_PTR
-__inhibit_loop_to_libcall
-_DEFUN (memmove, (dst_void, src_void, length),
-	_PTR dst_void _AND
-	_CONST _PTR src_void _AND
-	size_t length)
+/**
+ * @brief Copies bytes in memory with overlapping areas.
+ *
+ * @details Copies @p length bytes from the object pointed to
+ * by @p src_void into the object pointed to by @p dst_void.
+ *
+ * @return Returns @p dst_void.
+ */
+void *memmove(void *dst_void, const void *src_void, size_t length)
 {
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
   char *dst = dst_void;

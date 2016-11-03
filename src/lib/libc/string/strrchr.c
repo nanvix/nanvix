@@ -1,46 +1,37 @@
 /*
-FUNCTION
-	<<strrchr>>---reverse search for character in string
-
-INDEX
-	strrchr
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char * strrchr(const char *<[string]>, int <[c]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char * strrchr(<[string]>, <[c]>);
-	char *<[string]>;
-	int *<[c]>;
-
-DESCRIPTION
-	This function finds the last occurence of <[c]> (converted to
-	a char) in the string pointed to by <[string]> (including the
-	terminating null character).
-
-RETURNS
-	Returns a pointer to the located character, or a null pointer
-	if <[c]> does not occur in <[string]>.
-
-PORTABILITY
-<<strrchr>> is ANSI C.
-
-<<strrchr>> requires no supporting OS subroutines.
-
-QUICKREF
-	strrchr ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 
-char *
-_DEFUN (strrchr, (s, i),
-	_CONST char *s _AND
-	int i)
+/**
+ * @brief String scanning operation.
+ *
+ * @details Locates the last occurrence of @p i (converted
+ * to a char) in the string pointed to by @p s. The terminating
+ * NUL character is considered to be part of the string.
+ *
+ * @return Returns a pointer to the byte or a null pointer if @p i
+ * does not occur in the string.
+ */
+char *strrchr(const char *s, int i)
 {
-  _CONST char *last = NULL;
+  const char *last = NULL;
 
   if (i)
     {

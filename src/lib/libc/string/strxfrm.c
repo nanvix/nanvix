@@ -1,61 +1,35 @@
 /*
-FUNCTION
-	<<strxfrm>>---transform string
-
-INDEX
-	strxfrm
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	size_t strxfrm(char *restrict <[s1]>, const char *restrict <[s2]>,
-                       size_t <[n]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	size_t strxfrm(<[s1]>, <[s2]>, <[n]>);
-	char *<[s1]>;
-	char *<[s2]>;
-	size_t <[n]>;
-
-DESCRIPTION
-	This function transforms the string pointed to by <[s2]> and
-	places the resulting string into the array pointed to by
-	<[s1]>. The transformation is such that if the <<strcmp>>
-	function is applied to the two transformed strings, it returns
-	a value greater than, equal to, or less than zero,
-	correspoinding to the result of a <<strcoll>> function applied
-	to the same two original strings.
-
-	No more than <[n]> characters are placed into the resulting
-	array pointed to by <[s1]>, including the terminating null
-	character. If <[n]> is zero, <[s1]> may be a null pointer. If
-	copying takes place between objects that overlap, the behavior
-	is undefined.
-
-	With a C locale, this function just copies.
-
-RETURNS
-	The <<strxfrm>> function returns the length of the transformed string
-	(not including the terminating null character). If the value returned
-	is <[n]> or more, the contents of the array pointed to by
-	<[s1]> are indeterminate.
-
-PORTABILITY
-<<strxfrm>> is ANSI C.
-
-<<strxfrm>> requires no supporting OS subroutines.
-
-QUICKREF
-	strxfrm ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 
-size_t
-_DEFUN (strxfrm, (s1, s2, n),
-	char *__restrict s1 _AND
-	_CONST char *__restrict s2 _AND
-	size_t n)
+/**
+ * @brief String transformation.
+ *
+ * @details Transforms the C string pointed by @p s2 according
+ * to the current locale and copies the first @p n characters 
+ * of the transformed string to destination.
+ *
+ * @return Returns the length of the transformed string (not 
+ * including the terminating NUL character).
+ */
+size_t strxfrm(char *restrict s1, const char *restrict s2, size_t n)
 {
   size_t res;
   res = 0;

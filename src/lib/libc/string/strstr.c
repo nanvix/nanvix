@@ -1,38 +1,21 @@
 /*
-FUNCTION
-	<<strstr>>---find string segment
-
-INDEX
-	strstr
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char *strstr(const char *<[s1]>, const char *<[s2]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *strstr(<[s1]>, <[s2]>)
-	char *<[s1]>;
-	char *<[s2]>;
-
-DESCRIPTION
-	Locates the first occurrence in the string pointed to by <[s1]> of
-	the sequence of characters in the string pointed to by <[s2]>
-	(excluding the terminating null character).
-
-RETURNS
-	Returns a pointer to the located string segment, or a null
-	pointer if the string <[s2]> is not found. If <[s2]> points to
-	a string with zero length, <[s1]> is returned.
-
-PORTABILITY
-<<strstr>> is ANSI C.
-
-<<strstr>> requires no supporting OS subroutines.
-
-QUICKREF
-	strstr ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 
@@ -44,10 +27,20 @@ QUICKREF
 # include "str-two-way.h"
 #endif
 
-char *
-_DEFUN (strstr, (searchee, lookfor),
-	_CONST char *searchee _AND
-	_CONST char *lookfor)
+/**
+ * @brief Finds a substring.
+ *
+ * @details Locates the first occurrence in the string 
+ * pointed to by @p searchee of the sequence of bytes 
+ * (excluding the terminating NUL character) in the 
+ * string pointed to by @p lookfor.
+ *
+ * @return Returns a pointer to the located string or 
+ * a null pointer if the string is not found. If @p lookfor 
+ * points to a string with zero length, the function returns 
+ * @p searchee.
+ */
+char *strstr(const char *searchee, const char *lookfor)
 {
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
 

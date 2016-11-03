@@ -1,85 +1,53 @@
-/* GNU variant of strerror_r. */
 /*
-FUNCTION
-	<<strerror_r>>---convert error number to string and copy to buffer
-
-INDEX
-	strerror_r
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	#ifdef _GNU_SOURCE
-	char *strerror_r(int <[errnum]>, char *<[buffer]>, size_t <[n]>);
-	#else
-	int strerror_r(int <[errnum]>, char *<[buffer]>, size_t <[n]>);
-	#endif
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *strerror_r(<[errnum]>, <[buffer]>, <[n]>)
-	int <[errnum]>;
-	char *<[buffer]>;
-	size_t <[n]>;
-
-DESCRIPTION
-<<strerror_r>> converts the error number <[errnum]> into a
-string and copies the result into the supplied <[buffer]> for
-a length up to <[n]>, including the NUL terminator. The value of
-<[errnum]> is usually a copy of <<errno>>.  If <<errnum>> is not a known
-error number, the result is the empty string.
-
-See <<strerror>> for how strings are mapped to <<errnum>>.
-
-RETURNS
-There are two variants: the GNU version always returns a NUL-terminated
-string, which is <[buffer]> if all went well, but which is another
-pointer if <[n]> was too small (leaving <[buffer]> untouched).  If the
-return is not <[buffer]>, your application must not modify that string.
-The POSIX version returns 0 on success, <[EINVAL]> if <<errnum>> was not
-recognized, and <[ERANGE]> if <[n]> was too small.  The variant chosen
-depends on macros that you define before inclusion of <<string.h>>.
-
-PORTABILITY
-<<strerror_r>> with a <[char *]> result is a GNU extension.
-<<strerror_r>> with an <[int]> result is required by POSIX 2001.
-This function is compliant only if <<_user_strerror>> is not provided,
-or if it is thread-safe and uses separate storage according to whether
-the second argument of that function is non-zero.  For more details
-on <<_user_strerror>>, see the <<strerror>> documentation.
-
-POSIX states that the contents of <[buf]> are unspecified on error,
-although this implementation guarantees a NUL-terminated string for
-all except <[n]> of 0.
-
-POSIX recommends that unknown <[errnum]> result in a message including
-that value, however it is not a requirement and this implementation
-provides only an empty string (unless you provide <<_user_strerror>>).
-POSIX also recommends that unknown <[errnum]> fail with EINVAL even
-when providing such a message, however it is not a requirement and
-this implementation will return success if <<_user_strerror>> provided
-a non-empty alternate string without assigning into its third argument.
-
-<<strerror_r>> requires no supporting OS subroutines.
-
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #undef __STRICT_ANSI__
-#define _GNU_SOURCE
 #include <errno.h>
 #include <string.h>
-#undef strerror_r
 
-/* For backwards-compatible linking, this must be the GNU signature;
-   see xpg_strerror_r.c for the POSIX version.  */
-char *
-_DEFUN (strerror_r, (errnum, buffer, n),
-	int errnum _AND
-	char *buffer _AND
-	size_t n)
+/**
+ * @brief Gets error message string.
+ *
+ * @details Maps the error number in @p errnum to a locale-dependent
+ * error message string and returns the string in the buffer
+ * pointed to by @p strerrbuf, with length buflen.
+ *
+ * @return Returns 0 in success, otherwise, an error number.
+ */
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+int strerror_r(int errnum, char *buffer, size_t n)
 {
-  char *error = _strerror_r (_REENT, errnum, 1, NULL);
+  char *error;
+  int result = 0;
 
+  if (!n)
+    return ERANGE;
+  error = _strerror_r (_REENT, errnum, 1, &result);
   if (strlen (error) >= n)
-    return error;
-  return strcpy (buffer, error);
+    {
+      memcpy (buffer, error, n - 1);
+      buffer[n - 1] = '\0';
+      return ERANGE;
+    }
+  strcpy (buffer, error);
+  return (result || *error) ? result : EINVAL;
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

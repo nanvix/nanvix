@@ -1,40 +1,21 @@
 /*
-FUNCTION
-	<<memchr>>---find character in memory
-
-INDEX
-	memchr
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	void *memchr(const void *<[src]>, int <[c]>, size_t <[length]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	void *memchr(<[src]>, <[c]>, <[length]>)
-	void *<[src]>;
-	void *<[c]>;
-	size_t <[length]>;
-
-DESCRIPTION
-	This function searches memory starting at <<*<[src]>>> for the
-	character <[c]>.  The search only ends with the first
-	occurrence of <[c]>, or after <[length]> characters; in
-	particular, <<NUL>> does not terminate the search.
-
-RETURNS
-	If the character <[c]> is found within <[length]> characters
-	of <<*<[src]>>>, a pointer to the character is returned. If
-	<[c]> is not found, then <<NULL>> is returned.
-
-PORTABILITY
-<<memchr>> is ANSI C.
-
-<<memchr>> requires no supporting OS subroutines.
-
-QUICKREF
-	memchr ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <string.h>
@@ -68,13 +49,18 @@ QUICKREF
    to fill (long)MASK. */
 #define DETECTCHAR(X,MASK) (DETECTNULL(X ^ MASK))
 
-_PTR
-_DEFUN (memchr, (src_void, c, length),
-	_CONST _PTR src_void _AND
-	int c _AND
-	size_t length)
+/**
+ * @brief Finds byte in memory.
+ *
+ * @details Locates the first occurrence of @p c in the initial
+ * @p length bytes pointed to by @p src_void.
+ *
+ * @return Returns a pointer to the located byte, or a null pointer
+ * if the byte is not found.
+ */
+void *memchr(const void *src_void, int c, size_t length)
 {
-  _CONST unsigned char *src = (_CONST unsigned char *) src_void;
+  const unsigned char *src = (const unsigned char *) src_void;
   unsigned char d = c;
 
 #if !defined(PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__)

@@ -1,51 +1,40 @@
-/* Copyright 2002, 2011 Red Hat Inc. */
 /*
-FUNCTION
-<<psignal>>---print a signal message on standard error
-
-INDEX
-	psignal
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	void psignal(int <[signal]>, const char *<[prefix]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	void psignal(<[signal]>, <[prefix]>)
-	int <[signal]>;
-	const char *<[prefix]>;
-
-DESCRIPTION
-Use <<psignal>> to print (on standard error) a signal message
-corresponding to the value of the signal number <[signal]>.
-Unless you use <<NULL>> as the value of the argument <[prefix]>, the
-signal message will begin with the string at <[prefix]>, followed by a
-colon and a space (<<: >>). The remainder of the signal message is one
-of the strings described for <<strsignal>>.
-
-RETURNS
-<<psignal>> returns no result.
-
-PORTABILITY
-POSIX.1-2008 requires <<psignal>>, but the strings issued vary from one
-implementation to another.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <stdio.h>
 #include <string.h>
 
-_VOID
-_DEFUN(psignal, (sig, s),
-       int sig _AND
-       _CONST char *s)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Writes signal information to standard error.
+ *
+ * @details Writes a language-dependent message associated
+ * with a signal number to the standard error stream.
+ */
+void psignal(int sig, const char *s)
 {
   if (s != NULL && *s != '\0')
     fprintf (stderr, "%s: %s\n", s, strsignal (sig));
   else
     fprintf (stderr, "%s\n", strsignal (sig));
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

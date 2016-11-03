@@ -1,37 +1,21 @@
 /*
-FUNCTION
-	<<stpcpy>>---copy string returning a pointer to its end
-
-INDEX
-	stpcpy
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char *stpcpy(char *restrict <[dst]>, const char *restrict <[src]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *stpcpy(<[dst]>, <[src]>)
-	char *<[dst]>;
-	char *<[src]>;
-
-DESCRIPTION
-	<<stpcpy>> copies the string pointed to by <[src]>
-	(including the terminating null character) to the array
-	pointed to by <[dst]>.
-
-RETURNS
-	This function returns a pointer to the end of the destination string,
-	thus pointing to the trailing '\0'.
-
-PORTABILITY
-<<stpcpy>> is a GNU extension, candidate for inclusion into POSIX/SUSv4.
-
-<<stpcpy>> requires no supporting OS subroutines.
-
-QUICKREF
-	stpcpy gnu
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <limits.h>
@@ -58,10 +42,18 @@ QUICKREF
 #error long int is not a 32bit or 64bit byte
 #endif
 
-char*
-_DEFUN (stpcpy, (dst, src),
-	char *__restrict dst _AND
-	_CONST char *__restrict src)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Copies a string and return a pointer to the end of the result.
+ *
+ * @details Copies the string pointed to by @p src (including the terminating
+ * NUL character) into the array pointed to by @p dst.
+ *
+ * @return Returns a pointer to the terminating NUL character copied into the 
+ * @p dst buffer.
+ */
+char* stpcpy(char *restrict dst, const char *restrict src)
 {
 #if !defined(PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__)
   long *aligned_dst;
@@ -89,3 +81,5 @@ _DEFUN (stpcpy, (dst, src),
     ;
   return --dst;
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

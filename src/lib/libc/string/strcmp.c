@@ -1,39 +1,21 @@
 /*
-FUNCTION
-	<<strcmp>>---character string compare
-	
-INDEX
-	strcmp
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	int strcmp(const char *<[a]>, const char *<[b]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	int strcmp(<[a]>, <[b]>)
-	char *<[a]>;
-	char *<[b]>;
-
-DESCRIPTION
-	<<strcmp>> compares the string at <[a]> to
-	the string at <[b]>.
-
-RETURNS
-	If <<*<[a]>>> sorts lexicographically after <<*<[b]>>>,
-	<<strcmp>> returns a number greater than zero.  If the two
-	strings match, <<strcmp>> returns zero.  If <<*<[a]>>>
-	sorts lexicographically before <<*<[b]>>>, <<strcmp>> returns a
-	number less than zero.
-
-PORTABILITY
-<<strcmp>> is ANSI C.
-
-<<strcmp>> requires no supporting OS subroutines.
-
-QUICKREF
-	strcmp ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <limits.h>
@@ -57,10 +39,17 @@ QUICKREF
 #error long int is not a 32bit or 64bit byte
 #endif
 
-int
-_DEFUN (strcmp, (s1, s2),
-	_CONST char *s1 _AND
-	_CONST char *s2)
+/**
+ * @brief Compares two strings.
+ *
+ * @details Compares the string pointed to by @p s1 to the string
+ * pointed to by @p s2.
+ *
+ * @return Returns an integer greater than, equal to, or less than 0,
+ * if the string pointed to by @p s1 is greater than, equal to, or 
+ * less than the string pointed to by @p s2, respectively.
+ */
+int strcmp(const char *s1, const char *s2)
 { 
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
   while (*s1 != '\0' && *s1 == *s2)
