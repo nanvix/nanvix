@@ -1,38 +1,21 @@
 /*
-FUNCTION
-        <<memcpy>>---copy memory regions
-
-ANSI_SYNOPSIS
-        #include <string.h>
-        void* memcpy(void *restrict <[out]>, const void *restrict <[in]>,
-                     size_t <[n]>);
-
-TRAD_SYNOPSIS
-        #include <string.h>
-        void *memcpy(<[out]>, <[in]>, <[n]>
-        void *<[out]>;
-        void *<[in]>;
-        size_t <[n]>;
-
-DESCRIPTION
-        This function copies <[n]> bytes from the memory region
-        pointed to by <[in]> to the memory region pointed to by
-        <[out]>.
-
-        If the regions overlap, the behavior is undefined.
-
-RETURNS
-        <<memcpy>> returns a pointer to the first byte of the <[out]>
-        region.
-
-PORTABILITY
-<<memcpy>> is ANSI C.
-
-<<memcpy>> requires no supporting OS subroutines.
-
-QUICKREF
-        memcpy ansi pure
-	*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <string.h>
@@ -50,17 +33,21 @@ QUICKREF
 /* Threshhold for punting to the byte copier.  */
 #define TOO_SMALL(LEN)  ((LEN) < BIGBLOCKSIZE)
 
-_PTR
-_DEFUN (memcpy, (dst0, src0, len0),
-	_PTR __restrict dst0 _AND
-	_CONST _PTR __restrict src0 _AND
-	size_t len0)
+/**
+ * @brief Copies bytes in memory.
+ *
+ * @details Copies @p len0 bytes from the object pointed to by @p src0 
+ * into the object pointed to by @p dst0.
+ *
+ * @return Returns @p dst0.
+ */
+void *memcpy(void *restrict dst0, const void *restrict src0, size_t len0)
 {
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
   char *dst = (char *) dst0;
   char *src = (char *) src0;
 
-  _PTR save = dst0;
+  void *save = dst0;
 
   while (len0--)
     {
@@ -70,9 +57,9 @@ _DEFUN (memcpy, (dst0, src0, len0),
   return save;
 #else
   char *dst = dst0;
-  _CONST char *src = src0;
+  const char *src = src0;
   long *aligned_dst;
-  _CONST long *aligned_src;
+  const long *aligned_src;
 
   /* If the size is small, or either SRC or DST is unaligned,
      then punt into the byte copy loop.  This should be rare.  */

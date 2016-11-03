@@ -1,44 +1,21 @@
 /*
-FUNCTION
-	<<stpncpy>>---counted copy string returning a pointer to its end
-
-INDEX
-	stpncpy
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char *stpncpy(char *restrict <[dst]>, const char *restrict <[src]>,
-                      size_t <[length]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *stpncpy(<[dst]>, <[src]>, <[length]>)
-	char *<[dst]>;
-	char *<[src]>;
-	size_t <[length]>;
-
-DESCRIPTION
-	<<stpncpy>> copies not more than <[length]> characters from the
-	the string pointed to by <[src]> (including the terminating
-	null character) to the array pointed to by <[dst]>.  If the
-	string pointed to by <[src]> is shorter than <[length]>
-	characters, null characters are appended to the destination
-	array until a total of <[length]> characters have been
-	written.
-
-RETURNS
-	This function returns a pointer to the end of the destination string,
-	thus pointing to the trailing '\0', or, if the destination string is
-	not null-terminated, pointing to dst + n.
-
-PORTABILITY
-<<stpncpy>> is a GNU extension, candidate for inclusion into POSIX/SUSv4.
-
-<<stpncpy>> requires no supporting OS subroutines.
-
-QUICKREF
-	stpncpy gnu
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <limits.h>
@@ -67,11 +44,19 @@ QUICKREF
 
 #define TOO_SMALL(LEN) ((LEN) < sizeof (long))
 
-char *
-_DEFUN (stpncpy, (dst, src),
-	char *__restrict dst _AND
-	_CONST char *__restrict src _AND
-	size_t count)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Copies fixed length string, returning a pointer to the array end.
+ *
+ * @details Copies not more than @p count bytes (bytes that follow a NUL
+ * character are not copied) from the array pointed to by @p src to the
+ * array pointed to by @p dst.
+ *
+ * @return If a NUL character is written to the destination, returns the 
+ * address of the first such NUL character. Otherwise, returns &dst[n].
+ */
+char *stpncpy(char *restrict dst, const char *restrict src, size_t count)
 {
   char *ret = NULL;
 
@@ -113,3 +98,5 @@ _DEFUN (stpncpy, (dst, src),
 
   return ret ? ret : dst;
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

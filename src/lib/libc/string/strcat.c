@@ -1,37 +1,21 @@
 /*
-FUNCTION
-	<<strcat>>---concatenate strings
-
-INDEX
-	strcat
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char *strcat(char *restrict <[dst]>, const char *restrict <[src]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *strcat(<[dst]>, <[src]>)
-	char *<[dst]>;
-	char *<[src]>;
-
-DESCRIPTION
-	<<strcat>> appends a copy of the string pointed to by <[src]>
-	(including the terminating null character) to the end of the
-	string pointed to by <[dst]>.  The initial character of
-	<[src]> overwrites the null character at the end of <[dst]>.
-
-RETURNS
-	This function returns the initial value of <[dst]>
-
-PORTABILITY
-<<strcat>> is ANSI C.
-
-<<strcat>> requires no supporting OS subroutines.
-
-QUICKREF
-	strcat ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <limits.h>
@@ -55,14 +39,17 @@ QUICKREF
 #error long int is not a 32bit or 64bit byte
 #endif
 
-
-/*SUPPRESS 560*/
-/*SUPPRESS 530*/
-
-char *
-_DEFUN (strcat, (s1, s2),
-	char *__restrict s1 _AND
-	_CONST char *__restrict s2)
+/**
+ * @brief Concatenates two strings.
+ *
+ * @details Appends a copy of the string pointed to by @p s2
+ * (including the terminating NUL character) to the end of the
+ * string pointed to by @p s1. The initial byte of s2 overwrites
+ * the NUL character at the end of @p s1.
+ *
+ * @return Returns @p s1.
+ */
+char *strcat(char *restrict s1, const char *restrict s2)
 {
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
   char *s = s1;

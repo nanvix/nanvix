@@ -1,40 +1,21 @@
 /*
-FUNCTION
-	<<strncmp>>---character string compare
-	
-INDEX
-	strncmp
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	int strncmp(const char *<[a]>, const char * <[b]>, size_t <[length]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	int strncmp(<[a]>, <[b]>, <[length]>)
-	char *<[a]>;
-	char *<[b]>;
-	size_t <[length]>
-
-DESCRIPTION
-	<<strncmp>> compares up to <[length]> characters
-	from the string at <[a]> to the string at <[b]>.
-
-RETURNS
-	If <<*<[a]>>> sorts lexicographically after <<*<[b]>>>,
-	<<strncmp>> returns a number greater than zero.  If the two
-	strings are equivalent, <<strncmp>> returns zero.  If <<*<[a]>>>
-	sorts lexicographically before <<*<[b]>>>, <<strncmp>> returns a
-	number less than zero.
-
-PORTABILITY
-<<strncmp>> is ANSI C.
-
-<<strncmp>> requires no supporting OS subroutines.
-
-QUICKREF
-	strncmp ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <limits.h>
@@ -58,11 +39,19 @@ QUICKREF
 #error long int is not a 32bit or 64bit byte
 #endif
 
-int 
-_DEFUN (strncmp, (s1, s2, n),
-	_CONST char *s1 _AND
-	_CONST char *s2 _AND
-	size_t n)
+/**
+ * @brief Compares part of two strings.
+ *
+ * @details Compares not more than n bytes (bytes that
+ * follow a NUL character are not compared) from the 
+ * array pointed to by @p s1 to the array pointed to by @p s2.
+ *
+ * @return Returns an integer greater than, equal to, or less 
+ * than 0, if the possibly null-terminated array pointed to by
+ * @p s1 is greater than, equal to, or less than the possibly 
+ * null-terminated array pointed to by @p s2 respectively.
+ */
+int strncmp(const char *s1, const char *s2, size_t n)
 {
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
   if (n == 0)

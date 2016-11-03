@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /* This file may have been modified by DJ Delorie (Jan 1991).  If so,
 ** these modifications are Copyright (C) 1991 DJ Delorie.
 */
@@ -30,10 +49,9 @@
 /* _putenv_r - reentrant version of putenv that either adds
                or replaces the environment variable "name"
                with "value" which is specified by str as "name=value". */
-int
-_DEFUN (_putenv_r, (reent_ptr, str),
-	struct _reent *reent_ptr _AND
-	char   *str)
+#ifdef _XOPEN_SOURCE
+
+int _putenv_r(struct _reent *reent_ptr, char *str)
 {
   register char *p, *equal;
   int rval;
@@ -55,3 +73,5 @@ _DEFUN (_putenv_r, (reent_ptr, str),
 
   return rval;
 }
+
+#endif /* _XOPEN_SOURCE */

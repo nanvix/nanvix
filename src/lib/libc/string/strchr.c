@@ -1,37 +1,21 @@
 /*
-FUNCTION
-	<<strchr>>---search for character in string
-
-INDEX
-	strchr
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char * strchr(const char *<[string]>, int <[c]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char * strchr(<[string]>, <[c]>);
-	const char *<[string]>;
-	int <[c]>;
-
-DESCRIPTION
-	This function finds the first occurence of <[c]> (converted to
-	a char) in the string pointed to by <[string]> (including the
-	terminating null character).
-
-RETURNS
-	Returns a pointer to the located character, or a null pointer
-	if <[c]> does not occur in <[string]>.
-
-PORTABILITY
-<<strchr>> is ANSI C.
-
-<<strchr>> requires no supporting OS subroutines.
-
-QUICKREF
-	strchr ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <limits.h>
@@ -57,12 +41,19 @@ QUICKREF
    to fill (long)MASK. */
 #define DETECTCHAR(X,MASK) (DETECTNULL(X ^ MASK))
 
-char *
-_DEFUN (strchr, (s1, i),
-	_CONST char *s1 _AND
-	int i)
+/**
+ * @brief String scanning operation.
+ *
+ * @details Locates the first occurrence of @p i (converted to a char)
+ * in the string pointed to by @p s1. The terminating NUL character is
+ * considered to be part of the string.
+ *
+ * @return Returns a pointer to the byte, or a null pointer if the byte
+ * was not found.
+ */
+char *strchr(const char *s1, int i)
 {
-  _CONST unsigned char *s = (_CONST unsigned char *)s1;
+  const unsigned char *s = (const unsigned char *)s1;
   unsigned char c = i;
 
 #if !defined(PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__)

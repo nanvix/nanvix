@@ -1,38 +1,21 @@
 /*
-FUNCTION
-        <<memccpy>>---copy memory regions with end-token check
-
-ANSI_SYNOPSIS
-        #include <string.h>
-        void* memccpy(void *restrict <[out]>, const void *restrict <[in]>, 
-                      int <[endchar]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-        void *memccpy(<[out]>, <[in]>, <[endchar]>, <[n]>
-        void *<[out]>;
-        void *<[in]>;
-	int <[endchar]>;
-        size_t <[n]>;
-
-DESCRIPTION
-        This function copies up to <[n]> bytes from the memory region
-        pointed to by <[in]> to the memory region pointed to by
-        <[out]>.  If a byte matching the <[endchar]> is encountered,
-	the byte is copied and copying stops.
-
-        If the regions overlap, the behavior is undefined.
-
-RETURNS
-        <<memccpy>> returns a pointer to the first byte following the
-	<[endchar]> in the <[out]> region.  If no byte matching
-	<[endchar]> was copied, then <<NULL>> is returned.
-
-PORTABILITY
-<<memccpy>> is a GNU extension.
-
-<<memccpy>> requires no supporting OS subroutines.
-
-	*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <stddef.h>
@@ -61,13 +44,22 @@ PORTABILITY
 #endif
 #endif
 
+#ifdef _XOPEN_SOURCE
 
-_PTR
-_DEFUN (memccpy, (dst0, src0, endchar, len0),
-	_PTR __restrict dst0 _AND
-	_CONST _PTR __restrict src0 _AND
-	int endchar0 _AND
-	size_t len0)
+/**
+ * @brief Copies bytes in memory.
+ *
+ * @details Copies bytes from memory area @p src0 into @p dst0,
+ * stopping after the first occurrence of byte @p endchar0 
+ * (converted to an unsigned char) is copied, or after @p len0
+ * bytes are copied, whichever comes first.
+ *
+ * @return Returns a pointer to the byte after the copy of @p endchar 
+ * in @p dst0, or a null pointer if @p endchar0 was not found in the
+ * first @p len0 bytes of @p src0.
+ */
+void *memccpy(void *restrict dst0, const void* restrict src0, int endchar0, 
+  size_t len0)
 {
 
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
@@ -142,3 +134,5 @@ _DEFUN (memccpy, (dst0, src0, endchar, len0),
   return ptr;
 #endif /* not PREFER_SIZE_OVER_SPEED */
 }
+
+#endif /* _XOPEN_SOURCE */

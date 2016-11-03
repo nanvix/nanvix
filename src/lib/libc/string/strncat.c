@@ -1,46 +1,21 @@
 /*
-FUNCTION
-	<<strncat>>---concatenate strings
-
-INDEX
-	strncat
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char *strncat(char *restrict <[dst]>, const char *restrict <[src]>,
-                      size_t <[length]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *strncat(<[dst]>, <[src]>, <[length]>)
-	char *<[dst]>;
-	char *<[src]>;
-	size_t <[length]>;
-
-DESCRIPTION
-	<<strncat>> appends not more than <[length]> characters from
-	the string pointed to by <[src]> (including the	terminating
-	null character) to the end of the string pointed to by
-	<[dst]>.  The initial character of <[src]> overwrites the null
-	character at the end of <[dst]>.  A terminating null character
-	is always appended to the result
-
-WARNINGS
-	Note that a null is always appended, so that if the copy is
-	limited by the <[length]> argument, the number of characters
-	appended to <[dst]> is <<n + 1>>.
-
-RETURNS
-	This function returns the initial value of <[dst]>
-
-PORTABILITY
-<<strncat>> is ANSI C.
-
-<<strncat>> requires no supporting OS subroutines.
-
-QUICKREF
-	strncat ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <limits.h>
@@ -64,11 +39,19 @@ QUICKREF
 #error long int is not a 32bit or 64bit byte
 #endif
 
-char *
-_DEFUN (strncat, (s1, s2, n),
-	char *__restrict s1 _AND
-	_CONST char *__restrict s2 _AND
-	size_t n)
+/**
+ * @brief Concatenates a string with part of another.
+ *
+ * @details Appends not more than @p n bytes (a NUL character
+ * and bytes that follow it are not appended) from the array
+ * pointed to by s2 to the end of the string pointed to by @p s1.
+ * The initial byte of @p s2 overwrites the NUL character at the 
+ * end of @p s1. A terminating NUL character is always appended to
+ * the result.
+ *
+ * @return Returns @p s1.
+ */
+char * strncat(char *restrict s1, const char *restrict s2, size_t n)
 {
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
   char *s = s1;

@@ -1,35 +1,21 @@
 /*
-FUNCTION
-	<<strlen>>---character string length
-
-INDEX
-	strlen
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	size_t strlen(const char *<[str]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	size_t strlen(<[str]>)
-	char *<[src]>;
-
-DESCRIPTION
-	The <<strlen>> function works out the length of the string
-	starting at <<*<[str]>>> by counting chararacters until it
-	reaches a <<NULL>> character.
-
-RETURNS
-	<<strlen>> returns the character count.
-
-PORTABILITY
-<<strlen>> is ANSI C.
-
-<<strlen>> requires no supporting OS subroutines.
-
-QUICKREF
-	strlen ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <string.h>
@@ -53,11 +39,18 @@ QUICKREF
 #error long int is not a 32bit or 64bit byte
 #endif
 
-size_t
-_DEFUN (strlen, (str),
-	_CONST char *str)
+/**
+ * @brief Gets length of fixed size string.
+ *
+ * @details Computes the number of bytes in the string to
+ * which @p str points, not including the terminating NUL
+ * character.
+ *
+ * @return Returns the length of @p str.
+ */
+size_t strlen(const char *str)
 {
-  _CONST char *start = str;
+  const char *start = str;
 
 #if !defined(PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__)
   unsigned long *aligned_addr;

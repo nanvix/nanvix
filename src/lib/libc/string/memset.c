@@ -1,37 +1,21 @@
 /*
-FUNCTION
-	<<memset>>---set an area of memory
-
-INDEX
-	memset
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	void *memset(void *<[dst]>, int <[c]>, size_t <[length]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	void *memset(<[dst]>, <[c]>, <[length]>)
-	void *<[dst]>;
-	int <[c]>;
-	size_t <[length]>;
-
-DESCRIPTION
-	This function converts the argument <[c]> into an unsigned
-	char and fills the first <[length]> characters of the array
-	pointed to by <[dst]> to the value.
-
-RETURNS
-	<<memset>> returns the value of <[dst]>.
-
-PORTABILITY
-<<memset>> is ANSI C.
-
-    <<memset>> requires no supporting OS subroutines.
-
-QUICKREF
-	memset ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include "local.h"
@@ -40,12 +24,15 @@ QUICKREF
 #define UNALIGNED(X)   ((long)X & (LBLOCKSIZE - 1))
 #define TOO_SMALL(LEN) ((LEN) < LBLOCKSIZE)
 
-_PTR
-__inhibit_loop_to_libcall
-_DEFUN (memset, (m, c, n),
-	_PTR m _AND
-	int c _AND
-	size_t n)
+/**
+ * @brief Sets bytes in memory.
+ *
+ * @details Copies @p c into each of the first @p n bytes of
+ * the object pointed to by @p m.
+ *
+ * @return Returns @p m.
+ */
+void *memset(void *m, int c, size_t n)
 {
   char *s = (char *) m;
 
