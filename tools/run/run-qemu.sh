@@ -18,27 +18,11 @@
 #
 
 # NOTES:
-#   - This script should work in any Debian-based Linux distribution.
+#   - This script should work in any Linux distribution.
 #   - You should run this script with superuser privileges.
 #
 
-# Set working directory.
-export CURDIR=`pwd`
-export WORKDIR=$CURDIR/nanvix-toolchain
-mkdir -p $WORKDIR
-cd $WORKDIR
-
-# Get bochs.
-wget "http://wiki.qemu-project.org/download/qemu-2.5.0.tar.bz2"
-
-# Build Bochs
-tar -xjvf qemu-2.5.0.tar.bz2
-cd qemu-2.5.0
-./configure
-make all
-make install
-
-# Cleans files.
-cd $WORKDIR
-cd ..
-rm -R -f $WORKDIR
+qemu-system-i386                                \
+	-drive file=nanvix.img,format=raw,if=floppy \
+	-m size=256                                 \
+	-mem-prealloc
