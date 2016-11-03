@@ -169,7 +169,7 @@ PRIVATE void inode_write(struct inode *ip)
 		superblock_unlock(sb);
 	}
 	
-	d_i = &(((struct d_inode *)buf->data)[(ip->num - 1)%INODES_PER_BLOCK]);
+	d_i = &(((struct d_inode *)buffer_data(buf))[(ip->num - 1)%INODES_PER_BLOCK]);
 	
 	/* Write inode to buffer. */
 	d_i->i_mode = ip->mode;
@@ -226,7 +226,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 		goto error1;
 	}
 	
-	d_i = &(((struct d_inode *)buf->data)[(num - 1)%INODES_PER_BLOCK]);
+	d_i = &(((struct d_inode *)buffer_data(buf))[(num - 1)%INODES_PER_BLOCK]);
 	
 	/* Invalid disk inode. */ 
 	if (d_i->i_nlinks == 0)
@@ -279,9 +279,9 @@ PRIVATE void inode_free(struct inode *ip)
 	
 	superblock_lock(sb = ip->sb);
 	
-	bitmap_clear(sb->imap[blk]->data, (ip->num - 1)%(BLOCK_SIZE << 3));
+	bitmap_clear(buffer_data(sb->imap[blk]), (ip->num - 1)%(BLOCK_SIZE << 3));
 	
-	sb->imap[blk]->flags |= BUFFER_DIRTY;
+	buffer_dirty(sb->imap[blk], 1);
 	if (ip->num < sb->isearch)
 		sb->isearch = ip->num;
 	sb->flags |= SUPERBLOCK_DIRTY;
@@ -411,7 +411,7 @@ PUBLIC struct inode *inode_alloc(struct superblock *sb)
 	/* Search for free inode. */
 	for (i = 0; i < sb->imap_blocks; i++)
 	{
-		bit = bitmap_first_free(sb->imap[i]->data, BLOCK_SIZE);
+		bit = bitmap_first_free(buffer_data(sb->imap[i]), BLOCK_SIZE);
 		
 		/* Found. */
 		if (bit != BITMAP_FULL)
@@ -436,8 +436,8 @@ found:
 		goto error0;
 	
 	/* Allocate inode. */
-	bitmap_set(sb->imap[i]->data, bit);
-	sb->imap[i]->flags |= BUFFER_DIRTY;
+	bitmap_set(buffer_data(sb->imap[i]), bit);
+	buffer_dirty(sb->imap[i], 1);
 	sb->flags |= SUPERBLOCK_DIRTY;
 	
 	/* 

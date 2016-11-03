@@ -104,19 +104,19 @@ PRIVATE void superblock_write(struct superblock *sb)
 	/* Write inode map buffers. */
 	for (unsigned i = 0; i < sb->imap_blocks; i++)
 	{
-		sb->imap[i]->count++;
+		buffer_share(sb->imap[i]);
 		bwrite(sb->imap[i]);
 	}
 	
 	/* Write zone map buffers. */
 	for (unsigned i = 0; i < sb->zmap_blocks; i++)
 	{
-		sb->zmap[i]->count++;
+		buffer_share(sb->zmap[i]);
 		bwrite(sb->zmap[i]);
 	}
 	
 	/* Write superblock buffer. */
-	sb->buf->count++;
+	buffer_share(sb->buf);
 	bwrite(sb->buf);
 	
 	sb->flags &= ~SUPERBLOCK_DIRTY;
@@ -278,7 +278,7 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	
 	/* Read superblock from device. */
 	buf = bread(dev, 1);
-	d_sb = (struct d_superblock *)buf->data;
+	d_sb = (struct d_superblock *)buffer_data(buf);
 	
 	/* Bad magic number. */
 	if (d_sb->s_magic != SUPER_MAGIC)
@@ -377,7 +377,7 @@ PUBLIC void superblock_stat(struct superblock *sb, struct ustat *ubuf)
 	for (int i = 0; i < bmap_size; i++)
 	{
 		for (int j = 0; j < (BLOCK_SIZE >> 2); j++)
-			tfree += bitmap_nclear(sb->zmap[i]->data, BLOCK_SIZE);
+			tfree += bitmap_nclear(buffer_data(sb->zmap[i]), BLOCK_SIZE);
 	}
 	
 	/* Count number of free inodes. */
@@ -386,7 +386,7 @@ PUBLIC void superblock_stat(struct superblock *sb, struct ustat *ubuf)
 	for (int i = 0; i < imap_size; i++)
 	{
 		for (int j = 0; j < (BLOCK_SIZE >> 2); j++)
-			tinode += bitmap_nclear(sb->imap[i]->data, BLOCK_SIZE);
+			tinode += bitmap_nclear(buffer_data(sb->imap[i]), BLOCK_SIZE);
 	}
 	
 	ubuf->f_tfree = tfree;

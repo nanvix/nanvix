@@ -56,7 +56,7 @@ PRIVATE block_t block_alloc(struct superblock *sb)
 	blk = firstblk;
 	do
 	{
-		bit = bitmap_first_free(sb->zmap[blk]->data, BLOCK_SIZE);
+		bit = bitmap_first_free(buffer_data(sb->zmap[blk]), BLOCK_SIZE);
 		
 		/* Found. */
 		if (bit != BITMAP_FULL)
@@ -79,14 +79,14 @@ found:
 	sb->zsearch = num;
 	
 	/* Allocate block. */
-	bitmap_set(sb->zmap[blk]->data, bit);
-	sb->zmap[blk]->flags |= BUFFER_DIRTY;
+	bitmap_set(buffer_data(sb->zmap[blk]), bit);
+	buffer_dirty(sb->zmap[blk], 1);
 	sb->flags |= SUPERBLOCK_DIRTY;
 	
 	/* Clean block to avoid security issues. */
 	buf = bread(sb->dev, blk);	
-	kmemset(buf->data, 0, BLOCK_SIZE);
-	buf->flags |= BUFFER_DIRTY;
+	kmemset(buffer_data(buf), 0, BLOCK_SIZE);
+	buffer_dirty(buf, 1);
 	brelse(buf);
 	
 	return (num);
@@ -129,8 +129,8 @@ PRIVATE void block_free_direct(struct superblock *sb, block_t num)
 	off = num%(BLOCK_SIZE << 3);
 	
 	/* Free disk block. */
-	bitmap_clear(sb->zmap[idx]->data, off);
-	sb->zmap[idx]->flags |= BUFFER_DIRTY;
+	bitmap_clear(buffer_data(sb->zmap[idx]), off);
+	buffer_dirty(sb->zmap[idx], 1);
 	sb->flags |= SUPERBLOCK_DIRTY;
 }
 
@@ -158,7 +158,7 @@ PRIVATE void block_free_indirect(struct superblock *sb, block_t num)
 		
 	/* Free indirect disk block. */
 	for (i = 0; i < NR_SINGLE; i++)
-		block_free_direct(sb, ((block_t *)buf->data)[i]);
+		block_free_direct(sb, ((block_t *)buffer_data(buf))[i]);
 	block_free_direct(sb, num);
 		
 	brelse(buf);
@@ -188,7 +188,7 @@ PRIVATE void block_free_dindirect(struct superblock *sb, block_t num)
 		
 	/* Free direct zone. */
 	for (i = 0; i < NR_SINGLE; i++)
-		block_free_indirect(sb, ((block_t *)buf->data)[i]);
+		block_free_indirect(sb, ((block_t *)buffer_data(buf))[i]);
 	block_free_direct(sb, num);
 	
 	brelse(buf);
@@ -252,7 +252,7 @@ PUBLIC block_t create_indirect_block
 {
 	block_t phys; /* Physical block number. */
 
-	if (((block_t *)dest->data)[offset] == BLOCK_NULL && create)
+	if (((block_t *)buffer_data(dest))[offset] == BLOCK_NULL && create)
 	{
 		/* Allocate an block. */
 		superblock_lock(ip->sb);
@@ -261,8 +261,8 @@ PUBLIC block_t create_indirect_block
 
 		if (phys != BLOCK_NULL)
 		{
-			((block_t *)dest->data)[offset] = phys;
-			dest->flags |= BUFFER_DIRTY;
+			((block_t *)buffer_data(dest))[offset] = phys;
+			buffer_dirty(dest, 1);
 			inode_touch(ip);
 			brelse(dest);
 			return (phys);
@@ -276,7 +276,7 @@ PUBLIC block_t create_indirect_block
 	else
 	{
 		brelse(dest);
-		return ((block_t *)dest->data)[offset];
+		return ((block_t *)buffer_data(dest))[offset];
 	}
 }
 
@@ -404,7 +404,7 @@ PUBLIC block_t block_map(struct inode *ip, off_t off, int create)
 		buf = bread(ip->dev, phys);
 		
 		/* Create direct block. */
-		if (((block_t *)buf->data)[logic] == BLOCK_NULL && create)
+		if (((block_t *)buffer_data(buf))[logic] == BLOCK_NULL && create)
 		{
 			superblock_lock(ip->sb);
 			phys = block_alloc(ip->sb);
@@ -412,15 +412,15 @@ PUBLIC block_t block_map(struct inode *ip, off_t off, int create)
 			
 			if (phys != BLOCK_NULL)
 			{
-				((block_t *)buf->data)[logic] = phys;
-				buf->flags |= BUFFER_DIRTY;
+				((block_t *)buffer_data(buf))[logic] = phys;
+				buffer_dirty(buf, 1);
 				inode_touch(ip);
 			}
 		}
 		
 		brelse(buf);
 		
-		return (((block_t *)buf->data)[logic]);
+		return (((block_t *)buffer_data(buf))[logic]);
 	}
 	
 	logic = off - REMAINING_OFFSET;

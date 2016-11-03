@@ -83,11 +83,11 @@ PRIVATE struct d_dirent *dirent_search
 		if ((*buf) == NULL)
 		{
 			(*buf) = bread(dip->dev, blk);
-			d = (*buf)->data;
+			d = buffer_data(*buf);
 		}
 		
 		/* Get next block */
-		else if ((char *)d >= BLOCK_SIZE + (char *) (*buf)->data)
+		else if ((char *)d >= BLOCK_SIZE + (char *) buffer_data(*buf))
 		{
 			brelse((*buf));
 			(*buf) = NULL;
@@ -153,7 +153,7 @@ PRIVATE struct d_dirent *dirent_search
 		
 		(*buf) = bread(dip->dev, blk);
 		entry %= (BLOCK_SIZE/sizeof(struct d_dirent));
-		d = &((struct d_dirent *)((*buf)->data))[entry];
+		d = &((struct d_dirent *)(buffer_data(*buf)))[entry];
 		
 		return (d);
 	}
@@ -245,7 +245,8 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 	
 	/* Remove directory entry. */
 	d->d_ino = INODE_NULL;
-	buf->flags |= BUFFER_DIRTY;
+	
+	buffer_dirty(buf, 1);
 	inode_touch(dinode);
 	file->nlinks--;
 	inode_touch(file);
@@ -271,7 +272,7 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 	
 	kstrncpy(d->d_name, name, NAME_MAX);
 	d->d_ino = inode->num;
-	buf->flags |= BUFFER_DIRTY;
+	buffer_dirty(buf, 1);
 	brelse(buf);
 	
 	return (0);
@@ -317,7 +318,7 @@ PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 			}
 		}
 		
-		kmemcpy(p, (char *)bbuf->data + blkoff, chunk);
+		kmemcpy(p, (char *)buffer_data(bbuf) + blkoff, chunk);
 		brelse(bbuf);
 		
 		n -= chunk;
@@ -360,8 +361,8 @@ PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 		blkoff = off % BLOCK_SIZE;
 		
 		chunk = (n < BLOCK_SIZE - blkoff) ? n : BLOCK_SIZE - blkoff;
-		kmemcpy((char *)bbuf->data + blkoff, buf, chunk);
-		bbuf->flags |= BUFFER_DIRTY;
+		kmemcpy((char *)buffer_data(bbuf) + blkoff, buf, chunk);
+		buffer_dirty(bbuf, 1);
 		brelse(bbuf);
 		
 		n -= chunk;

@@ -34,60 +34,10 @@
 /*============================================================================*
  *                              Buffer Library                                *
  *============================================================================*/
-	
- 	/**
- 	 * @addtogroup Buffer
- 	 */
-	/**@{*/
-	
-	/**
-	 * @brief Buffer flags.
-	 */
-	enum buffer_flags
-	{
-		BUFFER_DIRTY  = (1 << 0), /**< Dirty?             */
-		BUFFER_VALID  = (1 << 1), /**< Valid?             */
-		BUFFER_LOCKED = (1 << 2), /**< Locked?            */
-		BUFFER_SYNC   = (1 << 3)  /**< Synchronous write? */
-	};
 
-	/**
-	 * @brief Block buffer.
-	 */
-	struct buffer
-	{
-		/**
-		 * @name General information
-		 */
-		/**@{*/
-		dev_t dev;      /**< Device.          */
-		block_t num;    /**< Block number.    */
-		void *data;     /**< Underlying data. */
-		unsigned count; /**< Reference count. */
-		/**@}*/
-		
-		/**
-		 * @name Status information
-		 */
-		/**@{*/
-		enum buffer_flags flags; /**< Flags.          */
-		struct process *chain;   /**< Sleeping chain. */
-		/**@}*/
-		
-		/**
-		 * @name Cache information.
-		 */
-		/**@{*/
-		struct buffer *free_next; /**< Next buffer in the free list.      */
-		struct buffer *free_prev; /**< Previous buffer in the free list.  */
-		struct buffer *hash_next; /**< Next buffer in the hash table.     */
-		struct buffer *hash_prev; /**< Previous buffer in the hash table. */
-		/**@}*/
-	};
-	
-	/**@}*/
 	
 	/* Forward definitions. */
+	EXTERN void buffer_share(struct buffer *);
 	EXTERN void binit(void);
 	
 /*============================================================================*
