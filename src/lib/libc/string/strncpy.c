@@ -1,42 +1,21 @@
 /*
-FUNCTION
-	<<strncpy>>---counted copy string
-
-INDEX
-	strncpy
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char *strncpy(char *restrict <[dst]>, const char *restrict <[src]>,
-                      size_t <[length]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *strncpy(<[dst]>, <[src]>, <[length]>)
-	char *<[dst]>;
-	char *<[src]>;
-	size_t <[length]>;
-
-DESCRIPTION
-	<<strncpy>> copies not more than <[length]> characters from the
-	the string pointed to by <[src]> (including the terminating
-	null character) to the array pointed to by <[dst]>.  If the
-	string pointed to by <[src]> is shorter than <[length]>
-	characters, null characters are appended to the destination
-	array until a total of <[length]> characters have been
-	written.
-
-RETURNS
-	This function returns the initial value of <[dst]>.
-
-PORTABILITY
-<<strncpy>> is ANSI C.
-
-<<strncpy>> requires no supporting OS subroutines.
-
-QUICKREF
-	strncpy ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <limits.h>
@@ -65,15 +44,20 @@ QUICKREF
 
 #define TOO_SMALL(LEN) ((LEN) < sizeof (long))
 
-char *
-_DEFUN (strncpy, (dst0, src0),
-	char *__restrict dst0 _AND
-	_CONST char *__restrict src0 _AND
-	size_t count)
+/**
+ * @brief Copies fixed length string, returning a pointer to the array end.
+ *
+ * @details Copies not more than n bytes (bytes that follow a NUL
+ * character are not copied) from the array pointed to by @p src0 to 
+ * the array pointed to by @p dst0.
+ *
+ * @return Returns @p dst0.
+ */
+char *strncpy(char *restrict dst0, const char *restrict src0, size_t count)
 {
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
   char *dscan;
-  _CONST char *sscan;
+  const char *sscan;
 
   dscan = dst0;
   sscan = src0;
@@ -89,9 +73,9 @@ _DEFUN (strncpy, (dst0, src0),
   return dst0;
 #else
   char *dst = dst0;
-  _CONST char *src = src0;
+  const char *src = src0;
   long *aligned_dst;
-  _CONST long *aligned_src;
+  const long *aligned_src;
 
   /* If SRC and DEST is aligned and count large enough, then copy words.  */
   if (!UNALIGNED (src, dst) && !TOO_SMALL (count))

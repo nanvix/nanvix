@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1988 Regents of the University of California.
  * All rights reserved.
  *
@@ -29,11 +48,7 @@
 
 #include <string.h>
 
-char *
-_DEFUN (__strtok_r, (s, delim, lasts, skip_leading_delim),
-	register char *s _AND
-	register const char *delim _AND
-	char **lasts _AND
+char *__strtok_r(register char *s, register const char *delim, char **lasts,
 	int skip_leading_delim)
 {
 	register char *spanp;
@@ -89,11 +104,22 @@ cont:
 	/* NOTREACHED */
 }
 
-char *
-_DEFUN (strtok_r, (s, delim, lasts),
-	register char *__restrict s _AND
-	register const char *__restrict delim _AND
-	char **__restrict lasts)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Splits string into tokens.
+ *
+ * @details Same behaviour as strtok() except that is thread-safe and the
+ * argument @p lasts points to a user-provided pointer that allows to 
+ * maintain state between calls which scan the same string.
+ *
+ * @return Returns a pointer to the token found, or a null pointer when
+ * no token is found.
+ */
+char *strtok_r(register char *restrict s, register const char *restrict delim,
+	char **restrict lasts)
 {
 	return __strtok_r (s, delim, lasts, 1);
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

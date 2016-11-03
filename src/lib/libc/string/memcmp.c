@@ -1,40 +1,21 @@
 /*
-FUNCTION
-	<<memcmp>>---compare two memory areas
-
-INDEX
-	memcmp
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	int memcmp(const void *<[s1]>, const void *<[s2]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	int memcmp(<[s1]>, <[s2]>, <[n]>)
-	void *<[s1]>;
-	void *<[s2]>;
-	size_t <[n]>;
-
-DESCRIPTION
-	This function compares not more than <[n]> characters of the
-	object pointed to by <[s1]> with the object pointed to by <[s2]>.
-
-
-RETURNS
-	The function returns an integer greater than, equal to or
-	less than zero 	according to whether the object pointed to by
-	<[s1]> is greater than, equal to or less than the object
-	pointed to by <[s2]>.
-
-PORTABILITY
-<<memcmp>> is ANSI C.
-
-<<memcmp>> requires no supporting OS subroutines.
-
-QUICKREF
-	memcmp ansi pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 
@@ -49,11 +30,17 @@ QUICKREF
 /* Threshhold for punting to the byte copier.  */
 #define TOO_SMALL(LEN)  ((LEN) < LBLOCKSIZE)
 
-int
-_DEFUN (memcmp, (m1, m2, n),
-	_CONST _PTR m1 _AND
-	_CONST _PTR m2 _AND
-	size_t n)
+/**
+ * @brief Compares bytes in memory.
+ *
+ * @details Compare the first @p n bytes of the object pointed
+ * to by @p m1 to the first @p n bytes of the object pointed to by @p m2.
+ *
+ * @return Returns an integer greater than, equal to, or less than 0, if
+ * the object pointed to by s1 is greater than, equal to, or less than 
+ * the object pointed to by s2, respectively.
+ */
+int memcmp(const void *m1, const void *m2, size_t n)
 {
 #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
   unsigned char *s1 = (unsigned char *) m1;
@@ -110,4 +97,3 @@ _DEFUN (memcmp, (m1, m2, n),
   return 0;
 #endif /* not PREFER_SIZE_OVER_SPEED */
 }
-

@@ -1,38 +1,21 @@
 /*
-FUNCTION
-	<<strsignal>>---convert signal number to string
-
-INDEX
-	strsignal
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char *strsignal(int <[signal]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *strsignal(<[signal]>)
-	int <[signal]>;
-
-DESCRIPTION
-<<strsignal>> converts the signal number <[signal]> into a
-string.  If <[signal]> is not a known signal number, the result
-will be of the form "Unknown signal NN" where NN is the <[signal]>
-is a decimal number.
-
-RETURNS
-This function returns a pointer to a string.  Your application must
-not modify that string.
-
-PORTABILITY
-POSIX.1-2008 C requires <<strsignal>>, but does not specify the strings used
-for each signal number.
-
-<<strsignal>> requires no supporting OS subroutines.
-
-QUICKREF
-	strsignal pure
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*
  *  Written by Joel Sherrill <joel.sherrill@OARcorp.com>.
@@ -58,9 +41,17 @@ QUICKREF
 #include <stdio.h>
 #include <reent.h>
 
-char *
-_DEFUN (strsignal, (signal),
-	int signal)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Gets name of signal.
+ *
+ * @details Maps the signal number in @p signal to an 
+ * implementation-defined string and returns a pointer to it.
+ *
+ * @return Returns return a pointer to a string.
+ */
+char *strsignal(int signal)
 {
   char *buffer;
   struct _reent *ptr;
@@ -254,3 +245,5 @@ _DEFUN (strsignal, (signal),
 
   return buffer;
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

@@ -1,41 +1,37 @@
 /*
-FUNCTION
-	<<strpbrk>>---find characters in string
-
-INDEX
-	strpbrk
-
-ANSI_SYNOPSIS
-	#include <string.h>
-	char *strpbrk(const char *<[s1]>, const char *<[s2]>);
-
-TRAD_SYNOPSIS
-	#include <string.h>
-	char *strpbrk(<[s1]>, <[s2]>)
-	char *<[s1]>;
-	char *<[s2]>;
-
-DESCRIPTION
-	This function locates the first occurence in the string
-	pointed to by <[s1]> of any character in string pointed to by
-	<[s2]> (excluding the terminating null character).
-
-RETURNS
-	<<strpbrk>> returns a pointer to the character found in <[s1]>, or a
-	null pointer if no character from <[s2]> occurs in <[s1]>.
-
-PORTABILITY
-<<strpbrk>> requires no supporting OS subroutines.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 
-char *
-_DEFUN (strpbrk, (s1, s2),
-	_CONST char *s1 _AND
-	_CONST char *s2)
+/**
+ * @brief Scans a string for a byte.
+ *
+ * @details Locates the first occurrence in the string 
+ * pointed to by @p s1 of any byte from the string pointed
+ * to by @p s2.
+ *
+ * @return Returns a pointer to the byte or a null pointer if
+ * no byte from @p s2 occurs in @p s1.
+ */
+char *strpbrk(const char *s1, const char *s2)
 {
-  _CONST char *c = s2;
+  const char *c = s2;
   if (!*s1)
     return (char *) NULL;
 
