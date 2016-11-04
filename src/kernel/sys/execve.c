@@ -109,22 +109,24 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 		if (!(seg[i].p_flags ^ (PF_R | PF_X)))
 		{
 			preg = TEXT(curr_proc);
-			reg = xalloc(inode, seg[i].p_memsz);
+
+			/* Failed to allocate region. */
+			if ((reg = allocreg(S_IRUSR | S_IXUSR, seg[i].p_memsz, 0)) == NULL)
+				goto error0;
+
+			loadreg(inode, reg, seg[i].p_offset, seg[i].p_filesz);
 		}
 		
 		/* Data section. */
 		else
 		{
 			preg = DATA(curr_proc);
-			reg = allocreg(S_IRUSR | S_IWUSR, seg[i].p_memsz, 0);
-		}
 		
-		/* Failed to allocate region. */
-		if (reg == NULL)
-		{
-			brelse(header);
-			curr_proc->errno = -ENOMEM;
-			return (0);
+			/* Failed to allocate region. */
+			if ((reg = allocreg(S_IRUSR | S_IWUSR, seg[i].p_memsz, 0)) == NULL)
+				goto error0;
+
+			loadreg(inode, reg, seg[i].p_offset, seg[i].p_filesz);
 		}
 		
 		/* Attach memory region. */
@@ -135,17 +137,20 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 			curr_proc->errno = -ENOMEM;
 			return (0);
 		}
-		
-		loadreg(inode, reg, seg[i].p_offset, seg[i].p_filesz);
-		
+	
 		unlockreg(reg);	
 	}
-	
+
 	entry = elf->e_entry;
 	
 	brelse(header);
 	
 	return (entry);
+
+error0:
+	brelse(header);
+	curr_proc->errno = -ENOMEM;
+	return (0);
 }
 
 /*
@@ -353,6 +358,10 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		return (curr_proc->errno);
 	}
 
+	/* Detach process memory regions. */
+	for (i = 0; i < NR_PREGIONS; i++)
+		detachreg(curr_proc, &curr_proc->pregs[i]);
+
 	/* Get file's inode. */
 	if ((inode = inode_name(pathname)) == NULL)
 	{
@@ -382,10 +391,6 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		if (curr_proc->close & (1 << i))
 			do_close(i);
 	}
-
-	/* Detach process memory regions. */
-	for (i = 0; i < NR_PREGIONS; i++)
-		detachreg(curr_proc, &curr_proc->pregs[i]);
 	
 	/* Reset signal handlers. */
 	curr_proc->restorer = NULL;
@@ -397,6 +402,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 				curr_proc->handlers[i] = SIG_DFL;
 		}
 	}
+
 	
 	/* Load executable. */
 	if (!(entry = load_elf32(inode)))

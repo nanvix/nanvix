@@ -455,14 +455,14 @@ found:
 PUBLIC void freereg(struct region *reg)
 {
 	unsigned i, j, k;
+
+	/* Shared memory region. */
+	if (reg->count > 0)
+		kpanic("mm: freeing shared memory region");
 	
 	/* Sticky region. */
 	if (reg->flags & REGION_STICKY)
 		return;
-	
-	/* Release region inode. */
-	if (reg->file.inode != NULL)
-		inode_put(reg->file.inode);
 	
 	/* Free underlying mini regions and page tables. */
 	for (i = 0; i < MREGIONS; i++)
@@ -488,7 +488,7 @@ PUBLIC void freereg(struct region *reg)
 		freemreg(reg->mtab[i]);
 		reg->mtab[i] = NULL;
 	}
-	
+
 	reg->flags = REGION_FREE;
 }
 
@@ -621,7 +621,7 @@ PUBLIC int attachreg
 	reg->count++;
 	reg->preg = preg;
 	proc->size += reg->size;
-	
+
 	return (0);
 }
 
@@ -643,6 +643,10 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 	
 	lockreg(reg);
 	
+	/* Double free? */
+	if (reg->count == 0)
+		kpanic("mm: detaching memory region twice");
+
 	/* Detach region. */
 	addr = preg->start;
 	if (reg->flags & REGION_DOWNWARDS)
@@ -683,15 +687,20 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 				addr += (PGTAB_SIZE * REGION_PGTABS);
 		}
 	}
+	
+	/* Release underlying inode. */
+	if (reg->file.inode != NULL)
+	{
+		inode_lock(reg->file.inode);
+		inode_put(reg->file.inode);
+	}
 	preg->reg = NULL;
 	proc->size -= reg->size;
-	if (--reg->count < 0)
-		kpanic("mm: detaching memory region twice");
 	
-	unlockreg(reg);
+	unlockreg(reg);	
 	
 	/* Free region. */
-	if (reg->count == 0)
+	if (--reg->count == 0)
 		freereg(reg);
 }
 
@@ -925,12 +934,13 @@ PUBLIC int loadreg
  * file pointed to by @p inode.
  *
  * @param inode Target inode.
+ * @param off   File offset.
  * @param size  Region size in bytes.
  *
  * @returns Upon successful completion, the allocated region is
  * returned. Otherwise, a NULL pointer is returned.
  */ 
-PUBLIC struct region *xalloc(struct inode *inode, size_t size)
+PUBLIC struct region *xalloc(struct inode *inode, off_t off, size_t size)
 {
 	struct region *reg;
 
@@ -951,8 +961,9 @@ PUBLIC struct region *xalloc(struct inode *inode, size_t size)
 		 * This way, we prevent the region from being freed,
 		 * and thus avoid race conditions.
 		 */
-		if (reg->file.inode == inode)
+		if (reg->file.inode->num == inode->num)
 		{
+			inode->count++;
 			reg->count++;
 			lockreg(reg);
 			reg->count--;
@@ -962,7 +973,9 @@ PUBLIC struct region *xalloc(struct inode *inode, size_t size)
 	}
 
 	/* Allocate and initialize region. */
-	reg = allocreg(S_IRUSR | S_IXUSR, size, 0);
+	if ((reg = allocreg(S_IRUSR | S_IXUSR, size, 0)) == NULL)
+		return (NULL);
+	loadreg(inode, reg, off, size);
 
 	return (reg);
 }
