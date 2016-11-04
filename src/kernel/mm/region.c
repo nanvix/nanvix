@@ -919,6 +919,55 @@ PUBLIC int loadreg
 }
 
 /**
+ * @brief Allocates and text region.
+ *
+ * @details Allocates and initializes the text region of the binary
+ * file pointed to by @p inode.
+ *
+ * @param inode Target inode.
+ * @param size  Region size in bytes.
+ *
+ * @returns Upon successful completion, the allocated region is
+ * returned. Otherwise, a NULL pointer is returned.
+ */ 
+PUBLIC struct region *xalloc(struct inode *inode, size_t size)
+{
+	struct region *reg;
+
+	/* Search for text region. */
+	for (reg = &regtab[0]; reg < &regtab[NR_REGIONS]; reg++)
+	{
+		/* Skip free region. */
+		if (reg->flags & REGION_FREE)
+			continue;
+		
+		/* Skip data pages. */
+		if (!(reg->mode & S_IXUSR))
+			continue;
+
+		/* 
+		 * Region found. Here we intentionally increment 
+		 * the reference count before locking the region.
+		 * This way, we prevent the region from being freed,
+		 * and thus avoid race conditions.
+		 */
+		if (reg->file.inode == inode)
+		{
+			reg->count++;
+			lockreg(reg);
+			reg->count--;
+
+			return (reg);
+		}
+	}
+
+	/* Allocate and initialize region. */
+	reg = allocreg(S_IRUSR | S_IXUSR, size, 0);
+
+	return (reg);
+}
+
+/**
  * @brief Initializes memory regions and mini regions.
  */
 PUBLIC void initreg(void)

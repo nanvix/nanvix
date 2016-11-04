@@ -109,7 +109,7 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 		if (!(seg[i].p_flags ^ (PF_R | PF_X)))
 		{
 			preg = TEXT(curr_proc);
-			reg = allocreg(S_IRUSR | S_IXUSR, seg[i].p_memsz, 0);
+			reg = xalloc(inode, seg[i].p_memsz);
 		}
 		
 		/* Data section. */

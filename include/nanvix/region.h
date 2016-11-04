@@ -145,6 +145,7 @@
 	EXTERN struct region *allocreg(mode_t, size_t, int);
 	EXTERN struct region *dupreg(struct region *);
 	EXTERN struct pregion *findreg(struct process *, addr_t);
+	EXTERN struct region *xalloc(struct inode *, size_t);
 
 #endif /* _ASM_FILE */
 
