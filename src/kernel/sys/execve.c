@@ -436,7 +436,6 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	return (0);
 
 die1:
-	unlockreg(reg);
 	freereg(reg);
 die0:
 	inode_put(inode);
