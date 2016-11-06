@@ -97,7 +97,7 @@ PORTABILITY
 #ifndef _MB_CAPABLE
 #include <wctype.h> /* iswprint, iswcntrl */
 #endif
-#include "local.h"
+#include "../string/local.h"
 
 #ifdef _MB_CAPABLE
 struct interval

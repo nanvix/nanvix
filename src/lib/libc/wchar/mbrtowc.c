@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
-#include "local.h"
+#include "../stdlib/local.h"
 
 size_t
 _DEFUN (_mbrtowc_r, (ptr, pwc, s, n, ps),

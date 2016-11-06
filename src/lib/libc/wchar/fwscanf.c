@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <wchar.h>
 #include <stdarg.h>
-#include "local.h"
+#include "../stdio/local.h"
 
 #ifndef _REENT_ONLY
 

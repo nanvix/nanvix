@@ -27,7 +27,7 @@
 #else
 #include <varargs.h>
 #endif
-#include "local.h"
+#include "../stdio/local.h"
 
 #ifndef _REENT_ONLY
 

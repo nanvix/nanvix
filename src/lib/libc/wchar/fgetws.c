@@ -119,7 +119,7 @@ PORTABILITY
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
-#include "local.h"
+#include "../stdio/local.h"
 
 #ifdef __IMPL_UNLOCKED__
 #define _fgetws_r _fgetws_unlocked_r

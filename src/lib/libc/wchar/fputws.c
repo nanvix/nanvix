@@ -109,8 +109,8 @@ PORTABILITY
 #include <limits.h>
 #include <stdio.h>
 #include <wchar.h>
-#include "fvwrite.h"
-#include "local.h"
+#include "../stdio/fvwrite.h"
+#include "../stdio/local.h"
 
 #ifdef __IMPL_UNLOCKED__
 #define _fputws_r _fputws_unlocked_r

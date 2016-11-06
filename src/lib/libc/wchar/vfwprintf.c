@@ -128,9 +128,9 @@ SEEALSO
 #include <wchar.h>
 #include <sys/lock.h>
 #include <stdarg.h>
-#include "local.h"
-#include "fvwrite.h"
-#include "vfieeefp.h"
+#include "../stdio/local.h"
+#include "../stdio/fvwrite.h"
+#include "../stdio/vfieeefp.h"
 #ifdef __HAVE_LOCALE_INFO_EXTENDED__
 #include "../locale/lnumeric.h"
 #endif

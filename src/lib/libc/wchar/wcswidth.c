@@ -37,7 +37,7 @@ PORTABILITY
 
 #include <_ansi.h>
 #include <wchar.h>
-#include "local.h"
+#include "../string/local.h"
 
 int
 _DEFUN (wcswidth, (pwcs, n),

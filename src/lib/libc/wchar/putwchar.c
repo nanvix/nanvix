@@ -101,7 +101,7 @@ PORTABILITY
 #include <reent.h>
 #include <stdio.h>
 #include <wchar.h>
-#include "local.h"
+#include "../stdio/local.h"
 
 #undef putwchar
 

@@ -102,7 +102,7 @@ PORTABILITY
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
-#include "local.h"
+#include "../stdlib/local.h"
 
 size_t
 _DEFUN (_wcsnrtombs_r, (r, dst, src, nwc, len, ps),

@@ -121,7 +121,7 @@ C99, POSIX-1.2008
 #include <string.h>
 #include <stdarg.h>
 #include <errno.h>
-#include "local.h"
+#include "../stdio/local.h"
 
 #ifdef INTEGER_ONLY
 #define VFWSCANF vfiwscanf
@@ -175,7 +175,7 @@ C99, POSIX-1.2008
 extern _LONG_DOUBLE _wcstold_r _PARAMS((wchar_t *s, wchar_t **sptr));
 #endif
 
-#include "floatio.h"
+#include "../stdio/floatio.h"
 
 #if ((MAXEXP+MAXFRACT+3) > MB_LEN_MAX)
 #  define BUF (MAXEXP+MAXFRACT+3)        /* 3 = sign + decimal point + NUL */

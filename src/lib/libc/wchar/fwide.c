@@ -56,7 +56,7 @@ C99, POSIX.1-2001.
 
 #include <_ansi.h>
 #include <wchar.h>
-#include "local.h"
+#include "../stdio/local.h"
 
 int
 _DEFUN(_fwide_r, (ptr, fp, mode),

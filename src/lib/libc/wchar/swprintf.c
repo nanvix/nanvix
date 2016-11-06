@@ -542,7 +542,7 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
 #include <stdarg.h>
 #include <limits.h>
 #include <errno.h>
-#include "local.h"
+#include "../stdio/local.h"
 
 /* NOTE:  _swprintf_r() should be identical to swprintf() except for the
  * former having ptr as a parameter and the latter needing to declare it as

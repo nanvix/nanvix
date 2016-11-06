@@ -180,7 +180,7 @@ PORTABILITY
 #include <stdio.h>
 #include <stdlib.h>
 #include <wchar.h>
-#include "local.h"
+#include "../stdio/local.h"
 
 wint_t
 _DEFUN(__fputwc, (ptr, wc, fp),

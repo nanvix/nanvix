@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
-#include "local.h"
+#include "../stdlib/local.h"
 
 int
 wctob (wint_t wc)
