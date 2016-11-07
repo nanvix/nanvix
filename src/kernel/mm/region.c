@@ -466,10 +466,7 @@ PUBLIC void freereg(struct region *reg)
 	
 	/* Release underlying inode. */
 	if (reg->file.inode != NULL)
-	{
-		inode_lock(reg->file.inode);
-		inode_put(reg->file.inode);
-	}
+		reg->file.inode->count--;
 	
 	/* Free underlying mini regions and page tables. */
 	for (i = 0; i < MREGIONS; i++)

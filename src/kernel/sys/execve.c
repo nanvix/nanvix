@@ -356,10 +356,6 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		return (curr_proc->errno);
 	}
 
-	/* Detach process memory regions. */
-	for (i = 0; i < NR_PREGIONS; i++)
-		detachreg(curr_proc, &curr_proc->pregs[i]);
-
 	/* Get file's inode. */
 	if ((inode = inode_name(pathname)) == NULL)
 	{
@@ -401,6 +397,9 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		}
 	}
 
+	/* Detach process memory regions. */
+	for (i = 0; i < NR_PREGIONS; i++)
+		detachreg(curr_proc, &curr_proc->pregs[i]);
 	
 	/* Load executable. */
 	if (!(entry = load_elf32(inode)))
