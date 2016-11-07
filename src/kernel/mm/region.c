@@ -973,7 +973,7 @@ PUBLIC struct region *xalloc(struct inode *inode, off_t off, size_t size)
 	}
 
 	/* Allocate and initialize region. */
-	if ((reg = allocreg(S_IRUSR | S_IXUSR, size, 0)) == NULL)
+	if ((reg = allocreg(S_IRUSR | S_IXUSR, size, REGION_SHARED)) == NULL)
 		return (NULL);
 	loadreg(inode, reg, off, size);
 

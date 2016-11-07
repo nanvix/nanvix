@@ -111,10 +111,8 @@ PRIVATE addr_t load_elf32(struct inode *inode)
 			preg = TEXT(curr_proc);
 
 			/* Failed to allocate region. */
-			if ((reg = allocreg(S_IRUSR | S_IXUSR, seg[i].p_memsz, 0)) == NULL)
+			if ((reg = xalloc(inode, seg[i].p_offset, seg[i].p_filesz)) == NULL)
 				goto error0;
-
-			loadreg(inode, reg, seg[i].p_offset, seg[i].p_filesz);
 		}
 		
 		/* Data section. */
