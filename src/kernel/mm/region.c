@@ -719,7 +719,12 @@ PUBLIC struct region *dupreg(struct region *reg)
 		
 	/* Shared region. */
 	if (reg->flags & REGION_SHARED)
+	{
+		if ((reg->file.inode != NULL) && (reg->mode & S_IXUSR))
+			reg->file.inode->count++;
+
 		return (reg);
+	}
 	
 	/* Failed to allocate new region. */
 	if ((new_reg = allocreg(reg->mode, reg->size, reg->flags)) == NULL)
