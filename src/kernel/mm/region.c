@@ -464,6 +464,13 @@ PUBLIC void freereg(struct region *reg)
 	if (reg->flags & REGION_STICKY)
 		return;
 	
+	/* Release underlying inode. */
+	if (reg->file.inode != NULL)
+	{
+		inode_lock(reg->file.inode);
+		inode_put(reg->file.inode);
+	}
+	
 	/* Free underlying mini regions and page tables. */
 	for (i = 0; i < MREGIONS; i++)
 	{
@@ -688,12 +695,6 @@ PUBLIC void detachreg(struct process *proc, struct pregion *preg)
 		}
 	}
 	
-	/* Release underlying inode. */
-	if (reg->file.inode != NULL)
-	{
-		inode_lock(reg->file.inode);
-		inode_put(reg->file.inode);
-	}
 	preg->reg = NULL;
 	proc->size -= reg->size;
 	
@@ -719,12 +720,7 @@ PUBLIC struct region *dupreg(struct region *reg)
 		
 	/* Shared region. */
 	if (reg->flags & REGION_SHARED)
-	{
-		if ((reg->file.inode != NULL) && (reg->mode & S_IXUSR))
-			reg->file.inode->count++;
-
 		return (reg);
-	}
 	
 	/* Failed to allocate new region. */
 	if ((new_reg = allocreg(reg->mode, reg->size, reg->flags)) == NULL)
@@ -968,7 +964,6 @@ PUBLIC struct region *xalloc(struct inode *inode, off_t off, size_t size)
 		 */
 		if (reg->file.inode->num == inode->num)
 		{
-			inode->count++;
 			reg->count++;
 			lockreg(reg);
 			reg->count--;
