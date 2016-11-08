@@ -168,7 +168,6 @@ error1:
 		
 		/* Detach. */
 		preg = &proc->pregs[i];
-		lockreg(preg->reg);
 		detachreg(proc, preg);
 	}
 error0:

@@ -402,8 +402,7 @@ PUBLIC void unlockreg(struct region *reg)
  */
 PUBLIC struct region *allocreg(mode_t mode, size_t size, int flags)
 {
-	unsigned i;         /* Loop index. */
-	struct region *reg; /* Region.     */
+	struct region *reg;
 	
 	/* Search for free region. */
 	for (reg = &regtab[0]; reg < &regtab[NR_REGIONS]; reg++)
@@ -432,12 +431,29 @@ found:
 	reg->cgid = curr_proc->gid;
 	reg->uid = curr_proc->uid;
 	reg->gid = curr_proc->gid;
-	for (i = 0; i < MREGIONS; i++)
+	for (int i = 0; i < MREGIONS; i++)
 		reg->mtab[i] = NULL;
 	
 	/* Expand region. */
 	if (expand(NULL, reg, size))
 	{
+		for (int i = 0; i < MREGIONS; i++)
+		{
+			if (reg->mtab[i] == NULL)
+				continue;
+			
+			for (int j = 0; j < REGION_PGTABS; j++)
+			{
+				if (reg->mtab[i]->pgtab[j] == NULL)
+					continue;
+
+				putkpg(reg->mtab[i]->pgtab[j]);
+				reg->mtab[i]->pgtab[j] = NULL;
+			}
+
+			freemreg(reg->mtab[i]);
+			reg->mtab[i] = NULL;
+		}
 		reg->flags = REGION_FREE;
 		return (NULL);
 	}
