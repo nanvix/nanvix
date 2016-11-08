@@ -437,24 +437,7 @@ found:
 	/* Expand region. */
 	if (expand(NULL, reg, size))
 	{
-		for (int i = 0; i < MREGIONS; i++)
-		{
-			if (reg->mtab[i] == NULL)
-				continue;
-			
-			for (int j = 0; j < REGION_PGTABS; j++)
-			{
-				if (reg->mtab[i]->pgtab[j] == NULL)
-					continue;
-
-				putkpg(reg->mtab[i]->pgtab[j]);
-				reg->mtab[i]->pgtab[j] = NULL;
-			}
-
-			freemreg(reg->mtab[i]);
-			reg->mtab[i] = NULL;
-		}
-		reg->flags = REGION_FREE;
+		freereg(reg);
 		return (NULL);
 	}
 	
