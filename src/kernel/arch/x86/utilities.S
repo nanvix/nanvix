@@ -132,7 +132,7 @@ disable_interrupts:
  * Halts the processor.
  */
 halt:
-	nop
+	hlt
 	ret
 
 /*----------------------------------------------------------------------------*
