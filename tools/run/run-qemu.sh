@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -22,7 +23,15 @@
 #   - You should run this script with superuser privileges.
 #
 
-qemu-system-i386                                \
-	-drive file=nanvix.img,format=raw,if=floppy \
-	-m size=256                                 \
-	-mem-prealloc
+if [ "$1" = "--dbg" ]; then
+	qemu-system-i386 -s -S                              \
+		-drive file=nanvix.img,format=raw,if=floppy \
+		-m 256M                                 \
+		-mem-prealloc &
+	ddd --debugger "/usr/local/cross/bin/i386-elf-gdb"
+else
+	qemu-system-i386                                \
+		-drive file=nanvix.img,format=raw,if=floppy \
+		-m 256M                                 \
+		-mem-prealloc		
+fi

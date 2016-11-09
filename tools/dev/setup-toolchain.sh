@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -23,12 +24,14 @@ export WORKDIR=$CURDIR/nanvix-toolchain
 mkdir -p $WORKDIR
 cd $WORKDIR
 
-# Get binutils and GCC.
+# Get binutils, GDB and GCC.
 wget "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
 wget "http://ftp.gnu.org/gnu/gcc/gcc-5.3.0/gcc-5.3.0.tar.bz2"
+wget "http://ftp.gnu.org/gnu/gdb/gdb-7.11.tar.xz"
 
 # Get required packages.
 apt-get install g++
+apt-get install ddd
 
 # Export variables.
 export PREFIX=/usr/local/cross
@@ -51,6 +54,14 @@ cd gcc-5.3.0/
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c --without-headers
 make all-gcc
 make install-gcc
+
+# Build GDB.
+cd $WORKDIR
+tar -Jxf gdb-7.11.tar.xz
+cd gdb-7.11/
+./configure --target=$TARGET --prefix=$PREFIX --with-auto-load-safe-path=/
+make
+make install
 
 # Cleans files.
 cd $WORKDIR

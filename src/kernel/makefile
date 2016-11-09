@@ -60,11 +60,11 @@ export LDFLAGS = -T arch/$(ARCH)/link.ld
 
 # Builds object file from C source file.
 %.o: %.c
-	$(CC) $< $(CFLAGS) -c -o $@
+	$(CC) $< $(CFLAGS) $(DBGFLAGS) -c -o $@
 
 # Builds object file from assembly source file.
 %.o: %.S
-	$(CC) $< $(CFLAGS) -c $(ASMFLAGS) -o $@
+	$(CC) $< $(CFLAGS) $(DBGFLAGS) -c $(ASMFLAGS) -o $@
 
 # Builds Nanvix kernel.
 all: $(OBJ)

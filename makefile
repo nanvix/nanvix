@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -47,6 +48,7 @@ export CFLAGS   += -Wredundant-decls -Wvla
 export ASMFLAGS  = -Wa,--divide,--warn
 export ARFLAGS   = -vq
 export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
+export DBGFLAGS += -g -fno-omit-frame-pointer
 
 # Resolves conflicts.
 .PHONY: tools
@@ -60,6 +62,10 @@ nanvix:
 	mkdir -p $(SBINDIR)
 	mkdir -p $(UBINDIR)
 	cd $(SRCDIR) && $(MAKE) all
+
+# Builds Nanvix with debug flags.
+nanvix-debug:
+	$(MAKE) nanvix
 
 # Builds system's image.
 image: $(BINDIR)/kernel tools
