@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2014 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -103,6 +104,12 @@ function copy_files
 		bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
 	done
 }
+
+# Get debug symbols from kernel
+objcopy --only-keep-debug bin/kernel bin/kernel.sym
+
+# Remove debug symbols from kernel
+strip --strip-debug bin/kernel
 
 # Build HDD image.
 dd if=/dev/zero of=hdd.img bs=1024 count=65536
