@@ -48,6 +48,7 @@ export CFLAGS   += -Wredundant-decls -Wvla
 export ASMFLAGS  = -Wa,--divide,--warn
 export ARFLAGS   = -vq
 export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
+export DBGFLAGS += -g -fno-omit-frame-pointer
 
 # Resolves conflicts.
 .PHONY: tools
@@ -64,7 +65,6 @@ nanvix:
 
 # Builds Nanvix with debug flags.
 nanvix-debug:
-	$(eval export DBGFLAGS += -g -fno-omit-frame-pointer)
 	$(MAKE) nanvix
 
 # Builds system's image.
