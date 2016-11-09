@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -60,6 +61,11 @@ nanvix:
 	mkdir -p $(SBINDIR)
 	mkdir -p $(UBINDIR)
 	cd $(SRCDIR) && $(MAKE) all
+
+# Builds Nanvix with debug flags.
+nanvix-debug:
+	$(eval export DBGFLAGS += -g -fno-omit-frame-pointer)
+	$(MAKE) nanvix
 
 # Builds system's image.
 image: $(BINDIR)/kernel tools
