@@ -120,7 +120,7 @@ int main(int argc, char *const argv[])
 	arg[1] = NULL;
 	
 	(void) setvbuf(stdin, NULL, _IOLBF, 0);
-	(void) setvbuf(stdout, NULL, _IONBF, 0);
+	(void) setvbuf(stdout, NULL, _IOLBF, 0);
 	
 	ioctl(fileno(stdout), TTY_CLEAR);
 	

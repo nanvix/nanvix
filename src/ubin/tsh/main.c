@@ -787,10 +787,6 @@ int main(int argc, char **argv)
 
 #endif /* OPEN_MAX */
 
-	/* Print copyright message. */
-	if (shflags & SH_INTERACTIVE)
-		puts(SH_COPYRIGHT);
-
 	/* Configure tty to work in raw mode. */
 	configure_tty();
 
