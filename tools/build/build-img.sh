@@ -137,3 +137,13 @@ cp bin/kernel /mnt/kernel
 cp initrd.img /mnt/initrd.img
 cp tools/img/menu.lst /mnt/boot/menu.lst
 eject
+
+if [ "$1" = "--build-iso" ];
+then
+	mkdir -p nanvix-iso/boot/grub
+	cp bin/kernel nanvix-iso/kernel
+	cp initrd.img nanvix-iso/initrd.img
+	cp tools/img/grub.cfg nanvix-iso/boot/grub/grub.cfg
+	grub-mkrescue -o nanvix.iso nanvix-iso
+fi
+
