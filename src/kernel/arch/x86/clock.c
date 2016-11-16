@@ -22,10 +22,14 @@
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
 
-/* Clock ticks since system initialization. */
+/**
+ * @brief Clock interrupts since system initialization.
+ */
 PUBLIC unsigned ticks = 0;
 
-/* Time at system startup. */
+/**
+ * @brief Start up time (in seconds).
+ */
 PUBLIC unsigned startup_time = 0;
 
 /*

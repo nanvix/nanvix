@@ -34,18 +34,11 @@
 	#define CURRENT_TIME \
 		(startup_time + ticks/CLOCK_FREQ)
 
-
  	/* Forward declarations. */
 	EXTERN void clock_init(unsigned);
 
-	/**
-	 * @brief Clock interrupts since system initialization.
-	 */
+	/* Forward definitions. */
 	EXTERN unsigned ticks;
-	
-	/**
-	 * @brief Start up time (in seconds).
-	 */
 	EXTERN signed startup_time;
 	
 #endif /* TIMER_H_ */
