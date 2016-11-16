@@ -25,7 +25,6 @@
  
 #ifndef NANVIX_FS_H_
 #define NANVIX_FS_H_
-
 	
 	/* General file permissions. */
 	#define MAY_READ  (S_IRUSR | S_IRGRP | S_IROTH)     /* May read.        */
@@ -128,16 +127,16 @@
 	/**@}*/
 	
 	/* Forward definitions. */
-	EXTERN void inode_touch(struct inode *i);
-	EXTERN void inode_lock(struct inode *i);
-	EXTERN void inode_unlock(struct inode *i);
+	EXTERN void inode_touch(struct inode *);
+	EXTERN void inode_lock(struct inode *);
+	EXTERN void inode_unlock(struct inode *);
 	EXTERN void inode_sync(void);
-	EXTERN void inode_truncate(struct inode *i);
-	EXTERN struct inode *inode_alloc(struct superblock *sb);
-	EXTERN struct inode *inode_get(dev_t dev, ino_t num);
-	EXTERN void inode_put(struct inode *i);
-	EXTERN struct inode *inode_dname(const char *path, const char **name);
-	EXTERN struct inode *inode_name(const char *pathname);
+	EXTERN void inode_truncate(struct inode *);
+	EXTERN struct inode *inode_alloc(struct superblock *);
+	EXTERN struct inode *inode_get(dev_t dev, ino_t);
+	EXTERN void inode_put(struct inode *);
+	EXTERN struct inode *inode_dname(const char *, const char **);
+	EXTERN struct inode *inode_name(const char *);
 	EXTERN struct inode *inode_pipe(void);
 
 /*============================================================================*
@@ -168,107 +167,41 @@
 	EXTERN block_t block_map(struct inode *, off_t, int);
 	EXTERN void block_free(struct superblock *, block_t, int);
 	
-	
 /*============================================================================*
  *                              File System Manager                           *
  *============================================================================*/
 
-	/*
-	 * File.
+	/**
+	 * @brief File.
 	 */
 	struct file
 	{
-		int oflag;           /* Open flags.                   */
-		int count;           /* Reference count.              */
-		off_t pos;           /* Read/write cursor's position. */
-		struct inode *inode; /* Underlying inode.             */
+		int oflag;           /**< Open flags.                   */
+		int count;           /**< Reference count.              */
+		off_t pos;           /**< Read/write cursor's position. */
+		struct inode *inode; /**< Underlying inode.             */
 	};
-	
-	/*
-	 * File table.
-	 */
-	EXTERN struct file filetab[NR_FILES];
 
-	/*
-	 * Initializes the file system manager.
-	 */
+	/* Forward definitions. */
 	EXTERN void fs_init(void);
-	
-	/*
-	 * Checks permissions on a file
-	 */
-	EXTERN int permission(mode_t mode, uid_t uid, gid_t gid, struct process *proc, mode_t mask, int oreal);
-	
-	/*
-	 * Gets a user file name
-	 */
-	EXTERN char *getname(const char *name);
-	
-	/*
-	 * Puts back a user file name.
-	 */
-	EXTERN void putname(char *name);
-	
-	/*
-	 * Gets an empty file descriptor table entry.
-	 */
+	EXTERN int permission(mode_t, uid_t, gid_t, struct process *, mode_t, int);
+	EXTERN char *getname(const char *);
+	EXTERN void putname(char *);
 	EXTERN int getfildes(void);
-	
-	/*
-	 * Gets an empty file table entry.
-	 */
 	EXTERN struct file *getfile(void);
+	EXTERN void do_close(int);
+	EXTERN int dir_add(struct inode *, struct inode *, const char *);
+	EXTERN ino_t dir_search(struct inode *, const char *);
+	EXTERN int dir_remove(struct inode *, const char *);
+	EXTERN ssize_t file_read(struct inode *, void *, size_t, off_t);
+	EXTERN ssize_t file_write(struct inode *, const void *, size_t, off_t);
+	EXTERN ssize_t pipe_read(struct inode *, char *, size_t);
+	EXTERN ssize_t pipe_write(struct inode *, const char *, size_t);
 	
-	/*
-	 * Closes a file.
-	 */
-	EXTERN void do_close(int fd);
-	
-	/*
-	 * Adds an entry to a directory.
-	 */
-	EXTERN int dir_add
-	(struct inode *dinode, struct inode *inode, const char *name);
-	
-	/*
-	 * Searchs for a file in a directory.
-	 */
-	EXTERN ino_t dir_search(struct inode *i, const char *filename);
-	
-	/*
-	 * Removes an entry from a directory.
-	 */
-	EXTERN int dir_remove(struct inode *dinode, const char *filename);
-	
-	/*
-	 * Reads from a regular file.
-	 */
-	EXTERN ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off);
-	
-	/*
-	 * Writes to a regular file.
-	 */
-	EXTERN ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off);
-	
-	/*
-	 * Reads data from a pipe.
-	 */
-	EXTERN ssize_t pipe_read(struct inode *inode, char *buf, size_t n);
-	
-	/*
-	 * Writes data to a pipe.
-	 */
-	EXTERN ssize_t pipe_write(struct inode *inode, const char *buf, size_t n);
-	
-	/*
-	 * Root device.
-	 */
-	EXTERN struct superblock *rootdev;
-	
-	/*
-	 * Root directory.
-	 */
+	/* Forward definitions. */
 	EXTERN struct inode *root;
+	EXTERN struct superblock *rootdev;
+	EXTERN struct file filetab[NR_FILES];
 
 #endif /* _ASM_FILE */
 
