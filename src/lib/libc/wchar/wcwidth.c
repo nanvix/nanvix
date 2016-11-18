@@ -1,36 +1,21 @@
 /*
-FUNCTION
-	<<wcwidth>>---number of column positions of a wide-character code
-	
-INDEX
-	wcwidth
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	int wcwidth(const wchar_t <[wc]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	int wcwidth(<[wc]>)
-	wchar_t *<[wc]>;
-
-DESCRIPTION
-	The <<wcwidth>> function shall determine the number of column
-	positions required for the wide character <[wc]>. The application
-	shall ensure that the value of <[wc]> is a character representable
-	as a wchar_t, and is a wide-character code corresponding to a
-	valid character in the current locale.
-
-RETURNS
-	The <<wcwidth>> function shall either return 0 (if <[wc]> is a null
-	wide-character code), or return the number of column positions to
-	be occupied by the wide-character code <[wc]>, or return -1 (if <[wc]>
-	does not correspond to a printable wide-character code).
-
-PORTABILITY
-<<wcwidth>> has been introduced in the Single UNIX Specification Volume 2.
-<<wcwidth>> has been marked as an extension in the Single UNIX Specification Volume 3.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*
  * This is an implementation of wcwidth() (defined in
@@ -98,6 +83,8 @@ PORTABILITY
 #include <wctype.h> /* iswprint, iswcntrl */
 #endif
 #include "../string/local.h"
+
+#ifdef _XOPEN_SOURCE
 
 #ifdef _MB_CAPABLE
 struct interval
@@ -167,9 +154,7 @@ bisearch(wint_t ucs, const struct interval *table, int max)
  * in ISO 10646.
  */
 
-int
-_DEFUN (__wcwidth, (ucs),
-	_CONST wint_t ucs)
+int __wcwidth(const wint_t ucs)
 {
 #ifdef _MB_CAPABLE
   /* sorted list of non-overlapping intervals of East Asian Ambiguous
@@ -333,9 +318,19 @@ _DEFUN (__wcwidth, (ucs),
 #endif /* _MB_CAPABLE */
 }
 
-int     
-_DEFUN (wcwidth, (wc),
-	_CONST wchar_t wc)
+/**
+ * @brief Number of column positions of a wide-character code.
+ *
+ * @details Determines the number of column positions required for the
+ * wide character @p wc. The application shall ensure that the value of
+ * @p wc is a character representable as a wchar_t, and is a wide-character
+ * code corresponding to a valid character in the current locale.
+ *
+ * @return Returns 0 (if wc is a null wide-character code), or return the 
+ * number of column positions to be occupied by the wide-character code @p wc,
+ * or return -1 (if wc does not correspond to a printable wide-character code).
+ */
+int wcwidth(const wchar_t wc)
 { 
   wint_t wi = wc;
 
@@ -344,3 +339,5 @@ _DEFUN (wcwidth, (wc),
 #endif /* _MB_CAPABLE */
   return __wcwidth (wi);
 }
+
+#endif /* _XOPEN_SOURCE */
