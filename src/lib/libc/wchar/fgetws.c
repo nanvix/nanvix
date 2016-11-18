@@ -121,10 +121,6 @@ PORTABILITY
 #include <wchar.h>
 #include "../stdio/local.h"
 
-#ifdef __IMPL_UNLOCKED__
-#define _fgetws_r _fgetws_unlocked_r
-#define fgetws fgetws_unlocked
-#endif
 
 wchar_t *
 _DEFUN(_fgetws_r, (ptr, ws, n, fp),

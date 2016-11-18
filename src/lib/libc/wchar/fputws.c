@@ -112,10 +112,7 @@ PORTABILITY
 #include "../stdio/fvwrite.h"
 #include "../stdio/local.h"
 
-#ifdef __IMPL_UNLOCKED__
-#define _fputws_r _fputws_unlocked_r
-#define fputws fputws_unlocked
-#endif
+
 
 int
 _DEFUN(_fputws_r, (ptr, ws, fp),
