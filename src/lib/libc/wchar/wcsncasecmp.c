@@ -1,53 +1,40 @@
 /*
-FUNCTION
-	<<wcsncasecmp>>---case-insensitive wide character string compare
-	
-INDEX
-	wcsncasecmp
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	int wcsncasecmp(const wchar_t *<[a]>, const wchar_t * <[b]>, size_t <[length]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	int wcsncasecmp(<[a]>, <[b]>, <[length]>)
-	wchar_t *<[a]>;
-	wchar_t *<[b]>;
-	size_t <[length]>
-
-DESCRIPTION
-	<<wcsncasecmp>> compares up to <[length]> wide characters
-	from the string at <[a]> to the string at <[b]> in a 
-	case-insensitive manner.
-
-RETURNS
-
-	If <<*<[a]>>> sorts lexicographically after <<*<[b]>>> (after
-	both are converted to uppercase), <<wcsncasecmp>> returns a
-	number greater than zero.  If the two strings are equivalent,
-	<<wcsncasecmp>> returns zero.  If <<*<[a]>>> sorts
-	lexicographically before <<*<[b]>>>, <<wcsncasecmp>> returns a
-	number less than zero.
-
-PORTABILITY
-POSIX-1.2008
-
-<<wcsncasecmp>> requires no supporting OS subroutines. It uses
-tolower() from elsewhere in this library.
-
-QUICKREF
-	wcsncasecmp
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <wchar.h>
 #include <wctype.h>
 
-int 
-_DEFUN (wcsncasecmp, (s1, s2, n),
-	_CONST wchar_t *s1 _AND
-	_CONST wchar_t *s2 _AND
-	size_t n)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Case-insensitive wide-character string comparison.
+ *
+ * @details Compares, while ignoring differences in case, not
+ * more than @p n wide-characters from the wide-character string
+ * pointed to by @p s1 to the wide-character string pointed to by @p s2.
+ *
+ * @return Returns an integer greater than, equal to, or less than 0 if 
+ * the possibly null wide-character terminated string pointed to by @p s1
+ * is, ignoring case, greater than, equal to, or less than the possibly null
+ * wide-character terminated string pointed to by @p s2, respectively.
+ */
+int wcsncasecmp(const wchar_t *s1, const wchar_t *s2, size_t n)
 {
   if (n == 0)
     return 0;
@@ -62,3 +49,5 @@ _DEFUN (wcsncasecmp, (s1, s2, n),
 
   return towlower(*s1) - towlower(*s2);
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

@@ -1,36 +1,21 @@
-/* 
-FUNCTION
-        <<wcsnlen>>---get fixed-size wide-character string length
-    
-INDEX
-        wcsnlen
-
-ANSI_SYNOPSIS
-        #include <wchar.h>
-        size_t wcsnlen(const wchar_t *<[s]>, size_t <[maxlen]>);
-
-TRAD_SYNOPSIS
-        #include <wchar.h>
-        size_t wcsnlen(<[s]>, <[maxlen]>)
-        wchar_t *<[s]>;
-        size_t <[maxlen]>;
-
-DESCRIPTION
-        The <<wcsnlen>> function computes the number of wide-character codes
-        in the wide-character string pointed to by <[s]> not including the
-        terminating L'\0' wide character but at most <[maxlen]> wide
-        characters.
-
-RETURNS
-        <<wcsnlen>> returns the length of <[s]> if it is less then <[maxlen]>,
-        or <[maxlen]> if there is no L'\0' wide character in first <[maxlen]>
-        characters.
-
-PORTABILITY
-<<wcsnlen>> is a GNU extension.
-
-<<wcsnlen>> requires no supporting OS subroutines.
-*/
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*
  * Copyright (c) 2003, Artem B. Bityuckiy (dedekind@mail.ru).
@@ -57,12 +42,23 @@ PORTABILITY
 #include <sys/types.h>
 #include <wchar.h>
 
-size_t
-_DEFUN(wcsnlen, (s, maxlen), 
-                 _CONST wchar_t *s _AND 
-                 size_t maxlen)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Gets length of a fixed-sized wide-character string.
+ *
+ * @details Computes the smaller of the number of wide characters in
+ * the array to which @p s points, not including any terminating null
+ * wide-character code, and the value of @p maxlen.
+ *
+ * @return Returns the number of wide characters preceding the first
+ * null wide-character code in the array to which @p s points, if @p s
+ * contains a null wide-character code within the first maxlen wide 
+ * characters; otherwise, it returns maxlen.
+ */
+size_t wcsnlen(const wchar_t *s, size_t maxlen)
 {
-  _CONST wchar_t *p;
+  const wchar_t *p;
 
   p = s;
   while (*p && maxlen-- > 0)
@@ -71,5 +67,4 @@ _DEFUN(wcsnlen, (s, maxlen),
   return (size_t)(p - s);
 }
 
-
-
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

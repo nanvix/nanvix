@@ -1,100 +1,21 @@
 /*
-FUNCTION
-<<wcsrtombs>>, <<wcsnrtombs>>---convert a wide-character string to a character string
-
-INDEX
-	wcsrtombs
-INDEX
-	_wcsrtombs_r
-INDEX
-	wcsnrtombs
-INDEX
-	_wcsnrtombs_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	size_t wcsrtombs(char *__restrict <[dst]>,
-			 const wchar_t **__restrict <[src]>, size_t <[len]>,
-			 mbstate_t *__restrict <[ps]>);
-
-	#include <wchar.h>
-	size_t _wcsrtombs_r(struct _reent *<[ptr]>, char *<[dst]>,
-			    const wchar_t **<[src]>, size_t <[len]>,
-			    mbstate_t *<[ps]>);
-
-	#include <wchar.h>
-	size_t wcsnrtombs(char *__restrict <[dst]>,
-			  const wchar_t **__restrict <[src]>,
-			  size_t <[nwc]>, size_t <[len]>,
-			  mbstate_t *__restrict <[ps]>);
-
-	#include <wchar.h>
-	size_t _wcsnrtombs_r(struct _reent *<[ptr]>, char *<[dst]>,
-			     const wchar_t **<[src]>, size_t <[nwc]>,
-			     size_t <[len]>, mbstate_t *<[ps]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	size_t wcsrtombs(<[dst]>, <[src]>, <[len]>, <[ps]>)
-	char *__restrict <[dst]>;
-	const wchar_t **__restrict <[src]>;
-	size_t <[len]>;
-	mbstate_t *__restrict <[ps]>;
-
-	#include <wchar.h>
-	size_t _wcsrtombs_r(<[ptr]>, <[dst]>, <[src]>, <[len]>, <[ps]>)
-	struct _rent *<[ptr]>;
-	char *<[dst]>;
-	const wchar_t **<[src]>;
-	size_t <[len]>;
-	mbstate_t *<[ps]>;
-
-	#include <wchar.h>
-	size_t wcsnrtombs(<[dst]>, <[src]>, <[nwc]>, <[len]>, <[ps]>)
-	char *__restrict <[dst]>;
-	const wchar_t **__restrict <[src]>;
-	size_t <[nwc]>;
-	size_t <[len]>;
-	mbstate_t *__restrict <[ps]>;
-
-	#include <wchar.h>
-	size_t _wcsnrtombs_r(<[ptr]>, <[dst]>, <[src]>, <[nwc]>, <[len]>, <[ps]>)
-	struct _rent *<[ptr]>;
-	char *<[dst]>;
-	const wchar_t **<[src]>;
-	size_t <[nwc]>;
-	size_t <[len]>;
-	mbstate_t *<[ps]>;
-
-DESCRIPTION
-The <<wcsrtombs>> function converts a string of wide characters indirectly
-pointed to by <[src]> to a corresponding multibyte character string stored in
-the array pointed to by <[dst}>.  No more than <[len]> bytes are written to
-<[dst}>.
-
-If <[dst}> is NULL, no characters are stored.
-
-If <[dst}> is not NULL, the pointer pointed to by <[src]> is updated to point
-to the character after the one that conversion stopped at.  If conversion
-stops because a null character is encountered, *<[src]> is set to NULL.
-
-The mbstate_t argument, <[ps]>, is used to keep track of the shift state.  If
-it is NULL, <<wcsrtombs>> uses an internal, static mbstate_t object, which
-is initialized to the initial conversion state at program startup.
-
-The <<wcsnrtombs>> function behaves identically to <<wcsrtombs>>, except that
-conversion stops after reading at most <[nwc]> characters from the buffer
-pointed to by <[src]>.
-
-RETURNS
-The <<wcsrtombs>> and <<wcsnrtombs>> functions return the number of bytes
-stored in the array pointed to by <[dst]> (not including any terminating
-null), if successful, otherwise it returns (size_t)-1.
-
-PORTABILITY
-<<wcsrtombs>> is defined by C99 standard.
-<<wcsnrtombs>> is defined by the POSIX.1-2008 standard.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <reent.h>
 #include <newlib.h>
@@ -104,14 +25,8 @@ PORTABILITY
 #include <errno.h>
 #include "../stdlib/local.h"
 
-size_t
-_DEFUN (_wcsnrtombs_r, (r, dst, src, nwc, len, ps),
-	struct _reent *r _AND
-	char *dst _AND
-	const wchar_t **src _AND
-	size_t nwc _AND
-	size_t len _AND
-	mbstate_t *ps)
+size_t _wcsnrtombs_r(struct _reent *r, char *dst, const wchar_t **src, 
+	size_t nwc, size_t len, mbstate_t *ps)
 {
   char *ptr = dst;
   char buff[10];
@@ -175,14 +90,23 @@ _DEFUN (_wcsnrtombs_r, (r, dst, src, nwc, len, ps),
 } 
 
 #ifndef _REENT_ONLY
-size_t
-_DEFUN (wcsnrtombs, (dst, src, nwc, len, ps),
-	char *__restrict dst _AND
-	const wchar_t **__restrict src _AND
-	size_t nwc _AND
-	size_t len _AND
-	mbstate_t *__restrict ps)
+
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Converts a wide-character string to a character string (restartable);
+ *
+ * @details This function is equivalent to the wcsrtombs() function, except that
+ * the conversion is limited to the first @p nwc wide characters.
+ *
+ * @return Returns the number of bytes in the resulting character sequence, not
+ * including the terminating null (if any).
+ */
+size_t wcsnrtombs(char *restrict dst, const wchar_t **restrict src, size_t nwc, 
+	size_t len, mbstate_t *restrict ps)
 {
   return _wcsnrtombs_r (_REENT, dst, src, nwc, len, ps);
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
 #endif /* !_REENT_ONLY */

@@ -1,100 +1,21 @@
 /*
-FUNCTION
-<<mbsrtowcs>>, <<mbsnrtowcs>>---convert a character string to a wide-character string
-
-INDEX
-	mbsrtowcs
-INDEX
-	_mbsrtowcs_r
-INDEX
-	mbsnrtowcs
-INDEX
-	_mbsnrtowcs_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	size_t mbsrtowcs(wchar_t *__restrict <[dst]>,
-			 const char **__restrict <[src]>,
-			 size_t <[len]>,
-			 mbstate_t *__restrict <[ps]>);
-
-	#include <wchar.h>
-	size_t _mbsrtowcs_r(struct _reent *<[ptr]>, wchar_t *<[dst]>,
-			    const char **<[src]>, size_t <[len]>,
-			    mbstate_t *<[ps]>);
-
-	#include <wchar.h>
-	size_t mbsnrtowcs(wchar_t *__ restrict <[dst]>, 
-			  const char **__restrict <[src]>, size_t <[nms]>,
-			  size_t <[len]>, mbstate_t *__restrict <[ps]>);
-
-	#include <wchar.h>
-	size_t _mbsnrtowcs_r(struct _reent *<[ptr]>, wchar_t *<[dst]>,
-			     const char **<[src]>, size_t <[nms]>,
-			     size_t <[len]>, mbstate_t *<[ps]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	size_t mbsrtowcs(<[dst]>, <[src]>, <[len]>, <[ps]>)
-	wchar_t *__restrict <[dst]>;
-	const char **__restrict <[src]>;
-	size_t <[len]>;
-	mbstate_t *__restrict <[ps]>;
-
-	#include <wchar.h>
-	size_t _mbsrtowcs_r(<[ptr]>, <[dst]>, <[src]>, <[len]>, <[ps]>)
-	struct _reent *<[ptr]>;
-	wchar_t *<[dst]>;
-	const char **<[src]>;
-	size_t <[len]>;
-	mbstate_t *<[ps]>;
-
-	#include <wchar.h>
-	size_t mbsnrtowcs(<[dst]>, <[src]>, <[nms]>, <[len]>, <[ps]>)
-	wchar_t *__restrict <[dst]>;
-	const char **__restrict <[src]>;
-	size_t <[nms]>;
-	size_t <[len]>;
-	mbstate_t *__restrict <[ps]>;
-
-	#include <wchar.h>
-	size_t _mbsnrtowcs_r(<[ptr]>, <[dst]>, <[src]>, <[nms]>, <[len]>, <[ps]>)
-	struct _reent *<[ptr]>;
-	wchar_t *<[dst]>;
-	const char **<[src]>;
-	size_t <[nms]>;
-	size_t <[len]>;
-	mbstate_t *<[ps]>;
-
-DESCRIPTION
-The <<mbsrtowcs>> function converts a sequence of multibyte characters
-pointed to indirectly by <[src]> into a sequence of corresponding wide
-characters and stores at most <[len]> of them in the wchar_t array pointed
-to by <[dst]>, until it encounters a terminating null character ('\0').
-
-If <[dst]> is NULL, no characters are stored.
-
-If <[dst]> is not NULL, the pointer pointed to by <[src]> is updated to point
-to the character after the one that conversion stopped at.  If conversion
-stops because a null character is encountered, *<[src]> is set to NULL.
-
-The mbstate_t argument, <[ps]>, is used to keep track of the shift state.  If
-it is NULL, <<mbsrtowcs>> uses an internal, static mbstate_t object, which
-is initialized to the initial conversion state at program startup.
-
-The <<mbsnrtowcs>> function behaves identically to <<mbsrtowcs>>, except that
-conversion stops after reading at most <[nms]> bytes from the buffer pointed
-to by <[src]>.
-
-RETURNS
-The <<mbsrtowcs>> and <<mbsnrtowcs>> functions return the number of wide
-characters stored in the array pointed to by <[dst]> if successful, otherwise
-it returns (size_t)-1.
-
-PORTABILITY
-<<mbsrtowcs>> is defined by the C99 standard.
-<<mbsnrtowcs>> is defined by the POSIX.1-2008 standard.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <reent.h>
 #include <newlib.h>
@@ -103,14 +24,8 @@ PORTABILITY
 #include <stdio.h>
 #include <errno.h>
 
-size_t
-_DEFUN (_mbsnrtowcs_r, (r, dst, src, nms, len, ps), 
-	struct _reent *r _AND
-	wchar_t *dst _AND
-	const char **src _AND
-	size_t nms _AND
-	size_t len _AND
-	mbstate_t *ps)
+size_t _mbsnrtowcs_r(struct _reent *r, wchar_t *dst, const char **src, size_t nms,
+	size_t len, mbstate_t *ps)
 {
   wchar_t *ptr = dst;
   const char *tmp_src;
@@ -169,14 +84,30 @@ _DEFUN (_mbsnrtowcs_r, (r, dst, src, nms, len, ps),
 }
 
 #ifndef _REENT_ONLY
-size_t
-_DEFUN (mbsnrtowcs, (dst, src, nms, len, ps),
-	wchar_t *__restrict dst _AND
-	const char **__restrict src _AND
-	size_t nms _AND
-	size_t len _AND
-	mbstate_t *__restrict ps)
+
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Converts a character string to a wide-character string (restartable).
+ *
+ * @details Converts a sequence of characters, beginning in the conversion state
+ * described by the object pointed to by @p ps, from the array indirectly pointed
+ * to by @p src into a sequence of corresponding wide characters. If @p dst is not
+ * a null pointer, the converted characters is stored into the array pointed to by 
+ * @p dst. Conversion continues up to and including a terminating null character, 
+ * which is also be stored.
+ *
+ * @return If the input conversion encounters a sequence of bytes that do not form
+ * a valid character, an encoding error occurs. In this case, these functions stores
+ * the value of the macro [EILSEQ] in errno and returns (size_t)-1; the conversion 
+ * state is undefined. Otherwise, these functions returns the number of characters
+ * successfully converted, not including the terminating null (if any).
+ */
+size_t mbsnrtowcs(wchar_t *restrict dst, const char **restrict src, size_t nms,
+	size_t len, mbstate_t *restrict ps,
 {
   return _mbsnrtowcs_r (_REENT, dst, src, nms, len, ps);
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
 #endif /* !_REENT_ONLY */
