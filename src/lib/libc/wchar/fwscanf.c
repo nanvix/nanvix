@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -14,7 +33,6 @@
  * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
-/* Doc in swscanf.c */
  
 #include <_ansi.h>
 #include <reent.h>
@@ -25,8 +43,22 @@
 
 #ifndef _REENT_ONLY
 
-int
-fwscanf (FILE *__restrict fp, _CONST wchar_t *__restrict fmt, ...)
+/**
+ * @brief Converts formatted wide-character input.
+ *
+ * @details Reads from the named input @p fp.
+ *
+ * @return Returns the number of successfully matched and 
+ * assigned input items; this number can be zero in the event
+ * of an early matching failure. If the input ends before the
+ * first conversion (if any) has completed, and without a matching
+ * failure having occurred, EOF is returned. If an error occurs
+ * before the first conversion (if any) has completed, and without a
+ * matching failure having occurred, EOF is returned and errno is set
+ * to indicate the error. If a read error occurs, the error indicator
+ * for the stream is set.
+ */
+int fwscanf(FILE *restrict fp, const wchar_t *restrict fmt, ...)
 {
   int ret;
   va_list ap;
@@ -39,8 +71,7 @@ fwscanf (FILE *__restrict fp, _CONST wchar_t *__restrict fmt, ...)
 
 #endif /* !_REENT_ONLY */
 
-int
-_fwscanf_r (struct _reent *ptr, FILE *fp, _CONST wchar_t *fmt, ...)
+int _fwscanf_r(struct _reent *ptr, FILE *fp, const wchar_t *fmt, ...)
 {
   int ret;
   va_list ap;
@@ -50,4 +81,3 @@ _fwscanf_r (struct _reent *ptr, FILE *fp, _CONST wchar_t *fmt, ...)
   va_end (ap);
   return (ret);
 }
-

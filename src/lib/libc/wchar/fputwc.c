@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002-2004 Tim J. Robbins.
  * All rights reserved.
@@ -24,155 +43,6 @@
  * SUCH DAMAGE.
  */
 
-/*
-FUNCTION
-<<fputwc>>, <<putwc>>, <<fputwc_unlocked>>, <<putwc_unlocked>>---write a wide character on a stream or file
-
-INDEX
-	fputwc
-INDEX
-	fputwc_unlocked
-INDEX
-	_fputwc_r
-INDEX
-	_fputwc_unlocked_r
-INDEX
-	putwc
-INDEX
-	putwc_unlocked
-INDEX
-	_putwc_r
-INDEX
-	_putwc_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t fputwc(wchar_t <[wc]>, FILE *<[fp]>);
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t fputwc_unlocked(wchar_t <[wc]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _fputwc_r(struct _reent *<[ptr]>, wchar_t <[wc]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _fputwc_unlocked_r(struct _reent *<[ptr]>, wchar_t <[wc]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t putwc(wchar_t <[wc]>, FILE *<[fp]>);
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t putwc_unlocked(wchar_t <[wc]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _putwc_r(struct _reent *<[ptr]>, wchar_t <[wc]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _putwc_unlocked_r(struct _reent *<[ptr]>, wchar_t <[wc]>, FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t fputwc(<[wc]>, <[fp]>)
-	wchar_t <[wc]>;
-	FILE *<[fp]>;
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t fputwc_unlocked(<[wc]>, <[fp]>)
-	wchar_t <[wc]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _fputwc_r(<[ptr]>, <[wc]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	wchar_t <[wc]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _fputwc_unlocked_r(<[ptr]>, <[wc]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	wchar_t <[wc]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t putwc(<[wc]>, <[fp]>)
-	wchar_t <[wc]>;
-	FILE *<[fp]>;
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t putwc_unlocked(<[wc]>, <[fp]>)
-	wchar_t <[wc]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _putwc_r(<[ptr]>, <[wc]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	wchar_t <[wc]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _putwc_unlocked_r(<[ptr]>, <[wc]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	wchar_t <[wc]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-<<fputwc>> writes the wide character argument <[wc]> to the file or
-stream identified by <[fp]>.
-
-If the file was opened with append mode (or if the stream cannot
-support positioning), then the new wide character goes at the end of the
-file or stream.  Otherwise, the new wide character is written at the
-current value of the position indicator, and the position indicator
-oadvances by one.
-
-<<fputwc_unlocked>> is a non-thread-safe version of <<fputwc>>.
-<<fputwc_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fputwc_unlocked>> is equivalent to <<fputwc>>.
-
-The <<putwc>> and <<putwc_unlocked>> functions or macros function identically
-to <<fputwc>> and <<fputwc_unlocked>>.  They may be implemented as a macro, and
-may evaluate its argument more than once. There is no reason ever to use them.
-
-The <<_fputwc_r>>, <<_putwc_r>>, <<_fputwc_unlocked_r>>, and
-<<_putwc_unlocked_r>> functions are simply reentrant versions of the above
-that take an additional reentrant structure argument: <[ptr]>.
-
-RETURNS
-If successful, <<fputwc>> and <<putwc>> return their argument <[wc]>.
-If an error intervenes, the result is <<EOF>>.  You can use
-`<<ferror(<[fp]>)>>' to query for errors.
-
-PORTABILITY
-<<fputwc>> and <<putwc>> are required by C99 and POSIX.1-2001.
-
-<<fputwc_unlocked>> and <<putwc_unlocked>> are GNU extensions.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <errno.h>
@@ -182,11 +52,7 @@ PORTABILITY
 #include <wchar.h>
 #include "../stdio/local.h"
 
-wint_t
-_DEFUN(__fputwc, (ptr, wc, fp),
-	struct _reent *ptr _AND
-	wchar_t wc _AND
-	FILE *fp)
+wint_t __fputwc(struct _reent *ptr, wchar_t wc, FILE *fp)
 {
   char buf[MB_LEN_MAX];
   size_t i, len;
@@ -217,11 +83,7 @@ _DEFUN(__fputwc, (ptr, wc, fp),
   return (wint_t) wc;
 }
 
-wint_t
-_DEFUN(_fputwc_r, (ptr, wc, fp),
-	struct _reent *ptr _AND
-	wchar_t wc _AND
-	FILE *fp)
+wint_t _fputwc_r(struct _reent *ptr, wchar_t wc, FILE *fp)
 {
   wint_t r;
 
@@ -232,10 +94,22 @@ _DEFUN(_fputwc_r, (ptr, wc, fp),
   return r;
 }
 
-wint_t
-_DEFUN(fputwc, (wc, fp),
-	wchar_t wc _AND
-	FILE *fp)
+/**
+ * @brief Puts a wide-character code on a stream.
+ *
+ * @details Writes the character corresponding to the wide-character
+ * code @p wc to the output stream pointed to by @p fp, at the position
+ * indicated by the associated file-position indicator for the stream
+ * (if defined), and advances the indicator appropriately. If the file
+ * cannot support positioning requests, or if the stream was opened with
+ * append mode, the character is appended to the output stream. If an error
+ * occurs while writing the character, the shift state of the output file is
+ * left in an undefined state.
+ *
+ * @return Returns wc. Otherwise, it returns WEOF, the error indicator for the
+ * stream is set, and errno is set to indicate the error.
+ */
+wint_t fputwc(wchar_t wc, FILE *fp)
 {
   struct _reent *reent = _REENT;
 

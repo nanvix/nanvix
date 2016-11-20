@@ -1,50 +1,38 @@
 /*
-FUNCTION
-	<<wcsncpy>>---copy part of a wide-character string 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *wcsncpy(wchar_t *__restrict <[s1]>,
-			const wchar_t *__restrict <[s2]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	wchar_t *wcsncpy(<[s1]>, <[s2]>, <[n]>
-	wchar_t *__restrict <[s1]>;
-	const wchar_t *__restrict <[s2]>;
-	size_t <[n]>;
-
-DESCRIPTION
-	The <<wcsncpy>> function copies not more than <[n]> wide-character codes
-	(wide-character codes that follow a null wide-character code are not
-	copied) from the array pointed to by <[s2]> to the array pointed to
-	by <[s1]>. If copying takes place between objects that overlap, the
-	behaviour is undefined.  Note that if <[s1]> contains more than <[n]>
-	wide characters before its terminating null, the result is not
-	null-terminated.
-
-	If the array pointed to by <[s2]> is a wide-character string that is
-	shorter than <[n]> wide-character codes, null wide-character codes are
-	appended to the copy in the array pointed to by <[s1]>, until <[n]>
-	wide-character codes in all are written. 
-
-RETURNS
-	The <<wcsncpy>> function returns <[s1]>; no return value is reserved to
-	indicate an error. 
-
-PORTABILITY
-ISO/IEC 9899; POSIX.1.
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wcsncpy, (s1, s2, n),
-	wchar_t *__restrict s1 _AND
-	_CONST wchar_t *__restrict s2 _AND
-	size_t n)
+/**
+ * @brief Copies a fixed-size wide-character string, returning a pointer to 
+ * its end.
+ *
+ * @details Copies not more than n wide-character codes (wide-character
+ * codes that follow a null wide-character code are not copied) from the
+ * array pointed to by @p s2 to the array pointed to by @p s1.
+ *
+ * @return If any null wide-character codes were written into the destination,
+ * the function returns the address of the first such null wide-character code.
+ * Otherwise, it returns @p &s1[n].
+ */
+wchar_t *wcsncpy(wchar_t *restrict s1, const wchar_t *restrict s2, size_t n)
 {
   wchar_t *dscan=s1;
 

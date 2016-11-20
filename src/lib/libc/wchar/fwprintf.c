@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -14,7 +33,6 @@
  * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
-/* doc in swprintf.c */
 
 #include <_ansi.h>
 #include <reent.h>
@@ -22,11 +40,7 @@
 #include <wchar.h>
 #include <stdarg.h>
 
-int
-_DEFUN(_fwprintf_r, (ptr, fp, fmt),
-       struct _reent *ptr _AND
-       FILE *fp _AND
-       const wchar_t *fmt _DOTS)
+int _fwprintf_r(struct _reent *ptr, FILE *fp, const wchar_t *fmt, ...)
 {
   int ret;
   va_list ap;
@@ -39,10 +53,14 @@ _DEFUN(_fwprintf_r, (ptr, fp, fmt),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(fwprintf, (fp, fmt),
-       FILE *__restrict fp _AND
-       const wchar_t *__restrict fmt _DOTS)
+/**
+ * @brief Prints formatted wide-character output.
+ *
+ * @details Place output on the named output @p fp.
+ *
+ * @return Returns the number of wide characters transmitted.
+ */
+int fwprintf(FILE *restrict fp, const wchar_t *restrict fmt, ...)
 {
   int ret;
   va_list ap;

@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -23,10 +42,7 @@
 #include <stdarg.h>
 #include "../stdio/local.h"
 
-int
-_DEFUN(_wprintf_r, (ptr, fmt),
-       struct _reent *ptr _AND
-       const wchar_t *fmt _DOTS)
+int _wprintf_r(struct _reent *ptr, const wchar_t *fmt, ...)
 {
   int ret;
   va_list ap;
@@ -40,9 +56,15 @@ _DEFUN(_wprintf_r, (ptr, fmt),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(wprintf, (fmt),
-       const wchar_t *__restrict fmt _DOTS)
+/**
+ * @brief Prints formatted wide-character output.
+ *
+ * @details Places output on the standard output stream stdout.
+ *
+ * @return Returns the number of wide characters transmitted, 
+ * or a negative value if an output error was encountered.
+ */
+int wprintf(const wchar_t *restrict fmt, ...)
 {
   int ret;
   va_list ap;

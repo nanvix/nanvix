@@ -1,31 +1,21 @@
 /*
-FUNCTION
-	<<wcsspn>>---get length of a wide substring 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	size_t wcsspn(const wchar_t *<[s]>, const wchar_t *<[set]>);
-
-TRAD_SYNOPSIS
-	size_t wcsspn(<[s]>, <[set]>
-	const wchar_t *<[s]>;
-	const wchar_t *<[set]>;
-
-DESCRIPTION
-	The <<wcsspn>> function computes the length of the maximum initial
-	segment of the wide-character string pointed to by <[s]> which consists
-	entirely of wide-character codes from the wide-character string
-	pointed to by <[set]>.
-
-RETURNS
-	The wcsspn() function returns the length <[s1]>; no return value is
-	reserved to indicate an error.
-
-PORTABILITY
-<<wcsspn>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wcsspn.c,v 1.1 2000/12/23 23:14:37 itojun Exp $	*/
 
@@ -60,13 +50,20 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <wchar.h>
 
-size_t
-_DEFUN (wcsspn, (s, set),
-	_CONST wchar_t * s _AND
-	_CONST wchar_t * set)
+/**
+ * @brief Gets the length of a wide substring.
+ *
+ * @details Computes the length (in wide characters) of the
+ * maximum initial segment of the wide-character string pointed
+ * to by @p s which consists entirely of wide-character codes 
+ * from the wide-character string pointed to by @p set.
+ *
+ * @return Returns the length of the initial substring of @p s.
+ */
+size_t wcsspn(const wchar_t *s, const wchar_t *set)
 {
-  _CONST wchar_t *p;
-  _CONST wchar_t *q;
+  const wchar_t *p;
+  const wchar_t *q;
 
   p = s;
   while (*p)

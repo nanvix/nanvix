@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -29,63 +48,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
-/*
-FUNCTION
-<<vfwprintf>>, <<vwprintf>>, <<vswprintf>>---wide character format argument list
-
-INDEX
-	vfwprintf
-INDEX
-	_vfwprintf_r
-INDEX
-	vwprintf
-INDEX
-	_vwprintf_r
-INDEX
-	vswprintf
-INDEX
-	_vswprintf_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	#include <stdarg.h>
-	#include <wchar.h>
-	int vwprintf(const wchar_t *__restrict <[fmt]>, va_list <[list]>);
-	int vfwprintf(FILE *__restrict <[fp]>,
-		const wchar_t *__restrict <[fmt]>, va_list <[list]>);
-	int vswprintf(wchar_t * __restrict <[str]>, size_t <[size]>,
-		const wchar_t *__ restrict <[fmt]>, va_list <[list]>);
-
-	int _vwprintf_r(struct _reent *<[reent]>, const wchar_t *<[fmt]>,
-		va_list <[list]>);
-	int _vfwprintf_r(struct _reent *<[reent]>, FILE *<[fp]>,
-		const wchar_t *<[fmt]>, va_list <[list]>);
-	int _vswprintf_r(struct _reent *<[reent]>, wchar_t *<[str]>,
-		size_t <[size]>, const wchar_t *<[fmt]>, va_list <[list]>);
-
-DESCRIPTION
-<<vwprintf>>, <<vfwprintf>> and <<vswprintf>> are (respectively) variants
-of <<wprintf>>, <<fwprintf>> and <<swprintf>>.  They differ only in allowing
-their caller to pass the variable argument list as a <<va_list>> object
-(initialized by <<va_start>>) rather than directly accepting a variable
-number of arguments.  The caller is responsible for calling <<va_end>>.
-
-<<_vwprintf_r>>, <<_vfwprintf_r>> and <<_vswprintf_r>> are reentrant
-versions of the above.
-
-RETURNS
-The return values are consistent with the corresponding functions.
-
-PORTABILITY
-POSIX-1.2008 with extensions; C99 (compliant except for POSIX extensions).
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-
-SEEALSO
-<<wprintf>>, <<fwprintf>> and <<swprintf>>.
-*/
 
 /*
  * Actual wprintf innards.
@@ -362,11 +324,17 @@ _EXFUN(get_arg, (struct _reent *data, int n, wchar_t *fmt,
 #endif
 
 #ifndef STRING_ONLY
-int
-_DEFUN(VFWPRINTF, (fp, fmt0, ap),
-       FILE *__restrict fp         _AND
-       _CONST wchar_t *__restrict fmt0 _AND
-       va_list ap)
+
+/**
+ * @brief Wide-character formatted output of a stdarg argument list.
+ *
+ * @details This function is equivalent to fwprintf() except that
+ * instead of being called with a variable number of arguments, they
+ * are called with an argument list as defined by <stdarg.h>.
+ *
+ * @return Returns the number of wide characters transmitted.
+ */
+int VFWPRINTF(FILE *restrict fp, const wchar_t *restrict fmt0, va_list ap)
 {
   int result;
   result = _VFWPRINTF_R (_REENT, fp, fmt0, ap);

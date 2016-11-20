@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002-2004 Tim J. Robbins.
  * All rights reserved.
@@ -24,95 +43,6 @@
  * SUCH DAMAGE.
  */
 
-/*
-FUNCTION
-<<fgetws>>, <<fgetws_unlocked>>---get wide character string from a file or stream
-
-INDEX
-	fgetws
-INDEX
-	fgetws_unlocked
-INDEX
-	_fgetws_r
-INDEX
-	_fgetws_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *fgetws(wchar_t *__restrict <[ws]>, int <[n]>,
-                        FILE *__restrict <[fp]>);
-
-	#define _GNU_SOURCE
-	#include <wchar.h>
-	wchar_t *fgetws_unlocked(wchar_t *__restrict <[ws]>, int <[n]>,
-                        FILE *__restrict <[fp]>);
-
-	#include <wchar.h>
-	wchar_t *_fgetws_r(struct _reent *<[ptr]>, wchar_t *<[ws]>,
-                           int <[n]>, FILE *<[fp]>);
-
-	#include <wchar.h>
-	wchar_t *_fgetws_unlocked_r(struct _reent *<[ptr]>, wchar_t *<[ws]>,
-                           int <[n]>, FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *fgetws(<[ws]>,<[n]>,<[fp]>)
-	wchar_t *__restrict <[ws]>;
-	int <[n]>;
-	FILE *__restrict <[fp]>;
-
-	#define _GNU_SOURCE
-	#include <wchar.h>
-	wchar_t *fgetws_unlocked(<[ws]>,<[n]>,<[fp]>)
-	wchar_t *__restrict <[ws]>;
-	int <[n]>;
-	FILE *__restrict <[fp]>;
-
-	#include <wchar.h>
-	wchar_t *_fgetws_r(<[ptr]>, <[ws]>,<[n]>,<[fp]>)
-	struct _reent *<[ptr]>;
-	wchar_t *<[ws]>;
-	int <[n]>;
-	FILE *<[fp]>;
-
-	#include <wchar.h>
-	wchar_t *_fgetws_unlocked_r(<[ptr]>, <[ws]>,<[n]>,<[fp]>)
-	struct _reent *<[ptr]>;
-	wchar_t *<[ws]>;
-	int <[n]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-Reads at most <[n-1]> wide characters from <[fp]> until a newline
-is found. The wide characters including to the newline are stored
-in <[ws]>. The buffer is terminated with a 0.
-
-<<fgetws_unlocked>> is a non-thread-safe version of <<fgetws>>.
-<<fgetws_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fgetws_unlocked>> is equivalent to <<fgetws>>.
-
-The <<_fgetws_r>> and <<_fgetws_unlocked_r>> functions are simply reentrant
-version of the above and are passed an additional reentrancy structure
-pointer: <[ptr]>.
-
-RETURNS
-<<fgetws>> returns the buffer passed to it, with the data
-filled in. If end of file occurs with some data already
-accumulated, the data is returned with no other indication. If
-no data are read, NULL is returned instead.
-
-PORTABILITY
-<<fgetws>> is required by C99 and POSIX.1-2001.
-
-<<fgetws_unlocked>> is a GNU extension.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <errno.h>
@@ -121,13 +51,7 @@ PORTABILITY
 #include <wchar.h>
 #include "../stdio/local.h"
 
-
-wchar_t *
-_DEFUN(_fgetws_r, (ptr, ws, n, fp),
-	struct _reent *ptr _AND
-	wchar_t * ws _AND
-	int n _AND
-	FILE * fp)
+wchar_t *_fgetws_r(struct _reent *ptr, wchar_t * ws, int n, FILE * fp)
 {
   wchar_t *wsp;
   size_t nconv;
@@ -195,11 +119,18 @@ error:
   return NULL;
 }
 
-wchar_t *
-_DEFUN(fgetws, (ws, n, fp),
-	wchar_t *__restrict ws _AND
-	int n _AND
-	FILE *__restrict fp)
+/**
+ * @brief Gets a wide-character string from a stream.
+ *
+ * @details Reads characters from the @p fp, convert these to the
+ * corresponding wide-character codes, place them in the wchar_t array
+ * pointed to by @p ws, until @p n-1 characters are read, or a <newline>
+ * is read, converted, and transferred to @p ws, or an end-of-file condition
+ * is encountered.
+ *
+ * @return Returns ws.
+ */
+wchar_t * fgetws(wchar_t *restrict ws, int n, FILE *restrict fp)
 {
   struct _reent *reent = _REENT;
 

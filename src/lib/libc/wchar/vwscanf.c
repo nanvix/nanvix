@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Code created by modifying scanf.c which has following copyright.
  *
@@ -16,7 +35,6 @@
  * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
-/* Doc in vfwscanf.c */
  
 #include <_ansi.h>
 #include <reent.h>
@@ -31,8 +49,16 @@
 
 #ifndef _REENT_ONLY
 
-int
-vwscanf (_CONST wchar_t *__restrict fmt, va_list ap)
+/**
+ * @brief Wide-character formatted input of a stdarg argument list.
+ *
+ * @details This function is equivalent to wscanf() except that 
+ * instead of being called with a variable number of arguments, they
+ * are called with an argument list as defined by <stdarg.h>.
+ *
+ * @return Returns the number of successfully matched and assigned input items.
+ */
+int vwscanf(const wchar_t *restrict fmt, va_list ap)
 {
   struct _reent *reent = _REENT;
 
@@ -42,8 +68,7 @@ vwscanf (_CONST wchar_t *__restrict fmt, va_list ap)
 
 #endif /* !_REENT_ONLY */
 
-int
-_vwscanf_r (struct _reent *ptr, _CONST wchar_t *fmt, va_list ap)
+int _vwscanf_r(struct _reent *ptr, const wchar_t *fmt, va_list ap)
 {
   _REENT_SMALL_CHECK_INIT (ptr);
   return __svfwscanf_r (ptr, _stdin_r (ptr), fmt, ap);

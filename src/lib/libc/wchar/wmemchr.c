@@ -1,38 +1,21 @@
 /*
-FUNCTION
-	<<wmemchr>>---find a wide character in memory
- 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t	*wmemchr(const wchar_t *<[s]>, wchar_t <[c]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	wchar_t	*wmemchr(<[s]>, <[c]>, <[n]>
-	const wchar_t *<[s]>;
-	wchar_t <[c]>;
-	size_t <[n]>;
-
-DESCRIPTION
-	The <<wmemchr>> function locates the first occurrence of <[c]> in the
-	initial <[n]> wide characters of the object pointed to be <[s]>. This
-	function is not affected by locale and all wchar_t values are treated
-	identically.  The null wide character and wchar_t values not
-	corresponding to valid characters are not treated specially.
-
-	If <[n]> is zero, <[s]> must be a valid pointer and the function
-	behaves as if no valid occurrence of <[c]> is found. 
-
-RETURNS
-	The <<wmemchr>> function returns a pointer to the located
-	wide character, or a null pointer if the wide character does not occur
-	in the object. 
-
-PORTABILITY
-<<wmemchr>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wmemchr.c,v 1.1 2000/12/23 23:14:37 itojun Exp $	*/
 
@@ -68,11 +51,18 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wmemchr, (s, c, n),
-	_CONST wchar_t * s _AND
-	wchar_t c _AND
-	size_t n)
+/**
+ * @brief Finds a wide character in memory.
+ *
+ * @details Locates the first occurrence of @p c
+ * in the initial @p n wide characters of the object
+ * pointed to by @p s.
+ *
+ * @return Returns a pointer to the located wide character,
+ * or a null pointer if the wide character does not occur 
+ * in the object.
+ */
+wchar_t *wmemchr(const wchar_t *s, wchar_t c, size_t n)
 {
   size_t i;
 

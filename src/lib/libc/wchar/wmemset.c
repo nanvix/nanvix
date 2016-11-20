@@ -1,35 +1,21 @@
 /*
-FUNCTION
-       <<wmemset>>---set wide characters in memory 
-
-ANSI_SYNOPSIS
-       #include <wchar.h>
-       wchar_t *wmemset(wchar_t *<[s]>, wchar_t <[c]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-       wchar_t *wmemset(<[s]>, <[c]>, <[n]>
-       wchar_t *<[s]>;
-       wchar_t <[c]>;
-       size_t <[n]>;
-
-DESCRIPTION
-       The <<wmemset>> function copies the value of <[c]> into each of the
-       first <[n]> wide characters of the object pointed to by <[s]>.  This
-       function is not affected by locale and all wchar_t values are treated
-       identically.  The null wide character and wchar_t values not
-       corresponding to valid characters are not treated specially.
-
-       If <[n]> is zero, <[s]> must be a valid pointer and the function
-       copies zero wide characters.
-
-RETURNS
-       The <<wmemset>> function returns the value of <[s]>.
-
-PORTABILITY
-<<wmemset>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*     $NetBSD: wmemset.c,v 1.1 2000/12/23 23:14:37 itojun Exp $       */
 
@@ -64,11 +50,15 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <wchar.h>
 
-wchar_t	*
-_DEFUN(wmemset, (s, c, n),
-	wchar_t *s _AND
-	wchar_t c _AND
-	size_t n)
+/**
+ * @brief Sets wide characters in memory.
+ *
+ * @details Copies the value of @p c into each of the
+ * first @p n wide characters of the object pointed to by @p s.
+ *
+ * @return Returns the value of @p s.
+ */
+wchar_t *wmemset(wchar_t *s, wchar_t c, size_t n)
 {
 	size_t i;
 	wchar_t *p;

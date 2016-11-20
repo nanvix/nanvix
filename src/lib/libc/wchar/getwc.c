@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002 Tim J. Robbins.
  * All rights reserved.
@@ -32,21 +51,16 @@
 
 #undef getwc
 
-wint_t
-_DEFUN(_getwc_r, (ptr, fp),
-	struct _reent *ptr _AND
-	FILE *fp)
-{
-  return _fgetwc_r (ptr, fp);
-}
-
-/*
- * Synonym for fgetwc(). The only difference is that getwc(), if it is a
- * macro, may evaluate `fp' more than once.
+/**
+ * @brief Gets a wide character from a stream.
+ *
+ * @details This function is equivalent to fgetwc().
+ *
+ * @return Returns the wide-character code of the character
+ * read from the input stream pointed to by stream converted
+ * to a type wint_t.
  */
-wint_t
-_DEFUN(getwc, (fp),
-	FILE *fp)
+wint_t getwc(FILE *fp)
 {
   return fgetwc(fp);
 }

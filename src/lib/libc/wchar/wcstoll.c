@@ -1,88 +1,21 @@
 /*
-FUNCTION
-   <<wcstoll>>---wide string to long long
-
-INDEX
-	wcstoll
-INDEX
-	_wcstoll_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-        long long wcstoll(const wchar_t *__restrict <[s]>,
-        	wchar_t **__restrict <[ptr]>,int <[base]>);
-
-        long long _wcstoll_r(void *<[reent]>, 
-                       const wchar_t *<[s]>, wchar_t **<[ptr]>,int <[base]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	long long wcstoll (<[s]>, <[ptr]>, <[base]>)
-        const wchar_t *__restrict <[s]>;
-        wchar_t **__restrict <[ptr]>;
-        int <[base]>;
-
-	long long _wcstoll_r (<[reent]>, <[s]>, <[ptr]>, <[base]>)
-	wchar_t *<[reent]>;
-        const wchar_t *<[s]>;
-        wchar_t **<[ptr]>;
-        int <[base]>;
-
-DESCRIPTION
-The function <<wcstoll>> converts the wide string <<*<[s]>>> to
-a <<long long>>. First, it breaks down the string into three parts:
-leading whitespace, which is ignored; a subject string consisting
-of characters resembling an integer in the radix specified by <[base]>;
-and a trailing portion consisting of zero or more unparseable characters,
-and always including the terminating null character. Then, it attempts
-to convert the subject string into a <<long long>> and returns the
-result.
-
-If the value of <[base]> is 0, the subject string is expected to look
-like a normal C integer constant: an optional sign, a possible `<<0x>>'
-indicating a hexadecimal base, and a number. If <[base]> is between
-2 and 36, the expected form of the subject is a sequence of letters
-and digits representing an integer in the radix specified by <[base]>,
-with an optional plus or minus sign. The letters <<a>>--<<z>> (or,
-equivalently, <<A>>--<<Z>>) are used to signify values from 10 to 35;
-only letters whose ascribed values are less than <[base]> are
-permitted. If <[base]> is 16, a leading <<0x>> is permitted.
-
-The subject sequence is the longest initial sequence of the input
-string that has the expected form, starting with the first
-non-whitespace character.  If the string is empty or consists entirely
-of whitespace, or if the first non-whitespace character is not a
-permissible letter or digit, the subject string is empty.
-
-If the subject string is acceptable, and the value of <[base]> is zero,
-<<wcstoll>> attempts to determine the radix from the input string. A
-string with a leading <<0x>> is treated as a hexadecimal value; a string with
-a leading 0 and no <<x>> is treated as octal; all other strings are
-treated as decimal. If <[base]> is between 2 and 36, it is used as the
-conversion radix, as described above. If the subject string begins with
-a minus sign, the value is negated. Finally, a pointer to the first
-character past the converted subject string is stored in <[ptr]>, if
-<[ptr]> is not <<NULL>>.
-
-If the subject string is empty (or not in acceptable form), no conversion
-is performed and the value of <[s]> is stored in <[ptr]> (if <[ptr]> is
-not <<NULL>>).
-
-The alternate function <<_wcstoll_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-<<wcstoll>> returns the converted value, if any. If no conversion was
-made, 0 is returned.
-
-<<wcstoll>> returns <<LONG_LONG_MAX>> or <<LONG_LONG_MIN>> if the magnitude of
-the converted value is too large, and sets <<errno>> to <<ERANGE>>.
-
-PORTABILITY
-<<wcstoll>> is ANSI.
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*-
  * Copyright (c) 1990 The Regents of the University of California.
@@ -127,11 +60,16 @@ No supporting OS subroutines are required.
 
 #ifndef _REENT_ONLY
 
-long long
-_DEFUN (wcstoll, (s, ptr, base),
-	_CONST wchar_t *__restrict s _AND
-	wchar_t **__restrict ptr _AND
-	int base)
+/**
+ * @brief Converts a wide-character string to a long integer.
+ *
+ * @details Converts the initial portion of the wide-character
+ * string pointed to by @p s to long long.
+ *
+ * @return Returns the converted value. If no conversion could be performed,
+ * 0 is returned.
+ */
+long long wcstoll(const wchar_t *restrict s, wchar_t **restrict ptr, int base)
 {
 	return _wcstoll_r (_REENT, s, ptr, base);
 }

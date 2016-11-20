@@ -1,41 +1,21 @@
 /*
-FUNCTION
-	<<wmemmove>>---copy wide characters in memory with overlapping areas 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *wmemmove(wchar_t *<[d]>, const wchar_t *<[s]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	wchar_t *wmemmove(<[d]>, <[s]>, <[n]>
-	wchar_t *<[d]>;
-	const wchar_t *<[s]>;
-	size_t <[n]>;
-
-DESCRIPTION
-	The <<wmemmove>> function copies <[n]> wide characters from the object
-	pointed to by <[s]> to the object pointed to by <[d]>. Copying takes
-	place as if the <[n]> wide characters from the object pointed to by
-	<[s]> are first copied into a temporary array of <[n]> wide characters
-	that does not overlap the objects pointed to by <[d]> or <[s]>, and then
-	the <[n]> wide characters from the temporary array are copied into the
-	object pointed to by <[d]>.
-
-	This function is not affected by locale and all wchar_t values are
-	treated identically. The null wide character and wchar_t values not
-	corresponding to valid characters are not treated specially.
-
-	If <[n]> is zero, <[d]> and <[s]> must be a valid pointers, and the
-	function copies zero wide characters. 
-
-RETURNS
-	The <<wmemmove>> function returns the value of <[d]>.
-
-PORTABILITY
-<<wmemmove>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wmemmove.c,v 1.1 2000/12/23 23:14:37 itojun Exp $	*/
 
@@ -71,12 +51,15 @@ No supporting OS subroutines are required.
 #include <string.h>
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wmemmove, (d, s, n),
-	wchar_t * d _AND
-	_CONST wchar_t * s _AND
-	size_t n)
+/**
+ * @brief Copies wide characters in memory with overlapping areas.
+ *
+ * @details Copies @p n wide characters from the object pointed to
+ * by @p s to the object pointed to by @p d.
+ *
+ * @return Returns the value of @p d.
+ */
+wchar_t *wmemmove(wchar_t *d, const wchar_t *s, size_t n)
 {
-
   return (wchar_t *) memmove (d, s, n * sizeof (wchar_t));
 }

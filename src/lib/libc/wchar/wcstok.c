@@ -1,69 +1,22 @@
 /*
-FUNCTION
-	<<wcstok>>---get next token from a string
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
-INDEX
-	wcstok
-
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-      	wchar_t *wcstok(wchar_t *__restrict <[source]>,
-      			const wchar_t *__restrict <[delimiters]>,
-			wchar_t **__restrict <[lasts]>)
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *wcstok(<[source]>, <[delimiters]>, <[lasts]>)
-	wchar_t *__restrict <[source]>;
-	wchar_t *__restrict <[delimiters]>;
-	wchar_t **__restrict <[lasts]>;
-
-DESCRIPTION
-	The <<wcstok>> function is the wide-character equivalent of the
-	<<strtok_r>> function (which in turn is the same as the <<strtok>>
-	function with an added argument to make it thread-safe).
-
-	The <<wcstok>> function is used to isolate (one at a time)
-	sequential tokens in a null-terminated wide-character string,
-	<<*<[source]>>>.  A token is defined as a substring not containing
-	any wide-characters from <<*<[delimiters]>>>.
-
-	The first time that <<wcstok>> is called, <<*<[source]>>> should
-	be specified with the wide-character string to be searched, and
-	<<*<[lasts]>>>--but not <<lasts>>, which must be non-NULL--may be
-	random; subsequent calls, wishing to obtain further tokens from
-	the same string, should pass a null pointer for <<*<[source]>>>
-	instead but must supply <<*<[lasts]>>> unchanged from the last
-	call.  The separator wide-character string, <<*<[delimiters]>>>,
-	must be supplied each time and may change between calls.
-	A pointer to placeholder <<*<[lasts]>>> must be supplied by
-	the caller, and is set each time as needed to save the state
-	by <<wcstok>>.	Every call to <<wcstok>> with <<*<[source]>>>
-	== <<NULL>> must pass the value of <<*<[lasts]>>> as last set
-	by <<wcstok>>.
-
-	The <<wcstok>> function returns a pointer to the beginning of each 
-	subsequent token in the string, after replacing the separator 
-	wide-character itself with a null wide-character.  When no more tokens
-	remain, a null pointer is returned.
-
-RETURNS
-	<<wcstok>> returns a pointer to the first wide character of a token, or
-	<<NULL>> if there is no token.
-
-NOTES
-	<<wcstok>> is thread-safe (unlike <<strtok>>, but like <<strtok_r>>).
-	<<wcstok>> writes into the string being searched.
-
-PORTABILITY
-<<wcstok>> is C99 and POSIX.1-2001.
-
-<<wcstok>> requires no supporting OS subroutines.
-
-QUICKREF
-	strtok ansi pure
-*/
 /* wcstok for Newlib created by adapting strtok_r, 2008.  */
 /*
  * Copyright (c) 1988 Regents of the University of California.
@@ -96,11 +49,21 @@ QUICKREF
 
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wcstok, (s, delim, lasts),
-	register wchar_t *__restrict s _AND
-	register const wchar_t *__restrict delim _AND
-	wchar_t **__restrict lasts)
+/**
+ * @brief Splits a wide-character string into tokens.
+ *
+ * @details A sequence of calls breaks the wide-character 
+ * string pointed to by @p s into a sequence of tokens, each
+ * of delimited by a wide-character code from the wide-character
+ * string pointed to by @p delim. The @p lasts argument points to
+ * a caller-provided wchar_t pointer into the function stores information
+ * necessary for it to continue scanning the same wide-character string.
+ *
+ * @return Returns a pointer to the first wide-character code of a token. 
+ * Otherwise, if there is no token, returns a null pointer.
+ */
+wchar_t *wcstok(register wchar_t *restrict s, register const wchar_t *restrict delim,
+	wchar_t **restrict lasts)
 {
 	register const wchar_t *spanp;
 	register int c, sc;
@@ -145,38 +108,3 @@ cont:
 	}
 	/* NOTREACHED */
 }
- 
-/* The remainder of this file can serve as a regression test.  Compile
- *  with -D_REGRESSION_TEST.  */
-#if defined(_REGRESSION_TEST)	/* [Test code:  example from C99 standard */
-#include <stdio.h>
-#include <wchar.h>
- 
-/* example from C99 standard with minor additions to be a test */
-int
-main(void)
-{
-int  errs=0;
-static wchar_t str1[] = L"?a???b,,,#c";
-static wchar_t str2[] = L"\t \t";
-wchar_t *t, *ptr1, *ptr2;
- 
-t = wcstok(str1, L"?", &ptr1); // t points to the token L"a"
-if(wcscmp(t,L"a")) errs++;
-t = wcstok(NULL, L",", &ptr1); // t points to the token L"??b"
-if(wcscmp(t,L"??b")) errs++;
-t = wcstok(str2, L" \t", &ptr2); // t is a null pointer
-if(t != NULL) errs++;
-t = wcstok(NULL, L"#,", &ptr1); // t points to the token L"c"
-if(wcscmp(t,L"c")) errs++;
-t = wcstok(NULL, L"?", &ptr1); // t is a null pointer
-if(t != NULL) errs++;
- 
-printf("wcstok() test ");
-if(errs)  printf("FAILED %d test cases", errs);
-  else    printf("passed");
-printf(".\n");
- 
-return(errs);
-}
-#endif /* defined(_REGRESSION_TEST) ] */

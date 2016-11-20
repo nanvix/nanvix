@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002-2004 Tim J. Robbins.
  * All rights reserved.
@@ -24,145 +43,6 @@
  * SUCH DAMAGE.
  */
 
-/*
-FUNCTION
-<<fgetwc>>, <<getwc>>, <<fgetwc_unlocked>>, <<getwc_unlocked>>---get a wide character from a file or stream
-
-INDEX
-	fgetwc
-INDEX
-	fgetwc_unlocked
-INDEX
-	_fgetwc_r
-INDEX
-	_fgetwc_unlocked_r
-INDEX
-	getwc
-INDEX
-	getwc_unlocked
-INDEX
-	_getwc_r
-INDEX
-	_getwc_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t fgetwc(FILE *<[fp]>);
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t fgetwc_unlocked(FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _fgetwc_r(struct _reent *<[ptr]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _fgetwc_unlocked_r(struct _reent *<[ptr]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t getwc(FILE *<[fp]>);
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t getwc_unlocked(FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _getwc_r(struct _reent *<[ptr]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _getwc_unlocked_r(struct _reent *<[ptr]>, FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t fgetwc(<[fp]>)
-	FILE *<[fp]>;
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t fgetwc_unlocked(<[fp]>)
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _fgetwc_r(<[ptr]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _fgetwc_unlocked_r(<[ptr]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t getwc(<[fp]>)
-	FILE *<[fp]>;
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t getwc_unlocked(<[fp]>)
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _getwc_r(<[ptr]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	#include <wchar.h>
-	wint_t _getwc_unlocked_r(<[ptr]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-Use <<fgetwc>> to get the next wide character from the file or stream
-identified by <[fp]>.  As a side effect, <<fgetwc>> advances the file's
-current position indicator.
-
-<<fgetwc_unlocked>> is a non-thread-safe version of <<fgetwc>>.
-<<fgetwc_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fgetwc_unlocked>> is equivalent to <<fgetwc>>.
-
-The <<getwc>> and <<getwc_unlocked>> functions or macros functions identically
-to <<fgetwc>> and <<fgetwc_unlocked>>.  It may be implemented as a macro, and
-may evaluate its argument more than once. There is no reason ever to use it.
-
-<<_fgetwc_r>>, <<_getwc_r>>, <<_fgetwc_unlocked_r>>, and <<_getwc_unlocked_r>>
-are simply reentrant versions of the above functions that are passed the
-additional reentrant structure pointer argument: <[ptr]>.
-
-RETURNS
-The next wide character cast to <<wint_t>>), unless there is no more data,
-or the host system reports a read error; in either of these situations,
-<<fgetwc>> and <<getwc>> return <<WEOF>>.
-
-You can distinguish the two situations that cause an <<EOF>> result by
-using the <<ferror>> and <<feof>> functions.
-
-PORTABILITY
-<<fgetwc>> and <<getwc>> are required by C99 and POSIX.1-2001.
-
-<<fgetwc_unlocked>> and <<getwc_unlocked>> are GNU extensions.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <errno.h>
@@ -171,10 +51,7 @@ PORTABILITY
 #include <wchar.h>
 #include "../stdio/local.h"
 
-wint_t
-_DEFUN(__fgetwc, (ptr, fp),
-	struct _reent *ptr _AND
-	register FILE *fp)
+wint_t __fgetwc(struct _reent *ptr, register FILE *fp)
 {
   wchar_t wc;
   size_t nconv;
@@ -218,10 +95,7 @@ _DEFUN(__fgetwc, (ptr, fp),
   return (WEOF);
 }
 
-wint_t
-_DEFUN(_fgetwc_r, (ptr, fp),
-	struct _reent *ptr _AND
-	register FILE *fp)
+wint_t _fgetwc_r(struct _reent *ptr, register FILE *fp)
 {
   wint_t r;
 
@@ -232,9 +106,18 @@ _DEFUN(_fgetwc_r, (ptr, fp),
   return r;
 }
 
-wint_t
-_DEFUN(fgetwc, (fp),
-	FILE *fp)
+/**
+ * @brief Gets a wide-character code from a stream.
+ *
+ * @details Obtains the next character (if present) from the input stream
+ * pointed to by @p fp, convert that to the corresponding wide-character
+ * code, and advance the associated file position indicator for the stream
+ * (if defined).
+ *
+ * @return Returns the wide-character code of the character read from the 
+ * input stream pointed to by stream converted to a type wint_t.
+ */
+wint_t fgetwc(FILE *fp)
 {
   struct _reent *reent = _REENT;
 

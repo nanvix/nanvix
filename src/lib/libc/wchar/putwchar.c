@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002 Tim J. Robbins.
  * All rights reserved.
@@ -24,79 +43,6 @@
  * SUCH DAMAGE.
  */
 
-/*
-FUNCTION
-<<putwchar>>, <<putwchar_unlocked>>---write a wide character to standard output
-
-INDEX
-	putwchar
-INDEX
-	putwchar_unlocked
-INDEX
-	_putwchar_r
-INDEX
-	_putwchar_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wint_t putwchar(wchar_t <[wc]>);
-
-	#include <wchar.h>
-	wint_t putwchar_unlocked(wchar_t <[wc]>);
-
-	#include <wchar.h>
-	wint_t _putwchar_r(struct _reent *<[reent]>, wchar_t <[wc]>);
-
-	#include <wchar.h>
-	wint_t _putwchar_unlocked_r(struct _reent *<[reent]>, wchar_t <[wc]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	wint_t putwchar(<[wc]>)
-	wchar_t <[wc]>;
-
-	#include <wchar.h>
-	wint_t putwchar_unlocked(<[wc]>)
-	wchar_t <[wc]>;
-
-	#include <wchar.h>
-	wint_t _putwchar_r(<[reent]>, <[wc]>)
-	struct _reent *<[reent]>;
-	wchar_t <[wc]>;
-
-	#include <wchar.h>
-	wint_t _putwchar_unlocked_r(<[reent]>, <[wc]>)
-	struct _reent *<[reent]>;
-	wchar_t <[wc]>;
-
-DESCRIPTION
-The <<putwchar>> function or macro is the wide-character equivalent of
-the <<putchar>> function. It writes the wide character wc to stdout.
-
-<<putwchar_unlocked>> is a non-thread-safe version of <<putwchar>>.
-<<putwchar_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<putwchar_unlocked>> is equivalent to <<putwchar>>.
-
-The alternate functions <<_putwchar_r>> and <<_putwchar_unlocked_r>> are
-reentrant versions of the above.  The extra argument <[reent]> is a pointer
-to a reentrancy structure.
-
-RETURNS
-If successful, <<putwchar>> returns its argument <[wc]>.  If an error
-intervenes, the result is <<EOF>>.  You can use `<<ferror(stdin)>>' to
-query for errors.
-
-PORTABILITY
-<<putwchar>> is required by C99.
-
-<<putwchar_unlocked>> is a GNU extension.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
@@ -105,20 +51,19 @@ PORTABILITY
 
 #undef putwchar
 
-wint_t
-_DEFUN(_putwchar_r, (ptr, wc),
-	struct _reent *ptr _AND
-	wchar_t wc)
+wint_t _putwchar_r(struct _reent *ptr, wchar_t wc)
 {
   return _fputwc_r (ptr, wc, stdout);
 }
 
-/*
- * Synonym for fputwc(wc, stdout).
+/**
+ * @brief Puts a wide character on a stdout stream.
+ *
+ * @details This function is equivalent to putwc(wc,stdout)
+ *
+ * @return Returns @p wc.
  */
-wint_t
-_DEFUN(putwchar, (wc),
-	wchar_t wc)
+wint_t putwchar(wchar_t wc)
 {
   _REENT_SMALL_CHECK_INIT (_REENT);
   return fputwc (wc, stdout);

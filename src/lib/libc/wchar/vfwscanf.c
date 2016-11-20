@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
@@ -14,99 +33,6 @@
  * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
-
-/*
-FUNCTION
-<<vfwscanf>>, <<vwscanf>>, <<vswscanf>>---scan and format argument list from wide character input
-
-INDEX
-	vfwscanf
-INDEX
-	_vfwscanf
-INDEX
-	vwscanf
-INDEX
-	_vwscanf
-INDEX
-	vswscanf
-INDEX
-	_vswscanf
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	#include <stdarg.h>
-	int vwscanf(const wchar_t *__restrict <[fmt]>, va_list <[list]>);
-	int vfwscanf(FILE *__restrict <[fp]>,
-                     const wchar_t *__restrict <[fmt]>, va_list <[list]>);
-	int vswscanf(const wchar_t *__restrict <[str]>,
-                     const wchar_t *__restrict <[fmt]>, va_list <[list]>);
-
-	int _vwscanf(struct _reent *<[reent]>, const wchar_t *<[fmt]>,
-                       va_list <[list]>);
-	int _vfwscanf(struct _reent *<[reent]>, FILE *<[fp]>,
-                      const wchar_t *<[fmt]>, va_list <[list]>);
-	int _vswscanf(struct _reent *<[reent]>, const wchar_t *<[str]>,
-                       const wchar_t *<[fmt]>, va_list <[list]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	#include <varargs.h>
-	int vwscanf( <[fmt]>, <[ist]>)
-	wchar_t *__restrict <[fmt]>;
-	va_list <[list]>;
-
-	int vfwscanf( <[fp]>, <[fmt]>, <[list]>)
-	FILE *__restrict <[fp]>;
-	wchar_t *__restrict <[fmt]>;
-	va_list <[list]>;
-
-	int vswscanf( <[str]>, <[fmt]>, <[list]>)
-	wchar_t *__restrict <[str]>;
-	wchar_t *__restrict <[fmt]>;
-	va_list <[list]>;
-
-	int _vwscanf( <[reent]>, <[fmt]>, <[ist]>)
-	struct _reent *<[reent]>;
-	wchar_t *<[fmt]>;
-	va_list <[list]>;
-
-	int _vfwscanf( <[reent]>, <[fp]>, <[fmt]>, <[list]>)
-	struct _reent *<[reent]>;
-	FILE *<[fp]>;
-	wchar_t *<[fmt]>;
-	va_list <[list]>;
-
-	int _vswscanf( <[reent]>, <[str]>, <[fmt]>, <[list]>)
-	struct _reent *<[reent]>;
-	wchar_t *<[str]>;
-	wchar_t *<[fmt]>;
-	va_list <[list]>;
-
-DESCRIPTION
-<<vwscanf>>, <<vfwscanf>>, and <<vswscanf>> are (respectively) variants
-of <<wscanf>>, <<fwscanf>>, and <<swscanf>>.  They differ only in
-allowing their caller to pass the variable argument list as a
-<<va_list>> object (initialized by <<va_start>>) rather than
-directly accepting a variable number of arguments.
-
-RETURNS
-The return values are consistent with the corresponding functions:
-<<vwscanf>> returns the number of input fields successfully scanned,
-converted, and stored; the return value does not include scanned
-fields which were not stored.
-
-If <<vwscanf>> attempts to read at end-of-file, the return value
-is <<EOF>>.
-
-If no fields were stored, the return value is <<0>>.
-
-The routines <<_vwscanf>>, <<_vfwscanf>>, and <<_vswscanf>> are
-reentrant versions which take an additional first parameter which points
-to the reentrancy structure.
-
-PORTABILITY
-C99, POSIX-1.2008
-*/
 
 #include <_ansi.h>
 #include <reent.h>
@@ -258,11 +184,17 @@ static void * get_arg (int, va_list *, int *, void **);
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(VFWSCANF, (fp, fmt, ap),
-       register FILE *__restrict fp _AND
-       _CONST wchar_t *__restrict fmt _AND
-       va_list ap)
+/**
+ * @brief Wide-character formatted input of a stdarg argument list.
+ *
+ * @details This function is equivalent to fwscanf() except that instead
+ * of being called with a variable number of arguments, they are called
+ * with an argument list as defined in the <stdarg.h> header.
+ *
+ * @return Returns the number of successfully matched and assigned input items.
+ */
+int VFWSCANF(register FILE *restrict fp, const wchar_t *__restrict fmt,
+	va_list ap)
 {
   struct _reent *reent = _REENT;
 

@@ -1,31 +1,21 @@
 /*
-FUNCTION
-	<<wcspbrk>>----scan wide-character string for a wide-character code
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *wcspbrk(const wchar_t *<[s]>, const wchar_t *<[set]>);
-
-TRAD_SYNOPSIS
-	wchar_t *wcspbrk(<[s]>, <[set]>
-	const wchar_t *<[s]>;
-	const wchar_t *<[set]>;
-
-DESCRIPTION
-	The <<wcspbrk>> function locates the first occurrence in the
-	wide-character string pointed to by <[s]> of any wide-character code
-	from the wide-character string pointed to by <[set]>. 
-
-RETURNS
-	Upon successful completion, <<wcspbrk>> returns a pointer to the
-	wide-character code or a null pointer if no wide-character code from
-	<[set]> occurs in <[s]>.
-
-PORTABILITY
-<<wcspbrk>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wcspbrk.c,v 1.1 2000/12/23 23:14:37 itojun Exp $	*/
 
@@ -61,13 +51,20 @@ No supporting OS subroutines are required.
 #include <stddef.h>
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wcspbrk, (s, set),
-	_CONST wchar_t * s _AND
-	_CONST wchar_t * set)
+/**
+ * @brief Scan a wide-character string for a wide-character code.
+ *
+ * @details Locates the first occurrence in the wide-character 
+ * string pointed to by @p s of any wide-character code from the
+ * wide-character string pointed to by @p set.
+ *
+ * @return Returns a pointer to the wide-character code or a null
+ * pointer if no wide-character code from @p set occurs in @p s.
+ */
+wchar_t *wcspbrk(const wchar_t *s, const wchar_t *set)
 {
-  _CONST wchar_t *p;
-  _CONST wchar_t *q;
+  const wchar_t *p;
+  const wchar_t *q;
 
   p = s;
   while (*p)

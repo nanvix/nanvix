@@ -1,93 +1,21 @@
 /*
-FUNCTION
-        <<wcstod>>, <<wcstof>>---wide char string to double or float
-
-INDEX
-	wcstod
-INDEX
-	_wcstod_r
-INDEX
-	wcstof
-INDEX
-	_wcstof_r
-
-ANSI_SYNOPSIS
-        #include <stdlib.h>
-        double wcstod(const wchar_t *__restrict <[str]>,
-            wchar_t **__restrict <[tail]>);
-        float wcstof(const wchar_t *__restrict <[str]>,
-            wchar_t **__restrict <[tail]>);
-
-        double _wcstod_r(void *<[reent]>,
-                         const wchar_t *<[str]>, wchar_t **<[tail]>);
-        float _wcstof_r(void *<[reent]>,
-                         const wchar_t *<[str]>, wchar_t **<[tail]>);
-
-TRAD_SYNOPSIS
-        #include <stdlib.h>
-        double wcstod(<[str]>,<[tail]>)
-        wchar_t *__restrict <[str]>;
-        wchar_t **__restrict <[tail]>;
-
-        float wcstof(<[str]>,<[tail]>)
-        wchar_t *__restrict <[str]>;
-        wchar_t **__restrict <[tail]>;
-
-        double _wcstod_r(<[reent]>,<[str]>,<[tail]>)
-	wchar_t *<[reent]>;
-        wchar_t *<[str]>;
-        wchar_t **<[tail]>;
-
-        float _wcstof_r(<[reent]>,<[str]>,<[tail]>)
-	wchar_t *<[reent]>;
-        wchar_t *<[str]>;
-        wchar_t **<[tail]>;
-
-DESCRIPTION
-	The function <<wcstod>> parses the wide character string <[str]>,
-	producing a substring which can be converted to a double
-	value.  The substring converted is the longest initial
-	subsequence of <[str]>, beginning with the first
-	non-whitespace character, that has one of these formats:
-	.[+|-]<[digits]>[.[<[digits]>]][(e|E)[+|-]<[digits]>]
-	.[+|-].<[digits]>[(e|E)[+|-]<[digits]>]
-	.[+|-](i|I)(n|N)(f|F)[(i|I)(n|N)(i|I)(t|T)(y|Y)]
-	.[+|-](n|N)(a|A)(n|N)[<(>[<[hexdigits]>]<)>]
-	.[+|-]0(x|X)<[hexdigits]>[.[<[hexdigits]>]][(p|P)[+|-]<[digits]>]
-	.[+|-]0(x|X).<[hexdigits]>[(p|P)[+|-]<[digits]>]
-	The substring contains no characters if <[str]> is empty, consists
-	entirely of whitespace, or if the first non-whitespace
-	character is something other than <<+>>, <<->>, <<.>>, or a
-	digit, and cannot be parsed as infinity or NaN. If the platform
-	does not support NaN, then NaN is treated as an empty substring.
-	If the substring is empty, no conversion is done, and
-	the value of <[str]> is stored in <<*<[tail]>>>.  Otherwise,
-	the substring is converted, and a pointer to the final string
-	(which will contain at least the terminating null character of
-	<[str]>) is stored in <<*<[tail]>>>.  If you want no
-	assignment to <<*<[tail]>>>, pass a null pointer as <[tail]>.
-	<<wcstof>> is identical to <<wcstod>> except for its return type.
-
-	This implementation returns the nearest machine number to the
-	input decimal string.  Ties are broken by using the IEEE
-	round-even rule.  However, <<wcstof>> is currently subject to
-	double rounding errors.
-
-	The alternate functions <<_wcstod_r>> and <<_wcstof_r>> are 
-	reentrant versions of <<wcstod>> and <<wcstof>>, respectively.
-	The extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-	Return the converted substring value, if any.  If
-	no conversion could be performed, 0 is returned.  If the
-	correct value is out of the range of representable values,
-	plus or minus <<HUGE_VAL>> is returned, and <<ERANGE>> is
-	stored in errno. If the correct value would cause underflow, 0
-	is returned and <<ERANGE>> is stored in errno.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*-
  * Copyright (c) 2002 Tim J. Robbins
@@ -124,11 +52,7 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
 #include <locale.h>
 #include <math.h>
 
-double
-_DEFUN (_wcstod_r, (ptr, nptr, endptr),
-	struct _reent *ptr _AND
-	_CONST wchar_t *nptr _AND
-	wchar_t **endptr)
+double _wcstod_r(struct _reent *ptr, const wchar_t *nptr, wchar_t **endptr)
 {
         static const mbstate_t initial;
         mbstate_t mbs;
@@ -197,11 +121,7 @@ _DEFUN (_wcstod_r, (ptr, nptr, endptr),
         return (val);
 }
 
-float
-_DEFUN (_wcstof_r, (ptr, nptr, endptr),
-	struct _reent *ptr _AND
-	_CONST wchar_t *nptr _AND
-	wchar_t **endptr)
+float _wcstof_r(struct _reent *ptr, const wchar_t *nptr, wchar_t **endptr)
 {
   double retval = _wcstod_r (ptr, nptr, endptr);
   if (isnan (retval))
@@ -211,17 +131,30 @@ _DEFUN (_wcstof_r, (ptr, nptr, endptr),
 
 #ifndef _REENT_ONLY
 
-double
-_DEFUN (wcstod, (nptr, endptr),
-	_CONST wchar_t *__restrict nptr _AND wchar_t **__restrict endptr)
+/**
+ * @brief Converts a wide-character string to a double-precision number.
+ *
+ * @details Converts the initial portion of the wide-character string 
+ * pointed to by @p nptr to double representation.
+ *
+ * @return Returns the converted value. If no conversion could be performed,
+ * 0 shall be returned.
+ */
+double wcstod(const wchar_t *restrict nptr, wchar_t **restrict endptr)
 {
   return _wcstod_r (_REENT, nptr, endptr);
 }
 
-float
-_DEFUN (wcstof, (nptr, endptr),
-	_CONST wchar_t *__restrict nptr _AND
-	wchar_t **__restrict endptr)
+/**
+ * @brief Converts a wide-character string to a double-precision number.
+ *
+ * @details Converts the initial portion of the wide-character string 
+ * pointed to by @p nptr to float representation.
+ *
+ * @return Returns the converted value. If no conversion could be performed,
+ * 0 shall be returned.
+ */
+float wcstof(const wchar_t *restrict nptr, wchar_t **restrict endptr)
 {
   double retval = _wcstod_r (_REENT, nptr, endptr);
   if (isnan (retval))

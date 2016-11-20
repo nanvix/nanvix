@@ -1,38 +1,21 @@
 /*
-FUNCTION
-	<<wmemcmp>>---compare wide characters in memory 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	int wmemcmp(const wchar_t *<[s1]>, const wchar_t *<[s2]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	int wmemcmp(<[s1]>, <[s2]>, <[n]>
-	const wchar_t *<[s1]>;
-	const wchar_t *<[s2]>;
-	size_t <[n]>;
-
-DESCRIPTION
-	The <<wmemcmp>> function compares the first <[n]> wide characters of the
-	object pointed to by <[s1]> to the first <[n]> wide characters of the
-	object pointed to by <[s2]>. This function is not affected by locale
-	and all wchar_t values are treated identically. The null wide character
-	and wchar_t values not corresponding to valid characters are not treated
-	specially.
-
-	If <[n]> is zero, <[s1]> and <[s2]> must be a valid pointers and the
-	function behaves as if the two objects compare equal. 
-
-RETURNS
-	The <<wmemcmp>> function returns an integer greater than, equal to,
-	or less than zero, accordingly as the object pointed to by <[s1]> is
-	greater than, equal to, or less than the object pointed to by <[s2]>.
-
-PORTABILITY
-<<wmemcmp>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wmemcmp.c,v 1.1 2000/12/23 23:14:37 itojun Exp $	*/
 
@@ -67,11 +50,18 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <wchar.h>
 
-int
-_DEFUN (wmemcmp, (s1, s2, n),
-	_CONST wchar_t * s1 _AND
-	_CONST wchar_t * s2 _AND
-	size_t n)
+/**
+ * @brief Compares wide characters in memory.
+ *
+ * @details Compares the first @p n wide characters of the
+ * object pointed to by @p s1 to the first @p n wide characters
+ * of the object pointed to by @p s2.
+ *
+ * @return Returns an integer greater than, equal to, or less than
+ * zero, respectively, as the object pointed to by @p s1 is greater
+ * than, equal to, or less than the object pointed to by @p s2.
+ */
+int wmemcmp(const wchar_t *s1, const wchar_t *s2, size_t n)
 {
   size_t i;
 

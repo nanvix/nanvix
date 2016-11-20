@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002-2004 Tim J. Robbins.
  * All rights reserved.
@@ -24,46 +43,6 @@
  * SUCH DAMAGE.
  */
 
-/*
-FUNCTION
-<<ungetwc>>---push wide character data back into a stream
-
-INDEX
-        ungetwc
-INDEX
-        _ungetwc_r
-
-ANSI_SYNOPSIS
-        #include <stdio.h>
-        #include <wchar.h>
-        wint_t ungetwc(wint_t <[wc]>, FILE *<[stream]>);
-
-        wint_t _ungetwc_r(struct _reent *<[reent]>, wint_t <[wc]>, FILE *<[stream]>);
-
-DESCRIPTION
-<<ungetwc>> is used to return wide characters back to <[stream]> to be
-read again.  If <[wc]> is WEOF, the stream is unchanged.  Otherwise, the
-wide character <[wc]> is put back on the stream, and subsequent reads will see
-the wide chars pushed back in reverse order.  Pushed wide chars are lost if the
-stream is repositioned, such as by <<fseek>>, <<fsetpos>>, or
-<<rewind>>.
-
-The underlying file is not changed, but it is possible to push back
-something different than what was originally read.  Ungetting a
-character will clear the end-of-stream marker, and decrement the file
-position indicator.  Pushing back beyond the beginning of a file gives
-unspecified behavior.
-
-The alternate function <<_ungetwc_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-The wide character pushed back, or <<WEOF>> on error.
-
-PORTABILITY
-C99
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <errno.h>
@@ -73,11 +52,7 @@ C99
 #include <wchar.h>
 #include "../stdio/local.h"
 
-wint_t
-_DEFUN(_ungetwc_r, (ptr, wc, fp),
-	struct _reent *ptr _AND
-	wint_t wc _AND
-	register FILE *fp)
+wint_t _ungetwc_r(struct _reent *ptr, wint_t wc, register FILE *fp)
 {
   char buf[MB_LEN_MAX];
   size_t len;
@@ -102,13 +77,16 @@ _DEFUN(_ungetwc_r, (ptr, wc, fp),
   return wc;
 }
 
-/*
- * MT-safe version.
+/**
+ * @brief Pushs wide-character code back into the input stream.
+ *
+ * @details Pushs the character corresponding to the wide-character
+ * code specified by @p wc back onto the input stream pointed to by @p fp.
+ *
+ * @return Returns the wide-character code corresponding to the pushed-back
+ * character. Otherwise, it returns WEOF.
  */
-wint_t
-_DEFUN(ungetwc, (wint_t wc, FILE *fp),
-	wint_t wc _AND
-	FILE *fp)
+wint_t ungetwc(wint_t wc, FILE *fp)
 {
   struct _reent *reent = _REENT;
 

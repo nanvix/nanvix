@@ -1,93 +1,21 @@
 /*
-FUNCTION
-	<<wcstoull>>---wide string to unsigned long long
-
-INDEX
-	wcstoull
-INDEX
-	_wcstoull_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-        unsigned long long wcstoull(const wchar_t *__restrict <[s]>,
-                              wchar_t **__restrict <[ptr]>, int <[base]>);
-
-        unsigned long long _wcstoull_r(void *<[reent]>, const wchar_t *<[s]>,
-                              wchar_t **<[ptr]>, int <[base]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-        unsigned long long wcstoull(<[s]>, <[ptr]>, <[base]>)
-        wchar_t *__restrict <[s]>;
-        wchar_t **__restrict <[ptr]>;
-        int <[base]>;
-
-        unsigned long long _wcstoull_r(<[reent]>, <[s]>, <[ptr]>, <[base]>)
-	wchar_t *<[reent]>;
-        wchar_t *<[s]>;
-        wchar_t **<[ptr]>;
-        int <[base]>;
-
-DESCRIPTION
-The function <<wcstoull>> converts the wide string <<*<[s]>>> to
-an <<unsigned long long>>. First, it breaks down the string into three parts:
-leading whitespace, which is ignored; a subject string consisting
-of the digits meaningful in the radix specified by <[base]>
-(for example, <<0>> through <<7>> if the value of <[base]> is 8);
-and a trailing portion consisting of one or more unparseable characters,
-which always includes the terminating null character. Then, it attempts
-to convert the subject string into an unsigned long long integer, and returns the
-result.
-
-If the value of <[base]> is zero, the subject string is expected to look
-like a normal C integer constant:  an optional sign (<<+>> or <<->>),
-a possible <<0x>> indicating hexadecimal radix or a possible <0> indicating
-octal radix, and a number.
-If <[base]> is between 2 and 36, the expected form of the subject is a
-sequence of digits (which may include letters, depending on the
-base) representing an integer in the radix specified by <[base]>.
-The letters <<a>>--<<z>> (or <<A>>--<<Z>>) are used as digits valued from
-10 to 35. If <[base]> is 16, a leading <<0x>> is permitted.
-
-The subject sequence is the longest initial sequence of the input
-string that has the expected form, starting with the first
-non-whitespace character.  If the string is empty or consists entirely
-of whitespace, or if the first non-whitespace character is not a
-permissible digit, the subject string is empty.
-
-If the subject string is acceptable, and the value of <[base]> is zero,
-<<wcstoull>> attempts to determine the radix from the input string. A
-string with a leading <<0x>> is treated as a hexadecimal value; a string with
-a leading <<0>> and no <<x>> is treated as octal; all other strings are
-treated as decimal. If <[base]> is between 2 and 36, it is used as the
-conversion radix, as described above. Finally, a pointer to the first
-character past the converted subject string is stored in <[ptr]>, if
-<[ptr]> is not <<NULL>>.
-
-If the subject string is empty (that is, if <<*>><[s]> does not start
-with a substring in acceptable form), no conversion
-is performed and the value of <[s]> is stored in <[ptr]> (if <[ptr]> is
-not <<NULL>>).
-
-The alternate function <<_wcstoull_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-
-RETURNS
-<<wcstoull>> returns <<0>> and sets <<errno>> to <<EINVAL>> if the value of
-<[base]> is not supported.
-
-<<wcstoull>> returns the converted value, if any. If no conversion was
-made, <<0>> is returned.
-
-<<wcstoull>> returns <<ULLONG_MAX>> if the magnitude of the converted
-value is too large, and sets <<errno>> to <<ERANGE>>.
-
-PORTABILITY
-<<wcstoull>> is ANSI.
-
-<<wcstoull>> requires no supporting OS subroutines.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*
  * Copyright (c) 1990 Regents of the University of California.
@@ -128,11 +56,17 @@ PORTABILITY
 
 #ifndef _REENT_ONLY
 
-unsigned long long
-_DEFUN (wcstoull, (s, ptr, base),
-	_CONST wchar_t *__restrict s _AND
-	wchar_t **__restrict ptr _AND
-	int base)
+/**
+ * @brief Converts a wide-character string to a unsigned long long.
+ *
+ * @details Converts the initial portion of the wide-character
+ * string pointed to by @p s to unsigned long long representation.
+ *
+ * @return Returns the converted value. If no conversion could be performed,
+ * 0 is returned.
+ */
+unsigned long long wcstoull(const wchar_t *restrict s, wchar_t **restrict ptr,
+    int base)
 {
 	return _wcstoull_r (_REENT, s, ptr, base);
 }

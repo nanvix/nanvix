@@ -1,53 +1,37 @@
 /*
-FUNCTION
-	<<wcsxfrm>>---locale-specific wide-character string transformation
-	
-INDEX
-	wcsxfrm
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	int wcsxfrm(wchar_t *__restrict <[stra]>,
-		    const wchar_t *__restrict <[strb]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	size_t wcsxfrm(<[stra]>, <[strb]>, <[n]>)
-	wchar_t *__restrict <[stra]>;
-	wchar_t *__restrict <[strb]>;
-	size_t   <[n]>
-
-DESCRIPTION
-	<<wcsxfrm>> transforms the wide-character string pointed to by
-	<[strb]> to the wide-character string pointed to by <[stra]>,
-	Comparing two transformed wide strings with <<wcscmp>> should return
-	the same result as comparing the original strings with <<wcscoll>>.
-	No more than <[n]> wide characters are transformed, including the
-	trailing null character.
-
-	If <[n]> is 0, <[stra]> may be a NULL pointer.
-
-	The current implementation of <<wcsxfrm>> simply uses <<wcslcpy>>
-	and does not support any language-specific transformations.
-
-RETURNS
-	<<wcsxfrm>> returns the length of the transformed wide character
-	string.  if the return value is greater or equal to <[n]>, the
-	content of <[stra]> is undefined.
-
-PORTABILITY
-<<wcsxfrm>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-*/
 
 #include <_ansi.h>
 #include <wchar.h>
 
-size_t
-_DEFUN (wcsxfrm, (a, b, n),
-	wchar_t *__restrict a _AND
-	_CONST wchar_t *__restrict b _AND
-	size_t n)
-
+/**
+ * @brief Wide-character string transformation.
+ *
+ * @details Transforms the wide-character string pointed to
+ * by @p b and place the resulting wide-character string into
+ * the array pointed to by @p a.
+ *
+ * @return Returns the length of the transformed wide-character
+ * string (not including the terminating null wide-character code).
+ */
+size_t wcsxfrm(wchar_t *restrict a, const wchar_t *restrict b, size_t n)
 {
   return wcslcpy (a, b, n);
 }

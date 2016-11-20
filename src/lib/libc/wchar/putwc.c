@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002 Tim J. Robbins.
  * All rights reserved.
@@ -32,22 +51,19 @@
 
 #undef putwc
 
-wint_t
-_DEFUN(_putwc_r, (ptr, wc, fp),
-	struct _reent *ptr _AND
-	wchar_t wc _AND
-	FILE *fp)
+wint_t _putwc_r(struct _reent *ptr, wchar_t wc, FILE *fp)
 {
   return _fputwc_r (ptr, wc, fp);
 }
-/*
- * Synonym for fputwc(). The only difference is that putwc(), if it is a
- * macro, may evaluate `fp' more than once.
+
+/**
+ * @brief Puts a wide character on a stream.
+ *
+ * @details This function is equivalent to fputwc().
+ *
+ * @return Returns @p wc.
  */
-wint_t
-_DEFUN(putwc, (wc, fp),
-	wchar_t wc _AND
-	FILE *fp)
+wint_t putwc(wchar_t wc, FILE *fp)
 {
   return fputwc (wc, fp);
 }

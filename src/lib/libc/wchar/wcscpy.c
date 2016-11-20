@@ -1,32 +1,21 @@
 /*
-FUNCTION
-	<<wcscpy>>---copy a wide-character string 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *wcscpy(wchar_t *__restrict <[s1]>,
-			const wchar_t *__restrict ,<[s2]>);
-
-TRAD_SYNOPSIS
-	wchar_t *wcscpy(<[s1]>, <[s2]>
-	wchar_t *__restrict <[s1]>;
-	const wchar_t *__restrict <[s2]>;
-
-DESCRIPTION
-	The <<wcscpy>> function copies the wide-character string pointed to by
-	<[s2]> (including the terminating null wide-character code) into the
-	array pointed to by <[s1]>. If copying takes place between objects that
-	overlap, the behaviour is undefined. 
-
-RETURNS
-	The <<wcscpy>> function returns <[s1]>; no return value is reserved to
-	indicate an error. 
-
-PORTABILITY
-<<wcscpy>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wcscpy.c,v 1.1 2000/12/23 23:14:36 itojun Exp $	*/
 
@@ -61,10 +50,16 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wcscpy, (s1, s2),
-	wchar_t *__restrict s1 _AND
-	_CONST wchar_t *__restrict s2)
+/**
+ * @brief Copies a wide-character string, returning a pointer to its end.
+ *
+ * @details Copies the wide-character string pointed to by @p s2 (including
+ * the terminating null wide-character code) into the array pointed to by @p s1.
+ *
+ * @return Returns a pointer to the terminating null wide-character code copied 
+ * into the @p s1 buffer.
+ */
+wchar_t * wcscpy(wchar_t *restrict s1, const wchar_t *restrict s2)
 {
   wchar_t *p;
   _CONST wchar_t *q;

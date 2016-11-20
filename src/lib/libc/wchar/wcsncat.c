@@ -1,38 +1,21 @@
 /*
-FUNCTION
-	<<wcsncat>>---concatenate part of two wide-character strings 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *wcsncat(wchar_t *__restrict <[s1]>,
-			const wchar_t *__restrict <[s2]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	wchar_t *wcsncat(<[s1]>, <[s2]>, <[n]>
-	wchar_t *__restrict <[s1]>;
-	const wchar_t *__restrict <[s2]>;
-	size_t <[n]>;
-
-DESCRIPTION
-	The <<wcsncat>> function appends not more than <[n]> wide-character
-	codes (a null wide-character code and wide-character codes that follow
-	it are not appended) from the array pointed to by <[s2]> to the end of
-	the wide-character string pointed to by <[s1]>. The initial
-	wide-character code of <[s2]> overwrites the null wide-character code
-	at the end of <[s1]>.
-	A terminating null wide-character code is always appended to the result.
-	If copying takes place between objects that overlap, the behaviour is
-	undefined.
-
-RETURNS
-	The <<wcsncat>> function returns <[s1]>; no return value is reserved to
-	indicate an error.
-
-PORTABILITY
-<<wcsncat>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wcsncat.c,v 1.1 2000/12/23 23:14:36 itojun Exp $	*/
 
@@ -67,15 +50,21 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wcsncat, (s1, s2, n),
-	wchar_t *__restrict s1 _AND
-	_CONST wchar_t *__restrict s2 _AND
-	size_t n)
+/**
+ * @brief Concatenates a wide-character string with part of another.
+ *
+ * @details Appends not more than @p n wide-character codes (a null
+ * wide-character code and wide-character codes that follow it are
+ * not appended) from the array pointed to by @p s2 to the end of 
+ * the wide-character string pointed to by @p s1.
+ *
+ * @return Returns @p s1.
+ */
+wchar_t *wcsncat(wchar_t *restrict s1, const wchar_t *restrict s2, size_t n)
 {
   wchar_t *p;
   wchar_t *q;
-  _CONST wchar_t *r;
+  const wchar_t *r;
 
   p = s1;
   while (*p)

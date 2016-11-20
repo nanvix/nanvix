@@ -1,32 +1,21 @@
 /*
-FUNCTION
-	<<wcschr>>---wide-character string scanning operation
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *wcschr(const wchar_t *<[s]>, wchar_t <[c]>);
-
-TRAD_SYNOPSIS
-	wchar_t *wcschr(<[s]>, <[c]>
-	const wchar_t *<[s]>;
-	wchar_t <[c]>;
-
-DESCRIPTION
-	The <<wcschr>> function locates the first occurrence of <[c]> in the
-	wide-character string pointed to by <[s]>. The value of <[c]> must be a
-	character representable as a type wchar_t and must be a wide-character
-	code corresponding to a valid character in the current locale.
-	The terminating null wide-character string.
-
-RETURNS
-	Upon completion, <<wcschr>> returns a pointer to the wide-character
-	code, or a null pointer if the wide-character code is not found. 
-
-PORTABILITY
-<<wcschr>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wcschr.c,v 1.1 2000/12/23 23:14:36 itojun Exp $	*/
 
@@ -62,12 +51,18 @@ No supporting OS subroutines are required.
 #include <stddef.h>
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wcschr, (s, c),
-	_CONST wchar_t * s _AND
-	wchar_t c)
+/**
+ * @brief Wide-character string scanning operation.
+ *
+ * @details Locates the first occurrence of @p c in the
+ * wide-character string pointed to by @p s.
+ *
+ * @return Returns a pointer to the wide-character code, 
+ * or a null pointer if the wide-character code is not found.
+ */
+wchar_t *wcschr(const wchar_t *s, wchar_t c)
 {
-  _CONST wchar_t *p;
+  const wchar_t *p;
 
   p = s;
   do

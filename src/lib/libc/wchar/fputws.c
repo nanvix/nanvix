@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002-2004 Tim J. Robbins.
  * All rights reserved.
@@ -24,85 +43,6 @@
  * SUCH DAMAGE.
  */
 
-/*
-FUNCTION        
-<<fputws>>, <<fputws_unlocked>>---write a wide character string in a file or stream
-
-INDEX
-	fputws   
-INDEX
-	fputws_unlocked 
-INDEX
-	_fputws_r
-INDEX
-	_fputws_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	int fputws(const wchar_t *__restrict <[ws]>, FILE *__restrict <[fp]>);
-
-	#define _GNU_SOURCE
-	#include <wchar.h>
-	int fputws_unlocked(const wchar_t *__restrict <[ws]>, FILE *__restrict <[fp]>);
-
-	#include <wchar.h>
-	int _fputws_r(struct _reent *<[ptr]>, const wchar_t *<[ws]>,
-                      FILE *<[fp]>);
-
-	#include <wchar.h>
-	int _fputws_unlocked_r(struct _reent *<[ptr]>, const wchar_t *<[ws]>,
-                               FILE *<[fp]>);
-
-TRAD_SYNOPSIS   
-	#include <wchar.h>
-	int fputws(<[ws]>, <[fp]>)
-	wchar_t *__restrict <[ws]>;
-	FILE *__restrict <[fp]>;
-
-	#define _GNU_SOURCE
-	#include <wchar.h>
-	int fputws_unlocked(<[ws]>, <[fp]>)
-	wchar_t *__restrict <[ws]>;
-	FILE *__restrict <[fp]>;
-
-	#include <wchar.h>
-	int _fputws_r(<[ptr]>, <[ws]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	wchar_t *<[ws]>;
-	FILE *<[fp]>;
-
-	#include <wchar.h>
-	int _fputws_unlocked_r(<[ptr]>, <[ws]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	wchar_t *<[ws]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-<<fputws>> writes the wide character string at <[ws]> (but without the
-trailing null) to the file or stream identified by <[fp]>.
-
-<<fputws_unlocked>> is a non-thread-safe version of <<fputws>>.
-<<fputws_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fputws_unlocked>> is equivalent to <<fputws>>.
-
-<<_fputws_r>> and <<_fputws_unlocked_r>> are simply reentrant versions of the
-above that take an additional reentrant struct pointer argument: <[ptr]>.
-
-RETURNS
-If successful, the result is a non-negative integer; otherwise, the result
-is <<-1>> to indicate an error.
-
-PORTABILITY
-<<fputws>> is required by C99 and POSIX.1-2001.
-
-<<fputws_unlocked>> is a GNU extension.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <errno.h>
@@ -112,13 +52,7 @@ PORTABILITY
 #include "../stdio/fvwrite.h"
 #include "../stdio/local.h"
 
-
-
-int
-_DEFUN(_fputws_r, (ptr, ws, fp),
-	struct _reent *ptr _AND
-	const wchar_t *ws _AND
-	FILE *fp)
+int _fputws_r(struct _reent *ptr, const wchar_t *ws, FILE *fp)
 {
   size_t nbytes;
   char buf[BUFSIZ];
@@ -178,10 +112,18 @@ error:
 #endif
 }
 
-int
-_DEFUN(fputws, (ws, fp),
-	const wchar_t *__restrict ws _AND
-	FILE *__restrict fp)
+/**
+ * @brief Puts a wide-character string on a stream.
+ *
+ * @details Writes a character string corresponding to the
+ * (null-terminated) wide-character string pointed to by @p ws
+ * to the stream pointed to by @p fp.
+ *
+ * @return Returns a non-negative number. Otherwise, it returns -1,
+ * set an error indicator for the stream, and set errno to indicate
+ * the error. 
+ */
+int fputws(const wchar_t *restrict ws, FILE *restrict fp)
 {
   struct _reent *reent = _REENT;
 

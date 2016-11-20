@@ -1,68 +1,27 @@
 /*
-FUNCTION
-<<fwide>>---set and determine the orientation of a FILE stream
-
-INDEX
-	fwide
-INDEX
-	_fwide_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	int fwide(FILE *<[fp]>, int <[mode]>)
-
-	int _fwide_r(struct _reent *<[ptr]>, FILE *<[fp]>, int <[mode]>)
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	int fwide(<[fp]>, <[mode]>)
-	FILE *<[fp]>;
-	int <[mode]>;
-
-	int _fwide_r(<[ptr]>, <[fp]>, <[mode]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	int <[mode]>;
-
-DESCRIPTION
-When <[mode]> is zero, the <<fwide>> function determines the current
-orientation of <[fp]>. It returns a value > 0 if <[fp]> is
-wide-character oriented, i.e. if wide character I/O is permitted but
-char I/O is disallowed. It returns a value < 0 if <[fp]> is byte
-oriented, i.e. if char I/O is permitted but wide character I/O is
-disallowed. It returns zero if <[fp]> has no orientation yet; in
-this case the next I/O operation might change the orientation (to byte
-oriented if it is a char I/O operation, or to wide-character oriented
-if it is a wide character I/O operation).
-
-Once a stream has an orientation, it cannot be changed and persists
-until the stream is closed, unless the stream is re-opened with freopen,
-which removes the orientation of the stream.
-
-When <[mode]> is non-zero, the <<fwide>> function first attempts to set
-<[fp]>'s orientation (to wide-character oriented if <[mode]> > 0, or to
-byte oriented if <[mode]> < 0). It then returns a value denoting the
-current orientation, as above.
-
-RETURNS
-The <<fwide>> function returns <[fp]>'s orientation, after possibly
-changing it. A return value > 0 means wide-character oriented. A return
-value < 0 means byte oriented. A return value of zero means undecided.
-
-PORTABILITY
-C99, POSIX.1-2001.
-
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <wchar.h>
 #include "../stdio/local.h"
 
-int
-_DEFUN(_fwide_r, (ptr, fp, mode),
-	struct _reent *ptr _AND
-	FILE *fp _AND
-	int mode)
+int _fwide_r(struct _reent *ptr, FILE *fp, int mode)
 {
   int ret;
 
@@ -80,10 +39,20 @@ _DEFUN(_fwide_r, (ptr, fp, mode),
   return ret;
 }
 
-int
-_DEFUN(fwide, (fp, mode),
-	FILE *fp _AND
-	int mode)
+/**
+ * @brief Sets stream orientation.
+ *
+ * @details Determines the orientation of the stream pointed to by @p fp.
+ * If @p mode is greater than zero, the function first attempts to make
+ * the stream wide-oriented. If @p mode is less than zero, the function
+ * first attempts to make the stream byte-oriented. Otherwise, @p mode is
+ * zero and the function does not alter the orientation of the stream.
+ *
+ * @return Returns a value greater than zero if, after the call, the stream 
+ * has wide-orientation, a value less than zero if the stream has byte-orientation,
+ * or zero if the stream has no orientation.
+ */
+int fwide(FILE *fp, int mode)
 {
   return _fwide_r (_REENT, fp, mode);
 }

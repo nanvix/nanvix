@@ -1,48 +1,40 @@
 /*
-FUNCTION
-	<<wcscoll>>---locale-specific wide-character string compare
-	
-INDEX
-	wcscoll
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	int wcscoll(const wchar_t *<[stra]>, const wchar_t * <[strb]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	int wcscoll(<[stra]>, <[strb]>)
-	wchar_t *<[stra]>;
-	wchar_t *<[strb]>;
-
-DESCRIPTION
-	<<wcscoll>> compares the wide-character string pointed to by
-	<[stra]> to the wide-character string pointed to by <[strb]>,
-	using an interpretation appropriate to the current <<LC_COLLATE>>
-	state.
-
-	The current implementation of <<wcscoll>> simply uses <<wcscmp>>
-	and does not support any language-specific sorting.
-
-RETURNS
-	If the first string is greater than the second string,
-	<<wcscoll>> returns a number greater than zero.  If the two
-	strings are equivalent, <<wcscoll>> returns zero.  If the first
-	string is less than the second string, <<wcscoll>> returns a
-	number less than zero.
-
-PORTABILITY
-<<wcscoll>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <wchar.h>
 
-int
-_DEFUN (wcscoll, (a, b),
-	_CONST wchar_t *a _AND
-	_CONST wchar_t *b)
-
+/**
+ * @brief Wide-character string comparison using collating information.
+ *
+ * @details Compares the wide-character string pointed to by @p a
+ * to the wide-character string pointed to by @p b, both interpreted
+ * as appropriate to the LC_COLLATE category of the current locale, 
+ * or the locale represented by locale, respectively.
+ *
+ * @return Returns an integer greater than, equal to, or less than 0,
+ * according to whether the wide-character string pointed to by @p a is
+ * greater than, equal to, or less than the wide-character string pointed
+ * to by @p b, when both are interpreted as appropriate to the current locale,
+ * or to the locale represented by locale, respectively.
+ */
+int wcscoll(const wchar_t *a, const wchar_t *b)
 {
   return wcscmp (a, b);
 }

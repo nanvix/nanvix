@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 2002 Tim J. Robbins.
  * All rights reserved.
@@ -24,82 +43,6 @@
  * SUCH DAMAGE.
  */
 
-/*
-FUNCTION
-<<getwchar>>, <<getwchar_unlocked>>---read a wide character from standard input
-
-INDEX
-	getwchar
-INDEX
-	getwchar_unlocked
-INDEX
-	_getwchar_r
-INDEX
-	_getwchar_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wint_t getwchar(void);
-
-	#define _GNU_SOURCE
-	#include <wchar.h>
-	wint_t getwchar_unlocked(void);
-
-	#include <wchar.h>
-	wint_t _getwchar_r(struct _reent *<[reent]>);
-
-	#include <wchar.h>
-	wint_t _getwchar_unlocked_r(struct _reent *<[reent]>);
-
-TRAD_SYNOPSIS
-	#include <wchar.h>
-	wint_t getwchar();
-
-	#define _GNU_SOURCE
-	#include <wchar.h>
-	wint_t getwchar_unlocked();
-
-	#include <wchar.h>
-	wint_t _getwchar_r(<[reent]>)
-	char * <[reent]>;
-
-	#include <wchar.h>
-	wint_t _getwchar_unlocked_r(<[reent]>)
-	char * <[reent]>;
-
-DESCRIPTION
-<<getwchar>> function or macro is the wide character equivalent of
-the <<getchar>> function.  You can use <<getwchar>> to get the next
-wide character from the standard input stream.  As a side effect,
-<<getwchar>> advances the standard input's current position indicator.
-
-<<getwchar_unlocked>> is a non-thread-safe version of <<getwchar>>.
-<<getwchar_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<getwchar_unlocked>> is equivalent to <<getwchar>>.
-
-The alternate functions <<_getwchar_r>> and <<_getwchar_unlocked_r>> are
-reentrant versions of the above.  The extra argument <[reent]> is a pointer to
-a reentrancy structure.
-
-RETURNS
-The next wide character cast to <<wint_t>>, unless there is no more
-data, or the host system reports a read error; in either of these
-situations, <<getwchar>> returns <<WEOF>>.
-
-You can distinguish the two situations that cause an <<WEOF>> result by
-using `<<ferror(stdin)>>' and `<<feof(stdin)>>'.
-
-PORTABILITY
-<<getwchar>> is required by C99.
-
-<<getwchar_unlocked>> is a GNU extension.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
@@ -108,18 +51,21 @@ PORTABILITY
 
 #undef getwchar
 
-wint_t
-_DEFUN (_getwchar_r, (ptr),
-	struct _reent *ptr)
+wint_t _getwchar_r(struct _reent *ptr)
 {
   return _fgetwc_r (ptr, stdin);
 }
 
-/*
- * Synonym for fgetwc(stdin).
+/**
+ * @brief Gets a wide character from a stdin stream.
+ *
+ * @details This function is equivalent to getwc(stdin).
+ *
+ * @return Returns the wide-character code of the character
+ * read from the input stream pointed to by stream converted
+ * to a type wint_t.
  */
-wint_t
-_DEFUN_VOID (getwchar)
+wint_t getwchar(void)
 {
   _REENT_SMALL_CHECK_INIT (_REENT);
   return fgetwc (stdin);

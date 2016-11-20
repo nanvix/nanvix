@@ -1,38 +1,21 @@
 /*
-FUNCTION
-	<<wcsncmp>>---compare part of two wide-character strings 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	int wcsncmp(const wchar_t *<[s1]>, const wchar_t *<[s2]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	int wcsncmp(<[s1]>, <[s2]>, <[n]>
-	const wchar_t *<[s1]>;
-	const wchar_t *<[s2]>;
-	size_t <[n]>;
-
-DESCRIPTION
-	The <<wcsncmp>> function compares not more than <[n]> wide-character
-	codes (wide-character codes that follow a null wide-character code are
-	not compared) from the array pointed to by <[s1]> to the array pointed
-	to by <[s2]>.
-
-	The sign of a non-zero return value is determined by the sign of the
-	difference between the values of the first pair of wide-character codes
-	that differ in the objects being compared. 
-
-RETURNS
-	Upon successful completion, <<wcsncmp>> returns an integer greater than,
-	equal to or less than 0, if the possibly null-terminated array pointed
-	to by <[s1]> is greater than, equal to or less than the possibly
-	null-terminated array pointed to by <[s2]> respectively. 
-
-PORTABILITY
-<<wcsncmp>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD$	*/
 
@@ -68,11 +51,20 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <wchar.h>
 
-int
-_DEFUN (wcsncmp, (s1, s2, n),
-	_CONST wchar_t * s1 _AND
-	_CONST wchar_t * s2 _AND
-	size_t n)
+/**
+ * @brief Compares part of two wide-character strings.
+ *
+ * @details Compares not more than @p n wide-character codes
+ * (wide-character codes that follow a null wide-character code
+ * are not compared) from the array pointed to by @p s1 to the
+ * array pointed to by @p s2.
+ *
+ * @return Returns an integer greater than, equal to, or less than 0,
+ * if the possibly null-terminated array pointed to by @p s1 is greater
+ * than, equal to, or less than the possibly null-terminated array pointed
+ * to by @p s2, respectively.
+ */
+int wcsncmp(const wchar_t *s1, const wchar_t *s2, size_t n)
 {
 
   if (n == 0)

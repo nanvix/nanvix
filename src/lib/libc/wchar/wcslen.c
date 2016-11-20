@@ -1,29 +1,21 @@
 /*
-FUNCTION
-	<<wcslen>>---get wide-character string length 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	size_t wcslen(const wchar_t *<[s]>);
-
-TRAD_SYNOPSIS
-	size_t wcslen(<[s]>
-	const wchar_t *<[s]>;
-
-DESCRIPTION
-	The <<wcslen>> function computes the number of wide-character codes
-	in the wide-character string to which <[s]> points, not including the
-	terminating null wide-character code.
-
-RETURNS
-	The <<wcslen>> function returns the length of <[s]>; no return value is
-	reserved to indicate an error.
-
-PORTABILITY
-<<wcslen>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wcslen.c,v 1.1 2000/12/23 23:14:36 itojun Exp $	*/
 
@@ -58,11 +50,18 @@ No supporting OS subroutines are required.
 #include <_ansi.h>
 #include <wchar.h>
 
-size_t
-_DEFUN (wcslen, (s),
-	_CONST wchar_t * s)
+/**
+ * @brief Gets length of a fixed-sized wide-character string.
+ *
+ * @details Computes the number of wide-character codes in the
+ * wide-character string to which @p ws points, not including 
+ * the terminating null wide-character code.
+ *
+ * @return Returns the length of @p s.
+ */
+size_t wcslen(const wchar_t *s)
 {
-  _CONST wchar_t *p;
+  const wchar_t *p;
 
   p = s;
   while (*p)

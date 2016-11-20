@@ -1,35 +1,21 @@
 /*
-FUNCTION
-	<<wcsstr>>---find a wide-character substring 
-
-ANSI_SYNOPSIS
-	#include <wchar.h>
-	wchar_t *wcsstr(const wchar_t *__restrict <[big]>,
-			const wchar_t *__restrict <[little]>);
-
-TRAD_SYNOPSIS
-	wchar_t *wcsstr(<[big]>, <[little]>
-	const wchar_t *__restrict <[big]>;
-	const wchar_t *__restrict <[little]>;
-
-DESCRIPTION
-	The <<wcsstr>> function locates the first occurrence in the
-	wide-character string pointed to by <[big]> of the sequence of
-	wide characters (excluding the terminating null wide character) in the
-	wide-character string pointed to by <[little]>.
-
-RETURNS
-	On successful completion, <<wcsstr>> returns a pointer to the located
-	wide-character string, or a null pointer if the wide-character string
-	is not found.
-
-	If <[little]> points to a wide-character string with zero length,
-	the function returns <[big]>.
-
-PORTABILITY
-<<wcsstr>> is ISO/IEC 9899/AMD1:1995 (ISO C).
-
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*	$NetBSD: wcsstr.c,v 1.1 2000/12/23 23:14:37 itojun Exp $	*/
 
@@ -65,14 +51,22 @@ PORTABILITY
 #include <stddef.h>
 #include <wchar.h>
 
-wchar_t *
-_DEFUN (wcsstr, (big, little),
-	_CONST wchar_t *__restrict big _AND
-	_CONST wchar_t *__restrict little)
+/**
+ * @brief Finds a wide-character substring.
+ *
+ * @details Locates the first occurrence in the wide-character
+ * string pointed to by @p big of the sequence of wide characters
+ * (excluding the terminating null wide character) in the wide-character
+ * string pointed to by @p little.
+ *
+ * @return Returns a pointer to the located wide-character string, or a 
+ * null pointer if the wide-character string is not found.
+ */
+wchar_t *wcsstr(const wchar_t *restrict big, const wchar_t *restrict little)
 {
-  _CONST wchar_t *p;
-  _CONST wchar_t *q;
-  _CONST wchar_t *r;
+  const wchar_t *p;
+  const wchar_t *q;
+  const wchar_t *r;
 
   if (!*little)
     {
