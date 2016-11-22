@@ -1,65 +1,26 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /* Copyright (C) 2007 Eric Blake
  * Permission to use, copy, modify, and distribute this software
  * is freely granted, provided that this notice is preserved.
  */
-
-/*
-FUNCTION
-<<open_memstream>>, <<open_wmemstream>>---open a write stream around an arbitrary-length string
-
-INDEX
-	open_memstream
-INDEX
-	open_wmemstream
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	FILE *open_memstream(char **restrict <[buf]>,
-			     size_t *restrict <[size]>);
-
-	#include <wchar.h>
-	FILE *open_wmemstream(wchar_t **restrict <[buf]>,
-			      size_t *restrict <[size]>);
-
-DESCRIPTION
-<<open_memstream>> creates a seekable, byte-oriented <<FILE>> stream that
-wraps an arbitrary-length buffer, created as if by <<malloc>>.  The current
-contents of *<[buf]> are ignored; this implementation uses *<[size]>
-as a hint of the maximum size expected, but does not fail if the hint
-was wrong.  The parameters <[buf]> and <[size]> are later stored
-through following any call to <<fflush>> or <<fclose>>, set to the
-current address and usable size of the allocated string; although
-after fflush, the pointer is only valid until another stream operation
-that results in a write.  Behavior is undefined if the user alters
-either *<[buf]> or *<[size]> prior to <<fclose>>.
-
-<<open_wmemstream>> is like <<open_memstream>> just with the associated
-stream being wide-oriented.  The size set in <[size]> in subsequent
-operations is the number of wide characters.
-
-The stream is write-only, since the user can directly read *<[buf]>
-after a flush; see <<fmemopen>> for a way to wrap a string with a
-readable stream.  The user is responsible for calling <<free>> on
-the final *<[buf]> after <<fclose>>.
-
-Any time the stream is flushed, a NUL byte is written at the current
-position (but is not counted in the buffer length), so that the string
-is always NUL-terminated after at most *<[size]> bytes (or wide characters
-in case of <<open_wmemstream>>).  However, data previously written beyond
-the current stream offset is not lost, and the NUL value written during a
-flush is restored to its previous value when seeking elsewhere in the string.
-
-RETURNS
-The return value is an open FILE pointer on success.  On error,
-<<NULL>> is returned, and <<errno>> will be set to EINVAL if <[buf]>
-or <[size]> is NULL, ENOMEM if memory could not be allocated, or
-EMFILE if too many streams are already open.
-
-PORTABILITY
-POSIX.1-2008
-
-Supporting OS subroutines required: <<sbrk>>.
-*/
 
 #include <stdio.h>
 #include <wchar.h>
@@ -386,14 +347,12 @@ _DEFUN(_open_memstream_r, (ptr, buf, size),
   return internal_open_memstream_r (ptr, buf, size, -1);
 }
 
-FILE *
-_DEFUN(_open_wmemstream_r, (ptr, buf, size),
-       struct _reent *ptr _AND
-       wchar_t **buf _AND
-       size_t *size)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+FILE *_open_wmemstream_r(struct _reent *ptr, wchar_t **buf, size_t *size)
 {
   return internal_open_memstream_r (ptr, (char **)buf, size, 1);
 }
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
 
 #ifndef _REENT_ONLY
 FILE *
@@ -404,11 +363,21 @@ _DEFUN(open_memstream, (buf, size),
   return _open_memstream_r (_REENT, buf, size);
 }
 
-FILE *
-_DEFUN(open_wmemstream, (buf, size),
-       wchar_t **buf _AND
-       size_t *size)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Opens a dynamic memory buffer stream.
+ *
+ * @details Creates an I/O stream associated with a dynamically allocated
+ * memory buffer. The stream is opened for writing and is seekable.
+ *
+ * @return Returns a pointer to the object controlling the stream. Otherwise,
+ * a null pointer is returned, and errno is set to indicate the error.
+ */
+FILE * open_wmemstream(wchar_t **buf, size_t *size)
 {
   return _open_wmemstream_r (_REENT, buf, size);
 }
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
+
 #endif /* !_REENT_ONLY */
