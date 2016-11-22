@@ -18,6 +18,11 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Toolchain configuration.
+export CFLAGS += -Os
+export CFLAGS += -Wno-error=maybe-uninitialized
+export CFLAGS += -Wno-error=parentheses
+
 # Conflicts.
 .PHONY: libc
 .PHONY: libm
