@@ -35,7 +35,7 @@
 	 */
 	/**@{*/
 	#define MULTIUSER                    0 /**< Multiuser support?              */
-	#define KERNEL_VERSION           "1.4" /**< Kernel version.                 */
+	#define KERNEL_VERSION           "2.0" /**< Kernel version.                 */
 	#define PROC_MAX                    64 /**< Maximum number of process.      */
 	#define PROC_SIZE_MAX  (MEMORY_SIZE/8) /**< Maximum process size.           */
 	#define RAMDISK_SIZE          0x400000 /**< RAM disks size.                 */
