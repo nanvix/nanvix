@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1993 Martin Birgmeier
  * All rights reserved.
  *
@@ -13,10 +32,9 @@
 
 #include "rand48.h"
 
-unsigned short *
-_DEFUN (_seed48_r, (r, xseed),
-       struct _reent *r _AND
-       unsigned short xseed[3])
+#ifdef _XOPEN_SOURCE
+
+unsigned short *_seed48_r(struct _reent *r, unsigned short xseed[3])
 {
   static unsigned short sseed[3];
 
@@ -35,10 +53,22 @@ _DEFUN (_seed48_r, (r, xseed),
 }
 
 #ifndef _REENT_ONLY
-unsigned short *
-_DEFUN (seed48, (xseed),
-       unsigned short xseed[3])
+
+/**
+ * @brief Generates uniformly distributed pseudo-random numbers.
+ *
+ * @details This is a initialization function and should be called
+ * before using drand48(), lrand48() or mrand48(). The function sets
+ * the value of Xi to the 48-bit value specified in the array argument
+ * @p xseed. The previous value of Xi is copied into an internal buffer
+ * and a pointer to this buffer is returned by seed48().
+ *
+ * @return Returns a pointer to the buffer.
+ */
+unsigned short *seed48(unsigned short xseed[3])
 {
   return _seed48_r (_REENT, xseed);
 }
+
 #endif /* !_REENT_ONLY */
+#endif /* _XOPEN_SOURCE */

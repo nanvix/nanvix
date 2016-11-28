@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1993 Martin Birgmeier
  * All rights reserved.
  *
@@ -13,10 +32,9 @@
 
 #include "rand48.h"
 
-_VOID
-_DEFUN (_srand48_r, (r, seed),
-       struct _reent *r _AND
-       long seed)
+#ifdef _XOPEN_SOURCE
+
+void _srand48_r(struct _reent *r, long seed)
 {
   _REENT_CHECK_RAND48(r);
   __rand48_seed[0] = _RAND48_SEED_0;
@@ -29,10 +47,19 @@ _DEFUN (_srand48_r, (r, seed),
 }
 
 #ifndef _REENT_ONLY
-_VOID
-_DEFUN (srand48, (seed),
-       long seed)
+
+/**
+ * @brief Generates uniformly distributed pseudo-random numbers.
+ *
+ * @details This is a initialization function and should be called
+ * before using drand48(), lrand48() or mrand48(). The function sets
+ * the high order 32-bits of Xi to the argument seedval. The low order
+ * 16-bits are set to the arbitrary value 0x330E.
+ */
+void srand48(long seed)
 {
   _srand48_r (_REENT, seed);
 }
+
 #endif /* !_REENT_ONLY */
+#endif /* _XOPEN_SOURCE */
