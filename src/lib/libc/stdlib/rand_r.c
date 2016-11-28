@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <stdlib.h>
 
 /* Pseudo-random generator based on Minimal Standard by
@@ -20,9 +39,18 @@
    note that the seed value of 0 cannot be used in the calculation as
    it results in 0 itself
 */
-      
-int
-_DEFUN (rand_r, (seed), unsigned int *seed)
+
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+   
+/**
+ * @brief Pseudo-random number generator.
+ *
+ * @details Computes a sequence of pseudo-random integers in the range
+ * [0, {RAND_MAX}].
+ *
+ * @return Returns a pseudo-random integer.
+ */
+int rand_r(unsigned int *seed)
 {
         long k;
         long s = (long)(*seed);
@@ -35,3 +63,5 @@ _DEFUN (rand_r, (seed), unsigned int *seed)
         (*seed) = (unsigned int)s;
         return (int)(s & RAND_MAX);
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

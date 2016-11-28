@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1987 Regents of the University of California.
  * All rights reserved.
  *
@@ -336,12 +355,23 @@ _DEFUN(mkstemp, (path),
 }
 
 # if !defined _ELIX_LEVEL || _ELIX_LEVEL >= 4
-char *
-_DEFUN(mkdtemp, (path),
-       char *path)
+
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Creates a unique directory or file.
+ *
+ * @details Creates a directory with a unique name derived from @p path.
+ *
+ * @return Returns the value of @p path. Otherwise, returns a null
+ * pointer and sets errno to indicate the error.
+ */
+char *mkdtemp(char *path)
 {
   return (_gettemp (_REENT, path, (int *) NULL, 1, 0, 0) ? path : NULL);
 }
+
+#endif
 
 int
 _DEFUN(mkstemps, (path, len),

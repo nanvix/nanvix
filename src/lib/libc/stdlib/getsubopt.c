@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -46,10 +65,20 @@ static char sccsid[] = "@(#)getsubopt.c	8.1 (Berkeley) 6/4/93";
  * tricky...  The extern variable suboptarg is a pointer to the token
  * which didn't match.
  */
+
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
 char *suboptarg;
 
-int
-getsubopt(optionp, tokens, valuep)
+/**
+ * @brief Parses suboption arguments from a string.
+ *
+ * @details Parses the list of comma-separated suboptions provided in @p optionp.
+ *
+ * @return Returns the index of the matched token string, or -1 if no token 
+ * strings were matched.
+ */
+int getsubopt(optionp, tokens, valuep)
 	char **optionp, **valuep;
 	char * const *tokens;
 {
@@ -99,3 +128,4 @@ getsubopt(optionp, tokens, valuep)
 			return(cnt);
 	return(-1);
 }
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
