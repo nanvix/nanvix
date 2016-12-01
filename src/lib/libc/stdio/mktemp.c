@@ -281,67 +281,6 @@ _DEFUN(_gettemp, (ptr, path, doopen, domkdir, suffixlen, flags),
 # define O_BINARY 0
 #endif
 
-int
-_DEFUN(_mkstemp_r, (ptr, path),
-       struct _reent *ptr _AND
-       char *path)
-{
-  int fd;
-
-  return (_gettemp (ptr, path, &fd, 0, 0, O_BINARY) ? fd : -1);
-}
-
-#if !defined _ELIX_LEVEL || _ELIX_LEVEL >= 4
-char *
-_DEFUN(_mkdtemp_r, (ptr, path),
-       struct _reent *ptr _AND
-       char *path)
-{
-  return (_gettemp (ptr, path, (int *) NULL, 1, 0, 0) ? path : NULL);
-}
-
-int
-_DEFUN(_mkstemps_r, (ptr, path, len),
-       struct _reent *ptr _AND
-       char *path _AND
-       int len)
-{
-  int fd;
-
-  return (_gettemp (ptr, path, &fd, 0, len, O_BINARY) ? fd : -1);
-}
-
-int
-_DEFUN(_mkostemp_r, (ptr, path, flags),
-       struct _reent *ptr _AND
-       char *path _AND
-       int flags)
-{
-  int fd;
-
-  return (_gettemp (ptr, path, &fd, 0, 0, flags & ~O_ACCMODE) ? fd : -1);
-}
-
-int
-_DEFUN(_mkostemps_r, (ptr, path, len, flags),
-       struct _reent *ptr _AND
-       char *path _AND
-       int len _AND
-       int flags)
-{
-  int fd;
-
-  return (_gettemp (ptr, path, &fd, 0, len, flags & ~O_ACCMODE) ? fd : -1);
-}
-#endif /* _ELIX_LEVEL */
-
-char *
-_DEFUN(_mktemp_r, (ptr, path),
-       struct _reent *ptr _AND
-       char *path)
-{
-  return (_gettemp (ptr, path, (int *) NULL, 0, 0, 0) ? path : (char *) NULL);
-}
 
 #ifndef _REENT_ONLY
 
@@ -371,45 +310,6 @@ char *mkdtemp(char *path)
   return (_gettemp (_REENT, path, (int *) NULL, 1, 0, 0) ? path : NULL);
 }
 
-#endif
-
-int
-_DEFUN(mkstemps, (path, len),
-       char *path _AND
-       int len)
-{
-  int fd;
-
-  return (_gettemp (_REENT, path, &fd, 0, len, O_BINARY) ? fd : -1);
-}
-
-int
-_DEFUN(mkostemp, (path, flags),
-       char *path _AND
-       int flags)
-{
-  int fd;
-
-  return (_gettemp (_REENT, path, &fd, 0, 0, flags & ~O_ACCMODE) ? fd : -1);
-}
-
-int
-_DEFUN(mkostemps, (path, len, flags),
-       char *path _AND
-       int len _AND
-       int flags)
-{
-  int fd;
-
-  return (_gettemp (_REENT, path, &fd, 0, len, flags & ~O_ACCMODE) ? fd : -1);
-}
-# endif /* _ELIX_LEVEL */
-
-char *
-_DEFUN(mktemp, (path),
-       char *path)
-{
-  return (_gettemp (_REENT, path, (int *) NULL, 0, 0, 0) ? path : (char *) NULL);
-}
-
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
+#endif /* _ELIX_LEVEL */
 #endif /* ! defined (_REENT_ONLY) */
