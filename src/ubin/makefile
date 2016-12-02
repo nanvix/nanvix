@@ -18,6 +18,9 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Toolchain configuration.
+export CFLAGS += -Os
+
 # Conflicts.
 .PHONY: cat
 .PHONY: chgrp

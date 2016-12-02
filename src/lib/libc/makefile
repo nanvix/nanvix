@@ -50,6 +50,7 @@ C_SRC = $(wildcard *.c)         \
 	$(wildcard time/*.c)        \
 	$(wildcard unistd/*.c)      \
 	$(wildcard utime/*.c)       \
+	$(wildcard wchar/*.c)       \
 
 # Assembly source files.
 ASM_SRC = $(wildcard setjmp/*.S) \

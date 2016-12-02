@@ -1,44 +1,21 @@
 /*
-FUNCTION
-<<atoll>>---convert a string to a long long integer
-
-INDEX
-        atoll
-INDEX
-        _atoll_r
-
-ANSI_SYNOPSIS
-        #include <stdlib.h>
-        long long atoll(const char *<[str]>);
-        long long _atoll_r(struct _reent *<[ptr]>, const char *<[str]>);
-
-TRAD_SYNOPSIS
-        #include <stdlib.h>
-        long long atoll(<[str]>)
-        const char *<[str]>;
-
-        long long _atoll_r(<[ptr]>, <[str]>)
-	struct _reent *<[ptr]>;
-        const char *<[str]>;
-
-DESCRIPTION
-The function <<atoll>> converts the initial portion of the string 
-pointed to by <<*<[str]>>> to a type <<long long>>.  A call to
-atoll(str) in this implementation is equivalent to 
-strtoll(str, (char **)NULL, 10) including behavior on error.
-
-The alternate function <<_atoll_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-
-RETURNS
-The converted value.
-
-PORTABILITY
-<<atoll>> is ISO 9899 (C99) and POSIX 1003.1-2001 compatable.
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*
  * Copyright (c) 1988, 1993
@@ -77,18 +54,19 @@ No supporting OS subroutines are required.
 #include <stddef.h>
 
 #ifndef _REENT_ONLY
-long long
-_DEFUN(atoll, (str),
-       _CONST char *str)
+
+/**
+ * @brief Converts a string to a long integer.
+ *
+ * @details Converts the initial portion of the string
+ * pointed to by @p ptr to long long.
+ *
+ * @return Returns the converted value if the value can
+ * be represented.
+ */
+long long atoll(const char *str)
 {
 	return strtoll(str, (char **)NULL, 10);
 }
-#endif /* !_REENT_ONLY */
 
-long long
-_DEFUN(_atoll_r, (ptr, str),
-       struct _reent *ptr _AND
-       _CONST char *str)
-{
-	return _strtoll_r(ptr, str, (char **)NULL, 10);
-}
+#endif /* !_REENT_ONLY */

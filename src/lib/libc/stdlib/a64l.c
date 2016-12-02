@@ -1,71 +1,39 @@
 /*
-FUNCTION
-<<a64l>>, <<l64a>>---convert between radix-64 ASCII string and long
-
-INDEX
-        a64l
-INDEX
-	l64a
-
-ANSI_SYNOPSIS
-        #include <stdlib.h>
-        long a64l(const char *<[input]>);
-        char *l64a(long <[input]>);
-
-TRAD_SYNOPSIS
-        #include <stdlib.h>
-        long a64l(<[input]>)
-        const char *<[input]>;
-
-        char *l64a(<[input]>)
-        long <[input]>;
-
-DESCRIPTION
-Conversion is performed between long and radix-64 characters.  The
-<<l64a>> routine transforms up to 32 bits of input value starting from
-least significant bits to the most significant bits.  The input value
-is split up into a maximum of 5 groups of 6 bits and possibly one
-group of 2 bits (bits 31 and 30).
-
-Each group of 6 bits forms a value from 0--63 which is translated into
-a character as follows:
-
-O+
-o     0 = '.'
-o     1 = '/'
-o     2--11 = '0' to '9'
-o     12--37 = 'A' to 'Z'
-o     38--63 = 'a' to 'z'
-O-
-
-When the remaining bits are zero or all bits have been translated, a
-null terminator is appended to the string.  An input value of 0
-results in the empty string.
-
-The <<a64l>> function performs the reverse translation.  Each
-character is used to generate a 6-bit value for up to 30 bits and then
-a 2-bit value to complete a 32-bit result.  The null terminator means
-that the remaining digits are 0.  An empty input string or NULL string
-results in 0L.  An invalid string results in undefined behavior.  If
-the size of a long is greater than 32 bits, the result is sign-extended.
-
-RETURNS
-<<l64a>> returns a null-terminated string of 0 to 6 characters.
-<<a64l>> returns the 32-bit translated value from the input character string.
-
-PORTABILITY
-<<l64a>> and <<a64l>> are non-ANSI and are defined by the Single Unix Specification.
-
-Supporting OS subroutines required: None.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <stdlib.h>
 #include <limits.h>
 
-long
-_DEFUN (a64l, (input),
-	const char *input)
+#ifdef _XOPEN_SOURCE
+
+/**
+ * @brief Converts between a 32-bit integer and a radix-64 ASCII string.
+ *
+ * @details Takes a pointer to a radix-64 representation, in which the 
+ * first digit is the least significant, and return the corresponding long
+ * value.
+ *
+ * @return Returns the long value resulting from conversion of the input 
+ * string.
+ */
+long a64l(const char *input)
 {
   const char *ptr;
   char ch;
@@ -192,6 +160,4 @@ _DEFUN (a64l, (input),
   return result;
 }
 
-
-
-
+#endif /* _XOPEN_SOURCE */

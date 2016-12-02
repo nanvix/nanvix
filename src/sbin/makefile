@@ -17,6 +17,9 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Toolchain configuration.
+export CFLAGS += -Os
+
 # Resolves conflicts
 .PHONY: foobar
 .PHONY: init
@@ -24,7 +27,7 @@
 .PHONY: test
 
 # Builds everything.
-all: foobar init shutdown test
+all: init shutdown
 
 # Builds foobar.
 foobar:

@@ -1,66 +1,47 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 Regents of the University of California.
  * All rights reserved.
  *
  * %sccs.include.redist.c%
  */
 
-/*
-FUNCTION
-<<atexit>>---request execution of functions at program exit
-
-INDEX
-	atexit
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	int atexit (void (*<[function]>)(void));
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	int atexit ((<[function]>)
-	  void (*<[function]>)();
-
-DESCRIPTION
-You can use <<atexit>> to enroll functions in a list of functions that
-will be called when your program terminates normally.  The argument is
-a pointer to a user-defined function (which must not require arguments and
-must not return a result).
-
-The functions are kept in a LIFO stack; that is, the last function
-enrolled by <<atexit>> will be the first to execute when your program
-exits.
-
-There is no built-in limit to the number of functions you can enroll
-in this list; however, after every group of 32 functions is enrolled,
-<<atexit>> will call <<malloc>> to get space for the next part of the
-list.   The initial list of 32 functions is statically allocated, so
-you can always count on at least that many slots available.
-
-RETURNS
-<<atexit>> returns <<0>> if it succeeds in enrolling your function,
-<<-1>> if it fails (possible only if no space was available for
-<<malloc>> to extend the list of functions).
-
-PORTABILITY
-<<atexit>> is required by the ANSI standard, which also specifies that
-implementations must support enrolling at least 32 functions.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <stdlib.h>
 #include "atexit.h"
 
-/*
- * Register a function to be performed at exit.
+/**
+ * @brief Registers a function to run at process termination.
+ *
+ * @details Registers the function pointed to by @p fn, to be
+ * called without arguments at normal program termination. 
+ * At normal program termination, all functions registered by
+ * the atexit() function are called, in the reverse order of
+ * their registration, except that a function is called after
+ * any previously registered functions that had already been
+ * called at the time it was registered.
+ *
+ * @return Upon successful completion, atexit() returns 0;
+ * otherwise, returns a non-zero value.
  */
-
-int
-_DEFUN (atexit,
-	(fn),
-	_VOID _EXFNPTR(fn, (_VOID)))
+int atexit(void (*fn)(void))
 {
   return __register_exitproc (__et_atexit, fn, NULL, NULL);
 }

@@ -98,7 +98,14 @@ PUBLIC ssize_t cdev_write(dev_t dev, const void *buf, size_t n)
 }
 
 /*
- * Reads from a character device.
+ * @brief Reads a character from a character device.
+ *
+ * @details Attempts to read @p n bytes from the character device identified
+ * by @p dev to the buffer pointed to by @p buf.
+ * 
+ * @returns Upon successful completion, the number of bytes actually read
+ * from the device is returned. Upon failure, a negative error code is
+ * returned.
  */
 PUBLIC ssize_t cdev_read(dev_t dev, void *buf, size_t n)
 {
@@ -198,8 +205,14 @@ PRIVATE const struct bdev *bdevsw[NR_BLKDEV] = {
 	NULL  /* /dev/hdd     */
 };
 
-/*
- * Registers a block device.
+/**
+ * @brief Registers a block device.
+ *
+ * @details Attempts to register a block device @p bdev with major number @p
+ * major.
+ *
+ * @returns Upon successful completion, zero is returned. Upon failure, a
+ * negative error code is returned.
  */
 PUBLIC int bdev_register(unsigned major, const struct bdev *dev)
 {
@@ -217,8 +230,15 @@ PUBLIC int bdev_register(unsigned major, const struct bdev *dev)
 	return (0);
 }
 
-/*
- * Writes to a block device.
+/**
+ * @brief Writes bytes to a block device.
+ *
+ * @returns Attempts to write @p n bytes from the buffer pointed to by @p
+ * buf to the block device identified by @p dev, starting at offset @p off.
+ * 
+ * @returns Upon successful completion, the number of bytes that were
+ * actually written to the device is returned. Upon failure, a negative
+ * error code is returned.
  */
 PUBLIC ssize_t bdev_write(dev_t dev, const char *buf, size_t n, off_t off)
 {
@@ -233,8 +253,15 @@ PUBLIC ssize_t bdev_write(dev_t dev, const char *buf, size_t n, off_t off)
 	return (bdevsw[MAJOR(dev)]->write(MINOR(dev), buf, n, off));
 }
 
-/*
- * Reads from a block device.
+/**
+ * @brief Reads bytes from a block device.
+ *
+ * @details Attempts to read @p n bytes from the block device identified by
+ * @p dev to the buffer pointed to by @p buf, starting at offset @p off.
+ * 
+ * @returns Upon successful completion, returns the number of bytes that
+ * were actually read from the device. Upon failure, a negative error code
+ * is returned.
  */
 PUBLIC ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off)
 {
@@ -302,7 +329,7 @@ PUBLIC void bdev_readblk(buffer_t buf)
  *============================================================================*/
 
 /*
- * Initializes device drivers.
+ * @brief Initializes the device drivers.
  */
 PUBLIC void dev_init(void)
 {
