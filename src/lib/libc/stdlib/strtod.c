@@ -1,81 +1,21 @@
 /*
-FUNCTION
-        <<strtod>>, <<strtof>>---string to double or float
-
-INDEX
-	strtod
-INDEX
-	_strtod_r
-INDEX
-	strtof
-
-ANSI_SYNOPSIS
-        #include <stdlib.h>
-        double strtod(const char *restrict <[str]>, char **restrict <[tail]>);
-        float strtof(const char *restrict <[str]>, char **restrict <[tail]>);
-
-        double _strtod_r(void *<[reent]>,
-                         const char *restrict <[str]>, char **restrict <[tail]>);
-
-TRAD_SYNOPSIS
-        #include <stdlib.h>
-        double strtod(<[str]>,<[tail]>)
-        char *<[str]>;
-        char **<[tail]>;
-
-        float strtof(<[str]>,<[tail]>)
-        char *<[str]>;
-        char **<[tail]>;
-
-        double _strtod_r(<[reent]>,<[str]>,<[tail]>)
-	char *<[reent]>;
-        char *<[str]>;
-        char **<[tail]>;
-
-DESCRIPTION
-	The function <<strtod>> parses the character string <[str]>,
-	producing a substring which can be converted to a double
-	value.  The substring converted is the longest initial
-	subsequence of <[str]>, beginning with the first
-	non-whitespace character, that has one of these formats:
-	.[+|-]<[digits]>[.[<[digits]>]][(e|E)[+|-]<[digits]>]
-	.[+|-].<[digits]>[(e|E)[+|-]<[digits]>]
-	.[+|-](i|I)(n|N)(f|F)[(i|I)(n|N)(i|I)(t|T)(y|Y)]
-	.[+|-](n|N)(a|A)(n|N)[<(>[<[hexdigits]>]<)>]
-	.[+|-]0(x|X)<[hexdigits]>[.[<[hexdigits]>]][(p|P)[+|-]<[digits]>]
-	.[+|-]0(x|X).<[hexdigits]>[(p|P)[+|-]<[digits]>]
-	The substring contains no characters if <[str]> is empty, consists
-	entirely of whitespace, or if the first non-whitespace
-	character is something other than <<+>>, <<->>, <<.>>, or a
-	digit, and cannot be parsed as infinity or NaN. If the platform
-	does not support NaN, then NaN is treated as an empty substring.
-	If the substring is empty, no conversion is done, and
-	the value of <[str]> is stored in <<*<[tail]>>>.  Otherwise,
-	the substring is converted, and a pointer to the final string
-	(which will contain at least the terminating null character of
-	<[str]>) is stored in <<*<[tail]>>>.  If you want no
-	assignment to <<*<[tail]>>>, pass a null pointer as <[tail]>.
-	<<strtof>> is identical to <<strtod>> except for its return type.
-
-	This implementation returns the nearest machine number to the
-	input decimal string.  Ties are broken by using the IEEE
-	round-even rule.  However, <<strtof>> is currently subject to
-	double rounding errors.
-
-	The alternate function <<_strtod_r>> is a reentrant version.
-	The extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-	<<strtod>> returns the converted substring value, if any.  If
-	no conversion could be performed, 0 is returned.  If the
-	correct value is out of the range of representable values,
-	plus or minus <<HUGE_VAL>> is returned, and <<ERANGE>> is
-	stored in errno. If the correct value would cause underflow, 0
-	is returned and <<ERANGE>> is stored in errno.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /****************************************************************
 
@@ -1253,17 +1193,30 @@ _DEFUN (_strtod_r, (ptr, s00, se),
 
 #ifndef _REENT_ONLY
 
-double
-_DEFUN (strtod, (s00, se),
-	_CONST char *__restrict s00 _AND char **__restrict se)
+/**
+ * @brief Converts a string to a double-precision number.
+ *
+ * @details Converts the initial portion of the string
+ * pointed to by @p s00 to double.
+ *
+ * @return Returns the converted value. If no conversion
+ * could be performed, 0 is returned.
+ */
+double strtod(const char *restrict s00, char **restrict se)
 {
   return _strtod_r (_REENT, s00, se);
 }
 
-float
-_DEFUN (strtof, (s00, se),
-	_CONST char *__restrict s00 _AND
-	char **__restrict se)
+/**
+ * @brief Converts a string to a double-precision number.
+ *
+ * @details Converts the initial portion of the string
+ * pointed to by @p s00 to float.
+ *
+ * @return Returns the converted value. If no conversion
+ * could be performed, 0 is returned.
+ */
+float strtof(const char *restrict s00, char **restrict se)
 {
   double retval = _strtod_r (_REENT, s00, se);
   if (isnan (retval))

@@ -1,50 +1,21 @@
 /*
-FUNCTION
-<<div>>---divide two integers
-
-INDEX
-	div
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	div_t div(int <[n]>, int <[d]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	div_t div(<[n]>, <[d]>)
-	int <[n]>, <[d]>;
-
-DESCRIPTION
-Divide
-@tex
-$n/d$,
-@end tex
-@ifnottex
-<[n]>/<[d]>,
-@end ifnottex
-returning quotient and remainder as two integers in a structure <<div_t>>.
-
-RETURNS
-The result is represented with the structure
-
-. typedef struct
-. {
-.  int quot;
-.  int rem;
-. } div_t;
-
-where the <<quot>> field represents the quotient, and <<rem>> the
-remainder.  For nonzero <[d]>, if `<<<[r]> = div(<[n]>,<[d]>);>>' then
-<[n]> equals `<<<[r]>.rem + <[d]>*<[r]>.quot>>'.
-
-To divide <<long>> rather than <<int>> values, use the similar
-function <<ldiv>>.
-
-PORTABILITY
-<<div>> is ANSI.
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*
  * Copyright (c) 1990 Regents of the University of California.
@@ -83,12 +54,21 @@ No supporting OS subroutines are required.
  */
 
 #include <_ansi.h>
-#include <stdlib.h>		/* div_t */
+#include <stdlib.h>
 
-div_t
-_DEFUN (div, (num, denom),
-	int num _AND
-	int denom)
+/**
+ * @brief Computes the quotient and remainder of an integer division.
+ *
+ * @details Computes the quotient and remainder of the
+ * division of the numerator @p num by the denominator
+ * @p denom. If the division is inexact, the resulting
+ * quotient is the integer of lesser magnitude that is
+ * the nearest to the algebraic quotient.
+ *
+ * @return Returns a structure of type div_t, comprising
+ * both the quotient and the remainder.
+ */
+div_t div(int num, int denom)
 {
 	div_t r;
 

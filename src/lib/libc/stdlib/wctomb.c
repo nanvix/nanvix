@@ -1,48 +1,21 @@
 /*
-FUNCTION
-<<wctomb>>---minimal wide char to multibyte converter
-
-INDEX
-	wctomb
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	int wctomb(char *<[s]>, wchar_t <[wchar]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	int wctomb(<[s]>, <[wchar]>)
-	char *<[s]>;
-	wchar_t <[wchar]>;
-
-DESCRIPTION
-When _MB_CAPABLE is not defined, this is a minimal ANSI-conforming 
-implementation of <<wctomb>>.  The
-only ``wide characters'' recognized are single bytes,
-and they are ``converted'' to themselves.  
-
-When _MB_CAPABLE is defined, this routine calls <<_wctomb_r>> to perform
-the conversion, passing a state variable to allow state dependent
-decoding.  The result is based on the locale setting which may
-be restricted to a defined set of locales.
-
-Each call to <<wctomb>> modifies <<*<[s]>>> unless <[s]> is a null
-pointer or _MB_CAPABLE is defined and <[wchar]> is invalid.
-
-RETURNS
-This implementation of <<wctomb>> returns <<0>> if
-<[s]> is <<NULL>>; it returns <<-1>> if _MB_CAPABLE is enabled
-and the wchar is not a valid multi-byte character, it returns <<1>>
-if _MB_CAPABLE is not defined or the wchar is in reality a single
-byte character, otherwise it returns the number of bytes in the
-multi-byte character.
-
-PORTABILITY
-<<wctomb>> is required in the ANSI C standard.  However, the precise
-effects vary with the locale.
-
-<<wctomb>> requires no supporting OS subroutines.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef _REENT_ONLY
 
@@ -51,10 +24,28 @@ effects vary with the locale.
 #include <errno.h>
 #include "local.h"
 
-int
-_DEFUN (wctomb, (s, wchar),
-        char *s _AND
-        wchar_t wchar)
+/**
+ * @brief Converts a wide-character code to a character.
+ *
+ * @details Determines the number of bytes needed to represent
+ * the character corresponding to the wide-character code whose
+ * value is @p wchar (including any change in the shift state).
+ * Stores the character representation (possibly multiple bytes
+ * and any special bytes to change shift state) in the array 
+ * object pointed to by @p s (if @p s is not a null pointer).
+ * At most {MB_CUR_MAX} bytes is stored. If @p wchar is 0, a null
+ * byte is stored, preceded by any shift sequence needed to restore
+ * the initial shift state, and wctomb() lefts in the initial shift
+ * state.
+ *
+ * @return If @p s is a null pointer, wctomb() returns a non-zero or
+ * 0 value, if character encodings, respectively, do or do not have
+ * state-dependent encodings. If @p s is not a null pointer, wctomb()
+ * returns -1 if the value of @p wchar does not correspond to a valid
+ * character, or returns the number of bytes that constitute the 
+ * character corresponding to the value of @p wchar.
+ */
+int wctomb(char *s, wchar_t wchar)
 {
 #ifdef _MB_CAPABLE
 	struct _reent *reent = _REENT;

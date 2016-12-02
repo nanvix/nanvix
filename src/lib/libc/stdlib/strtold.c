@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
 (C) Copyright IBM Corp. 2009
 
 All rights reserved.
@@ -31,12 +50,18 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include "local.h"
 
-#ifdef _HAVE_LONG_DOUBLE
 extern long double _strtold (const char *, char **);
 
-/* On platforms where long double is as wide as double.  */
-long double
-strtold (const char *__restrict s00, char **__restrict se)
+/**
+ * @brief Converts a string to a double-precision number.
+ *
+ * @details Converts the initial portion of the string
+ * pointed to by @p s00 to long double.
+ *
+ * @return Returns the converted value. If no conversion
+ * could be performed, 0 is returned.
+ */
+long double strtold(const char *restrict s00, char **restrict se)
 {
 #ifdef _LDBL_EQ_DBL
   return strtod(s00, se);
@@ -44,5 +69,3 @@ strtold (const char *__restrict s00, char **__restrict se)
   return _strtold (s00, se);
 #endif
 }
-#endif /* _HAVE_LONG_DOUBLE */
-

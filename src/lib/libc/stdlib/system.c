@@ -1,57 +1,21 @@
 /*
-FUNCTION
-<<system>>---execute command string
-
-INDEX
-	system
-INDEX
-	_system_r
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	int system(char *<[s]>);
-
-	int _system_r(void *<[reent]>, char *<[s]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	int system(<[s]>)
-	char *<[s]>;
-
-	int _system_r(<[reent]>, <[s]>)
-	char *<[reent]>;
-	char *<[s]>;
-
-DESCRIPTION
-
-Use <<system>> to pass a command string <<*<[s]>>> to <</bin/sh>> on
-your system, and wait for it to finish executing.
-
-Use ``<<system(NULL)>>'' to test whether your system has <</bin/sh>>
-available.
-
-The alternate function <<_system_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-<<system(NULL)>> returns a non-zero value if <</bin/sh>> is available, and
-<<0>> if it is not.
-
-With a command argument, the result of <<system>> is the exit status
-returned by <</bin/sh>>.
-
-PORTABILITY
-ANSI C requires <<system>>, but leaves the nature and effects of a
-command processor undefined.  ANSI C does, however, specify that
-<<system(NULL)>> return zero or nonzero to report on the existence of
-a command processor.
-
-POSIX.2 requires <<system>>, and requires that it invoke a <<sh>>.
-Where <<sh>> is found is left unspecified.
-
-Supporting OS subroutines required: <<_exit>>, <<_execve>>, <<_fork_r>>,
-<<_wait_r>>.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <_ansi.h>
 #include <errno.h>
@@ -102,9 +66,19 @@ _DEFUN(_system_r, (ptr, s),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(system, (s),
-     _CONST char *s)
+/**
+ * @brief Issues a command.
+ *
+ * @details Executes a command specified in command by
+ * calling /bin/sh -c command, and returns after the 
+ * command has been completed. During execution of the
+ * command, SIGCHLD will be blocked, and SIGINT and SIGQUIT
+ * will be ignored.
+ *
+ * @return If the value of command is NULL, system() returns
+ * nonzero if the shell is available, and zero if not.
+ */
+int system(const char *s)
 {
   return _system_r (_REENT, s);
 }
@@ -151,10 +125,7 @@ _DEFUN(do_system, (ptr, s),
 #endif
 
 #if defined (__CYGWIN__)
-static int
-_DEFUN(do_system, (ptr, s),
-     struct _reent *ptr _AND
-     _CONST char *s)
+static int do_system(struct _reent *ptr, const char *s)
 {
   char *argv[4];
   int pid, status;

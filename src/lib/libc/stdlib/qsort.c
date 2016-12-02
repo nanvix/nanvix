@@ -1,45 +1,21 @@
 /*
-FUNCTION
-<<qsort>>---sort an array
-
-INDEX
-	qsort
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	void qsort(void *<[base]>, size_t <[nmemb]>, size_t <[size]>,
-		   int (*<[compar]>)(const void *, const void *) );
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	qsort(<[base]>, <[nmemb]>, <[size]>, <[compar]> )
-	char *<[base]>;
-	size_t <[nmemb]>;
-	size_t <[size]>;
-	int (*<[compar]>)();
-
-DESCRIPTION
-<<qsort>> sorts an array (beginning at <[base]>) of <[nmemb]> objects.
-<[size]> describes the size of each element of the array.
-
-You must supply a pointer to a comparison function, using the argument
-shown as <[compar]>.  (This permits sorting objects of unknown
-properties.)  Define the comparison function to accept two arguments,
-each a pointer to an element of the array starting at <[base]>.  The
-result of <<(*<[compar]>)>> must be negative if the first argument is
-less than the second, zero if the two arguments match, and positive if
-the first argument is greater than the second (where ``less than'' and
-``greater than'' refer to whatever arbitrary ordering is appropriate).
-
-The array is sorted in place; that is, when <<qsort>> returns, the
-array elements beginning at <[base]> have been reordered.
-
-RETURNS
-<<qsort>> does not return a result.
-
-PORTABILITY
-<<qsort>> is required by ANSI (without specifying the sorting algorithm).
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*-
  * Copyright (c) 1992, 1993
@@ -78,13 +54,8 @@ PORTABILITY
 #define inline
 #endif
 
-#if defined(I_AM_QSORT_R)
-typedef int		 cmp_t(void *, const void *, const void *);
-#elif defined(I_AM_GNU_QSORT_R)
-typedef int		 cmp_t(const void *, const void *, void *);
-#else
 typedef int		 cmp_t(const void *, const void *);
-#endif
+
 static inline char	*med3 _PARAMS((char *, char *, char *, cmp_t *, void *));
 static inline void	 swapfunc _PARAMS((char *, char *, int, int));
 
@@ -107,12 +78,7 @@ static inline void	 swapfunc _PARAMS((char *, char *, int, int));
 #define SWAPINIT(a, es) swaptype = ((char *)a - (char *)0) % sizeof(long) || \
 	es % sizeof(long) ? 2 : es == sizeof(long)? 0 : 1;
 
-static inline void
-_DEFUN(swapfunc, (a, b, n, swaptype),
-	char *a _AND
-	char *b _AND
-	int n _AND
-	int swaptype)
+static inline void swapfunc(char *a, char *b, int n, int swaptype)
 {
 	if(swaptype <= 1)
 		swapcode(long, a, b, n)
@@ -130,22 +96,9 @@ _DEFUN(swapfunc, (a, b, n, swaptype),
 
 #define vecswap(a, b, n) 	if ((n) > 0) swapfunc(a, b, n, swaptype)
 
-#if defined(I_AM_QSORT_R)
-#define	CMP(t, x, y) (cmp((t), (x), (y)))
-#elif defined(I_AM_GNU_QSORT_R)
-#define	CMP(t, x, y) (cmp((x), (y), (t)))
-#else
 #define	CMP(t, x, y) (cmp((x), (y)))
-#endif
 
-static inline char *
-_DEFUN(med3, (a, b, c, cmp, thunk),
-	char *a _AND
-	char *b _AND
-	char *c _AND
-	cmp_t *cmp _AND
-	void *thunk
-)
+static inline char * med3(char *a, char *b, char *c, cmp_t *cmp, void *thunk)
 {
 	((void)thunk);
 	return CMP(thunk, a, b) < 0 ?
@@ -153,31 +106,18 @@ _DEFUN(med3, (a, b, c, cmp, thunk),
               :(CMP(thunk, b, c) > 0 ? b : (CMP(thunk, a, c) < 0 ? a : c ));
 }
 
-#if defined(I_AM_QSORT_R)
-void
-_DEFUN(__bsd_qsort_r, (a, n, es, thunk, cmp),
-	void *a _AND
-	size_t n _AND
-	size_t es _AND
-	void *thunk _AND
-	cmp_t *cmp)
-#elif defined(I_AM_GNU_QSORT_R)
-void
-_DEFUN(qsort_r, (a, n, es, cmp, thunk),
-	void *a _AND
-	size_t n _AND
-	size_t es _AND
-	cmp_t *cmp _AND
-	void *thunk)
-#else
 #define thunk NULL
-void
-_DEFUN(qsort, (a, n, es, cmp),
-	void *a _AND
-	size_t n _AND
-	size_t es _AND
-	cmp_t *cmp)
-#endif
+
+/**
+ * @brief Sorts a table of data.
+ *
+ * @details Sorts an array of @p n objects, the initial element
+ * of which is pointed to by @p a. The size of each object, in bytes,
+ * is specified by the @p es argument. If the @p n argument has the 
+ * value zero, the comparison function pointed to by @p cmp is not called
+ * and no rearrangement takes place.
+ */
+void qsort(void *a, size_t n, size_t es, int (*cmp)(const void *, const void *))
 {
 	char *pa, *pb, *pc, *pd, *pl, *pm, *pn;
 	size_t d, r;
@@ -247,13 +187,8 @@ loop:	SWAPINIT(a, es);
 	r = min((size_t)(pd - pc), (size_t)(pn - pd - es));
 	vecswap(pb, pn - r, r);
 	if ((r = pb - pa) > es)
-#if defined(I_AM_QSORT_R)
-		__bsd_qsort_r(a, r / es, es, thunk, cmp);
-#elif defined(I_AM_GNU_QSORT_R)
-		qsort_r(a, r / es, es, cmp, thunk);
-#else
 		qsort(a, r / es, es, cmp);
-#endif
+
 	if ((r = pd - pc) > es) {
 		/* Iterate rather than recurse to save stack space */
 		a = pn - r;

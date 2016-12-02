@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * bsearch.c
  * Original Author:	G. Haley
  * Rewritten by:	G. Noer
@@ -13,65 +32,22 @@
  * is found.
  */
 
-/*
-FUNCTION
-<<bsearch>>---binary search
-
-INDEX
-	bsearch
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	void *bsearch(const void *<[key]>, const void *<[base]>,
-		size_t <[nmemb]>, size_t <[size]>,
-		int (*<[compar]>)(const void *, const void *));
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	char *bsearch(<[key]>, <[base]>, <[nmemb]>, <[size]>, <[compar]>)
-	char *<[key]>;
-	char *<[base]>;
-	size_t <[nmemb]>, <[size]>;
-	int (*<[compar]>)();
-
-DESCRIPTION
-<<bsearch>> searches an array beginning at <[base]> for any element
-that matches <[key]>, using binary search.  <[nmemb]> is the element
-count of the array; <[size]> is the size of each element.
-
-The array must be sorted in ascending order with respect to the
-comparison function <[compar]> (which you supply as the last argument of
-<<bsearch>>).
-
-You must define the comparison function <<(*<[compar]>)>> to have two
-arguments; its result must be negative if the first argument is
-less than the second, zero if the two arguments match, and
-positive if the first argument is greater than the second (where
-``less than'' and ``greater than'' refer to whatever arbitrary
-ordering is appropriate).
-
-RETURNS
-Returns a pointer to an element of <[array]> that matches <[key]>.  If
-more than one matching element is available, the result may point to
-any of them.
-
-PORTABILITY
-<<bsearch>> is ANSI.
-
-No supporting OS subroutines are required.
-*/
-
 #include <stdlib.h>
 
-_PTR
-_DEFUN (bsearch, (key, base, nmemb, size, compar),
-	_CONST _PTR key _AND
-	_CONST _PTR base _AND
-	size_t nmemb _AND
-	size_t size _AND
-	int _EXFNPTR(compar, (const _PTR, const _PTR)))
+/**
+ * @brief Binary search a sorted table.
+ *
+ * @details Searchs an array of @p nmemb objects, the initial
+ * element of which is pointed to by @p base, for an element
+ * that matches the object pointed to by @p key. The size of
+ * each element in the array is specified by @p size. If the
+ * @p nmemb argument has the value zero, the comparison function
+ * pointed to by @p compar is not called and no match is found.
+ */
+void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
+  int (*compar)(const void *, const void *))
 {
-  _PTR current;
+  void *current;
   size_t lower = 0;
   size_t upper = nmemb;
   size_t index;
@@ -83,7 +59,7 @@ _DEFUN (bsearch, (key, base, nmemb, size, compar),
   while (lower < upper)
     {
       index = (lower + upper) / 2;
-      current = (_PTR) (((char *) base) + (index * size));
+      current = (void*) (((char *) base) + (index * size));
 
       result = compar (key, current);
 
@@ -97,4 +73,3 @@ _DEFUN (bsearch, (key, base, nmemb, size, compar),
 
   return NULL;
 }
-

@@ -1,69 +1,37 @@
-#ifdef MALLOC_PROVIDED
-int _dummy_calloc = 1;
-#else
 /*
-FUNCTION
-<<calloc>>---allocate space for arrays
-
-INDEX
-	calloc
-
-INDEX
-	_calloc_r
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	void *calloc(size_t <[n]>, size_t <[s]>);
-	void *_calloc_r(void *<[reent]>, size_t <[n]>, size_t <[s]>);
-	
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	char *calloc(<[n]>, <[s]>)
-	size_t <[n]>, <[s]>;
-
-	char *_calloc_r(<[reent]>, <[n]>, <[s]>)
-	char *<[reent]>;
-	size_t <[n]>;
-	size_t <[s]>;
-
-
-
-DESCRIPTION
-Use <<calloc>> to request a block of memory sufficient to hold an
-array of <[n]> elements, each of which has size <[s]>.
-
-The memory allocated by <<calloc>> comes out of the same memory pool
-used by <<malloc>>, but the memory block is initialized to all zero
-bytes.  (To avoid the overhead of initializing the space, use
-<<malloc>> instead.)
-
-The alternate function <<_calloc_r>> is reentrant.
-The extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-If successful, a pointer to the newly allocated space.
-
-If unsuccessful, <<NULL>>.
-
-PORTABILITY
-<<calloc>> is ANSI.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <string.h>
 #include <stdlib.h>
 
 #ifndef _REENT_ONLY
 
-_PTR
-_DEFUN (calloc, (n, size),
-	size_t n _AND
-	size_t size)
+/**
+ * @brief A memory allocator.
+ *
+ * @details Allocates unused space for an array of
+ * @p n elements each of whose size in bytes is @p size.
+ * The space is initialized to all bits 0.
+ */
+void *calloc(size_t n, size_t size)
 {
   return _calloc_r (_REENT, n, size);
 }
 
 #endif
-#endif /* MALLOC_PROVIDED */
