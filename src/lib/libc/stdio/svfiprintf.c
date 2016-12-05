@@ -211,7 +211,7 @@ _DEFUN(__ssputs_r, (ptr, fp, buf, len),
 	register int w;
 
 	w = fp->_w;
-	if (len >= (size_t)(w && (fp->_flags & (__SMBF | __SOPT)))) {
+	if (len >= (size_t)w && (fp->_flags & (__SMBF | __SOPT))) {
 		/* must be asprintf family */
 		unsigned char *str;
 		int curpos = (fp->_p - fp->_bf._base);
@@ -296,7 +296,7 @@ _DEFUN(__ssprint_r, (ptr, fp, uio),
 			iov++;
 		}
 		w = fp->_w;
-		if (len >= (size_t)(w && fp->_flags & (__SMBF | __SOPT))) {
+		if (len >= (size_t)w && (fp->_flags & (__SMBF | __SOPT))) {
 			/* must be asprintf family */
 			unsigned char *str;
 			int curpos = (fp->_p - fp->_bf._base);

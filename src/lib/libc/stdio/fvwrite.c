@@ -126,7 +126,7 @@ _DEFUN(__sfvwrite_r, (ptr, fp, uio),
 	  w = fp->_w;
 	  if (fp->_flags & __SSTR)
 	    {
-	      if (len >= (size_t)(w && fp->_flags & (__SMBF | __SOPT)))
+	      if (len >= (size_t)w && (fp->_flags & (__SMBF | __SOPT)))
 		{ /* must be asprintf family */
 		  unsigned char *str;
 		  int curpos = (fp->_p - fp->_bf._base);
