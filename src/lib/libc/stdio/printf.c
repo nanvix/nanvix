@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -22,10 +41,7 @@
 #include <stdarg.h>
 #include "local.h"
 
-int
-_DEFUN(_printf_r, (ptr, fmt),
-       struct _reent *ptr _AND
-       const char *__restrict fmt _DOTS)
+int _printf_r(struct _reent *ptr, const char *restrict fmt, ...)
 {
   int ret;
   va_list ap;
@@ -37,17 +53,17 @@ _DEFUN(_printf_r, (ptr, fmt),
   return ret;
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_iprintf_r, (struct _reent *, const char *, ...)
-       _ATTRIBUTE ((__alias__("_printf_r"))));
-#endif
-
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(printf, (fmt),
-       const char *__restrict fmt _DOTS)
+/**
+ * @brief Prints formatted output.
+ *
+ * @details Place formatted output on the standard
+ * output stream stdout.
+ *
+ * @return Returns the number of bytes transmitted.
+ */
+int printf(const char *restrict fmt, ...)
 {
   int ret;
   va_list ap;
@@ -60,9 +76,4 @@ _DEFUN(printf, (fmt),
   return ret;
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(iprintf, (const char *, ...)
-       _ATTRIBUTE ((__alias__("printf"))));
-#endif
 #endif /* ! _REENT_ONLY */

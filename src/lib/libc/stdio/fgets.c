@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -14,96 +33,6 @@
  * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
-
-/*
-FUNCTION
-<<fgets>>, <<fgets_unlocked>>---get character string from a file or stream
-
-INDEX
-	fgets
-INDEX
-	fgets_unlocked
-INDEX
-	_fgets_r
-INDEX
-	_fgets_unlocked_r
-
-ANSI_SYNOPSIS
-        #include <stdio.h>
-	char *fgets(char *restrict <[buf]>, int <[n]>, FILE *restrict <[fp]>);
-
-	#define _GNU_SOURCE
-        #include <stdio.h>
-	char *fgets_unlocked(char *restrict <[buf]>, int <[n]>, FILE *restrict <[fp]>);
-
-        #include <stdio.h>
-	char *_fgets_r(struct _reent *<[ptr]>, char *restrict <[buf]>, int <[n]>, FILE *restrict <[fp]>);
-
-        #include <stdio.h>
-	char *_fgets_unlocked_r(struct _reent *<[ptr]>, char *restrict <[buf]>, int <[n]>, FILE *restrict <[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	char *fgets(<[buf]>,<[n]>,<[fp]>)
-        char *<[buf]>;
-	int <[n]>;
-	FILE *<[fp]>;
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	char *fgets_unlocked(<[buf]>,<[n]>,<[fp]>)
-        char *<[buf]>;
-	int <[n]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	char *_fgets_r(<[ptr]>, <[buf]>,<[n]>,<[fp]>)
-	struct _reent *<[ptr]>;
-        char *<[buf]>;
-	int <[n]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	char *_fgets_unlocked_r(<[ptr]>, <[buf]>,<[n]>,<[fp]>)
-	struct _reent *<[ptr]>;
-        char *<[buf]>;
-	int <[n]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-	Reads at most <[n-1]> characters from <[fp]> until a newline
-	is found. The characters including to the newline are stored
-	in <[buf]>. The buffer is terminated with a 0.
-
-	<<fgets_unlocked>> is a non-thread-safe version of <<fgets>>.
-	<<fgets_unlocked>> may only safely be used within a scope
-	protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-	function may safely be used in a multi-threaded program if and only
-	if they are called while the invoking thread owns the (FILE *)
-	object, as is the case after a successful call to the flockfile() or
-	ftrylockfile() functions.  If threads are disabled, then
-	<<fgets_unlocked>> is equivalent to <<fgets>>.
-
-	The functions <<_fgets_r>> and <<_fgets_unlocked_r>> are simply
-	reentrant versions that are passed the additional reentrant structure
-	pointer argument: <[ptr]>.
-
-RETURNS
-	<<fgets>> returns the buffer passed to it, with the data
-	filled in. If end of file occurs with some data already
-	accumulated, the data is returned with no other indication. If
-	no data are read, NULL is returned instead.
-
-PORTABILITY
-	<<fgets>> should replace all uses of <<gets>>. Note however
-	that <<fgets>> returns all of the data, while <<gets>> removes
-	the trailing newline (with no indication that it has done so.)
-
-	<<fgets_unlocked>> is a GNU extension.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
 
 #include <_ansi.h>
 #include <stdio.h>
@@ -121,12 +50,8 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
  * Return first argument, or NULL if no characters were read.
  */
 
-char *
-_DEFUN(_fgets_r, (ptr, buf, n, fp),
-       struct _reent * ptr _AND
-       char *__restrict buf _AND
-       int n     _AND
-       FILE *__restrict fp)
+char *_fgets_r(struct _reent * ptr, char *restrict buf, int n,
+	FILE *restrict fp)
 {
   size_t len;
   char *s;
@@ -216,11 +141,25 @@ _DEFUN(_fgets_r, (ptr, buf, n, fp),
 
 #ifndef _REENT_ONLY
 
-char *
-_DEFUN(fgets, (buf, n, fp),
-       char *__restrict buf _AND
-       int n     _AND
-       FILE *__restrict fp)
+/**
+ * @brief Gets a string from a stream.
+ *
+ * @details Reads bytes from stream into the array
+ * pointed to by @p buf until @p n -1 bytes are read,
+ * or a <newline> is read and transferred to @p buf,
+ * or an end-of-file condition is encountered. A null
+ * byte is written immediately after the last byte read
+ * into the array. If the end-of-file condition is 
+ * encountered before any bytes are read, the contents of
+ * the array pointed to by @p buf is not be changed.
+ *
+ * @return Returns @p buf. If the stream is at end-of-file,
+ * the end-of-file indicator for the stream is set and fgets()
+ * returns a null pointer. If a read error occurs, the error
+ * indicator for the stream is set, fgets() returns a null pointer,
+ * and sets errno to indicate the error.
+ */
+char *fgets(char *restrict buf, int n, FILE *restrict fp)
 {
   return _fgets_r (_REENT, buf, n, fp);
 }

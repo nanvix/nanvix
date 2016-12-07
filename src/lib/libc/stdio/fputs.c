@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,86 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fputs>>, <<fputs_unlocked>>---write a character string in a file or stream
-
-INDEX
-	fputs
-INDEX
-	fputs_unlocked
-INDEX
-	_fputs_r
-INDEX
-	_fputs_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int fputs(const char *restrict <[s]>, FILE *restrict <[fp]>);
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	int fputs_unlocked(const char *restrict <[s]>, FILE *restrict <[fp]>);
-
-	#include <stdio.h>
-	int _fputs_r(struct _reent *<[ptr]>, const char *restrict <[s]>, FILE *restrict <[fp]>);
-
-	#include <stdio.h>
-	int _fputs_unlocked_r(struct _reent *<[ptr]>, const char *restrict <[s]>, FILE *restrict <[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int fputs(<[s]>, <[fp]>)
-	char *<[s]>;
-	FILE *<[fp]>;
-
-	#define _GNU_SOURCE
-	#include <stdio.h>
-	int fputs_unlocked(<[s]>, <[fp]>)
-	char *<[s]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	int _fputs_r(<[ptr]>, <[s]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	char *<[s]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	int _fputs_unlocked_r(<[ptr]>, <[s]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	char *<[s]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-<<fputs>> writes the string at <[s]> (but without the trailing null)
-to the file or stream identified by <[fp]>.
-
-<<fputs_unlocked>> is a non-thread-safe version of <<fputs>>.
-<<fputs_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fputs_unlocked>> is equivalent to <<fputs>>.
-
-<<_fputs_r>> and <<_fputs_unlocked_r>> are simply reentrant versions of the
-above that take an additional reentrant struct pointer argument: <[ptr]>.
-
-RETURNS
-If successful, the result is <<0>>; otherwise, the result is <<EOF>>.
-
-PORTABILITY
-ANSI C requires <<fputs>>, but does not specify that the result on
-success must be <<0>>; any non-negative value is permitted.
-
-<<fputs_unlocked>> is a GNU extension.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <stdio.h>
 #include <string.h>
@@ -109,11 +48,7 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
 /*
  * Write the given string to the given file.
  */
-int
-_DEFUN(_fputs_r, (ptr, s, fp),
-       struct _reent * ptr _AND
-       char _CONST *__restrict s _AND
-       FILE *__restrict fp)
+int _fputs_r(struct _reent * ptr, char const *restrict s, FILE *restrict fp)
 {
 #ifdef _FVWRITE_IN_STREAMIO
   int result;
@@ -158,11 +93,21 @@ error:
 }
 
 #ifndef _REENT_ONLY
-int
-_DEFUN(fputs, (s, fp),
-       char _CONST *__restrict s _AND
-       FILE *__restrict fp)
+
+/**
+ * @brief Puts a string on a stream.
+ *
+ * @details Writes the null-terminated string pointed
+ * to by @p s to the stream pointed to by @p fp. The
+ * terminating null byte is not written.
+ *
+ * @return Returns a non-negative number. Otherwise, it
+ * returns EOF, sets an error indicator for the stream,
+ * and sets errno to indicate the error.
+ */
+int fputs(char const *restrict s, FILE *restrict fp)
 {
   return _fputs_r (_REENT, s, fp);
 }
+
 #endif /* !_REENT_ONLY */

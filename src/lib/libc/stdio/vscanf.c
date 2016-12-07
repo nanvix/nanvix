@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Code created by modifying scanf.c which has following copyright.
  *
@@ -20,19 +39,27 @@
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
-#ifdef _HAVE_STDC
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 #include "local.h"
+
+int _vscanf_r(struct _reent *ptr, const char *restrict fmt, va_list ap)
+{
+  _REENT_SMALL_CHECK_INIT (ptr);
+  return __svfscanf_r (ptr, _stdin_r (ptr), fmt, ap);
+}
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(vscanf, (fmt, ap), 
-       _CONST char *fmt _AND 
-       va_list ap)
+/**
+ * @brief Formats input of a stdarg argument list.
+ *
+ * @details The function is equivalent to scanf() except that
+ * instead of being called with a variable number of arguments,
+ * is called with an argument list as defined in the <stdarg.h> header.
+ *
+ * @return Returns the same value of scanf().
+ */
+int vscanf(const char *fmt, va_list ap)
 {
   struct _reent *reent = _REENT;
 
@@ -40,25 +67,4 @@ _DEFUN(vscanf, (fmt, ap),
   return __svfscanf_r (reent, _stdin_r (reent), fmt, ap);
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(viscanf, (const char *, __VALIST) _ATTRIBUTE ((__alias__("vscanf"))));
-#endif
-
 #endif /* !_REENT_ONLY */
-
-int
-_DEFUN(_vscanf_r, (ptr, fmt, ap),
-       struct _reent *ptr _AND 
-       _CONST char *__restrict fmt   _AND 
-       va_list ap)
-{
-  _REENT_SMALL_CHECK_INIT (ptr);
-  return __svfscanf_r (ptr, _stdin_r (ptr), fmt, ap);
-}
-
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_viscanf_r, (struct _reent *, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("_vscanf_r"))));
-#endif

@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,62 +34,13 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<perror>>---print an error message on standard error
-
-INDEX
-	perror
-INDEX
-	_perror_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	void perror(char *<[prefix]>);
-
-	void _perror_r(struct _reent *<[reent]>, char *<[prefix]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	void perror(<[prefix]>)
-	char *<[prefix]>;
-
-	void _perror_r(<[reent]>, <[prefix]>)
-	struct _reent *<[reent]>;
-	char *<[prefix]>;
-
-DESCRIPTION
-Use <<perror>> to print (on standard error) an error message
-corresponding to the current value of the global variable <<errno>>.
-Unless you use <<NULL>> as the value of the argument <[prefix]>, the
-error message will begin with the string at <[prefix]>, followed by a
-colon and a space (<<: >>). The remainder of the error message is one
-of the strings described for <<strerror>>.
-
-The alternate function <<_perror_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-<<perror>> returns no result.
-
-PORTABILITY
-ANSI C requires <<perror>>, but the strings issued vary from one
-implementation to another.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
 #include <string.h>
 #include "local.h"
 
-_VOID
-_DEFUN(_perror_r, (ptr, s),
-       struct _reent *ptr _AND
-       _CONST char *s)
+void _perror_r(struct _reent *ptr, const char *s)
 {
   char *error;
   int dummy;
@@ -90,9 +60,16 @@ _DEFUN(_perror_r, (ptr, s),
 
 #ifndef _REENT_ONLY
 
-_VOID
-_DEFUN(perror, (s),
-       _CONST char *s)
+/**
+ * @brief Writes error messages to standard error.
+ *
+ * @details Produces a message on the standard error output,
+ * describing the last error encountered during a call to a
+ * system or library function. First (if @p s is not NULL and
+ * @p *s is not a null byte the argument string @p s is printed,
+ * followed by a colon and a blank. Then the message and a new-line.
+ */
+void perror(const char *s)
 {
   _perror_r (_REENT, s);
 }

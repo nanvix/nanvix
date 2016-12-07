@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,65 +34,11 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fsetpos>>---restore position of a stream or file
-
-INDEX
-	fsetpos
-INDEX
-	_fsetpos_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int fsetpos(FILE *<[fp]>, const fpos_t *<[pos]>);
-	int _fsetpos_r(struct _reent *<[ptr]>, FILE *<[fp]>,
-	               const fpos_t *<[pos]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int fsetpos(<[fp]>, <[pos]>)
-	FILE *<[fp]>;
-	fpos_t *<[pos]>;
-
-	int _fsetpos_r(<[ptr]>, <[fp]>, <[pos]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	fpos_t *<[pos]>;
-
-DESCRIPTION
-Objects of type <<FILE>> can have a ``position'' that records how much
-of the file your program has already read.  Many of the <<stdio>> functions
-depend on this position, and many change it as a side effect.
-
-You can use <<fsetpos>> to return the file identified by <[fp]> to a previous
-position <<*<[pos]>>> (after first recording it with <<fgetpos>>).
-
-See <<fseek>> for a similar facility.
-
-RETURNS
-<<fgetpos>> returns <<0>> when successful.  If <<fgetpos>> fails, the
-result is <<1>>.  The reason for failure is indicated in <<errno>>:
-either <<ESPIPE>> (the stream identified by <[fp]> doesn't support
-repositioning) or <<EINVAL>> (invalid file position).
-
-PORTABILITY
-ANSI C requires <<fsetpos>>, but does not specify the nature of
-<<*<[pos]>>> beyond identifying it as written by <<fgetpos>>.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
 
-int
-_DEFUN(_fsetpos_r, (ptr, iop, pos),
-       struct _reent * ptr _AND
-       FILE * iop          _AND
-       _CONST _fpos_t * pos)
+int _fsetpos_r(struct _reent * ptr, FILE * iop, const _fpos_t * pos)
 {
   int x = _fseek_r (ptr, iop, *pos, SEEK_SET);
 
@@ -84,10 +49,20 @@ _DEFUN(_fsetpos_r, (ptr, iop, pos),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(fsetpos, (iop, pos),
-       FILE * iop _AND
-       _CONST _fpos_t * pos)
+/**
+ * @brief Sets current file position.
+ *
+ * @details Sets the file position and state indicators for
+ * the stream pointed to by @p iop according to the value of
+ * the object pointed to by @p pos, which the application ensures
+ * is a value obtained from an earlier call to fgetpos() on the same
+ * stream. If a read or write error occurs, the error indicator for
+ * the stream is set and fsetpos() fails.
+ *
+ * @return Returns 0 if they succeed. Otherwise, returns non-zero value 
+ * and sets errno to indicate the error.
+ */
+int fsetpos(FILE *iop, const _fpos_t *pos)
 {
   return _fsetpos_r (_REENT, iop, pos);
 }

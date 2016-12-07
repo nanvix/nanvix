@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,92 +34,33 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<setvbuf>>---specify file or stream buffering
-
-INDEX
-	setvbuf
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int setvbuf(FILE *<[fp]>, char *<[buf]>,
-	            int <[mode]>, size_t <[size]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int setvbuf(<[fp]>, <[buf]>, <[mode]>, <[size]>)
-	FILE *<[fp]>;
-	char *<[buf]>;
-	int <[mode]>;
-	size_t <[size]>;
-
-DESCRIPTION
-Use <<setvbuf>> to specify what kind of buffering you want for the
-file or stream identified by <[fp]>, by using one of the following
-values (from <<stdio.h>>) as the <[mode]> argument:
-
-o+
-o _IONBF
-Do not use a buffer: send output directly to the host system for the
-file or stream identified by <[fp]>.
-
-o _IOFBF
-Use full output buffering: output will be passed on to the host system
-only when the buffer is full, or when an input operation intervenes.
-
-o _IOLBF
-Use line buffering: pass on output to the host system at every
-newline, as well as when the buffer is full, or when an input
-operation intervenes.
-o-
-
-Use the <[size]> argument to specify how large a buffer you wish.  You
-can supply the buffer itself, if you wish, by passing a pointer to a
-suitable area of memory as <[buf]>.  Otherwise, you may pass <<NULL>>
-as the <[buf]> argument, and <<setvbuf>> will allocate the buffer.
-
-WARNINGS
-You may only use <<setvbuf>> before performing any file operation other
-than opening the file.
-
-If you supply a non-null <[buf]>, you must ensure that the associated
-storage continues to be available until you close the stream
-identified by <[fp]>.
-
-RETURNS
-A <<0>> result indicates success, <<EOF>> failure (invalid <[mode]> or
-<[size]> can cause failure).
-
-PORTABILITY
-Both ANSI C and the System V Interface Definition (Issue 2) require
-<<setvbuf>>. However, they differ on the meaning of a <<NULL>> buffer
-pointer: the SVID issue 2 specification says that a <<NULL>> buffer
-pointer requests unbuffered output.  For maximum portability, avoid
-<<NULL>> buffer pointers.
-
-Both specifications describe the result on failure only as a
-nonzero value.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "local.h"
 
-/*
- * Set one of the three kinds of buffering, optionally including a buffer.
+/**
+ * @brief Assigns buffering to a stream.
+ *
+ * @details The setvbuf() function may be used after the stream
+ * pointed to by @p fp is associated with an open file but before
+ * any other operation (other than an unsuccessful call to setvbuf())
+ * is performed on the stream. The argument @p mode determines how
+ * stream shall be buffered, as follows:
+ * {_IOFBF} causes input/output to be fully buffered.
+ * {_IOLBF} causes input/output to be line buffered.
+ * {_IONBF} causes input/output to be unbuffered.
+ * If @p buf is not a null pointer, the array it points to may be used
+ * instead of a buffer allocated by setvbuf() and the argument @p size
+ * specifies the size of the array; otherwise, @p size may determine the
+ * size of a buffer allocated by the setvbuf() function. The contents of
+ * the array at any time are unspecified.
+ *
+ * @return Returns 0 on success; otherwise, returns a non-zero value if an
+ * invalid value is given for @p mode or if the request cannot be honored.
  */
-
-int
-_DEFUN(setvbuf, (fp, buf, mode, size),
-       register FILE * fp _AND
-       char *buf          _AND
-       register int mode  _AND
-       register size_t size)
+int setvbuf(register FILE *fp, char *buf, register int mode,
+  register size_t size)
 {
   int ret = 0;
   struct _reent *reent = _REENT;

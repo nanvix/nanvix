@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,75 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fflush>>, <<fflush_unlocked>>---flush buffered file output
-
-INDEX
-	fflush
-INDEX
-	fflush_unlocked
-INDEX
-	_fflush_r
-INDEX
-	_fflush_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int fflush(FILE *<[fp]>);
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int fflush_unlocked(FILE *<[fp]>);
-
-	#include <stdio.h>
-	int _fflush_r(struct _reent *<[reent]>, FILE *<[fp]>);
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int _fflush_unlocked_r(struct _reent *<[reent]>, FILE *<[fp]>);
-
-DESCRIPTION
-The <<stdio>> output functions can buffer output before delivering it
-to the host system, in order to minimize the overhead of system calls.
-
-Use <<fflush>> to deliver any such pending output (for the file
-or stream identified by <[fp]>) to the host system.
-
-If <[fp]> is <<NULL>>, <<fflush>> delivers pending output from all
-open files.
-
-Additionally, if <[fp]> is a seekable input stream visiting a file
-descriptor, set the position of the file descriptor to match next
-unread byte, useful for obeying POSIX semantics when ending a process
-without consuming all input from the stream.
-
-<<fflush_unlocked>> is a non-thread-safe version of <<fflush>>.
-<<fflush_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fflush_unlocked>> is equivalent to <<fflush>>.
-
-The alternate functions <<_fflush_r>> and <<_fflush_unlocked_r>> are
-reentrant versions, where the extra argument <[reent]> is a pointer to
-a reentrancy structure, and <[fp]> must not be NULL.
-
-RETURNS
-<<fflush>> returns <<0>> unless it encounters a write error; in that
-situation, it returns <<EOF>>.
-
-PORTABILITY
-ANSI C requires <<fflush>>.  The behavior on input streams is only
-specified by POSIX, and not all implementations follow POSIX rules.
-
-<<fflush_unlocked>> is a BSD extension also provided by GNU libc.
-
-No supporting OS subroutines are required.
-*/
-
 #include <_ansi.h>
 #include <stdio.h>
 #include <errno.h>
@@ -99,10 +49,7 @@ No supporting OS subroutines are required.
 
 /* Core function which does not lock file pointer.  This gets called
    directly from __srefill. */
-int
-_DEFUN(__sflush_r, (ptr, fp),
-       struct _reent *ptr _AND
-       register FILE * fp)
+int __sflush_r(struct _reent *ptr, register FILE * fp)
 {
   register unsigned char *p;
   register _READ_WRITE_BUFSIZE_TYPE n;
@@ -238,10 +185,7 @@ _DEFUN(__sflush_r, (ptr, fp),
 /* Called from _cleanup_r.  At exit time, we don't need file locking,
    and we don't want to move the underlying file pointer unless we're
    writing. */
-int
-_DEFUN(__sflushw_r, (ptr, fp),
-       struct _reent *ptr _AND
-       register FILE *fp)
+int __sflushw_r(struct _reent *ptr, register FILE *fp)
 {
   return (fp->_flags & __SWR) ?  __sflush_r (ptr, fp) : 0;
 }
@@ -249,10 +193,7 @@ _DEFUN(__sflushw_r, (ptr, fp),
 
 #endif /* __IMPL_UNLOCKED__ */
 
-int
-_DEFUN(_fflush_r, (ptr, fp),
-       struct _reent *ptr _AND
-       register FILE * fp)
+int _fflush_r(struct _reent *ptr, register FILE *fp)
 {
   int ret;
 
@@ -285,9 +226,18 @@ _DEFUN(_fflush_r, (ptr, fp),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(fflush, (fp),
-       register FILE * fp)
+/**
+ * @brief Flushs a stream.
+ *
+ * @details If @p fp points to an output stream or
+ * an update stream in which the most recent operation
+ * was not input, fflush() causes any unwritten data for
+ * that stream to be written to the file.
+ *
+ * @return Returns 0; otherwise, sets the error indicator
+ * for the stream, return EOF.
+ */
+int fflush(register FILE *fp)
 {
   if (fp == NULL)
     return _fwalk_reent (_GLOBAL_REENT, _fflush_r);

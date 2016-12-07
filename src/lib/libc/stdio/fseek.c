@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,112 +34,36 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fseek>>, <<fseeko>>---set file position
-
-INDEX
-	fseek
-INDEX
-	fseeko
-INDEX
-	_fseek_r
-INDEX
-	_fseeko_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int fseek(FILE *<[fp]>, long <[offset]>, int <[whence]>)
-	int fseeko(FILE *<[fp]>, off_t <[offset]>, int <[whence]>)
-	int _fseek_r(struct _reent *<[ptr]>, FILE *<[fp]>,
-	             long <[offset]>, int <[whence]>)
-	int _fseeko_r(struct _reent *<[ptr]>, FILE *<[fp]>,
-	             off_t <[offset]>, int <[whence]>)
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int fseek(<[fp]>, <[offset]>, <[whence]>)
-	FILE *<[fp]>;
-	long <[offset]>;
-	int <[whence]>;
-
-	int fseeko(<[fp]>, <[offset]>, <[whence]>)
-	FILE *<[fp]>;
-	off_t <[offset]>;
-	int <[whence]>;
-
-	int _fseek_r(<[ptr]>, <[fp]>, <[offset]>, <[whence]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	long <[offset]>;
-	int <[whence]>;
-
-	int _fseeko_r(<[ptr]>, <[fp]>, <[offset]>, <[whence]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	off_t <[offset]>;
-	int <[whence]>;
-
-DESCRIPTION
-Objects of type <<FILE>> can have a ``position'' that records how much
-of the file your program has already read.  Many of the <<stdio>> functions
-depend on this position, and many change it as a side effect.
-
-You can use <<fseek>>/<<fseeko>> to set the position for the file identified by
-<[fp]>.  The value of <[offset]> determines the new position, in one
-of three ways selected by the value of <[whence]> (defined as macros
-in `<<stdio.h>>'):
-
-<<SEEK_SET>>---<[offset]> is the absolute file position (an offset
-from the beginning of the file) desired.  <[offset]> must be positive.
-
-<<SEEK_CUR>>---<[offset]> is relative to the current file position.
-<[offset]> can meaningfully be either positive or negative.
-
-<<SEEK_END>>---<[offset]> is relative to the current end of file.
-<[offset]> can meaningfully be either positive (to increase the size
-of the file) or negative.
-
-See <<ftell>>/<<ftello>> to determine the current file position.
-
-RETURNS
-<<fseek>>/<<fseeko>> return <<0>> when successful.  On failure, the
-result is <<EOF>>.  The reason for failure is indicated in <<errno>>:
-either <<ESPIPE>> (the stream identified by <[fp]> doesn't support
-repositioning) or <<EINVAL>> (invalid file position).
-
-PORTABILITY
-ANSI C requires <<fseek>>.
-
-<<fseeko>> is defined by the Single Unix specification.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
 #include <errno.h>
 #include "local.h"
 
-int
-_DEFUN(_fseek_r, (ptr, fp, offset, whence),
-       struct _reent *ptr _AND
-       register FILE *fp  _AND
-       long offset        _AND
-       int whence)
+int _fseek_r(struct _reent *ptr, register FILE *fp, long offset, int whence)
 {
   return _fseeko_r (ptr, fp, offset, whence);
 }
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(fseek, (fp, offset, whence),
-       register FILE *fp _AND
-       long offset       _AND
-       int whence)
+/**
+ * @brief Repositions a file-position indicator in a stream.
+ *
+ * @details Sets the file position indicator for the stream
+ * pointed to by @p fp. The new position, measured in bytes,
+ * is obtained by adding offset bytes to the position specified
+ * by whence. If whence is set to SEEK_SET, SEEK_CUR, or SEEK_END,
+ * the offset is relative to the start of the file, the current
+ * position indicator, or end-of-file, respectively. A successful
+ * call to the fseek() function clears the end-of-file indicator
+ * for the stream and undoes any effects of the ungetc() function
+ * on the same stream.
+ *
+ * @return Returns 0 if they succeed. Otherwise, returns -1 and sets
+ * errno to indicate the error.
+ */
+int fseek(register FILE *fp, long offset, int whence)
 {
   return _fseek_r (_REENT, fp, offset, whence);
 }

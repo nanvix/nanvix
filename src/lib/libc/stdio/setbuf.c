@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,65 +34,20 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<setbuf>>---specify full buffering for a file or stream
-
-INDEX
-	setbuf
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	void setbuf(FILE *<[fp]>, char *<[buf]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	void setbuf(<[fp]>, <[buf]>)
-	FILE *<[fp]>;
-	char *<[buf]>;
-
-DESCRIPTION
-<<setbuf>> specifies that output to the file or stream identified by <[fp]>
-should be fully buffered.  All output for this file will go to a
-buffer (of size <<BUFSIZ>>, specified in `<<stdio.h>>').  Output will
-be passed on to the host system only when the buffer is full, or when
-an input operation intervenes.
-
-You may, if you wish, supply your own buffer by passing a pointer to
-it as the argument <[buf]>.  It must have size <<BUFSIZ>>.  You can
-also use <<NULL>> as the value of <[buf]>, to signal that the
-<<setbuf>> function is to allocate the buffer.
-
-WARNINGS
-You may only use <<setbuf>> before performing any file operation other
-than opening the file.
-
-If you supply a non-null <[buf]>, you must ensure that the associated
-storage continues to be available until you close the stream
-identified by <[fp]>.
-
-RETURNS
-<<setbuf>> does not return a result.
-
-PORTABILITY
-Both ANSI C and the System V Interface Definition (Issue 2) require
-<<setbuf>>.  However, they differ on the meaning of a <<NULL>> buffer
-pointer: the SVID issue 2 specification says that a <<NULL>> buffer
-pointer requests unbuffered output.  For maximum portability, avoid
-<<NULL>> buffer pointers.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <stdio.h>
 #include "local.h"
 
-_VOID
-_DEFUN(setbuf, (fp, buf),
-       FILE *__restrict fp _AND
-       char *__restrict buf)
+/**
+ * @brief Assigns buffering to a stream.
+ *
+ * @details The function is equivalent to
+ * setvbuf(stream, buf, _IOFBF, BUFSIZ) if
+ * @p fp is not a null pointer, or to:
+ * setvbuf(stream, buf, _IONBF, BUFSIZ)
+ * if @p fp is a null pointer.
+ */
+void setbuf(FILE *restrict fp, char *restrict buf)
 {
-  _CAST_VOID setvbuf (fp, buf, buf ? _IOFBF : _IONBF, BUFSIZ);
+  (void) setvbuf (fp, buf, buf ? _IOFBF : _IONBF, BUFSIZ);
 }

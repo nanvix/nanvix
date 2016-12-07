@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -33,84 +52,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
-/*
-FUNCTION
-<<vfprintf>>, <<vprintf>>, <<vsprintf>>, <<vsnprintf>>, <<vasprintf>>, <<vasnprintf>>---format argument list
-
-INDEX
-	vfprintf
-INDEX
-	_vfprintf_r
-INDEX
-	vprintf
-INDEX
-	_vprintf_r
-INDEX
-	vsprintf
-INDEX
-	_vsprintf_r
-INDEX
-	vsnprintf
-INDEX
-	_vsnprintf_r
-INDEX
-	vasprintf
-INDEX
-	_vasprintf_r
-INDEX
-	vasnprintf
-INDEX
-	_vasnprintf_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	#include <stdarg.h>
-	int vprintf(const char *<[fmt]>, va_list <[list]>);
-	int vfprintf(FILE *<[fp]>, const char *<[fmt]>, va_list <[list]>);
-	int vsprintf(char *<[str]>, const char *<[fmt]>, va_list <[list]>);
-	int vsnprintf(char *<[str]>, size_t <[size]>, const char *<[fmt]>,
-                      va_list <[list]>);
-	int vasprintf(char **<[strp]>, const char *<[fmt]>, va_list <[list]>);
-	char *vasnprintf(char *<[str]>, size_t *<[size]>, const char *<[fmt]>,
-                         va_list <[list]>);
-
-	int _vprintf_r(struct _reent *<[reent]>, const char *<[fmt]>,
-                        va_list <[list]>);
-	int _vfprintf_r(struct _reent *<[reent]>, FILE *<[fp]>,
-                        const char *<[fmt]>, va_list <[list]>);
-	int _vsprintf_r(struct _reent *<[reent]>, char *<[str]>,
-                        const char *<[fmt]>, va_list <[list]>);
-	int _vasprintf_r(struct _reent *<[reent]>, char **<[str]>,
-                         const char *<[fmt]>, va_list <[list]>);
-	int _vsnprintf_r(struct _reent *<[reent]>, char *<[str]>,
-                         size_t <[size]>, const char *<[fmt]>, va_list <[list]>);
-	char *_vasnprintf_r(struct _reent *<[reent]>, char *<[str]>,
-                            size_t *<[size]>, const char *<[fmt]>, va_list <[list]>);
-
-DESCRIPTION
-<<vprintf>>, <<vfprintf>>, <<vasprintf>>, <<vsprintf>>, <<vsnprintf>>,
-and <<vasnprintf>> are (respectively) variants of <<printf>>,
-<<fprintf>>, <<asprintf>>, <<sprintf>>, <<snprintf>>, and
-<<asnprintf>>.  They differ only in allowing their caller to pass the
-variable argument list as a <<va_list>> object (initialized by
-<<va_start>>) rather than directly accepting a variable number of
-arguments.  The caller is responsible for calling <<va_end>>.
-
-<<_vprintf_r>>, <<_vfprintf_r>>, <<_vasprintf_r>>, <<_vsprintf_r>>,
-<<_vsnprintf_r>>, and <<_vasnprintf_r>> are reentrant versions of the
-above.
-
-RETURNS
-The return values are consistent with the corresponding functions.
-
-PORTABILITY
-ANSI C requires <<vprintf>>, <<vfprintf>>, <<vsprintf>>, and
-<<vsnprintf>>.  The remaining functions are newlib extensions.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
 
 #if defined(LIBC_SCCS) && !defined(lint)
 /*static char *sccsid = "from: @(#)vfprintf.c	5.50 (Berkeley) 12/16/92";*/
@@ -644,16 +585,23 @@ _EXFUN(get_arg, (struct _reent *data, int n, char *fmt,
 
 
 #ifndef STRING_ONLY
-int
-_DEFUN(VFPRINTF, (fp, fmt0, ap),
-       FILE * fp         _AND
-       _CONST char *fmt0 _AND
-       va_list ap)
+
+/**
+ * @brief Formats output of a stdarg argument list
+ *
+ * @details The function is equivalent to fprintf() except that
+ * instead of being called with a variable number of arguments,
+ * is called with an argument list as defined by <stdarg.h>.
+ *
+ * @return Returns the same value of fprintf().
+ */
+int VFPRINTF(FILE *fp, const char *fmt0, va_list ap)
 {
   int result;
   result = _VFPRINTF_R (_REENT, fp, fmt0, ap);
   return result;
 }
+
 #endif /* STRING_ONLY */
 
 int

@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,62 +34,11 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<remove>>---delete a file's name
-
-INDEX
-	remove
-INDEX
-	_remove_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int remove(char *<[filename]>);
-
-	int _remove_r(struct _reent *<[reent]>, char *<[filename]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int remove(<[filename]>)
-	char *<[filename]>;
-
-	int _remove_r(<[reent]>, <[filename]>)
-	struct _reent *<[reent]>;
-	char *<[filename]>;
-
-DESCRIPTION
-Use <<remove>> to dissolve the association between a particular
-filename (the string at <[filename]>) and the file it represents.
-After calling <<remove>> with a particular filename, you will no
-longer be able to open the file by that name.
-
-In this implementation, you may use <<remove>> on an open file without
-error; existing file descriptors for the file will continue to access
-the file's data until the program using them closes the file.
-
-The alternate function <<_remove_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-<<remove>> returns <<0>> if it succeeds, <<-1>> if it fails.
-
-PORTABILITY
-ANSI C requires <<remove>>, but only specifies that the result on
-failure be nonzero.  The behavior of <<remove>> when you call it on an
-open file may vary among implementations.
-
-Supporting OS subroutine required: <<unlink>>.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
 
-int
-_DEFUN(_remove_r, (ptr, filename),
-       struct _reent *ptr _AND
-       _CONST char *filename)
+int _remove_r(struct _reent *ptr, const char *filename)
 {
   if (_unlink_r (ptr, filename) == -1)
     return -1;
@@ -80,9 +48,18 @@ _DEFUN(_remove_r, (ptr, filename),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(remove, (filename),
-       _CONST char *filename)
+/**
+ * @brief Removes a file.
+ *
+ * @details Causes the file named by the pathname pointed
+ * to by @p filename to be no longer accessible by that name.
+ * A subsequent attempt to open that file using that name shall fail,
+ * unless it is created a new.
+ *
+ * @return Returns 0 on success, otherwise, -1 is returned and errno
+ * is set appropriately.
+ */
+int remove(const char *filename)
 {
   return _remove_r (_REENT, filename);
 }

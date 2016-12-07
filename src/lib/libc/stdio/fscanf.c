@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -18,72 +37,46 @@
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
-#ifdef _HAVE_STDC
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 #include "local.h"
 
-#ifndef _REENT_ONLY
-
 int
-#ifdef _HAVE_STDC
-fscanf(FILE *__restrict fp, _CONST char *__restrict fmt, ...)
-#else
-fscanf(FILE *fp, fmt, va_alist)
-       FILE *fp;
-       char *fmt;
-       va_dcl
-#endif
+_fscanf_r(struct _reent *ptr, FILE *restrict fp, const char *restrict fmt, ...)
 {
   int ret;
   va_list ap;
 
-#ifdef _HAVE_STDC
   va_start (ap, fmt);
-#else
-  va_start (ap);
-#endif
-  ret = _vfscanf_r (_REENT, fp, fmt, ap);
-  va_end (ap);
-  return ret;
-}
-
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(fiscanf, (FILE *, const char *, ...)
-       _ATTRIBUTE ((__alias__("fscanf"))));
-#endif
-
-#endif /* !_REENT_ONLY */
-
-int
-#ifdef _HAVE_STDC
-_fscanf_r(struct _reent *ptr, FILE *__restrict fp, _CONST char *__restrict fmt, ...)
-#else
-_fscanf_r(ptr, FILE *fp, fmt, va_alist)
-          struct _reent *ptr;
-          FILE *fp;
-          char *fmt;
-          va_dcl
-#endif
-{
-  int ret;
-  va_list ap;
-
-#ifdef _HAVE_STDC
-  va_start (ap, fmt);
-#else
-  va_start (ap);
-#endif
   ret = _vfscanf_r (ptr, fp, fmt, ap);
   va_end (ap);
   return (ret);
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_fiscanf_r, (struct _reent *, FILE *, const char *, ...)
-       _ATTRIBUTE ((__alias__("_fscanf_r"))));
-#endif
+#ifndef _REENT_ONLY
+
+/**
+ * @brief Converts formatted input.
+ *
+ * @details The fscanf function reads input from the
+ * stream pointed to by @p fp.
+ *
+ * @return Returns the number of input items successfully
+ * matched and assigned, which can be fewer than provided
+ * for, or even zero in the event of an early matching failure.
+ * The value EOF is returned if the end of input is reached before
+ * either the first successful conversion or a matching failure occurs.
+ * EOF is also returned if a read error occurs, in which case the error
+ * indicator for the stream is set, and errno is set indicate the error.
+ */
+int fscanf(FILE *restrict fp, const char *restrict fmt, ...)
+{
+  int ret;
+  va_list ap;
+
+  va_start (ap, fmt);
+  ret = _vfscanf_r (_REENT, fp, fmt, ap);
+  va_end (ap);
+  return ret;
+}
+
+#endif /* !_REENT_ONLY */
