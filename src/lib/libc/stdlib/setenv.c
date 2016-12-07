@@ -54,7 +54,7 @@
  * @return Upon successful completion returns zero. Otherwise, -1 is returned and
  * errno is set to indicate the error.
  */
-int setenv(char *name, char *value, int rewrite)
+int setenv(const char *name, const char *value, int rewrite)
 {
   return _setenv_r (_REENT, name, value, rewrite);
 }

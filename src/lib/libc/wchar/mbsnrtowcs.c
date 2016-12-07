@@ -104,7 +104,7 @@ size_t _mbsnrtowcs_r(struct _reent *r, wchar_t *dst, const char **src, size_t nm
  * successfully converted, not including the terminating null (if any).
  */
 size_t mbsnrtowcs(wchar_t *restrict dst, const char **restrict src, size_t nms,
-	size_t len, mbstate_t *restrict ps,
+	size_t len, mbstate_t *restrict ps)
 {
   return _mbsnrtowcs_r (_REENT, dst, src, nms, len, ps);
 }

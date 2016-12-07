@@ -33,7 +33,7 @@
  * @return Returns the address of the first such null wide-character code. Otherwise,
  * it shall return @p &dst[n].
  */
-wchar_t *wcpncpy(wchar_t *restrict dst, wchar_t *restrict src, size_t count)
+wchar_t *wcpncpy(wchar_t *restrict dst, const wchar_t *restrict src, size_t count)
 {
   wchar_t *ret = NULL;
 
