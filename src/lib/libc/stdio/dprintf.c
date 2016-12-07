@@ -1,49 +1,26 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /* Copyright 2005, 2007 Shaun Jackman
  * Permission to use, copy, modify, and distribute this software
  * is freely granted, provided that this notice is preserved.
  */
-
-/*
-FUNCTION
-<<dprintf>>, <<vdprintf>>---print to a file descriptor
-
-INDEX
-	dprintf
-INDEX
-	_dprintf_r
-INDEX
-	vdprintf
-INDEX
-	_vdprintf_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	#include <stdarg.h>
-	int dprintf(int <[fd]>, const char *restrict <[format]>, ...);
-	int vdprintf(int <[fd]>, const char *restrict <[format]>,
-			va_list <[ap]>);
-	int _dprintf_r(struct _reent *<[ptr]>, int <[fd]>,
-			const char *restrict <[format]>, ...);
-	int _vdprintf_r(struct _reent *<[ptr]>, int <[fd]>,
-			const char *restrict <[format]>, va_list <[ap]>);
-
-DESCRIPTION
-<<dprintf>> and <<vdprintf>> allow printing a format, similarly to
-<<printf>>, but write to a file descriptor instead of to a <<FILE>>
-stream.
-
-The functions <<_dprintf_r>> and <<_vdprintf_r>> are simply
-reentrant versions of the functions above.
-
-RETURNS
-The return value and errors are exactly as for <<write>>, except that
-<<errno>> may also be set to <<ENOMEM>> if the heap is exhausted.
-
-PORTABILITY
-This function is originally a GNU extension in glibc and is not portable.
-
-Supporting OS subroutines required: <<sbrk>>, <<write>>.
-*/
 
 #include <_ansi.h>
 #include <reent.h>
@@ -52,11 +29,9 @@ Supporting OS subroutines required: <<sbrk>>, <<write>>.
 #include <stdarg.h>
 #include "local.h"
 
-int
-_DEFUN(_dprintf_r, (ptr, fd, format),
-       struct _reent *ptr _AND
-       int fd _AND
-       const char *__restrict format _DOTS)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+int _dprintf_r(struct _reent *ptr, int fd, const char *restrict format, ...)
 {
 	va_list ap;
 	int n;
@@ -67,18 +42,17 @@ _DEFUN(_dprintf_r, (ptr, fd, format),
 	return n;
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_diprintf_r, (struct _reent *, int, const char *, ...)
-       _ATTRIBUTE ((__alias__("_dprintf_r"))));
-#endif
-
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(dprintf, (fd, format),
-       int fd _AND
-       const char *__restrict format _DOTS)
+/**
+ * @brief Prints formatted output.
+ *
+ * @details The function dprintf is exact analog except that
+ * output to a file descriptor fd instead of to a stdio stream.
+ *
+ * @return Returns the number of bytes transmitted.
+ */
+int dprintf(int fd, const char *restrict format, ...)
 {
   va_list ap;
   int n;
@@ -91,9 +65,5 @@ _DEFUN(dprintf, (fd, format),
   return n;
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(diprintf, (int, const char *, ...)
-       _ATTRIBUTE ((__alias__("dprintf"))));
-#endif
 #endif /* ! _REENT_ONLY */
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

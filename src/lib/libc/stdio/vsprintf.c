@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -30,29 +49,8 @@ static char sccsid[] = "%W% (Berkeley) %G%";
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(vsprintf, (str, fmt, ap),
-       char *__restrict str        _AND
-       const char *__restrict fmt _AND
-       va_list ap)
-{
-  return _vsprintf_r (_REENT, str, fmt, ap);
-}
-
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(vsiprintf, (char *, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("vsprintf"))));
-#endif
-
-#endif /* !_REENT_ONLY */
-
-int
-_DEFUN(_vsprintf_r, (ptr, str, fmt, ap),
-       struct _reent *ptr _AND
-       char *__restrict str          _AND
-       const char *__restrict fmt   _AND
-       va_list ap)
+int _vsprintf_r(struct _reent *ptr, char *restrict str,
+  const char *restrict fmt, va_list ap)
 {
   int ret;
   FILE f;
@@ -66,8 +64,18 @@ _DEFUN(_vsprintf_r, (ptr, str, fmt, ap),
   return ret;
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_vsiprintf_r, (struct _reent *, char *, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("_vsprintf_r"))));
-#endif
+/**
+ * @brief Formats output of a stdarg argument list.
+ *
+ * @details Same sprintf behaviour except that instead 
+ * of being called with a variable number of arguments,
+ * is called with an argument list as defined by <stdarg.h>.
+ *
+ * @return Same sprintf return.
+ */
+int vsprintf(char *restrict str, const char *restrict fmt, va_list ap)
+{
+  return _vsprintf_r (_REENT, str, fmt, ap);
+}
+
+#endif /* !_REENT_ONLY */

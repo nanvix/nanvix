@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -31,31 +50,8 @@ static char sccsid[] = "%W% (Berkeley) %G%";
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(vsnprintf, (str, size, fmt, ap),
-       char *__restrict str        _AND
-       size_t size      _AND
-       const char *__restrict fmt _AND
-       va_list ap)
-{
-  return _vsnprintf_r (_REENT, str, size, fmt, ap);
-}
-
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(vsniprintf, (char *, size_t, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("vsnprintf"))));
-#endif
-
-#endif /* !_REENT_ONLY */
-
-int
-_DEFUN(_vsnprintf_r, (ptr, str, size, fmt, ap),
-       struct _reent *ptr _AND
-       char *__restrict str          _AND
-       size_t size        _AND
-       const char *__restrict fmt   _AND
-       va_list ap)
+int _vsnprintf_r(struct _reent *ptr, char *restrict str, size_t size,
+  const char *restrict fmt, va_list ap)
 {
   int ret;
   FILE f;
@@ -77,8 +73,19 @@ _DEFUN(_vsnprintf_r, (ptr, str, size, fmt, ap),
   return ret;
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_vsniprintf_r, (struct _reent *, char *, size_t, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("_vsnprintf_r"))));
-#endif
+/**
+ * @brief Formats output of a stdarg argument list.
+ *
+ * @details Same snprintf behaviour except that instead 
+ * of being called with a variable number of arguments,
+ * is called with an argument list as defined by <stdarg.h>.
+ *
+ * @return Same snprintf return.
+ */
+int vsnprintf(char *restrict str, size_t size, const char *restrict fmt,
+  va_list ap)
+{
+  return _vsnprintf_r (_REENT, str, size, fmt, ap);
+}
+
+#endif /* !_REENT_ONLY */

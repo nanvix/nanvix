@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,46 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<getc_unlocked>>---non-thread-safe version of getc (macro)
-
-INDEX
-	getc_unlocked
-INDEX
-	_getc_unlocked_r
-
-SYNOPSIS
-	#include <stdio.h>
-	int getc_unlocked(FILE *<[fp]>);
-
-	#include <stdio.h>
-	int _getc_unlocked_r(FILE *<[fp]>);
-
-DESCRIPTION
-<<getc_unlocked>> is a non-thread-safe version of <<getc>> declared in
-<<stdio.h>>.  <<getc_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  These
-functions may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the ( FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<getc_unlocked>> is equivalent to <<getc>>.
-
-The <<_getc_unlocked_r>> function is simply the reentrant version of
-<<get_unlocked>> which passes an additional reentrancy structure pointer
-argument: <[ptr]>.
-
-RETURNS
-See <<getc>>.
-
-PORTABILITY
-POSIX 1003.1 requires <<getc_unlocked>>.  <<getc_unlocked>> may be
-implemented as a macro, so arguments should not have side-effects.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.  */
-
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "%W% (Berkeley) %G%";
 #endif /* LIBC_SCCS and not lint */
@@ -62,29 +41,28 @@ static char sccsid[] = "%W% (Berkeley) %G%";
 #include <_ansi.h>
 #include <stdio.h>
 
-/*
- * A subroutine version of the macro getc_unlocked.
- */
-
-#undef getc_unlocked
-
-int
-_DEFUN(_getc_unlocked_r, (ptr, fp),
-       struct _reent *ptr _AND
-       register FILE *fp)
+int _getc_unlocked_r(struct _reent *ptr, register FILE *fp)
 {
-  /* CHECK_INIT is called (eventually) by __srefill_r.  */
-
   return __sgetc_r (ptr, fp);
 }
 
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(getc_unlocked, (fp),
-       register FILE *fp)
+/**
+ * @brief Stdio with explicit client locking.
+ *
+ * @details Same getc behaviour except that it do not use locking
+ * (do not set locks themselve, and do not test for the presence of
+ * locks set by others) and hence are thread-unsafe.
+ *
+ * @return Same getc return.
+ */
+int getc_unlocked(register FILE *fp)
 {
   return __sgetc_r (_REENT, fp);
 }
 
 #endif /* !_REENT_ONLY */
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

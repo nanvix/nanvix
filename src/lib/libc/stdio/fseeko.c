@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,89 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fseek>>, <<fseeko>>---set file position
-
-INDEX
-	fseek
-INDEX
-	fseeko
-INDEX
-	_fseek_r
-INDEX
-	_fseeko_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int fseek(FILE *<[fp]>, long <[offset]>, int <[whence]>)
-	int fseeko(FILE *<[fp]>, off_t <[offset]>, int <[whence]>)
-	int _fseek_r(struct _reent *<[ptr]>, FILE *<[fp]>,
-	             long <[offset]>, int <[whence]>)
-	int _fseeko_r(struct _reent *<[ptr]>, FILE *<[fp]>,
-	             off_t <[offset]>, int <[whence]>)
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int fseek(<[fp]>, <[offset]>, <[whence]>)
-	FILE *<[fp]>;
-	long <[offset]>;
-	int <[whence]>;
-
-	int fseeko(<[fp]>, <[offset]>, <[whence]>)
-	FILE *<[fp]>;
-	off_t <[offset]>;
-	int <[whence]>;
-
-	int _fseek_r(<[ptr]>, <[fp]>, <[offset]>, <[whence]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	long <[offset]>;
-	int <[whence]>;
-
-	int _fseeko_r(<[ptr]>, <[fp]>, <[offset]>, <[whence]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	off_t <[offset]>;
-	int <[whence]>;
-
-DESCRIPTION
-Objects of type <<FILE>> can have a ``position'' that records how much
-of the file your program has already read.  Many of the <<stdio>> functions
-depend on this position, and many change it as a side effect.
-
-You can use <<fseek>>/<<fseeko>> to set the position for the file identified by
-<[fp]>.  The value of <[offset]> determines the new position, in one
-of three ways selected by the value of <[whence]> (defined as macros
-in `<<stdio.h>>'):
-
-<<SEEK_SET>>---<[offset]> is the absolute file position (an offset
-from the beginning of the file) desired.  <[offset]> must be positive.
-
-<<SEEK_CUR>>---<[offset]> is relative to the current file position.
-<[offset]> can meaningfully be either positive or negative.
-
-<<SEEK_END>>---<[offset]> is relative to the current end of file.
-<[offset]> can meaningfully be either positive (to increase the size
-of the file) or negative.
-
-See <<ftell>>/<<ftello>> to determine the current file position.
-
-RETURNS
-<<fseek>>/<<fseeko>> return <<0>> when successful.  On failure, the
-result is <<EOF>>.  The reason for failure is indicated in <<errno>>:
-either <<ESPIPE>> (the stream identified by <[fp]> doesn't support
-repositioning) or <<EINVAL>> (invalid file position).
-
-PORTABILITY
-ANSI C requires <<fseek>>.
-
-<<fseeko>> is defined by the Single Unix specification.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
@@ -109,19 +45,11 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
 #include <sys/stat.h>
 #include "local.h"
 
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
 #define	POS_ERR	(-(_fpos_t)1)
 
-/*
- * Seek the given file to the given offset.
- * `Whence' must be one of the three SEEK_* macros.
- */
-
-int
-_DEFUN(_fseeko_r, (ptr, fp, offset, whence),
-       struct _reent *ptr _AND
-       register FILE *fp  _AND
-       _off_t offset      _AND
-       int whence)
+int _fseeko_r(struct _reent *ptr, register FILE *fp, _off_t offset, int whence)
 {
   _fpos_t _EXFNPTR(seekfn, (struct _reent *, _PTR, _fpos_t, int));
   _fpos_t target;
@@ -388,13 +316,19 @@ dumb:
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(fseeko, (fp, offset, whence),
-       register FILE *fp _AND
-       _off_t offset     _AND
-       int whence)
+/**
+ * @brief Repositions a file-position indicator in a stream.
+ *
+ * @details Sets the file-position indicator for the stream
+ * pointed to by @fp.
+ *
+ * @return Returns 0 on sucess, otherwise, -1, and errno is
+ * set to indicate the error.
+ */
+int fseeko(FILE *fp, _off_t offset, int whence)
 {
   return _fseeko_r (_REENT, fp, offset, whence);
 }
 
 #endif /* !_REENT_ONLY */
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Code created by modifying scanf.c which has following copyright.
  *
  * Copyright (c) 1990 The Regents of the University of California.
@@ -28,35 +47,10 @@
 #endif
 #include "local.h"
 
-/*
- * vsscanf
- */
-
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(vsscanf, (str, fmt, ap), 
-       _CONST char *__restrict str _AND 
-       _CONST char *__restrict fmt _AND 
-       va_list ap)
-{
-  return _vsscanf_r (_REENT, str, fmt, ap);
-}
-
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(vsiscanf, (const char *, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("vsscanf"))));
-#endif
-
-#endif /* !_REENT_ONLY */
-
-int
-_DEFUN(_vsscanf_r, (ptr, str, fmt, ap),
-       struct _reent *ptr _AND 
-       _CONST char *__restrict str   _AND 
-       _CONST char *__restrict fmt   _AND 
-       va_list ap)
+int _vsscanf_r(struct _reent *ptr, const char *restrict str,
+  const char *restrict fmt, va_list ap)
 {
   FILE f;
 
@@ -70,8 +64,18 @@ _DEFUN(_vsscanf_r, (ptr, str, fmt, ap),
   return __ssvfscanf_r (ptr, &f, fmt, ap);
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_vsiscanf_r, (struct _reent *, const char *, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("_vsscanf_r"))));
-#endif
+/**
+ * @brief Formats input of a stdarg argument list.
+ *
+ * @details Same sscanf behaviour except that instead 
+ * of being called with a variable number of arguments,
+ * is called with an argument list as defined by <stdarg.h>.
+ *
+ * @return Same sscanf return.
+ */
+int vsscanf(const char *restrict str, const char *restrict fmt, va_list ap)
+{
+  return _vsscanf_r (_REENT, str, fmt, ap);
+}
+
+#endif /* !_REENT_ONLY */

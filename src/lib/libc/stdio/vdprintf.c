@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /* Copyright 2005, 2007 Shaun Jackman
  * Permission to use, copy, modify, and distribute this software
  * is freely granted, provided that this notice is preserved.
@@ -12,12 +31,8 @@
 #include <stdarg.h>
 #include "local.h"
 
-int
-_DEFUN(_vdprintf_r, (ptr, fd, format, ap),
-       struct _reent *ptr _AND
-       int fd _AND
-       const char *__restrict format _AND
-       va_list ap)
+int _vdprintf_r(struct _reent *ptr, int fd, const char *restrict format,
+  va_list ap)
 {
   char *p;
   char buf[512];
@@ -33,26 +48,23 @@ _DEFUN(_vdprintf_r, (ptr, fd, format, ap),
   return n;
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_vdiprintf_r, (struct _reent *, int, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("_vdprintf_r"))));
-#endif
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(vdprintf, (fd, format, ap),
-       int fd _AND
-       const char *__restrict format _AND
-       va_list ap)
+/**
+ * @brief Formats output of a stdarg argument list.
+ *
+ * @details Same vfprintf behaviour except that instead of being
+ * called with a variable number of arguments, is called with an
+ * argument list as defined by <stdarg.h>.
+ *
+ * @return Same dprintf return.
+ */
+int vdprintf(int fd, const char *restrict format, va_list ap)
 {
   return _vdprintf_r (_REENT, fd, format, ap);
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(vdiprintf, (int, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("vdprintf"))));
-#endif
 #endif /* ! _REENT_ONLY */
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
