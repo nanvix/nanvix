@@ -230,11 +230,8 @@
 	extern int getc_unlocked(FILE *);
 	extern int getchar_unlocked(void);
 	extern FILE *open_memstream(char **, size_t *);
-	extern int pclose(FILE *);
-	extern FILE *popen(const char *, const char *);
 	extern int putc_unlocked(int, FILE *);
 	extern int putchar_unlocked(int);
-	extern int renameat(int, const char *, int, const char *);
 	extern int vdprintf(int, const char *restrict, va_list);
 
 #endif
