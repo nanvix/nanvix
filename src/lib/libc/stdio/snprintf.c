@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990, 2007 The Regents of the University of California.
  * All rights reserved.
  *
@@ -20,30 +39,13 @@
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
-#ifdef _HAVE_STDC
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 #include <limits.h>
 #include <errno.h>
 #include "local.h"
 
-int
-#ifdef _HAVE_STDC
-_DEFUN(_snprintf_r, (ptr, str, size, fmt),
-       struct _reent *ptr _AND
-       char *__restrict str          _AND
-       size_t size        _AND
-       _CONST char *__restrict fmt _DOTS)
-#else
-_snprintf_r(ptr, str, size, fmt, va_alist)
-            struct _reent *ptr;
-            char *str;
-            size_t size;
-            _CONST char *fmt;
-            va_dcl
-#endif
+int _snprintf_r(struct _reent *ptr, char *restrict str, size_t size,
+  const char *restrict fmt, ...)
 {
   int ret;
   va_list ap;
@@ -58,11 +60,8 @@ _snprintf_r(ptr, str, size, fmt, va_alist)
   f._bf._base = f._p = (unsigned char *) str;
   f._bf._size = f._w = (size > 0 ? size - 1 : 0);
   f._file = -1;  /* No file. */
-#ifdef _HAVE_STDC
+
   va_start (ap, fmt);
-#else
-  va_start (ap);
-#endif
   ret = _svfprintf_r (ptr, &f, fmt, ap);
   va_end (ap);
   if (ret < EOF)
@@ -72,27 +71,23 @@ _snprintf_r(ptr, str, size, fmt, va_alist)
   return (ret);
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_sniprintf_r, (struct _reent *, char *, size_t, const char *, ...)
-       _ATTRIBUTE ((__alias__("_snprintf_r"))));
-#endif
-
 #ifndef _REENT_ONLY
 
-int
-#ifdef _HAVE_STDC
-_DEFUN(snprintf, (str, size, fmt),
-       char *__restrict str _AND
-       size_t size _AND
-       _CONST char *__restrict fmt _DOTS)
-#else
-snprintf(str, size, fmt, va_alist)
-         char *str;
-         size_t size;
-         _CONST char *fmt;
-         va_dcl
-#endif
+/**
+ * @brief Prints formatted output.
+ *
+ * @details The snprintf() function is equivalent to sprintf(),
+ * with the addition of the @p size argument which states the size
+ * of the buffer referred to by @p str. If @p size is zero, nothing
+ * is written and @p str may be a null pointer. Otherwise, output bytes
+ * beyond the n-1st is discarded instead of being written to the array,
+ * and a null byte is written at the end of the bytes actually written into
+ * the array.
+ *
+ * @return Returns number of bytes that would be written to @p str had @p size
+ * been sufficiently large excluding the terminating null byte.
+ */
+int snprintf(char *restrict str, size_t size, const char *restrict fmt, ...)
 {
   int ret;
   va_list ap;
@@ -108,11 +103,8 @@ snprintf(str, size, fmt, va_alist)
   f._bf._base = f._p = (unsigned char *) str;
   f._bf._size = f._w = (size > 0 ? size - 1 : 0);
   f._file = -1;  /* No file. */
-#ifdef _HAVE_STDC
+
   va_start (ap, fmt);
-#else
-  va_start (ap);
-#endif
   ret = _svfprintf_r (ptr, &f, fmt, ap);
   va_end (ap);
   if (ret < EOF)
@@ -122,9 +114,4 @@ snprintf(str, size, fmt, va_alist)
   return (ret);
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(sniprintf, (char *, size_t, const char *, ...)
-       _ATTRIBUTE ((__alias__("snprintf"))));
-#endif
 #endif

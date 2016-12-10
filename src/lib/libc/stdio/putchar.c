@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,51 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<putchar>>---write a character (macro)
-
-INDEX
-	putchar
-INDEX
-	_putchar_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int putchar(int <[ch]>);
-
-	int _putchar_r(struct _reent *<[reent]>, int <[ch]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int putchar(<[ch]>)
-	int <[ch]>;
-
-	int _putchar_r(<[reent]>, <[ch]>)
-	struct _reent *<[reent]>;
-	int <[ch]>;
-
-DESCRIPTION
-<<putchar>> is a macro, defined in <<stdio.h>>.  <<putchar>>
-writes its argument to the standard output stream,
-after converting it from an <<int>> to an <<unsigned char>>.
-
-The alternate function <<_putchar_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-If successful, <<putchar>> returns its argument <[ch]>.  If an error
-intervenes, the result is <<EOF>>.  You can use `<<ferror(stdin)>>' to
-query for errors.
-
-PORTABILITY
-ANSI C requires <<putchar>>; it suggests, but does not require, that
-<<putchar>> be implemented as a macro.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "%W% (Berkeley) %G%";
 #endif /* LIBC_SCCS and not lint */
@@ -73,12 +47,8 @@ static char sccsid[] = "%W% (Berkeley) %G%";
 #include <stdio.h>
 #include "local.h"
 
-#undef putchar
 
-int
-_DEFUN(_putchar_r, (ptr, c),
-       struct _reent *ptr _AND
-       int c)
+int _putchar_r(struct _reent *ptr, int c)
 {
   _REENT_SMALL_CHECK_INIT (ptr);
   return _putc_r (ptr, c, _stdout_r (ptr));
@@ -86,9 +56,15 @@ _DEFUN(_putchar_r, (ptr, c),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(putchar, (c),
-       int c)
+
+/**
+ * @brief Puts a byte on stdout stream.
+ *
+ * @details The function is equivalent to putc(c,stdout).
+ *
+ * @return Returns the same value of putc(c,stdout).
+ */
+int putchar(int c)
 {
   struct _reent *reent = _REENT;
 

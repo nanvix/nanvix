@@ -1,34 +1,21 @@
 /*
-FUNCTION
-<<llabs>>---compute the absolute value of an long long integer.
-
-INDEX
-        llabs
-
-ANSI_SYNOPSIS
-        #include <stdlib.h>
-        long long llabs(long long j);
-
-TRAD_SYNOPSIS
-        #include <stdlib.h>
-        long long llabs(<[j]>)
-        long long <[j]>;
-
-DESCRIPTION
-The <<llabs>> function computes the absolute value of the long long integer 
-argument <[j]> (also called the magnitude of <[j]>).
-
-The similar function <<labs>> uses and returns <<long>> rather than
-<<long long>> values.
-
-RETURNS
-A nonnegative long long integer.
-
-PORTABILITY
-<<llabs>> is ISO 9899 (C99) compatable.
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*-
  * Copyright (c) 2001 Mike Barcroft <mike@FreeBSD.org>
@@ -58,9 +45,16 @@ No supporting OS subroutines are required.
 
 #include <stdlib.h>
 
-long long
-_DEFUN(llabs, (j),
-       long long j)
+/**
+ * @brief Computes the absolute value of an integer.
+ *
+ * @details Compute the absolute value of the long long integer
+ * operand @p j.
+ *
+ * @return Returns the absolute value of the long long integer
+ * operand.
+ */
+long long llabs(long long j)
 {
 	return (j < 0 ? -j : j);
 }

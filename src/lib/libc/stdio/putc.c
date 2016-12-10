@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,66 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<putc>>---write a character (macro)
-
-INDEX
-	putc
-INDEX
-	_putc_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int putc(int <[ch]>, FILE *<[fp]>);
-
-	#include <stdio.h>
-	int _putc_r(struct _reent *<[ptr]>, int <[ch]>, FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int putc(<[ch]>, <[fp]>)
-	int <[ch]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	int _putc_r(<[ptr]>, <[ch]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	int <[ch]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-<<putc>> is a macro, defined in <<stdio.h>>.  <<putc>>
-writes the argument <[ch]> to the file or stream identified by
-<[fp]>, after converting it from an <<int>> to an <<unsigned char>>.
-
-If the file was opened with append mode (or if the stream cannot
-support positioning), then the new character goes at the end of the
-file or stream.  Otherwise, the new character is written at the
-current value of the position indicator, and the position indicator
-advances by one.
-
-For a subroutine version of this macro, see <<fputc>>.
-
-The <<_putc_r>> function is simply the reentrant version of
-<<putc>> that takes an additional reentrant structure argument: <[ptr]>.
-
-RETURNS
-If successful, <<putc>> returns its argument <[ch]>.  If an error
-intervenes, the result is <<EOF>>.  You can use `<<ferror(<[fp]>)>>' to
-query for errors.
-
-PORTABILITY
-ANSI C requires <<putc>>; it suggests, but does not require, that
-<<putc>> be implemented as a macro.  The standard explicitly permits
-macro implementations of <<putc>> to use the <[fp]> argument more than once;
-therefore, in a portable program, you should not use an expression
-with side effects as this argument.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "%W% (Berkeley) %G%";
 #endif /* LIBC_SCCS and not lint */
@@ -87,13 +46,7 @@ static char sccsid[] = "%W% (Berkeley) %G%";
  * A subroutine version of the macro putc.
  */
 
-#undef putc
-
-int
-_DEFUN(_putc_r, (ptr, c, fp),
-       struct _reent *ptr _AND
-       int c _AND
-       register FILE *fp)
+int _putc_r(struct _reent *ptr, int c, register FILE *fp)
 {
   int result;
   CHECK_INIT (ptr, fp);
@@ -104,10 +57,15 @@ _DEFUN(_putc_r, (ptr, c, fp),
 }
 
 #ifndef _REENT_ONLY
-int
-_DEFUN(putc, (c, fp),
-       int c _AND
-       register FILE *fp)
+
+/**
+ * @brief Puts a byte on a stream.
+ *
+ * @details The function is equivalent to fputc().
+ *
+ * @return Returns the same value of fputc().
+ */
+int putc(int c, register FILE *fp)
 {
 #if !defined(PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__)
   int result;
@@ -122,5 +80,6 @@ _DEFUN(putc, (c, fp),
   return _putc_r (_REENT, c, fp);
 #endif
 }
+
 #endif /* !_REENT_ONLY */
 

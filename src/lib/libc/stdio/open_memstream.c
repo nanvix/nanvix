@@ -348,22 +348,27 @@ _DEFUN(_open_memstream_r, (ptr, buf, size),
 }
 
 #if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
 FILE *_open_wmemstream_r(struct _reent *ptr, wchar_t **buf, size_t *size)
 {
   return internal_open_memstream_r (ptr, (char **)buf, size, 1);
 }
-#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
 
 #ifndef _REENT_ONLY
-FILE *
-_DEFUN(open_memstream, (buf, size),
-       char **buf _AND
-       size_t *size)
+
+/**
+ * @brief Opens a dynamic memory buffer stream.
+ *
+ * @details Creates an I/O stream associated with a dynamically allocated
+ * memory buffer. The stream is opened for writing and is seekable.
+ *
+ * @return Returns a pointer to the object controlling the stream. Otherwise,
+ * a null pointer is returned, and errno is set to indicate the error.
+ */
+FILE *open_memstream(char **buf, size_t *size)
 {
   return _open_memstream_r (_REENT, buf, size);
 }
-
-#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
 
 /**
  * @brief Opens a dynamic memory buffer stream.
@@ -378,6 +383,6 @@ FILE * open_wmemstream(wchar_t **buf, size_t *size)
 {
   return _open_wmemstream_r (_REENT, buf, size);
 }
-#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
 
 #endif /* !_REENT_ONLY */
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

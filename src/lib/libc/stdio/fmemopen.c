@@ -1,66 +1,26 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /* Copyright (C) 2007 Eric Blake
  * Permission to use, copy, modify, and distribute this software
  * is freely granted, provided that this notice is preserved.
  */
-
-/*
-FUNCTION
-<<fmemopen>>---open a stream around a fixed-length string
-
-INDEX
-	fmemopen
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	FILE *fmemopen(void *restrict <[buf]>, size_t <[size]>,
-		       const char *restrict <[mode]>);
-
-DESCRIPTION
-<<fmemopen>> creates a seekable <<FILE>> stream that wraps a
-fixed-length buffer of <[size]> bytes starting at <[buf]>.  The stream
-is opened with <[mode]> treated as in <<fopen>>, where append mode
-starts writing at the first NUL byte.  If <[buf]> is NULL, then
-<[size]> bytes are automatically provided as if by <<malloc>>, with
-the initial size of 0, and <[mode]> must contain <<+>> so that data
-can be read after it is written.
-
-The stream maintains a current position, which moves according to
-bytes read or written, and which can be one past the end of the array.
-The stream also maintains a current file size, which is never greater
-than <[size]>.  If <[mode]> starts with <<r>>, the position starts at
-<<0>>, and file size starts at <[size]> if <[buf]> was provided.  If
-<[mode]> starts with <<w>>, the position and file size start at <<0>>,
-and if <[buf]> was provided, the first byte is set to NUL.  If
-<[mode]> starts with <<a>>, the position and file size start at the
-location of the first NUL byte, or else <[size]> if <[buf]> was
-provided.
-
-When reading, NUL bytes have no significance, and reads cannot exceed
-the current file size.  When writing, the file size can increase up to
-<[size]> as needed, and NUL bytes may be embedded in the stream (see
-<<open_memstream>> for an alternative that automatically enlarges the
-buffer).  When the stream is flushed or closed after a write that
-changed the file size, a NUL byte is written at the current position
-if there is still room; if the stream is not also open for reading, a
-NUL byte is additionally written at the last byte of <[buf]> when the
-stream has exceeded <[size]>, so that a write-only <[buf]> is always
-NUL-terminated when the stream is flushed or closed (and the initial
-<[size]> should take this into account).  It is not possible to seek
-outside the bounds of <[size]>.  A NUL byte written during a flush is
-restored to its previous value when seeking elsewhere in the string.
-
-RETURNS
-The return value is an open FILE pointer on success.  On error,
-<<NULL>> is returned, and <<errno>> will be set to EINVAL if <[size]>
-is zero or <[mode]> is invalid, ENOMEM if <[buf]> was NULL and memory
-could not be allocated, or EMFILE if too many streams are already
-open.
-
-PORTABILITY
-This function is being added to POSIX 200x, but is not in POSIX 2001.
-
-Supporting OS subroutines required: <<sbrk>>.
-*/
 
 #include <stdio.h>
 #include <errno.h>
@@ -360,13 +320,24 @@ _DEFUN(_fmemopen_r, (ptr, buf, size, mode),
   return fp;
 }
 
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
 #ifndef _REENT_ONLY
-FILE *
-_DEFUN(fmemopen, (buf, size, mode),
-       void *__restrict buf _AND
-       size_t size _AND
-       const char *__restrict mode)
+
+/**
+ * @brief Opens a memory buffer stream.
+ *
+ * @details Associates the buffer given by the
+ * @p buf and @p size arguments with a stream.
+ *
+ * @return Returns a pointer to the object controlling
+ * the stream. Otherwise, a null pointer is returned,
+ * and errno is set to indicate the error.
+ */
+FILE *fmemopen(void *restrict buf, size_t size, const char *restrict mode)
 {
   return _fmemopen_r (_REENT, buf, size, mode);
 }
+
 #endif /* !_REENT_ONLY */
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

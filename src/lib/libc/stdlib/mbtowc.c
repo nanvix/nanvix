@@ -1,53 +1,21 @@
 /*
-FUNCTION
-<<mbtowc>>---minimal multibyte to wide char converter
-
-INDEX
-	mbtowc
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	int mbtowc(wchar_t *restrict <[pwc]>, const char *restrict <[s]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	int mbtowc(<[pwc]>, <[s]>, <[n]>)
-	wchar_t *<[pwc]>;
-	const char *<[s]>;
-	size_t <[n]>;
-
-DESCRIPTION
-When _MB_CAPABLE is not defined, this is a minimal ANSI-conforming 
-implementation of <<mbtowc>>.  In this case,
-only ``multi-byte character sequences'' recognized are single bytes,
-and they are ``converted'' to themselves.
-Each call to <<mbtowc>> copies one character from <<*<[s]>>> to
-<<*<[pwc]>>>, unless <[s]> is a null pointer.  The argument n
-is ignored.
-
-When _MB_CAPABLE is defined, this routine calls <<_mbtowc_r>> to perform
-the conversion, passing a state variable to allow state dependent
-decoding.  The result is based on the locale setting which may
-be restricted to a defined set of locales.
-
-RETURNS
-This implementation of <<mbtowc>> returns <<0>> if
-<[s]> is <<NULL>> or is the empty string; 
-it returns <<1>> if not _MB_CAPABLE or
-the character is a single-byte character; it returns <<-1>>
-if n is <<0>> or the multi-byte character is invalid; 
-otherwise it returns the number of bytes in the multibyte character.
-If the return value is -1, no changes are made to the <<pwc>>
-output string.  If the input is the empty string, a wchar_t nul
-is placed in the output string and 0 is returned.  If the input
-has a length of 0, no changes are made to the <<pwc>> output string.
-
-PORTABILITY
-<<mbtowc>> is required in the ANSI C standard.  However, the precise
-effects vary with the locale.
-
-<<mbtowc>> requires no supporting OS subroutines.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef _REENT_ONLY
 
@@ -56,11 +24,24 @@ effects vary with the locale.
 #include <wchar.h>
 #include "local.h"
 
-int
-_DEFUN (mbtowc, (pwc, s, n),
-        wchar_t *__restrict pwc _AND
-        const char *__restrict s _AND
-        size_t n)
+/**
+ * @brief Converts a character to a wide-character code.
+ *
+ * @details The function determines the number of bytes
+ * that constitute the character pointed to by @p s. If
+ * the character is valid and @p pwc is not a null pointer,
+ * mbtowc() stores the wide-character code in the object pointed
+ * to by @p pwc.
+ *
+ * @return If @p s is a null pointer, mbtowc() returns a non-zero
+ * or 0 value, if character encodings, respectively, do or do not
+ * have state-dependent encodings. If @p s is not a null pointer,
+ * mbtowc() either returns 0 (if @p s points to the null byte), or
+ * returns the number of bytes that constitute the converted character
+ * (if the next @p n or fewer bytes form a valid character), or returns
+ * -1 (if they do not form a valid character).
+ */
+int mbtowc(wchar_t *restrict pwc, const char *restrict s, size_t n)
 {
 #ifdef _MB_CAPABLE
   int retval = 0;
@@ -90,7 +71,3 @@ _DEFUN (mbtowc, (pwc, s, n),
 }
 
 #endif /* !_REENT_ONLY */
-
-
-
-

@@ -1,37 +1,21 @@
 /*
-FUNCTION
-<<getenv>>---look up environment variable
-
-INDEX
-	getenv
-INDEX
-	environ
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	char *getenv(const char *<[name]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	char *getenv(<[name]>)
-	char *<[name]>;
-
-DESCRIPTION
-<<getenv>> searches the list of environment variable names and values
-(using the global pointer ``<<char **environ>>'') for a variable whose
-name matches the string at <[name]>.  If a variable name matches,
-<<getenv>> returns a pointer to the associated value.
-
-RETURNS
-A pointer to the (string) value of the environment variable, or
-<<NULL>> if there is no such environment variable.
-
-PORTABILITY
-<<getenv>> is ANSI, but the rules for properly forming names of environment
-variables vary from one system to another.
-
-<<getenv>> requires a global pointer <<environ>>.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*
  * Copyright (c) 1987, 2000 Regents of the University of California.
@@ -58,32 +42,20 @@ variables vary from one system to another.
 #include <stddef.h>
 #include <string.h>
 
-/*
- * _findenv --
- *	Returns pointer to value associated with name, if any, else NULL.
- *	Sets offset to be the offset of the name/value combination in the
- *	environmental array, for use by setenv(3) and unsetenv(3).
- *	Explicitly removes '=' in argument name.
+/**
+ * @brief Gets value of an environment variable.
  *
- *	This routine *should* be a static; don't use it.
+ * @details Searchs the environment of the calling process for
+ * the environment variable @p name if it exists and return a
+ * pointer to the value of the environment variable. If the 
+ * specified environment variable cannot be found, a null pointer
+ * is returned.
+ *
+ * @return Returns a pointer to a string containing the value for
+ * the specified @p name. If the specified name cannot be found in
+ * the environment of the calling process, a null pointer is returned.
  */
-
-char *
-_DEFUN (_findenv, (name, offset),
-	register _CONST char *name _AND
-	int *offset)
-{
-  return _findenv_r (_REENT, name, offset);
-}
-
-/*
- * getenv --
- *	Returns ptr to value associated with name, if any, else NULL.
- */
-
-char *
-_DEFUN (getenv, (name),
-	_CONST char *name)
+char *getenv(const char *name)
 {
   int offset;
 

@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -18,73 +37,47 @@
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
-#ifdef _HAVE_STDC
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 #include "local.h"
+
+int _scanf_r(struct _reent *ptr, const char *restrict fmt, ...)
+{
+  int ret;
+  va_list ap;
+
+  _REENT_SMALL_CHECK_INIT (ptr);
+  va_start (ap, fmt);
+  ret = _vfscanf_r (ptr, _stdin_r (ptr), fmt, ap);
+  va_end (ap);
+  return (ret);
+}
 
 #ifndef _REENT_ONLY
 
-int
-#ifdef _HAVE_STDC
-scanf(_CONST char *__restrict fmt, ...)
-#else
-scanf(fmt, va_alist)
-      char *fmt;
-      va_dcl
-#endif
+/**
+ * @brief Converts formatted input.
+ *
+ * @details Reads from the standard input stream stdin.
+ *
+ * @return Returns the number of input items successfully
+ * matched and assigned, which can be fewer than provided
+ * for, or even zero in the event of an early matching failure.
+ * The value EOF is returned if the end of input is reached before
+ * either the first successful conversion or a matching failure occurs.
+ * EOF is also returned if a read error occurs, in which case the error
+ * indicator for the stream is set, and errno is set indicate the error.
+ */
+int scanf(const char *restrict fmt, ...)
 {
   int ret;
   va_list ap;
   struct _reent *reent = _REENT;
 
   _REENT_SMALL_CHECK_INIT (reent);
-#ifdef _HAVE_STDC
   va_start (ap, fmt);
-#else
-  va_start (ap);
-#endif
   ret = _vfscanf_r (reent, _stdin_r (reent), fmt, ap);
   va_end (ap);
   return ret;
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(iscanf, (const char *, ...)
-       _ATTRIBUTE ((__alias__("scanf"))));
-#endif
-
 #endif /* !_REENT_ONLY */
-
-int
-#ifdef _HAVE_STDC
-_scanf_r(struct _reent *ptr, _CONST char *__restrict fmt, ...)
-#else
-_scanf_r(ptr, fmt, va_alist)
-         struct _reent *ptr;
-         char *fmt;
-         va_dcl
-#endif
-{
-  int ret;
-  va_list ap;
-
-  _REENT_SMALL_CHECK_INIT (ptr);
-#ifdef _HAVE_STDC
-  va_start (ap, fmt);
-#else
-  va_start (ap);
-#endif
-  ret = _vfscanf_r (ptr, _stdin_r (ptr), fmt, ap);
-  va_end (ap);
-  return (ret);
-}
-
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_iscanf_r, (struct _reent *, const char *, ...)
-       _ATTRIBUTE ((__alias__("_scanf_r"))));
-#endif

@@ -17,17 +17,6 @@ int (*__mbtowc) (struct _reent *, wchar_t *, const char *, size_t,
 #endif
 
 int
-_DEFUN (_mbtowc_r, (r, pwc, s, n, state),
-        struct _reent *r   _AND
-        wchar_t       *__restrict pwc _AND 
-        const char    *__restrict s   _AND        
-        size_t         n   _AND
-        mbstate_t      *state)
-{
-  return __mbtowc (r, pwc, s, n, __locale_charset (), state);
-}
-
-int
 _DEFUN (__ascii_mbtowc, (r, pwc, s, n, charset, state),
         struct _reent *r       _AND
         wchar_t       *pwc     _AND 

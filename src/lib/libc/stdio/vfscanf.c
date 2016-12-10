@@ -1,3 +1,22 @@
+/*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*-
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
@@ -14,99 +33,6 @@
  * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
-
-/*
-FUNCTION
-<<vfscanf>>, <<vscanf>>, <<vsscanf>>---format argument list
-
-INDEX
-	vfscanf
-INDEX
-	_vfscanf_r
-INDEX
-	vscanf
-INDEX
-	_vscanf_r
-INDEX
-	vsscanf
-INDEX
-	_vsscanf_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	#include <stdarg.h>
-	int vscanf(const char *<[fmt]>, va_list <[list]>);
-	int vfscanf(FILE *<[fp]>, const char *<[fmt]>, va_list <[list]>);
-	int vsscanf(const char *<[str]>, const char *<[fmt]>, va_list <[list]>);
-
-	int _vscanf_r(struct _reent *<[reent]>, const char *<[fmt]>,
-                       va_list <[list]>);
-	int _vfscanf_r(struct _reent *<[reent]>, FILE *<[fp]>, const char *<[fmt]>,
-                       va_list <[list]>);
-	int _vsscanf_r(struct _reent *<[reent]>, const char *<[str]>,
-                       const char *<[fmt]>, va_list <[list]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	#include <varargs.h>
-	int vscanf( <[fmt]>, <[ist]>)
-	char *<[fmt]>;
-	va_list <[list]>;
-
-	int vfscanf( <[fp]>, <[fmt]>, <[list]>)
-	FILE *<[fp]>;
-	char *<[fmt]>;
-	va_list <[list]>;
-
-	int vsscanf( <[str]>, <[fmt]>, <[list]>)
-	char *<[str]>;
-	char *<[fmt]>;
-	va_list <[list]>;
-
-	int _vscanf_r( <[reent]>, <[fmt]>, <[ist]>)
-	struct _reent *<[reent]>;
-	char *<[fmt]>;
-	va_list <[list]>;
-
-	int _vfscanf_r( <[reent]>, <[fp]>, <[fmt]>, <[list]>)
-	struct _reent *<[reent]>;
-	FILE *<[fp]>;
-	char *<[fmt]>;
-	va_list <[list]>;
-
-	int _vsscanf_r( <[reent]>, <[str]>, <[fmt]>, <[list]>)
-	struct _reent *<[reent]>;
-	char *<[str]>;
-	char *<[fmt]>;
-	va_list <[list]>;
-
-DESCRIPTION
-<<vscanf>>, <<vfscanf>>, and <<vsscanf>> are (respectively) variants
-of <<scanf>>, <<fscanf>>, and <<sscanf>>.  They differ only in
-allowing their caller to pass the variable argument list as a
-<<va_list>> object (initialized by <<va_start>>) rather than
-directly accepting a variable number of arguments.
-
-RETURNS
-The return values are consistent with the corresponding functions:
-<<vscanf>> returns the number of input fields successfully scanned,
-converted, and stored; the return value does not include scanned
-fields which were not stored.
-
-If <<vscanf>> attempts to read at end-of-file, the return value
-is <<EOF>>.
-
-If no fields were stored, the return value is <<0>>.
-
-The routines <<_vscanf_r>>, <<_vfscanf_f>>, and <<_vsscanf_r>> are
-reentrant versions which take an additional first parameter which points to the
-reentrancy structure.
-
-PORTABILITY
-These are GNU extensions.
-
-Supporting OS subroutines required:
-*/
 
 #include <_ansi.h>
 #include <reent.h>
@@ -257,11 +183,16 @@ typedef unsigned long long u_long_long;
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(VFSCANF, (fp, fmt, ap),
-       register FILE *fp _AND
-       _CONST char *fmt _AND
-       va_list ap)
+/**
+ * @brief Formats input of a stdarg argument list.
+ *
+ * @details The function is equivalent to fscanf() except that
+ * instead of being called with a variable number of arguments,
+ * is called with an argument list as defined in the <stdarg.h> header.
+ *
+ * @return Returns the same value of fscanf().
+ */
+int VFSCANF(register FILE *fp, const char *fmt, va_list ap)
 {
   struct _reent *reent = _REENT;
 

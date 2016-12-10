@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,68 +34,19 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<feof>>, <<feof_unlocked>>---test for end of file
-
-INDEX
-	feof
-INDEX
-	feof_unlocked
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int feof(FILE *<[fp]>);
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int feof_unlocked(FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int feof(<[fp]>)
-	FILE *<[fp]>;
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int feof_unlocked(<[fp]>)
-	FILE *<[fp]>;
-
-DESCRIPTION
-<<feof>> tests whether or not the end of the file identified by <[fp]>
-has been reached.
-
-<<feof_unlocked>> is a non-thread-safe version of <<feof>>.
-<<feof_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<feof_unlocked>> is equivalent to <<feof>>.
-
-RETURNS
-<<feof>> returns <<0>> if the end of file has not yet been reached; if
-at end of file, the result is nonzero.
-
-PORTABILITY
-<<feof>> is required by ANSI C.
-
-<<feof_unlocked>> is a BSD extension also provided by GNU libc.
-
-No supporting OS subroutines are required.
-*/
-
 #include <stdio.h>
 #include "local.h"
 
-/* A subroutine version of the macro feof.  */
-
-#undef feof
-
-int 
-_DEFUN(feof, (fp),
-       FILE * fp)
+/**
+ * @brief Tests end-of-file indicator on a stream.
+ *
+ * @details Tests the end-of-file indicator for the
+ * stream pointed to by @fp.
+ *
+ * @return Returns non-zero if and only if the end-of-file
+ * indicator is set for @p fp.
+ */
+int feof(FILE *fp)
 {
   int result;
   CHECK_INIT(_REENT, fp);

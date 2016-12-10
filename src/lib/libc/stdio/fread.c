@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990, 2007 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,103 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fread>>. <<fread_unlocked>>---read array elements from a file
-
-INDEX
-	fread
-INDEX
-	fread_unlocked
-INDEX
-	_fread_r
-INDEX
-	_fread_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	size_t fread(void *restrict <[buf]>, size_t <[size]>, size_t <[count]>,
-		     FILE *restrict <[fp]>);
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	size_t fread_unlocked(void *restrict <[buf]>, size_t <[size]>, size_t <[count]>,
-		     FILE *restrict <[fp]>);
-
-	#include <stdio.h>
-	size_t _fread_r(struct _reent *<[ptr]>, void *restrict <[buf]>,
-	                size_t <[size]>, size_t <[count]>, FILE *restrict <[fp]>);
-
-	#include <stdio.h>
-	size_t _fread_unlocked_r(struct _reent *<[ptr]>, void *restrict <[buf]>,
-	                size_t <[size]>, size_t <[count]>, FILE *restrict <[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	size_t fread(<[buf]>, <[size]>, <[count]>, <[fp]>)
-	char *<[buf]>;
-	size_t <[size]>;
-	size_t <[count]>;
-	FILE *<[fp]>;
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	size_t fread_unlocked(<[buf]>, <[size]>, <[count]>, <[fp]>)
-	char *<[buf]>;
-	size_t <[size]>;
-	size_t <[count]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	size_t _fread_r(<[ptr]>, <[buf]>, <[size]>, <[count]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	char *<[buf]>;
-	size_t <[size]>;
-	size_t <[count]>;
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	size_t _fread_unlocked_r(<[ptr]>, <[buf]>, <[size]>, <[count]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	char *<[buf]>;
-	size_t <[size]>;
-	size_t <[count]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-<<fread>> attempts to copy, from the file or stream identified by
-<[fp]>, <[count]> elements (each of size <[size]>) into memory,
-starting at <[buf]>.   <<fread>> may copy fewer elements than
-<[count]> if an error, or end of file, intervenes.
-
-<<fread>> also advances the file position indicator (if any) for
-<[fp]> by the number of @emph{characters} actually read.
-
-<<fread_unlocked>> is a non-thread-safe version of <<fread>>.
-<<fread_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fread_unlocked>> is equivalent to <<fread>>.
-
-<<_fread_r>> and <<_fread_unlocked_r>> are simply reentrant versions of the
-above that take an additional reentrant structure pointer argument: <[ptr]>.
-
-RETURNS
-The result of <<fread>> is the number of elements it succeeded in
-reading.
-
-PORTABILITY
-ANSI C requires <<fread>>.
-
-<<fread_unlocked>> is a BSD extension also provided by GNU libc.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <stdio.h>
 #include <string.h>
@@ -124,13 +46,8 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
 #endif
 
 #ifdef __SCLE
-static size_t
-_DEFUN(crlf_r, (ptr, fp, buf, count, eof),
-       struct _reent * ptr _AND
-       FILE * fp _AND
-       char * buf _AND
-       size_t count _AND
-       int eof)
+static size_t crlf_r(struct _reent *ptr, FILE *fp, char *buf, size_t count,
+	int eof)
 {
   int r;
   char *s, *d, *e;
@@ -173,13 +90,8 @@ _DEFUN(crlf_r, (ptr, fp, buf, count, eof),
 
 #endif
 
-size_t
-_DEFUN(_fread_r, (ptr, buf, size, count, fp),
-       struct _reent * ptr _AND
-       _PTR __restrict buf _AND
-       size_t size _AND
-       size_t count _AND
-       FILE * __restrict fp)
+size_t _fread_r(struct _reent *ptr, void *restrict buf, size_t size,
+	size_t count, FILE *restrict fp)
 {
   register size_t resid;
   register char *p;
@@ -291,13 +203,24 @@ _DEFUN(_fread_r, (ptr, buf, size, count, fp),
 }
 
 #ifndef _REENT_ONLY
-size_t
-_DEFUN(fread, (buf, size, count, fp),
-       _PTR __restrict  buf _AND
-       size_t size _AND
-       size_t count _AND
-       FILE *__restrict fp)
+
+/**
+ * @brief Binary input.
+ *
+ * @details Reads into the array pointed to by @p buf
+ * up to @p count elements whose size is specified by
+ * @p size in bytes, from the stream pointed to by @p fp.
+ *
+ * @return Returns the number of elements successfully read
+ * which is less than @p count only if a read error or end-of-file
+ * is encountered. If @p size or @p count is 0, fread() returns 0
+ * and the contents of the array and the state of the stream remain
+ * unchanged. Otherwise, if a read error occurs, the error indicator
+ * for the stream is set, and errno is set to indicate the error.
+ */
+size_t fread(void *restrict buf, size_t size, size_t count, FILE *restrict fp)
 {
    return _fread_r (_REENT, buf, size, count, fp);
 }
+
 #endif

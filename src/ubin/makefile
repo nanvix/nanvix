@@ -19,7 +19,7 @@
 #
 
 # Toolchain configuration.
-export CFLAGS += -Os
+export CFLAGS += -Os -D_POSIX_C_SOURCE
 
 # Conflicts.
 .PHONY: cat

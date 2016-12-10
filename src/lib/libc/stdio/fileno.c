@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,66 +34,24 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fileno>>, <<fileno_unlocked>>---return file descriptor associated with stream
-
-INDEX
-	fileno
-INDEX
-	fileno_unlocked
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int fileno(FILE *<[fp]>);
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int fileno_unlocked(FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int fileno(<[fp]>)
-	FILE *<[fp]>;
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int fileno_unlocked(<[fp]>)
-	FILE *<[fp]>;
-
-DESCRIPTION
-You can use <<fileno>> to return the file descriptor identified by <[fp]>.
-
-<<fileno_unlocked>> is a non-thread-safe version of <<fileno>>.
-<<fileno_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fileno_unlocked>> is equivalent to <<fileno>>.
-
-RETURNS
-<<fileno>> returns a non-negative integer when successful.
-If <[fp]> is not an open stream, <<fileno>> returns -1.
-
-PORTABILITY
-<<fileno>> is not part of ANSI C.
-POSIX requires <<fileno>>.
-
-<<fileno_unlocked>> is a BSD extension also provided by GNU libc.
-
-Supporting OS subroutines required: none.
-*/
-
 #include <_ansi.h>
 #include <stdio.h>
 #include <errno.h>
 #include "local.h"
 
-int
-_DEFUN(fileno, (f),
-       FILE * f)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Maps a stream pointer to a file descriptor.
+ *
+ * @details Returns the integer file descriptor associated
+ * with the stream pointed to by @p f.
+ *
+ * @return Returns the integer value of the file descriptor
+ * associated with @p f. Otherwise, the value -1 is returned
+ * and errno set to indicate the error.
+ */
+int fileno(FILE * f)
 {
   int result;
   CHECK_INIT (_REENT, f);
@@ -89,3 +66,5 @@ _DEFUN(fileno, (f),
   _newlib_flockfile_end (f);
   return result;
 }
+
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

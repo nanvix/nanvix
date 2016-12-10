@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,48 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fclose>>---close a file
-
-INDEX
-	fclose
-INDEX
-	_fclose_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int fclose(FILE *<[fp]>);
-	int _fclose_r(struct _reent *<[reent]>, FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int fclose(<[fp]>)
-	FILE *<[fp]>;
-
-	int fclose(<[fp]>)
-        struct _reent *<[reent]>
-	FILE *<[fp]>;
-
-DESCRIPTION
-If the file or stream identified by <[fp]> is open, <<fclose>> closes
-it, after first ensuring that any pending data is written (by calling
-<<fflush(<[fp]>)>>).
-
-The alternate function <<_fclose_r>> is a reentrant version.
-The extra argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-<<fclose>> returns <<0>> if successful (including when <[fp]> is
-<<NULL>> or not an open file); otherwise, it returns <<EOF>>.
-
-PORTABILITY
-<<fclose>> is required by ANSI C.
-
-Required OS subroutines: <<close>>, <<fstat>>, <<isatty>>, <<lseek>>,
-<<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
@@ -64,10 +41,7 @@ Required OS subroutines: <<close>>, <<fstat>>, <<isatty>>, <<lseek>>,
 #include <sys/lock.h>
 #include "local.h"
 
-int
-_DEFUN(_fclose_r, (rptr, fp),
-      struct _reent *rptr _AND
-      register FILE * fp)
+int _fclose_r(struct _reent *rptr, register FILE * fp)
 {
   int r;
 
@@ -126,9 +100,19 @@ _DEFUN(_fclose_r, (rptr, fp),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(fclose, (fp),
-       register FILE * fp)
+/**
+ * @brief Closes a stream.
+ *
+ * @details Causes the stream pointed to by
+ * @p fp to be flushed and the associated file
+ * to be closed. Any unwritten buffered data for
+ * the stream is written to the file; any unread
+ * buffered data is discarded.
+ *
+ * @return Returns 0; otherwise, it returns EOF and
+ * sets errno to indicate the error.
+ */
+int fclose(register FILE * fp)
 {
   return _fclose_r(_REENT, fp);
 }

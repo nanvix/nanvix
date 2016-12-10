@@ -1,4 +1,24 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
+/*
  * Copyright (c) 1987 Regents of the University of California.
  * All rights reserved.
  *
@@ -24,30 +44,34 @@
 #include <string.h>
 
 
-/*
- * setenv --
- *	Set the value of the environmental variable "name" to be
- *	"value".  If rewrite is set, replace any current value.
- */
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
 
-int
-_DEFUN (setenv, (name, value, rewrite),
-	_CONST char *name _AND
-	_CONST char *value _AND
-	int rewrite)
+/**
+ * @brief Adds or changes environment variable.
+ *
+ * @details Updates or adds a variable in the environment of the calling process.
+ *
+ * @return Upon successful completion returns zero. Otherwise, -1 is returned and
+ * errno is set to indicate the error.
+ */
+int setenv(const char *name, const char *value, int rewrite)
 {
   return _setenv_r (_REENT, name, value, rewrite);
 }
 
-/*
- * unsetenv(name) --
- *	Delete environmental variable "name".
+/**
+ * @brief Removes an environment variable
+ *
+ * @details Removes an environment variable from the environment of
+ * the calling process.
+ *
+ * @return Upon successful completion returns zero. Otherwise, -1 is returned and
+ * errno is set to indicate the error.
  */
-int
-_DEFUN (unsetenv, (name),
-        _CONST char *name)
+int unsetenv(const char *name)
 {
   return _unsetenv_r (_REENT, name);
 }
 
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
 #endif /* !_REENT_ONLY */

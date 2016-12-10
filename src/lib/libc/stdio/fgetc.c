@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,100 +34,11 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fgetc>>, <<fgetc_unlocked>>---get a character from a file or stream
-
-INDEX
-	fgetc
-INDEX
-	fgetc_unlocked
-INDEX
-	_fgetc_r
-INDEX
-	_fgetc_unlocked_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int fgetc(FILE *<[fp]>);
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int fgetc_unlocked(FILE *<[fp]>);
-
-	#include <stdio.h>
-	int _fgetc_r(struct _reent *<[ptr]>, FILE *<[fp]>);
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int _fgetc_unlocked_r(struct _reent *<[ptr]>, FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int fgetc(<[fp]>)
-	FILE *<[fp]>;
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int fgetc_unlocked(<[fp]>)
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	int _fgetc_r(<[ptr]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int _fgetc_unlocked_r(<[ptr]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-Use <<fgetc>> to get the next single character from the file or stream
-identified by <[fp]>.  As a side effect, <<fgetc>> advances the file's
-current position indicator.
-
-For a macro version of this function, see <<getc>>.
-
-<<fgetc_unlocked>> is a non-thread-safe version of <<fgetc>>.
-<<fgetc_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<fgetc_unlocked>> is equivalent to <<fgetc>>.
-
-The functions <<_fgetc_r>> and <<_fgetc_unlocked_r>> are simply reentrant
-versions that are passed the additional reentrant structure pointer
-argument: <[ptr]>.
-
-RETURNS
-The next character (read as an <<unsigned char>>, and cast to
-<<int>>), unless there is no more data, or the host system reports a
-read error; in either of these situations, <<fgetc>> returns <<EOF>>.
-
-You can distinguish the two situations that cause an <<EOF>> result by
-using the <<ferror>> and <<feof>> functions.
-
-PORTABILITY
-ANSI C requires <<fgetc>>.
-
-<<fgetc_unlocked>> is a BSD extension also provided by GNU libc.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #include <_ansi.h>
 #include <stdio.h>
 #include "local.h"
 
-int
-_DEFUN(_fgetc_r, (ptr, fp),
-       struct _reent * ptr _AND
-       FILE * fp)
+int _fgetc_r(struct _reent * ptr, FILE * fp)
 {
   int result;
   CHECK_INIT(ptr, fp);
@@ -120,9 +50,26 @@ _DEFUN(_fgetc_r, (ptr, fp),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(fgetc, (fp),
-       FILE * fp)
+/**
+ * @brief Gets a byte from a stream.
+ *
+ * @details If the end-of-file indicator for the input
+ * stream pointed to by @p fp is not set and a next byte
+ * is present, the fgetc() function obtains the next byte
+ * as an unsigned char converted to an int, from the input
+ * stream pointed to by @p fp, and advance the associated file
+ * position indicator for the stream (if defined). Since fgetc()
+ * operates on bytes, reading a character consisting of multiple
+ * bytes (or "a multi-byte character") may require multiple calls
+ * to fgetc().
+ *
+ * @return Returns the next byte from the input stream pointed to
+ * by @p fp. If the end-of-file indicator for the stream is set, or
+ * if the stream is at end-of-file, the end-of-file indicator for
+ * the stream is set and fgetc() returns EOF. If a read error occurs,
+ * the error indicator for the stream is set, fgetc() returns EOF.
+ */
+int fgetc(FILE *fp)
 {
 #if !defined(PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__)
   int result;
@@ -139,4 +86,3 @@ _DEFUN(fgetc, (fp),
 }
 
 #endif /* !_REENT_ONLY */
-

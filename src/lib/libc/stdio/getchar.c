@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,54 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<getchar>>---read a character (macro)
-
-INDEX
-	getchar
-INDEX
-	_getchar_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int getchar(void);
-
-	int _getchar_r(struct _reent *<[reent]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int getchar();
-
-	int _getchar_r(<[reent]>)
-	char * <[reent]>;
-
-DESCRIPTION
-<<getchar>> is a macro, defined in <<stdio.h>>.  You can use <<getchar>>
-to get the next single character from the standard input stream.
-As a side effect, <<getchar>> advances the standard input's
-current position indicator.
-
-The alternate function <<_getchar_r>> is a reentrant version.  The
-extra argument <[reent]> is a pointer to a reentrancy structure.
-
-
-RETURNS
-The next character (read as an <<unsigned char>>, and cast to
-<<int>>), unless there is no more data, or the host system reports a
-read error; in either of these situations, <<getchar>> returns <<EOF>>.
-
-You can distinguish the two situations that cause an <<EOF>> result by
-using `<<ferror(stdin)>>' and `<<feof(stdin)>>'.
-
-PORTABILITY
-ANSI C requires <<getchar>>; it suggests, but does not require, that
-<<getchar>> be implemented as a macro.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "%W% (Berkeley) %G%";
 #endif /* LIBC_SCCS and not lint */
@@ -76,11 +47,7 @@ static char sccsid[] = "%W% (Berkeley) %G%";
 #include <stdio.h>
 #include "local.h"
 
-#undef getchar
-
-int
-_DEFUN(_getchar_r, (reent),
-       struct _reent *reent)
+int _getchar_r(struct _reent *reent)
 {
   _REENT_SMALL_CHECK_INIT (reent);
   return _getc_r (reent, _stdin_r (reent));
@@ -88,12 +55,17 @@ _DEFUN(_getchar_r, (reent),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN_VOID(getchar)
+/**
+ * @brief Gets a byte from stdin stream.
+ *
+ * @details The function is equivalent to getc(stdin).
+ *
+ * @return Returns the same value of getc(stdin).
+ */
+int getchar(void)
 {
   struct _reent *reent = _REENT;
 
-  /* CHECK_INIT is called (eventually) by __srefill_r.  */
   _REENT_SMALL_CHECK_INIT (reent);
   return _getc_r (reent, _stdin_r (reent));
 }

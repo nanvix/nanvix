@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,62 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<getc>>---read a character (macro)
-
-INDEX
-	getc
-INDEX
-	_getc_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int getc(FILE *<[fp]>);
-
-	#include <stdio.h>
-	int _getc_r(struct _reent *<[ptr]>, FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int getc(<[fp]>)
-	FILE *<[fp]>;
-
-	#include <stdio.h>
-	int _getc_r(<[ptr]>, <[fp]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-
-DESCRIPTION
-<<getc>> is a macro, defined in <<stdio.h>>.  You can use <<getc>>
-to get the next single character from the file or stream
-identified by <[fp]>.  As a side effect, <<getc>> advances the file's
-current position indicator.
-
-For a subroutine version of this macro, see <<fgetc>>.
-
-The <<_getc_r>> function is simply the reentrant version of <<getc>>
-which passes an additional reentrancy structure pointer argument: <[ptr]>.
-
-RETURNS
-The next character (read as an <<unsigned char>>, and cast to
-<<int>>), unless there is no more data, or the host system reports a
-read error; in either of these situations, <<getc>> returns <<EOF>>.
-
-You can distinguish the two situations that cause an <<EOF>> result by
-using the <<ferror>> and <<feof>> functions.
-
-PORTABILITY
-ANSI C requires <<getc>>; it suggests, but does not require, that
-<<getc>> be implemented as a macro.  The standard explicitly permits
-macro implementations of <<getc>> to use the argument more than once;
-therefore, in a portable program, you should not use an expression
-with side effects as the <<getc>> argument.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "%W% (Berkeley) %G%";
 #endif /* LIBC_SCCS and not lint */
@@ -79,16 +42,7 @@ static char sccsid[] = "%W% (Berkeley) %G%";
 #include <stdio.h>
 #include "local.h"
 
-/*
- * A subroutine version of the macro getc.
- */
-
-#undef getc
-
-int
-_DEFUN(_getc_r, (ptr, fp),
-       struct _reent *ptr _AND
-       register FILE *fp)
+int _getc_r(struct _reent *ptr, register FILE *fp)
 {
   int result;
   CHECK_INIT (ptr, fp);
@@ -100,9 +54,14 @@ _DEFUN(_getc_r, (ptr, fp),
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(getc, (fp),
-       register FILE *fp)
+/**
+ * @brief Gets a byte from a stream.
+ *
+ * @details The function is equivalent to fgetc().
+ *
+ * @return Returns the same value of fgetc().
+ */
+int getc(register FILE *fp)
 {
   int result;
   struct _reent *reent = _REENT;

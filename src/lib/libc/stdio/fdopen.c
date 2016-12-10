@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,45 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<fdopen>>---turn open file into a stream
-
-INDEX
-	fdopen
-INDEX
-	_fdopen_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	FILE *fdopen(int <[fd]>, const char *<[mode]>);
-	FILE *_fdopen_r(struct _reent *<[reent]>,
-                        int <[fd]>, const char *<[mode]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	FILE *fdopen(<[fd]>, <[mode]>)
-	int <[fd]>;
-	char *<[mode]>;
-
-	FILE *_fdopen_r(<[reent]>, <[fd]>, <[mode]>)
-	struct _reent *<[reent]>;
-        int <[fd]>;
-	char *<[mode]>);
-
-DESCRIPTION
-<<fdopen>> produces a file descriptor of type <<FILE *>>, from a
-descriptor for an already-open file (returned, for example, by the
-system subroutine <<open>> rather than by <<fopen>>).
-The <[mode]> argument has the same meanings as in <<fopen>>.
-
-RETURNS
-File pointer or <<NULL>>, as for <<fopen>>.
-
-PORTABILITY
-<<fdopen>> is ANSI.
-*/
-
 #include <_ansi.h>
 #include <reent.h>
 #include <sys/types.h>
@@ -63,11 +43,9 @@ PORTABILITY
 #include "local.h"
 #include <_syslist.h>
 
-FILE *
-_DEFUN(_fdopen_r, (ptr, fd, mode),
-       struct _reent *ptr _AND
-       int fd             _AND
-       _CONST char *mode)
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+FILE * _fdopen_r(struct _reent *ptr, int fd, const char *mode)
 {
   register FILE *fp;
   int flags, oflags;
@@ -133,12 +111,21 @@ _DEFUN(_fdopen_r, (ptr, fd, mode),
 
 #ifndef _REENT_ONLY
 
-FILE *
-_DEFUN(fdopen, (fd, mode),
-       int fd _AND
-       _CONST char *mode)
+/**
+ * @brief Associates a stream with a file descriptor.
+ *
+ * @details Associates a stream with the existing file
+ * descriptor, @p fd. The @p mode of the stream must be
+ * compatible with the mode of the file descriptor.
+ *
+ * @return Returns a pointer to a stream; otherwise, a
+ * null pointer is returned and errno set to indicate the
+ * error.
+ */
+FILE * fdopen(int fd, const char *mode)
 {
   return _fdopen_r (_REENT, fd, mode);
 }
 
-#endif
+#endif /* ! _REENT_ONLY */
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

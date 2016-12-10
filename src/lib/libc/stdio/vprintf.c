@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -19,19 +38,27 @@
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
-#ifdef _HAVE_STDC
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 #include "local.h"
+
+int _vprintf_r(struct _reent *ptr, const char *restrict fmt, va_list ap)
+{
+  _REENT_SMALL_CHECK_INIT (ptr);
+  return _vfprintf_r (ptr, _stdout_r (ptr), fmt, ap);
+}
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(vprintf, (fmt, ap),
-       _CONST char *fmt _AND
-       va_list ap)
+/**
+ * @brief Formats output of a stdarg argument list.
+ *
+ * @details The function is equivalent to printf() except that
+ * instead of being called with a variable number of arguments,
+ * is called with an argument list as defined in the <stdarg.h> header.
+ *
+ * @return Returns the same value of printf().
+ */
+int vprintf(const char *fmt, va_list ap)
 {
   struct _reent *reent = _REENT;
 
@@ -39,25 +66,4 @@ _DEFUN(vprintf, (fmt, ap),
   return _vfprintf_r (reent, _stdout_r (reent), fmt, ap);
 }
 
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(viprintf, (const char *, __VALIST) _ATTRIBUTE ((__alias__("vprintf"))));
-#endif
-
 #endif /* !_REENT_ONLY */
-
-int
-_DEFUN(_vprintf_r, (ptr, fmt, ap),
-       struct _reent *ptr _AND
-       _CONST char *__restrict fmt   _AND
-       va_list ap)
-{
-  _REENT_SMALL_CHECK_INIT (ptr);
-  return _vfprintf_r (ptr, _stdout_r (ptr), fmt, ap);
-}
-
-#ifdef _NANO_FORMATTED_IO
-int
-_EXFUN(_viprintf_r, (struct _reent *, const char *, __VALIST)
-       _ATTRIBUTE ((__alias__("_vprintf_r"))));
-#endif

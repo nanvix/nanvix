@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,62 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<ferror>>, <<ferror_unlocked>>---test whether read/write error has occurred
-
-INDEX
-	ferror
-INDEX
-	ferror_unlocked
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int ferror(FILE *<[fp]>);
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int ferror_unlocked(FILE *<[fp]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int ferror(<[fp]>)
-	FILE *<[fp]>;
-
-	#define _BSD_SOURCE
-	#include <stdio.h>
-	int ferror_unlocked(<[fp]>)
-	FILE *<[fp]>;
-
-DESCRIPTION
-The <<stdio>> functions maintain an error indicator with each file
-pointer <[fp]>, to record whether any read or write errors have
-occurred on the associated file or stream.
-Use <<ferror>> to query this indicator.
-
-See <<clearerr>> to reset the error indicator.
-
-<<ferror_unlocked>> is a non-thread-safe version of <<ferror>>.
-<<ferror_unlocked>> may only safely be used within a scope
-protected by flockfile() (or ftrylockfile()) and funlockfile().  This
-function may safely be used in a multi-threaded program if and only
-if they are called while the invoking thread owns the (FILE *)
-object, as is the case after a successful call to the flockfile() or
-ftrylockfile() functions.  If threads are disabled, then
-<<ferror_unlocked>> is equivalent to <<ferror>>.
-
-RETURNS
-<<ferror>> returns <<0>> if no errors have occurred; it returns a
-nonzero value otherwise.
-
-PORTABILITY
-ANSI C requires <<ferror>>.
-
-<<ferror_unlocked>> is a BSD extension also provided by GNU libc.
-
-No supporting OS subroutines are required.
-*/
-
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "%W% (Berkeley) %G%";
 #endif /* LIBC_SCCS and not lint */
@@ -79,13 +42,16 @@ static char sccsid[] = "%W% (Berkeley) %G%";
 #include <stdio.h>
 #include "local.h"
 
-/* A subroutine version of the macro ferror.  */
-
-#undef ferror
-
-int
-_DEFUN(ferror, (fp),
-       FILE * fp)
+/**
+ * @brief Tests error indicator on a stream.
+ *
+ * @details Tests the error indicator for the stream
+ * pointed to by @p fp.
+ *
+ * @return Returns non-zero if and only if the error
+ * indicator is set for @p fp.
+ */
+int ferror(FILE *fp)
 {
   int result;
   CHECK_INIT(_REENT, fp);

@@ -1,51 +1,21 @@
 /*
-FUNCTION
-<<lldiv>>---divide two long long integers
-
-INDEX
-        lldiv
-
-ANSI_SYNOPSIS
-        #include <stdlib.h>
-        lldiv_t lldiv(long long <[n]>, long long <[d]>);
-
-TRAD_SYNOPSIS
-        #include <stdlib.h>
-        lldiv_t lldiv(<[n]>, <[d]>)
-        long long <[n]>, <[d]>;
-
-DESCRIPTION
-Divide
-@tex
-$n/d$,
-@end tex
-@ifnottex
-<[n]>/<[d]>,
-@end ifnottex
-returning quotient and remainder as two long long integers in a structure 
-<<lldiv_t>>.
-
-RETURNS
-The result is represented with the structure
-
-. typedef struct
-. {
-.  long long quot;
-.  long long rem;
-. } lldiv_t;
-
-where the <<quot>> field represents the quotient, and <<rem>> the
-remainder.  For nonzero <[d]>, if `<<<[r]> = ldiv(<[n]>,<[d]>);>>' then
-<[n]> equals `<<<[r]>.rem + <[d]>*<[r]>.quot>>'.
-
-To divide <<long>> rather than <<long long>> values, use the similar
-function <<ldiv>>.
-
-PORTABILITY
-<<lldiv>> is ISO 9899 (C99) compatable.
-
-No supporting OS subroutines are required.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /*-
  * Copyright (c) 2001 Mike Barcroft <mike@FreeBSD.org>
@@ -98,9 +68,20 @@ No supporting OS subroutines are required.
  * In that case, to get the right answer, add 1 to r.quot and
  * subtract denom from r.rem.
  */
-lldiv_t
-_DEFUN (lldiv, (number, denom), 
-       long long numer _AND long long denom)
+
+/**
+ * @brief Computes the quotient and remainder of a long division.
+ *
+ * @details Computes the quotient and remainder of the
+ * division of the numerator @p numer by the denominator
+ * @p denom. If the division is inexact, the resulting
+ * quotient is the long long integer of lesser magnitude
+ * that is the nearest to the algebraic quotient.
+ *
+ * @return Returns a structure of type lldiv_t, comprising
+ * both the quotient and the remainder.
+ */
+lldiv_t lldiv(long long numer, long long denom)
 {
 	lldiv_t retval;
 
@@ -112,4 +93,3 @@ _DEFUN (lldiv, (number, denom),
 	}
 	return (retval);
 }
-

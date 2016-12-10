@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,49 +34,6 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<puts>>---write a character string
-
-INDEX
-	puts
-INDEX
-	_puts_r
-
-ANSI_SYNOPSIS
-	#include <stdio.h>
-	int puts(const char *<[s]>);
-
-	int _puts_r(struct _reent *<[reent]>, const char *<[s]>);
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int puts(<[s]>)
-	char *<[s]>;
-
-	int _puts_r(<[reent]>, <[s]>)
-	struct _reent *<[reent]>;
-	char *<[s]>;
-
-DESCRIPTION
-<<puts>> writes the string at <[s]> (followed by a newline, instead of
-the trailing null) to the standard output stream.
-
-The alternate function <<_puts_r>> is a reentrant version.  The extra
-argument <[reent]> is a pointer to a reentrancy structure.
-
-RETURNS
-If successful, the result is a nonnegative integer; otherwise, the
-result is <<EOF>>.
-
-PORTABILITY
-ANSI C requires <<puts>>, but does not specify that the result on
-success must be <<0>>; any non-negative value is permitted.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.
-*/
-
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "%W% (Berkeley) %G%";
 #endif /* LIBC_SCCS and not lint */
@@ -73,10 +49,7 @@ static char sccsid[] = "%W% (Berkeley) %G%";
  * Write the given string to stdout, appending a newline.
  */
 
-int
-_DEFUN(_puts_r, (ptr, s),
-       struct _reent *ptr _AND
-       _CONST char * s)
+int _puts_r(struct _reent *ptr, const char *s)
 {
 #ifdef _FVWRITE_IN_STREAMIO
   int result;
@@ -131,9 +104,18 @@ err:
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(puts, (s),
-       char _CONST * s)
+/**
+ * @brief Puts a string on standard output.
+ *
+ * @details Writes the string pointed to by @p s, followed
+ * by a <newline>, to the standard output stream stdout.
+ * The terminating null byte is not written.
+ *
+ * @return Returns a non-negative number. Otherwise, returns EOF,
+ * sets an error indicator for the stream, and errno is set to
+ * indicate the error.
+ */
+int puts(char const *s)
 {
   return _puts_r (_REENT, s);
 }

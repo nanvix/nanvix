@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -15,68 +34,36 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-/*
-FUNCTION
-<<putchar_unlocked>>---non-thread-safe version of putchar (macro)
-
-INDEX
-	putchar_unlocked
-
-SYNOPSIS
-	#include <stdio.h>
-	int putchar_unlocked(int <[ch]>);
-
-DESCRIPTION
-<<putchar_unlocked>> is a non-thread-safe version of <<putchar>>
-declared in <<stdio.h>>.  <<putchar_unlocked>> may only safely be used
-within a scope protected by flockfile() (or ftrylockfile()) and
-funlockfile().  These functions may safely be used in a multi-threaded
-program if and only if they are called while the invoking thread owns
-the ( FILE *) object, as is the case after a successful call to the
-flockfile() or ftrylockfile() functions.  If threads are disabled,
-then <<putchar_unlocked>> is equivalent to <<putchar>>.
-
-RETURNS
-See <<putchar>>.
-
-PORTABILITY
-POSIX 1003.1 requires <<putchar_unlocked>>.  <<putchar_unlocked>> may
-be implemented as a macro.
-
-Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
-<<lseek>>, <<read>>, <<sbrk>>, <<write>>.  */
-
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "%W% (Berkeley) %G%";
 #endif /* LIBC_SCCS and not lint */
-
-/*
- * A subroutine version of the macro putchar_unlocked.
- */
 
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
 
-#undef putchar_unlocked
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
 
-int
-_DEFUN(_putchar_unlocked_r, (ptr, c),
-       struct _reent *ptr _AND
-       int c)
+int _putchar_unlocked_r(struct _reent *ptr, int c)
 {
   return putc_unlocked (c, _stdout_r (ptr));
 }
 
 #ifndef _REENT_ONLY
 
-int
-_DEFUN(putchar_unlocked, (c),
-       int c)
+/**
+ * @brief Stdio with explicit client locking.
+ *
+ * @details Same putchar behaviour except that it do not use locking
+ * (do not set locks themselve, and do not test for the presence of
+ * locks set by others) and hence are thread-unsafe.
+ *
+ * @return Same putchar return.
+ */
+int putchar_unlocked(int c)
 {
-  /* CHECK_INIT is (eventually) called by __swbuf.  */
-
   return _putchar_unlocked_r (_REENT, c);
 }
 
-#endif
+#endif /* _REENT_ONLY */
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */

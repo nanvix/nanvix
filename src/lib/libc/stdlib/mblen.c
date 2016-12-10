@@ -1,45 +1,21 @@
 /*
-FUNCTION
-<<mblen>>---minimal multibyte length function
-
-INDEX
-	mblen
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	int mblen(const char *<[s]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	int mblen(<[s]>, <[n]>)
-	const char *<[s]>;
-	size_t <[n]>;
-
-DESCRIPTION
-When _MB_CAPABLE is not defined, this is a minimal ANSI-conforming 
-implementation of <<mblen>>.  In this case, the
-only ``multi-byte character sequences'' recognized are single bytes,
-and thus <<1>> is returned unless <[s]> is the null pointer or
-has a length of 0 or is the empty string.
-
-When _MB_CAPABLE is defined, this routine calls <<_mbtowc_r>> to perform
-the conversion, passing a state variable to allow state dependent
-decoding.  The result is based on the locale setting which may
-be restricted to a defined set of locales.
-
-RETURNS
-This implementation of <<mblen>> returns <<0>> if
-<[s]> is <<NULL>> or the empty string; it returns <<1>> if not _MB_CAPABLE or
-the character is a single-byte character; it returns <<-1>>
-if the multi-byte character is invalid; otherwise it returns
-the number of bytes in the multibyte character.
-
-PORTABILITY
-<<mblen>> is required in the ANSI C standard.  However, the precise
-effects vary with the locale.
-
-<<mblen>> requires no supporting OS subroutines.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef _REENT_ONLY
 
@@ -48,10 +24,21 @@ effects vary with the locale.
 #include <wchar.h>
 #include "local.h"
 
-int
-_DEFUN (mblen, (s, n), 
-        const char *s _AND
-        size_t n)
+/**
+ * @brief Gets number of bytes in a character.
+ *
+ * @details If @p s is not a null pointer, mblen() determines
+ * the number of bytes constituting the character pointed to by @p s.
+ *
+ * @return If @p s is a null pointer, mblen() returns a non-zero or 0
+ * value, if character encodings, respectively, do or do not have 
+ * state-dependent encodings. If @p s is not a null pointer, mblen()
+ * either returns 0 (if @p s points to the null byte), or returns the
+ * number of bytes that constitute the character (if the next @p n or
+ * fewer bytes form a valid character), or returns -1 (if they do not
+ * form a valid character).
+ */
+int mblen(const char *s, size_t n)
 {
 #ifdef _MB_CAPABLE
   int retval = 0;

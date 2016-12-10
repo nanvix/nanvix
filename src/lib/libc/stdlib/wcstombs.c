@@ -1,52 +1,21 @@
 /*
-FUNCTION
-<<wcstombs>>---minimal wide char string to multibyte string converter
-
-INDEX
-	wcstombs
-
-ANSI_SYNOPSIS
-	#include <stdlib.h>
-	size_t wcstombs(char *restrict <[s]>, const wchar_t *restrict <[pwc]>, size_t <[n]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-	size_t wcstombs(<[s]>, <[pwc]>, <[n]>)
-	char *<[s]>;
-	const wchar_t *<[pwc]>;
-	size_t <[n]>;
-
-DESCRIPTION
-When _MB_CAPABLE is not defined, this is a minimal ANSI-conforming 
-implementation of <<wcstombs>>.  In this case,
-all wide-characters are expected to represent single bytes and so
-are converted simply by casting to char.
-
-When _MB_CAPABLE is defined, this routine calls <<_wcstombs_r>> to perform
-the conversion, passing a state variable to allow state dependent
-decoding.  The result is based on the locale setting which may
-be restricted to a defined set of locales.
-
-RETURNS
-This implementation of <<wcstombs>> returns <<0>> if
-<[s]> is <<NULL>> or is the empty string; 
-it returns <<-1>> if _MB_CAPABLE and one of the
-wide-char characters does not represent a valid multi-byte character;
-otherwise it returns the minimum of: <<n>> or the
-number of bytes that are transferred to <<s>>, not including the
-nul terminator.
-
-If the return value is -1, the state of the <<pwc>> string is
-indeterminate.  If the input has a length of 0, the output
-string will be modified to contain a wchar_t nul terminator if
-<<n>> > 0.
-
-PORTABILITY
-<<wcstombs>> is required in the ANSI C standard.  However, the precise
-effects vary with the locale.
-
-<<wcstombs>> requires no supporting OS subroutines.
-*/
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef _REENT_ONLY
 
@@ -54,11 +23,23 @@ effects vary with the locale.
 #include <stdlib.h>
 #include <wchar.h>
 
-size_t
-_DEFUN (wcstombs, (s, pwcs, n),
-        char          *__restrict s    _AND
-        const wchar_t *__restrict pwcs _AND
-        size_t         n)
+/**
+ * @brief Converts a wide-character string to a character string.
+ *
+ * @details Converts the sequence of wide-character codes that
+ * are in the array pointed to by @p pwcs into a sequence of 
+ * characters that begins in the initial shift state and store
+ * these characters into the array pointed to by @p s, stopping
+ * if a character would exceed the limit of @p n total bytes or
+ * if a null byte is stored.
+ *
+ * @return If a wide-character code is encountered that does not
+ * correspond to a valid character (of one or more bytes each),
+ * wcstombs() returns (size_t)-1. Otherwise, wcstombs() returns
+ * the number of bytes stored in the character array, not including
+ * any terminating null byte.
+ */
+size_t wcstombs(char *restrict s, const wchar_t *restrict pwcs, size_t n)
 {
 #ifdef _MB_CAPABLE
   mbstate_t state;

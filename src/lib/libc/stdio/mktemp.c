@@ -1,4 +1,23 @@
 /*
+ * Copyright(C) 2016 Davidson Francis <davidsondfgl@gmail.com>
+ * 
+ * This file is part of Nanvix.
+ * 
+ * Nanvix is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Nanvix is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * Copyright (c) 1987 Regents of the University of California.
  * All rights reserved.
  *
@@ -262,67 +281,6 @@ _DEFUN(_gettemp, (ptr, path, doopen, domkdir, suffixlen, flags),
 # define O_BINARY 0
 #endif
 
-int
-_DEFUN(_mkstemp_r, (ptr, path),
-       struct _reent *ptr _AND
-       char *path)
-{
-  int fd;
-
-  return (_gettemp (ptr, path, &fd, 0, 0, O_BINARY) ? fd : -1);
-}
-
-#if !defined _ELIX_LEVEL || _ELIX_LEVEL >= 4
-char *
-_DEFUN(_mkdtemp_r, (ptr, path),
-       struct _reent *ptr _AND
-       char *path)
-{
-  return (_gettemp (ptr, path, (int *) NULL, 1, 0, 0) ? path : NULL);
-}
-
-int
-_DEFUN(_mkstemps_r, (ptr, path, len),
-       struct _reent *ptr _AND
-       char *path _AND
-       int len)
-{
-  int fd;
-
-  return (_gettemp (ptr, path, &fd, 0, len, O_BINARY) ? fd : -1);
-}
-
-int
-_DEFUN(_mkostemp_r, (ptr, path, flags),
-       struct _reent *ptr _AND
-       char *path _AND
-       int flags)
-{
-  int fd;
-
-  return (_gettemp (ptr, path, &fd, 0, 0, flags & ~O_ACCMODE) ? fd : -1);
-}
-
-int
-_DEFUN(_mkostemps_r, (ptr, path, len, flags),
-       struct _reent *ptr _AND
-       char *path _AND
-       int len _AND
-       int flags)
-{
-  int fd;
-
-  return (_gettemp (ptr, path, &fd, 0, len, flags & ~O_ACCMODE) ? fd : -1);
-}
-#endif /* _ELIX_LEVEL */
-
-char *
-_DEFUN(_mktemp_r, (ptr, path),
-       struct _reent *ptr _AND
-       char *path)
-{
-  return (_gettemp (ptr, path, (int *) NULL, 0, 0, 0) ? path : (char *) NULL);
-}
 
 #ifndef _REENT_ONLY
 
@@ -336,50 +294,22 @@ _DEFUN(mkstemp, (path),
 }
 
 # if !defined _ELIX_LEVEL || _ELIX_LEVEL >= 4
-char *
-_DEFUN(mkdtemp, (path),
-       char *path)
+
+#if defined(_POSIX_C_SOURCE) || defined(_XOPEN_SOURCE)
+
+/**
+ * @brief Creates a unique directory or file.
+ *
+ * @details Creates a directory with a unique name derived from @p path.
+ *
+ * @return Returns the value of @p path. Otherwise, returns a null
+ * pointer and sets errno to indicate the error.
+ */
+char *mkdtemp(char *path)
 {
   return (_gettemp (_REENT, path, (int *) NULL, 1, 0, 0) ? path : NULL);
 }
 
-int
-_DEFUN(mkstemps, (path, len),
-       char *path _AND
-       int len)
-{
-  int fd;
-
-  return (_gettemp (_REENT, path, &fd, 0, len, O_BINARY) ? fd : -1);
-}
-
-int
-_DEFUN(mkostemp, (path, flags),
-       char *path _AND
-       int flags)
-{
-  int fd;
-
-  return (_gettemp (_REENT, path, &fd, 0, 0, flags & ~O_ACCMODE) ? fd : -1);
-}
-
-int
-_DEFUN(mkostemps, (path, len, flags),
-       char *path _AND
-       int len _AND
-       int flags)
-{
-  int fd;
-
-  return (_gettemp (_REENT, path, &fd, 0, len, flags & ~O_ACCMODE) ? fd : -1);
-}
-# endif /* _ELIX_LEVEL */
-
-char *
-_DEFUN(mktemp, (path),
-       char *path)
-{
-  return (_gettemp (_REENT, path, (int *) NULL, 0, 0, 0) ? path : (char *) NULL);
-}
-
+#endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE */
+#endif /* _ELIX_LEVEL */
 #endif /* ! defined (_REENT_ONLY) */
