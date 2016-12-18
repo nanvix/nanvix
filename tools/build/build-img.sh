@@ -143,7 +143,10 @@ then
 	mkdir -p nanvix-iso/boot/grub
 	cp bin/kernel nanvix-iso/kernel
 	cp initrd.img nanvix-iso/initrd.img
-	cp tools/img/grub.cfg nanvix-iso/boot/grub/grub.cfg
-	grub-mkrescue -o nanvix.iso nanvix-iso
+	cp tools/img/menu.lst nanvix-iso/boot/grub/menu.lst
+	cp tools/img/stage2_eltorito nanvix-iso/boot/grub/stage2_eltorito
+	sed -i 's/fd0/cd/g' nanvix-iso/boot/grub/menu.lst
+	genisoimage -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 \
+		-input-charset utf-8 -boot-info-table -o nanvix.iso nanvix-iso
 fi
 
