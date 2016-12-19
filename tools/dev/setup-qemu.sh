@@ -31,6 +31,11 @@ cd $WORKDIR
 # Get bochs.
 wget "http://wiki.qemu-project.org/download/qemu-2.5.0.tar.bz2"
 
+# Get required packages.
+apt-get install libglib2.0-dev
+apt-get install zlib1g-dev
+apt-get install libtool 
+
 # Build Bochs
 tar -xjvf qemu-2.5.0.tar.bz2
 cd qemu-2.5.0
