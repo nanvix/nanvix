@@ -70,7 +70,7 @@ nanvix-debug:
 # Builds system's image.
 image: $(BINDIR)/kernel tools
 	mkdir -p $(BINDIR)
-	bash $(TOOLSDIR)/build/build-img.sh
+	bash $(TOOLSDIR)/build/build-img.sh --build-iso
 
 # Builds documentation.
 documentation:
