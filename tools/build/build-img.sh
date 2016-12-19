@@ -130,14 +130,7 @@ if [ $initrdsize -gt $maxsize ]; then
 	exit -1
 fi 
 
-# Build nanvix image.
-cp -f tools/img/blank.img nanvix.img
-insert nanvix.img
-cp bin/kernel /mnt/kernel
-cp initrd.img /mnt/initrd.img
-cp tools/img/menu.lst /mnt/boot/menu.lst
-eject
-
+# Build live nanvix image.
 if [ "$1" = "--build-iso" ];
 then
 	mkdir -p nanvix-iso/boot/grub
@@ -148,5 +141,12 @@ then
 	sed -i 's/fd0/cd/g' nanvix-iso/boot/grub/menu.lst
 	genisoimage -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 \
 		-input-charset utf-8 -boot-info-table -o nanvix.iso nanvix-iso
+else
+	cp -f tools/img/blank.img nanvix.img
+	insert nanvix.img
+	cp bin/kernel /mnt/kernel
+	cp initrd.img /mnt/initrd.img
+	cp tools/img/menu.lst /mnt/boot/menu.lst
+	eject
 fi
 
