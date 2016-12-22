@@ -63,6 +63,9 @@ cd gdb-7.11/
 make
 make install
 
+# Install genisoimage.
+apt-get install genisoimage
+
 # Cleans files.
 cd $WORKDIR
 cd ..
