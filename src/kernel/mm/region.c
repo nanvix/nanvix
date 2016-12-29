@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -70,6 +71,17 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		i = REGION_PGTABS - (reg->size >> PGTAB_SHIFT) - 1;
 		j = PAGE_SIZE/PTE_SIZE - 
 				(((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT);
+				
+		if (reg->size != 0 && j == (PAGE_SIZE / PTE_SIZE) - 1)
+		{
+			reg->pgtab[i] = getkpg(1);
+			if (reg->pgtab[i] == NULL)
+				return (-1);
+				
+			/* Map page table. */
+			if (proc != NULL)
+				mappgtab(proc, preg->start + reg->size, reg->pgtab[i]);
+		}
 		
 		/* Mark pages as demand zero. */
 		while (npages > 0)
@@ -112,6 +124,17 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 		
 		i = reg->size >> PGTAB_SHIFT;
 		j = ((PAGE_MASK^PGTAB_MASK) & reg->size) >> PAGE_SHIFT;
+		
+		if (reg->size != 0 && j == 0)
+		{
+			reg->pgtab[i] = getkpg(1);
+			if (reg->pgtab[i] == NULL)
+				return (-1);
+				
+			/* Map page table. */
+			if (proc != NULL)
+				mappgtab(proc, preg->start + reg->size, reg->pgtab[i]);
+		}
 		
 		/* Mark pages as demand zero. */
 		while (npages > 0)
