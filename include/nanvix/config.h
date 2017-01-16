@@ -26,6 +26,7 @@
 	#define MEMORY_SIZE   0x1000000 /* Memory size (in bytes).    */
 	#define HDD_SIZE      0x2000000 /* Hard disk size (in bytes). */
 	#define SWP_SIZE      0x1000000 /* Swap disk size (in bytes). */
+	#define KEYBOARD_US           1 /* US International keyboard. */
 	
 	/* Kernel configuration. */
 	#define MULTIUSER              0 /* Multiuser support?              */

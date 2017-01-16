@@ -84,8 +84,10 @@
 #define KRNUM_LOCK    0x45
 #define KRDEL         0x53
 
+#ifdef KEYBOARD_US
+
 /**
- * @brief US International non-shifted key map. 
+ * @brief Keymap: US International non-shifted key map. 
  */
 PRIVATE uint8_t ascii_non_shift[] = {
 	'\0', ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -98,7 +100,9 @@ PRIVATE uint8_t ascii_non_shift[] = {
 	KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
 };
                                     
-/* Keymap: US International  shifted scan codes to ASCII. */
+/**
+ * @brief US International shifted keymap.
+ */
 PRIVATE uint8_t ascii_shift[] = {
 	'\0', ESC, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
 	'_', '+', BACKSPACE, TAB, 'Q', 'W',   'E', 'R', 'T', 'Y', 'U',
@@ -110,6 +114,35 @@ PRIVATE uint8_t ascii_shift[] = {
 	KINS, KDEL, 0, 0, 0, KF11, KF12
 };
 
+#else
+
+/**
+ * @brief French non-shifted keymap. 
+ */
+PRIVATE uint8_t ascii_non_shift[] = {
+	0, ESC, '&', 'e', '\"', '\'', '(', '-', 'e', '_', 'c', 'a', ')', '=', BACKSPACE,
+	TAB, 'a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',  '^', '$', ENTER,
+	0, 'q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 0, 0,
+	0, '*', 'w', 'x', 'c', 'v', 'b', 'n', ',', ';', ':', 0, 0,
+	0, 0, 0, 0, KF1, KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
+	0, 0, KHOME, KUP, KPGUP, 0, KLEFT, 0, KRIGHT, 0, KEND,
+	KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
+};
+                                    
+/**
+ * @brief French shifted keymap.
+ */
+PRIVATE uint8_t ascii_shift[] = {
+	0, ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 0, '+', BACKSPACE,
+	TAB, 'A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '\"', 0, ENTER,
+	0, 'Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 0, 0,
+	0, 0, 'W', 'X', 'C', 'V', 'B', 'N', '?', '.', '/', 0, 0,
+	0, 0, 0, 0, KF1,   KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
+	0, 0, KHOME, KUP, KPGUP, 0, KLEFT, 0, KRIGHT, 0, KEND,
+	KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
+};
+
+#endif
 
 /**
  * @brief Keyboard flags.
