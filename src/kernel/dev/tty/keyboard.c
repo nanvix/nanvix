@@ -124,7 +124,7 @@ PRIVATE uint8_t ascii_non_shift[] = {
 	TAB, 'a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',  '^', '$', ENTER,
 	0, 'q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 0, 0,
 	0, '*', 'w', 'x', 'c', 'v', 'b', 'n', ',', ';', ':', 0, 0,
-	0, 0, 0, 0, KF1, KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
+	0, 0, ' ', 0, KF1, KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
 	0, 0, KHOME, KUP, KPGUP, 0, KLEFT, 0, KRIGHT, 0, KEND,
 	KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
 };
@@ -137,7 +137,7 @@ PRIVATE uint8_t ascii_shift[] = {
 	TAB, 'A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '\"', 0, ENTER,
 	0, 'Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 0, 0,
 	0, 0, 'W', 'X', 'C', 'V', 'B', 'N', '?', '.', '/', 0, 0,
-	0, 0, 0, 0, KF1,   KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
+	0, 0, ' ', 0, KF1,   KF2, KF3, KF4, KF5, KF6, KF7, KF8, KF9, KF10,
 	0, 0, KHOME, KUP, KPGUP, 0, KLEFT, 0, KRIGHT, 0, KEND,
 	KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
 };
