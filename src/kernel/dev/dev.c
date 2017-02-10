@@ -328,6 +328,7 @@ PUBLIC void bdev_readblk(buffer_t buf)
  *                                 Devices                                    *
  *============================================================================*/
 
+
 /*
  * @brief Initializes the device drivers.
  */
@@ -336,7 +337,6 @@ PUBLIC void dev_init(void)
 	klog_init();
 	cmos_init();
 	clock_init(CLOCK_FREQ);
-	fpu_init();
 	tty_init();
 	ramdisk_init();
 }
