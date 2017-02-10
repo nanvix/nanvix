@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ *              2015-2017 Davidson Francis <davidsondfgl@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  *
  * This file is part of Nanvix.
@@ -27,12 +27,13 @@
 	#include <sys/times.h>
 	#include <sys/types.h>
 	#include <sys/utsname.h>
+	#include <i386/pmc.h>
 	#include <signal.h>
 	#include <ustat.h>
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 49
+	#define NR_SYSCALLS 50
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -84,9 +85,10 @@
  	#define NR_ps       46
  	#define NR_gticks   47
  	#define NR_time	    48
- 	#define NR_semget   49
- 	#define NR_semctl   50
- 	#define NR_semop    51
+	#define NR_acct     49
+ 	#define NR_semget   50
+ 	#define NR_semctl   51
+ 	#define NR_semop    52
 
 #ifndef _ASM_FILE_
 
@@ -268,6 +270,11 @@
 	
 	/* Forward definitions. */
 	EXTERN time_t sys_time(time_t *);
+
+	/*
+	 * Enable process accounting.
+	 */
+	EXTERN int sys_acct(struct pmc *p, unsigned char rw);
 
 #endif /* _ASM_FILE_ */
 
