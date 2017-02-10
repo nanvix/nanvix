@@ -24,14 +24,14 @@
 #
 
 if [ "$1" = "--dbg" ]; then
-	qemu-system-i386 -s -S                                   \
+	qemu-system-x86_64 -s -S                                     \
 		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
 		-m 256M                                              \
-		-mem-prealloc &
+		-mem-prealloc -cpu host --enable-kvm -sdl &
 	ddd --debugger "/usr/local/cross/bin/i386-elf-gdb"
 else
-	qemu-system-i386                                         \
+	qemu-system-x86_64                                     \
 		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
 		-m 256M                                              \
-		-mem-prealloc		
+		-mem-prealloc -cpu host --enable-kvm -sdl
 fi
