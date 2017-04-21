@@ -1,11 +1,11 @@
 WHAT IS NANVIX?
 
-	Nanvix is a Unix like operating system created by Pedro H. Penna
-	to address the demands of emerging manycore processors. It targets
-	cluster-based architectures that rely on distributed and shared
-	memory, and it was designed from scratch to deliver cutting edge
-	performance, while enabling backward compatibility with existing
-	software.
+	Nanvix is a Unix like operating system created by Pedro H. Penna to
+	address emerging manycore platforms. It targets cluster-based
+	architectures that rely on a distributed and shared memory
+	configuration, and it was designed from scratch to deliver cutting
+	edge performance, while enabling backward compatibility with
+	existing software. 
 	
 BUILDING AND RUNNING
 
@@ -18,10 +18,10 @@ BUILDING AND RUNNING
 	If you are running a Debian-based Linux distribution, you can run
 	the following commands.
 	
-		To clone locally the official repository:
+		To clone this repository:
 
 			$ cd ~
-			$ git clone https://github.com/ppenna/nanvix
+			$ git clone --recursive https://github.com/ppenna/nanvix
 
 		To get the development environment setup:
 
