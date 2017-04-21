@@ -31,21 +31,23 @@ ROOTGID=0
 NOOBUID=1
 NOOBUID=1
 
+LOOP=$(losetup -f)
+
 #
 # Inserts disk in a loop device.
 #   $1 Disk image name.
 #
 function insert {
-	losetup /dev/loop2 $1
-	mount /dev/loop2 /mnt
+	losetup $LOOP $1
+	mount $LOOP /mnt
 }
 
 #
 # Ejects current disk from loop device.
 #
 function eject {
-	umount /dev/loop2
-	losetup -d /dev/loop2
+	umount $LOOP
+	losetup -d $LOOP
 }
 
 # Generate passwords file
