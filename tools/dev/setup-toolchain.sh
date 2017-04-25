@@ -1,6 +1,7 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+# Copyright(C)  2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+#               2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+#               2016-2017 Subhra Sarkar    <rurtle.coder@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -24,6 +25,9 @@ export WORKDIR=$CURDIR/nanvix-toolchain
 mkdir -p $WORKDIR
 cd $WORKDIR
 
+# Retrieve the number of processor cores
+num_cores=`grep -c ^processor /proc/cpuinfo`
+
 # Get binutils, GDB and GCC.
 wget "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
 wget "http://ftp.gnu.org/gnu/gcc/gcc-5.3.0/gcc-5.3.0.tar.bz2"
@@ -43,7 +47,7 @@ sh -c "echo 'export PATH=$PATH:$PREFIX/bin' >> /etc/profile.d/var.sh"
 tar -xjvf binutils-2.25.tar.bz2
 cd binutils-2.25/
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls
-make all
+make -j$num_cores all
 make install
 
 # Build GCC.
@@ -52,7 +56,7 @@ tar -xjvf gcc-5.3.0.tar.bz2
 cd gcc-5.3.0/
 ./contrib/download_prerequisites
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c --without-headers
-make all-gcc
+make -j$num_cores all-gcc
 make install-gcc
 
 # Build GDB.
@@ -60,7 +64,7 @@ cd $WORKDIR
 tar -Jxf gdb-7.11.tar.xz
 cd gdb-7.11/
 ./configure --target=$TARGET --prefix=$PREFIX --with-auto-load-safe-path=/
-make
+make -j$num_cores
 make install
 
 # Install genisoimage.

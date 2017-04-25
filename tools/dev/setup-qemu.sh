@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C)	2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+#		2016-2017 Subhra Sarkar  <rurtle.coder@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -28,6 +29,9 @@ export WORKDIR=$CURDIR/nanvix-toolchain
 mkdir -p $WORKDIR
 cd $WORKDIR
 
+# Retrieve the number of processor cores
+num_cores=`grep -c ^processor /proc/cpuinfo`
+
 # Get bochs.
 wget "http://wiki.qemu-project.org/download/qemu-2.5.0.tar.bz2"
 
@@ -40,7 +44,7 @@ apt-get install libtool
 tar -xjvf qemu-2.5.0.tar.bz2
 cd qemu-2.5.0
 ./configure
-make all
+make -j$num_cores all
 make install
 
 # Cleans files.

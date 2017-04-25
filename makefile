@@ -1,6 +1,7 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+# Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+#              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+#              2016-2017 Subhra S. Sarkar <rurtle.coder@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -17,6 +18,9 @@
 # You should have received a copy of the GNU General Public License
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
+
+# Retrieve the number of processor cores
+num_cores = `grep -c ^processor /proc/cpuinfo`
 
 # Directories.
 export BINDIR   = $(CURDIR)/bin
@@ -61,11 +65,11 @@ nanvix:
 	mkdir -p $(BINDIR)
 	mkdir -p $(SBINDIR)
 	mkdir -p $(UBINDIR)
-	cd $(SRCDIR) && $(MAKE) all
+	cd $(SRCDIR) && $(MAKE) -j$(num_cores) all
 
 # Builds Nanvix with debug flags.
 nanvix-debug:
-	$(MAKE) nanvix
+	$(MAKE) -j$(num_cores) nanvix
 
 # Builds system's image.
 image: $(BINDIR)/kernel tools
@@ -79,7 +83,7 @@ documentation:
 # Builds tools.
 tools:
 	mkdir -p $(BINDIR)
-	cd $(TOOLSDIR) && $(MAKE) all
+	cd $(TOOLSDIR) && $(MAKE) -j$(num_cores) all
 
 # Cleans compilation files.
 clean:
