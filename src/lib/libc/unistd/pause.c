@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
