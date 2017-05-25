@@ -709,7 +709,7 @@ PUBLIC struct inode *inode_dname(const char *path, const char **name)
 	inode_lock(i);
 	
 	p = break_path((*name) = p, filename);
-	
+
 	/* Failed to break path. */
 	if (p == NULL)
 		goto error0;
@@ -794,6 +794,7 @@ again:
 		while (**name == '/')
 			(*name)++;
 	}
+
 	
 	return (i);
 
@@ -811,6 +812,7 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	ino_t num;           /* Inode number.  */
 	const char *name;    /* File name.     */
 	struct inode *inode; /* Working inode. */
+	
 	
 	inode = inode_dname(pathname, &name);
 	

@@ -32,7 +32,7 @@
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 49
+	#define NR_SYSCALLS 50 
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -84,9 +84,11 @@
  	#define NR_ps       46
  	#define NR_gticks   47
  	#define NR_time	    48
- 	#define NR_semget   49
- 	#define NR_semctl   50
- 	#define NR_semop    51
+ 	#define NR_mount	49
+ 	#define NR_semget   50
+ 	#define NR_semctl   51
+ 	#define NR_semop    52
+
 
 #ifndef _ASM_FILE_
 
@@ -268,6 +270,10 @@
 	
 	/* Forward definitions. */
 	EXTERN time_t sys_time(time_t *);
+	/*
+	* Attached a file system to a directory
+	*/
+	EXTERN int sys_mount(const char *device, const char *destination_dir);
 
 #endif /* _ASM_FILE_ */
 
