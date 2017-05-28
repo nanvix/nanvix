@@ -20,31 +20,42 @@
 
 #include <nanvix/syscall.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <reent.h>
- 
+//#include <sys/sem.h>
+
 /**
  * @brief Performs operations in a semaphore.
  */
-int semop(int semid, int op)
-{
-	int ret;
+
+sem_t* sem_open(char* name, int oflag, ...)
+{	
+	sem_t* ret;  /* Return value.		*/
+	mode_t mode; /* Creation mode.		*/
+	int value;	 /* semaphore value 	*/
+	va_list arg; /* Variable argument. 	*/
 	
+	value = -1;
+	mode = 0;
+	
+	if (oflag & O_CREAT)
+	{
+		va_start(arg, oflag);
+		mode = va_arg(arg, mode_t);
+		value = va_arg(arg,int);
+		va_end(arg);
+	}
+
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)
-		: "0" (NR_semop),
-		  "b" (semid),
-		  "c" (op)
+		: "0" (NR_semopen),
+		  "b" (name),
+		  "c" (oflag),
+		  "d" (mode),
+		  "S" (value)
 	);
-	
-	/* Error. */
-	if (ret < 0)
-	{
-		errno = -ret;
-		_REENT->_errno = -ret;
-		return (-1);
-	}
 	
 	return (ret);
 }
-

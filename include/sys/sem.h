@@ -17,21 +17,22 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SEM_H_
-#define SEM_H_
+#include <limits.h>
+#include <sys/types.h>
+#include <nanvix/const.h>
 
-	/**
-	 * @brief Comand values for semaphores.
-	 */
-	/**@{*/
-	#define GETVAL   0 /**< Returns the value of a semaphore. */
-	#define SETVAL   1 /**< Sets the value of a semaphore.    */
-	#define IPC_RMID 3 /**< Destroys a semaphore.            */
-	/**@}*/
+//#ifndef SEM_H_
+//#define SEM_H_
+#ifndef _ASM_FILE_
+
+	typedef struct sem_t {
+		int value;                   /* value of the semaphore                    */
+		char* name;			         /* name of the named semaphore               */
+		int mode;                    /* permissions                               */
+		int nbproc;                  /* number of processes sharing the semaphore */
+	} sem_t;
 
 	/* Forward definitions. */
-	extern int semget(unsigned);
-	extern int semctl(int, int, int);
-	extern int semop(int, int);
+	PUBLIC sem_t semtable[MAX_SEMAPHORES];
 
-#endif /* SEM_H_ */
+#endif

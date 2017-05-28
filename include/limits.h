@@ -158,3 +158,11 @@
 
 /* Files that one process can have open simultaneously. */
 #define OPEN_MAX 20
+
+#define SEM_NSEMS_MAX 50
+
+#define MAX_SEMAPHORES 50
+
+#define SEM_VALUE_MAX 50
+
+#define MAX_CHAR_NAME 50
