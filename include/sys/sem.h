@@ -27,7 +27,7 @@
 
 	typedef struct sem_t {
 		int value;                   /* value of the semaphore                    */
-		char* name;			         /* name of the named semaphore               */
+		char name[MAX_CHAR_NAME];    /* name of the named semaphore               */
 		int mode;                    /* permissions                               */
 		int nbproc;                  /* number of processes sharing the semaphore */
 	} sem_t;
