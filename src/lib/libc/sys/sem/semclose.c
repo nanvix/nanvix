@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -17,21 +18,27 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <limits.h>
-#include <sys/types.h>
-#include <nanvix/const.h>
+#include <nanvix/syscall.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <reent.h>
+//#include <sys/sem.h>
 
-#ifndef _ASM_FILE_
+/**
+ * @brief Performs operations in a semaphore.
+ */
 
-	typedef struct sem_t {
-		int value;                   /* value of the semaphore                    */
-		char name[MAX_CHAR_NAME];    /* name of the named semaphore               */
-		int mode;                    /* permissions                               */
-		int nbproc;                  /* number of processes sharing the semaphore */
-		int unlinked;
-	} sem_t;
+int sem_close(sem_t* sem)
+{	
+	int ret;
 
-	/* Forward definitions. */
-	PUBLIC sem_t semtable[MAX_SEMAPHORES];
-
-#endif
+	__asm__ volatile (
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_semclose),
+		  "b" (sem)
+	);
+	
+	return (ret);
+}

@@ -33,7 +33,7 @@
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 50
+	#define NR_SYSCALLS 51
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -86,6 +86,7 @@
  	#define NR_gticks   47
  	#define NR_time	    48
   	#define NR_semopen  49
+	#define NR_semclose  50
 
 #ifndef _ASM_FILE_
 
@@ -270,6 +271,9 @@
 
 	/* Create or opens a semaphore */
 	EXTERN sem_t* sys_semopen(char* name, int oflag, ...);
+
+	/* Close a semaphore */
+	EXTERN int sys_semclose(sem_t* s);
 
 #endif /* _ASM_FILE_ */
 

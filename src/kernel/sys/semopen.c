@@ -5,9 +5,9 @@
 #include <nanvix/klib.h>
 
 
-/* add the semaphore to the sem table if it doesn't exist
- * returns the added/existing semaphore address
- */
+	/* add the semaphore to the sem table if it doesn't exist
+	 * returns the added/existing semaphore address
+	 */
 
 	sem_t* add_entry(int value, char* name, int mode){
 
