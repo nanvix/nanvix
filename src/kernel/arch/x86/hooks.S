@@ -327,7 +327,7 @@ syscall:
 	movl EBX(%esp), %ebx
 	movl ECX(%esp), %ecx
 	movl EDX(%esp), %edx
-	movl ESI(%esi), %esi
+	movl EDI(%esp), %edi
 
 	/* Check for bad system call. */
 	cmpl $NR_SYSCALLS, %eax
@@ -343,12 +343,12 @@ syscall:
 		movl (%eax), %eax
 
 		/* Do system call. */
+		pushl %edi
 		pushl %edx
 		pushl %ecx
 		pushl %ebx
-		pushl %esi
 		call *%eax
-		addl $12, %esp
+		addl $16, %esp
 	bad_syscall:
 
 	/* Copy return value to user stack. */
