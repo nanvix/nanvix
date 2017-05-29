@@ -42,5 +42,5 @@ PUBLIC int sys_mount(const char *device, const char *destination_dir)
 		return (curr_proc->errno);
 
 	kprintf(" You are tring to mount th device %s sur le directory %s\n", kdevice, kdest);
-	return 0; 
+	return ENOSYS; 
 }
