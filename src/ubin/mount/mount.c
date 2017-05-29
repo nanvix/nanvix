@@ -30,16 +30,24 @@
 #define VERSION_MINOR 0 /* Minor version. */
 
 
-
+static char *device = NULL; 
+static char *destination_dir= NULL;
 
 /*
  * Lists contents of a directory
  */
-int main()
+int main(int argc, char *const argv[])
 {	
 	//getargs(argc, argv);
+	if (argc <2) {
+		printf ("To few argument, you need to give the name of the device and the mounting point\n");
+		return (EXIT_FAILURE);
+	}
+	device= argv[1];
+	destination_dir= argv[2];
+
 	printf ("Call of the system call mount\n");
-	int i =mount( "lecteur", "home");
+	int i =mount( device, destination_dir);
 	if (i<0){
 		printf ("The mounting failed\n");
 	}
@@ -48,3 +56,5 @@ int main()
 	
 	return (EXIT_SUCCESS);
 }
+
+

@@ -46,6 +46,7 @@
 	#define NR_FILES                   256 /**< Number of opened files.         */
 	#define NR_REGIONS                 128 /**< Number of memory regions.       */
 	#define NR_BUFFERS                 256 /**< Number of block buffers.        */
+	#define NR_MOUNTING_POINT           64 /**< Maximum nunber of mounting point*/
 	/**@}*/
 	
 #endif /* CONFIG_H_ */

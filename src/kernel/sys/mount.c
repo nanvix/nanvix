@@ -33,7 +33,14 @@
  */
 PUBLIC int sys_mount(const char *device, const char *destination_dir)
 {
-		kprintf("hello world, fonction not implemented yet");
-		kprintf(" You are tring to mount th device %s sur le directory %s\n", device, destination_dir);
-		return 0; 
+	char *kdevice;
+	char *kdest;
+	kprintf("Mount, fonction not implemented yet");
+	if ((kdevice = getname(device)) == NULL)
+		return (curr_proc->errno);
+	if ((kdest = getname(destination_dir)) == NULL)
+		return (curr_proc->errno);
+
+	kprintf(" You are tring to mount th device %s sur le directory %s\n", kdevice, kdest);
+	return 0; 
 }
