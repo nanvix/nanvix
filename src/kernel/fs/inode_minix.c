@@ -137,8 +137,6 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	struct d_inode *d_i;   /* Disk inode.    */
 	struct superblock *sb; /* Super block.   */
 	
-	
-	
 	/* Get superblock. */
 	sb = superblock_get(dev);
 	if (sb == NULL)
@@ -161,8 +159,6 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	if (d_i->i_nlinks == 0)
 		goto error1;
 	
-
-
 	// TODO a enlever
 	/* Get a free in-core inode. */
 	//ip = inode_cache_evict();
