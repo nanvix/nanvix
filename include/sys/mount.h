@@ -1,4 +1,6 @@
 /*
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -20,7 +22,7 @@
 #ifndef _SYS_MOUNT_H
 #define _SYS_MOUNT_H
 
+	/* Forward definitions. */
+	extern int mount (const char *, const char *);
 
-int mount (const char *device, const char *destination_dir);
-
-#endif
+#endif /* _SYS_MOUNT_H */

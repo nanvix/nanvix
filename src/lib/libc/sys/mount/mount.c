@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -20,19 +21,22 @@
 #include <nanvix/syscall.h>
 #include <errno.h>
 
-
-/*
+/**
+ * Mounts a file system.
  *
+ * @param device  Device name.
+ * @param target  Target directory.
  */
-int mount (const char *device, const char *destination_dir)
+int mount (const char *device, const char *target)
 {
 	int ret;
+
 	__asm__ volatile(
 		"int $0x80"
 		: "=a" (ret)
 		: "0" (NR_mount),
 		  "b" (device),
-		  "c" (destination_dir)
+		  "c" (target)
 	);
 
 	/* Error. */

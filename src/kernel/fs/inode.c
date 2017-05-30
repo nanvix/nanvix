@@ -34,6 +34,7 @@
 #include <limits.h>
 #include "fs.h"
 #include "inode_minix.h"
+
 /* Number of inodes per block. */
 #define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
 
@@ -168,16 +169,18 @@ PRIVATE void inode_write(struct inode *ip)
  */
 PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 {
-	
-	struct inode *ip;      /* In-core inode. */
+	struct inode *ip;
 	
 	/* Get a free in-core inode. */
 	ip = inode_cache_evict();
-	if (inode_read_minix(dev,num,ip)==0){
-		// dans ce cas l'ip n'est pas utilisés il faut peur etre en faire quelque chose
-		return NULL;
-	}
-	return ip;
+	if (ip == NULL)
+		return (NULL);
+
+	/* Read inode. */
+	if (inode_read_minix(dev, num, ip))
+		return (NULL);
+
+	return (ip);
 }
 /**
  * @brief Frees an inode.
@@ -276,13 +279,20 @@ PUBLIC void inode_truncate(struct inode *ip)
 PUBLIC struct inode *inode_alloc(struct superblock *sb)
 {
 	struct inode *ip;
+
+	/* Get a free inode. */
 	ip = inode_cache_evict();
-	if (inode_alloc_minix(sb,ip)==0){
-		return NULL;
-	}
+	if (ip == NULL)
+		return (NULL);
+
+	/* Allocate inode. */
+	if (inode_alloc_minix(sb,ip))
+		return (NULL);
+	
 	inode_touch(ip);
 	inode_cache_insert(ip);
-	return ip;
+
+	return (ip);
 }
 
 /**

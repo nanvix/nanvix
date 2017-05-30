@@ -85,7 +85,7 @@
  	#define NR_ps       46
  	#define NR_gticks   47
  	#define NR_time	    48
- 	#define NR_mount	49
+ 	#define NR_mount    49
  	#define NR_semget   50
  	#define NR_semctl   51
  	#define NR_semop    52

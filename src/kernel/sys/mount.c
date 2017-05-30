@@ -23,7 +23,7 @@
 #include <nanvix/klib.h>
 #include <errno.h>
 
-/*
+/**
  * Mounts a file system.
  *
  * @param device  Device name.
