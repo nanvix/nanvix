@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -64,9 +65,25 @@ start:
 	jne halt
 	
 	/* Retrieve initrd location. */
-	movl 24(%ebx), %eax
-	movl (%eax), %eax
-	
+	movl 24(%ebx), %edx
+	movl (%edx), %edx
+
+	/* Retrieve command-line passed from menu.lst*/
+	movl $cmd_line, %edi
+	movl 16(%ebx), %ecx
+	addl $MBOOT_KPARAM_OFFSET, %ecx
+	jmp bottom
+	top:
+		addl $4, %ecx 
+		stosl
+	bottom:
+		movl (%ecx), %eax
+		cmpl $0,%eax
+		jne top 
+		
+	/* Put initrd into eax */
+	movl %edx,%eax
+
 	/* Build initial RAM disk page table. */
 	movl $initrd_pgtab, %edi
 	addl $7, %eax	
@@ -96,6 +113,7 @@ start:
 	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*768       /* Kernel code + data at 0xc0000000 */
 	movl $kpool_pgtab + 3, idle_pgdir + PTE_SIZE*769  /* Kernel page pool at 0xc0400000   */
 	movl $initrd_pgtab + 3, idle_pgdir + PTE_SIZE*770 /* Init RAM disk at 0xc0800000      */
+	movl $cmd_line + 3, idle_pgdir + PTE_SIZE*771	  /* Command line data at 0xc0c00000 */
 	
 	/* Enable paging. */
 	movl $idle_pgdir, %eax
@@ -103,10 +121,13 @@ start:
 	movl %cr0, %eax
 	orl $0x80000000, %eax
 	movl %eax, %cr0
-	
+
 	/* Setup stack. */
 	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %ebp
 	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %esp
+
+	/* Pass command line to the kernel */
+	push $cmd_line
 	
 	call setup
 	
@@ -161,3 +182,15 @@ initrd_pgtab:
 .align PAGE_SIZE
 idle_pgdir:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
+
+	/*----------------------------------------------------------------------------*
+ *                                  cmd_line                                *
+ *----------------------------------------------------------------------------*/
+
+/* 
+ * init page directory.
+ */
+.align PAGE_SIZE
+cmd_line:
+	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
+
