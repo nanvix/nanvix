@@ -1,7 +1,8 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2015-2017 Davidson Francis <davidsondfgl@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2017-2017 Romane Gallier   <romanegallier@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -270,10 +271,9 @@
 	
 	/* Forward definitions. */
 	EXTERN time_t sys_time(time_t *);
-	/*
-	* Attached a file system to a directory
-	*/
-	EXTERN int sys_mount(const char *device, const char *destination_dir);
+
+	/* Forward definitions. */
+	EXTERN int sys_mount(const char *, const char *);
 
 #endif /* _ASM_FILE_ */
 
