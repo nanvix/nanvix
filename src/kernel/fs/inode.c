@@ -57,26 +57,7 @@ PRIVATE struct inode *hashtab[HASHTAB_SIZE];
 PRIVATE struct file_system_type *fileSystemTable [NR_FILE_SYSTEM] = {
 	NULL
 };
-/*To remove when the mounting table would be implemented*/
-PRIVATE struct super_operations so_minix_s = {
-		&inode_read_minix, //inode_read
-		&inode_write_minix, //inode_write
-		&inode_free_minix, //inode_free
-		&inode_truncate_minix, //inode_truncate
-		&inode_alloc_minix, //inode_alloc
-		NULL,//notify_change
-		NULL,//put_inode
-		&superblock_put,//put_super
-		&superblock_put, //write_super
-		&init_minix //remount_fs
-};
 
-/*To remove when the mounting table would be implemented*/
-PRIVATE const struct file_system_type fs_minix_s = {
-	NULL,
-	&so_minix_s,
-	"minix"
-};
 
 /**
  * @brief Hash function for the inode cache.
@@ -191,7 +172,7 @@ PRIVATE void inode_cache_remove(struct inode *ip)
  */
 PRIVATE void inode_write(struct inode *ip)
 {
-	fs_minix_s.so->inode_write(ip);
+	fileSystemTable[MINIX]->so->inode_write(ip);
 }
 
 /**
@@ -216,7 +197,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 	
 	/* Get a free in-core inode. */
 	ip = inode_cache_evict();
-	if (fs_minix_s.so->inode_read(dev,num,ip)==0){
+	if (fileSystemTable[MINIX]->so->inode_read(dev,num,ip)==0){
 		// dans ce cas l'ip n'est pas utilisés il faut peur etre en faire quelque chose
 		return NULL;
 	}
@@ -232,7 +213,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
  */
 PRIVATE void inode_free(struct inode *ip)
 {
-	inode_free_minix(ip);
+	fileSystemTable[MINIX]->so->inode_free(ip);
 }
 
 /**
@@ -298,7 +279,7 @@ PUBLIC void inode_sync(void)
  */
 PUBLIC void inode_truncate(struct inode *ip)
 {
-	inode_truncate_minix(ip);
+	fileSystemTable[MINIX]->so->inode_truncate(ip);
 }
 
 /**
@@ -321,7 +302,7 @@ PUBLIC struct inode *inode_alloc(struct superblock *sb)
 {
 	struct inode *ip;
 	ip = inode_cache_evict();
-	if (inode_alloc_minix(sb,ip)==0){
+	if (fileSystemTable[MINIX]->so->inode_alloc(sb,ip)==0){
 		return NULL;
 	}
 	inode_touch(ip);
