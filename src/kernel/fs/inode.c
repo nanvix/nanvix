@@ -53,11 +53,54 @@ PRIVATE struct inode *free_inodes = NULL;
 /* Inodes hash table. */
 PRIVATE struct inode *hashtab[HASHTAB_SIZE];
 
+/*Table of the files system.	*/
+PRIVATE struct file_system_type *fileSystemTable [NR_FILE_SYSTEM] = {
+	NULL
+};
+/*To remove when the mounting table would be implemented*/
+PRIVATE struct super_operations so_minix_s = {
+		&inode_read_minix, //inode_read
+		&inode_write_minix, //inode_write
+		&inode_free_minix, //inode_free
+		&inode_truncate_minix, //inode_truncate
+		&inode_alloc_minix, //inode_alloc
+		NULL,//notify_change
+		NULL,//put_inode
+		&superblock_put,//put_super
+		&superblock_put, //write_super
+		&init_minix //remount_fs
+};
+
+/*To remove when the mounting table would be implemented*/
+PRIVATE const struct file_system_type fs_minix_s = {
+	NULL,
+	&so_minix_s,
+	"minix"
+};
+
 /**
  * @brief Hash function for the inode cache.
  */
 #define HASH(dev, num) \
 	(((dev)^(num))%HASHTAB_SIZE)
+
+/**
+ * @brief Insert a file system in the fileSystemTable.
+ */
+PUBLIC int fs_register( int nb , struct file_system_type * fs ){
+
+	if (nb >= NR_FILE_SYSTEM)
+		return (-EINVAL);
+	
+	/* Fs already registered? */
+	if (fileSystemTable[nb] != NULL)
+		return (-EBUSY);
+	
+	/* Register fs */
+	 fileSystemTable[nb] = fs;
+	
+	return (0);
+}
 
 /**
  * @brief Evicts an free inode from the inode cache
@@ -148,7 +191,7 @@ PRIVATE void inode_cache_remove(struct inode *ip)
  */
 PRIVATE void inode_write(struct inode *ip)
 {
-	inode_write_minix(ip);
+	fs_minix_s.so->inode_write(ip);
 }
 
 /**
@@ -173,12 +216,13 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 	
 	/* Get a free in-core inode. */
 	ip = inode_cache_evict();
-	if (inode_read_minix(dev,num,ip)==0){
+	if (fs_minix_s.so->inode_read(dev,num,ip)==0){
 		// dans ce cas l'ip n'est pas utilisés il faut peur etre en faire quelque chose
 		return NULL;
 	}
 	return ip;
 }
+
 /**
  * @brief Frees an inode.
  * 
@@ -358,7 +402,7 @@ PUBLIC struct inode *inode_pipe(void)
 		goto error0;
 	
 	inode = inode_cache_evict();
-	
+
 	/* No free inode. */
 	if (inode == NULL)
 		goto error1;
@@ -682,4 +726,7 @@ PUBLIC void inode_init(void)
 	free_inodes = &inodes[0];
 	for (unsigned i = 0; i < HASHTAB_SIZE; i++)
 		hashtab[i] = NULL;
+
+	/*Initialize FileSystemTable*/
+	init_minix();
 }

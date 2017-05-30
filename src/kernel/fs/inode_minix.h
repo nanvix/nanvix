@@ -41,4 +41,6 @@
 	PUBLIC void inode_free_minix(struct inode *ip);
 	PUBLIC void inode_truncate_minix(struct inode *ip);
 	PUBLIC int inode_alloc_minix(struct superblock *sb, struct inode *ip);
+	PUBLIC void init_minix (void);
+	
 #endif

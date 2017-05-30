@@ -76,6 +76,24 @@
 		SUPERBLOCK_DIRTY  = (1 << 2), /**< Dirty?            */
 		SUPERBLOCK_VALID  = (1 << 3)  /**< Valid superblock? */
 	};
+
+	typedef struct superblock superblock;
+
+	/**
+	 *@brief In-core superblock operation
+	 */
+	struct super_operations {
+		int (*inode_read) (dev_t, ino_t,struct inode *);
+		void (*inode_write) (struct inode *);
+		void (*inode_free) (struct inode *);
+		void (*inode_truncate) (struct inode *);
+		int (*inode_alloc) (struct superblock*, struct inode *);
+		int (*notify_change) (int flags, struct inode *);
+		void (*put_inode) (struct inode *);
+		void (*put_super) (struct superblock *);
+		void (*write_super) (struct superblock *);
+		void (*remount_fs) (void);
+	};
 	
 	/**
 	 * @brief In-core superblock.
@@ -100,7 +118,45 @@
 		block_t zsearch;		        /**< Zones below this are in use.  */
 		struct process *chain;          /**< Waiting chain.                */
 	};
+
+/*============================================================================*
+ *                       Virtual File System  Library                         *
+ *============================================================================*/
 	
+ 	/**
+	 * @brief File system of the virtual file system.
+	 */
+	struct file_system_type {
+		struct super_block *(*read_super) (dev_t); 	/**< Fonction to access the superblock of the file system 	*/
+		struct super_operations *so; 				/**< stucture of the fonction of the file system 			*/
+		char *name; 								/**< Name of the file system 								*/
+	};
+
+	/**
+	 * @brief Mounting point.
+	 */
+	struct mountingPoint {
+		char * device;			/**< Name of the devices							*/
+		char * mountPoint;		/**< Mount point 									*/
+		int no_inode_mount; 	/**< Number of the inode of the mounting point 		*/
+		int no_inode_root_fs;	/**< Number of the inode root of the file system 	*/
+	};
+
+	/**
+	 * @brief Number of the file system.
+	 */
+	#define MINIX 0
+	
+	/**
+	 * @brief Maximum nunber of file system.
+	 */
+	#define NR_FILE_SYSTEM 1
+
+	/**
+	 * @brief Function too register file system in the virtual file system .
+	 */
+	PUBLIC int fs_register( int nb , struct file_system_type * fs );
+
 	/**@}*/
 
 #endif /* _FS_H_ */
