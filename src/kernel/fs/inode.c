@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <limits.h>
 #include "fs.h"
+#include "inode_minix.h"
 
 /* Number of inodes per block. */
 #define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
@@ -148,43 +149,7 @@ PRIVATE void inode_cache_remove(struct inode *ip)
  */
 PRIVATE void inode_write(struct inode *ip)
 {
-	block_t blk;           /* Block.       */
-	struct buffer *buf;    /* Buffer.      */
-	struct d_inode *d_i;   /* Disk inode.  */
-	struct superblock *sb; /* Super block. */
-	
-	/* Nothing to be done. */
-	if (!(ip->flags & INODE_DIRTY))
-		return;
-	
-	superblock_lock(sb = ip->sb);
-	
-	blk = 2 + sb->imap_blocks + sb->zmap_blocks + (ip->num - 1)/INODES_PER_BLOCK;
-	
-	/* Read chunk of disk inodes. */
-	buf = bread(ip->dev, blk);
-	if (buf == NULL)
-	{
-		kprintf("fs: failed to write inode %d to disk", ip->num);
-		superblock_unlock(sb);
-	}
-	
-	d_i = &(((struct d_inode *)buffer_data(buf))[(ip->num - 1)%INODES_PER_BLOCK]);
-	
-	/* Write inode to buffer. */
-	d_i->i_mode = ip->mode;
-	d_i->i_nlinks = ip->nlinks;
-	d_i->i_uid = ip->uid;
-	d_i->i_gid = ip->gid;
-	d_i->i_size = ip->size;
-	d_i->i_time = ip->time;
-	for (unsigned i = 0; i < NR_ZONES; i++)
-		d_i->i_zones[i] = ip->blocks[i];
-	ip->flags &= ~INODE_DIRTY;
-	buffer_dirty(buf, 1);
-	
-	brelse(buf);
-	superblock_unlock(sb);
+	inode_write_minix(ip);
 }
 
 /**
@@ -204,65 +169,19 @@ PRIVATE void inode_write(struct inode *ip)
  */
 PRIVATE struct inode *inode_read(dev_t dev, ino_t num)
 {
-	block_t blk;           /* Block.         */
-	struct inode *ip;      /* In-core inode. */
-	struct buffer *buf;    /* Buffer.        */
-	struct d_inode *d_i;   /* Disk inode.    */
-	struct superblock *sb; /* Super block.   */
-	
-	/* Get superblock. */
-	sb = superblock_get(dev);
-	if (sb == NULL)
-		goto error0;	
-	
-	/* Calculate block number. */
-	blk = 2 + sb->imap_blocks + sb->zmap_blocks + (num - 1)/INODES_PER_BLOCK;
-	
-	/* Read chunk of disk inodes. */
-	buf = bread(dev, blk);
-	if (buf == NULL)
-	{
-		kprintf("fs: failed to read inode %d from disk", num);
-		goto error1;
-	}
-	
-	d_i = &(((struct d_inode *)buffer_data(buf))[(num - 1)%INODES_PER_BLOCK]);
-	
-	/* Invalid disk inode. */ 
-	if (d_i->i_nlinks == 0)
-		goto error1;
+	struct inode *ip;
 	
 	/* Get a free in-core inode. */
 	ip = inode_cache_evict();
 	if (ip == NULL)
-		goto error1;
-		
-	/* Initialize in-core inode. */
-	ip->mode = d_i->i_mode;
-	ip->nlinks = d_i->i_nlinks;
-	ip->uid = d_i->i_uid;
-	ip->gid = d_i->i_gid;
-	ip->size = d_i->i_size;
-	ip->time = d_i->i_time;
-	for (unsigned i = 0; i < NR_ZONES; i++)
-		ip->blocks[i] = d_i->i_zones[i];
-	ip->dev = dev;
-	ip->num = num;
-	ip->sb = sb;
-	ip->flags &= ~(INODE_DIRTY | INODE_MOUNT | INODE_PIPE);
-	ip->flags |= INODE_VALID;
-	
-	brelse(buf);
-	superblock_put(sb);
-	
+		return (NULL);
+
+	/* Read inode. */
+	if (inode_read_minix(dev, num, ip))
+		return (NULL);
+
 	return (ip);
-
-error1:
-	superblock_put(sb);
-error0:
-	return (NULL);
 }
-
 /**
  * @brief Frees an inode.
  * 
@@ -272,21 +191,7 @@ error0:
  */
 PRIVATE void inode_free(struct inode *ip)
 {
-	block_t blk;           /* Block number.           */
-	struct superblock *sb; /* Underlying super block. */
-	
-	blk = (ip->num - 1)/(BLOCK_SIZE << 3);
-	
-	superblock_lock(sb = ip->sb);
-	
-	bitmap_clear(buffer_data(sb->imap[blk]), (ip->num - 1)%(BLOCK_SIZE << 3));
-	
-	buffer_dirty(sb->imap[blk], 1);
-	if (ip->num < sb->isearch)
-		sb->isearch = ip->num;
-	sb->flags |= SUPERBLOCK_DIRTY;
-	
-	superblock_unlock(sb);
+	inode_free_minix(ip);
 }
 
 /**
@@ -352,35 +257,7 @@ PUBLIC void inode_sync(void)
  */
 PUBLIC void inode_truncate(struct inode *ip)
 {
-	struct superblock *sb;
-	
-	superblock_lock(sb = ip->sb);
-	
-	/* Free direct zone. */
-	for (unsigned j = 0; j < NR_ZONES_DIRECT; j++)
-	{
-		block_free(sb, ip->blocks[j], 0);
-		ip->blocks[j] = BLOCK_NULL;
-	}
-	
-	/* Free singly indirect zones. */
-	for (unsigned j = 0; j < NR_ZONES_SINGLE; j++)
-	{
-		block_free(sb, ip->blocks[NR_ZONES_DIRECT + j], 1);
-		ip->blocks[NR_ZONES_DIRECT + j] = BLOCK_NULL;
-	}
-	
-	/* Free double indirect zones. */
-	for (unsigned j = 0; j < NR_ZONES_DOUBLE; j++)
-	{
-		block_free(sb, ip->blocks[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j], 2);
-		ip->blocks[NR_ZONES_DIRECT + NR_ZONES_SINGLE + j] = BLOCK_NULL;
-	}
-	
-	superblock_unlock(sb);
-	
-	ip->size = 0;
-	inode_touch(ip);
+	inode_truncate_minix(ip);
 }
 
 /**
@@ -401,71 +278,21 @@ PUBLIC void inode_truncate(struct inode *ip)
  */
 PUBLIC struct inode *inode_alloc(struct superblock *sb)
 {
-	ino_t num;        /* Inode number.             */
-	bit_t bit;        /* Bit number in the bitmap. */
-	unsigned i;       /* Number of current block.  */
-	struct inode *ip; /* Inode.                    */
-	
-	superblock_lock(sb);
-	
-	/* Search for free inode. */
-	for (i = 0; i < sb->imap_blocks; i++)
-	{
-		bit = bitmap_first_free(buffer_data(sb->imap[i]), BLOCK_SIZE);
-		
-		/* Found. */
-		if (bit != BITMAP_FULL)
-			goto found;
-	}
-	
-	goto error0;
-	
-found:
-	
-	num = bit + i*(BLOCK_SIZE << 3) + 1;
+	struct inode *ip;
 
-	/*
-	 * Remember disk block number to
-	 * speedup next allocation. 
-	 */
-	sb->isearch = num;
-
-	/* Get a free in-core inode. */
+	/* Get a free inode. */
 	ip = inode_cache_evict();
 	if (ip == NULL)
-		goto error0;
-	
+		return (NULL);
+
 	/* Allocate inode. */
-	bitmap_set(buffer_data(sb->imap[i]), bit);
-	buffer_dirty(sb->imap[i], 1);
-	sb->flags |= SUPERBLOCK_DIRTY;
+	if (inode_alloc_minix(sb,ip))
+		return (NULL);
 	
-	/* 
-	 * Initialize inode. 
-	 * mode will be initialized later.
-	 */
-	ip->nlinks = 1;
-	ip->uid = curr_proc->euid;
-	ip->gid = curr_proc->egid;
-	ip->size = 0;
-	for (unsigned j = 0; j < NR_ZONES; j++)
-		ip->blocks[j] = BLOCK_NULL;
-	ip->dev = sb->dev;
-	ip->num = num;
-	ip->sb = sb;
-	ip->flags &= ~(INODE_MOUNT | INODE_PIPE);
-	ip->flags |= INODE_VALID;
 	inode_touch(ip);
-	
 	inode_cache_insert(ip);
-	
-	superblock_unlock(sb);
-	
+
 	return (ip);
-	
-error0:
-	superblock_unlock(sb);
-	return (NULL);
 }
 
 /**
@@ -709,7 +536,7 @@ PUBLIC struct inode *inode_dname(const char *path, const char **name)
 	inode_lock(i);
 	
 	p = break_path((*name) = p, filename);
-	
+
 	/* Failed to break path. */
 	if (p == NULL)
 		goto error0;
@@ -794,6 +621,7 @@ again:
 		while (**name == '/')
 			(*name)++;
 	}
+
 	
 	return (i);
 
@@ -811,6 +639,7 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	ino_t num;           /* Inode number.  */
 	const char *name;    /* File name.     */
 	struct inode *inode; /* Working inode. */
+	
 	
 	inode = inode_dname(pathname, &name);
 	
