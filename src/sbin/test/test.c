@@ -30,6 +30,10 @@
 #include <string.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <semaphore.h>
+
+
+
 
 /* Test flags. */
 #define VERBOSE  (1 << 10)
@@ -332,30 +336,6 @@ static int sched_test2(void)
  *                             Semaphores Test                                *
  *============================================================================*/
 
-/**
- * @brief Creates a semaphore.
- */
-#define SEM_CREATE(a, b) (assert(((a) = semget(b)) >= 0))
-
-/**
- * @brief Initializes a semaphore.
- */
-#define SEM_INIT(a, b) (assert(semctl((a), SETVAL, (b)) == 0))
-
-/**
- * @brief Destroys a semaphore.
- */
-#define SEM_DESTROY(x) (assert(semctl((x), IPC_RMID, 0) == 0))
-
-/**
- * @brief Ups a semaphore.
- */
-#define SEM_UP(x) (assert(semop((x), 1) == 0))
-
-/**
- * @brief Downs a semaphore.
- */
-#define SEM_DOWN(x) (assert(semop((x), -1) == 0))
 
 /**
  * @brief Puts an item in a buffer.
@@ -375,85 +355,17 @@ static int sched_test2(void)
 	assert(read((a), &(b), sizeof(b)) == sizeof(b)); \
 }                                                    \
 
-/**
- * @brief Producer-Consumer problem with semaphores.
- * 
- * @details Reproduces consumer-producer scenario using semaphores.
- * 
- * @returns Zero if passed on test, and non-zero otherwise.
- */
-int semaphore_test3(void)
+static int sem_test(void)
 {
-	pid_t pid;                  /* Process ID.              */
-	int buffer_fd;              /* Buffer file descriptor.  */
-	int empty;                  /* Empty positions.         */
-	int full;                   /* Full positions.          */
-	int mutex;                  /* Mutex.                   */
-	const int BUFFER_SIZE = 32; /* Buffer size.             */
-	const int NR_ITEMS = 512;   /* Number of items to send. */
-	
-	/* Create buffer.*/
-	buffer_fd = open("buffer", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-	if (buffer_fd < 0)
-		return (-1);
-	
-	/* Create semaphores. */
-	SEM_CREATE(mutex, 1);
-	SEM_CREATE(empty, 2);
-	SEM_CREATE(full, 3);
-		
-	/* Initialize semaphores. */
-	SEM_INIT(full, 0);
-	SEM_INIT(empty, BUFFER_SIZE);
-	SEM_INIT(mutex, 1);
-	
-	if ((pid = fork()) < 0)
-		return (-1);
-	
-	/* Producer. */
-	else if (pid == 0)
-	{
-		for (int item = 0; item < NR_ITEMS; item++)
-		{
-			SEM_DOWN(empty);
-			SEM_DOWN(mutex);
-			
-			PUT_ITEM(buffer_fd, item);
-				
-			SEM_UP(mutex);
-			SEM_UP(full);
-		}
-
-		_exit(EXIT_SUCCESS);
-	}
-	
-	/* Consumer. */
-	else
-	{
-		int item;
-		
-		do
-		{
-			SEM_DOWN(full);
-			SEM_DOWN(mutex);
-			
-			GET_ITEM(buffer_fd, item);
-				
-			SEM_UP(mutex);
-			SEM_UP(empty);
-		} while (item != (NR_ITEMS - 1));
-	}
-					
-	/* Destroy semaphores. */
-	SEM_DESTROY(mutex);
-	SEM_DESTROY(empty);
-	SEM_DESTROY(full);
-	
-	close(buffer_fd);
-	unlink("buffer");
-	
+	sem_t* sem;
+	//if(sem){}
+	sem = sem_open("bonjour\0", O_CREAT, 0,4);
+	printf("nom du semaphore : %d", (sem->idx));
+	/*if(sem){}
+	printf("Semaphore fields :\nvalue : 	%d\nname : 		%s\nmode :		%d\nnbproc : 	%d\nunlinked :	%d\n",sem->value, sem->name, sem->mode, sem->nbproc, sem->unlinked);*/
 	return (0);
 }
+
 
 /*============================================================================*
  *                                FPU test                                    *
@@ -560,13 +472,14 @@ static void usage(void)
 	printf("Usage: test [options]\n\n");
 	printf("Brief: Performs regression tests on Nanvix.\n\n");
 	printf("Options:\n");
-	printf("  fpu    Floating Point Unit Test\n");
-	printf("  io     I/O Test\n");
-	printf("  ipc    Interprocess Communication Test\n");
-	printf("  paging Paging System Test\n");
-	printf("  stack  Stack growth Test\n");
-	printf("  sched  Scheduling Test\n");
-	
+	printf("  fpu   		Floating Point Unit Test\n");
+	printf("  io    		I/O Test\n");
+	printf("  ipc    		Interprocess Communication Test\n");
+	printf("  Paging 		Paging System Test\n");
+	printf("  stack  		Stack growth Test\n");
+	printf("  sched  		Scheduling Test\n");
+	printf("  Semaphore 	Semaphore Test\n");
+
 	exit(EXIT_SUCCESS);
 }
 
@@ -617,13 +530,6 @@ int main(int argc, char **argv)
 				(!sched_test2()) ? "PASSED" : "FAILED");
 		}
 		
-		/* IPC test. */
-		else if (!strcmp(argv[i], "ipc"))
-		{
-			printf("Interprocess Communication Tests\n");
-			printf("  producer consumer [%s]\n",
-				(!semaphore_test3()) ? "PASSED" : "FAILED");
-		}
 
 		/* FPU test. */
 		else if (!strcmp(argv[i], "fpu"))
@@ -631,6 +537,14 @@ int main(int argc, char **argv)
 			printf("Float Point Unit Test\n");
 			printf("  Result [%s]\n",
 				(!fpu_test()) ? "PASSED" : "FAILED");
+		}
+
+		/* Semaphore test. */
+		else if (!strcmp(argv[i], "se"))
+		{
+			printf("Semaphore testing\n");
+			printf("  Result [%s]\n",
+				(!sem_test()) ? "PASSED" : "FAILED");
 		}
 	
 	

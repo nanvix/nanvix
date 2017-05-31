@@ -27,11 +27,11 @@
 	#include <sys/times.h>
 	#include <sys/types.h>
 	#include <sys/utsname.h>
-	#include <sys/sem.h>
 	#include <signal.h>
 	#include <ustat.h>
 	#include <utime.h>
-	
+	#include <semaphore.h>
+
 	/* Number of system calls. */
 	#define NR_SYSCALLS 51
 	
@@ -269,11 +269,13 @@
 	/* Forward definitions. */
 	EXTERN time_t sys_time(time_t *);
 
-	/* Create or opens a semaphore */
-	EXTERN sem_t* sys_semopen(char* name, int oflag, ...);
+	/* 	Create or opens a semaphore 
+	 *	Returns the idx of the opened semaphore
+	 */
+	EXTERN int sys_semopen(char* name, int oflag, ...);
 
 	/* Close a semaphore */
-	EXTERN int sys_semclose(sem_t* s);
+	EXTERN int sys_semclose(int idx);
 
 #endif /* _ASM_FILE_ */
 

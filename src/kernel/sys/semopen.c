@@ -3,60 +3,62 @@
 #include <stdarg.h>	/*va_start ... */
 #include <sys/sem.h>
 #include <nanvix/klib.h>
+#include <semaphore.h>
 
 
 	/* add the semaphore to the sem table if it doesn't exist
 	 * returns the added/existing semaphore address
 	 */
+	int add_entry(int value, char* name, int mode){
+		int idx;
 
-	sem_t* add_entry(int value, char* name, int mode){
+		kprintf("nom du semaphore que l'on va ajouter : %s",name);
 
-		sem_t *s;
-
-		for (s = &semtable[0]; s < &semtable[MAX_SEMAPHORES]; s++)
+		for (idx=0; idx<MAX_SEMAPHORES; idx++)
 		{
-			/* searching for a free slot */
-			for (int i=0; i<MAX_SEMAPHORES; i++)
+			kprintf("checking for empty slot\n");
+			if(semtable[idx].nbproc==0)
 			{
-				if(semtable[i].nbproc==0){
-					s->value=value;
-					kstrcpy(name,s->name);
-					s->mode=mode;
-					s->nbproc=0;
-					return &semtable[i];
-				}
+				kprintf("nb proc = 0 : place vide trouvée \n");
+				semtable[idx].value=value;
+				kstrcpy(name,semtable[idx].name);
+				semtable[idx].mode=mode;
+				semtable[idx].nbproc=0;
+				return idx;
 			}
 		}
 
-		return NULL; /* semaphore table full */
+		return -1; /* semaphore table full */
 	}
 
 	/*
 	 * returns 0 if doesn't exists
 	 * returns non-zero otherwise
 	 */
-	sem_t* existance(char* semname){
-		
-		sem_t *s;
+	int existance(char* semname){
+		int idx;
 
-		for (s = &semtable[0]; s < &semtable[MAX_SEMAPHORES]; s++)
+		for (idx=0; idx<MAX_SEMAPHORES; idx++)
 		{
 			//if(s->name == semname){
-			if(kstrcmp(s->name,semname)){
+			if(!(kstrcmp(semtable[idx].name,semname))){
 				/* add process to semaphore  */
-				return s;
+				return idx;
 			}
 		}
 
-		return 0;
+		return -1;
 	}
 
-	PUBLIC sem_t* sys_semopen(char* name, int oflag, ...){
+
+/* TODO : verify char* adresses so the user doesn't break anything */
+	PUBLIC int sys_semopen(char* name, int oflag, ...){
 
  		mode_t mode;
  		int value;
  		va_list arg;	/* Variable argument */
- 		sem_t *s;		/* Opened semaphore */
+ 		//sem_t *s;		/* Opened semaphore */
+ 		int idx;		/* Index of the opened semaphore */
 
  		if(oflag & O_CREAT)
  		{
@@ -66,13 +68,15 @@
  			 */
 
  			/* correct this to have everything in the if */
- 			s = existance(name);
+ 			idx = existance(name);
 
- 			if(s!=0)				/* if this name already exists */
+ 			if(idx!=(-1))				/* if this name already exists */
  			{
+ 			 	kprintf("name exists\n");
+
  				if(oflag & O_EXCL)
  				{
- 					return NULL; 			/* error */
+ 					return -1; 			/* error */
  				}
  				else
  				{
@@ -81,16 +85,21 @@
  			}
  			else
  			{
+ 				kprintf("name doesn't exist\n");
+
 	 			/* Semaphore creation if doesn't 'exist */
 	 			va_start(arg, oflag);
 	 			mode = va_arg(arg, mode_t);
 	 			value = va_arg(arg, int);
 	 			va_end(arg);
- 				s=add_entry (value,name,mode);
+ 				idx=add_entry (value,name,mode);
  			}
  		}
 
- 		s->nbproc++;
+ 		semtable[idx].nbproc++;
 
-		return s;
+ 		/* idx est l'index du semaphore ouvert */
+
+		return idx;
 	}
+

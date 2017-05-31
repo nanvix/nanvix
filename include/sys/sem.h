@@ -23,15 +23,17 @@
 
 #ifndef _ASM_FILE_
 
-	typedef struct sem_t {
+
+	/* kernel semaphore */
+	typedef struct ksem {
 		int value;                   /* value of the semaphore                    */
 		char name[MAX_CHAR_NAME];    /* name of the named semaphore               */
 		int mode;                    /* permissions                               */
 		int nbproc;                  /* number of processes sharing the semaphore */
 		int unlinked;
-	} sem_t;
+	} ksem;
 
 	/* Forward definitions. */
-	PUBLIC sem_t semtable[MAX_SEMAPHORES];
+	extern ksem semtable[MAX_SEMAPHORES];
 
 #endif

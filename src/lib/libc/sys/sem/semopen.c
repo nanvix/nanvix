@@ -18,12 +18,12 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/syscall.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <reent.h>
-//#include <sys/sem.h>
+#include <nanvix/syscall.h>
+#include <stdlib.h>
 
 /**
  * @brief Performs operations in a semaphore.
@@ -31,14 +31,14 @@
 
 sem_t* sem_open(char* name, int oflag, ...)
 {	
-	sem_t* ret;  /* Return value.		*/
+	int ret;  /* Return value.		*/
 	mode_t mode; /* Creation mode.		*/
 	int value;	 /* semaphore value 	*/
 	va_list arg; /* Variable argument. 	*/
 	
 	value = -1;
 	mode = 0;
-	
+
 	if (oflag & O_CREAT)
 	{
 		va_start(arg, oflag);
@@ -56,6 +56,11 @@ sem_t* sem_open(char* name, int oflag, ...)
 		  "d" (mode),
 		  "S" (value)
 	);
-	
-	return (ret);
+
+	sem_t* s;
+	s=malloc(sizeof(sem_t));
+	s->idx=ret;
+
+
+	return (s);
 }
