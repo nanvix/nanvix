@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -44,6 +45,9 @@
 	#define MBOOT_INFO_BOOT_LOADER  0x00000200 /* Bootloader name?           */
 	#define MBOOT_INFO_APM_TABLE    0x00000400 /* APM table available?       */
 	#define MBOOT_INFO_VIDEO_INFO   0x00000800 /* Video information?         */
+
+	/* Command-line offset */
+	#define MBOOT_KPARAM_OFFSET 0x00000008
 	
 	/* Multiboot memory map entry type. */
 	#define MBOOT_MEMORY_AVAILABLE 1 /* Memory available. */
