@@ -26,6 +26,7 @@
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <nanvix/syscall.h>
+#include <nanvix/clock.h>
 #include <errno.h>
 #include <termios.h>
 #include <stropts.h>
@@ -494,6 +495,9 @@ PRIVATE int tty_clear(struct tty *tty)
 {
 	UNUSED(tty);
 	console_clear();
+	kprintf("Bootup time(GMT): %d:%d:%d %d/%d/20%d\n", start_time->hour, \
+		start_time->min, start_time->sec, start_time->mon, \
+		start_time->dom, start_time->year);
 	return (0);
 }
 
