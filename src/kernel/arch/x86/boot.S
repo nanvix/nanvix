@@ -29,6 +29,9 @@
 /* Multiboot flags. */
 #define MBOOT_FLAGS (MBOOT_PAGE_ALIGN | MBOOT_MEMORY_INFO)
 
+/* Command-line offset */
+#define MBOOT_KPARAM_OFFSET 0x00000008
+
 /* Exported symbols. */
 .globl start
 .globl idle_pgdir
@@ -68,8 +71,8 @@ start:
 	movl 24(%ebx), %edx
 	movl (%edx), %edx
 
-	/* Retrieve command-line passed from menu.lst*/
-	movl $cmd_line, %edi
+	/* Retrieve command-line passed by GRUB. */
+	movl $cmdline, %edi
 	movl 16(%ebx), %ecx
 	addl $MBOOT_KPARAM_OFFSET, %ecx
 	jmp bottom
@@ -81,7 +84,7 @@ start:
 		cmpl $0,%eax
 		jne top 
 		
-	/* Put initrd into eax */
+	/* Put back initrd into eax. */
 	movl %edx,%eax
 
 	/* Build initial RAM disk page table. */
@@ -113,7 +116,7 @@ start:
 	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*768       /* Kernel code + data at 0xc0000000 */
 	movl $kpool_pgtab + 3, idle_pgdir + PTE_SIZE*769  /* Kernel page pool at 0xc0400000   */
 	movl $initrd_pgtab + 3, idle_pgdir + PTE_SIZE*770 /* Init RAM disk at 0xc0800000      */
-	movl $cmd_line + 3, idle_pgdir + PTE_SIZE*771	  /* Command line data at 0xc0c00000 */
+	movl $cmdline + 3, idle_pgdir + PTE_SIZE*771      /* Command line data at 0xc0c00000  */
 	
 	/* Enable paging. */
 	movl $idle_pgdir, %eax
@@ -127,7 +130,7 @@ start:
 	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %esp
 
 	/* Pass command line to the kernel */
-	push $cmd_line
+	push $cmdline
 	
 	call setup
 	
@@ -183,14 +186,14 @@ initrd_pgtab:
 idle_pgdir:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
-	/*----------------------------------------------------------------------------*
- *                                  cmd_line                                *
+/*----------------------------------------------------------------------------*
+ *                                  cmdline                                *
  *----------------------------------------------------------------------------*/
 
 /* 
- * init page directory.
+ * Command line parameters.
  */
 .align PAGE_SIZE
-cmd_line:
+cmdline:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 

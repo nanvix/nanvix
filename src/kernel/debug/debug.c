@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2017-2017 Clement Rouquier <clementrouquier@gmail.com>
+ *              2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -20,8 +21,10 @@
 #include <nanvix/klib.h>
 
 /**
- * @brief Init debug process.
+ * @brief Initializes debugging driver.
  */
-PUBLIC void dbg_init(void){
-	kprintf("Debug Mode handled but not implemented yet");
+PUBLIC void dbg_init(void)
+{
+	kprintf("[debug] no debug functions were registered");
 }
+

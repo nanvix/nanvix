@@ -113,7 +113,8 @@ PRIVATE void init(void)
 
 /**
  * @brief Initializes the kernel.
- * @param boot mode passed by menu.lst
+ *
+ * @param cmdline Command line parameters.
  */
 PUBLIC void kmain(const char* cmdline)
 {		
@@ -128,6 +129,7 @@ PUBLIC void kmain(const char* cmdline)
 	
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 
+	/* Initialize debugging driver. */
 	if(!kstrcmp(cmdline,"debug"))
 		dbg_init();
 	
