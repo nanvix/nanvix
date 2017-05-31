@@ -1,6 +1,12 @@
-timeout 0
+timeout 10
 
 title	Nanvix
 	root (fd0)
 	kernel /kernel
 	module /initrd.img
+
+title	Nanvix-debug
+	root (fd0)
+	kernel /kernel debug
+	module /initrd.img
+
