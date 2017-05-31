@@ -33,12 +33,20 @@ int sem_close(sem_t* sem)
 {	
 	int ret;
 
+	/* system call -> decrementing
+	 * and deallocating if needed (0 proc using the semaphore)
+	 */
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)
 		: "0" (NR_semclose),
-		  "b" (sem)
+		  "b" (sem->idx)
 	);
+
+	/* making the semaphore unavailable for
+	 * the calling process
+	 */
+	sem->idx=-1;
 	
 	return (ret);
 }
