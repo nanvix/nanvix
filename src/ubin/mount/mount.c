@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -38,7 +39,6 @@ static char *destination_dir= NULL;
  */
 int main(int argc, char *const argv[])
 {	
-	//getargs(argc, argv);
 	if (argc <2) {
 		printf ("To few argument, you need to give the name of the device and the mounting point\n");
 		return (EXIT_FAILURE);

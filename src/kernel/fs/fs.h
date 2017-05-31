@@ -117,7 +117,7 @@
 		ino_t isearch;		            /**< Inodes below this are in use. */
 		block_t zsearch;		        /**< Zones below this are in use.  */
 		struct process *chain;          /**< Waiting chain.                */
-		struct super_operations *s_op;  /**< Super operation of filesystem */
+		struct super_operations *so;  /**< Super operation of filesystem */
 	};
 
 /*============================================================================*

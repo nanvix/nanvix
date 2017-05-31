@@ -34,6 +34,7 @@
 #include <limits.h>
 #include "fs.h"
 #include "inode_minix.h"
+
 /* Number of inodes per block. */
 #define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
 
@@ -208,6 +209,10 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num, int ind_fs)
 	/* Get a free in-core inode. */
 	ip = inode_cache_evict();
 
+	if (ip == NULL)
+		return (NULL);
+
+	/* Read inode. */
 	/* wrong indice of file system */
 	if (ind_fs<0 ||ind_fs >NR_FILE_SYSTEM)
 		kpanic("index of file system out of bound");
@@ -219,7 +224,7 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num, int ind_fs)
 	if (fileSystemTable[ind_fs]->so->inode_read == NULL)
 		kpanic("operation not supported by the file system");
 
-	if (fileSystemTable[ind_fs]->so->inode_read(dev,num,ip)==0){
+	if (fileSystemTable[ind_fs]->so->inode_read(dev,num,ip)){
 		return NULL;
 	}
 	return ip;
@@ -307,10 +312,11 @@ PUBLIC void inode_sync(void)
  * 
  * @param ip Inode that shall be truncated.
  * 
- * @note The inode must be locked.
+ * @note The inode must be locked. 
  */
-PUBLIC void inode_truncate(struct inode *ip, int ind_fs)
+PUBLIC void inode_truncate(struct inode *ip)
 {
+	int ind_fs = MINIX;
 	/* wrong indice of file system */
 	if (ind_fs<0 ||ind_fs >NR_FILE_SYSTEM)
 		kpanic("index of file system out of bound");
@@ -341,28 +347,39 @@ PUBLIC void inode_truncate(struct inode *ip, int ind_fs)
  * 
  * @todo Use isearch.
  */
-PUBLIC struct inode *inode_alloc(struct superblock *sb, int ind_fs)
+PUBLIC struct inode *inode_alloc (struct superblock *sb)
 {
 	struct inode *ip;
+
+	/* Get a free inode. */
 	ip = inode_cache_evict();
-	/* wrong indice of file system */
-	if (ind_fs<0 ||ind_fs >NR_FILE_SYSTEM)
-		kpanic("index of file system out of bound");
-	/* Invalid fs. */
-	if (fileSystemTable[ind_fs] == NULL)
-		kpanic("file system not inisialized");
+		if (ip == NULL)
+		return (NULL);
+
+	/* Verifie the superblock */
+	if (sb==NULL){
+		kpanic("not valid superblock");
+	}
+
+	if (sb->so==NULL){
+		kpanic("no supper operation in the superblock");
+	}
+
+	/* Allocate inode. */
 	
 	/* Operation not supported. */
-	if (fileSystemTable[ind_fs]->so->inode_alloc == NULL)
+	if (sb->so->inode_alloc == NULL)
 		kpanic("operation not supported by the file system");
 
-	if (fileSystemTable[ind_fs]->so->inode_alloc(sb,ip)==0){
+	if (sb->so->inode_alloc(sb,ip)){
 		return NULL;
 	}
 	inode_touch(ip);
 	inode_cache_insert(ip);
-	return ip;
+	return (ip);
 }
+
+
 
 /**
  * @brief Gets an inode.
@@ -513,7 +530,7 @@ PUBLIC void inode_put(struct inode *ip)
 			if (ip->nlinks == 0)
 			{
 				inode_free(ip,MINIX);
-				inode_truncate(ip,MINIX);
+				inode_truncate(ip);
 			}
 			
 			inode_write(ip,MINIX);

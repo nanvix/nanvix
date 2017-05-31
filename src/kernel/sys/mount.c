@@ -1,5 +1,7 @@
 /*
- * 
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
+ *
  * This file is part of Nanvix.
  * 
  * Nanvix is free software; you can redistribute it and/or modify
@@ -16,31 +18,33 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-/*TODO enlever les includes inutiles*/
 #include <nanvix/const.h>
-#include <nanvix/clock.h>
-#include <nanvix/dev.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
-#include <nanvix/mm.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <errno.h>
 
-/*
- * mount -t type device destination_dir
- * TODO rajouter le type 
+/**
+ * Mounts a file system.
+ *
+ * @param device  Device name.
+ * @param target  Target directory.
  */
-PUBLIC int sys_mount(const char *device, const char *destination_dir)
+PUBLIC int sys_mount(const char *device, const char *target)
 {
 	char *kdevice;
-	char *kdest;
-	kprintf("Mount, fonction not implemented yet");
+	char *ktarget;
+
+	/* Get device name. */
 	if ((kdevice = getname(device)) == NULL)
 		return (curr_proc->errno);
-	if ((kdest = getname(destination_dir)) == NULL)
+	
+	/* Get target directory. */
+	if ((ktarget = getname(target)) == NULL)
 		return (curr_proc->errno);
 
-	kprintf(" You are tring to mount th device %s sur le directory %s\n", kdevice, kdest);
-	return ENOSYS; 
+	kprintf("fs: I should mount %s on %s", ktarget, kdevice);
+
+	kprintf("fs: mount system call not implemented");
+	return (-ENOSYS);
 }
+

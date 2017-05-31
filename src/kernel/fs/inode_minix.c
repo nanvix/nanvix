@@ -41,7 +41,6 @@
 /**
  * @brief In-core inodes table.
  */
-//PRIVATE struct inode inodes[NR_INODES];
 
 /**
  * @brief Hash table size.
@@ -58,12 +57,6 @@
  */
 #define HASH(dev, num) \
 	(((dev)^(num))%HASHTAB_SIZE)
-
-
-
-
-
-
 
 /**
  * @brief Writes an inode to disk.
@@ -123,9 +116,8 @@ PUBLIC void inode_write_minix(struct inode *ip)
  * @param dev Device where the inode is located.
  * @param num Number of the inode that shall be read.
  * 
- * @returns Upon successful completion a pointer to a in-core inode is returned.
- *          In this case, the inode is ensured to be locked. Upon failure, a
- *          #NULL pointer is returned instead.
+ * @returns Upon successful completion zero is returned. Upon failure, non-zero
+ * is returned instead.
  * 
  * @note The device number must be valid.
  * @note The inode number must be valid.
@@ -140,7 +132,7 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	/* Get superblock. */
 	sb = superblock_get(dev);
 	if (sb == NULL)
-		goto error0;	
+		goto error0;
 	
 	/* Calculate block number. */
 	blk = 2 + sb->imap_blocks + sb->zmap_blocks + (num - 1)/INODES_PER_BLOCK;
@@ -157,14 +149,6 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	
 	/* Invalid disk inode. */ 
 	if (d_i->i_nlinks == 0)
-		goto error1;
-	
-	// TODO a enlever
-	/* Get a free in-core inode. */
-	//ip = inode_cache_evict();
-	
-
-	if (ip == NULL)
 		goto error1;
 		
 	/* Initialize in-core inode. */
@@ -184,18 +168,13 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	
 	brelse(buf);
 	superblock_put(sb);
-	return 1;
-	
+
+	return (0);
 
 error1:
 	superblock_put(sb);
-	return 1;
 error0:
-	//TODO traiter cette erreur autrement
-	//return (NULL);
-	return 0;
-	kprintf("Problemme dans inode_minix.c ligne 195\n");
-	
+	return (1);
 }
 
 /**
@@ -223,11 +202,6 @@ PUBLIC void inode_free_minix(struct inode *ip)
 	
 	superblock_unlock(sb);
 }
-
-
-
-
-
 
 /**
  * @brief Truncates an inode.
@@ -280,21 +254,19 @@ PUBLIC void inode_truncate_minix(struct inode *ip)
  * 
  * @param sb Superblock where the inode shall be allocated.
  * 
- * @returns Upon successful completion, a pointed to the inode is returned. In 
- *          this case, the inode is ensured to be locked. Upon failure, a #NULL
- *          pointer is returned instead.
+ * 
+ * @returns Upon successful completion zero is returned. Upon failure, non-zero
+ * is returned instead.
  * 
  * @note The superblock must not be locked.
  * 
  * @todo Use isearch.
  */
-PUBLIC int inode_alloc_minix(struct superblock *sb,struct inode *ip )
+PUBLIC int inode_alloc_minix(struct superblock *sb,struct inode *ip)
 {
 	ino_t num;        /* Inode number.             */
 	bit_t bit;        /* Bit number in the bitmap. */
 	unsigned i;       /* Number of current block.  */
-
-	ip=NULL;
 	
 	superblock_lock(sb);
 	
@@ -319,13 +291,6 @@ found:
 	 * speedup next allocation. 
 	 */
 	sb->isearch = num;
-
-	//TODO a enlever
-	/* Get a free in-core inode. */
-	//ip = inode_cache_evict();
-	
-	if (ip == NULL)
-		goto error0;
 	
 	/* Allocate inode. */
 	bitmap_set(buffer_data(sb->imap[i]), bit);
@@ -348,18 +313,13 @@ found:
 	ip->flags &= ~(INODE_MOUNT | INODE_PIPE);
 	ip->flags |= INODE_VALID;
 	
-	//inode_touch(ip);
-	//inode_cache_insert(ip);
-	ip=NULL;
-	
 	superblock_unlock(sb);
-	return 1;
-	
+
+	return (0);
 	
 error0:
 	superblock_unlock(sb);
-	return 0;
-	kprintf ("problemme a traiter dans inode_minix ligne 361\n");
+	return (1);
 }
 
 PRIVATE struct super_operations so_minix = {

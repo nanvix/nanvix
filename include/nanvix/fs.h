@@ -131,8 +131,8 @@
 	EXTERN void inode_lock(struct inode *);
 	EXTERN void inode_unlock(struct inode *);
 	EXTERN void inode_sync(void);
-	EXTERN void inode_truncate(struct inode *, int ind_fs);
-	EXTERN struct inode *inode_alloc(struct superblock *, int ind_fs);
+	EXTERN void inode_truncate(struct inode *);
+	EXTERN struct inode *inode_alloc(struct superblock *);
 	EXTERN struct inode *inode_get(dev_t dev, ino_t);
 	EXTERN void inode_put(struct inode *);
 	EXTERN struct inode *inode_dname(const char *, const char **);
