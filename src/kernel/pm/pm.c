@@ -70,7 +70,7 @@ PUBLIC pid_t next_pid = 0;
 PUBLIC unsigned nprocs = 0;
 
 /* semtable init */
-PUBLIC ksem semtable[MAX_SEMAPHORES];
+PUBLIC ksem semtable[SEM_OPEN_MAX];
 
 
 /**
@@ -133,7 +133,7 @@ PUBLIC void pm_init(void)
 	nprocs++;
 
 	/* initializing semaphore table */
-	for(int i=0;i<MAX_SEMAPHORES;i++)
+	for(int i=0;i<OPEN_MAX;i++)
 	{
 		semtable[i].value=0;
 		(semtable[i].name)[0]='\0';

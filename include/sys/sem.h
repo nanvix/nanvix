@@ -23,17 +23,25 @@
 
 #ifndef _ASM_FILE_
 
+#define SEM_IS_VALID(idx) \
+		(idx>=0 && idx<MAX_SEM_NAME)
+
+#define SEM_IS_FREE(idx) \
+		(semtable[idx].nbproc=-1)
 
 	/* kernel semaphore */
 	typedef struct ksem {
 		int value;                   /* value of the semaphore                    */
-		char name[MAX_CHAR_NAME];    /* name of the named semaphore               */
+		char name[MAX_SEM_NAME];    /* name of the named semaphore               */
 		int mode;                    /* permissions                               */
 		int nbproc;                  /* number of processes sharing the semaphore */
 		int unlinked;
 	} ksem;
 
 	/* Forward definitions. */
-	extern ksem semtable[MAX_SEMAPHORES];
+	extern ksem semtable[SEM_OPEN_MAX];
+
+	/* Frees a semaphore */
+	extern int freesem(int idx);
 
 #endif

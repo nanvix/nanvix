@@ -159,10 +159,11 @@
 /* Files that one process can have open simultaneously. */
 #define OPEN_MAX 20
 
-#define SEM_NSEMS_MAX 50
+/* Number of semaphores that can be opened simultaneously. */
+#define SEM_OPEN_MAX 5
 
-#define MAX_SEMAPHORES 50
-
+/* Maximum semaphore value. */
 #define SEM_VALUE_MAX 50
 
-#define MAX_CHAR_NAME 50
+/* Maximum number of characters a semaphore name can contain. */
+#define MAX_SEM_NAME 50

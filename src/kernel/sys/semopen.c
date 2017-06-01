@@ -4,24 +4,28 @@
 #include <sys/sem.h>
 #include <nanvix/klib.h>
 #include <semaphore.h>
+//maybe unecessary #include <sys/mm.h>
 
-
-	/* add the semaphore to the sem table if it doesn't exist
-	 * returns the added/existing semaphore address
+	/**
+	 *	@brief Add the semaphore to the sem table
+	 *
+	 *	If it does not exist, the semaphore is added to the table
+	 * 	
+	 *	@returns the index of the named semaphore in the semaphore table
 	 */
-	int add_entry(int value, char* name, int mode){
+	int add_entry(int value, const char* name, int mode){
 		int idx;
 
 		kprintf("nom du semaphore que l'on va ajouter : %s",name);
 
-		for (idx=0; idx<MAX_SEMAPHORES; idx++)
+		for (idx=0; idx<SEM_OPEN_MAX; idx++)
 		{
-			kprintf("checking for empty slot\n");
+			//kprintf("checking for empty slot\n");
 			if(semtable[idx].nbproc==0)
 			{
-				kprintf("nb proc = 0 : place vide trouvée \n");
+				//kprintf("nb proc = 0 : place vide trouvée \n");
 				semtable[idx].value=value;
-				kstrcpy(name,semtable[idx].name);
+				kstrcpy(semtable[idx].name,name);
 				semtable[idx].mode=mode;
 				semtable[idx].nbproc=0;
 				return idx;
@@ -32,14 +36,19 @@
 	}
 
 	/*
-	 * returns 0 if doesn't exists
-	 * returns non-zero otherwise
+	 * @brief checks the existance of a semaphore
+	 *		  in the semaphore table
+	 *		  
+	 * @returns the index of the semaphore in the
+	 *          semaphore table if it exists, -1
+	 *          otherwise
 	 */
-	int existance(char* semname){
+	int existance(const char* semname){
 		int idx;
 
-		for (idx=0; idx<MAX_SEMAPHORES; idx++)
+		for (idx=0; idx<SEM_OPEN_MAX; idx++)
 		{
+			kprintf("comparaison : %s et %s",semtable[idx].name,semname);
 			//if(s->name == semname){
 			if(!(kstrcmp(semtable[idx].name,semname))){
 				/* add process to semaphore  */
@@ -52,7 +61,7 @@
 
 
 /* TODO : verify char* adresses so the user doesn't break anything */
-	PUBLIC int sys_semopen(char* name, int oflag, ...){
+	PUBLIC int sys_semopen(const char* name, int oflag, ...){
 
  		mode_t mode;
  		int value;
@@ -98,8 +107,8 @@
 
  		semtable[idx].nbproc++;
 
+		kprintf("opening : %d proc using the sem called %s\n",semtable[idx].nbproc, semtable[idx].name);
  		/* idx est l'index du semaphore ouvert */
 
 		return idx;
 	}
-

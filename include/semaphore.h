@@ -6,19 +6,19 @@
 
 
 
+#include <limits.h>
 
 #ifndef _ASM_FILE_
 
-/* users are manipulating a fake semaphore */
-
-	/* user semaphore */
+	/* 
+	 *	sem_t is the type of semaphore
+	 *	manipulated by users
+	 */
 	typedef struct sem_t{
 
 		int idx;
 
 	}sem_t;
-
-
 
 sem_t* sem_open(char* name, int oflag, ...);
 int    sem_close(sem_t* sem);

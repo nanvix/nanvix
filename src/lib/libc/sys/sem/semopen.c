@@ -61,6 +61,5 @@ sem_t* sem_open(char* name, int oflag, ...)
 	s=malloc(sizeof(sem_t));
 	s->idx=ret;
 
-
 	return (s);
 }
