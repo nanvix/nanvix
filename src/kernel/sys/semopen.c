@@ -23,7 +23,7 @@
 		for (idx=0; idx<SEM_OPEN_MAX; idx++)
 		{
 			kprintf("checking for empty slot\n");
-			if(semtable[idx].nbproc==0)
+			if(semtable[idx].nbproc==0 && semtable[idx].name[0]=='\0')
 			{
 				kprintf("nb proc = 0 : place vide trouvée \n");
 				semtable[idx].value=value;
@@ -58,7 +58,7 @@
 		for (idx=0; idx<SEM_OPEN_MAX; idx++)
 		{
 			kprintf("comparaison : %s et %s",semtable[idx].name,semname);
-			//if(s->name == semname){
+			
 			if(!(kstrcmp(semtable[idx].name,semname))){
 				/* add process to semaphore  */
 				return idx;
@@ -69,9 +69,7 @@
 	}
 
 
-	/* TODO : 	ENOMEM :  There is insufficient memory for the creation of the new named semaphore.
-	 *			EACCES : The named semaphore exists and the permissions specified by oflag are denied, or the
-	 *					 named semaphore does not exist and permission to create the named semaphore is denied.
+	/* TODO : 
 	 *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
 	 *			EMFILE : Too many semaphore descriptors or file descriptors are currently in use by this process.
 	 */
@@ -91,7 +89,7 @@
  			 * and the semaphore name already exists
  			 * return an error
  			 */
- 			if(idx!=(-1))				/* if this name already exists */
+ 			if(idx!=(-1))	/* if this name already exists */
  			{
  			 	kprintf("name exists\n");
 
@@ -102,12 +100,21 @@
  					return SEM_FAILED;
  				}
 
- 				if ( !namevalid(name) )
+ 				if ( namevalid(name) ==(-1) )
  				{
+ 					kprintf("check");
  					/* sem name is not valid */
  					curr_proc->errno = EINVAL;
  					return SEM_FAILED;
  				}
+
+ 				/* Checking if there is at least WRITE or READ permissions */
+ 				if (!permission(semtable[idx].mode, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE|MAY_READ, 0))
+ 				{
+ 					curr_proc->errno = EACCES;
+ 					return SEM_FAILED;
+ 				}
+
  			}
  			else
  			{
