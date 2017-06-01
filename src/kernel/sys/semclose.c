@@ -1,22 +1,24 @@
 #include <sys/sem.h>
 #include <nanvix/klib.h>
+#include <semaphore.h>
 
-/* 
- *	@TODO : returns -1 if 
- * 	sem isn't a valid semaphore
+/**
+ * @brief close a semaphore for a given process
+ *		 
+ * @param	idx		semaphore index (in semaphore
+ *					table to close
  *
+ * @returns returns 0 in case of successful completion
+ *			returns SEM_FAILED otherwise
  */
-
-
-
 PUBLIC int sys_semclose(int idx)
 {
 	/* calling process finished using the semaphore */
 
 	/*	veryfing valid semaphore */
-	if(SEM_IS_VALID(idx))
+	if(!SEM_IS_VALID(idx))
 	{
-		return -1; /* not a valid semaphore */
+		return SEM_FAILED; /* not a valid semaphore */
 	}
 	else
 	{
@@ -39,6 +41,6 @@ PUBLIC int sys_semclose(int idx)
 		}
 
 	}
-	return 0; /* sucessful completion */
+	return 0; /* successful completion */
 
 }

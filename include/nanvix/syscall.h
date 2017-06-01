@@ -272,7 +272,7 @@
 	/* 	Create or opens a semaphore 
 	 *	Returns the idx of the opened semaphore
 	 */
-	EXTERN int sys_semopen(char* name, int oflag, ...);
+	EXTERN int sys_semopen(const char* name, int oflag, ...);
 
 	/* Close a semaphore */
 	EXTERN int sys_semclose(int idx);

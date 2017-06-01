@@ -1,11 +1,9 @@
-#include <string.h>
 #include <fcntl.h>
-#include <stdarg.h>	/*va_start ... */
+#include <stdarg.h>
 #include <sys/sem.h>
 #include <nanvix/klib.h>
 #include <semaphore.h>
 #include <errno.h>
-//maybe unecessary #include <sys/mm.h>
 
 	/**
 	 *	@brief Add the semaphore to the sem table
@@ -13,6 +11,8 @@
 	 *	If it does not exist, the semaphore is added to the table
 	 * 	
 	 *	@returns the index of the named semaphore in the semaphore table
+	 *			 in case of successful completion, SEM_FAILED otherwise
+	 *			
 	 */
 	int add_entry(int value, const char* name, int mode)
 	{
@@ -43,22 +43,20 @@
 		return SEM_FAILED; 
 	}
 
-	/*
+	/**
 	 * @brief checks the existance of a semaphore
 	 *		  in the semaphore table
 	 *		  
 	 * @returns the index of the semaphore in the
-	 *          semaphore table if it exists, -1
-	 *          otherwise
+	 *          semaphore table if it exists
+	 *          SEM_FAILED otherwise
 	 */
 	int existance(const char* semname)
 	{
 		int idx;
 
 		for (idx=0; idx<SEM_OPEN_MAX; idx++)
-		{
-			kprintf("comparaison : %s et %s",semtable[idx].name,semname);
-			
+		{			
 			if(!(kstrcmp(semtable[idx].name,semname))){
 				/* add process to semaphore  */
 				return idx;
@@ -69,9 +67,22 @@
 	}
 
 
-	/* TODO : 
+	/* TODO for error detection :
 	 *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
 	 *			EMFILE : Too many semaphore descriptors or file descriptors are currently in use by this process.
+	 */
+	
+	/**
+	 * @brief opens a semaphore
+	 *		 
+	 * @param	name 	Name of the semaphore
+	 *			oflag	Creation flags
+	 *			mode	User permissions
+	 *			value 	Semaphore value
+	 *
+	 * @returns the index of the semaphore in the
+	 *          semaphore table if it exists, -1
+	 *          otherwise
 	 */
 	PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	{

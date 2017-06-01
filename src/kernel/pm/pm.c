@@ -70,7 +70,7 @@ PUBLIC pid_t next_pid = 0;
 PUBLIC unsigned nprocs = 0;
 
 /* semtable init */
-PUBLIC ksem semtable[SEM_OPEN_MAX];
+PUBLIC struct ksem semtable[SEM_OPEN_MAX];
 
 
 /**

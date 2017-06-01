@@ -1,5 +1,4 @@
 #include <sys/sem.h>
-#include <string.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 
