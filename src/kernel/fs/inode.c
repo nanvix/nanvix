@@ -59,6 +59,8 @@ PRIVATE struct file_system_type *fileSystemTable [NR_FILE_SYSTEM] = {
 	NULL
 };
 
+/*Table of the mount point.	*/
+PRIVATE struct mountingPoint mountTable [NR_MOUNTING_POINT];
 
 /**
  * @brief Hash function for the inode cache.
@@ -69,8 +71,8 @@ PRIVATE struct file_system_type *fileSystemTable [NR_FILE_SYSTEM] = {
 /**
  * @brief Insert a file system in the fileSystemTable.
  */
-PUBLIC int fs_register( int nb , struct file_system_type * fs ){
-
+PUBLIC int fs_register( int nb , struct file_system_type * fs )
+{
 	if (nb >= NR_FILE_SYSTEM)
 		return (-EINVAL);
 	
@@ -82,6 +84,191 @@ PUBLIC int fs_register( int nb , struct file_system_type * fs ){
 	 fileSystemTable[nb] = fs;
 	
 	return (0);
+}
+
+/**
+ * @brief found a free spot in the mouting table
+ * 
+ * @returns the indice in mouting table of the free spot
+ */
+PRIVATE int available_mouting_point (void)
+{
+	for (int i=0; i<NR_MOUNTING_POINT; i++)
+	{
+		if (mountTable[i].free)
+			return i;
+	}
+	kprintf ("No more space on mountTable");
+	return -1;
+}
+
+/**
+ * @brief mount a device on a directory
+ * 
+ * @details insert a new mouting point in the mouting table
+ * 
+ * @returns return 0 in sucess, and 1 if something went wrong
+ *
+ *@ todo : their is a probleme is the function mount try to acess to the two same inode, 
+ *         do we have to check that we don't mount two diffrent device on the same directory
+ */
+PUBLIC int mount (char* device, char* mountPoint)
+{
+	struct inode *inode_root_fs;
+	struct inode *inode_mount;
+	int ind_mp;
+	struct file_system_type * fs;
+	superblock_t sb;
+
+	/*get a free mouting point in the mounting point table*/
+	ind_mp=available_mouting_point();
+
+	/* their is no more space available on the mounting point table*/
+	if ((ind_mp<0) ||(ind_mp >NR_MOUNTING_POINT)){
+		return 1;
+	}
+	/* get the root inode of the file systeme*/
+	inode_root_fs=inode_name(device);
+
+	/*Problem with root inode */
+	if (inode_root_fs==NULL)
+	{
+		kprintf("device inode not found\n");
+		return 1;
+	}
+
+	/*check if it's a device*/
+	if (!S_ISCHR(inode_root_fs->mode) && !S_ISBLK(inode_root_fs->mode))
+	{
+		kprintf ("what you provide is not a device\n");
+		goto error;
+	}
+	
+	/*get the inode of the mount point*/
+	inode_mount =inode_name(mountPoint);
+		
+	/*Problem with mount inode */
+	if (inode_mount==NULL)
+	{
+		kprintf("mount inode not found\n");
+		goto error;
+	}
+	/*Check if the mount inode is a directory*/
+	if (!S_ISDIR(inode_mount->mode))
+	{
+		kprintf("mount inode is not a directory\n");
+		goto error;
+	}
+
+	/*search witch file system is on the device*/
+	for(int i=0; i<NR_FILE_SYSTEM; i++){
+		if (fileSystemTable[i]!=NULL)
+		{
+			sb=superblock_read(inode_root_fs->dev);
+			if (sb!=NULL)
+			{
+				fs=fileSystemTable[i];
+				goto found;
+			}
+		}
+	}
+	kprintf("The file system of the device is not reconized\n");
+	goto error;
+
+found:
+	mountTable[ind_mp].mountPoint=mountPoint;
+	mountTable[ind_mp].dev=inode_root_fs->dev;
+	mountTable[ind_mp].fs= fs;
+	mountTable[ind_mp].no_inode_root_fs=inode_root_fs->num;
+	mountTable[ind_mp].no_inode_mount=inode_mount->num;
+	mountTable[ind_mp].free= 0;
+	inode_unlock(inode_root_fs);
+	inode_unlock(inode_mount);
+	return 0;
+error:
+	if (inode_mount != NULL)
+		inode_unlock(inode_mount);
+	if(inode_root_fs!= NULL)
+		inode_unlock(inode_root_fs);
+	return 1;
+}
+
+/**
+ * @brief unmount a device on a directory
+ * 
+ * @details remove a mouting point of the mouting table
+ * 
+ * @returns return 0 in sucess, and 1 if something went wrong
+ *
+ *@ todo : their is a probleme if the function umount try to acess to the two same inode
+ */
+
+PUBLIC int unmount (char * device , char * mountPoint){
+	struct inode *inode_root_fs;
+	struct inode *inode_mount;
+	int ind;
+		
+	/* get the root inode of the file systeme*/
+	inode_root_fs=inode_name(device);
+
+	/*Problem with root inode */
+	if (inode_root_fs==NULL)
+	{
+		kprintf("device inode not found\n");
+		return 1;
+	}
+
+	/*check if it's a device*/
+	if (!S_ISCHR(inode_root_fs->mode) && !S_ISBLK(inode_root_fs->mode))
+	{
+		kprintf ("what you provide is not a device\n");
+		goto error;
+	}
+	
+	/*get the inode of the mount point*/
+	inode_mount =inode_name(mountPoint);
+		
+	/*Problem with mount inode */
+	if (inode_mount==NULL)
+	{
+		kprintf("mount inode not found\n");
+		goto error;
+	}
+		
+	/*Check if the mount inode is a directory*/
+	if (!S_ISDIR(inode_mount->mode))
+	{
+		kprintf("mount inode is not a directory\n");
+		goto error;
+	}
+
+	/*look in the mounting table the mounting point to remove.*/
+
+	for (int i=0; i<NR_MOUNTING_POINT; i++)
+	{
+		if (!mountTable[i].free
+			&& mountTable[i].dev==inode_root_fs->dev
+			&& mountTable[i].no_inode_mount==inode_mount->num
+			&& mountTable[i].no_inode_root_fs==inode_root_fs->num)
+		{
+			ind=i;
+			goto found2;
+		}
+	}
+	kprintf("this mounting point does not exist in the mount table\n");
+	goto error;
+found2: 
+	mountTable[ind].free=1;
+	inode_unlock(inode_root_fs);
+	inode_unlock(inode_mount);
+	return 0;
+error:
+	if (inode_mount != NULL)
+		inode_unlock(inode_mount);
+	if(inode_root_fs!= NULL)
+		inode_unlock(inode_root_fs);
+	return 1;
+
 }
 
 /**
@@ -754,6 +941,19 @@ PUBLIC struct inode *inode_name(const char *pathname)
 }
 
 /**
+ * @brief initialize the mountable 
+ * 
+ * @details mark all the mount point of the mounting table to available
+ *         
+ */
+PRIVATE void init_mountTable(void)
+{
+	kprintf("Initialisation of the mountTable\n");
+	for (int i=0; i<NR_MOUNTING_POINT; i++)
+		mountTable[i].free=1;
+}
+
+/**
  * @brief Initializes the inode table.
  * 
  * @details Initializes the in-core inode table by marking all in-core inodes
@@ -781,4 +981,7 @@ PUBLIC void inode_init(void)
 
 	/*Initialize FileSystemTable*/
 	init_minix();
+
+	/*Initialize MountTable*/
+	init_mountTable();
 }

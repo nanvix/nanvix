@@ -346,5 +346,6 @@ PRIVATE struct file_system_type fs_minix = {
  */
 
 PUBLIC void init_minix (){
-	fs_register( MINIX , &fs_minix);
+	if (fs_register( MINIX , &fs_minix))
+		kpanic ("failed du register file system minix");
 }

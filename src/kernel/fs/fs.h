@@ -137,10 +137,12 @@
 	 * @brief Mounting point.
 	 */
 	struct mountingPoint {
-		char * device;			/**< Name of the devices							*/
+		dev_t dev;			/**< Name of the devices							*/
 		char * mountPoint;		/**< Mount point 									*/
 		int no_inode_mount; 	/**< Number of the inode of the mounting point 		*/
 		int no_inode_root_fs;	/**< Number of the inode root of the file system 	*/
+		int free;
+		struct file_system_type * fs;
 	};
 
 	/**
