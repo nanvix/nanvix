@@ -18,27 +18,23 @@
 	{
 		int idx;
 
-		kprintf("nom du semaphore que l'on va ajouter : %s",name);
-
 		for (idx=0; idx<SEM_OPEN_MAX; idx++)
 		{
-			kprintf("checking for empty slot\n");
 			if(semtable[idx].nbproc==0 && semtable[idx].name[0]=='\0')
 			{
-				kprintf("nb proc = 0 : place vide trouvée \n");
 				semtable[idx].value=value;
 				kstrcpy(semtable[idx].name,name);
 				semtable[idx].mode=mode;
 				semtable[idx].nbproc=0;
-				/* semaphore uid is set to the euid of the calling process */
+				/* Semaphore uid is set to the euid of the calling process */
 				semtable[idx].uid=curr_proc->euid;
-				/* semaphore gid is set to the egid of the calling process */
+				/* Semaphore gid is set to the egid of the calling process */
 				semtable[idx].gid=curr_proc->egid;
 				return idx;
 			}
 		}
 
-		/* semaphore table full */
+		/* Semaphore table full */
 		curr_proc->errno = ENFILE;
 		return SEM_FAILED; 
 	}
@@ -58,7 +54,6 @@
 		for (idx=0; idx<SEM_OPEN_MAX; idx++)
 		{			
 			if(!(kstrcmp(semtable[idx].name,semname))){
-				/* add process to semaphore  */
 				return idx;
 			}
 		}
@@ -66,12 +61,6 @@
 		return -1;
 	}
 
-
-	/* TODO for error detection :
-	 *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
-	 *			EMFILE : Too many semaphore descriptors or file descriptors are currently in use by this process.
-	 */
-	
 	/**
 	 * @brief opens a semaphore
 	 *		 
@@ -84,9 +73,12 @@
 	 *          semaphore table if it exists, -1
 	 *          otherwise
 	 */
+	/* TODO for error detection :
+	 *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
+	 *			EMFILE : Too many semaphore descriptors or file descriptors are currently in use by this process.
+	 */
 	PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	{
-
  		mode_t mode;
  		int value;
  		va_list arg;	/* Variable argument */
@@ -96,25 +88,18 @@
 
  		if(oflag & O_CREAT)
  		{
- 			/* if O_CREAT and O_EXCL flags are set
- 			 * and the semaphore name already exists
- 			 * return an error
- 			 */
- 			if(idx!=(-1))	/* if this name already exists */
- 			{
- 			 	kprintf("name exists\n");
 
+ 			if(idx!=(-1))	/* This semaphore already exists */
+ 			{
  				if (oflag & O_EXCL)
  				{
- 					/* O_EXCL flag result in an error if sem exists */
  					curr_proc->errno = EEXIST;
  					return SEM_FAILED;
  				}
 
  				if ( namevalid(name) ==(-1) )
  				{
- 					kprintf("check");
- 					/* sem name is not valid */
+ 					/* Name invalid */
  					curr_proc->errno = EINVAL;
  					return SEM_FAILED;
  				}
@@ -129,9 +114,7 @@
  			}
  			else
  			{
- 				kprintf("name doesn't exist\n");
-
-	 			/* Semaphore creation if doesn't 'exist */
+	 			/* Semaphore creation if it does not exist */
 	 			va_start(arg, oflag);
 	 			mode = va_arg(arg, mode_t);
 	 			value = va_arg(arg, int);
@@ -139,7 +122,7 @@
 
  				if ( !SEM_VALID_VALUE(value) )
  				{
- 					/* value greater than maximum */
+ 					/* Value greater than maximum */
  					curr_proc->errno = EINVAL;
  					return SEM_FAILED;
  				}
@@ -158,9 +141,6 @@
  		}
 
  		semtable[idx].nbproc++;
-
-		kprintf("opening : %d proc using the sem called %s\n",semtable[idx].nbproc, semtable[idx].name);
- 		/* idx est l'index du semaphore ouvert */
 
 		return idx;
 	}

@@ -13,35 +13,28 @@
  */
 PUBLIC int sys_semclose(int idx)
 {
-	/* calling process finished using the semaphore */
 
-	/*	veryfing valid semaphore */
 	if(!SEM_IS_VALID(idx))
 	{
-		kprintf("semaphore isn't valid");
-		return SEM_FAILED; /* not a valid semaphore */
+		/* Not a valid semaphore */
+		return SEM_FAILED;
 	}
 	else
 	{
-		semtable[idx].nbproc--; /* 1 less proc using it */
-		kprintf("closing : %d proc using the sem called %s\n",semtable[idx].nbproc, semtable[idx].name);
+		semtable[idx].nbproc--;
 		
-		/* 	if no more process is
-		 * 	using the semaphore
-		 * 	then deletes it
+
+		/*
+		 * 	The semaphore is no longer accessible when 0 process use it
+		 * 	and only if it has been unlinked once 
 		 */
-		/* when all processes that have opened the semaphore close it, the semaphore is no longer accessible.
-		 * The semaphore is no longer accessible when 0 process use it
-		 * only if it has been unlinked once 
-		 */
-		/* reminder : change unlinked */
 		if(semtable[idx].nbproc==0 && semtable[idx].unlinked==0)
 		{
-			kprintf("No one use the sem anymore : removing it\n");
 			freesem(idx);
 		}
 
 	}
-	return 0; /* successful completion */
+
+	return 0;	/* successful completion */
 
 }

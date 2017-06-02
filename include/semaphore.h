@@ -2,10 +2,7 @@
 
 #ifndef _ASM_FILE_
 
-	/* 
-	 *	sem_t is the type of semaphore
-	 *	manipulated by users
-	 */
+	/* User semaphore */
 	typedef struct sem_t
 	{
 

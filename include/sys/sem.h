@@ -12,7 +12,7 @@
 
 #ifndef _ASM_FILE_
 
-	/* kernel semaphore */
+	/* Kernel semaphores */
 	struct ksem {	
 		int value;                   	/* value of the semaphore                    */
 		char name[MAX_SEM_NAME];    	/* name of the named semaphore               */
@@ -23,12 +23,13 @@
 		gid_t gid;              		/* Semaphore Group idx               */
 	};
 
-	/* Forward definitions. */
+	/* Semaphores table */
 	extern struct ksem semtable[SEM_OPEN_MAX];
 
 	/* Frees a semaphore */
 	int freesem(int idx);
 
+	/* Verify if a semaphore name is valid */
 	int namevalid(const char* name);
 
 #endif
