@@ -357,12 +357,30 @@ static int sched_test2(void)
 
 static int sem_test(void)
 {
-	sem_t* sem;
-	//if(sem){}
-	sem = sem_open("bonjour\0", O_CREAT, 0,4);
-	printf("nom du semaphore : %d", (sem->idx));
-	/*if(sem){}
-	printf("Semaphore fields :\nvalue : 	%d\nname : 		%s\nmode :		%d\nnbproc : 	%d\nunlinked :	%d\n",sem->value, sem->name, sem->mode, sem->nbproc, sem->unlinked);*/
+	if(fork()==0){
+		/* child */
+		printf("CHILD\n");
+		sem_t* sem1;
+		sem1 = sem_open("bonjour\0", O_CREAT, 0777,4);
+		printf("child nom du semaphore : %d", (sem1->idx));
+		sem_close(sem1);
+	}
+	else{
+		/* father */
+		printf("FATHER\n");
+		sem_t *sem2, *sem3, *sem4;
+		sem2 = sem_open("bonjour\0", O_CREAT, 0777,4);
+		sem4 = sem_open("bonjour\0", O_CREAT);
+		sem3 = sem_open("salut\0", O_CREAT, 0777,4);
+
+		printf("father nom du semaphore : %d %d %d", (sem2->idx),(sem3->idx),sem4->idx);
+
+		sem_close(sem2);
+		sem_close(sem2);
+		sem_close(sem4);
+		sem_close(sem3);
+	}
+
 	return (0);
 }
 
