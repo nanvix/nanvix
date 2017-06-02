@@ -121,6 +121,9 @@ PUBLIC void kmain(const char* cmdline)
 	pid_t pid;         /* Child process ID. */
 	struct process *p; /* Working process.  */
 	
+	if(!kstrcmp(cmdline,"debug"))
+		dbg_init();
+
 	/* Initialize system modules. */
 	dev_init();
 	mm_init();
@@ -129,10 +132,8 @@ PUBLIC void kmain(const char* cmdline)
 	
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 
-	/* Initialize debugging driver. */
-	if(!kstrcmp(cmdline,"debug"))
-		dbg_init();
-	
+	dbg_execute();
+
 	/* Spawn init process. */
 	if ((pid = fork()) < 0)
 		kpanic("failed to fork idle process");
