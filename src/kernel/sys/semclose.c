@@ -18,6 +18,7 @@ PUBLIC int sys_semclose(int idx)
 	/*	veryfing valid semaphore */
 	if(!SEM_IS_VALID(idx))
 	{
+		kprintf("semaphore isn't valid");
 		return SEM_FAILED; /* not a valid semaphore */
 	}
 	else

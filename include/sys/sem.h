@@ -2,7 +2,7 @@
 #include <sys/types.h>
 
 #define SEM_IS_VALID(idx) \
-		(idx>=0 && idx<SEM_OPEN_MAX)
+		( (idx>=0 && idx<SEM_OPEN_MAX) && semtable[idx].name[0]!='\0')
 
 #define SEM_IS_FREE(idx) \
 		(semtable[idx].nbproc=-1)
@@ -10,9 +10,7 @@
 #define SEM_VALID_VALUE(val) \
 		(val<=SEM_VALUE_MAX)
 
-
 #ifndef _ASM_FILE_
-
 
 	/* kernel semaphore */
 	struct ksem {	
