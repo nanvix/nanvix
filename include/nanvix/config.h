@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -34,18 +35,19 @@
 	 * @brief Kernel configuration.
 	 */
 	/**@{*/
-	#define MULTIUSER                    0 /**< Multiuser support?              */
-	#define KERNEL_VERSION           "2.0" /**< Kernel version.                 */
-	#define PROC_MAX                    64 /**< Maximum number of process.      */
-	#define PROC_SIZE_MAX  (MEMORY_SIZE/8) /**< Maximum process size.           */
-	#define RAMDISK_SIZE          0x400000 /**< RAM disks size.                 */
-	#define INITRD_SIZE           0x140000 /**< Init RAM disk size.             */
-	#define NR_INODES                 1024 /**< Number of in-core inodes.       */
-	#define NR_SUPERBLOCKS               4 /**< Number of in-core super blocks. */
-	#define ROOT_DEV                0x0001 /**< Root device number.             */
-	#define NR_FILES                   256 /**< Number of opened files.         */
-	#define NR_REGIONS                 128 /**< Number of memory regions.       */
-	#define NR_BUFFERS                 256 /**< Number of block buffers.        */
+	#define MULTIUSER                    0 /**< Multiuser support?                 */
+	#define KERNEL_VERSION           "2.0" /**< Kernel version.                    */
+	#define PROC_MAX                    64 /**< Maximum number of process.         */
+	#define PROC_SIZE_MAX  (MEMORY_SIZE/8) /**< Maximum process size.              */
+	#define RAMDISK_SIZE          0x400000 /**< RAM disks size.                    */
+	#define INITRD_SIZE           0x140000 /**< Init RAM disk size.                */
+	#define NR_INODES                 1024 /**< Number of in-core inodes.          */
+	#define NR_SUPERBLOCKS               4 /**< Number of in-core super blocks.    */
+	#define ROOT_DEV                0x0001 /**< Root device number.                */
+	#define NR_FILES                   256 /**< Number of opened files.            */
+	#define NR_REGIONS                 128 /**< Number of memory regions.          */
+	#define NR_BUFFERS                 256 /**< Number of block buffers.           */
+	#define DEBUG_MAX		    64 /**< Maximum number of debug functions. */
 	/**@}*/
 	
 #endif /* CONFIG_H_ */

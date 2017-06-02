@@ -28,7 +28,11 @@
 
 	#include <nanvix/klib.h>
 
+	typedef void (*debug_fn)(void);
+	
 	/* Forward definitions */
 	EXTERN void dbg_init(void);
+	EXTERN void dbg_register(debug_fn fn);
+	EXTERN void dbg_execute();
 
 #endif /* NANVIX_DEBUG_H */
