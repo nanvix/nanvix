@@ -269,12 +269,10 @@
 	/* Forward definitions. */
 	EXTERN time_t sys_time(time_t *);
 
-	/* 	Create or opens a semaphore 
-	 *	Returns the idx of the opened semaphore
-	 */
+	/* Creates or opens a semaphore */
 	EXTERN int sys_semopen(const char* name, int oflag, ...);
 
-	/* Close a semaphore */
+	/* Closes a semaphore */
 	EXTERN int sys_semclose(int idx);
 
 #endif /* _ASM_FILE_ */
