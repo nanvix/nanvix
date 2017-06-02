@@ -30,6 +30,9 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include <limits.h>
+#include <sys/sem.h>
+#include <limits.h>
+
 
 /**
  * @brief Idle process page directory.
@@ -65,6 +68,10 @@ PUBLIC pid_t next_pid = 0;
  * @brief Current number of processes in the system.
  */
 PUBLIC unsigned nprocs = 0;
+
+/* semtable init */
+PUBLIC struct ksem semtable[SEM_OPEN_MAX];
+
 
 /**
  * @brief Initializes the process management system.
@@ -124,6 +131,17 @@ PUBLIC void pm_init(void)
 	IDLE->chain = NULL;
 	
 	nprocs++;
-	
+
+	/* initializing semaphore table */
+	for(int i=0;i<OPEN_MAX;i++)
+	{
+		semtable[i].value=0;
+		(semtable[i].name)[0]='\0';
+		semtable[i].mode=0;
+		semtable[i].nbproc=0;
+		semtable[i].unlinked=0;
+	}
+
+
 	enable_interrupts();
 }
