@@ -1,6 +1,7 @@
 /*
  * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *              2017-2017 Romane Gallier <romanegallier@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -48,6 +49,7 @@
 	#define NR_REGIONS                 128 /**< Number of memory regions.          */
 	#define NR_BUFFERS                 256 /**< Number of block buffers.           */
 	#define NR_MOUNTING_POINT           64 /**< Maximum nunber of mounting points. */
+	#define DEBUG_MAX                   64 /**< Maximum number of debug functions. */
 	/**@}*/
 	
 #endif /* CONFIG_H_ */

@@ -39,6 +39,8 @@ doc/*-kernel
 *.out
 *.dvi
 *.ini
+*.iso
+nanvix-iso/*
 
 # ISO Images
 nanvix.iso
