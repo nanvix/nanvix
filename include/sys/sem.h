@@ -32,4 +32,7 @@
 	/* Verify if a semaphore name is valid */
 	int namevalid(const char* name);
 
+	/* Give the index of the semaphore if it exists */
+	int existance(const char* semname);
+
 #endif
