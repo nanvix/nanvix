@@ -57,16 +57,15 @@ int add_entry(int value, const char* name, int mode)
  */
 PUBLIC int sys_semopen(const char* name, int oflag, ...)
 {
-		mode_t mode;
-		int value;
-		va_list arg;	/* Variable argument */
-		int idx;		/* Index of the opened semaphore */
+	mode_t mode;
+	int value;
+	va_list arg;	/* Variable argument */
+	int idx;		/* Index of the opened semaphore */
 
 	idx = existance(name);
 
 		if(oflag & O_CREAT)
 		{
-
 			if(idx!=(-1))	/* This semaphore already exists */
 			{
 				if (oflag & O_EXCL)

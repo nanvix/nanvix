@@ -372,7 +372,7 @@ static int sem_test(void)
 		sem2 = sem_open("bonjour\0", O_CREAT, 0777,4);
 		sem4 = sem_open("bonjour\0", O_CREAT);
 		sem3 = sem_open("salut\0", O_CREAT, 0777,4);
-
+		sem_unlink("bonjour");
 		printf("father nom du semaphore : %d %d %d", (sem2->idx),(sem3->idx),sem4->idx);
 
 		sem_close(sem2);
