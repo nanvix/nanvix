@@ -27,13 +27,13 @@ PUBLIC int sys_semunlink(const char *name)
 	else
 	{
 		/* Checking WRITE permission */
-		if (!permission(semtable[idx].mode, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0))
+		if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0))
 		{
 			curr_proc->errno = EACCES;
 			return SEM_FAILED;
 		}
 
-		semtable[idx].unlinked=1;
+		semtable[idx].state|=UNLINKED;
 	}
 
 	return 0;	/* Successful completion */
