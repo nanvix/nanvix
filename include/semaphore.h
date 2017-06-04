@@ -12,6 +12,7 @@
 
 	sem_t* sem_open(char* name, int oflag, ...);
 	int    sem_close(sem_t* sem);
+	int    sem_unlink(const char *name);
 
 	/*
 	int    sem_destroy(sem_t *);

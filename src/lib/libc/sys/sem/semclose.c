@@ -1,4 +1,5 @@
 #include <nanvix/syscall.h>
+#include <stdlib.h>
 
 /**
  * 	@brief closes a semaphore for calling process
@@ -19,12 +20,7 @@ int sem_close(sem_t* sem)
 		  "b" (sem->idx)
 	);
 
-	/* 	
-	 *	making the semaphore unavailable for
-	 * 	the calling process by setting
-	 *	error index : -1
-	 */
-	sem->idx=-1;
+	free(sem);
 	
 	return (ret);
 }

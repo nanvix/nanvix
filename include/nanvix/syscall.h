@@ -34,7 +34,7 @@
 	#include <semaphore.h>
 
 	/* Number of system calls. */
-	#define NR_SYSCALLS 52
+	#define NR_SYSCALLS 53
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -88,7 +88,8 @@
  	#define NR_time	    48
  	#define NR_mount    49
   	#define NR_semopen  50
-	#define NR_semclose  51
+	#define NR_semclose 51
+	#define NR_semunlink 52
 
 
 #ifndef _ASM_FILE_
@@ -280,6 +281,10 @@
 
 	/* Closes a semaphore */
 	EXTERN int sys_semclose(int idx);
+
+	/* Unlinks a semaphore */
+	EXTERN int sys_semunlink(const char *name);
+
 
 #endif /* _ASM_FILE_ */
 

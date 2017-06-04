@@ -1,6 +1,7 @@
 #include <sys/sem.h>
 #include <nanvix/klib.h>
 #include <semaphore.h>
+#include <errno.h>
 
 /**
  * @brief close a semaphore for a given process
@@ -17,6 +18,7 @@ PUBLIC int sys_semclose(int idx)
 	if(!SEM_IS_VALID(idx))
 	{
 		/* Not a valid semaphore */
+		curr_proc->errno = EINVAL;
 		return SEM_FAILED;
 	}
 	else
@@ -28,7 +30,7 @@ PUBLIC int sys_semclose(int idx)
 		 * 	The semaphore is no longer accessible when 0 process use it
 		 * 	and only if it has been unlinked once 
 		 */
-		if(semtable[idx].nbproc==0 && semtable[idx].unlinked==0)
+		if(semtable[idx].nbproc==0 && semtable[idx].unlinked==1)
 		{
 			freesem(idx);
 		}

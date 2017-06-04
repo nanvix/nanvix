@@ -40,28 +40,6 @@ int add_entry(int value, const char* name, int mode)
 }
 
 /**
- * @brief checks the existance of a semaphore
- *		  in the semaphore table
- *		  
- * @returns the index of the semaphore in the
- *          semaphore table if it exists
- *          SEM_FAILED otherwise
- */
-int existance(const char* semname)
-{
-	int idx;
-
-	for (idx=0; idx<SEM_OPEN_MAX; idx++)
-	{			
-		if(!(kstrcmp(semtable[idx].name,semname))){
-			return idx;
-		}
-	}
-
-	return -1;
-}
-
-/**
  * @brief opens a semaphore
  *		 
  * @param	name 	Name of the semaphore

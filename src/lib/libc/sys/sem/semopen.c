@@ -36,7 +36,7 @@ sem_t* sem_open(char* name, int oflag, ...)
 	int value;	 /* semaphore value 	*/
 	va_list arg; /* Variable argument. 	*/
 	
-	value = -1;
+	value = 0;
 	mode = 0;
 
 	if (oflag & O_CREAT)
