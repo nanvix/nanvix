@@ -24,7 +24,7 @@ int add_entry(int value, const char* name, int mode)
 		{
 			semtable[idx].value=value;
 			kstrcpy(semtable[idx].name,name);
-			semtable[idx].mode=mode;
+			semtable[idx].state=mode;
 			semtable[idx].nbproc=0;
 			/* Semaphore uid is set to the euid of the calling process */
 			semtable[idx].uid=curr_proc->euid;
@@ -83,7 +83,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 				}
 
 				/* Checking if there is at least WRITE or READ permissions */
-				if (!permission(semtable[idx].mode, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE|MAY_READ, 0))
+				if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE|MAY_READ, 0))
 				{
 					curr_proc->errno = EACCES;
 					return SEM_FAILED;

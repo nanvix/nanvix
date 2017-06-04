@@ -18,9 +18,8 @@ int freesem(int idx)
 
 	semtable[idx].value=0;
 	(semtable[idx].name)[0]='\0';
-	semtable[idx].mode=0;
+	semtable[idx].state=0;
 	semtable[idx].nbproc=0;
-	semtable[idx].unlinked=0;
 
 	return 0;
 }
