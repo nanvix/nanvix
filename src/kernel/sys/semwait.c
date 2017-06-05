@@ -21,15 +21,13 @@ PUBLIC int sys_semwait(int idx)
 		return SEM_FAILED;
 	}
 
-	if (semtable[idx].value<=0)
+
+	while (semtable[idx].value<=0)
 	{
-		sleep(semwaiters,0);;
-	}
-	else
-	{
-		semtable[idx].value--;
+		sleep(semwaiters,curr_proc->priority);
 	}
 
+	semtable[idx].value--;
 
 	return 0;	/* Successful completion */
 }

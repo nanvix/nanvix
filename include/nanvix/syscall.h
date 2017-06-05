@@ -287,10 +287,10 @@
 	EXTERN int sys_semunlink(const char *name);
 
 	/* Waiting for a semaphore */
-	EXTERN int sys_semwait(sem_t *sem);
+	EXTERN int sys_semwait(int idx);
 
 	/* Unlock a semaphore */
-	EXTERN int sys_sempost(sem_t *sem);
+	EXTERN int sys_sempost(int idx);
 
 #endif /* _ASM_FILE_ */
 

@@ -23,14 +23,14 @@ PUBLIC int sys_sempost(int idx)
 	}
 	else
 	{
-		if (semtable[idx].value>=0)
+		semtable[idx].value++;
+
+		if (semtable[idx].value>0)
 		{
-			/* blocking the calling process */
+			kprintf("sem val : %d, waking up processes\n",semtable[idx].value);
+			wakeup(semwaiters);
 		}
-
 	}
-
-	semtable[idx].value++;
 
 	return 0;	/* successful completion */
 }

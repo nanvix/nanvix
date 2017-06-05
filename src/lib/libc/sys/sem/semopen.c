@@ -29,7 +29,7 @@
  * @brief Performs operations in a semaphore.
  */
 
-sem_t* sem_open(char* name, int oflag, ...)
+sem_t* sem_open(const char* name, int oflag, ...)
 {	
 	int ret;  /* Return value.		*/
 	mode_t mode; /* Creation mode.		*/
@@ -54,9 +54,8 @@ sem_t* sem_open(char* name, int oflag, ...)
 		  "b" (name),
 		  "c" (oflag),
 		  "d" (mode),
-		  "S" (value)
+		  "D" (value)
 	);
-
 	sem_t* s;
 	s=malloc(sizeof(sem_t));
 	s->idx=ret;
