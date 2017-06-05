@@ -357,31 +357,44 @@ static int sched_test2(void)
 
 static int sem_test(void)
 {
+	unsigned long i=0;
+	//long z=0;
+	float x=1.3232;
+
 	if(fork()==0){
 		/* child */
-		printf("CHILD\n");
-		sem_t* sem1;
-		sem1 = sem_open("bonjour\0", O_CREAT, 0777,0);
-		printf("child nom du semaphore : %d", (sem1->idx));
-		sem_wait(sem1);
-		//sem_close(sem1);
+		printf("child \n");
+		sem_t* sem2;
+		sem2 = sem_open("bonjour\0", O_CREAT, 0777,0);
+
+		printf("child sleeping now\n");
+		sem_wait(sem2);
+		printf("child woken up\n");
+
+
+		
 	}
 	else{
 		/* father */
-		printf("FATHER\n");
-		sem_t *sem2;
-		sem2 = sem_open("bonjour\0", O_CREAT, 0777,0);
-		//sem4 = sem_open("bonjour\0", O_CREAT);
-		//sem3 = sem_open("salut\0", O_CREAT, 0777,2);
-		//sem_unlink("bonjour");
-		sem_wait(sem2);
+		printf("father \n");
+		sem_t* sem1;
+		sem1 = sem_open("bonjour\0", O_CREAT, 0777,0);
 
-		//sem_wait(sem2);
 
-		printf("father nom du semaphore : %d ", (sem2->idx));
 
-		sem_close(sem2);
-		//sem_close(sem2);
+		for( i = 0 ; i<99999999;i++)
+		{
+			x=x*0.451;
+
+		}		
+
+		printf("%f",x);
+		printf("%li\n",i);
+
+		printf("waking the child \n");
+		sem_post(sem1);
+
+
 
 	}
 

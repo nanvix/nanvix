@@ -21,7 +21,6 @@ PUBLIC int sys_semwait(int idx)
 		return SEM_FAILED;
 	}
 
-
 	while (semtable[idx].value<=0)
 	{
 		sleep(semwaiters,curr_proc->priority);

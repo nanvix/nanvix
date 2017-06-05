@@ -64,60 +64,60 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 
 	idx = existance(name);
 
-		if(oflag & O_CREAT)
+	if(oflag & O_CREAT)
+	{
+		if(idx!=(-1))	/* This semaphore already exists */
 		{
-			if(idx!=(-1))	/* This semaphore already exists */
+			if (oflag & O_EXCL)
 			{
-				if (oflag & O_EXCL)
-				{
-					curr_proc->errno = EEXIST;
-					return SEM_FAILED;
-				}
-
-				if ( namevalid(name) ==(-1) )
-				{
-					/* Name invalid */
-					curr_proc->errno = EINVAL;
-					return SEM_FAILED;
-				}
-
-				/* Checking if there is at least WRITE or READ permissions */
-				if (!permission(semtable[idx].mode, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE|MAY_READ, 0))
-				{
-					curr_proc->errno = EACCES;
-					return SEM_FAILED;
-				}
-
+				curr_proc->errno = EEXIST;
+				return SEM_FAILED;
 			}
-			else
+
+			if ( namevalid(name) ==(-1) )
 			{
- 			/* Semaphore creation if it does not exist */
- 			va_start(arg, oflag);
- 			mode = va_arg(arg, mode_t);
- 			value = va_arg(arg, int);
- 			va_end(arg);
-
-				if ( !SEM_VALID_VALUE(value) )
-				{
-					/* Value greater than maximum */
-					curr_proc->errno = EINVAL;
-					return SEM_FAILED;
-				}
-
-				idx=add_entry (value,name,mode);
+				/* Name invalid */
+				curr_proc->errno = EINVAL;
+				return SEM_FAILED;
 			}
+
+			/* Checking if there is at least WRITE or READ permissions */
+			if (!permission(semtable[idx].mode, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE|MAY_READ, 0))
+			{
+				curr_proc->errno = EACCES;
+				return SEM_FAILED;
+			}
+
 		}
 		else
 		{
-			if(idx==(-1))
+			/* Semaphore creation if it does not exist */
+			va_start(arg, oflag);
+			mode = va_arg(arg, mode_t);
+			value = va_arg(arg, int);
+			va_end(arg);
+
+			if ( !SEM_VALID_VALUE(value) )
 			{
-				/* O_CREAT not set and sem does not exist */
-				curr_proc->errno = ENOENT;
+				/* Value greater than maximum */
+				curr_proc->errno = EINVAL;
 				return SEM_FAILED;
 			}
-		}
 
-		semtable[idx].nbproc++;
+			idx=add_entry (value,name,mode);
+		}
+	}
+	else
+	{
+		if(idx==(-1))
+		{
+			/* O_CREAT not set and sem does not exist */
+			curr_proc->errno = ENOENT;
+			return SEM_FAILED;
+		}
+	}
+
+	semtable[idx].nbproc++;
 
 	return idx;
 }
