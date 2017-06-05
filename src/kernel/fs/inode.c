@@ -103,6 +103,21 @@ PRIVATE int available_mouting_point (void)
 }
 
 /**
+ * @brief search if an inode is present in the mouting table as an mouting point
+ * 
+ * @returns return a pointeur to the mouting point or NULL
+ */
+PRIVATE struct mountingPoint * belong_mounting_table(int i_num)
+{	
+	for (int i=0; i<NR_MOUNTING_POINT; i++)
+	{
+		if (!mountTable[i].free && mountTable[i].no_inode_mount==i_num)
+			return &mountTable[i];
+	}
+	return NULL;
+}
+
+/**
  * @brief mount a device on a directory
  * 
  * @details insert a new mouting point in the mouting table
@@ -157,6 +172,13 @@ PUBLIC int mount (char* device, char* mountPoint)
 	if (!S_ISDIR(inode_mount->mode))
 	{
 		kprintf("mount inode is not a directory\n");
+		goto error;
+	}
+
+	/*Check if the mount inode is already in the mountable*/
+	if (belong_mounting_table(inode_mount->num)!=NULL)
+	{
+		kprintf("an other device is already mount on this directory\n");
 		goto error;
 	}
 
