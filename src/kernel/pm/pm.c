@@ -72,6 +72,9 @@ PUBLIC unsigned nprocs = 0;
 /* semtable init */
 PUBLIC struct ksem semtable[SEM_OPEN_MAX];
 
+/* Processes waiting for a semaphore */
+PUBLIC struct process* semwaiters[PROC_MAX];
+
 
 /**
  * @brief Initializes the process management system.

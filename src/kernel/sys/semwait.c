@@ -23,10 +23,13 @@ PUBLIC int sys_semwait(int idx)
 
 	if (semtable[idx].value<=0)
 	{
-		/* blocking the calling process */
+		sleep(semwaiters,0);;
+	}
+	else
+	{
+		semtable[idx].value--;
 	}
 
-	semtable[idx].value--;
 
 	return 0;	/* Successful completion */
 }

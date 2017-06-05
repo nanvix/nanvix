@@ -1,5 +1,7 @@
 #include <limits.h>
 #include <sys/types.h>
+#include <nanvix/config.h>
+#include <nanvix/pm.h>
 
 #define SEM_IS_VALID(idx) \
 		( (idx>=0 && idx<SEM_OPEN_MAX) && semtable[idx].name[0]!='\0')
@@ -13,7 +15,7 @@
 #ifndef _ASM_FILE_
 
 	/* Kernel semaphores */
-	struct ksem {	
+	struct ksem {
 		int value;                   	/* value of the semaphore                    */
 		char name[MAX_SEM_NAME];    	/* name of the named semaphore               */
 		int mode;                   	/* permissions                               */
@@ -25,6 +27,8 @@
 
 	/* Semaphores table */
 	extern struct ksem semtable[SEM_OPEN_MAX];
+
+	extern struct process* semwaiters[PROC_MAX];
 
 	/* Frees a semaphore */
 	int freesem(int idx);
