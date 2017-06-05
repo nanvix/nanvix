@@ -138,6 +138,8 @@
 	EXTERN struct inode *inode_dname(const char *, const char **);
 	EXTERN struct inode *inode_name(const char *);
 	EXTERN struct inode *inode_pipe(void);
+	EXTERN int mount (char*, char*);
+	EXTERN int unmount (char*, char*);
 
 /*============================================================================*
  *                            Super Block Library                             *

@@ -319,6 +319,33 @@ found:
 	
 error0:
 	superblock_unlock(sb);
-	return (0);
+	return (1);
 }
 
+PRIVATE struct super_operations so_minix = {
+		&inode_read_minix, 
+		&inode_write_minix,
+		&inode_free_minix,
+		&inode_truncate_minix,
+		&inode_alloc_minix,
+		NULL,
+		NULL,
+		&superblock_put,
+		&superblock_put,
+		&init_minix
+};
+
+PRIVATE struct file_system_type fs_minix = {
+	NULL,
+	&so_minix,
+	"minix"
+};
+
+/**
+ * @brief initialise the file system in the virtual file system.
+ */
+
+PUBLIC void init_minix (){
+	if (fs_register( MINIX , &fs_minix))
+		kpanic ("failed du register file system minix");
+}

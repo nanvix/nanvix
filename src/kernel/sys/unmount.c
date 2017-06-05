@@ -1,7 +1,7 @@
 /*
  * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *              2017-2017 Romane Gallier <romanegallier@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
  * 
  * Nanvix is free software; you can redistribute it and/or modify
@@ -18,12 +18,33 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <nanvix/const.h>
+#include <nanvix/fs.h>
+#include <nanvix/klib.h>
+#include <errno.h>
 
-#ifndef _SYS_MOUNT_H
-#define _SYS_MOUNT_H
+/**
+ * Mounts a file system.
+ *
+ * @param device  Device name.
+ * @param target  Target directory.
+ */
+PUBLIC int sys_unmount(const char *device, const char *target)
+{
+	char *kdevice;
+	char *ktarget;
 
-	/* Forward definitions. */
-	extern int mount (const char *, const char *);
-	extern int unmount (const char *, const char *);
+	/* Get device name. */
+	if ((kdevice = getname(device)) == NULL)
+		return (curr_proc->errno);
+	
+	/* Get target directory. */
+	if ((ktarget = getname(target)) == NULL)
+		return (curr_proc->errno);
 
-#endif /* _SYS_MOUNT_H */
+	kprintf("fs: I should unmount %s on %s", ktarget, kdevice);
+	return unmount(kdevice,ktarget);
+
+	//kprintf("fs: unmount system call not implemented");
+	//return (-ENOSYS);
+}

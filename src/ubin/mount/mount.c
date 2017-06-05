@@ -47,8 +47,8 @@ int main(int argc, char *const argv[])
 	destination_dir= argv[2];
 
 	printf ("Call of the system call mount\n");
-	int i =mount( device, destination_dir);
-	if (i<0){
+	
+	if (mount( device, destination_dir)){
 		printf ("The mounting failed\n");
 	}
 	else 

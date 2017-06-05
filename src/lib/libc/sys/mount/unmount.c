@@ -18,12 +18,34 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <nanvix/syscall.h>
+#include <errno.h>
 
-#ifndef _SYS_MOUNT_H
-#define _SYS_MOUNT_H
+/**
+ * Mounts a file system.
+ *
+ * @param device  Device name.
+ * @param target  Target directory.
+ */
+int unmount (const char *device, const char *target)
+{
+	int ret;
 
-	/* Forward definitions. */
-	extern int mount (const char *, const char *);
-	extern int unmount (const char *, const char *);
+	__asm__ volatile(
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_unmount),
+		  "b" (device),
+		  "c" (target)
+	);
 
-#endif /* _SYS_MOUNT_H */
+	/* Error. */
+	if (ret < 0)
+	{
+		errno = -ret;
+		_REENT->_errno = -ret;
+		return (-1);
+	}
+	
+	return (ret);
+}

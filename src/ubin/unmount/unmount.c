@@ -18,12 +18,42 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <dirent.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mount.h>
 
-#ifndef _SYS_MOUNT_H
-#define _SYS_MOUNT_H
+/* Software versioning. */
+#define VERSION_MAJOR 1 /* Major version. */
+#define VERSION_MINOR 0 /* Minor version. */
 
-	/* Forward definitions. */
-	extern int mount (const char *, const char *);
-	extern int unmount (const char *, const char *);
 
-#endif /* _SYS_MOUNT_H */
+static char *device = NULL; 
+static char *destination_dir= NULL;
+
+/*
+ * Lists contents of a directory
+ */
+int main(int argc, char *const argv[])
+{	
+	if (argc <2) {
+		printf ("To few argument, you need to give the name of the device and the mounting point\n");
+		return (EXIT_FAILURE);
+	}
+	device= argv[1];
+	destination_dir= argv[2];
+
+	printf ("Call of the system call unmount\n");
+	printf("je suis la \n");
+	
+	if (unmount( device, destination_dir)){
+		printf ("The unmountfailed\n");
+	}
+	else 
+		printf ("Sucessfull unmount\n");
+	
+	return (EXIT_SUCCESS);
+}
