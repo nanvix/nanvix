@@ -1,6 +1,0 @@
-timeout 0
-
-title	Nanvix
-	root (cd)
-	kernel /kernel
-	module /initrd.img
