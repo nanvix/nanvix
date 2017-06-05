@@ -44,7 +44,4 @@ PUBLIC int sys_unmount(const char *device, const char *target)
 
 	kprintf("fs: I should unmount %s on %s", ktarget, kdevice);
 	return unmount(kdevice,ktarget);
-
-	//kprintf("fs: unmount system call not implemented");
-	//return (-ENOSYS);
 }
