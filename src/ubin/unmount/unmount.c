@@ -45,10 +45,6 @@ int main(int argc, char *const argv[])
 	}
 	device= argv[1];
 	destination_dir= argv[2];
-
-	printf ("Call of the system call unmount\n");
-	printf("je suis la \n");
-	
 	if (unmount( device, destination_dir)){
 		printf ("The unmountfailed\n");
 	}

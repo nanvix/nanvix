@@ -44,6 +44,5 @@ PUBLIC int sys_mount(const char *device, const char *target)
 
 	kprintf("fs: I should mount %s on %s", ktarget, kdevice);
 	return mount(kdevice,ktarget);
-
 }
 
