@@ -3,6 +3,9 @@
 #include <nanvix/config.h>
 #include <nanvix/pm.h>
 
+#define UNLINKED 	0001000
+#define PERMISSIONS 0000777
+
 #define SEM_IS_VALID(idx) \
 		( (idx>=0 && idx<SEM_OPEN_MAX) && semtable[idx].name[0]!='\0')
 
@@ -16,13 +19,12 @@
 
 	/* Kernel semaphores */
 	struct ksem {
-		int value;                   	/* value of the semaphore                    */
-		char name[MAX_SEM_NAME];    	/* name of the named semaphore               */
-		int mode;                   	/* permissions                               */
-		int nbproc;                 	/* number of processes sharing the semaphore */
-		int unlinked;
-		uid_t uid;              		/* Semaphore User ID                 */
-		gid_t gid;              		/* Semaphore Group idx               */
+		short value;              		/* Value of the semaphore                    	*/
+		char name[MAX_SEM_NAME];    	/* Name of the named semaphore               	*/
+		unsigned short state;           /* 0-8 : mode, 9 : unlinked bit					*/
+		char nbproc;                 	/* Number of processes sharing the semaphore 	*/
+		uid_t uid;              		/* Semaphore User ID         					*/
+		gid_t gid;              		/* Semaphore Group idx               			*/
 	};
 
 	/* Semaphores table */

@@ -140,9 +140,8 @@ PUBLIC void pm_init(void)
 	{
 		semtable[i].value=0;
 		(semtable[i].name)[0]='\0';
-		semtable[i].mode=0;
+		semtable[i].state=0;
 		semtable[i].nbproc=0;
-		semtable[i].unlinked=0;
 	}
 
 

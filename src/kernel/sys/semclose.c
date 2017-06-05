@@ -30,7 +30,7 @@ PUBLIC int sys_semclose(int idx)
 		 * 	The semaphore is no longer accessible when 0 process use it
 		 * 	and only if it has been unlinked once 
 		 */
-		if(semtable[idx].nbproc==0 && semtable[idx].unlinked==1)
+		if(semtable[idx].nbproc==0 && (semtable[idx].state&UNLINKED) )
 		{
 			freesem(idx);
 		}
