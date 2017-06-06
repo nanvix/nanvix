@@ -100,7 +100,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			}
 
 			/* Checking if there is at least WRITE or READ permissions */
-			if (!permission(semtable[idx].mode, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE|MAY_READ, 0))
+			if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE|MAY_READ, 0))
 			{
 				curr_proc->errno = EACCES;
 				return SEM_FAILED;

@@ -27,7 +27,6 @@ PUBLIC int sys_sempost(int idx)
 
 		if (semtable[idx].value>0)
 		{
-			kprintf("sem val : %d, waking up processes\n",semtable[idx].value);
 			wakeup(semwaiters);
 		}
 	}

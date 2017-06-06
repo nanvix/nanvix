@@ -353,49 +353,88 @@ static int sched_test2(void)
 {                                                    \
 	assert(lseek((a), 0, SEEK_SET) != -1);           \
 	assert(read((a), &(b), sizeof(b)) == sizeof(b)); \
-}                                                    \
+}                  									 \
+	
 
+void uselesswork(void)
+{
+	unsigned long i;
+	float x;
+
+	x=1.3232;
+
+	for( i = 0 ; i<99999999;i++)
+	{
+		x=x*0.451;
+	}
+
+	if(x)
+	{
+		printf("\n");
+	}
+}
+
+
+void producer(int nbprod, int limit)
+{
+	sem_t* sem, *semlim;
+	sem = sem_open("ressources\0", O_CREAT, 0777,0);
+	semlim = sem_open("limite\0", O_CREAT, 0777,limit);
+	for(int j = 0; j<nbprod; j++)
+	{
+		sem_wait(semlim);
+		printf("producer : start producing\n");
+		uselesswork();
+		printf("producer : has produced\n");
+		sem_post(sem);
+	}
+}
+
+void consummer(int nbcons, int limit)
+{
+	sem_t *sem, *semlim;
+	sem = sem_open("ressources\0", O_CREAT, 0777,0);
+	semlim = sem_open("limite\0", O_CREAT, 0777,limit);
+
+	for(int j = 0; j<nbcons; j++)
+	{
+		printf("cons : waiting for ressource\n");
+		sem_wait(sem);
+		printf("cons : ressources has been produced\n");
+		uselesswork();
+		sem_post(semlim);
+		printf("cons : ressources consommed\n");
+	}
+}
+/*
+void prodcons(int nb)
+{
+	sem_t* sem;
+	sem = sem_open("ressources\0", O_CREAT, 0777,0);
+
+	for(int j = 0; j<nbcons; j++)
+	{
+		printf("cons : waiting for ressource\n");
+		sem_wait(sem);
+		printf("cons : ressources has been produced\n");
+		sleepghetto();
+		printf("cons : ressources consommed\n");
+		sem_post(sem);
+
+	}	
+}
+*/
 static int sem_test(void)
 {
-	unsigned long i=0;
-	//long z=0;
-	float x=1.3232;
-
 	if(fork()==0){
 		/* child */
 		printf("child \n");
-		sem_t* sem2;
-		sem2 = sem_open("bonjour\0", O_CREAT, 0777,0);
-
-		printf("child sleeping now\n");
-		sem_wait(sem2);
-		printf("child woken up\n");
-
-
-		
+		producer(5,3);
 	}
 	else{
 		/* father */
 		printf("father \n");
-		sem_t* sem1;
-		sem1 = sem_open("bonjour\0", O_CREAT, 0777,0);
-
-
-
-		for( i = 0 ; i<99999999;i++)
-		{
-			x=x*0.451;
-
-		}		
-
-		printf("%f",x);
-		printf("%li\n",i);
-
-		printf("waking the child \n");
-		sem_post(sem1);
-
-
-
+		consummer(5,3);
 	}
 
 	return (0);
