@@ -12,6 +12,10 @@
  * @returns returns 0 in case of successful completion
  *			returns SEM_FAILED otherwise
  */
+/* TODO for error detection :
+ *			EDEADLK : A deadlock condition was detected.
+ *			EINTR : A signal interrupted this function.
+ */
 PUBLIC int sys_semwait(int idx)
 {
 
@@ -27,6 +31,8 @@ PUBLIC int sys_semwait(int idx)
 	}
 
 	semtable[idx].value--;
+
+	kprintf("%s Value : %d\n",semtable[idx].name,semtable[idx].value);
 
 	return 0;	/* Successful completion */
 }

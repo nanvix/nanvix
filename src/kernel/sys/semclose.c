@@ -25,13 +25,13 @@ PUBLIC int sys_semclose(int idx)
 	{
 		semtable[idx].nbproc--;
 		
-
 		/*
 		 * 	The semaphore is no longer accessible when 0 process use it
 		 * 	and only if it has been unlinked once 
 		 */
 		if(semtable[idx].nbproc==0 && (semtable[idx].state&UNLINKED) )
 		{
+			kprintf("deleting semaphore in table\n");
 			freesem(idx);
 		}
 

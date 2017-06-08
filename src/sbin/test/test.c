@@ -31,7 +31,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <semaphore.h>
-
+#include <errno.h>
 
 
 
@@ -356,7 +356,7 @@ static int sched_test2(void)
 }                  									 \
 	
 
-void uselesswork(void)
+void work(void)
 {
 	unsigned long i;
 	float x;
@@ -380,11 +380,12 @@ void producer(int nbprod, int limit)
 	sem_t* sem, *semlim;
 	sem = sem_open("ressources\0", O_CREAT, 0777,0);
 	semlim = sem_open("limite\0", O_CREAT, 0777,limit);
+
 	for(int j = 0; j<nbprod; j++)
 	{
 		sem_wait(semlim);
 		printf("producer : start producing\n");
-		uselesswork();
+		work();
 		printf("producer : has produced\n");
 		sem_post(sem);
 	}
@@ -401,29 +402,12 @@ void consummer(int nbcons, int limit)
 		printf("cons : waiting for ressource\n");
 		sem_wait(sem);
 		printf("cons : ressources has been produced\n");
-		uselesswork();
+		work();
 		sem_post(semlim);
 		printf("cons : ressources consommed\n");
 	}
 }
-/*
-void prodcons(int nb)
-{
-	sem_t* sem;
-	sem = sem_open("ressources\0", O_CREAT, 0777,0);
 
-	for(int j = 0; j<nbcons; j++)
-	{
-		printf("cons : waiting for ressource\n");
-		sem_wait(sem);
-		printf("cons : ressources has been produced\n");
-		sleepghetto();
-		printf("cons : ressources consommed\n");
-		sem_post(sem);
-
-	}	
-}
-*/
 static int sem_test(void)
 {
 	if(fork()==0){

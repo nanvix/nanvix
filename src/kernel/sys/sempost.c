@@ -31,5 +31,7 @@ PUBLIC int sys_sempost(int idx)
 		}
 	}
 
+	kprintf("%s Value : %d\n",semtable[idx].name,semtable[idx].value);
+
 	return 0;	/* successful completion */
 }
