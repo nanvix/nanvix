@@ -32,7 +32,5 @@ PUBLIC int sys_semwait(int idx)
 
 	semtable[idx].value--;
 
-	kprintf("%s Value : %d\n",semtable[idx].name,semtable[idx].value);
-
 	return 0;	/* Successful completion */
 }

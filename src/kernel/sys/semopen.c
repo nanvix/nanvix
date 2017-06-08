@@ -97,6 +97,8 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			}
 
 			idx=add_entry (value,name,mode);
+			kprintf("Creating sem : %s at index %d",semtable[idx].name,idx);
+
 		}
 		else
 		{
@@ -114,6 +116,9 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			curr_proc->errno = EACCES;
 			return SEM_FAILED;
 		}
+
+		kprintf("Opening sem : %s at index %d",semtable[idx].name,idx);
+
 	}
 
 	semtable[idx].nbproc++;
