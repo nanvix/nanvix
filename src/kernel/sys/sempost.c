@@ -12,7 +12,7 @@
  * @returns returns 0 in case of successful completion
  *			returns SEM_FAILED otherwise
  */
-PUBLIC int sys_semclose(int idx)
+PUBLIC int sys_sempost(int idx)
 {
 
 	if(!SEM_IS_VALID(idx))
@@ -23,19 +23,13 @@ PUBLIC int sys_semclose(int idx)
 	}
 	else
 	{
-		semtable[idx].nbproc--;
-		
-		/*
-		 * 	The semaphore is no longer accessible when 0 process use it
-		 * 	and only if it has been unlinked once 
-		 */
-		if(semtable[idx].nbproc==0 && (semtable[idx].state&UNLINKED) )
-		{
-			freesem(idx);
-		}
+		semtable[idx].value++;
 
+		if (semtable[idx].value>0)
+		{
+			wakeup(semwaiters);
+		}
 	}
 
 	return 0;	/* successful completion */
-
 }

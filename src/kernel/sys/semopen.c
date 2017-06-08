@@ -54,71 +54,71 @@ int add_entry(int value, const char* name, int mode)
 /* TODO for error detection :
  *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
  *			EMFILE : Too many semaphore descriptors or file descriptors are currently in use by this process.
+ *			EACESS : Check creation permission if semaphore does not exist
  */
 PUBLIC int sys_semopen(const char* name, int oflag, ...)
 {
-		mode_t mode;
-		int value;
-		va_list arg;	/* Variable argument */
-		int idx;		/* Index of the opened semaphore */
+	mode_t mode;
+	int value;
+	va_list arg;	/* Variable argument */
+	int idx;		/* Index of the opened semaphore */
+
+	if ( namevalid(name)==(-1) )
+	{
+		/* Name invalid */
+		curr_proc->errno = EINVAL;
+		return SEM_FAILED;
+	}
 
 	idx = existance(name);
 
-		if(oflag & O_CREAT)
+	if(idx==(-1))	/* This semaphore does not exist */
+	{
+		if(oflag & O_CREAT)	
 		{
-
-			if(idx!=(-1))	/* This semaphore already exists */
+			if (oflag & O_EXCL)
 			{
-				if (oflag & O_EXCL)
-				{
-					curr_proc->errno = EEXIST;
-					return SEM_FAILED;
-				}
-
-				if ( namevalid(name) ==(-1) )
-				{
-					/* Name invalid */
-					curr_proc->errno = EINVAL;
-					return SEM_FAILED;
-				}
-
-				/* Checking if there is at least WRITE or READ permissions */
-				if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE|MAY_READ, 0))
-				{
-					curr_proc->errno = EACCES;
-					return SEM_FAILED;
-				}
-
+				/* Both O_CREAT and O_EXCL flags set */
+				curr_proc->errno = EEXIST;
+				return SEM_FAILED;
 			}
-			else
+			
+			/* Semaphore creation if it does not exist */
+			va_start(arg, oflag);
+			mode = va_arg(arg, mode_t);
+			value = va_arg(arg, int);
+			va_end(arg);
+
+			if ( !SEM_VALID_VALUE(value) )
 			{
- 			/* Semaphore creation if it does not exist */
- 			va_start(arg, oflag);
- 			mode = va_arg(arg, mode_t);
- 			value = va_arg(arg, int);
- 			va_end(arg);
-
-				if ( !SEM_VALID_VALUE(value) )
-				{
-					/* Value greater than maximum */
-					curr_proc->errno = EINVAL;
-					return SEM_FAILED;
-				}
-
-				idx=add_entry (value,name,mode);
+				/* Value greater than maximum */
+				curr_proc->errno = EINVAL;
+				return SEM_FAILED;
 			}
+
+			idx=add_entry (value,name,mode);
+
 		}
 		else
 		{
-			if(idx==(-1))
-			{
-				/* O_CREAT not set and sem does not exist */
-				curr_proc->errno = ENOENT;
-				return SEM_FAILED;
-			}
+			/* O_CREAT not set and sem does not exist */
+			curr_proc->errno = ENOENT;
+			return SEM_FAILED;
+		}
+	}
+	else	/* This semaphore already exists */
+	{
+		/* Checking if there is WRITE and READ permissions */
+		if (	!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0) \
+			 ||	!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_READ, 0) )
+		{
+			curr_proc->errno = EACCES;
+			return SEM_FAILED;
 		}
 
-		semtable[idx].nbproc++;
+	}
+
+	semtable[idx].nbproc++;
 
 	return idx;
 }

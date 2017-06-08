@@ -31,7 +31,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <semaphore.h>
-
+#include <errno.h>
 
 
 
@@ -353,32 +353,122 @@ static int sched_test2(void)
 {                                                    \
 	assert(lseek((a), 0, SEEK_SET) != -1);           \
 	assert(read((a), &(b), sizeof(b)) == sizeof(b)); \
-}                                                    \
+}                  									 \
+	
 
+void work(void)
+{
+	unsigned long i;
+	float x;
+
+	x=1.3232;
+
+	for( i = 0 ; i<99999999;i++)
+	{
+		x=x*0.451;
+	}
+
+	if(x)
+	{
+		printf("\n");
+	}
+}
+
+
+void producer(int nbprod, int limit)
+{
+	sem_t* sem, *semlim;
+	sem = sem_open("ressources\0", O_CREAT, 0777,0);
+	semlim = sem_open("limite\0", O_CREAT, 0777,limit);
+
+	for(int j = 0; j<nbprod; j++)
+	{
+		sem_wait(semlim);
+		printf("producer : start producing\n");
+		work();
+		printf("producer : has produced\n");
+		sem_post(sem);
+	}
+}
+
+void consummer(int nbcons, int limit)
+{
+	sem_t *sem, *semlim;
+	sem = sem_open("ressources\0", O_CREAT, 0777,0);
+	semlim = sem_open("limite\0", O_CREAT, 0777,limit);
+
+	for(int j = 0; j<nbcons; j++)
+	{
+		printf("cons : waiting for ressource\n");
+		sem_wait(sem);
+		printf("cons : ressources has been produced\n");
+		work();
+		printf("cons : ressources consommed\n");
+		sem_post(semlim);
+	}
+}
+
+/*  
+ *	Producer consumer
+ *  The buffer has a size of 3
+ *  The producer will produce 5 items
+ */
 static int sem_test(void)
 {
 	if(fork()==0){
 		/* child */
-		printf("CHILD\n");
-		sem_t* sem1;
-		sem1 = sem_open("bonjour\0", O_CREAT, 0777,4);
-		printf("child nom du semaphore : %d", (sem1->idx));
-		sem_close(sem1);
+		printf("child \n");
+		producer(5,3);
 	}
 	else{
 		/* father */
-		printf("FATHER\n");
-		sem_t *sem2, *sem3, *sem4;
-		sem2 = sem_open("bonjour\0", O_CREAT, 0777,4);
-		sem4 = sem_open("bonjour\0", O_CREAT);
-		sem3 = sem_open("salut\0", O_CREAT, 0777,4);
+		printf("father \n");
+		consummer(5,3);
+	}
 
-		printf("father nom du semaphore : %d %d %d", (sem2->idx),(sem3->idx),sem4->idx);
+	return (0);
+}
 
-		sem_close(sem2);
-		sem_close(sem2);
-		sem_close(sem4);
-		sem_close(sem3);
+
+static int sem_test_open_close(void)
+{
+	if(fork()==0){
+		/* We don't unlink semc2 */
+		/* child */
+		printf("Child\n");
+		sem_t *semc1, *semc2, *semc3, *semc4;
+		semc1 = sem_open("sem1",O_CREAT,0777,0);
+		semc2 = sem_open("sem2",O_CREAT,0777,0);
+		semc3 = sem_open("sem3",O_CREAT,0777,0);
+		sem_unlink("sem1");
+		sem_unlink("sem2");
+
+		sem_wait(semc3);
+		sem_post(semc1);
+
+		sem_close(semc2);
+		/* sem3 has not been unlinked -> wont be deleted */
+		sem_close(semc3);
+		
+		/*  
+		 *	We open a semaphore after sem2 has been closed
+		 *	to ensure that the slot is taken
+		 */
+		semc4 = sem_open("sem4",O_CREAT,0777,0);
+		sem_unlink("sem4");
+		sem_close(semc4);
+		sem_close(semc1);
+	}
+	else{
+		/* father */
+		printf("Father \n");
+		sem_t *semf1, *semf3;
+		semf1 = sem_open("sem1",O_CREAT,0777,0);
+		semf3 = sem_open("sem3",O_CREAT,0777,0);
+		sem_post(semf3);
+		sem_wait(semf1);
+		sem_close(semf1);
+		sem_close(semf3);
 	}
 
 	return (0);
@@ -559,6 +649,14 @@ int main(int argc, char **argv)
 
 		/* Semaphore test. */
 		else if (!strcmp(argv[i], "se"))
+		{
+			printf("Semaphore testing\n");
+			printf("  Result [%s]\n",
+				(!sem_test_open_close()) ? "PASSED" : "FAILED");
+		}
+
+		/* Semaphore test. */
+		else if (!strcmp(argv[i], "prodcons"))
 		{
 			printf("Semaphore testing\n");
 			printf("  Result [%s]\n",

@@ -1,5 +1,7 @@
 #include <limits.h>
 #include <sys/types.h>
+#include <nanvix/config.h>
+#include <nanvix/pm.h>
 
 #define UNLINKED 	0001000
 #define PERMISSIONS 0000777
@@ -27,6 +29,8 @@
 
 	/* Semaphores table */
 	extern struct ksem semtable[SEM_OPEN_MAX];
+
+	extern struct process* semwaiters[PROC_MAX];
 
 	/* Frees a semaphore */
 	int freesem(int idx);
