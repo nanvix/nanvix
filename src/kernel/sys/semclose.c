@@ -31,7 +31,6 @@ PUBLIC int sys_semclose(int idx)
 		 */
 		if(semtable[idx].nbproc==0 && (semtable[idx].state&UNLINKED) )
 		{
-			kprintf("Deleting semaphore %s index : %d",semtable[idx].name,idx);
 			freesem(idx);
 		}
 

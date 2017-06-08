@@ -33,7 +33,6 @@ PUBLIC int sys_semunlink(const char *name)
 			return SEM_FAILED;
 		}
 
-		kprintf("Unlinking %s",semtable[idx].name);
 		semtable[idx].state|=UNLINKED;
 	}
 

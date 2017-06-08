@@ -403,8 +403,8 @@ void consummer(int nbcons, int limit)
 		sem_wait(sem);
 		printf("cons : ressources has been produced\n");
 		work();
-		sem_post(semlim);
 		printf("cons : ressources consommed\n");
+		sem_post(semlim);
 	}
 }
 
