@@ -378,8 +378,8 @@ void work(void)
 void producer(int nbprod, int limit)
 {
 	sem_t* sem, *semlim;
-	sem = sem_open("ressources\0", O_CREAT, 0777,0);
-	semlim = sem_open("limite\0", O_CREAT, 0777,limit);
+	sem = sem_open("ressources", O_CREAT, 0777,0);
+	semlim = sem_open("limite", O_CREAT, 0777,limit);
 
 	for(int j = 0; j<nbprod; j++)
 	{
@@ -394,8 +394,8 @@ void producer(int nbprod, int limit)
 void consummer(int nbcons, int limit)
 {
 	sem_t *sem, *semlim;
-	sem = sem_open("ressources\0", O_CREAT, 0777,0);
-	semlim = sem_open("limite\0", O_CREAT, 0777,limit);
+	sem = sem_open("ressources", O_CREAT, 0777,0);
+	semlim = sem_open("limite", O_CREAT, 0777,limit);
 
 	for(int j = 0; j<nbcons; j++)
 	{
