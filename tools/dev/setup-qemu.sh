@@ -43,7 +43,7 @@ apt-get install libtool
 # Build Bochs
 tar -xjvf qemu-2.5.0.tar.bz2
 cd qemu-2.5.0
-./configure
+./configure --target-list=i386-softmmu
 make -j$num_cores all
 make install
 
