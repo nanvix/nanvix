@@ -42,6 +42,9 @@ doc/*-kernel
 *.iso
 nanvix-iso/*
 
+# C Tags
+tags
+
 # ISO Images
 nanvix.iso
 nanvix-iso/*
