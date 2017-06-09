@@ -35,8 +35,7 @@ int add_entry(int value, const char* name, int mode)
 	}
 
 	/* Semaphore table full */
-	curr_proc->errno = ENFILE;
-	return SEM_FAILED; 
+	return (-ENFILE); 
 }
 
 /**
@@ -63,12 +62,9 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	va_list arg;	/* Variable argument */
 	int idx;		/* Index of the opened semaphore */
 
-	if ( namevalid(name)==(-1) )
-	{
-		/* Name invalid */
-		curr_proc->errno = EINVAL;
-		return SEM_FAILED;
-	}
+	/* Name invalid */
+	if (namevalid(name)==(-1))
+		return (-EINVAL);
 
 	idx = existance(name);
 
@@ -76,12 +72,9 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	{
 		if(oflag & O_CREAT)	
 		{
+			/* Both O_CREAT and O_EXCL flags set */
 			if (oflag & O_EXCL)
-			{
-				/* Both O_CREAT and O_EXCL flags set */
-				curr_proc->errno = EEXIST;
-				return SEM_FAILED;
-			}
+				return (-EEXIST);
 			
 			/* Semaphore creation if it does not exist */
 			va_start(arg, oflag);
@@ -89,32 +82,23 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			value = va_arg(arg, int);
 			va_end(arg);
 
-			if ( !SEM_VALID_VALUE(value) )
-			{
-				/* Value greater than maximum */
-				curr_proc->errno = EINVAL;
-				return SEM_FAILED;
-			}
+			/* Value greater than maximum */
+			if (!SEM_VALID_VALUE(value))
+				return (-EINVAL);
 
 			idx=add_entry (value,name,mode);
 
 		}
+		/* O_CREAT not set and sem does not exist */
 		else
-		{
-			/* O_CREAT not set and sem does not exist */
-			curr_proc->errno = ENOENT;
-			return SEM_FAILED;
-		}
+			return (-ENOENT);
 	}
 	else	/* This semaphore already exists */
 	{
 		/* Checking if there is WRITE and READ permissions */
 		if (	!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0) \
 			 ||	!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_READ, 0) )
-		{
-			curr_proc->errno = EACCES;
-			return SEM_FAILED;
-		}
+			return (EACCES);
 
 	}
 

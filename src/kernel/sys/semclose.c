@@ -14,28 +14,17 @@
  */
 PUBLIC int sys_semclose(int idx)
 {
+	if (!SEM_IS_VALID(idx))
+		return -(EINVAL);
 
-	if(!SEM_IS_VALID(idx))
-	{
-		/* Not a valid semaphore */
-		curr_proc->errno = EINVAL;
-		return SEM_FAILED;
-	}
-	else
-	{
-		semtable[idx].nbproc--;
-		
-		/*
-		 * 	The semaphore is no longer accessible when 0 process use it
-		 * 	and only if it has been unlinked once 
-		 */
-		if(semtable[idx].nbproc==0 && (semtable[idx].state&UNLINKED) )
-		{
-			freesem(idx);
-		}
+	semtable[idx].nbproc--;
+	
+	/*
+	 * The semaphore is no longer accessible when 0 process use it
+	 * and only if it has been unlinked once 
+	 */
+	if(semtable[idx].nbproc==0 && (semtable[idx].state&UNLINKED))
+		freesem(idx);
 
-	}
-
-	return 0;	/* successful completion */
-
+	return (0);
 }

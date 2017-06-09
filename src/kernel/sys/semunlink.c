@@ -19,22 +19,13 @@ PUBLIC int sys_semunlink(const char *name)
 	idx = existance(name);
 
 	if (idx==-1)
-	{
-		/* Semaphore doesn't exists */
-		curr_proc->errno = ENOENT;
-		return SEM_FAILED;
-	}
-	else
-	{
-		/* Checking WRITE permission */
-		if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0))
-		{
-			curr_proc->errno = EACCES;
-			return SEM_FAILED;
-		}
+		return (-ENOENT);
 
-		semtable[idx].state|=UNLINKED;
-	}
+	/* Checking WRITE permission */
+	if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0))
+		return (-EACCES);
+
+	semtable[idx].state|=UNLINKED;
 
 	return 0;	/* Successful completion */
 }

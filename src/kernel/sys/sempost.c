@@ -14,22 +14,15 @@
  */
 PUBLIC int sys_sempost(int idx)
 {
-
+	/* Not a valid semaphore */
 	if(!SEM_IS_VALID(idx))
-	{
-		/* Not a valid semaphore */
-		curr_proc->errno = EINVAL;
-		return SEM_FAILED;
-	}
-	else
-	{
-		semtable[idx].value++;
+		return (-EINVAL);
 
-		if (semtable[idx].value>0)
-		{
-			wakeup(semwaiters);
-		}
-	}
+	semtable[idx].value++;
 
-	return 0;	/* successful completion */
+	if (semtable[idx].value>0)
+	{
+		wakeup(semwaiters);
+	}
+	return (0);
 }

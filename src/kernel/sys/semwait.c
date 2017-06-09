@@ -11,26 +11,20 @@
  *
  * @returns returns 0 in case of successful completion
  *			returns SEM_FAILED otherwise
- */
-/* TODO for error detection :
+ *
+ * TODO for error detection :
  *			EDEADLK : A deadlock condition was detected.
  *			EINTR : A signal interrupted this function.
  */
 PUBLIC int sys_semwait(int idx)
 {
-
 	if (!SEM_IS_VALID(idx))
-	{
-		curr_proc->errno = EINVAL;
-		return SEM_FAILED;
-	}
+		return (-EINVAL);
 
 	while (semtable[idx].value<=0)
-	{
 		sleep(semwaiters,curr_proc->priority);
-	}
 
 	semtable[idx].value--;
 
-	return 0;	/* Successful completion */
+	return (0);
 }
