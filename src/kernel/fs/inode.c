@@ -133,6 +133,21 @@ PRIVATE struct file_system_type * fs_from_device (dev_t dev){
 }
 
 /**
+ * @brief Search if an inode is present in the mouting table as an file_system_root, don't look the first entry.
+ * 
+ * @returns Return a pointeur to the mouting point or NULL
+ */
+PRIVATE struct mountingPoint * is_root_fs(int i_num)
+{	
+	for (int i=1; i<NR_MOUNTING_POINT; i++)
+	{
+		if (!mountTable[i].free && mountTable[i].no_inode_root_fs==i_num)
+			return &mountTable[i];
+	}
+	return NULL;
+}
+
+/**
  * @brief mount a device on a directory
  * 
  * @details insert a new mouting point in the mouting table
@@ -144,8 +159,8 @@ PRIVATE struct file_system_type * fs_from_device (dev_t dev){
  */
 PUBLIC int mount (char* device, char* mountPoint)
 {
-	struct inode *inode_root_fs;
-	struct inode *inode_mount;
+	struct inode *inode_root_fs=NULL;
+	struct inode *inode_mount= NULL;
 	int ind_mp;
 	struct file_system_type * fs;
 	superblock_t sb;
@@ -168,11 +183,12 @@ PUBLIC int mount (char* device, char* mountPoint)
 	}
 
 	/*check if it's a device*/
-	if (!S_ISCHR(inode_root_fs->mode) && !S_ISBLK(inode_root_fs->mode))
+	if (!S_ISCHR(inode_root_fs->mode) && !S_ISBLK(inode_root_fs->mode)&&inode_root_fs->num!=1)
 	{
 		kprintf ("what you provide is not a device\n");
 		goto error;
 	}
+	inode_unlock(inode_root_fs);
 	
 	/*get the inode of the mount point*/
 	inode_mount =inode_name(mountPoint);
@@ -219,14 +235,19 @@ found:
 	mountTable[ind_mp].no_inode_root_fs=inode_root_fs->num;
 	mountTable[ind_mp].no_inode_mount=inode_mount->num;
 	mountTable[ind_mp].free= 0;
-	inode_unlock(inode_root_fs);
+	
 	inode_unlock(inode_mount);
 	return 0;
 error:
 	if (inode_mount != NULL)
+	{
 		inode_unlock(inode_mount);
-	if(inode_root_fs!= NULL)
+	}
+	
+	if(inode_root_fs!= NULL ){
 		inode_unlock(inode_root_fs);
+	}
+		
 	return 1;
 }
 
@@ -827,16 +848,21 @@ PUBLIC struct inode *inode_dname(const char *path, const char **name)
 	const char *p;               /* Current path.       */
 	struct superblock *sb;       /* Working superblock. */
 	char filename[NAME_MAX + 1]; /* File name.          */
+	struct mountingPoint * mp;
 	
 	p = path;
 	
 	/* Absolute path. */
 	if (*p == '/')
+	{
 		i = curr_proc->root;
 	
+	}
 	/* Relative path. */
-	else if (*p != '\0')
+	else if (*p != '\0'){
 		i = curr_proc->pwd;
+		kprintf(" le chemin est relatif");
+	}
 		
 	/* Empty path name. */
 	else
@@ -886,6 +912,13 @@ again:
 			} while (!kstrcmp(filename, ".."));
 		}
 
+		/*Search if we are in the root of a file system */
+		if (((mp=is_root_fs(i->num))!=NULL&&(!kstrcmp(filename, ".."))))
+		{
+			inode_put(i);
+			i=inode_get(mp->dev,mp->no_inode_mount);
+		}
+		
 		ent = dir_search(i, filename);
 			
 		/* No such file or directory. */
@@ -917,6 +950,13 @@ again:
 		inode_put(i);
 		i = inode_get(dev, ent);
 		
+		/*Mounting point */
+		mp=belong_mounting_table(i->num);
+		if (mp!=NULL){
+			inode_put(i);  
+			i=inode_get (mp->dev,mp->no_inode_root_fs);
+		}		
+
 		/* Failed to get inode. */
 		if (i == NULL)
 			return (NULL);
@@ -952,7 +992,7 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	ino_t num;           /* Inode number.  */
 	const char *name;    /* File name.     */
 	struct inode *inode; /* Working inode. */
-	
+	struct mountingPoint *mp;
 	
 	inode = inode_dname(pathname, &name);
 	
@@ -963,8 +1003,15 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	/* Special treatment for the root directory. */
 	if (!kstrcmp(name,"/"))
 		num = curr_proc->root->num;
-	else
+	else{
+		/*Search if we are in the root of a file system */
+		if (((mp=is_root_fs(inode->num))!=NULL&&(!kstrcmp(name, ".."))))
+		{
+			inode_unlock(inode);
+			inode=inode_get(mp->dev,mp->no_inode_mount);
+		}
 		num = dir_search(inode, name);
+	}
 
 	/* File not found. */
 	if (num == INODE_NULL)
@@ -977,7 +1024,15 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	dev = inode->dev;	
 	inode_put(inode);
 	
-	return (inode_get(dev, num));
+	inode =inode_get(dev, num);
+	/*Mounting point */
+	mp=belong_mounting_table(inode->num);
+	if (mp!=NULL){
+		inode_unlock(inode);
+		inode=inode_get (mp->dev,mp->no_inode_root_fs);
+	}
+	
+	return inode;
 }
 
 /**
