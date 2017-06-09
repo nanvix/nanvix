@@ -86,7 +86,7 @@
  	#define NR_gticks   47
  	#define NR_time	    48
  	#define NR_mount    49
- 	#define NR_unmount	50
+ 	#define NR_unmount  50
  	#define NR_semget   51
  	#define NR_semctl   52
  	#define NR_semop    53
@@ -275,8 +275,6 @@
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);
-
-	/* Forward definitions. */
 	EXTERN int sys_unmount(const char *, const char *);	
 
 #endif /* _ASM_FILE_ */

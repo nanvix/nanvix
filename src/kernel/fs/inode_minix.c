@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -46,11 +47,6 @@
  * @brief Hash table size.
  */
 #define HASHTAB_SIZE 227
-
-/* Free inodes. */
-
-
-
 
 /**
  * @brief Hash function for the inode cache.
@@ -322,6 +318,9 @@ error0:
 	return (1);
 }
 
+/**
+ * @brief Minix file system operations.
+ */
 PRIVATE struct super_operations so_minix = {
 		&inode_read_minix, 
 		&inode_write_minix,

@@ -80,10 +80,10 @@
 	typedef struct superblock superblock;
 
 	/**
-	 *@brief In-core superblock operation
+	 *@brief In-core superblock operations.
 	 */
 	struct super_operations {
-		int (*inode_read) (dev_t, ino_t,struct inode *);
+		int (*inode_read) (dev_t, ino_t, struct inode *);
 		void (*inode_write) (struct inode *);
 		void (*inode_free) (struct inode *);
 		void (*inode_truncate) (struct inode *);

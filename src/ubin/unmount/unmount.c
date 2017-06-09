@@ -38,18 +38,21 @@ static char *destination_dir= NULL;
  * Lists contents of a directory
  */
 int main(int argc, char *const argv[])
-{	
-	if (argc <2) {
+{
+	/* Missing arguments. */
+	if (argc < 2)
+	{
 		printf ("To few argument, you need to give the name of the device and the mounting point\n");
 		return (EXIT_FAILURE);
 	}
-	device= argv[1];
-	destination_dir= argv[2];
-	if (unmount( device, destination_dir)){
+
+	/* Retrieve parameters. */
+	device = argv[1];
+	destination_dir = argv[2];
+
+	/* Mount file system. */
+	if (unmount( device, destination_dir))
 		printf ("The unmountfailed\n");
-	}
-	else 
-		printf ("Sucessfull unmount\n");
 	
 	return (EXIT_SUCCESS);
 }
