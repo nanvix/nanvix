@@ -28,7 +28,7 @@ export CFLAGS += -Os
 .PHONY: test
 
 # Builds everything.
-all: init shutdown
+all: init shutdown test
 
 # Builds foobar.
 foobar:
