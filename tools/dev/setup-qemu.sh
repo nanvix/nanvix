@@ -23,6 +23,9 @@
 #   - You should run this script with superuser privileges.
 #
 
+# QEMU.
+export QEMU_VERSION=2.9.0
+
 # Set working directory.
 export CURDIR=`pwd`
 export WORKDIR=$CURDIR/nanvix-toolchain
@@ -33,7 +36,7 @@ cd $WORKDIR
 num_cores=`grep -c ^processor /proc/cpuinfo`
 
 # Get bochs.
-wget "http://wiki.qemu-project.org/download/qemu-2.5.0.tar.bz2"
+wget "http://wiki.qemu-project.org/download/qemu-$QEMU_VERSION.tar.bz2"
 
 # Get required packages.
 apt-get install libglib2.0-dev
@@ -41,9 +44,9 @@ apt-get install zlib1g-dev
 apt-get install libtool 
 
 # Build Bochs
-tar -xjvf qemu-2.5.0.tar.bz2
-cd qemu-2.5.0
-./configure --target-list=i386-softmmu
+tar -xjvf qemu-$QEMU_VERSION.tar.bz2
+cd qemu-$QEMU_VERSION
+./configure --target-list=i386-softmmu --enable-sdl
 make -j$num_cores all
 make install
 
