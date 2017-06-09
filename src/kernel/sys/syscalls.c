@@ -76,5 +76,6 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	(void (*)(void))&sys_ps,
 	(void (*)(void))&sys_gticks,
 	(void (*)(void))&sys_time,
-	(void (*)(void))&sys_mount
+	(void (*)(void))&sys_mount,
+	(void (*)(void))&sys_unmount
 };

@@ -1,7 +1,7 @@
 /*
  * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *              2017-2017 Romane Gallier <romanegallier@gmail.com>
- *
+ * 
  * This file is part of Nanvix.
  * 
  * Nanvix is free software; you can redistribute it and/or modify
@@ -18,9 +18,7 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/const.h>
-#include <nanvix/fs.h>
-#include <nanvix/klib.h>
+#include <nanvix/syscall.h>
 #include <errno.h>
 
 /**
@@ -29,21 +27,26 @@
  * @param device  Device name.
  * @param target  Target directory.
  */
-PUBLIC int sys_mount(const char *device, const char *target)
+int unmount (const char *device, const char *target)
 {
-	char *kdevice;
-	char *ktarget;
+	int ret;
 
-	/* Get device name. */
-	if ((kdevice = getname(device)) == NULL)
-		return (curr_proc->errno);
+	__asm__ volatile(
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_unmount),
+		  "b" (device),
+		  "c" (target)
+	);
+
+	/* Error. */
+	if (ret < 0)
+	{
+		errno = -ret;
+		_REENT->_errno = -ret;
+		return (-1);
+	}
 	
-	/* Get target directory. */
-	if ((ktarget = getname(target)) == NULL)
-		return (curr_proc->errno);
-
-	kprintf("fs: mouting %s on %s", ktarget, kdevice);
-
-	return (mount(kdevice,ktarget));
+	return (ret);
 }
 

@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -25,20 +26,17 @@
 #ifndef _INODE_MINIX_H_
 #define _INODE_MINiX_H_
 
-	#include <nanvix/clock.h>
-	#include <nanvix/config.h>
 	#include <nanvix/const.h>
 	#include <nanvix/dev.h>
 	#include <nanvix/fs.h>
-	#include <nanvix/klib.h>
-	#include <nanvix/mm.h>
-	#include <errno.h>
-	#include <limits.h>
-	#include "fs.h"
 
-	PUBLIC void inode_write_minix(struct inode *ip);
-	PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip);
-	PUBLIC void inode_free_minix(struct inode *ip);
-	PUBLIC void inode_truncate_minix(struct inode *ip);
-	PUBLIC int inode_alloc_minix(struct superblock *sb, struct inode *ip);
+	/* Forward definitions. */
+	EXTERN void inode_write_minix(struct inode *);
+	EXTERN int inode_read_minix(dev_t, ino_t, struct inode *);
+	EXTERN void inode_free_minix(struct inode *);
+	EXTERN void inode_truncate_minix(struct inode *);
+	EXTERN int inode_alloc_minix(struct superblock *, struct inode *);
+	EXTERN void init_minix (void);
+	
 #endif
+
