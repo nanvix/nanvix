@@ -849,19 +849,18 @@ PUBLIC struct inode *inode_dname(const char *path, const char **name)
 	struct superblock *sb;       /* Working superblock. */
 	char filename[NAME_MAX + 1]; /* File name.          */
 	struct mountingPoint * mp;
-	
+
 	p = path;
 	
 	/* Absolute path. */
 	if (*p == '/')
 	{
 		i = curr_proc->root;
-	
+
 	}
 	/* Relative path. */
 	else if (*p != '\0'){
 		i = curr_proc->pwd;
-		kprintf(" le chemin est relatif");
 	}
 		
 	/* Empty path name. */
@@ -891,14 +890,14 @@ PUBLIC struct inode *inode_dname(const char *path, const char **name)
 		}
 
 again:
-		
+
 		/* Permission denied. */
 		if (!permission(i->mode, i->uid, i->gid, curr_proc, MAY_EXEC, 0))
 		{
 			curr_proc->errno = -EACCES;
 			goto error0;
 		}
-		
+
 		/* Root directory reached. */
 		if ((curr_proc->root->num == i->num) && (!kstrcmp(filename, "..")))
 		{
@@ -975,7 +974,6 @@ again:
 			(*name)++;
 	}
 
-	
 	return (i);
 
 error0:
@@ -1002,7 +1000,8 @@ PUBLIC struct inode *inode_name(const char *pathname)
 		
 	/* Special treatment for the root directory. */
 	if (!kstrcmp(name,"/"))
-		num = curr_proc->root->num;
+		num = curr_proc->root->num;	
+	
 	else{
 		/*Search if we are in the root of a file system */
 		if (((mp=is_root_fs(inode->num))!=NULL&&(!kstrcmp(name, ".."))))
