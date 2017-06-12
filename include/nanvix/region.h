@@ -42,7 +42,7 @@
 	#define REGION_SIZE   ((size_t)REGION_PGTABS*MREGIONS*PGTAB_SIZE)
 
  	/* Mini region dimensions. */
-	#define NR_MINIREGIONS (32) /* # Mini regions.            */
+	#define NR_MINIREGIONS (128) /* # Mini regions.            */
 	#define MREGIONS       (8)  /* # Mini regions per region. */
 	#define MREGION_SHIFT  (26) /* Mini region shift.         */
 
