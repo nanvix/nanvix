@@ -65,12 +65,12 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	freeslot = -1;
 
 	/* Name invalid */
-	if (namevalid(name)==(-1))
+	if (namevalid(name) == (-1))
 		return (-EINVAL);
 
 	idx = existance(name);
 
-	if(idx==(-1))	/* This semaphore does not exist */
+	if (idx == (-1))	/* This semaphore does not exist */
 	{
 		if(oflag & O_CREAT)	
 		{
@@ -110,7 +110,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			freeslot = i;
 		}
 
-		if(semtable[idx].currprocs[i] == curr_proc->pid)
+		if (semtable[idx].currprocs[i] == curr_proc->pid)
 		{
 			return (-1);
 		}

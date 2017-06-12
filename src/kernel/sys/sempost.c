@@ -15,7 +15,7 @@
 PUBLIC int sys_sempost(int idx)
 {
 	/* Not a valid semaphore */
-	if(!SEM_IS_VALID(idx))
+	if (!SEM_IS_VALID(idx))
 		return (-EINVAL);
 
 	semtable[idx].value++;

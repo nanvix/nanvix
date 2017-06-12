@@ -14,7 +14,7 @@ int sem_close(sem_t* sem)
 {	
 	int ret;
 
-	if(sem == NULL)
+	if (sem == NULL)
 		return (-1);
 
 	__asm__ volatile (
@@ -24,7 +24,7 @@ int sem_close(sem_t* sem)
 		  "b" (sem->idx)
 	);
 
-	if(ret == 0)
+	if (ret == 0)
 		free(sem);
 	
 	return (ret);

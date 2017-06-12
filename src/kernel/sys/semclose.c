@@ -25,7 +25,7 @@ PUBLIC int sys_semclose(int idx)
 	{
 		if (semtable[idx].currprocs[i] == curr_proc->pid)
 		{	
-			semtable[idx].currprocs[i] = -1;
+			semtable[idx].currprocs[i] = (-1);
 			/*
 			 * The semaphore is no longer accessible when 0 process use it
 			 * and only if it has been unlinked once 

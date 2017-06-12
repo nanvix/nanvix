@@ -57,7 +57,7 @@ sem_t* sem_open(const char* name, int oflag, ...)
 		  "D" (value)
 	);
 
-	if (ret==(-1))
+	if (ret == (-1))
 	{
 		return NULL;
 	}

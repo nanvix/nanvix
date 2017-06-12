@@ -18,7 +18,7 @@ PUBLIC int sys_semunlink(const char *name)
 
 	idx = existance(name);
 
-	if (idx==-1)
+	if (idx == (-1))
 		return (-ENOENT);
 
 	/* Checking WRITE permission */
@@ -28,7 +28,7 @@ PUBLIC int sys_semunlink(const char *name)
 	if (semtable[idx].nbproc == 0)
 		freesem(idx);
 
-	semtable[idx].state|=UNLINKED;
+	semtable[idx].state |= UNLINKED;
 
 	return 0;	/* Successful completion */
 }
