@@ -142,6 +142,8 @@
 	EXTERN void initreg(void);
 	EXTERN void lockreg(struct region *);
 	EXTERN void unlockreg(struct region *);
+	EXTERN void test_mm(void);
+	EXTERN struct region regtab[NR_REGIONS];
 	EXTERN struct region *allocreg(mode_t, size_t, int);
 	EXTERN struct region *dupreg(struct region *);
 	EXTERN struct pregion *findreg(struct process *, addr_t);
