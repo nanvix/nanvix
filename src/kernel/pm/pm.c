@@ -81,7 +81,7 @@ PUBLIC struct process* semwaiters[PROC_MAX];
  */
 PUBLIC void pm_init(void)
 {	
-	int i;             /* Loop index.      */
+	int i, j;             /* Loop index.      */
 	struct process *p; /* Working process. */
 	
 	/* Initialize the process table. */
@@ -136,12 +136,15 @@ PUBLIC void pm_init(void)
 	nprocs++;
 
 	/* initializing semaphore table */
-	for(int i=0;i<OPEN_MAX;i++)
+	for (i = 0; i < OPEN_MAX; i++)
 	{
-		semtable[i].value=0;
-		(semtable[i].name)[0]='\0';
-		semtable[i].state=0;
-		semtable[i].nbproc=0;
+		semtable[i].value = 0;
+		(semtable[i].name)[0] = '\0';
+		semtable[i].state = 0;
+		semtable[i].nbproc = 0;
+
+		for (j = 0; j<PROC_MAX; j++)
+			semtable[i].currprocs[j] = (-1);
 	}
 
 

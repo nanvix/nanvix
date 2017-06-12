@@ -56,9 +56,14 @@ sem_t* sem_open(const char* name, int oflag, ...)
 		  "d" (mode),
 		  "D" (value)
 	);
+
+	if (ret==(-1))
+	{
+		return NULL;
+	}
+
 	sem_t* s;
 	s=malloc(sizeof(sem_t));
 	s->idx=ret;
-
 	return (s);
 }

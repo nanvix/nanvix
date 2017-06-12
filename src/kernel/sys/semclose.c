@@ -14,17 +14,28 @@
  */
 PUBLIC int sys_semclose(int idx)
 {
+	int i;
+
 	if (!SEM_IS_VALID(idx))
+	{
 		return -(EINVAL);
-
-	semtable[idx].nbproc--;
+	}
 	
-	/*
-	 * The semaphore is no longer accessible when 0 process use it
-	 * and only if it has been unlinked once 
-	 */
-	if(semtable[idx].nbproc==0 && (semtable[idx].state&UNLINKED))
-		freesem(idx);
+	for (i = 0; i < PROC_MAX; i++)
+	{
+		if (semtable[idx].currprocs[i] == curr_proc->pid)
+		{	
+			semtable[idx].currprocs[i] = -1;
+			/*
+			 * The semaphore is no longer accessible when 0 process use it
+			 * and only if it has been unlinked once 
+			 */
+			if (semtable[idx].nbproc == 0 && (semtable[idx].state&UNLINKED))
+				freesem(idx);
 
-	return (0);
+			return (0);
+		}
+	}
+	
+	return (-1);
 }

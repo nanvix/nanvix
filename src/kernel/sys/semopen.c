@@ -59,8 +59,10 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 {
 	mode_t mode;
 	int value;
-	va_list arg;	/* Variable argument */
-	int idx;		/* Index of the opened semaphore */
+	va_list arg;				/* Variable argument */
+	int idx, i, freeslot;		/* Index of the opened semaphore */
+
+	freeslot = -1;
 
 	/* Name invalid */
 	if (namevalid(name)==(-1))
@@ -99,8 +101,22 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 		if (	!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0) \
 			 ||	!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_READ, 0) )
 			return (EACCES);
-
 	}
+
+	for (i = 0; i < PROC_MAX; i++)
+	{
+		if (semtable[idx].currprocs[i] == (-1) && freeslot < 0)
+		{
+			freeslot = i;
+		}
+
+		if(semtable[idx].currprocs[i] == curr_proc->pid)
+		{
+			return (-1);
+		}
+	}
+
+	semtable[idx].currprocs[freeslot] = curr_proc->pid;
 
 	semtable[idx].nbproc++;
 

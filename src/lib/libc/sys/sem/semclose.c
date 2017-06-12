@@ -1,5 +1,6 @@
 #include <nanvix/syscall.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 /**
  * 	@brief closes a semaphore for calling process
@@ -13,6 +14,9 @@ int sem_close(sem_t* sem)
 {	
 	int ret;
 
+	if(sem == NULL)
+		return (-1);
+
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)
@@ -20,7 +24,8 @@ int sem_close(sem_t* sem)
 		  "b" (sem->idx)
 	);
 
-	free(sem);
+	if(ret == 0)
+		free(sem);
 	
 	return (ret);
-}
+}	

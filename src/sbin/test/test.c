@@ -391,7 +391,7 @@ void producer(int nbprod, int limit)
 	}
 }
 
-void consummer(int nbcons, int limit)
+void consumer(int nbcons, int limit)
 {
 	sem_t *sem, *semlim;
 	sem = sem_open("ressources", O_CREAT, 0777,0);
@@ -423,7 +423,7 @@ static int sem_test(void)
 	else{
 		/* father */
 		printf("father \n");
-		consummer(5,3);
+		consumer(5,3);
 	}
 
 	return (0);

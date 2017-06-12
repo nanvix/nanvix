@@ -19,12 +19,13 @@
 
 	/* Kernel semaphores */
 	struct ksem {
-		short value;              		/* Value of the semaphore                    	*/
-		char name[MAX_SEM_NAME];    	/* Name of the named semaphore               	*/
-		unsigned short state;           /* 0-8 : mode, 9 : unlinked bit					*/
-		char nbproc;                 	/* Number of processes sharing the semaphore 	*/
-		uid_t uid;              		/* Semaphore User ID         					*/
-		gid_t gid;              		/* Semaphore Group idx               			*/
+		short value;              			/* Value of the semaphore                    	*/
+		char name[MAX_SEM_NAME];    		/* Name of the named semaphore               	*/
+		unsigned short state;           	/* 0-8 : mode, 9 : unlinked bit					*/
+		char nbproc;                 		/* Number of processes sharing the semaphore 	*/
+		uid_t uid;              			/* Semaphore User ID         					*/
+		gid_t gid;              			/* Semaphore Group idx               			*/
+		pid_t currprocs[PROC_MAX];			/* Processes using the semaphores				*/
 	};
 
 	/* Semaphores table */

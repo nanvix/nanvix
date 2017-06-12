@@ -25,6 +25,9 @@ PUBLIC int sys_semunlink(const char *name)
 	if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0))
 		return (-EACCES);
 
+	if (semtable[idx].nbproc == 0)
+		freesem(idx);
+
 	semtable[idx].state|=UNLINKED;
 
 	return 0;	/* Successful completion */

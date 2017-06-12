@@ -1,7 +1,7 @@
 #include <nanvix/syscall.h>
 
 /**
- * @brief	Unlinks a semaphore for future deletion
+ * @brief	Unlinks a semaphore for deletion
  *		 
  * @param	name Semaphore name
  *
