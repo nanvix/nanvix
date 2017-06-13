@@ -29,19 +29,17 @@
  * @param device  Device name.
  * @param target  Target directory.
  */
-PUBLIC int sys_unmount(const char *device, const char *target)
+PUBLIC int sys_unmount(const char *target)
 {
-	char *kdevice;
 	char *ktarget;
 
-	/* Get device name. */
-	if ((kdevice = getname(device)) == NULL)
-		return (curr_proc->errno);
-	
 	/* Get target directory. */
 	if ((ktarget = getname(target)) == NULL)
+	{
 		return (curr_proc->errno);
+	}
+		
 
-	kprintf("fs: I should unmount %s on %s", ktarget, kdevice);
-	return unmount(kdevice,ktarget);
+	kprintf("fs: I should unmount the device on %s", ktarget);
+	return unmount(ktarget);
 }

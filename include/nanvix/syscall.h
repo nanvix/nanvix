@@ -276,7 +276,7 @@
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);
-	EXTERN int sys_unmount(const char *, const char *);	
+	EXTERN int sys_unmount(const char *);	
 	EXTERN int sys_mkfs(const char *, const char *, int);
 
 #endif /* _ASM_FILE_ */

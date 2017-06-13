@@ -24,7 +24,7 @@
 
 	/* Forward definitions. */
 	extern int mount (const char *, const char *);
-	extern int unmount (const char *, const char *);
+	extern int unmount (const char *);
 	extern int mkfs (const char *, const char *, int);
 
 #endif /* _SYS_MOUNT_H */

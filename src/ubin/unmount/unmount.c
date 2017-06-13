@@ -30,8 +30,6 @@
 #define VERSION_MAJOR 1 /* Major version. */
 #define VERSION_MINOR 0 /* Minor version. */
 
-
-static char *device = NULL; 
 static char *destination_dir= NULL;
 
 /*
@@ -40,18 +38,17 @@ static char *destination_dir= NULL;
 int main(int argc, char *const argv[])
 {
 	/* Missing arguments. */
-	if (argc < 2)
+	if (argc < 1)
 	{
-		printf ("To few argument, you need to give the name of the device and the mounting point\n");
+		printf ("To few argument, you need to give the name of the mounting point\n");
 		return (EXIT_FAILURE);
 	}
 
 	/* Retrieve parameters. */
-	device = argv[1];
-	destination_dir = argv[2];
+	destination_dir = argv[1];
 
 	/* Mount file system. */
-	if (unmount( device, destination_dir))
+	if (unmount( destination_dir))
 		printf ("The unmountfailed\n");
 	
 	return (EXIT_SUCCESS);
