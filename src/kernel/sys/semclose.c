@@ -17,15 +17,14 @@ PUBLIC int sys_semclose(int idx)
 	int i;
 
 	if (!SEM_IS_VALID(idx))
-	{
-		return -(EINVAL);
-	}
+		return (-EINVAL);
 	
 	for (i = 0; i < PROC_MAX; i++)
 	{
 		if (semtable[idx].currprocs[i] == curr_proc->pid)
 		{	
 			semtable[idx].currprocs[i] = (-1);
+
 			/*
 			 * The semaphore is no longer accessible when 0 process use it
 			 * and only if it has been unlinked once 

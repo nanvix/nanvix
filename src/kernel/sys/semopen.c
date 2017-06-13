@@ -16,21 +16,18 @@
  */
 int add_entry(int value, const char* name, int mode)
 {
-	int idx;
-
-	for (idx=0; idx<SEM_OPEN_MAX; idx++)
+	for (int idx = 0; idx < SEM_OPEN_MAX; idx++)
 	{
-		if(semtable[idx].nbproc==0 && semtable[idx].name[0]=='\0')
+		if ((semtable[idx].nbproc == 0) && (semtable[idx].name[0]=='\0'))
 		{
 			semtable[idx].value=value;
 			kstrcpy(semtable[idx].name,name);
 			semtable[idx].state=mode;
 			semtable[idx].nbproc=0;
-			/* Semaphore uid is set to the euid of the calling process */
 			semtable[idx].uid=curr_proc->euid;
-			/* Semaphore gid is set to the egid of the calling process */
 			semtable[idx].gid=curr_proc->egid;
-			return idx;
+
+			return (idx);
 		}
 	}
 
