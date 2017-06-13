@@ -205,14 +205,14 @@ PUBLIC void fs_init(void)
 		
 	superblock_unlock(rootdev);
 	
-	root = inode_get(ROOT_DEV, 1);
-	
+	root =mountRoot();
+
 	/* Failed to read root inode. */
 	if (root == NULL)
 		kpanic("failed to read root inode");
 	
 	kprintf("fs: root file system mounted");
-	
+
 	/* Hand craft idle process. */
 	IDLE->pwd = root;
 	IDLE->root = root;

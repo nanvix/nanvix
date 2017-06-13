@@ -159,7 +159,9 @@
 	 * @brief Function too register file system in the virtual file system .
 	 */
 	PUBLIC int fs_register( int nb , struct file_system_type * fs );
-
+	/**
+	 * @brief add the ROOT_DEV in the mount table.
+	 */
+	PUBLIC struct inode * mountRoot ();
 	/**@}*/
-
 #endif /* _FS_H_ */
