@@ -29,7 +29,7 @@
  * @param device  Device name.
  * @param target  Target directory.
  */
-PUBLIC int sys_mount(const char *device, const char *target)
+PUBLIC int sys_unmount(const char *device, const char *target)
 {
 	char *kdevice;
 	char *ktarget;
@@ -42,8 +42,6 @@ PUBLIC int sys_mount(const char *device, const char *target)
 	if ((ktarget = getname(target)) == NULL)
 		return (curr_proc->errno);
 
-	kprintf("fs: mouting %s on %s", ktarget, kdevice);
-
-	return (mount(kdevice,ktarget));
+	kprintf("fs: I should unmount %s on %s", ktarget, kdevice);
+	return unmount(kdevice,ktarget);
 }
-
