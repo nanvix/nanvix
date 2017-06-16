@@ -214,6 +214,8 @@ PUBLIC int mount (char* device, char* mountPoint)
 	int ind_mp;
 	struct file_system_type * fs;
 	superblock_t sb;
+	int dev;
+	int num_root;
 
 	inode_root_fs=NULL;
 	inode_mount= NULL;
@@ -226,7 +228,9 @@ PUBLIC int mount (char* device, char* mountPoint)
 		return 1;
 
 	/* get the root inode of the file systeme*/
+	kprintf ("device: %s",device);
 	inode_root_fs=inode_nameb(device);
+
 
 	/*Problem with root inode */
 	if (inode_root_fs==NULL)
@@ -241,6 +245,9 @@ PUBLIC int mount (char* device, char* mountPoint)
 		kprintf ("what you provide is not a device\n");
 		goto error0;
 	}
+	dev=inode_root_fs->dev;
+	num_root=inode_root_fs->num;
+
 	inode_put(inode_root_fs);
 	
 	/*get the inode of the mount point*/
@@ -270,7 +277,7 @@ PUBLIC int mount (char* device, char* mountPoint)
 	for(int i=0; i<NR_FILE_SYSTEM; i++){
 		if (fileSystemTable[i]!=NULL)
 		{
-			sb=superblock_read(inode_root_fs->dev);
+			sb=superblock_read(dev);
 			if (sb!=NULL)
 			{
 				fs=fileSystemTable[i];
@@ -282,11 +289,11 @@ PUBLIC int mount (char* device, char* mountPoint)
 	goto error1;
 
 found:
-	
+
 	mountTable[ind_mp].mountPoint=mountPoint;
-	mountTable[ind_mp].dev=inode_root_fs->dev;
+	mountTable[ind_mp].dev=dev;
 	mountTable[ind_mp].fs= fs;
-	mountTable[ind_mp].no_inode_root_fs=inode_root_fs->num;
+	mountTable[ind_mp].no_inode_root_fs=num_root;
 	mountTable[ind_mp].no_inode_mount=inode_mount->num;
 	mountTable[ind_mp].free= 0;
 	
