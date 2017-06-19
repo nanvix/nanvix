@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -34,5 +35,7 @@
 	 *   No errors are defined.
 	 */
 	EXTERN void ramdisk_init(void);
+
+	EXTERN void test_rmd(void);
 
 #endif /* RAMDISK_H_ */
