@@ -4,6 +4,7 @@
 #include <nanvix/klib.h>
 #include <semaphore.h>
 #include <errno.h>
+#include <nanvix/fs.h>
 
 /**
  *	@brief Add the semaphore to the sem table
@@ -14,29 +15,41 @@
  *			 in case of successful completion, SEM_FAILED otherwise
  *			
  */
-int add_entry(int value, const char* name, int mode)
-{
-	for (int idx = 0; idx < SEM_OPEN_MAX; idx++)
-	{
-		if ((semtable[idx].nbproc == 0) && (semtable[idx].name[0]=='\0'))
-		{
-			semtable[idx].value=value;
-			kstrcpy(semtable[idx].name,name);
-			semtable[idx].state=mode;
-			semtable[idx].nbproc=0;
-			semtable[idx].uid=curr_proc->euid;
-			semtable[idx].gid=curr_proc->egid;
+// PRIVATE ino_t add_entry(int value, const char* name, int mode)
+// {
+// 	struct inode *semdir, *inode; /* /home/mysemaphores/ */
 
-			return (idx);
-		}
-	}
+// 	semdir = inode_name("/home/mysem");
 
-	/* Semaphore table full */
-	return (-ENFILE); 
-}
+// 	/* 
+// 	 *  if ( too much semaphores )
+// 	 * 	Semaphore table full 
+// 	 * 
+// 	 *  return (-ENFILE); 
+// 	 */
+
+// 	/* Initialize Semaphore inode. */
+// 	inode = do_creat(semdir, name, mode, O_CREAT);
+
+// 	inode->size = sizeof(struct ksem);
+// 	inode->time = CURRENT_TIME;
+// 	inode->count = 1;
+
+// 	sembuf.value=value;
+// 	kstrcpy(sembuf.name,name);
+// 	sembuf.state=mode;
+// 	sembuf.nbproc=0;
+// 	sembuf.uid=curr_proc->euid;
+// 	sembuf.gid=curr_proc->egid;
+// 	sembuf.currprocs[0]=curr_proc->pid;
+
+// 	file_write(inode, &sembuf, sizeof(struct ksem),0);
+
+// 	return sembuf.num;
+// }
 
 /**
- * @brief opens a semaphore
+ * @brief Opens a semaphore
  *		 
  * @param	name 	Name of the semaphore
  *			oflag	Creation flags
@@ -52,22 +65,22 @@ int add_entry(int value, const char* name, int mode)
  *			EMFILE : Too many semaphore descriptors or file descriptors are currently in use by this process.
  *			EACESS : Check creation permission if semaphore does not exist
  */
-PUBLIC int sys_semopen(const char* name, int oflag, ...)
+PUBLIC ino_t sys_semopen(const char* name, int oflag, ...)
 {
 	mode_t mode;
 	int value;
 	va_list arg;				/* Variable argument */
-	int idx, i, freeslot;		/* Index of the opened semaphore */
-
+	int i, freeslot;		/* Index of the opened semaphore */
+	struct inode *inode;
 	freeslot = -1;
 
 	/* Name invalid */
 	if (namevalid(name) == (-1))
 		return (-EINVAL);
 
-	idx = existance(name);
+	inode = existence_inode(name);
 
-	if (idx == (-1))	/* This semaphore does not exist */
+	if (inode == (NULL))	/* This semaphore does not exist */
 	{
 		if(oflag & O_CREAT)	
 		{
@@ -85,8 +98,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			if (!SEM_VALID_VALUE(value))
 				return (-EINVAL);
 
-			idx=add_entry (value,name,mode);
-
+			inode = inode_semaphore (value,name,mode);
 		}
 		/* O_CREAT not set and sem does not exist */
 		else
@@ -95,27 +107,32 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	else	/* This semaphore already exists */
 	{
 		/* Checking if there is WRITE and READ permissions */
-		if (	!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0) \
-			 ||	!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_READ, 0) )
+		if (	!permission(sembuf.state, inode->uid, inode->gid, curr_proc, MAY_WRITE, 0) \
+			 ||	!permission(sembuf.state, inode->uid, inode->gid, curr_proc, MAY_READ, 0) )
 			return (EACCES);
-	}
-
-	for (i = 0; i < PROC_MAX; i++)
-	{
-		if (semtable[idx].currprocs[i] == (-1) && freeslot < 0)
+		
+		for (i = 0; i < PROC_MAX; i++)
 		{
-			freeslot = i;
+
+			if (sembuf.currprocs[i] == (-1) && freeslot < 0)
+			{
+
+				freeslot = i;
+			}
+			
+			/* Preventing multiple opening */
+			if (sembuf.currprocs[i] == curr_proc->pid)
+			{
+				return (-1);
+			}
 		}
 
-		if (semtable[idx].currprocs[i] == curr_proc->pid)
-		{
-			return (-1);
-		}
+		sembuf.currprocs[freeslot] = curr_proc->pid;
+
+		sembuf.nbproc++;
+
+		file_write(inode, &sembuf, sizeof(struct ksem),0);
 	}
 
-	semtable[idx].currprocs[freeslot] = curr_proc->pid;
-
-	semtable[idx].nbproc++;
-
-	return idx;
+	return inode->num;
 }

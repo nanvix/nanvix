@@ -3,6 +3,12 @@
 #include <nanvix/config.h>
 #include <nanvix/pm.h>
 
+
+
+#ifndef SEM_H_
+#define SEM_H_
+
+
 #define UNLINKED 	0001000
 #define PERMISSIONS 0000777
 
@@ -23,8 +29,6 @@
 		char name[MAX_SEM_NAME];    		/* Name of the named semaphore               	*/
 		unsigned short state;           	/* 0-8 : mode, 9 : unlinked bit					*/
 		char nbproc;                 		/* Number of processes sharing the semaphore 	*/
-		uid_t uid;              			/* Semaphore User ID         					*/
-		gid_t gid;              			/* Semaphore Group idx               			*/
 		pid_t currprocs[PROC_MAX];			/* Processes using the semaphores				*/
 	};
 
@@ -32,6 +36,12 @@
 	extern struct ksem semtable[SEM_OPEN_MAX];
 
 	extern struct process* semwaiters[PROC_MAX];
+
+	/* 
+	 *  Semaphore buffer used to avoid
+	 *  multiple reading
+	 */
+	extern struct ksem sembuf;
 
 	/* Frees a semaphore */
 	int freesem(int idx);
@@ -41,5 +51,10 @@
 
 	/* Give the index of the semaphore if it exists */
 	int existance(const char* semname);
+
+	struct inode *existence_inode(const char* semname)
+
+#endif
+
 
 #endif

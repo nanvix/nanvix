@@ -2,6 +2,48 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 
+
+#include <nanvix/const.h>
+#include <sys/types.h>
+
+/**
+ * @brief Copies part of a string.
+ * 
+ * @param str1 Target string.
+ * @param str2 Source string.
+ * @param n    Number of characters to be copied.
+ * 
+ * @returns A pointer to the target string.
+ */
+PUBLIC char *kstrcncat(const char *str1, const char *str2, char *str3)
+{
+	const char *p1; /* Indexes str1. */
+	const char *p2; /* Indexes str2. */
+	char *p3; /* Indexes str3. */
+	
+	p1 = str1;
+	p2 = str2;
+	p3 = str3;
+
+	while (*p1 != '\0')
+	{
+		*p3 = *p1;
+		p1++;
+		p3++;
+	}
+
+	while (*p2 != '\0')
+	{
+		*p3 = *p1;
+		p2++;
+		p3++;
+	}
+
+	*p3 = '\0';
+
+	return (str3);
+}
+
 /**
  *	@brief make a semaphore slot available for
  *		   a new semaphore creation
@@ -61,4 +103,30 @@ int existance(const char* semname)
 	}
 
 	return -1;
+}
+
+struct inode *existence_inode(const char* semname)
+{
+	struct inode *semdir; /* /home/mysemaphores/ */
+	struct inode *seminode;
+
+	semdir = inode_name("/home/mysem");
+
+	if (semdir == NULL)
+	{
+		kprintf("Error with the semaphore directory");
+	}
+
+	char sempath[MAX_SEM_NAME];
+	seminode = inode_name(kstrcncat("/home/mysem/", semname, sempath));
+
+	if(seminode != INODE_NULL)
+	{
+		file_read(seminode, &sembuf, sizeof(struct ksem),0);
+		return 0;
+	}
+	else
+	{
+		return NULL;
+	}
 }

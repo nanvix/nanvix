@@ -32,8 +32,10 @@
 #include <nanvix/mm.h>
 #include <errno.h>
 #include <limits.h>
+
 #include "fs.h"
 #include "inode_minix.h"
+#include <fcntl.h>
 
 /* Number of inodes per block. */
 #define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
@@ -603,17 +605,17 @@ PUBLIC struct inode *inode_alloc (struct superblock *sb)
 		kpanic("not valid superblock");
 	}
 
-	if (sb->so==NULL){
-		kpanic("no supper operation in the superblock");
-	}
+	// if (sb->so==NULL){
+	// 	kpanic("no supper operation in the superblock");
+	// }
 
 	/* Allocate inode. */
 	
 	/* Operation not supported. */
-	if (sb->so->inode_alloc == NULL)
-		kpanic("operation not supported by the file system");
+	// if (sb->so->inode_alloc == NULL)
+	// 	kpanic("operation not supported by the file system");
 
-	if (sb->so->inode_alloc(sb,ip)){
+	if (inode_alloc_minix(sb,ip)){
 		return NULL;
 	}
 	inode_touch(ip);
@@ -1101,3 +1103,143 @@ PUBLIC void inode_init(void)
 	/*Initialize MountTable*/
 	init_mountTable();
 }
+
+/*
+ * Gets a semaphore inode.
+ */
+// PUBLIC struct inode *inode_semaphore(const char* name, mode_t mode, struct ksem* sem)
+// {
+// 	struct inode *inode; 	/* Pipe inode. */
+// 	ino_t num;
+// 	struct inode *semdir; /* /home/mysemaphores/ */
+
+// 	semdir = inode_name("/home/mysem");
+
+
+
+// 	if (semdir == NULL)
+// 	{
+// 	}
+// 	else
+// 	{
+// 		kprintf("eeee %d\n",semdir->sb);
+// 	}
+// 	/*  
+// 	 *  Search for the existence of the sem @p name
+// 	 *  in the directory semdir
+// 	 */
+// 	num = dir_search(semdir, name);
+
+// 	if(mode){}
+
+// 	if(sem){}
+// 	//inode = inode_cache_evict();
+
+// 	if(num != INODE_NULL)
+// 	{
+
+// 		/* The semaphore exists */
+// 		inode = inode_get(semdir->dev,num);
+// 		return inode;
+// 	}
+// 	else
+// 	{
+// 		inode = NULL;
+// 		/* Initialize Semaphore inode. */
+// 		inode = do_creat(semdir, "michaeljones", 0777, O_CREAT);
+
+// 		inode->nlinks = 0;
+// 		inode->uid = curr_proc->uid;
+// 		inode->gid = curr_proc->gid;
+// 		inode->size = sizeof(struct ksem);
+// 		inode->time = CURRENT_TIME;
+// 		inode->dev = semdir->dev;
+// 		inode->num = INODE_NULL;
+// 		inode->count = 1;
+
+// 		kprintf("ecriture \n");
+// 		file_write(inode, sem, sizeof(struct ksem),0);
+// 		// kprintf("lecture \n");
+// 		// struct ksem *test = NULL;
+// 		// file_read(inode, test, sizeof(struct ksem), 0);
+// 		// kprintf(" le nom du sem lu est : %s\n",test->name);
+
+// 	}
+
+
+// 	return (inode);
+// }
+
+PUBLIC struct inode *inode_semaphore(int value, const char* name, int mode)
+{
+	struct inode *semdir, *inode; /* /home/mysemaphores/ */
+
+	semdir = inode_name("/home/mysem");
+
+	/* 
+	 *  if ( too much semaphores )
+	 * 	Semaphore table full 
+	 * 
+	 *  return (-ENFILE); 
+	 */
+
+	/* Initialize Semaphore inode. */
+	inode = do_creat(semdir, name, mode, O_CREAT);
+
+	inode->size = sizeof(struct ksem);
+	inode->time = CURRENT_TIME;
+	inode->count = 1;
+
+	sembuf.value=value;
+	kstrcpy(sembuf.name,name);
+	sembuf.state=mode;
+	sembuf.nbproc=0;
+	sembuf.uid=curr_proc->euid;
+	sembuf.gid=curr_proc->egid;
+	sembuf.currprocs[0]=curr_proc->pid;
+
+	file_write(inode, &sembuf, sizeof(struct ksem),0);
+
+	return sembuf.num;
+}
+
+/*
+ * Creates a file.
+ */
+// PRIVATE struct inode *do_creat(struct inode *d, const char *name, mode_t mode, int oflag)
+// {
+// 	struct inode *i;
+	
+// 	/* Not asked to create file. */
+// 	if (!(oflag & O_CREAT))
+// 	{
+// 		curr_proc->errno = -ENOENT;
+// 		return (NULL);
+// 	}
+		
+// 	/* Not allowed to write in parent directory. */
+// 	if (!permission(d->mode, d->uid, d->gid, curr_proc, MAY_WRITE, 0))
+// 	{
+// 		curr_proc->errno = -EACCES;
+// 		return (NULL);
+// 	}	
+	
+// 	i = inode_alloc(d->sb);
+	
+// 	/* Failed to allocate inode. */
+// 	if (i == NULL)
+// 		return (NULL);
+		
+// 	i->mode = (mode & MAY_ALL & ~curr_proc->umask) | S_IFREG;
+
+// 	/* Failed to add directory entry. */
+// 	if (dir_add(d, i, name))
+// 	{
+// 		inode_put(i);
+// 		return (NULL);
+// 	}
+		
+// 	inode_unlock(i);
+	
+// 	return (i);
+// }

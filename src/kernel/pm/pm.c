@@ -75,6 +75,7 @@ PUBLIC struct ksem semtable[SEM_OPEN_MAX];
 /* Processes waiting for a semaphore */
 PUBLIC struct process* semwaiters[PROC_MAX];
 
+PUBLIC struct ksem sembuf;
 
 /**
  * @brief Initializes the process management system.

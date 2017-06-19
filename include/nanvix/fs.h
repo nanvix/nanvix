@@ -42,6 +42,8 @@
 	#include <sys/types.h>
 	#include <stdint.h>
 	#include <ustat.h>
+	#include <sys/sem.h>
+
 
 /*============================================================================*
  *                              Block Buffer Library                          *
@@ -140,6 +142,7 @@
 	EXTERN struct inode *inode_pipe(void);
 	EXTERN int mount (char*, char*);
 	EXTERN int unmount (char*, char*);
+	EXTERN struct inode *inode_semaphore(int value, const char* name, int mode);
 
 /*============================================================================*
  *                            Super Block Library                             *
@@ -200,6 +203,9 @@
 	EXTERN ssize_t pipe_read(struct inode *, char *, size_t);
 	EXTERN ssize_t pipe_write(struct inode *, const char *, size_t);
 	
+	EXTERN struct inode *do_creat(struct inode *d, const char *name, mode_t mode, int oflag);
+	EXTERN struct inode *do_open(const char *path, int oflag, mode_t mode);
+
 	/* Forward definitions. */
 	EXTERN struct inode *root;
 	EXTERN struct superblock *rootdev;

@@ -14,21 +14,22 @@
  */
 PUBLIC int sys_semunlink(const char *name)
 {
-	int idx;
+	if(name){}
+	// int idx;
 
-	idx = existance(name);
+	// idx = existance(name);
 
-	if (idx == (-1))
-		return (-ENOENT);
+	// if (idx == (-1))
+	// 	return (-ENOENT);
 
-	/* Checking WRITE permission */
-	if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0))
-		return (-EACCES);
+	// /* Checking WRITE permission */
+	// if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0))
+	// 	return (-EACCES);
 
-	if (semtable[idx].nbproc == 0)
-		freesem(idx);
+	// if (semtable[idx].nbproc == 0)
+	// 	freesem(idx);
 
-	semtable[idx].state |= UNLINKED;
+	// semtable[idx].state |= UNLINKED;
 
 	return 0;	/* Successful completion */
 }
