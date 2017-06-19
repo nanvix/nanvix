@@ -1,6 +1,7 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -1034,7 +1035,6 @@ PRIVATE int count_freereg(void)
 		}
 	}
 
-	kprintf("mm test: free regions: %d - not free regions: %d", free_count,(NR_REGIONS-free_count));
 	return(free_count);
 }
 
@@ -1148,8 +1148,6 @@ PUBLIC void test_mm(void)
 {
 
 	int min_mm = min_regmreg();
-
-	kprintf("mm test: minimum memory size: %d",min_mm);
 
 	if(!mmtst_free(min_mm))
 	{

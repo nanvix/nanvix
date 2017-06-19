@@ -1,6 +1,7 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -143,7 +144,6 @@
 	EXTERN void lockreg(struct region *);
 	EXTERN void unlockreg(struct region *);
 	EXTERN void test_mm(void);
-	EXTERN struct region regtab[NR_REGIONS];
 	EXTERN struct region *allocreg(mode_t, size_t, int);
 	EXTERN struct region *dupreg(struct region *);
 	EXTERN struct pregion *findreg(struct process *, addr_t);
