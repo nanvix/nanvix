@@ -46,6 +46,6 @@
 	EXTERN void dbg_execute(void);
 	EXTERN void tst_passed(void);
 	EXTERN void tst_failed(void);
-	EXTERN void tst_skiped(void);
+	EXTERN void tst_skipped(void);
 
 #endif /* NANVIX_DEBUG_H */

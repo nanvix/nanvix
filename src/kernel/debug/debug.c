@@ -55,7 +55,7 @@ PUBLIC void tst_failed(void)
 	failed_fns[(tst_cnt.tst_fail)-1] = current_fn;
 }
 
-PUBLIC void tst_skiped(void) 
+PUBLIC void tst_skipped(void) 
 {
 	tst_cnt.tst_skip++; 
 }
@@ -133,7 +133,7 @@ PUBLIC void dbg_execute(void)
 		debug_fns[i]();
 	}
 
-	kprintf("debug-driver: done - test passed: %d - test failed: %d - test skiped: %d", tst_cnt.tst_pass, tst_cnt.tst_fail, tst_cnt.tst_skip);
+	kprintf("debug-driver: done - test passed: %d - test failed: %d - test skipped: %d", tst_cnt.tst_pass, tst_cnt.tst_fail, tst_cnt.tst_skip);
 
 	if (tst_cnt.tst_fail > 0)
 	{
