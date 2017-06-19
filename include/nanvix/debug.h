@@ -42,7 +42,7 @@
 	
 	/* Forward definitions */
 	EXTERN void dbg_init(void);
-	EXTERN void dbg_register(debug_fn fn);
+	EXTERN void dbg_register(debug_fn fn, char *fn_name);
 	EXTERN void dbg_execute(void);
 	EXTERN void tst_passed(void);
 	EXTERN void tst_failed(void);
