@@ -140,6 +140,7 @@
   EXTERN struct inode *inode_pipe(void); 
   EXTERN int mount (char*, char*); 
   EXTERN int unmount (char*);
+  EXTERN int mkfs (const char *, uint16_t, uint16_t, uint16_t, uint16_t);
   EXTERN void print_mountTable(void); 
  
 /*============================================================================* 

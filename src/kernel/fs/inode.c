@@ -646,7 +646,7 @@ PUBLIC struct inode *inode_alloc (struct superblock *sb)
 	}
 
 	if (sb->so==NULL){
-		kpanic("no supper operation in the superblock");
+		kpanic("no super operation in the superblock");
 	}
 
 	/* Allocate inode. */
@@ -1077,6 +1077,14 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	}
 	
 	return inode;
+}
+
+
+PUBLIC int mkfs
+(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid)
+{
+	minix_mkfs(diskfile,ninodes,nblocks,uid,gid);
+	return 1;
 }
 
 /**

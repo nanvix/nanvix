@@ -24,6 +24,11 @@
  * @brief Inode module implementation.
  */
 
+#include <nanvix/klib.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
 #include <nanvix/clock.h>
 #include <nanvix/config.h>
 #include <nanvix/const.h>
@@ -318,6 +323,151 @@ error0:
 	return (1);
 }
 
+
+PUBLIC int minix_mkfs
+(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid)
+{
+	size_t size;            		 /* Size of file system.	   	        	*/
+	char buf[BLOCK_SIZE];   		 /* Writing buffer.      	       	   		*/
+	uint16_t imap_nblocks;  		 /* Number of inodes map blocks. 	   		*/
+	uint16_t bmap_nblocks;  		 /* Number of block map blocks.    			*/
+	uint16_t inode_nblocks; 		 /* Number of inode blocks.        		 	*/
+	mode_t mode;            		 /* Access permissions to root dir.		 	*/
+	struct d_superblock * d_super; 	 /* Disk superblock 						*/
+	struct superblock * super; 		 /* In core superblock						*/
+	struct inode * ip;				 /* Pointeur to in core inode				*/
+	struct inode inode;				 /* Inode									*/
+	dev_t dev;	 					 /* Device on witch file system in created	*/
+	uint32_t * p ;
+	struct buffer *buff;        	 /* Buffer disk superblock. 				*/
+	off_t of;						 /* Offset									*/
+	uint32_t imap_bitmap[IMAP_SIZE]; /*Inode map								*/
+	uint32_t zmap_bitmap[ZMAP_SIZE]; /*Zone map									*/
+
+	/*recuperation of the device */
+	
+	ip=inode_name(diskfile);
+	
+	/*Problem with device inode */
+	if (ip==NULL)
+	{	
+		return 0;
+	}
+	
+	/*check if it's a device*/
+	if (!S_ISCHR(ip->mode) && !S_ISBLK(ip->mode))
+	{
+		inode_put(ip);
+		kprintf ("Mkfs:what you provide is not a device\n");
+		return 0;
+	}
+	dev = ip->dev;
+	inode_put(ip);
+	
+	
+	/* Compute dimensions of file sytem. */
+	imap_nblocks = ROUND(ninodes/(8*BLOCK_SIZE));
+	bmap_nblocks = ROUND(nblocks/(8*BLOCK_SIZE));
+	inode_nblocks = ROUND( (ninodes*sizeof(struct d_inode))/BLOCK_SIZE);
+	
+	/* Compute size of file system. */
+	size  = 1;             /* boot block   */
+	size += 1;             /* superblock   */
+	size += imap_nblocks;  /* inode map    */
+	size += bmap_nblocks;  /* block map    */
+	size += inode_nblocks; /* inode blocks */
+	size = nblocks - size;       /* data blocks  */
+	size <<= BLOCK_SIZE_LOG2;
+	
+	/* Fill file system with zeros. */
+	of =0;
+	kmemset(buf, 0, BLOCK_SIZE);
+	for (size_t i = 0; i < size; i += BLOCK_SIZE) //size
+	{
+		bdev_write(dev, buf, BLOCK_SIZE, of);
+		of+=BLOCK_SIZE;
+	}
+	
+	/* Initialize superblock. */
+	buff= bread(dev,1);
+	d_super = (struct d_superblock *)buffer_data(buff);
+	d_super->s_ninodes = ninodes;
+	d_super->s_nblocks = nblocks;
+	d_super->s_imap_nblocks = imap_nblocks;
+	d_super->s_bmap_nblocks = bmap_nblocks;
+	d_super->s_first_data_block = 2 + imap_nblocks + bmap_nblocks + inode_nblocks;
+	d_super->s_max_size = 67641344;
+	d_super->s_magic = SUPER_MAGIC;
+	bwrite(buff);
+	
+	/* Create inode map. */
+	for (unsigned i = 0; i < imap_nblocks; i++)
+	{
+		buff= bread(dev,2+i);
+		p= (uint32_t *)buffer_data(buff);
+		*p=imap_bitmap[i];
+		bwrite(buff);
+		brelse(buff);
+	}
+	
+	/* Create block map. */
+	for (unsigned i = 0; i < bmap_nblocks; i++)
+	{
+		buff= bread(dev,2+imap_nblocks+i); 
+		p= buffer_data(buff);
+		*p=zmap_bitmap[i];
+		bwrite(buff);
+		brelse(buff);	
+	}
+	
+	/* Access permission to root directory. */
+	mode  = S_IFDIR;
+	mode |= S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+	
+	/*Recuperation of the superblock*/
+	super = superblock_read(dev);
+	
+	if (super==NULL)
+	{
+		kprintf("Mkfs: Echec of the recuperation of th super block"); 
+		return 0;
+	}
+
+	superblock_unlock(super);
+
+	/* Create root directory. */
+	ip=&inode;
+	
+	if (inode_alloc_minix(super,ip))
+	{
+		kprintf ("Mkfs : Allocation failed");
+		return 0;
+	}	
+	
+	if (ip==NULL)
+	{
+		kprintf ("Mkfs : Allocation failed");
+		return 0;
+	}
+	
+	if(dir_add(ip, ip, ".")){
+		kprintf("Root directory can not be created");
+		return 0;
+	}
+		
+	if(dir_add(ip, ip, "..")){
+		kprintf("Parent directory can not be created");
+		return 0;
+	}
+		
+	ip->nlinks--;
+	ip->mode=mode;
+	ip->uid=uid;
+	ip->gid=gid;
+	inode_write_minix(ip);
+	inode_put(ip);
+	return 1;
+}
 /**
  * @brief Minix file system operations.
  */

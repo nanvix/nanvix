@@ -51,7 +51,6 @@ PUBLIC int sys_mkfs(const char *diskfile, const char *fs_name, int size)
 
 	kprintf("%s,%s,%d,%d",kdiskfile,kfs_name, ninodes, nblocks);
 
-	//mkfs(diskfile, ninodes, nblocks, atoi(argv[4]), atoi(argv[5]));
-	
+	mkfs(diskfile, ninodes, nblocks,0,0);
 	return 1;
 }

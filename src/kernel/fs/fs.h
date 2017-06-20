@@ -159,6 +159,8 @@
 	 * @brief Function too register file system in the virtual file system .
 	 */
 	PUBLIC int fs_register( int nb , struct file_system_type * fs );
+	
+	PUBLIC int minix_mkfs(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid);
 	/**
 	 * @brief add the ROOT_DEV in the mount table.
 	 */
