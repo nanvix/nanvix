@@ -37,6 +37,9 @@
 	EXTERN void inode_truncate_minix(struct inode *);
 	EXTERN int inode_alloc_minix(struct superblock *, struct inode *);
 	EXTERN void init_minix (void);
+	EXTERN int minix_mkfs(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid);
+	EXTERN struct super_operations * so_minix(void);
+
 	
 #endif
 

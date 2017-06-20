@@ -137,7 +137,7 @@
 	 * @brief Mounting point.
 	 */
 	struct mountingPoint {
-		dev_t dev;			/**< Name of the devices							*/
+		dev_t dev;				/**< Name of the devices							*/
 		char * mountPoint;		/**< Mount point 									*/
 		int no_inode_mount; 	/**< Number of the inode of the mounting point 		*/
 		int no_inode_root_fs;	/**< Number of the inode root of the file system 	*/
@@ -160,7 +160,6 @@
 	 */
 	PUBLIC int fs_register( int nb , struct file_system_type * fs );
 	
-	PUBLIC int minix_mkfs(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid);
 	/**
 	 * @brief add the ROOT_DEV in the mount table.
 	 */

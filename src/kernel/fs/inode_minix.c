@@ -364,6 +364,7 @@ PUBLIC int minix_mkfs
 	dev = ip->dev;
 	inode_put(ip);
 	
+	#define ROUND(x) (((x) == 0) ? 1 : (x))
 	
 	/* Compute dimensions of file sytem. */
 	imap_nblocks = ROUND(ninodes/(8*BLOCK_SIZE));
@@ -471,7 +472,7 @@ PUBLIC int minix_mkfs
 /**
  * @brief Minix file system operations.
  */
-PRIVATE struct super_operations so_minix = {
+PRIVATE struct super_operations super_o_minix = {
 		&inode_read_minix, 
 		&inode_write_minix,
 		&inode_free_minix,
@@ -486,9 +487,13 @@ PRIVATE struct super_operations so_minix = {
 
 PRIVATE struct file_system_type fs_minix = {
 	NULL,
-	&so_minix,
+	&super_o_minix,
 	"minix"
 };
+
+PUBLIC struct super_operations * so_minix(void){
+	return &super_o_minix;
+}
 
 /**
  * @brief initialise the file system in the virtual file system.
