@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -21,8 +22,9 @@
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
+#include <nanvix/debug.h>
 #include <sys/types.h>
-	
+
 /* Error checking. */
 #if KLOG_SIZE > KBUFFER_SIZE
 	#error "KLOG_SIZE must be smaller than or equal to KBUFFER_SIZE"
@@ -140,9 +142,66 @@ PRIVATE struct cdev klog_driver = {
 };
 
 /**
+ * @brief Used for debugging
+ * @details Tests if klog_write and klog_read works correctly
+ * 
+ * @param buffer Buffer to be written in the log device.
+ * @param tstlog_lenght Number of characters to be written in the log device.
+ * 
+ * @returns Upon successful completion one is returned. Upon failure, a 
+ *          zero is returned instead.
+ */
+PRIVATE int klogtst_wr(char *buffer, int tstlog_lenght)
+{
+	char buffer2[KBUFFER_SIZE];
+	int char_count, char_count2;
+
+	if ((char_count = klog_write(0, buffer, tstlog_lenght)) != tstlog_lenght)
+	{
+		if (char_count <= 0)
+			kprintf("klog test: klog_write failed: nothing has been written");
+		else
+			kprintf("klog test: klog_write failed: what has been written is not what it has to be write");
+
+		return 0;
+	}
+
+	if ((char_count2 = klog_read(0,buffer2,tstlog_lenght)) != char_count)
+	{
+		if (char_count2 <= 0)
+			kprintf("klog test: klog_read failed: nothing has been read");
+		else
+			kprintf("klog test: klog_read failed: what has been read is not what it has to be read");
+
+		tst_failed();
+	}
+
+	return 1;
+}
+
+/**
+ * @brief Used for debugging. Test main function
+ */
+PUBLIC void test_klog(void)
+{
+	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
+	int tstlog_lenght = 34; /* Size of message to write in the log */
+	kstrncpy(buffer, "klog test: test data input in klog", tstlog_lenght);
+
+	if(!klogtst_wr(buffer, tstlog_lenght))
+	{
+		tst_failed();
+		return;
+	}
+	tst_passed();
+	return;
+}
+
+/**
  * @brief Initializes the kernel log driver.
  */
 PUBLIC void klog_init(void)
 {
 	cdev_register(KLOG_MAJOR, &klog_driver);
+	dbg_register(test_klog, "test_klog");
 }

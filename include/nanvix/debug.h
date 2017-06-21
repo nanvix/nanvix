@@ -28,6 +28,13 @@
 
 	#include <nanvix/klib.h>
 
+	/* counters */
+	struct tst_count {
+		unsigned int tst_pass;
+		unsigned int tst_fail;
+		unsigned int tst_skip;
+	};
+
 	/**
 	 * @brief Opaque pointer to a debug function.
 	 */
@@ -35,7 +42,10 @@
 	
 	/* Forward definitions */
 	EXTERN void dbg_init(void);
-	EXTERN void dbg_register(debug_fn fn);
-	EXTERN void dbg_execute();
+	EXTERN void dbg_register(debug_fn fn, char *fn_name);
+	EXTERN void dbg_execute(void);
+	EXTERN void tst_passed(void);
+	EXTERN void tst_failed(void);
+	EXTERN void tst_skipped(void);
 
 #endif /* NANVIX_DEBUG_H */

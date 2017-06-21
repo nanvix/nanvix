@@ -1,6 +1,7 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -28,6 +29,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
 #include <nanvix/clock.h>
+#include <nanvix/debug.h>
 #include <errno.h>
 
 /*============================================================================*
@@ -67,7 +69,7 @@ PUBLIC int cdev_register(unsigned major, const struct cdev *dev)
 	
 	/* Register character device. */
 	cdevsw[major] = dev;
-	
+
 	return (0);
 }
 
@@ -187,6 +189,83 @@ PUBLIC int cdev_close(dev_t dev)
 		return (-ENOTSUP);
 		
 	return (cdevsw[MAJOR(dev)]->close(MINOR(dev)));
+}
+
+
+/**
+ * @brief Used for debugging
+ * @details Tests if all character devices are correctly registered
+ * 
+ * @returns Upon successful completion one is returned. Upon failure, a 
+ *          zero is returned instead.
+ */
+PRIVATE int cdevtst_register(void)
+{
+	int i;
+	for (i=0;i<NR_CHRDEV;i++)
+	{
+		if (cdevsw[i] == NULL && i > 0)
+		{
+			kprintf("cdev test: register of device number %d failed", i);
+			return 0;
+		}
+	}
+	return 1;
+}
+
+/**
+ * @brief Used for debugging
+ * @details Tests if cdev_write works correctly
+ * 
+ * @param buffer Buffer to be written in the character device.
+ * @param tstcdev_lenght Number of characters to be written in the character device.
+ * 
+ * @returns Upon successful completion one is returned. Upon failure, a 
+ *          zero is returned instead.
+ */
+PRIVATE int cdevtst_w(char *buffer, int tstcdev_lenght)
+{
+	int char_count;
+
+	char_count = cdev_write(2, buffer, tstcdev_lenght);
+
+	if (char_count != tstcdev_lenght)
+	{
+		if(char_count <= 0)
+			kprintf("cdev test: cdev_write failed: nothing has been written, code: %d",char_count);
+		else
+			kprintf("cdev test: cdev_write failed: what has been written is not what it has to be write, code: %d",char_count);
+
+		return 0;
+	}
+
+	return 1;
+}
+
+/**
+ * @brief Used for debugging. Test main function
+ */
+PUBLIC void cdev_test(void)
+{
+	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
+	int tstcdev_lenght = 34; /* Size of message to write in the log */
+
+	kstrncpy(buffer, "cdev test: test data input in cdev", tstcdev_lenght);
+
+	if(!cdevtst_register())
+	{
+		tst_failed();
+		return;
+	}
+
+	if(!cdevtst_w(buffer, tstcdev_lenght))
+	{
+		tst_failed();
+		return;
+	}
+
+	tst_passed();
+	return;
 }
 
 
@@ -324,6 +403,91 @@ PUBLIC void bdev_readblk(buffer_t buf)
 		kpanic("failed to read block from device");
 }
 
+/**
+ * @brief Used for debugging
+ * @details Tests if all block devices are correctly registered
+ * 
+ * @returns Upon successful completion one is returned. Upon failure, a 
+ *          zero is returned instead.
+ */
+PRIVATE int bdevtst_register(void)
+{
+	int i;
+	for (i=0;i<NR_BLKDEV;i++)
+	{
+		 if (bdevsw[i] == NULL)
+		{
+			if(i == ATA_MAJOR)
+			{
+				kprintf("bdev test: warning: ATA device was not registered during initialization");
+				continue;
+			}
+			else
+			{
+				kprintf("bdev test: register of device number %d failed", i);
+				return 0;
+			}
+		} 
+	}
+	return 1;
+}
+
+
+/**
+ * @brief Used for debugging
+ * @details Tests if bdev_write works correctly
+ * 
+ * @param buffer Buffer to be written in the block device.
+ * @param tstbdev_lenght Number of characters to be written in the block device.
+ * 
+ * @returns Upon successful completion one is returned. Upon failure, a 
+ *          zero is returned instead.
+ */
+PRIVATE int bdevtst_w(char *buffer, int tstbdev_lenght)
+{
+	int char_count;
+
+	char_count = bdev_write(2, buffer, tstbdev_lenght, 0);
+
+	if (char_count != tstbdev_lenght)
+	{
+		if(char_count <= 0)
+			kprintf("bdev test: bdev_write failed: nothing has been written, code: %d",char_count);
+		else
+			kprintf("bdev test: bdev_write failed: what has been written is not what it has to be write, code: %d",char_count);
+
+		return 0;
+	}
+
+	return 1;
+}
+
+/**
+ * @brief Used for debugging. Test main function
+ */
+PUBLIC void bdev_test(void)
+{
+	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
+	int tstbdev_lenght = 34; /* Size of message to write in the log */
+
+	kstrncpy(buffer, "bdev test: test data input in bdev", tstbdev_lenght);
+
+	if(!bdevtst_register())
+	{
+		tst_failed();
+		return;
+	}
+
+	if(!bdevtst_w(buffer, tstbdev_lenght))
+	{
+		tst_failed();
+		return;
+	}
+
+	tst_passed();
+	return;
+}
+
 /*============================================================================*
  *                                 Devices                                    *
  *============================================================================*/
@@ -339,4 +503,6 @@ PUBLIC void dev_init(void)
 	fpu_init();
 	tty_init();
 	ramdisk_init();
+	dbg_register(cdev_test, "cdev_test");
+	dbg_register(bdev_test, "bdev_test");
 }
