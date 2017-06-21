@@ -12,17 +12,25 @@
  * @returns returns 0 in case of successful completion
  *			returns SEM_FAILED otherwise
  */
-PUBLIC int sys_sempost(int idx)
+PUBLIC int sys_sempost(ino_t num)
 {
-	/* Not a valid semaphore */
-	if (!SEM_IS_VALID(idx))
+	struct inode *seminode;
+
+	seminode = inode_get(semdirectory->dev,num);
+	inode_unlock(seminode);
+	
+	if (seminode == NULL)
 		return (-EINVAL);
 
-	semtable[idx].value++;
+	freesem(&sembuf);
+	file_read(seminode, &sembuf, sizeof(struct ksem),0);
 
-	if (semtable[idx].value>0)
-	{
+	sembuf.value++;
+
+	file_write(seminode, &sembuf, sizeof(struct ksem),0);
+
+	if (sembuf.value>0)
 		wakeup(semwaiters);
-	}
+
 	return (0);
 }

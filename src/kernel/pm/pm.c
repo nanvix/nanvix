@@ -77,6 +77,8 @@ PUBLIC struct process* semwaiters[PROC_MAX];
 
 PUBLIC struct ksem sembuf;
 
+PUBLIC struct inode *semdirectory;
+
 /**
  * @brief Initializes the process management system.
  */

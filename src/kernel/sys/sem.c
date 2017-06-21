@@ -34,7 +34,7 @@ PUBLIC char *kstrcncat(const char *str1, const char *str2, char *str3)
 
 	while (*p2 != '\0')
 	{
-		*p3 = *p1;
+		*p3 = *p2;
 		p2++;
 		p3++;
 	}
@@ -51,19 +51,15 @@ PUBLIC char *kstrcncat(const char *str1, const char *str2, char *str3)
  *	@returns 0 upon successful completion,
  *			 -1 if the semaphore is not valid
  */
-int freesem(int idx)
+void freesem(struct ksem *sem)
 {
-	if(!SEM_IS_VALID(idx))
-	{
-		return -1;
-	}
+	sem->value=0;
+	(sem->name)[0]='\0';
+	sem->state=0;
+	sem->nbproc=0;
 
-	semtable[idx].value=0;
-	(semtable[idx].name)[0]='\0';
-	semtable[idx].state=0;
-	semtable[idx].nbproc=0;
-
-	return 0;
+	for (int i = 0; i<PROC_MAX; i++)
+		sem->currprocs[i] = -1;
 }
 
 /**
@@ -105,28 +101,45 @@ int existance(const char* semname)
 	return -1;
 }
 
-struct inode *existence_inode(const char* semname)
+
+struct inode *get_sem(const char* semname)
 {
-	struct inode *semdir; /* /home/mysemaphores/ */
-	struct inode *seminode;
+	ino_t num;
 
-	semdir = inode_name("/home/mysem");
-
-	if (semdir == NULL)
+	if (semdirectory == NULL)
 	{
 		kprintf("Error with the semaphore directory");
 	}
 
-	char sempath[MAX_SEM_NAME];
-	seminode = inode_name(kstrcncat("/home/mysem/", semname, sempath));
+	num = dir_search(semdirectory, semname);
 
-	if(seminode != INODE_NULL)
+	if(num != INODE_NULL)
 	{
-		file_read(seminode, &sembuf, sizeof(struct ksem),0);
-		return 0;
+		struct inode *seminode;
+		seminode = inode_get(semdirectory->dev,num);
+		inode_unlock(seminode);
+
+		return seminode;
 	}
 	else
 	{
 		return NULL;
 	}
 }
+
+struct inode *existence_inode(const char* semname)
+{
+	struct inode *seminode = NULL;
+	seminode = get_sem(semname);
+
+	if (seminode != NULL)
+	{
+		file_read(seminode, &sembuf, sizeof(struct ksem),0);
+		return seminode;
+	}
+	else
+	{
+		return NULL;
+	}
+}
+

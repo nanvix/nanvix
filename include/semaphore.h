@@ -28,7 +28,7 @@
 	 */
 	typedef struct sem_t
 	{
-		int idx; /**< Semaphore ID.  */
+		unsigned short semid; 	/**< Semaphore ID.  */
 	} sem_t;
 
 	/* Forward definitions. */

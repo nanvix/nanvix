@@ -6,8 +6,7 @@
 /**
  * @brief	Waits on a semaphore
  *		 
- * @param	idx The index of the semaphore in the
- *			semtable
+ * @param	num The inode number of the semaphore
  *
  * @returns returns 0 in case of successful completion
  *			returns SEM_FAILED otherwise
@@ -16,15 +15,28 @@
  *			EDEADLK : A deadlock condition was detected.
  *			EINTR : A signal interrupted this function.
  */
-PUBLIC int sys_semwait(int idx)
+PUBLIC int sys_semwait(ino_t num)
 {
-	if (!SEM_IS_VALID(idx))
+	struct inode *seminode;
+
+	seminode = inode_get(semdirectory->dev,num);
+	inode_unlock(seminode);
+
+	if (seminode == NULL)
 		return (-EINVAL);
 
-	while (semtable[idx].value<=0)
-		sleep(semwaiters,curr_proc->priority);
+	freesem(&sembuf);
+	file_read(seminode, &sembuf, sizeof(struct ksem),0);
 
-	semtable[idx].value--;
+	while (sembuf.value <= 0)
+	{
+		sleep(semwaiters,curr_proc->priority);
+		freesem(&sembuf);
+		file_read(seminode, &sembuf, sizeof(struct ksem),0);
+	}
+
+	sembuf.value--;
+	file_write(seminode, &sembuf, sizeof(struct ksem),0);
 
 	return (0);
 }

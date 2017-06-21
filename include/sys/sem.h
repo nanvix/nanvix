@@ -43,8 +43,10 @@
 	 */
 	extern struct ksem sembuf;
 
+	extern struct inode *semdirectory;
+
 	/* Frees a semaphore */
-	int freesem(int idx);
+	void freesem(struct ksem *sem);
 
 	/* Verify if a semaphore name is valid */
 	int namevalid(const char* name);
@@ -52,9 +54,17 @@
 	/* Give the index of the semaphore if it exists */
 	int existance(const char* semname);
 
-	struct inode *existence_inode(const char* semname)
+	/* Returns the inode for a specific semaphore name */
+	struct inode *get_sem(const char* semname);
+
+	/**
+	 * @brief Returns a semaphore and set the sembuf buffer to the semaphore contained
+	 * 		  in the semaphore inode
+	 * 
+	 * @param semname Semaphore name
+	 */
+	struct inode *existence_inode(const char* semname);
 
 #endif
-
 
 #endif

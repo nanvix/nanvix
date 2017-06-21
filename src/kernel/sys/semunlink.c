@@ -14,22 +14,30 @@
  */
 PUBLIC int sys_semunlink(const char *name)
 {
-	if(name){}
-	// int idx;
+	struct inode *seminode;
 
-	// idx = existance(name);
+	seminode = get_sem(name);
 
-	// if (idx == (-1))
-	// 	return (-ENOENT);
+	if (seminode == NULL)
+		return (-ENOENT);
 
-	// /* Checking WRITE permission */
-	// if (!permission(semtable[idx].state, semtable[idx].uid, semtable[idx].gid, curr_proc, MAY_WRITE, 0))
-	// 	return (-EACCES);
+	freesem(&sembuf);
+	file_read(seminode, &sembuf, sizeof(struct ksem),0);
+	
+  	/* Checking WRITE permission */ 
+  	if (!permission(sembuf.state, seminode->uid, seminode->gid, curr_proc, MAY_WRITE, 0)) 
+    	return (-EACCES);
 
-	// if (semtable[idx].nbproc == 0)
-	// 	freesem(idx);
-
-	// semtable[idx].state |= UNLINKED;
+	if (sembuf.nbproc == 0)
+	{
+		freesem(&sembuf);
+		inode_put(seminode);
+	}
+	else
+	{
+		sembuf.state |= UNLINKED;
+		file_write(seminode, &sembuf, sizeof(struct ksem),0);
+	}
 
 	return 0;	/* Successful completion */
 }

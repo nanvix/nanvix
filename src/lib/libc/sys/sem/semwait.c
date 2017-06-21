@@ -16,7 +16,7 @@ int sem_wait(sem_t *sem)
 		"int $0x80"
 		: "=a" (ret)
 		: "0" (NR_semwait),
-		  "b" (sem->idx)
+		  "b" (sem->semid)
 	);
 
 	return (ret);

@@ -219,4 +219,7 @@ PUBLIC void fs_init(void)
 	root->count += 2;
 	
 	inode_unlock(root);
+
+	semdirectory = inode_name("/home/mysem");
+	inode_unlock(semdirectory);
 }
