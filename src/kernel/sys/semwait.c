@@ -20,13 +20,16 @@ PUBLIC int sys_semwait(ino_t num)
 	struct inode *seminode;
 
 	seminode = inode_get(semdirectory->dev,num);
-	inode_unlock(seminode);
 
 	if (seminode == NULL)
 		return (-EINVAL);
 
+	inode_unlock(seminode);
+
 	freesem(&sembuf);
 	file_read(seminode, &sembuf, sizeof(struct ksem),0);
+
+	kprintf("wait : %d, sem %d value : %d",curr_proc->pid,num,sembuf.value);
 
 	while (sembuf.value <= 0)
 	{

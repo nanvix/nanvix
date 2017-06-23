@@ -25,27 +25,33 @@ PUBLIC int sys_semclose(ino_t num)
 	freesem(&sembuf);
 	file_read(seminode, &sembuf, sizeof(struct ksem),0);
 
-	for (i = 0; i < PROC_MAX; i++)
-	{
-		if (sembuf.currprocs[i] == curr_proc->pid)
-		{	
-			sembuf.currprocs[i] = (-1);
- 			
- 			sembuf.nbproc--; 
-			
-			/*
-			 * The semaphore is no longer accessible when 0 process use it
-			 * and only if it has been unlinked once 
-			 */
-			if (sembuf.nbproc == 0 && (sembuf.state&UNLINKED))
-			{
-				freesem(&sembuf);
-				inode_put(seminode);
-			}
+	sembuf.nbproc--;
 
-			return (0);
-		}
+	/*
+	 * The semaphore is no longer accessible when 0 process use it
+	 * and only if it has been unlinked once 
+	 */
+	if (sembuf.nbproc == 0 && (sembuf.state&UNLINKED))
+	{
+		seminode->count = 1;
+		kprintf("SUPRECAO FROM CLOSING");
+		kprintf("Nombre de ref de l'inode : %d", seminode->nlinks);
+		freesem(&sembuf);
+		inode_put(seminode);
+		return 0;
 	}
-	
-	return (-1);
+	else
+	{
+		for (i = 0; i < PROC_MAX; i++)
+		{
+			if (sembuf.currprocs[i] == curr_proc->pid)
+			{	
+				sembuf.currprocs[i] = (-1);
+				file_write(seminode, &sembuf, sizeof(struct ksem),0);
+				return (0);
+			}
+		}
+		/* Proc pid not found in the semaphore pid table. */
+	}
+return (-1);
 }

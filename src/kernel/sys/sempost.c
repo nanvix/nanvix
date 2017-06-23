@@ -16,11 +16,13 @@ PUBLIC int sys_sempost(ino_t num)
 {
 	struct inode *seminode;
 
+
 	seminode = inode_get(semdirectory->dev,num);
 	inode_unlock(seminode);
-	
+
 	if (seminode == NULL)
 		return (-EINVAL);
+
 
 	freesem(&sembuf);
 	file_read(seminode, &sembuf, sizeof(struct ksem),0);
@@ -29,7 +31,7 @@ PUBLIC int sys_sempost(ino_t num)
 
 	file_write(seminode, &sembuf, sizeof(struct ksem),0);
 
-	if (sembuf.value>0)
+	if (sembuf.value>0) /* a voir, peut on pas mettre ==1 ? */
 		wakeup(semwaiters);
 
 	return (0);

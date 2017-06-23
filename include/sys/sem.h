@@ -3,11 +3,8 @@
 #include <nanvix/config.h>
 #include <nanvix/pm.h>
 
-
-
 #ifndef SEM_H_
 #define SEM_H_
-
 
 #define UNLINKED 	0001000
 #define PERMISSIONS 0000777
@@ -35,6 +32,10 @@
 	/* Semaphores table */
 	extern struct ksem semtable[SEM_OPEN_MAX];
 
+	/* 
+	 *  Possibility of putting semwaiters in the ksem structure
+	 *  Resulting in avoiding useless wakeups
+	 */
 	extern struct process* semwaiters[PROC_MAX];
 
 	/* 
@@ -43,6 +44,7 @@
 	 */
 	extern struct ksem sembuf;
 
+	/* Inode corresponding to the semaphore directory */
 	extern struct inode *semdirectory;
 
 	/* Frees a semaphore */
