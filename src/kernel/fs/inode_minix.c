@@ -459,12 +459,14 @@ PUBLIC int minix_mkfs
 	if (ip == NULL)
 	{
 		kprintf ("Mkfs : Allocation failed");
+		put(ip);
 		return 0;
 	}
 	
 	if (dir_add(ip, ip, "."))
 	{
 		kprintf("Mkfs: Root directory can not be created");
+		put(ip);
 		return 0;
 	}
 
@@ -473,6 +475,7 @@ PUBLIC int minix_mkfs
 	if (dir_add(ip, ip, ".."))
 	{
 		kprintf("Mkfs: Parent directory can not be created");
+		put(ip);
 		return 0;
 	}
 	ip->nlinks++;
