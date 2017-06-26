@@ -132,8 +132,9 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	
 	/* Get superblock. */
 	sb = superblock_get(dev);
-	if (sb == NULL)
+	if (sb == NULL){
 		goto error0;
+	}
 	
 	/* Calculate block number. */
 	blk = 2 + sb->imap_blocks + sb->zmap_blocks + (num - 1)/INODES_PER_BLOCK;
@@ -150,8 +151,8 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	
 	/* Invalid disk inode. */ 
 	if (d_i->i_nlinks == 0)
-		goto error1;
-		
+		goto error1;	
+
 	/* Initialize in-core inode. */
 	ip->mode = d_i->i_mode;
 	ip->nlinks = d_i->i_nlinks;
@@ -345,12 +346,12 @@ PUBLIC int minix_mkfs
 	uint32_t zmap_bitmap[ZMAP_SIZE]; /*Zone map									*/
 
 	/*recuperation of the device */
-	
-	ip=inode_name(diskfile);
+	ip = inode_name(diskfile);
 	
 	/*Problem with device inode */
-	if (ip==NULL)
+	if (ip == NULL)
 	{	
+		kprintf("Mkfs:device inode not found\n");
 		return 0;
 	}
 	
@@ -361,9 +362,9 @@ PUBLIC int minix_mkfs
 		kprintf ("Mkfs:what you provide is not a device\n");
 		return 0;
 	}
-	dev = ip->dev;
+
+	dev = ip->blocks[0];
 	inode_put(ip);
-	
 	#define ROUND(x) (((x) == 0) ? 1 : (x))
 	
 	/* Compute dimensions of file sytem. */
@@ -380,45 +381,56 @@ PUBLIC int minix_mkfs
 	size = nblocks - size;       /* data blocks  */
 	size <<= BLOCK_SIZE_LOG2;
 	
+	kprintf ("Mkfs: Initialisation of the file system");
 	/* Fill file system with zeros. */
-	of =0;
+	of = 0;
 	kmemset(buf, 0, BLOCK_SIZE);
 	for (size_t i = 0; i < size; i += BLOCK_SIZE) //size
 	{
 		bdev_write(dev, buf, BLOCK_SIZE, of);
-		of+=BLOCK_SIZE;
+		of += BLOCK_SIZE;
 	}
 	
+	kprintf ("Mkfs: Initialize superblock");
 	/* Initialize superblock. */
-	buff= bread(dev,1);
+	buff = bread(dev,1);
+	if (buff == NULL)
+	{
+		kprintf("Mkfs: Error of lecture of the buffer");
+		return 0;
+	}
+
 	d_super = (struct d_superblock *)buffer_data(buff);
 	d_super->s_ninodes = ninodes;
 	d_super->s_nblocks = nblocks;
 	d_super->s_imap_nblocks = imap_nblocks;
 	d_super->s_bmap_nblocks = bmap_nblocks;
 	d_super->s_first_data_block = 2 + imap_nblocks + bmap_nblocks + inode_nblocks;
-	d_super->s_max_size = 67641344;
+	d_super->s_max_size = 67641344; // a changer non 
 	d_super->s_magic = SUPER_MAGIC;
+	buffer_dirty(buff, 1);
 	bwrite(buff);
 	
 	/* Create inode map. */
+	kprintf("Mkfs: Create inode map");
 	for (unsigned i = 0; i < imap_nblocks; i++)
 	{
-		buff= bread(dev,2+i);
-		p= (uint32_t *)buffer_data(buff);
-		*p=imap_bitmap[i];
+		buff = bread(dev,2+i);
+		p = (uint32_t *)buffer_data(buff);
+		*p = imap_bitmap[i];
+		buffer_dirty(buff, 1);
 		bwrite(buff);
-		brelse(buff);
 	}
 	
 	/* Create block map. */
+	kprintf("Mkfs: Create block map");
 	for (unsigned i = 0; i < bmap_nblocks; i++)
 	{
 		buff= bread(dev,2+imap_nblocks+i); 
-		p= buffer_data(buff);
-		*p=zmap_bitmap[i];
+		p = buffer_data(buff);
+		*p = zmap_bitmap[i];
+		buffer_dirty(buff, 1);
 		bwrite(buff);
-		brelse(buff);	
 	}
 	
 	/* Access permission to root directory. */
@@ -428,47 +440,57 @@ PUBLIC int minix_mkfs
 	/*Recuperation of the superblock*/
 	super = superblock_read(dev);
 	
-	if (super==NULL)
+	if (super == NULL)
 	{
-		kprintf("Mkfs: Echec of the recuperation of th super block"); 
+		kprintf("Mkfs: Echec of the recuperation of the super block"); 
 		return 0;
 	}
 
 	superblock_unlock(super);
 
 	/* Create root directory. */
-	ip=&inode;
-	
+	ip = &inode;
 	if (inode_alloc_minix(super,ip))
 	{
 		kprintf ("Mkfs : Allocation failed");
 		return 0;
 	}	
 	
-	if (ip==NULL)
+	if (ip == NULL)
 	{
 		kprintf ("Mkfs : Allocation failed");
 		return 0;
 	}
 	
-	if(dir_add(ip, ip, ".")){
-		kprintf("Root directory can not be created");
+	if (dir_add(ip, ip, "."))
+	{
+		kprintf("Mkfs: Root directory can not be created");
 		return 0;
 	}
+
+	ip->nlinks++;
 		
-	if(dir_add(ip, ip, "..")){
-		kprintf("Parent directory can not be created");
+	if (dir_add(ip, ip, ".."))
+	{
+		kprintf("Mkfs: Parent directory can not be created");
 		return 0;
 	}
-		
-	ip->nlinks--;
-	ip->mode=mode;
-	ip->uid=uid;
-	ip->gid=gid;
+	ip->nlinks++;
+	superblock_lock(super);
+	super->root = ip;
+	superblock_put(super);
+
+	ip->mode = mode;
+	ip->uid = uid;
+	ip->gid = gid;
+
 	inode_write_minix(ip);
 	inode_put(ip);
+
+	bsync();
 	return 1;
 }
+
 /**
  * @brief Minix file system operations.
  */

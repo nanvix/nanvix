@@ -44,12 +44,12 @@ PUBLIC int sys_mount(const char *device, const char *target)
 
 	kprintf("fs: mouting %s on %s", ktarget, kdevice);
 
-	print_mountTable();
+	print_mount_table();
 
 
-	int retour =mount(kdevice,ktarget);
+	int retour = mount(kdevice,ktarget);
 
-	print_mountTable();
+	print_mount_table();
 
 	return retour;
 }

@@ -141,7 +141,7 @@
   EXTERN int mount (char*, char*); 
   EXTERN int unmount (char*);
   EXTERN int mkfs (const char *, uint16_t, uint16_t, uint16_t, uint16_t);
-  EXTERN void print_mountTable(void); 
+  EXTERN void print_mount_table(void); 
  
 /*============================================================================* 
  *                            Super Block Library                             * 
