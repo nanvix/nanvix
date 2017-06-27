@@ -418,12 +418,12 @@ static int sem_test(void)
 	if(fork()==0){
 		/* child */
 		printf("child \n");
-		producer(5,3);
+		producer(5,1);
 	}
 	else{
 		/* father */
 		printf("father \n");
-		consumer(5,3);
+		consumer(5,1);
 	}
 
 	return (0);

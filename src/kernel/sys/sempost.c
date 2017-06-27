@@ -4,35 +4,28 @@
 #include <errno.h>
 
 /**
- * @brief close a semaphore for a given process
+ * @brief Close a semaphore for a given process
  *		 
- * @param	idx		semaphore index (in semaphore
- *					table to close
+ * @param	idx	Semaphore index (in semaphore
+ *				table to close
  *
- * @returns returns 0 in case of successful completion
- *			returns SEM_FAILED otherwise
+ * @returns 0 in case of successful completion
+ *			SEM_FAILED otherwise
  */
-PUBLIC int sys_sempost(ino_t num)
+PUBLIC int sys_sempost(int idx)
 {
 	struct inode *seminode;
 
-
-	seminode = inode_get(semdirectory->dev,num);
-	inode_unlock(seminode);
+	seminode = semtable[idx].seminode;
 
 	if (seminode == NULL)
 		return (-EINVAL);
 
+	semtable[idx].value++;
 
-	freesem(&sembuf);
-	file_read(seminode, &sembuf, sizeof(struct ksem),0);
 
-	sembuf.value++;
-
-	file_write(seminode, &sembuf, sizeof(struct ksem),0);
-
-	if (sembuf.value>0) /* a voir, peut on pas mettre ==1 ? */
-		wakeup(semwaiters);
+	if (semtable[idx].value>0)
+		wakeup(semtable[idx].semwaiters);
 
 	return (0);
 }

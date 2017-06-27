@@ -11,47 +11,40 @@
  * @returns returns 0 in case of successful completion
  *			returns SEM_FAILED otherwise
  */
-PUBLIC int sys_semclose(ino_t num)
+PUBLIC int sys_semclose(int idx)
 {
-	int i;
 	struct inode *seminode;
+	int i;
 
-	seminode = inode_get(semdirectory->dev,num);
-	inode_unlock(seminode);
-
-	if (seminode == NULL)
+	if (semtable[idx].num == 0)
 		return (-EINVAL);
 
-	freesem(&sembuf);
-	file_read(seminode, &sembuf, sizeof(struct ksem),0);
-
-	sembuf.nbproc--;
-
-	/*
-	 * The semaphore is no longer accessible when 0 process use it
-	 * and only if it has been unlinked once 
-	 */
-	if (sembuf.nbproc == 0 && (sembuf.state&UNLINKED))
+	for (i = 0; i < PROC_MAX; i++)
 	{
-		seminode->count = 1;
-		kprintf("SUPRECAO FROM CLOSING");
-		kprintf("Nombre de ref de l'inode : %d", seminode->nlinks);
-		freesem(&sembuf);
-		inode_put(seminode);
-		return 0;
-	}
-	else
-	{
-		for (i = 0; i < PROC_MAX; i++)
+		/* Removing the proc pid in the semaphore procs table */
+		if (semtable[idx].currprocs[i] == curr_proc->pid)
 		{
-			if (sembuf.currprocs[i] == curr_proc->pid)
-			{	
-				sembuf.currprocs[i] = (-1);
-				file_write(seminode, &sembuf, sizeof(struct ksem),0);
-				return (0);
-			}
+			semtable[idx].currprocs[i] = -1;
+			break;
 		}
-		/* Proc pid not found in the semaphore pid table. */
 	}
-return (-1);
+
+	if (i > PROC_MAX)
+	{
+		kprintf("Attempting to close a non-opened semaphore");
+		return -1;
+	}
+
+	semtable[idx].nbproc--;
+
+	if (semtable[idx].nbproc == 0 && (semtable[idx].state & UNLINKED)>0)
+	{		
+		semtable[idx].num = 0;
+		dir_remove(semdirectory, semtable[idx].name);
+	}	
+
+	seminode = semtable[idx].seminode;
+	inode_put(seminode);
+
+	return 0;
 }

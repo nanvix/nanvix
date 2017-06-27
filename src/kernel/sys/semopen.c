@@ -7,6 +7,43 @@
 #include <nanvix/fs.h>
 
 /**
+ *	@brief Add the semaphore to the sem table
+ *
+ *	If it does not exist, the semaphore is added to the table
+ * 	
+ *	@returns the index of the named semaphore in the semaphore table
+ *			 in case of successful completion, -1 otherwise
+ *			
+ */
+int free_sem_entry()
+{
+	int idx;
+	for (idx = 0; idx < SEM_OPEN_MAX; idx++)
+	{
+		if(semtable[idx].num == 0)
+		{
+			return idx;
+		}
+	}
+	/* Semaphore table full */
+	return -1;
+}
+
+
+int add_table(struct inode *inode, int value, int idx, const char* semname)
+{
+	kstrcpy(semtable[idx].name, semname);
+	semtable[idx].value = value;
+	semtable[idx].currprocs[0] = curr_proc->pid;
+	semtable[idx].nbproc = 0;
+	semtable[idx].state = 0;
+	semtable[idx].num = inode->num;
+	semtable[idx].dev = inode->dev;
+	semtable[idx].seminode = inode;
+	return 0;
+}
+
+/**
  * @brief Opens a semaphore
  *		 
  * @param	name 	Name of the semaphore
@@ -22,12 +59,12 @@
  *			EMFILE : Too many semaphore descriptors or file descriptors are currently in use by this process.
  *			EACESS : Check creation permission if semaphore does not exist
  */
-PUBLIC ino_t sys_semopen(const char* name, int oflag, ...)
+PUBLIC int sys_semopen(const char* name, int oflag, ...)
 {
 	mode_t mode;
 	int value;
 	va_list arg;				/* Variable argument */
-	int i, freeslot;		/* Index of the opened semaphore */
+	int i, freeslot, semid;		/* Index of the opened semaphore */
 	struct inode *inode;
 	freeslot = -1;
 
@@ -35,9 +72,11 @@ PUBLIC ino_t sys_semopen(const char* name, int oflag, ...)
 	if (namevalid(name) == (-1))
 		return (-EINVAL);
 
-	inode = existence_inode(name);
-
-	if (inode == (NULL))	/* This semaphore does not exist */
+	/*  
+	 *	inode == corresponding semaphore inode if it exists
+	 *  NULL otherwise
+	 */
+	if (existence_semaphore(name) == (-1))	/* This semaphore does not exist */
 	{
 		if(oflag & O_CREAT)	
 		{
@@ -55,7 +94,27 @@ PUBLIC ino_t sys_semopen(const char* name, int oflag, ...)
 			if (!SEM_VALID_VALUE(value))
 				return (-EINVAL);
 
-			inode = inode_semaphore (value,name,mode);
+
+			/* Searching a free slot in the semaphore table */
+			semid = -1;
+
+			for (i = 0; i < SEM_OPEN_MAX; i++)
+			{
+				if (semtable[i].num == 0)
+				{
+					semid = i;
+					break;
+				}
+			}
+
+			/* Table if full */
+			if (semid < 0) 
+				return (-ENFILE);
+
+			/* Creates the inode */
+			inode = inode_semaphore(name, mode);
+			/* Add the semaphore in the semaphore table */
+			add_table(inode, value, semid, name);
 		}
 		/* O_CREAT not set and sem does not exist */
 		else
@@ -63,36 +122,47 @@ PUBLIC ino_t sys_semopen(const char* name, int oflag, ...)
 	}
 	else	/* This semaphore already exists */
 	{
+		/* Searching the semaphore indice in the semaphore table */
+		semid = search_semaphore (name);
+		/* This opening will increment the inode counter */
+		inode = inode_get(semtable[semid].dev, semtable[semid].num);
+		semtable[semid].seminode = inode;
+		inode_unlock(inode);
 
 		/* Checking if there is WRITE and READ permissions */
 		if (	!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_WRITE, 0) \
 			 ||	!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_READ, 0) )
 			return (EACCES);
-		
-		freesem(&sembuf);
-		file_read(inode, &sembuf, sizeof(struct ksem),0);
 
 		for (i = 0; i < PROC_MAX; i++)
 		{
-			if (sembuf.currprocs[i] == (-1) && freeslot < 0)
+			/* 	
+			 *	Searching for a free slot : a same pid can appear multiple
+			 * 	times in order to allow a potential multi-threading
+			 */
+			if (semtable[semid].currprocs[i] == (-1) && freeslot < 0)
 			{
 				freeslot = i;
+				break;
 			}
-			
-			/* Preventing multiple opening */
-			if (sembuf.currprocs[i] == curr_proc->pid)
-			{
-				return (-1);
-			}
+
+			/* Not allowing multiple open
+				if (semtable[semid].currprocs[i] == curr_proc->pid)
+				{
+					return ERROR;
+				}
+			 */
 		}
 
-		sembuf.currprocs[freeslot] = curr_proc->pid;
+		if (freeslot == (-1))
+		{
+			inode_put(inode);
+			return (-EMFILE);
+		}
 
-		sembuf.nbproc++;
-		file_write(inode, &sembuf, sizeof(struct ksem),0);
+		semtable[semid].currprocs[freeslot] = curr_proc->pid;
 	}
 
-	file_read(inode, &sembuf, sizeof(struct ksem),0);
-
-	return inode->num;
+	semtable[semid].nbproc++;
+	return semid;
 }

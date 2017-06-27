@@ -15,31 +15,21 @@
  *			EDEADLK : A deadlock condition was detected.
  *			EINTR : A signal interrupted this function.
  */
-PUBLIC int sys_semwait(ino_t num)
+PUBLIC int sys_semwait(int idx)
 {
 	struct inode *seminode;
 
-	seminode = inode_get(semdirectory->dev,num);
+	seminode = semtable[idx].seminode;
 
 	if (seminode == NULL)
 		return (-EINVAL);
 
-	inode_unlock(seminode);
-
-	freesem(&sembuf);
-	file_read(seminode, &sembuf, sizeof(struct ksem),0);
-
-	kprintf("wait : %d, sem %d value : %d",curr_proc->pid,num,sembuf.value);
-
-	while (sembuf.value <= 0)
+	while (semtable[idx].value <= 0)
 	{
-		sleep(semwaiters,curr_proc->priority);
-		freesem(&sembuf);
-		file_read(seminode, &sembuf, sizeof(struct ksem),0);
+		sleep(semtable[idx].semwaiters,curr_proc->priority);
 	}
 
-	sembuf.value--;
-	file_write(seminode, &sembuf, sizeof(struct ksem),0);
+	semtable[idx].value--;
 
 	return (0);
 }

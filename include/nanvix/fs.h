@@ -142,7 +142,7 @@
 	EXTERN struct inode *inode_pipe(void);
 	EXTERN int mount (char*, char*);
 	EXTERN int unmount (char*, char*);
-	EXTERN struct inode *inode_semaphore(int value, const char* name, int mode);
+	EXTERN struct inode *inode_semaphore(const char* name, int mode);
 
 /*============================================================================*
  *                            Super Block Library                             *

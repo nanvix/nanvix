@@ -1090,10 +1090,9 @@ PUBLIC void inode_init(void)
 	init_mountTable();
 }
 
-PUBLIC struct inode *inode_semaphore(int value, const char* name, int mode)
+PUBLIC struct inode *inode_semaphore(const char* name, int mode)
 {
 	struct inode *inode;
-
 	/* 
 	 *  if ( too much semaphores )
 	 * 	Semaphore table full 
@@ -1103,19 +1102,7 @@ PUBLIC struct inode *inode_semaphore(int value, const char* name, int mode)
 
 	/* Initialize Semaphore inode. */
 	inode = do_creat(semdirectory, name, mode, O_CREAT);
-
-	inode->size = sizeof(struct ksem);
 	inode->time = CURRENT_TIME;
-	inode->count = 1;
-
-	freesem(&sembuf);
-	sembuf.value = value;
-	kstrcpy(sembuf.name,name);
-	sembuf.state = mode;
-	sembuf.nbproc = 1;
-	sembuf.currprocs[0] = curr_proc->pid;
-
-	file_write(inode, &sembuf, sizeof(struct ksem),0);
 
 	return inode;
 }

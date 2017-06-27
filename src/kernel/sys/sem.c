@@ -7,45 +7,7 @@
 #include <sys/types.h>
 
 /**
- * @brief Copies part of a string.
- * 
- * @param str1 Target string.
- * @param str2 Source string.
- * @param n    Number of characters to be copied.
- * 
- * @returns A pointer to the target string.
- */
-PUBLIC char *kstrcncat(const char *str1, const char *str2, char *str3)
-{
-	const char *p1; /* Indexes str1. */
-	const char *p2; /* Indexes str2. */
-	char *p3; /* Indexes str3. */
-	
-	p1 = str1;
-	p2 = str2;
-	p3 = str3;
-
-	while (*p1 != '\0')
-	{
-		*p3 = *p1;
-		p1++;
-		p3++;
-	}
-
-	while (*p2 != '\0')
-	{
-		*p3 = *p2;
-		p2++;
-		p3++;
-	}
-
-	*p3 = '\0';
-
-	return (str3);
-}
-
-/**
- *	@brief make a semaphore slot available for
+ *	@brief Make a semaphore slot available for
  *		   a new semaphore creation
  *
  *	@returns 0 upon successful completion,
@@ -53,19 +15,22 @@ PUBLIC char *kstrcncat(const char *str1, const char *str2, char *str3)
  */
 void freesem(struct ksem *sem)
 {
-	sem->value=0;
 	(sem->name)[0]='\0';
 	sem->state=0;
 	sem->nbproc=0;
+	sem->num = 0;
 
 	for (int i = 0; i<PROC_MAX; i++)
 		sem->currprocs[i] = -1;
+
+	for (int i = 0; i<PROC_MAX; i++)
+		sem->semwaiters[i] = NULL;
 }
 
 /**
  *	@brief Check if a semaphore name is valid
  *
- *	@returns 0 if valid, -1 otherwise
+ *	@returns 0 If valid, -1 otherwise
  */
 int namevalid(const char* name)
 {
@@ -79,29 +44,11 @@ int namevalid(const char* name)
 	return 0;
 }
 
+
 /**
- * @brief checks the existance of a semaphore
- *		  in the semaphore table
- *		  
- * @returns the index of the semaphore in the
- *          semaphore table if it exists
- *          SEM_FAILED otherwise
+ * 	@Brief Searching if a semaphore descriptor exists from its name
+ * 		   by searching in the semaphore directory
  */
-int existance(const char* semname)
-{
-	int idx;
-
-	for (idx=0; idx<SEM_OPEN_MAX; idx++)
-	{			
-		if(!(kstrcmp(semtable[idx].name,semname))){
-			return idx;
-		}
-	}
-
-	return -1;
-}
-
-
 struct inode *get_sem(const char* semname)
 {
 	ino_t num;
@@ -127,19 +74,50 @@ struct inode *get_sem(const char* semname)
 	}
 }
 
-struct inode *existence_inode(const char* semname)
+/**
+ * 	@Brief Searching if a semaphore descriptor exists from its name
+ * 		   by searching in the file system
+ */
+int existence_semaphore(const char* semname)
 {
-	struct inode *seminode = NULL;
-	seminode = get_sem(semname);
+	ino_t num;
 
-	if (seminode != NULL)
+	if (semdirectory == NULL)
 	{
-		file_read(seminode, &sembuf, sizeof(struct ksem),0);
-		return seminode;
+		kprintf("Error with the semaphore directory");
+	}
+
+	num = dir_search(semdirectory, semname);
+
+	if(num == INODE_NULL)
+	{
+		/* Semaphore doesn't exist */
+		return -1;
 	}
 	else
 	{
-		return NULL;
+		/* Semaphore exists */
+		return 0;
 	}
 }
 
+/**
+ * 	@Brief checks the existece of a semaphore
+ *		   in the semaphore table.
+ *		  
+ * 	@Returns the index of the semaphore in the
+ *        	 semaphore table if it exists
+ *           SEM_FAILED otherwise.
+ */
+int search_semaphore (const char* semname)
+{
+	for (int idx = 0; idx < SEM_OPEN_MAX; idx++)
+	{
+		if(!kstrcmp(semname,semtable[idx].name))
+		{
+			return idx;
+		}
+	}
+
+	return -1;
+}
