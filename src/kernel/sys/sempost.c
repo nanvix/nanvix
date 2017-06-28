@@ -15,17 +15,19 @@
 PUBLIC int sys_sempost(int idx)
 {
 	struct inode *seminode;
-
-	seminode = semtable[idx].seminode;
+	seminode = inode_name(semtable[idx].name);
 
 	if (seminode == NULL)
 		return (-EINVAL);
 
 	semtable[idx].value++;
 
+	inode_unlock(seminode);
 
 	if (semtable[idx].value>0)
 		wakeup(semtable[idx].semwaiters);
+
+	inode_put(seminode);
 
 	return (0);
 }

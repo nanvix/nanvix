@@ -16,7 +16,6 @@
 void freesem(struct ksem *sem)
 {
 	(sem->name)[0]='\0';
-	sem->state=0;
 
 	for (int i = 0; i<PROC_MAX; i++)
 		sem->currprocs[i] = -1;
@@ -61,6 +60,7 @@ int existence_semaphore(const char* sempath)
 	else
 	{
 		/* Semaphore exists */
+		inode_put(seminode);
 		inode_unlock(seminode);
 		return 0;
 	}

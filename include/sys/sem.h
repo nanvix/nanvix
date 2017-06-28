@@ -23,9 +23,7 @@
 	/* Kernel semaphores */
 	struct ksem {
 		char name[MAX_SEM_NAME];				/* Semaphore name 										*/
-		struct inode *seminode; 				/* necessary to unlink to avoid multiple inode_get		*/
 		short value;              				/* Value of the semaphore                    			*/
-		unsigned short state;           		/* last bit used as boolean, first bits are free 		*/ /* LOOK TO CHANGE THAT */
 		pid_t currprocs[PROC_MAX];				/* Processes using the semaphores						*/
 		struct process* semwaiters[PROC_MAX];	/* The size should be higher if threads are implemented */
 		int nbproc;

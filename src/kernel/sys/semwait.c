@@ -19,10 +19,12 @@ PUBLIC int sys_semwait(int idx)
 {
 	struct inode *seminode;
 
-	seminode = semtable[idx].seminode;
+	seminode = inode_name(semtable[idx].name);
 
 	if (seminode == NULL)
 		return (-EINVAL);
+
+	inode_unlock(seminode);
 
 	while (semtable[idx].value <= 0)
 	{
@@ -30,6 +32,7 @@ PUBLIC int sys_semwait(int idx)
 	}
 
 	semtable[idx].value--;
+	inode_put(seminode);
 
 	return (0);
 }

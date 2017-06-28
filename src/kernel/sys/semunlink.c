@@ -41,7 +41,7 @@ PUBLIC int sys_semunlink(const char *name)
 	}
 	else
 	{
-		semtable[idx].state |= UNLINKED;
+		seminode->nlinks = 0;
 	}
 
 	inode_put(seminode);

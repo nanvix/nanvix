@@ -16,8 +16,12 @@ PUBLIC int sys_semclose(int idx)
 	struct inode *seminode;
 	int i;
 
-	if (semtable[idx].name[0] == '\0')
+	seminode = inode_name(semtable[idx].name);
+
+	if (seminode == NULL)
 		return (-EINVAL);
+
+	inode_put(seminode);
 
 	for (i = 0; i < PROC_MAX; i++)
 	{
@@ -37,13 +41,12 @@ PUBLIC int sys_semclose(int idx)
 
 	semtable[idx].nbproc--;
 
-	if (semtable[idx].nbproc == 0 && (semtable[idx].state & UNLINKED)>0)
+	if (seminode->count == 1 && seminode->nlinks == 0)
 	{		
 		remove_semaphore (semtable[idx].name);
 		semtable[idx].name[0] = '\0';
 	}	
 
-	seminode = semtable[idx].seminode;
 	inode_put(seminode);
 
 	return 0;

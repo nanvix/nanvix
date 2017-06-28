@@ -7,37 +7,16 @@
 #include <nanvix/fs.h>
 
 /**
- *	@brief Add the semaphore to the sem table
- *
- *	If it does not exist, the semaphore is added to the table
- * 	
- *	@returns the index of the named semaphore in the semaphore table
- *			 in case of successful completion, -1 otherwise
- *			
+ *	@brief Set the semaphore of index idx
+ *		   to corresponding value and semname
+ *         in the global semaphore table
  */
-int free_sem_entry()
-{
-	int idx;
-	for (idx = 0; idx < SEM_OPEN_MAX; idx++)
-	{
-		if(semtable[idx].name[0] == '\0')
-		{
-			return idx;
-		}
-	}
-	/* Semaphore table full */
-	return -1;
-}
-
-
-int add_table(struct inode *inode, int value, int idx, const char* semname)
+int add_table(int value, const char* semname, int idx)
 {
 	kstrcpy(semtable[idx].name, semname);
 	semtable[idx].value = value;
 	semtable[idx].currprocs[0] = curr_proc->pid;
 	semtable[idx].nbproc = 0;
-	semtable[idx].state = 0;
-	semtable[idx].seminode = inode;
 	return 0;
 }
 
@@ -54,8 +33,6 @@ int add_table(struct inode *inode, int value, int idx, const char* semname)
 
 /* TODO for error detection :
  *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
- *			EMFILE : Too many semaphore descriptors or file descriptors are currently in use by this process.
- *			EACESS : Check creation permission if semaphore does not exist
  */
 PUBLIC int sys_semopen(const char* name, int oflag, ...)
 {
@@ -111,7 +88,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			/* Creates the inode */
 			inode = inode_semaphore(name, mode);
 			/* Add the semaphore in the semaphore table */
-			add_table(inode, value, semid, name);
+			add_table(value, name, semid);
 		}
 		/* O_CREAT not set and sem does not exist */
 		else
@@ -123,14 +100,14 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 		semid = search_semaphore (name);
 		/* This opening will increment the inode counter */
 		inode = inode_name(name);
-		semtable[semid].seminode = inode;
-		inode_unlock(inode);
 
 		/* Checking if there is WRITE and READ permissions */
 		if (	!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_WRITE, 0) \
 			 ||	!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_READ, 0) )
 		{
 			inode_put(inode);
+			inode_unlock(inode);
+
 			return (EACCES);
 		}
 
@@ -157,6 +134,8 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 		if (freeslot == (-1))
 		{
 			inode_put(inode);
+			inode_unlock(inode);
+
 			return (-EMFILE);
 		}
 
@@ -164,5 +143,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	}
 
 	semtable[semid].nbproc++;
+	inode_unlock(inode);
+
 	return semid;
 }
