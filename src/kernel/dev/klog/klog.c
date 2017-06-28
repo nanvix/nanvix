@@ -204,9 +204,9 @@ PRIVATE int klogtst_wr(char *buffer, int tstlog_lenght)
 	if ((char_count = klog_write(0, buffer, tstlog_lenght)) != tstlog_lenght)
 	{
 		if (char_count <= 0)
-			kprintf("klog test: klog_write failed: nothing has been written");
+			kprintf(KERN_DEBUG "klog test: klog_write failed: nothing has been written");
 		else
-			kprintf("klog test: klog_write failed: what has been written is not what it has to be write");
+			kprintf(KERN_DEBUG "klog test: klog_write failed: what has been written is not what it has to be write");
 
 		return 0;
 	}
@@ -214,9 +214,9 @@ PRIVATE int klogtst_wr(char *buffer, int tstlog_lenght)
 	if ((char_count2 = klog_read(0,buffer2,tstlog_lenght)) != char_count)
 	{
 		if (char_count2 <= 0)
-			kprintf("klog test: klog_read failed: nothing has been read");
+			kprintf(KERN_DEBUG "klog test: klog_read failed: nothing has been read");
 		else
-			kprintf("klog test: klog_read failed: what has been read is not what it has to be read");
+			kprintf(KERN_DEBUG "klog test: klog_read failed: what has been read is not what it has to be read");
 
 		tst_failed();
 	}

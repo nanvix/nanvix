@@ -1056,7 +1056,7 @@ PRIVATE int mmtst_alloc(int min_mm)
 
 		if (( d = allocreg(S_IRUSR | S_IXUSR, 1000, REGION_FREE)) == NULL)
 		{
-			kprintf("mm test: failed to allocate memory region");
+			kprintf(KERN_DEBUG "mm test: failed to allocate memory region");
 		}
 	}
 
@@ -1064,7 +1064,7 @@ PRIVATE int mmtst_alloc(int min_mm)
 
 	if(free_count != NR_REGIONS-(min_mm/2))
 	{
-		kprintf("mm test: region allocation failed");
+		kprintf(KERN_DEBUG "mm test: region allocation failed");
 		return 0;
 	}
 
@@ -1089,7 +1089,7 @@ PRIVATE int mmtst_dup(int min_mm)
 	{
 		if ((d = dupreg(&regtab[i])) == NULL)
 		{
-			kprintf("mm test: failed to duplicate region number %d",i);
+			kprintf(KERN_DEBUG "mm test: failed to duplicate region number %d",i);
 			result = 0;
 		}
 	}
@@ -1099,7 +1099,7 @@ PRIVATE int mmtst_dup(int min_mm)
 
 		if ((d = dupreg(&regtab[i+(min_mm/2)])) == NULL)
 		{
-			kprintf("mm test: failed to duplicate region created by duplication number %d",i);
+			kprintf(KERN_DEBUG "mm test: failed to duplicate region created by duplication number %d",i);
 			result = 0;
 		}
 	}
@@ -1108,7 +1108,7 @@ PRIVATE int mmtst_dup(int min_mm)
 
 	if(free_count != NR_REGIONS-min_mm || !result)
 	{
-		kprintf("mm test: region duplication failed");
+		kprintf(KERN_DEBUG "mm test: region duplication failed");
 		return 0;
 	}
 
@@ -1134,7 +1134,7 @@ PRIVATE int mmtst_free(int min_mm)
 
 	if(free_count != NR_REGIONS)
 	{
-		kprintf("mm test: region freeing failed");
+		kprintf(KERN_DEBUG "mm test: region freeing failed");
 		return 0;
 	}
 

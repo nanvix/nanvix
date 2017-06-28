@@ -206,7 +206,7 @@ PRIVATE int cdevtst_register(void)
 	{
 		if (cdevsw[i] == NULL && i > 0)
 		{
-			kprintf("cdev test: register of device number %d failed", i);
+			kprintf(KERN_DEBUG "cdev test: register of device number %d failed", i);
 			return 0;
 		}
 	}
@@ -232,9 +232,9 @@ PRIVATE int cdevtst_w(char *buffer, int tstcdev_lenght)
 	if (char_count != tstcdev_lenght)
 	{
 		if(char_count <= 0)
-			kprintf("cdev test: cdev_write failed: nothing has been written, code: %d",char_count);
+			kprintf(KERN_DEBUG "cdev test: cdev_write failed: nothing has been written, code: %d",char_count);
 		else
-			kprintf("cdev test: cdev_write failed: what has been written is not what it has to be write, code: %d",char_count);
+			kprintf(KERN_DEBUG "cdev test: cdev_write failed: what has been written is not what it has to be write, code: %d",char_count);
 
 		return 0;
 	}
@@ -248,9 +248,9 @@ PRIVATE int cdevtst_w(char *buffer, int tstcdev_lenght)
 PUBLIC void cdev_test(void)
 {
 	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
-	int tstcdev_lenght = 34; /* Size of message to write in the log */
+	int tstcdev_lenght = 35; /* Size of message to write in the log */
 
-	kstrncpy(buffer, "cdev test: test data input in cdev", tstcdev_lenght);
+	kstrncpy(buffer, "cdev test: test data input in cdev\n", tstcdev_lenght);
 
 	if(!cdevtst_register())
 	{
@@ -419,12 +419,12 @@ PRIVATE int bdevtst_register(void)
 		{
 			if(i == ATA_MAJOR)
 			{
-				kprintf("bdev test: warning: ATA device was not registered during initialization");
+				kprintf(KERN_DEBUG "bdev test: warning: ATA device was not registered during initialization");
 				continue;
 			}
 			else
 			{
-				kprintf("bdev test: register of device number %d failed", i);
+				kprintf(KERN_DEBUG "bdev test: register of device number %d failed", i);
 				return 0;
 			}
 		} 
@@ -452,9 +452,9 @@ PRIVATE int bdevtst_w(char *buffer, int tstbdev_lenght)
 	if (char_count != tstbdev_lenght)
 	{
 		if(char_count <= 0)
-			kprintf("bdev test: bdev_write failed: nothing has been written, code: %d",char_count);
+			kprintf(KERN_DEBUG "bdev test: bdev_write failed: nothing has been written, code: %d",char_count);
 		else
-			kprintf("bdev test: bdev_write failed: what has been written is not what it has to be write, code: %d",char_count);
+			kprintf(KERN_DEBUG "bdev test: bdev_write failed: what has been written is not what it has to be write, code: %d",char_count);
 
 		return 0;
 	}
@@ -468,9 +468,9 @@ PRIVATE int bdevtst_w(char *buffer, int tstbdev_lenght)
 PUBLIC void bdev_test(void)
 {
 	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
-	int tstbdev_lenght = 34; /* Size of message to write in the log */
+	int tstbdev_lenght = 35; /* Size of message to write in the log */
 
-	kstrncpy(buffer, "bdev test: test data input in bdev", tstbdev_lenght);
+	kstrncpy(buffer, "bdev test: test data input in bdev\n", tstbdev_lenght);
 
 	if(!bdevtst_register())
 	{

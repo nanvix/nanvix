@@ -184,7 +184,7 @@ PRIVATE int rmdtst_register(void)
 	{
 		if (&(ramdisks[i].start) == NULL)
 		{
-			kprintf("rmdsk test: register of disk number %d failed", i);
+			kprintf(KERN_DEBUG "rmdsk test: register of disk number %d failed", i);
 			return 0;
 		}
 	}
@@ -207,7 +207,7 @@ PRIVATE int rmdtst_rw(char *buffer, int tstrmd_lenght)
 	if ((char_count = ramdisk_write(0, buffer, tstrmd_lenght, 0)) != tstrmd_lenght)
 	{
 		if (char_count <= 0)
-			kprintf("rmdsk test: ramdisk_write failed: nothing has been written");
+			kprintf(KERN_DEBUG "rmdsk test: ramdisk_write failed: nothing has been written");
 		else
 			kprintf("rmdsk test: ramdisk_write failed: what has been written is not what it has to be write");
 
@@ -217,9 +217,9 @@ PRIVATE int rmdtst_rw(char *buffer, int tstrmd_lenght)
 	if ((char_count2 = ramdisk_read(0,buffer,tstrmd_lenght, 0)) != char_count)
 	{
 		if (char_count2 <= 0)
-			kprintf("rmdsk test: ramdisk_read failed: nothing has been read");
+			kprintf(KERN_DEBUG "rmdsk test: ramdisk_read failed: nothing has been read");
 		else
-			kprintf("rmdsk test: ramdisk_read failed: what has been read is not what has to be read");
+			kprintf(KERN_DEBUG "rmdsk test: ramdisk_read failed: what has been read is not what has to be read");
 		return 0;
 	}
 
@@ -229,8 +229,8 @@ PRIVATE int rmdtst_rw(char *buffer, int tstrmd_lenght)
 PUBLIC void test_rmd(void)
 {
 	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
-	int tstrmd_lenght = 38; /* Size of message to write in the log */
-	kstrncpy(buffer, "rmdsk test: test data input in ramdisk", tstrmd_lenght);
+	int tstrmd_lenght = 39; /* Size of message to write in the log */
+	kstrncpy(buffer, "rmdsk test: test data input in ramdisk\n", tstrmd_lenght);
 
 	if(!rmdtst_register())
 	{
