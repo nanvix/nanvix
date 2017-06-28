@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 				2017-2017 Clement Rouquier <clementrouquier@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -47,6 +47,11 @@ PUBLIC void chkout(dev_t dev)
 	cdev_write(kout, buffer, n);
 }
 
+/**
+ * @brief Skip log_level from a buffer and update it's size
+ * 
+ * @return Buffer without log_level code at the beginning
+ */
 PUBLIC const char *skip_code(const char *buffer, int *i)
 {
 	if (get_code(buffer))
@@ -57,6 +62,11 @@ PUBLIC const char *skip_code(const char *buffer, int *i)
 	return buffer;
 }
 
+/**
+ * @brief Get log_level from a buffer
+ * 
+ * @return log_level or 0 if default log_level
+ */
 PUBLIC char get_code(const char *buffer)
 {
 	if ((buffer[0] == KERN_SOH_ASCII) && !(&buffer[1] == NULL))

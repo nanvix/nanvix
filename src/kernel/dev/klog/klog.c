@@ -230,8 +230,8 @@ PRIVATE int klogtst_wr(char *buffer, int tstlog_lenght)
 PUBLIC void test_klog(void)
 {
 	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
-	int tstlog_lenght = 34; /* Size of message to write in the log */
-	kstrncpy(buffer, "klog test: test data input in klog", tstlog_lenght);
+	int tstlog_lenght = 35; /* Size of message to write in the log */
+	kstrncpy(buffer, "klog test: test data input in klog\n", tstlog_lenght);
 
 	if(!klogtst_wr(buffer, tstlog_lenght))
 	{
