@@ -1,5 +1,9 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>Joe Perches <joe@perches.com>
+ *              2012-2016 Linus Torvalds <torvalds@linux-foundation.org>
+ *              2012-2012 Kay Sievers <kay.sievers@vrfy.org>
+ *
  * 
  * This file is part of Nanvix.
  * 
@@ -235,6 +239,23 @@
 	/*========================================================================*
 	 *                           logging and debugging                        *
 	 *========================================================================*/
+	
+	/* This char declares that following one is a log level */
+	#define KERN_SOH	"\001"
+	#define KERN_SOH_ASCII	'\001'
+
+	/* Log levels */
+	#define KERN_EMERG      KERN_SOH "0"    /* system is unusable */
+	#define KERN_ALERT      KERN_SOH "1"    /* action must be taken immediately */
+	#define KERN_CRIT       KERN_SOH "2"    /* critical conditions */
+	#define KERN_ERR        KERN_SOH "3"    /* error conditions */
+	#define KERN_WARNING    KERN_SOH "4"    /* warning conditions */
+	#define KERN_NOTICE     KERN_SOH "5"    /* normal but significant condition */
+	#define KERN_INFO       KERN_SOH "6"    /* informational */
+	#define KERN_DEBUG      KERN_SOH "7"    /* debug-level messages */
+	
+	/* default log level is no log level, 
+	   useful to avoid printing log level in early boot */
 
 	/**
 	 * @brief Kernel log size (in characters).
@@ -251,6 +272,8 @@
 	EXTERN ssize_t klog_write(unsigned, const char *, size_t);
 	EXTERN void kpanic(const char *, ...);
 	EXTERN void kmemdump(const void *s, size_t n);
+	EXTERN const char *skip_code(const char *buffer, int *i);
+	EXTERN char get_code(const char *buffer);
 	/**@}*/
 
 	/*========================================================================*

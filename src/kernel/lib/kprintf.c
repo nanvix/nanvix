@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 				2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -46,6 +47,32 @@ PUBLIC void chkout(dev_t dev)
 	cdev_write(kout, buffer, n);
 }
 
+PUBLIC const char *skip_code(const char *buffer, int *i)
+{
+	if (get_code(buffer))
+	{
+		*i = *i-2;
+		return buffer+2;
+	}
+	return buffer;
+}
+
+PUBLIC char get_code(const char *buffer)
+{
+	if ((buffer[0] == KERN_SOH_ASCII) && !(&buffer[1] == NULL))
+	{
+		if ((buffer[1] >= '0' && buffer[1] <= '7'))
+			return buffer[1];	
+
+		else
+		{
+			kpanic("log level error: invalid log level");
+			return -1;
+		}
+	}
+	return 0;
+}
+
 /**
  * @brief Writes on the screen a formated string.
  * 
@@ -53,9 +80,10 @@ PUBLIC void chkout(dev_t dev)
  */
 PUBLIC void kprintf(const char *fmt, ...)
 {
-	int i;                         /* Loop index.              */
-	va_list args;                  /* Variable arguments list. */
-	char buffer[KBUFFER_SIZE + 1]; /* Temporary buffer.        */
+	int i;                         /* Loop index.                              */
+	va_list args;                  /* Variable arguments list.                 */
+	char buffer[KBUFFER_SIZE + 1]; /* Temporary buffer.                        */
+	const char *buffer_no_code;    /* Temporary buffer for log level printing. */
 	
 	/* Convert to raw string. */
 	va_start(args, fmt);
@@ -63,7 +91,8 @@ PUBLIC void kprintf(const char *fmt, ...)
 	buffer[i++] = '\n';
 	va_end(args);
 
-	/* Save on kernel log and write on kout. */
-	cdev_write(kout, buffer, i);
+	/* Save on kernel log, skip code in case it's not correctly done and write on kout. */
 	klog_write(0, buffer, i);
+	buffer_no_code = skip_code(buffer, &i);
+	cdev_write(kout, buffer_no_code, i);
 }
