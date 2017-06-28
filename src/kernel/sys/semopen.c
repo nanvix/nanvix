@@ -20,7 +20,7 @@ int free_sem_entry()
 	int idx;
 	for (idx = 0; idx < SEM_OPEN_MAX; idx++)
 	{
-		if(semtable[idx].num == 0)
+		if(semtable[idx].name[0] == '\0')
 		{
 			return idx;
 		}
@@ -37,8 +37,6 @@ int add_table(struct inode *inode, int value, int idx, const char* semname)
 	semtable[idx].currprocs[0] = curr_proc->pid;
 	semtable[idx].nbproc = 0;
 	semtable[idx].state = 0;
-	semtable[idx].num = inode->num;
-	semtable[idx].dev = inode->dev;
 	semtable[idx].seminode = inode;
 	return 0;
 }
@@ -94,13 +92,12 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			if (!SEM_VALID_VALUE(value))
 				return (-EINVAL);
 
-
 			/* Searching a free slot in the semaphore table */
 			semid = -1;
 
 			for (i = 0; i < SEM_OPEN_MAX; i++)
 			{
-				if (semtable[i].num == 0)
+				if (semtable[i].name[0] == '\0')
 				{
 					semid = i;
 					break;
@@ -125,14 +122,17 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 		/* Searching the semaphore indice in the semaphore table */
 		semid = search_semaphore (name);
 		/* This opening will increment the inode counter */
-		inode = inode_get(semtable[semid].dev, semtable[semid].num);
+		inode = inode_name(name);
 		semtable[semid].seminode = inode;
 		inode_unlock(inode);
 
 		/* Checking if there is WRITE and READ permissions */
 		if (	!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_WRITE, 0) \
 			 ||	!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_READ, 0) )
+		{
+			inode_put(inode);
 			return (EACCES);
+		}
 
 		for (i = 0; i < PROC_MAX; i++)
 		{

@@ -378,8 +378,8 @@ void work(void)
 void producer(int nbprod, int limit)
 {
 	sem_t* sem, *semlim;
-	sem = sem_open("ressources", O_CREAT, 0777,0);
-	semlim = sem_open("limite", O_CREAT, 0777,limit);
+	sem = sem_open("/home/mysem/ressources", O_CREAT, 0777,0);
+	semlim = sem_open("/home/mysem/limite", O_CREAT, 0777,limit);
 
 	for(int j = 0; j<nbprod; j++)
 	{
@@ -394,8 +394,8 @@ void producer(int nbprod, int limit)
 void consumer(int nbcons, int limit)
 {
 	sem_t *sem, *semlim;
-	sem = sem_open("ressources", O_CREAT, 0777,0);
-	semlim = sem_open("limite", O_CREAT, 0777,limit);
+	sem = sem_open("/home/mysem/ressources", O_CREAT, 0777,0);
+	semlim = sem_open("/home/mysem/limite", O_CREAT, 0777,limit);
 
 	for(int j = 0; j<nbcons; j++)
 	{
@@ -436,26 +436,27 @@ static int sem_test_open_close(void)
     /* We don't unlink semc2 */ 
     /* child */ 
     printf("Child\n"); 
-    sem_t *semc1, *semc2, *semc3, *semc4; 
-    semc1 = sem_open("sem1",O_CREAT,0777,0); 
-    semc2 = sem_open("sem2",O_CREAT,0777,0); 
-    semc3 = sem_open("sem3",O_CREAT,0777,0); 
-    sem_unlink("sem1"); 
-    sem_unlink("sem2"); 
- 
+    sem_t *semc1, *semc2, *semc3, *semc4;
+    semc1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
+    semc2 = sem_open("/home/mysem/sem2",O_CREAT,0777,0); 
+    semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
+
+    sem_unlink("/home/mysem/sem1"); 
+    sem_unlink("/home/mysem/sem2"); 
+
     sem_wait(semc3); 
     sem_post(semc1); 
- 
     sem_close(semc2); 
+
     /* sem3 has not been unlinked -> wont be deleted */ 
     sem_close(semc3); 
      
-    /*   
+    /*
      *  We open a semaphore after sem2 has been closed 
      *  to ensure that the slot is taken 
-     */ 
-    semc4 = sem_open("sem4",O_CREAT,0777,0); 
-    sem_unlink("sem4"); 
+     */
+    semc4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); 
+    sem_unlink("/home/mysem/sem4");
     sem_close(semc4); 
     sem_close(semc1); 
   } 
@@ -463,8 +464,9 @@ static int sem_test_open_close(void)
     /* father */ 
     printf("Father \n"); 
     sem_t *semf1, *semf3; 
-    semf1 = sem_open("sem1",O_CREAT,0777,0); 
-    semf3 = sem_open("sem3",O_CREAT,0777,0); 
+    semf1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0); 
+    semf3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
+
     sem_post(semf3); 
     sem_wait(semf1); 
     sem_close(semf1); 

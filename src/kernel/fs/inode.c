@@ -1090,19 +1090,18 @@ PUBLIC void inode_init(void)
 	init_mountTable();
 }
 
-PUBLIC struct inode *inode_semaphore(const char* name, int mode)
+PUBLIC struct inode *inode_semaphore(const char* pathsem, int mode)
 {
 	struct inode *inode;
-	/* 
-	 *  if ( too much semaphores )
-	 * 	Semaphore table full 
-	 * 
-	 *  return (-ENFILE); 
-	 */
+	struct inode *directory;
+	const char *name;
 
 	/* Initialize Semaphore inode. */
-	inode = do_creat(semdirectory, name, mode, O_CREAT);
+	directory = inode_dname(pathsem, &name);
+	inode = do_creat(directory, name, mode, O_CREAT);
 	inode->time = CURRENT_TIME;
+
+	inode_unlock(directory);
 
 	return inode;
 }

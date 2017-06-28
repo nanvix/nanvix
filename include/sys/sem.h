@@ -24,8 +24,6 @@
 	struct ksem {
 		char name[MAX_SEM_NAME];				/* Semaphore name 										*/
 		struct inode *seminode; 				/* necessary to unlink to avoid multiple inode_get		*/
-		ino_t num;								/* Semaphore descriptor inode number					*/
-		dev_t dev;								/* Associated device									*/
 		short value;              				/* Value of the semaphore                    			*/
 		unsigned short state;           		/* last bit used as boolean, first bits are free 		*/ /* LOOK TO CHANGE THAT */
 		pid_t currprocs[PROC_MAX];				/* Processes using the semaphores						*/
@@ -64,6 +62,8 @@
  	 *			 -1 if it doesn't exists
 	 */
 	int search_semaphore (const char* semname);
+
+	int remove_semaphore (const char *pathname);
 
 
 #endif

@@ -140,7 +140,7 @@ PUBLIC void pm_init(void)
 	/* Initializing semaphore table */
 	for (int i = 0; i < OPEN_MAX; i++)
 	{
-		semtable[i].num = 0;
+		semtable[i].name[0] = '\0';
 
 		for (int j = 0; j<PROC_MAX; j++)
 			semtable[i].currprocs[j] = (-1);

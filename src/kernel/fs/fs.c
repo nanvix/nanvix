@@ -220,6 +220,4 @@ PUBLIC void fs_init(void)
 	
 	inode_unlock(root);
 
-	semdirectory = inode_name("/home/mysem");
-	inode_unlock(semdirectory);
 }

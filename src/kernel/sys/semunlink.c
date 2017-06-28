@@ -15,35 +15,37 @@
  */
 PUBLIC int sys_semunlink(const char *name)
 {
-	int idx = -1;
-	struct inode* seminode = get_sem(name);
+	int idx;
+	struct inode* seminode = inode_name(name);
 
 	if (seminode == NULL)
 	{
 		/* The semaphore descriptor doesn't exist */
 		return (-ENOENT);
 	}
+	
+	if (!permission(seminode->mode, seminode->uid, seminode->gid, curr_proc, MAY_WRITE, 0))
+	{
+		inode_put(seminode);
+		inode_unlock(seminode);
+		return -(EACCES);
+	}
+
+ 	idx = search_semaphore(name);
+	
+	if (semtable[idx].nbproc == 0)
+	{
+		semtable[idx].name[0] = '\0';
+		remove_semaphore (name);
+		// dir_remove(semdirectory, name);
+	}
 	else
 	{
-		if (!permission(seminode->mode, seminode->uid, seminode->gid, curr_proc, MAY_WRITE, 0))
-		{
-			return -(EACCES);
-		}
-
-	 	idx = search_semaphore(name);
-		
-		if (semtable[idx].nbproc == 0)
-		{
-			semtable[idx].num = 0;
-			dir_remove(semdirectory, name);
-		}
-		else
-		{
-			semtable[idx].state |= UNLINKED;
-		}
-
-		inode_put(seminode);
-
-		return 0;	/* Successful completion */
+		semtable[idx].state |= UNLINKED;
 	}
+
+	inode_put(seminode);
+	inode_unlock(seminode);
+
+	return 0;	/* Successful completion */
 }

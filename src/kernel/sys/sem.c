@@ -17,8 +17,6 @@ void freesem(struct ksem *sem)
 {
 	(sem->name)[0]='\0';
 	sem->state=0;
-	sem->nbproc=0;
-	sem->num = 0;
 
 	for (int i = 0; i<PROC_MAX; i++)
 		sem->currprocs[i] = -1;
@@ -49,54 +47,21 @@ int namevalid(const char* name)
  * 	@Brief Searching if a semaphore descriptor exists from its name
  * 		   by searching in the semaphore directory
  */
-struct inode *get_sem(const char* semname)
+int existence_semaphore(const char* sempath)
 {
-	ino_t num;
+	struct inode* seminode;
 
-	if (semdirectory == NULL)
+	seminode = inode_name(sempath);
+
+	if (seminode == NULL)
 	{
-		kprintf("Error with the semaphore directory");
-	}
-
-	num = dir_search(semdirectory, semname);
-
-	if(num != INODE_NULL)
-	{
-		struct inode *seminode;
-		seminode = inode_get(semdirectory->dev,num);
-		inode_unlock(seminode);
-
-		return seminode;
-	}
-	else
-	{
-		return NULL;
-	}
-}
-
-/**
- * 	@Brief Searching if a semaphore descriptor exists from its name
- * 		   by searching in the file system
- */
-int existence_semaphore(const char* semname)
-{
-	ino_t num;
-
-	if (semdirectory == NULL)
-	{
-		kprintf("Error with the semaphore directory");
-	}
-
-	num = dir_search(semdirectory, semname);
-
-	if(num == INODE_NULL)
-	{
-		/* Semaphore doesn't exist */
+		/* Path doesn't exist */
 		return -1;
 	}
 	else
 	{
 		/* Semaphore exists */
+		inode_unlock(seminode);
 		return 0;
 	}
 }
@@ -120,4 +85,17 @@ int search_semaphore (const char* semname)
 	}
 
 	return -1;
+}
+
+int remove_semaphore (const char *pathname)
+{
+	const char *filename;
+	struct inode *semdirectory;
+
+	semdirectory = inode_dname(pathname,&filename);
+
+	inode_unlock(semdirectory);
+	dir_remove(semdirectory, filename);
+
+	return 0;
 }
