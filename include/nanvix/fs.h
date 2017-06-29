@@ -137,6 +137,7 @@
 	EXTERN struct inode *inode_alloc(struct superblock *);
 	EXTERN struct inode *inode_get(dev_t dev, ino_t);
 	EXTERN void inode_put(struct inode *);
+	EXTERN const char* break_path(const char *pathname, char *filename);
 	EXTERN struct inode *inode_dname(const char *, const char **);
 	EXTERN struct inode *inode_name(const char *);
 	EXTERN struct inode *inode_pipe(void);

@@ -1,10 +1,8 @@
 #include <sys/sem.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
-
-
-#include <nanvix/const.h>
-#include <sys/types.h>
+#include <limits.h>
+#include <nanvix/fs.h>
 
 /**
  *	@brief Make a semaphore slot available for
@@ -29,22 +27,42 @@ void freesem(struct ksem *sem)
  *
  *	@returns 0 If valid, -1 otherwise
  */
-int namevalid(const char* name)
+int namevalid(const char* pathname)
 {
-	size_t len=kstrlen(name);
+	size_t len;
+	const char *p;
+	char filename[50];
 
-	if(len<1 || !chkmem(name, len, MAY_WRITE) )
-	{
+	len = kstrlen(pathname);
+	
+	if (!chkmem(pathname, len, MAY_WRITE))
 		return -1;
+
+	p = pathname;
+
+	p = break_path(p, filename);
+
+	if (p == NULL)
+		return -1;
+
+	while (*p != '\0')
+	{
+		p = break_path(p, filename);
 	}
+
+	len = kstrlen(filename);
+
+	if (len > MAX_SEM_NAME)
+		return -1;
 
 	return 0;
 }
 
 
 /**
- * 	@Brief Searching if a semaphore descriptor exists from its name
- * 		   by searching in the semaphore directory
+ * 	@brief Searching if a semaphore descriptor exists 
+ *
+ *	@parameters sempath The complet semaphore descriptor path
  */
 int existence_semaphore(const char* sempath)
 {
@@ -53,32 +71,28 @@ int existence_semaphore(const char* sempath)
 	seminode = inode_name(sempath);
 
 	if (seminode == NULL)
-	{
-		/* Path doesn't exist */
 		return -1;
-	}
-	else
-	{
-		/* Semaphore exists */
-		inode_put(seminode);
-		inode_unlock(seminode);
-		return 0;
-	}
+
+	/* Semaphore exists */
+	inode_put(seminode);
+	inode_unlock(seminode);
+
+	return 0;
 }
 
 /**
- * 	@Brief checks the existece of a semaphore
+ * 	@brief Checks the existece of a semaphore
  *		   in the semaphore table.
  *		  
- * 	@Returns the index of the semaphore in the
+ * 	@returns The index of the semaphore in the
  *        	 semaphore table if it exists
- *           SEM_FAILED otherwise.
+ *           -1 otherwise.
  */
 int search_semaphore (const char* semname)
 {
 	for (int idx = 0; idx < SEM_OPEN_MAX; idx++)
 	{
-		if(!kstrcmp(semname,semtable[idx].name))
+		if (!kstrcmp(semname,semtable[idx].name))
 		{
 			return idx;
 		}
@@ -87,15 +101,19 @@ int search_semaphore (const char* semname)
 	return -1;
 }
 
+/**
+ *	@brief Removes a semaphore from the file system
+ *
+ *	@parameters pathname The semaphore entire pathname
+ */
 int remove_semaphore (const char *pathname)
 {
 	const char *filename;
 	struct inode *semdirectory;
 
-	semdirectory = inode_dname(pathname,&filename);
-
-	inode_unlock(semdirectory);
+	semdirectory = inode_dname(pathname, &filename);
 	dir_remove(semdirectory, filename);
+	inode_unlock(semdirectory);
 
 	return 0;
 }

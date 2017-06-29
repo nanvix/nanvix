@@ -2,9 +2,7 @@
 #include <stdarg.h>
 #include <sys/sem.h>
 #include <nanvix/klib.h>
-#include <semaphore.h>
 #include <errno.h>
-#include <nanvix/fs.h>
 
 /**
  *	@brief Set the semaphore of index idx
@@ -16,7 +14,6 @@ int add_table(int value, const char* semname, int idx)
 	kstrcpy(semtable[idx].name, semname);
 	semtable[idx].value = value;
 	semtable[idx].currprocs[0] = curr_proc->pid;
-	semtable[idx].nbproc = 0;
 	return 0;
 }
 
@@ -39,13 +36,13 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	mode_t mode;
 	int value;
 	va_list arg;				/* Variable argument */
-	int i, freeslot, semid;		/* Index of the opened semaphore */
+	int i, freeslot, semid;
 	struct inode *inode;
 	freeslot = -1;
 
 	/* Name invalid */
 	if (namevalid(name) == (-1))
-		return (-EINVAL);
+		return (ENAMETOOLONG);
 
 	/*  
 	 *	inode == corresponding semaphore inode if it exists
@@ -86,7 +83,13 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 				return (-ENFILE);
 
 			/* Creates the inode */
-			inode = inode_semaphore(name, mode);
+			if (!(inode = inode_semaphore(name, mode)))
+			{
+				/*  Access forbiden to the parent directory 
+				 * 	or parent directory doesn't exist
+				 */
+				return (-EACCES);
+			}
 			/* Add the semaphore in the semaphore table */
 			add_table(value, name, semid);
 		}
@@ -107,7 +110,6 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 		{
 			inode_put(inode);
 			inode_unlock(inode);
-
 			return (EACCES);
 		}
 
@@ -122,27 +124,18 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 				freeslot = i;
 				break;
 			}
-
-			/* Not allowing multiple open
-				if (semtable[semid].currprocs[i] == curr_proc->pid)
-				{
-					return ERROR;
-				}
-			 */
 		}
 
 		if (freeslot == (-1))
 		{
 			inode_put(inode);
 			inode_unlock(inode);
-
 			return (-EMFILE);
 		}
 
 		semtable[semid].currprocs[freeslot] = curr_proc->pid;
 	}
 
-	semtable[semid].nbproc++;
 	inode_unlock(inode);
 
 	return semid;

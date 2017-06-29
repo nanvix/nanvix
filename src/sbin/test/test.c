@@ -442,15 +442,11 @@ static int sem_test_open_close(void)
     semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
 
     sem_unlink("/home/mysem/sem1"); 
-    sem_unlink("/home/mysem/sem2"); 
-
     sem_wait(semc3); 
     sem_post(semc1); 
     sem_close(semc2); 
-
     /* sem3 has not been unlinked -> wont be deleted */ 
     sem_close(semc3); 
-     
     /*
      *  We open a semaphore after sem2 has been closed 
      *  to ensure that the slot is taken 
@@ -459,6 +455,13 @@ static int sem_test_open_close(void)
     sem_unlink("/home/mysem/sem4");
     sem_close(semc4); 
     sem_close(semc1); 
+    sem_unlink("/home/mysem/sem2"); 
+    /* Closing multiple times */
+    sem_close(semc2);
+    sem_close(semc2);
+    sem_close(semc2);
+   	/* Sem_post on a non opened semaphore */
+    sem_post(semc4);
   } 
   else{ 
     /* father */ 
@@ -471,6 +474,10 @@ static int sem_test_open_close(void)
     sem_wait(semf1); 
     sem_close(semf1); 
     sem_close(semf3); 
+    sem_unlink("/home/mysem/sem2");
+    /* Unlinking multiple times */ 
+    sem_unlink("/home/mysem/sem1");
+    sem_unlink("/home/mysem/sem1");
   } 
  
   return (0); 
@@ -588,7 +595,9 @@ static void usage(void)
 	printf("  Paging 		Paging System Test\n");
 	printf("  stack  		Stack growth Test\n");
 	printf("  sched  		Scheduling Test\n");
-	printf("  Semaphore 	Semaphore Test\n");
+	printf("  se 			Open/Close Semaphore Test\n");
+	printf("  prodcons		Producer/Consumer Semaphore Test\n");
+
 
 	exit(EXIT_SUCCESS);
 }
@@ -652,7 +661,7 @@ int main(int argc, char **argv)
 		/* Semaphore test. */
 		else if (!strcmp(argv[i], "se"))
 		{
-			printf("Semaphore testing\n");
+			printf("Semaphore open/close Test\n");
 			printf("  Result [%s]\n",
 				(!sem_test_open_close()) ? "PASSED" : "FAILED");
 		}
@@ -660,7 +669,7 @@ int main(int argc, char **argv)
 		/* Semaphore test. */
 		else if (!strcmp(argv[i], "prodcons"))
 		{
-			printf("Semaphore testing\n");
+			printf("Producer consummer Test\n");
 			printf("  Result [%s]\n",
 				(!sem_test()) ? "PASSED" : "FAILED");
 		}

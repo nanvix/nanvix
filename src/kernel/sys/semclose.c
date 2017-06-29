@@ -1,12 +1,10 @@
 #include <sys/sem.h>
-#include <nanvix/klib.h>
-#include <semaphore.h>
 #include <errno.h>
 
 /**
  * @brief close a semaphore for a given process
  *		 
- * @param	num		semaphore inode number 
+ * @param num Semaphore inode number 
  *
  * @returns returns 0 in case of successful completion
  *			returns SEM_FAILED otherwise
@@ -34,20 +32,16 @@ PUBLIC int sys_semclose(int idx)
 	}
 
 	if (i > PROC_MAX)
-	{
-		kprintf("Attempting to close a non-opened semaphore");
 		return -1;
-	}
-
-	semtable[idx].nbproc--;
 
 	if (seminode->count == 1 && seminode->nlinks == 0)
 	{		
-		remove_semaphore (semtable[idx].name);
-		semtable[idx].name[0] = '\0';
+		remove_semaphore(semtable[idx].name);
+		freesem(&semtable[idx]);
 	}	
 
 	inode_put(seminode);
+	inode_unlock(seminode);
 
 	return 0;
 }

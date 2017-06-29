@@ -26,7 +26,6 @@
 		short value;              				/* Value of the semaphore                    			*/
 		pid_t currprocs[PROC_MAX];				/* Processes using the semaphores						*/
 		struct process* semwaiters[PROC_MAX];	/* The size should be higher if threads are implemented */
-		int nbproc;
 	};
 
 	/* Semaphores table */

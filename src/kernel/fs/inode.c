@@ -798,7 +798,7 @@ PUBLIC void inode_put(struct inode *ip)
  *          remainder of the path. Upon failure, a #NULL pointer is returned 
  *          instead.
  */
-PRIVATE const char *break_path(const char *pathname, char *filename)
+PUBLIC const char *break_path(const char *pathname, char *filename)
 {
 	char *p2;       /* Write pointer. */
 	const char *p1; /* Read pointer.  */
@@ -1098,6 +1098,18 @@ PUBLIC struct inode *inode_semaphore(const char* pathsem, int mode)
 
 	/* Initialize Semaphore inode. */
 	directory = inode_dname(pathsem, &name);
+
+	if (directory==NULL)
+	{
+		return NULL;
+	}
+
+	if (	!permission(directory->mode, directory->uid, directory->gid, curr_proc, MAY_WRITE, 0) \
+	 	||	!permission(directory->mode, directory->uid, directory->gid, curr_proc, MAY_READ, 0) )
+	{
+		return NULL;
+	}
+
 	inode = do_creat(directory, name, mode, O_CREAT);
 	inode->time = CURRENT_TIME;
 
