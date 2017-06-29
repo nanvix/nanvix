@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -123,6 +124,7 @@ PUBLIC void kmain(void)
 	fs_init();
 	
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
+	kprintf(KERN_INFO "kout is now initialized");
 	
 	/* Spawn init process. */
 	if ((pid = fork()) < 0)
@@ -130,7 +132,7 @@ PUBLIC void kmain(void)
 	else if (pid == 0)
 	{	
 		init();
-		kprintf("failed to execute init");
+		kprintf(KERN_EMERG "failed to execute init");
 		_exit(-1);
 	}
 	
