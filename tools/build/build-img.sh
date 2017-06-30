@@ -75,7 +75,10 @@ function format {
 	bin/mkdir.minix $1 /sbin $ROOTUID $ROOTGID
 	bin/mkdir.minix $1 /bin $ROOTUID $ROOTGID
 	bin/mkdir.minix $1 /home $ROOTUID $ROOTGID
+	bin/mkdir.minix $1 /home/rep1 $ROOTUID $ROOTGID
+	bin/mkdir.minix $1 /home/rep2 $ROOTUID $ROOTGID
 	bin/mkdir.minix $1 /dev $ROOTUID $ROOTGID
+	bin/mkdir.minix $1 /home/mysem/ $ROOTUID $ROOTGID
 	bin/mknod.minix $1 /dev/null 666 c 0 0 $ROOTUID $ROOTGID
 	bin/mknod.minix $1 /dev/tty 666 c 0 1 $ROOTUID $ROOTGID
 	bin/mknod.minix $1 /dev/klog 666 c 0 2 $ROOTUID $ROOTGID

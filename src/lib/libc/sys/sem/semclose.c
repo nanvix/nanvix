@@ -21,7 +21,7 @@ int sem_close(sem_t* sem)
 		"int $0x80"
 		: "=a" (ret)
 		: "0" (NR_semclose),
-		  "b" (sem->idx)
+		  "b" (sem->semid)
 	);
 
 	if (ret == 0)

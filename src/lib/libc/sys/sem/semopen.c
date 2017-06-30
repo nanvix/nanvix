@@ -68,6 +68,6 @@ sem_t* sem_open(const char* name, int oflag, ...)
 		return (NULL);
 	}
 
-	s->idx=ret;
+	s->semid=ret;
 	return (s);
 }

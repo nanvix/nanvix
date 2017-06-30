@@ -24,5 +24,6 @@
 
 	/* Forward definitions. */
 	extern int mount (const char *, const char *);
+	extern int unmount (const char *, const char *);
 
 #endif /* _SYS_MOUNT_H */

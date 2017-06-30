@@ -1,13 +1,10 @@
 #include <sys/sem.h>
-#include <nanvix/klib.h>
-#include <semaphore.h>
 #include <errno.h>
 
 /**
- * @brief	Waits on a semaphore
+ * @brief Waits on a semaphore
  *		 
- * @param	idx The index of the semaphore in the
- *			semtable
+ * @param num The inode number of the semaphore
  *
  * @returns returns 0 in case of successful completion
  *			returns SEM_FAILED otherwise
@@ -18,13 +15,20 @@
  */
 PUBLIC int sys_semwait(int idx)
 {
-	if (!SEM_IS_VALID(idx))
+	struct inode *seminode;
+
+	seminode = inode_name(semtable[idx].name);
+
+	if (seminode == NULL)
 		return (-EINVAL);
 
-	while (semtable[idx].value<=0)
-		sleep(semwaiters,curr_proc->priority);
+	inode_unlock(seminode);
+
+	while (semtable[idx].value <= 0)
+		sleep(semtable[idx].semwaiters,curr_proc->priority);
 
 	semtable[idx].value--;
+	inode_put(seminode);
 
 	return (0);
 }

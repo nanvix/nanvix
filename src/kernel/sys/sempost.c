@@ -1,28 +1,31 @@
 #include <sys/sem.h>
-#include <nanvix/klib.h>
-#include <semaphore.h>
 #include <errno.h>
 
 /**
- * @brief close a semaphore for a given process
+ * @brief Closes a semaphore for a given process
  *		 
- * @param	idx		semaphore index (in semaphore
- *					table to close
+ * @param idx Semaphore index (in semaphore
+ *			  table to close
  *
- * @returns returns 0 in case of successful completion
- *			returns SEM_FAILED otherwise
+ * @returns 0 in case of successful completion
+ *			error code otherwise
  */
 PUBLIC int sys_sempost(int idx)
 {
-	/* Not a valid semaphore */
-	if (!SEM_IS_VALID(idx))
+	struct inode *seminode;
+	seminode = inode_name(semtable[idx].name);
+
+	if (seminode == NULL)
 		return (-EINVAL);
 
 	semtable[idx].value++;
+	
 
 	if (semtable[idx].value>0)
-	{
-		wakeup(semwaiters);
-	}
+		wakeup(semtable[idx].semwaiters);
+
+	inode_put(seminode);
+	inode_unlock(seminode);
+
 	return (0);
 }

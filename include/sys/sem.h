@@ -3,7 +3,10 @@
 #include <nanvix/config.h>
 #include <nanvix/pm.h>
 
-#define UNLINKED 	0001000
+#ifndef SEM_H_
+#define SEM_H_
+
+#define UNLINKED 	0100000
 #define PERMISSIONS 0000777
 
 #define SEM_IS_VALID(idx) \
@@ -19,27 +22,47 @@
 
 	/* Kernel semaphores */
 	struct ksem {
-		short value;              			/* Value of the semaphore                    	*/
-		char name[MAX_SEM_NAME];    		/* Name of the named semaphore               	*/
-		unsigned short state;           	/* 0-8 : mode, 9 : unlinked bit					*/
-		char nbproc;                 		/* Number of processes sharing the semaphore 	*/
-		uid_t uid;              			/* Semaphore User ID         					*/
-		gid_t gid;              			/* Semaphore Group idx               			*/
-		pid_t currprocs[PROC_MAX];			/* Processes using the semaphores				*/
+		char name[MAX_SEM_NAME];				/* Semaphore name 										*/
+		short value;              				/* Value of the semaphore                    			*/
+		pid_t currprocs[PROC_MAX];				/* Processes using the semaphores						*/
+		struct process* semwaiters[PROC_MAX];	/* The size should be higher if threads are implemented */
 	};
 
 	/* Semaphores table */
 	extern struct ksem semtable[SEM_OPEN_MAX];
 
-	extern struct process* semwaiters[PROC_MAX];
+	/* Inode corresponding to the semaphore directory */
+	extern struct inode *semdirectory;
 
 	/* Frees a semaphore */
-	int freesem(int idx);
+	void freesem(struct ksem *sem);
 
 	/* Verify if a semaphore name is valid */
 	int namevalid(const char* name);
 
 	/* Give the index of the semaphore if it exists */
 	int existance(const char* semname);
+
+	/* Returns the inode for a specific semaphore name */
+	struct inode *get_sem(const char* semname);
+
+	/**
+	 * 	Searching if a semaphore descriptor exists from its name
+	 * 	by searching in the file system
+	 */
+	int existence_semaphore(const char* semname);
+
+	/** 	
+	 *	@brief Searching if a sempahore exists in the semaphore table 
+	 *	
+ 	 *	@returns Its index in the semaphore table
+ 	 *			 -1 if it doesn't exists
+	 */
+	int search_semaphore (const char* semname);
+
+	int remove_semaphore (const char *pathname);
+
+
+#endif
 
 #endif

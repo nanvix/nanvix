@@ -17,7 +17,7 @@ int sem_post(sem_t* sem)
 		"int $0x80"
 		: "=a" (ret)
 		: "0" (NR_sempost),
-		  "b" (sem->idx)
+		  "b" (sem->semid)
 	);
 
 	return (ret);
