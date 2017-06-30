@@ -70,14 +70,14 @@ PUBLIC void dbg_register(debug_fn fn, char *fn_name)
 	/* Nothing to do. */
 	if (!is_debug)
 	{
-		kprintf("debug-driver: debug mode disabled");
+		kprintf(KERN_INFO "debug-driver: debug mode disabled");
 		return;
 	}
 
 	/* Sanity check. */
 	if (fn == NULL)
 	{
-		kprintf("debug-driver: register null debug function?");
+		kprintf(KERN_WARNING "debug-driver: register null debug function?");
 		return;
 	}
 
@@ -93,7 +93,7 @@ PUBLIC void dbg_register(debug_fn fn, char *fn_name)
 		}
 	}
 
-	kprintf("debug-driver: too many debug functions");
+	kprintf(KERN_ERR "debug-driver: too many debug functions");
 }
 
 /**
@@ -102,7 +102,7 @@ PUBLIC void dbg_register(debug_fn fn, char *fn_name)
 PUBLIC void dbg_init(void)
 {
 	is_debug = 1;
-	kprintf("debug-diver: debug driver intialized");
+	kprintf(KERN_INFO "debug-diver: debug driver intialized");
 }
 
 /**
@@ -116,7 +116,7 @@ PUBLIC void dbg_execute(void)
 	/* Nothing to do. */
 	if (!is_debug)
 	{
-		kprintf("debug-driver: debug mode disabled");
+		kprintf(KERN_INFO "debug-driver: debug mode disabled");
 		return;
 	}
 
@@ -129,23 +129,23 @@ PUBLIC void dbg_execute(void)
 
 		current_fn = i;
 
-		kprintf("debug-driver: executing debug function %d: %s", ++nexecuted, fn_names[i]);
+		kprintf(KERN_DEBUG "debug-driver: executing debug function %d: %s", ++nexecuted, fn_names[i]);
 		debug_fns[i]();
 	}
 
-	kprintf("debug-driver: done - test passed: %d - test failed: %d - test skipped: %d", tst_cnt.tst_pass, tst_cnt.tst_fail, tst_cnt.tst_skip);
+	kprintf(KERN_DEBUG "debug-driver: done - test passed: %d - test failed: %d - test skipped: %d", tst_cnt.tst_pass, tst_cnt.tst_fail, tst_cnt.tst_skip);
 
 	if (tst_cnt.tst_fail > 0)
 	{
-		kprintf("debug-driver: list of failed functions:");
+		kprintf(KERN_DEBUG "debug-driver: list of failed functions:");
 		for(i = 0; i < (int)(tst_cnt.tst_fail); i++)
 		{
-			kprintf("debug-driver: failed function %d:  %s", (i+1),fn_names[failed_fns[i]]);
+			kprintf(KERN_DEBUG "debug-driver: failed function %d:  %s", (i+1),fn_names[failed_fns[i]]);
 		}
-		kpanic("debug-driver: failed tests could create instability in the system");
+		kpanic(KERN_DEBUG "debug-driver: failed tests could create instability in the system");
 	}
 
-	kprintf("debug-driver: debug complete - press ENTER to continue standard boot");
+	kprintf(KERN_DEBUG "debug-driver: debug complete - press ENTER to continue standard boot");
 
 	cdev_read(kout, NULL, 1);
 }

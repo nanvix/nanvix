@@ -41,6 +41,46 @@ PRIVATE struct
 } klog = { 0, 0, {0, }};
 
 /**
+ * @brief Add log level code (if present) to buffer and skip it
+ * 
+ * @param buffer        Buffer to be written in the kernel log.
+ * @param n             Pointer on the number of characters to be written in the kernel log. (for updating)
+ * @param head, tail    Pointers on buffer head and tail
+ * @param char_printed  Number of chaf added to buffer for log_level (0 or 3)
+
+ * @returns Buffer with no code, hidden returns with pointers
+ */
+PRIVATE const char *print_code(const char *buffer, int *n, int *head, int *tail, int *char_printed)
+{
+	int i;
+	char p[3];
+	p[0] = get_code(buffer);
+	p[1] = ':';
+	p[2] = ' ';
+
+	/* log level is default one? */
+	if (p[0] == 0)
+	{
+		return buffer;
+	}
+
+	/* Copy data to ring buffer */
+	for (i=0;i<3;i++)
+	{
+		klog.buffer[*tail] = p[i];
+		*tail = (*tail + 1)&(KLOG_SIZE - 1);
+		
+		if (*tail == *head)
+			*head = *head + 1;
+	}
+	/* 3 character had been added to buffer for log_level printing */
+	*char_printed =+ 3;
+
+	return skip_code(buffer,n);
+}
+
+
+/**
  * @brief Writes to kernel log.
  * 
  * @param buffer Buffer to be written in the kernel log.
@@ -53,17 +93,22 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 	int head;      /* Log head.        */
 	int tail;      /* Log tail.        */
 	const char *p; /* Writing pointer. */
+
+	int lenght = (int) n;
+	int char_printed = 0; /* Useful for returning size */
+
 	
 	UNUSED(minor);
-	
-	p = buffer;
 	
 	/* Read pointers. */
 	head = klog.head;
 	tail = klog.tail;
+
+	/* If there is a log_level code, add it in buffer and skip it */
+	p = print_code(buffer,&lenght,&head,&tail,&char_printed);
 	
 	/* Copy data to ring buffer. */
-	while (n-- > 0)
+	while (lenght-- > 0)
 	{
 		klog.buffer[tail] = *p++;
 		
@@ -77,7 +122,7 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 	klog.head = head;
 	klog.tail = tail;
 	
-	return ((ssize_t)(p - buffer));
+	return ((ssize_t)(char_printed + p - buffer));
 }
 
 /**
@@ -159,9 +204,9 @@ PRIVATE int klogtst_wr(char *buffer, int tstlog_lenght)
 	if ((char_count = klog_write(0, buffer, tstlog_lenght)) != tstlog_lenght)
 	{
 		if (char_count <= 0)
-			kprintf("klog test: klog_write failed: nothing has been written");
+			kprintf(KERN_DEBUG "klog test: klog_write failed: nothing has been written");
 		else
-			kprintf("klog test: klog_write failed: what has been written is not what it has to be write");
+			kprintf(KERN_DEBUG "klog test: klog_write failed: what has been written is not what it has to be write");
 
 		return 0;
 	}
@@ -169,9 +214,9 @@ PRIVATE int klogtst_wr(char *buffer, int tstlog_lenght)
 	if ((char_count2 = klog_read(0,buffer2,tstlog_lenght)) != char_count)
 	{
 		if (char_count2 <= 0)
-			kprintf("klog test: klog_read failed: nothing has been read");
+			kprintf(KERN_DEBUG "klog test: klog_read failed: nothing has been read");
 		else
-			kprintf("klog test: klog_read failed: what has been read is not what it has to be read");
+			kprintf(KERN_DEBUG "klog test: klog_read failed: what has been read is not what it has to be read");
 
 		tst_failed();
 	}
@@ -185,8 +230,8 @@ PRIVATE int klogtst_wr(char *buffer, int tstlog_lenght)
 PUBLIC void test_klog(void)
 {
 	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
-	int tstlog_lenght = 34; /* Size of message to write in the log */
-	kstrncpy(buffer, "klog test: test data input in klog", tstlog_lenght);
+	int tstlog_lenght = 35; /* Size of message to write in the log */
+	kstrncpy(buffer, "klog test: test data input in klog\n", tstlog_lenght);
 
 	if(!klogtst_wr(buffer, tstlog_lenght))
 	{
