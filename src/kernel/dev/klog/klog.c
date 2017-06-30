@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -39,6 +40,46 @@ PRIVATE struct
 } klog = { 0, 0, {0, }};
 
 /**
+ * @brief Add log level code (if present) to buffer and skip it
+ * 
+ * @param buffer        Buffer to be written in the kernel log.
+ * @param n             Pointer on the number of characters to be written in the kernel log. (for updating)
+ * @param head, tail    Pointers on buffer head and tail
+ * @param char_printed  Number of chaf added to buffer for log_level (0 or 3)
+
+ * @returns Buffer with no code, hidden returns with pointers
+ */
+PRIVATE const char *print_code(const char *buffer, int *n, int *head, int *tail, int *char_printed)
+{
+	int i;
+	char p[3];
+	p[0] = get_code(buffer);
+	p[1] = ':';
+	p[2] = ' ';
+
+	/* log level is default one? */
+	if (p[0] == 0)
+	{
+		return buffer;
+	}
+
+	/* Copy data to ring buffer */
+	for (i=0;i<3;i++)
+	{
+		klog.buffer[*tail] = p[i];
+		*tail = (*tail + 1)&(KLOG_SIZE - 1);
+		
+		if (*tail == *head)
+			*head = *head + 1;
+	}
+	/* 3 character had been added to buffer for log_level printing */
+	*char_printed =+ 3;
+
+	return skip_code(buffer,n);
+}
+
+
+/**
  * @brief Writes to kernel log.
  * 
  * @param buffer Buffer to be written in the kernel log.
@@ -51,17 +92,22 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 	int head;      /* Log head.        */
 	int tail;      /* Log tail.        */
 	const char *p; /* Writing pointer. */
+
+	int lenght = (int) n;
+	int char_printed = 0; /* Useful for returning size */
+
 	
 	UNUSED(minor);
-	
-	p = buffer;
 	
 	/* Read pointers. */
 	head = klog.head;
 	tail = klog.tail;
+
+	/* If there is a log_level code, add it in buffer and skip it */
+	p = print_code(buffer,&lenght,&head,&tail,&char_printed);
 	
 	/* Copy data to ring buffer. */
-	while (n-- > 0)
+	while (lenght-- > 0)
 	{
 		klog.buffer[tail] = *p++;
 		
@@ -75,7 +121,7 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 	klog.head = head;
 	klog.tail = tail;
 	
-	return ((ssize_t)(p - buffer));
+	return ((ssize_t)(char_printed + p - buffer));
 }
 
 /**
