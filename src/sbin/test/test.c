@@ -441,10 +441,8 @@ static int sem_test_open_close(void)
     semc2 = sem_open("/home/mysem/sem2",O_CREAT,0777,0); 
     semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
 
-    sem_unlink("/home/mysem/sem1"); 
-    sem_wait(semc3); 
-    sem_post(semc1); 
-    sem_close(semc2); 
+    // sem_wait(semc3); 
+    // sem_post(semc1); 
     /* sem3 has not been unlinked -> wont be deleted */ 
     sem_close(semc3); 
     /*
@@ -452,16 +450,23 @@ static int sem_test_open_close(void)
      *  to ensure that the slot is taken 
      */
     semc4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); 
-    sem_unlink("/home/mysem/sem4");
     sem_close(semc4); 
     sem_close(semc1); 
-    sem_unlink("/home/mysem/sem2"); 
+    sem_unlink("/home/mysem/sem2");
+    sem_unlink("/home/mysem/sem4");
+
     /* Closing multiple times */
-    sem_close(semc2);
-    sem_close(semc2);
-    sem_close(semc2);
+    	printf("lol\n");
+
    	/* Sem_post on a non opened semaphore */
-    sem_post(semc4);
+
+    	printf("lol\n");
+
+    // if(semc4->semid){}
+    if(semc2){}
+    	if(    sem_post(semc4) == -1){
+    		printf("lolol\n");
+    	}
   } 
   else{ 
     /* father */ 
@@ -470,14 +475,11 @@ static int sem_test_open_close(void)
     semf1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0); 
     semf3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
 
-    sem_post(semf3); 
-    sem_wait(semf1); 
+    // sem_post(semf3); 
+    // sem_wait(semf1); 
     sem_close(semf1); 
     sem_close(semf3); 
-    sem_unlink("/home/mysem/sem2");
     /* Unlinking multiple times */ 
-    sem_unlink("/home/mysem/sem1");
-    sem_unlink("/home/mysem/sem1");
   } 
  
   return (0); 

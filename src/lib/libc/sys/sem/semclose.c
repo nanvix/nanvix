@@ -26,6 +26,6 @@ int sem_close(sem_t* sem)
 
 	if (ret == 0)
 		free(sem);
-	
+
 	return (ret);
 }	

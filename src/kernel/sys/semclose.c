@@ -26,12 +26,12 @@ PUBLIC int sys_semclose(int idx)
 		/* Removing the proc pid in the semaphore procs table */
 		if (semtable[idx].currprocs[i] == curr_proc->pid)
 		{
-			semtable[idx].currprocs[i] = -1;
+			semtable[idx].currprocs[i] = 0;
 			break;
 		}
 	}
 
-	if (i > PROC_MAX)
+	if (i == PROC_MAX)
 		return -1;
 
 	if (seminode->count == 1 && seminode->nlinks == 0)

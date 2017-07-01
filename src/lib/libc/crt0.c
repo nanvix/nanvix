@@ -19,7 +19,6 @@
 
 #include <stdlib.h>
 #include <unistd.h>
-
 /*
  * Main routine.
  */
@@ -31,11 +30,9 @@ extern int main(int argc, char **argv);
 void _start(int argc, char **argv, char **envp)
 {
 	int ret;
-	
 	environ = envp;
 	
 	ret= main(argc, argv);
-	
 	exit(ret);
 	
 	/* Never gets here. */

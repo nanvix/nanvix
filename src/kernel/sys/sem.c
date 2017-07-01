@@ -117,3 +117,65 @@ int remove_semaphore (const char *pathname)
 
 	return 0;
 }
+
+/* Converts a normal path name into semaphore pathname (add the prefix) */
+int sem_path(const char* pathname, char *sempathname)
+{
+	const char *p;
+	// char *p2;
+	int nbdir = 0;
+
+	p = pathname;
+
+	while (*p != '\0')
+	{
+		if (*p == '/')
+			nbdir++;
+		p++;
+	}
+
+	int currdir = 0;
+
+	p = pathname;
+
+	while (currdir < nbdir)
+	{
+		if (*p == '/')
+			currdir++;
+		
+		*sempathname++ = *p++;
+	}
+
+	kstrcpy(sempathname,"sem.");
+
+	sempathname += 4;
+	while (*p != '\0')
+	{
+		*sempathname++ = *p++;
+	}
+
+	*sempathname = '\0';
+
+	return 0;
+}
+
+int sem_name(const char *sempathname, char *filename)
+{
+	const char *p;
+
+	p = sempathname;
+
+	p = break_path(p, filename);
+
+	if (p == NULL)
+		return -1;
+
+	kstrcpy(filename,"sem.");
+
+	while (*p != '\0')
+	{
+		p = break_path(p, (&filename[4]));
+	}
+
+	return 0;
+}

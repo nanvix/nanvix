@@ -61,7 +61,11 @@
 	int search_semaphore (const char* semname);
 
 	int remove_semaphore (const char *pathname);
+	
+	int sem_path(const char* pathname, char *sempathname);
 
+	int sem_name(const char *sempathname, char *filename);
+	
 
 #endif
 

@@ -11,7 +11,8 @@
  */
 int add_table(int value, const char* semname, int idx)
 {
-	kstrcpy(semtable[idx].name, semname);
+
+	sem_path(semname, semtable[idx].name);
 	semtable[idx].value = value;
 	semtable[idx].currprocs[0] = curr_proc->pid;
 	return 0;
@@ -44,10 +45,6 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	if (namevalid(name) == (-1))
 		return (ENAMETOOLONG);
 
-	/*  
-	 *	inode == corresponding semaphore inode if it exists
-	 *  NULL otherwise
-	 */
 	if (existence_semaphore(name) == (-1))	/* This semaphore does not exist */
 	{
 		if(oflag & O_CREAT)	

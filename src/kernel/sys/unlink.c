@@ -30,7 +30,7 @@ PUBLIC int sys_unlink(const char *path)
 {
 	int ret;              /* Return value.      */
 	struct inode *dir;    /* Working directory. */
-	const char *filename; /* Working file name. */
+	const char *filename; /* oWrking file name. */
 	char *pathname;       /* Path name.         */
 	
 	pathname = getname(path);
