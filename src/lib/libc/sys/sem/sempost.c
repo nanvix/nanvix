@@ -13,6 +13,9 @@ int sem_post(sem_t* sem)
 {	
 	int ret;
 
+	if (sem == NULL)
+		return -1;
+	
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)
