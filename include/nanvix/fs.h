@@ -198,6 +198,7 @@
   EXTERN ino_t dir_search(struct inode *, const char *); 
   EXTERN int dir_remove(struct inode *, const char *); 
   EXTERN ssize_t file_read(struct inode *, void *, size_t, off_t); 
+  EXTERN ssize_t dir_read(struct inode *, void *, size_t, off_t); 
   EXTERN ssize_t file_write(struct inode *, const void *, size_t, off_t); 
   EXTERN ssize_t pipe_read(struct inode *, char *, size_t); 
   EXTERN ssize_t pipe_write(struct inode *, const char *, size_t); 

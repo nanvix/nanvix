@@ -81,9 +81,13 @@ PUBLIC ssize_t sys_read(int fd, void *buf, size_t n)
 		count = pipe_read(i, buf, n);
 	}
 	
-	/* Regular file/directory. */
-	else if ((S_ISDIR(i->mode)) || (S_ISREG(i->mode)))
+	/* Regular file. */
+	else if (S_ISREG(i->mode))
 		count = file_read(i, buf, n, f->pos);
+
+	/* Regular directory. */
+	else if (S_ISDIR(i->mode))
+		count = dir_read(i,buf,n,f->pos);
 	
 	/* Unknown file type. */
 	else

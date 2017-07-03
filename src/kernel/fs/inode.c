@@ -120,11 +120,11 @@ PRIVATE int available_mouting_point (void)
  * 
  * @returns Return a pointeur to the mouting point or NULL if the inode is not present
  */
-PRIVATE struct mounting_point * belong_mounting_table(int i_num)
+PRIVATE struct mounting_point * is_mounting_point(struct inode *ip)
 {	
 	for (int i=0; i<NR_MOUNTING_POINT; i++)
 	{
-		if (!mount_table[i].free && mount_table[i].no_inode_mount==i_num)
+		if (!mount_table[i].free && mount_table[i].no_inode_mount==ip->num && mount_table[i].dev_r== ip->dev)
 			return &mount_table[i];
 	}
 	return NULL;
@@ -158,6 +158,24 @@ PRIVATE struct mounting_point * is_root_fs(int i_num)
 			return &mount_table[i];
 	}
 	return NULL;
+}
+
+/**
+ * @brief Cross a mount point 
+ *
+ * @returns an inode 
+*/
+PUBLIC struct inode * cross_mount_point (struct  inode * ip)
+{
+	struct mounting_point * mp;
+	mp=is_mounting_point(ip);
+	if (mp==NULL){
+		kprintf (" someone try to cross a mounting point witch is not one");
+		return ip;
+	}
+
+	else 
+		return inode_get (mp->dev,mp->no_inode_root_fs);
 }
 
 /*
@@ -269,7 +287,7 @@ PUBLIC int mount (char* device, char* mountPoint)
 	}
 
 	/*Check if the mount inode is already in the mountable*/
-	if (belong_mounting_table (inode_mount->num) != NULL)
+	if (is_mounting_point (inode_mount) != NULL)
 	{
 		kprintf("an other device is already mount on this directory\n");
 		goto error1;
@@ -297,6 +315,12 @@ found:
 	mount_table[ind_mp].free = 0;
 	mount_table[ind_mp].dev_r = inode_mount->dev;
 	num_mount = inode_mount->num;
+	inode_mount->flags |=INODE_MOUNT;
+	
+	if (inode_mount->flags & INODE_MOUNT)
+		{
+			kprintf(" je suis la avec l'inode number %i",num_mount);
+		}
 	inode_put (inode_mount);
 	superblock_unlock (sb);
 
@@ -375,6 +399,8 @@ PUBLIC int unmount (char * mountPoint)
 	goto error;
 found: 
 	mount_table[ind].free = 1;
+	inode_mount->flags &= ~INODE_MOUNT;
+	//TODO faire des trucs avec les directory !
 	inode_put (inode_mount);
 	return 0;
 error:	
@@ -521,6 +547,13 @@ PRIVATE struct inode *inode_read(dev_t dev, ino_t num, struct file_system_type *
 	if (fs->so->inode_read(dev,num,ip)){
 		return NULL;
 	}
+
+	/*Mounting point */
+	struct mounting_point * mp;
+	mp = is_mounting_point(ip);
+
+	if (mp!=NULL)
+		ip->flags |=INODE_MOUNT; 
 	return ip;
 }
 
@@ -1001,7 +1034,7 @@ again:
 		i = inode_get(dev, ent);
 		
 		/*Mounting point */
-		mp=belong_mounting_table(i->num);
+		mp=is_mounting_point(i);
 
 		if (mp!=NULL)
 		{
@@ -1079,7 +1112,7 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	inode = inode_get(dev, num);
 
 	/*Mounting point */
-	mp=belong_mounting_table(inode->num);
+	mp=is_mounting_point(inode);
 	
 	if (mp != NULL)
 	{
