@@ -441,8 +441,8 @@ static int sem_test_open_close(void)
     semc2 = sem_open("/home/mysem/sem2",O_CREAT,0777,0); 
     semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
 
-    // sem_wait(semc3); 
-    // sem_post(semc1); 
+    sem_wait(semc3); 
+    sem_post(semc1); 
     /* sem3 has not been unlinked -> wont be deleted */ 
     sem_close(semc3); 
     /*
@@ -475,8 +475,8 @@ static int sem_test_open_close(void)
     semf1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0); 
     semf3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
 
-    // sem_post(semf3); 
-    // sem_wait(semf1); 
+    sem_post(semf3); 
+    sem_wait(semf1); 
     sem_close(semf1); 
     sem_close(semf3); 
     /* Unlinking multiple times */ 

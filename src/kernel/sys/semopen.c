@@ -96,10 +96,12 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 	}
 	else	/* This semaphore already exists */
 	{
+		char sempath[MAX_SEM_NAME];
+		sem_path(name,sempath);
 		/* Searching the semaphore indice in the semaphore table */
-		semid = search_semaphore (name);
+		semid = search_semaphore (sempath);
 		/* This opening will increment the inode counter */
-		inode = inode_name(name);
+		inode = inode_name(sempath);
 
 		/* Checking if there is WRITE and READ permissions */
 		if (	!permission(inode->mode, inode->uid, inode->gid, curr_proc, MAY_WRITE, 0) \

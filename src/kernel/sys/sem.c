@@ -64,10 +64,11 @@ int namevalid(const char* pathname)
  *
  *	@parameters sempath The complet semaphore descriptor path
  */
-int existence_semaphore(const char* sempath)
+int existence_semaphore(const char* path)
 {
 	struct inode* seminode;
-
+	char sempath[MAX_SEM_NAME];
+	sem_path(path, sempath);
 	seminode = inode_name(sempath);
 
 	if (seminode == NULL)
@@ -92,7 +93,7 @@ int search_semaphore (const char* semname)
 {
 	for (int idx = 0; idx < SEM_OPEN_MAX; idx++)
 	{
-		if (!kstrcmp(semname,semtable[idx].name))
+		if (!kstrcmp(semtable[idx].name, semname))
 		{
 			return idx;
 		}
@@ -112,6 +113,7 @@ int remove_semaphore (const char *pathname)
 	struct inode *semdirectory;
 
 	semdirectory = inode_dname(pathname, &filename);
+	inode_unlock(semdirectory);
 	dir_remove(semdirectory, filename);
 	inode_unlock(semdirectory);
 
@@ -174,7 +176,7 @@ int sem_name(const char *sempathname, char *filename)
 
 	while (*p != '\0')
 	{
-		p = break_path(p, (&filename[4]));
+		p = break_path(p, (filename));
 	}
 
 	return 0;
