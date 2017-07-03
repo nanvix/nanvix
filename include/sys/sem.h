@@ -50,7 +50,7 @@
 	 * 	Searching if a semaphore descriptor exists from its name
 	 * 	by searching in the file system
 	 */
-	int existence_semaphore(const char* semname);
+	int existence_semaphore(const char* path);
 
 	/** 	
 	 *	@brief Searching if a sempahore exists in the semaphore table 
@@ -61,7 +61,11 @@
 	int search_semaphore (const char* semname);
 
 	int remove_semaphore (const char *pathname);
+	
+	int sem_path(const char* pathname, char *sempathname);
 
+	int sem_name(const char *sempathname, char *filename);
+	
 
 #endif
 
