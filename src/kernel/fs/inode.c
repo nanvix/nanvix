@@ -786,11 +786,11 @@ repeat:
 		}
 		
 		/* Cross mount point. */
-		if (ip->flags & INODE_MOUNT)
-		{
-			 dev = ip->dev;
-			 goto repeat;
-		}
+		// if (ip->flags & INODE_MOUNT)
+		// {
+		// 	 dev = ip->dev;
+		// 	 goto repeat;
+		// }
 		
 		ip->count++;
 		inode_lock(ip);
