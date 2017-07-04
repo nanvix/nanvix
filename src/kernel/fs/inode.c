@@ -150,14 +150,29 @@ PRIVATE struct file_system_type * fs_from_device (dev_t dev){
  * 
  * @returns Return a pointeur to the mouting point or NULL if the inode is not in the table 
  */
-PRIVATE struct mounting_point * is_root_fs(int i_num)
+PRIVATE struct mounting_point * is_root_fs(struct inode *ip)
 {	
 	for (int i=1; i<NR_MOUNTING_POINT; i++)
 	{
-		if (!mount_table[i].free && mount_table[i].no_inode_root_fs==i_num)
+		if (!mount_table[i].free && mount_table[i].no_inode_root_fs==ip->num && mount_table[i].dev==ip->dev)
 			return &mount_table[i];
 	}
 	return NULL;
+}
+
+/**
+ * @brief Search if an inode is present in the mouting table as an file_system_root, don't look the first entry.
+ * 
+ * @returns Return 1 if the inode is in the mount table, 0 otherwise.
+ */
+PUBLIC int root_fs(struct inode * ip)
+{
+	for (int i=1; i<NR_MOUNTING_POINT; i++)
+	{
+		if ((!mount_table[i].free) && mount_table[i].no_inode_root_fs==ip->num && mount_table[i].dev==ip->dev)
+			return 1;
+	}
+	return 0;	
 }
 
 /**
@@ -165,17 +180,40 @@ PRIVATE struct mounting_point * is_root_fs(int i_num)
  *
  * @returns an inode 
 */
-PUBLIC struct inode * cross_mount_point (struct  inode * ip)
+PUBLIC struct inode * cross_mount_point_up (struct  inode * ip)
 {
 	struct mounting_point * mp;
 	mp=is_mounting_point(ip);
-	if (mp==NULL){
-		kprintf (" someone try to cross a mounting point witch is not one");
+	if (mp==NULL)
 		return ip;
+	else 
+	{
+		inode_unlock(ip);
+		return inode_get (mp->dev,mp->no_inode_root_fs);
 	}
+		
+}
+
+/**
+ * @brief Cross a mount point 
+ *
+ * @returns an inode 
+*/
+PUBLIC struct inode * cross_mount_point_down (struct  inode * ip)
+{
+	struct mounting_point * mp;
+	struct inode * i;
+	mp=is_root_fs(ip);
+	if (mp==NULL)
+		return ip;
 
 	else 
-		return inode_get (mp->dev,mp->no_inode_root_fs);
+	{
+		inode_unlock(ip);
+		i=inode_get (mp->dev_r,mp->no_inode_mount);
+		return i;
+	}
+		
 }
 
 /*
@@ -996,10 +1034,12 @@ again:
 		}
 
 		/*Search if we are in the root of a file system */
-		if ((mp=is_root_fs(i->num))!=NULL&&(!kstrcmp(filename, "..")))
+		if ((mp=is_root_fs(i))!=NULL&&(!kstrcmp(filename, "..")))
 		{
-			inode_put(i);
+			inode_unlock(i);
 			i = inode_get(mp->dev,mp->no_inode_mount);
+			if (i==NULL)
+				return NULL;
 		}
 		
 		ent = dir_search(i, filename);
@@ -1038,7 +1078,7 @@ again:
 
 		if (mp!=NULL)
 		{
-			inode_put(i);  
+			inode_unlock(i);  
 			i=inode_get (mp->dev,mp->no_inode_root_fs);
 		}		
 
@@ -1090,7 +1130,7 @@ PUBLIC struct inode *inode_name(const char *pathname)
 	else
 	{
 		/*Search if we are in the root of a file system */
-		if ((mp = is_root_fs(inode->num)) != NULL && (!kstrcmp(name, "..")))
+		if ((mp = is_root_fs(inode)) != NULL && (!kstrcmp(name, "..")))
 		{
 			inode_put(inode);
 			inode=inode_get(mp->dev_r,mp->no_inode_mount);

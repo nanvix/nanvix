@@ -142,6 +142,9 @@
   EXTERN int unmount (char*);
   EXTERN int mkfs (const char *, uint16_t, uint16_t, uint16_t, uint16_t);
   EXTERN void print_mount_table(void); 
+  PUBLIC struct inode * cross_mount_point_up (struct inode *);
+  PUBLIC struct inode * cross_mount_point_down (struct inode *);
+  PUBLIC int root_fs (struct inode *);
  
 /*============================================================================* 
  *                            Super Block Library                             * 

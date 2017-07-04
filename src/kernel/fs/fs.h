@@ -164,6 +164,5 @@
 	 * @brief add the ROOT_DEV in the mount table.
 	 */
 	PUBLIC struct inode * mountRoot ();
-	PUBLIC struct inode * cross_mount_point (struct inode *);
 	/**@}*/
 #endif /* _FS_H_ */

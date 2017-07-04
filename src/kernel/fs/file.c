@@ -181,6 +181,20 @@ PUBLIC ino_t dir_search(struct inode *ip, const char *filename)
 {
 	struct buffer *buf; /* Block buffer.    */
 	struct d_dirent *d; /* Directory entry. */
+	int i;
+
+	/* Cross mount point*/
+	if ((ip->flags & INODE_MOUNT) && (kstrcmp (filename,"..")) )
+	{
+		ip = cross_mount_point_up(ip);
+		i = 1;
+	}
+
+	else if ((root_fs(ip)==1) && (!kstrcmp (filename,"..")))
+	{
+		ip = cross_mount_point_down(ip);
+		i = 1;
+	}
 	
 	/* Search directory entry. */
 	d = dirent_search(ip, filename, &buf, 0);
@@ -188,6 +202,8 @@ PUBLIC ino_t dir_search(struct inode *ip, const char *filename)
 		return (INODE_NULL);
 	
 	brelse(buf);
+	if (i == 1)
+		inode_unlock(ip);
 	
 	return (d->d_ino);
 }
@@ -348,11 +364,7 @@ PUBLIC ssize_t dir_read(struct inode *i, void *buf, size_t n, off_t off)
 	inode_lock(i);
 
 	if (i->flags & INODE_MOUNT)
-	{
-		struct inode * tmp=i;
-		i=cross_mount_point(i);
-		inode_unlock(tmp);
-	}
+		i=cross_mount_point_up(i);
 	
 	/* Read data. */
 	do
