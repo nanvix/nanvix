@@ -42,7 +42,8 @@
   #include <sys/types.h> 
   #include <stdint.h> 
   #include <ustat.h> 
- 
+  //changer
+  #include <limits.h>  
 /*============================================================================* 
  *                              Block Buffer Library                          * 
  *============================================================================*/ 
@@ -210,6 +211,160 @@
   EXTERN struct inode *root; 
   EXTERN struct superblock *rootdev; 
   EXTERN struct file filetab[NR_FILES]; 
+
+
+/******************************************/
+
+
+/*============================================================================*
+ *                              Buffer Library                                *
+ *============================================================================*/
+
+  
+  /* Forward definitions. */
+  EXTERN void buffer_share(struct buffer *);
+  EXTERN void binit(void);
+  
+/*============================================================================*
+ *                               Inode Library                                *
+ *============================================================================*/
+  
+  /* Forward definitions. */
+  EXTERN void inode_init(void);
+
+/*============================================================================*
+ *                            Super Block Library                             *
+ *============================================================================*/
+  
+  /**
+   * @addtogroup Superblock
+   */
+  /**@{*/
+  
+  /**
+   * @brief Maximum inode map size (in bytes).
+   */
+  #define IMAP_SIZE (HDD_SIZE/(BLOCK_SIZE*BLOCK_SIZE*8))
+  
+  /**
+   * @brief Maximum zone map size (in bytes).
+   */
+  #define ZMAP_SIZE (HDD_SIZE/(BLOCK_SIZE*BLOCK_SIZE*8))
+
+  /**
+   * @brief Superblock flags.
+   */
+  enum superblock_flags
+  {
+    SUPERBLOCK_RDONLY = (1 << 0), /**< Read only?        */
+    SUPERBLOCK_LOCKED = (1 << 1), /**< Locked?           */
+    SUPERBLOCK_DIRTY  = (1 << 2), /**< Dirty?            */
+    SUPERBLOCK_VALID  = (1 << 3)  /**< Valid superblock? */
+  };
+
+  typedef struct superblock superblock;
+
+  /**
+   *@brief In-core superblock operations.
+   */
+  struct super_operations {
+    int (*inode_read) (dev_t, ino_t, struct inode *);
+    void (*inode_write) (struct inode *);
+    void (*inode_free) (struct inode *);
+    void (*inode_truncate) (struct inode *);
+    int (*inode_alloc) (struct superblock*, struct inode *);
+    int (*notify_change) (int flags, struct inode *);
+    void (*put_inode) (struct inode *);
+    void (*put_super) (struct superblock *);
+    void (*write_super) (struct superblock *);
+    void (*remount_fs) (void);
+  };
+  
+  /**
+   * @brief In-core superblock.
+   */
+  struct superblock
+  {
+    unsigned count;                 /**< Reference count.              */
+    struct buffer *buf;             /**< Buffer disk superblock.       */
+    ino_t ninodes;                  /**< Number of inodes.             */
+    struct buffer *imap[IMAP_SIZE]; /**< Inode map.                    */
+    block_t imap_blocks;            /**< Number of inode map blocks.   */
+    struct buffer *zmap[ZMAP_SIZE]; /**< Zone map.                     */
+    block_t zmap_blocks;            /**< Number of zone map blocks.    */
+    block_t first_data_block;       /**< First data block.             */
+    off_t max_size;                 /**< Maximum file size.            */
+    block_t zones;                  /**< Number of zones.              */
+    struct inode *root;             /**< Inode for root directory.     */
+    struct inode *mp;               /**< Inode mounted on.             */
+    dev_t dev;                      /**< Underlying device.            */
+    enum superblock_flags flags;    /**< Flags.                        */
+    ino_t isearch;                /**< Inodes below this are in use. */
+    block_t zsearch;            /**< Zones below this are in use.  */
+    struct process *chain;          /**< Waiting chain.                */
+    struct super_operations *so;  /**< Super operation of filesystem */
+  };
+
+/*============================================================================*
+ *                       Virtual File System  Library                         *
+ *============================================================================*/
+  
+  /**
+   * @brief File system of the virtual file system.
+   */
+  struct file_system_type {
+    struct super_block *(*read_super) (dev_t);  /**< Fonction to access the superblock of the file system   */
+    struct super_operations *so;        /**< stucture of the fonction of the file system      */
+    char *name;                 /**< Name of the file system                */
+  };
+
+  /**
+   * @brief Mounting point.
+   */
+  struct mounting_point {
+    dev_t dev;        /**< Name of the devices*/
+    dev_t dev_r;    
+    int no_inode_mount;   /**< Number of the inode of the mounting point    */
+    int no_inode_root_fs; /**< Number of the inode root of the file system  */
+    int free;
+    struct file_system_type * fs;
+  };
+
+  /**
+   * @brief Number of the file system.
+   */
+  #define MINIX 0
+  
+  /**
+   * @brief Maximum nunber of file system.
+   */
+  #define NR_FILE_SYSTEM 1
+
+  /**
+   * @brief Function too register file system in the virtual file system .
+   */
+  PUBLIC int fs_register( int nb , struct file_system_type * fs );
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/******************************************/
  
 #endif /* _ASM_FILE */ 
  

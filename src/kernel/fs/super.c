@@ -1,5 +1,7 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
+ * 
  * 
  * This file is part of Nanvix.
  * 
@@ -22,7 +24,7 @@
 #include <nanvix/fs.h>
 #include <ustat.h>
 #include "fs.h"
-#include "inode_minix.h"
+#include "minix/minix.h"
 
 /**
  * @file
@@ -98,27 +100,12 @@ again:
  */
 PRIVATE void superblock_write(struct superblock *sb)
 {
+
 	/* Nothing to be done. */
 	if (!(sb->flags & SUPERBLOCK_DIRTY))
 		return;
 	
-	/* Write inode map buffers. */
-	for (unsigned i = 0; i < sb->imap_blocks; i++)
-	{
-		buffer_share(sb->imap[i]);
-		bwrite(sb->imap[i]);
-	}
-	
-	/* Write zone map buffers. */
-	for (unsigned i = 0; i < sb->zmap_blocks; i++)
-	{
-		buffer_share(sb->zmap[i]);
-		bwrite(sb->zmap[i]);
-	}
-	
-	/* Write superblock buffer. */
-	buffer_share(sb->buf);
-	bwrite(sb->buf);
+	superblock_write_minix(sb);
 	
 	sb->flags &= ~SUPERBLOCK_DIRTY;
 }
@@ -223,28 +210,9 @@ PUBLIC void superblock_unlock(struct superblock *sb)
  */
 PUBLIC void superblock_put(struct superblock *sb)
 {
+		//TODO je sais pas ou ca va ..
 	/* Double free. */
-	if (sb->count == 0)
-		kpanic("freeing superblock twice");
-	
-	/* Release underlying resources. */
-	if (--sb->count == 0)
-	{
-		superblock_write(sb);
-			
-		/* Release inode map buffers. */
-		for (unsigned i = 0; i < sb->imap_blocks; i++)
-			brelse(sb->imap[i]);
-			
-		/* Release zone map buffers. */
-		for (unsigned i = 0; i < sb->zmap_blocks; i++)
-			brelse(sb->zmap[i]);
-			
-		/* Release superblock buffer. */
-		brelse(sb->buf);
-			
-		sb->flags &= ~SUPERBLOCK_VALID;
-	}
+	superblock_put_minix(sb);
 	
 	superblock_unlock(sb);
 }
@@ -268,63 +236,62 @@ PUBLIC void superblock_put(struct superblock *sb)
  */
 PUBLIC struct superblock *superblock_read(dev_t dev)
 {
-	struct buffer *buf;        /* Buffer disk superblock. */
+
 	struct superblock *sb;     /* In-core superblock.     */
-	struct d_superblock *d_sb; /* Disk superblock.        */
+	
 		
 	/* Get empty superblock. */	
 	sb = superblock_empty();
 	if (sb == NULL)
 		goto error0;
 	
-	/* Read superblock from device. */
-	buf = bread(dev, 1);
-	d_sb = (struct d_superblock *)buffer_data(buf);
+	// /* Read superblock from device. */
+	// buf = bread(dev, 1);
+	// d_sb = (struct d_superblock *)buffer_data(buf);
 	
-	/* Bad magic number. */
-	if (d_sb->s_magic != SUPER_MAGIC)
-	{
-		kprintf("fs: bad superblock magic number");
-		goto error1;
-	}
+	// /* Bad magic number. */
+	// if (d_sb->s_magic != SUPER_MAGIC)
+	// {
+	// 	kprintf("fs: bad superblock magic number");
+	// 	goto error1;
+	// }
 	
-	/* Too many blocks in the inode/zone map. */
-	if ((d_sb->s_imap_nblocks > IMAP_SIZE)||(d_sb->s_bmap_nblocks > ZMAP_SIZE))
-	{
-		kprintf("fs: too many blocks in the inode/zone map");
-		goto error1;
-	}
+	// /* Too many blocks in the inode/zone map. */
+	// if ((d_sb->s_imap_nblocks > IMAP_SIZE)||(d_sb->s_bmap_nblocks > ZMAP_SIZE))
+	// {
+	// 	kprintf("fs: too many blocks in the inode/zone map");
+	// 	goto error1;
+	// }
 	
-	/* Initialize superblock. */
-	sb->buf = buf;
-	sb->ninodes = d_sb->s_ninodes;
-	sb->imap_blocks = d_sb->s_imap_nblocks;
-	for (unsigned i = 0; i < sb->imap_blocks; i++)
-		blkunlock(sb->imap[i] = bread(dev, 2 + i));
-	sb->zmap_blocks = d_sb->s_bmap_nblocks;
-	for (unsigned i = 0; i < sb->zmap_blocks; i++)
-		blkunlock(sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i));
-	sb->first_data_block = d_sb->s_first_data_block;
-	sb->max_size = d_sb->s_max_size;
-	sb->zones = d_sb->s_nblocks;
-	sb->root = NULL;
-	sb->mp = NULL;
-	sb->dev = dev;
-	sb->flags &= ~(SUPERBLOCK_DIRTY | SUPERBLOCK_RDONLY);
-	sb->flags |= SUPERBLOCK_VALID;
-	sb->isearch = 0;
-	sb->zsearch = d_sb->s_first_data_block;
-	sb->chain = NULL;
-	sb->count++;
-	sb->so= so_minix();
+	// /* Initialize superblock. */
+	// sb->buf = buf;
+	// sb->ninodes = d_sb->s_ninodes;
+	// sb->imap_blocks = d_sb->s_imap_nblocks;
+	// for (unsigned i = 0; i < sb->imap_blocks; i++)
+	// 	blkunlock(sb->imap[i] = bread(dev, 2 + i));
+	// sb->zmap_blocks = d_sb->s_bmap_nblocks;
+	// for (unsigned i = 0; i < sb->zmap_blocks; i++)
+	// 	blkunlock(sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i));
+	// sb->first_data_block = d_sb->s_first_data_block;
+	// sb->max_size = d_sb->s_max_size;
+	// sb->zones = d_sb->s_nblocks;
+	// sb->root = NULL;
+	// sb->mp = NULL;
+	// sb->dev = dev;
+	// sb->flags &= ~(SUPERBLOCK_DIRTY | SUPERBLOCK_RDONLY);
+	// sb->flags |= SUPERBLOCK_VALID;
+	// sb->isearch = 0;
+	// sb->zsearch = d_sb->s_first_data_block;
+	// sb->chain = NULL;
+	// sb->count++;
+	// sb->so= so_minix();
 	
-	blkunlock(buf);
+	// blkunlock(buf);
 	
+	superblock_read_minix(dev,sb);
+
 	return (sb);
-	
-error1:
-	brelse(buf);
-	superblock_unlock(sb);
+
 error0:
 	return (NULL);
 }
@@ -368,33 +335,7 @@ PUBLIC void superblock_sync(void)
  */
 PUBLIC void superblock_stat(struct superblock *sb, struct ustat *ubuf)
 {
-	int tfree;     /* Total free blocks. */
-	int tinode;    /* Total free inodes. */
-	int bmap_size; /* Size of block map. */
-	int imap_size; /* Size of inode map. */
-	
-	/* Count number of free blocks. */
-	tfree = 0;
-	bmap_size = sb->zmap_blocks;
-	for (int i = 0; i < bmap_size; i++)
-	{
-		for (int j = 0; j < (BLOCK_SIZE >> 2); j++)
-			tfree += bitmap_nclear(buffer_data(sb->zmap[i]), BLOCK_SIZE);
-	}
-	
-	/* Count number of free inodes. */
-	tinode = 0;
-	imap_size = sb->zmap_blocks;
-	for (int i = 0; i < imap_size; i++)
-	{
-		for (int j = 0; j < (BLOCK_SIZE >> 2); j++)
-			tinode += bitmap_nclear(buffer_data(sb->imap[i]), BLOCK_SIZE);
-	}
-	
-	ubuf->f_tfree = tfree;
-	ubuf->f_tinode = tinode;
-	ubuf->f_fname[0] = '\0';
-	ubuf->f_fpack[0] = '\0';
+	superblock_stat_minix(sb,ubuf);
 }
 
 /**

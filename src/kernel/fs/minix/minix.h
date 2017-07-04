@@ -40,6 +40,20 @@
 	EXTERN int minix_mkfs(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid);
 	EXTERN struct super_operations * so_minix(void);
 
+
+	EXTERN void superblock_write_minix(struct superblock *);
+	EXTERN void superblock_put_minix(struct superblock *);
+	EXTERN struct superblock *superblock_read_minix(dev_t, struct superblock *);
+	EXTERN void superblock_stat_minix(struct superblock *, struct ustat *);
+
+	PUBLIC int dir_remove_minix(struct inode *, const char *);
+	PUBLIC int dir_add_minix(struct inode *, struct inode *, const char *);
+	PUBLIC ssize_t file_read_minix(struct inode *, void *, size_t , off_t );
+	PUBLIC ssize_t dir_read_minix(struct inode *, void *, size_t , off_t );
+	PUBLIC ssize_t file_write_minix(struct inode *, const void *, size_t , off_t);
+
+
+
 	
 #endif
 

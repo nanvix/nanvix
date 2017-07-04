@@ -38,8 +38,8 @@
 #include <nanvix/mm.h>
 #include <errno.h>
 #include <limits.h>
-#include "fs.h"
-#include "inode_minix.h"
+//#include "fs.h"
+#include "minix.h"
 
 /* Number of inodes per block. */
 #define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
@@ -328,6 +328,8 @@ error0:
 PUBLIC int minix_mkfs
 (const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid)
 {
+
+	//TODO a separer en petite fonction !
 	size_t size;            		 /* Size of file system.	   	        	*/
 	char buf[BLOCK_SIZE];   		 /* Writing buffer.      	       	   		*/
 	uint16_t imap_nblocks;  		 /* Number of inodes map blocks. 	   		*/

@@ -33,7 +33,7 @@
 #include <errno.h>
 #include <limits.h>
 #include "fs.h"
-#include "inode_minix.h"
+#include "minix/minix.h"
 
 /* Number of inodes per block. */
 #define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
