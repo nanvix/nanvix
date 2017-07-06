@@ -17,6 +17,8 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <limits.h>
+
 #ifndef SEMAPHORE_H_
 #define SEMAPHORE_H_
 
@@ -30,6 +32,8 @@
 	{
 		int semid; 	/**< Semaphore ID.  */
 	} sem_t;
+
+	extern sem_t *usem[OPEN_MAX];
 
 	/* Forward definitions. */
 	extern sem_t *sem_open(const char *, int, ...);

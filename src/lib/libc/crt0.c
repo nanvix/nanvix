@@ -19,11 +19,14 @@
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <semaphore.h>
 
 /*
  * Main routine.
  */
 extern int main(int argc, char **argv);
+
+sem_t *usem[OPEN_MAX];
 
 /*
  * Entry point of the program.
@@ -31,9 +34,11 @@ extern int main(int argc, char **argv);
 void _start(int argc, char **argv, char **envp)
 {
 	int ret;
-	
 	environ = envp;
-	
+
+	for (int i = 0; i < OPEN_MAX; i++)
+		usem[i] = NULL;
+
 	ret= main(argc, argv);
 	
 	exit(ret);

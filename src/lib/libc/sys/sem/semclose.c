@@ -1,7 +1,7 @@
 #include <nanvix/syscall.h>
 #include <stdlib.h>
 #include <stdio.h>
-
+#include <errno.h>
 /**
  * 	@brief closes a semaphore for calling process
  *
@@ -24,8 +24,17 @@ int sem_close(sem_t* sem)
 		  "b" (sem->semid)
 	);
 
+	if (ret == (-1))
+	{
+		errno = ret;
+		return (-1);
+	}
+
 	if (ret == 0)
 		free(sem);
-	
-	return (ret);
+
+	/* if ret == 1 : do not free because multiple opening */
+
+
+	return (0);
 }	

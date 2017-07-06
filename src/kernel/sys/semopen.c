@@ -30,6 +30,7 @@ int add_table(int value, const char* semname, int idx)
 
 /* TODO for error detection :
  *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
+ *			EINTR : The sem_open() operation was interrupted by a signal.
  */
 PUBLIC int sys_semopen(const char* name, int oflag, ...)
 {

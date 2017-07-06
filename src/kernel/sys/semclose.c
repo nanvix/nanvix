@@ -34,14 +34,36 @@ PUBLIC int sys_semclose(int idx)
 	if (i == PROC_MAX)
 		return -1;
 
-	if (seminode->count == 1 && seminode->nlinks == 0)
-	{		
-		remove_semaphore(semtable[idx].name);
-		freesem(&semtable[idx]);
-	}	
+	char found;
+	found = 0;
+	i++;
+	/* Searching for multiple openings */
+	while (i < PROC_MAX)
+	{
+		if (semtable[idx].currprocs[i] == curr_proc->pid)
+		{
+			found = 1;
+			break;
+		}
+		i++;
+	}
 
-	inode_put(seminode);
-	inode_unlock(seminode);
-
-	return 0;
+	if (found)
+	{
+		inode_put(seminode);
+		inode_unlock(seminode);
+		return 1;
+	}
+	else
+	{
+		if (seminode->count == 1 && seminode->nlinks == 0)
+		{		
+			remove_semaphore(semtable[idx].name);
+			freesem(&semtable[idx]);
+		}	
+		
+		inode_put(seminode);
+		inode_unlock(seminode);
+		return 0;
+	}
 }
