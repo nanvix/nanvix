@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+
 /**
  * 	@brief closes a semaphore for calling process
  *
@@ -31,10 +32,12 @@ int sem_close(sem_t* sem)
 	}
 
 	if (ret == 0)
+	{
+		usem[sem->semid] = NULL;
 		free(sem);
+	}
 
 	/* if ret == 1 : do not free because multiple opening */
-
 
 	return (0);
 }	

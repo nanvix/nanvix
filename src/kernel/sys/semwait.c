@@ -17,9 +17,8 @@ PUBLIC int sys_semwait(int idx)
 {
 	struct inode *seminode;
 	int i;
-	seminode = inode_name(semtable[idx].name);
-
-	if (seminode == NULL)
+	
+	if (!SEM_IS_VALID(idx))
 		return (-EINVAL);
 
 	for (i = 0; i < PROC_MAX; i++)
@@ -31,6 +30,11 @@ PUBLIC int sys_semwait(int idx)
 
 	if (i == PROC_MAX)
 		return -1;
+
+	seminode = inode_get(semtable[idx].dev, semtable[idx].num);
+
+	if (seminode == NULL)
+		return (-EINVAL);
 
 	inode_unlock(seminode);
 

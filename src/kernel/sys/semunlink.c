@@ -2,9 +2,6 @@
 #include <errno.h>
 #include <nanvix/syscall.h>
 
-#include <nanvix/klib.h>
-
-
 /**
  * @brief Unlinks a semaphore for future deletion
  *		 
@@ -27,8 +24,12 @@ PUBLIC int sys_semunlink(const char *name)
 	seminode = inode_name(semname);
 
 	if (seminode == NULL)
+		return (-ENOENT);
+
+	if (seminode->nlinks == 0)
 	{
-		kprintf("invalid semaphore");
+		inode_put(seminode);
+		inode_unlock(seminode);
 		return (-ENOENT);
 	}
 
@@ -41,6 +42,7 @@ PUBLIC int sys_semunlink(const char *name)
 
 	idx = search_semaphore(semname);
 
+	/* If no process uses the semaphore : delete the semaphore descriptor and the table entry. */
 	if (seminode->count == 1)
 	{
 		inode_unlock(seminode);
@@ -50,27 +52,11 @@ PUBLIC int sys_semunlink(const char *name)
 		return 0;
 	}
 
-	int len = kstrlen(semname);
-	kstrcpy(&semname[len],".ul");
-
-	if (search_semaphore (semname) != (-1))
-	{
-		inode_unlock(seminode);
-		inode_put(seminode);
-		return -1;
-	}
-
-	char filename[MAX_SEM_NAME-4];
-	sem_name(semname, filename);
-	/* Removing suffixe */
-	semname[len] = '\0';
 	/* Unlinking the semaphore */
-	seminode->nlinks = 0;
-	inode_rename(semname, filename);
-	kstrcpy(&semname[len],".ul");
-	kstrcpy(semtable[idx].name, semname);
-
+	semtable[idx].name[0] = '\0';
 	inode_unlock(seminode);
+	/* remove_dir will do the unlink */
+	remove_semaphore(semname);
 	inode_put(seminode);
 
 	return 0;	/* Successful completion */

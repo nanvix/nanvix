@@ -14,7 +14,10 @@ PUBLIC int sys_semclose(int idx)
 	struct inode *seminode;
 	int i;
 
-	seminode = inode_name(semtable[idx].name);
+	if (!SEM_IS_VALID(idx))
+		return (-EINVAL);
+
+	seminode = inode_get(semtable[idx].dev, semtable[idx].num);
 
 	if (seminode == NULL)
 		return (-EINVAL);
@@ -57,10 +60,7 @@ PUBLIC int sys_semclose(int idx)
 	else
 	{
 		if (seminode->count == 1 && seminode->nlinks == 0)
-		{		
-			remove_semaphore(semtable[idx].name);
 			freesem(&semtable[idx]);
-		}	
 		
 		inode_put(seminode);
 		inode_unlock(seminode);

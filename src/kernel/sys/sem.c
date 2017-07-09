@@ -13,7 +13,7 @@
  */
 void freesem(struct ksem *sem)
 {
-	(sem->name)[0]='\0';
+	sem->num = 0;
 
 	for (int i = 0; i<PROC_MAX; i++)
 		sem->currprocs[i] = -1;
@@ -115,7 +115,6 @@ int remove_semaphore (const char *pathname)
 	semdirectory = inode_dname(pathname, &filename);
 	inode_unlock(semdirectory);
 	dir_remove(semdirectory, filename);
-	inode_unlock(semdirectory);
 
 	return 0;
 }
@@ -124,7 +123,6 @@ int remove_semaphore (const char *pathname)
 int sem_path(const char* pathname, char *sempathname)
 {
 	const char *p;
-	// char *p2;
 	int nbdir = 0;
 
 	p = pathname;

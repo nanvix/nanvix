@@ -9,11 +9,13 @@
  *		   to corresponding value and semname
  *         in the global semaphore table
  */
-int add_table(int value, const char* semname, int idx)
+int add_table(int value, const char* semname, int idx, struct inode* seminode)
 {
 	sem_path(semname, semtable[idx].name);
 	semtable[idx].value = value;
 	semtable[idx].currprocs[0] = curr_proc->pid;
+	semtable[idx].num = seminode->num;
+	semtable[idx].dev = seminode->dev;
 	return 0;
 }
 
@@ -68,7 +70,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 
 			for (i = 0; i < SEM_OPEN_MAX; i++)
 			{
-				if (semtable[i].name[0] == '\0')
+				if (semtable[i].num == 0)
 				{
 					semid = i;
 					break;
@@ -88,7 +90,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 				return (-EACCES);
 			}
 			/* Add the semaphore in the semaphore table */
-			add_table(value, name, semid);
+			add_table(value, name, semid, inode);
 		}
 		/* O_CREAT not set and sem does not exist */
 		else
