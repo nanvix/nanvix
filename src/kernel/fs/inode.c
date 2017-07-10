@@ -729,17 +729,17 @@ PUBLIC struct inode *inode_alloc (struct superblock *sb)
 		kpanic("not valid superblock");
 	}
 
-	if (sb->so==NULL){
+	if (sb->s_op==NULL){
 		kpanic("no super operation in the superblock");
 	}
 
 	/* Allocate inode. */
 	
 	/* Operation not supported. */
-	if (sb->so->inode_alloc == NULL)
+	if (sb->s_op->inode_alloc == NULL)
 		kpanic("operation not supported by the file system");
 
-	if (sb->so->inode_alloc(sb,ip)){
+	if (sb->s_op->inode_alloc(sb,ip)){
 		return NULL;
 	}
 	inode_touch(ip);
@@ -785,12 +785,12 @@ repeat:
 			goto repeat;
 		}
 		
-		/* Cross mount point. */
-		if (ip->flags & INODE_MOUNT)
-		{
-			 dev = ip->dev;
-			 goto repeat;
-		}
+		// /* Cross mount point. */
+		// if (ip->flags & INODE_MOUNT)
+		// {
+		// 	 dev = ip->dev;
+		// 	 goto repeat;
+		// }
 		
 		ip->count++;
 		inode_lock(ip);

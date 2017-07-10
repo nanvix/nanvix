@@ -26,7 +26,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <errno.h>
-//#include "fs.h"
+#include "../fs.h"
 
 PRIVATE struct d_dirent *dirent_search (struct inode *, const char *, struct buffer **, int);
 

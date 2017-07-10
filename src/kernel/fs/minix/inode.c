@@ -38,7 +38,7 @@
 #include <nanvix/mm.h>
 #include <errno.h>
 #include <limits.h>
-//#include "fs.h"
+#include "../fs.h"
 #include "minix.h"
 
 /* Number of inodes per block. */
@@ -165,8 +165,11 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	ip->dev = dev;
 	ip->num = num;
 	ip->sb = sb;
+	ip->i_op = &inode_o_minix;
 	ip->flags &= ~(INODE_DIRTY | INODE_MOUNT | INODE_PIPE);
 	ip->flags |= INODE_VALID;
+
+	//ip->chain = 
 	
 	brelse(buf);
 	superblock_put(sb);
@@ -314,7 +317,7 @@ found:
 	ip->sb = sb;
 	ip->flags &= ~(INODE_MOUNT | INODE_PIPE);
 	ip->flags |= INODE_VALID;
-	
+	ip->i_op = &inode_o_minix;
 	superblock_unlock(sb);
 
 	return (0);
@@ -458,6 +461,8 @@ PUBLIC int minix_mkfs
 		return 0;
 	}	
 	
+	inode_lock(ip);
+	ip->count ++;
 	if (ip == NULL)
 	{
 		kprintf ("Mkfs : Allocation failed");
@@ -490,7 +495,7 @@ PUBLIC int minix_mkfs
 	ip->gid = gid;
 
 	inode_write_minix(ip);
-	inode_put(ip);
+	inode_unlock(ip);
 
 	bsync();
 	return 1;
@@ -499,18 +504,34 @@ PUBLIC int minix_mkfs
 /**
  * @brief Minix file system operations.
  */
-PRIVATE struct super_operations super_o_minix = {
-		&inode_read_minix, 
-		&inode_write_minix,
-		&inode_free_minix,
-		&inode_truncate_minix,
-		&inode_alloc_minix,
-		NULL,
-		NULL,
-		&superblock_put,
-		&superblock_put,
-		&init_minix
+PRIVATE struct super_operations super_o_minix = 
+{
+		&inode_read_minix,			/*inode_read*/ 
+		&inode_write_minix,			/*inode_write*/
+		&inode_free_minix,			/*inode_free*/
+		&inode_truncate_minix,		/*inode_truncate*/
+		&inode_alloc_minix,			/*inode_alloc*/
+		NULL,						/*notify_change*/
+		NULL,						/*put inode*/
+		&superblock_put_minix,		/*put_super*/
+		&superblock_write_minix,	/*write_super*/
+		&superblock_stat_minix,		/*superblock_stat*/
+		&init_minix 				/*remount_fs*/
 };
+
+PUBLIC struct inode_operations inode_o_minix =
+{
+	&dir_read_minix,
+	&dir_add_minix,
+	&dir_remove_minix,
+	&file_read_minix,
+	&file_write_minix,
+};
+
+
+
+
+
 
 PRIVATE struct file_system_type fs_minix = {
 	NULL,

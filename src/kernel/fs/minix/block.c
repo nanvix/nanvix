@@ -22,7 +22,7 @@
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <errno.h>
-//#include "fs.h"
+#include "../fs.h"
 
 /**
  * @file

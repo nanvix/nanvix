@@ -24,7 +24,7 @@
 #include <nanvix/fs.h>
 #include <ustat.h>
 
-//#include "fs.h"
+#include "../fs.h"
 #include "minix.h"
 
 /**
@@ -176,7 +176,7 @@ PUBLIC struct superblock *superblock_read_minix(dev_t dev, superblock * sb)
 	sb->zsearch = d_sb->s_first_data_block;
 	sb->chain = NULL;
 	sb->count++;
-	sb->so= so_minix();
+	sb->s_op= so_minix();
 	
 	blkunlock(buf);
 	

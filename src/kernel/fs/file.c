@@ -34,7 +34,10 @@
  */
 PUBLIC int dir_remove(struct inode *dinode, const char *filename)
 {
-	return dir_remove_minix(dinode, filename);
+	if (!dinode||!dinode->i_op||!dinode->i_op->dir_remove)
+		kpanic ("Inode_operation not initialized");
+
+	return dinode->i_op->dir_remove(dinode, filename);
 }
 
 /*
@@ -42,7 +45,17 @@ PUBLIC int dir_remove(struct inode *dinode, const char *filename)
  */
 PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
 {
-	return dir_add_minix(dinode, inode, name);
+	if (!dinode||!dinode->i_op||!dinode->i_op->dir_add)
+		kpanic ("Inode_operation not initialized");
+
+	if (dinode==NULL)
+		kpanic ("Inode null");
+	if (dinode->i_op==NULL)
+		kpanic ("Inode_operations not initialized");
+	if (dinode->i_op->dir_add==NULL)
+		kpanic ("Inode_operation not initialized");
+
+	return dinode->i_op->dir_add(dinode, inode, name);
 }
 
 /*
@@ -50,8 +63,10 @@ PUBLIC int dir_add(struct inode *dinode, struct inode *inode, const char *name)
  */
 PUBLIC ssize_t file_read(struct inode *i, void *buf, size_t n, off_t off)
 {
+	if (!i||!i->i_op||!i->i_op->file_read)
+		kpanic ("Inode_operation not initialized");
 	inode_lock(i);
-	int retour =file_read_minix(i,buf,n,off);
+	int retour =i->i_op->file_read(i,buf,n,off);
 	inode_touch(i);
 	inode_unlock(i);
 	return retour;
@@ -67,8 +82,11 @@ PUBLIC ssize_t dir_read(struct inode *i, void *buf, size_t n, off_t off)
 	if (i->flags & INODE_MOUNT)
 		i=cross_mount_point_up(i);
 	
-	int retour = dir_read_minix(i,buf,n,off);
-
+	if (!i||!i->i_op||!i->i_op->dir_read){
+		inode_unlock(i);
+		kpanic ("Inode_operation not initialized");
+	}
+	int retour = i->i_op->dir_read(i,buf,n,off);
 
 	inode_touch(i);
 	inode_unlock(i);
@@ -80,9 +98,10 @@ PUBLIC ssize_t dir_read(struct inode *i, void *buf, size_t n, off_t off)
  */
 PUBLIC ssize_t file_write(struct inode *i, const void *buf, size_t n, off_t off)
 {
+	if (!i||!i->i_op||!i->i_op->file_read)
+		kpanic ("Inode_operation not initialized");
 	inode_lock(i);
-	
-	int retour = file_write_minix(i,buf,n,off);
+	int retour = i->i_op->file_write(i,buf,n,off);
 	inode_touch(i);
 	inode_unlock(i);
 	return retour;

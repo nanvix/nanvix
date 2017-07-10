@@ -104,8 +104,9 @@ PRIVATE void superblock_write(struct superblock *sb)
 	/* Nothing to be done. */
 	if (!(sb->flags & SUPERBLOCK_DIRTY))
 		return;
-	
-	superblock_write_minix(sb);
+	if (!sb->s_op||!sb->s_op->superblock_write)
+		kpanic ("WRITE: super_operation not initialized");
+	sb->s_op->superblock_write(sb);
 	
 	sb->flags &= ~SUPERBLOCK_DIRTY;
 }
@@ -210,9 +211,10 @@ PUBLIC void superblock_unlock(struct superblock *sb)
  */
 PUBLIC void superblock_put(struct superblock *sb)
 {
-		//TODO je sais pas ou ca va ..
-	/* Double free. */
-	superblock_put_minix(sb);
+	//superblock_put_minix(sb);
+	if (!sb->s_op||!sb->s_op->superblock_put)
+		kpanic ("super_operation not initialized");
+	sb->s_op->superblock_put(sb);
 	
 	superblock_unlock(sb);
 }
@@ -243,57 +245,13 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 	/* Get empty superblock. */	
 	sb = superblock_empty();
 	if (sb == NULL)
-		goto error0;
-	
-	// /* Read superblock from device. */
-	// buf = bread(dev, 1);
-	// d_sb = (struct d_superblock *)buffer_data(buf);
-	
-	// /* Bad magic number. */
-	// if (d_sb->s_magic != SUPER_MAGIC)
-	// {
-	// 	kprintf("fs: bad superblock magic number");
-	// 	goto error1;
-	// }
-	
-	// /* Too many blocks in the inode/zone map. */
-	// if ((d_sb->s_imap_nblocks > IMAP_SIZE)||(d_sb->s_bmap_nblocks > ZMAP_SIZE))
-	// {
-	// 	kprintf("fs: too many blocks in the inode/zone map");
-	// 	goto error1;
-	// }
-	
-	// /* Initialize superblock. */
-	// sb->buf = buf;
-	// sb->ninodes = d_sb->s_ninodes;
-	// sb->imap_blocks = d_sb->s_imap_nblocks;
-	// for (unsigned i = 0; i < sb->imap_blocks; i++)
-	// 	blkunlock(sb->imap[i] = bread(dev, 2 + i));
-	// sb->zmap_blocks = d_sb->s_bmap_nblocks;
-	// for (unsigned i = 0; i < sb->zmap_blocks; i++)
-	// 	blkunlock(sb->zmap[i] = bread(dev, 2 + sb->imap_blocks + i));
-	// sb->first_data_block = d_sb->s_first_data_block;
-	// sb->max_size = d_sb->s_max_size;
-	// sb->zones = d_sb->s_nblocks;
-	// sb->root = NULL;
-	// sb->mp = NULL;
-	// sb->dev = dev;
-	// sb->flags &= ~(SUPERBLOCK_DIRTY | SUPERBLOCK_RDONLY);
-	// sb->flags |= SUPERBLOCK_VALID;
-	// sb->isearch = 0;
-	// sb->zsearch = d_sb->s_first_data_block;
-	// sb->chain = NULL;
-	// sb->count++;
-	// sb->so= so_minix();
-	
-	// blkunlock(buf);
-	
+		return NULL;
+	// if (!sb->s_op||!sb->s_op->superblock_read)
+	// 	kpanic ("super_operation not initialized");
+	// sb->s_op->superblock_read(dev,sb);
 	superblock_read_minix(dev,sb);
 
 	return (sb);
-
-error0:
-	return (NULL);
 }
 
 /**
@@ -335,7 +293,10 @@ PUBLIC void superblock_sync(void)
  */
 PUBLIC void superblock_stat(struct superblock *sb, struct ustat *ubuf)
 {
-	superblock_stat_minix(sb,ubuf);
+	if (!sb->s_op||!sb->s_op->superblock_stat)
+		kpanic ("super_operation not initialized");
+	sb->s_op->superblock_stat(sb,ubuf);
+	//superblock_stat_minix(sb,ubuf);
 }
 
 /**
