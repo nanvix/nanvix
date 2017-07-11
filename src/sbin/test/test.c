@@ -429,58 +429,143 @@ static int sem_test(void)
 	return (0);
 }
 
-
 static int sem_test_open_close(void) 
 { 
-  if(fork()==0){ 
-    /* We don't unlink semc2 */ 
-    /* child */ 
-    printf("Child\n"); 
-    sem_t *semc1, *semc2, *semc3, *semc4;
-    semc1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
-    semc2 = sem_open("/home/mysem/sem2",O_CREAT,0777,0); 
-    semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
+	if(fork()==0)
+	{ 
+		/* We don't unlink semc2 */ 
+		/* child */ 
+		printf("Child\n"); 
+		sem_t *semc1, *semc3;
+		semc1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
+		// semc2 = sem_open("/home/mysem/sem2",O_CREAT,0777,0); 
+		semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
 
-    sem_unlink("/home/mysem/sem1"); 
-    sem_wait(semc3); 
-    sem_post(semc1); 
-    sem_close(semc2); 
-    /* sem3 has not been unlinked -> wont be deleted */ 
-    sem_close(semc3); 
-    /*
-     *  We open a semaphore after sem2 has been closed 
-     *  to ensure that the slot is taken 
-     */
-    semc4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); 
-    sem_unlink("/home/mysem/sem4");
-    sem_close(semc4); 
-    sem_close(semc1); 
-    sem_unlink("/home/mysem/sem2"); 
-    /* Closing multiple times */
-    sem_close(semc2);
-    sem_close(semc2);
-    sem_close(semc2);
-   	/* Sem_post on a non opened semaphore */
-    sem_post(semc4);
-  } 
-  else{ 
-    /* father */ 
-    printf("Father \n"); 
-    sem_t *semf1, *semf3; 
-    semf1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0); 
-    semf3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
+		printf("sem1 id : %d\n",semc1->semid);
+		printf("sem3 id : %d\n",semc3->semid);
 
-    sem_post(semf3); 
-    sem_wait(semf1); 
-    sem_close(semf1); 
-    sem_close(semf3); 
-    sem_unlink("/home/mysem/sem2");
-    /* Unlinking multiple times */ 
-    sem_unlink("/home/mysem/sem1");
-    sem_unlink("/home/mysem/sem1");
-  } 
+		printf("Child blocked on sem1\n");
+		/* Locking child */
+		sem_wait(semc1);
+
+		/* Waiting */
+		work();
+
+		printf("Child unlocking sem3\n");
+		/* Unlocking father */
+		sem_post(semc3);
+
+		/* Unlinking sem1 : it shoud still be usable but not be in file system */
+		if (sem_unlink("/home/mysem/sem1"))
+		{
+			printf("Child : sem1 has already been unlinked\n");
+		}
+		else
+		{
+			printf("Child : sem1 has been unlinked\n");
+		}
+
+
+		printf("Child blocked on sem1\n");
+		sem_wait(semc1);
+
+		printf("%d %d\n",semc3,semc1);
+
+		sem_close(semc3);
+		sem_close(semc1);
+
+		printf("%d %d\n",semc3,semc1);
+		sem_unlink("/home/mysem/sem3");
+
+		/* Operations on invalid semaphores */
+		sem_wait(semc1);
+		sem_wait(semc3);
+		sem_post(semc1);
+		sem_post(semc3);
+	} 
+	else
+	{ 
+		/* father */ 
+		printf("Father \n"); 
+		sem_t *semf1, *semf2, *semf3, *semf4; 
+		semf1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
+		/* Opening the same semaphore : the same address should be returned */ 
+		semf2 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
+		semf3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
+		semf4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); 
+
+		if(semf1 == semf2)
+		{
+			printf("semf1 == semf2\n");
+		}
+
+		printf("sem1 id : %d\n",semf1->semid);
+		printf("sem3 id : %d\n",semf3->semid);
+		printf("sem4 id : %d\n",semf4->semid);
+
+		printf("Father unlocking sem1\n");
+		/* Unlocking child */
+		sem_post(semf1);
+		
+		/* Waiting */
+		work();
+
+		printf("Father blocked on sem3\n");
+		/* Unlocking father */
+		sem_wait(semf3);
+
+		/*  Unlinking sem1 : it shoud still be usable but not be in file system 
+		 *  unlinked both in child and father -> so it's ensured to be unlinked 
+		 *  the second unlink should have no effect because the semaphore doesn't
+		 *  exist in the file system anymore
+		 */
+		if (sem_unlink("/home/mysem/sem1"))
+		{
+			printf("Father : sem1 has already been unlinked\n");
+		}
+		else
+		{
+			printf("Father : sem1 has been unlinked\n");
+		}
+
+		work();
+
+		printf("Father unlocking sem1\n");
+		/* Unlocking child */
+		sem_post(semf1);
+
+		/* sem1 has not been closed. */
+
+		sem_close(semf3);
+
+		/* sem4 multiple closed */
+		sem_close(semf4);
+		sem_close(semf4); /* no effect */ 
+		sem_close(semf4); /* no effect */
+		
+		sem_unlink("/home/mysem/sem4"); /* this will delete sem4 because ref count == 0 */
+		
+		/* opening a new semaphore called sem4 */
+		semf4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); 
+
+		/* Unlinking before closing */
+		sem_unlink("/home/mysem/sem4"); /* this will delete sem4 because ref count == 0 */
+
+		sem_close(semf4);
+
+		semf4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); /* This will use another kernel slot : sem4 has been unlinked */
+		/* Opening sem4 and letting it in alive */
+		printf("sem4 id : %d\n",semf4->semid);
+
+		sem_close(semf1);
+		sem_close(semf2);
+		sem_close(semf3);
+		
+		sem_unlink("/home/mysem/sem2");
+		sem_unlink("/home/mysem/sem4");
+	} 
  
-  return (0); 
+	return (0); 
 } 
 
 

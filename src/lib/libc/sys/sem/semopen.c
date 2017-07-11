@@ -57,8 +57,12 @@ sem_t* sem_open(const char* name, int oflag, ...)
 		  "D" (value)
 	);
 
-	if (ret == (-1))
+	if (ret < 0)
 		return (NULL);
+
+	/* Multiple opening by the same process */
+	if (usem[ret] != NULL)
+		return usem[ret];
 
 	sem_t* s;
 	s = malloc(sizeof(sem_t));
@@ -69,5 +73,8 @@ sem_t* sem_open(const char* name, int oflag, ...)
 	}
 
 	s->semid=ret;
+
+	usem[ret] = s;
+
 	return (s);
 }

@@ -144,6 +144,7 @@
 	EXTERN int mount (char*, char*);
 	EXTERN int unmount (char*, char*);
 	EXTERN struct inode *inode_semaphore(const char* name, int mode);
+	EXTERN int inode_rename(const char* pathname, const char* newname);
 
 /*============================================================================*
  *                            Super Block Library                             *

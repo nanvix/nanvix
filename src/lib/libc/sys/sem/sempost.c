@@ -13,6 +13,13 @@ int sem_post(sem_t* sem)
 {	
 	int ret;
 
+	if (sem == NULL)
+		return (-1);
+
+	for (int i = 0; i < OPEN_MAX; i++)
+		if (usem[i] == sem)
+			break;
+
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)

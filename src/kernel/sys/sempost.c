@@ -13,14 +13,28 @@
 PUBLIC int sys_sempost(int idx)
 {
 	struct inode *seminode;
-	seminode = inode_name(semtable[idx].name);
+	int i;
+
+	if (!SEM_IS_VALID(idx))
+		return (-EINVAL);
+
+	for (i = 0; i < PROC_MAX; i++)
+	{
+		/* Removing the proc pid in the semaphore procs table */
+		if (semtable[idx].currprocs[i] == curr_proc->pid)
+			break;
+	}
+
+	if (i == PROC_MAX)
+		return (-1);
+
+	seminode = inode_get(semtable[idx].dev, semtable[idx].num);
 
 	if (seminode == NULL)
 		return (-EINVAL);
 
 	semtable[idx].value++;
 	
-
 	if (semtable[idx].value>0)
 		wakeup(semtable[idx].semwaiters);
 

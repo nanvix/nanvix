@@ -14,7 +14,10 @@ PUBLIC int sys_semclose(int idx)
 	struct inode *seminode;
 	int i;
 
-	seminode = inode_name(semtable[idx].name);
+	if (!SEM_IS_VALID(idx))
+		return (-EINVAL);
+
+	seminode = inode_get(semtable[idx].dev, semtable[idx].num);
 
 	if (seminode == NULL)
 		return (-EINVAL);
@@ -26,22 +29,41 @@ PUBLIC int sys_semclose(int idx)
 		/* Removing the proc pid in the semaphore procs table */
 		if (semtable[idx].currprocs[i] == curr_proc->pid)
 		{
-			semtable[idx].currprocs[i] = -1;
+			semtable[idx].currprocs[i] = 0;
 			break;
 		}
 	}
 
-	if (i > PROC_MAX)
+	if (i == PROC_MAX)
 		return -1;
 
-	if (seminode->count == 1 && seminode->nlinks == 0)
-	{		
-		remove_semaphore(semtable[idx].name);
-		freesem(&semtable[idx]);
-	}	
+	char found;
+	found = 0;
+	i++;
+	/* Searching for multiple openings */
+	while (i < PROC_MAX)
+	{
+		if (semtable[idx].currprocs[i] == curr_proc->pid)
+		{
+			found = 1;
+			break;
+		}
+		i++;
+	}
 
-	inode_put(seminode);
-	inode_unlock(seminode);
-
-	return 0;
+	if (found)
+	{
+		inode_put(seminode);
+		inode_unlock(seminode);
+		return 1;
+	}
+	else
+	{
+		if (seminode->count == 1 && seminode->nlinks == 0)
+			freesem(&semtable[idx]);
+		
+		inode_put(seminode);
+		inode_unlock(seminode);
+		return 0;
+	}
 }
