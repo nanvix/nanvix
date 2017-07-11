@@ -19,6 +19,9 @@ int sem_wait(sem_t *sem)
 		if (usem[i] == sem)
 			break;	
 
+	if (i == OPEN_MAX)
+		return (-1);
+
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)
