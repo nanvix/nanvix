@@ -23,7 +23,6 @@ PUBLIC int sys_semwait(int idx)
 
 	for (i = 0; i < PROC_MAX; i++)
 	{
-		/* Removing the proc pid in the semaphore procs table */
 		if (semtable[idx].currprocs[i] == curr_proc->pid)
 			break;
 	}

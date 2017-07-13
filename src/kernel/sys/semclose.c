@@ -20,7 +20,7 @@ PUBLIC int sys_semclose(int idx)
 	seminode = inode_get(semtable[idx].dev, semtable[idx].num);
 
 	if (seminode == NULL)
-		return (-EINVAL);
+		return 0;			/* 0 is returned because, it would mean the semaphore is in user table but the inode doesn't exist anymore */
 
 	inode_put(seminode);
 
@@ -35,7 +35,7 @@ PUBLIC int sys_semclose(int idx)
 	}
 
 	if (i == PROC_MAX)
-		return -1;
+		return 0;			/* The semaphore is in user table but the PID isn't on the semaphore -> sem should be freed */
 
 	char found;
 	found = 0;

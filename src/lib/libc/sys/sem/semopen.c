@@ -26,12 +26,11 @@
 #include <stdlib.h>
 
 /**
- * @brief Performs operations in a semaphore.
+ * @brief Opens a semaphore.
  */
-
 sem_t* sem_open(const char* name, int oflag, ...)
 {	
-	int ret;  /* Return value.		*/
+	int ret;  	 /* Return value.		*/
 	mode_t mode; /* Creation mode.		*/
 	int value;	 /* semaphore value 	*/
 	va_list arg; /* Variable argument. 	*/
@@ -58,7 +57,10 @@ sem_t* sem_open(const char* name, int oflag, ...)
 	);
 
 	if (ret < 0)
+	{
+		errno = ret;
 		return (NULL);
+	}
 
 	/* Multiple opening by the same process */
 	if (usem[ret] != NULL)
@@ -66,6 +68,7 @@ sem_t* sem_open(const char* name, int oflag, ...)
 
 	sem_t* s;
 	s = malloc(sizeof(sem_t));
+
 	if (s == NULL)
 	{
 		errno = ENOMEM;
@@ -73,7 +76,6 @@ sem_t* sem_open(const char* name, int oflag, ...)
 	}
 
 	s->semid=ret;
-
 	usem[ret] = s;
 
 	return (s);

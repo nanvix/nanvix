@@ -16,7 +16,7 @@ PUBLIC int sys_semunlink(const char *name)
 	struct inode* seminode;
 	char semname[MAX_SEM_NAME-4];
 
-	/* Name invalid */
+	/* Name invalid. */
 	if (namevalid(name) == (-1))
 		return (ENAMETOOLONG);
 
@@ -42,11 +42,13 @@ PUBLIC int sys_semunlink(const char *name)
 
 	idx = search_semaphore(semname);
 
+	inode_unlock(seminode);
+	remove_semaphore(semname);
+
 	/* If no process uses the semaphore : delete the semaphore descriptor and the table entry. */
 	if (seminode->count == 1)
 	{
-		inode_unlock(seminode);
-		remove_semaphore(semname);
+		/* Freeing from kernel semaphore table. */
 		freesem(&semtable[idx]);
 		inode_put(seminode);
 		return 0;
@@ -54,9 +56,9 @@ PUBLIC int sys_semunlink(const char *name)
 
 	/* Unlinking the semaphore */
 	semtable[idx].name[0] = '\0';
-	inode_unlock(seminode);
-	/* remove_dir will do the unlink */
-	remove_semaphore(semname);
+	// inode_unlock(seminode);
+	/* remove_dir will unlink the inode. */
+	// remove_semaphore(semname);
 	inode_put(seminode);
 
 	return 0;	/* Successful completion */

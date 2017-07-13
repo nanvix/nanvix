@@ -1,4 +1,5 @@
 #include <nanvix/syscall.h>
+#include <errno.h>
 
 /**
  * @brief	Unlinks a semaphore for deletion
@@ -18,6 +19,12 @@ int sem_unlink(const char *name)
 		: "0" (NR_semunlink),
 		  "b" (name)
 	);
+	
+	if (ret < 0)
+	{
+		errno = ret;
+		return (-1);
+	}
 
-	return (ret);
+	return 0;
 }

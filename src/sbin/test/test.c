@@ -355,7 +355,7 @@ static int sched_test2(void)
 	assert(read((a), &(b), sizeof(b)) == sizeof(b)); \
 }                  									 \
 	
-
+/* Simulate a bit of work -> small wait : ~2.5 seconds */
 void work(void)
 {
 	unsigned long i;
@@ -381,7 +381,7 @@ void producer(int nbprod, int limit)
 	sem = sem_open("/home/mysem/ressources", O_CREAT, 0777,0);
 	semlim = sem_open("/home/mysem/limite", O_CREAT, 0777,limit);
 
-	for(int j = 0; j<nbprod; j++)
+	for (int j = 0; j < nbprod; j++)
 	{
 		sem_wait(semlim);
 		printf("producer : start producing\n");
@@ -397,13 +397,13 @@ void consumer(int nbcons, int limit)
 	sem = sem_open("/home/mysem/ressources", O_CREAT, 0777,0);
 	semlim = sem_open("/home/mysem/limite", O_CREAT, 0777,limit);
 
-	for(int j = 0; j<nbcons; j++)
+	for (int j = 0; j < nbcons; j++)
 	{
 		printf("cons : waiting for ressource\n");
 		sem_wait(sem);
 		printf("cons : ressources has been produced\n");
 		work();
-		printf("cons : ressources consommed\n");
+		printf("cons : ressources consumed\n");
 		sem_post(semlim);
 	}
 }
@@ -411,19 +411,21 @@ void consumer(int nbcons, int limit)
 /*  
  *	Producer consumer
  *  The buffer has a size of 3
- *  The producer will produce 5 items
+ *  The producer will produce 10 items
  */
 static int sem_test(void)
 {
-	if(fork()==0){
+	if (fork() == 0)
+	{
 		/* child */
 		printf("child \n");
-		producer(5,1);
+		producer(10,3);
 	}
-	else{
+	else
+	{
 		/* father */
 		printf("father \n");
-		consumer(5,1);
+		consumer(10,3);
 	}
 
 	return (0);
@@ -431,7 +433,7 @@ static int sem_test(void)
 
 static int sem_test_open_close(void) 
 { 
-	if(fork()==0)
+	if (fork() == 0)
 	{ 
 		/* We don't unlink semc2 */ 
 		/* child */ 
@@ -567,7 +569,6 @@ static int sem_test_open_close(void)
  
 	return (0); 
 } 
-
 
 /*============================================================================*
  *                                FPU test                                    *
@@ -748,7 +749,7 @@ int main(int argc, char **argv)
 		{
 			printf("Semaphore open/close Test\n");
 			printf("  Result [%s]\n",
-				(!sem_test_open_close()) ? "PASSED" : "FAILED");
+				(!sem_test_open_close2()) ? "PASSED" : "FAILED");
 		}
 
 		/* Semaphore test. */
@@ -758,7 +759,13 @@ int main(int argc, char **argv)
 			printf("  Result [%s]\n",
 				(!sem_test()) ? "PASSED" : "FAILED");
 		}
-	
+			/* Semaphore test. */
+		else if (!strcmp(argv[i], "prodcons33"))
+		{
+			printf("Producer consummer Test\n");
+			printf("  Result [%s]\n",
+				(!sem_test_open_close()) ? "PASSED" : "FAILED");
+		}
 	
 		/* Wrong usage. */
 		else

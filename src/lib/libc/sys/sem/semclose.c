@@ -32,7 +32,7 @@ int sem_close(sem_t* sem)
 		  "b" (sem->semid)
 	);
 
-	if (ret == (-1))
+	if (ret < 0)
 	{
 		errno = ret;
 		return (-1);
