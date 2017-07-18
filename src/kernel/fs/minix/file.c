@@ -28,20 +28,19 @@
 #include <errno.h>
 #include "../fs.h"
 
-PRIVATE struct d_dirent *dirent_search (struct inode *, const char *, struct buffer **, int);
+PUBLIC struct d_dirent *dirent_search_minix (struct inode *, const char *, 
+	struct buffer **, int);
 
 /*
  * Removes an entry from a directory.
  */
 PUBLIC int dir_remove_minix(struct inode *dinode, const char *filename)
 {
-	//TODO va un peu dans les deux ...
-
 	struct buffer *buf; /* Block buffer.    */
 	struct d_dirent *d; /* Directory entry. */
 	struct inode *file; /* File inode.      */
 	
-	d = dirent_search(dinode, filename, &buf, 0);
+	d = dirent_search_minix(dinode, filename, &buf, 0);
 	
 	/* Not found. */
 	if (d == NULL)
@@ -101,11 +100,10 @@ PUBLIC int dir_remove_minix(struct inode *dinode, const char *filename)
  */
 PUBLIC int dir_add_minix(struct inode *dinode, struct inode *inode, const char *name)
 {
-	// TODO a changer
 	struct buffer *buf; /* Block buffer.         */
 	struct d_dirent *d; /* Disk directory entry. */
 	
-	d = dirent_search(dinode, name, &buf, 1);
+	d = dirent_search_minix(dinode, name, &buf, 1);
 	
 	/* Failed to create directory entry. */
 	if (d == NULL)
@@ -124,7 +122,6 @@ PUBLIC int dir_add_minix(struct inode *dinode, struct inode *inode, const char *
  */
 PUBLIC ssize_t file_read_minix(struct inode *i, void *buf, size_t n, off_t off)
 {
-	//TODO a changer !!
 	char *p;             /* Writing pointer.      */
 	size_t blkoff;       /* Block offset.         */
 	size_t chunk;        /* Data chunk size.      */
@@ -175,7 +172,6 @@ out:
  */
 PUBLIC ssize_t dir_read_minix(struct inode *i, void *buf, size_t n, off_t off)
 {
-	// TODO a changer
 	char *p;             /* Writing pointer.      */
 	size_t blkoff;       /* Block offset.         */
 	size_t chunk;        /* Data chunk size.      */
@@ -227,7 +223,6 @@ out:
  */
 PUBLIC ssize_t file_write_minix(struct inode *i, const void *buf, size_t n, off_t off)
 {
-	//TODO a changer 
 	const char *p;       /* Reading pointer.      */
 	size_t blkoff;       /* Block offset.         */
 	size_t chunk;        /* Data chunk size.      */
@@ -271,8 +266,6 @@ out:
 	return ((ssize_t)(p - (char *)buf));
 }
 
-
-//TODO a enlever
 /**
  * @brief Searches for a directory entry.
  * 
@@ -294,16 +287,15 @@ out:
  * @note @p filename must point to a valid location.
  * @note @p buf must point to a valid location
  */
-PRIVATE struct d_dirent *dirent_search
+PUBLIC struct d_dirent *dirent_search_minix
 (struct inode *dip, const char *filename, struct buffer **buf, int create)
 {
-	//TODO a changer
 	int i;              /* Working directory entry index.       */
 	int entry;          /* Index of first free directory entry. */
 	block_t blk;        /* Working block number.                */
 	int nentries;       /* Number of directory entries.         */
 	struct d_dirent *d; /* Directory entry.                     */
-	
+
 	nentries = dip->size/sizeof(struct d_dirent);
 	
 	/* Search from very first block. */
@@ -408,4 +400,3 @@ PRIVATE struct d_dirent *dirent_search
 	
 	return (NULL);
 }
-

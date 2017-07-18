@@ -108,6 +108,8 @@
     int (*dir_remove)(struct inode *, const char *);
     ssize_t (*file_read)(struct inode *, void *, size_t , off_t );
     ssize_t (*file_write)(struct inode *, const void *, size_t , off_t);
+    struct d_dirent *(*dirent_search) (struct inode *, const char *, struct buffer **, int);
+
   };
 
   /** 
@@ -157,7 +159,6 @@
   EXTERN int mount (char*, char*); 
   EXTERN int unmount (char*);
   EXTERN int mkfs (const char *, uint16_t, uint16_t, uint16_t, uint16_t);
-  EXTERN void print_mount_table(void); 
   PUBLIC struct inode * cross_mount_point_up (struct inode *);
   PUBLIC struct inode * cross_mount_point_down (struct inode *);
   PUBLIC int root_fs (struct inode *);

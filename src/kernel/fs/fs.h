@@ -115,8 +115,8 @@
     struct inode *mp;               /**< Inode mounted on.             */
     dev_t dev;                      /**< Underlying device.            */
     enum superblock_flags flags;    /**< Flags.                        */
-    ino_t isearch;                /**< Inodes below this are in use. */
-    block_t zsearch;            /**< Zones below this are in use.  */
+    ino_t isearch;                  /**< Inodes below this are in use. */
+    block_t zsearch;                /**< Zones below this are in use.  */
     struct process *chain;          /**< Waiting chain.                */
     struct super_operations *s_op;  /**< Super operation of filesystem */
     union {
@@ -132,21 +132,21 @@
    * @brief File system of the virtual file system.
    */
   struct file_system_type {
-    struct super_block *(*read_super) (dev_t);  /**< Fonction to access the superblock of the file system   */
-    struct super_operations *so;        /**< stucture of the fonction of the file system      */
-    char *name;                 /**< Name of the file system                */
+    struct superblock *(*superblock_read) (dev_t, struct superblock *);  /**< Function to read the superblock        */
+    struct super_operations *so;                                         /**< Stucture of file system's functio      */
+    char *name;                                                          /**< Name of the file system                */
   };
 
   /**
    * @brief Mounting point.
    */
   struct mounting_point {
-    dev_t dev;        /**< Name of the devices*/
-    dev_t dev_r;    
+    dev_t dev;            /**< Number of the device                          */
+    dev_t dev_r;          /**< Number of the device mounted                */
     int no_inode_mount;   /**< Number of the inode of the mounting point    */
     int no_inode_root_fs; /**< Number of the inode root of the file system  */
     int free;
-    struct file_system_type * fs;
+    struct file_system_type *fs;
   };
 
   /**
@@ -162,15 +162,14 @@
   /**
    * @brief Function too register file system in the virtual file system .
    */
-  PUBLIC int fs_register( int nb , struct file_system_type * fs );
-  
-
-
+  PUBLIC int fs_register( int nb , struct file_system_type *fs );
 
 	  /**
    * @brief add the ROOT_DEV in the mount table.
    */
-  PUBLIC struct inode * mountRoot ();
+  //PUBLIC struct inode * mountRoot ();
+  PUBLIC void mountRoot();
+  PUBLIC struct file_system_type *fs_from_device (dev_t);
   /**@}*/
 
 #endif /* _FS_H_ */

@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -196,20 +197,24 @@ PUBLIC void fs_init(void)
 	
 	/* Sanity check. */
 	CHKSIZE(sizeof(struct d_dirent), sizeof(struct dirent));
-
+	mountRoot();
 	rootdev = superblock_read(ROOT_DEV);
 	
 	/* Failed to read root super block. */
 	if (rootdev == NULL)
-		kpanic("failed to mount root file system");
+		kpanic("Failed to mount root file system");
 		
 	superblock_unlock(rootdev);
 	
-	root =mountRoot();
+	root = inode_get(ROOT_DEV, 1);
+	
+	/* Failed to read root inode. */
+	if (root == NULL)
+		kpanic("Failed to read root inode");
 
 	/* Failed to read root inode. */
 	if (root == NULL)
-		kpanic("failed to read root inode");
+		kpanic("Failed to read root inode");
 	
 	kprintf("fs: root file system mounted");
 

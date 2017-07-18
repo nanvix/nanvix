@@ -45,21 +45,6 @@
 #define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
 
 /**
- * @brief In-core inodes table.
- */
-
-/**
- * @brief Hash table size.
- */
-#define HASHTAB_SIZE 227
-
-/**
- * @brief Hash function for the inode cache.
- */
-#define HASH(dev, num) \
-	(((dev)^(num))%HASHTAB_SIZE)
-
-/**
  * @brief Writes an inode to disk.
  * 
  * @details Writes the inode pointed to by @p ip to disk.
@@ -116,12 +101,14 @@ PUBLIC void inode_write_minix(struct inode *ip)
  * 
  * @param dev Device where the inode is located.
  * @param num Number of the inode that shall be read.
+ * @param ip Inode of the cache where the result of the reading is written.
  * 
  * @returns Upon successful completion zero is returned. Upon failure, non-zero
  * is returned instead.
  * 
  * @note The device number must be valid.
  * @note The inode number must be valid.
+ * @note The inode must be initialized
  */
 PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 {
@@ -168,8 +155,6 @@ PUBLIC int inode_read_minix(dev_t dev, ino_t num, struct inode *ip)
 	ip->i_op = &inode_o_minix;
 	ip->flags &= ~(INODE_DIRTY | INODE_MOUNT | INODE_PIPE);
 	ip->flags |= INODE_VALID;
-
-	//ip->chain = 
 	
 	brelse(buf);
 	superblock_put(sb);
@@ -258,6 +243,7 @@ PUBLIC void inode_truncate_minix(struct inode *ip)
  *          superblock pointed to by @p sb.
  * 
  * @param sb Superblock where the inode shall be allocated.
+ * @param ip Inode of the cache which is allocated.
  * 
  * 
  * @returns Upon successful completion zero is returned. Upon failure, non-zero
@@ -327,55 +313,13 @@ error0:
 	return (1);
 }
 
-
-PUBLIC int minix_mkfs
-(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid)
+/**
+ * @brief Compute dimensions of a file system.
+ */
+PRIVATE size_t dimensions(uint16_t imap_nblocks, uint16_t bmap_nblocks,
+	uint16_t inode_nblocks,uint16_t nblocks)
 {
-
-	//TODO a separer en petite fonction !
-	size_t size;            		 /* Size of file system.	   	        	*/
-	char buf[BLOCK_SIZE];   		 /* Writing buffer.      	       	   		*/
-	uint16_t imap_nblocks;  		 /* Number of inodes map blocks. 	   		*/
-	uint16_t bmap_nblocks;  		 /* Number of block map blocks.    			*/
-	uint16_t inode_nblocks; 		 /* Number of inode blocks.        		 	*/
-	mode_t mode;            		 /* Access permissions to root dir.		 	*/
-	struct d_superblock * d_super; 	 /* Disk superblock 						*/
-	struct superblock * super; 		 /* In core superblock						*/
-	struct inode * ip;				 /* Pointeur to in core inode				*/
-	struct inode inode;				 /* Inode									*/
-	dev_t dev;	 					 /* Device on witch file system in created	*/
-	uint32_t * p ;
-	struct buffer *buff;        	 /* Buffer disk superblock. 				*/
-	off_t of;						 /* Offset									*/
-	uint32_t imap_bitmap[IMAP_SIZE]; /*Inode map								*/
-	uint32_t zmap_bitmap[ZMAP_SIZE]; /*Zone map									*/
-
-	/*recuperation of the device */
-	ip = inode_name(diskfile);
-	
-	/*Problem with device inode */
-	if (ip == NULL)
-	{	
-		kprintf("Mkfs:device inode not found\n");
-		return 0;
-	}
-	
-	/*check if it's a device*/
-	if (!S_ISCHR(ip->mode) && !S_ISBLK(ip->mode))
-	{
-		inode_put(ip);
-		kprintf ("Mkfs:what you provide is not a device\n");
-		return 0;
-	}
-
-	dev = ip->blocks[0];
-	inode_put(ip);
-	#define ROUND(x) (((x) == 0) ? 1 : (x))
-	
-	/* Compute dimensions of file sytem. */
-	imap_nblocks = ROUND(ninodes/(8*BLOCK_SIZE));
-	bmap_nblocks = ROUND(nblocks/(8*BLOCK_SIZE));
-	inode_nblocks = ROUND( (ninodes*sizeof(struct d_inode))/BLOCK_SIZE);
+	size_t size;
 	
 	/* Compute size of file system. */
 	size  = 1;             /* boot block   */
@@ -383,26 +327,29 @@ PUBLIC int minix_mkfs
 	size += imap_nblocks;  /* inode map    */
 	size += bmap_nblocks;  /* block map    */
 	size += inode_nblocks; /* inode blocks */
+	if (nblocks<=size){
+		kprintf ("The number of block is too small for the number of inode");
+		return 0;
+	}
 	size = nblocks - size;       /* data blocks  */
 	size <<= BLOCK_SIZE_LOG2;
-	
-	kprintf ("Mkfs: Initialisation of the file system");
-	/* Fill file system with zeros. */
-	of = 0;
-	kmemset(buf, 0, BLOCK_SIZE);
-	for (size_t i = 0; i < size; i += BLOCK_SIZE) //size
-	{
-		bdev_write(dev, buf, BLOCK_SIZE, of);
-		of += BLOCK_SIZE;
-	}
-	
-	kprintf ("Mkfs: Initialize superblock");
-	/* Initialize superblock. */
+	return size;
+}
+
+/**
+ * @brief Initialize a new disk_superblock and write it in the memory of the device.
+ */
+PRIVATE int init_super(dev_t dev,uint16_t ninodes,uint16_t nblocks,
+	uint16_t imap_nblocks,uint16_t bmap_nblocks, uint16_t inode_nblocks)
+{
+	struct buffer *buff;        	 /* Buffer disk superblock. 				*/
+	struct d_superblock *d_super; 	 /* Disk superblock 						*/
+
 	buff = bread(dev,1);
 	if (buff == NULL)
 	{
 		kprintf("Mkfs: Error of lecture of the buffer");
-		return 0;
+		return 1;
 	}
 
 	d_super = (struct d_superblock *)buffer_data(buff);
@@ -411,13 +358,23 @@ PUBLIC int minix_mkfs
 	d_super->s_imap_nblocks = imap_nblocks;
 	d_super->s_bmap_nblocks = bmap_nblocks;
 	d_super->s_first_data_block = 2 + imap_nblocks + bmap_nblocks + inode_nblocks;
-	d_super->s_max_size = 67641344; // a changer non 
+	d_super->s_max_size = 67641344; 
 	d_super->s_magic = SUPER_MAGIC;
 	buffer_dirty(buff, 1);
 	bwrite(buff);
-	
-	/* Create inode map. */
-	kprintf("Mkfs: Create inode map");
+
+	return 0;
+}
+
+/**
+ * @brief Create an inode map.
+ */
+PRIVATE void create_inode_map(dev_t dev,uint16_t imap_nblocks,
+	uint32_t *imap_bitmap)
+{
+
+	struct buffer *buff;        	 /* Buffer disk superblock. 				*/
+	uint32_t *p ;
 	for (unsigned i = 0; i < imap_nblocks; i++)
 	{
 		buff = bread(dev,2+i);
@@ -426,9 +383,15 @@ PUBLIC int minix_mkfs
 		buffer_dirty(buff, 1);
 		bwrite(buff);
 	}
-	
-	/* Create block map. */
-	kprintf("Mkfs: Create block map");
+}
+/**
+ * @brief Create a block map.
+ */
+PRIVATE void create_block_map(dev_t dev,uint16_t imap_nblocks,
+	uint32_t *zmap_bitmap, uint16_t bmap_nblocks)
+{
+	struct buffer *buff;        	 /* Buffer disk superblock. 				*/
+	uint32_t *p ;
 	for (unsigned i = 0; i < bmap_nblocks; i++)
 	{
 		buff= bread(dev,2+imap_nblocks+i); 
@@ -437,59 +400,55 @@ PUBLIC int minix_mkfs
 		buffer_dirty(buff, 1);
 		bwrite(buff);
 	}
-	
-	/* Access permission to root directory. */
-	mode  = S_IFDIR;
-	mode |= S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
-	
-	/*Recuperation of the superblock*/
-	super = superblock_read(dev);
-	
-	if (super == NULL)
-	{
-		kprintf("Mkfs: Echec of the recuperation of the super block"); 
-		return 0;
-	}
+}
 
-	superblock_unlock(super);
+/**
+ * @brief Initialize a root directory for a file sytem.
+ */
+PRIVATE int create_root_dir(struct superblock * super, uint16_t uid, uint16_t gid ){
 
-	/* Create root directory. */
-	ip = &inode;
-	if (inode_alloc_minix(super,ip))
+	mode_t mode; 
+	struct inode *ip;
+
+	ip= inode_alloc(super);
+	if (ip == NULL)
 	{
 		kprintf ("Mkfs : Allocation failed");
-		return 0;
-	}	
-	
-	inode_lock(ip);
+		return 1;
+	}
+
 	ip->count ++;
 	if (ip == NULL)
 	{
 		kprintf ("Mkfs : Allocation failed");
 		inode_put(ip);
-		return 0;
+		return 1;
 	}
 	
 	if (dir_add(ip, ip, "."))
 	{
-		kprintf("Mkfs: Root directory can not be created");
+		kprintf("Mkfs: Root directory can't be created");
 		inode_put(ip);
-		return 0;
+		return 1;
 	}
 
 	ip->nlinks++;
 		
 	if (dir_add(ip, ip, ".."))
 	{
-		kprintf("Mkfs: Parent directory can not be created");
+		kprintf("Mkfs: Parent directory can't be created");
 		inode_put(ip);
-		return 0;
+		return 1;
 	}
 	ip->nlinks++;
 	superblock_lock(super);
 	super->root = ip;
 	superblock_put(super);
 
+	/* Access permission to root directory. */
+	mode  = S_IFDIR;
+	mode |= S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+	
 	ip->mode = mode;
 	ip->uid = uid;
 	ip->gid = gid;
@@ -497,8 +456,106 @@ PUBLIC int minix_mkfs
 	inode_write_minix(ip);
 	inode_unlock(ip);
 
+	return 0;
+}
+
+/**
+ * @brief Create a minix file system.
+ * 
+ * @details Errase the memory of a device and initialize a file system on it.
+ * 
+ * @param diskfile : the name of the diskfile of the devices on which the 
+ * 		file system is going to be created.
+ * @param ninodes : the number of inodes that the new file system is going to contain.
+ * @param nblocks : the number of blocks in the file system.
+ * @param uid and gid : the user and group's permisisons of the file system.
+ * 
+ * @returns Upon successful completion zero is returned. Upon failure, non-zero
+ * is returned instead.
+ */
+
+PUBLIC int minix_mkfs
+(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid)
+{
+	size_t size;            		 /* Size of file system.	   	        	*/
+	char buf[BLOCK_SIZE];   		 /* Writing buffer.      	       	   		*/
+	uint16_t imap_nblocks;  		 /* Number of inodes map blocks. 	   		*/
+	uint16_t bmap_nblocks;  		 /* Number of block map blocks.    			*/
+	uint16_t inode_nblocks; 		 /* Number of inode blocks.        		 	*/
+	struct superblock *super; 		 /* In core superblock						*/
+	struct inode *ip;				 /* Pointeur to in core inode				*/
+	dev_t dev;	 					 /* Device on which file system is created	*/
+	off_t of;						 /* Offset									*/
+	uint32_t imap_bitmap[IMAP_SIZE]; /* Inode map								*/
+	uint32_t zmap_bitmap[ZMAP_SIZE]; /* Zone map								*/
+
+	/*Recuperation of the device */
+	ip = inode_name(diskfile);
+	
+	/*Problem with device inode */
+	if (ip == NULL)
+	{	
+		kprintf("Mkfs: Device inode not found\n");
+		return 1;
+	}
+	
+	/*Check if it's a device*/
+	if (!S_ISCHR(ip->mode) && !S_ISBLK(ip->mode))
+	{
+		inode_put(ip);
+		kprintf ("Mkfs: What you provide is not a device\n");
+		return 1;
+	}
+	dev = ip->blocks[0];
+	inode_put(ip);
+	
+	/* Compute dimensions of file sytem. */
+	#define ROUND(x) (((x) == 0) ? 1 : (x))
+	imap_nblocks = ROUND(ninodes/(8*BLOCK_SIZE));
+	bmap_nblocks = ROUND(nblocks/(8*BLOCK_SIZE));
+	inode_nblocks = ROUND( (ninodes*sizeof(struct d_inode))/BLOCK_SIZE);
+	size =dimensions(imap_nblocks,bmap_nblocks,inode_nblocks,nblocks);
+	if (size ==0)
+		return 1;
+
+	/* Fill file system with zeros. */
+	kprintf ("Mkfs: Initialisation of the file system");
+	of = 0;
+	kmemset(buf, 0, BLOCK_SIZE);
+	for (size_t i = 0; i < size; i += BLOCK_SIZE) //size
+	{
+		bdev_write(dev, buf, BLOCK_SIZE, of);
+		of += BLOCK_SIZE;
+	}
+	
+	/* Initialize superblock. */
+	kprintf ("Mkfs: Initialize superblock");
+	if (init_super(dev,ninodes, nblocks, imap_nblocks, bmap_nblocks, inode_nblocks))
+		return 1;
+
+	/* Create inode map. */
+	kprintf("Mkfs: Create inode map");
+	create_inode_map(dev,imap_nblocks,imap_bitmap);
+	
+	/* Create block map. */
+	kprintf("Mkfs: Create block map");
+	create_block_map(dev,imap_nblocks,zmap_bitmap, bmap_nblocks);
+	
+	/*Recuperation of the superblock*/
+	super = superblock_read(dev);
+	
+	if (super == NULL)
+	{
+		kprintf("Mkfs: Echec of the super block's recuperation"); 
+		return 1;
+	}
+	superblock_unlock(super);
+
+	if (create_root_dir(super,uid,gid ))
+		return 1;
+
 	bsync();
-	return 1;
+	return 0;
 }
 
 /**
@@ -506,17 +563,17 @@ PUBLIC int minix_mkfs
  */
 PRIVATE struct super_operations super_o_minix = 
 {
-		&inode_read_minix,			/*inode_read*/ 
-		&inode_write_minix,			/*inode_write*/
-		&inode_free_minix,			/*inode_free*/
-		&inode_truncate_minix,		/*inode_truncate*/
-		&inode_alloc_minix,			/*inode_alloc*/
-		NULL,						/*notify_change*/
-		NULL,						/*put inode*/
-		&superblock_put_minix,		/*put_super*/
-		&superblock_write_minix,	/*write_super*/
-		&superblock_stat_minix,		/*superblock_stat*/
-		&init_minix 				/*remount_fs*/
+		&inode_read_minix,			/* inode_read 		*/ 
+		&inode_write_minix,			/* inode_write 		*/
+		&inode_free_minix,			/* inode_free 		*/
+		&inode_truncate_minix,		/* inode_truncate 	*/
+		&inode_alloc_minix,			/* inode_alloc 		*/
+		NULL,						/* notify_change 	*/
+		NULL,						/* put inode 		*/
+		&superblock_put_minix,		/* put_super 		*/
+		&superblock_write_minix,	/* write_super 		*/
+		&superblock_stat_minix,		/* superblock_stat 	*/
+		&init_minix 				/* remount_fs 		*/
 };
 
 PUBLIC struct inode_operations inode_o_minix =
@@ -526,15 +583,11 @@ PUBLIC struct inode_operations inode_o_minix =
 	&dir_remove_minix,
 	&file_read_minix,
 	&file_write_minix,
+	&dirent_search_minix
 };
 
-
-
-
-
-
 PRIVATE struct file_system_type fs_minix = {
-	NULL,
+	superblock_read_minix,
 	&super_o_minix,
 	"minix"
 };
@@ -544,10 +597,10 @@ PUBLIC struct super_operations * so_minix(void){
 }
 
 /**
- * @brief initialise the file system in the virtual file system.
+ * @brief Initialise the file system in the virtual file system.
  */
 
 PUBLIC void init_minix (){
 	if (fs_register( MINIX , &fs_minix))
-		kpanic ("failed du register file system minix");
+		kpanic ("Failed to register minix file system");
 }

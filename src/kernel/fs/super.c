@@ -104,7 +104,7 @@ PRIVATE void superblock_write(struct superblock *sb)
 	/* Nothing to be done. */
 	if (!(sb->flags & SUPERBLOCK_DIRTY))
 		return;
-	if (!sb->s_op||!sb->s_op->superblock_write)
+	if (!sb->s_op || !sb->s_op->superblock_write)
 		kpanic ("WRITE: super_operation not initialized");
 	sb->s_op->superblock_write(sb);
 	
@@ -211,9 +211,8 @@ PUBLIC void superblock_unlock(struct superblock *sb)
  */
 PUBLIC void superblock_put(struct superblock *sb)
 {
-	//superblock_put_minix(sb);
-	if (!sb->s_op||!sb->s_op->superblock_put)
-		kpanic ("super_operation not initialized");
+	if (!sb->s_op || !sb->s_op->superblock_put)
+		kpanic ("Super_operation not initialized.");
 	sb->s_op->superblock_put(sb);
 	
 	superblock_unlock(sb);
@@ -240,16 +239,22 @@ PUBLIC struct superblock *superblock_read(dev_t dev)
 {
 
 	struct superblock *sb;     /* In-core superblock.     */
-	
+	struct file_system_type *fs;
 		
 	/* Get empty superblock. */	
 	sb = superblock_empty();
 	if (sb == NULL)
 		return NULL;
-	// if (!sb->s_op||!sb->s_op->superblock_read)
-	// 	kpanic ("super_operation not initialized");
-	// sb->s_op->superblock_read(dev,sb);
-	superblock_read_minix(dev,sb);
+
+	/*Get the file_system of the device*/
+	fs = fs_from_device(dev);
+	if (fs != NULL)
+	{
+		fs->superblock_read(dev,sb);	
+		return (sb);
+	}
+	else 
+		superblock_read_minix(dev,sb);
 
 	return (sb);
 }
@@ -293,10 +298,9 @@ PUBLIC void superblock_sync(void)
  */
 PUBLIC void superblock_stat(struct superblock *sb, struct ustat *ubuf)
 {
-	if (!sb->s_op||!sb->s_op->superblock_stat)
-		kpanic ("super_operation not initialized");
+	if (!sb->s_op || !sb->s_op->superblock_stat)
+		kpanic ("Super_operation not initialized.");
 	sb->s_op->superblock_stat(sb,ubuf);
-	//superblock_stat_minix(sb,ubuf);
 }
 
 /**

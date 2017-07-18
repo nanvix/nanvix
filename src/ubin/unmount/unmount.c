@@ -40,7 +40,7 @@ int main(int argc, char *const argv[])
 	/* Missing arguments. */
 	if (argc < 1)
 	{
-		printf ("To few argument, you need to give the name of the mounting point\n");
+		printf ("Too few argument, you need to give the name of the mounting point\n");
 		return (EXIT_FAILURE);
 	}
 
@@ -49,7 +49,7 @@ int main(int argc, char *const argv[])
 
 	/* Mount file system. */
 	if (unmount( destination_dir))
-		printf ("The unmountfailed\n");
+		printf ("The unmount failed\n");
 	
 	return (EXIT_SUCCESS);
 }

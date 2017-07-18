@@ -38,7 +38,7 @@
 	EXTERN void inode_truncate_minix(struct inode *);
 	
 	EXTERN void init_minix (void);
-	EXTERN int minix_mkfs(const char *diskfile, uint16_t ninodes, uint16_t nblocks, uint16_t uid, uint16_t gid);
+	EXTERN int minix_mkfs(const char *, uint16_t, uint16_t, uint16_t, uint16_t);
 	EXTERN struct super_operations * so_minix(void);
 
 
@@ -52,6 +52,8 @@
 	PUBLIC int dir_remove_minix(struct inode *, const char *);
 	PUBLIC ssize_t file_read_minix(struct inode *, void *, size_t , off_t );
 	PUBLIC ssize_t file_write_minix(struct inode *, const void *, size_t , off_t);
+	EXTERN struct d_dirent *dirent_search_minix (struct inode *, const char *, struct buffer **, int);
+
 
 	EXTERN struct inode_operations inode_o_minix;
 

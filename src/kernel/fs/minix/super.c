@@ -85,7 +85,6 @@ PUBLIC void superblock_write_minix(struct superblock *sb)
  */
 PUBLIC void superblock_put_minix(struct superblock *sb)
 {
-	//TODO je sais pas ou ca va ..
 	/* Double free. */
 	if (sb->count == 0)
 		kpanic("freeing superblock twice");
@@ -131,11 +130,6 @@ PUBLIC struct superblock *superblock_read_minix(dev_t dev, superblock * sb)
 {
 	struct buffer *buf;        /* Buffer disk superblock. */
 	struct d_superblock *d_sb; /* Disk superblock.        */
-		
-	/* Get empty superblock. */	
-	// sb = superblock_empty();
-	// if (sb == NULL)
-	// 	goto error0;
 	
 	/* Read superblock from device. */
 	buf = bread(dev, 1);
@@ -184,7 +178,6 @@ PUBLIC struct superblock *superblock_read_minix(dev_t dev, superblock * sb)
 	
 error1:
 	brelse(buf);
-	//superblock_unlock(sb)
 	return (NULL);
 }
 
