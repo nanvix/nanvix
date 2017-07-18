@@ -43,7 +43,7 @@ int main(int argc, char *const argv[])
 	/* Missing arguments. */
 	if (argc < 2)
 	{
-		printf ("missing arguments\n");
+		printf ("Missing arguments\n");
 		return (EXIT_FAILURE);
 	}
 
@@ -53,7 +53,7 @@ int main(int argc, char *const argv[])
 	
 	/* Mount file system */
 	if (mount(device, destination_dir))
-		printf("failed to mount()\n");
+		printf("Failed to mount\n");
 	
 	return (EXIT_SUCCESS);
 }

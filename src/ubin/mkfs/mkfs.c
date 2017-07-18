@@ -27,7 +27,7 @@
  */
 static void usage(void)
 {
-	printf("usage: mkfs <input file> <file sytem name> <ninodes> <nblocks> \n");
+	printf("Usage: mkfs <input file> <file sytem name> <ninodes> <nblocks> \n");
 	exit(EXIT_SUCCESS);
 }
 
@@ -39,7 +39,7 @@ int main(int argc, char **argv)
 	unsigned ninodes;		/* # inodes in the file system.      */
 	unsigned nblocks;		/* # data blocks in the file system. */
 	const char *diskfile;	/* Disk file name.                   */
-	const char *fs_name;	/*file system fs_name				 */	
+	const char *fs_name;	/* File system fs_name				 */	
 	
 	/* Missing arguments. */
 	if (argc < 5)
@@ -50,13 +50,11 @@ int main(int argc, char **argv)
 	fs_name= argv[2];
 	sscanf(argv[3], "%u", &ninodes);
 	sscanf(argv[4], "%u", &nblocks);
-	
-	//minix_mkfs(diskfile, ninodes, nblocks, atoi(argv[4]), atoi(argv[5]));
 
 	printf("fs: mkfs %s,%s,%d,%d\n",diskfile,fs_name,ninodes,nblocks);
 
 	int size = ninodes <<16 ;
-	size = size +nblocks;//  TODO dirty
+	size = size +nblocks;
 
 	mkfs(diskfile,fs_name, size);
 

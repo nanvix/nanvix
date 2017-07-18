@@ -39,7 +39,6 @@ PUBLIC int sys_unmount(const char *target)
 		return (curr_proc->errno);
 	}
 		
-
-	kprintf("fs: I should unmount the device on %s", ktarget);
+	kprintf("fs: Unmount the device on %s", ktarget);
 	return unmount(ktarget);
 }

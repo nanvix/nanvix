@@ -32,8 +32,8 @@ PUBLIC int sys_mkfs(const char *diskfile, const char *fs_name, int size)
 {
 	unsigned ninodes;     	/* # inodes in the file system.     	*/
 	unsigned nblocks;		/* # data blocks in the file system.	*/
-	char * kdiskfile;		/*file of the diskfile 					*/
-	char * kfs_name;		/*name of the file system				*/
+	char * kdiskfile;		/* file of the diskfile 				*/
+	char * kfs_name;		/* name of the file system				*/
 
 	/*Get the number of inode*/
 	ninodes=size >>16;

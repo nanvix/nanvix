@@ -42,7 +42,8 @@
   #include <sys/types.h> 
   #include <stdint.h> 
   #include <ustat.h> 
- 
+  //changer
+  #include <limits.h>  
 /*============================================================================* 
  *                              Block Buffer Library                          * 
  *============================================================================*/ 
@@ -97,7 +98,20 @@
     INODE_VALID  = (1 << 3), /**< Valid inode? */ 
     INODE_PIPE   = (1 << 4)  /**< Pipe inode?  */ 
   }; 
+
+  typedef struct inode inode;
     
+  struct inode_operations
+  {
+    ssize_t (*dir_read)(struct inode *, void *, size_t , off_t );
+    int (*dir_add)(struct inode *, struct inode *, const char *);
+    int (*dir_remove)(struct inode *, const char *);
+    ssize_t (*file_read)(struct inode *, void *, size_t , off_t );
+    ssize_t (*file_write)(struct inode *, const void *, size_t , off_t);
+    struct d_dirent *(*dirent_search) (struct inode *, const char *, struct buffer **, int);
+
+  };
+
   /** 
    * @brief In-core inode. 
    */ 
@@ -122,8 +136,12 @@
     struct inode *hash_next;  /**< Next inode in the hash table.         */ 
     struct inode *hash_prev;  /**< Previous inode in the hash table.     */ 
     struct process *chain;    /**< Sleeping chain.                       */ 
+    struct inode_operations * i_op;
+    union {
+      struct d_inode minix;
+    } u;
   }; 
-   
+
   /**@}*/ 
    
   /* Forward definitions. */ 
@@ -141,7 +159,6 @@
   EXTERN int mount (char*, char*); 
   EXTERN int unmount (char*);
   EXTERN int mkfs (const char *, uint16_t, uint16_t, uint16_t, uint16_t);
-  EXTERN void print_mount_table(void); 
   PUBLIC struct inode * cross_mount_point_up (struct inode *);
   PUBLIC struct inode * cross_mount_point_down (struct inode *);
   PUBLIC int root_fs (struct inode *);
