@@ -3,12 +3,14 @@
 #include <errno.h>
 
 /**
- * 	@brief closes a semaphore for calling process
+ *	@brief Post action : increments semaphore value
+ *		  				 and awaken semaphore's 
+ *						 sleeping processes.
  *
- *	@param sem The semaphore to close
+ *	@param sem Semaphore's address/
  *
  *	@returns 0 in case of successful completion
- *			 SEM_FAILED otherwise
+ *			 (-1) otherwise
  */
 int sem_post(sem_t* sem)
 {	

@@ -27,6 +27,14 @@
 
 /**
  * @brief Opens a semaphore.
+ *		 
+ * @param	name 	Semaphore's absolute path.
+ *			oflag	Creation flags.
+ *			mode	User permissions.
+ *			value 	Semaphore's value.
+ *
+ * @returns 0 in case of successful completion
+ *			(-1) otherwise.
  */
 sem_t* sem_open(const char* name, int oflag, ...)
 {	

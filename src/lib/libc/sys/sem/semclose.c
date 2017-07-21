@@ -4,12 +4,13 @@
 #include <errno.h>
 
 /**
- * 	@brief closes a semaphore for calling process
+ * @brief Calling process closes the semaphore
+ *		 
+ * @param sem Address of the semaphore which should be
+ *			  closed
  *
- *	@param sem The semaphore to close
- *
- *	@returns 0 in case of successful completion
- *			 SEM_FAILED otherwise
+ * @returns Returns 0 in case of successful completion
+ *					(-1) otherwise
  */
 int sem_close(sem_t* sem)
 {	

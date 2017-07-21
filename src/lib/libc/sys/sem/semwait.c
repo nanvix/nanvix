@@ -2,12 +2,14 @@
 #include <errno.h>
 
 /**
- * @brief	Waits on a semaphore
+ * @brief Wait action : consume a ressource if available
+ 						sleeps otherwise.
  *		 
- * @param	sem The blocking semaphore
+ * @param sem Semaphore's address
  *
- * @returns returns 0 in case of successful completion
- *			returns SEM_FAILED otherwise
+ * @returns 0 in case of successful completion
+ *			(-1) otherwise
+ *
  */
 int sem_wait(sem_t *sem)
 {	

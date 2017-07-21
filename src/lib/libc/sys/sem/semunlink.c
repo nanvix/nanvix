@@ -2,12 +2,12 @@
 #include <errno.h>
 
 /**
- * @brief	Unlinks a semaphore for deletion
+ * @brief	Unlinks a semaphore.
  *		 
- * @param	name Semaphore name
+ * @param	name Semaphore's absolute path.
  *
- * @returns returns 0 in case of successful completion
- *			returns SEM_FAILED otherwise
+ * @returns 0 in case of successful completion,
+ *			(-1) otherwise.
  */
 int sem_unlink(const char *name)
 {	

@@ -2,13 +2,14 @@
 #include <errno.h>
 
 /**
- * @brief Closes a semaphore for a given process
+ * @brief Post action : increments semaphore value
+ *		 				and awaken semaphore's 
+ 						sleeping processes.
  *		 
- * @param idx Semaphore index (in semaphore
- *			  table to close
+ * @param idx The semaphore index in semtable.
  *
- * @returns 0 in case of successful completion
- *			error code otherwise
+ * @returns 0 in case of successful completion,
+ *			Corresponding error code otherwise.
  */
 PUBLIC int sys_sempost(int idx)
 {
@@ -25,6 +26,7 @@ PUBLIC int sys_sempost(int idx)
 			break;
 	}
 
+	/* Semaphore not opened by the process */
 	if (i == PROC_MAX)
 		return (-1);
 

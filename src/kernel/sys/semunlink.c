@@ -3,12 +3,12 @@
 #include <nanvix/syscall.h>
 
 /**
- * @brief Unlinks a semaphore for future deletion
+ * @brief	Unlinks a semaphore.
  *		 
- * @param name Semaphore name
+ * @param	name Semaphore's absolute path.
  *
- * @returns Returns 0 in case of successful completion
- *			returns error code otherwise
+ * @returns 0 in case of successful completion
+ *			Corresponding error code otherwise.
  */
 PUBLIC int sys_semunlink(const char *name)
 {

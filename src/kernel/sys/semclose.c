@@ -2,12 +2,12 @@
 #include <errno.h>
 
 /**
- * @brief close a semaphore for a given process
+ * @brief Calling process closes the semaphore
  *		 
- * @param num Semaphore inode number 
+ * @param idx The semaphore index in semtable
  *
- * @returns returns 0 in case of successful completion
- *			returns SEM_FAILED otherwise
+ * @returns Returns 0 in case of successful completion
+ *					corresponding error code otherwise
  */
 PUBLIC int sys_semclose(int idx)
 {
@@ -34,12 +34,18 @@ PUBLIC int sys_semclose(int idx)
 		}
 	}
 
+	/*  
+	 *  The semaphore is in user table but the PID isn't on 
+	 *  the semaphore -> sem should be freed. It can happen
+	 *  if the inode is removed outside of system calls
+	 */
 	if (i == PROC_MAX)
-		return 0;			/* The semaphore is in user table but the PID isn't on the semaphore -> sem should be freed */
+		return 0;			
 
 	char found;
 	found = 0;
 	i++;
+
 	/* Searching for multiple openings */
 	while (i < PROC_MAX)
 	{
@@ -55,6 +61,11 @@ PUBLIC int sys_semclose(int idx)
 	{
 		inode_put(seminode);
 		inode_unlock(seminode);
+		
+		/* 
+		 *  1 is returned to userland so it is known that the process
+		 *  has opened the semaphore multiple times.
+		 */
 		return 1;
 	}
 	else

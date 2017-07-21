@@ -2,16 +2,17 @@
 #include <errno.h>
 
 /**
- * @brief Waits on a semaphore
+ * @brief Wait action : consume a ressource if available
+ *						sleeps otherwise.
  *		 
- * @param num The inode number of the semaphore
+ * @param idx The semaphore index in semtable
  *
- * @returns returns 0 in case of successful completion
- *			returns SEM_FAILED otherwise
+ * @returns 0 in case of successful completion
+ *			Corresponding error code otherwise.
  *
  * TODO for error detection :
  *			EDEADLK : A deadlock condition was detected.
- *			EINTR : A signal interrupted this function.
+ *					  Seems not implemented on other OS
  */
 PUBLIC int sys_semwait(int idx)
 {
@@ -27,8 +28,9 @@ PUBLIC int sys_semwait(int idx)
 			break;
 	}
 
+	/* Semaphore not opened by the process */
 	if (i == PROC_MAX)
-		return -1;
+		return (-EINVAL);
 
 	seminode = inode_get(semtable[idx].dev, semtable[idx].num);
 
