@@ -56,9 +56,6 @@ PUBLIC int sys_semunlink(const char *name)
 
 	/* Unlinking the semaphore */
 	semtable[idx].name[0] = '\0';
-	// inode_unlock(seminode);
-	/* remove_dir will unlink the inode. */
-	// remove_semaphore(semname);
 	inode_put(seminode);
 
 	return 0;	/* Successful completion */

@@ -111,7 +111,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 		{
 			inode_put(inode);
 			inode_unlock(inode);
-			return (EACCES);
+			return (-EACCES);
 		}
 
 		for (i = 0; i < PROC_MAX; i++)

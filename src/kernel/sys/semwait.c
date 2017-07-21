@@ -38,7 +38,16 @@ PUBLIC int sys_semwait(int idx)
 	inode_unlock(seminode);
 
 	while (semtable[idx].value <= 0)
+	{
 		sleep(semtable[idx].semwaiters,curr_proc->priority);
+		
+		/* Awaken by a signal. */
+		if (issig())
+		{
+			inode_put(seminode);
+			return (-EINTR);
+		}
+	}
 
 	semtable[idx].value--;
 	inode_put(seminode);
