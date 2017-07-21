@@ -11,7 +11,17 @@
  */
 int sem_wait(sem_t *sem)
 {	
-	int ret;
+	int ret, i;
+
+	if (sem == NULL)
+		return (-1);
+
+	for (i = 0; i < OPEN_MAX; i++)
+		if (usem[i] == sem)
+			break;
+
+	if (i == OPEN_MAX)
+		return (-1);
 
 	__asm__ volatile (
 		"int $0x80"

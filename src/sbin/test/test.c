@@ -378,8 +378,14 @@ void work(void)
 void producer(int nbprod, int limit)
 {
 	sem_t* sem, *semlim;
-	sem = sem_open("/home/mysem/ressources", O_CREAT, 0777,0);
-	semlim = sem_open("/home/mysem/limite", O_CREAT, 0777,limit);
+	sem = sem_open("/home/mysem/ress", O_CREAT, 0644,0);
+	semlim = sem_open("/home/mysem/lim", O_CREAT, 0644,limit);
+
+	if ( !sem || !semlim )
+	{
+		printf("Semaphore opening problem\n");
+		exit(EXIT_FAILURE);
+	}
 
 	for (int j = 0; j < nbprod; j++)
 	{
@@ -394,8 +400,14 @@ void producer(int nbprod, int limit)
 void consumer(int nbcons, int limit)
 {
 	sem_t *sem, *semlim;
-	sem = sem_open("/home/mysem/ressources", O_CREAT, 0777,0);
-	semlim = sem_open("/home/mysem/limite", O_CREAT, 0777,limit);
+	sem = sem_open("/home/mysem/ress", O_CREAT, 0644,0);
+	semlim = sem_open("/home/mysem/lim", O_CREAT, 0644,limit);
+
+	if ( !sem || !semlim )
+	{	
+		printf("Semaphore opening problem\n");
+		exit(EXIT_FAILURE);	
+	}
 
 	for (int j = 0; j < nbcons; j++)
 	{
@@ -749,7 +761,7 @@ int main(int argc, char **argv)
 		{
 			printf("Semaphore open/close Test\n");
 			printf("  Result [%s]\n",
-				(!sem_test_open_close2()) ? "PASSED" : "FAILED");
+				(!sem_test_open_close()) ? "PASSED" : "FAILED");
 		}
 
 		/* Semaphore test. */
@@ -759,14 +771,7 @@ int main(int argc, char **argv)
 			printf("  Result [%s]\n",
 				(!sem_test()) ? "PASSED" : "FAILED");
 		}
-			/* Semaphore test. */
-		else if (!strcmp(argv[i], "prodcons33"))
-		{
-			printf("Producer consummer Test\n");
-			printf("  Result [%s]\n",
-				(!sem_test_open_close()) ? "PASSED" : "FAILED");
-		}
-	
+
 		/* Wrong usage. */
 		else
 			usage();
