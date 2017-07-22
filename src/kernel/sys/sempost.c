@@ -37,7 +37,7 @@ PUBLIC int sys_sempost(int idx)
 
 	semtable[idx].value++;
 	
-	if (semtable[idx].value>0)
+	if (semtable[idx].value == 1)
 		wakeup(semtable[idx].semwaiters);
 
 	inode_put(seminode);
