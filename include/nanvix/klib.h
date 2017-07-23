@@ -231,6 +231,7 @@
 	 * @name Formated Output Functions
 	 */
 	/**@{*/
+	PUBLIC int itoa(char *str, unsigned num, int base); 
 	EXTERN int kvsprintf(char *, const char *, va_list);
 	EXTERN void chkout(dev_t);
 	EXTERN void kprintf(const char *, ...);
