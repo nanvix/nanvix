@@ -2,16 +2,17 @@
 #include <errno.h>
 
 /**
- * @brief Waits on a semaphore
+ * @brief Wait action : consume a ressource if available
+ *						sleeps otherwise.
  *		 
- * @param num The inode number of the semaphore
+ * @param idx The semaphore index in semtable
  *
- * @returns returns 0 in case of successful completion
- *			returns SEM_FAILED otherwise
+ * @returns 0 in case of successful completion
+ *			Corresponding error code otherwise.
  *
  * TODO for error detection :
  *			EDEADLK : A deadlock condition was detected.
- *			EINTR : A signal interrupted this function.
+ *					  Seems not implemented on other OS
  */
 PUBLIC int sys_semwait(int idx)
 {
@@ -23,13 +24,13 @@ PUBLIC int sys_semwait(int idx)
 
 	for (i = 0; i < PROC_MAX; i++)
 	{
-		/* Removing the proc pid in the semaphore procs table */
 		if (semtable[idx].currprocs[i] == curr_proc->pid)
 			break;
 	}
 
+	/* Semaphore not opened by the process */
 	if (i == PROC_MAX)
-		return -1;
+		return (-EINVAL);
 
 	seminode = inode_get(semtable[idx].dev, semtable[idx].num);
 
@@ -39,7 +40,16 @@ PUBLIC int sys_semwait(int idx)
 	inode_unlock(seminode);
 
 	while (semtable[idx].value <= 0)
+	{
 		sleep(semtable[idx].semwaiters,curr_proc->priority);
+		
+		/* Awaken by a signal. */
+		if (issig())
+		{
+			inode_put(seminode);
+			return (-EINTR);
+		}
+	}
 
 	semtable[idx].value--;
 	inode_put(seminode);

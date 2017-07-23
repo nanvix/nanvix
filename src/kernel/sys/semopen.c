@@ -20,19 +20,21 @@ int add_table(int value, const char* semname, int idx, struct inode* seminode)
 }
 
 /**
- * @brief Opens a semaphore
+ * @brief Opens a semaphore.
  *		 
- * @param	name 	Name of the semaphore
- *			oflag	Creation flags
- *			mode	User permissions
- *			value 	Semaphore value
+ * @param	name 	Semaphore's absolute path.
+ *			oflag	Creation flags.
+ *			mode	User permissions.
+ *			value 	Semaphore's value.
  *
- * @returns the inode number of the semaphore in the
+ * @returns Index in the semaphore table in case of successful
+ *			completion
+ *			Corresponding error code otherwise.
+ *			
  */
 
 /* TODO for error detection :
  *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
- *			EINTR : The sem_open() operation was interrupted by a signal.
  */
 PUBLIC int sys_semopen(const char* name, int oflag, ...)
 {
@@ -111,7 +113,7 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 		{
 			inode_put(inode);
 			inode_unlock(inode);
-			return (EACCES);
+			return (-EACCES);
 		}
 
 		for (i = 0; i < PROC_MAX; i++)

@@ -1,23 +1,29 @@
 #include <nanvix/syscall.h>
+#include <errno.h>
 
 /**
- * @brief	Waits on a semaphore
+ * @brief Wait action : consume a ressource if available
+ 						sleeps otherwise.
  *		 
- * @param	sem The blocking semaphore
+ * @param sem Semaphore's address
  *
- * @returns returns 0 in case of successful completion
- *			returns SEM_FAILED otherwise
+ * @returns 0 in case of successful completion
+ *			(-1) otherwise
+ *
  */
 int sem_wait(sem_t *sem)
 {	
-	int ret;
+	int ret, i;
 
 	if (sem == NULL)
 		return (-1);
 
-	for (int i = 0; i < OPEN_MAX; i++)
+	for (i = 0; i < OPEN_MAX; i++)
 		if (usem[i] == sem)
-			break;	
+			break;
+
+	if (i == OPEN_MAX)
+		return (-1);
 
 	__asm__ volatile (
 		"int $0x80"
@@ -26,5 +32,11 @@ int sem_wait(sem_t *sem)
 		  "b" (sem->semid)
 	);
 
-	return (ret);
+	if (ret < 0)
+	{
+		errno = ret;
+		return (-1);
+	}
+
+	return (0);
 }

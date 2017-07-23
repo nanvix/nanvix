@@ -1,24 +1,30 @@
 #include <nanvix/syscall.h>
 #include <stdlib.h>
+#include <errno.h>
 
 /**
- * 	@brief closes a semaphore for calling process
+ *	@brief Post action : increments semaphore value
+ *		  				 and awaken semaphore's 
+ *						 sleeping processes.
  *
- *	@param sem The semaphore to close
+ *	@param sem Semaphore's address/
  *
  *	@returns 0 in case of successful completion
- *			 SEM_FAILED otherwise
+ *			 (-1) otherwise
  */
 int sem_post(sem_t* sem)
 {	
-	int ret;
+	int ret, i;
 
 	if (sem == NULL)
 		return (-1);
 
-	for (int i = 0; i < OPEN_MAX; i++)
+	for (i = 0; i < OPEN_MAX; i++)
 		if (usem[i] == sem)
 			break;
+
+	if (i == OPEN_MAX)
+		return (-1);
 
 	__asm__ volatile (
 		"int $0x80"
@@ -27,5 +33,11 @@ int sem_post(sem_t* sem)
 		  "b" (sem->semid)
 	);
 
-	return (ret);
+	if (ret < 0)
+	{
+		errno = ret;
+		return (-1);
+	}
+
+	return (0);
 }
