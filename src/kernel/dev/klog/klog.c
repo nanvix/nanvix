@@ -22,12 +22,15 @@
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
-#include <sys/types.h>
-	
+#include <nanvix/syscall.h>
+#include <sys/types.h> 
+
 /* Error checking. */
 #if KLOG_SIZE > KBUFFER_SIZE
 	#error "KLOG_SIZE must be smaller than or equal to KBUFFER_SIZE"
 #endif
+
+#define TL_CONST 3
 
 /**
  * @brief Kernel log.
@@ -78,6 +81,49 @@ PRIVATE const char *print_code(const char *buffer, int *n, int *head, int *tail,
 	return skip_code(buffer,n);
 }
 
+/**
+ * @brief Add clock ticks to klog.buffer
+ * 
+ * @param head, tail    Pointers on buffer head and tail
+ * @param char_printed  Number of chaf added to buffer for log_level (0 or (TL_CONST + size of int returned by sys_gticks()))
+ */
+PRIVATE void print_ticks(int *head, int *tail, int *char_printed)
+{
+	/* loop variables */
+	int i,j;
+
+	/* temporary buffers */
+	char string_ticks[sizeof(int)*8 + 1] = "";
+	char string_ticks_const[TL_CONST + 1] = " - ";
+	char buffer[sizeof(int)*8 + TL_CONST + 1];
+
+	/* compute clock ticks */
+	int ticks_lenght = itoa(string_ticks,(unsigned)sys_gticks(),'d');
+
+	/* put ticks in temporary buffer */
+	for(j=0;j<ticks_lenght;j++)
+	{
+		buffer[j] = string_ticks[j];
+	}
+
+	/* put esthetic in temporary buffer */
+	for(i=0;i<TL_CONST;i++)
+	{
+		buffer[i + ticks_lenght] = string_ticks_const[i];
+	}
+
+	/* Copy data to ring buffer */
+	for (i=0;i<(ticks_lenght + TL_CONST);i++)
+	{
+		klog.buffer[*tail] = buffer[i];
+		*tail = (*tail + 1)&(KLOG_SIZE - 1);
+		
+		if (*tail == *head)
+			*head = *head + 1;
+	}
+	/* number of characters added to buffer for ticks printing */
+	*char_printed =+ (ticks_lenght + TL_CONST);
+}
 
 /**
  * @brief Writes to kernel log.
@@ -105,7 +151,11 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 
 	/* If there is a log_level code, add it in buffer and skip it */
 	p = print_code(buffer,&lenght,&head,&tail,&char_printed);
-	
+
+	/* if a code had been printed, then clock ticks since initialization are printed too */
+	if (char_printed)
+			print_ticks(&head,&tail,&char_printed);
+
 	/* Copy data to ring buffer. */
 	while (lenght-- > 0)
 	{
@@ -116,7 +166,7 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 		if (tail == head)
 			head++;
 	}
-	
+
 	/* Write back pointers. */
 	klog.head = head;
 	klog.tail = tail;
@@ -184,7 +234,7 @@ PRIVATE struct cdev klog_driver = {
 	NULL,        /* ioctl() */
 	&klog_close  /* close() */
 };
-
+	
 /**
  * @brief Initializes the kernel log driver.
  */
