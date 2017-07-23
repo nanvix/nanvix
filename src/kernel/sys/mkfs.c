@@ -1,7 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *              2017-2017 Romane Gallier <romanegallier@gmail.com>
- *
+ * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * 
  * This file is part of Nanvix.
  * 
  * Nanvix is free software; you can redistribute it and/or modify
@@ -18,27 +17,40 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #include <nanvix/const.h>
 #include <nanvix/fs.h>
 #include <nanvix/klib.h>
 #include <errno.h>
 
-/**
- * Mounts a file system.
- *
- * @param device  Device name.
- * @param target  Target directory.
- */
-PUBLIC int sys_unmount(const char *target)
-{
-	char *ktarget;
 
-	/* Get target directory. */
-	if ((ktarget = getname(target)) == NULL)
-	{
+
+/**
+ * @brief Creates a Minix file system.
+ */
+PUBLIC int sys_mkfs(const char *diskfile, const char *fs_name, int size)
+{
+	unsigned ninodes;     	/* # inodes in the file system.     	*/
+	unsigned nblocks;		/* # data blocks in the file system.	*/
+	char * kdiskfile;		/* file of the diskfile 				*/
+	char * kfs_name;		/* name of the file system				*/
+
+	/*Get the number of inode*/
+	ninodes=size >>16;
+	
+	/*Get the number of block*/
+	nblocks=(size<<16)>>16;
+
+	/* Get device name. */
+	if ((kdiskfile = getname(diskfile)) == NULL)
 		return (curr_proc->errno);
-	}
-		
-	kprintf("fs: Unmount the device on %s", ktarget);
-	return unmount(ktarget);
+	
+	/* Get target directory. */
+	if ((kfs_name = getname(fs_name)) == NULL)
+		return (curr_proc->errno);
+
+	kprintf("%s,%s,%d,%d",kdiskfile,kfs_name, ninodes, nblocks);
+
+	mkfs(diskfile, ninodes, nblocks,0,0);
+	return 1;
 }

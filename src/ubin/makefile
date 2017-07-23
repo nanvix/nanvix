@@ -48,13 +48,14 @@ export CFLAGS += -Os -D_POSIX_C_SOURCE
 .PHONY: nim
 .PHONY: mount
 .PHONY: unmount
+.PHONY: mkfs
 
 # Newlib considers some POSIX functions as not strict
 export CFLAGS += -U__STRICT_ANSI__
 
 # Builds everything.
 all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat \
-	sync tsh ps mount unmount
+	sync tsh ps mount unmount mkfs
 
 # Builds cat.
 cat: 
@@ -160,6 +161,10 @@ mount:
 unmount: 
 	$(CC) $(CFLAGS) $(LDFLAGS) unmount/*.c -o $(UBINDIR)/unmount $(LIBDIR)/libc.a
 
+# Builds unmount.
+mkfs: 
+	$(CC) $(CFLAGS) $(LDFLAGS) mkfs/*.c -o $(UBINDIR)/mkfs $(LIBDIR)/libc.a
+
 # Clean compilation files.
 clean:
 	@rm -f $(UBINDIR)/cat
@@ -187,3 +192,4 @@ clean:
 	@rm -f $(UBINDIR)/nim
 	@rm -f $(UBINDIR)/mount
 	@rm -f $(UBINDIR)/unmount
+	@rm -f $(UBINDIR)/mkfs

@@ -33,7 +33,10 @@
 #endif
 
 /* Number of RAM disks. */
-#define NR_RAMDISKS 1
+#define NR_RAMDISKS 2
+#define RAMDISK1_SIZE		0x010000 /**< Init RAM disk 2 size.                */ 
+
+char ramdisk1 [RAMDISK1_SIZE];
 
 /*
  * RAM disks.
@@ -181,6 +184,11 @@ PUBLIC void ramdisk_init(void)
 	ramdisks[0].start = INITRD_VIRT;
 	ramdisks[0].end = INITRD_VIRT + INITRD_SIZE;
 	ramdisks[0].size = INITRD_SIZE;
+
+	ramdisks[1].start = (addr_t) ramdisk1;
+	ramdisks[1].end = ((addr_t) ramdisk1)+RAMDISK1_SIZE;
+	ramdisks[1].size = RAMDISK1_SIZE;
+
 	
 	err = bdev_register(RAMDISK_MAJOR, &ramdisk_driver);
 	

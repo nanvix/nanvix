@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *              2017-2017 Romane Gallier <romanegallier@gmail.com>
  * 
  * This file is part of Nanvix.
@@ -18,25 +18,35 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <nanvix/syscall.h>
+#include <errno.h>
+
 /**
- * @file
- * 
- * @brief Inode module implementation.
+ * Mounts a file system.
+ *
+ * @param device  Device name.
+ * @param target  Target directory.
  */
-#ifndef _INODE_MINIX_H_
-#define _INODE_MINiX_H_
+int mkfs (const char * diskfile, const char * fs_name, int size)
+{
+	int ret;
 
-	#include <nanvix/const.h>
-	#include <nanvix/dev.h>
-	#include <nanvix/fs.h>
+	__asm__ volatile(
+		"int $0x80"
+		: "=a" (ret)
+		: "0" (NR_mkfs),
+		  "b" (diskfile),
+		  "c" (fs_name),
+		  "d" (size)
+	);
 
-	/* Forward definitions. */
-	EXTERN void inode_write_minix(struct inode *);
-	EXTERN int inode_read_minix(dev_t, ino_t, struct inode *);
-	EXTERN void inode_free_minix(struct inode *);
-	EXTERN void inode_truncate_minix(struct inode *);
-	EXTERN int inode_alloc_minix(struct superblock *, struct inode *);
-	EXTERN void init_minix (void);
+	/* Error. */
+	if (ret < 0)
+	{
+		errno = -ret;
+		_REENT->_errno = -ret;
+		return (-1);
+	}
 	
-#endif
-
+	return (ret);
+}

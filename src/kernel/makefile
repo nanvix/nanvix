@@ -36,6 +36,7 @@ C_SRC = $(wildcard arch/$(ARCH)/*.c) \
         $(wildcard dev/ramdisk/*.c)  \
         $(wildcard dev/tty/*.c)      \
         $(wildcard fs/*.c)           \
+        $(wildcard fs/minix/*.c)      \
         $(wildcard init/*.c)         \
         $(wildcard lib/*.c)          \
         $(wildcard mm/*.c)           \
