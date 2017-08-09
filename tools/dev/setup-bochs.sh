@@ -1,5 +1,5 @@
-# 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+#
+# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -28,8 +28,12 @@ export WORKDIR=$CURDIR/nanvix-toolchain
 mkdir -p $WORKDIR
 cd $WORKDIR
 
+
+export CFLAGS=-pipe
+export CXXFLAGS=-pipe
+
 # Get required packages.
-apt-get install libgtk2.0-dev
+apt-get install -y libgtk2.0-dev
 
 # Get bochs.
 wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.8/bochs-2.6.8.tar.gz"
@@ -37,7 +41,8 @@ wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.8/bochs-2.6.8.tar.gz
 # Build Bochs
 tar -xvf bochs-2.6.8.tar.gz
 cd bochs-2.6.8/
-./configure --enable-x86-debugger --enable-debugger --enable-debugger-gui
+patch < $CURDIR/tools/dev/gdbstub.patch
+./configure --with-term --enable-gdb-stub
 sed -i '/^\<LIBS\>/ s/$/ -lpthread/' Makefile
 make all
 make install
