@@ -1,5 +1,5 @@
-# 
-# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+#
+# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -17,12 +17,14 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+
 #
 # Script parameters.
 #   $1 Educational kernel?
+#   $2 Generate ISO image?
 #
 EDUCATIONAL_KERNEL=$1
-
+GENERATE_ISO=$2
 # Root credentials.
 ROOTUID=0
 ROOTGID=0
@@ -31,23 +33,22 @@ ROOTGID=0
 NOOBUID=1
 NOOBUID=1
 
-LOOP=$(losetup -f)
 
 #
 # Inserts disk in a loop device.
 #   $1 Disk image name.
 #
 function insert {
-	losetup $LOOP $1
-	mount $LOOP /mnt
+	losetup $2 $1
+	mount $2 /mnt
 }
 
 #
 # Ejects current disk from loop device.
 #
 function eject {
-	umount $LOOP
-	losetup -d $LOOP
+	umount $1
+	losetup -d $1
 }
 
 # Generate passwords file
@@ -56,7 +57,7 @@ function eject {
 function passwords
 {
 	file="passwords"
-	
+
 	bin/useradd $file root root $ROOTGID $ROOTUID
 	bin/useradd $file noob noob $NOOBUID $NOOBUID
 
@@ -64,9 +65,9 @@ function passwords
 	if [ "$EDUCATIONAL_KERNEL" == "0" ]; then
 		chmod 600 $file
 	fi
-	
+
 	bin/cp.minix $1 $file /etc/$file $ROOTUID $ROOTGID
-	
+
 	# House keeping.
 	rm -f $file
 }
@@ -98,25 +99,67 @@ function format {
 function copy_files
 {
 	chmod 666 tools/img/inittab
-	
+
 	# Let's care for security...
 	if [ "$EDUCATIONAL_KERNEL" == "0" ]; then
 		chmod 600 tools/img/inittab
 	fi
 	bin/cp.minix $1 tools/img/inittab /etc/inittab $ROOTUID $ROOTGID
-	
+
 	passwords $1
-	
+
 	for file in bin/sbin/*; do
 		filename=`basename $file`
-		bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
+		is_debug=`echo $file | grep '.debug'`
+		if [ -z "$is_debug" ]; then
+			bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
+		fi;
 	done
-	
+
 	for file in bin/ubin/*; do
 		filename=`basename $file`
-		bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
+		is_debug=`echo $file | grep '.debug'`
+		if [ -z "$is_debug" ]; then
+			bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
+		fi;
 	done
 }
+#
+# Strip a binary from it's debug symbols and
+# add a GNU debug link to the original binary
+# $1 The binary to strip
+#
+function strip_binary
+{
+	is_debug=`echo $1| grep '.debug'`
+	if [ -z "$is_debug" ]; then
+		echo "Stripping $1"
+		directory=$(dirname $1)
+		if [ ! -d "debug/$directory" ]; then
+			mkdir -p debug/$directory
+		fi;
+
+		# Get debug symbols from the file
+		# objcopy --compress-debug-sections $1
+		cp $1 $1.debug
+
+		# Remove debug symbols from the file
+		strip --strip-debug --strip-unneeded $1
+
+		objcopy --add-gnu-debuglink=$1.debug $1 2>/dev/null
+	fi;
+
+}
+
+strip_binary bin/kernel
+
+for file in bin/sbin/*; do
+	strip_binary $file
+done
+
+for file in bin/ubin/*; do
+	strip_binary $file
+done
 
 # Build HDD image.
 dd if=/dev/zero of=hdd.img bs=512 count=131072
@@ -129,9 +172,23 @@ format initrd.img 128 512
 copy_files initrd.img
 
 # Build nanvix image.
-cp -f tools/img/blank.img nanvix.img
-insert nanvix.img
-cp bin/kernel /mnt/kernel
-cp initrd.img /mnt/initrd.img
-cp tools/img/menu.lst /mnt/boot/menu.lst
-eject
+# # Build live nanvix image.
+if [ "$GENERATE_ISO" = "--build-iso" ];
+then
+	mkdir -p nanvix-iso/boot/grub
+	cp bin/kernel nanvix-iso/kernel
+	cp initrd.img nanvix-iso/initrd.img
+	cp tools/img/menu.lst nanvix-iso/boot/grub/menu.lst
+	cp tools/img/stage2_eltorito nanvix-iso/boot/grub/stage2_eltorito
+	sed -i 's/fd0/cd/g' nanvix-iso/boot/grub/menu.lst
+	genisoimage -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 \
+		-input-charset utf-8 -boot-info-table -o nanvix.iso nanvix-iso
+else
+	LOOP=$(losetup -f)
+	cp -f tools/img/blank.img nanvix.img
+	insert nanvix.img $LOOP
+	cp bin/kernel /mnt/kernel
+	cp initrd.img /mnt/initrd.img
+	cp tools/img/menu.lst /mnt/boot/menu.lst
+	eject $LOOP
+fi
