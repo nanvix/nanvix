@@ -33,7 +33,7 @@ export CFLAGS=-pipe
 export CXXFLAGS=-pipe
 
 # Get required packages.
-apt-get install -y libgtk2.0-dev
+apt-get install -y libncurses5-dev
 
 # Get bochs.
 wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.8/bochs-2.6.8.tar.gz"
