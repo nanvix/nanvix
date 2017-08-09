@@ -110,16 +110,14 @@ function copy_files
 
 	for file in bin/sbin/*; do
 		filename=`basename $file`
-		is_debug=`echo $file | grep '.debug'`
-		if [ -z "$is_debug" ]; then
+		if [[ "$filename" != *.debug ]]; then
 			bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
 		fi;
 	done
 
 	for file in bin/ubin/*; do
 		filename=`basename $file`
-		is_debug=`echo $file | grep '.debug'`
-		if [ -z "$is_debug" ]; then
+		if [[ "$filename" != *.debug ]]; then
 			bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
 		fi;
 	done
@@ -131,13 +129,8 @@ function copy_files
 #
 function strip_binary
 {
-	is_debug=`echo $1| grep '.debug'`
-	if [ -z "$is_debug" ]; then
+	if [[ "$1" != *.debug ]]; then
 		echo "Stripping $1"
-		directory=$(dirname $1)
-		if [ ! -d "debug/$directory" ]; then
-			mkdir -p debug/$directory
-		fi;
 
 		# Get debug symbols from the file
 		# objcopy --compress-debug-sections $1
