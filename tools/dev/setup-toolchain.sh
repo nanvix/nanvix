@@ -1,5 +1,5 @@
-# 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+#
+# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -28,13 +28,15 @@ wget "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
 wget "http://ftp.gnu.org/gnu/gcc/gcc-5.3.0/gcc-5.3.0.tar.bz2"
 
 # Get required packages.
-apt-get install g++
+apt-get install -y g++ doxygen genisoimage gdb
 
 # Export variables.
 export PREFIX=/usr/local/cross
 export TARGET=i386-elf
+export CFLAGS=-pipe
+export CXXFLAGS=-pipe
 sh -c "echo 'export TARGET=$TARGET' > /etc/profile.d/var.sh"
-sh -c "echo 'export PATH=$PATH:$PREFIX/bin' >> /etc/profile.d/var.sh"
+sh -c "echo 'export PATH=\$PATH:$PREFIX/bin' >> /etc/profile.d/var.sh"
 
 # Build binutils.
 tar -xjvf binutils-2.25.tar.bz2
