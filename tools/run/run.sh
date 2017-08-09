@@ -1,5 +1,5 @@
-# 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+#
+# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -22,6 +22,11 @@
 #   - You should run this script with superuser privileges.
 #
 
-losetup /dev/loop1 nanvix.img
+DEBUG=$1
+FILE="tools/run/bochsrc.txt"
+if [ "$DEBUG" == "--debug" ]; then
+    sed 's/#GDBSTUB_ENABLED#/1/' $FILE.tpl > $FILE
+else
+    sed 's/#GDBSTUB_ENABLED#/0/' $FILE.tpl > $FILE
+fi;
 bochs -q -f tools/run/bochsrc.txt
-losetup -d /dev/loop1
