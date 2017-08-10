@@ -45,6 +45,7 @@ doc/*-kernel
 *.img
 *.iso
 nanvix-iso/*
+tools/run/bochsrc.txt
 
 # Exceptions.
 !doc/paper/img/*.pdf

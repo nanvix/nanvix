@@ -1,5 +1,5 @@
-# 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+#
+# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -43,7 +43,7 @@ export AR = $(TARGET)-ar
 export KEY = 13
 
 # Toolchain configuration.
-export CFLAGS    = -I $(INCDIR)
+export CFLAGS    = -g -I $(INCDIR)
 export CFLAGS   += -DKERNEL_HASH=$(KEY) -DEDUCATIONAL_KERNEL=$(EDUCATIONAL_KERNEL)
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
@@ -70,7 +70,7 @@ nanvix:
 # Builds system's image.
 image: $(BINDIR)/kernel tools
 	mkdir -p $(BINDIR)
-	bash $(TOOLSDIR)/build/build-img.sh $(EDUCATIONAL_KERNEL)
+	bash $(TOOLSDIR)/build/build-img.sh $(EDUCATIONAL_KERNEL) --build-iso
 
 # Builds documentation.
 documentation:
@@ -83,8 +83,8 @@ tools:
 
 # Cleans compilation files.
 clean:
-	@rm -f *.img
-	@rm -rf $(BINDIR)
+	@rm -f *.img *.iso
+	@rm -rf $(BINDIR) nanvix-iso
 	@rm -rf $(DOCDIR)/*-kernel
 	cd $(SRCDIR) && $(MAKE) clean
 	cd $(TOOLSDIR) && $(MAKE) clean

@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2016-2017 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -17,8 +17,8 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-/*
- * Copyright (c) 1990 Regents of the University of California.
+/*-
+ * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,28 +55,19 @@
 #include <errno.h>
 #include <stdlib.h>
 
-
-/**
- * @brief Converts a string to a long integer.
+/*
+ * Convert a string to a long integer.
  *
- * @param nptr   Start of string.
- * @param endptr End of string.
- * @param base   Base.
- *
- * @returns The converted value.
+ * Ignores `locale' stuff.  Assumes that the upper and lower case
+ * alphabets and digits are each contiguous.
  */
 long strtol(const char *nptr, char **endptr, int base)
 {
-	const char *s = nptr;
-	unsigned long acc;
-	int c;
-	unsigned long cutoff;
-	int neg = 0, any, cutlim;
-
-	/*
-	 * Ignores `locale' stuff.  Assumes that the upper and lower case
-	 * alphabets and digits are each contiguous.
-	 */
+	register const unsigned char *s = (const unsigned char *)nptr;
+	register unsigned long acc;
+	register int c;
+	register unsigned long cutoff;
+	register int neg = 0, any, cutlim;
 
 	/*
 	 * Skip white space and pick up leading +/- sign if any.
@@ -129,7 +120,7 @@ long strtol(const char *nptr, char **endptr, int base)
 			break;
 		if (c >= base)
 			break;
-		if ((any < 0) || (acc > cutoff) || ((acc == cutoff) && (c > cutlim)))
+               if (any < 0 || acc > cutoff || (acc == cutoff && c > cutlim))
 			any = -1;
 		else {
 			any = 1;
@@ -139,10 +130,9 @@ long strtol(const char *nptr, char **endptr, int base)
 	}
 	if (any < 0) {
 		acc = neg ? LONG_MIN : LONG_MAX;
-		errno = ERANGE;
 	} else if (neg)
 		acc = -acc;
 	if (endptr != 0)
-		*endptr = any ? (char *)(s - 1) : (char *)nptr;
+		*endptr = (char *) (any ? (char *)s - 1 : nptr);
 	return (acc);
 }

@@ -1,0 +1,8 @@
+bin
+.git
+doc
+doxygen
+include
+lib
+nanvix-iso
+src
