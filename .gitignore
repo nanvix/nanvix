@@ -20,7 +20,6 @@
 # Default rules.
 *.o
 *.a
-*.img
 *.pdf
 bochsout.txt
 bin/*
@@ -40,6 +39,17 @@ doc/*-kernel
 *.out
 *.dvi
 *.ini
+*.iso
+nanvix-iso/*
+
+# C Tags
+tags
+
+# ISO Images
+nanvix.iso
+nanvix-iso/*
+
+*.img
 
 # Exceptions.
 !doc/paper/img/*.pdf

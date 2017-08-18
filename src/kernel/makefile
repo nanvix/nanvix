@@ -1,6 +1,7 @@
 # 
 # Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
 #              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+#              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -40,6 +41,7 @@ C_SRC = $(wildcard arch/$(ARCH)/*.c) \
         $(wildcard mm/*.c)           \
         $(wildcard pm/*.c)           \
         $(wildcard sys/*.c)          \
+        $(wildcard debug/*.c)        \
 
 # Assembly source files.
 ASM_SRC = $(wildcard arch/$(ARCH)/*.S) \

@@ -1,6 +1,7 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -27,8 +28,8 @@
 #include <nanvix/mm.h>
 #include <nanvix/syscall.h>
 #include <nanvix/clock.h>
+#include <nanvix/debug.h>
 #include <fcntl.h>
-
 
 /**
  * @brief Forks the current process.
@@ -112,12 +113,17 @@ PRIVATE void init(void)
 
 /**
  * @brief Initializes the kernel.
+ *
+ * @param cmdline Command line parameters.
  */
-PUBLIC void kmain(void)
+PUBLIC void kmain(const char* cmdline)
 {		
 	pid_t pid;         /* Child process ID. */
 	struct process *p; /* Working process.  */
 	
+	if(!kstrcmp(cmdline,"debug"))
+		dbg_init();
+
 	/* Initialize system modules. */
 	dev_init();
 	mm_init();
@@ -125,7 +131,9 @@ PUBLIC void kmain(void)
 	fs_init();
 	
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
-	
+
+	dbg_execute();
+
 	/* Spawn init process. */
 	if ((pid = fork()) < 0)
 		kpanic("failed to fork idle process");
