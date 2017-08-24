@@ -36,11 +36,11 @@ export CXXFLAGS=-pipe
 apt-get install -y libncurses5-dev
 
 # Get bochs.
-wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.8/bochs-2.6.8.tar.gz"
+wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.9/bochs-2.6.9.tar.gz"
 
 # Build Bochs
-tar -xvf bochs-2.6.8.tar.gz
-cd bochs-2.6.8/
+tar -xvf bochs-2.6.9.tar.gz
+cd bochs-2.6.9/
 patch < $CURDIR/tools/dev/gdbstub.patch
 ./configure --with-term --enable-gdb-stub
 sed -i '/^\<LIBS\>/ s/$/ -lpthread/' Makefile
