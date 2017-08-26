@@ -32,6 +32,7 @@
 #endif
 
 #define TL_CONST 3 
+
 /**
  * @brief Kernel log.
  */
@@ -62,9 +63,7 @@ PRIVATE const char *print_code(const char *buffer, int *n, int *head, int *tail,
 
 	/* log level is default one? */
 	if (p[0] == 0)
-	{
 		return buffer;
-	}
 
 	/* Copy data to ring buffer */
 	for (i=0;i<3;i++)
@@ -75,10 +74,11 @@ PRIVATE const char *print_code(const char *buffer, int *n, int *head, int *tail,
 		if (*tail == *head)
 			*head = *head + 1;
 	}
-	/* 3 character had been added to buffer for log_level printing */
+
+	/* Three characters had been added to buffer for log_level printing. */
 	*char_printed =+ 3;
 
-	return skip_code(buffer,n);
+	return (skip_code(buffer,n));
 }
 
 /** 
@@ -89,40 +89,37 @@ PRIVATE const char *print_code(const char *buffer, int *n, int *head, int *tail,
  */ 
 PRIVATE void print_ticks(int *head, int *tail, int *char_printed) 
 { 
-  /* loop variables */ 
-  int i,j; 
- 
-  /* temporary buffers */ 
-  char string_ticks[sizeof(int)*8 + 1] = ""; 
-  char string_ticks_const[TL_CONST + 1] = " - "; 
-  char buffer[sizeof(int)*8 + TL_CONST + 1]; 
- 
-  /* compute clock ticks */ 
-  int ticks_lenght = itoa(string_ticks,(unsigned)sys_gticks(),'d'); 
- 
-  /* put ticks in temporary buffer */ 
-  for(j=0;j<ticks_lenght;j++) 
-  { 
-    buffer[j] = string_ticks[j]; 
-  } 
- 
-  /* put esthetic in temporary buffer */ 
-  for(i=0;i<TL_CONST;i++) 
-  { 
-    buffer[i + ticks_lenght] = string_ticks_const[i]; 
-  } 
- 
-  /* Copy data to ring buffer */ 
-  for (i=0;i<(ticks_lenght + TL_CONST);i++) 
-  { 
-    klog.buffer[*tail] = buffer[i]; 
-    *tail = (*tail + 1)&(KLOG_SIZE - 1); 
-     
-    if (*tail == *head) 
-      *head = *head + 1; 
-  } 
-  /* number of characters added to buffer for ticks printing */ 
-  *char_printed =+ (ticks_lenght + TL_CONST); 
+	/* loop variables */ 
+	int i,j; 
+
+	/* temporary buffers */ 
+	char string_ticks[sizeof(int)*8 + 1] = ""; 
+	char string_ticks_const[TL_CONST + 1] = " - "; 
+	char buffer[sizeof(int)*8 + TL_CONST + 1]; 
+
+	/* compute clock ticks */ 
+	int ticks_lenght = itoa(string_ticks,(unsigned)sys_gticks(),'d'); 
+
+	/* put ticks in temporary buffer */ 
+	for(j=0;j<ticks_lenght;j++) 
+		buffer[j] = string_ticks[j]; 
+
+	/* put esthetic in temporary buffer */ 
+	for(i=0;i<TL_CONST;i++) 
+		buffer[i + ticks_lenght] = string_ticks_const[i]; 
+
+	/* Copy data to ring buffer */ 
+	for (i=0;i<(ticks_lenght + TL_CONST);i++) 
+	{ 
+		klog.buffer[*tail] = buffer[i]; 
+		*tail = (*tail + 1)&(KLOG_SIZE - 1); 
+		 
+		if (*tail == *head) 
+			*head = *head + 1; 
+	} 
+
+	/* number of characters added to buffer for ticks printing */ 
+	*char_printed =+ (ticks_lenght + TL_CONST); 
 } 
 
 

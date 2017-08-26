@@ -21,17 +21,11 @@
 #ifndef KLOG_H_
 #define KLOG_H_
 
-	/**
-	 * @brief Initializes the kernel log driver.
-	 * 
-	 * @author Pedro H. Penna
-	 */
-	extern void klog_init(void);
+	#include <nanvix/const.h>
 
-	/**
-	 * @brief Tests for klog functions. Used for debug
-	 */
-	extern void test_klog(void);
+	/* Forward definitions. */
+	EXTERN void klog_init(void);
+	EXTERN void test_klog(void);
 
 #endif /* KLOG_H_ */
 

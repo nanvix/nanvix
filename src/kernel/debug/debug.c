@@ -29,32 +29,52 @@
  */
 PRIVATE debug_fn debug_fns[DEBUG_MAX];
 
-PRIVATE char *fn_names[DEBUG_MAX];
 /**
- * @brief Registered debugging functions.
+ * @brief Name of registed debugging functions.
+ */
+PRIVATE char *fn_names[DEBUG_MAX];
+
+/**
+ * @brief Failed debugging functions.
  */
 PRIVATE int failed_fns[DEBUG_MAX];
 
-static int current_fn;
+/**
+ * Current debugging function.
+ */
+PRIVATE int current_fn;
 
-static struct tst_count tst_cnt;
+/**
+ * @brief Debugging driver counters.
+ */
+PRIVATE struct tst_count tst_cnt;
 
 /**
  * @brief Is debug mode enabled?
  */
 PRIVATE int is_debug = 0;
 
+
+/**
+ * @brief Increments the counter for passed tests.
+ */
 PUBLIC void tst_passed(void) 
 { 
 	tst_cnt.tst_pass++; 
 }
 
+/**
+ * @brief Increments the counter for failed tests.
+ */
 PUBLIC void tst_failed(void) 
 { 
 	tst_cnt.tst_fail++;
 	failed_fns[(tst_cnt.tst_fail)-1] = current_fn;
 }
 
+/**
+ * @brief Increments the counter for skipped tests.
+ */
 PUBLIC void tst_skipped(void) 
 {
 	tst_cnt.tst_skip++; 
@@ -67,17 +87,17 @@ PUBLIC void tst_skipped(void)
  */
 PUBLIC void dbg_register(debug_fn fn, char *fn_name)
 {
-	/* Nothing to do. */
-	if (!is_debug)
-	{
-		kprintf(KERN_INFO "debug-driver: debug mode disabled");
-		return;
-	}
-
 	/* Sanity check. */
 	if (fn == NULL)
 	{
 		kprintf(KERN_WARNING "debug-driver: register null debug function?");
+		return;
+	}
+
+	/* Nothing to do. */
+	if (!is_debug)
+	{
+		kprintf(KERN_INFO "debug-driver: debug mode disabled");
 		return;
 	}
 
@@ -139,9 +159,7 @@ PUBLIC void dbg_execute(void)
 	{
 		kprintf(KERN_DEBUG "debug-driver: list of failed functions:");
 		for(i = 0; i < (int)(tst_cnt.tst_fail); i++)
-		{
 			kprintf(KERN_DEBUG "debug-driver: failed function %d:  %s", (i+1),fn_names[failed_fns[i]]);
-		}
 		kpanic(KERN_DEBUG "debug-driver: failed tests could create instability in the system");
 	}
 

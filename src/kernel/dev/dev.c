@@ -193,35 +193,33 @@ PUBLIC int cdev_close(dev_t dev)
 
 
 /**
- * @brief Used for debugging
- * @details Tests if all character devices are correctly registered
+ * @brief Tests if all character devices are correctly registered.
  * 
- * @returns Upon successful completion one is returned. Upon failure, a 
- *          zero is returned instead.
+ * @returns Upon successful completion non-zero is returned. Upon failure, a
+ * zero is returned instead.
  */
 PRIVATE int cdevtst_register(void)
 {
-	int i;
-	for (i=0;i<NR_CHRDEV;i++)
+	for (int i = 0; i < NR_CHRDEV; i++)
 	{
-		if (cdevsw[i] == NULL && i > 0)
+		if ((cdevsw[i] == NULL) && (i > 0))
 		{
 			kprintf(KERN_DEBUG "cdev test: register of device number %d failed", i);
 			return 0;
 		}
 	}
-	return 1;
+
+	return (1);
 }
 
 /**
- * @brief Used for debugging
- * @details Tests if cdev_write works correctly
+ * @brief Tests if cdev_write works correctly.
  * 
- * @param buffer Buffer to be written in the character device.
+ * @param buffer         Buffer to be written in the character device.
  * @param tstcdev_lenght Number of characters to be written in the character device.
  * 
- * @returns Upon successful completion one is returned. Upon failure, a 
- *          zero is returned instead.
+ * @returns Upon successful completion non-zero is returned. Upon failure, a
+ * zero is returned instead.
  */
 PRIVATE int cdevtst_w(char *buffer, int tstcdev_lenght)
 {
@@ -236,36 +234,35 @@ PRIVATE int cdevtst_w(char *buffer, int tstcdev_lenght)
 		else
 			kprintf(KERN_DEBUG "cdev test: cdev_write failed: what has been written is not what it has to be write, code: %d",char_count);
 
-		return 0;
+		return (0);
 	}
 
-	return 1;
+	return (1);
 }
 
 /**
- * @brief Used for debugging. Test main function
+ * @brief Unit test for character devices.
  */
 PUBLIC void cdev_test(void)
 {
-	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
-	int tstcdev_lenght = 35; /* Size of message to write in the log */
+	char buffer[KBUFFER_SIZE]; /* Temporary buffer.                    */
+	int tstcdev_lenght = 35;   /* Size of message to write in the log. */
 
 	kstrncpy(buffer, "cdev test: test data input in cdev\n", tstcdev_lenght);
 
-	if(!cdevtst_register())
+	if (!cdevtst_register())
 	{
 		tst_failed();
 		return;
 	}
 
-	if(!cdevtst_w(buffer, tstcdev_lenght))
+	if (!cdevtst_w(buffer, tstcdev_lenght))
 	{
 		tst_failed();
 		return;
 	}
 
 	tst_passed();
-	return;
 }
 
 
@@ -404,20 +401,18 @@ PUBLIC void bdev_readblk(buffer_t buf)
 }
 
 /**
- * @brief Used for debugging
- * @details Tests if all block devices are correctly registered
+ * @brief Tests if all block devices are correctly registered.
  * 
- * @returns Upon successful completion one is returned. Upon failure, a 
+ * @returns Upon successful completion non-zero is returned. Upon failure, a 
  *          zero is returned instead.
  */
 PRIVATE int bdevtst_register(void)
 {
-	int i;
-	for (i=0;i<NR_BLKDEV;i++)
+	for (int i = 0; i < NR_BLKDEV; i++)
 	{
 		 if (bdevsw[i] == NULL)
 		{
-			if(i == ATA_MAJOR)
+			if (i == ATA_MAJOR)
 			{
 				kprintf(KERN_DEBUG "bdev test: warning: ATA device was not registered during initialization");
 				continue;
@@ -425,23 +420,23 @@ PRIVATE int bdevtst_register(void)
 			else
 			{
 				kprintf(KERN_DEBUG "bdev test: register of device number %d failed", i);
-				return 0;
+				return (0);
 			}
 		} 
 	}
-	return 1;
+
+	return (1);
 }
 
 
 /**
- * @brief Used for debugging
- * @details Tests if bdev_write works correctly
+ * @brief Tests if bdev_write works correctly.
  * 
- * @param buffer Buffer to be written in the block device.
+ * @param buffer         Buffer to be written in the block device.
  * @param tstbdev_lenght Number of characters to be written in the block device.
  * 
- * @returns Upon successful completion one is returned. Upon failure, a 
- *          zero is returned instead.
+ * @returns Upon successful completion non-zero is returned. Upon failure, a
+ * zero is returned instead.
  */
 PRIVATE int bdevtst_w(char *buffer, int tstbdev_lenght)
 {
@@ -451,41 +446,40 @@ PRIVATE int bdevtst_w(char *buffer, int tstbdev_lenght)
 
 	if (char_count != tstbdev_lenght)
 	{
-		if(char_count <= 0)
+		if (char_count <= 0)
 			kprintf(KERN_DEBUG "bdev test: bdev_write failed: nothing has been written, code: %d",char_count);
 		else
 			kprintf(KERN_DEBUG "bdev test: bdev_write failed: what has been written is not what it has to be write, code: %d",char_count);
 
-		return 0;
+		return (0);
 	}
 
-	return 1;
+	return (1);
 }
 
 /**
- * @brief Used for debugging. Test main function
+ * @brief Unit test for block character devices.
  */
 PUBLIC void bdev_test(void)
 {
-	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
-	int tstbdev_lenght = 35; /* Size of message to write in the log */
+	int tstbdev_lenght = 35;   /* Size of message to write in the log */
+	char buffer[KBUFFER_SIZE]; /* Temporary buffer.                   */
 
 	kstrncpy(buffer, "bdev test: test data input in bdev\n", tstbdev_lenght);
 
-	if(!bdevtst_register())
+	if (!bdevtst_register())
 	{
 		tst_failed();
 		return;
 	}
 
-	if(!bdevtst_w(buffer, tstbdev_lenght))
+	if (!bdevtst_w(buffer, tstbdev_lenght))
 	{
 		tst_failed();
 		return;
 	}
 
 	tst_passed();
-	return;
 }
 
 /*============================================================================*

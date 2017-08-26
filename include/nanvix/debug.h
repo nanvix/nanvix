@@ -1,5 +1,6 @@
 /*
  * Copyright(C) 2017-2017 Clement Rouquier <clementrouquier@gmail.com>
+ *              2017-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -20,7 +21,7 @@
 /**
  * @file nanvix/debug.h
  * 
- * @brief Debug mode
+ * @brief Debug driver
  */
 
 #ifndef NANVIX_DEBUG_H
@@ -28,8 +29,11 @@
 
 	#include <nanvix/klib.h>
 
-	/* counters */
-	struct tst_count {
+	/**
+ 	 * @brief Debug counters.
+ 	 */
+	struct tst_count
+	{
 		unsigned int tst_pass;
 		unsigned int tst_fail;
 		unsigned int tst_skip;
@@ -42,7 +46,7 @@
 	
 	/* Forward definitions */
 	EXTERN void dbg_init(void);
-	EXTERN void dbg_register(debug_fn fn, char *fn_name);
+	EXTERN void dbg_register(debug_fn, char *);
 	EXTERN void dbg_execute(void);
 	EXTERN void tst_passed(void);
 	EXTERN void tst_failed(void);

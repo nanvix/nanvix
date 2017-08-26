@@ -1,9 +1,9 @@
 /*
  * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>Joe Perches <joe@perches.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
+ *              Joe Perches <joe@perches.com>
  *              2012-2016 Linus Torvalds <torvalds@linux-foundation.org>
  *              2012-2012 Kay Sievers <kay.sievers@vrfy.org>
- *
  * 
  * This file is part of Nanvix.
  * 
@@ -238,25 +238,30 @@
 	/**@}*/
 
 	/*========================================================================*
-	 *                           logging and debugging                        *
+	 *                           Logging and Debugging                        *
 	 *========================================================================*/
 	
-	/* This char declares that following one is a log level */
-	#define KERN_SOH	"\001"
+	/**
+ 	 * This character states that the following one is a log level.
+ 	 */
+	#define KERN_SOH	    "\001"
 	#define KERN_SOH_ASCII	'\001'
 
-	/* Log levels */
-	#define KERN_EMERG      KERN_SOH "0"    /* system is unusable */
-	#define KERN_ALERT      KERN_SOH "1"    /* action must be taken immediately */
-	#define KERN_CRIT       KERN_SOH "2"    /* critical conditions */
-	#define KERN_ERR        KERN_SOH "3"    /* error conditions */
-	#define KERN_WARNING    KERN_SOH "4"    /* warning conditions */
-	#define KERN_NOTICE     KERN_SOH "5"    /* normal but significant condition */
-	#define KERN_INFO       KERN_SOH "6"    /* informational */
-	#define KERN_DEBUG      KERN_SOH "7"    /* debug-level messages */
-	
-	/* default log level is no log level, 
-	   useful to avoid printing log level in early boot */
+	/*
+	 * Log levels.
+	 *
+	 * Default log level is no log level, 
+	 * useful to avoid printing log level
+	 * in early boot
+	 */
+	#define KERN_EMERG   KERN_SOH "0" /* System is unusable.               */
+	#define KERN_ALERT   KERN_SOH "1" /* Action must be taken immediately. */
+	#define KERN_CRIT    KERN_SOH "2" /* Critical conditions.              */
+	#define KERN_ERR     KERN_SOH "3" /* Error conditions.                 */
+	#define KERN_WARNING KERN_SOH "4" /* Warning conditions.               */
+	#define KERN_NOTICE  KERN_SOH "5" /* Normal but significant condition. */
+	#define KERN_INFO    KERN_SOH "6" /* Informational.                    */
+	#define KERN_DEBUG   KERN_SOH "7" /* Debug-level messages.             */
 
 	/**
 	 * @brief Kernel log size (in characters).
@@ -272,9 +277,9 @@
 	EXTERN ssize_t klog_read(unsigned, char *, size_t);
 	EXTERN ssize_t klog_write(unsigned, const char *, size_t);
 	EXTERN void kpanic(const char *, ...);
-	EXTERN void kmemdump(const void *s, size_t n);
-	EXTERN const char *skip_code(const char *buffer, int *i);
-	EXTERN char get_code(const char *buffer);
+	EXTERN void kmemdump(const void *s, size_t);
+	EXTERN const char *skip_code(const char *buffer, int *);
+	EXTERN char get_code(const char *);
 	/**@}*/
 
 	/*========================================================================*
