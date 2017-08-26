@@ -1,7 +1,7 @@
 # compilenv is a pre-compiled docker image containing all binaries dependancies for nanvix
 FROM nanvix/nanvix:compilenv
 
-MAINTAINER turbolay "https://github.com/turbolay"
+MAINTAINER nanvix "https://github.com/nanvix"
 
 # Setting up ENV variable for checkout on updated branch
 ARG BRANCH=local
