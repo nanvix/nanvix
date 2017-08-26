@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -22,6 +23,7 @@
 #include <nanvix/region.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
+#include <nanvix/debug.h>
 
 /*
  * Bad KPOOL_PHYS ?
@@ -79,6 +81,7 @@
 PUBLIC void mm_init(void)
 {
 	initreg();
+	dbg_register(test_mm, "test_mm");
 }
 
 /**
