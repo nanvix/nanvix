@@ -1,5 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+# Copyright(C)	2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+#		2016-2017 Subhra Sarkar  <rurtle.coder@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -28,6 +29,9 @@ export WORKDIR=$CURDIR/nanvix-toolchain
 mkdir -p $WORKDIR
 cd $WORKDIR
 
+# Retrieve the number of processor cores
+num_cores=`grep -c ^processor /proc/cpuinfo`
+
 # Get required packages.
 apt-get install libgtk2.0-dev
 
@@ -39,7 +43,7 @@ tar -xvf bochs-2.6.8.tar.gz
 cd bochs-2.6.8/
 ./configure --enable-x86-debugger --enable-debugger --enable-debugger-gui
 sed -i '/^\<LIBS\>/ s/$/ -lpthread/' Makefile
-make all
+make -j$num_cores all
 make install
 
 # Cleans files.

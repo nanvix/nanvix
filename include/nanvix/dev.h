@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -28,7 +29,7 @@
 	 * @brief Device types
 	 */
 	/**@{*/
-	#define CHRDEV 0 /**<  Charecter device. */
+	#define CHRDEV 0 /**< Character device.  */
 	#define BLKDEV 1 /**< Block device.      */
 	/**@}*/
 
@@ -90,6 +91,7 @@
 	EXTERN int cdev_open(dev_t);
 	EXTERN int cdev_close(dev_t);
 	EXTERN int cdev_ioctl(dev_t, unsigned, unsigned);
+	EXTERN void cdev_test(void);
 	
 	/*========================================================================*
 	 *                               block device                             *
@@ -120,5 +122,5 @@
 	EXTERN ssize_t bdev_read(dev_t, char *, size_t, off_t);
 	EXTERN void bdev_writeblk(struct buffer *);
 	EXTERN void bdev_readblk(struct buffer *);
-	
+	EXTERN void bdev_test(void);
 #endif /* DEV_H_ */

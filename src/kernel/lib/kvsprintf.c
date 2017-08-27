@@ -29,7 +29,7 @@
  * 
  * @returns The length of the output string.
  */
-PRIVATE int itoa(char *str, unsigned num, int base)
+PUBLIC int itoa(char *str, unsigned num, int base)
 {
 	char *b = str;
 	char *p, *p1, *p2;

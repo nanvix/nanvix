@@ -1,7 +1,8 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2017 Davidson Francis <davidsondfgl@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2017-2017 Romane Gallier   <romanegallier@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -33,7 +34,7 @@
 	#include <utime.h>
 	
 	/* Number of system calls. */
-	#define NR_SYSCALLS 50
+	#define NR_SYSCALLS 51 
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -86,9 +87,11 @@
  	#define NR_gticks   47
  	#define NR_time	    48
 	#define NR_acct     49
- 	#define NR_semget   50
- 	#define NR_semctl   51
- 	#define NR_semop    52
+ 	#define NR_mount    50
+ 	#define NR_semget   51
+ 	#define NR_semctl   52
+ 	#define NR_semop    53
+
 
 #ifndef _ASM_FILE_
 
@@ -275,6 +278,9 @@
 	 * Enable process accounting.
 	 */
 	EXTERN int sys_acct(struct pmc *p, unsigned char rw);
+
+	/* Forward definitions. */
+	EXTERN int sys_mount(const char *, const char *);
 
 #endif /* _ASM_FILE_ */
 
