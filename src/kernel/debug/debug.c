@@ -122,7 +122,7 @@ PUBLIC void dbg_register(debug_fn fn, char *fn_name)
 PUBLIC void dbg_init(void)
 {
 	is_debug = 1;
-	kprintf(KERN_INFO "debug-diver: debug driver intialized");
+	kprintf("debug-diver: debug driver intialized");
 }
 
 /**
@@ -136,7 +136,7 @@ PUBLIC void dbg_execute(void)
 	/* Nothing to do. */
 	if (!is_debug)
 	{
-		kprintf(KERN_INFO "debug-driver: debug mode disabled");
+		kprintf(KERN_ERR "debug-driver: debug mode disabled");
 		return;
 	}
 
