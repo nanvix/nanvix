@@ -486,6 +486,7 @@ PUBLIC void bdev_test(void)
  *                                 Devices                                    *
  *============================================================================*/
 
+
 /*
  * @brief Initializes the device drivers.
  */
@@ -494,7 +495,6 @@ PUBLIC void dev_init(void)
 	klog_init();
 	cmos_init();
 	clock_init(CLOCK_FREQ);
-	fpu_init();
 	tty_init();
 	ramdisk_init();
 	dbg_register(cdev_test, "cdev_test");

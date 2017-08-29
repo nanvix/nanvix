@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2015 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2015 Davidson Francis <davidsondfgl@gmail.com>
+ *              2015-2017 Davidson Francis <davidsondfgl@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  *              2017-2017 Romane Gallier   <romanegallier@gmail.com>
  *
@@ -76,5 +76,6 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	(void (*)(void))&sys_ps,
 	(void (*)(void))&sys_gticks,
 	(void (*)(void))&sys_time,
+	(void (*)(void))&sys_acct,
 	(void (*)(void))&sys_mount
 };

@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2017 Davidson Francis <davidsondfgl@hotmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -33,6 +33,7 @@
 	#include <nanvix/hal.h>
 	#include <nanvix/region.h>
  	#include <i386/fpu.h>
+	#include <i386/pmc.h>
 	#include <sys/types.h>
 	#include <limits.h>
 	#include <signal.h>
@@ -141,6 +142,7 @@
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		unsigned irqlvl;                   /**< Current IRQ level.      */
     	struct fpu fss;                    /**< FPU Saved Status.       */
+    	struct pmc pmcs;                   /**< PMC status.             */
 		/**@}*/
 
     	/**

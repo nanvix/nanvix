@@ -1,6 +1,6 @@
 # 
 # Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+#              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -29,9 +29,14 @@ if [ "$1" = "--dbg" ]; then
 		-m 256M                                              \
 		-mem-prealloc &
 	ddd --debugger "/usr/local/cross/bin/i386-elf-gdb"
+elif [ "$1" = "--perf" ]; then
+	qemu-system-i386                                         \
+		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
+		-m 256M                                              \
+		-mem-prealloc -cpu host --enable-kvm
 else
 	qemu-system-i386                                         \
 		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
 		-m 256M                                              \
-		-mem-prealloc		
+		-mem-prealloc
 fi
