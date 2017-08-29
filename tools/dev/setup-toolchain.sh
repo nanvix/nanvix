@@ -43,7 +43,7 @@ sh -c "echo 'export TARGET=$TARGET' > /etc/profile.d/var.sh"
 sh -c "echo 'export PATH=$PATH:$PREFIX/bin' >> /etc/profile.d/var.sh"
 
 # Build binutils.
-cd binutils-2.25/
+cd binutils*/
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls
 make -j$num_cores all
 make install
@@ -52,7 +52,7 @@ git clean -f -d
 
 # Build GCC.
 cd $WORKDIR
-cd gcc-5.3.0/
+cd gcc*/
 ./contrib/download_prerequisites
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c --without-headers
 make -j$num_cores all-gcc
@@ -62,7 +62,7 @@ git clean -f -d
 
 # Build GDB.
 cd $WORKDIR
-cd gdb-7.11/
+cd gdb*/
 ./configure --target=$TARGET --prefix=$PREFIX --with-auto-load-safe-path=/
 make -j$num_cores
 make install
