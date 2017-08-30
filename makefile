@@ -34,9 +34,9 @@ export SRCDIR   = $(CURDIR)/src
 export TOOLSDIR = $(CURDIR)/tools
 
 # Toolchain
-export CC = $(TARGET)-gcc
-export LD = $(TARGET)-ld
-export AR = $(TARGET)-ar
+export CC = $(TOOLSDIR)/dev/toolchain/$(TARGET)/bin/bin/$(TARGET)-elf-gcc
+export LD = $(TOOLSDIR)/dev/toolchain/$(TARGET)/bin//bin/$(TARGET)-elf-ld
+export AR = $(TOOLSDIR)/dev/toolchain/$(TARGET)/bin/bin/$(TARGET)-elf-ar
 
 # Random number for chaos.
 export KEY = 13
