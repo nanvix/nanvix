@@ -687,14 +687,13 @@ static void usage(void)
 	printf("Usage: test [options]\n\n");
 	printf("Brief: Performs regression tests on Nanvix.\n\n");
 	printf("Options:\n");
-	printf("  fpu   		Floating Point Unit Test\n");
-	printf("  io    		I/O Test\n");
-	printf("  ipc    		Interprocess Communication Test\n");
-	printf("  Paging 		Paging System Test\n");
-	printf("  stack  		Stack growth Test\n");
-	printf("  sched  		Scheduling Test\n");
-	printf("  se 			Open/Close Semaphore Test\n");
-	printf("  prodcons		Producer/Consumer Semaphore Test\n");
+	printf("  fpu     Floating Point Unit Test\n");
+	printf("  io      I/O Test\n");
+	printf("  ipc     Interprocess Communication Test\n");
+	printf("  paging  Paging System Test\n");
+	printf("  stack   Stack growth Test\n");
+	printf("  sched   Scheduling Test\n");
+	printf("  sem	  Semaphore Tests\n");
 
 
 	exit(EXIT_SUCCESS);
@@ -746,7 +745,6 @@ int main(int argc, char **argv)
 			printf("  scheduler stress   [%s]\n",
 				(!sched_test2()) ? "PASSED" : "FAILED");
 		}
-		
 
 		/* FPU test. */
 		else if (!strcmp(argv[i], "fpu"))
@@ -756,18 +754,14 @@ int main(int argc, char **argv)
 				(!fpu_test()) ? "PASSED" : "FAILED");
 		}
 
-		/* Semaphore test. */
-		else if (!strcmp(argv[i], "se"))
+		/* Semaphore tests. */
+		else if (!strcmp(argv[i], "sem"))
 		{
 			printf("Semaphore open/close Test\n");
 			printf("  Result [%s]\n",
 				(!sem_test_open_close()) ? "PASSED" : "FAILED");
-		}
 
-		/* Semaphore test. */
-		else if (!strcmp(argv[i], "prodcons"))
-		{
-			printf("Producer consummer Test\n");
+			printf("Producer consumer Test\n");
 			printf("  Result [%s]\n",
 				(!sem_test()) ? "PASSED" : "FAILED");
 		}
