@@ -39,8 +39,6 @@ apt-get install ddd
 # Export variables.
 export PREFIX=$WORKDIR/bin
 export TARGET=i386-elf
-sh -c "echo 'export TARGET=$TARGET' > /etc/profile.d/var.sh"
-sh -c "echo 'export PATH=$PATH:$PREFIX/bin' >> /etc/profile.d/var.sh"
 
 # Build binutils.
 cd binutils*/
