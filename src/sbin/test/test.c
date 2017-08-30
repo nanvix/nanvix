@@ -40,6 +40,88 @@
 static unsigned flags = VERBOSE;
 
 /*============================================================================*
+ *                             Synthetic Works                                *
+ *============================================================================*/
+
+/**
+ * @brief Performs some dummy CPU-intensive computation.
+ */
+static void work_cpu(void)
+{
+	int c;
+	
+	c = 0;
+		
+	/* Perform some computation. */
+	for (int i = 0; i < 4096; i++)
+	{
+		int a = 1 + i;
+		for (int b = 2; b < i; b++)
+		{
+			if ((i%b) == 0)
+				a += b;
+		}
+		c += a;
+	}
+}
+
+/**
+ * @brief Performs some dummy FPU-intensive computation.
+ */
+static void work_fpu(void)
+{
+	const int n = 16; /* Matrix size.    */
+	float a[16][16];  /* First operand.  */
+	float b[16][16];  /* Second operand. */
+	float c[16][16];  /* Result.         */
+	
+	/* Initialize matrices. */
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			a[i][j] = 1.0;
+			a[i][j] = 2.0;
+			c[i][j] = 0.0;
+		}
+	}
+	
+	/* Perform matrix multiplication. */
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			for (int k = 0; k < n; k++)
+				c[i][j] += a[i][k]*b[k][i];
+		}
+	}
+}
+
+/**
+ * @brief Performs some dummy IO-intensive computation.
+ */
+static void work_io(void)
+{
+	int fd;            /* File descriptor. */
+	char buffer[2048]; /* Buffer.          */
+	
+	/* Open hdd. */
+	fd = open("/dev/hdd", O_RDONLY);
+	if (fd < 0)
+		_exit(EXIT_FAILURE);
+	
+	/* Read data. */
+	for (size_t i = 0; i < MEMORY_SIZE; i += sizeof(buffer))
+	{
+		if (read(fd, buffer, sizeof(buffer)) < 0)
+			_exit(EXIT_FAILURE);
+	}
+	
+	/* House keeping. */
+	close(fd);
+}
+
+/*============================================================================*
  *                             Paging System Tests                            *
  *============================================================================*/
 
@@ -163,52 +245,6 @@ static int io_test(void)
 /*============================================================================*
  *                                sched_test                                  *
  *============================================================================*/
-
-/**
- * @brief Performs some dummy CPU-intensive computation.
- */
-static void work_cpu(void)
-{
-	int c;
-	
-	c = 0;
-		
-	/* Perform some computation. */
-	for (int i = 0; i < 4096; i++)
-	{
-		int a = 1 + i;
-		for (int b = 2; b < i; b++)
-		{
-			if ((i%b) == 0)
-				a += b;
-		}
-		c += a;
-	}
-}
-
-/**
- * @brief Performs some dummy IO-intensive computation.
- */
-static void work_io(void)
-{
-	int fd;            /* File descriptor. */
-	char buffer[2048]; /* Buffer.          */
-	
-	/* Open hdd. */
-	fd = open("/dev/hdd", O_RDONLY);
-	if (fd < 0)
-		_exit(EXIT_FAILURE);
-	
-	/* Read data. */
-	for (size_t i = 0; i < MEMORY_SIZE; i += sizeof(buffer))
-	{
-		if (read(fd, buffer, sizeof(buffer)) < 0)
-			_exit(EXIT_FAILURE);
-	}
-	
-	/* House keeping. */
-	close(fd);
-}
 
 /**
  * @brief Scheduling test 0.
@@ -352,26 +388,6 @@ static int sched_test2(void)
 	assert(lseek((a), 0, SEEK_SET) != -1);           \
 	assert(read((a), &(b), sizeof(b)) == sizeof(b)); \
 }                  									 \
-	
-/* Simulate a bit of work -> small wait : ~2.5 seconds */
-void work(void)
-{
-	unsigned long i;
-	float x;
-
-	x=1.3232;
-
-	for( i = 0 ; i<99999999;i++)
-	{
-		x=x*0.451;
-	}
-
-	if(x)
-	{
-		printf("\n");
-	}
-}
-
 
 void producer(int nbprod, int limit)
 {
@@ -388,11 +404,15 @@ void producer(int nbprod, int limit)
 	for (int j = 0; j < nbprod; j++)
 	{
 		sem_wait(semlim);
-		printf("producer : start producing\n");
-		work();
-		printf("producer : has produced\n");
+		work_cpu();
 		sem_post(sem);
 	}
+
+	sem_close(sem);
+	sem_close(semlim);
+	
+	sem_unlink("/home/mysem/ress");
+	sem_unlink("/home/mysem/lim");
 }
 
 void consumer(int nbcons, int limit)
@@ -409,13 +429,16 @@ void consumer(int nbcons, int limit)
 
 	for (int j = 0; j < nbcons; j++)
 	{
-		printf("cons : waiting for ressource\n");
 		sem_wait(sem);
-		printf("cons : ressources has been produced\n");
-		work();
-		printf("cons : ressources consumed\n");
+		work_cpu();
 		sem_post(semlim);
 	}
+
+	sem_close(sem);
+	sem_close(semlim);
+	
+	sem_unlink("/home/mysem/ress");
+	sem_unlink("/home/mysem/lim");
 }
 
 /*  
@@ -425,18 +448,15 @@ void consumer(int nbcons, int limit)
  */
 static int sem_test(void)
 {
+	/* Child */
 	if (fork() == 0)
 	{
-		/* child */
-		printf("child \n");
 		producer(10,3);
+		exit (EXIT_SUCCESS);
 	}
+	/* Father */
 	else
-	{
-		/* father */
-		printf("father \n");
 		consumer(10,3);
-	}
 
 	return (0);
 }
@@ -447,41 +467,19 @@ static int sem_test_open_close(void)
 	{ 
 		/* We don't unlink semc2 */ 
 		/* child */ 
-		printf("Child\n"); 
 		sem_t *semc1, *semc3;
 		semc1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
-		// semc2 = sem_open("/home/mysem/sem2",O_CREAT,0777,0); 
 		semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
 
-		printf("sem1 id : %d\n",semc1->semid);
-		printf("sem3 id : %d\n",semc3->semid);
-
-		printf("Child blocked on sem1\n");
-		/* Locking child */
 		sem_wait(semc1);
-
-		/* Waiting */
-		work();
-
-		printf("Child unlocking sem3\n");
-		/* Unlocking father */
+		work_cpu();
 		sem_post(semc3);
 
-		/* Unlinking sem1 : it shoud still be usable but not be in file system */
-		if (sem_unlink("/home/mysem/sem1"))
-			printf("Child : sem1 has already been unlinked\n");
-		else
-			printf("Child : sem1 has been unlinked\n");
-
-		printf("Child blocked on sem1\n");
+		sem_unlink("/home/mysem/sem1");
 		sem_wait(semc1);
-
-		printf("%d %d\n",semc3,semc1);
 
 		sem_close(semc3);
 		sem_close(semc1);
-
-		printf("%d %d\n",semc3,semc1);
 		sem_unlink("/home/mysem/sem3");
 
 		/* Operations on invalid semaphores */
@@ -489,11 +487,12 @@ static int sem_test_open_close(void)
 		sem_wait(semc3);
 		sem_post(semc1);
 		sem_post(semc3);
+
+		exit (EXIT_SUCCESS);
 	} 
 	else
 	{ 
 		/* father */ 
-		printf("Father \n"); 
 		sem_t *semf1, *semf2, *semf3, *semf4; 
 		semf1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
 		/* Opening the same semaphore : the same address should be returned */ 
@@ -501,48 +500,13 @@ static int sem_test_open_close(void)
 		semf3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
 		semf4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); 
 
-		if(semf1 == semf2)
-		{
-			printf("semf1 == semf2\n");
-		}
-
-		printf("sem1 id : %d\n",semf1->semid);
-		printf("sem3 id : %d\n",semf3->semid);
-		printf("sem4 id : %d\n",semf4->semid);
-
-		printf("Father unlocking sem1\n");
-		/* Unlocking child */
 		sem_post(semf1);
-		
-		/* Waiting */
-		work();
-
-		printf("Father blocked on sem3\n");
-		/* Unlocking father */
+		work_cpu();
 		sem_wait(semf3);
+		sem_unlink("/home/mysem/sem1");
 
-		/*  Unlinking sem1 : it shoud still be usable but not be in file system 
-		 *  unlinked both in child and father -> so it's ensured to be unlinked 
-		 *  the second unlink should have no effect because the semaphore doesn't
-		 *  exist in the file system anymore
-		 */
-		if (sem_unlink("/home/mysem/sem1"))
-		{
-			printf("Father : sem1 has already been unlinked\n");
-		}
-		else
-		{
-			printf("Father : sem1 has been unlinked\n");
-		}
-
-		work();
-
-		printf("Father unlocking sem1\n");
-		/* Unlocking child */
+		work_cpu();
 		sem_post(semf1);
-
-		/* sem1 has not been closed. */
-
 		sem_close(semf3);
 
 		/* sem4 multiple closed */
@@ -561,8 +525,6 @@ static int sem_test_open_close(void)
 		sem_close(semf4);
 
 		semf4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); /* This will use another kernel slot : sem4 has been unlinked */
-		/* Opening sem4 and letting it in alive */
-		printf("sem4 id : %d\n",semf4->semid);
 
 		sem_close(semf1);
 		sem_close(semf2);
@@ -578,38 +540,6 @@ static int sem_test_open_close(void)
 /*============================================================================*
  *                                FPU test                                    *
  *============================================================================*/
-
-/**
- * @brief Performs some dummy FPU-intensive computation.
- */
-static void work_fpu(void)
-{
-	const int n = 16; /* Matrix size.    */
-	float a[16][16];  /* First operand.  */
-	float b[16][16];  /* Second operand. */
-	float c[16][16];  /* Result.         */
-	
-	/* Initialize matrices. */
-	for (int i = 0; i < n; i++)
-	{
-		for (int j = 0; j < n; j++)
-		{
-			a[i][j] = 1.0;
-			a[i][j] = 2.0;
-			c[i][j] = 0.0;
-		}
-	}
-	
-	/* Perform matrix multiplication. */
-	for (int i = 0; i < n; i++)
-	{
-		for (int j = 0; j < n; j++)
-		{
-			for (int k = 0; k < n; k++)
-				c[i][j] += a[i][k]*b[k][i];
-		}
-	}
-}
 
 /**
  * @brief FPU testing module.
@@ -750,12 +680,10 @@ int main(int argc, char **argv)
 		/* Semaphore tests. */
 		else if (!strcmp(argv[i], "sem"))
 		{
-			printf("Semaphore open/close Test\n");
-			printf("  Result [%s]\n",
+			printf("Semaphore Tests\n");
+			printf("  open and close    [%s]\n",
 				(!sem_test_open_close()) ? "PASSED" : "FAILED");
-
-			printf("Producer consumer Test\n");
-			printf("  Result [%s]\n",
+			printf("  producer consumer [%s]\n",
 				(!sem_test()) ? "PASSED" : "FAILED");
 		}
 
