@@ -370,103 +370,104 @@ static int sched_test2(void)
  *                             Semaphores Test                                *
  *============================================================================*/
 
-
 /**
- * @brief Puts an item in a buffer.
+ * @brief Produces stuff.
+ *
+ * @param sem  Accounts for empty slots on a shared buffer.
+ * @param fill Accounts for used slots on a shared buffer.
  */
-#define PUT_ITEM(a, b)                                \
-{                                                     \
-	assert(lseek((a), 0, SEEK_SET) != -1);            \
-	assert(write((a), &(b), sizeof(b)) == sizeof(b)); \
-}                                                     \
-
-/**
- * @brief Gets an item from a buffer.
- */
-#define GET_ITEM(a, b)                               \
-{                                                    \
-	assert(lseek((a), 0, SEEK_SET) != -1);           \
-	assert(read((a), &(b), sizeof(b)) == sizeof(b)); \
-}                  									 \
-
-void producer(int nbprod, int limit)
+static void consumer(sem_t *sem, sem_t *empty, int n)
 {
-	sem_t* sem, *semlim;
-	sem = sem_open("/home/mysem/ress", O_CREAT, 0644,0);
-	semlim = sem_open("/home/mysem/lim", O_CREAT, 0644,limit);
-
-	if ( !sem || !semlim )
+	for (int j = 0; j < n; j++)
 	{
-		printf("Semaphore opening problem\n");
-		exit(EXIT_FAILURE);
-	}
-
-	for (int j = 0; j < nbprod; j++)
-	{
-		sem_wait(semlim);
+		sem_wait(empty);
 		work_cpu();
 		sem_post(sem);
 	}
-
-	sem_close(sem);
-	sem_close(semlim);
-	
-	sem_unlink("/home/mysem/ress");
-	sem_unlink("/home/mysem/lim");
 }
 
-void consumer(int nbcons, int limit)
+/**
+ * @brief Consumes stuff.
+ *
+ * @param sem  Accounts for empty slots on a shared buffer.
+ * @param fill Accounts for used slots on a shared buffer.
+ */
+static void producer(sem_t *sem, sem_t *empty, int n)
 {
-	sem_t *sem, *semlim;
-	sem = sem_open("/home/mysem/ress", O_CREAT, 0644,0);
-	semlim = sem_open("/home/mysem/lim", O_CREAT, 0644,limit);
-
-	if ( !sem || !semlim )
-	{	
-		printf("Semaphore opening problem\n");
-		exit(EXIT_FAILURE);	
-	}
-
-	for (int j = 0; j < nbcons; j++)
+	for (int j = 0; j < n; j++)
 	{
 		sem_wait(sem);
 		work_cpu();
-		sem_post(semlim);
+		sem_post(empty);
 	}
-
-	sem_close(sem);
-	sem_close(semlim);
-	
-	sem_unlink("/home/mysem/ress");
-	sem_unlink("/home/mysem/lim");
 }
 
 /*  
- *	Producer consumer
- *  The buffer has a size of 3
- *  The producer will produce 10 items
+ * @brief Producer consumer test.
  */
-static int sem_test(void)
+static int sem_producer_consumer_test(void)
 {
-	/* Child */
+	int n;               /* Number of items.       */
+	mode_t mode;         /* Semaphore access mode. */
+	sem_t *empty, *full; /* Semaphores.            */
+
+	/* Named semaphores. */
+	const char *sem1 = "/home/mysem/sem1";
+	const char *sem2 = "/home/mysem/sem2";
+
+	n = 10;
+	mode = 0644;
+
+	full = sem_open(sem2, O_CREAT, mode, 0);
+	empty = sem_open(sem1, O_CREAT, mode, n);
+
+	if ((empty == NULL) || (full == NULL))
+	{	
+		printf("cannot create semaphores\n");
+		exit(EXIT_FAILURE);	
+	}
+
+	/* Child. */
 	if (fork() == 0)
 	{
-		producer(10,3);
+		full = sem_open(sem2, O_RDWR);
+		empty = sem_open(sem1, O_RDWR);
+
+		if ((empty == NULL) || (full == NULL))
+		{	
+			printf("cannot open semaphores\n");
+			exit(EXIT_FAILURE);	
+		}
+
+		producer(empty, full, n);
+
+		sem_close(full);
+		sem_close(empty);
+
 		exit (EXIT_SUCCESS);
 	}
-	/* Father */
+
+	/* Father. */
 	else
-		consumer(10,3);
+	{
+		consumer(empty, full, n);
+
+		sem_close(full);
+		sem_close(empty);
+		
+		sem_unlink(sem2);
+		sem_unlink(sem1);
+	}
 
 	return (0);
 }
 
 static int sem_test_open_close(void) 
 { 
+	/* Child. */
 	if (fork() == 0)
 	{ 
 		/* We don't unlink semc2 */ 
-		/* child */ 
 		sem_t *semc1, *semc3;
 		semc1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
 		semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
@@ -684,7 +685,7 @@ int main(int argc, char **argv)
 			printf("  open and close    [%s]\n",
 				(!sem_test_open_close()) ? "PASSED" : "FAILED");
 			printf("  producer consumer [%s]\n",
-				(!sem_test()) ? "PASSED" : "FAILED");
+				(!sem_producer_consumer_test()) ? "PASSED" : "FAILED");
 		}
 
 		/* Wrong usage. */
