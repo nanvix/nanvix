@@ -1,4 +1,4 @@
-## WHAT IS NANVIX?
+## WHAT IS NANVIX? [![Build Status](https://travis-ci.org/nanvix/nanvix.svg?branch=dev)](https://travis-ci.org/nanvix/nanvix)
 
 Nanvix is a Unix like operating system created by Pedro H. Penna to
 address emerging manycore platforms. It targets cluster-based
