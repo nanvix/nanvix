@@ -33,8 +33,6 @@
 #include <semaphore.h>
 #include <errno.h>
 
-
-
 /* Test flags. */
 #define VERBOSE  (1 << 10)
 
@@ -471,14 +469,9 @@ static int sem_test_open_close(void)
 
 		/* Unlinking sem1 : it shoud still be usable but not be in file system */
 		if (sem_unlink("/home/mysem/sem1"))
-		{
 			printf("Child : sem1 has already been unlinked\n");
-		}
 		else
-		{
 			printf("Child : sem1 has been unlinked\n");
-		}
-
 
 		printf("Child blocked on sem1\n");
 		sem_wait(semc1);
