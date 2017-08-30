@@ -33,8 +33,7 @@ if [ ! "$(ls -A $WORKDIR)" ]; then
 fi
 
 # Get required packages.
-apt-get install g++
-apt-get install ddd
+apt-get install g++ ddd genisoimage -y
 
 # Export variables.
 export PREFIX=$WORKDIR/bin
@@ -68,9 +67,6 @@ make -j$num_cores
 make install
 git checkout .
 git clean -f -d
-
-# Install genisoimage.
-apt-get install genisoimage
 
 # Back to the current folder
 cd $CURDIR
