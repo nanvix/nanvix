@@ -54,7 +54,9 @@ git clean -f -d
 cd $WORKDIR
 cd gcc*/
 ./contrib/download_prerequisites
-./configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c --without-headers
+mkdir build
+cd build
+../configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c --without-headers
 make -j$num_cores all-gcc
 make install-gcc
 git checkout .
