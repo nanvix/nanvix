@@ -21,7 +21,7 @@
 
 # Set working directory.
 export CURDIR=`pwd`
-export WORKDIR=$CURDIR/toolchain/i386
+export WORKDIR=$CURDIR/tools/dev/toolchain/i386
 cd $WORKDIR
 
 # Retrieve the number of processor cores
