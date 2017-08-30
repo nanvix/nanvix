@@ -19,9 +19,12 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Set working directory.
+# Required variables.
 export CURDIR=`pwd`
 export WORKDIR=$CURDIR/tools/dev/toolchain/i386
+export PREFIX=$WORKDIR
+export TARGET=i386-elf
+
 cd $WORKDIR
 
 # Retrieve the number of processor cores
@@ -34,10 +37,6 @@ fi
 
 # Get required packages.
 apt-get install g++ ddd genisoimage -y
-
-# Export variables.
-export PREFIX=$WORKDIR/bin
-export TARGET=i386-elf
 
 # Build binutils.
 cd binutils*/
