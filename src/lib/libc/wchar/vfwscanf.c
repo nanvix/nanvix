@@ -1361,7 +1361,7 @@ _DEFUN(__SVFWSCANF_R, (rptr, fp, fmt0, ap),
 
 		  /* If there might not be enough space for the new exponent,
 		     truncate some trailing digits to make room.  */
-		  if (exp_start >= buf + sizeof (buf) - MAX_LONG_LEN)
+		  if (exp_start >= buf + sizeof (buf)/sizeof(buf[0]) - MAX_LONG_LEN)
 		    exp_start = buf + sizeof (buf) - MAX_LONG_LEN - 1;
                  swprintf (exp_start, MAX_LONG_LEN, L"e%ld", new_exp);
 		}
