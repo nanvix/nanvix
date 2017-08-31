@@ -32,9 +32,11 @@
 	#include <signal.h>
 	#include <ustat.h>
 	#include <utime.h>
-	
+	#include <semaphore.h>
+
 	/* Number of system calls. */
-	#define NR_SYSCALLS 51 
+	#define NR_SYSCALLS 56
+
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -86,12 +88,17 @@
  	#define NR_ps       46
  	#define NR_gticks   47
  	#define NR_time	    48
-	#define NR_acct     49
- 	#define NR_mount    50
- 	#define NR_semget   51
- 	#define NR_semctl   52
- 	#define NR_semop    53
-
+ 	#define NR_mount    49
+ 	#define NR_unmount  50
+  #define NR_semopen  51
+	#define NR_semclose 52
+	#define NR_semunlink 53
+	#define NR_semwait  54
+	#define NR_sempost  55
+	#define NR_acct     56
+ 	#define NR_semget   57
+ 	#define NR_semctl   58
+ 	#define NR_semop    59
 
 #ifndef _ASM_FILE_
 
@@ -281,6 +288,22 @@
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);
+	EXTERN int sys_unmount(const char *, const char *);	
+
+	/* Creates or opens a semaphore */
+	EXTERN int sys_semopen(const char* name, int oflag, ...);
+
+	/* Closes a semaphore */
+	EXTERN int sys_semclose(int idx);
+
+	/* Unlinks a semaphore */
+	EXTERN int sys_semunlink(const char *name);
+
+	/* Waiting for a semaphore */
+	EXTERN int sys_semwait(int idx);
+
+	/* Unlock a semaphore */
+	EXTERN int sys_sempost(int idx);
 
 #endif /* _ASM_FILE_ */
 

@@ -1,29 +1,47 @@
 /*
  * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *              2017-2017 Romane Gallier <romanegallier@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <limits.h>
 
-#ifndef _SYS_MOUNT_H
-#define _SYS_MOUNT_H
+#ifndef SEMAPHORE_H_
+#define SEMAPHORE_H_
+
+#ifndef _ASM_FILE_
+
+	/**
+	 * @brief User-land semaphore
+	 *
+	 */
+	typedef struct sem_t
+	{
+		int semid; 	/**< Semaphore ID.  */
+	} sem_t;
+
+	extern sem_t *usem[OPEN_MAX];
 
 	/* Forward definitions. */
-	extern int mount (const char *, const char *);
-	extern int unmount (const char *, const char *);
+	extern sem_t *sem_open(const char *, int, ...);
+	extern int sem_close(sem_t *);
+	extern int sem_unlink(const char *);
+	extern int sem_post(sem_t *);
+	extern int sem_wait(sem_t *);
 
-#endif /* _SYS_MOUNT_H */
+#endif
+
+#endif /* SEMAPHORE_H_ */

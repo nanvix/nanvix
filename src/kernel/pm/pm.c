@@ -30,6 +30,9 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include <limits.h>
+#include <sys/sem.h>
+#include <limits.h>
+
 
 /**
  * @brief Idle process page directory.
@@ -66,13 +69,22 @@ PUBLIC pid_t next_pid = 0;
  */
 PUBLIC unsigned nprocs = 0;
 
+/* semtable init */
+PUBLIC struct ksem semtable[SEM_OPEN_MAX];
+
+/* Processes waiting for a semaphore */
+PUBLIC struct process* semwaiters[PROC_MAX];
+
+PUBLIC struct ksem sembuf;
+
+PUBLIC struct inode *semdirectory;
+
 /**
  * @brief Initializes the process management system.
  */
 PUBLIC void pm_init(void)
 {	
-	int i;             /* Loop index.      */
-	struct process *p; /* Working process. */
+	struct process *p;
 	
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
@@ -87,15 +99,15 @@ PUBLIC void pm_init(void)
 	IDLE->received = 0;
 	IDLE->kstack = idle_kstack;
 	IDLE->restorer = NULL;
-	for (i = 0; i < NR_SIGNALS; i++)
+	for (int i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
 	IDLE->irqlvl = INT_LVL_5;
 	IDLE->pmcs.enable_counters = 0;
 	IDLE->pgdir = idle_pgdir;
-	for (i = 0; i < NR_PREGIONS; i++)
+	for (int i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;
 	IDLE->size = 0;
-	for (i = 0; i < OPEN_MAX; i++)
+	for (int i = 0; i < OPEN_MAX; i++)
 		IDLE->ofiles[i] = NULL;
 	IDLE->close = 0;
 	IDLE->umask = S_IXUSR | S_IWGRP | S_IXGRP | S_IWOTH | S_IXOTH;
@@ -125,6 +137,16 @@ PUBLIC void pm_init(void)
 	IDLE->chain = NULL;
 	
 	nprocs++;
-	
+
+	/* Initializing semaphore table */
+	for (int i = 0; i < OPEN_MAX; i++)
+	{
+		semtable[i].name[0] = '\0';
+
+		for (int j = 0; j<PROC_MAX; j++)
+			semtable[i].currprocs[j] = (-1);
+	}
+
+
 	enable_interrupts();
 }

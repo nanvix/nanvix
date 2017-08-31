@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -20,23 +20,25 @@
 
 #include <nanvix/syscall.h>
 #include <errno.h>
-#include <reent.h>
- 
+
 /**
- * @brief Performs operations in a semaphore.
+ * Mounts a file system.
+ *
+ * @param device  Device name.
+ * @param target  Target directory.
  */
-int semop(int semid, int op)
+int unmount (const char *device, const char *target)
 {
 	int ret;
-	
-	__asm__ volatile (
+
+	__asm__ volatile(
 		"int $0x80"
 		: "=a" (ret)
-		: "0" (NR_semop),
-		  "b" (semid),
-		  "c" (op)
+		: "0" (NR_unmount),
+		  "b" (device),
+		  "c" (target)
 	);
-	
+
 	/* Error. */
 	if (ret < 0)
 	{

@@ -1,7 +1,7 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
- * 
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier <romanegallier@gmail.com>
+ *
  * This file is part of Nanvix.
  * 
  * Nanvix is free software; you can redistribute it and/or modify
@@ -18,33 +18,30 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/syscall.h>
+#include <nanvix/const.h>
+#include <nanvix/fs.h>
+#include <nanvix/klib.h>
 #include <errno.h>
-#include <reent.h>
 
 /**
- * @brief Performs control operations in a semaphore.
+ * Mounts a file system.
+ *
+ * @param device  Device name.
+ * @param target  Target directory.
  */
-int semctl(int semid, int cmd, int val)
+PUBLIC int sys_unmount(const char *device, const char *target)
 {
-	int ret;
+	char *kdevice;
+	char *ktarget;
+
+	/* Get device name. */
+	if ((kdevice = getname(device)) == NULL)
+		return (curr_proc->errno);
 	
-	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_semctl),
-		  "b" (semid),
-		  "c" (cmd),
-		  "d" (val)
-	);
-	
-	/* Error. */
-	if (ret < 0)
-	{
-		errno = -ret;
-		_REENT->_errno = -ret;
-		return (-1);
-	}
-	
-	return (ret);
+	/* Get target directory. */
+	if ((ktarget = getname(target)) == NULL)
+		return (curr_proc->errno);
+
+	kprintf("fs: I should unmount %s on %s", ktarget, kdevice);
+	return unmount(kdevice,ktarget);
 }

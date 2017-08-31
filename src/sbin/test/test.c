@@ -30,12 +30,96 @@
 #include <string.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <semaphore.h>
+#include <errno.h>
 
 /* Test flags. */
 #define VERBOSE  (1 << 10)
 
 /* Test flags. */
 static unsigned flags = VERBOSE;
+
+/*============================================================================*
+ *                             Synthetic Works                                *
+ *============================================================================*/
+
+/**
+ * @brief Performs some dummy CPU-intensive computation.
+ */
+static void work_cpu(void)
+{
+	int c;
+	
+	c = 0;
+		
+	/* Perform some computation. */
+	for (int i = 0; i < 4096; i++)
+	{
+		int a = 1 + i;
+		for (int b = 2; b < i; b++)
+		{
+			if ((i%b) == 0)
+				a += b;
+		}
+		c += a;
+	}
+}
+
+/**
+ * @brief Performs some dummy FPU-intensive computation.
+ */
+static void work_fpu(void)
+{
+	const int n = 16; /* Matrix size.    */
+	float a[16][16];  /* First operand.  */
+	float b[16][16];  /* Second operand. */
+	float c[16][16];  /* Result.         */
+	
+	/* Initialize matrices. */
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			a[i][j] = 1.0;
+			a[i][j] = 2.0;
+			c[i][j] = 0.0;
+		}
+	}
+	
+	/* Perform matrix multiplication. */
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			for (int k = 0; k < n; k++)
+				c[i][j] += a[i][k]*b[k][i];
+		}
+	}
+}
+
+/**
+ * @brief Performs some dummy IO-intensive computation.
+ */
+static void work_io(void)
+{
+	int fd;            /* File descriptor. */
+	char buffer[2048]; /* Buffer.          */
+	
+	/* Open hdd. */
+	fd = open("/dev/hdd", O_RDONLY);
+	if (fd < 0)
+		_exit(EXIT_FAILURE);
+	
+	/* Read data. */
+	for (size_t i = 0; i < MEMORY_SIZE; i += sizeof(buffer))
+	{
+		if (read(fd, buffer, sizeof(buffer)) < 0)
+			_exit(EXIT_FAILURE);
+	}
+	
+	/* House keeping. */
+	close(fd);
+}
 
 /*============================================================================*
  *                             Paging System Tests                            *
@@ -163,52 +247,6 @@ static int io_test(void)
  *============================================================================*/
 
 /**
- * @brief Performs some dummy CPU-intensive computation.
- */
-static void work_cpu(void)
-{
-	int c;
-	
-	c = 0;
-		
-	/* Perform some computation. */
-	for (int i = 0; i < 4096; i++)
-	{
-		int a = 1 + i;
-		for (int b = 2; b < i; b++)
-		{
-			if ((i%b) == 0)
-				a += b;
-		}
-		c += a;
-	}
-}
-
-/**
- * @brief Performs some dummy IO-intensive computation.
- */
-static void work_io(void)
-{
-	int fd;            /* File descriptor. */
-	char buffer[2048]; /* Buffer.          */
-	
-	/* Open hdd. */
-	fd = open("/dev/hdd", O_RDONLY);
-	if (fd < 0)
-		_exit(EXIT_FAILURE);
-	
-	/* Read data. */
-	for (size_t i = 0; i < MEMORY_SIZE; i += sizeof(buffer))
-	{
-		if (read(fd, buffer, sizeof(buffer)) < 0)
-			_exit(EXIT_FAILURE);
-	}
-	
-	/* House keeping. */
-	close(fd);
-}
-
-/**
  * @brief Scheduling test 0.
  * 
  * @details Spawns two processes and tests wait() system call.
@@ -333,163 +371,176 @@ static int sched_test2(void)
  *============================================================================*/
 
 /**
- * @brief Creates a semaphore.
+ * @brief Produces stuff.
+ *
+ * @param sem  Accounts for empty slots on a shared buffer.
+ * @param fill Accounts for used slots on a shared buffer.
  */
-#define SEM_CREATE(a, b) (assert(((a) = semget(b)) >= 0))
-
-/**
- * @brief Initializes a semaphore.
- */
-#define SEM_INIT(a, b) (assert(semctl((a), SETVAL, (b)) == 0))
-
-/**
- * @brief Destroys a semaphore.
- */
-#define SEM_DESTROY(x) (assert(semctl((x), IPC_RMID, 0) == 0))
-
-/**
- * @brief Ups a semaphore.
- */
-#define SEM_UP(x) (assert(semop((x), 1) == 0))
-
-/**
- * @brief Downs a semaphore.
- */
-#define SEM_DOWN(x) (assert(semop((x), -1) == 0))
-
-/**
- * @brief Puts an item in a buffer.
- */
-#define PUT_ITEM(a, b)                                \
-{                                                     \
-	assert(lseek((a), 0, SEEK_SET) != -1);            \
-	assert(write((a), &(b), sizeof(b)) == sizeof(b)); \
-}                                                     \
-
-/**
- * @brief Gets an item from a buffer.
- */
-#define GET_ITEM(a, b)                               \
-{                                                    \
-	assert(lseek((a), 0, SEEK_SET) != -1);           \
-	assert(read((a), &(b), sizeof(b)) == sizeof(b)); \
-}                                                    \
-
-/**
- * @brief Producer-Consumer problem with semaphores.
- * 
- * @details Reproduces consumer-producer scenario using semaphores.
- * 
- * @returns Zero if passed on test, and non-zero otherwise.
- */
-int semaphore_test3(void)
+static void consumer(sem_t *sem, sem_t *empty, int n)
 {
-	pid_t pid;                  /* Process ID.              */
-	int buffer_fd;              /* Buffer file descriptor.  */
-	int empty;                  /* Empty positions.         */
-	int full;                   /* Full positions.          */
-	int mutex;                  /* Mutex.                   */
-	const int BUFFER_SIZE = 32; /* Buffer size.             */
-	const int NR_ITEMS = 512;   /* Number of items to send. */
-	
-	/* Create buffer.*/
-	buffer_fd = open("buffer", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-	if (buffer_fd < 0)
-		return (-1);
-	
-	/* Create semaphores. */
-	SEM_CREATE(mutex, 1);
-	SEM_CREATE(empty, 2);
-	SEM_CREATE(full, 3);
-		
-	/* Initialize semaphores. */
-	SEM_INIT(full, 0);
-	SEM_INIT(empty, BUFFER_SIZE);
-	SEM_INIT(mutex, 1);
-	
-	if ((pid = fork()) < 0)
-		return (-1);
-	
-	/* Producer. */
-	else if (pid == 0)
+	for (int j = 0; j < n; j++)
 	{
-		for (int item = 0; item < NR_ITEMS; item++)
-		{
-			SEM_DOWN(empty);
-			SEM_DOWN(mutex);
-			
-			PUT_ITEM(buffer_fd, item);
-				
-			SEM_UP(mutex);
-			SEM_UP(full);
+		sem_wait(empty);
+		work_cpu();
+		sem_post(sem);
+	}
+}
+
+/**
+ * @brief Consumes stuff.
+ *
+ * @param sem  Accounts for empty slots on a shared buffer.
+ * @param fill Accounts for used slots on a shared buffer.
+ */
+static void producer(sem_t *sem, sem_t *empty, int n)
+{
+	for (int j = 0; j < n; j++)
+	{
+		sem_wait(sem);
+		work_cpu();
+		sem_post(empty);
+	}
+}
+
+/*  
+ * @brief Producer consumer test.
+ */
+static int sem_producer_consumer_test(void)
+{
+	int n;               /* Number of items.       */
+	mode_t mode;         /* Semaphore access mode. */
+	sem_t *empty, *full; /* Semaphores.            */
+
+	/* Named semaphores. */
+	const char *sem1 = "/home/mysem/sem1";
+	const char *sem2 = "/home/mysem/sem2";
+
+	n = 10;
+	mode = 0644;
+
+	full = sem_open(sem2, O_CREAT, mode, 0);
+	empty = sem_open(sem1, O_CREAT, mode, n);
+
+	if ((empty == NULL) || (full == NULL))
+	{	
+		printf("cannot create semaphores\n");
+		exit(EXIT_FAILURE);	
+	}
+
+	/* Child. */
+	if (fork() == 0)
+	{
+		full = sem_open(sem2, O_RDWR);
+		empty = sem_open(sem1, O_RDWR);
+
+		if ((empty == NULL) || (full == NULL))
+		{	
+			printf("cannot open semaphores\n");
+			exit(EXIT_FAILURE);	
 		}
 
-		_exit(EXIT_SUCCESS);
+		producer(empty, full, n);
+
+		sem_close(full);
+		sem_close(empty);
+
+		exit (EXIT_SUCCESS);
 	}
-	
-	/* Consumer. */
+
+	/* Father. */
 	else
 	{
-		int item;
+		consumer(empty, full, n);
+
+		sem_close(full);
+		sem_close(empty);
 		
-		do
-		{
-			SEM_DOWN(full);
-			SEM_DOWN(mutex);
-			
-			GET_ITEM(buffer_fd, item);
-				
-			SEM_UP(mutex);
-			SEM_UP(empty);
-		} while (item != (NR_ITEMS - 1));
+		sem_unlink(sem2);
+		sem_unlink(sem1);
 	}
-					
-	/* Destroy semaphores. */
-	SEM_DESTROY(mutex);
-	SEM_DESTROY(empty);
-	SEM_DESTROY(full);
-	
-	close(buffer_fd);
-	unlink("buffer");
-	
+
 	return (0);
 }
+
+static int sem_test_open_close(void) 
+{ 
+	/* Child. */
+	if (fork() == 0)
+	{ 
+		/* We don't unlink semc2 */ 
+		sem_t *semc1, *semc3;
+		semc1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
+		semc3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
+
+		sem_wait(semc1);
+		work_cpu();
+		sem_post(semc3);
+
+		sem_unlink("/home/mysem/sem1");
+		sem_wait(semc1);
+
+		sem_close(semc3);
+		sem_close(semc1);
+		sem_unlink("/home/mysem/sem3");
+
+		/* Operations on invalid semaphores */
+		sem_wait(semc1);
+		sem_wait(semc3);
+		sem_post(semc1);
+		sem_post(semc3);
+
+		exit (EXIT_SUCCESS);
+	} 
+	else
+	{ 
+		/* father */ 
+		sem_t *semf1, *semf2, *semf3, *semf4; 
+		semf1 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
+		/* Opening the same semaphore : the same address should be returned */ 
+		semf2 = sem_open("/home/mysem/sem1",O_CREAT,0777,0);
+		semf3 = sem_open("/home/mysem/sem3",O_CREAT,0777,0); 
+		semf4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); 
+
+		sem_post(semf1);
+		work_cpu();
+		sem_wait(semf3);
+		sem_unlink("/home/mysem/sem1");
+
+		work_cpu();
+		sem_post(semf1);
+		sem_close(semf3);
+
+		/* sem4 multiple closed */
+		sem_close(semf4);
+		sem_close(semf4); /* no effect */ 
+		sem_close(semf4); /* no effect */
+		
+		sem_unlink("/home/mysem/sem4"); /* this will delete sem4 because ref count == 0 */
+		
+		/* opening a new semaphore called sem4 */
+		semf4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); 
+
+		/* Unlinking before closing */
+		sem_unlink("/home/mysem/sem4"); /* this will delete sem4 because ref count == 0 */
+
+		sem_close(semf4);
+
+		semf4 = sem_open("/home/mysem/sem4",O_CREAT,0777,0); /* This will use another kernel slot : sem4 has been unlinked */
+
+		sem_close(semf1);
+		sem_close(semf2);
+		sem_close(semf3);
+		
+		sem_unlink("/home/mysem/sem2");
+		sem_unlink("/home/mysem/sem4");
+	} 
+ 
+	return (0); 
+} 
 
 /*============================================================================*
  *                                FPU test                                    *
  *============================================================================*/
-
-/**
- * @brief Performs some dummy FPU-intensive computation.
- */
-static void work_fpu(void)
-{
-	const int n = 16; /* Matrix size.    */
-	float a[16][16];  /* First operand.  */
-	float b[16][16];  /* Second operand. */
-	float c[16][16];  /* Result.         */
-	
-	/* Initialize matrices. */
-	for (int i = 0; i < n; i++)
-	{
-		for (int j = 0; j < n; j++)
-		{
-			a[i][j] = 1.0;
-			a[i][j] = 2.0;
-			c[i][j] = 0.0;
-		}
-	}
-	
-	/* Perform matrix multiplication. */
-	for (int i = 0; i < n; i++)
-	{
-		for (int j = 0; j < n; j++)
-		{
-			for (int k = 0; k < n; k++)
-				c[i][j] += a[i][k]*b[k][i];
-		}
-	}
-}
 
 /**
  * @brief FPU testing module.
@@ -560,13 +611,15 @@ static void usage(void)
 	printf("Usage: test [options]\n\n");
 	printf("Brief: Performs regression tests on Nanvix.\n\n");
 	printf("Options:\n");
-	printf("  fpu    Floating Point Unit Test\n");
-	printf("  io     I/O Test\n");
-	printf("  ipc    Interprocess Communication Test\n");
-	printf("  paging Paging System Test\n");
-	printf("  stack  Stack growth Test\n");
-	printf("  sched  Scheduling Test\n");
-	
+	printf("  fpu     Floating Point Unit Test\n");
+	printf("  io      I/O Test\n");
+	printf("  ipc     Interprocess Communication Test\n");
+	printf("  paging  Paging System Test\n");
+	printf("  stack   Stack growth Test\n");
+	printf("  sched   Scheduling Test\n");
+	printf("  sem	  Semaphore Tests\n");
+
+
 	exit(EXIT_SUCCESS);
 }
 
@@ -616,14 +669,6 @@ int main(int argc, char **argv)
 			printf("  scheduler stress   [%s]\n",
 				(!sched_test2()) ? "PASSED" : "FAILED");
 		}
-		
-		/* IPC test. */
-		else if (!strcmp(argv[i], "ipc"))
-		{
-			printf("Interprocess Communication Tests\n");
-			printf("  producer consumer [%s]\n",
-				(!semaphore_test3()) ? "PASSED" : "FAILED");
-		}
 
 		/* FPU test. */
 		else if (!strcmp(argv[i], "fpu"))
@@ -632,8 +677,17 @@ int main(int argc, char **argv)
 			printf("  Result [%s]\n",
 				(!fpu_test()) ? "PASSED" : "FAILED");
 		}
-	
-	
+
+		/* Semaphore tests. */
+		else if (!strcmp(argv[i], "sem"))
+		{
+			printf("Semaphore Tests\n");
+			printf("  open and close    [%s]\n",
+				(!sem_test_open_close()) ? "PASSED" : "FAILED");
+			printf("  producer consumer [%s]\n",
+				(!sem_producer_consumer_test()) ? "PASSED" : "FAILED");
+		}
+
 		/* Wrong usage. */
 		else
 			usage();
