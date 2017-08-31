@@ -1,6 +1,7 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
+ *              2017-2017 Davidson Francis <davidsondfgl@gmail.com>
  *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
@@ -111,6 +112,9 @@ PRIVATE void init(void)
 	execve("/sbin/init", argv, envp);
 }
 
+/* External declaration for cpu_init() function. */
+extern void cpu_init(void);
+
 /**
  * @brief Initializes the kernel.
  *
@@ -125,6 +129,7 @@ PUBLIC void kmain(const char* cmdline)
 		dbg_init();
 
 	/* Initialize system modules. */
+	cpu_init();
 	dev_init();
 	mm_init();
 	pm_init();

@@ -28,6 +28,7 @@
 	#include <sys/times.h>
 	#include <sys/types.h>
 	#include <sys/utsname.h>
+	#include <i386/pmc.h>
 	#include <signal.h>
 	#include <ustat.h>
 	#include <utime.h>
@@ -35,6 +36,7 @@
 
 	/* Number of system calls. */
 	#define NR_SYSCALLS 56
+
 	
 	/* System call numbers. */
 	#define NR_alarm     0
@@ -88,11 +90,15 @@
  	#define NR_time	    48
  	#define NR_mount    49
  	#define NR_unmount  50
-  	#define NR_semopen  51
+  #define NR_semopen  51
 	#define NR_semclose 52
 	#define NR_semunlink 53
 	#define NR_semwait  54
 	#define NR_sempost  55
+	#define NR_acct     56
+ 	#define NR_semget   57
+ 	#define NR_semctl   58
+ 	#define NR_semop    59
 
 #ifndef _ASM_FILE_
 
@@ -274,6 +280,11 @@
 	
 	/* Forward definitions. */
 	EXTERN time_t sys_time(time_t *);
+
+	/*
+	 * Enable process accounting.
+	 */
+	EXTERN int sys_acct(struct pmc *p, unsigned char rw);
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);

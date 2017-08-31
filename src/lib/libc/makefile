@@ -40,6 +40,7 @@ C_SRC = $(wildcard *.c)         \
 	$(wildcard stdlib/*.c)      \
 	$(wildcard string/*.c)      \
 	$(wildcard stropts/*.c)     \
+	$(wildcard sys/acct/*.c)    \
 	$(wildcard sys/sem/*.c)     \
 	$(wildcard sys/stat/*.c)    \
 	$(wildcard sys/time/*.c)    \

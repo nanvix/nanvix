@@ -1,6 +1,5 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
+ * Copyright(C) 2017-2017 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -17,15 +16,16 @@
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
- 
-#ifndef KLOG_H_
-#define KLOG_H_
 
-	#include <nanvix/const.h>
+#include <nanvix/const.h>
+#include <i386/fpu.h>
+#include <i386/pmc.h>
 
-	/* Forward definitions. */
-	EXTERN void klog_init(void);
-	EXTERN void test_klog(void);
-
-#endif /* KLOG_H_ */
-
+/*
+ * @brief Initializes the CPU resources.
+ */
+PUBLIC void cpu_init(void)
+{
+	pmc_init();
+	fpu_init();
+}

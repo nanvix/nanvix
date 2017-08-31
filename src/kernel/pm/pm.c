@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2017 Davidson Francis <davidsondfgl@hotmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
  *
  * This file is part of Nanvix.
@@ -102,6 +102,7 @@ PUBLIC void pm_init(void)
 	for (int i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
 	IDLE->irqlvl = INT_LVL_5;
+	IDLE->pmcs.enable_counters = 0;
 	IDLE->pgdir = idle_pgdir;
 	for (int i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;

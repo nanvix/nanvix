@@ -206,11 +206,11 @@ _DEFUN (_strtod_r, (ptr, s00, se),
 	for(s = s00;;s++) switch(*s) {
 		case '-':
 			sign = 1;
-			/* no break */
+		    /*FALLTHROUGH*/
 		case '+':
 			if (*++s)
 				goto break2;
-			/* no break */
+		    /*FALLTHROUGH*/
 		case 0:
 			goto ret0;
 		case '\t':
@@ -323,6 +323,7 @@ _DEFUN (_strtod_r, (ptr, s00, se),
 		switch(c = *++s) {
 			case '-':
 				esign = 1;
+			/*FALLTHROUGH*/
 			case '+':
 				c = *++s;
 			}

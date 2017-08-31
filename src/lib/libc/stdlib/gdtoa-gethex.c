@@ -207,7 +207,7 @@ _DEFUN(gethex, (ptr, sp, fpi, exp, bp, sign),
 		switch(*++s) {
 		  case '-':
 			esign = 1;
-			/* no break */
+			/*FALLTHROUGH*/
 		  case '+':
 			s++;
 		  }
