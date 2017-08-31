@@ -152,7 +152,7 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 
 	  /* if a code had been printed, then clock ticks since initialization are printed too */ 
      if (char_printed) 
-        print_ticks(&head,&tail,&char_printed); 
+		print_ticks(&head,&tail,&char_printed); 
 	
 	/* Copy data to ring buffer. */
 	while (lenght-- > 0)

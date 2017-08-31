@@ -268,7 +268,7 @@ struct __sFILE {
   int	_ur;		/* saved _r when _r is counting ungetc data */
 
   /* tricks to meet minimum requirements even when malloc() fails */
-  unsigned char _ubuf[3];	/* guarantee an ungetc() buffer */
+  unsigned char _ubuf[8];	/* guarantee an ungetc() buffer */
   unsigned char _nbuf[1];	/* guarantee a getc() buffer */
 
   /* separate buffer for fgetline() when line crosses buffer boundary */
@@ -324,7 +324,7 @@ struct __sFILE64 {
   int	_ur;		/* saved _r when _r is counting ungetc data */
 
   /* tricks to meet minimum requirements even when malloc() fails */
-  unsigned char _ubuf[3];	/* guarantee an ungetc() buffer */
+  unsigned char _ubuf[8];	/* guarantee an ungetc() buffer */
   unsigned char _nbuf[1];	/* guarantee a getc() buffer */
 
   /* separate buffer for fgetline() when line crosses buffer boundary */
