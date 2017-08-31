@@ -35,8 +35,7 @@
 	#include <semaphore.h>
 
 	/* Number of system calls. */
-	#define NR_SYSCALLS 56
-
+	#define NR_SYSCALLS 57
 	
 	/* System call numbers. */
 	#define NR_alarm     0
