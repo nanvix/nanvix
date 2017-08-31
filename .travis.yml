@@ -5,8 +5,5 @@ language: C
 services:
   - docker
 
-before_install:
-- docker build -f Dockerfile.tvci -t nanvix/launchnanvix --build-arg BRANCH=$TRAVIS_BRANCH .
-
 script:
-- docker run nanvix/launchnanvix /bin/sh -c "cd /root/nanvix; make nanvix > /dev/null"
+- docker run -v"$(pwd):/root/nanvix" -p4567:4567 theldus/nanvix:compile /bin/sh -c "cd /root/nanvix; cp -r /toolchain/* /root/nanvix/tools/dev/toolchain/i386; make TARGET=i386 nanvix > /dev/null"
