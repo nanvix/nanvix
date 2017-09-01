@@ -224,4 +224,5 @@ PUBLIC void fs_init(void)
 	root->count += 2;
 	
 	inode_unlock(root);
+
 }

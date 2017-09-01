@@ -1,6 +1,5 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2017-2017 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -18,33 +17,15 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/syscall.h>
-#include <errno.h>
-#include <reent.h>
- 
-/**
- * @brief Performs operations in a semaphore.
- */
-int semop(int semid, int op)
-{
-	int ret;
-	
-	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_semop),
-		  "b" (semid),
-		  "c" (op)
-	);
-	
-	/* Error. */
-	if (ret < 0)
-	{
-		errno = -ret;
-		_REENT->_errno = -ret;
-		return (-1);
-	}
-	
-	return (ret);
-}
+#include <nanvix/const.h>
+#include <i386/fpu.h>
+#include <i386/pmc.h>
 
+/*
+ * @brief Initializes the CPU resources.
+ */
+PUBLIC void cpu_init(void)
+{
+	pmc_init();
+	fpu_init();
+}

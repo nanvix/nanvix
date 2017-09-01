@@ -1,0 +1,9 @@
+sudo: required
+
+language: C
+
+services:
+  - docker
+
+script:
+- docker run -v"$(pwd):/root/nanvix" -p4567:4567 theldus/nanvix:compile /bin/sh -c "cd /root/nanvix; cp -r /toolchain/* /root/nanvix/tools/dev/toolchain/i386; make TARGET=i386 nanvix > /dev/null"

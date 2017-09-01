@@ -17,87 +17,32 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>. 
  */ 
  
-/** 
- * @file 
- *  
- * @brief Public file system interface. 
- */ 
-  
-#ifndef NANVIX_FS_H_ 
-#define NANVIX_FS_H_ 
-   
-  /* General file permissions. */ 
-  #define MAY_READ  (S_IRUSR | S_IRGRP | S_IROTH)     /* May read.        */ 
-  #define MAY_WRITE (S_IWUSR | S_IWGRP | S_IWOTH)     /* May write.       */ 
-  #define MAY_EXEC  (S_IXUSR | S_IXGRP | S_IXOTH)     /* May exec/search. */ 
-  #define MAY_ALL   (MAY_READ | MAY_WRITE | MAY_EXEC) /* May anything.    */ 
+#ifndef NANVIX_FS_H_
+#define NANVIX_FS_H_
+	
+	/* General file permissions. */
+	#define MAY_READ  (S_IRUSR | S_IRGRP | S_IROTH)     /* May read.        */
+	#define MAY_WRITE (S_IWUSR | S_IWGRP | S_IWOTH)     /* May write.       */
+	#define MAY_EXEC  (S_IXUSR | S_IXGRP | S_IXOTH)     /* May exec/search. */
+	#define MAY_ALL   (MAY_READ | MAY_WRITE | MAY_EXEC) /* May anything.    */
+
+#ifndef _ASM_FILE_
+
+	#include <fs/minix.h>
+	#include <nanvix/config.h>
+	#include <nanvix/const.h>
+	#include <nanvix/pm.h>
+	#include <sys/stat.h>
+	#include <sys/types.h>
+	#include <stdint.h>
+	#include <ustat.h>
+	#include <sys/sem.h>
+
+/*============================================================================*
+ *                              Block Buffer Library                          *
+ *============================================================================*/
  
 #ifndef _ASM_FILE_ 
- 
-  #include <fs/minix.h> 
-  #include <nanvix/config.h> 
-  #include <nanvix/const.h> 
-  #include <nanvix/pm.h> 
-  #include <sys/stat.h> 
-  #include <sys/types.h> 
-  #include <stdint.h> 
-  #include <ustat.h> 
-  //changer
-  #include <limits.h>  
-/*============================================================================* 
- *                              Block Buffer Library                          * 
- *============================================================================*/ 
-  
-  /** 
-   * @defgroup Buffer Buffer Module 
-   */ 
-  /**@{*/ 
-  
-  /** 
-   * @brief Opaque pointer to a block buffer. 
-   */ 
-  typedef struct buffer * buffer_t; 
-   
-  /** 
-   * @brief Opaque pointer to a constant buffer. 
-   */ 
-  typedef const struct buffer * const_buffer_t; 
-   
-  /* Forward definitions. */ 
-  EXTERN void bsync(void); 
-  EXTERN void blklock(buffer_t); 
-  EXTERN void blkunlock(buffer_t); 
-  EXTERN void brelse(buffer_t); 
-  EXTERN buffer_t bread(dev_t, block_t); 
-  EXTERN void bwrite(buffer_t); 
-  EXTERN void buffer_dirty(buffer_t, int); 
-  EXTERN void *buffer_data(const_buffer_t); 
-  EXTERN dev_t buffer_dev(const_buffer_t); 
-  EXTERN block_t buffer_num(const_buffer_t); 
-  EXTERN int buffer_is_sync(const_buffer_t); 
-   
-  /**@}*/ 
-   
-/*============================================================================* 
- *                               Inode Library                                * 
- *============================================================================*/ 
-   
-  /** 
-   * @defgroup Inode Inode Module 
-   */ 
-  /**@{*/ 
-   
-  /** 
-   * @brief Inode flags. 
-   */ 
-  enum inode_flags 
-  { 
-    INODE_LOCKED = (1 << 0), /**< Locked?      */ 
-    INODE_DIRTY  = (1 << 1), /**< Dirty?       */ 
-    INODE_MOUNT  = (1 << 2), /**< Mount point? */ 
-    INODE_VALID  = (1 << 3), /**< Valid inode? */ 
-    INODE_PIPE   = (1 << 4)  /**< Pipe inode?  */ 
-  }; 
 
   typedef struct inode inode;
     
@@ -109,8 +54,8 @@
     ssize_t (*file_read)(struct inode *, void *, size_t , off_t );
     ssize_t (*file_write)(struct inode *, const void *, size_t , off_t);
     struct d_dirent *(*dirent_search) (struct inode *, const char *, struct buffer **, int);
-
   };
+
 
   /** 
    * @brief In-core inode. 

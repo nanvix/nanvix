@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -20,12 +21,11 @@
 #ifndef KLOG_H_
 #define KLOG_H_
 
-	/**
-	 * @brief Initializes the kernel log driver.
-	 * 
-	 * @author Pedro H. Penna
-	 */
-	extern void klog_init(void);
+	#include <nanvix/const.h>
+
+	/* Forward definitions. */
+	EXTERN void klog_init(void);
+	EXTERN void test_klog(void);
 
 #endif /* KLOG_H_ */
 

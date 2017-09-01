@@ -1,6 +1,5 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -22,18 +21,19 @@
 #include <errno.h>
 #include <reent.h>
 
-/**
- * @brief Creates a semaphore.
- */ 
-int semget(unsigned key)
+/*
+ * Enable process accounting.
+ */
+int acct(struct pmc *p, unsigned char rw)
 {
 	int ret;
 	
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)
-		: "0" (NR_semget),
-		  "b" (key)
+		: "0" (NR_acct),
+		  "b" (p),
+		  "c" (rw)
 	);
 	
 	/* Error. */

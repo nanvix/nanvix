@@ -37,7 +37,7 @@
 /*
  * Creates a file.
  */
-PRIVATE struct inode *do_creat(struct inode *d, const char *name, mode_t mode, int oflag)
+PUBLIC struct inode *do_creat(struct inode *d, const char *name, mode_t mode, int oflag)
 {
 	struct inode *i;
 	
@@ -78,7 +78,7 @@ PRIVATE struct inode *do_creat(struct inode *d, const char *name, mode_t mode, i
 /*
  * Opens a file.
  */
-PRIVATE struct inode *do_open(const char *path, int oflag, mode_t mode)
+PUBLIC struct inode *do_open(const char *path, int oflag, mode_t mode)
 {
 	int err;              /* Error?               */
 	const char *name;     /* File name.           */

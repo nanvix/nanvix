@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2017 Davidson Francis <davidsondfgl@hotmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -69,7 +69,23 @@ PUBLIC void yield(void)
 
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING)
+	{
 		sched(curr_proc);
+
+		/* Checks if the current process have an active counter. */
+		if (curr_proc->pmcs.enable_counters != 0)
+		{
+			/* Save the current counter. */
+			if (curr_proc->pmcs.enable_counters & 1)
+				curr_proc->pmcs.C1 += read_pmc(0);
+			
+			if (curr_proc->pmcs.enable_counters >> 1)
+				curr_proc->pmcs.C2 += read_pmc(1);
+
+			/* Reset the counter. */
+			pmc_init();
+		}
+	}
 
 	/* Remember this process. */
 	last_proc = curr_proc;
@@ -116,5 +132,31 @@ PUBLIC void yield(void)
 	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
 	next->counter = PROC_QUANTUM;
+
+	/* Start performance counters. */
+	if (next->pmcs.enable_counters != 0)
+	{
+		/* Enable counters. */
+		write_msr(IA32_PERF_GLOBAL_CTRL, IA32_PMC0 | IA32_PMC1);
+
+		/* Starts the counter 1. */
+		if (next->pmcs.enable_counters & 1)
+		{
+			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
+				| next->pmcs.event_C1;
+
+			write_msr(IA32_PERFEVTSELx, value);
+		}
+		
+		/* Starts the counter 2. */
+		if (next->pmcs.enable_counters >> 1)
+		{
+			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
+				| next->pmcs.event_C2;
+
+			write_msr(IA32_PERFEVTSELx + 1, value);
+		}
+	}
+	
 	switch_to(next);
 }

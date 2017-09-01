@@ -53,5 +53,6 @@ PUBLIC void kpanic(const char *fmt, ...)
 	disable_interrupts();
 	
 	while(1);
-		halt();
+
+	halt();
 }

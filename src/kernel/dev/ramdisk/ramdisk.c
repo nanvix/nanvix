@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -20,6 +21,7 @@
 #include <nanvix/config.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
+#include <nanvix/debug.h>
 #include <nanvix/fs.h>
 #include <nanvix/hal.h>
 #include <nanvix/klib.h>
@@ -171,6 +173,83 @@ PRIVATE const struct bdev ramdisk_driver = {
 	&ramdisk_writeblk  /* writeblk() */
 };
 
+/**
+ * @brief Used for debugging
+ * @details Tests if all RAM disks are correctly registered
+ * 
+ * @returns Upon successful completion one is returned. Upon failure, a 
+ *          zero is returned instead.
+ */
+PRIVATE int rmdtst_register(void)
+{
+	int i;
+	for (i=0;i<NR_RAMDISKS;i++)
+	{
+		if (&(ramdisks[i].start) == NULL)
+		{
+			kprintf(KERN_DEBUG "rmdsk test: register of disk number %d failed", i);
+			return 0;
+		}
+	}
+	return 1;
+}
+
+/**
+ * @brief Used for debugging
+ * @details Tests if ramdisk_write and ramdisk_read works correctly
+ * 
+ * @param buffer Buffer to be written in the RAM disk.
+ * @param tstrmd_lenght Number of characters to be written in the RAM disk.
+ * 
+ * @returns Upon successful completion one is returned. Upon failure, a 
+ *          zero is returned instead.
+ */
+PRIVATE int rmdtst_rw(char *buffer, int tstrmd_lenght)
+{
+	int char_count, char_count2;
+	if ((char_count = ramdisk_write(0, buffer, tstrmd_lenght, 0)) != tstrmd_lenght)
+	{
+		if (char_count <= 0)
+			kprintf(KERN_DEBUG "rmdsk test: ramdisk_write failed: nothing has been written");
+		else
+			kprintf("rmdsk test: ramdisk_write failed: what has been written is not what it has to be write");
+
+		return 0;
+	}
+
+	if ((char_count2 = ramdisk_read(0,buffer,tstrmd_lenght, 0)) != char_count)
+	{
+		if (char_count2 <= 0)
+			kprintf(KERN_DEBUG "rmdsk test: ramdisk_read failed: nothing has been read");
+		else
+			kprintf(KERN_DEBUG "rmdsk test: ramdisk_read failed: what has been read is not what has to be read");
+		return 0;
+	}
+
+	return 1;
+}
+
+PUBLIC void test_rmd(void)
+{
+	char buffer[KBUFFER_SIZE]; /* Temporary buffer.        */
+	int tstrmd_lenght = 39; /* Size of message to write in the log */
+	kstrncpy(buffer, "rmdsk test: test data input in ramdisk\n", tstrmd_lenght);
+
+	if(!rmdtst_register())
+	{
+		tst_failed();
+		return;
+	}
+
+	if(!rmdtst_rw(buffer, tstrmd_lenght))
+	{
+		tst_failed();
+		return;
+	}
+	tst_passed();
+	return;
+}
+
 /*
  * Initializes the RAM disk device driver.
  */
@@ -195,4 +274,6 @@ PUBLIC void ramdisk_init(void)
 	/* Failed to register ramdisk device driver. */
 	if (err)
 		kpanic("failed to register RAM disk device driver. ");
+
+	dbg_register(test_rmd, "test_rmd");
 }

@@ -1,3 +1,7 @@
 [submodule "doc"]
 	path = doc
 	url = https://github.com/nanvix/documentation
+[submodule "tools/dev/toolchain/i386"]
+	path = tools/dev/toolchain/i386
+	url = https://github.com/nanvix/toolchain
+	branch = master

@@ -35,6 +35,11 @@
 #include "fs.h"
 #include "minix/minix.h"
 
+#include <sys/fcntl.h>
+
+/* Number of inodes per block. */
+#define INODES_PER_BLOCK (BLOCK_SIZE/sizeof(struct d_inode))
+
 /**
  * @brief In-core inodes table.
  */
@@ -721,13 +726,13 @@ PUBLIC void inode_truncate(struct inode *ip)
  * 
  * @todo Use isearch.
  */
-PUBLIC struct inode *inode_alloc (struct superblock *sb)
+PUBLIC struct inode *inode_alloc(struct superblock *sb)
 {
 	struct inode *ip;
 
 	/* Get a free inode. */
 	ip = inode_cache_evict();
-		if (ip == NULL)
+	if (ip == NULL)
 		return (NULL);
 
 	/* Verifie the superblock */
@@ -740,6 +745,8 @@ PUBLIC struct inode *inode_alloc (struct superblock *sb)
 	}
 
 	/* Allocate inode. */
+	if (inode_alloc_minix(sb,ip))
+		return (NULL);
 	
 	/* Operation not supported. */
 	if (sb->s_op->inode_alloc == NULL)
@@ -748,8 +755,10 @@ PUBLIC struct inode *inode_alloc (struct superblock *sb)
 	if (sb->s_op->inode_alloc(sb,ip)){
 		return NULL;
 	}
+
 	inode_touch(ip);
 	inode_cache_insert(ip);
+
 	return (ip);
 }
 
@@ -808,6 +817,68 @@ repeat:
 	inode_cache_insert(ip);
 	
 	return (ip);
+}
+
+PUBLIC int inode_rename(const char* pathname, const char* newname)
+{
+	int i;              /* Working directory entry index.       */
+	int nentries;       /* Number of directory entries.         */
+	struct inode *semdirectory;
+	struct d_dirent *d; /* Directory entry.                     */
+	block_t blk;        /* Working block number.                */
+	struct buffer **buf = NULL;
+	const char *filename;
+
+	semdirectory = inode_dname(pathname, &filename);
+	inode_unlock(semdirectory);
+	nentries = semdirectory->size/sizeof(struct d_dirent);
+	i = 0;
+	blk = semdirectory->blocks[0];		
+	(*buf) = NULL;
+	/* Search directory entry. */
+	while (i < nentries)
+	{
+		if (blk == BLOCK_NULL)
+		{
+			i += BLOCK_SIZE/sizeof(struct d_dirent);
+			blk = block_map(semdirectory, i*sizeof(struct d_dirent), 0);
+			continue;
+		}
+
+		/* Get buffer. */
+		if ((*buf) == NULL)
+		{
+			(*buf) = bread(semdirectory->dev, blk);
+			blkunlock(*buf);
+			d = buffer_data(*buf);
+		}
+		
+		/* Get next block */
+		else if ((char *)d >= BLOCK_SIZE + (char *) buffer_data(*buf))
+		{
+			brelse((*buf));
+			(*buf) = NULL;
+			blk = block_map(semdirectory, i*sizeof(struct d_dirent), 0);
+			inode_unlock(semdirectory);
+			continue;
+		}
+		
+		/* Valid entry. */
+		if (d->d_ino != INODE_NULL)
+		{
+			/* Found */
+			if (!kstrncmp(d->d_name, filename, NAME_MAX))
+			{
+				kstrcpy(d->d_name,newname);
+				inode_unlock(semdirectory);
+				return 1;
+			}
+		}
+
+		d++; i++;
+	}
+
+	return -1;
 }
 
 /*
@@ -935,7 +1006,7 @@ PUBLIC void inode_put(struct inode *ip)
  *          remainder of the path. Upon failure, a #NULL pointer is returned 
  *          instead.
  */
-PRIVATE const char *break_path(const char *pathname, char *filename)
+PUBLIC const char *break_path(const char *pathname, char *filename)
 {
 	char *p2;       /* Write pointer. */
 	const char *p1; /* Read pointer.  */
@@ -1156,6 +1227,7 @@ PUBLIC struct inode *inode_name(const char *pathname)
 
 	dev = inode->dev;	
 	inode_put(inode);
+
 	inode = inode_get(dev, num);
 
 	/*Mounting point */
@@ -1241,4 +1313,35 @@ PUBLIC void inode_init(void)
 
 	/*Initialize MountTable*/
 	init_mount_table();
+}
+
+PUBLIC struct inode *inode_semaphore(const char* pathsem, int mode)
+{
+	struct inode *inode;
+	struct inode *directory;
+	const char *name;
+	char semname[MAX_SEM_NAME-4]="sem.";
+
+	/* Initialize Semaphore inode. */
+	directory = inode_dname(pathsem, &name);
+
+	if (directory==NULL)
+	{
+		return NULL;
+	}
+
+	if (	!permission(directory->mode, directory->uid, directory->gid, curr_proc, MAY_WRITE, 0) \
+	 	||	!permission(directory->mode, directory->uid, directory->gid, curr_proc, MAY_READ, 0) )
+	{
+		return NULL;
+	}
+
+	kstrcpy(&semname[4],name);
+
+	inode = do_creat(directory, semname, mode, O_CREAT);
+	inode->time = CURRENT_TIME;
+
+	inode_unlock(directory);
+
+	return inode;
 }

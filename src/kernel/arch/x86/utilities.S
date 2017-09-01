@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ *              2015-2017 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -38,6 +38,9 @@
 .globl switch_to
 .globl user_mode
 .globl fpu_init
+.globl pmc_init
+.globl read_pmc
+.globl write_msr
 
 /* Imported symbols. */
 .globl processor_reload
@@ -284,7 +287,7 @@ user_mode:
 	iret
 
 /*----------------------------------------------------------------------------*
- *                                 fpu_init()                                *
+ *                                 fpu_init()                                 *
  *----------------------------------------------------------------------------*/
 
 /*
@@ -295,3 +298,106 @@ fpu_init:
 	movl curr_proc, %eax
 	fnsave  PROC_FSS(%eax)
 	ret
+
+/*----------------------------------------------------------------------------*
+ *                                  pmc_init()                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Reset the PMC counters to a known state.
+ */
+pmc_init:
+	pushl %eax
+	pushl %ecx
+	pushl %edx
+
+	/* Clear the global ctrl. */
+	xor %edx, %edx
+	xor %eax, %eax
+	mov $IA32_PERF_GLOBAL_CTRL, %ecx
+	wrmsr
+
+	/* Clear the counter event. */
+	mov $IA32_PERFEVTSELx, %ecx
+	wrmsr
+
+	inc %ecx
+	wrmsr
+
+	/* Clear the counter value. */
+	mov $IA32_PMCx, %ecx
+	wrmsr
+
+	inc %ecx
+	wrmsr
+
+	/* Clear PMC0 and PMC1 overflow status. */
+	mov $IA32_PERF_GLOBAL_OVF_CTRL, %ecx
+	mov $IA32_PMC0, %eax
+	or  $IA32_PMC1, %eax
+	wrmsr
+
+	popl %edx
+	popl %ecx
+	popl %eax
+	ret
+
+/*----------------------------------------------------------------------------*
+ *                                  read_pmc()                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Reset a specified performance counter.
+ */
+read_pmc:
+	pushl %ebx
+	pushl %ecx
+
+	xorl %eax, %eax
+	cpuid
+
+	movl 12(%esp), %ecx
+	rdpmc
+
+	popl %ecx
+	popl %ebx
+	ret
+
+/*----------------------------------------------------------------------------*
+ *                                  read_msr()                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Reads from an specified MSR register.
+ */
+read_msr:
+	pushl %ecx
+
+	movl 8(%esp), %ecx
+	rdmsr
+
+	popl %ecx
+	ret
+
+/*----------------------------------------------------------------------------*
+ *                                  write_msr()                               *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Writes to an specified MSR register.
+ */
+write_msr:
+	pushl %eax
+	pushl %ecx
+	pushl %edx
+
+	movl 16(%esp), %ecx
+	movl 20(%esp), %eax
+	movl 24(%esp), %edx
+	wrmsr
+
+	popl %edx
+	popl %ecx
+	popl %eax
+	ret
+

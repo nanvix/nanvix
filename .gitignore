@@ -42,10 +42,11 @@ doc/*-kernel
 *.iso
 nanvix-iso/*
 
-# ISO Images
-nanvix.iso
-nanvix-iso/*
+# C Tags
+tags
 
+# Images
+nanvix.iso
 *.img
 
 # Exceptions.

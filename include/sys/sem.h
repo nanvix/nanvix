@@ -1,37 +1,74 @@
-/*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of Nanvix.
- * 
- * Nanvix is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * Nanvix is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
- */
+#include <limits.h>
+#include <sys/types.h>
+#include <nanvix/config.h>
+#include <nanvix/pm.h>
 
 #ifndef SEM_H_
 #define SEM_H_
 
+#define UNLINKED 	0100000
+#define PERMISSIONS 0000777
+
+#define SEM_IS_VALID(idx) \
+		(idx>=0 && idx<SEM_OPEN_MAX)
+
+#define SEM_IS_FREE(idx) \
+		(semtable[idx].num=0)
+
+#define SEM_VALID_VALUE(val) \
+		(val<=SEM_VALUE_MAX)
+
+#ifndef _ASM_FILE_
+
+	/* Kernel semaphores */
+	struct ksem {
+		char name[MAX_SEM_NAME];				/* Semaphore name 										*/
+		short value;              				/* Value of the semaphore                    			*/
+		pid_t currprocs[PROC_MAX];				/* Processes using the semaphores						*/
+		struct process* semwaiters[PROC_MAX];	/* The size should be higher if threads are implemented */
+		dev_t dev;								/* Semaphore descriptor device							*/
+		ino_t num;								/* Semaphore descriptor inode number					*/
+	};
+
+	/* Semaphores table */
+	extern struct ksem semtable[SEM_OPEN_MAX];
+
+	/* Inode corresponding to the semaphore directory */
+	extern struct inode *semdirectory;
+
+	/* Frees a semaphore */
+	void freesem(struct ksem *sem);
+
+	/* Verify if a semaphore name is valid */
+	int namevalid(const char* name);
+
+	/* Give the index of the semaphore if it exists */
+	int existance(const char* semname);
+
+	/* Returns the inode for a specific semaphore name */
+	struct inode *get_sem(const char* semname);
+
 	/**
-	 * @brief Comand values for semaphores.
+	 * 	Searching if a semaphore descriptor exists from its name
+	 * 	by searching in the file system
 	 */
-	/**@{*/
-	#define GETVAL   0 /**< Returns the value of a semaphore. */
-	#define SETVAL   1 /**< Sets the value of a semaphore.    */
-	#define IPC_RMID 3 /**< Destroys a semaphore.            */
-	/**@}*/
+	int existence_semaphore(const char* path);
 
-	/* Forward definitions. */
-	extern int semget(unsigned);
-	extern int semctl(int, int, int);
-	extern int semop(int, int);
+	/** 	
+	 *	@brief Searching if a sempahore exists in the semaphore table 
+	 *	
+ 	 *	@returns Its index in the semaphore table
+ 	 *			 -1 if it doesn't exists
+	 */
+	int search_semaphore (const char* semname);
 
-#endif /* SEM_H_ */
+	int remove_semaphore (const char *pathname);
+	
+	int sem_path(const char* pathname, char *sempathname);
+
+	int sem_name(const char *sempathname, char *filename);
+	
+
+#endif
+
+#endif

@@ -1,6 +1,7 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
+ *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -25,6 +26,7 @@
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <nanvix/region.h>
+#include <nanvix/debug.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -995,4 +997,182 @@ PUBLIC void initreg(void)
 		mreg->flags = MREGION_FREE;
 	
 	kprintf("mm: %d mini regions in mini regions table", NR_MINIREGIONS);
+}
+
+/**
+ * @brief Used for debugging
+ * 
+ * @returns NR_MINIREGIONS (resp. NR_REGIONS) if it's inferior to MR_REGIONS (resp. MR_MINIREGIONS)
+ */
+PRIVATE int min_regmreg(void)
+{
+	if(NR_MINIREGIONS <= NR_REGIONS)
+		return NR_MINIREGIONS;
+
+	return NR_REGIONS;
+}
+
+
+/**
+ * @brief Used for debugging
+ * @details Count free regions in regtab and print the result
+ * @returns number of free regions
+ */
+PRIVATE int count_freereg(void)
+{
+	struct region *reg;
+	int free_count = 0;
+
+	for(reg = &regtab[0]; reg < &regtab[NR_REGIONS]; reg++)
+	{
+		if(reg->flags != REGION_FREE)
+			{
+				continue;
+			}
+		else
+		{
+			free_count++;
+		}
+	}
+
+	return(free_count);
+}
+
+/**
+ * @brief Used for debugging
+ * @details Tries to allocate half of the maximum possible using allocreg
+ * @returns 1 on success, 0 otherwise
+ */
+PRIVATE int mmtst_alloc(int min_mm)
+{
+	struct region *d;
+	int free_count;
+	int i;
+
+	free_count = count_freereg();
+
+	for(i=0;i<(min_mm/2);i++)
+	{
+
+		if (( d = allocreg(S_IRUSR | S_IXUSR, 1000, REGION_FREE)) == NULL)
+		{
+			kprintf(KERN_DEBUG "mm test: failed to allocate memory region");
+		}
+	}
+
+	free_count = count_freereg();
+
+	if(free_count != NR_REGIONS-(min_mm/2))
+	{
+		kprintf(KERN_DEBUG "mm test: region allocation failed");
+		return 0;
+	}
+
+	return 1;
+}
+
+
+/**
+ * @brief Used for debugging
+ * @details Duplicate a quarter of the memory, then duplicates again what it just created
+ * 			Should always be called after mm_alloc(min_mm)
+ * @returns 1 on success, 0 otherwise
+ */
+PRIVATE int mmtst_dup(int min_mm)
+{
+	struct region *d;
+	int free_count;
+	int i;
+	int result = 1;
+
+	for(i=0;i<(min_mm/4);i++)
+	{
+		if ((d = dupreg(&regtab[i])) == NULL)
+		{
+			kprintf(KERN_DEBUG "mm test: failed to duplicate region number %d",i);
+			result = 0;
+		}
+	}
+
+	for(i=0;i<(min_mm/4);i++)
+	{
+
+		if ((d = dupreg(&regtab[i+(min_mm/2)])) == NULL)
+		{
+			kprintf(KERN_DEBUG "mm test: failed to duplicate region created by duplication number %d",i);
+			result = 0;
+		}
+	}
+
+	free_count = count_freereg();
+
+	if(free_count != NR_REGIONS-min_mm || !result)
+	{
+		kprintf(KERN_DEBUG "mm test: region duplication failed");
+		return 0;
+	}
+
+	return 1;
+}
+
+/**
+ * @brief Used for debugging
+ * @details Count free regions in regtab and print the result
+ * @returns 1 on success, 0 otherwise
+ */
+PRIVATE int mmtst_free(int min_mm)
+{
+	int free_count;
+	int i;
+
+	for(i=0;i<(min_mm);i++)
+	{
+		freereg(&regtab[i]);
+	}
+
+	free_count = count_freereg();
+
+	if(free_count != NR_REGIONS)
+	{
+		kprintf(KERN_DEBUG "mm test: region freeing failed");
+		return 0;
+	}
+
+	return 1;
+}
+
+/**
+ * @brief Used for debugging. Test main function
+ */
+PUBLIC void test_mm(void)
+{
+
+	int min_mm = min_regmreg();
+
+	if(!mmtst_free(min_mm))
+	{
+		tst_failed();
+		return;
+	}
+	
+	if(!mmtst_alloc(min_mm))
+	{
+		tst_failed();
+		return;
+	}
+
+	if(!mmtst_dup(min_mm))
+	{
+		tst_failed();
+		return;
+	}
+
+	if(!mmtst_free(min_mm))
+	{
+		tst_failed();
+		return;
+	}
+
+	tst_passed();
+	return;
 }

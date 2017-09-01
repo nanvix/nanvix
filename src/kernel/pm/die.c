@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -106,6 +107,10 @@ PUBLIC void die(int status)
 	
 	curr_proc->state = PROC_ZOMBIE;
 	curr_proc->alarm = 0;
+
+	/* Resets the counter if any. */
+	if (curr_proc->pmcs.enable_counters != 0)
+		pmc_init();
 	
 	sndsig(curr_proc->father, SIGCHLD);
 	
