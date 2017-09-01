@@ -42,50 +42,98 @@
  *                              Block Buffer Library                          *
  *============================================================================*/
  
-#ifndef _ASM_FILE_ 
+	/**
+	 * @defgroup Buffer Buffer Module
+	 */
+	/**@{*/
+ 
+	/**
+	 * @brief Opaque pointer to a block buffer.
+	 */
+	typedef struct buffer * buffer_t;
+	
+	/**
+	 * @brief Opaque pointer to a constant buffer.
+	 */
+	typedef const struct buffer * const_buffer_t;
+	
+	/* Forward definitions. */
+	EXTERN void bsync(void);
+	EXTERN void blklock(buffer_t);
+	EXTERN void blkunlock(buffer_t);
+	EXTERN void brelse(buffer_t);
+	EXTERN buffer_t bread(dev_t, block_t);
+	EXTERN void bwrite(buffer_t);
+	EXTERN void buffer_dirty(buffer_t, int);
+	EXTERN void *buffer_data(const_buffer_t);
+	EXTERN dev_t buffer_dev(const_buffer_t);
+	EXTERN block_t buffer_num(const_buffer_t);
+	EXTERN int buffer_is_sync(const_buffer_t);
+	
+	/**@}*/
+	
+/*============================================================================*
+ *                               Inode Library                                *
+ *============================================================================*/
+	
+	/**
+	 * @defgroup Inode Inode Module
+	 */
+	/**@{*/
 
-  typedef struct inode inode;
-    
-  struct inode_operations
-  {
-    ssize_t (*dir_read)(struct inode *, void *, size_t , off_t );
-    int (*dir_add)(struct inode *, struct inode *, const char *);
-    int (*dir_remove)(struct inode *, const char *);
-    ssize_t (*file_read)(struct inode *, void *, size_t , off_t );
-    ssize_t (*file_write)(struct inode *, const void *, size_t , off_t);
-    struct d_dirent *(*dirent_search) (struct inode *, const char *, struct buffer **, int);
-  };
+	typedef struct inode inode;
 
+	struct inode_operations
+	{
+		ssize_t (*dir_read)(struct inode *, void *, size_t , off_t );
+		int (*dir_add)(struct inode *, struct inode *, const char *);
+		int (*dir_remove)(struct inode *, const char *);
+		ssize_t (*file_read)(struct inode *, void *, size_t , off_t );
+		ssize_t (*file_write)(struct inode *, const void *, size_t , off_t);
+		struct d_dirent *(*dirent_search) (struct inode *, const char *, struct buffer **, int);
+	};
 
-  /** 
-   * @brief In-core inode. 
-   */ 
-  struct inode  
-  { 
-    mode_t mode;              /**< Access permissions.                   */ 
-    nlink_t nlinks;           /**< Number of links to the file.          */ 
-    uid_t uid;                /**< User id of the file's owner           */ 
-    gid_t gid;                /**< Group number of owner user.           */ 
-    off_t size;               /**< File size (in bytes).                 */ 
-    time_t time;              /**< Time when the file was last accessed. */ 
-    block_t blocks[NR_ZONES]; /**< Zone numbers.                         */ 
-    dev_t dev;                /**< Underlying device.                    */ 
-    ino_t num;                /**< Inode number.                         */ 
-    struct superblock *sb;    /**< Superblock.                           */ 
-    unsigned count;           /**< Reference count.                      */ 
-    enum inode_flags flags;   /**< Flags.                                */ 
-    char *pipe;               /**< Pipe page.                            */ 
-    off_t head;               /**< Pipe head.                            */ 
-    off_t tail;               /**< Pipe tail.                            */ 
-    struct inode *free_next;  /**< Next inode in the free list.          */ 
-    struct inode *hash_next;  /**< Next inode in the hash table.         */ 
-    struct inode *hash_prev;  /**< Previous inode in the hash table.     */ 
-    struct process *chain;    /**< Sleeping chain.                       */ 
-    struct inode_operations * i_op;
-    union {
-      struct d_inode minix;
-    } u;
-  }; 
+	/**
+	 * @brief Inode flags.
+	 */
+	enum inode_flags
+	{
+		INODE_LOCKED = (1 << 0), /**< Locked?      */
+		INODE_DIRTY  = (1 << 1), /**< Dirty?       */
+		INODE_MOUNT  = (1 << 2), /**< Mount point? */
+		INODE_VALID  = (1 << 3), /**< Valid inode? */
+		INODE_PIPE   = (1 << 4)  /**< Pipe inode?  */
+	};
+
+	/** 
+ 	 * @brief In-core inode. 
+	 */ 
+	struct inode  
+	{ 
+		mode_t mode;              /**< Access permissions.                   */ 
+		nlink_t nlinks;           /**< Number of links to the file.          */ 
+		uid_t uid;                /**< User id of the file's owner           */ 
+		gid_t gid;                /**< Group number of owner user.           */ 
+		off_t size;               /**< File size (in bytes).                 */ 
+		time_t time;              /**< Time when the file was last accessed. */ 
+		block_t blocks[NR_ZONES]; /**< Zone numbers.                         */ 
+		dev_t dev;                /**< Underlying device.                    */ 
+		ino_t num;                /**< Inode number.                         */ 
+		struct superblock *sb;    /**< Superblock.                           */ 
+		unsigned count;           /**< Reference count.                      */ 
+		enum inode_flags flags;   /**< Flags.                                */ 
+		char *pipe;               /**< Pipe page.                            */ 
+		off_t head;               /**< Pipe head.                            */ 
+		off_t tail;               /**< Pipe tail.                            */ 
+		struct inode *free_next;  /**< Next inode in the free list.          */ 
+		struct inode *hash_next;  /**< Next inode in the hash table.         */ 
+		struct inode *hash_prev;  /**< Previous inode in the hash table.     */ 
+		struct process *chain;    /**< Sleeping chain.                       */ 
+		struct inode_operations * i_op;
+		union {
+			struct d_inode minix;
+		} u;
+	}; 
 
   /**@}*/ 
    
@@ -104,9 +152,10 @@
   EXTERN int mount (char*, char*); 
   EXTERN int unmount (char*);
   EXTERN int mkfs (const char *, uint16_t, uint16_t, uint16_t, uint16_t);
-  PUBLIC struct inode * cross_mount_point_up (struct inode *);
-  PUBLIC struct inode * cross_mount_point_down (struct inode *);
-  PUBLIC int root_fs (struct inode *);
+  EXTERN struct inode * cross_mount_point_up (struct inode *);
+  EXTERN struct inode * cross_mount_point_down (struct inode *);
+  EXTERN int root_fs (struct inode *);
+  EXTERN struct inode *inode_semaphore(const char* pathsem, int mode);
  
 /*============================================================================* 
  *                            Super Block Library                             * 
@@ -167,6 +216,8 @@
   EXTERN ssize_t file_write(struct inode *, const void *, size_t, off_t); 
   EXTERN ssize_t pipe_read(struct inode *, char *, size_t); 
   EXTERN ssize_t pipe_write(struct inode *, const char *, size_t); 
+  EXTERN struct inode *do_creat(struct inode *, const char *wame, mode_t, int);
+  EXTERN const char *break_path(const char *, char *);
    
   /* Forward definitions. */ 
   EXTERN struct inode *root; 

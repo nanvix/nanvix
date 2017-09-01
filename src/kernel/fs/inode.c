@@ -32,6 +32,7 @@
 #include <nanvix/mm.h>
 #include <errno.h>
 #include <limits.h>
+#include <nanvix/syscall.h>
 #include "fs.h"
 #include "minix/minix.h"
 
