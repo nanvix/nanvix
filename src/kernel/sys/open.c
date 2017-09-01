@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <stdarg.h>
+#include <nanvix/klib.h>
 
 /*
  * Returns access permissions.
@@ -110,9 +111,15 @@ PUBLIC struct inode *do_open(const char *path, int oflag, mode_t mode)
 		return (i);
 	}
 	
+	if ((root_fs(dinode)==1)&& !kstrcmp (name ,".."))
+		dinode = cross_mount_point_down (dinode); 
+
+	else if  (dinode->flags & INODE_MOUNT)
+		dinode= cross_mount_point_up(dinode);
+	
 	dev = dinode->dev;
 	inode_put(dinode);
-	
+
 	/* File already exists. */
 	if (oflag & O_EXCL)
 	{

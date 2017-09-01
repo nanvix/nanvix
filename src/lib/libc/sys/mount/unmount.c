@@ -27,7 +27,7 @@
  * @param device  Device name.
  * @param target  Target directory.
  */
-int unmount (const char *device, const char *target)
+int unmount (const char *target)
 {
 	int ret;
 
@@ -35,8 +35,7 @@ int unmount (const char *device, const char *target)
 		"int $0x80"
 		: "=a" (ret)
 		: "0" (NR_unmount),
-		  "b" (device),
-		  "c" (target)
+		  "b" (target)
 	);
 
 	/* Error. */

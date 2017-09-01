@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include <sys/sem.h>
 #include <nanvix/klib.h>
+#include <nanvix/fs.h>
 #include <errno.h>
 
 /**

@@ -42,8 +42,10 @@ PUBLIC int sys_mount(const char *device, const char *target)
 	if ((ktarget = getname(target)) == NULL)
 		return (curr_proc->errno);
 
-	kprintf("fs: mouting %s on %s", ktarget, kdevice);
+	kprintf("fs: Mouting %s on %s", ktarget, kdevice);
 
-	return (mount(kdevice,ktarget));
+	int retour = mount(kdevice,ktarget);
+
+	return retour;
 }
 
