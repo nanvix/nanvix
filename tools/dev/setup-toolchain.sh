@@ -36,7 +36,7 @@ if [ ! "$(ls -A $WORKDIR)" ]; then
 fi
 
 # Get required packages.
-apt-get install g++ ddd genisoimage -y
+apt-get install g++ ddd genisoimage texinfo flex bison -y
 
 # Build binutils.
 cd binutils*/
