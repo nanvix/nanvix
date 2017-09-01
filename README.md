@@ -10,8 +10,7 @@ modern and fully featured.
 
 Nanvix targets 32-bit x86-based PCs and only requires a floppy or 
 CD-ROM drive and 16 MB of RAM. You can run it either in a real PC 
-or in a virtual machine, from a Live System's Image, available 
-at: https://sourceforge.net/projects/nanvix/files/
+or in a virtual machine, using a Live System's Image.
 	
 ## Building
 
