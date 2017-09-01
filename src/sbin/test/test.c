@@ -596,6 +596,31 @@ int fpu_test(void)
 	return (result == 0x40b2aaaa);
 }
 
+/*============================================================================*
+ *                           Memory Violation                                 *
+ *============================================================================*/
+
+/*  
+ * @brief Forces a memory violation.
+ */
+static int test_mem0(void)
+{
+	/* Child. */
+	if (fork() == 0)
+	{
+		int *i;
+		i = NULL;
+		printf("%d \n",*i);
+	}
+	/* Parent. */
+	else
+	{
+		/* noop */;
+		exit(EXIT_SUCCESS);
+	}
+
+	return (0);
+}
 
 /*============================================================================*
  *                                   main                                     *
@@ -618,7 +643,7 @@ static void usage(void)
 	printf("  stack   Stack growth Test\n");
 	printf("  sched   Scheduling Test\n");
 	printf("  sem	  Semaphore Tests\n");
-
+	printf("  mem	  Memory Violation Tests\n");
 
 	exit(EXIT_SUCCESS);
 }
@@ -686,6 +711,14 @@ int main(int argc, char **argv)
 				(!sem_test_open_close()) ? "PASSED" : "FAILED");
 			printf("  producer consumer [%s]\n",
 				(!sem_producer_consumer_test()) ? "PASSED" : "FAILED");
+		}
+
+		/* Memory tests. */
+		else if (!strcmp(argv[i], "mem"))
+		{
+			printf("Memory Violation Tests\n");
+			printf("  null pointer      [%s]\n",
+				(!test_mem0()) ? "PASSED" : "FAILED");
 		}
 
 		/* Wrong usage. */
