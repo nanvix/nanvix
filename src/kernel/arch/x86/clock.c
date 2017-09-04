@@ -35,7 +35,7 @@ PRIVATE void do_clock()
 {
 	ticks++;
 	
-	if (KERNEL_RUNNING(curr_proc))
+	if (KERNEL_WAS_RUNNING(curr_proc))
 	{
 		curr_proc->ktime++;
 		return;
