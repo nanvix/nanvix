@@ -30,7 +30,7 @@
 PUBLIC void do_##name(int err, struct intstack s)                   \
 {                                                                   \
 	/* Die. */                                                      \
-	if (KERNEL_RUNNING(curr_proc))                                  \
+	if (KERNEL_WAS_RUNNING(curr_proc))                              \
 	{                                                               \
 		kprintf("%s: %d", msg, err & 0xffff);                       \
 		dumpregs(&s);                                               \
@@ -94,7 +94,7 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 	((void)dummy0);
 	((void)dummy1);
 	
-	/* Validty page fault. */
+	/* Validity page fault. */
 	if (!(err & 1))
 	{
 		if (!vfault(addr))
@@ -108,7 +108,7 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 			return;
 	}
 	
-	if (KERNEL_RUNNING(curr_proc))
+	if (KERNEL_WAS_RUNNING(curr_proc))
 	{
 		dumpregs(&s);
 		kpanic("kernel page fault %d at %x", err, addr);
