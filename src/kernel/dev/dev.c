@@ -24,6 +24,7 @@
 #include <dev/tty.h>
 #include <dev/cmos.h>
 #include <dev/ramdisk.h>
+#include <dev/8250.h>
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
@@ -497,6 +498,7 @@ PUBLIC void dev_init(void)
 	clock_init(CLOCK_FREQ);
 	tty_init();
 	ramdisk_init();
+	uart8250_init();
 	dbg_register(cdev_test, "cdev_test");
 	dbg_register(bdev_test, "bdev_test");
 }

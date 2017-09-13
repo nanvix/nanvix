@@ -20,7 +20,7 @@
 #
 
 #Building kernel
-export CFLAGS += -DBUILDING_KERNEL -Wstack-usage=3192 
+export CFLAGS += -DBUILDING_KERNEL -D$(TARGET) -Wstack-usage=3192 
 
 # Target processor.
 PROCESSOR = i386
@@ -31,6 +31,7 @@ ARCH = x86
 # C source files.
 C_SRC = $(wildcard arch/$(ARCH)/*.c) \
         $(wildcard dev/*.c)          \
+        $(wildcard dev/8250/*.c)     \
         $(wildcard dev/ata/*.c)      \
         $(wildcard dev/klog/*.c)     \
         $(wildcard dev/ramdisk/*.c)  \
