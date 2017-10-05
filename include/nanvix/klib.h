@@ -290,5 +290,11 @@
 	 * @brief No operation.
 	 */
 	#define noop()
+
+	/**
+	 * @name Random Functions
+	 */
+	EXTERN int krand(void);
+	EXTERN void ksrand(unsigned);
 	
 #endif /* NANVIX_KLIB_H_ */
