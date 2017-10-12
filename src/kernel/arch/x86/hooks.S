@@ -360,7 +360,7 @@ syscall:
 		save
 		enter
 		movb $0x20, %al
-		outb %al, $PIC_CTRL_MASTER /* Send reset signal to master. */
+		outb %al, $PIC_CTRL_MASTER /* Send reset signal to master disc. */
 		pushl $(\num)
 		call do_hwint
 		addl $4, %esp
@@ -375,8 +375,8 @@ syscall:
 		save
 		enter
 		movb $0x20, %al
-		outb %al, $PIC_CTRL_MASTER /* Send reset signal to master. */
-		outb %al, $PIC_CTRL_SLAVE  /* Send reset signal to slave.  */
+		outb %al, $PIC_CTRL_MASTER /* Send reset signal to master disc. */
+		outb %al, $PIC_CTRL_SLAVE  /* Send reset signal to slave disc.  */
 		pushl $(\num)
 		call do_hwint
 		addl $4, %esp
