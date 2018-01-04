@@ -20,36 +20,15 @@
 #
 
 #Building kernel
-export CFLAGS += -DBUILDING_KERNEL -Wstack-usage=3192 
-
-# Target processor.
-PROCESSOR = i386
-
-# Target platform.
-ARCH = x86
+#export CFLAGS += -DBUILDING_KERNEL -Wstack-usage=3192
+export CFLAGS += -DBUILDING_KERNEL
+export CFLAGS += -D$(TARGET) 
 
 # C source files.
-C_SRC = $(wildcard arch/$(ARCH)/*.c) \
-        $(wildcard dev/*.c)          \
-        $(wildcard dev/ata/*.c)      \
-        $(wildcard dev/klog/*.c)     \
-        $(wildcard dev/ramdisk/*.c)  \
-        $(wildcard dev/tty/*.c)      \
-        $(wildcard fs/*.c)           \
-        $(wildcard fs/minix/*.c)      \
-        $(wildcard init/*.c)         \
-        $(wildcard lib/*.c)          \
-        $(wildcard mm/*.c)           \
-        $(wildcard pm/*.c)           \
-        $(wildcard sys/*.c)          \
-        $(wildcard debug/*.c)        \
+C_SRC = $(wildcard arch/$(TARGET)/*.c) \
 
 # Assembly source files.
-ASM_SRC = $(wildcard arch/$(ARCH)/*.S) \
-          $(wildcard core/*.S)         \
-
-# Link script source file.
-LD_SRC = link.c
+ASM_SRC = $(wildcard arch/$(TARGET)/*.S) \
 
 # Object files.
 OBJ = $(ASM_SRC:.S=.o) \
@@ -59,7 +38,7 @@ OBJ = $(ASM_SRC:.S=.o) \
 EXEC = kernel
 
 # Linker configuration options.
-export LDFLAGS = -T arch/$(ARCH)/link.ld
+export LDFLAGS = -T arch/$(TARGET)/link.ld
 
 # Builds object file from C source file.
 %.o: %.c

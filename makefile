@@ -34,9 +34,9 @@ export SRCDIR   = $(CURDIR)/src
 export TOOLSDIR = $(CURDIR)/tools
 
 # Toolchain
-export CC = $(TOOLSDIR)/dev/toolchain/$(TARGET)/bin/$(TARGET)-elf-gcc
-export LD = $(TOOLSDIR)/dev/toolchain/$(TARGET)/bin/$(TARGET)-elf-ld
-export AR = $(TOOLSDIR)/dev/toolchain/$(TARGET)/bin/$(TARGET)-elf-ar
+export CC = $(TARGET)-elf-gcc
+export LD = $(TARGET)-elf-ld
+export AR = $(TARGET)-elf-ar
 
 # Random number for chaos.
 export KEY = 13
@@ -46,10 +46,11 @@ export CFLAGS    = -I $(INCDIR)
 export CFLAGS   += -DKERNEL_HASH=$(KEY)
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
-export CFLAGS   += -Wall -Wextra -Werror
+#export CFLAGS   += -Wall -Wextra -Werror
 export CFLAGS   += -Wlogical-op
 export CFLAGS   += -Wredundant-decls -Wvla
-export ASMFLAGS  = -Wa,--divide,--warn
+export ASMFLAGS  = -Wa,--warn
+#export ASMFLAGS  = -Wa,--divide,--warn
 export ARFLAGS   = -vq
 export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 export DBGFLAGS += -g -fno-omit-frame-pointer
