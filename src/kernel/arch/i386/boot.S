@@ -1,6 +1,7 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -101,22 +102,30 @@ start:
 		jmp start.loop0
 	start.endloop0:
 
-	/* Build kernel and kernel pool page tables. */
-	movl $kpool_pgtab + PAGE_SIZE - DWORD_SIZE, %edi
-	movl $0x07ff000 + 7, %eax
-	std
+	/* Build kernel page tables. */
+	movl $kpgtab, %edi
+	movl $0x00000000 + 7, %eax
 	start.loop1:
 		stosl
-		subl $PAGE_SIZE, %eax
-		jge start.loop1
-	cld
+		addl $PAGE_SIZE,   %eax
+		cmpl $kpool_pgtab, %edi
+		jl start.loop1
+
+	/* Build kernel pool tables. */
+	movl $kpool_pgtab, %edi
+	movl $0x01000000 + 7, %eax
+	start.loop2:
+		stosl
+		addl $PAGE_SIZE,    %eax
+		cmpl $initrd_pgtab, %edi
+		jl start.loop2
 
 	/* Build init page directory. */
 	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*0         /* Kernel code + data at 0x00000000 */
 	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*768       /* Kernel code + data at 0xc0000000 */
-	movl $kpool_pgtab + 3, idle_pgdir + PTE_SIZE*769  /* Kernel page pool at 0xc0400000   */
-	movl $initrd_pgtab + 3, idle_pgdir + PTE_SIZE*770 /* Init RAM disk at 0xc0800000      */
-	movl $cmdline + 3, idle_pgdir + PTE_SIZE*771      /* Command line data at 0xc0c00000  */
+	movl $kpool_pgtab + 3, idle_pgdir + PTE_SIZE*772  /* Kernel page pool at 0xc1000000   */
+	movl $initrd_pgtab + 3, idle_pgdir + PTE_SIZE*776 /* Init RAM disk at 0xc2000000      */
+	movl $cmdline + 3, idle_pgdir + PTE_SIZE*780      /* Command line data at 0xc3000000  */
 	
 	/* Enable paging. */
 	movl $idle_pgdir, %eax

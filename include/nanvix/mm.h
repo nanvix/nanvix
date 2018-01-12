@@ -29,27 +29,27 @@
 	#define KSTACK_SIZE 4096
 
 	/* Virtual memory layout. */
-	#define UBASE_VIRT   0x00800000 /* User base.        */
+	#define UBASE_VIRT   0x02000000 /* User base.        */
 	#define BUFFERS_VIRT 0xc0008000 /* Buffers.          */
 	#define KBASE_VIRT   0xc0000000 /* Kernel base.      */
-	#define KPOOL_VIRT   0xc0400000 /* Kernel page pool. */
-	#define INITRD_VIRT  0xc0800000 /* Initial RAM disk. */
+	#define KPOOL_VIRT   0xc1000000 /* Kernel page pool. */
+	#define INITRD_VIRT  0xc2000000 /* Initial RAM disk. */
 	
 	/* Physical memory layout. */
 	#define KBASE_PHYS   0x00000000 /* Kernel base.      */
 	#define BUFFERS_PHYS 0x00008000 /* Buffers.          */
-	#define KPOOL_PHYS   0x00400000 /* Kernel page pool. */
-	#define UBASE_PHYS   0x00800000 /* User base.        */
+	#define KPOOL_PHYS   0x01000000 /* Kernel page pool. */
+	#define UBASE_PHYS   0x02000000 /* User base.        */
 	
 	/* User memory layout. */
 	#define USTACK_ADDR 0xc0000000 /* User stack. */
 	#define UHEAP_ADDR  0xa0000000 /* User heap.  */
 
-	/* Kernel memory size: 4 MB. */
-	#define KMEM_SIZE 0x00400000
+	/* Kernel memory size: 16 MB. */
+	#define KMEM_SIZE 0x01000000
 	
-	/* Kernel page pool size: 4 MB. */
-	#define KPOOL_SIZE 0x00400000
+	/* Kernel page pool size: 16 MB. */
+	#define KPOOL_SIZE 0x01000000
 	
 	/* User memory size. */
 	#define UMEM_SIZE (MEMORY_SIZE - KMEM_SIZE - KPOOL_SIZE)
