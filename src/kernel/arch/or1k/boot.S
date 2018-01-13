@@ -55,15 +55,17 @@ start:
 	l.jal uart_init
 	l.nop
 
-	/* Build initial RAM disk page table. */
+	/*
+	 * TODO: Build initial RAM disk page table. 
+	 */
 	LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)
 
 	/* Build kernel and kernel pool page tables. */
 	LOAD_SYMBOL_2_GPR(r1, kpool_pgtab)
-	l.addi  r1, r1, PT_SIZE
+	l.addi  r1, r1, PAGE_SIZE
 	l.addi  r1, r1, -DWORD_SIZE
 
-	LOAD_SYMBOL_2_GPR(r3, 0x001ffc00)
+	LOAD_SYMBOL_2_GPR(r3, 0x003ffc00)
 	l.ori  r3, r3, PT_L | PT_WBC | PT_CC
 
 	start.loop1:
@@ -84,14 +86,20 @@ start:
 	
 	l.sw  PTE_SIZE*0(r3),   r1           /* Kernel code + data at 0x00000000 */
 	l.sw  PTE_SIZE*192(r3), r1           /* Kernel code + data at 0xc0000000 */
-                                         /* Kernel page pool at 0xc0800000   */
-                                         
-    LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)  /* Init RAM disk at 0xc1000000      */
-    l.srli r1, r1, PAGE_SHIFT
+
+	LOAD_SYMBOL_2_GPR(r1, kpool_pgtab)   /* Kernel page pool at 0xc1000000   */
+	l.srli r1, r1, PAGE_SHIFT
 	l.slli r1, r1, PT_SHIFT
 	l.ori  r1, r1, PT_WBC | PT_CC
+	l.sw  PTE_SIZE*193(r3), r1
 
-    l.sw  PTE_SIZE*193(r3), r1
+	LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)  /* Init RAM disk at 0xc2000000      */
+	l.srli r1, r1, PAGE_SHIFT
+	l.slli r1, r1, PT_SHIFT
+	l.ori  r1, r1, PT_WBC | PT_CC
+	l.sw  PTE_SIZE*194(r3), r1
+
+                                         /* Command line data at 0xc3000000  */
 	
 	/* Flush TLB. */
 	l.jal flush_tlb
@@ -299,9 +307,6 @@ _dc_enable:
 	l.jr    r9
 	l.nop
 
-
-
-.align PAGE_SIZE
 /*----------------------------------------------------------------------------*
  *                                   kpgtab                                   *
  *----------------------------------------------------------------------------*/
@@ -309,9 +314,9 @@ _dc_enable:
 /* 
  * Kernel page table. 
  */
-.align PT_SIZE
+.align PAGE_SIZE
 kpgtab:
-	.fill PAGE_SIZE/PTE_SIZE/2, PTE_SIZE, 0
+	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*
  *                                kpool_pgtab                                 *
@@ -320,9 +325,9 @@ kpgtab:
 /* 
  * Kernel pool page table. 
  */
-.align PT_SIZE
+.align PAGE_SIZE
 kpool_pgtab:
-	.fill PAGE_SIZE/PTE_SIZE/2, PTE_SIZE, 0
+	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*
  *                                initrd_pgtab                                *
@@ -331,9 +336,9 @@ kpool_pgtab:
 /* 
  * Initial RAM disk page table.
  */
-.align PT_SIZE
+.align PAGE_SIZE
 initrd_pgtab:
-	.fill PAGE_SIZE/PTE_SIZE/2, PTE_SIZE, 0
+	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*
  *                                  idle_pgdir                                *
@@ -342,6 +347,6 @@ initrd_pgtab:
 /* 
  * init page directory.
  */
-.align PT_SIZE
+.align PAGE_SIZE
 idle_pgdir:
 	.fill 256, PTE_SIZE, 0
