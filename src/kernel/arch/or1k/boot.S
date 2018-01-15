@@ -102,7 +102,7 @@ start:
                                          /* Command line data at 0xc3000000  */
 	
 	/* Flush TLB. */
-	l.jal flush_tlb
+	l.jal boot_tlb_flush
 	l.nop
 
 	/* Enable Instruction Cache. */
@@ -135,7 +135,11 @@ start:
 	l.mtspr r0, r2, SPR_ICBIR
 
 	/* Flush TLB. */
-	l.jal flush_tlb
+	l.jal boot_tlb_flush
+	l.nop
+
+	LOAD_SYMBOL_2_GPR(r1, kmain)
+	l.jalr r1
 	l.nop
 
 	l.nop
@@ -145,10 +149,13 @@ start:
 	l.nop
 
 /*----------------------------------------------------------------------------*
- *                                flush_tlb                                   *
+ *                            boot_tlb_flush                                  *
  *----------------------------------------------------------------------------*/
 
-flush_tlb:
+/*
+ * Flushes the TLB.
+ */
+boot_tlb_flush:
 	LOAD_SYMBOL_2_GPR(r1,SPR_DTLBMR_BASE(0))
 	LOAD_SYMBOL_2_GPR(r3,SPR_ITLBMR_BASE(0))
 		
