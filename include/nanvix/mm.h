@@ -26,7 +26,7 @@
 	#include <sys/types.h>
 	
 	/* Kernel stack size. */
-	#define KSTACK_SIZE 4096
+	#define KSTACK_SIZE PAGE_SIZE
 
 	/* Virtual memory layout. */
 	#define UBASE_VIRT   0x02000000 /* User base.        */
