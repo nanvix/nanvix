@@ -28,9 +28,14 @@
 
 #ifndef _ASM_FILE_
 
+#ifdef i386
 	#include <i386/i386.h>
 	#include <i386/int.h>
-	
+#elif or1k
+	#include <or1k/or1k.h>
+	#include <or1k/int.h>
+#endif	
+
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
 	#include <stdlib.h>

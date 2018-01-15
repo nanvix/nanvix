@@ -38,6 +38,7 @@
 
 	#include <or1k/paging.h>
 	#include <or1k/spr_defs.h>
+	#include <or1k/8259.h>
 	#include <stdint.h>
 
 	/**
@@ -108,6 +109,10 @@
 	 */
 	#define ADDR(x) ((addr_t)(x))
 
+	/*
+	 * Flushes the TLB.
+	 */
+	EXTERN void tlb_flush(void);
 
 #endif /* _ASM_FILE_ */
 
