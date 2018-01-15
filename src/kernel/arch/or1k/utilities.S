@@ -53,19 +53,19 @@
  * Flushes the TLB.
  */
 tlb_flush:
-	LOAD_SYMBOL_2_GPR(r1,SPR_DTLBMR_BASE(0))
-	LOAD_SYMBOL_2_GPR(r3,SPR_ITLBMR_BASE(0))
+	LOAD_SYMBOL_2_GPR(r13, SPR_DTLBMR_BASE(0))
+	LOAD_SYMBOL_2_GPR(r15, SPR_ITLBMR_BASE(0))
 		
-	l.addi	r5, r0, 128
+	l.addi	r17, r0, 128
 	.loop:
-		l.mtspr	r1, r0, 0x0
-		l.mtspr	r3, r0, 0x0
+		l.mtspr	r13, r0, 0x0
+		l.mtspr	r15, r0, 0x0
 
-		l.addi	r1, r1, 1
-		l.addi	r3, r3, 1
-		l.sfeq	r5, r0
+		l.addi	r13, r13, 1
+		l.addi	r15, r15, 1
+		l.sfeq	r17, r0
 		l.bnf	.loop
-		l.addi	r5, r5, -1
+		l.addi	r17, r17, -1
 
 	l.jr r9
 	l.nop

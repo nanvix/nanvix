@@ -138,8 +138,20 @@ start:
 	l.jal boot_tlb_flush
 	l.nop
 
-	LOAD_SYMBOL_2_GPR(r1, kmain)
-	l.jalr r1
+	/* Setup stack. */
+	LOAD_SYMBOL_2_GPR(r1, idle_kstack)
+	l.addi r1, r1,  PAGE_SIZE
+	l.addi r1, r1, -DWORD_SIZE  /* Stack pointer. */
+	l.or   r2, r1,  r0          /* Frame pointer. */
+
+	/* setup. */
+	LOAD_SYMBOL_2_GPR(r3, setup)
+	l.jalr r3
+	l.nop
+
+	/* kmain. */
+	LOAD_SYMBOL_2_GPR(r3, kmain)
+	l.jalr r3
 	l.nop
 
 	l.nop
