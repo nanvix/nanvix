@@ -58,6 +58,7 @@
 	/*
 	 * Page table entry.
 	 */
+	#if 0
 	struct pte
 	{
 		unsigned ccoherency :  1; /* Cache coherency?       */
@@ -69,6 +70,41 @@
 		unsigned ppi        :  3; /* Page protection index. */
 		unsigned last       :  1; /* Last PTE.              */
 		unsigned ppn        : 22; /* Physical Page Number.  */
+	};
+	#endif
+
+	/*
+	 * Page directory entry.
+	 */
+	struct pde
+	{
+		unsigned present  :  1; /* Present in memory? */
+		unsigned writable :  1; /* Writable page?     */
+		unsigned user     :  1; /* User page?         */
+		unsigned          :  2; /* Reserved.          */
+		unsigned accessed :  1; /* Accessed?          */
+		unsigned dirty    :  1; /* Dirty?             */
+		unsigned          :  2; /* Reserved.          */
+		unsigned          :  3; /* Unused.            */
+		unsigned frame    : 20; /* Frame number.      */
+	};
+	
+	/*
+	 * Page table entry.
+	 */
+	struct pte
+	{
+		unsigned present  :  1; /* Present in memory? */
+		unsigned writable :  1; /* Writable page?     */
+		unsigned user     :  1; /* User page?         */
+		unsigned          :  2; /* Reserved.          */
+		unsigned accessed :  1; /* Accessed?          */
+		unsigned dirty    :  1; /* Dirty?             */
+		unsigned          :  2; /* Reserved.          */
+		unsigned cow      :  1; /* Copy on write?     */
+		unsigned zero     :  1; /* Demand zero?       */
+		unsigned fill     :  1; /* Demand fill?       */
+		unsigned frame    : 20; /* Frame number.      */
 	};
 
 	/**

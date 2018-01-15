@@ -41,6 +41,7 @@
  */
 pid_t fork(void)
 {
+	#if 0
 	pid_t pid;
 	
 	__asm__ volatile (
@@ -54,6 +55,8 @@ pid_t fork(void)
 		return (-1);
 	
 	return (pid);
+	#endif
+	return 0;
 }
 
 /**
@@ -68,6 +71,7 @@ pid_t fork(void)
  */
 int execve(const char *filename, const char **argv, const char **envp)
 {
+	#if 0
 	int ret;
 	
 	__asm__ volatile (
@@ -84,6 +88,8 @@ int execve(const char *filename, const char **argv, const char **envp)
 		return (-1);
 	
 	return (ret);
+	#endif
+	return 0;
 }
 
 /**
@@ -93,12 +99,14 @@ int execve(const char *filename, const char **argv, const char **envp)
  */
 void _exit(int status)
 {
+	#if 0
 	__asm__ volatile(
 		"int $0x80"
 		: /* empty. */
 		: "a" (NR__exit),
 		"b" (status)
 	);
+	#endif
 }
 
 /**
