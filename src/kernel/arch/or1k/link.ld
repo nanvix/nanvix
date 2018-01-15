@@ -36,7 +36,6 @@ SECTIONS
 	.bootstrap :
 	{
 		arch/or1k/boot.o *(.bootstrap)
-		arch/or1k/print.o *(.bootstrap)
 		arch/or1k/8250.o *(.bootstrap)
 	}
 	
