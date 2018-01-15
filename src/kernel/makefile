@@ -26,6 +26,19 @@ export CFLAGS += -D$(TARGET)
 
 # C source files.
 C_SRC = $(wildcard arch/$(TARGET)/*.c) \
+        $(wildcard dev/*.c)          \
+        $(wildcard dev/ata/*.c)      \
+        $(wildcard dev/klog/*.c)     \
+        $(wildcard dev/ramdisk/*.c)  \
+        $(wildcard dev/tty/*.c)      \
+        $(wildcard fs/*.c)           \
+        $(wildcard fs/minix/*.c)      \
+        $(wildcard init/*.c)         \
+        $(wildcard lib/*.c)          \
+        $(wildcard mm/*.c)           \
+        $(wildcard pm/*.c)           \
+        $(wildcard sys/*.c)          \
+        $(wildcard debug/*.c)        \
 
 # Assembly source files.
 ASM_SRC = $(wildcard arch/$(TARGET)/*.S) \
