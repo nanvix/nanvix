@@ -18,9 +18,28 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
+/*
+ * OpenRISC head.S
+ *
+ * Linux architectural port borrowing liberally from similar works of
+ * others.  All original copyrights apply as per the original source
+ * declaration.
+ *
+ * Modifications for the OpenRISC architecture:
+ * Copyright (C) 2003 Matjaz Breskvar <phoenix@bsemi.com>
+ * Copyright (C) 2010-2011 Jonas Bonn <jonas@southpole.se>
+ *
+ *      This program is free software; you can redistribute it and/or
+ *      modify it under the terms of the GNU General Public License
+ *      as published by the Free Software Foundation; either version
+ *      2 of the License, or (at your option) any later version.
+ */
+
 /* Must come first. */
 #define _ASM_FILE_
 
+#include <nanvix/mm.h>
+#include <nanvix/pm.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
 
@@ -117,6 +136,15 @@ start:
 	l.jal enable_mmu
 	l.nop
 
+	/* Setup cr3 before the first xTLB miss. */
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+	LOAD_SYMBOL_2_GPR(r7, idle_pgdir)
+	l.sub r3, r3, r5
+	l.lwz r3, 0(r3)
+	l.sub r3, r3, r5
+	l.sw PROC_CR3(r3), r7
+
 	/* Install the properly TLB handlers. */
 	LOAD_SYMBOL_2_GPR(r1, itlb_miss_handler)
 	l.addi r1, r1, -0xa00
@@ -149,9 +177,13 @@ start:
 	l.jalr r3
 	l.nop
 
+	/* Pass command line to the kernel */
+	l.sw 0(r1), r0
+	l.or   r3,  r0, r1
+
 	/* kmain. */
-	LOAD_SYMBOL_2_GPR(r3, kmain)
-	l.jalr r3
+	LOAD_SYMBOL_2_GPR(r5, kmain)
+	l.jalr r5
 	l.nop
 
 	l.nop

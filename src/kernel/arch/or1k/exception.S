@@ -36,6 +36,8 @@
 
 /* Must come first. */
 #define _ASM_FILE_
+
+#include <nanvix/mm.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
 
@@ -284,8 +286,12 @@ dtlb_miss_handler:
 
 	l.mfspr r2, r0, SPR_EEAR_BASE      /* Effective address. */
 
-	LOAD_SYMBOL_2_GPR(r3, idle_pgdir)  /* TODO: Here, I'm assuming the page directory */
-	                                   /* this should be changed later.               */
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)   /* Fecthes the page directory by the. */
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)  /* current process. */
+	l.sub r3, r3, r5
+	l.lwz r3, 0(r3)
+	l.sub r3, r3, r5
+	l.lwz r3, PROC_CR3(r3)
 	
 	/* Page directory entry address. */
 	l.srli r4, r2, 24
@@ -353,8 +359,10 @@ d_not_pte:
 	EXCEPTION_LOAD_GPR6
 	
 	/* TODO: Trigger a dtlb miss page fault. */
+	l.mfspr r2, r0, SPR_EEAR_BASE
 	.dtlb_fault_loop:
 		l.j .dtlb_fault_loop
+		l.nop
 
 /*----------------------------------------------------------------------------*
  *                          itlb_miss_handler                                 *
@@ -369,8 +377,12 @@ itlb_miss_handler:
 
 	l.mfspr r2, r0, SPR_EEAR_BASE      /* Effective address. */
 
-	LOAD_SYMBOL_2_GPR(r3, idle_pgdir)  /* TODO: Here, I'm assuming the page directory */
-	                                   /* this should be changed later.               */
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)   /* Fecthes the page directory by the. */
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)  /* current process. */
+	l.sub r3, r3, r5
+	l.lwz r3, 0(r3)
+	l.sub r3, r3, r5
+	l.lwz r3, PROC_CR3(r3)
 	
 	/* Page directory entry address. */
 	l.srli r4, r2, 24
@@ -438,5 +450,7 @@ i_not_pte:
 	EXCEPTION_LOAD_GPR6
 	
 	/* TODO: Trigger a itlb miss page fault. */
+	l.mfspr r2, r0, SPR_EEAR_BASE
 	.itlb_fault_loop:
 		l.j .itlb_fault_loop
+		l.nop
