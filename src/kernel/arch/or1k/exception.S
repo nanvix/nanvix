@@ -321,8 +321,8 @@ dtlb_miss_handler:
 
 	/* DTLB TR Register. */
 	l.slli r2, r5, PAGE_SHIFT
-	l.andi r4, r4, 0xFF  /* Keep the bits: PPI (2 bits)/CC/CI/WBC/WOM/A/D. */
-	l.ori  r4, r4, 0x300 /* Enable supervidor Read/Write.                  */
+	l.andi r4, r4, 0xC0  /* Keep the PPI (2 bits).                    */
+	l.ori  r4, r4, 0x305 /* Enable supervidor Read/Write, WBC and CC. */
 	l.or   r2, r2, r4
 
 	/* Determine number of DMMU sets and FILL DTLB TR Register. */
@@ -412,8 +412,8 @@ itlb_miss_handler:
 
 	/* ITLB TR Register. */
 	l.slli r2, r5, PAGE_SHIFT
-	l.andi r4, r4, 0xFF  /* Keep the bits: PPI (2 bits)/CC/CI/WBC/WOM/A/D. */
-	l.ori  r4, r4, 0x40 /* Enable supervisor execute.                     */
+	l.andi r4, r4, 0xC0  /* Keep the PPI (2 bits).                 */
+	l.ori  r4, r4, 0x45  /* Enable supervisor execute, WBC and CC. */
 	l.or   r2, r2, r4
 
 	/* Determine number of IMMU sets and FILL ITLB TR Register. */

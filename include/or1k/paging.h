@@ -23,7 +23,7 @@
 	
 	/* Shifts and masks. */
 	#define PAGE_SHIFT  13                  /* Page shift.                 */
-	#define PGTAB_SHIFT 22                  /* Page table shift.           */
+	#define PGTAB_SHIFT 24                  /* Page table shift.           */
 	#define PAGE_MASK   (~(PAGE_SIZE - 1))  /* Page mask.                  */
 	#define PGTAB_MASK  (~(PGTAB_SIZE - 1)) /* Page table mask.            */
 
@@ -45,6 +45,12 @@
 	#define PT_L   0x200       /* Last.                  */
 	#define PT_PPN 0xFFFFFC00  /* Physical Page Number.  */
 
+	/* Page table new fields. */
+	#define PT_COW     PT_CC   /* Copy on write.     */
+	#define PT_ZERO    PT_CI   /* Demand zero.       */
+	#define PT_FILL    PT_WBC  /* Demand fill.       */
+	#define PT_PRESENT PT_WOM  /* Present in memory. */
+
 	/* Page Protection Index, data. */
 	#define PT_PPI_USR_RD   0x40  /* Supervisor Read/Write, User: Read.       */
 	#define PT_PPI_USR_WR   0x80  /* Supervisor Read/Write, User: Write.      */
@@ -55,56 +61,67 @@
 
 #ifndef _ASM_FILE_
 
-	/*
-	 * Page table entry.
+	/**
+	 * NOTE: The *real* page table structure for OpenRISC 1000 looks like the
+	 * the following scheme:
+	 *
+	 *  31                         10  9  8     6  5   4   3   2   1   0
+	 * +-----------------------------+---+-------+---+---+---+---+---+---+
+	 * |  Physical Page Number       | L |  PPI  | D | A |WOM|WBC|CI |CC |
+	 * |         (22 bits)           |   |(3bits)|   |   |   |   |   |   |
+	 * +-----------------------------+---+-------+---+---+---+---+---+---+
+	 *
+	 * The following structure differs from the specification, with the new bits:
+	 * cow, zero, fill, and  present. This is due to the fact that in the x86
+	 * implementation, Nanvix counted on the extra bits available to programmer
+	 * and used them for cow, zero and fill.
+	 *
+	 * New structure:
+	 *  31                         10  9  8     6  5   4   3   2   1   0
+	 * +-----------------------------+---+-------+---+---+---+---+---+---+
+	 * |  Physical Page Number       | L |  PPI  | D | A | P | F | Z |COW|
+	 * |         (22 bits)           |   |(3bits)|   |   |   |   |   |   |
+	 * +-----------------------------+---+-------+---+---+---+---+---+---+
+	 *
+	 * In order to keep things simple, the new bits replaced wom, wbc, ci
+	 * and cc, and to maintain consistency with the original bits, whenever a
+	 * xTLB miss occurs, these 'old' bits are manually configured, ignoring
+	 * the last 4 bits of the structure and saved in the xTLBTR registers.
+	 *
+	 * In this way, it is possible to add new fields and still maintain
+	 * consistency with what the CPU expects to be used.
 	 */
-	#if 0
-	struct pte
-	{
-		unsigned ccoherency :  1; /* Cache coherency?       */
-		unsigned cinhibit   :  1; /* Cache inhibit?         */
-		unsigned wbc        :  1; /* Write-back cache?      */
-		unsigned wom        :  1; /* Weakly-orderer memory? */
-		unsigned accessed   :  1; /* Accessed?              */
-		unsigned dirty      :  1; /* Dirty?                 */
-		unsigned ppi        :  3; /* Page protection index. */
-		unsigned last       :  1; /* Last PTE.              */
-		unsigned ppn        : 22; /* Physical Page Number.  */
-	};
-	#endif
 
 	/*
 	 * Page directory entry.
 	 */
 	struct pde
 	{
-		unsigned present  :  1; /* Present in memory? */
-		unsigned writable :  1; /* Writable page?     */
-		unsigned user     :  1; /* User page?         */
-		unsigned          :  2; /* Reserved.          */
-		unsigned accessed :  1; /* Accessed?          */
-		unsigned dirty    :  1; /* Dirty?             */
-		unsigned          :  2; /* Reserved.          */
-		unsigned          :  3; /* Unused.            */
-		unsigned frame    : 20; /* Frame number.      */
+		unsigned cow        :  1; /* Copy on write?         */
+		unsigned zero       :  1; /* Demand zero?           */
+		unsigned fill       :  1; /* Demand fill?           */
+		unsigned present    :  1; /* Present in memory?     */
+		unsigned accessed   :  1; /* Accessed?              */
+		unsigned dirty      :  1; /* Dirty?                 */
+		unsigned ppi        :  3; /* Page protection index. */
+		unsigned last       :  1; /* Last PTE.              */
+		unsigned frame      : 22; /* Frame number.          */
 	};
-	
+
 	/*
 	 * Page table entry.
 	 */
 	struct pte
 	{
-		unsigned present  :  1; /* Present in memory? */
-		unsigned writable :  1; /* Writable page?     */
-		unsigned user     :  1; /* User page?         */
-		unsigned          :  2; /* Reserved.          */
-		unsigned accessed :  1; /* Accessed?          */
-		unsigned dirty    :  1; /* Dirty?             */
-		unsigned          :  2; /* Reserved.          */
-		unsigned cow      :  1; /* Copy on write?     */
-		unsigned zero     :  1; /* Demand zero?       */
-		unsigned fill     :  1; /* Demand fill?       */
-		unsigned frame    : 20; /* Frame number.      */
+		unsigned cow        :  1; /* Copy on write?         */
+		unsigned zero       :  1; /* Demand zero?           */
+		unsigned fill       :  1; /* Demand fill?           */
+		unsigned present    :  1; /* Present in memory?     */
+		unsigned accessed   :  1; /* Accessed?              */
+		unsigned dirty      :  1; /* Dirty?                 */
+		unsigned ppi        :  3; /* Page protection index. */
+		unsigned last       :  1; /* Last PTE.              */
+		unsigned frame      : 22; /* Frame number.          */
 	};
 
 	/**
@@ -139,7 +156,7 @@
 	 */
 	static inline void pde_write_set(struct pde *pde, int set)
 	{
-		pde->writable = (set) ? 1 : 0;
+		pde->ppi = (set) ? PT_PPI_USR_RDWR : PT_PPI_USR_RD;
 	}
 
 	/**
@@ -153,7 +170,7 @@
 	 */
 	static inline int pde_is_write(struct pde *pde)
 	{
-		return (pde->writable);
+		return (pde->ppi & PT_PPI_USR_RDWR);
 	}
 
 	/**
@@ -164,7 +181,7 @@
 	 */
 	static inline void pde_user_set(struct pde *pde, int set)
 	{
-		pde->user = (set) ? 1 : 0;
+		pde->ppi = (set) ? PT_PPI_USR_RD : 0;
 	}
 
 	/**
@@ -177,7 +194,7 @@
 	 */
 	static inline int pde_is_user(struct pde *pde)
 	{
-		return (pde->user);
+		return (pde->ppi & PT_PPI_USR_RD);
 	}
 
 	/**
@@ -262,7 +279,7 @@
 	 */
 	static inline void pte_write_set(struct pte *pte, int set)
 	{
-		pte->writable = (set) ? 1 : 0;
+		pte->ppi = (set) ? PT_PPI_USR_RDWR : PT_PPI_USR_RD;
 	}
 
 	/**
@@ -275,7 +292,7 @@
 	 */
 	static inline int pte_is_write(struct pte *pte)
 	{
-		return (pte->writable);
+		return (pte->ppi & PT_PPI_USR_RDWR);
 	}
 
 	/**
@@ -286,7 +303,7 @@
 	 */
 	static inline void pte_user_set(struct pte *pte, int set)
 	{
-		pte->user = (set) ? 1 : 0;
+		pte->ppi = (set) ? PT_PPI_USR_RD : 0;
 	}
 
 	/**
@@ -299,7 +316,7 @@
 	 */
 	static inline int pte_is_user(struct pte *pte)
 	{
-		return (pte->user);
+		return (pte->ppi & PT_PPI_USR_RD);
 	}
 
 	/**

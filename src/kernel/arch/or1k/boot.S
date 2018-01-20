@@ -85,7 +85,7 @@ start:
 	l.addi  r1, r1, -DWORD_SIZE
 
 	LOAD_SYMBOL_2_GPR(r3, 0x003ffc00)
-	l.ori  r3, r3, PT_L | PT_WBC | PT_CC
+	l.ori  r3, r3, PT_L | PT_PRESENT
 
 	start.loop1:
 		l.sw   0(r1), r3
@@ -99,7 +99,7 @@ start:
 	LOAD_SYMBOL_2_GPR(r1, kpgtab)
 	l.srli r1, r1, PAGE_SHIFT
 	l.slli r1, r1, PT_SHIFT
-	l.ori  r1, r1, PT_WBC | PT_CC
+	l.ori  r1, r1, PT_PRESENT
 
 	LOAD_SYMBOL_2_GPR(r3, idle_pgdir)
 	
@@ -109,13 +109,13 @@ start:
 	LOAD_SYMBOL_2_GPR(r1, kpool_pgtab)   /* Kernel page pool at 0xc1000000   */
 	l.srli r1, r1, PAGE_SHIFT
 	l.slli r1, r1, PT_SHIFT
-	l.ori  r1, r1, PT_WBC | PT_CC
+	l.ori  r1, r1, PT_PRESENT
 	l.sw  PTE_SIZE*193(r3), r1
 
 	LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)  /* Init RAM disk at 0xc2000000      */
 	l.srli r1, r1, PAGE_SHIFT
 	l.slli r1, r1, PT_SHIFT
-	l.ori  r1, r1, PT_WBC | PT_CC
+	l.ori  r1, r1, PT_PRESENT
 	l.sw  PTE_SIZE*194(r3), r1
 
                                          /* Command line data at 0xc3000000  */
