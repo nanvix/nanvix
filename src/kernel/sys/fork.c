@@ -106,7 +106,7 @@ found:
 	}
 	
 	/* Initialize process. */
-	proc->intlvl = INT_LVL_5;
+	proc->intlvl = 1;
 	proc->received = 0;
 	proc->restorer = curr_proc->restorer;
 	kmemcpy(&proc->fss, &curr_proc->fss, sizeof(struct fpu));

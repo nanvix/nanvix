@@ -20,6 +20,7 @@
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/hal.h>
+#include <dev/8250.h>
 #include <sys/types.h>
 #include <stdint.h>
 #include "tty.h"
@@ -153,6 +154,9 @@ PUBLIC void console_put(uint8_t ch, uint8_t color)
     if (cursor.y >= VIDEO_HIGH)
         console_scrolldown();
     cursor_move();
+
+    /* Write into serial port. */
+    uart8250_write(ch);
 }
 
 /*

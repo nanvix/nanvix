@@ -71,7 +71,7 @@ start:
 	l.addi r1, r1, -8
 	
 	/* UART init. */
-	l.jal uart_init
+	l.jal uart8250_init
 	l.nop
 
 	/*

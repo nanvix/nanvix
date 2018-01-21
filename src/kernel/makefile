@@ -27,6 +27,7 @@ export CFLAGS += -D$(TARGET)
 # C source files.
 C_SRC = $(wildcard arch/$(TARGET)/*.c) \
         $(wildcard dev/*.c)          \
+        $(wildcard dev/8250/*.c)     \
         $(wildcard dev/ata/*.c)      \
         $(wildcard dev/klog/*.c)     \
         $(wildcard dev/ramdisk/*.c)  \

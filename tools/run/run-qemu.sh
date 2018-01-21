@@ -36,6 +36,13 @@ elif [ "$1" = "--perf" ]; then
 		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
 		-m 256M                                              \
 		-mem-prealloc -cpu host --enable-kvm
+elif [ "$1" = "--serial" ]; then
+	qemu-system-i386                                         \
+		-nographic                                           \
+		-display none                                        \
+		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
+		-m 256M                                              \
+		-mem-prealloc
 else
 	qemu-system-i386                                         \
 		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \

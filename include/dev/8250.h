@@ -26,8 +26,8 @@
 	 * UART functions
 	 */
 	/**@{*/
-	EXTERN void uart_init(void);
-	EXTERN void uart_write(char);
+	EXTERN void uart8250_init(void);
+	EXTERN void uart8250_write(char);
 	/**@}*/
 
 #endif /* UART_8250_H */
