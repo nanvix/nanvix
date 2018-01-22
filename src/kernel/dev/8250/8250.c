@@ -46,11 +46,15 @@
 	#define UART_BASE         0x3F8
 	#define UART_BAUD         9600
 	#define UART_IRQ          4
-#elif or1k
+	#define INPUTB  inputb
+	#define OUTPUTB outputb
+#elif defined or1k
 	#define UART_CLOCK_SIGNAL 50000000
-	#define UART_BASE         0x90000000
+	#define UART_BASE         0xc4000000
 	#define UART_BAUD         115200
 	#define UART_IRQ          2
+	#define INPUTB(addr) *((volatile unsigned char *) (addr)) 
+	#define OUTPUTB(addr, value) ((INPUTB(addr)) = value)
 #else
 	#error "8250.c: Unknown architecture"
 #endif
@@ -154,10 +158,10 @@
 PUBLIC void uart8250_write(char c)
 {
 	/* Wait until FIFO is empty. */
-	while ( !(inputb(LSR) & LSR_TFE) );
+	while ( !(INPUTB(LSR) & LSR_TFE) );
 
 	/* Write character to device. */
-	outputb(THR, c);
+	OUTPUTB(THR, c);
 }
 
 /**
@@ -169,9 +173,9 @@ PUBLIC void uart8250_init(void)
 
 	/* Calculate and set divisor. */
 	divisor = UART_CLOCK_SIGNAL / (UART_BAUD << 4);
-	outputb(LCR, LCR_DLA);
-	outputb(DLB1, divisor & 0xff);
-	outputb(DLB2, divisor >> 8);
+	OUTPUTB(LCR, LCR_DLA);
+	OUTPUTB(DLB1, divisor & 0xff);
+	OUTPUTB(DLB2, divisor >> 8);
 
 	/* 
 	 * Set line control register:
@@ -181,11 +185,11 @@ PUBLIC void uart8250_init(void)
 	 *  - Break disabled
 	 *  - Disallow access to divisor latch
 	 */
-	outputb(LCR, LCR_BPC_8);
+	OUTPUTB(LCR, LCR_BPC_8);
 
 	/* Reset FIFOs and set trigger level to 1 byte. */
-	outputb(FCR, FCR_CLRRECV | FCR_CLRTMIT | FCR_TRIG_1);
+	OUTPUTB(FCR, FCR_CLRRECV | FCR_CLRTMIT | FCR_TRIG_1);
 
 	/* Disable all interrupts. */
-	outputb(IER, 0);
+	OUTPUTB(IER, 0);
 }

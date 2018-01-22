@@ -69,10 +69,6 @@ start:
 	/* Stack. */
 	l.addi r1, r0, 0x2000
 	l.addi r1, r1, -8
-	
-	/* UART init. */
-	l.jal uart8250_init
-	l.nop
 
 	/*
 	 * TODO: Build initial RAM disk page table. 
@@ -103,22 +99,33 @@ start:
 
 	LOAD_SYMBOL_2_GPR(r3, idle_pgdir)
 	
-	l.sw  PTE_SIZE*0(r3),   r1           /* Kernel code + data at 0x00000000 */
-	l.sw  PTE_SIZE*192(r3), r1           /* Kernel code + data at 0xc0000000 */
+	l.sw  PTE_SIZE*0(r3),   r1            /* Kernel code + data at 0x00000000 */
+	l.sw  PTE_SIZE*192(r3), r1            /* Kernel code + data at 0xc0000000 */
 
-	LOAD_SYMBOL_2_GPR(r1, kpool_pgtab)   /* Kernel page pool at 0xc1000000   */
+	LOAD_SYMBOL_2_GPR(r1, kpool_pgtab)    /* Kernel page pool at 0xc1000000   */
 	l.srli r1, r1, PAGE_SHIFT
 	l.slli r1, r1, PT_SHIFT
 	l.ori  r1, r1, PT_PRESENT
 	l.sw  PTE_SIZE*193(r3), r1
 
-	LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)  /* Init RAM disk at 0xc2000000      */
+	LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)   /* Init RAM disk at 0xc2000000      */
 	l.srli r1, r1, PAGE_SHIFT
 	l.slli r1, r1, PT_SHIFT
 	l.ori  r1, r1, PT_PRESENT
 	l.sw  PTE_SIZE*194(r3), r1
 
-                                         /* Command line data at 0xc3000000  */
+                                          /* Command line data at 0xc3000000  */
+
+	LOAD_SYMBOL_2_GPR(r1, uart8250_pgtab) /* UART 8250 at 0xc4000000          */
+	l.srli r1, r1, PAGE_SHIFT
+	l.slli r1, r1, PT_SHIFT
+	l.ori  r1, r1, PT_PRESENT
+	l.sw  PTE_SIZE*196(r3), r1
+
+	LOAD_SYMBOL_2_GPR(r1, uart8250_pgtab)
+	LOAD_SYMBOL_2_GPR(r2, 0x12000000)
+	l.ori r2, r2, PT_L | PT_PRESENT
+	l.sw 0(r1), r2
 	
 	/* Flush TLB. */
 	l.jal boot_tlb_flush
@@ -389,6 +396,17 @@ kpool_pgtab:
  */
 .align PAGE_SIZE
 initrd_pgtab:
+	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
+
+/*----------------------------------------------------------------------------*
+ *                                uart8250_pgtab                              *
+ *----------------------------------------------------------------------------*/
+
+/* 
+ * UART 8250 page table.
+ */
+.align PAGE_SIZE
+uart8250_pgtab:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*

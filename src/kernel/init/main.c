@@ -137,13 +137,13 @@ PUBLIC void kmain(const char* cmdline)
 		dbg_init();
 
 	/* Initialize system modules. */
+	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
+
 	cpu_init();
 	dev_init();
 	mm_init();
 	pm_init();
 	fs_init();
-	
-	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 
 	dbg_execute();
 

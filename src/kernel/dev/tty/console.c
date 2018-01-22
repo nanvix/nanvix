@@ -111,6 +111,7 @@ PRIVATE void console_scrolldown(void)
  */
 PUBLIC void console_put(uint8_t ch, uint8_t color)
 {	
+#ifdef VGA_ENABLE
 	/* Parse character. */
     switch (ch)
     {
@@ -154,9 +155,12 @@ PUBLIC void console_put(uint8_t ch, uint8_t color)
     if (cursor.y >= VIDEO_HIGH)
         console_scrolldown();
     cursor_move();
+#endif
 
+#ifdef SERIAL_ENABLE
     /* Write into serial port. */
     uart8250_write(ch);
+#endif
 }
 
 /*
