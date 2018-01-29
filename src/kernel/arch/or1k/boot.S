@@ -74,6 +74,25 @@ start:
 	 * TODO: Build initial RAM disk page table. 
 	 */
 	LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)
+	LOAD_SYMBOL_2_GPR(r3, 0x180000)  /* Phys RAM Disk. */
+	l.srli r3, r3, PAGE_SHIFT
+	l.slli r3, r3, PT_SHIFT
+	l.ori  r3, r3, PT_PRESENT | PT_PPI_SPV_EX
+
+	LOAD_SYMBOL_2_GPR(r7, INITRD_SIZE)
+	l.or   r5, r3, r0
+	l.add  r5, r5, r7
+
+	start.loop0:
+		l.sfeq r3, r5
+		l.bf start.endloop0
+		l.nop
+		l.sw 0(r1), r3
+		l.addi r1, r1, 4
+		l.addi r3, r3, 1024
+		l.j start.loop0
+		l.nop
+	start.endloop0:
 
 	/* Build kernel and kernel pool page tables. */
 	LOAD_SYMBOL_2_GPR(r1, kpool_pgtab)
@@ -113,7 +132,6 @@ start:
 	l.slli r1, r1, PT_SHIFT
 	l.ori  r1, r1, PT_PRESENT
 	l.sw  PTE_SIZE*194(r3), r1
-
                                           /* Command line data at 0xc3000000  */
 
 	LOAD_SYMBOL_2_GPR(r1, uart8250_pgtab) /* UART 8250 at 0xc4000000          */
