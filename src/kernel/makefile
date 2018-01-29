@@ -22,7 +22,7 @@
 #Building kernel
 #export CFLAGS += -DBUILDING_KERNEL -Wstack-usage=3192
 export CFLAGS += -DBUILDING_KERNEL
-export CFLAGS += -D$(TARGET) 
+export CFLAGS += -D$(TARGET) -DSERIAL_ENABLE
 
 # C source files.
 C_SRC = $(wildcard arch/$(TARGET)/*.c) \

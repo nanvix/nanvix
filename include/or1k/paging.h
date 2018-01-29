@@ -57,7 +57,8 @@
 	#define PT_PPI_USR_RDWR 0xC0  /* Supervisor Read/Write, User: Read/Write. */
 
 	/* Page Protection Index, instruction. */
-	#define PT_PPI_USR_EX   0x80  /* Supervisor Execute, User: Execute. */	
+	#define PT_PPI_USR_EX   0x80  /* User Execute.       */
+	#define PT_PPI_SPV_EX   0x40  /* Supervisor Execute. */
 
 #ifndef _ASM_FILE_
 

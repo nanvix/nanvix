@@ -412,8 +412,8 @@ itlb_miss_handler:
 
 	/* ITLB TR Register. */
 	l.slli r2, r5, PAGE_SHIFT
-	l.andi r4, r4, 0xC0  /* Keep the PPI (2 bits).                 */
-	l.ori  r4, r4, 0x45  /* Enable supervisor execute, WBC and CC. */
+	l.andi r4, r4, 0xC0  /* Keep the PPI (2 bits). */
+	l.ori  r4, r4, 0x05  /* Enable WBC and CC.     */
 	l.or   r2, r2, r4
 
 	/* Determine number of IMMU sets and FILL ITLB TR Register. */

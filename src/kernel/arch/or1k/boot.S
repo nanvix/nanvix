@@ -81,7 +81,7 @@ start:
 	l.addi  r1, r1, -DWORD_SIZE
 
 	LOAD_SYMBOL_2_GPR(r3, 0x003ffc00)
-	l.ori  r3, r3, PT_L | PT_PRESENT
+	l.ori  r3, r3, PT_L | PT_PRESENT | PT_PPI_SPV_EX
 
 	start.loop1:
 		l.sw   0(r1), r3
