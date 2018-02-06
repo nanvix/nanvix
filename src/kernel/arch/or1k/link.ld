@@ -36,20 +36,19 @@ SECTIONS
 	.bootstrap :
 	{
 		arch/or1k/boot.o *(.bootstrap)
-		arch/or1k/8250.o *(.bootstrap)
 	}
 	
 	. += 0xc0000000;
 
 	/* Kernel code section. */
-	.text ALIGN(4096) : AT(ADDR(.text) - 0xc0000000)
+	.text ALIGN(8192) : AT(ADDR(.text) - 0xc0000000)
 	{
 		*(.text)
 		*(.rodata)
 	}
    
 	/* Initialized kernel data section. */
-   .data ALIGN(4096) : AT(ADDR(.data) - 0xc0000000)
+   .data ALIGN(8192) : AT(ADDR(.data) - 0xc0000000)
    {
        *(.data)
    }
@@ -60,7 +59,7 @@ SECTIONS
        *(.bss)
    }
    
-   . =ALIGN(4096);
+   . =ALIGN(8192);
 	
    KDATA_END = .;
    
