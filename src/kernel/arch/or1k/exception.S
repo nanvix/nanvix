@@ -332,6 +332,10 @@ dtlb_miss_handler:
 	l.ori	r3, r0, 0x1
 	l.sll	r3, r3, r6 	/* r3 = number DMMU sets DMMUCFGR. */
 	l.addi	r6, r3, -1  /* r6 = nsets mask.                */
+	
+	l.mfspr r5, r0, SPR_EEAR_BASE /* Tag. */
+	l.srli  r5, r5, PAGE_SHIFT
+
 	l.and	r5, r5, r6	/* offset: & (NUM_TLB_ENTRIES-1).  */
 	l.mtspr	r5, r2, SPR_DTLBTR_BASE(0)
 
@@ -423,6 +427,10 @@ itlb_miss_handler:
 	l.ori	r3, r0, 0x1
 	l.sll	r3, r3, r6 	/* r3 = number IMMU sets IMMUCFGR. */
 	l.addi	r6, r3, -1  /* r6 = nsets mask.                */
+	
+	l.mfspr r5, r0, SPR_EEAR_BASE /* Tag. */
+	l.srli  r5, r5, PAGE_SHIFT
+
 	l.and	r5, r5, r6	/* offset: & (NUM_TLB_ENTRIES-1).  */
 	l.mtspr	r5, r2, SPR_ITLBTR_BASE(0)
 
