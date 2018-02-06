@@ -30,14 +30,12 @@
 
 	/* Virtual memory layout. */
 	#define UBASE_VIRT   0x02000000 /* User base.        */
-	#define BUFFERS_VIRT 0xc0008000 /* Buffers.          */
 	#define KBASE_VIRT   0xc0000000 /* Kernel base.      */
 	#define KPOOL_VIRT   0xc1000000 /* Kernel page pool. */
 	#define INITRD_VIRT  0xc2000000 /* Initial RAM disk. */
 	
 	/* Physical memory layout. */
 	#define KBASE_PHYS   0x00000000 /* Kernel base.      */
-	#define BUFFERS_PHYS 0x00008000 /* Buffers.          */
 	#define KPOOL_PHYS   0x01000000 /* Kernel page pool. */
 	#define UBASE_PHYS   0x02000000 /* User base.        */
 	
@@ -68,6 +66,9 @@
 
 #ifndef _ASM_FILE_
 	
+	/* Buffers virt. */
+	EXTERN unsigned BUFFERS_VIRT;
+
 	/* Forward definitions. */
 	EXTERN int chkmem(const void *, size_t, mode_t);
 	EXTERN int fubyte(const void *);

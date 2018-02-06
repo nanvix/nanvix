@@ -71,7 +71,7 @@ start:
 	l.addi r1, r1, -8
 
 	/*
-	 * TODO: Build initial RAM disk page table. 
+	 * Build initial RAM disk page table. 
 	 */
 	LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)
 	LOAD_SYMBOL_2_GPR(r3, initrd_img)  /* Phys RAM Disk. */
@@ -198,6 +198,14 @@ start:
 	l.addi r1, r1,  PAGE_SIZE
 	l.addi r1, r1, -DWORD_SIZE  /* Stack pointer. */
 	l.or   r2, r1,  r0          /* Frame pointer. */
+
+	/* Set BUFFERS_VIRT var. */
+	LOAD_SYMBOL_2_GPR(r3, BUFFERS_VIRT)
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+	LOAD_SYMBOL_2_GPR(r7, buffers_virt)
+	l.sub r3, r3, r5
+	l.add r7, r7, r5
+	l.sw 0(r3), r7
 
 	/* setup. */
 	LOAD_SYMBOL_2_GPR(r3, setup)
@@ -439,3 +447,14 @@ uart8250_pgtab:
 .align PAGE_SIZE
 idle_pgdir:
 	.fill 256, PTE_SIZE, 0
+
+/*----------------------------------------------------------------------------*
+ *                                  buffers                                   *
+ *----------------------------------------------------------------------------*/
+
+/* 
+ * block buffers, 256 KiB.
+ */
+.align PAGE_SIZE
+buffers_virt:
+	.fill NR_BUFFERS*1024, 1, 0

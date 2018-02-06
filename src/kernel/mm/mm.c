@@ -63,8 +63,7 @@
 /*
  * Bad identity mapping?
  */
-#if (((KPOOL_VIRT   - KBASE_VIRT) != KPOOL_PHYS) || \
-    ((BUFFERS_VIRT - KBASE_VIRT) != BUFFERS_PHYS))
+#if (((KPOOL_VIRT   - KBASE_VIRT) != KPOOL_PHYS))
 	#error "bad identity mapping"
 #endif
 
@@ -74,6 +73,9 @@
 #if (INITRD_SIZE > PGTAB_SIZE)
  	#error "initrd too large"
 #endif
+
+/* Buffers virt. */
+PUBLIC unsigned BUFFERS_VIRT = 0;
 
 /**
  * @brief Initializes the memory system.
