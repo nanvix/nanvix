@@ -74,7 +74,9 @@ start:
 	 * TODO: Build initial RAM disk page table. 
 	 */
 	LOAD_SYMBOL_2_GPR(r1, initrd_pgtab)
-	LOAD_SYMBOL_2_GPR(r3, 0x180000)  /* Phys RAM Disk. */
+	LOAD_SYMBOL_2_GPR(r3, initrd_img)  /* Phys RAM Disk. */
+	LOAD_SYMBOL_2_GPR(r7, KBASE_VIRT)
+	l.sub  r3, r3, r7
 	l.srli r3, r3, PAGE_SHIFT
 	l.slli r3, r3, PT_SHIFT
 	l.ori  r3, r3, PT_PRESENT | PT_PPI_SPV_EX

@@ -52,6 +52,12 @@ SECTIONS
    {
        *(.data)
    }
+
+   /* Initialized kernel initrd section. */
+   .initrd ALIGN(8192) : AT(ADDR(.initrd) - 0xc0000000)
+   {
+       arch/or1k/initrd.o *(.initrd)
+   }
    
    /* Uninitialized kernel data section. */
    .bss : AT(ADDR(.bss) - 0xc0000000)
