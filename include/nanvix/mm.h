@@ -67,7 +67,7 @@
 #ifndef _ASM_FILE_
 	
 	/* Buffers virt. */
-	EXTERN unsigned BUFFERS_VIRT;
+	EXTERN unsigned const BUFFERS_VIRT;
 
 	/* Forward definitions. */
 	EXTERN int chkmem(const void *, size_t, mode_t);

@@ -26,6 +26,7 @@
 #include <nanvix/config.h>
 #include <nanvix/mboot.h>
 #include <nanvix/mm.h>
+#include <fs/minix.h>
 
 /* Multiboot flags. */
 #define MBOOT_FLAGS (MBOOT_PAGE_ALIGN | MBOOT_MEMORY_INFO)
@@ -138,6 +139,12 @@ start:
 	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %ebp
 	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %esp
 
+	/* Set BUFFERS_VIRT var. */
+	movl $BUFFERS_VIRT, %eax
+	movl $buffers_virt, %ebx
+	addl $KBASE_VIRT,   %ebx
+	movl %ebx, (%eax)
+
 	/* Pass command line to the kernel */
 	push $cmdline
 	
@@ -196,7 +203,7 @@ idle_pgdir:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*
- *                                  cmdline                                *
+ *                                  cmdline                                   *
  *----------------------------------------------------------------------------*/
 
 /* 
@@ -206,3 +213,13 @@ idle_pgdir:
 cmdline:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
+/*----------------------------------------------------------------------------*
+ *                                  buffers                                   *
+ *----------------------------------------------------------------------------*/
+
+/* 
+ * Block buffers.
+ */
+.align PAGE_SIZE
+buffers_virt:
+	.fill NR_BUFFERS*BLOCK_SIZE, 1, 0

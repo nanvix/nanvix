@@ -75,7 +75,7 @@
 #endif
 
 /* Buffers virt. */
-PUBLIC unsigned BUFFERS_VIRT = 0;
+PUBLIC unsigned const BUFFERS_VIRT = 0;
 
 /**
  * @brief Initializes the memory system.

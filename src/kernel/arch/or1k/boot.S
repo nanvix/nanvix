@@ -42,6 +42,7 @@
 #include <nanvix/pm.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
+#include <fs/minix.h>
 
 /* Exported symbols. */
 .globl start
@@ -453,8 +454,8 @@ idle_pgdir:
  *----------------------------------------------------------------------------*/
 
 /* 
- * block buffers, 256 KiB.
+ * Block buffers.
  */
 .align PAGE_SIZE
 buffers_virt:
-	.fill NR_BUFFERS*1024, 1, 0
+	.fill NR_BUFFERS*BLOCK_SIZE, 1, 0
