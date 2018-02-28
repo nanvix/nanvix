@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -17,8 +18,8 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef I386_INT_H_
-#define I386_INT_H_
+#ifndef OR1K_INT_H_
+#define OR1K_INT_H_
 
 	#include <or1k/or1k.h>
 
@@ -40,22 +41,44 @@
 	#define INT_ATA2    15 /* Secondary ATA hard disk.                   */
 
 	/* Offsets to the registers structure. */
-	#define GS       4
-	#define FS       8
-	#define ES      12
-	#define DS      16
-	#define EDI     20
-	#define ESI     24
-	#define EBP     28
-	#define EBX     32
-	#define EDX     36
-	#define ECX     40
-	#define EAX     44
-	#define EIP     48
-	#define CS      52
-	#define EFLAGS  56
-	#define USERESP 60
-	#define SS      64
+	#define SR           0
+	#define SP           4
+	#define GPR2         8
+	#define GPR3        12
+	#define GPR4        16
+	#define GPR5        20
+	#define GPR6        24
+	#define GPR7        28
+	#define GPR8        32
+	#define GPR9        36
+	#define GPR10       40
+	#define GPR11       44
+	#define GPR12       48
+	#define GPR13       52
+	#define GPR14       56
+	#define GPR15       60
+	#define GPR16       64
+	#define GPR17       68
+	#define GPR18       72
+	#define GPR19       76
+	#define GPR20       80
+	#define GPR21       84
+	#define GPR22       88
+	#define GPR23       92
+	#define GPR24       96
+	#define GPR25      100
+	#define GPR26      104
+	#define GPR27      108
+	#define GPR28      112
+	#define GPR29      116
+	#define GPR30      120
+	#define GPR31      124
+	#define PC	       128
+	#define ORIG_GPR11 132
+	#define SYSCALLNO  136
+	
+	/* Stack frame size. */
+	#define INT_FRAME_SIZE 144
 
 #ifndef _ASM_FILE_
 
@@ -63,11 +86,12 @@
 	 * Saved registers during interrupt/exception.
 	 */
 	struct intstack
-	{   
-		dword_t old_kesp;
-        dword_t gs, fs, es, ds;
-        dword_t edi, esi, ebp, ebx, edx, ecx, eax;
-        dword_t eip, cs, eflags, useresp, ss;	
+	{
+		dword_t gpr[32];
+		dword_t pc;
+		dword_t orig_gpr11;
+		dword_t syscallno;
+		dword_t dummy;
 	};
 
 	/* Software interrupt hooks. */

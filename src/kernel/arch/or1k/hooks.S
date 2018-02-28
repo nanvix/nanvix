@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2017-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2017-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -40,6 +41,46 @@
 #include <nanvix/mm.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
+#include <or1k/int.h>
+
+/* Exported symbols. */
+.globl swint0
+.globl swint1
+.globl swint2
+.globl swint3
+.globl swint4
+.globl swint5
+.globl swint6
+.globl swint7
+.globl swint8
+.globl swint9
+.globl swint10
+.globl swint11
+.globl swint12
+.globl swint13
+.globl swint14
+.globl swint15
+.globl swint16
+.globl swint17
+.globl syscall
+.globl hwint0
+.globl hwint1
+.globl hwint2
+.globl hwint3
+.globl hwint4
+.globl hwint5
+.globl hwint6
+.globl hwint7
+.globl hwint8
+.globl hwint9
+.globl hwint10
+.globl hwint11
+.globl hwint12
+.globl hwint13
+.globl hwint14
+.globl hwint15
+.globl leave
+.globl do_hwint
 
 .globl dtlb_miss_handler
 .globl itlb_miss_handler
@@ -119,6 +160,114 @@ floating_point_exception:
 trap_exception:
 	l.nop
 	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                  save()                                    *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Saves registers.
+ */
+.macro save
+	
+.endm
+
+/*----------------------------------------------------------------------------*
+ *                                 enter()                                    *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Enters in kernel.
+ */
+.macro enter
+    
+.endm
+
+/*----------------------------------------------------------------------------*
+ *                                leave()                                     *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Leaves kernel.
+ */
+leave:
+
+/*----------------------------------------------------------------------------*
+ *                                  swint()                                   *
+ *----------------------------------------------------------------------------*/
+
+
+/*----------------------------------------------------------------------------*
+ *                                 syscall()                                  *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * System call hook.
+ */
+syscall:
+
+
+
+
+/* Exceptions handler. */
+.macro exception_handler, number
+	exception_handler\number:
+		
+		/* Checks if we are in user or kernel mode. */
+		EXCEPTION_T_STORE_GPR30           /* Backup register.          */
+		l.mfspr r30, r0,  SPR_ESR_BASE
+		l.andi  r30, r30, SPR_SR_SM
+		l.sfeqi r30, 0
+		l.bnf   .kernel_mode
+		EXCEPTION_T_STORE_SP              /* Delay slot, save SP (r1). */
+	
+		/* Extracts the Kernel stack. */
+	.user_mode:
+		EXCEPTION_STORE_GPR3
+		EXCEPTION_STORE_GPR5
+		LOAD_SYMBOL_2_GPR(r3, curr_proc)
+		LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+		l.sub r3, r3, r5
+		l.lwz r1, PROC_KESP(r3)
+
+	.kernel_mode:
+		/* Create new stack frame. */
+		/* r1: KSP, r10: current, r4: EEAR, r31: __pa(KSP) */
+		/* r12:	temp, syscall indicator */
+		l.addi r1, r1, -(INT_FRAME_SIZE)
+		l.sub  r1, r1, r5
+
+		/* r1 is KSP, r30 is __pa(KSP) */
+		//tophys  (r30,r1)
+		l.sw    PT_GPR12(r30),r12
+		l.mfspr r12,r0,SPR_EPCR_BASE
+		l.sw    PT_PC(r30),r12
+		l.mfspr r12,r0,SPR_ESR_BASE
+		l.sw    PT_SR(r30),r12
+		/* save r30 */
+		EXCEPTION_T_LOAD_GPR30(r12)
+		l.sw	PT_GPR30(r30),r12
+		/* save r10 as was prior to exception */
+		EXCEPTION_T_LOAD_GPR10(r12)
+		l.sw	PT_GPR10(r30),r12
+		/* save PT_SP as was prior to exception */
+		EXCEPTION_T_LOAD_SP(r12)
+		l.sw	PT_SP(r30),r12
+		/* save exception r4, set r4 = EA */
+		l.sw	PT_GPR4(r30),r4
+		l.mfspr r4,r0,SPR_EEAR_BASE
+		/* r12 == 1 if we come from syscall */
+		CLEAR_GPR(r12)
+		/* ----- turn on MMU ----- */
+		l.ori	r30,r0,(EXCEPTION_SR)
+		l.mtspr	r0,r30,SPR_ESR_BASE
+		/* r30:	EA address of handler */
+		LOAD_SYMBOL_2_GPR(r30,handler)
+		l.mtspr r0,r30,SPR_EPCR_BASE
+		l.rfe
+.endm
+
+exception_handler abc
 
 /*----------------------------------------------------------------------------*
  *                          boot_dtlb_miss_handler                            *
