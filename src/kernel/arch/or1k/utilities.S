@@ -78,6 +78,16 @@ tlb_flush:
  * Enables all hardware interrupts.
  */
 enable_interrupts:
+	l.addi r1,  r1, -4
+	l.sw 0(r1), r3
+
+	l.mfspr	r3, r0, SPR_SR
+	l.ori	r3, r3, lo(SPR_SR_IEE | SPR_SR_TEE)
+	l.mtspr	r0, r3, SPR_SR
+
+	l.lwz  r3, 0(r1)
+	l.addi r1, r1, 4
+
 	l.jr r9
 	l.nop
 
@@ -89,6 +99,20 @@ enable_interrupts:
  * Disables all hardware interrupts.
  */
 disable_interrupts:
+	l.addi r1,  r1, -8
+	l.sw 4(r1), r3
+	l.sw 0(r1), r4
+
+	l.mfspr r4, r0, SPR_SR
+	l.movhi	r3, hi(~(SPR_SR_IEE|SPR_SR_TEE))
+	l.ori	r3, r3, lo(~(SPR_SR_IEE|SPR_SR_TEE))
+	l.and   r4, r4, r3
+	l.mtspr r0, r4, SPR_SR
+
+	l.lwz  r3, 4(r1)	
+	l.lwz  r4, 0(r1)
+	l.addi r1, r1, 8
+
 	l.jr r9
 	l.nop
 

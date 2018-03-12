@@ -73,9 +73,10 @@
 	#define GPR29      116
 	#define GPR30      120
 	#define GPR31      124
-	#define PC	       128
-	#define ORIG_GPR11 132
-	#define SYSCALLNO  136
+	#define EPCR       128
+	#define EEAR       132
+	#define ESR        136
+	#define SYSCALLNO  140
 	
 	/* Stack frame size. */
 	#define INT_FRAME_SIZE 144
@@ -89,9 +90,9 @@
 	{
 		dword_t gpr[32];
 		dword_t pc;
-		dword_t orig_gpr11;
+		dword_t eear;
+		dword_t esr;
 		dword_t syscallno;
-		dword_t dummy;
 	};
 
 	/* Software interrupt hooks. */
