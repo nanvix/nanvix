@@ -27,7 +27,7 @@ SECTIONS
 
 	.exception :
 	{
-		arch/or1k/exception.o *(.exception)
+		arch/or1k/hooks.o *(.exception)
 	}
 	
 	KSTART = .;

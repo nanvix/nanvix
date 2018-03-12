@@ -39,6 +39,7 @@
 #define _ASM_FILE_
 
 #include <nanvix/mm.h>
+#include <nanvix/syscall.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
 #include <or1k/int.h>
@@ -87,49 +88,200 @@
 
 .section .exception
 
-/*============================================================================*
- *                                exceptions                                  *
- *============================================================================*/
+/*----------------------------------------------------------------------------*
+ *                                  save()                                    *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Saves registers.
+ */
+save:
+	/* General Purpose registers, except r30 and r9. */
+	l.sw GPR2(r1) , r2
+	l.sw GPR3(r1) , r3
+	l.sw GPR4(r1) , r4
+	l.sw GPR5(r1) , r5
+	l.sw GPR6(r1) , r6
+	l.sw GPR7(r1) , r7
+	l.sw GPR8(r1) , r8
+	l.sw GPR10(r1), r10
+	l.sw GPR11(r1), r11
+	l.sw GPR12(r1), r12
+	l.sw GPR13(r1), r13
+	l.sw GPR14(r1), r14
+	l.sw GPR15(r1), r15
+	l.sw GPR16(r1), r16
+	l.sw GPR17(r1), r17
+	l.sw GPR18(r1), r18
+	l.sw GPR19(r1), r19
+	l.sw GPR20(r1), r20
+	l.sw GPR21(r1), r21
+	l.sw GPR22(r1), r22
+	l.sw GPR23(r1), r23
+	l.sw GPR24(r1), r24
+	l.sw GPR25(r1), r25
+	l.sw GPR26(r1), r26
+	l.sw GPR27(r1), r27
+	l.sw GPR28(r1), r28
+	l.sw GPR29(r1), r29
+	l.sw GPR31(r1), r31
+
+	/* Stack Pointer, r1. */
+	EXCEPTION_T_LOAD_SP(r30)
+	l.sw SP(r1), r30
+
+	/* ECPR. */
+	l.mfspr r30, r0, SPR_EPCR_BASE
+	l.sw EPCR(r1), r30
+
+	/* EEAR. */
+	l.mfspr r30, r0, SPR_EEAR_BASE
+	l.sw EEAR(r1), r30
+
+	/* ESR. */
+	l.mfspr r30, r0, SPR_ESR_BASE
+	l.sw ESR(r1), r30
+
+	/* Restore and save r30. */
+	EXCEPTION_T_LOAD_GPR30(r30)
+	l.sw GPR30(r1), r30
+
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                 enter()                                    *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Enters in kernel.
+ */
+.macro enter
+    LOAD_SYMBOL_2_GPR(r3, curr_proc)
+    LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+
+    /* Increment interrupt level. */
+    l.sub  r3, r3, r5
+    l.lwz  r5, PROC_INTLVL(r3)
+    l.addi r5, r5, 1
+	l.sw   PROC_INTLVL(r3), r5
+    
+    /* Save interrupt stack. */
+    l.sw PROC_KESP(r3), r1
+.endm
+
+/*----------------------------------------------------------------------------*
+ *                              exception handler                             *
+ *----------------------------------------------------------------------------*/
+
+/* Exceptions handler. */
+.macro exception_handler, number
+	exception_handler\number:
+		EXCEPTION_STORE_GPR3
+		EXCEPTION_STORE_GPR5
+		enter
+		EXCEPTION_LOAD_GPR3
+		EXCEPTION_LOAD_GPR5
+		
+		/* Checks if we are in user or kernel mode. */
+		EXCEPTION_T_STORE_GPR30           /* Backup register.          */
+		l.mfspr r30, r0,  SPR_ESR_BASE
+		l.andi  r30, r30, SPR_SR_SM
+		l.sfeqi r30, 0
+		l.bnf   2f
+		EXCEPTION_T_STORE_SP              /* Delay slot, save SP (r1). */
+	
+		/* Extracts the Kernel stack. */
+	
+		/* User mode. */
+	1:
+		EXCEPTION_STORE_GPR3
+		EXCEPTION_STORE_GPR5
+		LOAD_SYMBOL_2_GPR(r3, curr_proc)
+		LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+		l.sub r3, r3, r5
+		l.lwz r1, PROC_KESP(r3)
+
+	
+		/* Kernel mode. */
+	2:
+		/* Create new stack frame. */
+		l.addi r1, r1, -(INT_FRAME_SIZE)
+		l.sub  r1, r1, r5
+
+		/* Save registers. */
+		EXCEPTION_LOAD_GPR3
+		EXCEPTION_LOAD_GPR5
+		EXCEPTION_STORE_GPR9 /* Backup Link Register before the jal. */
+		l.jal save
+		l.nop
+		EXCEPTION_LOAD_GPR9
+		l.sw GPR9(r1), r9
+
+		/* Enable MMU. */
+		l.mfspr r30, r0, SPR_ESR_BASE
+		l.ori	r30, r0, (EXCEPTION_SR)
+		l.mtspr	r0, r30, SPR_ESR_BASE
+
+		/* Check if syscall. */
+		l.ori   r3, r0, \number
+		l.sfeqi r3, 9
+		l.bnf 3f
+
+		/* Syscall. */
+		LOAD_SYMBOL_2_GPR(r5, syscalls_table)
+		l.jal syscall
+		l.nop
+		l.j 4f
+		l.nop
+
+	3:
+		/* Not syscall, lets call do_hwint. */
+		LOAD_SYMBOL_2_GPR(r5, do_hwint)
+		l.jr r5
+		l.nop
+
+		/* Return from exception. */
+	4:
+		l.mfspr r30, r0, SPR_EPCR_BASE
+		l.rfe
+.endm
+
+/*----------------------------------------------------------------------------*
+ *                                  exceptions                                *
+ *----------------------------------------------------------------------------*/
 
 .org 0x100
 reset_exception:
-	l.j start
-	l.nop
+	exception_handler 0
 
 .org 0x200
 bus_exception:
-	l.nop
-	l.nop
+	exception_handler 1
 
 .org 0x300
 data_page_fault_exception:
-	l.nop
-	l.nop
+	exception_handler 2
 
 .org 0x400
 instruction_page_fault:
-	l.nop
-	l.nop
+	exception_handler 3
 
 .org 0x500
 tick_timer_exception:
-	l.nop
-	l.nop
+	exception_handler 4
 
 .org 0x600
 alignment_exception:
-	l.nop
-	l.nop
+	exception_handler 5
 
 .org 0x700
 illegal_instruction_exception:
-	l.nop
-	l.nop
+	exception_handler 6
 
 .org 0x800
 external_interrupt_exception:
-	l.nop
-	l.nop
+	exception_handler 7
 
 .org 0x900
 dtlb_miss_exception:
@@ -143,45 +295,19 @@ itlb_miss_exception:
 
 .org 0xb00
 range_exception:
-	l.nop
-	l.nop
+	exception_handler 8
 
 .org 0xc00
 syscall_exception:
-	l.nop
-	l.nop
+	exception_handler 9
 
 .org 0xd00
 floating_point_exception:
-	l.nop
-	l.nop
+	exception_handler 10
 
 .org 0xe00
 trap_exception:
-	l.nop
-	l.nop
-
-/*----------------------------------------------------------------------------*
- *                                  save()                                    *
- *----------------------------------------------------------------------------*/
-
-/*
- * Saves registers.
- */
-.macro save
-	
-.endm
-
-/*----------------------------------------------------------------------------*
- *                                 enter()                                    *
- *----------------------------------------------------------------------------*/
-
-/*
- * Enters in kernel.
- */
-.macro enter
-    
-.endm
+	exception_handler 11
 
 /*----------------------------------------------------------------------------*
  *                                leave()                                     *
@@ -209,65 +335,7 @@ syscall:
 
 
 
-/* Exceptions handler. */
-.macro exception_handler, number
-	exception_handler\number:
-		
-		/* Checks if we are in user or kernel mode. */
-		EXCEPTION_T_STORE_GPR30           /* Backup register.          */
-		l.mfspr r30, r0,  SPR_ESR_BASE
-		l.andi  r30, r30, SPR_SR_SM
-		l.sfeqi r30, 0
-		l.bnf   .kernel_mode
-		EXCEPTION_T_STORE_SP              /* Delay slot, save SP (r1). */
-	
-		/* Extracts the Kernel stack. */
-	.user_mode:
-		EXCEPTION_STORE_GPR3
-		EXCEPTION_STORE_GPR5
-		LOAD_SYMBOL_2_GPR(r3, curr_proc)
-		LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
-		l.sub r3, r3, r5
-		l.lwz r1, PROC_KESP(r3)
 
-	.kernel_mode:
-		/* Create new stack frame. */
-		/* r1: KSP, r10: current, r4: EEAR, r31: __pa(KSP) */
-		/* r12:	temp, syscall indicator */
-		l.addi r1, r1, -(INT_FRAME_SIZE)
-		l.sub  r1, r1, r5
-
-		/* r1 is KSP, r30 is __pa(KSP) */
-		//tophys  (r30,r1)
-		l.sw    PT_GPR12(r30),r12
-		l.mfspr r12,r0,SPR_EPCR_BASE
-		l.sw    PT_PC(r30),r12
-		l.mfspr r12,r0,SPR_ESR_BASE
-		l.sw    PT_SR(r30),r12
-		/* save r30 */
-		EXCEPTION_T_LOAD_GPR30(r12)
-		l.sw	PT_GPR30(r30),r12
-		/* save r10 as was prior to exception */
-		EXCEPTION_T_LOAD_GPR10(r12)
-		l.sw	PT_GPR10(r30),r12
-		/* save PT_SP as was prior to exception */
-		EXCEPTION_T_LOAD_SP(r12)
-		l.sw	PT_SP(r30),r12
-		/* save exception r4, set r4 = EA */
-		l.sw	PT_GPR4(r30),r4
-		l.mfspr r4,r0,SPR_EEAR_BASE
-		/* r12 == 1 if we come from syscall */
-		CLEAR_GPR(r12)
-		/* ----- turn on MMU ----- */
-		l.ori	r30,r0,(EXCEPTION_SR)
-		l.mtspr	r0,r30,SPR_ESR_BASE
-		/* r30:	EA address of handler */
-		LOAD_SYMBOL_2_GPR(r30,handler)
-		l.mtspr r0,r30,SPR_EPCR_BASE
-		l.rfe
-.endm
-
-exception_handler abc
 
 /*----------------------------------------------------------------------------*
  *                          boot_dtlb_miss_handler                            *
