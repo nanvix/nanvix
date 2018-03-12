@@ -321,7 +321,7 @@ PUBLIC int crtpgdir(struct process *proc)
 	{
 		s1 = (struct intstack *) curr_proc->kesp;
 		s2 = (struct intstack *) proc->kesp;	
-		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+		//s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
 	}
 	/* Assign page directory. */
 	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
