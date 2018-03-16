@@ -36,7 +36,7 @@ export CXXFLAGS=-pipe
 apt-get install -y libncurses5-dev
 
 # Get bochs.
-wget "http://sourceforge.net/projects/bochs/files/bochs/2.6.9/bochs-2.6.9.tar.gz"
+wget --no-check-certificate "http://sourceforge.net/projects/bochs/files/bochs/2.6.9/bochs-2.6.9.tar.gz"
 
 # Build Bochs
 tar -xvf bochs-2.6.9.tar.gz

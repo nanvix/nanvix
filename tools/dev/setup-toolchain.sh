@@ -24,8 +24,8 @@ mkdir -p $WORKDIR
 cd $WORKDIR
 
 # Get binutils and GCC.
-wget "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
-wget "http://ftp.gnu.org/gnu/gcc/gcc-5.3.0/gcc-5.3.0.tar.bz2"
+wget --no-check-certificate "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
+wget --no-check-certificate "http://ftp.gnu.org/gnu/gcc/gcc-5.3.0/gcc-5.3.0.tar.bz2"
 
 # Get required packages.
 apt-get install -y g++ doxygen genisoimage gdb
