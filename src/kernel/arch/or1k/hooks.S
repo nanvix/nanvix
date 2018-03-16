@@ -157,17 +157,17 @@ save:
  * Enters in kernel.
  */
 .macro enter
-    LOAD_SYMBOL_2_GPR(r3, curr_proc)
-    LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 
-    /* Increment interrupt level. */
-    l.sub  r3, r3, r5
-    l.lwz  r5, PROC_INTLVL(r3)
-    l.addi r5, r5, 1
+	/* Increment interrupt level. */
+	l.sub  r3, r3, r5
+	l.lwz  r5, PROC_INTLVL(r3)
+	l.addi r5, r5, 1
 	l.sw   PROC_INTLVL(r3), r5
     
-    /* Save interrupt stack. */
-    l.sw PROC_KESP(r3), r1
+	/* Save interrupt stack. */
+	l.sw PROC_KESP(r3), r1
 .endm
 
 /*----------------------------------------------------------------------------*

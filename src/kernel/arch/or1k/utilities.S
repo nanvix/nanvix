@@ -41,6 +41,8 @@
 .globl pmc_init
 .globl read_pmc
 .globl write_msr
+.globl mfspr
+.globl mtspr
 
 /* Imported symbols. */
 .globl processor_reload
@@ -124,7 +126,7 @@ disable_interrupts:
  * Halts the processor.
  */
 halt:
-	l.j halt
+	l.jr r9
 	l.nop
 
 /*----------------------------------------------------------------------------*
@@ -203,5 +205,29 @@ read_msr:
  * Writes to an specified MSR register.
  */
 write_msr:
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                    mfspr()                                 *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Reads from an specified Special-Purpose register.
+ */
+mfspr:
+	l.mfspr r11, r3, 0
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                    mtspr()                                 *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Writes to an specified Special-Purpose register.
+ */
+mtspr:
+	l.mtspr r3, r4, 0
 	l.jr r9
 	l.nop

@@ -114,6 +114,16 @@
 	 */
 	EXTERN void tlb_flush(void);
 
+	/*
+	 * Move from Special-Purpose Register.
+	 */
+	EXTERN uint32_t mfspr(uint32_t spr);
+
+	/*
+	 * Move to Special-Purpose Register.
+	 */
+	EXTERN void mtspr(uint32_t spr, uint32_t val);
+
 #endif /* _ASM_FILE_ */
 
 #endif /* OR1K_H_ */
