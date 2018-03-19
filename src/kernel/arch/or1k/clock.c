@@ -94,7 +94,7 @@ PUBLIC void clock_init(unsigned freq)
 	set_hwint(INT_CLOCK, &do_clock);
 
 	/* Clock rate. */
-	rate = freq;
+	rate = CPU_CLOCK/freq;
 
 	/* Continuous mode. */
 	mtspr(SPR_TTMR, SPR_TTMR_CR);
