@@ -17,12 +17,16 @@ or in a virtual machine, using a Live System's Image.
 In order to build Nanvix, you will need a Linux like programming 
 environment, the x86 GCC compiler and the x86 GNU binutils.
 
-**TIP**: If you are running a Debian-based Linux distribution, like Ubuntu, 
-you can simply run the `tools/dev/setup-toolchain.sh` script.
-	
-Once you have setup the required tools, you should set the 
-environment variable `$TARGET` to point to the toolchain's directory. 
-	
+If you are running a Debian-based Linux distribution, like Ubuntu, 
+you can simply run the following commands at the root directory:
+
+```sh
+sudo apt-get install make
+sudo bash tools/dev/setup-toolchain.sh
+sudo bash tools/dev/setup-bochs.sh
+sudo reboot now
+```
+
 When done, you can build Nanvix by typing, at the root directory:
 	
 ```sh
@@ -35,8 +39,13 @@ Or you can build a Live System's Image by typing, at the same directory:
 $ make image
 ```
 
-Note that for build a image you may require priveleged access.
+## Running
 
+To run Nanvix, type the following command at the root directory:
+
+```sh
+bash tools/run/run.sh
+```
 ## License and Maintainers
 
 Nanvix is a free software that is under the GPL V3 license and is 
