@@ -30,13 +30,13 @@ sudo reboot now
 When done, you can build Nanvix by typing, at the root directory:
 	
 ```sh
-$ make nanvix
+make nanvix
 ```
 
 Or you can build a Live System's Image by typing, at the same directory:
 
 ```sh
-$ make image
+make image
 ```
 
 ## Running
