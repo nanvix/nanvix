@@ -89,67 +89,6 @@
 .section .exception
 
 /*----------------------------------------------------------------------------*
- *                                  save()                                    *
- *----------------------------------------------------------------------------*/
-
-/*
- * Saves registers.
- */
-save:
-	/* General Purpose registers, except r30 and r9. */
-	l.sw GPR2(r1) , r2
-	l.sw GPR3(r1) , r3
-	l.sw GPR4(r1) , r4
-	l.sw GPR5(r1) , r5
-	l.sw GPR6(r1) , r6
-	l.sw GPR7(r1) , r7
-	l.sw GPR8(r1) , r8
-	l.sw GPR10(r1), r10
-	l.sw GPR11(r1), r11
-	l.sw GPR12(r1), r12
-	l.sw GPR13(r1), r13
-	l.sw GPR14(r1), r14
-	l.sw GPR15(r1), r15
-	l.sw GPR16(r1), r16
-	l.sw GPR17(r1), r17
-	l.sw GPR18(r1), r18
-	l.sw GPR19(r1), r19
-	l.sw GPR20(r1), r20
-	l.sw GPR21(r1), r21
-	l.sw GPR22(r1), r22
-	l.sw GPR23(r1), r23
-	l.sw GPR24(r1), r24
-	l.sw GPR25(r1), r25
-	l.sw GPR26(r1), r26
-	l.sw GPR27(r1), r27
-	l.sw GPR28(r1), r28
-	l.sw GPR29(r1), r29
-	l.sw GPR31(r1), r31
-
-	/* Stack Pointer, r1. */
-	EXCEPTION_T_LOAD_SP(r30)
-	l.sw SP(r1), r30
-
-	/* ECPR. */
-	l.mfspr r30, r0, SPR_EPCR_BASE
-	l.sw EPCR(r1), r30
-
-	/* EEAR. */
-	l.mfspr r30, r0, SPR_EEAR_BASE
-	l.sw EEAR(r1), r30
-
-	/* ESR. */
-	l.mfspr r30, r0, SPR_ESR_BASE
-	l.sw ESR(r1), r30
-
-	/* Restore and save r30. */
-	EXCEPTION_T_LOAD_GPR30(r30)
-	l.sw GPR30(r1), r30
-
-	l.jr r9
-	l.nop
-
-/*----------------------------------------------------------------------------*
  *                                 enter()                                    *
  *----------------------------------------------------------------------------*/
 
@@ -242,7 +181,7 @@ save:
 	3:
 		/* Not syscall, lets call do_hwint. */
 		LOAD_SYMBOL_2_GPR(r5, do_hwint)
-		l.jr r5
+		l.jalr r5
 		l.nop
 
 		/* Return from exception. */
@@ -312,6 +251,67 @@ floating_point_exception:
 .org 0xe00
 trap_exception:
 	exception_handler 11
+
+/*----------------------------------------------------------------------------*
+ *                                  save()                                    *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Saves registers.
+ */
+save:
+	/* General Purpose registers, except r30 and r9. */
+	l.sw GPR2(r1) , r2
+	l.sw GPR3(r1) , r3
+	l.sw GPR4(r1) , r4
+	l.sw GPR5(r1) , r5
+	l.sw GPR6(r1) , r6
+	l.sw GPR7(r1) , r7
+	l.sw GPR8(r1) , r8
+	l.sw GPR10(r1), r10
+	l.sw GPR11(r1), r11
+	l.sw GPR12(r1), r12
+	l.sw GPR13(r1), r13
+	l.sw GPR14(r1), r14
+	l.sw GPR15(r1), r15
+	l.sw GPR16(r1), r16
+	l.sw GPR17(r1), r17
+	l.sw GPR18(r1), r18
+	l.sw GPR19(r1), r19
+	l.sw GPR20(r1), r20
+	l.sw GPR21(r1), r21
+	l.sw GPR22(r1), r22
+	l.sw GPR23(r1), r23
+	l.sw GPR24(r1), r24
+	l.sw GPR25(r1), r25
+	l.sw GPR26(r1), r26
+	l.sw GPR27(r1), r27
+	l.sw GPR28(r1), r28
+	l.sw GPR29(r1), r29
+	l.sw GPR31(r1), r31
+
+	/* Stack Pointer, r1. */
+	EXCEPTION_T_LOAD_SP(r30)
+	l.sw SP(r1), r30
+
+	/* ECPR. */
+	l.mfspr r30, r0, SPR_EPCR_BASE
+	l.sw EPCR(r1), r30
+
+	/* EEAR. */
+	l.mfspr r30, r0, SPR_EEAR_BASE
+	l.sw EEAR(r1), r30
+
+	/* ESR. */
+	l.mfspr r30, r0, SPR_ESR_BASE
+	l.sw ESR(r1), r30
+
+	/* Restore and save r30. */
+	EXCEPTION_T_LOAD_GPR30(r30)
+	l.sw GPR30(r1), r30
+
+	l.jr r9
+	l.nop
 
 /*----------------------------------------------------------------------------*
  *                                leave()                                     *
