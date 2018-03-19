@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -32,20 +33,46 @@ PUBLIC unsigned ticks = 0;
  */
 PUBLIC unsigned startup_time = 0;
 
+/**
+ * @brief Clock interrupts per/sec.
+ */
+PRIVATE unsigned rate = 0;
+
+/*
+ * @brief Setup the clock next event.
+ */
+PRIVATE void clock_next_event()
+{
+	unsigned clock;
+	clock =  mfspr(SPR_TTCR);
+	clock += rate;
+	clock &= SPR_TTMR_TP;
+
+	/* Set counter. */
+	mtspr(SPR_TTMR, SPR_TTMR_CR | SPR_TTMR_IE | clock);
+}
+
 /*
  * Handles a timer interrupt.
  */
 PRIVATE void do_clock()
 {
+	/* Temporaly disable clock interrupts. */
+	mtspr(SPR_TTMR, SPR_TTMR_CR);
+	
 	ticks++;
 	
 	if (KERNEL_WAS_RUNNING(curr_proc))
 	{
 		curr_proc->ktime++;
+		clock_next_event();
 		return;
 	}
 	
 	curr_proc->utime++;
+
+	/* Setup next event again. */
+	clock_next_event();
 		
 	/* Give up processor time. */
 	if (--curr_proc->counter == 0)
@@ -57,5 +84,21 @@ PRIVATE void do_clock()
  */
 PUBLIC void clock_init(unsigned freq)
 {
+	unsigned upr;
+
+	upr = mfspr(SPR_UPR);
+	if ( !(upr & SPR_UPR_TTP) )
+		kpanic("dev: device without tick timer!");
+
 	kprintf("dev: initializing clock device driver");
+	set_hwint(INT_CLOCK, &do_clock);
+
+	/* Clock rate. */
+	rate = freq;
+
+	/* Continuous mode. */
+	mtspr(SPR_TTMR, SPR_TTMR_CR);
+
+	/* Setup the clock next event. */
+	clock_next_event();
 }
