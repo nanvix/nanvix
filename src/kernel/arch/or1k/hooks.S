@@ -161,7 +161,10 @@ save:
 	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 
 	/* Increment interrupt level. */
-	l.sub  r3, r3, r5
+	l.sub r3, r3, r5
+	l.lwz r3, 0(r3)
+	l.sub r3, r3, r5 
+
 	l.lwz  r5, PROC_INTLVL(r3)
 	l.addi r5, r5, 1
 	l.sw   PROC_INTLVL(r3), r5
@@ -219,14 +222,15 @@ save:
 		l.sw GPR9(r1), r9
 
 		/* Enable MMU. */
-		l.mfspr r30, r0, SPR_ESR_BASE
-		l.ori	r30, r0, (EXCEPTION_SR)
-		l.mtspr	r0, r30, SPR_ESR_BASE
+		l.mfspr r30, r0,  SPR_SR
+		l.ori	r30, r30, (EXCEPTION_SR)
+		l.mtspr r0,  r30, SPR_SR
 
 		/* Check if syscall. */
 		l.ori   r3, r0, \number
 		l.sfeqi r3, 9
 		l.bnf 3f
+		l.nop
 
 		/* Syscall. */
 		LOAD_SYMBOL_2_GPR(r5, syscalls_table)
@@ -331,7 +335,10 @@ leave:
  * System call hook.
  */
 syscall:
-
+	l.j syscall
+	l.nop
+	l.nop
+	l.nop
 
 
 
