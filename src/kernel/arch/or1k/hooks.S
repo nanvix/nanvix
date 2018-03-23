@@ -122,10 +122,9 @@
 		EXCEPTION_STORE_GPR3
 		EXCEPTION_STORE_GPR5
 		enter
-		EXCEPTION_LOAD_GPR3
-		EXCEPTION_LOAD_GPR5
 		
 		/* Checks if we are in user or kernel mode. */
+		LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 		EXCEPTION_T_STORE_GPR30           /* Backup register.          */
 		l.mfspr r30, r0,  SPR_ESR_BASE
 		l.andi  r30, r30, SPR_SR_SM
@@ -134,17 +133,13 @@
 		EXCEPTION_T_STORE_SP              /* Delay slot, save SP (r1). */
 	
 		/* Extracts the Kernel stack. */
-	
+
 		/* User mode. */
 	1:
-		EXCEPTION_STORE_GPR3
-		EXCEPTION_STORE_GPR5
 		LOAD_SYMBOL_2_GPR(r3, curr_proc)
-		LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 		l.sub r3, r3, r5
 		l.lwz r1, PROC_KESP(r3)
 
-	
 		/* Kernel mode. */
 	2:
 		/* Create new stack frame. */
@@ -186,8 +181,8 @@
 
 		/* Return from exception. */
 	4:
-		l.mfspr r30, r0, SPR_EPCR_BASE
-		l.rfe
+		l.j leave
+		l.nop
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -294,7 +289,7 @@ save:
 	EXCEPTION_T_LOAD_SP(r30)
 	l.sw SP(r1), r30
 
-	/* ECPR. */
+	/* EPCR. */
 	l.mfspr r30, r0, SPR_EPCR_BASE
 	l.sw EPCR(r1), r30
 
@@ -321,6 +316,60 @@ save:
  * Leaves kernel.
  */
 leave:
+
+
+leave.out:
+	/* General Purpose registers, except r30. */
+	l.lwz r2 , GPR2(r1)
+	l.lwz r3 , GPR3(r1)
+	l.lwz r4 , GPR4(r1)
+	l.lwz r5 , GPR5(r1)
+	l.lwz r6 , GPR6(r1)
+	l.lwz r7 , GPR7(r1)
+	l.lwz r8 , GPR8(r1)
+	l.lwz r9 , GPR9(r1)
+	l.lwz r10, GPR10(r1)
+	l.lwz r11, GPR11(r1)
+	l.lwz r12, GPR12(r1)
+	l.lwz r13, GPR13(r1)
+	l.lwz r14, GPR14(r1)
+	l.lwz r15, GPR15(r1)
+	l.lwz r16, GPR16(r1)
+	l.lwz r17, GPR17(r1)
+	l.lwz r18, GPR18(r1)
+	l.lwz r19, GPR19(r1)
+	l.lwz r20, GPR20(r1)
+	l.lwz r21, GPR21(r1)
+	l.lwz r22, GPR22(r1)
+	l.lwz r23, GPR23(r1)
+	l.lwz r24, GPR24(r1)
+	l.lwz r25, GPR25(r1)
+	l.lwz r26, GPR26(r1)
+	l.lwz r27, GPR27(r1)
+	l.lwz r28, GPR28(r1)
+	l.lwz r29, GPR29(r1)
+	l.lwz r31, GPR31(r1)
+
+	/* SPR_EPCR. */
+	l.lwz   r30, EPCR(r1)
+	l.mtspr r0,  r30, SPR_EPCR_BASE
+
+	/* SPR_EEAR. */
+	l.lwz   r30, EEAR(r1)
+	l.mtspr r0,  r30, SPR_EEAR_BASE
+
+	/* SPR_ESR. */
+	l.lwz   r30, ESR(r1)
+	l.ori   r30, r30, (EXCEPTION_SR)
+	l.mtspr r0,  r30, SPR_ESR_BASE
+
+	/* r30. */
+	l.lwz r30, GPR30(r1)
+
+	/* Stack Pointer, r1. */
+	l.lwz r1, SP(r1)
+
+	l.rfe
 
 /*----------------------------------------------------------------------------*
  *                                  swint()                                   *

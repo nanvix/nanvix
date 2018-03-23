@@ -501,7 +501,4 @@ PUBLIC void dev_init(void)
 	ramdisk_init();
 	dbg_register(cdev_test, "cdev_test");
 	dbg_register(bdev_test, "bdev_test");
-
-	/* Enable interrupts. */
-	enable_interrupts();
 }
