@@ -113,52 +113,59 @@
 .endm
 
 /*----------------------------------------------------------------------------*
- *                              exception handler                             *
+ *                                exception_enter                             *
+ *----------------------------------------------------------------------------*/
+.macro exception_enter
+	EXCEPTION_STORE_GPR3
+	EXCEPTION_STORE_GPR5
+	enter
+		
+	/* Checks if we are in user or kernel mode. */
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+	EXCEPTION_T_STORE_GPR30           /* Backup register.          */
+	l.mfspr r30, r0,  SPR_ESR_BASE
+	l.andi  r30, r30, SPR_SR_SM
+	l.sfeqi r30, 0
+	l.bnf   2f
+	EXCEPTION_T_STORE_SP              /* Delay slot, save SP (r1). */
+	
+	/* Extracts the Kernel stack. */
+
+	/* User mode. */
+1:
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	l.sub r3, r3, r5
+	l.lwz r1, PROC_KESP(r3)
+
+	/* Kernel mode. */
+2:
+	/* Create new stack frame. */
+	l.addi r1, r1, -(INT_FRAME_SIZE)
+	l.sub  r1, r1, r5
+
+	/* Save registers. */
+	EXCEPTION_LOAD_GPR3
+	EXCEPTION_LOAD_GPR5
+	EXCEPTION_STORE_GPR9 /* Backup Link Register before the jal. */
+	l.jal save
+	l.nop
+	EXCEPTION_LOAD_GPR9
+	l.sw GPR9(r1), r9
+
+	/* Enable MMU. */
+	l.mfspr r30, r0,  SPR_SR
+	l.ori	r30, r30, (EXCEPTION_SR)
+	l.mtspr r0,  r30, SPR_SR
+.endm
+
+/*----------------------------------------------------------------------------*
+ *                                   swint()                                  *
  *----------------------------------------------------------------------------*/
 
-/* Exceptions handler. */
-.macro exception_handler, number
-	exception_handler\number:
-		EXCEPTION_STORE_GPR3
-		EXCEPTION_STORE_GPR5
-		enter
-		
-		/* Checks if we are in user or kernel mode. */
-		LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
-		EXCEPTION_T_STORE_GPR30           /* Backup register.          */
-		l.mfspr r30, r0,  SPR_ESR_BASE
-		l.andi  r30, r30, SPR_SR_SM
-		l.sfeqi r30, 0
-		l.bnf   2f
-		EXCEPTION_T_STORE_SP              /* Delay slot, save SP (r1). */
-	
-		/* Extracts the Kernel stack. */
-
-		/* User mode. */
-	1:
-		LOAD_SYMBOL_2_GPR(r3, curr_proc)
-		l.sub r3, r3, r5
-		l.lwz r1, PROC_KESP(r3)
-
-		/* Kernel mode. */
-	2:
-		/* Create new stack frame. */
-		l.addi r1, r1, -(INT_FRAME_SIZE)
-		l.sub  r1, r1, r5
-
-		/* Save registers. */
-		EXCEPTION_LOAD_GPR3
-		EXCEPTION_LOAD_GPR5
-		EXCEPTION_STORE_GPR9 /* Backup Link Register before the jal. */
-		l.jal save
-		l.nop
-		EXCEPTION_LOAD_GPR9
-		l.sw GPR9(r1), r9
-
-		/* Enable MMU. */
-		l.mfspr r30, r0,  SPR_SR
-		l.ori	r30, r30, (EXCEPTION_SR)
-		l.mtspr r0,  r30, SPR_SR
+/* Software interrupts */
+.macro swint_handler, number, handler
+	swint\number:
+		exception_enter
 
 		/* Check if syscall. */
 		l.ori   r3, r0, \number
@@ -167,15 +174,14 @@
 		l.nop
 
 		/* Syscall. */
-		LOAD_SYMBOL_2_GPR(r5, syscalls_table)
-		l.jal syscall
-		l.nop
-		l.j 4f
+		l.j syscall
 		l.nop
 
 	3:
-		/* Not syscall, lets call do_hwint. */
-		LOAD_SYMBOL_2_GPR(r5, do_hwint)
+		/* Not syscall, lets do swint. */
+		l.or   r4, r1, r0
+		l.addi r4, r4, 144
+		LOAD_SYMBOL_2_GPR(r5, \handler)
 		l.jalr r5
 		l.nop
 
@@ -186,40 +192,60 @@
 .endm
 
 /*----------------------------------------------------------------------------*
+ *                                   hwint()                                  *
+ *----------------------------------------------------------------------------*/
+
+/* Hardware interrupts */
+.macro hwint_handler, number
+	hwint\number:
+		exception_enter
+
+		/* hwint. */
+		l.ori  r3, r0, \number
+		LOAD_SYMBOL_2_GPR(r5, do_hwint)
+		l.jalr r5
+		l.nop
+
+		/* Return from exception. */
+		l.j leave
+		l.nop
+.endm
+
+/*----------------------------------------------------------------------------*
  *                                  exceptions                                *
  *----------------------------------------------------------------------------*/
 
 .org 0x100
 reset_exception:
-	exception_handler 0
+	swint_handler 0 do_reset
 
 .org 0x200
 bus_exception:
-	exception_handler 1
+	swint_handler 1 do_bus_error
 
 .org 0x300
 data_page_fault_exception:
-	exception_handler 2
+	swint_handler 2 _do_page_pfault
 
 .org 0x400
 instruction_page_fault:
-	exception_handler 3
+	swint_handler 3 _do_page_pfault
 
 .org 0x500
 tick_timer_exception:
-	exception_handler 4
+	hwint_handler 4
 
 .org 0x600
 alignment_exception:
-	exception_handler 5
+	swint_handler 5 do_alignment
 
 .org 0x700
 illegal_instruction_exception:
-	exception_handler 6
+	swint_handler 6 do_illegal_instruction
 
 .org 0x800
 external_interrupt_exception:
-	exception_handler 7
+	swint_handler 7 do_external_interrupt
 
 .org 0x900
 dtlb_miss_exception:
@@ -233,19 +259,19 @@ itlb_miss_exception:
 
 .org 0xb00
 range_exception:
-	exception_handler 8
+	swint_handler 8 do_range
 
 .org 0xc00
 syscall_exception:
-	exception_handler 9
+	swint_handler 9 0
 
 .org 0xd00
 floating_point_exception:
-	exception_handler 10
+	swint_handler 10 do_float
 
 .org 0xe00
 trap_exception:
-	exception_handler 11
+	swint_handler 11 do_trap
 
 /*----------------------------------------------------------------------------*
  *                                  save()                                    *
@@ -372,11 +398,6 @@ leave.out:
 	l.rfe
 
 /*----------------------------------------------------------------------------*
- *                                  swint()                                   *
- *----------------------------------------------------------------------------*/
-
-
-/*----------------------------------------------------------------------------*
  *                                 syscall()                                  *
  *----------------------------------------------------------------------------*/
 
@@ -389,9 +410,53 @@ syscall:
 	l.nop
 	l.nop
 
+/*
+ * Page protection fault handler wrapper.
+ */
+_do_page_pfault:
+	l.sw   -8(r1), r2
+	l.sw   -4(r1), r9
+	l.addi r2, r1, 0
 
+	l.lwz r3, EEAR(r4) /* addr.     */
+	l.or  r7, r4, r0   /* intstack. */
+	l.ori r4, r4, 2    /* err.      */
+	l.ori r5, r5, 0    /* dummy0.   */
+	l.ori r6, r6, 0    /* dummy1.   */
 
+	LOAD_SYMBOL_2_GPR(r13, do_page_fault)
+	l.jalr r13
+	l.nop
 
+	l.ori r1, r2, 0
+	l.lwz r2, -8(r1)
+	l.lwz r9, -4(r1)
+	l.jr r9
+	l.nop
+
+/*
+ * Page valid fault handler wrapper.
+ */
+_do_page_vfault:
+	l.sw   -8(r1), r2
+	l.sw   -4(r1), r9
+	l.addi r2, r1, 0
+
+	l.lwz r3, EEAR(r4) /* addr.     */
+	l.or  r7, r4, r0   /* intstack. */
+	l.ori r4, r4, 0    /* err.      */
+	l.ori r5, r5, 0    /* dummy0.   */
+	l.ori r6, r6, 0    /* dummy1.   */
+
+	LOAD_SYMBOL_2_GPR(r13, do_page_fault)
+	l.jalr r13
+	l.nop
+
+	l.ori r1, r2, 0
+	l.lwz r2, -8(r1)
+	l.lwz r9, -4(r1)
+	l.jr r9
+	l.nop
 
 /*----------------------------------------------------------------------------*
  *                          boot_dtlb_miss_handler                            *
@@ -635,11 +700,8 @@ d_not_pte:
 	EXCEPTION_LOAD_GPR5
 	EXCEPTION_LOAD_GPR6
 	
-	/* TODO: Trigger a dtlb miss page fault. */
-	l.mfspr r2, r0, SPR_EEAR_BASE
-	.dtlb_fault_loop:
-		l.j .dtlb_fault_loop
-		l.nop
+	/* Trigger a dtlb miss page fault. */
+	swint_handler 12 _do_page_vfault
 
 /*----------------------------------------------------------------------------*
  *                          itlb_miss_handler                                 *
@@ -730,8 +792,5 @@ i_not_pte:
 	EXCEPTION_LOAD_GPR5
 	EXCEPTION_LOAD_GPR6
 	
-	/* TODO: Trigger a itlb miss page fault. */
-	l.mfspr r2, r0, SPR_EEAR_BASE
-	.itlb_fault_loop:
-		l.j .itlb_fault_loop
-		l.nop
+	/* Trigger a itlb miss page fault. */
+	swint_handler 13 _do_page_vfault
