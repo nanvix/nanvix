@@ -339,34 +339,6 @@ static int sched_test2(void)
 	return (0);
 }
 
-/**
- * @brief Scheduling test 3.
- * 
- * @details Spawns several processes and stresses the scheduler.
- * 
- * @returns Zero if passed on test, and non-zero otherwise.
- */
-static int sched_test3(void)
-{
-	pid_t child;
-	pid_t father;
-
-	father = getpid();
-
-	fork();
-	fork();
-	
-	/* Die. */
-	if (getpid() != father)
-		_exit(EXIT_SUCCESS);
-
-	/* Wait for children. */
-	while ((child = wait(NULL)) >= 0)
-		/* noop. */;
-
-	return (0);
-}
-
 /*============================================================================*
  *                             Semaphores Test                                *
  *============================================================================*/
@@ -644,7 +616,7 @@ int main(int argc, char **argv)
 			printf("  dynamic priorities [%s]\n",
 				(!sched_test1()) ? "PASSED" : "FAILED");
 			printf("  scheduler stress   [%s]\n",
-				(!sched_test2() && !sched_test3()) ? "PASSED" : "FAILED");
+				(!sched_test2()) ? "PASSED" : "FAILED");
 		}
 		
 		/* IPC test. */
