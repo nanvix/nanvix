@@ -126,7 +126,7 @@ PUBLIC int fubyte(const void *addr)
 	/* Kernel address space. */
 	if (((addr_t)addr < UBASE_VIRT) || ((addr_t)addr >= KBASE_VIRT))
 	{
-		if (KERNEL_RUNNING(curr_proc))
+		if (KERNEL_RUNNING(curr_proc) || (curr_proc == INIT))
 			return (*((char *)addr));
 		
 		return (-1);
@@ -157,7 +157,7 @@ PUBLIC int fudword(const void *addr)
 	/* Kernel address space. */
 	if (((addr_t)addr < UBASE_VIRT) || ((addr_t)addr >= KBASE_VIRT))
 	{
-		if (KERNEL_RUNNING(curr_proc))
+		if (KERNEL_RUNNING(curr_proc) || (curr_proc == INIT))
 			return (*((int *)addr));
 		
 		return (-1);
