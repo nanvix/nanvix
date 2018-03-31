@@ -381,14 +381,16 @@ static int sched_test3(void)
 
 	fork();
 	fork();
-
-	/* Die. */
-	if (getpid() != father)
-		_exit(EXIT_SUCCESS);
+	fork();
+	fork();
 
 	/* Wait for children. */
 	while ((child = wait(NULL)) >= 0)
 		/* noop. */;
+
+	/* Die. */
+	if (getpid() != father)
+		_exit(EXIT_SUCCESS);
 
 	return (0);
 }
