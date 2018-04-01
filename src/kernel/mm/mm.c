@@ -134,7 +134,7 @@ PUBLIC int fubyte(const void *addr)
 	/* Kernel address space. */
 	if (IN_KERNEL(addr))
 	{
-		if (KERNEL_WAS_RUNNING(curr_proc) || (curr_proc == INIT))
+		if (KERNEL_WAS_RUNNING(curr_proc))
 			return (*((char *)addr));
 		
 		return (-1);
@@ -162,7 +162,7 @@ PUBLIC int fudword(const void *addr)
 	/* Kernel address space. */
 	if (IN_KERNEL(addr))
 	{
-		if (KERNEL_WAS_RUNNING(curr_proc) || (curr_proc == INIT))
+		if (KERNEL_WAS_RUNNING(curr_proc))
 			return (*((int *)addr));
 		
 		return (-1);

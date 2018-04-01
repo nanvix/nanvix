@@ -240,7 +240,8 @@
 	 * @returns True if the process is running in kernel mode, and false
 	 *          otherwise.
 	 */
-	#define KERNEL_WAS_RUNNING(p) (((p)->father == IDLE))
+	#define KERNEL_WAS_RUNNING(p) (((p)->father == IDLE) || ((p)->intlvl > 1) \
+		|| ((curr_proc) == INIT) )
 	
 	/**
 	 * @brief Asserts if a process is the sessions leader.
