@@ -124,6 +124,13 @@ PRIVATE void init(void)
 extern void cpu_init(void);
 
 /**
+ * @brief Required function to use GCC varargs
+ */
+PUBLIC void abort()
+{
+}
+
+/**
  * @brief Initializes the kernel.
  *
  * @param cmdline Command line parameters.
