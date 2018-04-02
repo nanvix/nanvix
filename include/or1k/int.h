@@ -45,7 +45,7 @@
 	#define INT_TRP   13 /* Trap.                   */
 
 	/* Offsets to the registers structure. */
-	#define SR           0
+	#define R0           0
 	#define SP           4
 	#define GPR2         8
 	#define GPR3        12
@@ -80,10 +80,9 @@
 	#define EPCR       128
 	#define EEAR       132
 	#define ESR        136
-	#define SYSCALLNO  140
 	
 	/* Stack frame size. */
-	#define INT_FRAME_SIZE 144
+	#define INT_FRAME_SIZE 140
 
 #ifndef _ASM_FILE_
 
@@ -93,10 +92,9 @@
 	struct intstack
 	{
 		dword_t gpr[32];
-		dword_t pc;
+		dword_t epcr;
 		dword_t eear;
 		dword_t esr;
-		dword_t syscallno;
 	};
 
 	/* Software interrupt hooks. */

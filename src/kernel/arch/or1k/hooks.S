@@ -180,7 +180,6 @@
 	3:
 		/* Not syscall, lets do swint. */
 		l.or   r4, r1, r0
-		l.addi r4, r4, 144
 		LOAD_SYMBOL_2_GPR(r5, \handler)
 		l.jalr r5
 		l.nop
@@ -420,9 +419,9 @@ _do_page_pfault:
 
 	l.lwz r3, EEAR(r4) /* addr.     */
 	l.or  r7, r4, r0   /* intstack. */
-	l.ori r4, r4, 2    /* err.      */
-	l.ori r5, r5, 0    /* dummy0.   */
-	l.ori r6, r6, 0    /* dummy1.   */
+	l.ori r4, r0, 2    /* err.      */
+	l.ori r5, r0, 0    /* dummy0.   */
+	l.ori r6, r0, 0    /* dummy1.   */
 
 	LOAD_SYMBOL_2_GPR(r13, do_page_fault)
 	l.jalr r13
@@ -444,9 +443,9 @@ _do_page_vfault:
 
 	l.lwz r3, EEAR(r4) /* addr.     */
 	l.or  r7, r4, r0   /* intstack. */
-	l.ori r4, r4, 0    /* err.      */
-	l.ori r5, r5, 0    /* dummy0.   */
-	l.ori r6, r6, 0    /* dummy1.   */
+	l.ori r4, r0, 0    /* err.      */
+	l.ori r5, r0, 0    /* dummy0.   */
+	l.ori r6, r0, 0    /* dummy1.   */
 
 	LOAD_SYMBOL_2_GPR(r13, do_page_fault)
 	l.jalr r13
