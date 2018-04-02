@@ -153,6 +153,16 @@ PUBLIC void kmain(const char* cmdline)
 	fs_init();
 
 	dbg_execute();
+	
+	register unsigned long r11 __asm__("r11") = NR_getpid;
+	__asm__ __volatile__
+	(
+		"l.sys 1"
+		: "=r" (r11)
+		: "r"  (r11)
+	);
+	
+	kprintf("getpid: %x", r11);
 
 	/* Spawn init process. */
 	if ((pid = fork()) < 0)
