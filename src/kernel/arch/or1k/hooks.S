@@ -43,6 +43,7 @@
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
 #include <or1k/int.h>
+#include <errno.h>
 
 /* Exported symbols. */
 .globl swint0
@@ -404,10 +405,48 @@ leave.out:
  * System call hook.
  */
 syscall:
-	l.j syscall
+	/* Set 'handling system call' flag. */
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	l.lwz r3, 0(r3)
+	l.lwz r5, PROC_FLAGS(r3)
+	l.ori r5, r5, PROC_SYS
+	l.sw  PROC_FLAGS(r3), r5
+
+	/* Get system call parameters. */
+	l.lwz r3,  GPR3(r1)
+	l.lwz r4,  GPR4(r1)
+	l.lwz r5,  GPR5(r1)
+	l.lwz r6,  GPR6(r1)
+	l.lwz r7,  GPR7(r1)
+	l.lwz r11, GPR11(r1) /* syscall number. */
+	
+	/* Check for bad system call. */
+	l.sfltui r11, NR_SYSCALLS
+	l.bf good_syscall
 	l.nop
+
+	LOAD_SYMBOL_2_GPR(r11, ENOSYS)
+	l.sub r11, r0, r11
+	l.j bad_syscall
 	l.nop
-	l.nop
+
+	good_syscall:
+		/* Get system call. */
+		LOAD_SYMBOL_2_GPR(r13, syscalls_table)
+		l.slli r11, r11, 2
+		l.add  r11, r11, r13
+		l.lwz  r11, 0(r11)
+
+		/* Do system call. */
+		l.jalr r11
+		l.nop
+
+	bad_syscall:
+		/* Copy return value to user stack. */
+		l.sw GPR11(r1), r11
+
+		l.j leave
+		l.nop
 
 /*
  * Page protection fault handler wrapper.
