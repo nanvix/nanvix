@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -71,7 +71,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 	#define va_start(v,l) __builtin_va_start(v,l)
 	#define va_end(v)     __builtin_va_end(v)
-	#define va_arg(v,l)   __builtin_va_arg(v,l)
+	#define va_arg(v,l)   ((l)__builtin_va_arg(v,int))
 
 	typedef __builtin_va_list va_list; 
 
