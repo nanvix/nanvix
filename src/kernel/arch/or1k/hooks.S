@@ -155,8 +155,12 @@
 
 	/* Enable MMU. */
 	l.mfspr r30, r0,  SPR_SR
-	l.ori	r30, r30, (EXCEPTION_SR)
+	l.ori   r30, r30, (ENABLE_MMU | SPR_SR_SM)
 	l.mtspr r0,  r30, SPR_SR
+
+	/* Virtual address. */
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+	l.add r1, r1, r5
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -386,7 +390,7 @@ leave.out:
 
 	/* SPR_ESR. */
 	l.lwz   r30, ESR(r1)
-	l.ori   r30, r30, (EXCEPTION_SR)
+	l.ori   r30, r30, (ENABLE_MMU)
 	l.mtspr r0,  r30, SPR_ESR_BASE
 
 	/* r30. */

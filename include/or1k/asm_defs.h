@@ -47,7 +47,7 @@
 /*
  * Enable MMU and cache when exception occurs.
  */
-#define EXCEPTION_SR (SPR_SR_DME | SPR_SR_IME | SPR_SR_DCE | SPR_SR_ICE | SPR_SR_SM)
+#define ENABLE_MMU (SPR_SR_DME | SPR_SR_IME | SPR_SR_DCE | SPR_SR_ICE)
 
 /*
  * emergency_print temporary stores
