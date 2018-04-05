@@ -195,7 +195,56 @@ physcpy.loop:
  * Switches execution to other process.
  */
 switch_to:
+	
+	/* Save process context. */
+	LOAD_SYMBOL_2_GPR(r13, curr_proc)
+	l.lwz r13, 0(r13)
+	l.lwz r15, PROC_KESP(r13)
+
+	l.addi r1,  r1, -8
+	l.sw 0(r1), r2
+	l.sw 4(r1), r15
+	l.sw PROC_KESP(r13), r1
+
+	/* Switch processes. */
+	LOAD_SYMBOL_2_GPR(r13, curr_proc)
+	l.sw 0(r13), r3
+
+	/* Load process context. */
+	l.lwz r13, 0(r3)
+	l.lwz r1, PROC_KESP(r13)
+
+	LOAD_SYMBOL_2_GPR(r15, processor_reload)
+	l.jalr r15
+	l.nop
+
+	/* New process?. */
+	l.lwz  r15, PROC_FLAGS(r13)
+	l.ori  r17, r0,  (1 << PROC_NEW)
+	l.and  r19, r15, r17
+
+	l.xori r17, r17, -1
+	l.and  r17, r15, r17
+	l.sw   PROC_FLAGS(r13), r17
+
+	l.sfnei r19, 0
+	l.bf fork_return
+	l.nop
+
+	/* Restore stack. */
+	l.lwz  r15, 4(r1)
+	l.lwz  r2,  0(r1)
+	l.addi r1,  8
+	l.sw PROC_KESP(r13), r15
+
 	l.jr r9
+	l.nop
+
+/*
+ * Returns from fork.
+ */
+fork_return:
+	l.j leave
 	l.nop
 
 /*----------------------------------------------------------------------------*
