@@ -137,6 +137,53 @@ halt:
  * Physical memory copy.
  */
 physcpy:
+	l.sw   -8(r1), r2
+	l.sw   -4(r1), r9
+	l.addi r2, r1, 0
+
+	/* Disable paging. */
+	l.mfspr r13, r0,   SPR_SR
+	l.andi  r13, r13, ~ENABLE_MMU
+	l.mtspr r0,  r13,  SPR_SR
+
+	/* Jump to lower-half kernel. */
+	l.jal disable_interrupts
+	l.nop
+
+	LOAD_SYMBOL_2_GPR(r15, KBASE_VIRT)
+	LOAD_SYMBOL_2_GPR(r17, lower_kernel)
+	l.sub r17, r17, r15
+	l.jr  r17
+	l.nop
+	lower_kernel:
+
+physcpy.loop:
+	l.lwz r19,  0(r4)
+	l.sw 0(r3), r19
+	l.addi r4, r4,  4
+	l.addi r3, r3,  4
+	l.addi r5, r5, -4
+	l.sfnei r5, 0
+	l.bf physcpy.loop
+	l.nop
+
+	/* Re-enable paging. */
+	l.mfspr r13, r0,  SPR_SR
+	l.ori   r13, r13, ENABLE_MMU
+	l.mtspr r0,  r13, SPR_SR
+
+	/* Come back to higher-half kernel. */
+	LOAD_SYMBOL_2_GPR(r17, higher_kernel)
+	l.jr r17
+	l.nop
+	higher_kernel:
+
+	l.jal enable_interrupts
+	l.nop
+
+	l.ori r1, r2, 0
+	l.lwz r2, -8(r1)
+	l.lwz r9, -4(r1)
 	l.jr r9
 	l.nop
 
