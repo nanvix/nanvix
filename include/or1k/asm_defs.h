@@ -50,6 +50,11 @@
 #define ENABLE_MMU (SPR_SR_DME | SPR_SR_IME | SPR_SR_DCE | SPR_SR_ICE)
 
 /*
+ * User SR: Initial SR register for user space program.
+ */
+#define USER_SR (ENABLE_MMU | SPR_SR_IEE | SPR_SR_TEE)
+
+/*
  * emergency_print temporary stores
  */
 #define EMERGENCY_PRINT_STORE_GPR4	l.sw    0x20(r0),r4

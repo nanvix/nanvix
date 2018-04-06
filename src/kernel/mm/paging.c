@@ -320,8 +320,12 @@ PUBLIC int crtpgdir(struct process *proc)
 	if (KERNEL_WAS_RUNNING(curr_proc))
 	{
 		s1 = (struct intstack *) curr_proc->kesp;
-		s2 = (struct intstack *) proc->kesp;	
-		//s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+		s2 = (struct intstack *) proc->kesp;
+#ifdef i386		
+		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+#elif or1k
+		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+#endif
 	}
 	/* Assign page directory. */
 	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;

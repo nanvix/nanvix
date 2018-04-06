@@ -110,6 +110,9 @@
 	l.sw   PROC_INTLVL(r3), r5
     
 	/* Save interrupt stack. */
+	l.lwz r5,   PROC_KESP(r3)
+	l.addi r1,  r1, -4
+	l.sw 0(r1), r5
 	l.sw PROC_KESP(r3), r1
 .endm
 
@@ -346,7 +349,7 @@ save:
  * Leaves kernel.
  */
 leave:
-
+	
 
 leave.out:
 	/* General Purpose registers, except r30. */

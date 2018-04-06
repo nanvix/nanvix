@@ -23,6 +23,7 @@
 
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
+#include <or1k/int.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 
@@ -147,9 +148,6 @@ physcpy:
 	l.mtspr r0,  r13,  SPR_SR
 
 	/* Jump to lower-half kernel. */
-	l.jal disable_interrupts
-	l.nop
-
 	LOAD_SYMBOL_2_GPR(r15, KBASE_VIRT)
 	LOAD_SYMBOL_2_GPR(r17, lower_kernel)
 	l.sub r17, r17, r15
@@ -177,9 +175,6 @@ physcpy.loop:
 	l.jr r17
 	l.nop
 	higher_kernel:
-
-	l.jal enable_interrupts
-	l.nop
 
 	l.ori r1, r2, 0
 	l.lwz r2, -8(r1)
@@ -234,7 +229,7 @@ switch_to:
 	/* Restore stack. */
 	l.lwz  r15, 4(r1)
 	l.lwz  r2,  0(r1)
-	l.addi r1,  8
+	l.addi r1, r1, 8
 	l.sw PROC_KESP(r13), r15
 
 	l.jr r9
@@ -244,7 +239,9 @@ switch_to:
  * Returns from fork.
  */
 fork_return:
-	l.j leave
+	LOAD_SYMBOL_2_GPR(r15, leave)
+	l.sw GPR11(r1), r0
+	l.jr r15
 	l.nop
 
 /*----------------------------------------------------------------------------*
@@ -255,7 +252,19 @@ fork_return:
  * Switches to user mode.
  */
 user_mode:
-	l.jr r9
+
+	/* Set interrupt level to "user level". */
+	LOAD_SYMBOL_2_GPR(r13, curr_proc)
+	l.lwz r13, 0(r13)
+	l.sw PROC_INTLVL(r13), r0	
+
+	/* Load data. */
+	LOAD_SYMBOL_2_GPR(r15, USER_SR)
+	l.mtspr r0, r15, SPR_ESR_BASE  /* Status register. */
+	l.mtspr r0, r3, SPR_EPCR_BASE  /* Entry point.     */
+	l.or r1, r0, r4                /* Stack.           */
+
+	l.rfe
 	l.nop
 
 /*----------------------------------------------------------------------------*
