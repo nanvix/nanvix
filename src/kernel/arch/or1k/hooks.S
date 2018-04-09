@@ -111,9 +111,12 @@
     
 	/* Save interrupt stack. */
 	l.lwz r5,   PROC_KESP(r3)
-	l.addi r1,  r1, -4
 	l.sw 0(r1), r5
-	l.sw PROC_KESP(r3), r1
+
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+	l.ori  r6, r0, r1
+	l.addi r6, r5, r6
+	l.sw PROC_KESP(r3), r6
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -122,7 +125,6 @@
 .macro exception_enter
 	EXCEPTION_STORE_GPR3
 	EXCEPTION_STORE_GPR5
-	enter
 		
 	/* Checks if we are in user or kernel mode. */
 	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
@@ -155,6 +157,9 @@
 	l.nop
 	EXCEPTION_LOAD_GPR9
 	l.sw GPR9(r1), r9
+
+	/* Enter. */
+	enter
 
 	/* Enable MMU. */
 	l.mfspr r30, r0,  SPR_SR
@@ -349,7 +354,19 @@ save:
  * Leaves kernel.
  */
 leave:
-	
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	l.lwz r3, 0(r3)
+
+	/* Restore interrupt stack. */
+	l.lwz  r4, 0(r1)
+	l.sw PROC_KESP(r3), r4
+	l.addi r1, r1, 4
+
+	/* Decrement interrupt level. */
+	l.lwz   r4, PROC_INTLVL(r3)
+	l.addi  r1, r1, -1
+	l.sfnei r1, 0
+	l.bf leave.out
 
 leave.out:
 	/* General Purpose registers, except r30. */

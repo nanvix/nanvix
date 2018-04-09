@@ -45,44 +45,44 @@
 	#define INT_TRP   13 /* Trap.                   */
 
 	/* Offsets to the registers structure. */
-	#define R0           0
-	#define SP           4
-	#define GPR2         8
-	#define GPR3        12
-	#define GPR4        16
-	#define GPR5        20
-	#define GPR6        24
-	#define GPR7        28
-	#define GPR8        32
-	#define GPR9        36
-	#define GPR10       40
-	#define GPR11       44
-	#define GPR12       48
-	#define GPR13       52
-	#define GPR14       56
-	#define GPR15       60
-	#define GPR16       64
-	#define GPR17       68
-	#define GPR18       72
-	#define GPR19       76
-	#define GPR20       80
-	#define GPR21       84
-	#define GPR22       88
-	#define GPR23       92
-	#define GPR24       96
-	#define GPR25      100
-	#define GPR26      104
-	#define GPR27      108
-	#define GPR28      112
-	#define GPR29      116
-	#define GPR30      120
-	#define GPR31      124
-	#define EPCR       128
-	#define EEAR       132
-	#define ESR        136
+	#define R0           4
+	#define SP           8
+	#define GPR2        12
+	#define GPR3        16
+	#define GPR4        20
+	#define GPR5        24
+	#define GPR6        28
+	#define GPR7        32
+	#define GPR8        36
+	#define GPR9        40
+	#define GPR10       44
+	#define GPR11       48
+	#define GPR12       52
+	#define GPR13       56
+	#define GPR14       60
+	#define GPR15       64
+	#define GPR16       68
+	#define GPR17       72
+	#define GPR18       76
+	#define GPR19       80
+	#define GPR20       84
+	#define GPR21       88
+	#define GPR22       92
+	#define GPR23       96
+	#define GPR24      100
+	#define GPR25      104
+	#define GPR26      108
+	#define GPR27      112
+	#define GPR28      116
+	#define GPR29      120
+	#define GPR30      124
+	#define GPR31      128
+	#define EPCR       132
+	#define EEAR       136
+	#define ESR        140
 	
 	/* Stack frame size. */
-	#define INT_FRAME_SIZE 140
+	#define INT_FRAME_SIZE 144
 
 #ifndef _ASM_FILE_
 
@@ -91,6 +91,7 @@
 	 */
 	struct intstack
 	{
+		dword_t old_kesp;
 		dword_t gpr[32];
 		dword_t epcr;
 		dword_t eear;

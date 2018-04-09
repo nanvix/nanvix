@@ -67,10 +67,6 @@ start:
 	l.ori	r1, r0, 0x1
 	l.mtspr	r0, r1, SPR_SR
 
-	/* Stack. */
-	l.addi r1, r0, 0x2000
-	l.addi r1, r1, -8
-
 	/*
 	 * Build initial RAM disk page table. 
 	 */
