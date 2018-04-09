@@ -41,13 +41,13 @@
  */
 pid_t fork(void)
 {
-	#if 0
-	pid_t pid;
+	register pid_t pid
+		__asm__("r11") = NR_fork;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (pid)
-		: "0" (NR_fork)
+		"l.sys 1"
+		: "=r" (pid)
+		: "r"  (pid)
 	);
 	
 	/* Error. */
@@ -55,8 +55,6 @@ pid_t fork(void)
 		return (-1);
 	
 	return (pid);
-	#endif
-	return 0;
 }
 
 /**
@@ -71,16 +69,15 @@ pid_t fork(void)
  */
 int execve(const char *filename, const char **argv, const char **envp)
 {
-	#if 0
-	int ret;
+	register int ret __asm__("r11") = NR_execve;
+	register unsigned r3 __asm__("r3") = (unsigned) filename;
+	register unsigned r4 __asm__("r4") = (unsigned) argv;
+	register unsigned r5 __asm__("r5") = (unsigned) envp;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_execve),
-		  "b" (filename),
-		  "c" (argv),
-		  "d" (envp)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret), "r" (r3), "r" (r4), "r" (r5)
 	);
 	
 	/* Error. */
@@ -88,8 +85,6 @@ int execve(const char *filename, const char **argv, const char **envp)
 		return (-1);
 	
 	return (ret);
-	#endif
-	return 0;
 }
 
 /**
@@ -99,14 +94,14 @@ int execve(const char *filename, const char **argv, const char **envp)
  */
 void _exit(int status)
 {
-	#if 0
-	__asm__ volatile(
-		"int $0x80"
-		: /* empty. */
-		: "a" (NR__exit),
-		"b" (status)
+	register unsigned r11 __asm__("r11") = NR__exit;
+	register int r3 __asm__("r3") = status;
+	
+	__asm__ volatile (
+		"l.sys 1"
+		: "=r" (r11)
+		: "r" (r11), "r" (r3)
 	);
-	#endif
 }
 
 /**
@@ -153,16 +148,6 @@ PUBLIC void kmain(const char* cmdline)
 	fs_init();
 
 	dbg_execute();
-	
-	register unsigned long r11 __asm__("r11") = NR_getpid;
-	__asm__ __volatile__
-	(
-		"l.sys 1"
-		: "=r" (r11)
-		: "r"  (r11)
-	);
-	
-	kprintf("getpid: %x", r11);
 
 	/* Spawn init process. */
 	if ((pid = fork()) < 0)
