@@ -516,7 +516,7 @@ static void work_fpu(void)
 		for (int j = 0; j < n; j++)
 		{
 			a[i][j] = 1.0;
-			a[i][j] = 2.0;
+			b[i][j] = 2.0;
 			c[i][j] = 0.0;
 		}
 	}
