@@ -163,8 +163,8 @@ PRIVATE inline struct pte *getpte(struct process *proc, addr_t addr)
 PRIVATE inline void pde_init(struct pde *pde)
 {
 	pde_present_set(pde, 1);
-	pde_write_set(pde, 1);
 	pde_user_set(pde, 1);
+	pde_write_set(pde, 1);
 }
 
 /**
@@ -175,8 +175,8 @@ PRIVATE inline void pde_init(struct pde *pde)
 PRIVATE inline void pde_clear(struct pde *pde)
 {
 	pde_present_set(pde, 0);
-	pde_write_set(pde, 0);
 	pde_user_set(pde, 0);
+	pde_write_set(pde, 0);
 }
 
 /**
@@ -201,8 +201,8 @@ PRIVATE inline void pte_init(struct pte *pte, int writable)
 	pte_cow_set(pte, 0);
 	pte_zero_set(pte, 0);
 	pte_fill_set(pte, 0);
-	pte_write_set(pte, writable);
 	pte_user_set(pte, 1);
+	pte_write_set(pte, writable);
 }
 
 /**
@@ -311,6 +311,7 @@ PUBLIC int crtpgdir(struct process *proc)
 	pgdir[PGTAB(KBASE_VIRT)] = curr_proc->pgdir[PGTAB(KBASE_VIRT)];
 	pgdir[PGTAB(KPOOL_VIRT)] = curr_proc->pgdir[PGTAB(KPOOL_VIRT)];
 	pgdir[PGTAB(INITRD_VIRT)] = curr_proc->pgdir[PGTAB(INITRD_VIRT)];
+	pgdir[PGTAB(SERIAL_VIRT)] = curr_proc->pgdir[PGTAB(SERIAL_VIRT)];
 	
 	/* Clone kernel stack. */
 	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
