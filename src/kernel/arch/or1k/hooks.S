@@ -480,7 +480,8 @@ syscall:
 _do_page_pfault:
 	l.sw   -8(r1), r2
 	l.sw   -4(r1), r9
-	l.addi r2, r1, 0
+	l.addi r2, r1,  0
+	l.addi r1, r1, -8
 
 	l.lwz r3, EEAR(r4) /* addr.     */
 	l.or  r7, r4, r0   /* intstack. */
@@ -504,7 +505,8 @@ _do_page_pfault:
 _do_page_vfault:
 	l.sw   -8(r1), r2
 	l.sw   -4(r1), r9
-	l.addi r2, r1, 0
+	l.addi r2, r1,  0
+	l.addi r1, r1, -8
 
 	l.lwz r3, EEAR(r4) /* addr.     */
 	l.or  r7, r4, r0   /* intstack. */
@@ -704,6 +706,7 @@ dtlb_miss_handler:
 	l.lwz  r4, 0(r4)
 	l.sfeq r4, r0
 	l.bf   d_not_pde
+	l.nop
 
 	/* PT address.  */
 	l.srli r4, r4, 10
@@ -715,9 +718,17 @@ dtlb_miss_handler:
 	l.slli r5, r5, 2
 	l.add  r4, r4, r5      /* PTE address. */
 
+	/* PTE empty. */
 	l.lwz  r4, 0(r4)       /* PTE entry.   */
 	l.sfeq r4, r0
 	l.bf   d_not_pte
+	l.nop
+
+	/* PTE not present. */
+	l.andi r6, r4, PT_PRESENT
+	l.sfeq r6, r0
+	l.bf   d_not_pte
+	l.nop
 
 	l.srli r5, r4, 10      /* Physical page number. */
 
@@ -796,6 +807,7 @@ itlb_miss_handler:
 	l.lwz  r4, 0(r4)
 	l.sfeq r4, r0
 	l.bf   i_not_pde
+	l.nop
 
 	/* PT address.  */
 	l.srli r4, r4, 10
@@ -807,9 +819,17 @@ itlb_miss_handler:
 	l.slli r5, r5, 2
 	l.add  r4, r4, r5      /* PTE address. */
 
+	/* If PTE empty. */
 	l.lwz  r4, 0(r4)       /* PTE entry.   */
 	l.sfeq r4, r0
 	l.bf   i_not_pte
+	l.nop
+
+	/* If PTE not present. */
+	l.andi r6, r4, PT_PRESENT
+	l.sfeq r6, r0
+	l.bf   i_not_pte
+	l.nop
 
 	l.srli r5, r4, 10      /* Physical page number. */
 
