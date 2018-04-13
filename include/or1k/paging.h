@@ -51,6 +51,9 @@
 	#define PT_FILL    PT_WBC  /* Demand fill.       */
 	#define PT_PRESENT PT_WOM  /* Present in memory. */
 
+	/* Page Protection Index, offset. */
+	#define PT_PPI_OFFSET   0x6   /* PPI offset. */
+	
 	/* Page Protection Index, data. */
 	#define PT_PPI_USR_RD   0x40  /* Supervisor Read/Write, User: Read.       */
 	#define PT_PPI_USR_WR   0x80  /* Supervisor Read/Write, User: Write.      */
@@ -98,15 +101,15 @@
 	 */
 	struct pde
 	{
-		unsigned cow        :  1; /* Copy on write?         */
-		unsigned zero       :  1; /* Demand zero?           */
-		unsigned fill       :  1; /* Demand fill?           */
-		unsigned present    :  1; /* Present in memory?     */
-		unsigned accessed   :  1; /* Accessed?              */
-		unsigned dirty      :  1; /* Dirty?                 */
-		unsigned ppi        :  3; /* Page protection index. */
-		unsigned last       :  1; /* Last PTE.              */
 		unsigned frame      : 22; /* Frame number.          */
+		unsigned last       :  1; /* Last PTE.              */
+		unsigned ppi        :  3; /* Page protection index. */
+		unsigned dirty      :  1; /* Dirty?                 */
+		unsigned accessed   :  1; /* Accessed?              */
+		unsigned present    :  1; /* Present in memory?     */
+		unsigned fill       :  1; /* Demand fill?           */
+		unsigned zero       :  1; /* Demand zero?           */
+		unsigned cow        :  1; /* Copy on write?         */
 	};
 
 	/*
@@ -114,15 +117,15 @@
 	 */
 	struct pte
 	{
-		unsigned cow        :  1; /* Copy on write?         */
-		unsigned zero       :  1; /* Demand zero?           */
-		unsigned fill       :  1; /* Demand fill?           */
-		unsigned present    :  1; /* Present in memory?     */
-		unsigned accessed   :  1; /* Accessed?              */
-		unsigned dirty      :  1; /* Dirty?                 */
-		unsigned ppi        :  3; /* Page protection index. */
-		unsigned last       :  1; /* Last PTE.              */
 		unsigned frame      : 22; /* Frame number.          */
+		unsigned last       :  1; /* Last PTE.              */
+		unsigned ppi        :  3; /* Page protection index. */
+		unsigned dirty      :  1; /* Dirty?                 */
+		unsigned accessed   :  1; /* Accessed?              */
+		unsigned present    :  1; /* Present in memory?     */
+		unsigned fill       :  1; /* Demand fill?           */
+		unsigned zero       :  1; /* Demand zero?           */
+		unsigned cow        :  1; /* Copy on write?         */
 	};
 
 	/**
@@ -157,7 +160,8 @@
 	 */
 	static inline void pde_write_set(struct pde *pde, int set)
 	{
-		pde->ppi = (set) ? PT_PPI_USR_RDWR : PT_PPI_USR_RD;
+		pde->ppi = (set) ? (PT_PPI_USR_RDWR >> PT_PPI_OFFSET)
+			: (PT_PPI_USR_RD >> PT_PPI_OFFSET);
 	}
 
 	/**
@@ -171,7 +175,7 @@
 	 */
 	static inline int pde_is_write(struct pde *pde)
 	{
-		return (pde->ppi & PT_PPI_USR_RDWR);
+		return (pde->ppi & (PT_PPI_USR_RDWR >> PT_PPI_OFFSET));
 	}
 
 	/**
@@ -182,7 +186,7 @@
 	 */
 	static inline void pde_user_set(struct pde *pde, int set)
 	{
-		pde->ppi = (set) ? PT_PPI_USR_RD : 0;
+		pde->ppi = (set) ? (PT_PPI_USR_RD >> PT_PPI_OFFSET) : 0;
 	}
 
 	/**
@@ -195,7 +199,7 @@
 	 */
 	static inline int pde_is_user(struct pde *pde)
 	{
-		return (pde->ppi & PT_PPI_USR_RD);
+		return (pde->ppi & (PT_PPI_USR_RD >> PT_PPI_OFFSET));
 	}
 
 	/**
@@ -280,7 +284,8 @@
 	 */
 	static inline void pte_write_set(struct pte *pte, int set)
 	{
-		pte->ppi = (set) ? PT_PPI_USR_RDWR : PT_PPI_USR_RD;
+		pte->ppi = (set) ? (PT_PPI_USR_RDWR >> PT_PPI_OFFSET)
+			: (PT_PPI_USR_RD >> PT_PPI_OFFSET);
 	}
 
 	/**
@@ -293,7 +298,7 @@
 	 */
 	static inline int pte_is_write(struct pte *pte)
 	{
-		return (pte->ppi & PT_PPI_USR_RDWR);
+		return (pte->ppi & (PT_PPI_USR_RDWR >> PT_PPI_OFFSET));
 	}
 
 	/**
@@ -304,7 +309,7 @@
 	 */
 	static inline void pte_user_set(struct pte *pte, int set)
 	{
-		pte->ppi = (set) ? PT_PPI_USR_RD : 0;
+		pte->ppi = (set) ? (PT_PPI_USR_RD >> PT_PPI_OFFSET) : 0;
 	}
 
 	/**
@@ -317,7 +322,7 @@
 	 */
 	static inline int pte_is_user(struct pte *pte)
 	{
-		return (pte->ppi & PT_PPI_USR_RD);
+		return (pte->ppi & (PT_PPI_USR_RD >> PT_PPI_OFFSET));
 	}
 
 	/**
