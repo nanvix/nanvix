@@ -206,21 +206,16 @@ switch_to:
 	l.sw 0(r13), r3
 
 	/* Load process context. */
-	l.lwz r13, 0(r3)
-	l.lwz r1, PROC_KESP(r13)
-
-	LOAD_SYMBOL_2_GPR(r15, processor_reload)
-	l.jalr r15
-	l.nop
+	l.lwz r1, PROC_KESP(r3)
 
 	/* New process?. */
-	l.lwz  r15, PROC_FLAGS(r13)
+	l.lwz  r15, PROC_FLAGS(r3)
 	l.ori  r17, r0,  (1 << PROC_NEW)
 	l.and  r19, r15, r17
 
 	l.xori r17, r17, -1
 	l.and  r17, r15, r17
-	l.sw   PROC_FLAGS(r13), r17
+	l.sw   PROC_FLAGS(r3), r17
 
 	l.sfnei r19, 0
 	l.bf fork_return
@@ -230,7 +225,7 @@ switch_to:
 	l.lwz  r15, 4(r1)
 	l.lwz  r2,  0(r1)
 	l.addi r1, r1, 8
-	l.sw PROC_KESP(r13), r15
+	l.sw PROC_KESP(r3), r15
 
 	l.jr r9
 	l.nop
