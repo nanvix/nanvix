@@ -114,8 +114,8 @@
 	l.sw 0(r1), r5
 
 	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
-	l.ori  r6, r0, r1
-	l.addi r6, r5, r6
+	l.or  r6, r0, r1
+	l.add r6, r5, r6
 	l.sw PROC_KESP(r3), r6
 .endm
 
@@ -360,13 +360,15 @@ leave:
 	/* Restore interrupt stack. */
 	l.lwz  r4, 0(r1)
 	l.sw PROC_KESP(r3), r4
-	l.addi r1, r1, 4
 
 	/* Decrement interrupt level. */
 	l.lwz   r4, PROC_INTLVL(r3)
-	l.addi  r1, r1, -1
-	l.sfnei r1, 0
+	l.addi  r4, r4, -1
+	l.sw PROC_INTLVL(r3), r4
+
+	l.sfnei r4, 0
 	l.bf leave.out
+	l.nop
 
 leave.out:
 	/* General Purpose registers, except r30. */
@@ -433,7 +435,7 @@ syscall:
 	LOAD_SYMBOL_2_GPR(r3, curr_proc)
 	l.lwz r3, 0(r3)
 	l.lwz r5, PROC_FLAGS(r3)
-	l.ori r5, r5, PROC_SYS
+	l.ori r5, r5, (1 << PROC_SYS)
 	l.sw  PROC_FLAGS(r3), r5
 
 	/* Get system call parameters. */
