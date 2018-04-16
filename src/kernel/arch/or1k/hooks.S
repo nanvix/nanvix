@@ -141,6 +141,8 @@
 1:
 	LOAD_SYMBOL_2_GPR(r3, curr_proc)
 	l.sub r3, r3, r5
+	l.lwz r3, 0(r3)
+	l.sub r3, r3, r5
 	l.lwz r1, PROC_KESP(r3)
 
 	/* Kernel mode. */
@@ -412,7 +414,7 @@ leave.out:
 
 	/* SPR_ESR. */
 	l.lwz   r30, ESR(r1)
-	l.ori   r30, r30, (ENABLE_MMU)
+	l.ori   r30, r30, (USER_SR)
 	l.mtspr r0,  r30, SPR_ESR_BASE
 
 	/* r30. */
