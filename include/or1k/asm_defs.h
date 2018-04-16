@@ -44,6 +44,37 @@
 	l.movhi gpr,hi(symbol)			 ;\
 	l.ori   gpr,gpr,lo(symbol)
 
+#define CLEAR_ALL_GPR \
+	l.or r3,  r0, r0 ;\
+	l.or r4,  r0, r0 ;\
+	l.or r5,  r0, r0 ;\
+	l.or r6,  r0, r0 ;\
+	l.or r7,  r0, r0 ;\
+	l.or r8,  r0, r0 ;\
+	l.or r9,  r0, r0 ;\
+	l.or r10, r0, r0 ;\
+	l.or r11, r0, r0 ;\
+	l.or r12, r0, r0 ;\
+	l.or r13, r0, r0 ;\
+	l.or r14, r0, r0 ;\
+	l.or r15, r0, r0 ;\
+	l.or r16, r0, r0 ;\
+	l.or r17, r0, r0 ;\
+	l.or r18, r0, r0 ;\
+	l.or r19, r0, r0 ;\
+	l.or r20, r0, r0 ;\
+	l.or r21, r0, r0 ;\
+	l.or r22, r0, r0 ;\
+	l.or r23, r0, r0 ;\
+	l.or r24, r0, r0 ;\
+	l.or r25, r0, r0 ;\
+	l.or r26, r0, r0 ;\
+	l.or r27, r0, r0 ;\
+	l.or r28, r0, r0 ;\
+	l.or r29, r0, r0 ;\
+	l.or r30, r0, r0 ;\
+	l.or r31, r0, r0
+ 
 /*
  * Enable MMU and cache when exception occurs.
  */

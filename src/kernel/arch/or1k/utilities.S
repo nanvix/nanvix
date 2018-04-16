@@ -140,7 +140,8 @@ halt:
 physcpy:
 	l.sw   -8(r1), r2
 	l.sw   -4(r1), r9
-	l.addi r2, r1, 0
+	l.addi r2, r1,  0
+	l.addi r1, r1, -8
 
 	/* Disable paging. */
 	l.mfspr r13, r0,   SPR_SR
@@ -258,6 +259,10 @@ user_mode:
 	l.mtspr r0, r15, SPR_ESR_BASE  /* Status register. */
 	l.mtspr r0, r3, SPR_EPCR_BASE  /* Entry point.     */
 	l.or r1, r0, r4                /* Stack.           */
+	l.or r2, r0, r4                /* Frame pointer.   */
+
+	/* Clear registers. */
+	CLEAR_ALL_GPR
 
 	l.rfe
 	l.nop
