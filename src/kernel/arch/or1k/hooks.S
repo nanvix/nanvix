@@ -367,10 +367,34 @@ leave:
 	l.lwz   r4, PROC_INTLVL(r3)
 	l.addi  r4, r4, -1
 	l.sw PROC_INTLVL(r3), r4
-
 	l.sfnei r4, 0
 	l.bf leave.out
 	l.nop
+
+	/* Check if we were handling a system call. */
+	l.lwz  r15, PROC_FLAGS(r3)
+	l.ori  r17, r0,  (1 << PROC_SYS)
+	l.and  r19, r15, r17
+	l.xori r17, r17, -1
+	l.and  r17, r15, r17
+	l.sw   PROC_FLAGS(r3), r17
+	l.sfnei r19, 0
+	l.bnf check_signals
+	l.nop
+
+	/*
+	 * The kernel is non-preemptive.
+	 * So, let us be nice with other processes
+	 * and give them a chance to run.
+	 */
+	LOAD_SYMBOL_2_GPR(r15, yield)
+	l.jalr r15
+	l.nop
+
+	/* TODO: Check signals. */
+	check_signals:
+		l.nop
+		l.nop
 
 leave.out:
 	/* General Purpose registers, except r30. */
