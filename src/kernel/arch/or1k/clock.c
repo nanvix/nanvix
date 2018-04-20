@@ -43,13 +43,15 @@ PRIVATE unsigned rate = 0;
  */
 PRIVATE void clock_next_event()
 {
-	unsigned clock;
+	unsigned clock, new_clock;
 	clock =  mfspr(SPR_TTCR);
-	clock += rate;
-	clock &= SPR_TTMR_TP;
+	new_clock = clock;
+	new_clock += rate;
+	new_clock &= SPR_TTMR_TP;
 
 	/* Set counter. */
-	mtspr(SPR_TTMR, SPR_TTMR_CR | SPR_TTMR_IE | clock);
+	mtspr(SPR_TTMR, SPR_TTMR_SR | SPR_TTMR_IE | new_clock);
+	mtspr(SPR_TTCR, clock);
 }
 
 /*
@@ -58,7 +60,7 @@ PRIVATE void clock_next_event()
 PRIVATE void do_clock()
 {
 	/* Temporaly disable clock interrupts. */
-	mtspr(SPR_TTMR, SPR_TTMR_CR);
+	mtspr(SPR_TTMR, SPR_TTMR_DI);
 	
 	ticks++;
 	
@@ -96,8 +98,8 @@ PUBLIC void clock_init(unsigned freq)
 	/* Clock rate. */
 	rate = CPU_CLOCK/freq;
 
-	/* Continuous mode. */
-	mtspr(SPR_TTMR, SPR_TTMR_CR);
+	/* Ensures that the clock is disabled. */
+	mtspr(SPR_TTMR, SPR_TTMR_DI);
 
 	/* Setup the clock next event. */
 	clock_next_event();
