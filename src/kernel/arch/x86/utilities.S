@@ -211,6 +211,8 @@ switch_to:
 	movl curr_proc, %eax
 	pushfl
 	pushl %ebx
+	pushl %esi
+	pushl %edi
 	pushl %ebp
 	pushl PROC_KESP(%eax)
 	movl %esp, PROC_KESP(%eax)
@@ -238,7 +240,9 @@ switch_to:
 	popl PROC_KESP(%ecx)
 	
 	popl %ebp
-	popl %ecx
+	popl %edi
+	popl %esi
+	popl %ebx
 	popfl
 	
 	ret
