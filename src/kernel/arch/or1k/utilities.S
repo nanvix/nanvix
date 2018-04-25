@@ -197,9 +197,22 @@ switch_to:
 	l.lwz r13, 0(r13)
 	l.lwz r15, PROC_KESP(r13)
 
-	l.addi r1,  r1, -8
-	l.sw 0(r1), r2
-	l.sw 4(r1), r15
+	/* Preserve registers state. */
+	l.addi r1, r1, -56
+	l.sw  0(r1), r2
+	l.sw  4(r1), r15
+	l.sw  8(r1), r9
+	l.sw 12(r1), r10
+	l.sw 16(r1), r12
+	l.sw 20(r1), r14
+	l.sw 24(r1), r16
+	l.sw 28(r1), r18
+	l.sw 32(r1), r20
+	l.sw 36(r1), r22
+	l.sw 40(r1), r24
+	l.sw 44(r1), r26
+	l.sw 48(r1), r28
+	l.sw 52(r1), r30
 	l.sw PROC_KESP(r13), r1
 
 	/* Switch processes. */
@@ -223,9 +236,21 @@ switch_to:
 	l.nop
 
 	/* Restore stack. */
-	l.lwz  r15, 4(r1)
-	l.lwz  r2,  0(r1)
-	l.addi r1, r1, 8
+	l.lwz r30, 52(r1)
+	l.lwz r28, 48(r1)
+	l.lwz r26, 44(r1)
+	l.lwz r24, 40(r1)
+	l.lwz r22, 36(r1)
+	l.lwz r20, 32(r1)
+	l.lwz r18, 28(r1)
+	l.lwz r16, 24(r1)
+	l.lwz r14, 20(r1)
+	l.lwz r12, 16(r1)
+	l.lwz r10, 12(r1)
+	l.lwz r9,   8(r1)
+	l.lwz r15,  4(r1)
+	l.lwz r2,   0(r1)
+	l.addi r1, r1, 56
 	l.sw PROC_KESP(r3), r15
 
 	l.jr r9
