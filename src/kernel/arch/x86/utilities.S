@@ -249,8 +249,6 @@ switch_to:
  * Returns from fork.
  */
 fork_return:
-	notl %eax
-	andl %eax, PROC_FLAGS(%ecx)
 	movl $0, EAX(%esp)
 	jmp leave
 
