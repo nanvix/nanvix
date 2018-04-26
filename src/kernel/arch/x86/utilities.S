@@ -227,7 +227,9 @@ switch_to:
 	movl PROC_KESP(%ecx), %esp
 	frstor PROC_FSS(%ecx)
 
+	pushl %ecx
 	call processor_reload
+	popl %ecx
 	
 	btrl $PROC_NEW, PROC_FLAGS(%ecx)
 	jc fork_return
