@@ -81,15 +81,10 @@ tlb_flush:
  * Enables all hardware interrupts.
  */
 enable_interrupts:
-	l.addi r1,  r1, -4
-	l.sw 0(r1), r3
 
-	l.mfspr	r3, r0, SPR_SR
-	l.ori	r3, r3, lo(SPR_SR_IEE | SPR_SR_TEE)
-	l.mtspr	r0, r3, SPR_SR
-
-	l.lwz  r3, 0(r1)
-	l.addi r1, r1, 4
+	l.mfspr	r13, r0, SPR_SR
+	l.ori	r13, r13, lo(SPR_SR_IEE | SPR_SR_TEE)
+	l.mtspr	r0, r13, SPR_SR
 
 	l.jr r9
 	l.nop
@@ -102,19 +97,12 @@ enable_interrupts:
  * Disables all hardware interrupts.
  */
 disable_interrupts:
-	l.addi r1,  r1, -8
-	l.sw 4(r1), r3
-	l.sw 0(r1), r4
 
-	l.mfspr r4, r0, SPR_SR
-	l.movhi	r3, hi(~(SPR_SR_IEE|SPR_SR_TEE))
-	l.ori	r3, r3, lo(~(SPR_SR_IEE|SPR_SR_TEE))
-	l.and   r4, r4, r3
-	l.mtspr r0, r4, SPR_SR
-
-	l.lwz  r3, 4(r1)	
-	l.lwz  r4, 0(r1)
-	l.addi r1, r1, 8
+	l.mfspr r15, r0, SPR_SR
+	l.movhi	r13, hi(~(SPR_SR_IEE|SPR_SR_TEE))
+	l.ori	r13, r13, lo(~(SPR_SR_IEE|SPR_SR_TEE))
+	l.and   r15, r15, r13
+	l.mtspr r0, r15, SPR_SR
 
 	l.jr r9
 	l.nop
@@ -142,6 +130,9 @@ physcpy:
 	l.sw   -4(r1), r9
 	l.addi r2, r1,  0
 	l.addi r1, r1, -8
+
+	/* Critical section. */
+	l.jal disable_interrupts
 
 	/* Disable paging. */
 	l.mfspr r13, r0,   SPR_SR
@@ -191,7 +182,12 @@ physcpy.loop:
  * Switches execution to other process.
  */
 switch_to:
-	
+	LOAD_SYMBOL_2_GPR(r29, disable_interrupts)
+	l.or r31, r9, r0
+	l.jalr r29
+	l.nop
+	l.or r9, r31, r0
+
 	/* Save process context. */
 	LOAD_SYMBOL_2_GPR(r13, curr_proc)
 	l.lwz r13, 0(r13)
@@ -273,6 +269,9 @@ fork_return:
  * Switches to user mode.
  */
 user_mode:
+	/* Enter critical region. */
+	l.jal disable_interrupts
+	l.nop
 
 	/* Set interrupt level to "user level". */
 	LOAD_SYMBOL_2_GPR(r13, curr_proc)

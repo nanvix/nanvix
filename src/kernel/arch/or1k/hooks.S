@@ -105,15 +105,14 @@
 	l.lwz r3, 0(r3)
 	l.sub r3, r3, r5 
 
-	l.lwz  r5, PROC_INTLVL(r3)
-	l.addi r5, r5, 1
-	l.sw   PROC_INTLVL(r3), r5
+	l.lwz  r7, PROC_INTLVL(r3)
+	l.addi r7, r7, 1
+	l.sw   PROC_INTLVL(r3), r7
     
 	/* Save interrupt stack. */
-	l.lwz r5,   PROC_KESP(r3)
-	l.sw 0(r1), r5
+	l.lwz r7,   PROC_KESP(r3)
+	l.sw 0(r1), r7
 
-	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 	l.or  r6, r0, r1
 	l.add r6, r5, r6
 	l.sw PROC_KESP(r3), r6
@@ -182,6 +181,10 @@
 	swint\number:
 		exception_enter
 
+		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
+		l.jalr r5
+		l.nop
+
 		/* Check if syscall. */
 		l.ori   r3, r0, \number
 		l.sfeqi r3, 9
@@ -213,6 +216,10 @@
 .macro hwint_handler, number
 	hwint\number:
 		exception_enter
+
+		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
+		l.jalr r5
+		l.nop
 
 		/* hwint. */
 		l.ori  r3, r0, \number
