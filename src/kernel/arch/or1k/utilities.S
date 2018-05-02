@@ -133,19 +133,23 @@ physcpy:
 
 	/* Critical section. */
 	l.jal disable_interrupts
-
-	/* Disable paging. */
-	l.mfspr r13, r0,   SPR_SR
-	l.andi  r13, r13, ~ENABLE_MMU
-	l.mtspr r0,  r13,  SPR_SR
+	l.nop
 
 	/* Jump to lower-half kernel. */
-	LOAD_SYMBOL_2_GPR(r15, KBASE_VIRT)
-	LOAD_SYMBOL_2_GPR(r17, lower_kernel)
-	l.sub r17, r17, r15
-	l.jr  r17
+	LOAD_SYMBOL_2_GPR(r13, KBASE_VIRT)
+	LOAD_SYMBOL_2_GPR(r15, lower_kernel)
+	l.sub r15, r15, r13
+	l.jr  r15
 	l.nop
 	lower_kernel:
+
+	/* Disable paging. */
+	l.movhi	r13, hi(~(ENABLE_MMU))
+	l.ori	r13, r13, lo(~(ENABLE_MMU))
+
+	l.mfspr r15, r0,  SPR_SR
+	l.and   r15, r15, r13
+	l.mtspr r0,  r15, SPR_SR
 
 physcpy.loop:
 	l.lwz r19,  0(r4)

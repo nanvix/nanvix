@@ -525,6 +525,7 @@ PRIVATE int cow_disable(struct pte *pg)
 
 	pte_cow_set(pg, 0);
 	pte_write_set(pg, 1);
+	tlb_flush();
 
 	return (0);
 }

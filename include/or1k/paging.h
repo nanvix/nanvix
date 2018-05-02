@@ -175,7 +175,7 @@
 	 */
 	static inline int pde_is_write(struct pde *pde)
 	{
-		return (pde->ppi & (PT_PPI_USR_RDWR >> PT_PPI_OFFSET));
+		return (pde->ppi == (PT_PPI_USR_RDWR >> PT_PPI_OFFSET));
 	}
 
 	/**
@@ -298,7 +298,7 @@
 	 */
 	static inline int pte_is_write(struct pte *pte)
 	{
-		return (pte->ppi & (PT_PPI_USR_RDWR >> PT_PPI_OFFSET));
+		return (pte->ppi == (PT_PPI_USR_RDWR >> PT_PPI_OFFSET));
 	}
 
 	/**
