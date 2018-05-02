@@ -158,5 +158,6 @@ PUBLIC void yield(void)
 		}
 	}
 	
+	tlb_flush();
 	switch_to(next);
 }
