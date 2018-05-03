@@ -27,93 +27,9 @@
 #include <nanvix/dev.h>
 #include <nanvix/pm.h>
 #include <nanvix/mm.h>
-#include <nanvix/syscall.h>
 #include <nanvix/clock.h>
 #include <nanvix/debug.h>
 #include <fcntl.h>
-
-/**
- * @brief Forks the current process.
- * 
- * @returns For the parent process, the process ID of the child process. For
- *          the child process zero is returned. Upon failure, a negative error
- *          code is returned instead.
- */
-pid_t fork(void)
-{
-	register pid_t pid
-		__asm__("r11") = NR_fork;
-	
-	__asm__ volatile (
-		"l.sys 1"
-		: "=r" (pid)
-		: "r"  (pid)
-	);
-	
-	/* Error. */
-	if (pid < 0)
-		return (-1);
-	
-	return (pid);
-}
-
-/**
- * @brief Executes a program.
- * 
- * @param filename Program to be executed.
- * @param argv     Arguments variables to pass to the program.
- * @param envp     Environment variables to pass to the program.
- * 
- * @returns Upon successful completion, this function shall not return. Upon
- *          failure, it does return with a negative error code.
- */
-int execve(const char *filename, const char **argv, const char **envp)
-{
-	register int ret __asm__("r11") = NR_execve;
-	register unsigned r3 __asm__("r3") = (unsigned) filename;
-	register unsigned r4 __asm__("r4") = (unsigned) argv;
-	register unsigned r5 __asm__("r5") = (unsigned) envp;
-	
-	__asm__ volatile (
-		"l.sys 1"
-		: "=r" (ret)
-		: "r" (ret), "r" (r3), "r" (r4), "r" (r5)
-	);
-	
-	/* Error. */
-	if (ret)
-		return (-1);
-	
-	return (ret);
-}
-
-/**
- * @brief Exits the current process.
- * 
- * @param status Exit status.
- */
-void _exit(int status)
-{
-	register unsigned r11 __asm__("r11") = NR__exit;
-	register int r3 __asm__("r3") = status;
-	
-	__asm__ volatile (
-		"l.sys 1"
-		: "=r" (r11)
-		: "r" (r11), "r" (r3)
-	);
-}
-
-/**
- * @brief Init process.
- */
-PRIVATE void init(void)
-{
-	const char *argv[] = { "init", "/etc/inittab", NULL };
-	const char *envp[] = { "PATH=/bin:/sbin", "HOME=/", NULL };
-		
-	execve("/sbin/init", argv, envp);
-}
 
 /* External declaration for cpu_init() function. */
 extern void cpu_init(void);
@@ -150,14 +66,7 @@ PUBLIC void kmain(const char* cmdline)
 	dbg_execute();
 
 	/* Spawn init process. */
-	if ((pid = fork()) < 0)
-		kpanic("failed to fork idle process");
-	else if (pid == 0)
-	{	
-		init();
-		kprintf("failed to execute init");
-		_exit(-1);
-	}
+	init();
 	
 	/* idle process. */	
 	while (1)

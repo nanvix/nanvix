@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -88,6 +89,13 @@
 	 */
 	/**@{*/
 	EXTERN void physcpy(addr_t, addr_t, size_t);
+	/**@}*/	
+
+	/**
+	 * @name Startup Functions
+	 */
+	/**@{*/
+	EXTERN void init(void);
 	/**@}*/	
 
 #endif /* _ASM_FILE_ */
