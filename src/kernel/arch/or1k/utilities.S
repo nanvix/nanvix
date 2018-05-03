@@ -186,9 +186,8 @@ physcpy.loop:
  * Switches execution to other process.
  */
 switch_to:
-	LOAD_SYMBOL_2_GPR(r29, disable_interrupts)
 	l.or r31, r9, r0
-	l.jalr r29
+	l.jal disable_interrupts
 	l.nop
 	l.or r9, r31, r0
 
@@ -221,6 +220,8 @@ switch_to:
 
 	/* Load process context. */
 	l.lwz r1, PROC_KESP(r3)
+	l.jal tlb_flush
+	l.nop
 
 	/* New process?. */
 	l.lwz  r15, PROC_FLAGS(r3)
