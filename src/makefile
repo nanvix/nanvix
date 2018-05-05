@@ -27,7 +27,7 @@ export CFLAGS += -D$(TARGET)
 .PHONY: ubin
 
 # Builds everything.
-all: kernel lib
+all: kernel lib sbin
 	
 # Builds the kernel.
 kernel:
