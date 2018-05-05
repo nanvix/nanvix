@@ -40,7 +40,7 @@ int ioctl(int fd, int cmd, ...)
 	if (IOCTL_MAJOR(cmd) & 1)
 	{
 		va_start(arg, cmd);
-		carg = va_arg(arg, unsigned)
+		carg = va_arg(arg, unsigned);
 		va_end(arg);
 	}
 	

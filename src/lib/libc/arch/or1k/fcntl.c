@@ -39,8 +39,8 @@ int fcntl(int fd, int cmd, ...)
 	
 	if (cmd == F_DUPFD)
 	{
-		va_start(varg, arg);
-		arg = va_arg(varg, int)
+		va_start(varg, cmd);
+		arg = va_arg(varg, int);
 		va_end(varg);
 	}
 	

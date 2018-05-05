@@ -40,7 +40,7 @@ int open(const char *path, int oflag, ...)
 	if (oflag & O_CREAT)
 	{
 		va_start(arg, oflag);
-		mode = va_arg(arg, mode_t)
+		mode = va_arg(arg, mode_t);
 		va_end(arg);
 	}
 	
