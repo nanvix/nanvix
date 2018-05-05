@@ -17,6 +17,9 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Architecture
+export CFLAGS += -D$(TARGET)
+
 # Conflicts.
 .PHONY: kernel
 .PHONY: lib
