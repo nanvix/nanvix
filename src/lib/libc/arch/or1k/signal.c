@@ -33,7 +33,7 @@ extern void restorer(void);
 sighandler_t signal(int sig, sighandler_t func)
 {
 	register sighandler_t ret 
-		__asm__("r11") = NR_signal;
+		__asm__("r11") = (sighandler_t) NR_signal;
 	register unsigned r3
 		__asm__("r3") = (unsigned) sig;
 	register unsigned r4
