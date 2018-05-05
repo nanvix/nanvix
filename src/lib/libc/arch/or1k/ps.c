@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -26,12 +27,13 @@
  */
 int ps()
 {
-	ssize_t ret;
-
+	register int ret
+		__asm__("r11") = NR_ps;
+	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_ps)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r"  (ret)
 	);
 
 	/* Error. */
@@ -41,5 +43,5 @@ int ps()
 		return (-1);
 	}
 
-	return ((ssize_t)ret);
+	return (ret);
 }

@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -28,23 +28,31 @@
  */
 off_t lseek(int fd, off_t offset, int whence)
 {
+	register off_t ret
+		__asm__("r11") = NR_lseek;
+	register unsigned r3
+		__asm__("r3") = (unsigned) fd;
+	register unsigned r4
+		__asm__("r4") = (unsigned) offset;
+	register unsigned r5
+		__asm__("r5") = (unsigned) whence;
+	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (offset)
-		: "0" (NR_lseek),
-		  "b" (fd),
-		  "c" (offset),
-		  "d" (whence)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4),
+		  "r" (r5)
 	);
 	
 	/* Error. */
-	if (offset < 0)
+	if (ret < 0)
 	{
-		errno = -offset;
-		_REENT->_errno = -offset;
+		errno = -ret;
+		_REENT->_errno = -ret;
 		return (-1);
 	}
 	
-	return (offset);
+	return (ret);
 }
-

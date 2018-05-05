@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -27,13 +27,16 @@
  */
 pid_t wait(int *stat_loc)
 {
-	pid_t pid;
+	register pid_t pid
+		__asm__("r11") = NR_wait;
+	register unsigned r3
+		__asm__("r3") = (unsigned) stat_loc;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (pid)
-		: "0" (NR_wait),
-		  "b" (stat_loc)
+		"l.sys 1"
+		: "=r" (pid)
+		: "r" (pid),
+		  "r" (r3)
 	);
 	
 	/* Error. */

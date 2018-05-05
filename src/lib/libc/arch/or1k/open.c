@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -29,9 +29,11 @@
  */
 int open(const char *path, int oflag, ...)
 {
-	int ret;     /* Return value.      */
-	mode_t mode; /* Creation mode.     */
-	va_list arg; /* Variable argument. */
+	register int ret 
+		__asm__("r11") = NR_open;  /* Return value.      */
+
+	mode_t mode;                   /* Creation mode.     */
+	va_list arg;                   /* Variable argument. */
 	
 	mode = 0;
 	
@@ -42,13 +44,20 @@ int open(const char *path, int oflag, ...)
 		va_end(arg);
 	}
 	
+	register unsigned r3
+		__asm__("r3") = (unsigned) path;
+	register unsigned r4
+		__asm__("r4") = (unsigned) oflag;
+	register unsigned r5
+		__asm__("r5") = (unsigned) mode;
+	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_open),
-		  "b" (path),
-		  "c" (oflag),
-		  "d" (mode)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4),
+		  "r" (r5)
 	);
 	
 	/* Error. */

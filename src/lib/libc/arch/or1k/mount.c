@@ -1,6 +1,7 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- *              2017-2017 Romane Gallier <romanegallier@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2017-2017 Romane Gallier   <romanegallier@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -29,14 +30,19 @@
  */
 int mount (const char *device, const char *target)
 {
-	int ret;
-
-	__asm__ volatile(
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_mount),
-		  "b" (device),
-		  "c" (target)
+	register int ret 
+		__asm__("r11") = NR_mount;
+	register unsigned r3
+		__asm__("r3") = (unsigned) device;
+	register unsigned r4
+		__asm__("r4") = (unsigned) target;
+	
+	__asm__ volatile (
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4)
 	);
 
 	/* Error. */

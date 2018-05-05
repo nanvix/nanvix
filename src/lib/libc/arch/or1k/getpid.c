@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -25,12 +26,13 @@
  */
 pid_t getpid(void)
 {
-	pid_t pid;
+	register pid_t pid
+		__asm__("r11") = NR_getpid;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (pid)
-		: "0" (NR_getpid)
+		"l.sys 1"
+		: "=r" (pid)
+		: "r"  (pid)
 	);
 	
 	return (pid);

@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -27,12 +28,13 @@
  */
 int gticks()
 {
-	ssize_t ret = 0;
-
+	register ssize_t ret
+		__asm__("r11") = NR_gticks;
+	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_gticks)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r"  (ret)
 	);
 
 	/* Error. */

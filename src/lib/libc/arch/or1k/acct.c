@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -26,14 +26,19 @@
  */
 int acct(struct pmc *p, unsigned char rw)
 {
-	int ret;
+	register int ret 
+		__asm__("r11") = NR_acct;
+	register unsigned r3
+		__asm__("r3") = (unsigned) p;
+	register unsigned r4
+		__asm__("r4") = (unsigned) rw;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_acct),
-		  "b" (p),
-		  "c" (rw)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4)
 	);
 	
 	/* Error. */

@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -38,10 +38,12 @@
  */
 sem_t* sem_open(const char* name, int oflag, ...)
 {	
-	int ret;  	 /* Return value.		*/
-	mode_t mode; /* Creation mode.		*/
-	int value;	 /* semaphore value 	*/
-	va_list arg; /* Variable argument. 	*/
+	register int ret 
+		__asm__("r11") = NR_semopen; /* Return value.      */
+	
+	mode_t mode;                     /* Creation mode.     */
+	int value;	                     /* semaphore value.   */
+	va_list arg;                     /* Variable argument. */
 	
 	value = 0;
 	mode = 0;
@@ -54,14 +56,23 @@ sem_t* sem_open(const char* name, int oflag, ...)
 		va_end(arg);
 	}
 
+	register unsigned r3
+		__asm__("r3") = (unsigned) name;
+	register unsigned r4
+		__asm__("r4") = (unsigned) oflag;
+	register unsigned r5
+		__asm__("r5") = (unsigned) mode;
+	register unsigned r6
+		__asm__("r6") = (unsigned) value;
+
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_semopen),
-		  "b" (name),
-		  "c" (oflag),
-		  "d" (mode),
-		  "D" (value)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4),
+		  "r" (r5),
+		  "r" (r6)
 	);
 
 	if (ret < 0)

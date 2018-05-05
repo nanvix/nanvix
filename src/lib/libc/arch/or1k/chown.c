@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -28,15 +28,22 @@
  */
 int chown(const char *path, uid_t owner, gid_t group)
 {
-	int ret;
+	register int ret 
+		__asm__("r11") = NR_chown;
+	register unsigned r3
+		__asm__("r3") = (unsigned) path;
+	register unsigned r4
+		__asm__("r4") = (unsigned) owner;
+	register unsigned r5
+		__asm__("r5") = (unsigned) group;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_chown),
-		  "b" (path),
-		  "c" (owner),
-		  "d" (group)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4),
+		  "r" (r5)
 	);
 	
 	/* Error. */

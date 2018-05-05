@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -30,9 +30,11 @@
  */
 int ioctl(int fd, int cmd, ...)
 {
-	int ret;       /* Return value.      */
-	unsigned carg; /* Command argument.  */
-	va_list arg;   /* Variable argument. */
+	register int ret 
+		__asm__("r11") = NR_ioctl; /* Return value.      */
+
+	unsigned carg;                 /* Command argument.  */
+	va_list arg;                   /* Variable argument. */
 	
 	carg = 0;
 	if (IOCTL_MAJOR(cmd) & 1)
@@ -42,13 +44,20 @@ int ioctl(int fd, int cmd, ...)
 		va_end(arg);
 	}
 	
+	register unsigned r3
+		__asm__("r3") = (unsigned) fd;
+	register unsigned r4
+		__asm__("r4") = (unsigned) cmd;
+	register unsigned r5
+		__asm__("r5") = (unsigned) carg;
+	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_ioctl),
-		  "b" (fd),
-		  "c" (cmd),
-		  "d" (carg)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4),
+		  "r" (r5)
 	);
 	
 	/* Error. */

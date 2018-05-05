@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -28,12 +28,13 @@
  */
 uid_t getuid(void)
 {
-	uid_t ret;
+	register uid_t ret
+		__asm__("r11") = NR_getuid;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_getuid)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r"  (ret)
 	);
 	
 	/* Error. */

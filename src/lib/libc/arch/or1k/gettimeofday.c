@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -33,18 +33,22 @@
  */
 int gettimeofday(struct timeval *tp, void *tzp)
 {
-	int ret;
+	register int ret
+		__asm__("r11") = NR_time;
 
 	/* Timezone obsolete, should be NULL. */
 	if (tzp)
 		return (-1);
 
 	/* Use the time() to get the seconds. */
+	register unsigned r3
+		 __asm__("r3") = (unsigned) NULL;
+	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_time),
-		  "b" (NULL)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r"  (ret),
+		  "r"  (r3)
 	);
 
 	/* Error. */

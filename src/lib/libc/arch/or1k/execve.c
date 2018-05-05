@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -30,15 +30,22 @@
  */
 int execve(const char *filename, char *const argv[],  char *const envp[])
 {
-	int ret;
+	register int ret
+		__asm__("r11") = NR_execve;
+	register unsigned r3
+		 __asm__("r3") = (unsigned) filename;
+	register unsigned r4
+		 __asm__("r4") = (unsigned) argv;
+	register unsigned r5
+		 __asm__("r5") = (unsigned) envp;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_execve),
-		  "b" (filename),
-		  "c" (argv),
-		  "d" (envp)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4),
+		  "r" (r5)
 	);
 	
 	/* Error. */

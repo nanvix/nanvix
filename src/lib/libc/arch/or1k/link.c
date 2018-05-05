@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -27,14 +27,19 @@
  */
 int link(const char *path1, const char *path2)
 {
-	int ret;
+	register int ret 
+		__asm__("r11") = NR_link;
+	register unsigned r3
+		__asm__("r3") = (unsigned) path1;
+	register unsigned r4
+		__asm__("r4") = (unsigned) path2;
 	
 	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_link),
-		  "b" (path1),
-		  "c" (path2)
+		"l.sys 1"
+		: "=r" (ret)
+		: "r" (ret),
+		  "r" (r3),
+		  "r" (r4)
 	);
 	
 	/* Error. */

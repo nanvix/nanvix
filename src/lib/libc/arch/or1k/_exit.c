@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -26,10 +27,15 @@
  */
 void _exit(int status)
 {
-	__asm__ volatile(
-		"int $0x80"
+	register unsigned r11
+		__asm__("r11") = NR__exit;
+	register int r3
+		__asm__("r3") = status;
+	
+	__asm__ volatile (
+		"l.sys 1"
 		: /* empty. */
-		: "a" (NR__exit),
-		"b" (status)
+		: "r" (r11),
+		  "r" (r3)
 	);
 }

@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -25,10 +26,13 @@
  */
 void sync(void)
 {
-	__asm__ volatile(
-		"int $0x80"
+	register unsigned r11
+		__asm__("r11") = NR_sync;
+	
+	__asm__ volatile (
+		"l.sys 1"
 		: /* empty. */
-		: "a" (NR_sync)
+		: "r" (r11)
 	);
 }
 
