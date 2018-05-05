@@ -24,7 +24,7 @@
 .PHONY: ubin
 
 # Builds everything.
-all: kernel
+all: kernel lib
 	
 # Builds the kernel.
 kernel:

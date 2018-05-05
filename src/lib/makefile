@@ -1,6 +1,6 @@
 # 
-# Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+# Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
 #              2017-2017 Romane Gallier <romanegallier@gmail.com>
 #
 # This file is part of Nanvix.
@@ -29,7 +29,7 @@ export CFLAGS += -Wno-error=parentheses
 .PHONY: libm
 
 # Builds everything.
-all: libc libm
+all: libc
 
 # Builds C library.
 libc:
