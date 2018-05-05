@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -23,13 +24,7 @@
  * Signal handler restorer.
  */
 restorer:
-	addl $4, %esp
-	popl %edi
-	popl %esi
-	popl %ebp
-	popl %ebx
-	popl %edx
-	popl %ecx
-	popl %eax
-	popfl
-	ret
+	l.nop
+	l.nop
+	l.jr r9
+	l.nop
