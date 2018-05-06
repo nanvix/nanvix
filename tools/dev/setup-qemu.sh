@@ -24,7 +24,7 @@
 #
 
 # QEMU.
-export QEMU_VERSION=2.9.0
+export QEMU_VERSION=2.12.0
 
 # Set working directory.
 export CURDIR=`pwd`
