@@ -317,6 +317,9 @@ PUBLIC int crtpgdir(struct process *proc)
 	
 	/* Adjust stack pointers. */
 	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
+	s1 = (struct intstack *) proc->kesp;
+	s1->old_kesp = proc->kesp;
+	
 	if (curr_proc == IDLE)
 	{
 		s1 = (struct intstack *) curr_proc->kesp;
