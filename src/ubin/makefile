@@ -1,6 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
+# Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2015-2018 Davidson Francis <davidsondfgl@hotmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -19,7 +19,8 @@
 #
 
 # Toolchain configuration.
-export CFLAGS += -Os -D_POSIX_C_SOURCE
+export CFLAGS  += -Os -D_POSIX_C_SOURCE
+export LDFLAGS += -Wl,-e,_start
 
 # Conflicts.
 .PHONY: cat
