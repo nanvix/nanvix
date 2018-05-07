@@ -281,7 +281,7 @@ user_mode:
 	/* Set interrupt level to "user level". */
 	LOAD_SYMBOL_2_GPR(r13, curr_proc)
 	l.lwz r13, 0(r13)
-	l.sw PROC_INTLVL(r13), r0	
+	l.sw PROC_INTLVL(r13), r0
 
 	/* Load data. */
 	LOAD_SYMBOL_2_GPR(r15, USER_SR)
@@ -289,6 +289,12 @@ user_mode:
 	l.mtspr r0, r3, SPR_EPCR_BASE  /* Entry point.     */
 	l.or r1, r0, r4                /* Stack.           */
 	l.or r2, r0, r4                /* Frame pointer.   */
+
+	/* Configure argc, argv and envp. */
+	l.or r15, r4, r0
+	l.lwz r3,  4(r15)  /* argc. */
+	l.lwz r4,  8(r15)  /* argv. */
+	l.lwz r5, 12(r15)  /* argp. */
 
 	/* Clear registers. */
 	CLEAR_ALL_GPR

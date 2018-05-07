@@ -45,9 +45,6 @@
 	l.ori   gpr,gpr,lo(symbol)
 
 #define CLEAR_ALL_GPR \
-	l.or r3,  r0, r0 ;\
-	l.or r4,  r0, r0 ;\
-	l.or r5,  r0, r0 ;\
 	l.or r6,  r0, r0 ;\
 	l.or r7,  r0, r0 ;\
 	l.or r8,  r0, r0 ;\
