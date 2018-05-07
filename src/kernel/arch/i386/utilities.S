@@ -211,6 +211,8 @@ switch_to:
 	movl curr_proc, %eax
 	pushfl
 	pushl %ebx
+	pushl %esi
+	pushl %edi
 	pushl %ebp
 	pushl PROC_KESP(%eax)
 	movl %esp, PROC_KESP(%eax)
@@ -230,7 +232,9 @@ switch_to:
 	movl PROC_KESP(%ecx), %esp
 	frstor PROC_FSS(%ecx)
 
+	push %ecx
 	call processor_reload
+	pop %ecx
 	
 	btrl $PROC_NEW, PROC_FLAGS(%ecx)
 	jc fork_return
@@ -238,7 +242,9 @@ switch_to:
 	popl PROC_KESP(%ecx)
 	
 	popl %ebp
-	popl %ecx
+	popl %edi
+	popl %esi
+	popl %ebx
 	popfl
 	
 	ret
@@ -247,8 +253,6 @@ switch_to:
  * Returns from fork.
  */
 fork_return:
-	notl %eax
-	andl %eax, PROC_FLAGS(%ecx)
 	movl $0, EAX(%esp)
 	jmp leave
 
