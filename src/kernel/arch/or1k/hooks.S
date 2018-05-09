@@ -445,7 +445,7 @@ leave.out:
 
 	/* SPR_ESR. */
 	l.lwz   r30, ESR(r1)
-	l.ori   r30, r30, (USER_SR)
+	l.ori   r30, r30, (ENABLE_MMU)
 	l.mtspr r0,  r30, SPR_ESR_BASE
 
 	/* r30. */
