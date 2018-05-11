@@ -59,7 +59,7 @@ void draw()
 			case 0:
 				for(y=1; y<tam; y++) 
 					printf("\n");
-					break;
+				break;
 			case 1:
 				for(y=1; y<tam; y++) 
 					printf("      **\n");
