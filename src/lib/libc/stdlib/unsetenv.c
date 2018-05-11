@@ -73,7 +73,7 @@ void unsetenv(char *name)
 	{
 		for (P = &environ[offset];; ++P)
 		{
-		  if ((*P = *(P + 1)) != '\0')
+			if (*(*P = *(P + 1)) != '\0')
 			break;
 		}
 	}
