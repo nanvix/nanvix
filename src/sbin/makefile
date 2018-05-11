@@ -34,19 +34,19 @@ all: init shutdown test
 
 # Builds foobar.
 foobar:
-	$(CC) $(CFLAGS) $(LDFLAGS) foobar/*.c -o $(SBINDIR)/foobar $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) foobar/*.c -o $(SBINDIR)/foobar $(LIBDIR)/libc.a -lgcc
 
 # Builds init.
 init:
-	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBDIR)/libc.a -lgcc
 
 # Builds shutdown.
 shutdown:
-	$(CC) $(CFLAGS) $(LDFLAGS) shutdown/*.c -o $(SBINDIR)/shutdown $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) shutdown/*.c -o $(SBINDIR)/shutdown $(LIBDIR)/libc.a -lgcc
 
 # Builds test.
 test:
-	$(CC) $(CFLAGS) $(LDFLAGS) test/*.c -o $(SBINDIR)/test $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) test/*.c -o $(SBINDIR)/test $(LIBDIR)/libc.a -lgcc
 	
 # Cleans compilations files.
 clean:
