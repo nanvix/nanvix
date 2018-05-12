@@ -23,9 +23,17 @@ export WORKDIR=$CURDIR/nanvix-toolchain
 mkdir -p $WORKDIR
 cd $WORKDIR
 
+BINUTILS_VERSION=2.30
+BINUTILS_PACKAGE=binutils-$BINUTILS_VERSION
+BINUTILS_TAR=$BINUTILS_PACKAGE.tar.xz
+
+GCC_VERSION=8.1.0
+GCC_PACKAGE=gcc-$GCC_VERSION
+GCC_TAR=$GCC_PACKAGE.tar.xz
+
 # Get binutils and GCC.
-wget --no-check-certificate "http://ftp.gnu.org/gnu/binutils/binutils-2.25.tar.bz2"
-wget --no-check-certificate "http://ftp.gnu.org/gnu/gcc/gcc-5.3.0/gcc-5.3.0.tar.bz2"
+wget --no-check-certificate "http://ftp.gnu.org/gnu/binutils/$BINUTILS_TAR"
+wget --no-check-certificate "http://ftp.gnu.org/gnu/gcc/$GCC_PACKAGE/$GCC_TAR"
 
 # Get required packages.
 apt-get install -y g++ doxygen genisoimage gdb
@@ -35,20 +43,22 @@ export PREFIX=/usr/local/cross
 export TARGET=i386-elf
 export CFLAGS=-pipe
 export CXXFLAGS=-pipe
+
+# Make TARGET and PATH permanent
 sh -c "echo 'export TARGET=$TARGET' > /etc/profile.d/var.sh"
 sh -c "echo 'export PATH=\$PATH:$PREFIX/bin' >> /etc/profile.d/var.sh"
 
 # Build binutils.
-tar -xjvf binutils-2.25.tar.bz2
-cd binutils-2.25/
+tar -xvf $BINUTILS_TAR
+cd $BINUTILS_PACKAGE
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls
 make all
 make install
 
 # Build GCC.
 cd $WORKDIR
-tar -xjvf gcc-5.3.0.tar.bz2
-cd gcc-5.3.0/
+tar -xvf $GCC_TAR
+cd $GCC_PACKAGE
 ./contrib/download_prerequisites
 ./configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c --without-headers
 make all-gcc
