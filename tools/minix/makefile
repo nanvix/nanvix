@@ -1,6 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+# Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -19,13 +19,20 @@
 #
 
 # Toolchain
-CC = gcc
+ifeq ($(TARGET),i386)
+	CC = gcc
+else
+ifeq ($(TARGET),or1k)
+	CC = $(TOOLSDIR)/dev/toolchain/$(TARGET)/or1k-linux-musl/bin/or1k-linux-musl-gcc
+endif
+endif
 
 # Toolchain configuration.
 CFLAGS    = -I $(INCDIR)/fs
 CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 CFLAGS   += -Wall -Wextra -Werror
 CFLAGS   += -D NDEBUG -D BUILDING_TOOLS
+CFLAGS   += --static
 
 # Builds everything.
 all: cp.minix mkdir.minix mkfs.minix mknod.minix

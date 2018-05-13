@@ -31,6 +31,8 @@ cd $WORKDIR
 num_cores=`grep -c ^processor /proc/cpuinfo`
 
 # Get binutils, GDB and GCC.
+wget "https://github.com/openrisc/musl-cross/releases/download/gcc5.3.0-musl1.1.14/or1k-linux-musl_gcc5.3.0_binutils2.26_musl1.1.14.tgz"
+
 if [ ! "$(ls -A $WORKDIR)" ]; then
 	git submodule update --init .
 fi
@@ -56,6 +58,10 @@ make install-gcc
 make install-target-libgcc
 git checkout .
 git clean -f -d
+
+# GCC for Linux
+cd $WORKDIR
+tar -xvf or1k-linux-musl_gcc5.3.0_binutils2.26_musl1.1.14.tgz
 
 # Back to the current folder
 cd $CURDIR
