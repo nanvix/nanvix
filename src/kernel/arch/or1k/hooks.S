@@ -152,7 +152,7 @@
 	swint\number:
 		exception_enter
 
-		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
+		LOAD_SYMBOL_2_GPR(r5, enable_interrupts)
 		l.jalr r5
 		l.nop
 
@@ -173,6 +173,11 @@
 		l.jalr r5
 		l.nop
 
+		/* Enter critical region. */
+		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
+		l.jalr r5
+		l.nop
+
 		/* Return from exception. */
 	4:
 		l.j leave
@@ -187,10 +192,6 @@
 .macro hwint_handler, number
 	hwint\number:
 		exception_enter
-
-		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
-		l.jalr r5
-		l.nop
 
 		/* hwint. */
 		l.ori  r3, r0, \number
@@ -505,6 +506,11 @@ syscall:
 	bad_syscall:
 		/* Copy return value to user stack. */
 		l.sw GPR11(r1), r11
+
+		/* Enter critical region. */
+		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
+		l.jalr r5
+		l.nop
 
 		l.j leave
 		l.nop

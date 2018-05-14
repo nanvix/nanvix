@@ -83,7 +83,7 @@ tlb_flush:
 enable_interrupts:
 
 	l.mfspr	r13, r0, SPR_SR
-	l.ori	r13, r13, lo(SPR_SR_IEE | SPR_SR_TEE)
+	l.ori	r13, r13, lo(SPR_SR_IEE)
 	l.mtspr	r0, r13, SPR_SR
 
 	l.jr r9
@@ -99,8 +99,8 @@ enable_interrupts:
 disable_interrupts:
 
 	l.mfspr r15, r0, SPR_SR
-	l.movhi	r13, hi(~(SPR_SR_IEE|SPR_SR_TEE))
-	l.ori	r13, r13, lo(~(SPR_SR_IEE|SPR_SR_TEE))
+	l.movhi	r13, hi(~(SPR_SR_IEE))
+	l.ori	r13, r13, lo(~(SPR_SR_IEE))
 	l.and   r15, r15, r13
 	l.mtspr r0, r15, SPR_SR
 
@@ -172,6 +172,10 @@ physcpy.loop:
 	l.nop
 	higher_kernel:
 
+	/* Critical section. */
+	l.jal enable_interrupts
+	l.nop
+
 	l.ori r1, r2, 0
 	l.lwz r2, -8(r1)
 	l.lwz r9, -4(r1)
@@ -186,6 +190,10 @@ physcpy.loop:
  * Switches execution to other process.
  */
 switch_to:
+	/* We need to save SPR_SR before disable_interrupts. */
+	l.mfspr r29, r0, SPR_SR
+
+	/* Critical region. */
 	l.or r31, r9, r0
 	l.jal disable_interrupts
 	l.nop
@@ -197,21 +205,22 @@ switch_to:
 	l.lwz r15, PROC_KESP(r13)
 
 	/* Preserve registers state. */
-	l.addi r1, r1, -56
-	l.sw  0(r1), r2
-	l.sw  4(r1), r15
-	l.sw  8(r1), r9
-	l.sw 12(r1), r10
-	l.sw 16(r1), r12
-	l.sw 20(r1), r14
-	l.sw 24(r1), r16
-	l.sw 28(r1), r18
-	l.sw 32(r1), r20
-	l.sw 36(r1), r22
-	l.sw 40(r1), r24
-	l.sw 44(r1), r26
-	l.sw 48(r1), r28
-	l.sw 52(r1), r30
+	l.addi r1, r1, -60
+	l.sw  0(r1), r29
+	l.sw  4(r1), r2
+	l.sw  8(r1), r15
+	l.sw 12(r1), r9
+	l.sw 16(r1), r10
+	l.sw 20(r1), r12
+	l.sw 24(r1), r14
+	l.sw 28(r1), r16
+	l.sw 32(r1), r18
+	l.sw 36(r1), r20
+	l.sw 40(r1), r22
+	l.sw 44(r1), r24
+	l.sw 48(r1), r26
+	l.sw 52(r1), r28
+	l.sw 56(r1), r30
 	l.sw PROC_KESP(r13), r1
 
 	/* Switch processes. */
@@ -237,21 +246,24 @@ switch_to:
 	l.nop
 
 	/* Restore stack. */
-	l.lwz r30, 52(r1)
-	l.lwz r28, 48(r1)
-	l.lwz r26, 44(r1)
-	l.lwz r24, 40(r1)
-	l.lwz r22, 36(r1)
-	l.lwz r20, 32(r1)
-	l.lwz r18, 28(r1)
-	l.lwz r16, 24(r1)
-	l.lwz r14, 20(r1)
-	l.lwz r12, 16(r1)
-	l.lwz r10, 12(r1)
-	l.lwz r9,   8(r1)
-	l.lwz r15,  4(r1)
-	l.lwz r2,   0(r1)
-	l.addi r1, r1, 56
+	l.lwz r30, 56(r1)
+	l.lwz r28, 52(r1)
+	l.lwz r26, 48(r1)
+	l.lwz r24, 44(r1)
+	l.lwz r22, 40(r1)
+	l.lwz r20, 36(r1)
+	l.lwz r18, 32(r1)
+	l.lwz r16, 28(r1)
+	l.lwz r14, 24(r1)
+	l.lwz r12, 20(r1)
+	l.lwz r10, 16(r1)
+	l.lwz r9,  12(r1)
+	l.lwz r15,  8(r1)
+	l.lwz r2,   4(r1)
+	l.lwz r29,  0(r1)
+	l.mtspr r0, r29, SPR_SR
+
+	l.addi r1, r1, 60
 	l.sw PROC_KESP(r3), r15
 
 	l.jr r9

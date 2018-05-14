@@ -103,4 +103,7 @@ PUBLIC void clock_init(unsigned freq)
 
 	/* Setup the clock next event. */
 	clock_next_event();
+
+	/* Enable clock. */
+	mtspr(SPR_SR, mfspr(SPR_SR) | 2);
 }
