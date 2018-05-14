@@ -22,6 +22,7 @@
 # Toolchain configuration.
 export CFLAGS  += -Os
 export LDFLAGS += -Wl,-e,_start
+export LIBS = $(LIBDIR)/libc.a -lgcc
 
 # Resolves conflicts
 .PHONY: foobar
@@ -34,19 +35,19 @@ all: init shutdown test
 
 # Builds foobar.
 foobar:
-	$(CC) $(CFLAGS) $(LDFLAGS) foobar/*.c -o $(SBINDIR)/foobar $(LIBDIR)/libc.a -lgcc
+	$(CC) $(CFLAGS) $(LDFLAGS) foobar/*.c -o $(SBINDIR)/foobar $(LIBS)
 
 # Builds init.
 init:
-	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBDIR)/libc.a -lgcc
+	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBS)
 
 # Builds shutdown.
 shutdown:
-	$(CC) $(CFLAGS) $(LDFLAGS) shutdown/*.c -o $(SBINDIR)/shutdown $(LIBDIR)/libc.a -lgcc
+	$(CC) $(CFLAGS) $(LDFLAGS) shutdown/*.c -o $(SBINDIR)/shutdown $(LIBS)
 
 # Builds test.
 test:
-	$(CC) $(CFLAGS) $(LDFLAGS) test/*.c -o $(SBINDIR)/test $(LIBDIR)/libc.a -lgcc
+	$(CC) $(CFLAGS) $(LDFLAGS) test/*.c -o $(SBINDIR)/test $(LIBS)
 	
 # Cleans compilations files.
 clean:
