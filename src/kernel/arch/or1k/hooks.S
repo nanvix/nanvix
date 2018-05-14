@@ -90,35 +90,6 @@
 .section .exception
 
 /*----------------------------------------------------------------------------*
- *                                 enter()                                    *
- *----------------------------------------------------------------------------*/
-
-/*
- * Enters in kernel.
- */
-.macro enter
-	LOAD_SYMBOL_2_GPR(r3, curr_proc)
-	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
-
-	/* Increment interrupt level. */
-	l.sub r3, r3, r5
-	l.lwz r3, 0(r3)
-	l.sub r3, r3, r5 
-
-	l.lwz  r7, PROC_INTLVL(r3)
-	l.addi r7, r7, 1
-	l.sw   PROC_INTLVL(r3), r7
-    
-	/* Save interrupt stack. */
-	l.lwz r7,   PROC_KESP(r3)
-	l.sw 0(r1), r7
-
-	l.or  r6, r0, r1
-	l.add r6, r5, r6
-	l.sw PROC_KESP(r3), r6
-.endm
-
-/*----------------------------------------------------------------------------*
  *                                exception_enter                             *
  *----------------------------------------------------------------------------*/
 .macro exception_enter
@@ -160,7 +131,8 @@
 	l.sw GPR9(r1), r9
 
 	/* Enter. */
-	enter
+	l.jal enter
+	l.nop
 
 	/* Enable MMU. */
 	l.mfspr r30, r0,  SPR_SR
@@ -168,7 +140,6 @@
 	l.mtspr r0,  r30, SPR_SR
 
 	/* Virtual address. */
-	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 	l.add r1, r1, r5
 .endm
 
@@ -351,6 +322,37 @@ save:
 	/* Restore and save r30. */
 	EXCEPTION_T_LOAD_GPR30(r30)
 	l.sw GPR30(r1), r30
+
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                 enter()                                    *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Enters in kernel.
+ */
+enter:
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+
+	/* Increment interrupt level. */
+	l.sub r3, r3, r5
+	l.lwz r3, 0(r3)
+	l.sub r3, r3, r5 
+
+	l.lwz  r7, PROC_INTLVL(r3)
+	l.addi r7, r7, 1
+	l.sw   PROC_INTLVL(r3), r7
+    
+	/* Save interrupt stack. */
+	l.lwz r7,   PROC_KESP(r3)
+	l.sw 0(r1), r7
+
+	l.or  r6, r0, r1
+	l.add r6, r5, r6
+	l.sw PROC_KESP(r3), r6
 
 	l.jr r9
 	l.nop
