@@ -121,34 +121,15 @@ function copy_files
 	done
 }
 
-# Get debug symbols from kernel
-$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
-
-# Remove debug symbols from kernel
-$STRIP --strip-debug bin/kernel
-
-# Build HDD image.
-dd if=/dev/zero of=hdd.img bs=1024 count=65536
-format hdd.img 1024 32768
-copy_files hdd.img
-
-# Build initrd image.
-dd if=/dev/zero of=initrd.img bs=1024 count=1152
-format initrd.img 1152 512
-copy_files initrd.img
-initrdsize=`stat -c %s initrd.img`
-maxsize=`grep "INITRD_SIZE" include/nanvix/config.h | cut -d" " -f 13`
-maxsize=`printf "%d\n" $maxsize`
-if [ $initrdsize -gt $maxsize ]; then
-	echo "NOT ENOUGH SPACE ON INITRD"
-	echo "INITRD SIZE is $initrdsize"
-	rm *.img
-	exit -1
-fi 
-
 # Build live nanvix image.
 if [ "$1" = "--build-iso" ];
 then
+	# Get debug symbols from kernel
+	$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
+
+	# Remove debug symbols from kernel
+	$STRIP --strip-debug bin/kernel
+
 	mkdir -p nanvix-iso/boot/grub
 	cp bin/kernel nanvix-iso/kernel
 	cp initrd.img nanvix-iso/initrd.img
@@ -157,12 +138,37 @@ then
 	sed -i 's/fd0/cd/g' nanvix-iso/boot/grub/menu.lst
 	genisoimage -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 \
 		-input-charset utf-8 -boot-info-table -o nanvix.iso nanvix-iso
-else
+elif [ "$1" = "--build-floppy" ];
+then
+	# Get debug symbols from kernel
+	$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
+
+	# Remove debug symbols from kernel
+	$STRIP --strip-debug bin/kernel
+
 	cp -f tools/img/blank.img nanvix.img
 	insert nanvix.img
 	cp bin/kernel /mnt/kernel
 	cp initrd.img /mnt/initrd.img
 	cp tools/img/menu.lst /mnt/boot/menu.lst
 	eject
-fi
+else
+	# Build HDD image.
+	dd if=/dev/zero of=hdd.img bs=1024 count=65536
+	format hdd.img 1024 32768
+	copy_files hdd.img
 
+	# Build initrd image.
+	dd if=/dev/zero of=initrd.img bs=1024 count=1152
+	format initrd.img 1152 512
+	copy_files initrd.img
+	initrdsize=`stat -c %s initrd.img`
+	maxsize=`grep "INITRD_SIZE" include/nanvix/config.h | cut -d" " -f 13`
+	maxsize=`printf "%d\n" $maxsize`
+	if [ $initrdsize -gt $maxsize ]; then
+		echo "NOT ENOUGH SPACE ON INITRD"
+		echo "INITRD SIZE is $initrdsize"
+		rm *.img
+		exit -1
+	fi 
+fi

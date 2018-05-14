@@ -28,6 +28,9 @@ export CFLAGS += -D$(TARGET)
 
 # Builds everything.
 all: kernel lib sbin ubin
+
+# Builds user-space things.
+user: lib sbin ubin
 	
 # Builds the kernel.
 kernel:
