@@ -1,4 +1,4 @@
-## WHAT IS NANVIX? [![Build Status](https://travis-ci.org/nanvix/nanvix.svg?branch=dev)](https://travis-ci.org/nanvix/nanvix)
+## WHAT IS NANVIX? [![Build Status](https://travis-ci.org/nanvix/nanvix.svg?branch=dev)](https://travis-ci.org/nanvix/nanvix)  [![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/nanvix/shared_invite/enQtMzY2Nzg5OTQ4NTAyLTAxMmYwOGQ0ZmU2NDg2NTJiMWU1OWVkMWJhMWY4NzMzY2E1NTIyMjNiOTVlZDFmOTcyMmM2NDljMTAzOGI1NGY)  
 
 Nanvix is a Unix like operating system created by Pedro H. Penna to
 address emerging manycore platforms. It targets cluster-based
@@ -58,5 +58,3 @@ maintained by Pedro H. Penna. Any questions or suggestions send
 him an email: <pedrohenriquepenna@gmail.com>
 
 Join our mailing list at https://groups.google.com/d/forum/nanvix
-
-Join our chat room at https://gitter.im/nanvix-kernel/Lobby
