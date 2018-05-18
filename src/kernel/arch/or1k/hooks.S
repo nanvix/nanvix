@@ -238,7 +238,7 @@ illegal_instruction_exception:
 
 .org 0x800
 external_interrupt_exception:
-	swint_handler 7 do_external_interrupt
+	hwint_handler INT_EXTERNAL
 
 .org 0x900
 dtlb_miss_exception:

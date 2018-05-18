@@ -82,7 +82,26 @@ PUBLIC void do_hwint(unsigned irq)
 {
 	unsigned old_irqlvl;
 	
-	old_irqlvl = processor_raise(irq_lvl(irq));
+	/* If external, lets get the right IRQ. */
+	if (irq == INT_EXTERNAL)
+	{
+		unsigned picsr = mfspr(SPR_PICSR);
+		int bit = 0;
+
+		while (!(picsr & 1) && bit < 32)
+		{
+			picsr >>= 1;	
+			bit++;
+		}
+
+		if (!picsr)
+			kpanic("spurious interrupt");
+
+		irq = bit;
+
+		/* Ack interrupt. */
+		pic_ack(irq);
+	}
 
 	enable_interrupts();
 	hwint_handlers[irq]();

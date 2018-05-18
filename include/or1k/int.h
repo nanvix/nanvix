@@ -28,21 +28,9 @@
 	#define INT_ATA1    14 /* Primary ATA hard disk.                     */
 	#define INT_ATA2    15 /* Secondary ATA hard disk.                   */
 
-
-	#define INT_RESET  0 /* Reset.                  */
-	#define INT_BUS    1 /* Bus.                    */
-	#define INT_DPG    2 /* Data page fault.        */
-	#define INT_IPG    3 /* Instruction page fault. */
-	#define INT_CLOCK  4 /* Timer.                  */
-	#define INT_ALGN   5 /* Alignment.              */
-	#define INT_IINS   6 /* Illegal instruction.    */
-	#define INT_EINT   7 /* External interrupt.     */
-	#define INT_DTLB   8 /* DTLB miss.              */
-	#define INT_ITLB   9 /* ITLB miss.              */
-	#define INT_REXC  10 /* Range exception.        */
-	#define INT_SYS   11 /* Syscall.                */
-	#define INT_FPE   12 /* Floating point.         */
-	#define INT_TRP   13 /* Trap.                   */
+	#define INT_CLOCK      0 /* Timer.                        */
+	#define INT_COM1       2 /* COM1.                         */
+	#define INT_EXTERNAL 256 /* External interrupt indicator. */
 
 	/* Offsets to the registers structure. */
 	#define R0           4

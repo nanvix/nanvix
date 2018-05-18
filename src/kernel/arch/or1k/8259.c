@@ -29,8 +29,23 @@
 /*
  * Sets interrupt mask.
  */
-PUBLIC void pic_mask(uint16_t mask)
+PUBLIC void pic_mask(uint32_t mask)
 {
+	/* Mask external interrupt. */
+	mtspr(SPR_PICMR, mask);
+}
+
+/*============================================================================*
+ *                               pic_mask()                                   *
+ *============================================================================*/
+ 
+/*
+ * Sets interrupt mask.
+ */
+PUBLIC void pic_ack(uint32_t irq)
+{
+	/* ACK interrupt. */
+	mtspr(SPR_PICSR, (1UL << irq));
 }
 
 /*============================================================================*
@@ -40,13 +55,9 @@ PUBLIC void pic_mask(uint16_t mask)
 /*
  * Setups the programmable interrupt controller
  */
-PUBLIC void pic_setup(uint8_t offset1, uint8_t offset2)
+PUBLIC void pic_setup(void)
 {
-	((void)offset1);
-	((void)offset2);
-
 	/* Unmask all IRQs. */
-
-	/* Unmask Timer Interrupt. */
-	mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_IEE);
+	pic_mask(0xFF);
+	mtspr(SPR_PICSR, 0);
 }

@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -36,24 +37,6 @@
 	#include <nanvix/const.h>
 	#include <stdint.h>
 
-	/*
-	 * Constants: Master PIC Registers
-	 * 
-	 * PIC_CTRL_MASTER - Control register.
-	 * PIC_DATA_MASTER - Data register.
-	 */
-	#define PIC_CTRL_MASTER 0x20
-	#define PIC_DATA_MASTER 0x21
-	
-	/*
-	 * Constants: Slave PIC Registers
-	 * 
-	 * PIC_CTRL_SLAVE - Control register.
-	 * PIC_DATA_SLAVE - Data register.
-	 */
-	#define PIC_CTRL_SLAVE 0xa0
-	#define PIC_DATA_SLAVE 0xa1
-
 #ifndef _ASM_FILE_
 
 	/*
@@ -70,26 +53,34 @@
 	 *     The <pic_mask> function sets the interrupt mask to _mask_, thus
 	 *     preventing related interrupt requested to be fired. 
 	 */
-	EXTERN void pic_mask(uint16_t mask);
+	EXTERN void pic_mask(uint32_t mask);
+
+	/*
+	 * Function: pic_ack
+	 * 
+	 * Acknowledges an interrupt.
+	 * 
+	 * Parameters:
+	 * 
+	 *     irq - Interrupt IRQ to be acknowledge.
+	 * 
+	 * Description:
+	 * 
+	 *     The <pic_ack> function acknowledges the IRQ, preventing to occur the
+	 *     same interrupt again.
+	 */
+	EXTERN void pic_ack(uint32_t irq);
 	
 	/*
 	 * Function: pic_setup
 	 * 
 	 * Setups the programmable interrupt controller.
 	 * 
-	 * Parameters:
-	 * 
-	 *     offset1 - Vector offset for master PIC.
-	 *     offset2 - Vector offset for slave PIC.
-	 * 
 	 * Description:
 	 * 
-	 *     The <pic_setup> function setups the PIC by effectively remapping 
-	 *     interrupt vectors. This is mandatory when operating in protected
-	 *     mode, since the default hardware interrupt vectors conflicts with
-	 *     CPU exception vectors.
+	 *     The <pic_setup> function setups the PIC by unmasking all IRQs.
 	 */
-	EXTERN void pic_setup(uint8_t offset1, uint8_t offset2);
+	EXTERN void pic_setup(void);
 
 #endif /* _ASM_FILE_ */
 

@@ -30,5 +30,5 @@
 PUBLIC void setup(void)
 {
 	/* Initializes PIC. */
-	pic_setup(0, 0);
+	pic_setup();
 }

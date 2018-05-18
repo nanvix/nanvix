@@ -35,7 +35,9 @@
  * they apply.
  */
 
+#include <nanvix/klib.h>
 #include <dev/8250.h>
+#include "../tty/tty.h"
 
 /**
  * @brief UART definitions
@@ -152,6 +154,16 @@
 /**@}*/
 
 /**
+ * Reads from serial port.
+ * @param c Data to be written.
+ */
+PUBLIC char uart8250_read(void)
+{
+	/* Reads the received data. */
+	return INPUTB(RB);
+}
+
+/**
  * Writes into serial port.
  * @param c Data to be written.
  */
@@ -162,6 +174,29 @@ PUBLIC void uart8250_write(char c)
 
 	/* Write character to device. */
 	OUTPUTB(THR, c);
+}
+
+/**
+ * Serial interrupt handler.
+ */
+PUBLIC void uart8250_handler(void)
+{
+	kprintf("hey");
+
+	char ascii_code = uart8250_read();
+
+	switch(ascii_code)
+	{
+		case 13:
+			ascii_code = 10;
+			break;
+
+		case 127:
+			ascii_code = 8;
+			break;
+	}
+
+	tty_int(ascii_code);
 }
 
 /**
@@ -190,6 +225,8 @@ PUBLIC void uart8250_init(void)
 	/* Reset FIFOs and set trigger level to 1 byte. */
 	OUTPUTB(FCR, FCR_CLRRECV | FCR_CLRTMIT | FCR_TRIG_1);
 
-	/* Disable all interrupts. */
-	OUTPUTB(IER, 0);
+	/* Enable 'Data Available Interrupt'. */
+	OUTPUTB(IER, 1);
+
+	set_hwint(INT_COM1, &uart8250_handler);
 }
