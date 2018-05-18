@@ -41,17 +41,14 @@ PRIVATE unsigned rate = 0;
 /*
  * @brief Setup the clock next event.
  */
-PRIVATE void clock_next_event()
+PRIVATE void clock_event()
 {
-	unsigned clock, new_clock;
-	clock =  mfspr(SPR_TTCR);
-	new_clock = clock;
-	new_clock += rate;
+	unsigned new_clock;
+	new_clock = rate;
 	new_clock &= SPR_TTMR_TP;
 
 	/* Set counter. */
-	mtspr(SPR_TTMR, SPR_TTMR_SR | SPR_TTMR_IE | new_clock);
-	mtspr(SPR_TTCR, clock);
+	mtspr(SPR_TTMR, SPR_TTMR_RT | SPR_TTMR_IE | new_clock);
 }
 
 /*
@@ -59,22 +56,17 @@ PRIVATE void clock_next_event()
  */
 PRIVATE void do_clock()
 {
-	/* Temporaly disable clock interrupts. */
-	mtspr(SPR_TTMR, SPR_TTMR_DI);
-	
 	ticks++;
 	
 	if (KERNEL_WAS_RUNNING(curr_proc))
 	{
 		curr_proc->ktime++;
-		clock_next_event();
+		clock_event();
 		return;
 	}
 	
 	curr_proc->utime++;
-
-	/* Setup next event again. */
-	clock_next_event();
+	clock_event();
 		
 	/* Give up processor time. */
 	if (--curr_proc->counter == 0)
@@ -96,14 +88,15 @@ PUBLIC void clock_init(unsigned freq)
 	set_hwint(INT_CLOCK, &do_clock);
 
 	/* Clock rate. */
-	rate = CPU_CLOCK/freq;
+	rate = (CPU_CLOCK << 2)/freq;
 
 	/* Ensures that the clock is disabled. */
-	mtspr(SPR_TTMR, SPR_TTMR_DI);
+	mtspr(SPR_TTMR, SPR_TTMR_RT | SPR_TTMR_IE | rate);
+	mtspr(SPR_TTCR, 0);
 
-	/* Setup the clock next event. */
-	clock_next_event();
+	/* Setup the clock event. */
+	clock_event();
 
-	/* Enable clock. */
-	mtspr(SPR_SR, mfspr(SPR_SR) | 2);
+	/* Unmask Timer Interrupt. */
+	mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
 }

@@ -30,13 +30,12 @@
 /*
  * Interrupt priority levels.
  */
-#if 0
 PRIVATE const unsigned int_lvls[16] = {
-	INT_LVL_0, /* Programmable interrupt timer.         */
 	INT_LVL_3, /* Keyboard.                             */
 	INT_LVL_3, /* COM2.                                 */
 	INT_LVL_3, /* COM1.                                 */
 	INT_LVL_3, /* LPT2.                                 */
+	INT_LVL_0, /* Programmable interrupt timer.         */
 	INT_LVL_1, /* Floppy disk.                          */
 	INT_LVL_3, /* LPT1.                                 */
 	INT_LVL_0, /* CMOS real-time clock.                 */
@@ -48,14 +47,13 @@ PRIVATE const unsigned int_lvls[16] = {
 	INT_LVL_1, /* Primary ATA hard disk.                */
 	INT_LVL_1  /* Secondary ATA hard disk.              */
 };
-#endif
 
 /*
  * Returns the interrupt priority level that is associated to an IRQ.
  */
 PUBLIC unsigned irq_lvl(unsigned irq)
 {
-	return 0;
+	return (int_lvls[irq]);
 }
 
 /*============================================================================*
@@ -81,7 +79,18 @@ PRIVATE const uint16_t int_masks[6] = {
  */
 PUBLIC unsigned processor_raise(unsigned irqlvl)
 {
-	return (0);
+	unsigned old_irqlvl;
+	old_irqlvl = curr_proc->irqlvl;
+
+	/* Mask timer if needed. */
+	if (irqlvl == INT_LVL_0)
+	{
+		/* Timer ACK. */
+		mtspr(SPR_TTMR, mfspr(SPR_TTMR) & ~SPR_TTMR_IP);
+		mtspr(SPR_SR, mfspr(SPR_SR) & ~SPR_SR_TEE);
+	}
+
+	return (old_irqlvl);
 }
 
 /**
@@ -91,6 +100,10 @@ PUBLIC unsigned processor_raise(unsigned irqlvl)
  */
 PUBLIC void processor_drop(unsigned irqlvl)
 {
+	curr_proc->irqlvl = irqlvl;
+	
+	if (irqlvl > INT_LVL_0)
+		mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
 }
 
 /**
@@ -100,4 +113,9 @@ PUBLIC void processor_drop(unsigned irqlvl)
  */
 PUBLIC void processor_reload(void)
 {
+	if (curr_proc->irqlvl > INT_LVL_0)
+	{
+		mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
+		mtspr(SPR_TTMR, mfspr(SPR_TTMR) | SPR_TTMR_IE);
+	}
 }

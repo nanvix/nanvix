@@ -80,16 +80,13 @@ PUBLIC int set_hwint(int num, void (*handler)(void))
  */
 PUBLIC void do_hwint(unsigned irq)
 {
-	if (irq == 4)
-	{
-		unsigned old_irq = mfspr(SPR_SR);
-		
-		/* Clear TEE bit. */
-		mtspr(SPR_SR, old_irq & 0xFFFFFFFD);
-		
-		/* Handler. */
-		enable_interrupts();
-		hwint_handlers[irq]();
-		disable_interrupts();
-	}
+	unsigned old_irqlvl;
+	
+	old_irqlvl = processor_raise(irq_lvl(irq));
+
+	enable_interrupts();
+	hwint_handlers[irq]();
+	disable_interrupts();
+
+	processor_drop(old_irqlvl);
 }

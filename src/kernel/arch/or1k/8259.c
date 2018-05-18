@@ -42,4 +42,11 @@ PUBLIC void pic_mask(uint16_t mask)
  */
 PUBLIC void pic_setup(uint8_t offset1, uint8_t offset2)
 {
+	((void)offset1);
+	((void)offset2);
+
+	/* Unmask all IRQs. */
+
+	/* Unmask Timer Interrupt. */
+	mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_IEE);
 }

@@ -226,7 +226,7 @@ instruction_page_fault:
 
 .org 0x500
 tick_timer_exception:
-	hwint_handler 4
+	hwint_handler INT_CLOCK
 
 .org 0x600
 alignment_exception:
@@ -266,6 +266,7 @@ floating_point_exception:
 trap_exception:
 	swint_handler 11 do_trap
 
+.align PAGE_SIZE
 /*----------------------------------------------------------------------------*
  *                                  save()                                    *
  *----------------------------------------------------------------------------*/
@@ -407,7 +408,7 @@ leave:
 		l.nop
 
 leave.out:
-	/* General Purpose registers, except r30. */
+	/* General Purpose registers, except r30 and r31. */
 	l.lwz r2 , GPR2(r1)
 	l.lwz r3 , GPR3(r1)
 	l.lwz r4 , GPR4(r1)
@@ -436,7 +437,6 @@ leave.out:
 	l.lwz r27, GPR27(r1)
 	l.lwz r28, GPR28(r1)
 	l.lwz r29, GPR29(r1)
-	l.lwz r31, GPR31(r1)
 
 	/* SPR_EPCR. */
 	l.lwz   r30, EPCR(r1)
@@ -451,8 +451,22 @@ leave.out:
 	l.ori   r30, r30, (ENABLE_MMU)
 	l.mtspr r0,  r30, SPR_ESR_BASE
 
+	/* Let us check if we have to enable TTMR_IE. */
+	l.andi  r30, r30, (SPR_SR_IEE|SPR_SR_TEE)
+	l.sfnei r30, (SPR_SR_IEE|SPR_SR_TEE)
+	l.bf 1f
+	l.nop
+
+	l.mfspr r30, r0, SPR_TTMR
+	LOAD_SYMBOL_2_GPR(r31, SPR_TTMR_IE)
+	l.or    r30, r30, r31
+	l.mtspr r0, r30, SPR_TTMR
+1:
 	/* r30. */
 	l.lwz r30, GPR30(r1)
+
+	/* r31. */
+	l.lwz r31, GPR31(r1)
 
 	/* Stack Pointer, r1. */
 	l.lwz r1, SP(r1)

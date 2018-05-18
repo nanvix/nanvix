@@ -82,9 +82,17 @@ tlb_flush:
  */
 enable_interrupts:
 
+	/* Enable HW interrupts. */
 	l.mfspr	r13, r0, SPR_SR
 	l.ori	r13, r13, lo(SPR_SR_IEE)
 	l.mtspr	r0, r13, SPR_SR
+
+	/* Enable Timer interrupts. */
+	l.mfspr r13, r0, SPR_TTMR
+	l.movhi	r15, hi(SPR_TTMR_IE)
+	l.ori	r15, r15, lo(SPR_TTMR_IE)
+	l.or    r13, r13, r15
+	l.mtspr r0, r13, SPR_TTMR
 
 	l.jr r9
 	l.nop
@@ -98,11 +106,19 @@ enable_interrupts:
  */
 disable_interrupts:
 
+	/* Disable HW interrupts. */
 	l.mfspr r15, r0, SPR_SR
 	l.movhi	r13, hi(~(SPR_SR_IEE))
 	l.ori	r13, r13, lo(~(SPR_SR_IEE))
 	l.and   r15, r15, r13
 	l.mtspr r0, r15, SPR_SR
+
+	/* Disable Timer interrupts. */
+	l.mfspr r15, r0, SPR_TTMR
+	l.movhi	r13, hi(~(SPR_TTMR_IE))
+	l.ori	r13, r13, lo(~(SPR_TTMR_IE))
+	l.and   r15, r15, r13
+	l.mtspr r0, r15, SPR_TTMR
 
 	l.jr r9
 	l.nop
@@ -260,11 +276,23 @@ switch_to:
 	l.lwz r9,  12(r1)
 	l.lwz r15,  8(r1)
 	l.lwz r2,   4(r1)
-	l.lwz r29,  0(r1)
+	l.lwz r29, 0(r1)
+	l.ori r29, r29, ENABLE_MMU
 	l.mtspr r0, r29, SPR_SR
 
 	l.addi r1, r1, 60
 	l.sw PROC_KESP(r3), r15
+
+	/* Processor reload. */
+	l.addi r1, r1, -4
+	l.sw   0(r1), r9
+	
+	LOAD_SYMBOL_2_GPR(r13, processor_reload)
+	l.jalr r13
+	l.nop
+	
+	l.lwz  r9, 0(r1)
+	l.addi r1, r1, 4
 
 	l.jr r9
 	l.nop
