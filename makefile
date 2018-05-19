@@ -88,7 +88,7 @@ image: $(BINDIR)/kernel tools
 	bash $(TOOLSDIR)/build/build-img.sh --build-iso
 else
 ifeq ($(TARGET),or1k)
-image: $(BINDIR)/sbin $(BINDIR)/ubin tools
+image: tools
 	mkdir -p $(BINDIR)
 	mkdir -p $(SBINDIR)
 	mkdir -p $(UBINDIR)
