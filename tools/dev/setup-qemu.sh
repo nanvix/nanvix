@@ -40,7 +40,7 @@ num_cores=`grep -c ^processor /proc/cpuinfo`
 wget "http://wiki.qemu-project.org/download/qemu-$QEMU_VERSION.tar.bz2"
 
 # Get required packages.
-apt-get install libglib2.0-dev zlib1g-dev libtool libsdl2-dev dh-autoreconf -y
+apt-get install libglib2.0-dev zlib1g-dev libtool libsdl2-dev libpixman-1-dev dh-autoreconf -y
 
 # Build Bochs
 tar -xjvf qemu-$QEMU_VERSION.tar.bz2
