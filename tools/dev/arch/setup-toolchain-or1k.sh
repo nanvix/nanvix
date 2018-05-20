@@ -57,8 +57,8 @@ git checkout .
 git clean -f -d
 
 # GCC for Linux
-wget "https://github.com/openrisc/musl-cross/releases/download/gcc5.3.0-musl1.1.14/or1k-linux-musl_gcc5.3.0_binutils2.26_musl1.1.14.tgz"
 cd $WORKDIR
+wget "https://github.com/openrisc/musl-cross/releases/download/gcc5.3.0-musl1.1.14/or1k-linux-musl_gcc5.3.0_binutils2.26_musl1.1.14.tgz"
 tar -xvf or1k-linux-musl_gcc5.3.0_binutils2.26_musl1.1.14.tgz
 
 # Back to the current folder
