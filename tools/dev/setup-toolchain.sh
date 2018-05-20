@@ -20,4 +20,4 @@
 #
 
 # Get required packages.
-apt-get install g++ ddd genisoimage texinfo flex bison -y
+apt-get install g++ ddd genisoimage texinfo flex bison libncurses5-dev -y

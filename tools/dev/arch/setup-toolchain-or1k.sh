@@ -30,9 +30,6 @@ cd $WORKDIR
 # Retrieve the number of processor cores
 num_cores=`grep -c ^processor /proc/cpuinfo`
 
-# Get binutils, GDB and GCC.
-wget "https://github.com/openrisc/musl-cross/releases/download/gcc5.3.0-musl1.1.14/or1k-linux-musl_gcc5.3.0_binutils2.26_musl1.1.14.tgz"
-
 if [ ! "$(ls -A $WORKDIR)" ]; then
 	git submodule update --init .
 fi
@@ -60,6 +57,7 @@ git checkout .
 git clean -f -d
 
 # GCC for Linux
+wget "https://github.com/openrisc/musl-cross/releases/download/gcc5.3.0-musl1.1.14/or1k-linux-musl_gcc5.3.0_binutils2.26_musl1.1.14.tgz"
 cd $WORKDIR
 tar -xvf or1k-linux-musl_gcc5.3.0_binutils2.26_musl1.1.14.tgz
 
