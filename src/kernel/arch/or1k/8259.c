@@ -20,6 +20,7 @@
 #include <or1k/or1k.h>
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
+#include <nanvix/klib.h>
 #include <stdint.h>
 
 /*============================================================================*
