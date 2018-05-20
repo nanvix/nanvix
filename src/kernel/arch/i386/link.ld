@@ -29,7 +29,7 @@ SECTIONS
 	/* Bootstrap section. */
 	.bootstrap :
 	{
-		arch/x86/boot.o *(.bootstrap)
+		arch/i386/boot.o *(.bootstrap)
 	}
 	
 	. += 0xc0000000;
