@@ -23,6 +23,10 @@
 export CFLAGS += -DBUILDING_KERNEL
 export CFLAGS += -DSERIAL_ENABLE
 
+ifeq ($(TARGET),i386)
+	export CFLAGS += -DVGA_ENABLE
+endif
+
 # C source files.
 C_SRC = $(wildcard arch/$(TARGET)/*.c) \
         $(wildcard dev/*.c)          \
