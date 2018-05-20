@@ -65,11 +65,11 @@ PUBLIC unsigned irq_lvl(unsigned irq)
  */
 PRIVATE const uint32_t int_masks[6] = {
 	0x00000000, /* Level 0: all hardware interrupts disabled. */
-	0x00000000, /* Level 1: clock interrupts enabled.         */
-	0x00000000, /* Level 2: disk interrupts enabled.          */
-	0x00000000, /* Level 3: network interrupts enabled        */
-	0x00000004, /* Level 4: terminal interrupts enabled.      */
-	0xffffffff  /* Level 5: all hardware interrupts enabled.  */
+	0x00000000, /* Level 1: clock interrupts enabled.           */
+	0x00000000, /* Level 2: disk interrupts enabled.            */
+	0x00000000, /* Level 3: network interrupts enabled          */
+	0x00000004, /* Level 4: terminal interrupts enabled.        */
+	0x00000004  /* Level 5: 'all' hardware interrupts enabled.  */
 };
 
 /**
@@ -77,9 +77,12 @@ PRIVATE const uint32_t int_masks[6] = {
  * 
  * @note This function must be called in an interrupt-safe environment.
  */
-PUBLIC unsigned processor_raise(unsigned irqlvl)
+PUBLIC unsigned processor_raise(unsigned irq)
 {
 	unsigned old_irqlvl;
+	unsigned irqlvl;
+	
+	irqlvl = irq_lvl(irq);
 	old_irqlvl = curr_proc->irqlvl;
 
 	/* Mask timer if needed. */
@@ -92,6 +95,9 @@ PUBLIC unsigned processor_raise(unsigned irqlvl)
 
 	/* Mask other interrupts. */
 	pic_mask(int_masks[irqlvl]);
+
+	/* Ack interrupt. */
+	pic_ack(irq);
 
 	return (old_irqlvl);
 }

@@ -77,12 +77,12 @@ PRIVATE const uint16_t int_masks[6] = {
  * 
  * @note This function must be called in an interrupt-safe environment.
  */
-PUBLIC unsigned processor_raise(unsigned irqlvl)
+PUBLIC unsigned processor_raise(unsigned irq)
 {
 	unsigned old_irqlvl;
 	
 	old_irqlvl = curr_proc->irqlvl;
-	pic_mask(int_masks[curr_proc->irqlvl = irqlvl]);
+	pic_mask(int_masks[curr_proc->irqlvl = irq_lvl(irq)]);
 	
 	return (old_irqlvl);
 }
