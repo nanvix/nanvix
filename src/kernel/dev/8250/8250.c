@@ -181,8 +181,6 @@ PUBLIC void uart8250_write(char c)
  */
 PUBLIC void uart8250_handler(void)
 {
-	kprintf("hey");
-
 	char ascii_code = uart8250_read();
 
 	switch(ascii_code)

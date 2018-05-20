@@ -57,7 +57,12 @@ PUBLIC void pic_ack(uint32_t irq)
  */
 PUBLIC void pic_setup(void)
 {
-	/* Unmask all IRQs. */
-	pic_mask(0xFF);
-	mtspr(SPR_PICSR, 0);
+	unsigned upr;
+
+	upr = mfspr(SPR_UPR);
+	if ( !(upr & SPR_UPR_PICP) )
+		kpanic("setup: device without PIC");
+
+	/* Unmask 'all' IRQs. */
+	pic_mask(0x4);
 }
