@@ -49,6 +49,9 @@ tags
 nanvix.iso
 *.img
 
+# OpenRISC initrd
+src/kernel/arch/or1k/initrd.c
+
 # Exceptions.
 !doc/paper/img/*.pdf
 !doc/paper/*.pdf
