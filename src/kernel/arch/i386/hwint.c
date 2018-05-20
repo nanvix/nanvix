@@ -82,7 +82,7 @@ PUBLIC void do_hwint(unsigned irq)
 {
 	unsigned old_irqlvl;
 	
-	old_irqlvl = processor_raise(irq_lvl(irq));
+	old_irqlvl = processor_raise(irq);
 
 	enable_interrupts();
 	hwint_handlers[irq]();
