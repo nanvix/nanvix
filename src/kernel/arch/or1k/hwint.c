@@ -98,12 +98,13 @@ PUBLIC void do_hwint(unsigned irq)
 			kpanic("spurious interrupt");
 
 		irq = bit;
-
-		/* Ack interrupt. */
-		pic_ack(irq);
 	}
 
-	enable_interrupts();
+	old_irqlvl = processor_raise(irq);
+
+	if (irq != INT_COM1)
+		enable_interrupts();
+	
 	hwint_handlers[irq]();
 	disable_interrupts();
 
