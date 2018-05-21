@@ -20,16 +20,15 @@
 #
 
 #Building kernel
-export CFLAGS += -DBUILDING_KERNEL -D$(TARGET) -Wstack-usage=3192 
+export CFLAGS += -DBUILDING_KERNEL
+export CFLAGS += -DSERIAL_ENABLE
 
-# Target processor.
-PROCESSOR = i386
-
-# Target platform.
-ARCH = x86
+ifeq ($(TARGET),i386)
+	export CFLAGS += -DVGA_ENABLE
+endif
 
 # C source files.
-C_SRC = $(wildcard arch/$(ARCH)/*.c) \
+C_SRC = $(wildcard arch/$(TARGET)/*.c) \
         $(wildcard dev/*.c)          \
         $(wildcard dev/8250/*.c)     \
         $(wildcard dev/ata/*.c)      \
@@ -46,11 +45,7 @@ C_SRC = $(wildcard arch/$(ARCH)/*.c) \
         $(wildcard debug/*.c)        \
 
 # Assembly source files.
-ASM_SRC = $(wildcard arch/$(ARCH)/*.S) \
-          $(wildcard core/*.S)         \
-
-# Link script source file.
-LD_SRC = link.c
+ASM_SRC = $(wildcard arch/$(TARGET)/*.S) \
 
 # Object files.
 OBJ = $(ASM_SRC:.S=.o) \
@@ -60,7 +55,7 @@ OBJ = $(ASM_SRC:.S=.o) \
 EXEC = kernel
 
 # Linker configuration options.
-export LDFLAGS = -T arch/$(ARCH)/link.ld
+export LDFLAGS = -T arch/$(TARGET)/link.ld
 
 # Builds object file from C source file.
 %.o: %.c

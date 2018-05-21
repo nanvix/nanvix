@@ -63,6 +63,23 @@
 #ifndef	_SYS_STAT_H
 #define	_SYS_STAT_H
 
+/* Undefs. */
+#undef S_ISUID
+#undef S_ISGID
+#undef S_ISVTX
+#undef S_IRWXU
+#undef S_IRUSR
+#undef S_IWUSR
+#undef S_IXUSR
+#undef S_IRWXG
+#undef S_IRGRP
+#undef S_IWGRP
+#undef S_IXGRP
+#undef S_IRWXO
+#undef S_IROTH
+#undef S_IWOTH
+#undef S_IXOTH
+
 #define _IFMT   0170000 /* type of file */
 #define   _IFDIR  0040000 /* directory */
 #define   _IFCHR  0020000 /* character special */

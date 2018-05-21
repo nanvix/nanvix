@@ -1,6 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
+# Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2015-2018 Davidson Francis <davidsondfgl@hotmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -19,7 +19,9 @@
 #
 
 # Toolchain configuration.
-export CFLAGS += -Os -D_POSIX_C_SOURCE
+export CFLAGS  += -Os -D_POSIX_C_SOURCE
+export LDFLAGS += -Wl,-e,_start
+export LIBS = $(LIBDIR)/libc.a -lgcc
 
 # Conflicts.
 .PHONY: cat
@@ -59,111 +61,111 @@ all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat \
 
 # Builds cat.
 cat: 
-	$(CC) $(CFLAGS) $(LDFLAGS) cat/*.c -o $(UBINDIR)/cat $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) cat/*.c -o $(UBINDIR)/cat $(LIBS)
 	
 # Builds chgrp.
 chgrp: 
-	$(CC) $(CFLAGS) $(LDFLAGS) chgrp/*.c -o $(UBINDIR)/chgrp $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) chgrp/*.c -o $(UBINDIR)/chgrp $(LIBS)
 	
 # Builds chmod.
 chmod: 
-	$(CC) $(CFLAGS) $(LDFLAGS) chmod/*.c -o $(UBINDIR)/chmod $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) chmod/*.c -o $(UBINDIR)/chmod $(LIBS)
 	
 # Builds chown.
 chown: 
-	$(CC) $(CFLAGS) $(LDFLAGS) chown/*.c -o $(UBINDIR)/chown $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) chown/*.c -o $(UBINDIR)/chown $(LIBS)
 	
 # Builds cp.
 cp: 
-	$(CC) $(CFLAGS) $(LDFLAGS) cp/*.c -o $(UBINDIR)/cp $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) cp/*.c -o $(UBINDIR)/cp $(LIBS)
 
 # Builds date.
 date: 
-	$(CC) $(CFLAGS) $(LDFLAGS) date/*.c -o $(UBINDIR)/date $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) date/*.c -o $(UBINDIR)/date $(LIBS)
 
 # Builds echo.
 echo: 
-	$(CC) $(CFLAGS) $(LDFLAGS) echo/*.c -o $(UBINDIR)/echo $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) echo/*.c -o $(UBINDIR)/echo $(LIBS)
 	
 # Builds kill.
 kill: 
-	$(CC) $(CFLAGS) $(LDFLAGS) kill/*.c -o $(UBINDIR)/kill $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) kill/*.c -o $(UBINDIR)/kill $(LIBS)
 	
 # Builds ln.
 ln: 
-	$(CC) $(CFLAGS) $(LDFLAGS) ln/*.c -o $(UBINDIR)/ln $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) ln/*.c -o $(UBINDIR)/ln $(LIBS)
 	
 # Builds login.
 login: 
-	$(CC) $(CFLAGS) $(LDFLAGS) login/*.c -o $(UBINDIR)/login $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) login/*.c -o $(UBINDIR)/login $(LIBS)
 	
 # Builds ls.
 ls: 
-	$(CC) $(CFLAGS) $(LDFLAGS) ls/*.c -o $(UBINDIR)/ls $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) ls/*.c -o $(UBINDIR)/ls $(LIBS)
 	
 # Builds mkdir.
 mkdir: 
-	$(CC) $(CFLAGS) $(LDFLAGS) mkdir/*.c -o $(UBINDIR)/mkdir $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) mkdir/*.c -o $(UBINDIR)/mkdir $(LIBS)
 	
 # Builds mv.
 mv: 
-	$(CC) $(CFLAGS) $(LDFLAGS) mv/*.c -o $(UBINDIR)/mv $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) mv/*.c -o $(UBINDIR)/mv $(LIBS)
 	
 # Builds nice.
 nice: 
-	$(CC) $(CFLAGS) $(LDFLAGS) nice/*.c -o $(UBINDIR)/nice $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) nice/*.c -o $(UBINDIR)/nice $(LIBS)
 	
 # Builds pwd.
 pwd: 
-	$(CC) $(CFLAGS) $(LDFLAGS) pwd/*.c -o $(UBINDIR)/pwd $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) pwd/*.c -o $(UBINDIR)/pwd $(LIBS)
 	
 # Builds rm.
 rm: 
-	$(CC) $(CFLAGS) $(LDFLAGS) rm/*.c -o $(UBINDIR)/rm $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) rm/*.c -o $(UBINDIR)/rm $(LIBS)
 	
 # Builds rmdir.
 rmdir: 
-	$(CC) $(CFLAGS) $(LDFLAGS) rmdir/*.c -o $(UBINDIR)/rmdir $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) rmdir/*.c -o $(UBINDIR)/rmdir $(LIBS)
 	
 # Builds stat.
 stat: 
-	$(CC) $(CFLAGS) $(LDFLAGS) stat/*.c -o $(UBINDIR)/stat $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) stat/*.c -o $(UBINDIR)/stat $(LIBS)
 	
 # Builds sync.
 sync: 
-	$(CC) $(CFLAGS) $(LDFLAGS) sync/*.c -o $(UBINDIR)/sync $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) sync/*.c -o $(UBINDIR)/sync $(LIBS)
 	
 # Builds touch.
 touch: 
-	$(CC) $(CFLAGS) $(LDFLAGS) touch/*.c -o $(UBINDIR)/touch $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) touch/*.c -o $(UBINDIR)/touch $(LIBS)
 	
 # Builds tsh.
 tsh: 
-	$(CC) $(CFLAGS) $(LDFLAGS) tsh/*.c -o $(UBINDIR)/tsh $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) tsh/*.c -o $(UBINDIR)/tsh $(LIBS)
 
 # Builds ps.
 ps: 
-	$(CC) $(CFLAGS) $(LDFLAGS) ps/*.c -o $(UBINDIR)/ps $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) ps/*.c -o $(UBINDIR)/ps $(LIBS)
 
 # Builds clear.
 clear: 
-	$(CC) $(CFLAGS) $(LDFLAGS) clear/*.c -o $(UBINDIR)/clear $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) clear/*.c -o $(UBINDIR)/clear $(LIBS)
 
 # Builds nim.
 nim: 
-	$(CC) $(CFLAGS) $(LDFLAGS) nim/*.c -o $(UBINDIR)/nim $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) nim/*.c -o $(UBINDIR)/nim $(LIBS)
 
 # Builds mount.
 mount: 
-	$(CC) $(CFLAGS) $(LDFLAGS) mount/*.c -o $(UBINDIR)/mount $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) mount/*.c -o $(UBINDIR)/mount $(LIBS)
 
 # Builds unmount.
 unmount: 
-	$(CC) $(CFLAGS) $(LDFLAGS) unmount/*.c -o $(UBINDIR)/unmount $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) unmount/*.c -o $(UBINDIR)/unmount $(LIBS)
 
 # Builds unmount.
 mkfs: 
-	$(CC) $(CFLAGS) $(LDFLAGS) mkfs/*.c -o $(UBINDIR)/mkfs $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) mkfs/*.c -o $(UBINDIR)/mkfs $(LIBS)
 
 # Clean compilation files.
 clean:

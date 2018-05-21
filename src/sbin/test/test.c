@@ -580,6 +580,7 @@ static int sem_test_open_close(void)
  */
 int fpu_test(void)
 {
+#ifdef i386
 	pid_t pid;     /* Child process ID.     */
 	float a = 6.7; /* First dummy operand.  */
 	float b = 1.2; /* Second dummy operand. */
@@ -622,6 +623,10 @@ int fpu_test(void)
 
 	/* 0x40b2aaaa = 6.7/1.2 = 5.5833.. */
 	return (result == 0x40b2aaaa);
+#elif or1k
+	((void)work_fpu);
+	return (1);
+#endif
 }
 
 /*============================================================================*

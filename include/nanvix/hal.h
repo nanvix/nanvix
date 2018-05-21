@@ -1,5 +1,6 @@
 /*
- * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -28,9 +29,14 @@
 
 #ifndef _ASM_FILE_
 
+#ifdef i386
 	#include <i386/i386.h>
 	#include <i386/int.h>
-	
+#elif or1k
+	#include <or1k/or1k.h>
+	#include <or1k/int.h>
+#endif	
+
 	#include <nanvix/const.h>
 	#include <nanvix/pm.h>
 	#include <stdlib.h>
@@ -83,6 +89,13 @@
 	 */
 	/**@{*/
 	EXTERN void physcpy(addr_t, addr_t, size_t);
+	/**@}*/	
+
+	/**
+	 * @name Startup Functions
+	 */
+	/**@{*/
+	EXTERN void init(void);
 	/**@}*/	
 
 #endif /* _ASM_FILE_ */

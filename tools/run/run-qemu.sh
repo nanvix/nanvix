@@ -1,6 +1,6 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+# Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -25,27 +25,36 @@
 
 export CURDIR=`pwd`
 
-if [ "$1" = "--dbg" ]; then
-	qemu-system-i386 -s -S                                   \
-		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
-		-m 256M                                              \
-		-mem-prealloc &
-	ddd --debugger "$CURDIR/tools/dev/toolchain/i386/bin/i386-elf-gdb"
-elif [ "$1" = "--perf" ]; then
-	qemu-system-i386                                         \
-		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
-		-m 256M                                              \
-		-mem-prealloc -cpu host --enable-kvm
-elif [ "$1" = "--serial" ]; then
-	qemu-system-i386                                         \
-		-nographic                                           \
-		-display none                                        \
-		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
-		-m 256M                                              \
-		-mem-prealloc
+if [ "$TARGET" = "i386" ]; then
+	if [ "$1" = "--dbg" ]; then
+		qemu-system-i386 -s -S                                   \
+			-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
+			-m 256M                                              \
+			-mem-prealloc &
+		ddd --debugger "$CURDIR/tools/dev/toolchain/i386/bin/i386-elf-gdb"
+	elif [ "$1" = "--perf" ]; then
+		qemu-system-i386                                         \
+			-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
+			-m 256M                                              \
+			-mem-prealloc -cpu host --enable-kvm
+	elif [ "$1" = "--serial" ]; then
+		qemu-system-i386                                         \
+			-nographic                                           \
+			-display none                                        \
+			-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
+			-m 256M                                              \
+			-mem-prealloc
+	else
+		qemu-system-i386                                         \
+			-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
+			-m 256M                                              \
+			-mem-prealloc
+	fi
 else
-	qemu-system-i386                                         \
-		-drive file=nanvix.iso,format=raw,if=ide,media=cdrom \
-		-m 256M                                              \
+	qemu-system-or1k       \
+		-kernel bin/kernel \
+		-serial stdio      \
+		-display none      \
+		-m 256M            \
 		-mem-prealloc
 fi

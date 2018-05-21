@@ -17,6 +17,9 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Architecture
+export CFLAGS += -D$(TARGET)
+
 # Conflicts.
 .PHONY: kernel
 .PHONY: lib
@@ -25,6 +28,9 @@
 
 # Builds everything.
 all: kernel lib sbin ubin
+
+# Builds user-space things.
+user: lib sbin ubin
 	
 # Builds the kernel.
 kernel:

@@ -16,6 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
-
-symbol-file bin/kernel.sym
+layout asm
+layout regs
 target remote localhost:1234

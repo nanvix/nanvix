@@ -41,11 +41,13 @@
 	 * @brief Block size (in bytes).
 	 */
 	#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
-	
+
+#ifndef _ASM_FILE_	
 	/**
 	 * @brief User for block number.
 	 */
 	typedef uint16_t block_t;
+#endif
 	
 	/**
 	 * @brief Null block.
@@ -60,7 +62,8 @@
  	 * @brief Superblock magic number.
  	 */
  	#define SUPER_MAGIC 0x137f
- 	
+
+#ifndef _ASM_FILE_ 	
 	/**
 	 * @brief In-disk superblock.
 	 */
@@ -75,6 +78,7 @@
 		uint32_t s_max_size;         /**< Maximum file size.          */
 		uint16_t s_magic;            /**< Magic number.               */
 	} __attribute__((packed));
+#endif
 
 /*============================================================================*
  *                             Inode Information                              *
@@ -134,6 +138,7 @@
 	
 	/**@}*/
 
+#ifndef _ASM_FILE_
 	/**
 	 * @brief Disk inode.
 	 */
@@ -147,6 +152,7 @@
 		uint8_t i_nlinks;           /**< Number of links to the file.         */
 		uint16_t i_zones[NR_ZONES]; /**< Zone numbers.                        */
 	} __attribute__((packed));
+#endif
 
 /*============================================================================*
  *                         Directory Entry Information                        *
@@ -156,7 +162,8 @@
 	 * @brief Maximum name on a Minix file system.
 	 */
 	#define MINIX_NAME_MAX 14
-	
+
+#ifndef _ASM_FILE_	
 	/*
 	 * Directory entry.
 	 */
@@ -165,5 +172,6 @@
 		uint16_t d_ino;              /**< File serial number. */
 		char d_name[MINIX_NAME_MAX]; /**< Name of entry.      */
 	} __attribute__((packed));
+#endif
 
 #endif /* MINIX_H_ */

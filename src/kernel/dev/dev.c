@@ -493,12 +493,12 @@ PUBLIC void bdev_test(void)
  */
 PUBLIC void dev_init(void)
 {
+	uart8250_init();
 	klog_init();
 	cmos_init();
 	clock_init(CLOCK_FREQ);
 	tty_init();
 	ramdisk_init();
-	uart8250_init();
 	dbg_register(cdev_test, "cdev_test");
 	dbg_register(bdev_test, "bdev_test");
 }

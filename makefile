@@ -49,7 +49,7 @@ export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 export CFLAGS   += -Wall -Wextra -Werror
 export CFLAGS   += -Wlogical-op
 export CFLAGS   += -Wredundant-decls -Wvla
-export ASMFLAGS  = -Wa,--divide,--warn
+export ASMFLAGS  = -Wa,--warn
 export ARFLAGS   = -vq
 export LDFLAGS   = -Wl,-T $(LIBDIR)/link.ld
 export DBGFLAGS += -g -fno-omit-frame-pointer
@@ -61,20 +61,43 @@ export DBGFLAGS += -g -fno-omit-frame-pointer
 all: nanvix documentation
 
 # Builds Nanvix.
+ifeq ($(TARGET),i386)
 nanvix:
 	mkdir -p $(BINDIR)
 	mkdir -p $(SBINDIR)
 	mkdir -p $(UBINDIR)
 	cd $(SRCDIR) && $(MAKE) -j$(num_cores) all
+else
+ifeq ($(TARGET),or1k)
+nanvix: image
+	mkdir -p $(BINDIR)
+	cd $(SRCDIR) && $(MAKE) -j$(num_cores) kernel
+	bash $(TOOLSDIR)/build/build-img.sh --build-iso
+endif
+endif
 
 # Builds Nanvix with debug flags.
 nanvix-debug:
 	$(MAKE) -j$(num_cores) nanvix
 
 # Builds system's image.
+ifeq ($(TARGET),i386)
 image: $(BINDIR)/kernel tools
 	mkdir -p $(BINDIR)
+	bash $(TOOLSDIR)/build/build-img.sh
 	bash $(TOOLSDIR)/build/build-img.sh --build-iso
+else
+ifeq ($(TARGET),or1k)
+image: tools
+	mkdir -p $(BINDIR)
+	mkdir -p $(SBINDIR)
+	mkdir -p $(UBINDIR)
+	cd $(SRCDIR) && $(MAKE) -j$(num_cores) user
+	bash $(TOOLSDIR)/build/build-img.sh
+	xxd -i $(CURDIR)/initrd.img > $(SRCDIR)/kernel/arch/or1k/initrd.c
+	sed -i "1s/.*/unsigned char initrd_img[] = {/" $(SRCDIR)/kernel/arch/or1k/initrd.c
+endif
+endif
 
 # Builds documentation.
 documentation:

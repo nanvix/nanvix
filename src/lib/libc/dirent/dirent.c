@@ -21,7 +21,7 @@
 #include <limits.h>
 
 /* Directory stream table. */
-DIR dirs[OPEN_MAX];
+DIR dirs[OPEN_MAX] = {0};
 
 /*
  * Dirent library house keeping.

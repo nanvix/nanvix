@@ -1,6 +1,7 @@
 # 
-# Copyright(C)	2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
-#		2016-2017 Subhra Sarkar  <rurtle.coder@gmail.com>
+# Copyright(C)	2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+#		        2016-2017 Subhra Sarkar    <rurtle.coder@gmail.com>
+#               2018-2018 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -39,12 +40,12 @@ num_cores=`grep -c ^processor /proc/cpuinfo`
 wget "http://wiki.qemu-project.org/download/qemu-$QEMU_VERSION.tar.bz2"
 
 # Get required packages.
-apt-get install libglib2.0-dev zlib1g-dev libtool libsdl2-dev dh-autoreconf -y
+apt-get install libglib2.0-dev zlib1g-dev libtool libsdl2-dev libpixman-1-dev dh-autoreconf -y
 
 # Build Bochs
 tar -xjvf qemu-$QEMU_VERSION.tar.bz2
 cd qemu-$QEMU_VERSION
-./configure --target-list=i386-softmmu --enable-sdl
+./configure --target-list=i386-softmmu,or1k-softmmu,or1k-linux-user --enable-sdl
 make -j$num_cores all
 make install
 

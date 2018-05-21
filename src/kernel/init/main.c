@@ -27,93 +27,19 @@
 #include <nanvix/dev.h>
 #include <nanvix/pm.h>
 #include <nanvix/mm.h>
-#include <nanvix/syscall.h>
 #include <nanvix/clock.h>
 #include <nanvix/debug.h>
 #include <fcntl.h>
 
-/**
- * @brief Forks the current process.
- * 
- * @returns For the parent process, the process ID of the child process. For
- *          the child process zero is returned. Upon failure, a negative error
- *          code is returned instead.
- */
-pid_t fork(void)
-{
-	pid_t pid;
-	
-	__asm__ volatile (
-		"int $0x80"
-		: "=a" (pid)
-		: "0" (NR_fork)
-	);
-	
-	/* Error. */
-	if (pid < 0)
-		return (-1);
-	
-	return (pid);
-}
-
-/**
- * @brief Executes a program.
- * 
- * @param filename Program to be executed.
- * @param argv     Arguments variables to pass to the program.
- * @param envp     Environment variables to pass to the program.
- * 
- * @returns Upon successful completion, this function shall not return. Upon
- *          failure, it does return with a negative error code.
- */
-int execve(const char *filename, const char **argv, const char **envp)
-{
-	int ret;
-	
-	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_execve),
-		  "b" (filename),
-		  "c" (argv),
-		  "d" (envp)
-	);
-	
-	/* Error. */
-	if (ret)
-		return (-1);
-	
-	return (ret);
-}
-
-/**
- * @brief Exits the current process.
- * 
- * @param status Exit status.
- */
-void _exit(int status)
-{
-	__asm__ volatile(
-		"int $0x80"
-		: /* empty. */
-		: "a" (NR__exit),
-		"b" (status)
-	);
-}
-
-/**
- * @brief Init process.
- */
-PRIVATE void init(void)
-{
-	const char *argv[] = { "init", "/etc/inittab", NULL };
-	const char *envp[] = { "PATH=/bin:/sbin", "HOME=/", NULL };
-		
-	execve("/sbin/init", argv, envp);
-}
-
 /* External declaration for cpu_init() function. */
 extern void cpu_init(void);
+
+/**
+ * @brief Required function to use GCC varargs
+ */
+PUBLIC void abort()
+{
+}
 
 /**
  * @brief Initializes the kernel.
@@ -122,7 +48,6 @@ extern void cpu_init(void);
  */
 PUBLIC void kmain(const char* cmdline)
 {		
-	pid_t pid;         /* Child process ID. */
 	struct process *p; /* Working process.  */
 	
 	if(!kstrcmp(cmdline,"debug"))
@@ -134,20 +59,13 @@ PUBLIC void kmain(const char* cmdline)
 	mm_init();
 	pm_init();
 	fs_init();
-	
+
 	chkout(DEVID(TTY_MAJOR, 0, CHRDEV));
 
 	dbg_execute();
 
 	/* Spawn init process. */
-	if ((pid = fork()) < 0)
-		kpanic("failed to fork idle process");
-	else if (pid == 0)
-	{	
-		init();
-		kprintf("failed to execute init");
-		_exit(-1);
-	}
+	init();
 	
 	/* idle process. */	
 	while (1)

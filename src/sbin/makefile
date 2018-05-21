@@ -1,6 +1,7 @@
 # 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
-#              2017-2017 Romane Gallier <romanegallier@gmail.com>
+# Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2017-2017 Romane Gallier   <romanegallier@gmail.com>
+#              2018-2018 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -19,7 +20,9 @@
 #
 
 # Toolchain configuration.
-export CFLAGS += -Os
+export CFLAGS  += -Os
+export LDFLAGS += -Wl,-e,_start
+export LIBS = $(LIBDIR)/libc.a -lgcc
 
 # Resolves conflicts
 .PHONY: foobar
@@ -32,19 +35,19 @@ all: init shutdown test
 
 # Builds foobar.
 foobar:
-	$(CC) $(CFLAGS) $(LDFLAGS) foobar/*.c -o $(SBINDIR)/foobar $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) foobar/*.c -o $(SBINDIR)/foobar $(LIBS)
 
 # Builds init.
 init:
-	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) init/*.c -o $(SBINDIR)/init $(LIBS)
 
 # Builds shutdown.
 shutdown:
-	$(CC) $(CFLAGS) $(LDFLAGS) shutdown/*.c -o $(SBINDIR)/shutdown $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) shutdown/*.c -o $(SBINDIR)/shutdown $(LIBS)
 
 # Builds test.
 test:
-	$(CC) $(CFLAGS) $(LDFLAGS) test/*.c -o $(SBINDIR)/test $(LIBDIR)/libc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) test/*.c -o $(SBINDIR)/test $(LIBS)
 	
 # Cleans compilations files.
 clean:
@@ -52,4 +55,3 @@ clean:
 	@rm -f $(SBINDIR)/init
 	@rm -f $(SBINDIR)/shutdown
 	@rm -f $(SBINDIR)/test
-	

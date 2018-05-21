@@ -110,7 +110,11 @@ PRIVATE void console_scrolldown(void)
  * Outputs a colored ASCII character on the console device.
  */
 PUBLIC void console_put(uint8_t ch, uint8_t color)
-{	
+{
+	((void)color);
+	((void)console_scrolldown);
+
+#ifdef VGA_ENABLE
 	/* Parse character. */
     switch (ch)
     {
@@ -154,9 +158,12 @@ PUBLIC void console_put(uint8_t ch, uint8_t color)
     if (cursor.y >= VIDEO_HIGH)
         console_scrolldown();
     cursor_move();
+#endif
 
+#ifdef SERIAL_ENABLE
     /* Write into serial port. */
     uart8250_write(ch);
+#endif
 }
 
 /*

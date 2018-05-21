@@ -1,6 +1,6 @@
 # 
-# Copyright(C) 2011-2014 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+# Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
+#              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -28,6 +28,16 @@ NOOBUID=1
 
 LOOP=$(losetup -f)
 
+# Toolchain
+STRIP=$TOOLSDIR/dev/toolchain/$TARGET/bin/$TARGET-elf-strip
+OBJCOPY=$TOOLSDIR/dev/toolchain/$TARGET/bin/$TARGET-elf-objcopy
+
+# Checks if TARGET is OR1K, if so, use Qemu
+if [ "$TARGET" = "or1k" ];
+then
+	QEMU_VIRT=qemu-or1k
+fi
+
 #
 # Inserts disk in a loop device.
 #   $1 Disk image name.
@@ -52,12 +62,12 @@ function passwords
 {
 	file="passwords"
 	
-	bin/useradd $file root root $ROOTGID $ROOTUID
-	bin/useradd $file noob noob $NOOBUID $NOOBUID
+	$QEMU_VIRT bin/useradd $file root root $ROOTGID $ROOTUID
+	$QEMU_VIRT bin/useradd $file noob noob $NOOBUID $NOOBUID
 
 	chmod 600 $file
 	
-	bin/cp.minix $1 $file /etc/$file $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/cp.minix $1 $file /etc/$file $ROOTUID $ROOTGID
 	
 	# House keeping.
 	rm -f $file
@@ -70,21 +80,21 @@ function passwords
 #   $3 Number of inodes.
 #
 function format {
-	bin/mkfs.minix $1 $2 $3 $ROOTUID $ROOTGID
-	bin/mkdir.minix $1 /etc $ROOTUID $ROOTGID
-	bin/mkdir.minix $1 /sbin $ROOTUID $ROOTGID
-	bin/mkdir.minix $1 /bin $ROOTUID $ROOTGID
-	bin/mkdir.minix $1 /home $ROOTUID $ROOTGID
-	bin/mkdir.minix $1 /home/rep1 $ROOTUID $ROOTGID
-	bin/mkdir.minix $1 /home/rep2 $ROOTUID $ROOTGID
-	bin/mkdir.minix $1 /dev $ROOTUID $ROOTGID
-	bin/mkdir.minix $1 /home/mysem/ $ROOTUID $ROOTGID
-	bin/mknod.minix $1 /dev/null 666 c 0 0 $ROOTUID $ROOTGID
-	bin/mknod.minix $1 /dev/tty 666 c 0 1 $ROOTUID $ROOTGID
-	bin/mknod.minix $1 /dev/klog 666 c 0 2 $ROOTUID $ROOTGID
-	bin/mknod.minix $1 /dev/ramdisk 666 b 0 0 $ROOTUID $ROOTGID
-	bin/mknod.minix $1 /dev/ramdisk1 666 b 1 0 $ROOTUID $ROOTGID
-	bin/mknod.minix $1 /dev/hdd 666 b 0 1 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkfs.minix $1 $2 $3 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkdir.minix $1 /etc $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkdir.minix $1 /sbin $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkdir.minix $1 /bin $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkdir.minix $1 /home $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkdir.minix $1 /home/rep1 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkdir.minix $1 /home/rep2 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkdir.minix $1 /dev $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkdir.minix $1 /home/mysem/ $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mknod.minix $1 /dev/null 666 c 0 0 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mknod.minix $1 /dev/tty 666 c 0 1 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mknod.minix $1 /dev/klog 666 c 0 2 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mknod.minix $1 /dev/ramdisk 666 b 0 0 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mknod.minix $1 /dev/ramdisk1 666 b 1 0 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mknod.minix $1 /dev/hdd 666 b 0 1 $ROOTUID $ROOTGID
 }
 
 #
@@ -96,49 +106,30 @@ function copy_files
 	chmod 666 tools/img/inittab
 	chmod 600 tools/img/inittab
 	
-	bin/cp.minix $1 tools/img/inittab /etc/inittab $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/cp.minix $1 tools/img/inittab /etc/inittab $ROOTUID $ROOTGID
 	
 	passwords $1
 	
 	for file in bin/sbin/*; do
 		filename=`basename $file`
-		bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
+		$QEMU_VIRT bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
 	done
 	
 	for file in bin/ubin/*; do
 		filename=`basename $file`
-		bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
+		$QEMU_VIRT bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
 	done
 }
-
-# Get debug symbols from kernel
-objcopy --only-keep-debug bin/kernel bin/kernel.sym
-
-# Remove debug symbols from kernel
-strip --strip-debug bin/kernel
-
-# Build HDD image.
-dd if=/dev/zero of=hdd.img bs=1024 count=65536
-format hdd.img 1024 32768
-copy_files hdd.img
-
-# Build initrd image.
-dd if=/dev/zero of=initrd.img bs=1024 count=1152
-format initrd.img 1152 512
-copy_files initrd.img
-initrdsize=`stat -c %s initrd.img`
-maxsize=`grep "INITRD_SIZE" include/nanvix/config.h | cut -d" " -f 13`
-maxsize=`printf "%d\n" $maxsize`
-if [ $initrdsize -gt $maxsize ]; then
-	echo "NOT ENOUGH SPACE ON INITRD"
-	echo "INITRD SIZE is $initrdsize"
-	rm *.img
-	exit -1
-fi 
 
 # Build live nanvix image.
 if [ "$1" = "--build-iso" ];
 then
+	# Get debug symbols from kernel
+	$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
+
+	# Remove debug symbols from kernel
+	$STRIP --strip-debug bin/kernel
+
 	mkdir -p nanvix-iso/boot/grub
 	cp bin/kernel nanvix-iso/kernel
 	cp initrd.img nanvix-iso/initrd.img
@@ -147,12 +138,37 @@ then
 	sed -i 's/fd0/cd/g' nanvix-iso/boot/grub/menu.lst
 	genisoimage -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 \
 		-input-charset utf-8 -boot-info-table -o nanvix.iso nanvix-iso
-else
+elif [ "$1" = "--build-floppy" ];
+then
+	# Get debug symbols from kernel
+	$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
+
+	# Remove debug symbols from kernel
+	$STRIP --strip-debug bin/kernel
+
 	cp -f tools/img/blank.img nanvix.img
 	insert nanvix.img
 	cp bin/kernel /mnt/kernel
 	cp initrd.img /mnt/initrd.img
 	cp tools/img/menu.lst /mnt/boot/menu.lst
 	eject
-fi
+else
+	# Build HDD image.
+	dd if=/dev/zero of=hdd.img bs=1024 count=65536
+	format hdd.img 1024 32768
+	copy_files hdd.img
 
+	# Build initrd image.
+	dd if=/dev/zero of=initrd.img bs=1024 count=1152
+	format initrd.img 1152 512
+	copy_files initrd.img
+	initrdsize=`stat -c %s initrd.img`
+	maxsize=`grep "INITRD_SIZE" include/nanvix/config.h | cut -d" " -f 13`
+	maxsize=`printf "%d\n" $maxsize`
+	if [ $initrdsize -gt $maxsize ]; then
+		echo "NOT ENOUGH SPACE ON INITRD"
+		echo "INITRD SIZE is $initrdsize"
+		rm *.img
+		exit -1
+	fi 
+fi
