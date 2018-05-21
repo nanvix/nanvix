@@ -80,7 +80,7 @@ function passwords
 #   $3 Number of inodes.
 #
 function format {
-	$QEMU_VIRT bin/mkfs.minix $1 $2 $3 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkfs.minix $1 $3 $2 $ROOTUID $ROOTGID
 	$QEMU_VIRT bin/mkdir.minix $1 /etc $ROOTUID $ROOTGID
 	$QEMU_VIRT bin/mkdir.minix $1 /sbin $ROOTUID $ROOTGID
 	$QEMU_VIRT bin/mkdir.minix $1 /bin $ROOTUID $ROOTGID
