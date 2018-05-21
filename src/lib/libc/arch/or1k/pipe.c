@@ -37,7 +37,7 @@ int pipe(int fildes[2])
 		"l.sys 1"
 		: "=r" (ret)
 		: "r" (ret),
-		  "r" (fildes)
+		  "r" (r3)
 	);
 	
 	/* Error. */
