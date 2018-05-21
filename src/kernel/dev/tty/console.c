@@ -110,7 +110,10 @@ PRIVATE void console_scrolldown(void)
  * Outputs a colored ASCII character on the console device.
  */
 PUBLIC void console_put(uint8_t ch, uint8_t color)
-{	
+{
+	((void)color);
+	((void)console_scrolldown);
+
 #ifdef VGA_ENABLE
 	/* Parse character. */
     switch (ch)

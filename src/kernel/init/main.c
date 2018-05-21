@@ -48,7 +48,6 @@ PUBLIC void abort()
  */
 PUBLIC void kmain(const char* cmdline)
 {		
-	pid_t pid;         /* Child process ID. */
 	struct process *p; /* Working process.  */
 	
 	if(!kstrcmp(cmdline,"debug"))

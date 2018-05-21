@@ -624,6 +624,7 @@ int fpu_test(void)
 	/* 0x40b2aaaa = 6.7/1.2 = 5.5833.. */
 	return (result == 0x40b2aaaa);
 #elif or1k
+	((void)work_fpu);
 	return (1);
 #endif
 }

@@ -46,6 +46,9 @@ PRIVATE struct
  */
 PRIVATE unsigned cmos_read(unsigned addr)
 {
+	((void)addr);
+	((void)boot_time);
+	return (0);
 }
 
 /**
@@ -58,6 +61,7 @@ PRIVATE unsigned cmos_read(unsigned addr)
  */
 PRIVATE signed cmos_gettime(void)
 {
+	((void)cmos_read);
 	return 0;
 }
 
@@ -66,4 +70,5 @@ PRIVATE signed cmos_gettime(void)
  */
 PUBLIC void cmos_init(void)
 {
+	((void)cmos_gettime);
 }

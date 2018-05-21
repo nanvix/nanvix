@@ -46,7 +46,7 @@ export CFLAGS    = -I $(INCDIR)
 export CFLAGS   += -DKERNEL_HASH=$(KEY)
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
-#export CFLAGS   += -Wall -Wextra -Werror
+export CFLAGS   += -Wall -Wextra -Werror
 export CFLAGS   += -Wlogical-op
 export CFLAGS   += -Wredundant-decls -Wvla
 export ASMFLAGS  = -Wa,--warn
