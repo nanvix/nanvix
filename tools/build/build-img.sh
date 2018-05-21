@@ -112,7 +112,9 @@ function copy_files
 	
 	for file in bin/sbin/*; do
 		filename=`basename $file`
-		$QEMU_VIRT bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
+		if [[ "$filename" != *.sym ]]; then
+			$QEMU_VIRT bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
+		fi;
 	done
 	
 	for file in bin/ubin/*; do
@@ -121,14 +123,25 @@ function copy_files
 	done
 }
 
+#
+# Strip a binary from it's debug symbols and
+# add a GNU debug link to the original binary
+# $1 The binary to strip
+#
+function strip_binary
+{
+	if [[ "$1" != *.sym ]]; then
+		# Get debug symbols from kernel
+		$OBJCOPY --only-keep-debug $1 $1.sym
+		# Remove debug symbols
+		$STRIP --strip-debug --strip-unneeded $1
+	fi;
+}
+
 # Build live nanvix image.
 if [ "$1" = "--build-iso" ];
 then
-	# Get debug symbols from kernel
-	$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
-
-	# Remove debug symbols from kernel
-	$STRIP --strip-debug bin/kernel
+	strip_binary bin/kernel
 
 	mkdir -p nanvix-iso/boot/grub
 	cp bin/kernel nanvix-iso/kernel
@@ -140,11 +153,7 @@ then
 		-input-charset utf-8 -boot-info-table -o nanvix.iso nanvix-iso
 elif [ "$1" = "--build-floppy" ];
 then
-	# Get debug symbols from kernel
-	$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
-
-	# Remove debug symbols from kernel
-	$STRIP --strip-debug bin/kernel
+	strip_binary bin/kernel
 
 	cp -f tools/img/blank.img nanvix.img
 	insert nanvix.img
@@ -153,6 +162,18 @@ then
 	cp tools/img/menu.lst /mnt/boot/menu.lst
 	eject
 else
+	for file in bin/sbin/*; do
+		if [[ "$file" != *.sym ]]; then
+			strip_binary $file
+		fi;
+	done
+
+	for file in bin/ubin/*; do
+		if [[ "$file" != *.sym ]]; then
+			strip_binary $file
+		fi;
+	done
+
 	# Build HDD image.
 	dd if=/dev/zero of=hdd.img bs=1024 count=65536
 	format hdd.img 1024 32768
