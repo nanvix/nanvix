@@ -76,11 +76,11 @@ function passwords
 #
 # Formats a disk.
 #   $1 Disk image name.
-#   $2 File system size (in blocks).
-#   $3 Number of inodes.
+#   $2 Number of inodes.
+#   $3 File system size (in blocks).
 #
 function format {
-	$QEMU_VIRT bin/mkfs.minix $1 $3 $2 $ROOTUID $ROOTGID
+	$QEMU_VIRT bin/mkfs.minix $1 $2 $3 $ROOTUID $ROOTGID
 	$QEMU_VIRT bin/mkdir.minix $1 /etc $ROOTUID $ROOTGID
 	$QEMU_VIRT bin/mkdir.minix $1 /sbin $ROOTUID $ROOTGID
 	$QEMU_VIRT bin/mkdir.minix $1 /bin $ROOTUID $ROOTGID
@@ -181,7 +181,7 @@ else
 
 	# Build initrd image.
 	dd if=/dev/zero of=initrd.img bs=1024 count=3000
-	format initrd.img 3000 512
+	format initrd.img 512 3000
 	copy_files initrd.img
 	initrdsize=`stat -c %s initrd.img`
 	maxsize=`grep "INITRD_SIZE" include/nanvix/config.h | cut -d" " -f 13`
