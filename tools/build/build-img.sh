@@ -119,7 +119,9 @@ function copy_files
 	
 	for file in bin/ubin/*; do
 		filename=`basename $file`
-		$QEMU_VIRT bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
+		if [[ "$filename" != *.sym ]]; then
+			$QEMU_VIRT bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
+		fi;
 	done
 }
 
