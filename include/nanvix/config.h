@@ -42,7 +42,7 @@
 	#define PROC_MAX                    64 /**< Maximum number of process.         */
 	#define PROC_SIZE_MAX  (MEMORY_SIZE/8) /**< Maximum process size.              */
 	#define RAMDISK_SIZE          0x400000 /**< RAM disks size.                    */
-	#define INITRD_SIZE           0x300000 /**< Init RAM disk size.                */
+	#define INITRD_SIZE           0x200000 /**< Init RAM disk size.                */
 	#define NR_INODES                 1024 /**< Number of in-core inodes.          */
 	#define NR_SUPERBLOCKS               4 /**< Number of in-core super blocks.    */
 	#define ROOT_DEV                0x0001 /**< Root device number.                */
@@ -53,4 +53,7 @@
 	#define DEBUG_MAX                   64 /**< Maximum number of debug functions. */
 	/**@}*/
 	
+	#if INITRD_SIZE > 0x400000
+		#error "INITRD_SIZE should not exceed 0x400000"
+	#endif
 #endif /* CONFIG_H_ */

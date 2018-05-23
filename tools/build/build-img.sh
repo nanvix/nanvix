@@ -182,8 +182,8 @@ else
 	copy_files hdd.img
 
 	# Build initrd image.
-	dd if=/dev/zero of=initrd.img bs=1024 count=3000
-	format initrd.img 512 3000
+	dd if=/dev/zero of=initrd.img bs=1024 count=2048
+	format initrd.img 512 2048
 	copy_files initrd.img
 	initrdsize=`stat -c %s initrd.img`
 	maxsize=`grep "INITRD_SIZE" include/nanvix/config.h | cut -d" " -f 13`
