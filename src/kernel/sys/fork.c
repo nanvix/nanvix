@@ -34,7 +34,7 @@ PUBLIC pid_t sys_fork(void)
 	int i;                /* Loop index.     */
 	int err;              /* Error?          */
 	struct process *proc; /* Process.        */
-	struct thread *t;     /* Thread.         */
+	struct thread *thrd;  /* Thread.         */
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
 
@@ -154,12 +154,12 @@ found:
 	proc->chain = NULL;
 
 	/* Search for a free thread */
-	for (t = FIRST_THRD; t <= LAST_THRD; t++)
+	for (thrd = FIRST_THRD; thrd <= LAST_THRD; t++)
 	{
 		/* Found. */
-		if (t->state == THRD_DEAD) {
-			t->state = THRD_USED;
-			proc->threads = t;
+		if (thrd->state == THRD_DEAD) {
+			thrd->state = THRD_USED;
+			proc->threads = thrd;
 			goto found_thr;
 		}
 	}

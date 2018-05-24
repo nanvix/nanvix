@@ -36,8 +36,8 @@
 	 * @name Thread states
 	 */
 	/**@{*/
-	#define THRD_DEAD     0 /**< Dead.                      */
-	#define THRD_USED  	  1 /**< Used.                   	*/
+	#define THRD_DEAD		0 /**< Dead.	*/
+	#define THRD_USED		1 /**< Used.	*/
 	/**@}*/
 
 	/**
