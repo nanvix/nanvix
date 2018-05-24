@@ -76,8 +76,8 @@ function passwords
 #
 # Formats a disk.
 #   $1 Disk image name.
-#   $2 File system size (in blocks).
-#   $3 Number of inodes.
+#   $2 Number of inodes.
+#   $3 File system size (in blocks).
 #
 function format {
 	$QEMU_VIRT bin/mkfs.minix $1 $2 $3 $ROOTUID $ROOTGID
@@ -112,23 +112,38 @@ function copy_files
 	
 	for file in bin/sbin/*; do
 		filename=`basename $file`
-		$QEMU_VIRT bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
+		if [[ "$filename" != *.sym ]]; then
+			$QEMU_VIRT bin/cp.minix $1 $file /sbin/$filename $ROOTUID $ROOTGID
+		fi;
 	done
 	
 	for file in bin/ubin/*; do
 		filename=`basename $file`
-		$QEMU_VIRT bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
+		if [[ "$filename" != *.sym ]]; then
+			$QEMU_VIRT bin/cp.minix $1 $file /bin/$filename $ROOTUID $ROOTGID
+		fi;
 	done
+}
+
+#
+# Strip a binary from it's debug symbols and
+# add a GNU debug link to the original binary
+# $1 The binary to strip
+#
+function strip_binary
+{
+	if [[ "$1" != *.sym ]]; then
+		# Get debug symbols from kernel
+		$OBJCOPY --only-keep-debug $1 $1.sym
+		# Remove debug symbols
+		$STRIP --strip-debug --strip-unneeded $1
+	fi;
 }
 
 # Build live nanvix image.
 if [ "$1" = "--build-iso" ];
 then
-	# Get debug symbols from kernel
-	$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
-
-	# Remove debug symbols from kernel
-	$STRIP --strip-debug bin/kernel
+	strip_binary bin/kernel
 
 	mkdir -p nanvix-iso/boot/grub
 	cp bin/kernel nanvix-iso/kernel
@@ -140,11 +155,7 @@ then
 		-input-charset utf-8 -boot-info-table -o nanvix.iso nanvix-iso
 elif [ "$1" = "--build-floppy" ];
 then
-	# Get debug symbols from kernel
-	$OBJCOPY --only-keep-debug bin/kernel bin/kernel.sym
-
-	# Remove debug symbols from kernel
-	$STRIP --strip-debug bin/kernel
+	strip_binary bin/kernel
 
 	cp -f tools/img/blank.img nanvix.img
 	insert nanvix.img
@@ -153,14 +164,26 @@ then
 	cp tools/img/menu.lst /mnt/boot/menu.lst
 	eject
 else
+	for file in bin/sbin/*; do
+		if [[ "$file" != *.sym ]]; then
+			strip_binary $file
+		fi;
+	done
+
+	for file in bin/ubin/*; do
+		if [[ "$file" != *.sym ]]; then
+			strip_binary $file
+		fi;
+	done
+
 	# Build HDD image.
 	dd if=/dev/zero of=hdd.img bs=1024 count=65536
 	format hdd.img 1024 32768
 	copy_files hdd.img
 
 	# Build initrd image.
-	dd if=/dev/zero of=initrd.img bs=1024 count=1152
-	format initrd.img 1152 512
+	dd if=/dev/zero of=initrd.img bs=1024 count=2048
+	format initrd.img 512 2048
 	copy_files initrd.img
 	initrdsize=`stat -c %s initrd.img`
 	maxsize=`grep "INITRD_SIZE" include/nanvix/config.h | cut -d" " -f 13`
