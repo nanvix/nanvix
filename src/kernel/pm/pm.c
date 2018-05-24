@@ -26,6 +26,7 @@
 #include <nanvix/hal.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/thread.h>
 #include <nanvix/klib.h>
 #include <sys/stat.h>
 #include <signal.h>
@@ -85,7 +86,12 @@ PUBLIC struct inode *semdirectory;
 PUBLIC void pm_init(void)
 {	
 	struct process *p;
-	
+	struct thread *t;
+
+	/* Initialize the thread table. */
+	for (t = FIRST_THRD; t <= LAST_THRD; t++)
+		t->state = THRD_DEAD;
+
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		p->flags = 0, p->state = PROC_DEAD;
@@ -135,7 +141,20 @@ PUBLIC void pm_init(void)
 	IDLE->alarm = 0;
 	IDLE->next = NULL;
 	IDLE->chain = NULL;
-	
+
+	/* Search for a free thread */
+	for (t = FIRST_THRD; t <= LAST_THRD; t++)
+	{
+		/* Found. */
+		if (t->state == THRD_DEAD) {
+			t->state = THRD_USED;
+			IDLE->threads = t;
+			goto found_thr;
+		}
+	}
+
+found_thr:
+
 	nprocs++;
 
 	/* Initializing semaphore table */

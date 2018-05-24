@@ -32,6 +32,7 @@
 	#include <nanvix/fs.h>
 	#include <nanvix/hal.h>
 	#include <nanvix/region.h>
+	#include <nanvix/thread.h>
  	#include <i386/fpu.h>
 	#include <i386/pmc.h>
 	#include <sys/types.h>
@@ -206,6 +207,13 @@
     	unsigned alarm;          /**< Alarm.                  */
 		struct process *next;    /**< Next process in a list. */
 		struct process **chain;  /**< Sleeping chain.         */
+		/**@}*/
+
+		/**
+		 * @name Threads information
+		 */
+		/**@{*/
+		struct thread *threads; /**< Process threads. */
 		/**@}*/
 	};
 	

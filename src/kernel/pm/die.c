@@ -107,6 +107,10 @@ PUBLIC void die(int status)
 	curr_proc->state = PROC_ZOMBIE;
 	curr_proc->alarm = 0;
 
+	/* Release associated working thread */
+	curr_proc->threads->state = THRD_DEAD;
+
+
 	/* Resets the counter if any. */
 	if (curr_proc->pmcs.enable_counters != 0)
 		pmc_init();

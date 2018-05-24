@@ -34,6 +34,7 @@ PUBLIC pid_t sys_fork(void)
 	int i;                /* Loop index.     */
 	int err;              /* Error?          */
 	struct process *proc; /* Process.        */
+	struct thread *t;     /* Thread.         */
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
 
@@ -54,7 +55,7 @@ PUBLIC pid_t sys_fork(void)
 	}
 
 	kprintf("process table overflow");
-	
+
 	return (-EAGAIN);
 
 found:
@@ -151,6 +152,23 @@ found:
 	proc->alarm = 0;
 	proc->next = NULL;
 	proc->chain = NULL;
+
+	/* Search for a free thread */
+	for (t = FIRST_THRD; t <= LAST_THRD; t++)
+	{
+		/* Found. */
+		if (t->state == THRD_DEAD) {
+			t->state = THRD_USED;
+			proc->threads = t;
+			goto found_thr;
+		}
+	}
+
+	kprintf("thread table overflow");
+	return (-EAGAIN);
+
+found_thr:
+
 	sched(proc);
 
 	curr_proc->nchildren++;
