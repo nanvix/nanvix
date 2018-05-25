@@ -115,11 +115,10 @@
 	#define PROC_INTLVL    8 /**< Interrupt level offset.        */
 	#define PROC_FLAGS    12 /**< Process flags.                 */
 	#define PROC_RECEIVED 16 /**< Received signals offset.       */
-	#define PROC_KSTACK   20 /**< Kernel stack pointer offset.   */
-	#define PROC_RESTORER 24 /**< Signal restorer.               */
-	#define PROC_HANDLERS 28 /**< Signal handlers offset.        */
-	#define PROC_IRQLVL 120  /**< IRQ Level offset.              */
-	#define PROC_FSS    124  /**< FPU Saved Status offset.       */
+	#define PROC_RESTORER 20 /**< Signal restorer.               */
+	#define PROC_HANDLERS 24 /**< Signal handlers offset.        */
+	#define PROC_IRQLVL 116  /**< IRQ Level offset.              */
+	#define PROC_FSS    120  /**< FPU Saved Status offset.       */
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -138,13 +137,13 @@
 		dword_t intlvl;                    /**< Interrupt level.        */
 		unsigned flags;                    /**< Process flags.          */
     	unsigned received;                 /**< Received signals.       */
-    	void *kstack;                      /**< Kernel stack pointer.   */
     	void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		unsigned irqlvl;                   /**< Current IRQ level.      */
     	struct fpu fss;                    /**< FPU Saved Status.       */
     	struct pmc pmcs;                   /**< PMC status.             */
 		/**@}*/
+
 
     	/**
     	 * @name Memory information

@@ -97,13 +97,26 @@ PUBLIC void pm_init(void)
 		p->flags = 0, p->state = PROC_DEAD;
 	
 	kprintf("pm: handcrafting idle process");
+
+	/* Search for a free thread */
+	for (t = FIRST_THRD; t <= LAST_THRD; t++)
+	{
+		/* Found. */
+		if (t->state == THRD_DEAD) {
+			t->state = THRD_USED;
+			IDLE->threads = t;
+			goto found_thr;
+		}
+	}
+
+found_thr:
 		
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;
 	IDLE->intlvl = 1;
 	IDLE->flags = 0;
 	IDLE->received = 0;
-	IDLE->kstack = idle_kstack;
+	IDLE->threads->kstack = idle_kstack;
 	IDLE->restorer = NULL;
 	for (int i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
@@ -142,18 +155,6 @@ PUBLIC void pm_init(void)
 	IDLE->next = NULL;
 	IDLE->chain = NULL;
 
-	/* Search for a free thread */
-	for (t = FIRST_THRD; t <= LAST_THRD; t++)
-	{
-		/* Found. */
-		if (t->state == THRD_DEAD) {
-			t->state = THRD_USED;
-			IDLE->threads = t;
-			goto found_thr;
-		}
-	}
-
-found_thr:
 
 	nprocs++;
 

@@ -314,10 +314,10 @@ PUBLIC int crtpgdir(struct process *proc)
 	pgdir[PGTAB(SERIAL_VIRT)] = curr_proc->pgdir[PGTAB(SERIAL_VIRT)];
 	
 	/* Clone kernel stack. */
-	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
+	kmemcpy(kstack, curr_proc->threads->kstack, KSTACK_SIZE);
 	
 	/* Adjust stack pointers. */
-	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
+	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->threads->kstack)+(dword_t)kstack;
 	s1 = (struct intstack *) proc->kesp;
 	s1->old_kesp = proc->kesp;
 	
@@ -326,15 +326,15 @@ PUBLIC int crtpgdir(struct process *proc)
 		s1 = (struct intstack *) curr_proc->kesp;
 		s2 = (struct intstack *) proc->kesp;
 #ifdef i386		
-		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+		s2->ebp = (s1->ebp - (dword_t)curr_proc->threads->kstack) + (dword_t)kstack;
 #elif or1k
-		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_proc->threads->kstack) + (dword_t)kstack;
 #endif
 	}
 	/* Assign page directory. */
 	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
 	proc->pgdir = pgdir;
-	proc->kstack = kstack;
+	proc->threads->kstack = kstack;
 	
 	return (0);
 
@@ -588,7 +588,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
  */
 PUBLIC void dstrypgdir(struct process *proc)
 {
-	putkpg(proc->kstack);
+	putkpg(proc->threads->kstack);
 	putkpg(proc->pgdir);
 }
 

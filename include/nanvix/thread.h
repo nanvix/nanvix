@@ -30,7 +30,8 @@
 
 	#include <nanvix/pm.h>
 
-#ifndef _ASM_FILE_
+	#define THRD_KESP   	0 /**< Kernel stack pointer offset.   */
+	#define THRD_KSTACK   	4 /**< Kernel stack pointer offset.   */
 
 	/**
 	 * @name Thread states
@@ -48,6 +49,8 @@
 	#define LAST_THRD ((&threadtab[THRD_MAX - 1])) 	/**< Last process.  */
 	/**@}*/
 
+#ifndef _ASM_FILE_
+
 	/**
 	 * @brief Thread.
 	 */
@@ -57,7 +60,8 @@
 		 * @name Hard-coded Fields
 		 */
 		/**@{*/
-		dword_t kesp;			   /**< Kernel stack pointer.   */
+		dword_t kesp;		/**< Kernel stack pointer.   */
+		void *kstack;		/**< Kernel stack pointer.   */
 		/**@}*/
 
 		/**

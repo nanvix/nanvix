@@ -60,6 +60,22 @@ PUBLIC pid_t sys_fork(void)
 
 found:
 	
+	/* Search for a free thread */
+	for (thrd = FIRST_THRD; thrd <= LAST_THRD; thrd++)
+	{
+		/* Found. */
+		if (thrd->state == THRD_DEAD) {
+			thrd->state = THRD_USED;
+			proc->threads = thrd;
+			goto found_thr;
+		}
+	}
+
+	kprintf("thread table overflow");
+	return (-EAGAIN);
+
+found_thr:
+
 	/* Mark process as beeing created. */
 	proc->flags = 1 << PROC_NEW;
 
@@ -153,21 +169,7 @@ found:
 	proc->next = NULL;
 	proc->chain = NULL;
 
-	/* Search for a free thread */
-	for (thrd = FIRST_THRD; thrd <= LAST_THRD; t++)
-	{
-		/* Found. */
-		if (thrd->state == THRD_DEAD) {
-			thrd->state = THRD_USED;
-			proc->threads = thrd;
-			goto found_thr;
-		}
-	}
-
-	kprintf("thread table overflow");
-	return (-EAGAIN);
-
-found_thr:
+	
 
 	sched(proc);
 
