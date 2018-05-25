@@ -132,22 +132,22 @@
 		 * @name Hard-coded Fields
 		 */
 		/**@{*/
-    	dword_t kesp;                      /**< Kernel stack pointer.   */
-    	dword_t cr3;                       /**< Page directory pointer. */
+		dword_t kesp;                      /**< Kernel stack pointer.   */
+		dword_t cr3;                       /**< Page directory pointer. */
 		dword_t intlvl;                    /**< Interrupt level.        */
 		unsigned flags;                    /**< Process flags.          */
-    	unsigned received;                 /**< Received signals.       */
-    	void (*restorer)(void);            /**< Signal restorer.        */
+		unsigned received;                 /**< Received signals.       */
+		void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		unsigned irqlvl;                   /**< Current IRQ level.      */
-    	struct fpu fss;                    /**< FPU Saved Status.       */
-    	struct pmc pmcs;                   /**< PMC status.             */
+		struct fpu fss;                    /**< FPU Saved Status.       */
+		struct pmc pmcs;                   /**< PMC status.             */
 		/**@}*/
 
 
-    	/**
-    	 * @name Memory information
-    	 */
+		/**
+		 * @name Memory information
+		 */
 		/**@{*/
 		struct pde *pgdir;                 /**< Page directory.         */
 		struct pregion pregs[NR_PREGIONS]; /**< Process memory regions. */
@@ -165,7 +165,7 @@
 		mode_t umask;                  /**< User file's creation mask. */
 		dev_t tty;                     /**< Associated tty device.     */
 		/**@}*/
-		
+
 		/**
 		 * @name General information
 		 */
@@ -179,31 +179,31 @@
 		gid_t gid;              /**< Group ID.                */
 		gid_t egid;             /**< Effective group user ID. */
 		gid_t sgid;             /**< Saved set-group-ID.      */
-    	pid_t pid;              /**< Process ID.              */
-    	struct process *pgrp;   /**< Process group ID.        */
-    	struct process *father; /**< Father process.          */
+		pid_t pid;              /**< Process ID.              */
+		struct process *pgrp;   /**< Process group ID.        */
+		struct process *father; /**< Father process.          */
 		char name[NAME_MAX];    /**< Process name.            */
 		/**@}*/
 
-    	/**
-    	 * @name Timing information
-    	 */
+		/**
+		 * @name Timing information
+		 */
 		/**@{*/
-    	unsigned utime;  /**< User CPU time.                          */
-    	unsigned ktime;  /**< Kernel CPU time.                        */
+		unsigned utime;  /**< User CPU time.                          */
+		unsigned ktime;  /**< Kernel CPU time.                        */
 		unsigned cutime; /**< User CPU time of terminated children.   */
 		unsigned cktime; /**< Kernel CPU time of terminated children. */
 		/**@}*/
 
-    	/**
-    	 * @name Scheduling information
-    	 */
+		/**
+		 * @name Scheduling information
+		 */
 		/**@{*/
-    	unsigned state;          /**< Current state.          */
-    	int counter;             /**< Remaining quantum.      */
-    	int priority;            /**< Process priorities.     */
-    	int nice;                /**< Nice for scheduling.    */
-    	unsigned alarm;          /**< Alarm.                  */
+		unsigned state;          /**< Current state.          */
+		int counter;             /**< Remaining quantum.      */
+		int priority;            /**< Process priorities.     */
+		int nice;                /**< Nice for scheduling.    */
+		unsigned alarm;          /**< Alarm.                  */
 		struct process *next;    /**< Next process in a list. */
 		struct process **chain;  /**< Sleeping chain.         */
 		/**@}*/
