@@ -158,5 +158,5 @@ PUBLIC void yield(void)
 		}
 	}
 	
-	switch_to(next);
+	switch_to(next, next->threads);
 }

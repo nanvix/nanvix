@@ -98,18 +98,8 @@ PUBLIC void pm_init(void)
 	
 	kprintf("pm: handcrafting idle process");
 
-	/* Search for a free thread */
-	for (t = FIRST_THRD; t <= LAST_THRD; t++)
-	{
-		/* Found. */
-		if (t->state == THRD_DEAD) {
-			t->state = THRD_USED;
-			IDLE->threads = t;
-			goto found_thr;
-		}
-	}
-
-found_thr:
+	IDLE->threads = THRD_IDLE;
+	IDLE->threads->state = THRD_USED;
 		
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;

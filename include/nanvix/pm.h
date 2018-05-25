@@ -110,15 +110,15 @@
 	 * @name Offsets to hard-coded fields of a process
 	 */
 	/**@{*/
-	#define PROC_KESP      0 /**< Kernel stack pointer offset.   */
+	#define PROC_KESP      0 /**< Kernel stack pointer offset.   TODO : REMOVE */ 
 	#define PROC_CR3       4 /**< Page directory pointer offset. */
 	#define PROC_INTLVL    8 /**< Interrupt level offset.        */
 	#define PROC_FLAGS    12 /**< Process flags.                 */
 	#define PROC_RECEIVED 16 /**< Received signals offset.       */
 	#define PROC_RESTORER 20 /**< Signal restorer.               */
 	#define PROC_HANDLERS 24 /**< Signal handlers offset.        */
-	#define PROC_IRQLVL 116  /**< IRQ Level offset.              */
-	#define PROC_FSS    120  /**< FPU Saved Status offset.       */
+	#define PROC_IRQLVL  116 /**< IRQ Level offset.              */
+	#define PROC_FSS     120 /**< FPU Saved Status offset.       */
 	/**@}*/
 
 #ifndef _ASM_FILE_

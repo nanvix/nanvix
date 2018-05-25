@@ -26,3 +26,8 @@
  * @brief Thread table.
  */
 PUBLIC struct thread threadtab[THRD_MAX];
+
+/**
+ * @brief Current running thread. 
+ */
+PUBLIC struct thread *curr_thread = THRD_IDLE;

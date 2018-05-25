@@ -30,25 +30,34 @@
 
 	#include <nanvix/pm.h>
 
-	#define THRD_KESP   	0 /**< Kernel stack pointer offset.   */
-	#define THRD_KSTACK   	4 /**< Kernel stack pointer offset.   */
+	#define THRD_KESP       0 /**< Kernel stack pointer offset.   */
+	#define THRD_KSTACK     4 /**< Kernel stack pointer offset.   */
 
 	/**
 	 * @name Thread states
 	 */
 	/**@{*/
-	#define THRD_DEAD		0 /**< Dead.	*/
-	#define THRD_USED		1 /**< Used.	*/
+	#define THRD_DEAD       0 /**< Dead.	*/
+	#define THRD_USED       1 /**< Used.	*/
 	/**@}*/
+
+	/**
+	* @name Important system processes 
+	*/
+	/**@{*/
+#define THRD_IDLE (&threadtab[0]) /**< idle process. */
+	/**@}*/
+
 
 	/**
 	 * @name Thread table boundaries
 	 */
 	/**@{*/
-	#define FIRST_THRD ((&threadtab[0]))           	/**< First process. */
+	#define FIRST_THRD ((&threadtab[0]))            /**< First process. */
 	#define LAST_THRD ((&threadtab[THRD_MAX - 1])) 	/**< Last process.  */
 	/**@}*/
 
+	
 #ifndef _ASM_FILE_
 
 	/**
@@ -60,7 +69,7 @@
 		 * @name Hard-coded Fields
 		 */
 		/**@{*/
-		dword_t kesp;		/**< Kernel stack pointer.   */
+		dword_t kesp2;		/**< Kernel stack pointer.   */
 		void *kstack;		/**< Kernel stack pointer.   */
 		/**@}*/
 
@@ -75,6 +84,7 @@
 
 	/* Forward definitions. */
 	EXTERN struct thread threadtab[THRD_MAX];
+	EXTERN struct thread *curr_thread;
 
 #endif /* _ASM_FILE */
 
