@@ -589,7 +589,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
 		{
 			/* Create request. */
 			req->flags = flags;
-			req->u.raw.num = va_arg(args, block_t);
+			req->u.raw.num = (block_t)va_arg(args, int);
 			req->u.raw.buf = va_arg(args, unsigned char *);
 			req->u.raw.size = va_arg(args, size_t);
 		}
