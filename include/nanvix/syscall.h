@@ -292,7 +292,7 @@
 	EXTERN int sys_mkfs(const char *, const char *, int);
 
 	/* Creates or opens a semaphore */
-	EXTERN int sys_semopen(const char* name, int oflag, ...);
+	EXTERN int sys_semopen(const char* name, int oflag, mode_t mode, int value);
 
 	/* Closes a semaphore */
 	EXTERN int sys_semclose(int idx);
