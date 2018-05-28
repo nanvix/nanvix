@@ -21,7 +21,7 @@
 # Toolchain configuration.
 export CFLAGS  += -Os -D_POSIX_C_SOURCE
 export LDFLAGS += -Wl,-e,_start
-export LIBS = $(LIBDIR)/libc.a -lgcc $(LIBDIR)/libm.a
+export LIBS = $(LIBDIR)/libc.a -lgcc
 
 # Conflicts.
 .PHONY: cat

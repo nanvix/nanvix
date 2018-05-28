@@ -22,7 +22,7 @@
 # Toolchain configuration.
 export CFLAGS  += -Os
 export LDFLAGS += -Wl,-e,_start
-export LIBS = $(LIBDIR)/libc.a -lgcc $(LIBDIR)/libm.a
+export LIBS = $(LIBDIR)/libc.a -lgcc
 
 # Resolves conflicts
 .PHONY: foobar
