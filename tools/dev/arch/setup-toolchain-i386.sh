@@ -60,7 +60,7 @@ git clean -f -d
 # Build GDB.
 cd $WORKDIR
 cd gdb*/
-./configure --target=$TARGET --prefix=$PREFIX --with-auto-load-safe-path=/
+./configure --target=$TARGET --prefix=$PREFIX --with-auto-load-safe-path=/ --with-guile=no
 make -j$num_cores
 make install
 git checkout .

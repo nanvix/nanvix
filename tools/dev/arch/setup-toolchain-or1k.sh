@@ -36,7 +36,7 @@ fi
 
 # Build binutils and GDB.
 cd binutils*/
-./configure --target=$TARGET --prefix=$PREFIX --disable-nls --disable-sim --with-auto-load-safe-path=/ --enable-tui
+./configure --target=$TARGET --prefix=$PREFIX --disable-nls --disable-sim --with-auto-load-safe-path=/ --enable-tui --with-guile=no
 make -j$num_cores all
 make install
 git checkout .
