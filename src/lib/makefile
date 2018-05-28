@@ -29,7 +29,7 @@ export CFLAGS += -Wno-error=parentheses
 .PHONY: libm
 
 # Builds everything.
-all: libc
+all: libc libm
 
 # Builds C library.
 libc:
