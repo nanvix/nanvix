@@ -109,11 +109,11 @@
 
 	/* User mode. */
 1:
-	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	LOAD_SYMBOL_2_GPR(r3, curr_thread)
 	l.sub r3, r3, r5
 	l.lwz r3, 0(r3)
 	l.sub r3, r3, r5
-	l.lwz r1, PROC_KESP(r3)
+	l.lwz r1, THRD_KESP(r3)
 
 	/* Kernel mode. */
 2:
@@ -349,12 +349,14 @@ enter:
 	l.sw   PROC_INTLVL(r3), r7
     
 	/* Save interrupt stack. */
-	l.lwz r7,   PROC_KESP(r3)
+	LOAD_SYMBOL_2_GPR(r3, curr_thread)
+	l.lwz r3, 0(r3)
+	l.lwz r7,   THRD_KESP(r3)
 	l.sw 0(r1), r7
 
 	l.or  r6, r0, r1
 	l.add r6, r5, r6
-	l.sw PROC_KESP(r3), r6
+	l.sw THRD_KESP(r3), r6
 
 	l.jr r9
 	l.nop
@@ -367,12 +369,15 @@ enter:
  * Leaves kernel.
  */
 leave:
-	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	LOAD_SYMBOL_2_GPR(r3, curr_thread)
 	l.lwz r3, 0(r3)
 
 	/* Restore interrupt stack. */
 	l.lwz  r4, 0(r1)
-	l.sw PROC_KESP(r3), r4
+	l.sw THRD_KESP(r3), r4
+
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	l.lwz r3, 0(r3)
 
 	/* Decrement interrupt level. */
 	l.lwz   r4, PROC_INTLVL(r3)

@@ -216,9 +216,9 @@ switch_to:
 	l.or r9, r31, r0
 
 	/* Save process context. */
-	LOAD_SYMBOL_2_GPR(r13, curr_proc)
+	LOAD_SYMBOL_2_GPR(r13, curr_thread)
 	l.lwz r13, 0(r13)
-	l.lwz r15, PROC_KESP(r13)
+	l.lwz r15, THRD_KESP(r13)
 
 	/* Preserve registers state. */
 	l.addi r1, r1, -60
@@ -237,16 +237,24 @@ switch_to:
 	l.sw 48(r1), r26
 	l.sw 52(r1), r28
 	l.sw 56(r1), r30
-	l.sw PROC_KESP(r13), r1
+	l.sw THRD_KESP(r13), r1
+
 
 	/* Switch processes. */
 	LOAD_SYMBOL_2_GPR(r13, curr_proc)
 	l.sw 0(r13), r3
 
+	/* Switch thread */
+	LOAD_SYMBOL_2_GPR(r14, curr_thread)
+	l.sw 0(r14), r4
+
+
 	/* Load process context. */
-	l.lwz r1, PROC_KESP(r3)
+	l.lwz r1, THRD_KESP(r4)
 	l.jal tlb_flush
 	l.nop
+
+
 
 	/* New process?. */
 	l.lwz  r15, PROC_FLAGS(r3)
@@ -281,7 +289,8 @@ switch_to:
 	l.mtspr r0, r29, SPR_SR
 
 	l.addi r1, r1, 60
-	l.sw PROC_KESP(r3), r15
+
+	l.sw THRD_KESP(r4), r15
 
 	/* Processor reload. */
 	l.addi r1, r1, -4

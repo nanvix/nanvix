@@ -317,14 +317,14 @@ PUBLIC int crtpgdir(struct process *proc)
 	kmemcpy(kstack, curr_proc->threads->kstack, KSTACK_SIZE);
 	
 	/* Adjust stack pointers. */
-	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->threads->kstack)+(dword_t)kstack;
-	s1 = (struct intstack *) proc->kesp;
-	s1->old_kesp = proc->kesp;
+	proc->threads->kesp = (curr_proc->threads->kesp -(dword_t)curr_proc->threads->kstack)+(dword_t)kstack;
+	s1 = (struct intstack *) proc->threads->kesp;
+	s1->old_kesp = proc->threads->kesp;
 	
 	if (curr_proc == IDLE)
 	{
-		s1 = (struct intstack *) curr_proc->kesp;
-		s2 = (struct intstack *) proc->kesp;
+		s1 = (struct intstack *) curr_proc->threads->kesp;
+		s2 = (struct intstack *) proc->threads->kesp;
 #ifdef i386		
 		s2->ebp = (s1->ebp - (dword_t)curr_proc->threads->kstack) + (dword_t)kstack;
 #elif or1k

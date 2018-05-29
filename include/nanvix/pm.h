@@ -110,15 +110,14 @@
 	 * @name Offsets to hard-coded fields of a process
 	 */
 	/**@{*/
-	#define PROC_KESP      0 /**< Kernel stack pointer offset.   TODO : REMOVE */ 
-	#define PROC_CR3       4 /**< Page directory pointer offset. */
-	#define PROC_INTLVL    8 /**< Interrupt level offset.        */
-	#define PROC_FLAGS    12 /**< Process flags.                 */
-	#define PROC_RECEIVED 16 /**< Received signals offset.       */
-	#define PROC_RESTORER 20 /**< Signal restorer.               */
-	#define PROC_HANDLERS 24 /**< Signal handlers offset.        */
-	#define PROC_IRQLVL  116 /**< IRQ Level offset.              */
-	#define PROC_FSS     120 /**< FPU Saved Status offset.       */
+	#define PROC_CR3       0 /**< Page directory pointer offset. */
+	#define PROC_INTLVL    4 /**< Interrupt level offset.        */
+	#define PROC_FLAGS     8 /**< Process flags.                 */
+	#define PROC_RECEIVED 12 /**< Received signals offset.       */
+	#define PROC_RESTORER 16 /**< Signal restorer.               */
+	#define PROC_HANDLERS 20 /**< Signal handlers offset.        */
+	#define PROC_IRQLVL  112 /**< IRQ Level offset.              */
+	#define PROC_FSS     116 /**< FPU Saved Status offset.       */
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -132,7 +131,6 @@
 		 * @name Hard-coded Fields
 		 */
 		/**@{*/
-		dword_t kesp;                      /**< Kernel stack pointer.   */
 		dword_t cr3;                       /**< Page directory pointer. */
 		dword_t intlvl;                    /**< Interrupt level.        */
 		unsigned flags;                    /**< Process flags.          */

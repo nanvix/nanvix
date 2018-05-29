@@ -45,7 +45,7 @@
 	* @name Important system processes 
 	*/
 	/**@{*/
-#define THRD_IDLE (&threadtab[0]) /**< idle process. */
+	#define THRD_IDLE (&threadtab[0]) /**< idle process. */
 	/**@}*/
 
 
@@ -69,7 +69,7 @@
 		 * @name Hard-coded Fields
 		 */
 		/**@{*/
-		dword_t kesp2;		/**< Kernel stack pointer.   */
+		dword_t kesp;		/**< Kernel stack pointer.   */
 		void *kstack;		/**< Kernel stack pointer.   */
 		/**@}*/
 

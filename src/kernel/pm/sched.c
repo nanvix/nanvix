@@ -22,6 +22,8 @@
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <nanvix/pm.h>
+#include <nanvix/thread.h>
+#include <nanvix/klib.h>
 #include <signal.h>
 
 /**
@@ -66,6 +68,7 @@ PUBLIC void yield(void)
 {
 	struct process *p;    /* Working process.     */
 	struct process *next; /* Next process to run. */
+	struct thread *nextthread; /* Next process to run. */
 
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING)
@@ -157,6 +160,8 @@ PUBLIC void yield(void)
 			write_msr(IA32_PERFEVTSELx + 1, value);
 		}
 	}
-	
-	switch_to(next, next->threads);
+	nextthread = next->threads;
+	kprintf("before %d", curr_proc->pid);
+	switch_to(next, nextthread);
+	kprintf("after %d", curr_proc->pid);
 }
