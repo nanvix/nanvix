@@ -100,6 +100,7 @@ PUBLIC void pm_init(void)
 
 	IDLE->threads = THRD_IDLE;
 	IDLE->threads->state = THRD_USED;
+	kprintf("IDLE->threads %d", IDLE->threads);
 		
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;

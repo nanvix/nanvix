@@ -108,7 +108,7 @@ PUBLIC void die(int status)
 	curr_proc->alarm = 0;
 
 	/* Release associated working thread */
-	curr_proc->threads->state = THRD_DEAD;
+	curr_proc->threads->state = THRD_ZOMBIE;
 
 
 	/* Resets the counter if any. */
@@ -129,6 +129,7 @@ PUBLIC void bury(struct process *proc)
 {
 	dstrypgdir(proc);
 	proc->state = PROC_DEAD;
+	proc->threads->state = THRD_DEAD;
 	proc->father->nchildren--;
 	nprocs--;
 }
