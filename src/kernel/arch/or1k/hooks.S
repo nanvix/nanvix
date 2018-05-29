@@ -350,7 +350,9 @@ enter:
     
 	/* Save interrupt stack. */
 	LOAD_SYMBOL_2_GPR(r3, curr_thread)
+	l.sub r3, r3, r5
 	l.lwz r3, 0(r3)
+	l.sub r3, r3, r5
 	l.lwz r7,   THRD_KESP(r3)
 	l.sw 0(r1), r7
 
