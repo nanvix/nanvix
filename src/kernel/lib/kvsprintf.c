@@ -99,7 +99,7 @@ PUBLIC int kvsprintf(char *str, const char *fmt, va_list args)
             {
 				/* Character. */
                 case 'c':
-					*str++ = va_arg(args, char);
+					*str++ = (char)va_arg(args, int);
 					break;
 				
 				/* Number. */

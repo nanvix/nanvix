@@ -1,5 +1,4 @@
 #include <fcntl.h>
-#include <stdarg.h>
 #include <sys/sem.h>
 #include <nanvix/klib.h>
 #include <nanvix/fs.h>
@@ -37,11 +36,8 @@ int add_table(int value, const char* semname, int idx, struct inode* seminode)
 /* TODO for error detection :
  *			ENOSPC : There is insufficient space on a storage device for the creation of the new named semaphore.
  */
-PUBLIC int sys_semopen(const char* name, int oflag, ...)
+PUBLIC int sys_semopen(const char* name, int oflag, mode_t mode, int value)
 {
-	mode_t mode;
-	int value;
-	va_list arg;				/* Variable argument */
 	int i, freeslot, semid;
 	struct inode *inode;
 	freeslot = -1;
@@ -57,12 +53,6 @@ PUBLIC int sys_semopen(const char* name, int oflag, ...)
 			/* Both O_CREAT and O_EXCL flags set */
 			if (oflag & O_EXCL)
 				return (-EEXIST);
-			
-			/* Semaphore creation if it does not exist */
-			va_start(arg, oflag);
-			mode = va_arg(arg, mode_t);
-			value = va_arg(arg, int);
-			va_end(arg);
 
 			/* Value greater than maximum */
 			if (!SEM_VALID_VALUE(value))
