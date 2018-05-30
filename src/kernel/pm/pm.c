@@ -26,7 +26,6 @@
 #include <nanvix/hal.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
-#include <nanvix/thread.h>
 #include <nanvix/klib.h>
 #include <sys/stat.h>
 #include <signal.h>
@@ -86,11 +85,13 @@ PUBLIC struct inode *semdirectory;
 PUBLIC void pm_init(void)
 {	
 	struct process *p;
+#if or1k
 	struct thread *t;
 
 	/* Initialize the thread table. */
 	for (t = FIRST_THRD; t <= LAST_THRD; t++)
 		t->state = THRD_DEAD;
+#endif
 
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
@@ -98,21 +99,31 @@ PUBLIC void pm_init(void)
 	
 	kprintf("pm: handcrafting idle process");
 
+#if or1k
 	IDLE->threads = THRD_IDLE;
 	IDLE->threads->state = THRD_USED;
 	kprintf("IDLE->threads %d", IDLE->threads);
+#endif
 		
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;
 	IDLE->intlvl = 1;
 	IDLE->flags = 0;
 	IDLE->received = 0;
+#if or1k
 	IDLE->threads->kstack = idle_kstack;
+#elif i386
+	IDLE->kstack = idle_kstack;
+#endif
 	IDLE->restorer = NULL;
 	for (int i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
 	IDLE->irqlvl = INT_LVL_5;
+#if or1k
 	IDLE->threads->pmcs.enable_counters = 0;
+#elif i386
+	IDLE->pmcs.enable_counters = 0;
+#endif
 	IDLE->pgdir = idle_pgdir;
 	for (int i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;

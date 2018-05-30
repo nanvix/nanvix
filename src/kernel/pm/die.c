@@ -108,11 +108,17 @@ PUBLIC void die(int status)
 	curr_proc->alarm = 0;
 
 	/* Release associated working thread */
+#if or1k
 	curr_proc->threads->state = THRD_ZOMBIE;
+#endif
 
 
 	/* Resets the counter if any. */
+#if or1k
 	if (curr_proc->threads->pmcs.enable_counters != 0)
+#elif i386
+	if (curr_proc->pmcs.enable_counters != 0)
+#endif
 		pmc_init();
 	
 	sndsig(curr_proc->father, SIGCHLD);
@@ -129,7 +135,9 @@ PUBLIC void bury(struct process *proc)
 {
 	dstrypgdir(proc);
 	proc->state = PROC_DEAD;
+#if or1k
 	proc->threads->state = THRD_DEAD;
+#endif
 	proc->father->nchildren--;
 	nprocs--;
 }

@@ -32,7 +32,12 @@
 	#include <nanvix/fs.h>
 	#include <nanvix/hal.h>
 	#include <nanvix/region.h>
+#if or1k
 	#include <nanvix/thread.h>
+#elif i386
+	#include <i386/fpu.h>
+	#include <i386/pmc.h>
+#endif
 	#include <sys/types.h>
 	#include <limits.h>
 	#include <signal.h>
@@ -108,6 +113,7 @@
 	 * @name Offsets to hard-coded fields of a process
 	 */
 	/**@{*/
+#if or1k
 	#define PROC_CR3       0 /**< Page directory pointer offset. */
 	#define PROC_INTLVL    4 /**< Interrupt level offset.        */
 	#define PROC_FLAGS     8 /**< Process flags.                 */
@@ -115,6 +121,18 @@
 	#define PROC_RESTORER 16 /**< Signal restorer.               */
 	#define PROC_HANDLERS 20 /**< Signal handlers offset.        */
 	#define PROC_IRQLVL  112 /**< IRQ Level offset.              */
+#elif i386
+	#define PROC_KESP      0 /**< Kernel stack pointer offset.   */
+	#define PROC_CR3       4 /**< Page directory pointer offset. */
+	#define PROC_INTLVL    8 /**< Interrupt level offset.        */
+	#define PROC_FLAGS    12 /**< Process flags.                 */
+	#define PROC_RECEIVED 16 /**< Received signals offset.       */
+	#define PROC_KSTACK   20 /**< Kernel stack pointer offset.   */
+	#define PROC_RESTORER 24 /**< Signal restorer.               */
+	#define PROC_HANDLERS 28 /**< Signal handlers offset.        */
+	#define PROC_IRQLVL  120 /**< IRQ Level offset.              */
+	#define PROC_FSS     124 /**< FPU Saved Status offset.       */
+#endif
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -128,6 +146,7 @@
 		 * @name Hard-coded Fields
 		 */
 		/**@{*/
+#if or1k
 		dword_t cr3;                       /**< Page directory pointer. */
 		dword_t intlvl;                    /**< Interrupt level.        */
 		unsigned flags;                    /**< Process flags.          */
@@ -135,6 +154,19 @@
 		void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		unsigned irqlvl;                   /**< Current IRQ level.      */
+#elif i386
+		dword_t kesp;                      /**< Kernel stack pointer.   */
+		dword_t cr3;                       /**< Page directory pointer. */
+		dword_t intlvl;                    /**< Interrupt level.        */
+		unsigned flags;                    /**< Process flags.          */
+		unsigned received;                 /**< Received signals.       */
+		void *kstack;                      /**< Kernel stack pointer.   */
+		void (*restorer)(void);            /**< Signal restorer.        */
+		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
+		unsigned irqlvl;                   /**< Current IRQ level.      */
+		struct fpu fss;                    /**< FPU Saved Status.       */
+		struct pmc pmcs;                   /**< PMC status.             */
+#endif
 		/**@}*/
 
 
@@ -201,12 +233,14 @@
 		struct process **chain;  /**< Sleeping chain.         */
 		/**@}*/
 
+#if or1k
 		/**
 		 * @name Threads information
 		 */
 		/**@{*/
 		struct thread *threads; /**< Process threads. */
 		/**@}*/
+#endif
 	};
 	
 	/* Forward definitions. */
