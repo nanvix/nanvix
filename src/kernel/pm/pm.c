@@ -112,7 +112,7 @@ PUBLIC void pm_init(void)
 	for (int i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
 	IDLE->irqlvl = INT_LVL_5;
-	IDLE->pmcs.enable_counters = 0;
+	IDLE->threads->pmcs.enable_counters = 0;
 	IDLE->pgdir = idle_pgdir;
 	for (int i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;

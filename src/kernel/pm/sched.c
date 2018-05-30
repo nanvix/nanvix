@@ -74,14 +74,14 @@ PUBLIC void yield(void)
 		sched(curr_proc);
 
 		/* Checks if the current process have an active counter. */
-		if (curr_proc->pmcs.enable_counters != 0)
+		if (curr_proc->threads->pmcs.enable_counters != 0)
 		{
 			/* Save the current counter. */
-			if (curr_proc->pmcs.enable_counters & 1)
-				curr_proc->pmcs.C1 += read_pmc(0);
+			if (curr_proc->threads->pmcs.enable_counters & 1)
+				curr_proc->threads->pmcs.C1 += read_pmc(0);
 			
-			if (curr_proc->pmcs.enable_counters >> 1)
-				curr_proc->pmcs.C2 += read_pmc(1);
+			if (curr_proc->threads->pmcs.enable_counters >> 1)
+				curr_proc->threads->pmcs.C2 += read_pmc(1);
 
 			/* Reset the counter. */
 			pmc_init();
@@ -135,25 +135,25 @@ PUBLIC void yield(void)
 	next->counter = PROC_QUANTUM;
 
 	/* Start performance counters. */
-	if (next->pmcs.enable_counters != 0)
+	if (next->threads->pmcs.enable_counters != 0)
 	{
 		/* Enable counters. */
 		write_msr(IA32_PERF_GLOBAL_CTRL, IA32_PMC0 | IA32_PMC1);
 
 		/* Starts the counter 1. */
-		if (next->pmcs.enable_counters & 1)
+		if (next->threads->pmcs.enable_counters & 1)
 		{
 			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
-				| next->pmcs.event_C1;
+				| next->threads->pmcs.event_C1;
 
 			write_msr(IA32_PERFEVTSELx, value);
 		}
 		
 		/* Starts the counter 2. */
-		if (next->pmcs.enable_counters >> 1)
+		if (next->threads->pmcs.enable_counters >> 1)
 		{
 			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
-				| next->pmcs.event_C2;
+				| next->threads->pmcs.event_C2;
 
 			write_msr(IA32_PERFEVTSELx + 1, value);
 		}

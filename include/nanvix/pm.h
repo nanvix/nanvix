@@ -33,8 +33,6 @@
 	#include <nanvix/hal.h>
 	#include <nanvix/region.h>
 	#include <nanvix/thread.h>
- 	#include <i386/fpu.h>
-	#include <i386/pmc.h>
 	#include <sys/types.h>
 	#include <limits.h>
 	#include <signal.h>
@@ -117,7 +115,6 @@
 	#define PROC_RESTORER 16 /**< Signal restorer.               */
 	#define PROC_HANDLERS 20 /**< Signal handlers offset.        */
 	#define PROC_IRQLVL  112 /**< IRQ Level offset.              */
-	#define PROC_FSS     116 /**< FPU Saved Status offset.       */
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -138,8 +135,6 @@
 		void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		unsigned irqlvl;                   /**< Current IRQ level.      */
-		struct fpu fss;                    /**< FPU Saved Status.       */
-		struct pmc pmcs;                   /**< PMC status.             */
 		/**@}*/
 
 

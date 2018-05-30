@@ -29,9 +29,13 @@
 #define NANVIX_THREAD_H_
 
 	#include <nanvix/pm.h>
+	#include <i386/fpu.h>
+	#include <i386/pmc.h>
+
 
 	#define THRD_KESP       0 /**< Kernel stack pointer offset.   */
 	#define THRD_KSTACK     4 /**< Kernel stack pointer offset.   */
+	#define THRD_FSS        8 /**< FPU Saved Status offset.       */
 
 	/**
 	 * @name Thread states
@@ -72,6 +76,8 @@
 		/**@{*/
 		dword_t kesp;		/**< Kernel stack pointer.   */
 		void *kstack;		/**< Kernel stack pointer.   */
+		struct fpu fss;     /**< FPU Saved Status.       */
+		struct pmc pmcs;    /**< PMC status.             */
 		/**@}*/
 
 		/**

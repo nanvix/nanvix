@@ -112,7 +112,7 @@ PUBLIC void die(int status)
 
 
 	/* Resets the counter if any. */
-	if (curr_proc->pmcs.enable_counters != 0)
+	if (curr_proc->threads->pmcs.enable_counters != 0)
 		pmc_init();
 	
 	sndsig(curr_proc->father, SIGCHLD);

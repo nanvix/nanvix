@@ -126,11 +126,11 @@ found_thr:
 	proc->intlvl = 1;
 	proc->received = 0;
 	proc->restorer = curr_proc->restorer;
-	kmemcpy(&proc->fss, &curr_proc->fss, sizeof(struct fpu));
+	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
 	proc->irqlvl = curr_proc->irqlvl;
-	proc->pmcs.enable_counters = 0;
+	proc->threads->pmcs.enable_counters = 0;
 	proc->size = curr_proc->size;
 	proc->pwd = curr_proc->pwd;
 	proc->pwd->count++;
