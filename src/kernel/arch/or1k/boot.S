@@ -63,6 +63,15 @@
  */
 start:
 
+	/* If SMP enabled, lock core_1. */
+	l.mfspr r3, r0, SPR_COREID
+	l.sfnei r3, 1
+	l.bf 1f
+	l.nop
+	start_lock_core:
+		l.j start_lock_core
+		l.nop
+1:
 	/* Surpervisor mode. */
 	l.ori	r1, r0, 0x1
 	l.mtspr	r0, r1, SPR_SR
