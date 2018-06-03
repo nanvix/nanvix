@@ -132,6 +132,7 @@ found_thr:
 	proc->restorer = curr_proc->restorer;
 #if or1k
 	proc->threads->tid = next_tid++;
+	proc->threads->next = NULL;
 	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));
 #elif i386
 	kmemcpy(&proc->fss, &curr_proc->fss, sizeof(struct fpu));

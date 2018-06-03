@@ -93,10 +93,13 @@
 		 * @name Scheduling information
 		 */
 		/**@{*/
-		unsigned state;          	/**< Current state.          */
+		unsigned state;         /**< Current state.                   */
+		struct thread *next;    /**< Next threads owned by same proc. */
 		/**@}*/
 	};
 
+	/* Forward definitions. */
+	EXTERN struct process *thrd_father(struct thread *);
 
 	/* Forward definitions. */
 	EXTERN struct thread threadtab[THRD_MAX];

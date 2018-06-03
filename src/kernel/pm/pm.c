@@ -102,6 +102,7 @@ PUBLIC void pm_init(void)
 #if or1k
 	IDLE->threads = THRD_IDLE;
 	IDLE->threads->state = THRD_READY;
+	IDLE->threads->next = NULL;
 	kprintf("IDLE->threads %d", IDLE->threads);
 #endif
 		

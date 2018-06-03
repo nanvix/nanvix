@@ -36,3 +36,27 @@ PUBLIC struct thread *curr_thread = THRD_IDLE;
  * @brief Next available process ID.
  */
 PUBLIC tid_t next_tid = 0;
+
+/**
+ * @brief Find the process owner of a given thread.
+ */
+PUBLIC struct process *thrd_father(struct thread * thrd)
+{
+    struct process *p;
+    struct thread *tmp_thrd;
+
+	/* loop through all threads for all processed */
+	for (p = proctab; p <= LAST_PROC; p++)
+    {
+		tmp_thrd = p->threads;
+		while (tmp_thrd != NULL)
+		{
+			if (tmp_thrd->tid == thrd->tid)
+				goto found;
+			tmp_thrd = tmp_thrd->next;
+		}
+	}
+
+found:
+	return p;
+}
