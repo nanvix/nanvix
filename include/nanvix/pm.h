@@ -225,7 +225,9 @@
 		 */
 		/**@{*/
 		unsigned state;          /**< Current state.          */
+#if i386
 		int counter;             /**< Remaining quantum.      */
+#endif
 		int priority;            /**< Process priorities.     */
 		int nice;                /**< Nice for scheduling.    */
 		unsigned alarm;          /**< Alarm.                  */

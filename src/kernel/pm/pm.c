@@ -114,6 +114,7 @@ PUBLIC void pm_init(void)
 #if or1k
 	IDLE->threads->kstack = idle_kstack;
 	IDLE->threads->tid = next_tid++;
+	IDLE->threads->counter = PROC_QUANTUM;
 #elif i386
 	IDLE->kstack = idle_kstack;
 #endif
@@ -152,7 +153,9 @@ PUBLIC void pm_init(void)
 	IDLE->cutime = 0;
 	IDLE->cktime = 0;
 	IDLE->state = PROC_RUNNING;
+#if i386
 	IDLE->counter = PROC_QUANTUM;
+#endif
 	IDLE->priority = PRIO_USER;
 	IDLE->nice = NZERO;
 	IDLE->alarm = 0;

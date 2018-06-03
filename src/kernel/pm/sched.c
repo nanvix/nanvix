@@ -31,8 +31,20 @@
  */
 PUBLIC void sched(struct process *proc)
 {
-	proc->state = PROC_READY;
+#if or1k
+	struct thread *t;
+
+	t = proc->threads;
+	while (t != NULL)
+	{
+		t->state = THRD_READY;
+		t->counter = 0;
+		t = t->next;
+	}
+#elif i386
 	proc->counter = 0;
+#endif
+	proc->state = PROC_READY;
 }
 
 /**
@@ -40,7 +52,19 @@ PUBLIC void sched(struct process *proc)
  */
 PUBLIC void stop(void)
 {
+#if or1k
+	struct thread *t;
+#endif
 	curr_proc->state = PROC_STOPPED;
+
+#if or1k
+	while (t != NULL)
+	{
+		t->state = THRD_STOPPED;
+		t = t->next;
+	}
+#endif
+
 	sndsig(curr_proc->father, SIGCHLD);
 	yield();
 }
@@ -65,8 +89,10 @@ PUBLIC void resume(struct process *proc)
  */
 PUBLIC void yield(void)
 {
-	struct process *p;    /* Working process.     */
-	struct process *next; /* Next process to run. */
+	struct process *p;        /* Working process.     */
+	struct process *next;     /* Next process to run. */
+	struct thread *t;         /* Working thread.      */
+	struct thread *next_thrd; /* Next thread  to run. */
 
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING)
@@ -104,60 +130,70 @@ PUBLIC void yield(void)
 
 	/* Choose a process to run next. */
 	next = IDLE;
+	next_thrd = IDLE->threads;
+
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
 		/* Skip non-ready process. */
 		if (p->state != PROC_READY)
 			continue;
-		
-		/*
-		 * Process with higher
-		 * waiting time found.
-		 */
-		if (p->counter > next->counter)
+
+		t = p->threads;
+		while (t != NULL) 
 		{
-			next->counter++;
-			next = p;
+			/*
+			 * Thread with higher
+			 * waiting time found.
+			 */
+			if (t->counter > next_thrd->counter)
+			{
+				next_thrd->counter++;
+				next = p;
+				next_thrd = t;
+			}
+
+			/*
+			 * Increment waiting
+			 * time of thread.
+			 */
+			else
+				t->counter++;
+
+			t = t->next;
 		}
-			
-		/*
-		 * Increment waiting
-		 * time of process.
-		 */
-		else
-			p->counter++;
 	}
 	
 	/* Switch to next process. */
 	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
-	next->counter = PROC_QUANTUM;
+	next_thrd->state = THRD_RUNNING;
+	next_thrd->counter = PROC_QUANTUM;
 
 	/* Start performance counters. */
-	if (next->threads->pmcs.enable_counters != 0)
+	if (next_thrd->pmcs.enable_counters != 0)
 	{
 		/* Enable counters. */
 		write_msr(IA32_PERF_GLOBAL_CTRL, IA32_PMC0 | IA32_PMC1);
 
 		/* Starts the counter 1. */
-		if (next->threads->pmcs.enable_counters & 1)
+		if (next_thrd->pmcs.enable_counters & 1)
 		{
 			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
-				| next->threads->pmcs.event_C1;
+				| next_thrd->pmcs.event_C1;
 
 			write_msr(IA32_PERFEVTSELx, value);
 		}
 		
 		/* Starts the counter 2. */
-		if (next->threads->pmcs.enable_counters >> 1)
+		if (next_thrd->pmcs.enable_counters >> 1)
 		{
 			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
-				| next->threads->pmcs.event_C2;
+				| next_thrd->pmcs.event_C2;
 
 			write_msr(IA32_PERFEVTSELx + 1, value);
 		}
 	}
-	switch_to(next, next->threads);
+	switch_to(next, next_thrd);
 }
 #elif i386
 /**
