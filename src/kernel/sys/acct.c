@@ -41,7 +41,7 @@ PUBLIC int sys_acct(struct pmc *p, unsigned char rw)
 
 		/* Updates the kernel structure. */
 #if or1k
-		kmemcpy(&curr_proc->threads->pmcs, p, sizeof(struct pmc));
+		kmemcpy(&curr_thread->pmcs, p, sizeof(struct pmc));
 #elif i386
 		kmemcpy(&curr_proc->pmcs, p, sizeof(struct pmc));
 #endif
@@ -53,15 +53,15 @@ PUBLIC int sys_acct(struct pmc *p, unsigned char rw)
 			return (-EFAULT);
 
 #if or1k
-		p->enable_counters = curr_proc->threads->pmcs.enable_counters;
-		p->event_C1 = curr_proc->threads->pmcs.event_C1;
-		p->event_C2 = curr_proc->threads->pmcs.event_C2;
+		p->enable_counters = curr_thread->pmcs.enable_counters;
+		p->event_C1 = curr_thread->pmcs.event_C1;
+		p->event_C2 = curr_thread->pmcs.event_C2;
 
-		if (curr_proc->threads->pmcs.enable_counters & 1)
-			p->C1 = curr_proc->threads->pmcs.C1 + read_pmc(0);
+		if (curr_thread->pmcs.enable_counters & 1)
+			p->C1 = curr_thread->pmcs.C1 + read_pmc(0);
 		
-		if (curr_proc->threads->pmcs.enable_counters >> 1)
-			p->C2 = curr_proc->threads->pmcs.C2 + read_pmc(1);
+		if (curr_thread->pmcs.enable_counters >> 1)
+			p->C2 = curr_thread->pmcs.C2 + read_pmc(1);
 #elif i386
 		p->enable_counters = curr_proc->pmcs.enable_counters;
 		p->event_C1 = curr_proc->pmcs.event_C1;

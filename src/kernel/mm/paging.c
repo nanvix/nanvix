@@ -315,17 +315,17 @@ PUBLIC int crtpgdir(struct process *proc)
 	
 	/* Clone kernel stack. */
 #if or1k
-	kmemcpy(kstack, curr_proc->threads->kstack, KSTACK_SIZE);
+	kmemcpy(kstack, curr_thread->kstack, KSTACK_SIZE);
 	/* Adjust stack pointers. */
-	proc->threads->kesp = (curr_proc->threads->kesp -(dword_t)curr_proc->threads->kstack)+(dword_t)kstack;
+	proc->threads->kesp = (curr_thread->kesp -(dword_t)curr_thread->kstack)+(dword_t)kstack;
 	s1 = (struct intstack *) proc->threads->kesp;
 	s1->old_kesp = proc->threads->kesp;
 	
 	if (curr_proc == IDLE)
 	{
-		s1 = (struct intstack *) curr_proc->threads->kesp;
+		s1 = (struct intstack *) curr_thread->kesp;
 		s2 = (struct intstack *) proc->threads->kesp;
-		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_proc->threads->kstack) + (dword_t)kstack;
+		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_thread->kstack) + (dword_t)kstack;
 	}
 
 	/* Assign page directory. */

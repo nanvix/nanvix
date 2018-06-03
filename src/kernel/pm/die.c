@@ -39,6 +39,9 @@ PUBLIC int shutting_down = 0;
 PUBLIC void die(int status)
 {
 	struct process *p;
+#if or1k
+	struct thread *t;
+#endif
 	
 	/* Shall not occour. */
 	if (curr_proc == IDLE)
@@ -109,13 +112,18 @@ PUBLIC void die(int status)
 
 	/* Release associated working thread */
 #if or1k
-	curr_proc->threads->state = THRD_ZOMBIE;
+	t = curr_thread;
+	while (t != NULL)
+	{
+		t->state = THRD_ZOMBIE;
+		t = t->next;
+	}
 #endif
 
 
 	/* Resets the counter if any. */
 #if or1k
-	if (curr_proc->threads->pmcs.enable_counters != 0)
+	if (curr_thread->pmcs.enable_counters != 0)
 #elif i386
 	if (curr_proc->pmcs.enable_counters != 0)
 #endif
@@ -133,11 +141,21 @@ PUBLIC void die(int status)
  */
 PUBLIC void bury(struct process *proc)
 {
+#if or1k
+	struct thread *t;
+#endif
+
 	dstrypgdir(proc);
 	proc->state = PROC_DEAD;
 #if or1k
-	proc->threads->state = THRD_DEAD;
+	t = curr_thread;
+	while (t != NULL)
+	{
+		t->state = THRD_DEAD;
+		t = t->next;
+	}
 #endif
+
 	proc->father->nchildren--;
 	nprocs--;
 }
