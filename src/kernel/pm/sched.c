@@ -59,6 +59,7 @@ PUBLIC void resume(struct process *proc)
 		sched(proc);
 }
 
+#if or1k
 /**
  * @brief Yields the processor.
  */
@@ -73,25 +74,14 @@ PUBLIC void yield(void)
 		sched(curr_proc);
 
 		/* Checks if the current process have an active counter. */
-#if or1k
-		if (curr_proc->threads->pmcs.enable_counters != 0)
+		if (curr_thread->pmcs.enable_counters != 0)
 		{
 			/* Save the current counter. */
-			if (curr_proc->threads->pmcs.enable_counters & 1)
-				curr_proc->threads->pmcs.C1 += read_pmc(0);
+			if (curr_thread->pmcs.enable_counters & 1)
+				curr_thread->pmcs.C1 += read_pmc(0);
 			
-			if (curr_proc->threads->pmcs.enable_counters >> 1)
-				curr_proc->threads->pmcs.C2 += read_pmc(1);
-#elif i386
-		if (curr_proc->pmcs.enable_counters != 0)
-		{
-			/* Save the current counter. */
-			if (curr_proc->pmcs.enable_counters & 1)
-				curr_proc->pmcs.C1 += read_pmc(0);
-
-			if (curr_proc->pmcs.enable_counters >> 1)
-				curr_proc->pmcs.C2 += read_pmc(1);
-#endif
+			if (curr_thread->pmcs.enable_counters >> 1)
+				curr_thread->pmcs.C2 += read_pmc(1);
 			/* Reset the counter. */
 			pmc_init();
 		}
@@ -144,7 +134,6 @@ PUBLIC void yield(void)
 	next->counter = PROC_QUANTUM;
 
 	/* Start performance counters. */
-#if or1k
 	if (next->threads->pmcs.enable_counters != 0)
 	{
 		/* Enable counters. */
@@ -169,7 +158,82 @@ PUBLIC void yield(void)
 		}
 	}
 	switch_to(next, next->threads);
+}
 #elif i386
+/**
+ * @brief Yields the processor.
+ */
+PUBLIC void yield(void)
+{
+	struct process *p;    /* Working process.     */
+	struct process *next; /* Next process to run. */
+
+	/* Re-schedule process for execution. */
+	if (curr_proc->state == PROC_RUNNING)
+	{
+		sched(curr_proc);
+
+		/* Checks if the current process have an active counter. */
+		if (curr_proc->pmcs.enable_counters != 0)
+		{
+			/* Save the current counter. */
+			if (curr_proc->pmcs.enable_counters & 1)
+				curr_proc->pmcs.C1 += read_pmc(0);
+
+			if (curr_proc->pmcs.enable_counters >> 1)
+				curr_proc->pmcs.C2 += read_pmc(1);
+			/* Reset the counter. */
+			pmc_init();
+		}
+	}
+
+	/* Remember this process. */
+	last_proc = curr_proc;
+
+	/* Check alarm. */
+	for (p = FIRST_PROC; p <= LAST_PROC; p++)
+	{
+		/* Skip invalid processes. */
+		if (!IS_VALID(p))
+			continue;
+
+		/* Alarm has expired. */
+		if ((p->alarm) && (p->alarm < ticks))
+			p->alarm = 0, sndsig(p, SIGALRM);
+	}
+
+	/* Choose a process to run next. */
+	next = IDLE;
+	for (p = FIRST_PROC; p <= LAST_PROC; p++)
+	{
+		/* Skip non-ready process. */
+		if (p->state != PROC_READY)
+			continue;
+
+		/*
+		 * Process with higher
+		 * waiting time found.
+		 */
+		if (p->counter > next->counter)
+		{
+			next->counter++;
+			next = p;
+		}
+
+		/*
+		 * Increment waiting
+		 * time of process.
+		 */
+		else
+			p->counter++;
+	}
+
+	/* Switch to next process. */
+	next->priority = PRIO_USER;
+	next->state = PROC_RUNNING;
+	next->counter = PROC_QUANTUM;
+
+	/* Start performance counters. */
 	if (next->pmcs.enable_counters != 0)
 	{
 		/* Enable counters. */
@@ -194,5 +258,5 @@ PUBLIC void yield(void)
 		}
 	}
 	switch_to(next);
-#endif
 }
+#endif

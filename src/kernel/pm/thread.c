@@ -22,6 +22,7 @@
 #include <nanvix/thread.h>
 #include <nanvix/pm.h>
 
+#if or1k
 /**
  * @brief Thread table.
  */
@@ -60,3 +61,4 @@ PUBLIC struct process *thrd_father(struct thread * thrd)
 found:
 	return p;
 }
+#endif
