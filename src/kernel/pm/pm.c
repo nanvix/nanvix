@@ -101,7 +101,7 @@ PUBLIC void pm_init(void)
 
 #if or1k
 	IDLE->threads = THRD_IDLE;
-	IDLE->threads->state = THRD_USED;
+	IDLE->threads->state = THRD_READY;
 	kprintf("IDLE->threads %d", IDLE->threads);
 #endif
 		
@@ -112,6 +112,7 @@ PUBLIC void pm_init(void)
 	IDLE->received = 0;
 #if or1k
 	IDLE->threads->kstack = idle_kstack;
+	IDLE->threads->tid = next_tid++;
 #elif i386
 	IDLE->kstack = idle_kstack;
 #endif

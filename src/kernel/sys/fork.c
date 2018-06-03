@@ -68,7 +68,7 @@ found:
 	{
 		/* Found. */
 		if (thrd->state == THRD_DEAD) {
-			thrd->state = THRD_USED;
+			thrd->state = THRD_READY;
 			proc->threads = thrd;
 			goto found_thr;
 		}
@@ -131,6 +131,7 @@ found_thr:
 	proc->received = 0;
 	proc->restorer = curr_proc->restorer;
 #if or1k
+	proc->threads->tid = next_tid++;
 	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));
 #elif i386
 	kmemcpy(&proc->fss, &curr_proc->fss, sizeof(struct fpu));

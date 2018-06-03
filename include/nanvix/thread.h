@@ -31,6 +31,7 @@
 	#include <nanvix/pm.h>
 	#include <i386/fpu.h>
 	#include <i386/pmc.h>
+	#include <sys/types.h>
 
 
 	#define THRD_KESP       0 /**< Kernel stack pointer offset.   */
@@ -41,9 +42,10 @@
 	 * @name Thread states
 	 */
 	/**@{*/
-	#define THRD_DEAD       0 /**< Dead.	*/
-	#define THRD_ZOMBIE     1 /**< Dead.	*/
-	#define THRD_USED       2 /**< Used.	*/
+	#define THRD_DEAD       0 /**< Dead.             */
+	#define THRD_ZOMBIE     1 /**< Zombie.           */
+	#define THRD_RUNNING    2 /**< Ready to execute. */
+	#define THRD_READY      3 /**< Running           */
 	/**@}*/
 
 	/**
@@ -81,6 +83,13 @@
 		/**@}*/
 
 		/**
+		 * @name General information
+		 */
+		/**@{*/
+		tid_t tid;          /**< Thread ID.              */
+		/**@}*/
+
+		/**
 		 * @name Scheduling information
 		 */
 		/**@{*/
@@ -92,6 +101,7 @@
 	/* Forward definitions. */
 	EXTERN struct thread threadtab[THRD_MAX];
 	EXTERN struct thread *curr_thread;
+	EXTERN tid_t next_tid;
 
 #endif /* _ASM_FILE */
 

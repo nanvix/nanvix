@@ -31,3 +31,8 @@ PUBLIC struct thread threadtab[THRD_MAX];
  * @brief Current running thread. 
  */
 PUBLIC struct thread *curr_thread = THRD_IDLE;
+
+/**
+ * @brief Next available process ID.
+ */
+PUBLIC tid_t next_tid = 0;
