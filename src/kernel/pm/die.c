@@ -156,7 +156,7 @@ PUBLIC void bury(struct process *proc)
 	dstrypgdir(proc);
 	proc->state = PROC_DEAD;
 #if or1k
-	t = curr_thread;
+	t = proc->threads;
 	while (t != NULL)
 	{
 		t->state = THRD_DEAD;
