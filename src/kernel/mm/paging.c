@@ -642,8 +642,15 @@ PUBLIC int vfault(addr_t addr)
 		lockreg(reg = preg->reg);
 
 		/* Not a stack region. */
+#if or1k
+		/* FIXME : add a generic test on ALL threads */
+		if (preg != &curr_proc->threads->pregs)
+#elif i386
 		if (preg != STACK(curr_proc))
+#endif
+		{
 			goto error1;
+		}
 
 		/* Expand region. */
 		if (growreg(curr_proc, preg, PAGE_SIZE))

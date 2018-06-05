@@ -103,7 +103,6 @@ PUBLIC void pm_init(void)
 	IDLE->threads = THRD_IDLE;
 	IDLE->threads->state = THRD_READY;
 	IDLE->threads->next = NULL;
-	kprintf("IDLE->threads %d", IDLE->threads);
 #endif
 		
 	/* Handcraft init process. */
@@ -130,6 +129,9 @@ PUBLIC void pm_init(void)
 	IDLE->pgdir = idle_pgdir;
 	for (int i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;
+#if or1k
+	IDLE->threads->pregs.reg = NULL;
+#endif
 	IDLE->size = 0;
 	for (int i = 0; i < OPEN_MAX; i++)
 		IDLE->ofiles[i] = NULL;

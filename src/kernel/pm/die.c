@@ -102,7 +102,15 @@ PUBLIC void die(int status)
 	/* Detach process memory regions. */
 	for (unsigned i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
-	
+#if or1k
+	t = curr_thread;
+	while (t != NULL)
+	{
+		detachreg(curr_proc, &t->pregs);
+		t = t->next;
+	}
+#endif
+
 	/* Release root and pwd. */
 	inode_put(curr_proc->root);
 	inode_put(curr_proc->pwd);

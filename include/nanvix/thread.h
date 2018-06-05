@@ -32,11 +32,16 @@
 	#include <i386/fpu.h>
 	#include <i386/pmc.h>
 	#include <sys/types.h>
+	#include <nanvix/region.h>
 
-
+	/**
+	 * @name Offsets to hard-coded fields of a process
+	 */
+	/**@{*/
 	#define THRD_KESP       0 /**< Kernel stack pointer offset.   */
 	#define THRD_KSTACK     4 /**< Kernel stack pointer offset.   */
 	#define THRD_FSS        8 /**< FPU Saved Status offset.       */
+	/**@}*/
 
 	/**
 	 * @name Thread states
@@ -81,6 +86,15 @@
 		void *kstack;		/**< Kernel stack pointer.   */
 		struct fpu fss;     /**< FPU Saved Status.       */
 		struct pmc pmcs;    /**< PMC status.             */
+		/**@}*/
+
+		/**
+		 * @name Memory information
+		 */
+		/**@{*/
+		/* TODO : keep in process memory regions,
+		 * but divide the space between threads   */
+		struct pregion pregs; /**< Thread stack memory regions. */
 		/**@}*/
 
 		/**

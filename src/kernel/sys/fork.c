@@ -125,6 +125,41 @@ found_thr:
 			
 		unlockreg(reg);
 	}
+
+#if or1k
+	/* Duplicate attached thread region.
+	 * There will be only one thread in
+	 * the son process according to POSIX */
+	preg = &curr_proc->threads->pregs;
+
+	/* Thread region not in use. */
+	if (preg->reg == NULL)
+		goto dup_done;
+
+	lockreg(preg->reg);
+	reg = dupreg(preg->reg);
+	unlockreg(preg->reg);
+
+	/* Failed to duplicate region. */
+	if (reg == NULL)
+		goto error1;
+
+	err = attachreg(proc, &proc->threads->pregs, preg->start, reg);
+
+	/* Failed to attach region. */
+	if (err)
+	{
+		/*
+		 * FIXME: region count.
+		 */
+		kpanic("failed to attach thread region");
+		freereg(reg);
+		goto error1;
+	}
+
+	unlockreg(reg);
+dup_done:
+#endif
 	
 	/* Initialize process. */
 	proc->intlvl = 1;

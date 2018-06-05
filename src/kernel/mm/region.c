@@ -810,6 +810,9 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 {        
 	struct region *reg;   /* Working memory region.  */
 	struct pregion *preg; /* Working process region. */
+#if or1k
+	struct thread *t;     /* Working thread. */
+#endif
 	
 	/* Find associated region. */
 	for (preg = &proc->pregs[0]; preg < &proc->pregs[NR_PREGIONS]; preg++)
@@ -838,6 +841,38 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 			}
 		}
 	}
+
+#if or1k
+	/* Find associated region in thread. */
+	t = proc->threads;
+	while (t != NULL)
+	{
+		preg = &t->pregs;
+
+		/* Skip invalid regions. */
+		if ((reg = preg->reg) == NULL)
+		{
+			t = t->next;
+			continue;
+		}
+
+		/* Region grows downwards. */
+		if (reg->flags & REGION_DOWNWARDS)
+		{
+			if (addr <= preg->start)
+			{
+				if (addr >= preg->start - reg->size)
+					return (preg);
+			}
+		}
+
+		/* Region grows upwards. */
+		else
+			kpanic("threads stack region grows upwards");
+
+		t = t->next;
+	}
+#endif
 
 	return (NULL);
 }

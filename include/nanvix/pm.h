@@ -79,7 +79,11 @@
 	 */
 	/**@{*/
 	#define PROC_QUANTUM 50 /**< Quantum.                  */
+#if or1k
+	#define NR_PREGIONS   3 /**< Number of memory regions. */
+#elif i386
 	#define NR_PREGIONS   4 /**< Number of memory regions. */
+#endif
 	/**@}*/
 	
 	/**
@@ -262,10 +266,16 @@
 	 * @name Process memory regions
 	 */
 	/**@{*/
+#if or1k
+	#define TEXT(p)  (&p->pregs[0]) /**< Text region.  */
+	#define DATA(p)  (&p->pregs[1]) /**< Data region.  */
+	#define HEAP(p)  (&p->pregs[2]) /**< Heap region.  */
+#elif i386
 	#define TEXT(p)  (&p->pregs[0]) /**< Text region.  */
 	#define DATA(p)  (&p->pregs[1]) /**< Data region.  */
 	#define STACK(p) (&p->pregs[2]) /**< Stack region. */
 	#define HEAP(p)  (&p->pregs[3]) /**< Heap region.  */
+#endif
 	/**@}*/
 	
 	/**
