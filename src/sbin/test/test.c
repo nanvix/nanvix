@@ -32,6 +32,7 @@
 #include <limits.h>
 #include <semaphore.h>
 #include <errno.h>
+#include <tmpthread.h>
 
 /* Test flags. */
 #define VERBOSE  (1 << 10)
@@ -656,6 +657,18 @@ static int test_mem0(void)
 }
 
 /*============================================================================*
+ *                           Thread Test                                      *
+ *============================================================================*/
+
+/*
+ * @brief Thread test.
+ */
+static int thread_test(void)
+{
+	return (pthread_dummy());
+}
+
+/*============================================================================*
  *                                   main                                     *
  *============================================================================*/
 
@@ -677,6 +690,7 @@ static void usage(void)
 	printf("  sched   Scheduling Test\n");
 	printf("  sem	  Semaphore Tests\n");
 	printf("  mem	  Memory Violation Tests\n");
+	printf("  thread  Thread Tests\n");
 
 	exit(EXIT_SUCCESS);
 }
@@ -752,6 +766,14 @@ int main(int argc, char **argv)
 			printf("Memory Violation Tests\n");
 			printf("  null pointer      [%s]\n",
 				(!test_mem0()) ? "PASSED" : "FAILED");
+		}
+
+		/* Thread tests. */
+		else if (!strcmp(argv[i], "thread"))
+		{
+			printf("Thread Tests\n");
+			printf("  Result [%s]\n",
+				(!thread_test()) ? "PASSED" : "FAILED");
 		}
 
 		/* Wrong usage. */
