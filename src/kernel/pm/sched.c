@@ -31,7 +31,6 @@
  */
 PUBLIC void sched(struct process *proc)
 {
-#if or1k
 	struct thread *t;
 
 	t = proc->threads;
@@ -41,9 +40,6 @@ PUBLIC void sched(struct process *proc)
 		t->counter = 0;
 		t = t->next;
 	}
-#elif i386
-	proc->counter = 0;
-#endif
 	proc->state = PROC_READY;
 }
 
@@ -52,18 +48,14 @@ PUBLIC void sched(struct process *proc)
  */
 PUBLIC void stop(void)
 {
-#if or1k
 	struct thread *t;
-#endif
 	curr_proc->state = PROC_STOPPED;
 
-#if or1k
 	while (t != NULL)
 	{
 		t->state = THRD_STOPPED;
 		t = t->next;
 	}
-#endif
 
 	sndsig(curr_proc->father, SIGCHLD);
 	yield();
@@ -83,7 +75,6 @@ PUBLIC void resume(struct process *proc)
 		sched(proc);
 }
 
-#if or1k
 /**
  * @brief Yields the processor.
  */
@@ -195,104 +186,3 @@ PUBLIC void yield(void)
 	}
 	switch_to(next, next_thrd);
 }
-#elif i386
-/**
- * @brief Yields the processor.
- */
-PUBLIC void yield(void)
-{
-	struct process *p;    /* Working process.     */
-	struct process *next; /* Next process to run. */
-
-	/* Re-schedule process for execution. */
-	if (curr_proc->state == PROC_RUNNING)
-	{
-		sched(curr_proc);
-
-		/* Checks if the current process have an active counter. */
-		if (curr_proc->pmcs.enable_counters != 0)
-		{
-			/* Save the current counter. */
-			if (curr_proc->pmcs.enable_counters & 1)
-				curr_proc->pmcs.C1 += read_pmc(0);
-
-			if (curr_proc->pmcs.enable_counters >> 1)
-				curr_proc->pmcs.C2 += read_pmc(1);
-			/* Reset the counter. */
-			pmc_init();
-		}
-	}
-
-	/* Remember this process. */
-	last_proc = curr_proc;
-
-	/* Check alarm. */
-	for (p = FIRST_PROC; p <= LAST_PROC; p++)
-	{
-		/* Skip invalid processes. */
-		if (!IS_VALID(p))
-			continue;
-
-		/* Alarm has expired. */
-		if ((p->alarm) && (p->alarm < ticks))
-			p->alarm = 0, sndsig(p, SIGALRM);
-	}
-
-	/* Choose a process to run next. */
-	next = IDLE;
-	for (p = FIRST_PROC; p <= LAST_PROC; p++)
-	{
-		/* Skip non-ready process. */
-		if (p->state != PROC_READY)
-			continue;
-
-		/*
-		 * Process with higher
-		 * waiting time found.
-		 */
-		if (p->counter > next->counter)
-		{
-			next->counter++;
-			next = p;
-		}
-
-		/*
-		 * Increment waiting
-		 * time of process.
-		 */
-		else
-			p->counter++;
-	}
-
-	/* Switch to next process. */
-	next->priority = PRIO_USER;
-	next->state = PROC_RUNNING;
-	next->counter = PROC_QUANTUM;
-
-	/* Start performance counters. */
-	if (next->pmcs.enable_counters != 0)
-	{
-		/* Enable counters. */
-		write_msr(IA32_PERF_GLOBAL_CTRL, IA32_PMC0 | IA32_PMC1);
-
-		/* Starts the counter 1. */
-		if (next->pmcs.enable_counters & 1)
-		{
-			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
-				| next->pmcs.event_C1;
-
-			write_msr(IA32_PERFEVTSELx, value);
-		}
-
-		/* Starts the counter 2. */
-		if (next->pmcs.enable_counters >> 1)
-		{
-			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
-				| next->pmcs.event_C2;
-
-			write_msr(IA32_PERFEVTSELx + 1, value);
-		}
-	}
-	switch_to(next);
-}
-#endif

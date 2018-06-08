@@ -810,9 +810,7 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 {        
 	struct region *reg;   /* Working memory region.  */
 	struct pregion *preg; /* Working process region. */
-#if or1k
 	struct thread *t;     /* Working thread. */
-#endif
 	
 	/* Find associated region. */
 	for (preg = &proc->pregs[0]; preg < &proc->pregs[NR_PREGIONS]; preg++)
@@ -842,7 +840,6 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 		}
 	}
 
-#if or1k
 	/* Find associated region in thread. */
 	t = proc->threads;
 	while (t != NULL)
@@ -872,7 +869,6 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 
 		t = t->next;
 	}
-#endif
 
 	return (NULL);
 }

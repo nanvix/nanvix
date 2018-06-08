@@ -71,11 +71,7 @@
 	EXTERN void processor_reload(void);
 	EXTERN void setup(void);
 	EXTERN void user_mode(addr_t, addr_t);
-#if i386
-	EXTERN void switch_to(struct process *);
-#elif or1k
 	EXTERN void switch_to(struct process *, struct thread *);
-#endif
 	EXTERN unsigned irq_lvl(unsigned);
 	/**@}*/	
 	

@@ -314,7 +314,6 @@ PUBLIC int crtpgdir(struct process *proc)
 	pgdir[PGTAB(SERIAL_VIRT)] = curr_proc->pgdir[PGTAB(SERIAL_VIRT)];
 	
 	/* Clone kernel stack. */
-#if or1k
 	kmemcpy(kstack, curr_thread->kstack, KSTACK_SIZE);
 	/* Adjust stack pointers. */
 	proc->threads->kesp = (curr_thread->kesp -(dword_t)curr_thread->kstack)+(dword_t)kstack;
@@ -325,32 +324,17 @@ PUBLIC int crtpgdir(struct process *proc)
 	{
 		s1 = (struct intstack *) curr_thread->kesp;
 		s2 = (struct intstack *) proc->threads->kesp;
+#ifdef i386
+		s2->ebp = (s1->ebp - (dword_t)curr_thread->kstack) + (dword_t)kstack;
+#elif or1k
 		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_thread->kstack) + (dword_t)kstack;
+#endif
 	}
 
 	/* Assign page directory. */
 	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
 	proc->pgdir = pgdir;
 	proc->threads->kstack = kstack;
-#elif i386
-	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
-	/* Adjust stack pointers. */
-	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
-	s1 = (struct intstack *) proc->kesp;
-	s1->old_kesp = proc->kesp;
-
-	if (curr_proc == IDLE)
-	{
-		s1 = (struct intstack *) curr_proc->kesp;
-		s2 = (struct intstack *) proc->kesp;
-		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
-	}
-
-	/* Assign page directory. */
-	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
-	proc->pgdir = pgdir;
-	proc->kstack = kstack;
-#endif
 	
 	return (0);
 
@@ -604,11 +588,7 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
  */
 PUBLIC void dstrypgdir(struct process *proc)
 {
-#if or1k
 	putkpg(proc->threads->kstack);
-#elif i386
-	putkpg(proc->kstack);
-#endif
 	putkpg(proc->pgdir);
 }
 
@@ -642,12 +622,8 @@ PUBLIC int vfault(addr_t addr)
 		lockreg(reg = preg->reg);
 
 		/* Not a stack region. */
-#if or1k
 		/* FIXME : add a generic test on ALL threads */
 		if (preg != &curr_proc->threads->pregs)
-#elif i386
-		if (preg != STACK(curr_proc))
-#endif
 		{
 			goto error1;
 		}

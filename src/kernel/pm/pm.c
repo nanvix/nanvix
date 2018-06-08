@@ -85,13 +85,11 @@ PUBLIC struct inode *semdirectory;
 PUBLIC void pm_init(void)
 {	
 	struct process *p;
-#if or1k
 	struct thread *t;
 
 	/* Initialize the thread table. */
 	for (t = FIRST_THRD; t <= LAST_THRD; t++)
 		t->state = THRD_DEAD;
-#endif
 
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
@@ -99,39 +97,27 @@ PUBLIC void pm_init(void)
 	
 	kprintf("pm: handcrafting idle process");
 
-#if or1k
 	IDLE->threads = THRD_IDLE;
 	IDLE->threads->state = THRD_READY;
 	IDLE->threads->next = NULL;
-#endif
 		
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;
 	IDLE->intlvl = 1;
 	IDLE->flags = 0;
 	IDLE->received = 0;
-#if or1k
 	IDLE->threads->kstack = idle_kstack;
 	IDLE->threads->tid = next_tid++;
 	IDLE->threads->counter = PROC_QUANTUM;
-#elif i386
-	IDLE->kstack = idle_kstack;
-#endif
 	IDLE->restorer = NULL;
 	for (int i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
 	IDLE->irqlvl = INT_LVL_5;
-#if or1k
 	IDLE->threads->pmcs.enable_counters = 0;
-#elif i386
-	IDLE->pmcs.enable_counters = 0;
-#endif
 	IDLE->pgdir = idle_pgdir;
 	for (int i = 0; i < NR_PREGIONS; i++)
 		IDLE->pregs[i].reg = NULL;
-#if or1k
 	IDLE->threads->pregs.reg = NULL;
-#endif
 	IDLE->size = 0;
 	for (int i = 0; i < OPEN_MAX; i++)
 		IDLE->ofiles[i] = NULL;
@@ -155,9 +141,6 @@ PUBLIC void pm_init(void)
 	IDLE->cutime = 0;
 	IDLE->cktime = 0;
 	IDLE->state = PROC_RUNNING;
-#if i386
-	IDLE->counter = PROC_QUANTUM;
-#endif
 	IDLE->priority = PRIO_USER;
 	IDLE->nice = NZERO;
 	IDLE->alarm = 0;

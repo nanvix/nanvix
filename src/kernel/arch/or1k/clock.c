@@ -69,11 +69,7 @@ PRIVATE void do_clock()
 	clock_event();
 		
 	/* Give up processor time. */
-#if or1k
 	if (--curr_thread->counter == 0)
-#elif i386
-	if (--curr_proc->counter == 0)
-#endif
 		yield();
 }
 
