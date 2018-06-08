@@ -34,9 +34,7 @@ PUBLIC pid_t sys_fork(void)
 	int i;                /* Loop index.     */
 	int err;              /* Error?          */
 	struct process *proc; /* Process.        */
-#if or1k
 	struct thread *thrd;  /* Thread.         */
-#endif
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
 
@@ -62,7 +60,6 @@ PUBLIC pid_t sys_fork(void)
 
 found:
 	
-#if or1k
 	/* Search for a free thread */
 	for (thrd = FIRST_THRD; thrd <= LAST_THRD; thrd++)
 	{
@@ -78,7 +75,6 @@ found:
 	return (-EAGAIN);
 
 found_thr:
-#endif
 
 	/* Mark process as beeing created. */
 	proc->flags = 1 << PROC_NEW;
@@ -126,7 +122,6 @@ found_thr:
 		unlockreg(reg);
 	}
 
-#if or1k
 	/* Duplicate attached thread region.
 	 * There will be only one thread in
 	 * the son process according to POSIX */
@@ -159,27 +154,19 @@ found_thr:
 
 	unlockreg(reg);
 dup_done:
-#endif
 	
 	/* Initialize process. */
 	proc->intlvl = 1;
 	proc->received = 0;
 	proc->restorer = curr_proc->restorer;
-#if or1k
 	proc->threads->tid = next_tid++;
 	proc->threads->next = NULL;
 	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));
-#elif i386
-	kmemcpy(&proc->fss, &curr_proc->fss, sizeof(struct fpu));
-#endif
+
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
 	proc->irqlvl = curr_proc->irqlvl;
-#if or1k
 	proc->threads->pmcs.enable_counters = 0;
-#elif i386
-	proc->pmcs.enable_counters = 0;
-#endif
 	proc->size = curr_proc->size;
 	proc->pwd = curr_proc->pwd;
 	proc->pwd->count++;

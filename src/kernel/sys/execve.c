@@ -343,9 +343,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	addr_t sp;            /* User stack pointer.  */
 	char *pathname;       /* Path name.           */
 	char stack[ARG_MAX];  /* Stack size.          */
-#if or1k
     struct thread *t;
-#endif
 
 
 	/* Get path name. */
@@ -404,14 +402,13 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	/* Detach process memory regions. */
 	for (i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
-#if or1k
+
 	t = curr_thread;
 	while (t != NULL)
 	{
 		detachreg(curr_proc, &t->pregs);
 		t = t->next;
 	}
-#endif
 
 	
 	/* Load executable. */
@@ -421,11 +418,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	/* Attach stack region. */
 	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
 		goto die0;
-#if or1k
 	if (attachreg(curr_proc, &curr_proc->threads->pregs, USTACK_ADDR - 1, reg))
-#elif i386
-	if (attachreg(curr_proc, STACK(curr_proc), USTACK_ADDR - 1, reg))
-#endif
 		goto die1;
 	unlockreg(reg);
 

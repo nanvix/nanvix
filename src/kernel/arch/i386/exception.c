@@ -50,7 +50,7 @@ PRIVATE void dumpregs(struct intstack *regs)
 	kprintf("  [eax: %x] [ebx:    %x]", regs->eax, regs->ebx);
 	kprintf("  [ecx: %x] [edx:    %x]", regs->ecx, regs->edx);
 	kprintf("  [esi: %x] [edi:    %x]", regs->esi, regs->edi);
-	kprintf("  [ebp: %x] [esp:    %x]", regs->ebp, curr_proc->kesp);
+	kprintf("  [ebp: %x] [esp:    %x]", regs->ebp, curr_proc->threads->kesp);
 	kprintf("  [eip: %x] [eflags: %x]", regs->eip, regs->eflags);
 }
 
