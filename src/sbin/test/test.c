@@ -665,7 +665,13 @@ static int test_mem0(void)
  */
 static int thread_test(void)
 {
-	return (pthread_dummy());
+	int ret;
+
+	if ((ret = pthread_dummy()) != 0) 
+		return (ret);
+
+	printf("pthread_dummy returned %d\n", ret);
+	return (0);
 }
 
 /*============================================================================*
