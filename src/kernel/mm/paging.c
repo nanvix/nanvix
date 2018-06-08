@@ -605,6 +605,7 @@ PUBLIC int vfault(addr_t addr)
 	struct pte *pg;       /* Working page.           */
 	struct region *reg;   /* Working region.         */
 	struct pregion *preg; /* Working process region. */
+	struct thread *thrd;  /* Working thread.         */
 
 	/* Get process region. */
 	if ((preg = findreg(curr_proc, addr)) != NULL)
@@ -622,11 +623,15 @@ PUBLIC int vfault(addr_t addr)
 		lockreg(reg = preg->reg);
 
 		/* Not a stack region. */
-		/* FIXME : add a generic test on ALL threads */
-		if (preg != &curr_proc->threads->pregs)
+		thrd = curr_proc->threads;
+		while (thrd != NULL)
 		{
-			goto error1;
+			if (preg == &thrd->pregs)
+				goto stack_reg;
+			thrd = thrd->next;
 		}
+		goto error1;
+stack_reg:
 
 		/* Expand region. */
 		if (growreg(curr_proc, preg, PAGE_SIZE))
