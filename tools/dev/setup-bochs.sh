@@ -29,8 +29,8 @@ mkdir -p $WORKDIR
 cd $WORKDIR
 
 
-export CFLAGS=-pipe
-export CXXFLAGS=-pipe
+export CFLAGS="-pipe -O3"
+export CXXFLAGS="-pipe -O3"
 
 # Get required packages.
 apt-get install -y libncurses5-dev
