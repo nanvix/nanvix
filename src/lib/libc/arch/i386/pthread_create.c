@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -23,16 +23,8 @@
 /*
  * Creates a new thread.
  */
-int pthread_dummy(void)
+int sys_pthread_create(_CONST pthread_attr_t  *__attr,
+    void *(*__start_routine)( void * ), void *__arg))
 {
-	register int ret
-		__asm__("r11") = NR_pthread_dummy;
-
-	__asm__ volatile (
-		"l.sys 1"
-		: "=r" (ret)
-		: "r"  (ret)
-	);
-
-	return (ret);
+    return (-1);
 }

@@ -96,7 +96,7 @@
 	#define NR_semwait        55
 	#define NR_sempost        56
 	#define NR_acct           57
-	#define NR_pthread_dummy  58
+	#define NR_pthread_create 58
 	#define NR_semget         59
 	#define NR_semctl         60
 	#define NR_semop          61
@@ -290,7 +290,8 @@
 	/*
 	 * Create a thread.
 	 */
-	EXTERN int sys_pthread_dummy(void);
+	EXTERN int sys_pthread_create(void *__pthread, void *__pthread_attr_t,
+						void *(*__start_routine)( void * ), void *__arg);
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);

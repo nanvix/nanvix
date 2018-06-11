@@ -661,16 +661,29 @@ static int test_mem0(void)
  *============================================================================*/
 
 /*
+ * @brief Dummy thread routine.
+ */
+static void *thread_routine_test(void *foo)
+{
+	if (foo == NULL)
+		printf("thread routine without param\n");
+	else
+		printf("thread routine with param\n");
+	fflush(stdout);
+	return (0);
+}
+
+/*
  * @brief Thread test.
  */
 static int thread_test(void)
 {
 	int ret;
 
-	if ((ret = pthread_dummy()) != 0) 
+	if ((ret = pthread_create(NULL, NULL, thread_routine_test, NULL)) != 0)
 		return (ret);
 
-	printf("pthread_dummy returned %d\n", ret);
+	printf("pthread_create returned %d\n", ret);
 	return (0);
 }
 

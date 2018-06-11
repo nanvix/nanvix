@@ -30,7 +30,8 @@
 /*
  * Creates a new thread.
  */
-PUBLIC pid_t sys_pthread_dummy(void)
+PUBLIC int sys_pthread_create(void *pthread, void *attr,
+			void *(*start_routine)( void * ), void *arg)
 {
 	int err;                         /* Error?             */
 	struct thread *thrd;             /* Thread.            */
@@ -38,7 +39,10 @@ PUBLIC pid_t sys_pthread_dummy(void)
 	struct pregion *preg;            /* Process region.    */
 	addr_t start;                    /* Thread stack addr. */
 
-	kprintf("sys_pthread_dummy");
+	kprintf("sys_pthread_create");
+
+	if (pthread != NULL || attr != NULL || arg != NULL)
+		kpanic("pthread_create arg not null, not supposed to happen for now");
 
 	/* Search for a free thread */
 	for (thrd = FIRST_THRD; thrd <= LAST_THRD; thrd++)
@@ -106,13 +110,13 @@ found_thr:
 	(*((dword_t *)(sp + GPR4))) = 0;
 	(*((dword_t *)(sp + GPR5))) = 0;
 	/* ... Is it really necessary to add them all */
-	(*((dword_t *)(sp + GPR9))) = 0; /* LR R9 has no sense in this case ? */
+	(*((dword_t *)(sp + GPR9))) = 0;
 
 	/* EPCR */
-	(*((dword_t *)(sp + EPCR))) = 0; /* should pass the start_routine pointer */
+	(*((dword_t *)(sp + EPCR))) = (addr_t)start_routine;
 
     /* EEAR. */
-	(*((dword_t *)(sp + EEAR))) = 0; /* what is it used for, can we safely setting it to 0 ? */
+	(*((dword_t *)(sp + EEAR))) = 0;
 
     /* ESR. */
 	// (*((dword_t *)(sp + ESR))) = USER_ESR; /* include error : contains assembly ... */
