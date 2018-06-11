@@ -25,16 +25,18 @@
 #include <nanvix/pm.h>
 #include <sys/types.h>
 #include <errno.h>
+// #include <or1k/asm_defs.h>
 
 /*
- * Creates a new process.
+ * Creates a new thread.
  */
 PUBLIC pid_t sys_pthread_dummy(void)
 {
-	int err;              /* Error?          */
-	struct thread *thrd;  /* Thread.         */
-	struct region *reg;   /* Memory region.  */
-	struct pregion *preg; /* Process region. */
+	int err;                         /* Error?             */
+	struct thread *thrd;             /* Thread.            */
+	struct region *reg;              /* Memory region.     */
+	struct pregion *preg;            /* Process region.    */
+	addr_t start;                    /* Thread stack addr. */
 
 	kprintf("sys_pthread_dummy");
 
@@ -79,7 +81,8 @@ found_thr:
 
 	/* Attach the region below previous stack
 	 * TODO: different cases, overlap etc */
-	err = attachreg(curr_proc, &curr_proc->threads->next->pregs, preg->start - (PGTAB_SIZE), reg);
+	start = preg->start - PGTAB_SIZE;
+	err = attachreg(curr_proc, &curr_proc->threads->next->pregs, start, reg);
 
 	/* Failed to attach region. */
 	if (err)
@@ -87,6 +90,7 @@ found_thr:
 		kpanic("failed to attach thread region");
 		return (-1);
 	}
+	unlockreg(reg);
 
 	/* TODO temporary but force a reload after tlb_flush, useful for debugging purpose */
 	kprintf("thread 1 preg %d", &curr_proc->threads->pregs);
@@ -95,6 +99,31 @@ found_thr:
 	kprintf("thread 2 reg %d", &curr_proc->threads->next->pregs.reg);
 
 	/* TODO : forge a stack for the thread */
+	addr_t sp = (start - INT_FRAME_SIZE) & ~(DWORD_SIZE - 1);
+	(*((dword_t *)(sp + R0))) = 0;
+	(*((dword_t *)(sp + SP))) = sp;
+	(*((dword_t *)(sp + GPR3))) = sp; /* frame pointer */
+	(*((dword_t *)(sp + GPR4))) = 0;
+	(*((dword_t *)(sp + GPR5))) = 0;
+	/* ... Is it really necessary to add them all */
+	(*((dword_t *)(sp + GPR9))) = 0; /* LR R9 has no sense in this case ? */
 
+	/* EPCR */
+	(*((dword_t *)(sp + EPCR))) = 0; /* should pass the start_routine pointer */
+
+    /* EEAR. */
+	(*((dword_t *)(sp + EEAR))) = 0; /* what is it used for, can we safely setting it to 0 ? */
+
+    /* ESR. */
+	// (*((dword_t *)(sp + ESR))) = USER_ESR; /* include error : contains assembly ... */
+
+	curr_proc->threads->next->kesp = sp; /* is it right ? and what about kstack ? */
+
+	kprintf("sp %d", sp);
+
+	sched(curr_proc);
+
+	kprintf("stack thread read sp %d", (*((dword_t *)(curr_proc->threads->next->kesp + SP))));
+	kprintf("stack thread read fp %d", (*((dword_t *)(curr_proc->threads->next->kesp + GPR3))));
 	return (0);
 }
