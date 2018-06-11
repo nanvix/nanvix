@@ -312,6 +312,9 @@ PUBLIC int crtpgdir(struct process *proc)
 	pgdir[PGTAB(KPOOL_VIRT)] = curr_proc->pgdir[PGTAB(KPOOL_VIRT)];
 	pgdir[PGTAB(INITRD_VIRT)] = curr_proc->pgdir[PGTAB(INITRD_VIRT)];
 	pgdir[PGTAB(SERIAL_VIRT)] = curr_proc->pgdir[PGTAB(SERIAL_VIRT)];
+#ifdef or1k
+	pgdir[PGTAB(OMPIC_VIRT)] = curr_proc->pgdir[PGTAB(OMPIC_VIRT)];
+#endif
 	
 	/* Clone kernel stack. */
 	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);

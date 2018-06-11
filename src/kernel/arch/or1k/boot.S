@@ -153,6 +153,17 @@ start:
 	l.ori r2, r2, PT_L | PT_PRESENT
 	l.sw 0(r1), r2
 	
+	LOAD_SYMBOL_2_GPR(r1, ompic_pgtab)    /* OMPIC at 0xc5000000              */
+	l.srli r1, r1, PAGE_SHIFT
+	l.slli r1, r1, PT_SHIFT
+	l.ori  r1, r1, PT_PRESENT
+	l.sw  PTE_SIZE*197(r3), r1
+
+	LOAD_SYMBOL_2_GPR(r1, ompic_pgtab)
+	LOAD_SYMBOL_2_GPR(r2, 0x13000000)
+	l.ori r2, r2, PT_L | PT_PRESENT
+	l.sw 0(r1), r2
+
 	/* Flush TLB. */
 	l.jal boot_tlb_flush
 	l.nop
@@ -441,6 +452,17 @@ initrd_pgtab:
  */
 .align PAGE_SIZE
 uart8250_pgtab:
+	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
+
+/*----------------------------------------------------------------------------*
+ *                                 ompic_pgtab                                *
+ *----------------------------------------------------------------------------*/
+
+/* 
+ * OMPIC page table.
+ */
+.align PAGE_SIZE
+ompic_pgtab:
 	.fill PAGE_SIZE/PTE_SIZE, PTE_SIZE, 0
 
 /*----------------------------------------------------------------------------*

@@ -34,6 +34,7 @@
 	#define KPOOL_VIRT   0xc1000000 /* Kernel page pool. */
 	#define INITRD_VIRT  0xc2000000 /* Initial RAM disk. */
 	#define SERIAL_VIRT  0xc4000000 /* Serial port.      */
+	#define OMPIC_VIRT   0xc5000000 /* OMPIC.            */
 	
 	/* Physical memory layout. */
 	#define KBASE_PHYS   0x00000000 /* Kernel base.      */
