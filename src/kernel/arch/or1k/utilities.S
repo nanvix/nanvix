@@ -38,6 +38,7 @@
 .globl physcpy
 .globl switch_to
 .globl user_mode
+.globl forge_stack
 .globl fpu_init
 .globl pmc_init
 .globl read_pmc
@@ -349,6 +350,61 @@ user_mode:
 	CLEAR_ALL_GPR
 
 	l.rfe
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                  forge_stack()                             *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Forge the expected stack for a new thread.
+ */
+forge_stack:
+	/* General Purpose registers. */
+	l.sw R0(r3)   , r0
+	l.sw SP(r3)   , r3
+	l.sw GPR2(r3) , r3
+	l.sw GPR3(r3) , r0
+	l.sw GPR4(r3) , r0
+	l.sw GPR5(r3) , r0
+	l.sw GPR6(r3) , r0
+	l.sw GPR7(r3) , r0
+	l.sw GPR8(r3) , r0
+	l.sw GPR9(r3) , r0
+	l.sw GPR10(r3), r0
+	l.sw GPR11(r3), r0
+	l.sw GPR12(r3), r0
+	l.sw GPR13(r3), r0
+	l.sw GPR14(r3), r0
+	l.sw GPR15(r3), r0
+	l.sw GPR16(r3), r0
+	l.sw GPR17(r3), r0
+	l.sw GPR18(r3), r0
+	l.sw GPR19(r3), r0
+	l.sw GPR20(r3), r0
+	l.sw GPR21(r3), r0
+	l.sw GPR22(r3), r0
+	l.sw GPR23(r3), r0
+	l.sw GPR24(r3), r0
+	l.sw GPR25(r3), r0
+	l.sw GPR26(r3), r0
+	l.sw GPR27(r3), r0
+	l.sw GPR28(r3), r0
+	l.sw GPR29(r3), r0
+	l.sw GPR30(r3), r0
+	l.sw GPR31(r3), r0
+
+	/* EPCR. */
+	l.sw EPCR(r3), r4 /* Start routine. */
+
+	/* EEAR. */
+	l.sw EEAR(r3), r0 /* Not used. */
+
+	/* ESR. */
+	LOAD_SYMBOL_2_GPR(r15, USER_SR)
+	l.sw ESR(r3), r15
+
+	l.jr r9
 	l.nop
 
 /*----------------------------------------------------------------------------*

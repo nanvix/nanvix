@@ -25,7 +25,6 @@
 #include <nanvix/pm.h>
 #include <sys/types.h>
 #include <errno.h>
-// #include <or1k/asm_defs.h>
 
 /*
  * Creates a new thread.
@@ -44,7 +43,7 @@ PUBLIC int sys_pthread_create(void *pthread, void *attr,
 	if (pthread != NULL || attr != NULL || arg != NULL)
 		kpanic("pthread_create arg not null, not supposed to happen for now");
 
-	/* Search for a free thread */
+	/* Search for a free thread. */
 	for (thrd = FIRST_THRD; thrd <= LAST_THRD; thrd++)
 	{
 		/* Found. */
@@ -72,7 +71,7 @@ found_thr:
 		return (-1);
 	}
 
-	/* allocate a stack region for the thread */
+	/* Allocate a stack region for the thread. */
 	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
 		kpanic("allocreg failed");
 
@@ -83,8 +82,7 @@ found_thr:
 		return (-1);
 	}
 
-	/* Attach the region below previous stack
-	 * TODO: different cases, overlap etc */
+	/* Attach the region below previous stack. */
 	start = preg->start - PGTAB_SIZE;
 	err = attachreg(curr_proc, &curr_proc->threads->next->pregs, start, reg);
 
@@ -102,32 +100,18 @@ found_thr:
 	kprintf("thread 2 preg %d", &curr_proc->threads->next->pregs);
 	kprintf("thread 2 reg %d", &curr_proc->threads->next->pregs.reg);
 
-	/* TODO : forge a stack for the thread */
-	addr_t sp = (start - INT_FRAME_SIZE) & ~(DWORD_SIZE - 1);
-	(*((dword_t *)(sp + R0))) = 0;
-	(*((dword_t *)(sp + SP))) = sp;
-	(*((dword_t *)(sp + GPR3))) = sp; /* frame pointer */
-	(*((dword_t *)(sp + GPR4))) = 0;
-	(*((dword_t *)(sp + GPR5))) = 0;
-	/* ... Is it really necessary to add them all */
-	(*((dword_t *)(sp + GPR9))) = 0;
+	addr_t sp = (start - INT_FRAME_SIZE) & ~(DWORD_SIZE - 1); /* align kesp. */
 
-	/* EPCR */
-	(*((dword_t *)(sp + EPCR))) = (addr_t)start_routine;
+	/* Forge a stack for the thread. */
+	forge_stack(sp, start_routine);
 
-    /* EEAR. */
-	(*((dword_t *)(sp + EEAR))) = 0;
-
-    /* ESR. */
-	// (*((dword_t *)(sp + ESR))) = USER_ESR; /* include error : contains assembly ... */
-
-	curr_proc->threads->next->kesp = sp; /* is it right ? and what about kstack ? */
-
-	kprintf("sp %d", sp);
+	curr_proc->threads->next->kstack = (void *)start;
+	curr_proc->threads->next->kesp = sp;
 
 	sched(curr_proc);
 
+	kprintf("sp %d", sp);
 	kprintf("stack thread read sp %d", (*((dword_t *)(curr_proc->threads->next->kesp + SP))));
-	kprintf("stack thread read fp %d", (*((dword_t *)(curr_proc->threads->next->kesp + GPR3))));
+	kprintf("stack thread read fp %d", (*((dword_t *)(curr_proc->threads->next->kesp + GPR2))));
 	return (0);
 }
