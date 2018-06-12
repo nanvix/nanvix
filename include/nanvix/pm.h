@@ -214,6 +214,7 @@
 	EXTERN int issig(void);
 	EXTERN void pm_init(void);
 	EXTERN void sched(struct process *);
+	EXTERN void sched_thread(struct process *, struct thread *);
 #ifdef BUILDING_KERNEL
 	EXTERN void sleep(struct process **, int);
 #endif

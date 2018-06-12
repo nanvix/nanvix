@@ -44,6 +44,21 @@ PUBLIC void sched(struct process *proc)
 }
 
 /**
+ * @brief Schedules only a thread to execution.
+ *
+ * @param proc Process to be scheduled.
+ * @param thrd Thread to be scheduled.
+ */
+PUBLIC void sched_thread(struct process *proc, struct thread *thrd)
+{
+	thrd->state = THRD_READY;
+	thrd->counter = 0;
+	thrd = thrd->next;
+	proc->state = PROC_READY;
+}
+
+
+/**
  * @brief Stops the current running process.
  */
 PUBLIC void stop(void)
@@ -88,7 +103,7 @@ PUBLIC void yield(void)
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING)
 	{
-		sched(curr_proc);
+		sched_thread(curr_proc, curr_thread);
 
 		/* Checks if the current process have an active counter. */
 		if (curr_thread->pmcs.enable_counters != 0)

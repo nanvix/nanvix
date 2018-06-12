@@ -100,6 +100,7 @@ PUBLIC void pm_init(void)
 	IDLE->threads = THRD_IDLE;
 	IDLE->threads->state = THRD_READY;
 	IDLE->threads->next = NULL;
+	IDLE->threads->flags = 0 << THRD_NEW;
 		
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;

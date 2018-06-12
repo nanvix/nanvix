@@ -40,7 +40,15 @@
 	/**@{*/
 	#define THRD_KESP       0 /**< Kernel stack pointer offset.   */
 	#define THRD_KSTACK     4 /**< Kernel stack pointer offset.   */
-	#define THRD_FSS        8 /**< FPU Saved Status offset.       */
+	#define THRD_FLAGS      8 /**< Thread flags offset.           */
+	#define THRD_FSS        12/**< FPU Saved Status offset.       */
+	/**@}*/
+
+	/**
+	 * @name Process flags
+	 */
+	/**@{*/
+	#define THRD_NEW 0 /**< Is the process new? */
 	/**@}*/
 
 	/**
@@ -82,10 +90,11 @@
 		 * @name Hard-coded Fields
 		 */
 		/**@{*/
-		dword_t kesp;		/**< Kernel stack pointer.   */
-		void *kstack;		/**< Kernel stack pointer.   */
-		struct fpu fss;     /**< FPU Saved Status.       */
-		struct pmc pmcs;    /**< PMC status.             */
+		dword_t kesp;    /**< Kernel stack pointer.   */
+		void *kstack;    /**< Kernel stack pointer.   */
+		unsigned flags;  /**< Thread flags.           */
+		struct fpu fss;  /**< FPU Saved Status.       */
+		struct pmc pmcs; /**< PMC status.             */
 		/**@}*/
 
 		/**

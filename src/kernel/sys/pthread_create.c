@@ -43,6 +43,14 @@ PUBLIC int sys_pthread_create(void *pthread, void *attr,
 	if (pthread != NULL || attr != NULL || arg != NULL)
 		kpanic("pthread_create arg not null, not supposed to happen for now");
 
+	/* Check start routine address validity. */
+	if ((addr_t)start_routine > UBASE_VIRT + REGION_SIZE
+				|| (addr_t)start_routine < UBASE_VIRT)
+	{
+		kpanic("new thread try to access an illegal address");
+		return (-1);
+	}
+
 	/* Search for a free thread. */
 	for (thrd = FIRST_THRD; thrd <= LAST_THRD; thrd++)
 	{
@@ -52,6 +60,8 @@ PUBLIC int sys_pthread_create(void *pthread, void *attr,
 			thrd->next = NULL;
 			thrd->counter = curr_proc->threads->counter;
 			thrd->tid = next_tid++;
+			thrd->flags = THRD_NEW;
+			thrd->flags = 1 << THRD_NEW;
 			curr_proc->threads->next = thrd;
 			goto found_thr;
 		}
@@ -108,10 +118,11 @@ found_thr:
 	curr_proc->threads->next->kstack = (void *)start;
 	curr_proc->threads->next->kesp = sp;
 
-	sched(curr_proc);
+	sched_thread(curr_proc, curr_proc->threads->next);
 
 	kprintf("sp %d", sp);
+	kprintf("routine %d", (addr_t)start_routine);
 	kprintf("stack thread read sp %d", (*((dword_t *)(curr_proc->threads->next->kesp + SP))));
-	kprintf("stack thread read fp %d", (*((dword_t *)(curr_proc->threads->next->kesp + GPR2))));
+	kprintf("stack thread read EPCR %d", (*((dword_t *)(curr_proc->threads->next->kesp + EPCR))));
 	return (0);
 }

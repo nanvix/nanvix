@@ -270,6 +270,19 @@ switch_to:
 	l.bf fork_return
 	l.nop
 
+	/* New thread?. */
+	l.lwz  r15, THRD_FLAGS(r4)
+	l.ori  r17, r0,  (1 << THRD_NEW)
+	l.and  r19, r15, r17
+
+	l.xori r17, r17, -1
+	l.and  r17, r15, r17
+	l.sw   THRD_FLAGS(r4), r17
+
+	l.sfnei r19, 0
+	l.bf pthread_create_return
+	l.nop
+
 	/* Restore stack. */
 	l.lwz r30, 56(r1)
 	l.lwz r28, 52(r1)
@@ -311,6 +324,15 @@ switch_to:
  * Returns from fork.
  */
 fork_return:
+	LOAD_SYMBOL_2_GPR(r15, leave)
+	l.sw GPR11(r1), r0
+	l.jr r15
+	l.nop
+
+/*
+ * Returns from pthread_create.
+ */
+pthread_create_return:
 	LOAD_SYMBOL_2_GPR(r15, leave)
 	l.sw GPR11(r1), r0
 	l.jr r15
