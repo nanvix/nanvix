@@ -110,6 +110,12 @@ found_thr:
 	kprintf("thread 2 preg %d", &curr_proc->threads->next->pregs);
 	kprintf("thread 2 reg %d", &curr_proc->threads->next->pregs.reg);
 
+#if or1k
+	kprintf("sp %d", sp);
+	kprintf("routine %d", (addr_t)start_routine);
+	kprintf("stack thread read sp %d", (*((dword_t *)(curr_proc->threads->next->kesp + SP))));
+	kprintf("stack thread read EPCR %d", (*((dword_t *)(curr_proc->threads->next->kesp + EPCR))));
+
 	addr_t sp = (start - INT_FRAME_SIZE) & ~(DWORD_SIZE - 1); /* align kesp. */
 
 	/* Forge a stack for the thread. */
@@ -117,12 +123,8 @@ found_thr:
 
 	curr_proc->threads->next->kstack = (void *)start;
 	curr_proc->threads->next->kesp = sp;
+#endif
 
 	sched_thread(curr_proc, curr_proc->threads->next);
-
-	kprintf("sp %d", sp);
-	kprintf("routine %d", (addr_t)start_routine);
-	kprintf("stack thread read sp %d", (*((dword_t *)(curr_proc->threads->next->kesp + SP))));
-	kprintf("stack thread read EPCR %d", (*((dword_t *)(curr_proc->threads->next->kesp + EPCR))));
 	return (0);
 }

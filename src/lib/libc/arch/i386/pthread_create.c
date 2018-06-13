@@ -23,8 +23,11 @@
 /*
  * Creates a new thread.
  */
-int sys_pthread_create(_CONST pthread_attr_t  *__attr,
-    void *(*__start_routine)( void * ), void *__arg))
+int pthread_create(void *__pthread, void *__attr,
+	void *(*__start_routine)( void * ), void *__arg)
 {
+	/* TODO : dummy test to avoid unused variable error */
+	if (__pthread != NULL || __attr != NULL || __start_routine != NULL || __arg != NULL)
+		return (-1);
     return (-1);
 }
