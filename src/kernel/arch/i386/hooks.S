@@ -107,8 +107,11 @@
     incl PROC_INTLVL(%ebx)
     
     /* Save interrupt stack. */
-    pushl PROC_KESP(%ebx)
-    movl %esp, PROC_KESP(%ebx)
+    movl curr_thread, %ebx
+    pushl THRD_KESP(%ebx)
+    movl %esp, THRD_KESP(%ebx)
+
+    movl curr_proc, %ebx
     
 .endm
 
@@ -120,10 +123,12 @@
  * Leaves kernel.
  */
 leave:
-	movl curr_proc, %ebx
+	movl curr_thread, %ebx
 
 	/* Restore interrupt stack. */
-	popl PROC_KESP(%ebx)
+	popl THRD_KESP(%ebx)
+
+	movl curr_proc, %ebx
 
 	/* Decrement interrupt level. */
     decl PROC_INTLVL(%ebx)

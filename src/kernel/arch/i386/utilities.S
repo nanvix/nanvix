@@ -206,40 +206,44 @@ physcpy.loop:
  */
 switch_to:
 	movl 4(%esp), %ecx
+	movl 8(%esp), %edx
 
 	/* Save process context. */
-	movl curr_proc, %eax
+	movl curr_thread, %eax
 	pushfl
 	pushl %ebx
 	pushl %esi
 	pushl %edi
 	pushl %ebp
-	pushl PROC_KESP(%eax)
-	movl %esp, PROC_KESP(%eax)
-	fnsave PROC_FSS(%eax)
+	pushl THRD_KESP(%eax)
+	movl %esp, THRD_KESP(%eax)
+	fnsave THRD_FSS(%eax)
 	
-	/* Switch processes. */
+	/* Switch processes and threads. */
 	movl %ecx, curr_proc
+	movl %edx, curr_thread
 
 	/* Load process address space. */
 	movl PROC_CR3(%ecx), %eax
 	movl %eax, %cr3
-	movl PROC_KSTACK(%ecx), %eax
+	movl THRD_KSTACK(%edx), %eax
 	addl $PAGE_SIZE - DWORD_SIZE, %eax
 	movl %eax, TSS_ESP0 + tss
 	
 	/* Load process context. */
-	movl PROC_KESP(%ecx), %esp
-	frstor PROC_FSS(%ecx)
+	movl THRD_KESP(%edx), %esp
+	frstor THRD_FSS(%edx)
 
 	push %ecx
+	push %edx
 	call processor_reload
+	pop %edx
 	pop %ecx
 	
 	btrl $PROC_NEW, PROC_FLAGS(%ecx)
 	jc fork_return
 	
-	popl PROC_KESP(%ecx)
+	popl THRD_KESP(%edx)
 	
 	popl %ebp
 	popl %edi
@@ -299,8 +303,8 @@ user_mode:
  */
 fpu_init:
 	fninit
-	movl curr_proc, %eax
-	fnsave  PROC_FSS(%eax)
+	movl curr_thread, %eax
+	fnsave  THRD_FSS(%eax)
 	ret
 
 /*----------------------------------------------------------------------------*
