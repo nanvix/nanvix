@@ -29,7 +29,7 @@
      *
      */
 	extern int pthread_create(void *__pthread, void *__attr,
-		void *(*__start_routine)( void * ), void *__arg);
+			 void *(*__start_routine)(void *), void *__arg);
 #endif
 
 #endif /* TMPTHREAD_H_ */

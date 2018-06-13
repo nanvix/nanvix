@@ -24,7 +24,7 @@
  * Creates a new thread.
  */
 int pthread_create(void *__pthread, void *__attr,
-	void *(*__start_routine)( void * ), void *__arg)
+				   void *(*__start_routine)(void *), void *__arg)
 {
 	/* TODO : dummy test to avoid unused variable error */
 	if (__pthread != NULL || __attr != NULL || __start_routine != NULL || __arg != NULL)

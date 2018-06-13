@@ -291,7 +291,7 @@
 	 * Create a thread.
 	 */
 	EXTERN int sys_pthread_create(void *__pthread, void *__pthread_attr_t,
-						void *(*__start_routine)( void * ), void *__arg);
+						   void *(*__start_routine)(void *), void *__arg);
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);

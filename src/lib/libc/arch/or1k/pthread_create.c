@@ -24,7 +24,7 @@
  * Creates a new thread.
  */
 int pthread_create(void *__pthread, void *__attr,
-	void *(*__start_routine)( void * ), void *__arg)
+				   void *(*__start_routine)(void *), void *__arg)
 {
 	register unsigned r3
         __asm__("r3") = (unsigned) __pthread;
