@@ -53,7 +53,6 @@ PUBLIC void sched_thread(struct process *proc, struct thread *thrd)
 {
 	thrd->state = THRD_READY;
 	thrd->counter = 0;
-	thrd = thrd->next;
 	proc->state = PROC_READY;
 }
 
