@@ -25,11 +25,17 @@
 #ifndef _ASM_FILE_
 
 	/**
-     * @brief Thread user API
+     * @brief Creates a new Thread.
      *
      */
 	extern int pthread_create(void *__pthread, void *__attr,
 			 void *(*__start_routine)(void *), void *__arg);
+
+	/**
+     * @brief Terminates current thread.
+     *
+     */
+	extern void pthread_exit(void *retval);
 #endif
 
 #endif /* TMPTHREAD_H_ */

@@ -35,7 +35,7 @@
 	#include <semaphore.h>
 
 	/* Number of system calls. */
-	#define NR_SYSCALLS 59
+	#define NR_SYSCALLS 60
 	
 	/* System call numbers. */
 	#define NR_alarm           0
@@ -97,9 +97,10 @@
 	#define NR_sempost        56
 	#define NR_acct           57
 	#define NR_pthread_create 58
-	#define NR_semget         59
-	#define NR_semctl         60
-	#define NR_semop          61
+	#define NR_pthread_exit   59
+	#define NR_semget         60
+	#define NR_semctl         61
+	#define NR_semop          62
 
 #ifndef _ASM_FILE_
 
@@ -288,10 +289,15 @@
 	EXTERN int sys_acct(struct pmc *p, unsigned char rw);
 
 	/*
-	 * Create a thread.
+	 * Creates a new thread.
 	 */
 	EXTERN int sys_pthread_create(void *__pthread, void *__pthread_attr_t,
 						   void *(*__start_routine)(void *), void *__arg);
+
+	/*
+	 * Terminates current thread.
+	 */
+	EXTERN void sys_pthread_exit(void *retval);
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);
