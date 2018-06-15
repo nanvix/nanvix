@@ -661,16 +661,26 @@ static int test_mem0(void)
  *============================================================================*/
 
 /*
- * @brief Dummy thread routine.
+ * @brief A second thread routine to test call stack.
  */
-static void *thread_routine_test(void *foo)
+static int thread_subroutine_test(int a)
 {
-	if (foo == NULL)
-		printf("thread routine without param\n");
-	else
-		printf("thread routine with param\n");
+	return a + a;
+}
+
+/*
+ * @brief Thread routine.
+ */
+static void *thread_routine_test(__attribute__((unused)) void *foo)
+{
+	int a;
+	a = NR_INODES;
+	a += thread_subroutine_test(a);
+	printf("thread_routine_test : a = %d\n", a);
 	fflush(stdout);
-	return (0);
+	/* TODO : should be call automatically after la routine return */
+	pthread_exit(NULL); /* TODO : should be called automatically after la routine return */
+	return NULL;
 }
 
 /*
@@ -679,12 +689,9 @@ static void *thread_routine_test(void *foo)
 static int thread_test(void)
 {
 	int ret;
-
-	if ((ret = pthread_create(NULL, NULL, thread_routine_test, NULL)) != 0)
-		return (ret);
-
-	printf("pthread_create returned %d\n", ret);
-	return (0);
+	ret = pthread_create(NULL, NULL, thread_routine_test, NULL);
+	printf("thread_test returned\n");
+	return (ret);
 }
 
 /*============================================================================*

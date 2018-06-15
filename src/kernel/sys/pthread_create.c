@@ -109,12 +109,6 @@ found_thr:
 	}
 	unlockreg(reg);
 
-	/* TODO temporary but force a reload after tlb_flush, useful for debugging purpose */
-	kprintf("thread 1 preg %d", &curr_proc->threads->pregs);
-	kprintf("thread 1 reg %d", &curr_proc->threads->pregs.reg);
-	kprintf("thread 2 preg %d", &curr_proc->threads->next->pregs);
-	kprintf("thread 2 reg %d", &curr_proc->threads->next->pregs.reg);
-
 #if or1k
 	/* Get kernel page for kernel stack. */
     kstack = getkpg(0);
