@@ -82,6 +82,7 @@
 .globl hwint14
 .globl hwint15
 .globl leave
+.globl leave.out
 .globl do_hwint
 
 .globl dtlb_miss_handler

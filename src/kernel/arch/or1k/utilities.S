@@ -333,7 +333,7 @@ fork_return:
  * Returns from pthread_create.
  */
 pthread_create_return:
-	LOAD_SYMBOL_2_GPR(r15, leave)
+	LOAD_SYMBOL_2_GPR(r15, leave.out)
 	l.sw GPR11(r1), r0
 	l.jr r15
 	l.nop
@@ -384,8 +384,8 @@ user_mode:
 forge_stack:
 	/* General Purpose registers. */
 	l.sw R0(r3)   , r0
-	l.sw SP(r3)   , r3
-	l.sw GPR2(r3) , r3
+	l.sw SP(r3)   , r5
+	l.sw GPR2(r3) , r5
 	l.sw GPR3(r3) , r0
 	l.sw GPR4(r3) , r0
 	l.sw GPR5(r3) , r0

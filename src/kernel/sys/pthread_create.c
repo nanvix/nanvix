@@ -37,7 +37,10 @@ PUBLIC int sys_pthread_create(void *pthread, void *attr,
 	struct thread *thrd;             /* Thread.            */
 	struct region *reg;              /* Memory region.     */
 	struct pregion *preg;            /* Process region.    */
-	addr_t start;                    /* Thread stack addr. */
+	void *kstack;                    /* Kernel stack page. */
+	addr_t kern_sp;                  /* Kernel stack ptr.  */
+	addr_t user_sp;                  /* User stack addr.   */
+
 
 	kprintf("sys_pthread_create");
 
@@ -94,8 +97,9 @@ found_thr:
 	}
 
 	/* Attach the region below previous stack. */
-	start = preg->start - PGTAB_SIZE;
-	err = attachreg(curr_proc, &curr_proc->threads->next->pregs, start, reg);
+	user_sp = (preg->start - PGTAB_SIZE);
+	err = attachreg(curr_proc, &curr_thread->next->pregs, user_sp, reg);
+	user_sp &= ~(DWORD_SIZE - 1); /* Align sp. */
 
 	/* Failed to attach region. */
 	if (err)
@@ -112,18 +116,19 @@ found_thr:
 	kprintf("thread 2 reg %d", &curr_proc->threads->next->pregs.reg);
 
 #if or1k
-	addr_t sp = (start - (INT_FRAME_SIZE)) & ~(DWORD_SIZE - 1); /* align kesp. */
+	/* Get kernel page for kernel stack. */
+    kstack = getkpg(0);
+    if (kstack == NULL)
+	{
+		kpanic("cannot allocate kstack");
+		return (-1);
+	}
 
-	/* Forge a stack for the thread. */
-	forge_stack(sp, start_routine);
-
-	curr_proc->threads->next->kstack = (void *)start;
-	curr_proc->threads->next->kesp = sp;
-
-	kprintf("sp %d", sp);
-	kprintf("routine %d", (addr_t)start_routine);
-	kprintf("stack thread read sp %d", (*((dword_t *)(curr_proc->threads->next->kesp + SP))));
-	kprintf("stack thread read EPCR %d", (*((dword_t *)(curr_proc->threads->next->kesp + EPCR))));
+	kern_sp = (addr_t)kstack - INT_FRAME_SIZE;
+	kern_sp &= ~(DWORD_SIZE - 1); /* Align sp. */
+	forge_stack(kern_sp, start_routine, user_sp);
+	curr_thread->next->kstack = kstack;
+	curr_thread->next->kesp = kern_sp;
 #endif
 
 	sched_thread(curr_proc, curr_proc->threads->next);
