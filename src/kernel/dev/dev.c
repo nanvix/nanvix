@@ -31,6 +31,7 @@
 #include <nanvix/pm.h>
 #include <nanvix/clock.h>
 #include <nanvix/debug.h>
+#include <nanvix/smp.h>
 #include <errno.h>
 
 /*============================================================================*
@@ -501,4 +502,5 @@ PUBLIC void dev_init(void)
 	ramdisk_init();
 	dbg_register(cdev_test, "cdev_test");
 	dbg_register(bdev_test, "bdev_test");
+	smp_init();
 }

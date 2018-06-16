@@ -28,8 +28,8 @@
 	 * OMPIC Registers and flags.
 	 */
 	#define OMPIC_CPUBYTES		8
-	#define OMPIC_CTRL(cpu)		(OMPIC_VIRT + (0x0 + (cpu * OMPIC_CPUBYTES)))
-	#define OMPIC_STAT(cpu)		(OMPIC_VIRT + (0x4 + (cpu * OMPIC_CPUBYTES)))
+	#define OMPIC_CTRL(cpu)		(OMPIC_VIRT + (0x0 + ((cpu) * OMPIC_CPUBYTES)))
+	#define OMPIC_STAT(cpu)		(OMPIC_VIRT + (0x4 + ((cpu) * OMPIC_CPUBYTES)))
 
 	#define OMPIC_CTRL_IRQ_ACK	(1 << 31)
 	#define OMPIC_CTRL_IRQ_GEN	(1 << 30)
@@ -45,7 +45,7 @@
 	EXTERN void ompic_init(void);
 	EXTERN uint32_t ompic_readreg(uint32_t reg);
 	EXTERN void ompic_writereg(uint32_t reg, uint32_t data);
-	EXTERN void ompic_send_ipi(uint32_t dstcore, uint32_t data);
+	EXTERN void ompic_send_ipi(uint32_t dstcore, uint16_t data);
 	EXTERN void ompic_handle_ipi(void);
 
 #endif /* _ASM_FILE_ */
