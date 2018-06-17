@@ -44,6 +44,9 @@
 .globl write_msr
 .globl mfspr
 .globl mtspr
+.globl spin_init
+.globl spin_lock
+.globl spin_unlock
 
 /* Imported symbols. */
 .globl processor_reload
@@ -409,5 +412,56 @@ mfspr:
  */
 mtspr:
 	l.mtspr r3, r4, 0
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                   spin_init                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Initializes the spin-lock with a given lock.
+ */
+spin_init:
+	l.sw 0(r3), r0
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                   spin_lock                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Spin-locks until the lock becomes 0, and so, locks again.
+ * lock = 0, unlocked
+ * lock = 1, locked
+ */
+spin_lock:
+	l.ori   r13, r0, 1
+1:
+	l.lwa   r15, 0(r3)
+	l.sfeqi r15, 0
+	l.bnf   1b
+	l.nop
+	l.swa 0(r3), r13
+	l.bnf   1b
+	l.nop
+
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                  spin_unlock                               *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Unlocks the spin-lock.
+ */
+spin_unlock:
+	l.lwa r13, 0(r3)
+	l.swa 0(r3), r0
+	l.bnf spin_unlock
+	l.nop
+
 	l.jr r9
 	l.nop

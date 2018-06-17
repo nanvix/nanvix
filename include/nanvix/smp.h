@@ -26,6 +26,11 @@
 	EXTERN unsigned smp_get_coreid(void);
 	EXTERN unsigned smp_get_numcores(void);
 	EXTERN void smp_init(void);
+	
+	/* Spinlock primitives. */
+	EXTERN void spin_init(volatile spinlock_t *);
+	EXTERN void spin_lock(volatile spinlock_t *);
+	EXTERN void spin_unlock(volatile spinlock_t *);
 
 	/* External variable. */
 	EXTERN unsigned smp_enabled;

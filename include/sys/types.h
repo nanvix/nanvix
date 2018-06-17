@@ -582,5 +582,8 @@ typedef struct {
 
 #undef __need_inttypes
 
+/* Used for spinlocks. */
+typedef unsigned spinlock_t; 
+
 #endif  /* _ASM_FILE_   */
 #endif	/* _SYS_TYPES_H */
