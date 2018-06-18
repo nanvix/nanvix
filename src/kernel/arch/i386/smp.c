@@ -24,6 +24,17 @@
  */
 PUBLIC unsigned smp_enabled = 0;
 
+/**
+ * @brief Release CPU accordingly to the current value.
+ */
+PUBLIC unsigned release_cpu = -1;
+
+/**
+ * @brief Boot-lock, spin-lock that synchronizes the CPUs
+ * initialization.
+ */
+PUBLIC volatile spinlock_t boot_lock;
+
 /*
  * @brief Gets the core number of the current processor.
  * @return Core number of the current processor.

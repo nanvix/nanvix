@@ -34,5 +34,7 @@
 
 	/* External variable. */
 	EXTERN unsigned smp_enabled;
+	EXTERN unsigned release_cpu;
+	EXTERN volatile spinlock_t boot_lock;
 
 #endif /* SMP_H_ */

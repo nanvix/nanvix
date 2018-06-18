@@ -63,16 +63,15 @@
  */
 start:
 
-	/* If SMP enabled, lock core_1. */
+	/* If SMP enabled, lock other cores, except core 0. */
 	l.mfspr r3, r0, SPR_COREID
 	l.sfnei r3, 1
 	l.bf 1f
 	l.nop
-	start_lock_core:
-		l.j start_lock_core
-		l.nop
+	l.j start_secondary_cores
+	l.nop
 1:
-	/* Surpervisor mode. */
+	/* Supervisor mode. */
 	l.ori	r1, r0, 0x1
 	l.mtspr	r0, r1, SPR_SR
 
@@ -243,6 +242,44 @@ start:
 	loop:
 		l.j loop
 	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                          start_secondary_cores                             *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Kernel entry point for secondary cores.
+ */
+start_secondary_cores:
+
+	/* Spinlock waiting to initialize. */
+	l.mfspr r3, r0, SPR_COREID
+	LOAD_SYMBOL_2_GPR(r4, KBASE_VIRT)
+	LOAD_SYMBOL_2_GPR(r5, release_cpu)
+	l.sub r5, r5, r4
+
+	l.lwa  r6, 0(r5)
+	l.sfeq r6, r3
+	l.bnf start_secondary_cores
+	l.nop
+
+	secondary_init:
+		
+		/* Unlock boot_lock. */
+		LOAD_SYMBOL_2_GPR(r3, boot_lock)
+		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
+		l.sub  r3, r3, r4
+		l.sub  r5, r5, r4
+		l.jalr r5
+		l.nop
+
+		/* Proceed initializing. */
+	1:
+		l.j 1b
+		l.nop
+		l.nop
+		l.nop
+		l.nop
 
 /*----------------------------------------------------------------------------*
  *                            boot_tlb_flush                                  *

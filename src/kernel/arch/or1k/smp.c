@@ -18,14 +18,27 @@
  */
 
 #include <or1k/or1k.h>
+#include <or1k/ompic.h>
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <nanvix/klib.h>
+#include <nanvix/smp.h>
 
 /**
  * @brief SMP enabled.
  */
 PUBLIC unsigned smp_enabled = 0;
+
+/**
+ * @brief Release CPU accordingly to the current value.
+ */
+PUBLIC unsigned release_cpu = -1;
+
+/**
+ * @brief Boot-lock, spin-lock that synchronizes the CPUs
+ * initialization.
+ */
+PUBLIC volatile spinlock_t boot_lock;
 
 /*
  * @brief Gets the core number of the current processor.
@@ -68,16 +81,27 @@ PUBLIC unsigned smp_get_numcores(void)
  */
 PUBLIC void smp_init(void)
 {
+	unsigned numcores = smp_get_numcores();
+
+	kprintf("%d CPUs detected!", numcores);
+
 	/* Check if we have more than one core and if so, enables SMP. */
-	if (smp_get_numcores() > 1)
+	if (numcores > 1)
 	{
+		spin_init(&boot_lock);
+		ompic_init();
+
+		kprintf("  -- enabling core #0");
+		
+		for (unsigned cpu = 1; cpu < numcores; cpu++)
+		{
+			spin_lock(&boot_lock);
+			release_cpu = cpu;	
+			kprintf("  -- enabling core #%d", cpu);
+		
+			/* the cpu released will unlock the spin-lock. */
+		}
+
 		smp_enabled = 1;
-		
-		kprintf("SMP enabled... core #%d", smp_get_coreid());
-		
-		for (unsigned i = 1; i < smp_get_numcores(); i++)
-			kprintf("  -- enabling core #%d", i);
 	}
-	else
-		kprintf("SMP not enabled");
 }
