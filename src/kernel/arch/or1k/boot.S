@@ -42,6 +42,7 @@
 #include <nanvix/pm.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
+#include <or1k/int.h>
 #include <fs/minix.h>
 
 /* Exported symbols. */
@@ -273,7 +274,39 @@ start_secondary_cores:
 		l.jalr r5
 		l.nop
 
-		/* Proceed initializing. */
+		/* == Proceed initializing == */
+		
+		/* Supervisor mode. */
+		l.ori	r1, r0, 0x1
+		l.mtspr	r0, r1, SPR_SR
+
+		/* Flush TLB. */
+		l.jal boot_tlb_flush
+		l.nop
+
+		/* Enable Instruction Cache. */
+		l.jal _ic_enable
+		l.nop
+
+		/* Enable Data Cache. */
+		l.jal _dc_enable
+		l.nop
+
+		/* Enabling IMMU/DMMU */
+		l.jal enable_mmu
+		l.nop
+
+		/* TODO: Setup stack. */
+
+		/* Enable OMPIC interrupts. */
+		l.ori   r3, r0, (1 << INT_OMPIC)
+		l.mtspr	r0, r3, SPR_PICMR
+
+		/* Enable HW interrupts. */
+		l.mfspr r3, r0, SPR_SR
+		l.ori	r3, r3, lo(SPR_SR_IEE)
+		l.mtspr	r0, r3, SPR_SR
+
 	1:
 		l.j 1b
 		l.nop

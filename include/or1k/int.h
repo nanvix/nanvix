@@ -29,6 +29,7 @@
 	#define INT_ATA2    15 /* Secondary ATA hard disk.                   */
 
 	#define INT_CLOCK      0 /* Timer.                        */
+	#define INT_OMPIC      1 /* OMPIC.                        */
 	#define INT_COM1       2 /* COM1.                         */
 	#define INT_EXTERNAL 256 /* External interrupt indicator. */
 
