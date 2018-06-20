@@ -118,8 +118,8 @@ found_thr:
 		return (-1);
 	}
 
-	kern_sp = (addr_t)kstack - INT_FRAME_SIZE;
-	kern_sp &= ~(DWORD_SIZE - 1); /* Align sp. */
+	kern_sp = (addr_t)kstack + PAGE_SIZE - DWORD_SIZE - INT_FRAME_SIZE;
+
 	forge_stack(kern_sp, start_routine, user_sp);
 	curr_thread->next->kstack = kstack;
 	curr_thread->next->kesp = kern_sp;
