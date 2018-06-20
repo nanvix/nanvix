@@ -385,9 +385,9 @@ forge_stack:
 
 	/* Adjust kern_sp using kstack page */
 	l.addi r3, r3,  PAGE_SIZE
-    l.addi r3, r3, -DWORD_SIZE
-    l.addi r3, r3, -INT_FRAME_SIZE
-    l.or r11, r3, r0 /* kern_sp pointer will be returned */
+	l.addi r3, r3, -DWORD_SIZE
+	l.addi r3, r3, -INT_FRAME_SIZE
+	l.or r11, r3, r0 /* kern_sp pointer will be returned */
 
 	/* General Purpose registers. */
 	l.sw R0(r3)   , r0

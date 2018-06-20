@@ -70,12 +70,8 @@ PUBLIC struct thread *get_free_thread()
 
 	/* Search for a free thread. */
     for (thrd = FIRST_THRD; thrd <= LAST_THRD; thrd++)
-    {
-        /* Found. */
-        if (thrd->state == THRD_DEAD) {
+        if (thrd->state == THRD_DEAD) 
 			return thrd;
-        }
-    }
 
     kprintf("thread table overflow");
     return (NULL);

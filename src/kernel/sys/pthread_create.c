@@ -38,7 +38,7 @@ PRIVATE int setup_stack(addr_t user_sp, void *(*start_routine)( void * ))
 
 	/* Get kernel page for kernel stack. */
     kstack = getkpg(0);
-    if (kstack == NULL)
+	if (kstack == NULL)
 	{
 		kprintf("cannot allocate kstack");
 		goto error;
