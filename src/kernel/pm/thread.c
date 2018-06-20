@@ -21,6 +21,7 @@
 
 #include <nanvix/thread.h>
 #include <nanvix/pm.h>
+#include <nanvix/klib.h>
 
 /**
  * @brief Thread table.
@@ -52,11 +53,30 @@ PUBLIC struct process *thrd_father(struct thread * thrd)
 		while (tmp_thrd != NULL)
 		{
 			if (tmp_thrd->tid == thrd->tid)
-				goto found;
+				return p;
 			tmp_thrd = tmp_thrd->next;
 		}
 	}
+	kprintf("cannot find father thread");
+    return (NULL);
+}
 
-found:
-	return p;
+/**
+ * @brief Find a free thread.
+ */
+PUBLIC struct thread *get_free_thread()
+{
+    struct thread *thrd;
+
+	/* Search for a free thread. */
+    for (thrd = FIRST_THRD; thrd <= LAST_THRD; thrd++)
+    {
+        /* Found. */
+        if (thrd->state == THRD_DEAD) {
+			return thrd;
+        }
+    }
+
+    kprintf("thread table overflow");
+    return (NULL);
 }
