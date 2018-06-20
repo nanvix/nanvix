@@ -26,21 +26,91 @@
 #include <sys/types.h>
 #include <errno.h>
 
+
 /*
- * Creates a new thread.
+ * @brief Forge a "fake" stack for the new threads
+ * and adjust the kernel stack pointer accordingly.
+ */
+PRIVATE int setup_stack(addr_t user_sp, void *(*start_routine)( void * ))
+{
+	void *kstack;   /* Kernel stack underlying page. */
+	addr_t kern_sp; /* Kernel stack pointer.         */
+
+	/* Get kernel page for kernel stack. */
+    kstack = getkpg(0);
+    if (kstack == NULL)
+	{
+		kprintf("cannot allocate kstack");
+		goto error;
+	}
+
+	/* Forge the new stack and update the thread structure */
+	kern_sp = forge_stack(kstack, start_routine, user_sp);
+	curr_thread->next->kstack = kstack;
+	curr_thread->next->kesp = kern_sp;
+	return (0);
+
+error:
+	return (-1);
+}
+
+/*
+ * @brief Allocate and attach new stack region for the new thread.
+ */
+PRIVATE addr_t alloc_attach_stack_reg()
+{
+	int err;              /* Error?                 */
+	struct pregion *preg; /* Process region.        */
+	struct region *reg;   /* Memory region.         */
+	addr_t start;         /* New region start addr. */
+
+	preg = &curr_proc->threads->pregs;
+
+	/* Thread region not in use. */
+	if (preg->reg == NULL)
+	{
+		kprintf("thread region not in use");
+		return (-1);
+	}
+
+	/* Allocate a stack region for the thread. */
+	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
+		kpanic("allocreg failed");
+
+	/* Failed to duplicate region. */
+	if (reg == NULL)
+	{
+		kprintf("failed to duplicate region");
+        goto error;
+	}
+
+	/* Attach the region below previous stack. */
+	start = (preg->start - PGTAB_SIZE);
+	err = attachreg(curr_proc, &curr_thread->next->pregs, start, reg);
+
+	/* Failed to attach region. */
+	if (err)
+	{
+		kpanic("failed to attach thread region");
+		freereg(reg);
+		goto error;
+	}
+	unlockreg(reg);
+	return (start - DWORD_SIZE);
+
+error:
+	return (0);
+}
+
+/*
+ * @brief Creates a new thread.
  */
 PUBLIC int sys_pthread_create(void *pthread, void *attr,
 							  void *(*start_routine)( void * ),
 							  void *arg)
 {
-	int err;                         /* Error?             */
 	struct thread *thrd;             /* Thread.            */
-	struct region *reg;              /* Memory region.     */
-	struct pregion *preg;            /* Process region.    */
-	void *kstack;                    /* Kernel stack page. */
-	addr_t kern_sp;                  /* Kernel stack ptr.  */
 	addr_t user_sp;                  /* User stack addr.   */
-
 
 	kprintf("sys_pthread_create");
 
@@ -52,79 +122,33 @@ PUBLIC int sys_pthread_create(void *pthread, void *attr,
 				|| (addr_t)start_routine < UBASE_VIRT)
 	{
 		kpanic("new thread try to access an illegal address");
-		return (-1);
+		goto error;
 	}
 
-	/* Search for a free thread. */
-	for (thrd = FIRST_THRD; thrd <= LAST_THRD; thrd++)
-	{
-		/* Found. */
-		if (thrd->state == THRD_DEAD) {
-			thrd->state = THRD_READY;
-			thrd->next = NULL;
-			thrd->counter = curr_proc->threads->counter;
-			thrd->tid = next_tid++;
-			thrd->flags = THRD_NEW;
-			thrd->flags = 1 << THRD_NEW;
-			curr_proc->threads->next = thrd;
-			goto found_thr;
-		}
-	}
+	/* Find and init a new thread structure. */
+	if ((thrd = get_free_thread()) == NULL)
+		goto error;
 
-	kprintf("thread table overflow");
-	return (-EAGAIN);
+	thrd->state = THRD_READY;
+	thrd->next = NULL;
+	thrd->counter = curr_proc->threads->counter;
+	thrd->tid = next_tid++;
+	thrd->flags = THRD_NEW;
+	thrd->flags = 1 << THRD_NEW;
+	curr_proc->threads->next = thrd;
 
-found_thr:
+	/* Allocate and setup the new stack. */
+	if ((user_sp = alloc_attach_stack_reg()) == 0)
+		goto error;
 
-	preg = &curr_proc->threads->pregs;
+	if (setup_stack(user_sp, start_routine) == -1)
+		goto error;
 
-	/* Thread region not in use. */
-	if (preg->reg == NULL)
-	{
-		kpanic("thread region not in use");
-		return (-1);
-	}
-
-	/* Allocate a stack region for the thread. */
-	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
-		kpanic("allocreg failed");
-
-	/* Failed to duplicate region. */
-	if (reg == NULL)
-	{
-		kpanic("failed to duplicate region");
-		return (-1);
-	}
-
-	/* Attach the region below previous stack. */
-	user_sp = (preg->start - PGTAB_SIZE);
-	err = attachreg(curr_proc, &curr_thread->next->pregs, user_sp, reg);
-	user_sp &= ~(DWORD_SIZE - 1); /* Align sp. */
-
-	/* Failed to attach region. */
-	if (err)
-	{
-		kpanic("failed to attach thread region");
-		return (-1);
-	}
-	unlockreg(reg);
-
-#if or1k
-	/* Get kernel page for kernel stack. */
-    kstack = getkpg(0);
-    if (kstack == NULL)
-	{
-		kpanic("cannot allocate kstack");
-		return (-1);
-	}
-
-	kern_sp = (addr_t)kstack - INT_FRAME_SIZE;
-	kern_sp &= ~(DWORD_SIZE - 1); /* Align sp. */
-	forge_stack(kern_sp, start_routine, user_sp);
-	curr_thread->next->kstack = kstack;
-	curr_thread->next->kesp = kern_sp;
-#endif
-
+	/* Schedule our new thread to run. */
 	sched_thread(curr_proc, curr_proc->threads->next);
 	return (0);
+
+error:
+	kprintf("pthread_create error.");
+	return (-1);
 }
