@@ -191,20 +191,34 @@
 .macro exception_enter
 	EXCEPTION_STORE_GPR3
 	EXCEPTION_STORE_GPR5
-		
+
+	/* 
+	 * Check if we are running in the slave core, i.e:
+	 * cores other than 0.
+	 */
+	l.mfspr r3, r0, SPR_COREID
+	l.sfeqi r3, 0
+	l.bf 2f
+	l.nop
+
+	/* Core != 0, we should send an IPI to core 0. */
+1:
+	l.j 1b
+	l.nop
+
+2:		
 	/* Checks if we are in user or kernel mode. */
 	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 	EXCEPTION_T_STORE_GPR30           /* Backup register.          */
 	l.mfspr r30, r0,  SPR_ESR_BASE
 	l.andi  r30, r30, SPR_SR_SM
 	l.sfeqi r30, 0
-	l.bnf   2f
+	l.bnf   3f
 	EXCEPTION_T_STORE_SP              /* Delay slot, save SP (r1). */
 	
 	/* Extracts the Kernel stack. */
 
 	/* User mode. */
-1:
 	LOAD_SYMBOL_2_GPR(r3, curr_proc)
 	l.sub r3, r3, r5
 	l.lwz r3, 0(r3)
@@ -212,7 +226,7 @@
 	l.lwz r1, PROC_KESP(r3)
 
 	/* Kernel mode. */
-2:
+3:
 	/* Create new stack frame. */
 	l.addi r1, r1, -(INT_FRAME_SIZE)
 	l.sub  r1, r1, r5
@@ -250,14 +264,14 @@
 		/* Check if syscall. */
 		l.ori   r3, r0, \number
 		l.sfeqi r3, 9
-		l.bnf 3f
+		l.bnf 4f
 		l.nop
 
 		/* Syscall. */
 		l.j syscall
 		l.nop
 
-	3:
+	4:
 		/* Not syscall, lets do swint. */
 		l.or   r4, r1, r0
 		LOAD_SYMBOL_2_GPR(r5, \handler)
@@ -270,7 +284,7 @@
 		l.nop
 
 		/* Return from exception. */
-	4:
+	5:
 		l.j leave
 		l.nop
 .endm
