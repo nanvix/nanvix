@@ -280,10 +280,6 @@ start_secondary_cores:
 		l.ori	r1, r0, 0x1
 		l.mtspr	r0, r1, SPR_SR
 
-		/* Flush TLB. */
-		l.jal boot_tlb_flush
-		l.nop
-
 		/* Enable Instruction Cache. */
 		l.jal _ic_enable
 		l.nop
@@ -294,6 +290,10 @@ start_secondary_cores:
 
 		/* Enabling IMMU/DMMU */
 		l.jal enable_mmu
+		l.nop
+
+		/* Flush TLB. */
+		l.jal boot_tlb_flush
 		l.nop
 
 		/* TODO: Setup stack. */
