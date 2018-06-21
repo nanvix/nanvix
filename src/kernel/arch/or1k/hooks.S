@@ -90,8 +90,104 @@
 .section .exception
 
 /*----------------------------------------------------------------------------*
+ *                                  save()                                    *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Saves registers.
+ */
+.macro save
+	/* General Purpose registers, except r30. */
+	l.sw GPR2(r1) , r2
+	l.sw GPR3(r1) , r3
+	l.sw GPR4(r1) , r4
+	l.sw GPR5(r1) , r5
+	l.sw GPR6(r1) , r6
+	l.sw GPR7(r1) , r7
+	l.sw GPR8(r1) , r8
+	l.sw GPR9(r1) , r9
+	l.sw GPR10(r1), r10
+	l.sw GPR11(r1), r11
+	l.sw GPR12(r1), r12
+	l.sw GPR13(r1), r13
+	l.sw GPR14(r1), r14
+	l.sw GPR15(r1), r15
+	l.sw GPR16(r1), r16
+	l.sw GPR17(r1), r17
+	l.sw GPR18(r1), r18
+	l.sw GPR19(r1), r19
+	l.sw GPR20(r1), r20
+	l.sw GPR21(r1), r21
+	l.sw GPR22(r1), r22
+	l.sw GPR23(r1), r23
+	l.sw GPR24(r1), r24
+	l.sw GPR25(r1), r25
+	l.sw GPR26(r1), r26
+	l.sw GPR27(r1), r27
+	l.sw GPR28(r1), r28
+	l.sw GPR29(r1), r29
+	l.sw GPR31(r1), r31
+
+	/* Stack Pointer, r1. */
+	EXCEPTION_T_LOAD_SP(r30)
+	l.sw SP(r1), r30
+
+	/* EPCR. */
+	l.mfspr r30, r0, SPR_EPCR_BASE
+	l.sw EPCR(r1), r30
+
+	/* EEAR. */
+	l.mfspr r30, r0, SPR_EEAR_BASE
+	l.sw EEAR(r1), r30
+
+	/* ESR. */
+	l.mfspr r30, r0, SPR_ESR_BASE
+	l.sw ESR(r1), r30
+
+	/* Restore and save r30. */
+	EXCEPTION_T_LOAD_GPR30(r30)
+	l.sw GPR30(r1), r30
+
+.endm
+
+/*----------------------------------------------------------------------------*
+ *                                 enter()                                    *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Enters in kernel.
+ */
+.macro enter
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+
+	/* Increment interrupt level. */
+	l.sub r3, r3, r5
+	l.lwz r3, 0(r3)
+	l.sub r3, r3, r5 
+
+	l.lwz  r7, PROC_INTLVL(r3)
+	l.addi r7, r7, 1
+	l.sw   PROC_INTLVL(r3), r7
+    
+	/* Save interrupt stack. */
+	l.lwz r7,   PROC_KESP(r3)
+	l.sw 0(r1), r7
+
+	l.or  r6, r0, r1
+	l.add r6, r5, r6
+	l.sw PROC_KESP(r3), r6
+
+.endm
+
+/*----------------------------------------------------------------------------*
  *                                exception_enter                             *
  *----------------------------------------------------------------------------*/
+
+/*
+ * Restores the appropriate stack, save registers
+ * and enable MMU.
+ */
 .macro exception_enter
 	EXCEPTION_STORE_GPR3
 	EXCEPTION_STORE_GPR5
@@ -124,15 +220,10 @@
 	/* Save registers. */
 	EXCEPTION_LOAD_GPR3
 	EXCEPTION_LOAD_GPR5
-	EXCEPTION_STORE_GPR9 /* Backup Link Register before the jal. */
-	l.jal save
-	l.nop
-	EXCEPTION_LOAD_GPR9
-	l.sw GPR9(r1), r9
+	save
 
 	/* Enter. */
-	l.jal enter
-	l.nop
+	enter
 
 	/* Enable MMU. */
 	l.mfspr r30, r0,  SPR_SR
@@ -209,155 +300,140 @@
  *----------------------------------------------------------------------------*/
 
 .org 0x100
-reset_exception:
-	swint_handler 0 do_reset
+	l.j reset_exception
+	l.nop
 
 .org 0x200
-bus_exception:
-	swint_handler 1 do_bus_error
+	l.j bus_exception
+	l.nop
 
 .org 0x300
-data_page_fault_exception:
-	swint_handler 2 _do_page_pfault
+	l.j data_page_fault_exception
+	l.nop
 
 .org 0x400
-instruction_page_fault:
-	swint_handler 3 _do_page_pfault
+	l.j instruction_page_fault
+	l.nop
 
 .org 0x500
-tick_timer_exception:
-	hwint_handler INT_CLOCK
+	l.j tick_timer_exception
+	l.nop
 
 .org 0x600
-alignment_exception:
-	swint_handler 5 do_alignment
+	l.j alignment_exception
+	l.nop
 
 .org 0x700
-illegal_instruction_exception:
-	swint_handler 6 do_illegal_instruction
+	l.j illegal_instruction_exception
+	l.nop
 
 .org 0x800
-external_interrupt_exception:
-	hwint_handler INT_EXTERNAL
+	l.j external_interrupt_exception
+	l.nop
 
 .org 0x900
-dtlb_miss_exception:
 	l.j	boot_dtlb_miss_handler
 	l.nop
 
 .org 0xa00
-itlb_miss_exception:
 	l.j	boot_itlb_miss_handler
 	l.nop
 
 .org 0xb00
-range_exception:
-	swint_handler 8 do_range
+	l.j range_exception
+	l.nop
 
 .org 0xc00
-syscall_exception:
-	swint_handler 9 0
+	l.j syscall_exception
+	l.nop
 
 .org 0xd00
-floating_point_exception:
-	swint_handler 10 do_float
+	l.j floating_point_exception
+	l.nop
 
 .org 0xe00
-trap_exception:
-	swint_handler 11 do_trap
+	l.j trap_exception
+	l.nop
 
 .align PAGE_SIZE
 /*----------------------------------------------------------------------------*
- *                                  save()                                    *
+ *                              reset_exception()                             *
  *----------------------------------------------------------------------------*/
-
-/*
- * Saves registers.
- */
-save:
-	/* General Purpose registers, except r30 and r9. */
-	l.sw GPR2(r1) , r2
-	l.sw GPR3(r1) , r3
-	l.sw GPR4(r1) , r4
-	l.sw GPR5(r1) , r5
-	l.sw GPR6(r1) , r6
-	l.sw GPR7(r1) , r7
-	l.sw GPR8(r1) , r8
-	l.sw GPR10(r1), r10
-	l.sw GPR11(r1), r11
-	l.sw GPR12(r1), r12
-	l.sw GPR13(r1), r13
-	l.sw GPR14(r1), r14
-	l.sw GPR15(r1), r15
-	l.sw GPR16(r1), r16
-	l.sw GPR17(r1), r17
-	l.sw GPR18(r1), r18
-	l.sw GPR19(r1), r19
-	l.sw GPR20(r1), r20
-	l.sw GPR21(r1), r21
-	l.sw GPR22(r1), r22
-	l.sw GPR23(r1), r23
-	l.sw GPR24(r1), r24
-	l.sw GPR25(r1), r25
-	l.sw GPR26(r1), r26
-	l.sw GPR27(r1), r27
-	l.sw GPR28(r1), r28
-	l.sw GPR29(r1), r29
-	l.sw GPR31(r1), r31
-
-	/* Stack Pointer, r1. */
-	EXCEPTION_T_LOAD_SP(r30)
-	l.sw SP(r1), r30
-
-	/* EPCR. */
-	l.mfspr r30, r0, SPR_EPCR_BASE
-	l.sw EPCR(r1), r30
-
-	/* EEAR. */
-	l.mfspr r30, r0, SPR_EEAR_BASE
-	l.sw EEAR(r1), r30
-
-	/* ESR. */
-	l.mfspr r30, r0, SPR_ESR_BASE
-	l.sw ESR(r1), r30
-
-	/* Restore and save r30. */
-	EXCEPTION_T_LOAD_GPR30(r30)
-	l.sw GPR30(r1), r30
-
-	l.jr r9
+reset_exception:
+	l.or r1, r0, r0
+	l.or r2, r0, r0
+	l.or r3, r0, r0
+	l.or r4, r0, r0
+	l.or r5, r0, r0
+	CLEAR_ALL_GPR
+	l.j start
 	l.nop
 
 /*----------------------------------------------------------------------------*
- *                                 enter()                                    *
+ *                                bus_exception()                             *
  *----------------------------------------------------------------------------*/
+bus_exception:
+	swint_handler 1 do_bus_error
 
-/*
- * Enters in kernel.
- */
-enter:
-	LOAD_SYMBOL_2_GPR(r3, curr_proc)
-	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+/*----------------------------------------------------------------------------*
+ *                         data_page_fault_exception()                        *
+ *----------------------------------------------------------------------------*/
+data_page_fault_exception:
+	swint_handler 2 _do_page_pfault
 
-	/* Increment interrupt level. */
-	l.sub r3, r3, r5
-	l.lwz r3, 0(r3)
-	l.sub r3, r3, r5 
+/*----------------------------------------------------------------------------*
+ *                           instruction_page_fault()                         *
+ *----------------------------------------------------------------------------*/
+instruction_page_fault:
+	swint_handler 3 _do_page_pfault
 
-	l.lwz  r7, PROC_INTLVL(r3)
-	l.addi r7, r7, 1
-	l.sw   PROC_INTLVL(r3), r7
-    
-	/* Save interrupt stack. */
-	l.lwz r7,   PROC_KESP(r3)
-	l.sw 0(r1), r7
+/*----------------------------------------------------------------------------*
+ *                            tick_timer_exception()                          *
+ *----------------------------------------------------------------------------*/
+tick_timer_exception:
+	hwint_handler INT_CLOCK
 
-	l.or  r6, r0, r1
-	l.add r6, r5, r6
-	l.sw PROC_KESP(r3), r6
+/*----------------------------------------------------------------------------*
+ *                             alignment_exception()                          *
+ *----------------------------------------------------------------------------*/
+alignment_exception:
+	swint_handler 5 do_alignment
 
-	l.jr r9
-	l.nop
+/*----------------------------------------------------------------------------*
+ *                       illegal_instruction_exception()                      *
+ *----------------------------------------------------------------------------*/
+illegal_instruction_exception:
+	swint_handler 6 do_illegal_instruction
+
+/*----------------------------------------------------------------------------*
+ *                        external_interrupt_exception()                      *
+ *----------------------------------------------------------------------------*/
+external_interrupt_exception:
+	hwint_handler INT_EXTERNAL
+
+/*----------------------------------------------------------------------------*
+ *                               range_exception()                            *
+ *----------------------------------------------------------------------------*/
+range_exception:
+	swint_handler 8 do_range
+
+/*----------------------------------------------------------------------------*
+ *                              syscall_exception()                           *
+ *----------------------------------------------------------------------------*/
+syscall_exception:
+	swint_handler 9 0
+
+/*----------------------------------------------------------------------------*
+ *                           floating_point_exception()                       *
+ *----------------------------------------------------------------------------*/
+floating_point_exception:
+	swint_handler 10 do_float
+
+/*----------------------------------------------------------------------------*
+ *                                trap_exception()                            *
+ *----------------------------------------------------------------------------*/
+trap_exception:
+	swint_handler 11 do_trap
 
 /*----------------------------------------------------------------------------*
  *                                leave()                                     *
