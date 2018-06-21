@@ -18,6 +18,9 @@
  */
 
 #include <nanvix/const.h>
+#include <nanvix/hal.h>
+#include <nanvix/klib.h>
+#include <nanvix/smp.h>
 
 /**
  * @brief SMP enabled.
