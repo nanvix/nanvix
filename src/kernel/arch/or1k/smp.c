@@ -88,6 +88,10 @@ PUBLIC void smp_init(void)
 	/* Check if we have more than one core and if so, enables SMP. */
 	if (numcores > 1)
 	{
+		/* Ensures that we have at least one shadow gpr file. */
+		if ( !(mfspr(SPR_CPUCFGR) & SPR_CPUCFGR_NSGF) )
+			kpanic("smp: shadow registers are not supported!");
+
 		spin_init(&boot_lock);
 		ompic_init();
 

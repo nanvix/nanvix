@@ -1,6 +1,6 @@
 # 
 # Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com> 
-#              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+#              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
 #              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
 #
 # This file is part of Nanvix.
@@ -21,7 +21,7 @@
 
 #Building kernel
 export CFLAGS += -DBUILDING_KERNEL
-export CFLAGS += -DSERIAL_ENABLE
+export CFLAGS += -DSERIAL_ENABLE -DOR1K_HAVE_SHADOW_GPRS
 
 ifeq ($(TARGET),i386)
 	export CFLAGS += -DVGA_ENABLE
