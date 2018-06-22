@@ -31,21 +31,22 @@
  * @brief Forge a "fake" stack for the new threads
  * and adjust the kernel stack pointer accordingly.
  */
-PRIVATE int setup_stack(addr_t user_sp, void *(*start_routine)( void * ))
+PRIVATE int setup_stack(addr_t user_sp, void *arg,
+						void *(*start_routine)( void * ))
 {
 	void *kstack;   /* Kernel stack underlying page. */
 	addr_t kern_sp; /* Kernel stack pointer.         */
 
 	/* Get kernel page for kernel stack. */
-    kstack = getkpg(0);
+	kstack = getkpg(0);
 	if (kstack == NULL)
 	{
 		kprintf("cannot allocate kstack");
 		goto error;
 	}
 
-	/* Forge the new stack and update the thread structure */
-	kern_sp = forge_stack(kstack, start_routine, user_sp);
+	/* Forge the new stack and update the thread structure. */
+	kern_sp = forge_stack(kstack, start_routine, user_sp, arg);
 	curr_thread->next->kstack = kstack;
 	curr_thread->next->kesp = kern_sp;
 	return (0);
@@ -114,7 +115,7 @@ PUBLIC int sys_pthread_create(void *pthread, void *attr,
 
 	kprintf("sys_pthread_create");
 
-	if (pthread != NULL || attr != NULL || arg != NULL)
+	if (pthread != NULL || attr != NULL)
 		kpanic("pthread_create arg not null, not supposed to happen for now");
 
 	/* Check start routine address validity. */
@@ -141,7 +142,7 @@ PUBLIC int sys_pthread_create(void *pthread, void *attr,
 	if ((user_sp = alloc_attach_stack_reg()) == 0)
 		goto error;
 
-	if (setup_stack(user_sp, start_routine) == -1)
+	if (setup_stack(user_sp, arg, start_routine) == -1)
 		goto error;
 
 	/* Schedule our new thread to run. */

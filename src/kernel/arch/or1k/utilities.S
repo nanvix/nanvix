@@ -393,7 +393,7 @@ forge_stack:
 	l.sw R0(r3)   , r0
 	l.sw SP(r3)   , r5
 	l.sw GPR2(r3) , r5
-	l.sw GPR3(r3) , r0
+	l.sw GPR3(r3) , r6
 	l.sw GPR4(r3) , r0
 	l.sw GPR5(r3) , r0
 	l.sw GPR6(r3) , r0
