@@ -22,6 +22,7 @@
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <nanvix/pm.h>
+#include <nanvix/klib.h>
 #include <signal.h>
 
 /**
@@ -111,7 +112,8 @@ PUBLIC void yield(void)
 	struct thread *next_thrd; /* Next thread  to run. */
 
 	/* Re-schedule process for execution. */
-	if (curr_proc->state == PROC_RUNNING)
+	if (curr_proc->state == PROC_RUNNING
+			&& curr_thread->state == THRD_RUNNING)
 	{
 		sched_thread(curr_proc, curr_thread);
 

@@ -588,7 +588,18 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
  */
 PUBLIC void dstrypgdir(struct process *proc)
 {
-	putkpg(proc->threads->kstack);
+	struct thread *t;
+
+	/*
+	 * Force freeing of kstack of threads that haven't cleaned themselves
+	 * beforehand with a pthread_cancel() or a pthread_exit system call.
+	 */
+	t = proc->threads;
+	while (t != NULL)
+	{
+		putkpg(t->kstack);
+		t = t->next;
+	}
 	putkpg(proc->pgdir);
 }
 

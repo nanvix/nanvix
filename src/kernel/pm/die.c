@@ -40,7 +40,7 @@ PUBLIC void die(int status)
 {
 	struct process *p;
 	struct thread *t;
-	
+
 	/* Shall not occour. */
 	if (curr_proc == IDLE)
 		kpanic("idle process dying");
@@ -100,10 +100,19 @@ PUBLIC void die(int status)
 	/* Detach process memory regions. */
 	for (unsigned i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
-	t = curr_thread;
+
+	/*
+	 * Force threads regions to detach if this wasn't done previously
+	 * by pthread_exit or pthread_cancel system calls.
+	 */
+	t = curr_proc->threads;
 	while (t != NULL)
 	{
 		detachreg(curr_proc, &t->pregs);
+
+		/* main thread state will be set in bury */
+		if (t != curr_proc->threads)
+			t->state = THRD_DEAD;
 		t = t->next;
 	}
 
@@ -114,13 +123,6 @@ PUBLIC void die(int status)
 	curr_proc->state = PROC_ZOMBIE;
 	curr_proc->alarm = 0;
 
-	/* Release associated working thread */
-	t = curr_thread;
-	while (t != NULL)
-	{
-		t->state = THRD_ZOMBIE;
-		t = t->next;
-	}
 
 
 	/* Resets the counter if any. */
@@ -139,18 +141,10 @@ PUBLIC void die(int status)
  */
 PUBLIC void bury(struct process *proc)
 {
-	struct thread *t;
 
+	proc->threads->state = THRD_DEAD;
 	dstrypgdir(proc);
 	proc->state = PROC_DEAD;
-
-	t = proc->threads;
-	while (t != NULL)
-	{
-		t->state = THRD_DEAD;
-		t = t->next;
-	}
-
 	proc->father->nchildren--;
 	nprocs--;
 }

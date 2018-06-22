@@ -31,8 +31,35 @@
  */
 PUBLIC void sys_pthread_exit(__attribute__((unused)) void *retval)
 {
-	kprintf("pthread_exit");
-	/* TODO*/
-	curr_thread->state = THRD_STOPPED; 
+	struct thread *tmp_thrd;
+
+	tmp_thrd = curr_proc->threads;
+	while (tmp_thrd != NULL)
+	{
+		if (tmp_thrd == curr_thread)
+		{
+			/*
+			 * Main thread called pthread_exit()
+			 * TODO : handle this edge cases : secondary thread should be able to
+			 * continue working and the process should terminate when the last secondary
+			 * thread terminate.
+			 */
+			kpanic("main thread call pthread_exit");
+		}
+		/* remove the threads from our linked list */
+		else if (tmp_thrd->next == curr_thread)
+		{
+			tmp_thrd->next = curr_thread->next;
+			goto removed;
+		}
+		tmp_thrd = tmp_thrd->next;
+	}
+	kpanic("pthread to remove wasn't find in current process");
+
+removed:
+	/* TODO : pthread_exit should also be able to run cleanup handler. */
+	curr_thread->state = THRD_DEAD;
+    detachreg(curr_proc, &curr_thread->pregs);
+	putkpg(curr_thread->kstack);
 	yield();
 }

@@ -56,10 +56,9 @@
 	 */
 	/**@{*/
 	#define THRD_DEAD       0 /**< Dead.             */
-	#define THRD_ZOMBIE     1 /**< Zombie.           */
-	#define THRD_READY      2 /**< Ready to execute. */
-	#define THRD_RUNNING    3 /**< Running.          */
-	#define THRD_STOPPED    4 /**< Stopped.          */
+	#define THRD_READY      1 /**< Ready to execute. */
+	#define THRD_RUNNING    2 /**< Running.          */
+	#define THRD_STOPPED    3 /**< Stopped.          */
 	/**@}*/
 
 	/**
