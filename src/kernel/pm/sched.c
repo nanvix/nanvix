@@ -51,9 +51,20 @@ PUBLIC void sched(struct process *proc)
  */
 PUBLIC void sched_thread(struct process *proc, struct thread *thrd)
 {
+	struct thread *t;
+
+	proc->state = PROC_READY;
 	thrd->state = THRD_READY;
 	thrd->counter = 0;
-	proc->state = PROC_READY;
+
+	/* test if there was already a thread running in this process */
+	t = proc->threads;
+	while (t != NULL)
+	{
+		if (t->state == THRD_RUNNING)
+			proc->state = PROC_RUNNING;
+		t = t->next;
+	}
 }
 
 
@@ -133,41 +144,39 @@ PUBLIC void yield(void)
 			p->alarm = 0, sndsig(p, SIGALRM);
 	}
 
-	/* Choose a process to run next. */
-	next = IDLE;
+	/* Choose a thread to run next. */
 	next_thrd = IDLE->threads;
+	next = IDLE;
 
-	for (p = FIRST_PROC; p <= LAST_PROC; p++)
+	for (t = FIRST_THRD; t <= LAST_THRD; t++)
 	{
-		/* Skip non-ready process. */
-		if (p->state != PROC_READY)
+		/* Skip non-ready thread. */
+		if (t->state != THRD_READY)
 			continue;
 
-		t = p->threads;
-		while (t != NULL) 
+		/*
+		 * Thread with higher
+		 * waiting time found.
+		 */
+		if (t->counter > next_thrd->counter)
 		{
-			/*
-			 * Thread with higher
-			 * waiting time found.
-			 */
-			if (t->counter > next_thrd->counter)
-			{
-				next_thrd->counter++;
-				next = p;
-				next_thrd = t;
-			}
-
-			/*
-			 * Increment waiting
-			 * time of thread.
-			 */
-			else
-				t->counter++;
-
-			t = t->next;
+			next_thrd->counter++;
+			next_thrd = t;
+			if ((next = thrd_father(next_thrd)) == NULL)
+				kpanic ("thread scheduled not attached to a process");
 		}
+
+		/*
+		 * Increment waiting
+		 * time of thread.
+		 */
+		else
+			t->counter++;
 	}
-	
+
+	if (next_thrd->state != THRD_READY)
+		kpanic("thread elected incoherent state : not ready");
+
 	/* Switch to next process. */
 	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;

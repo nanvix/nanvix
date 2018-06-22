@@ -74,7 +74,7 @@
 	 * @name Thread table boundaries
 	 */
 	/**@{*/
-	#define FIRST_THRD ((&threadtab[0]))            /**< First process. */
+	#define FIRST_THRD ((&threadtab[1]))            /**< First process. */
 	#define LAST_THRD ((&threadtab[THRD_MAX - 1])) 	/**< Last process.  */
 	/**@}*/
 
