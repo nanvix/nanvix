@@ -64,6 +64,6 @@ PUBLIC void pic_setup(void)
 	if ( !(upr & SPR_UPR_PICP) )
 		kpanic("setup: device without PIC");
 
-	/* Unmask 'all' IRQs. */
-	pic_mask(0x4);
+	/* Unmask serial and ompic device. */
+	pic_mask((1 << INT_COM1) | (1 << INT_OMPIC));
 }
