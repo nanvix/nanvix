@@ -28,13 +28,13 @@
 	EXTERN void smp_init(void);
 	
 	/* Spinlock primitives. */
-	EXTERN void spin_init(volatile spinlock_t *);
-	EXTERN void spin_lock(volatile spinlock_t *);
-	EXTERN void spin_unlock(volatile spinlock_t *);
+	EXTERN void spin_init(spinlock_t *);
+	EXTERN void spin_lock(spinlock_t *);
+	EXTERN void spin_unlock(spinlock_t *);
 
 	/* External variable. */
 	EXTERN unsigned smp_enabled;
 	EXTERN unsigned release_cpu;
-	EXTERN volatile spinlock_t boot_lock;
+	EXTERN spinlock_t boot_lock;
 
 #endif /* SMP_H_ */

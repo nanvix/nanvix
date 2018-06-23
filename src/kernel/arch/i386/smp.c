@@ -36,7 +36,7 @@ PUBLIC unsigned release_cpu = -1;
  * @brief Boot-lock, spin-lock that synchronizes the CPUs
  * initialization.
  */
-PUBLIC volatile spinlock_t boot_lock;
+PUBLIC spinlock_t boot_lock;
 
 /*
  * @brief Gets the core number of the current processor.
