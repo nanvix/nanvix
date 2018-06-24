@@ -106,6 +106,9 @@ PUBLIC void smp_init(void)
 			/* the cpu released will unlock the spin-lock. */
 		}
 
+		spin_lock(&boot_lock);
+		spin_unlock(&boot_lock);
+
 		smp_enabled = 1;
 	}
 }

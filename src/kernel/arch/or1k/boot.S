@@ -265,14 +265,6 @@ start_secondary_cores:
 	l.nop
 
 	secondary_init:
-		
-		/* Unlock boot_lock. */
-		LOAD_SYMBOL_2_GPR(r3, boot_lock)
-		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
-		l.sub  r3, r3, r4
-		l.sub  r5, r5, r4
-		l.jalr r5
-		l.nop
 
 		/* == Proceed initializing == */
 		
@@ -306,6 +298,14 @@ start_secondary_cores:
 		l.mfspr r3, r0, SPR_SR
 		l.ori	r3, r3, lo(SPR_SR_IEE)
 		l.mtspr	r0, r3, SPR_SR
+
+		/* Unlock boot_lock. */
+		LOAD_SYMBOL_2_GPR(r3, boot_lock)
+		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
+		l.sub  r3, r3, r4
+		l.sub  r5, r5, r4
+		l.jalr r5
+		l.nop
 
 	1:
 		l.j 1b
