@@ -302,8 +302,6 @@ start_secondary_cores:
 		/* Unlock boot_lock. */
 		LOAD_SYMBOL_2_GPR(r3, boot_lock)
 		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
-		l.sub  r3, r3, r4
-		l.sub  r5, r5, r4
 		l.jalr r5
 		l.nop
 
