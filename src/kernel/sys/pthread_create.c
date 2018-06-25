@@ -106,9 +106,8 @@ error:
 /*
  * @brief Creates a new thread.
  */
-PUBLIC int sys_pthread_create(void *pthread, void *attr,
-							  void *(*start_routine)( void * ),
-							  void *arg)
+PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
+							  void *(*start_routine)( void * ), void *arg)
 {
 	struct thread *thrd;             /* Thread.            */
 	addr_t user_sp;                  /* User stack addr.   */

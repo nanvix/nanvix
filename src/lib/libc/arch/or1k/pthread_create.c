@@ -23,7 +23,7 @@
 /*
  * Creates a new thread.
  */
-int pthread_create(void *__pthread, void *__attr,
+int pthread_create(pthread_t *__pthread, _CONST pthread_attr_t *__attr,
 				   void *(*__start_routine)(void *), void *__arg)
 {
 	register unsigned r3

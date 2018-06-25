@@ -33,6 +33,7 @@ PUBLIC void sys_pthread_exit(__attribute__((unused)) void *retval)
 {
 	struct thread *tmp_thrd;
 
+	kprintf("===== pthread_exit");
 	tmp_thrd = curr_proc->threads;
 	while (tmp_thrd != NULL)
 	{
