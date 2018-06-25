@@ -592,7 +592,7 @@ PUBLIC void dstrypgdir(struct process *proc)
 
 	/*
 	 * Force freeing of kstack of threads that haven't cleaned themselves
-	 * beforehand with a pthread_cancel() or a pthread_exit system call.
+	 * beforehand.
 	 */
 	t = proc->threads;
 	while (t != NULL)

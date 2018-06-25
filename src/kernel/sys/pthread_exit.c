@@ -33,7 +33,6 @@ PUBLIC void sys_pthread_exit(__attribute__((unused)) void *retval)
 {
 	struct thread *tmp_thrd;
 
-	kprintf("===== pthread_exit");
 	tmp_thrd = curr_proc->threads;
 	while (tmp_thrd != NULL)
 	{
@@ -41,9 +40,10 @@ PUBLIC void sys_pthread_exit(__attribute__((unused)) void *retval)
 		{
 			/*
 			 * Main thread called pthread_exit()
-			 * TODO : handle this edge cases : secondary thread should be able to
-			 * continue working and the process should terminate when the last secondary
-			 * thread terminate.
+			 * TODO : handle this edge cases : secondary threads should be able
+			 * to continue working and the process should terminate when the last
+			 * secondary thread terminate.
+			 * One secondary thread type flag should be set to THRD_MAIN.
 			 */
 			kpanic("main thread call pthread_exit");
 		}

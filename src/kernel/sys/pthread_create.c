@@ -133,8 +133,8 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	thrd->next = NULL;
 	thrd->counter = curr_proc->threads->counter;
 	thrd->tid = next_tid++;
-	thrd->flags = THRD_NEW;
 	thrd->flags = 1 << THRD_NEW;
+	thrd->type = 0 << THRD_MAIN;
 	curr_proc->threads->next = thrd;
 
 	/* Allocate and setup the new stack. */

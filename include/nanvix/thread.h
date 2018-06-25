@@ -45,10 +45,17 @@
 	/**@}*/
 
 	/**
-	 * @name Process flags
+	 * @name Thread types
 	 */
 	/**@{*/
-	#define THRD_NEW 0 /**< Is the process new? */
+	#define THRD_MAIN 0 /**< Is it the main thread? */
+	/**@}*/
+
+	/**
+	 * @name Thread flags
+	 */
+	/**@{*/
+	#define THRD_NEW 0 /**< Is the thread new? */
 	/**@}*/
 
 	/**
@@ -110,6 +117,7 @@
 		 */
 		/**@{*/
 		tid_t tid;          /**< Thread ID.              */
+		unsigned type;  	/**< Thread types.           */
 		/**@}*/
 
 		/**

@@ -101,18 +101,16 @@ PUBLIC void die(int status)
 	for (unsigned i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
 
-	/*
-	 * Force threads regions to detach if this wasn't done previously
-	 * by pthread_exit or pthread_cancel system calls.
-	 */
+	/* Force threads regions to detach if this wasn't done previously. */
 	t = curr_proc->threads;
 	while (t != NULL)
 	{
 		detachreg(curr_proc, &t->pregs);
 
-		/* main thread state will be set in bury */
-		if (t != curr_proc->threads)
+		/* main thread state will be set later in bury */
+		if ((t->type & (1 << THRD_MAIN)) == 0)
 			t->state = THRD_DEAD;
+
 		t = t->next;
 	}
 

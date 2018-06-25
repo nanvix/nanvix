@@ -151,6 +151,7 @@ dup_done:
 	proc->threads->tid = next_tid++;
 	proc->threads->next = NULL;
 	proc->threads->flags = 0 << THRD_NEW;
+	proc->threads->type = 1 << THRD_MAIN;
 
 	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));
 
