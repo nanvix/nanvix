@@ -29,9 +29,12 @@
 /*
  * Terminates a thread.
  */
-PUBLIC void sys_pthread_exit(__attribute__((unused)) void *retval)
+PUBLIC void sys_pthread_exit(void *retval)
 {
 	struct thread *tmp_thrd;
+
+	/* Store return value pointer for a future join. */
+	curr_thread->retval = retval;
 
 	tmp_thrd = curr_proc->threads;
 	while (tmp_thrd != NULL)
@@ -55,12 +58,21 @@ PUBLIC void sys_pthread_exit(__attribute__((unused)) void *retval)
 		}
 		tmp_thrd = tmp_thrd->next;
 	}
+	(*(int *)curr_thread->retval) = -1;
 	kpanic("pthread to remove wasn't find in current process");
 
 removed:
 	/* TODO : pthread_exit should also be able to run cleanup handler. */
+
+	/* Clear memory. */
 	curr_thread->state = THRD_DEAD;
     detachreg(curr_proc, &curr_thread->pregs);
 	putkpg(curr_thread->kstack);
+
+	/* Return value. */
+	(*(int *)curr_thread->retval) = 0;
+
+	sndsig(curr_proc, SIGCHLD);
+	kprintf("sendsig sent");
 	yield();
 }

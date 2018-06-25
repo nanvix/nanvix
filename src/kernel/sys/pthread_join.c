@@ -32,10 +32,28 @@
  */
 PUBLIC int sys_pthread_join(pthread_t thread, void **retval)
 {
-	kprintf("sys_pthread_join pthread_t %d", thread);
+	struct thread *t;
 
-	if (retval != NULL)
-		kprintf("TODO : handle retval");
+repeat:
+	kprintf("sys_pthread_join pthread_t %d, repeat", thread);
 
-	return (0);
+	/* Look for thread to join. */
+	for (t = FIRST_THRD; t <= LAST_THRD; t++)
+	{
+		/* Found. */
+		if (t->tid == (tid_t)thread)
+		{
+			if (t->state == THRD_DEAD || t->state == THRD_STOPPED)
+			{
+				*retval = t->retval;
+				return(0);
+			}
+		}
+	}
+
+	yield();
+
+	goto repeat;
+
+	return (-EINTR);
 }
