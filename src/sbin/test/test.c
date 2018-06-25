@@ -32,7 +32,7 @@
 #include <limits.h>
 #include <semaphore.h>
 #include <errno.h>
-#include <tmpthread.h>
+#include <pthread.h>
 
 /* Test flags. */
 #define VERBOSE  (1 << 10)
@@ -660,26 +660,25 @@ static int test_mem0(void)
  *                           Thread Test                                      *
  *============================================================================*/
 
-/*
- * @brief A second thread routine to test call stack.
- */
-static int thread_subroutine_test(int a)
-{
-	return a + a;
-}
+/* Thread return value, need to be on the heap. */
+int thread_return;
 
 /*
  * @brief Thread routine.
  */
-static void *thread_routine_test(__attribute__((unused)) void *foo)
+static void *thread_routine_test(void *foo)
 {
-	int a;
-	a = NR_INODES;
-	a += thread_subroutine_test(a);
-	printf("thread_routine_test : a = %d\n", a);
+	printf("thread_routine_test : arg %s\n", (char *)foo);
 	fflush(stdout);
-	/* TODO : should be call automatically after la routine return */
-	pthread_exit(NULL); /* TODO : should be called automatically after la routine return */
+
+	work_cpu();
+	/* getpid() force changing context */
+	for (int i = 0; i < 20; i++)
+		getpid();
+	work_cpu();
+
+	/* TODO : should be call automatically after routine return */
+	pthread_exit((void *)&thread_return);
 	return NULL;
 }
 
@@ -688,10 +687,22 @@ static void *thread_routine_test(__attribute__((unused)) void *foo)
  */
 static int thread_test(void)
 {
-	int ret;
-	ret = pthread_create(NULL, NULL, thread_routine_test, NULL);
-	printf("thread_test returned\n");
-	return (ret);
+	int res;
+	int *ret;
+	pthread_t thread;
+	char arg[32] = "hello"; /* can be on the stack, as we wait with join */
+
+	if ((res = pthread_create(&thread, NULL, thread_routine_test, (void *)arg)) != 0)
+		return res;
+
+	printf("thread_test : pthread_create returned pthread_t %d\n", thread);
+	fflush(stdout);
+	res = pthread_join(thread, (void **)&ret);
+
+	printf("thread_test : pthread_join res %d\n", res);
+	printf("thread_test : pthread_join ret ptr %d\n", *ret);
+	fflush(stdout);
+	return (res);
 }
 
 /*============================================================================*
