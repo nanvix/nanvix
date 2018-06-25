@@ -114,8 +114,8 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 
 	kprintf("sys_pthread_create");
 
-	if (pthread != NULL || attr != NULL)
-		kpanic("pthread_create arg not null, not supposed to happen for now");
+	if (attr != NULL)
+		kpanic("pthread_create attr not null, not supposed to happen for now");
 
 	/* Check start routine address validity. */
 	if ((addr_t)start_routine > UBASE_VIRT + REGION_SIZE
@@ -136,6 +136,7 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	thrd->flags = 1 << THRD_NEW;
 	thrd->type = 0 << THRD_MAIN;
 	curr_proc->threads->next = thrd;
+	*pthread = thrd->tid;
 
 	/* Allocate and setup the new stack. */
 	if ((user_sp = alloc_attach_stack_reg()) == 0)

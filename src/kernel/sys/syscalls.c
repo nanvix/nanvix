@@ -86,5 +86,6 @@ PUBLIC void (*syscalls_table[NR_SYSCALLS])(void)  = {
 	(void (*)(void))&sys_sempost,
 	(void (*)(void))&sys_acct,
 	(void (*)(void))&sys_pthread_create,
-	(void (*)(void))&sys_pthread_exit
+	(void (*)(void))&sys_pthread_exit,
+	(void (*)(void))&sys_pthread_join
 };
