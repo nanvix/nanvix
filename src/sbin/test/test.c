@@ -668,7 +668,7 @@ int thread_return;
  */
 static void *thread_routine_test(void *foo)
 {
-	printf("thread_routine_test : arg %s\n", (char *)foo);
+	printf("thread_routine_test : arg : %s\n", (char *)foo);
 	fflush(stdout);
 
 	work_cpu();
@@ -689,20 +689,28 @@ static int thread_test(void)
 {
 	int res;
 	int *ret;
-	pthread_t thread;
-	char arg[32] = "hello"; /* can be on the stack, as we wait with join */
+	pthread_t threads[4];
+	char arg[4][4] = {"hi", "how", "are", "you"};
 
-	if ((res = pthread_create(&thread, NULL, thread_routine_test, (void *)arg)) != 0)
-		return res;
+	for (int i = 0; i < 4; i++)
+	{
+		if ((res = pthread_create(&threads[i], NULL,
+								  thread_routine_test, (void *)arg[i])) != 0)
+			return res;
+		printf("thread_test : pthread_create pthread_t %d\n", threads[i]);
+		fflush(stdout);
+	}
 
-	printf("thread_test : pthread_create returned pthread_t %d\n", thread);
-	fflush(stdout);
-	res = pthread_join(thread, (void **)&ret);
-
-	printf("thread_test : pthread_join res %d\n", res);
-	printf("thread_test : pthread_join ret ptr %d\n", *ret);
-	fflush(stdout);
-	return (res);
+	for (int i = 0; i < 4; i++)
+	{
+		if ((res = pthread_join(threads[i], (void **)&ret)) != 0)
+			return res;
+		if (*ret != 0)
+			return res;
+		printf("thread_test : pthread_join thread %d\n", threads[i]);
+		fflush(stdout);
+	}
+	return (0);
 }
 
 /*============================================================================*

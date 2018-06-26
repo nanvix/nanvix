@@ -59,7 +59,7 @@ PUBLIC void sys_pthread_exit(void *retval)
 		tmp_thrd = tmp_thrd->next;
 	}
 	(*(int *)curr_thread->retval) = -1;
-	kpanic("pthread to remove wasn't find in current process");
+	kpanic("pthread to remove wasn't found in current process");
 
 removed:
 	/* TODO : pthread_exit should also be able to run cleanup handler. */

@@ -31,7 +31,7 @@
  * @brief Forge a "fake" stack for the new threads
  * and adjust the kernel stack pointer accordingly.
  */
-PRIVATE int setup_stack(addr_t user_sp, void *arg,
+PRIVATE int setup_stack(addr_t user_sp, void *arg, struct thread *thrd,
 						void *(*start_routine)( void * ))
 {
 	void *kstack;   /* Kernel stack underlying page. */
@@ -47,8 +47,8 @@ PRIVATE int setup_stack(addr_t user_sp, void *arg,
 
 	/* Forge the new stack and update the thread structure. */
 	kern_sp = forge_stack(kstack, start_routine, user_sp, arg);
-	curr_thread->next->kstack = kstack;
-	curr_thread->next->kesp = kern_sp;
+	thrd->kstack = kstack;
+	thrd->kesp = kern_sp;
 	return (0);
 
 error:
@@ -58,21 +58,13 @@ error:
 /*
  * @brief Allocate and attach new stack region for the new thread.
  */
-PRIVATE addr_t alloc_attach_stack_reg()
+PRIVATE addr_t alloc_attach_stack_reg(struct thread *thrd)
 {
 	int err;              /* Error?                 */
 	struct pregion *preg; /* Process region.        */
 	struct region *reg;   /* Memory region.         */
 	addr_t start;         /* New region start addr. */
-
-	preg = &curr_proc->threads->pregs;
-
-	/* Thread region not in use. */
-	if (preg->reg == NULL)
-	{
-		kprintf("thread region not in use");
-		return (-1);
-	}
+	addr_t offset;        /* Reg addr offfset.      */
 
 	/* Allocate a stack region for the thread. */
 	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
@@ -85,9 +77,23 @@ PRIVATE addr_t alloc_attach_stack_reg()
         goto error;
 	}
 
+
+	preg = &curr_proc->threads->pregs;
+
+	/* Thread region not in use. */
+	if (preg->reg == NULL)
+	{
+		kprintf("thread region not in use");
+		freereg(reg);
+		goto error;
+	}
+
+	/* Get a correct offset to attach new stack. */
+	offset = PGTAB_SIZE * curr_proc->nthreads;
+
 	/* Attach the region below previous stack. */
-	start = (preg->start - PGTAB_SIZE);
-	err = attachreg(curr_proc, &curr_thread->next->pregs, start, reg);
+	start = (preg->start - offset);
+	err = attachreg(curr_proc, &thrd->pregs, start, reg);
 
 	/* Failed to attach region. */
 	if (err)
@@ -110,7 +116,9 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 							  void *(*start_routine)( void * ), void *arg)
 {
 	struct thread *thrd;             /* Thread.            */
+	struct thread *t;                /* Tmp thread.        */
 	addr_t user_sp;                  /* User stack addr.   */
+
 
 	if (attr != NULL)
 		kpanic("pthread_create attr not null, not supposed to happen for now");
@@ -133,18 +141,24 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	thrd->tid = next_tid++;
 	thrd->flags = 1 << THRD_NEW;
 	thrd->type = 0 << THRD_MAIN;
-	curr_proc->threads->next = thrd;
 	*pthread = thrd->tid;
 
+	/* Attach new thread in the process list. */
+	t = curr_proc->threads;
+	while(t->next != NULL)
+		t = t->next;
+	t->next = thrd;
+
 	/* Allocate and setup the new stack. */
-	if ((user_sp = alloc_attach_stack_reg()) == 0)
+	if ((user_sp = alloc_attach_stack_reg(thrd)) == 0)
 		goto error;
 
-	if (setup_stack(user_sp, arg, start_routine) == -1)
+	if (setup_stack(user_sp, arg, thrd, start_routine) == -1)
 		goto error;
 
 	/* Schedule our new thread to run. */
-	sched_thread(curr_proc, curr_proc->threads->next);
+	curr_proc->nthreads++;
+	sched_thread(curr_proc, thrd);
 	return (0);
 
 error:
