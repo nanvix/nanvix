@@ -33,7 +33,6 @@ PUBLIC void sys_pthread_exit(void *retval)
 {
 	struct thread *tmp_thrd;
 
-
 	/* Store return value pointer for a future join. */
 	curr_thread->retval = retval;
 
@@ -66,7 +65,7 @@ removed:
 	/* TODO : pthread_exit should also be able to run cleanup handler. */
 
 	/* Clear memory. */
-	curr_thread->state = THRD_DEAD;
+	curr_thread->state = THRD_TERMINATED;
     detachreg(curr_proc, &curr_thread->pregs);
 	putkpg(curr_thread->kstack);
 

@@ -112,8 +112,6 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	struct thread *thrd;             /* Thread.            */
 	addr_t user_sp;                  /* User stack addr.   */
 
-	kprintf("sys_pthread_create");
-
 	if (attr != NULL)
 		kpanic("pthread_create attr not null, not supposed to happen for now");
 

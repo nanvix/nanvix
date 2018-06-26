@@ -26,9 +26,6 @@
 #include <sys/types.h>
 #include <errno.h>
 
-/* Sleeping chain. */
-// PRIVATE struct process *chain = NULL;
-
 /*
  * @brief Join the specified thread.
  */
@@ -37,24 +34,22 @@ PUBLIC int sys_pthread_join(pthread_t thread, void **retval)
 	struct thread *t;
 
 repeat:
-	kprintf("sys_pthread_join pthread_t %d, repeat", thread);
-
 	/* Look for thread to join. */
 	for (t = FIRST_THRD; t <= LAST_THRD; t++)
 	{
 		/* Found. */
 		if (t->tid == (tid_t)thread)
 		{
-			if (t->state == THRD_DEAD || t->state == THRD_STOPPED)
+			/* Join. */
+			if (t->state == THRD_TERMINATED)
 			{
-				kprintf("thread %d found dead", t->tid);
 				*retval = t->retval;
+				t->state = THRD_DEAD;
 				return(0);
 			}
-			else
-			{
-				kprintf("thread %d found still running", t->tid);
-			}
+			/* Nothing to do, return immediatly. */
+			else if (t->state == THRD_DEAD || t->state == THRD_STOPPED)
+				return(0);
 		}
 	}
 

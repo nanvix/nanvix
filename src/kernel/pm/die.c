@@ -106,11 +106,7 @@ PUBLIC void die(int status)
 	while (t != NULL)
 	{
 		detachreg(curr_proc, &t->pregs);
-
-		/* main thread state will be set later in bury */
-		if ((t->type & (1 << THRD_MAIN)) == 0)
-			t->state = THRD_DEAD;
-
+		t->state = THRD_TERMINATED;
 		t = t->next;
 	}
 
@@ -139,8 +135,14 @@ PUBLIC void die(int status)
  */
 PUBLIC void bury(struct process *proc)
 {
-
-	proc->threads->state = THRD_DEAD;
+	struct thread *t;
+	t = proc->threads;
+	while (t != NULL)
+	{
+		detachreg(proc, &t->pregs);
+		t->state = THRD_DEAD;
+		t = t->next;
+	}
 	dstrypgdir(proc);
 	proc->state = PROC_DEAD;
 	proc->father->nchildren--;
