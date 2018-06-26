@@ -215,6 +215,7 @@
 	EXTERN void pm_init(void);
 	EXTERN void sched(struct process *);
 	EXTERN void sched_thread(struct process *, struct thread *);
+	EXTERN void wakeup_join();
 #ifdef BUILDING_KERNEL
 	EXTERN void sleep(struct process **, int);
 #endif

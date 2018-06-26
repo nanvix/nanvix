@@ -37,9 +37,12 @@ PUBLIC void sched(struct process *proc)
 	t = proc->threads;
 	while (t != NULL)
 	{
-		t->state = THRD_READY;
-		t->counter = 0;
-		t = t->next;
+		if (t->state != THRD_WAITING)
+		{
+			t->state = THRD_READY;
+			t->counter = 0;
+			t = t->next;
+		}
 	}
 	proc->state = PROC_READY;
 }
@@ -58,7 +61,7 @@ PUBLIC void sched_thread(struct process *proc, struct thread *thrd)
 	thrd->state = THRD_READY;
 	thrd->counter = 0;
 
-	/* test if there was already a thread running in this process */
+	/* Test if there was already a thread running in this process. */
 	t = proc->threads;
 	while (t != NULL)
 	{
@@ -68,6 +71,20 @@ PUBLIC void sched_thread(struct process *proc, struct thread *thrd)
 	}
 }
 
+/**
+ * @brief Wakeup all potential joining thread.
+ */
+PUBLIC void wakeup_join()
+{
+	struct thread *t;
+	t = curr_proc->threads;
+	while(t != NULL)
+	{
+		if (t->state == THRD_WAITING)
+			t->state = THRD_READY;
+		t = t->next;
+	}
+}
 
 /**
  * @brief Stops the current running process.

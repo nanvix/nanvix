@@ -33,6 +33,7 @@ PUBLIC void sys_pthread_exit(void *retval)
 {
 	struct thread *tmp_thrd;
 
+
 	/* Store return value pointer for a future join. */
 	curr_thread->retval = retval;
 
@@ -72,7 +73,6 @@ removed:
 	/* Return value. */
 	(*(int *)curr_thread->retval) = 0;
 
-	sndsig(curr_proc, SIGCHLD);
-	kprintf("sendsig sent");
+	wakeup_join();
 	yield();
 }

@@ -128,7 +128,7 @@ PUBLIC void die(int status)
 		pmc_init();
 	
 	sndsig(curr_proc->father, SIGCHLD);
-	
+	wakeup_join();
 	yield();
 }
 
@@ -145,4 +145,5 @@ PUBLIC void bury(struct process *proc)
 	proc->state = PROC_DEAD;
 	proc->father->nchildren--;
 	nprocs--;
+	wakeup_join();
 }

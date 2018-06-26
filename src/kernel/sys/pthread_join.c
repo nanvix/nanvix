@@ -26,6 +26,8 @@
 #include <sys/types.h>
 #include <errno.h>
 
+/* Sleeping chain. */
+// PRIVATE struct process *chain = NULL;
 
 /*
  * @brief Join the specified thread.
@@ -45,14 +47,22 @@ repeat:
 		{
 			if (t->state == THRD_DEAD || t->state == THRD_STOPPED)
 			{
+				kprintf("thread %d found dead", t->tid);
 				*retval = t->retval;
 				return(0);
+			}
+			else
+			{
+				kprintf("thread %d found still running", t->tid);
 			}
 		}
 	}
 
+	/* Wait for a future thread to exit. */
+	curr_thread->state = THRD_WAITING;
 	yield();
 
+	/* Repeat to check if the exiting thread is the one. */
 	goto repeat;
 
 	return (-EINTR);

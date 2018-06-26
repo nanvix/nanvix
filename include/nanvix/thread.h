@@ -66,6 +66,7 @@
 	#define THRD_READY      1 /**< Ready to execute. */
 	#define THRD_RUNNING    2 /**< Running.          */
 	#define THRD_STOPPED    3 /**< Stopped.          */
+	#define THRD_WAITING    4 /**< Waiting.          */
 	/**@}*/
 
 	/**
