@@ -89,10 +89,13 @@ PRIVATE addr_t alloc_attach_stack_reg(struct thread *thrd)
 	}
 
 	/* Get a correct offset to attach new stack. */
-	offset = PGTAB_SIZE * curr_proc->nthreads;
+	offset = 0;
+	do {
+		offset += PGTAB_SIZE;
+		start = (preg->start - offset);
+	} while (!addr_is_clear(curr_proc, start));
 
 	/* Attach the region below previous stack. */
-	start = (preg->start - offset);
 	err = attachreg(curr_proc, &thrd->pregs, start, reg);
 
 	/* Failed to attach region. */
@@ -157,7 +160,6 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 		goto error;
 
 	/* Schedule our new thread to run. */
-	curr_proc->nthreads++;
 	sched_thread(curr_proc, thrd);
 	return (0);
 

@@ -231,6 +231,21 @@ PRIVATE inline int pte_is_clear(struct pte *pte)
 }
 
 /**
+ * @brief Asserts if a start of a zone is cleared.
+ *
+ * @param proc  Process in which the addr should be checked.
+ * @param start Zone address start.
+ *
+ * @returns Non zero if the page is cleared, and zero otherwise.
+ */
+PUBLIC int addr_is_clear(struct process *proc, addr_t start)
+{
+	struct pde *pde;
+	pde = &proc->pgdir[PGTAB(start)];
+    return !pde_is_present(pde);
+}
+
+/**
  * @brief Maps a page table into user address space.
  * 
  * @param proc  Process in which the page table should be mapped.

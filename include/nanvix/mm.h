@@ -77,6 +77,7 @@
 	EXTERN int crtpgdir(struct process *);
 	EXTERN int pfault(addr_t);
 	EXTERN int vfault(addr_t);
+	EXTERN int addr_is_clear(struct process *proc, addr_t start);
 	EXTERN void dstrypgdir(struct process *);
 	EXTERN void putkpg(void *);
 	EXTERN void mm_init(void);
