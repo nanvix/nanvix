@@ -27,19 +27,20 @@
 #include <errno.h>
 
 /*
- * Terminates a thread.
+ * @brief Clear a thread from its process.
  */
-PUBLIC void sys_pthread_exit(void *retval)
+PUBLIC int clear_thread(struct thread *thrd)
 {
 	struct thread *tmp_thrd;
+	struct process *proc;
 
-	/* Store return value pointer for a future join. */
-	curr_thread->retval = retval;
+	if ((proc = thrd_father(thrd)) == NULL)
+		kpanic ("thread scheduled not attached to a process");
 
-	tmp_thrd = curr_proc->threads;
+	tmp_thrd = proc->threads;
 	while (tmp_thrd != NULL)
 	{
-		if (tmp_thrd == curr_thread)
+		if (tmp_thrd == thrd)
 		{
 			/*
 			 * Main thread called pthread_exit()
@@ -51,27 +52,39 @@ PUBLIC void sys_pthread_exit(void *retval)
 			kpanic("main thread call pthread_exit");
 		}
 		/* remove the threads from our linked list */
-		else if (tmp_thrd->next == curr_thread)
+		else if (tmp_thrd->next == thrd)
 		{
-			tmp_thrd->next = curr_thread->next;
+			tmp_thrd->next = thrd->next;
 			goto removed;
 		}
 		tmp_thrd = tmp_thrd->next;
 	}
-	(*(int *)curr_thread->retval) = -1;
+	(*(int *)thrd->retval) = -1;
 	kpanic("pthread to remove wasn't found in current process");
 
 removed:
-	/* TODO : pthread_exit should also be able to run cleanup handler. */
+	/*
+	 * Clear memory.
+	 * TODO : should also be able to run cleanup handler.
+	 */
+	detachreg(proc, &thrd->pregs);
+	putkpg(thrd->kstack);
+	return (0);
+}
 
-	/* Clear memory. */
+/*
+ * @brief Terminates a thread.
+ */
+PUBLIC void sys_pthread_exit(void *retval)
+{
+	/* Store return value pointer for a future join. */
+	curr_thread->retval = retval;
+
+	/*
+	 * TODO : if thread is detached, call directly clear_thread without waiting
+	 * for this thread to be joined.
+	 */
 	curr_thread->state = THRD_TERMINATED;
-    detachreg(curr_proc, &curr_thread->pregs);
-	putkpg(curr_thread->kstack);
-
-	/* Return value. */
-	(*(int *)curr_thread->retval) = 0;
-
 	wakeup_join();
 	yield();
 }

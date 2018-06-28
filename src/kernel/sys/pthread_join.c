@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <errno.h>
 
+
 /*
  * @brief Join the specified thread.
  */
@@ -43,6 +44,7 @@ repeat:
 			/* Join. */
 			if (t->state == THRD_TERMINATED)
 			{
+				clear_thread(t);
 				*retval = t->retval;
 				t->state = THRD_DEAD;
 				return(0);
