@@ -55,6 +55,8 @@
 	EXTERN unsigned smp_enabled;
 	EXTERN unsigned release_cpu;
 	EXTERN spinlock_t boot_lock;
+	EXTERN unsigned release_ipi;
+	EXTERN spinlock_t ipi_lock;
 	EXTERN struct per_core cpus[NR_CPUS];
 
 #endif /* SMP_H_ */

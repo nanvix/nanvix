@@ -45,6 +45,19 @@ PUBLIC spinlock_t boot_lock;
  */
 PUBLIC struct per_core cpus[NR_CPUS];
 
+/**
+ * @brief Release the given CPU while waiting for the master core
+ * deals with the IPI request.
+ * 
+ */
+PUBLIC unsigned release_ipi = -1;
+
+/**
+ * @brief IPI-lock, spin-lock that synchronizes the release
+ * IPI.
+ */
+PUBLIC spinlock_t ipi_lock;
+
 /*
  * @brief Gets the core number of the current processor.
  * @return Core number of the current processor.
