@@ -40,6 +40,11 @@ PUBLIC unsigned release_cpu = -1;
  */
 PUBLIC spinlock_t boot_lock;
 
+/**
+ * @brief Individual structure per core.
+ */
+PUBLIC struct per_core cpus[NR_CPUS];
+
 /*
  * @brief Gets the core number of the current processor.
  * @return Core number of the current processor.

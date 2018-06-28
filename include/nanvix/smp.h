@@ -22,6 +22,25 @@
 
 	#include <nanvix/const.h>
 
+	/* IPI Message types. */
+	#define IPI_WAKEUP      0x01
+	#define IPI_SCHEDULE    0x02
+	#define IPI_SYSCALL     0x04
+	#define IPI_INTERRUPT   0x08
+	#define IPI_EXCEPTION   0x10
+	#define IPI_VFAULT      0x20
+	#define IPI_PFAULT      0x40
+
+	/* per_core structure. */
+	struct per_core
+	{
+		unsigned coreid;
+		unsigned syscallno;
+		struct intstack *ints;
+		struct process *curr_proc;
+		//struct thread *curr_thread;
+	};
+
 	/* External functions. */
 	EXTERN unsigned smp_get_coreid(void);
 	EXTERN unsigned smp_get_numcores(void);
@@ -36,5 +55,6 @@
 	EXTERN unsigned smp_enabled;
 	EXTERN unsigned release_cpu;
 	EXTERN spinlock_t boot_lock;
+	EXTERN struct per_core cpus[NR_CPUS];
 
 #endif /* SMP_H_ */
