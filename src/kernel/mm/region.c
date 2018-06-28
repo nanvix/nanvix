@@ -134,6 +134,13 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 			findreg(proc, preg->start - newmaxsize) != NULL)
 			return (-1);
 
+		/* Check for stack overflow. */
+		if (newmaxsize > THRD_STACK_SIZE)
+		{
+			kprintf("expand region stack overflow");
+			return (-1);
+		}
+
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{

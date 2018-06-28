@@ -28,6 +28,7 @@
 #ifndef NANVIX_THREAD_H_
 #define NANVIX_THREAD_H_
 
+	#include <nanvix/config.h>
 	#include <nanvix/pm.h>
 	#include <i386/fpu.h>
 	#include <i386/pmc.h>
@@ -83,11 +84,26 @@
 	 */
 	/**@{*/
 	#define FIRST_THRD ((&threadtab[1]))            /**< First process. */
-	#define LAST_THRD ((&threadtab[THRD_MAX - 1])) 	/**< Last process.  */
+	#define LAST_THRD  ((&threadtab[THRD_MAX - 1])) /**< Last process.  */
 	/**@}*/
 
-	
+
 #ifndef _ASM_FILE_
+
+	/**
+	 * @name Thread configuration.
+	 */
+	/**@{*/
+	#define THRD_STACK_SIZE PGTAB_SIZE /**< Thread stack size. */
+
+	#if THRD_MAX_PER_PROC > THRD_MAX
+        #error "THRD_MAX_PER_PROC should not exceed THRD_MAX"
+    #elif THRD_MAX_PER_PROC > REGION_SIZE_CPP/THRD_STACK_SIZE
+        #error "THRD_MAX_PER_PROC should not exceed REGION_SIZE/THRD_STACK_SIZE"
+    #elif THRD_MAX > (REGION_SIZE_CPP/THRD_STACK_SIZE*PROC_MAX)
+        #error "THRD_MAX should not exceed REGION_SIZE/THRD_STACK_SIZE*PROC_MAX"
+    #endif
+	/**@}*/
 
 	/**
 	 * @brief Thread.

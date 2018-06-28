@@ -40,7 +40,8 @@
 	#define REGION_PGTABS (16) /* # Page tables.     */
 
 	/* Size (in bytes). */
-	#define REGION_SIZE   ((size_t)REGION_PGTABS*MREGIONS*PGTAB_SIZE)
+	#define REGION_SIZE_CPP REGION_PGTABS*MREGIONS*PGTAB_SIZE
+	#define REGION_SIZE     ((size_t)REGION_SIZE_CPP)
 
  	/* Mini region dimensions. */
 	#define NR_MINIREGIONS (128) /* # Mini regions.            */
