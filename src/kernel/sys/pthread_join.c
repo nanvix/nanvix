@@ -33,6 +33,7 @@
 PUBLIC int sys_pthread_join(pthread_t thread, void **retval)
 {
 	struct thread *t;
+	struct process *proc;
 
 repeat:
 	/* Look for thread to join. */
@@ -41,6 +42,15 @@ repeat:
 		/* Found. */
 		if (t->tid == (tid_t)thread)
 		{
+			/* Check if joining a peer thread (i.e. in the same proc). */
+			if ((proc = thrd_father(t)) == NULL)
+				kpanic ("thread scheduled not attached to a process");
+			if (proc != curr_proc)
+			{
+				kprintf ("trying to join a thread from a different process.");
+				return (-1);
+			}
+
 			/* Join. */
 			if (t->state == THRD_TERMINATED)
 			{

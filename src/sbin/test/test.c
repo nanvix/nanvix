@@ -668,26 +668,14 @@ int thread_return[THRD_MAX_PER_PROC];
  */
 static void *thread_long_routine_test(void *arg)
 {
-	int id;
-
-	/*
-	 * Retrieve parameters : should be returned to prove
-	 * the thread ran and exited properly.
-	 */
-	id = *((int *)arg);
-
+	((void)arg);
 	for (int i = 0; i < 4096; i++)
-	{
 		for (int j = 0; j < 4096; i++)
-		{
-			work_cpu();
-			getpid(); /* system call force changing context. */
-		}
-	}
+			for (int k = 0; k < 4096; k++)
+				getpid(); /* system call force changing context. */
 
-	thread_return[id] = id;
 	/* TODO : should be call automatically after routine return. */
-	pthread_exit((void *)(&thread_return[id]));
+	pthread_exit(NULL);
 	return NULL;
 }
 
@@ -739,10 +727,10 @@ static int thread_test2(void)
 	void *(*start_routine)(void *);
 
 	/*
-	 * Do it enough times to force a regions table overflow is memory
-	 * is not properly cleared.
+	 * Do it enough times to force a regions table overflow if
+	 * memory is not properly cleared.
 	 */
-	for (int k = 0; k < 128; k++)
+	for (int k = 0; k < 256; k++)
 	{
 		/* Fork to exit without killing father test process. */
 		pid = fork();
@@ -773,7 +761,7 @@ static int thread_test2(void)
 				exit(0);
 			}
 			/* Case 2 : Secondary thread brutal exit. */
-			else
+			else if (k < 128)
 			{
 				for (i = 7; i >= 0; i--)
 				{
@@ -798,6 +786,23 @@ static int thread_test2(void)
 				printf("Error, thread_test3, pthread_join returned.\n");
 				fflush(stdout);
 				exit(-1);
+			}
+			/* Case 3 : Primary thread pthread exit. */
+			else
+			{
+				for (i = 7; i >= 0; i--)
+				{
+					if ((res = pthread_create(&threads[i], NULL,
+											  thread_routine_test,
+											  (void *)(&arg))) != 0)
+					{
+						printf("thread_test3 : not all threads created.\n");
+						fflush(stdout);
+						exit(-1);
+					}
+				}
+				/* pthread_exit without joining other thread. */
+				pthread_exit(NULL);
 			}
 		}
 		wait(NULL);

@@ -143,7 +143,6 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	thrd->counter = curr_proc->threads->counter;
 	thrd->tid = next_tid++;
 	thrd->flags = 1 << THRD_NEW;
-	thrd->type = 0 << THRD_MAIN;
 	*pthread = thrd->tid;
 
 	/* Attach new thread in the process list. */

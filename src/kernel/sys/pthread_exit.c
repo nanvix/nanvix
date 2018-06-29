@@ -23,6 +23,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/syscall.h>
 #include <sys/types.h>
 #include <errno.h>
 
@@ -40,18 +41,13 @@ PUBLIC int clear_thread(struct thread *thrd)
 	tmp_thrd = proc->threads;
 	while (tmp_thrd != NULL)
 	{
+		/* Remove "head" thread from the list. */
 		if (tmp_thrd == thrd)
 		{
-			/*
-			 * Main thread called pthread_exit()
-			 * TODO : handle this edge cases : secondary threads should be able
-			 * to continue working and the process should terminate when the last
-			 * secondary thread terminate.
-			 * One secondary thread type flag should be set to THRD_MAIN.
-			 */
-			kpanic("main thread call pthread_exit");
+			proc->threads = tmp_thrd->next;
+			goto removed;
 		}
-		/* remove the threads from our linked list */
+		/* Remove "queue" thread from the list. */
 		else if (tmp_thrd->next == thrd)
 		{
 			tmp_thrd->next = thrd->next;
@@ -60,8 +56,8 @@ PUBLIC int clear_thread(struct thread *thrd)
 		tmp_thrd = tmp_thrd->next;
 	}
 	(*(int *)thrd->retval) = -1;
-	kpanic("pthread to remove wasn't found in current process");
-
+	kprintf("pthread to remove wasn't found in current process");
+	return (ESRCH);
 removed:
 	/*
 	 * Clear memory.
@@ -77,6 +73,8 @@ removed:
  */
 PUBLIC void sys_pthread_exit(void *retval)
 {
+	struct thread *tmp_thrd;
+
 	/* Store return value pointer for a future join. */
 	curr_thread->retval = retval;
 
@@ -86,5 +84,19 @@ PUBLIC void sys_pthread_exit(void *retval)
 	 */
 	curr_thread->state = THRD_TERMINATED;
 	wakeup_join();
+
+	/* Check if it was the last running thread. */
+	tmp_thrd = curr_proc->threads;
+	while (tmp_thrd != NULL)
+	{
+		if (tmp_thrd->state != THRD_TERMINATED && tmp_thrd->state != THRD_DEAD)
+			goto remain;
+		tmp_thrd = tmp_thrd->next;
+	}
+
+	/* If it was the last running thread, exit the process. */
+	sys__exit(0);
+
+remain:
 	yield();
 }

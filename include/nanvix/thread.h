@@ -135,7 +135,6 @@
 		 */
 		/**@{*/
 		tid_t tid;          /**< Thread ID.              */
-		unsigned type;      /**< Thread types.           */
 		void *retval;       /**< Thread return value.    */
 		/**@}*/
 
