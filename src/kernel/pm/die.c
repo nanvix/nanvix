@@ -139,7 +139,6 @@ PUBLIC void bury(struct process *proc)
 	t = proc->threads;
 	while (t != NULL)
 	{
-		detachreg(proc, &t->pregs);
 		t->state = THRD_DEAD;
 		t = t->next;
 	}
