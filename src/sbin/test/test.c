@@ -660,58 +660,217 @@ static int test_mem0(void)
  *                           Thread Test                                      *
  *============================================================================*/
 
-/* Thread return value, need to be on the heap. */
-int thread_return;
+/* Thread return values, need to be on the heap. */
+int thread_return[THRD_MAX_PER_PROC];
 
 /*
- * @brief Thread routine.
+ * @brief Thread long routine.
  */
-static void *thread_routine_test(void *foo)
+static void *thread_long_routine_test(void *arg)
 {
-	printf("thread_routine_test : arg : %s\n", (char *)foo);
-	fflush(stdout);
+	int id;
 
-	work_cpu();
-	/* getpid() force changing context */
-	for (int i = 0; i < 20; i++)
-		getpid();
-	work_cpu();
+	/*
+	 * Retrieve parameters : should be returned to prove
+	 * the thread ran and exited properly.
+	 */
+	id = *((int *)arg);
 
-	/* TODO : should be call automatically after routine return */
-	pthread_exit((void *)&thread_return);
+	for (int i = 0; i < 4096; i++)
+	{
+		for (int j = 0; j < 4096; i++)
+		{
+			work_cpu();
+			getpid(); /* system call force changing context. */
+		}
+	}
+
+	thread_return[id] = id;
+	/* TODO : should be call automatically after routine return. */
+	pthread_exit((void *)(&thread_return[id]));
 	return NULL;
 }
 
 /*
- * @brief Thread test.
+ * @brief Thread routine.
  */
-static int thread_test(void)
+static void *thread_routine_test(void *arg)
 {
-	int res;
-	int *ret;
-	pthread_t threads[4];
-	char arg[4][4] = {"hi", "how", "are", "you"};
+	int id;
 
-	for (int i = 0; i < 4; i++)
+	/*
+	 * Retrieve parameters : should be returned to prove
+	 * the thread ran and exited properly.
+	 */
+	id = *((int *)arg);
+
+	for (int i = 0; i < 64; i++)
 	{
-		if ((res = pthread_create(&threads[i], NULL,
-								  thread_routine_test, (void *)arg[i])) != 0)
-			return res;
-		printf("thread_test : pthread_create pthread_t %d\n", threads[i]);
-		fflush(stdout);
+		work_cpu();
+		getpid(); /* system call force changing context. */
 	}
 
-	for (int i = 0; i < 4; i++)
+	thread_return[id] = id;
+	/* TODO : should be call automatically after routine return. */
+	pthread_exit((void *)(&thread_return[id]));
+	return NULL;
+}
+
+/*
+ * @brief Secondary thread brutal exit routine.
+ */
+static void *thread_exit_routine_test(void* arg)
+{
+	exit(0);
+	return arg;
+}
+
+/*
+ * @brief Thread test exit cases.
+ */
+static int thread_test2(void)
+{
+	pid_t pid;
+	int res;
+	int *ret;
+	int arg;
+	int i;
+	pthread_t threads[8];
+	void *(*start_routine)(void *);
+
+	/*
+	 * Do it enough times to force a regions table overflow is memory
+	 * is not properly cleared.
+	 */
+	for (int k = 0; k < 128; k++)
 	{
-		if ((res = pthread_join(threads[i], (void **)&ret)) != 0)
-			return res;
-		if (*ret != 0)
-			return res;
-		printf("thread_test : pthread_join thread %d\n", threads[i]);
-		fflush(stdout);
+		/* Fork to exit without killing father test process. */
+		pid = fork();
+
+		/* Failed to fork(). */
+		if (pid < 0)
+			return (-1);
+
+		/* Child process. */
+		else if (pid == 0)
+		{
+			/* Case 1 : Main thread brutal exit. */
+			if (k < 64)
+			{
+				/* Init and launch multiple threads. */
+				for (i = 0; i < 8; i++)
+				{
+					if ((res = pthread_create(&threads[i], NULL,
+											  thread_long_routine_test,
+											  (void *)(&arg))) != 0)
+					{
+						printf("thread_test3 : not all threads created.\n");
+						fflush(stdout);
+						exit(-1);
+					}
+				}
+				/* Exit should wipe clean created threads memory. */
+				exit(0);
+			}
+			/* Case 2 : Secondary thread brutal exit. */
+			else
+			{
+				for (i = 7; i >= 0; i--)
+				{
+					/* Start some long tasks for standard threads. */
+					if (i != 0)
+						start_routine = thread_long_routine_test;
+					/* A secondary thread will call exit. */
+					else
+						start_routine = thread_exit_routine_test;
+
+					if ((res = pthread_create(&threads[i], NULL,
+											  start_routine,
+											  (void *)(&arg))) != 0)
+					{
+						printf("thread_test3 : not all threads created.\n");
+						fflush(stdout);
+						exit(-1);
+					}
+				}
+				pthread_join(threads[0], (void **)&ret);
+				/* Should be interrupted beforehand. */
+				printf("Error, thread_test3, pthread_join returned.\n");
+				fflush(stdout);
+				exit(-1);
+			}
+		}
+		wait(NULL);
 	}
 	return (0);
 }
+
+/*
+ * @brief Thread test multiple threads creation and termination.
+ */
+static int thread_test1(void)
+{
+	int res;
+	int *ret;
+	int arg[THRD_MAX_PER_PROC];
+	pthread_t threads[THRD_MAX_PER_PROC];
+
+	for (int k = 0; k < 32; k++)
+	{
+		/* Init and launch a set of threads. */
+		for (int i = 0; i < THRD_MAX_PER_PROC; i++)
+		{
+			arg[i] = i;
+			thread_return[i] = 0;
+			if ((res = pthread_create(&threads[i], NULL,
+									  thread_routine_test,
+									  (void *)(&arg[i]))) != 0)
+				return res;
+		}
+
+		/* Join and wait the set of threads to terminate. */
+		for (int i = THRD_MAX_PER_PROC-1; i >= 0; i--)
+		{
+			if ((res = pthread_join(threads[i], (void **)&ret)) != 0)
+				return res;
+
+			/* Check if the thread ran and returned properly. */
+			if (*ret != i)
+				return (-1);
+		}
+	}
+	return (0);
+}
+
+/*
+ * @brief Thread test a single thread creation and termination.
+ */
+static int thread_test0(void)
+{
+	int res;
+	int *ret;
+	int arg;
+	pthread_t thread;
+
+	/* Init and launch a thread. */
+	arg = 42;
+	thread_return[0] = 0;
+	if ((res = pthread_create(&thread, NULL,
+							  thread_routine_test,
+							  (void *)(&arg))) != 0)
+		return res;
+
+	/* Join and wait the thread to terminate. */
+	if ((res = pthread_join(thread, (void **)&ret)) != 0)
+		return res;
+
+	/* Check if the thread ran and returned properly. */
+	if (*ret != 42)
+		return (-1);
+
+	return (0);
+}
+
 
 /*============================================================================*
  *                                   main                                     *
@@ -817,8 +976,12 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[i], "thread"))
 		{
 			printf("Thread Tests\n");
-			printf("  Result [%s]\n",
-				(!thread_test()) ? "PASSED" : "FAILED");
+			printf("  single thread [%s]\n",
+				(!thread_test0()) ? "PASSED" : "FAILED");
+			printf("  multiple threads [%s]\n",
+				(!thread_test1()) ? "PASSED" : "FAILED");
+			printf("  thread exit cases [%s]\n",
+				(!thread_test2()) ? "PASSED" : "FAILED");
 		}
 
 		/* Wrong usage. */
