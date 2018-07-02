@@ -38,7 +38,7 @@
 		unsigned syscallno;
 		struct intstack *ints;
 		struct process *curr_proc;
-		//struct thread *curr_thread;
+		struct thread *curr_thread;
 	};
 
 	/* External functions. */
