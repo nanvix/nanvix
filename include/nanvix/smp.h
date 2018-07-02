@@ -31,6 +31,8 @@
 	#define IPI_VFAULT      0x20
 	#define IPI_PFAULT      0x40
 
+#ifndef _ASM_FILE_
+
 	/* per_core structure. */
 	struct per_core
 	{
@@ -58,5 +60,7 @@
 	EXTERN unsigned release_ipi;
 	EXTERN spinlock_t ipi_lock;
 	EXTERN struct per_core cpus[NR_CPUS];
+
+#endif /* _ASM_FILE_ */
 
 #endif /* SMP_H_ */

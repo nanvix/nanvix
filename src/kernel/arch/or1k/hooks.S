@@ -40,6 +40,7 @@
 
 #include <nanvix/mm.h>
 #include <nanvix/syscall.h>
+#include <nanvix/smp.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
 #include <or1k/int.h>
@@ -269,27 +270,95 @@
 		/* Check if syscall. */
 		l.ori   r3, r0, \number
 		l.sfeqi r3, 9
-		l.bnf 4f
+		l.bnf 6f
 		l.nop
 
 		/* Syscall. */
+
+		/* Let us check if SMP. */
+		l.mfspr r3, r0, SPR_COREID
+		l.sfeqi r3, 0
+		l.bf 5f
+		l.nop
+
+		/* SMP. */
+		l.ori r3, r0, 0
+		l.ori r4, r0, IPI_SYSCALL
+		LOAD_SYMBOL_2_GPR(r5, ompic_send_ipi)
+		l.jalr r5
+		l.nop
+
+		/* Waits for master. */
+	4:
+		l.mfspr r3, r0, SPR_COREID
+		LOAD_SYMBOL_2_GPR(r4, release_ipi)
+		l.lwa  r5, 0(r4)
+		l.sfeq r5, r3
+		l.bnf 4b
+		l.nop
+
+		/* Unlock ipi_lock. */
+		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
+		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
+		l.jalr r5
+		l.nop
+
+		l.j return_syscall
+		l.nop
+
+	5:
+		/* UP. */
 		l.j syscall
 		l.nop
 
-	4:
-		/* Not syscall, lets do swint. */
+	6:
+		/* Not syscall, lets do exception. */
+
+		/* Let us check if SMP. */
+		l.mfspr r3, r0, SPR_COREID
+		l.sfeqi r3, 0
+		l.bf 8f
+		l.nop
+
+		/* SMP. */
+		l.ori r3, r0, 0
+		l.ori r4, r0, IPI_EXCEPTION
+		LOAD_SYMBOL_2_GPR(r5, ompic_send_ipi)
+		l.jalr r5
+		l.nop
+
+		/* Waits for master. */
+	7:
+		l.mfspr r3, r0, SPR_COREID
+		LOAD_SYMBOL_2_GPR(r4, release_ipi)
+		l.lwa  r5, 0(r4)
+		l.sfeq r5, r3
+		l.bnf 7b
+		l.nop
+
+		/* Unlock ipi_lock. */
+		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
+		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
+		l.jalr r5
+		l.nop
+
+		l.j 9f
+		l.nop
+
+	8:
 		l.or   r4, r1, r0
 		LOAD_SYMBOL_2_GPR(r5, \handler)
 		l.jalr r5
 		l.nop
 
+	9:
 		/* Enter critical region. */
 		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
 		l.jalr r5
 		l.nop
 
 		/* Return from exception. */
-	5:
+	10:
 		l.j leave
 		l.nop
 .endm
@@ -615,6 +684,7 @@ syscall:
 		l.jalr r11
 		l.nop
 
+	return_syscall:
 	bad_syscall:
 		/* Copy return value to user stack. */
 		l.sw GPR11(r1), r11
