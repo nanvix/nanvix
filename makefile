@@ -44,6 +44,7 @@ export KEY = 13
 # Toolchain configuration.
 export CFLAGS    = -I $(INCDIR)
 export CFLAGS   += -DKERNEL_HASH=$(KEY)
+export CFLAGS   += -D_POSIX_THREADS
 export CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
 export CFLAGS   += -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 export CFLAGS   += -Wall -Wextra -Werror

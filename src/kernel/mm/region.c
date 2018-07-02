@@ -134,6 +134,13 @@ PRIVATE int expand(struct process *proc, struct region *reg, size_t size)
 			findreg(proc, preg->start - newmaxsize) != NULL)
 			return (-1);
 
+		/* Check for stack overflow. */
+		if (newmaxsize > THRD_STACK_SIZE)
+		{
+			kprintf("expand region stack overflow");
+			return (-1);
+		}
+
 		/* Mark pages as demand zero. */
 		while (npages > 0)
 		{
@@ -810,6 +817,7 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 {        
 	struct region *reg;   /* Working memory region.  */
 	struct pregion *preg; /* Working process region. */
+	struct thread *t;     /* Working thread. */
 	
 	/* Find associated region. */
 	for (preg = &proc->pregs[0]; preg < &proc->pregs[NR_PREGIONS]; preg++)
@@ -837,6 +845,36 @@ PUBLIC struct pregion *findreg(struct process *proc, addr_t addr)
 					return (preg);
 			}
 		}
+	}
+
+	/* Find associated region in thread. */
+	t = proc->threads;
+	while (t != NULL)
+	{
+		preg = &t->pregs;
+
+		/* Skip invalid regions. */
+		if ((reg = preg->reg) == NULL)
+		{
+			t = t->next;
+			continue;
+		}
+
+		/* Region grows downwards. */
+		if (reg->flags & REGION_DOWNWARDS)
+		{
+			if (addr <= preg->start)
+			{
+				if (addr >= preg->start - reg->size)
+					return (preg);
+			}
+		}
+
+		/* Region grows upwards. */
+		else
+			kpanic("threads stack region grows upwards");
+
+		t = t->next;
 	}
 
 	return (NULL);

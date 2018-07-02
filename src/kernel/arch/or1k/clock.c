@@ -69,7 +69,7 @@ PRIVATE void do_clock()
 	clock_event();
 		
 	/* Give up processor time. */
-	if (--curr_proc->counter == 0)
+	if (--curr_thread->counter == 0)
 		yield();
 }
 

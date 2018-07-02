@@ -35,70 +35,73 @@
 	#include <semaphore.h>
 
 	/* Number of system calls. */
-	#define NR_SYSCALLS 58
+	#define NR_SYSCALLS 61
 	
 	/* System call numbers. */
-	#define NR_alarm     0
-	#define NR_brk       1
-	#define NR_fork      2
-	#define NR_getegid   3
-	#define NR_geteuid   4
-	#define NR_getgid    5
-	#define NR_getgrp    6
-	#define NR_getpid    7
-	#define NR_getppid   8
-	#define NR_getuid    9
-	#define NR_kill     10
-	#define NR_nice     11
-	#define NR_pause    12
-	#define NR_setegid  13
-	#define NR_seteuid  14
-	#define NR_setgid   15
-	#define NR_setpgrp  16
-	#define NR_setuid   17
-	#define NR__exit    18
-	#define NR_wait     19
-	#define NR_signal   20
-	#define NR_access   21
-	#define NR_chdir    22
-	#define NR_chown    23
-	#define NR_chroot   24
-	#define NR_chmod    25
-	#define NR_open     26
-	#define NR_umask    27
-	#define NR_read     28
-	#define NR_write    29
-	#define NR_close    30
-	#define NR_execve   31
-	#define NR_lseek    32
-	#define NR_pipe     33
-	#define NR_stat     34
-	#define NR_fcntl    35
-	#define NR_sync     36
-	#define NR_unlink   37
-	#define NR_dup2     38
-	#define NR_ioctl    39
-	#define NR_link     40
-	#define NR_uname    41
-	#define NR_utime    42
-	#define NR_ustat    43
-	#define NR_times    44
-	#define NR_shutdown 45
- 	#define NR_ps       46
- 	#define NR_gticks   47
- 	#define NR_time	    48
- 	#define NR_mount    49
- 	#define NR_unmount  50
- 	#define NR_mkfs		  51
-  #define NR_semopen  52
-	#define NR_semclose 53
-	#define NR_semunlink 54
-	#define NR_semwait  55
-	#define NR_sempost  56
-	#define NR_acct     57
- 	#define NR_semget   58
- 	#define NR_semctl   59
- 	#define NR_semop    60
+	#define NR_alarm           0
+	#define NR_brk             1
+	#define NR_fork            2
+	#define NR_getegid         3
+	#define NR_geteuid         4
+	#define NR_getgid          5
+	#define NR_getgrp          6
+	#define NR_getpid          7
+	#define NR_getppid         8
+	#define NR_getuid          9
+	#define NR_kill           10
+	#define NR_nice           11
+	#define NR_pause          12
+	#define NR_setegid        13
+	#define NR_seteuid        14
+	#define NR_setgid         15
+	#define NR_setpgrp        16
+	#define NR_setuid         17
+	#define NR__exit          18
+	#define NR_wait           19
+	#define NR_signal         20
+	#define NR_access         21
+	#define NR_chdir          22
+	#define NR_chown          23
+	#define NR_chroot         24
+	#define NR_chmod          25
+	#define NR_open           26
+	#define NR_umask          27
+	#define NR_read           28
+	#define NR_write          29
+	#define NR_close          30
+	#define NR_execve         31
+	#define NR_lseek          32
+	#define NR_pipe           33
+	#define NR_stat           34
+	#define NR_fcntl          35
+	#define NR_sync           36
+	#define NR_unlink         37
+	#define NR_dup2           38
+	#define NR_ioctl          39
+	#define NR_link           40
+	#define NR_uname          41
+	#define NR_utime          42
+	#define NR_ustat          43
+	#define NR_times          44
+	#define NR_shutdown       45
+	#define NR_ps             46
+	#define NR_gticks         47
+	#define NR_time	          48
+	#define NR_mount          49
+	#define NR_unmount        50
+	#define NR_mkfs           51
+	#define NR_semopen        52
+	#define NR_semclose       53
+	#define NR_semunlink      54
+	#define NR_semwait        55
+	#define NR_sempost        56
+	#define NR_acct           57
+	#define NR_pthread_create 58
+	#define NR_pthread_exit   59
+	#define NR_pthread_join   60
+	#define NR_semget         61
+	#define NR_semctl         62
+	#define NR_semop          63
 
 #ifndef _ASM_FILE_
 
@@ -285,6 +288,24 @@
 	 * Enable process accounting.
 	 */
 	EXTERN int sys_acct(struct pmc *p, unsigned char rw);
+
+	/*
+	 * Creates a new thread.
+	 */
+	EXTERN int sys_pthread_create(pthread_t *__pthread,
+			   _CONST pthread_attr_t *__pthread_attr_t,
+					  void *(*__start_routine)(void *),
+										  void *__arg);
+
+	/*
+	 * Terminates current thread.
+	 */
+	EXTERN void sys_pthread_exit(void *retval);
+
+	/*
+	 * Join the specified thead.
+	 */
+	EXTERN int sys_pthread_join(pthread_t thread, void **retval);
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);

@@ -22,6 +22,7 @@
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <nanvix/pm.h>
+#include <nanvix/klib.h>
 #include <signal.h>
 
 /**
@@ -31,8 +32,58 @@
  */
 PUBLIC void sched(struct process *proc)
 {
+	struct thread *t;
+
+	t = proc->threads;
+	while (t != NULL)
+	{
+		if (t->state != THRD_WAITING)
+		{
+			t->state = THRD_READY;
+			t->counter = 0;
+			t = t->next;
+		}
+	}
 	proc->state = PROC_READY;
-	proc->counter = 0;
+}
+
+/**
+ * @brief Schedules only a thread to execution.
+ *
+ * @param proc Process to be scheduled.
+ * @param thrd Thread to be scheduled.
+ */
+PUBLIC void sched_thread(struct process *proc, struct thread *thrd)
+{
+	struct thread *t;
+
+	proc->state = PROC_READY;
+	thrd->state = THRD_READY;
+	thrd->counter = 0;
+
+	/* Test if there was already a thread running in this process. */
+	t = proc->threads;
+	while (t != NULL)
+	{
+		if (t->state == THRD_RUNNING)
+			proc->state = PROC_RUNNING;
+		t = t->next;
+	}
+}
+
+/**
+ * @brief Wakeup all potential joining thread.
+ */
+PUBLIC void wakeup_join()
+{
+	struct thread *t;
+	t = curr_proc->threads;
+	while(t != NULL)
+	{
+		if (t->state == THRD_WAITING)
+			t->state = THRD_READY;
+		t = t->next;
+	}
 }
 
 /**
@@ -40,7 +91,15 @@ PUBLIC void sched(struct process *proc)
  */
 PUBLIC void stop(void)
 {
+	struct thread *t;
 	curr_proc->state = PROC_STOPPED;
+
+	while (t != NULL)
+	{
+		t->state = THRD_STOPPED;
+		t = t->next;
+	}
+
 	sndsig(curr_proc->father, SIGCHLD);
 	yield();
 }
@@ -64,24 +123,26 @@ PUBLIC void resume(struct process *proc)
  */
 PUBLIC void yield(void)
 {
-	struct process *p;    /* Working process.     */
-	struct process *next; /* Next process to run. */
+	struct process *p;        /* Working process.     */
+	struct process *next;     /* Next process to run. */
+	struct thread *t;         /* Working thread.      */
+	struct thread *next_thrd; /* Next thread  to run. */
 
 	/* Re-schedule process for execution. */
-	if (curr_proc->state == PROC_RUNNING)
+	if (curr_proc->state == PROC_RUNNING
+			&& curr_thread->state == THRD_RUNNING)
 	{
-		sched(curr_proc);
+		sched_thread(curr_proc, curr_thread);
 
 		/* Checks if the current process have an active counter. */
-		if (curr_proc->pmcs.enable_counters != 0)
+		if (curr_thread->pmcs.enable_counters != 0)
 		{
 			/* Save the current counter. */
-			if (curr_proc->pmcs.enable_counters & 1)
-				curr_proc->pmcs.C1 += read_pmc(0);
+			if (curr_thread->pmcs.enable_counters & 1)
+				curr_thread->pmcs.C1 += read_pmc(0);
 			
-			if (curr_proc->pmcs.enable_counters >> 1)
-				curr_proc->pmcs.C2 += read_pmc(1);
-
+			if (curr_thread->pmcs.enable_counters >> 1)
+				curr_thread->pmcs.C2 += read_pmc(1);
 			/* Reset the counter. */
 			pmc_init();
 		}
@@ -102,61 +163,68 @@ PUBLIC void yield(void)
 			p->alarm = 0, sndsig(p, SIGALRM);
 	}
 
-	/* Choose a process to run next. */
+	/* Choose a thread to run next. */
+	next_thrd = IDLE->threads;
 	next = IDLE;
-	for (p = FIRST_PROC; p <= LAST_PROC; p++)
+
+	for (t = FIRST_THRD; t <= LAST_THRD; t++)
 	{
-		/* Skip non-ready process. */
-		if (p->state != PROC_READY)
+		/* Skip non-ready thread. */
+		if (t->state != THRD_READY)
 			continue;
-		
+
 		/*
-		 * Process with higher
+		 * Thread with higher
 		 * waiting time found.
 		 */
-		if (p->counter > next->counter)
+		if (t->counter > next_thrd->counter)
 		{
-			next->counter++;
-			next = p;
+			next_thrd->counter++;
+			next_thrd = t;
+			if ((next = thrd_father(next_thrd)) == NULL)
+				kpanic ("thread scheduled not attached to a process");
 		}
-			
+
 		/*
 		 * Increment waiting
-		 * time of process.
+		 * time of thread.
 		 */
 		else
-			p->counter++;
+			t->counter++;
 	}
-	
+
+	if (next_thrd->state != THRD_READY)
+		kpanic("thread elected incoherent state : not ready");
+
 	/* Switch to next process. */
 	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
-	next->counter = PROC_QUANTUM;
+	next_thrd->state = THRD_RUNNING;
+	next_thrd->counter = PROC_QUANTUM;
 
 	/* Start performance counters. */
-	if (next->pmcs.enable_counters != 0)
+	if (next_thrd->pmcs.enable_counters != 0)
 	{
 		/* Enable counters. */
 		write_msr(IA32_PERF_GLOBAL_CTRL, IA32_PMC0 | IA32_PMC1);
 
 		/* Starts the counter 1. */
-		if (next->pmcs.enable_counters & 1)
+		if (next_thrd->pmcs.enable_counters & 1)
 		{
 			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
-				| next->pmcs.event_C1;
+				| next_thrd->pmcs.event_C1;
 
 			write_msr(IA32_PERFEVTSELx, value);
 		}
 		
 		/* Starts the counter 2. */
-		if (next->pmcs.enable_counters >> 1)
+		if (next_thrd->pmcs.enable_counters >> 1)
 		{
 			uint64_t value = IA32_PERFEVTSELx_EN | IA32_PERFEVTSELx_USR
-				| next->pmcs.event_C2;
+				| next_thrd->pmcs.event_C2;
 
 			write_msr(IA32_PERFEVTSELx + 1, value);
 		}
 	}
-	
-	switch_to(next);
+	switch_to(next, next_thrd);
 }

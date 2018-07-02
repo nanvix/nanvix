@@ -41,6 +41,8 @@
 	#define MULTIUSER                    0 /**< Multiuser support?                 */
 	#define KERNEL_VERSION           "2.0" /**< Kernel version.                    */
 	#define PROC_MAX                    64 /**< Maximum number of process.         */
+	#define THRD_MAX          (PROC_MAX*4) /**< Maximum number of threads.         */
+	#define THRD_MAX_PER_PROC           16 /**< Maximum number of threads/process. */
 	#define PROC_SIZE_MAX  (MEMORY_SIZE/8) /**< Maximum process size.              */
 	#define RAMDISK_SIZE          0x400000 /**< RAM disks size.                    */
 	#define INITRD_SIZE           0x200000 /**< Init RAM disk size.                */
@@ -57,4 +59,5 @@
 	#if INITRD_SIZE > 0x400000
 		#error "INITRD_SIZE should not exceed 0x400000"
 	#endif
+
 #endif /* CONFIG_H_ */

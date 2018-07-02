@@ -231,6 +231,21 @@ PRIVATE inline int pte_is_clear(struct pte *pte)
 }
 
 /**
+ * @brief Asserts if a start of a zone is cleared.
+ *
+ * @param proc  Process in which the addr should be checked.
+ * @param start Zone address start.
+ *
+ * @returns Non zero if the page is cleared, and zero otherwise.
+ */
+PUBLIC int addr_is_clear(struct process *proc, addr_t start)
+{
+	struct pde *pde;
+	pde = &proc->pgdir[PGTAB(start)];
+    return !pde_is_present(pde);
+}
+
+/**
  * @brief Maps a page table into user address space.
  * 
  * @param proc  Process in which the page table should be mapped.
@@ -317,27 +332,27 @@ PUBLIC int crtpgdir(struct process *proc)
 #endif
 	
 	/* Clone kernel stack. */
-	kmemcpy(kstack, curr_proc->kstack, KSTACK_SIZE);
-	
+	kmemcpy(kstack, curr_thread->kstack, KSTACK_SIZE);
 	/* Adjust stack pointers. */
-	proc->kesp = (curr_proc->kesp -(dword_t)curr_proc->kstack)+(dword_t)kstack;
-	s1 = (struct intstack *) proc->kesp;
-	s1->old_kesp = proc->kesp;
+	proc->threads->kesp = (curr_thread->kesp -(dword_t)curr_thread->kstack)+(dword_t)kstack;
+	s1 = (struct intstack *) proc->threads->kesp;
+	s1->old_kesp = proc->threads->kesp;
 	
 	if (curr_proc == IDLE)
 	{
-		s1 = (struct intstack *) curr_proc->kesp;
-		s2 = (struct intstack *) proc->kesp;
-#ifdef i386		
-		s2->ebp = (s1->ebp - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+		s1 = (struct intstack *) curr_thread->kesp;
+		s2 = (struct intstack *) proc->threads->kesp;
+#ifdef i386
+		s2->ebp = (s1->ebp - (dword_t)curr_thread->kstack) + (dword_t)kstack;
 #elif or1k
-		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_proc->kstack) + (dword_t)kstack;
+		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_thread->kstack) + (dword_t)kstack;
 #endif
 	}
+
 	/* Assign page directory. */
 	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
 	proc->pgdir = pgdir;
-	proc->kstack = kstack;
+	proc->threads->kstack = kstack;
 	
 	return (0);
 
@@ -591,7 +606,18 @@ PUBLIC void linkupg(struct pte *upg1, struct pte *upg2)
  */
 PUBLIC void dstrypgdir(struct process *proc)
 {
-	putkpg(proc->kstack);
+	struct thread *t;
+
+	/*
+	 * Force freeing of kstack of threads that haven't cleaned themselves
+	 * beforehand.
+	 */
+	t = proc->threads;
+	while (t != NULL)
+	{
+		putkpg(t->kstack);
+		t = t->next;
+	}
 	putkpg(proc->pgdir);
 }
 
@@ -608,6 +634,7 @@ PUBLIC int vfault(addr_t addr)
 	struct pte *pg;       /* Working page.           */
 	struct region *reg;   /* Working region.         */
 	struct pregion *preg; /* Working process region. */
+	struct thread *thrd;  /* Working thread.         */
 
 	/* Get process region. */
 	if ((preg = findreg(curr_proc, addr)) != NULL)
@@ -625,8 +652,15 @@ PUBLIC int vfault(addr_t addr)
 		lockreg(reg = preg->reg);
 
 		/* Not a stack region. */
-		if (preg != STACK(curr_proc))
-			goto error1;
+		thrd = curr_proc->threads;
+		while (thrd != NULL)
+		{
+			if (preg == &thrd->pregs)
+				goto stack_reg;
+			thrd = thrd->next;
+		}
+		goto error1;
+stack_reg:
 
 		/* Expand region. */
 		if (growreg(curr_proc, preg, PAGE_SIZE))

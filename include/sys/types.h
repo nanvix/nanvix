@@ -257,6 +257,13 @@ typedef signed char pid_t;
 typedef int pid_t;
 #endif
 
+#if defined(__XMK__)
+typedef signed char tid_t;
+#else
+typedef int tid_t;
+#endif
+
+
 #if defined(__rtems__)
 typedef _mode_t mode_t;
 #endif

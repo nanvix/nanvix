@@ -40,7 +40,7 @@ PUBLIC int sys_acct(struct pmc *p, unsigned char rw)
 			return (-EINVAL);
 
 		/* Updates the kernel structure. */
-		kmemcpy(&curr_proc->pmcs, p, sizeof(struct pmc));
+		kmemcpy(&curr_thread->pmcs, p, sizeof(struct pmc));
 	}
 	else if (rw == ACCT_RD)
 	{
@@ -48,15 +48,15 @@ PUBLIC int sys_acct(struct pmc *p, unsigned char rw)
 		if (!chkmem(p, sizeof(struct pmc), MAY_WRITE))
 			return (-EFAULT);
 
-		p->enable_counters = curr_proc->pmcs.enable_counters;
-		p->event_C1 = curr_proc->pmcs.event_C1;
-		p->event_C2 = curr_proc->pmcs.event_C2;
+		p->enable_counters = curr_thread->pmcs.enable_counters;
+		p->event_C1 = curr_thread->pmcs.event_C1;
+		p->event_C2 = curr_thread->pmcs.event_C2;
 
-		if (curr_proc->pmcs.enable_counters & 1)
-			p->C1 = curr_proc->pmcs.C1 + read_pmc(0);
+		if (curr_thread->pmcs.enable_counters & 1)
+			p->C1 = curr_thread->pmcs.C1 + read_pmc(0);
 		
-		if (curr_proc->pmcs.enable_counters >> 1)
-			p->C2 = curr_proc->pmcs.C2 + read_pmc(1);
+		if (curr_thread->pmcs.enable_counters >> 1)
+			p->C2 = curr_thread->pmcs.C2 + read_pmc(1);
 	}
 	else
 		return (-EINVAL);

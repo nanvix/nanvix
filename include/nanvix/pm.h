@@ -32,8 +32,7 @@
 	#include <nanvix/fs.h>
 	#include <nanvix/hal.h>
 	#include <nanvix/region.h>
- 	#include <i386/fpu.h>
-	#include <i386/pmc.h>
+	#include <nanvix/thread.h>
 	#include <sys/types.h>
 	#include <limits.h>
 	#include <signal.h>
@@ -75,7 +74,7 @@
 	 */
 	/**@{*/
 	#define PROC_QUANTUM 50 /**< Quantum.                  */
-	#define NR_PREGIONS   4 /**< Number of memory regions. */
+	#define NR_PREGIONS   3 /**< Number of memory regions. */
 	/**@}*/
 	
 	/**
@@ -109,16 +108,13 @@
 	 * @name Offsets to hard-coded fields of a process
 	 */
 	/**@{*/
-	#define PROC_KESP      0 /**< Kernel stack pointer offset.   */
-	#define PROC_CR3       4 /**< Page directory pointer offset. */
-	#define PROC_INTLVL    8 /**< Interrupt level offset.        */
-	#define PROC_FLAGS    12 /**< Process flags.                 */
-	#define PROC_RECEIVED 16 /**< Received signals offset.       */
-	#define PROC_KSTACK   20 /**< Kernel stack pointer offset.   */
-	#define PROC_RESTORER 24 /**< Signal restorer.               */
-	#define PROC_HANDLERS 28 /**< Signal handlers offset.        */
-	#define PROC_IRQLVL 120  /**< IRQ Level offset.              */
-	#define PROC_FSS    124  /**< FPU Saved Status offset.       */
+	#define PROC_CR3       0 /**< Page directory pointer offset. */
+	#define PROC_INTLVL    4 /**< Interrupt level offset.        */
+	#define PROC_FLAGS     8 /**< Process flags.                 */
+	#define PROC_RECEIVED 12 /**< Received signals offset.       */
+	#define PROC_RESTORER 16 /**< Signal restorer.               */
+	#define PROC_HANDLERS 20 /**< Signal handlers offset.        */
+	#define PROC_IRQLVL  112 /**< IRQ Level offset.              */
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -132,22 +128,19 @@
 		 * @name Hard-coded Fields
 		 */
 		/**@{*/
-    	dword_t kesp;                      /**< Kernel stack pointer.   */
-    	dword_t cr3;                       /**< Page directory pointer. */
+		dword_t cr3;                       /**< Page directory pointer. */
 		dword_t intlvl;                    /**< Interrupt level.        */
 		unsigned flags;                    /**< Process flags.          */
-    	unsigned received;                 /**< Received signals.       */
-    	void *kstack;                      /**< Kernel stack pointer.   */
-    	void (*restorer)(void);            /**< Signal restorer.        */
+		unsigned received;                 /**< Received signals.       */
+		void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
 		unsigned irqlvl;                   /**< Current IRQ level.      */
-    	struct fpu fss;                    /**< FPU Saved Status.       */
-    	struct pmc pmcs;                   /**< PMC status.             */
 		/**@}*/
 
-    	/**
-    	 * @name Memory information
-    	 */
+
+		/**
+		 * @name Memory information
+		 */
 		/**@{*/
 		struct pde *pgdir;                 /**< Page directory.         */
 		struct pregion pregs[NR_PREGIONS]; /**< Process memory regions. */
@@ -165,7 +158,7 @@
 		mode_t umask;                  /**< User file's creation mask. */
 		dev_t tty;                     /**< Associated tty device.     */
 		/**@}*/
-		
+
 		/**
 		 * @name General information
 		 */
@@ -179,33 +172,39 @@
 		gid_t gid;              /**< Group ID.                */
 		gid_t egid;             /**< Effective group user ID. */
 		gid_t sgid;             /**< Saved set-group-ID.      */
-    	pid_t pid;              /**< Process ID.              */
-    	struct process *pgrp;   /**< Process group ID.        */
-    	struct process *father; /**< Father process.          */
+		pid_t pid;              /**< Process ID.              */
+		struct process *pgrp;   /**< Process group ID.        */
+		struct process *father; /**< Father process.          */
 		char name[NAME_MAX];    /**< Process name.            */
 		/**@}*/
 
-    	/**
-    	 * @name Timing information
-    	 */
+		/**
+		 * @name Timing information
+		 */
 		/**@{*/
-    	unsigned utime;  /**< User CPU time.                          */
-    	unsigned ktime;  /**< Kernel CPU time.                        */
+		unsigned utime;  /**< User CPU time.                          */
+		unsigned ktime;  /**< Kernel CPU time.                        */
 		unsigned cutime; /**< User CPU time of terminated children.   */
 		unsigned cktime; /**< Kernel CPU time of terminated children. */
 		/**@}*/
 
-    	/**
-    	 * @name Scheduling information
-    	 */
+		/**
+		 * @name Scheduling information
+		 */
 		/**@{*/
-    	unsigned state;          /**< Current state.          */
-    	int counter;             /**< Remaining quantum.      */
-    	int priority;            /**< Process priorities.     */
-    	int nice;                /**< Nice for scheduling.    */
-    	unsigned alarm;          /**< Alarm.                  */
+		unsigned state;          /**< Current state.          */
+		int priority;            /**< Process priorities.     */
+		int nice;                /**< Nice for scheduling.    */
+		unsigned alarm;          /**< Alarm.                  */
 		struct process *next;    /**< Next process in a list. */
 		struct process **chain;  /**< Sleeping chain.         */
+		/**@}*/
+
+		/**
+		 * @name Threads information
+		 */
+		/**@{*/
+		struct thread *threads; /**< Process threads. */
 		/**@}*/
 	};
 	
@@ -215,6 +214,8 @@
 	EXTERN int issig(void);
 	EXTERN void pm_init(void);
 	EXTERN void sched(struct process *);
+	EXTERN void sched_thread(struct process *, struct thread *);
+	EXTERN void wakeup_join();
 #ifdef BUILDING_KERNEL
 	EXTERN void sleep(struct process **, int);
 #endif
@@ -228,8 +229,7 @@
 	/**@{*/
 	#define TEXT(p)  (&p->pregs[0]) /**< Text region.  */
 	#define DATA(p)  (&p->pregs[1]) /**< Data region.  */
-	#define STACK(p) (&p->pregs[2]) /**< Stack region. */
-	#define HEAP(p)  (&p->pregs[3]) /**< Heap region.  */
+	#define HEAP(p)  (&p->pregs[2]) /**< Heap region.  */
 	/**@}*/
 	
 	/**

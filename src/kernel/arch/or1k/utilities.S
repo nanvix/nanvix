@@ -38,6 +38,7 @@
 .globl physcpy
 .globl switch_to
 .globl user_mode
+.globl forge_stack
 .globl fpu_init
 .globl pmc_init
 .globl read_pmc
@@ -219,9 +220,9 @@ switch_to:
 	l.or r9, r31, r0
 
 	/* Save process context. */
-	LOAD_SYMBOL_2_GPR(r13, curr_proc)
+	LOAD_SYMBOL_2_GPR(r13, curr_thread)
 	l.lwz r13, 0(r13)
-	l.lwz r15, PROC_KESP(r13)
+	l.lwz r15, THRD_KESP(r13)
 
 	/* Preserve registers state. */
 	l.addi r1, r1, -60
@@ -240,16 +241,24 @@ switch_to:
 	l.sw 48(r1), r26
 	l.sw 52(r1), r28
 	l.sw 56(r1), r30
-	l.sw PROC_KESP(r13), r1
+	l.sw THRD_KESP(r13), r1
+
 
 	/* Switch processes. */
 	LOAD_SYMBOL_2_GPR(r13, curr_proc)
 	l.sw 0(r13), r3
 
+	/* Switch thread */
+	LOAD_SYMBOL_2_GPR(r14, curr_thread)
+	l.sw 0(r14), r4
+
+
 	/* Load process context. */
-	l.lwz r1, PROC_KESP(r3)
+	l.lwz r1, THRD_KESP(r4)
 	l.jal tlb_flush
 	l.nop
+
+
 
 	/* New process?. */
 	l.lwz  r15, PROC_FLAGS(r3)
@@ -262,6 +271,19 @@ switch_to:
 
 	l.sfnei r19, 0
 	l.bf fork_return
+	l.nop
+
+	/* New thread?. */
+	l.lwz  r15, THRD_FLAGS(r4)
+	l.ori  r17, r0,  (1 << THRD_NEW)
+	l.and  r19, r15, r17
+
+	l.xori r17, r17, -1
+	l.and  r17, r15, r17
+	l.sw   THRD_FLAGS(r4), r17
+
+	l.sfnei r19, 0
+	l.bf pthread_create_return
 	l.nop
 
 	/* Restore stack. */
@@ -284,7 +306,8 @@ switch_to:
 	l.mtspr r0, r29, SPR_SR
 
 	l.addi r1, r1, 60
-	l.sw PROC_KESP(r3), r15
+
+	l.sw THRD_KESP(r4), r15
 
 	/* Processor reload. */
 	l.addi r1, r1, -4
@@ -305,6 +328,15 @@ switch_to:
  */
 fork_return:
 	LOAD_SYMBOL_2_GPR(r15, leave)
+	l.sw GPR11(r1), r0
+	l.jr r15
+	l.nop
+
+/*
+ * Returns from pthread_create.
+ */
+pthread_create_return:
+	LOAD_SYMBOL_2_GPR(r15, leave.out)
 	l.sw GPR11(r1), r0
 	l.jr r15
 	l.nop
@@ -343,6 +375,68 @@ user_mode:
 	CLEAR_ALL_GPR
 
 	l.rfe
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                                  forge_stack()                             *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Forge the expected stack for a new thread.
+ */
+forge_stack:
+
+	/* Adjust kern_sp using kstack page */
+	l.addi r3, r3,  PAGE_SIZE
+	l.addi r3, r3, -DWORD_SIZE
+	l.addi r3, r3, -INT_FRAME_SIZE
+	l.or r11, r3, r0 /* kern_sp pointer will be returned */
+
+	/* General Purpose registers. */
+	l.sw R0(r3)   , r0
+	l.sw SP(r3)   , r5
+	l.sw GPR2(r3) , r5
+	l.sw GPR3(r3) , r6
+	l.sw GPR4(r3) , r0
+	l.sw GPR5(r3) , r0
+	l.sw GPR6(r3) , r0
+	l.sw GPR7(r3) , r0
+	l.sw GPR8(r3) , r0
+	l.sw GPR9(r3) , r0
+	l.sw GPR10(r3), r0
+	l.sw GPR11(r3), r0
+	l.sw GPR12(r3), r0
+	l.sw GPR13(r3), r0
+	l.sw GPR14(r3), r0
+	l.sw GPR15(r3), r0
+	l.sw GPR16(r3), r0
+	l.sw GPR17(r3), r0
+	l.sw GPR18(r3), r0
+	l.sw GPR19(r3), r0
+	l.sw GPR20(r3), r0
+	l.sw GPR21(r3), r0
+	l.sw GPR22(r3), r0
+	l.sw GPR23(r3), r0
+	l.sw GPR24(r3), r0
+	l.sw GPR25(r3), r0
+	l.sw GPR26(r3), r0
+	l.sw GPR27(r3), r0
+	l.sw GPR28(r3), r0
+	l.sw GPR29(r3), r0
+	l.sw GPR30(r3), r0
+	l.sw GPR31(r3), r0
+
+	/* EPCR. */
+	l.sw EPCR(r3), r4 /* Start routine. */
+
+	/* EEAR. */
+	l.sw EEAR(r3), r0 /* Not used. */
+
+	/* ESR. */
+	LOAD_SYMBOL_2_GPR(r15, USER_SR)
+	l.sw ESR(r3), r15
+
+	l.jr r9
 	l.nop
 
 /*----------------------------------------------------------------------------*

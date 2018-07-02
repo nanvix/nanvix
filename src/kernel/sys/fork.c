@@ -34,6 +34,7 @@ PUBLIC pid_t sys_fork(void)
 	int i;                /* Loop index.     */
 	int err;              /* Error?          */
 	struct process *proc; /* Process.        */
+	struct thread *thrd;  /* Thread.         */
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
 
@@ -54,11 +55,16 @@ PUBLIC pid_t sys_fork(void)
 	}
 
 	kprintf("process table overflow");
-	
+
 	return (-EAGAIN);
 
 found:
+	if ((thrd = get_free_thread()) == NULL)
+		return (-EAGAIN);
 	
+	thrd->state = THRD_READY;
+	proc->threads = thrd;
+
 	/* Mark process as beeing created. */
 	proc->flags = 1 << PROC_NEW;
 
@@ -104,16 +110,54 @@ found:
 			
 		unlockreg(reg);
 	}
+
+	/* Duplicate attached thread region.
+	 * There will be only one thread in
+	 * the son process according to POSIX */
+	preg = &curr_proc->threads->pregs;
+
+	/* Thread region not in use. */
+	if (preg->reg == NULL)
+		goto dup_done;
+
+	lockreg(preg->reg);
+	reg = dupreg(preg->reg);
+	unlockreg(preg->reg);
+
+	/* Failed to duplicate region. */
+	if (reg == NULL)
+		goto error1;
+
+	err = attachreg(proc, &proc->threads->pregs, preg->start, reg);
+
+	/* Failed to attach region. */
+	if (err)
+	{
+		/*
+		 * FIXME: region count.
+		 */
+		kpanic("failed to attach thread region");
+		freereg(reg);
+		goto error1;
+	}
+
+	unlockreg(reg);
+dup_done:
 	
 	/* Initialize process. */
 	proc->intlvl = 1;
 	proc->received = 0;
 	proc->restorer = curr_proc->restorer;
-	kmemcpy(&proc->fss, &curr_proc->fss, sizeof(struct fpu));
+	proc->threads->tid = next_tid++;
+	proc->threads->next = NULL;
+	proc->threads->flags = 0 << THRD_NEW;
+
+	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));
+
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
 	proc->irqlvl = curr_proc->irqlvl;
-	proc->pmcs.enable_counters = 0;
+	proc->threads->pmcs.enable_counters = 0;
 	proc->size = curr_proc->size;
 	proc->pwd = curr_proc->pwd;
 	proc->pwd->count++;
@@ -151,6 +195,9 @@ found:
 	proc->alarm = 0;
 	proc->next = NULL;
 	proc->chain = NULL;
+
+	
+
 	sched(proc);
 
 	curr_proc->nchildren++;
