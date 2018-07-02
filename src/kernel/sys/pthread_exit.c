@@ -59,12 +59,14 @@ PUBLIC int clear_thread(struct thread *thrd)
 	kprintf("pthread to remove wasn't found in current process");
 	return (ESRCH);
 removed:
+	thrd->state = THRD_DEAD;
 	/*
 	 * Clear memory.
 	 * TODO : should also be able to run cleanup handler.
 	 */
 	detachreg(proc, &thrd->pregs);
 	putkpg(thrd->kstack);
+
 	return (0);
 }
 

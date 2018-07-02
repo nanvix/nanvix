@@ -56,7 +56,6 @@ repeat:
 			{
 				clear_thread(t);
 				*retval = t->retval;
-				t->state = THRD_DEAD;
 				return(0);
 			}
 			/* Nothing to do, return immediatly. */

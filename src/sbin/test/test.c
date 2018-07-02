@@ -715,16 +715,24 @@ static void *thread_exit_routine_test(void* arg)
 
 /*
  * @brief Thread test exit cases.
+ * These test brutally exits differents threads. We need to fork to exit
+ * without killing father test process and to cleanup brutally exited
+ * threads during process termination.
  */
 static int thread_test2(void)
 {
 	pid_t pid;
 	int res;
 	int *ret;
-	int arg;
 	int i;
+	int arg[8];
 	pthread_t threads[8];
 	void *(*start_routine)(void *);
+	char *argv[3];
+
+	/* TODO: Execute something less polluting. */
+	argv[0] = "echo";
+	argv[1] = NULL;
 
 	/*
 	 * Do it enough times to force a regions table overflow if
@@ -750,7 +758,7 @@ static int thread_test2(void)
 				{
 					if ((res = pthread_create(&threads[i], NULL,
 											  thread_long_routine_test,
-											  (void *)(&arg))) != 0)
+											  NULL)) != 0)
 					{
 						printf("thread_test3 : not all threads created.\n");
 						fflush(stdout);
@@ -774,7 +782,7 @@ static int thread_test2(void)
 
 					if ((res = pthread_create(&threads[i], NULL,
 											  start_routine,
-											  (void *)(&arg))) != 0)
+											  NULL)) != 0)
 					{
 						printf("thread_test3 : not all threads created.\n");
 						fflush(stdout);
@@ -788,13 +796,14 @@ static int thread_test2(void)
 				exit(-1);
 			}
 			/* Case 3 : Primary thread pthread exit. */
-			else
+			else if (k < 192)
 			{
 				for (i = 7; i >= 0; i--)
 				{
+					arg[i] = i;
 					if ((res = pthread_create(&threads[i], NULL,
 											  thread_routine_test,
-											  (void *)(&arg))) != 0)
+											  (void *)(&arg[i]))) != 0)
 					{
 						printf("thread_test3 : not all threads created.\n");
 						fflush(stdout);
@@ -804,7 +813,29 @@ static int thread_test2(void)
 				/* pthread_exit without joining other thread. */
 				pthread_exit(NULL);
 			}
+			/* Case 4 : A thread call execve clearing other thread memory. */
+			else
+			{
+				/* Init and launch multiple threads. */
+				for (i = 0; i < 8; i++)
+				{
+					if ((res = pthread_create(&threads[i], NULL,
+											  thread_long_routine_test,
+											  NULL)) != 0)
+					{
+						printf("thread_test3 : not all threads created.\n");
+						fflush(stdout);
+						exit(-1);
+					}
+				}
+
+				/* Execute a useless program. */
+				execvp("echo", argv);
+				printf("thread_test3 : execvp error.\n");
+				fflush(stdout);
+			}
 		}
+		/* Will bury, hence cleanup brutually exited thread. */
 		wait(NULL);
 	}
 	return (0);

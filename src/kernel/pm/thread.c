@@ -46,7 +46,7 @@ PUBLIC struct process *thrd_father(struct thread * thrd)
     struct process *p;
     struct thread *tmp_thrd;
 
-	/* loop through all threads for all processed */
+	/* Loop through all threads for all processes. */
 	for (p = proctab; p <= LAST_PROC; p++)
     {
 		tmp_thrd = p->threads;
