@@ -150,6 +150,7 @@ dup_done:
 	proc->restorer = curr_proc->restorer;
 	proc->threads->tid = next_tid++;
 	proc->threads->next = NULL;
+	proc->threads->retval = NULL;
 	proc->threads->flags = 0 << THRD_NEW;
 
 	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));

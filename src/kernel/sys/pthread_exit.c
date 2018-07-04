@@ -55,7 +55,7 @@ PUBLIC int clear_thread(struct thread *thrd)
 		}
 		tmp_thrd = tmp_thrd->next;
 	}
-	(*(int *)thrd->retval) = -1;
+
 	kprintf("pthread to remove wasn't found in current process");
 	return (ESRCH);
 removed:
