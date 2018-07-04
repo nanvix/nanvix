@@ -37,12 +37,12 @@ PUBLIC void sched(struct process *proc)
 	t = proc->threads;
 	while (t != NULL)
 	{
-		if (t->state != THRD_WAITING)
+		if (t->state != THRD_WAITING && t->state != THRD_READY)
 		{
 			t->state = THRD_READY;
 			t->counter = 0;
-			t = t->next;
 		}
+		t = t->next;
 	}
 	proc->state = PROC_READY;
 }
