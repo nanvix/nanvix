@@ -75,5 +75,6 @@ PUBLIC void ompic_handle_ipi(void)
  */
 PUBLIC void ompic_init(void)
 {
-
+	/* IPI handler. */
+	set_hwint(INT_OMPIC, ompic_handle_ipi);
 }

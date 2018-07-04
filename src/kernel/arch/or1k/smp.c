@@ -133,8 +133,5 @@ PUBLIC void smp_init(void)
 		spin_unlock(&boot_lock);
 
 		smp_enabled = 1;
-
-		/* IPI handler. */
-		set_hwint(INT_OMPIC, ompic_handle_ipi);
 	}
 }
