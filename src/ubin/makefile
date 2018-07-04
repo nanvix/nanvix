@@ -51,13 +51,14 @@ export LIBS = $(LIBDIR)/libc.a -lgcc $(LIBDIR)/libm.a
 .PHONY: mount
 .PHONY: unmount
 .PHONY: mkfs
+.PHONY: crtfile
 
 # Newlib considers some POSIX functions as not strict
 export CFLAGS += -U__STRICT_ANSI__
 
 # Builds everything.
 all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat \
-	sync tsh ps mount unmount mkfs
+	sync tsh ps mount unmount mkfs crtfile
 
 # Builds cat.
 cat: 
@@ -163,9 +164,14 @@ mount:
 unmount: 
 	$(CC) $(CFLAGS) $(LDFLAGS) unmount/*.c -o $(UBINDIR)/unmount $(LIBS)
 
-# Builds unmount.
+# Builds mkfs.
 mkfs: 
 	$(CC) $(CFLAGS) $(LDFLAGS) mkfs/*.c -o $(UBINDIR)/mkfs $(LIBS)
+
+# Builds crtfile.
+crtfile:
+	$(CC) $(CFLAGS) $(LDFLAGS) crtfile/*.c -o $(UBINDIR)/crtfile $(LIBS)
+
 
 # Clean compilation files.
 clean:
@@ -195,3 +201,4 @@ clean:
 	@rm -f $(UBINDIR)/mount
 	@rm -f $(UBINDIR)/unmount
 	@rm -f $(UBINDIR)/mkfs
+	@rm -f $(UBINDIR)/crtfile
