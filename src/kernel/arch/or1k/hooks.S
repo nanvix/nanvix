@@ -173,11 +173,17 @@
 	l.sw   PROC_INTLVL(r3), r7
     
 	/* Save interrupt stack. */
-	LOAD_SYMBOL_2_GPR(r3, curr_thread)
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	LOAD_SYMBOL_2_GPR(r7, curr_core)
+	l.sub  r7, r7, r5
+	l.lwz  r7, 0(r7)
+	l.slli r7, r7, PERCORE_SIZE_LOG2
+	l.add  r7, r3, r7
+	l.sub  r7, r7, r5
+
+	l.lwz r3, PERCORE_CURRTHREAD(r7)
 	l.sub r3, r3, r5
-	l.lwz r3, 0(r3)
-	l.sub r3, r3, r5
-	l.lwz r7,   THRD_KESP(r3)
+	l.lwz r7, THRD_KESP(r3)
 	l.sw 0(r1), r7
 
 	l.or  r6, r0, r1
@@ -225,9 +231,15 @@
 	/* Extracts the Kernel stack. */
 
 	/* User mode. */
-	LOAD_SYMBOL_2_GPR(r3, curr_thread)
-	l.sub r3, r3, r5
-	l.lwz r3, 0(r3)
+	LOAD_SYMBOL_2_GPR(r3,  cpus)
+	LOAD_SYMBOL_2_GPR(r30, curr_core)
+	l.sub  r30, r30, r5
+	l.lwz  r30, 0(r30)
+	l.slli r30, r30, PERCORE_SIZE_LOG2
+	l.add  r30, r3, r30
+	l.sub  r30, r30, r5
+
+	l.lwz r3, PERCORE_CURRTHREAD(r30)
 	l.sub r3, r3, r5
 	l.lwz r1, THRD_KESP(r3)
 
@@ -531,8 +543,12 @@ trap_exception:
  * Leaves kernel.
  */
 leave:
-	LOAD_SYMBOL_2_GPR(r3, curr_thread)
-	l.lwz r3, 0(r3)
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	LOAD_SYMBOL_2_GPR(r4, curr_core)
+	l.lwz  r4, 0(r4)
+	l.slli r4, r4, PERCORE_SIZE_LOG2
+	l.add  r4, r3, r4
+	l.lwz  r3, PERCORE_CURRTHREAD(r4)
 
 	/* Restore interrupt stack. */
 	l.lwz  r4, 0(r1)

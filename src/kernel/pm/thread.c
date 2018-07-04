@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2017 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2018 Davidson Francis <davidsondfgl@gmail.com>
  *              2017-2018 Guillaume Besnard <guillaume.besnard@protonmail.com>
  *
  * This file is part of Nanvix.
@@ -22,6 +22,7 @@
 #include <nanvix/thread.h>
 #include <nanvix/pm.h>
 #include <nanvix/klib.h>
+#include <nanvix/smp.h>
 
 /**
  * @brief Thread table.
@@ -29,14 +30,18 @@
 PUBLIC struct thread threadtab[THRD_MAX];
 
 /**
- * @brief Current running thread. 
- */
-PUBLIC struct thread *curr_thread = THRD_IDLE;
-
-/**
  * @brief Next available process ID.
  */
 PUBLIC tid_t next_tid = 0;
+
+/**
+ * @brief Initializes the threads.
+ */
+PUBLIC void thread_init(void)
+{
+	/* Current running thread. */
+	cpus[CORE_MASTER].curr_thread = THRD_IDLE;
+}
 
 /**
  * @brief Find the process owner of a given thread.

@@ -27,6 +27,7 @@
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <nanvix/klib.h>
+#include <nanvix/thread.h>
 #include <sys/stat.h>
 #include <signal.h>
 #include <limits.h>
@@ -160,6 +161,7 @@ PUBLIC void pm_init(void)
 			semtable[i].currprocs[j] = (-1);
 	}
 
-
+	thread_init();	
+	
 	enable_interrupts();
 }

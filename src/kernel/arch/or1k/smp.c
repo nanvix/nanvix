@@ -58,6 +58,11 @@ PUBLIC unsigned release_ipi = -1;
  */
 PUBLIC spinlock_t ipi_lock;
 
+/**
+ * Current core being serviced by master core.
+ */
+PUBLIC unsigned curr_core = 0;
+
 /*
  * @brief Gets the core number of the current processor.
  * @return Core number of the current processor.

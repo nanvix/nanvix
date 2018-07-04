@@ -149,13 +149,13 @@
 	};
 
 	/* Forward definitions. */
+	EXTERN void thread_init(void);
 	EXTERN struct process *thrd_father(struct thread *);
 	EXTERN struct thread *get_free_thread();
 	EXTERN int clear_thread(struct thread *thrd);
 
 	/* Forward definitions. */
 	EXTERN struct thread threadtab[THRD_MAX];
-	EXTERN struct thread *curr_thread;
 	EXTERN tid_t next_tid;
 
 #endif /* _ASM_FILE */

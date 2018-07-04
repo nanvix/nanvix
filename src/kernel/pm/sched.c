@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2017 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2018 Davidson Francis <davidsondfgl@hotmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -23,6 +23,7 @@
 #include <nanvix/hal.h>
 #include <nanvix/pm.h>
 #include <nanvix/klib.h>
+#include <nanvix/smp.h>
 #include <signal.h>
 
 /**
@@ -130,19 +131,20 @@ PUBLIC void yield(void)
 
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING
-			&& curr_thread->state == THRD_RUNNING)
+			&& cpus[curr_core].curr_thread->state == THRD_RUNNING)
 	{
-		sched_thread(curr_proc, curr_thread);
+		sched_thread(curr_proc, cpus[curr_core].curr_thread);
 
 		/* Checks if the current process have an active counter. */
-		if (curr_thread->pmcs.enable_counters != 0)
+		if (cpus[curr_core].curr_thread->pmcs.enable_counters != 0)
 		{
 			/* Save the current counter. */
-			if (curr_thread->pmcs.enable_counters & 1)
-				curr_thread->pmcs.C1 += read_pmc(0);
+			if (cpus[curr_core].curr_thread->pmcs.enable_counters & 1)
+				cpus[curr_core].curr_thread->pmcs.C1 += read_pmc(0);
 			
-			if (curr_thread->pmcs.enable_counters >> 1)
-				curr_thread->pmcs.C2 += read_pmc(1);
+			if (cpus[curr_core].curr_thread->pmcs.enable_counters >> 1)
+				cpus[curr_core].curr_thread->pmcs.C2 += read_pmc(1);
+
 			/* Reset the counter. */
 			pmc_init();
 		}

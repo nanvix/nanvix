@@ -23,6 +23,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 #include <sys/types.h>
 #include <errno.h>
 
@@ -66,7 +67,7 @@ repeat:
 	}
 
 	/* Wait for a future thread to exit. */
-	curr_thread->state = THRD_WAITING;
+	cpus[curr_core].curr_thread->state = THRD_WAITING;
 	yield();
 
 	/* Repeat to check if the exiting thread is the one. */

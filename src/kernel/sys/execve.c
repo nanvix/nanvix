@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@hotmail.com>
+ *              2015-2018 Davidson Francis <davidsondfgl@hotmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -24,6 +24,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 #include <elf.h>
 #include <errno.h>
 
@@ -403,7 +404,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	for (i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
 
-	t = curr_thread;
+	t = cpus[curr_core].curr_thread;
 	while (t != NULL)
 	{
 		detachreg(curr_proc, &t->pregs);

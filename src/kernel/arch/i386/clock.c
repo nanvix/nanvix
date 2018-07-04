@@ -21,6 +21,7 @@
 #include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 
 /**
  * @brief Clock interrupts since system initialization.
@@ -48,7 +49,7 @@ PRIVATE void do_clock()
 	curr_proc->utime++;
 		
 	/* Give up processor time. */
-	if (--curr_thread->counter == 0)
+	if (--cpus[curr_core].curr_thread->counter == 0)
 		yield();
 }
 

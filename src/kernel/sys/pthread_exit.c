@@ -24,6 +24,7 @@
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <nanvix/syscall.h>
+#include <nanvix/smp.h>
 #include <sys/types.h>
 #include <errno.h>
 
@@ -76,13 +77,13 @@ PUBLIC void sys_pthread_exit(void *retval)
 	struct thread *tmp_thrd;
 
 	/* Store return value pointer for a future join. */
-	curr_thread->retval = retval;
+	cpus[curr_core].curr_thread->retval = retval;
 
 	/*
 	 * TODO : if thread is detached, call directly clear_thread without waiting
 	 * for this thread to be joined.
 	 */
-	curr_thread->state = THRD_TERMINATED;
+	cpus[curr_core].curr_thread->state = THRD_TERMINATED;
 	wakeup_join();
 
 	/* Check if it was the last running thread. */

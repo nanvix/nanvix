@@ -26,6 +26,7 @@
 #include <or1k/int.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 
 /* Exported symbols. */
 .globl gdt_flush
@@ -220,8 +221,13 @@ switch_to:
 	l.or r9, r31, r0
 
 	/* Save process context. */
-	LOAD_SYMBOL_2_GPR(r13, curr_thread)
-	l.lwz r13, 0(r13)
+	LOAD_SYMBOL_2_GPR(r13, cpus)
+	LOAD_SYMBOL_2_GPR(r15, curr_core)
+	l.lwz  r15, 0(r15)
+	l.slli r15, r15, PERCORE_SIZE_LOG2
+	l.add  r15, r13, r15
+
+	l.lwz r13, PERCORE_CURRTHREAD(r15)
 	l.lwz r15, THRD_KESP(r13)
 
 	/* Preserve registers state. */
@@ -243,22 +249,23 @@ switch_to:
 	l.sw 56(r1), r30
 	l.sw THRD_KESP(r13), r1
 
-
 	/* Switch processes. */
 	LOAD_SYMBOL_2_GPR(r13, curr_proc)
 	l.sw 0(r13), r3
 
 	/* Switch thread */
-	LOAD_SYMBOL_2_GPR(r14, curr_thread)
+	LOAD_SYMBOL_2_GPR(r14, cpus)
+	LOAD_SYMBOL_2_GPR(r15, curr_core)
+	l.lwz  r15, 0(r15)
+	l.slli r15, r15, PERCORE_SIZE_LOG2
+	l.add  r15, r14, r15
+	l.addi r14, r15, PERCORE_CURRTHREAD
 	l.sw 0(r14), r4
-
 
 	/* Load process context. */
 	l.lwz r1, THRD_KESP(r4)
 	l.jal tlb_flush
 	l.nop
-
-
 
 	/* New process?. */
 	l.lwz  r15, PROC_FLAGS(r3)

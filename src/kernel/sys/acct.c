@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -21,6 +21,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 #include <i386/pmc.h>
 #include <errno.h>
 
@@ -40,7 +41,7 @@ PUBLIC int sys_acct(struct pmc *p, unsigned char rw)
 			return (-EINVAL);
 
 		/* Updates the kernel structure. */
-		kmemcpy(&curr_thread->pmcs, p, sizeof(struct pmc));
+		kmemcpy(&cpus[curr_core].curr_thread->pmcs, p, sizeof(struct pmc));
 	}
 	else if (rw == ACCT_RD)
 	{
@@ -48,15 +49,15 @@ PUBLIC int sys_acct(struct pmc *p, unsigned char rw)
 		if (!chkmem(p, sizeof(struct pmc), MAY_WRITE))
 			return (-EFAULT);
 
-		p->enable_counters = curr_thread->pmcs.enable_counters;
-		p->event_C1 = curr_thread->pmcs.event_C1;
-		p->event_C2 = curr_thread->pmcs.event_C2;
+		p->enable_counters = cpus[curr_core].curr_thread->pmcs.enable_counters;
+		p->event_C1 = cpus[curr_core].curr_thread->pmcs.event_C1;
+		p->event_C2 = cpus[curr_core].curr_thread->pmcs.event_C2;
 
-		if (curr_thread->pmcs.enable_counters & 1)
-			p->C1 = curr_thread->pmcs.C1 + read_pmc(0);
+		if (cpus[curr_core].curr_thread->pmcs.enable_counters & 1)
+			p->C1 = cpus[curr_core].curr_thread->pmcs.C1 + read_pmc(0);
 		
-		if (curr_thread->pmcs.enable_counters >> 1)
-			p->C2 = curr_thread->pmcs.C2 + read_pmc(1);
+		if (cpus[curr_core].curr_thread->pmcs.enable_counters >> 1)
+			p->C2 = cpus[curr_core].curr_thread->pmcs.C2 + read_pmc(1);
 	}
 	else
 		return (-EINVAL);

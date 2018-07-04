@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2015-2016 Davidson Francis <davidsondfgl@gmail.com> 
+ *              2015-2018 Davidson Francis <davidsondfgl@gmail.com> 
  *
  * This file is part of Nanvix.
  * 
@@ -25,6 +25,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/region.h>
+#include <nanvix/smp.h>
 #include "mm.h"
 
 /*============================================================================*
@@ -332,20 +333,23 @@ PUBLIC int crtpgdir(struct process *proc)
 #endif
 	
 	/* Clone kernel stack. */
-	kmemcpy(kstack, curr_thread->kstack, KSTACK_SIZE);
+	kmemcpy(kstack, cpus[curr_core].curr_thread->kstack, KSTACK_SIZE);
 	/* Adjust stack pointers. */
-	proc->threads->kesp = (curr_thread->kesp -(dword_t)curr_thread->kstack)+(dword_t)kstack;
+	proc->threads->kesp = (cpus[curr_core].curr_thread->kesp -
+		(dword_t)cpus[curr_core].curr_thread->kstack)+(dword_t)kstack;
 	s1 = (struct intstack *) proc->threads->kesp;
 	s1->old_kesp = proc->threads->kesp;
 	
 	if (curr_proc == IDLE)
 	{
-		s1 = (struct intstack *) curr_thread->kesp;
+		s1 = (struct intstack *) cpus[curr_core].curr_thread->kesp;
 		s2 = (struct intstack *) proc->threads->kesp;
 #ifdef i386
-		s2->ebp = (s1->ebp - (dword_t)curr_thread->kstack) + (dword_t)kstack;
+		s2->ebp = (s1->ebp - (dword_t)cpus[curr_core].curr_thread->kstack)
+			+ (dword_t)kstack;
 #elif or1k
-		s2->gpr[2] = (s1->gpr[2] - (dword_t)curr_thread->kstack) + (dword_t)kstack;
+		s2->gpr[2] = (s1->gpr[2] - (dword_t)cpus[curr_core].curr_thread->kstack)
+			+ (dword_t)kstack;
 #endif
 	}
 

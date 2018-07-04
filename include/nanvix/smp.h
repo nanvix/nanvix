@@ -31,6 +31,22 @@
 	#define IPI_VFAULT      0x20
 	#define IPI_PFAULT      0x40
 
+	/* Core state. */
+	#define CORE_READY   0x01
+	#define CORE_RUNNING 0x02
+
+	/* Cores. */
+	#define CORE_MASTER 0
+
+	/**
+	 * Offsets to hard-coded fields of per_core
+	 */
+	#define PERCORE_COREID      0
+	#define PERCORE_SYSCALLNO   4
+	#define PERCORE_INTSTACK    8
+	#define PERCORE_CURRTHREAD 12
+	#define PERCORE_SIZE_LOG2   4
+
 #ifndef _ASM_FILE_
 
 	/* per_core structure. */
@@ -39,7 +55,6 @@
 		unsigned coreid;
 		unsigned syscallno;
 		struct intstack *ints;
-		struct process *curr_proc;
 		struct thread *curr_thread;
 	};
 
@@ -60,6 +75,7 @@
 	EXTERN unsigned release_ipi;
 	EXTERN spinlock_t ipi_lock;
 	EXTERN struct per_core cpus[NR_CPUS];
+	EXTERN unsigned curr_core;
 
 #endif /* _ASM_FILE_ */
 

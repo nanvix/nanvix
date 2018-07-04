@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2017-2017 Davidson Francis <davidsondfgl@gmail.com>
+ *              2017-2018 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -24,6 +24,7 @@
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 #include <signal.h>
 
 /**
@@ -120,7 +121,7 @@ PUBLIC void die(int status)
 
 
 	/* Resets the counter if any. */
-	if (curr_thread->pmcs.enable_counters != 0)
+	if (cpus[curr_core].curr_thread->pmcs.enable_counters != 0)
 		pmc_init();
 	
 	sndsig(curr_proc->father, SIGCHLD);
