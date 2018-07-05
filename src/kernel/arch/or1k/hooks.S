@@ -204,21 +204,6 @@
 	EXCEPTION_STORE_GPR3
 	EXCEPTION_STORE_GPR5
 
-	/* 
-	 * Check if we are running in the slave core, i.e:
-	 * cores other than 0.
-	 */
-	l.mfspr r3, r0, SPR_COREID
-	l.sfeqi r3, 0
-	l.bf 2f
-	l.nop
-
-	/* Core != 0, we should send an IPI to core 0. */
-1:
-	l.j 1b
-	l.nop
-
-2:		
 	/* Checks if we are in user or kernel mode. */
 	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 	EXCEPTION_T_STORE_GPR30           /* Backup register.          */
