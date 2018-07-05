@@ -34,7 +34,8 @@ PUBLIC pid_t sys_fork(void)
 	int i;                /* Loop index.     */
 	int err;              /* Error?          */
 	struct process *proc; /* Process.        */
-	struct thread *thrd;  /* Thread.         */
+	struct thread *thrd;  /* New thread.     */
+	struct thread *t;     /* Tmp thread.     */
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
 
@@ -159,7 +160,6 @@ dup_done:
 		proc->handlers[i] = curr_proc->handlers[i];
 	proc->irqlvl = curr_proc->irqlvl;
 	proc->threads->pmcs.enable_counters = 0;
-	proc->size = curr_proc->size;
 	proc->pwd = curr_proc->pwd;
 	proc->pwd->count++;
 	proc->root = curr_proc->root;
@@ -196,6 +196,15 @@ dup_done:
 	proc->alarm = 0;
 	proc->next = NULL;
 	proc->chain = NULL;
+	proc->size = curr_proc->size;
+	t = curr_proc->threads;
+	while (t != NULL)
+	{
+		/* New proc can be smaller than current proc. */
+		if (t != curr_thread)
+			proc->size -= t->pregs.reg->size;
+		t = t->next;
+	}
 
 
 
