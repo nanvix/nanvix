@@ -114,7 +114,7 @@ found:
 	/* Duplicate attached thread region.
 	 * There will be only one thread in
 	 * the son process according to POSIX */
-	preg = &curr_proc->threads->pregs;
+	preg = &curr_thread->pregs;
 
 	/* Thread region not in use. */
 	if (preg->reg == NULL)
@@ -153,7 +153,7 @@ dup_done:
 	proc->threads->retval = NULL;
 	proc->threads->flags = 0 << THRD_NEW;
 
-	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));
+	kmemcpy(&proc->threads->fss, &curr_thread->fss, sizeof(struct fpu));
 
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
@@ -197,7 +197,7 @@ dup_done:
 	proc->next = NULL;
 	proc->chain = NULL;
 
-	
+
 
 	sched(proc);
 
