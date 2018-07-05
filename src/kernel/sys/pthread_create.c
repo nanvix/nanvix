@@ -124,13 +124,17 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 
 
 	if (attr != NULL)
-		kpanic("pthread_create attr not null, not supposed to happen for now");
+	{
+		kprintf("TODO: pthread_create: attr not null");
+		goto error;
+	}
 
 	/* Check start routine address validity. */
-	if ((addr_t)start_routine > UBASE_VIRT + REGION_SIZE
-				|| (addr_t)start_routine < UBASE_VIRT)
+	if (start_routine == NULL
+			|| (addr_t)start_routine < UBASE_VIRT
+			|| (addr_t)start_routine > UBASE_VIRT + REGION_SIZE)
 	{
-		kpanic("new thread try to access an illegal address");
+		kprintf("pthread_create : start_routine illegal address");
 		goto error;
 	}
 
@@ -143,6 +147,7 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	thrd->counter = curr_proc->threads->counter;
 	thrd->tid = next_tid++;
 	thrd->flags = 1 << THRD_NEW;
+	thrd->retval = NULL;
 	*pthread = thrd->tid;
 
 	/* Attach new thread in the process list. */

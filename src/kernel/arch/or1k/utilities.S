@@ -343,6 +343,13 @@ fork_return:
  * Returns from pthread_create.
  */
 pthread_create_return:
+	/* Decrement interrupt level. */
+	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+    l.lwz r3, 0(r3)
+    l.lwz   r4, PROC_INTLVL(r3)
+    l.addi  r4, r4, -1
+    l.sw PROC_INTLVL(r3), r4
+
 	LOAD_SYMBOL_2_GPR(r15, leave.out)
 	l.sw GPR11(r1), r0
 	l.jr r15

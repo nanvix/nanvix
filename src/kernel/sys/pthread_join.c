@@ -56,8 +56,8 @@ repeat:
 			if (t->state == THRD_TERMINATED)
 			{
 				clear_thread(t);
-				*retval = t->retval;
-				t->state = THRD_DEAD;
+				if (t->retval != NULL)
+					*retval = t->retval;
 				return(0);
 			}
 			/* Nothing to do, return immediatly. */

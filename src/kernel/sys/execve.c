@@ -404,10 +404,17 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	for (i = 0; i < NR_PREGIONS; i++)
 		detachreg(curr_proc, &curr_proc->pregs[i]);
 
-	t = cpus[curr_core].curr_thread;
+	/*
+	 * Clear main threads.
+	 * TODO: Should be clearing calling thread instead.
+	 */
+	detachreg(curr_proc, &curr_proc->threads->pregs);
+
+	/* Clear other threads. */
+	t = curr_proc->threads->next;
 	while (t != NULL)
 	{
-		detachreg(curr_proc, &t->pregs);
+		clear_thread(t);
 		t = t->next;
 	}
 
