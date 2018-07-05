@@ -132,6 +132,18 @@ PUBLIC void smp_init(void)
 		spin_lock(&boot_lock);
 		spin_unlock(&boot_lock);
 
+		/* Configure per_core cpus. */
+		cpus[0].state = CORE_RUNNING;
+
+		for (unsigned i = 1; i < numcores; i++)
+		{
+			cpus[i].coreid = i;
+			cpus[i].syscallno = 0;
+			cpus[i].ints = NULL;
+			cpus[i].curr_thread = NULL;
+			cpus[i].state = CORE_READY;
+		}
+
 		smp_enabled = 1;
 	}
 }

@@ -45,7 +45,9 @@
 	#define PERCORE_SYSCALLNO   4
 	#define PERCORE_INTSTACK    8
 	#define PERCORE_CURRTHREAD 12
-	#define PERCORE_SIZE_LOG2   4
+	#define PERCORE_CURRPROC   16
+	#define PERCORE_STATE      20
+	#define PERCORE_SIZE_LOG2   5
 
 #ifndef _ASM_FILE_
 
@@ -56,6 +58,9 @@
 		unsigned syscallno;
 		struct intstack *ints;
 		struct thread *curr_thread;
+		struct process *curr_proc;
+		unsigned state;
+		unsigned dummy[2];
 	};
 
 	/* External functions. */
