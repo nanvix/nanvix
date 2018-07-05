@@ -24,7 +24,6 @@
 	#include <or1k/or1k.h>
 
 	/* Interrupt numbers. */
-	#define INT_KEYBOARD 1 /* Keyboard.                                  */
 	#define INT_ATA1    14 /* Primary ATA hard disk.                     */
 	#define INT_ATA2    15 /* Secondary ATA hard disk.                   */
 

@@ -25,6 +25,7 @@ export CFLAGS += -DSERIAL_ENABLE -DOR1K_HAVE_SHADOW_GPRS
 
 ifeq ($(TARGET),i386)
 	export CFLAGS += -DVGA_ENABLE
+	export CFLAGS += -DKEYBOARD_ENABLE
 endif
 
 # C source files.

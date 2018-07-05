@@ -267,8 +267,10 @@ PUBLIC void do_keyboard_hit(void)
  */
 PUBLIC void keyboard_init(void)
 {
+#ifdef KEYBOARD_ENABLE
 	set_hwint(INT_KEYBOARD, &do_keyboard_hit);
 	
     while (inputb(0x64) & 1)
 		inputb(0x60);
+#endif
 }
