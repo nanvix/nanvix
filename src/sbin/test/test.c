@@ -715,7 +715,50 @@ static void *thread_exit_routine_test(void* arg)
 }
 
 /*
+ * @brief Thread test multithreaded process fork.
+ *
+ * @details	Create a thread then call fork, wiping the non calling
+ *          thread out of memory. Generally speaking, forking a multithreaded
+ *          process is not a good practice though.
+ *
+ * @returns Zero if passed on test, and non-zero otherwise.
+ */
+static int thread_test3(void)
+{
+	int res;                           /* pthread_create return value. */
+	pthread_t thread;                  /* Threads identifier.          */
+	pid_t pid;                         /* Child process pid.           */
+	int arg;                           /* thread argument.             */
+
+	arg = 0;
+
+	/* Spawn a thread to be a multithreaded process. */
+	if ((res = pthread_create(&thread, NULL,
+							  thread_routine_test,
+							  (void *)&arg)) != 0)
+	{
+		printf("thread_test3 : not all threads created.\n");
+		exit(-1);
+	}
+
+	pid = fork();
+
+	/* Failed to fork(). */
+	if (pid < 0)
+		return (-1);
+
+	/* Child process. */
+	else if (pid == 0)
+		exit(0);
+
+	/* Wait for the spawned process. */
+	wait(NULL);
+	return (0);
+}
+
+/*
  * @brief Thread test exit cases.
+ *
  * @details	These test brutally exits differents threads. We need to fork
  *          to exit without killing father test process and to cleanup
  *          brutally exited threads during process termination.
@@ -725,7 +768,7 @@ static void *thread_exit_routine_test(void* arg)
 static int thread_test2(void)
 {
 	int i;                             /* Loop index.                */
-	int res;                           /* pthread_join return value. */
+	int res;                           /* pthread_xxx return value.  */
 	int *ret;                          /* pthread_join retval addr.  */
 	int arg[NTHREAD_T2];               /* Threads argument.          */
 	void *(*start_routine)(void *);    /* Threads start routine.     */
@@ -768,7 +811,7 @@ static int thread_test2(void)
 											  thread_long_routine_test,
 											  NULL)) != 0)
 					{
-						printf("thread_test3 : not all threads created.\n");
+						printf("thread_test2 : not all threads created.\n");
 						exit(-1);
 					}
 				}
@@ -791,13 +834,13 @@ static int thread_test2(void)
 											  start_routine,
 											  NULL)) != 0)
 					{
-						printf("thread_test3 : not all threads created.\n");
+						printf("thread_test2 : not all threads created.\n");
 						exit(-1);
 					}
 				}
 				pthread_join(threads[0], (void **)&ret);
 				/* Should be interrupted beforehand. */
-				printf("Error, thread_test3, pthread_join returned.\n");
+				printf("Error, thread_test2, pthread_join returned.\n");
 				exit(-1);
 			}
 			/* Case 3 : Primary thread pthread exit. */
@@ -810,7 +853,7 @@ static int thread_test2(void)
 											  thread_routine_test,
 											  (void *)(&arg[i]))) != 0)
 					{
-						printf("thread_test3 : not all threads created.\n");
+						printf("thread_test2 : not all threads created.\n");
 						fflush(stdout);
 						exit(-1);
 					}
@@ -828,14 +871,14 @@ static int thread_test2(void)
 											  thread_long_routine_test,
 											  NULL)) != 0)
 					{
-						printf("thread_test3 : not all threads created.\n");
+						printf("thread_test2 : not all threads created.\n");
 						exit(-1);
 					}
 				}
 
 				/* Execute a useless program. */
 				execvp("crtfile", argv);
-				printf("thread_test3 : execvp error.\n");
+				printf("thread_test2 : execvp error.\n");
 			}
 		}
 		/* Will bury, hence cleanup brutually exited thread. */
@@ -846,7 +889,7 @@ static int thread_test2(void)
 		{
 			if (unlink(argv[1]))
 			{
-				printf("thread_test3 : execvp wasn't properly executed\n");
+				printf("thread_test2 : execvp wasn't properly executed\n");
 				return (-1);
 			}
 		}
@@ -906,7 +949,7 @@ static int thread_test0(void)
 	pthread_t thread;
 
 	/* Init and launch a thread. */
-	arg = 42;
+	arg = 5;
 	thread_return[0] = 0;
 	if ((res = pthread_create(&thread, NULL,
 							  thread_routine_test,
@@ -918,7 +961,7 @@ static int thread_test0(void)
 		return res;
 
 	/* Check if the thread ran and returned properly. */
-	if (*ret != 42)
+	if (*ret != 5)
 		return (-1);
 
 	return (0);
@@ -1035,6 +1078,8 @@ int main(int argc, char **argv)
 				(!thread_test1()) ? "PASSED" : "FAILED");
 			printf("  thread exit cases [%s]\n",
 				(!thread_test2()) ? "PASSED" : "FAILED");
+			printf("  multithreaded process fork [%s]\n",
+				(!thread_test3()) ? "PASSED" : "FAILED");
 		}
 
 		/* Wrong usage. */
