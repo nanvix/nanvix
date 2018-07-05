@@ -24,6 +24,7 @@
 #include <nanvix/pm.h>
 #include <nanvix/klib.h>
 #include <nanvix/smp.h>
+#include <or1k/ompic.h>
 #include <signal.h>
 
 /**
@@ -148,6 +149,7 @@ PUBLIC void yield(void)
 			/* Reset the counter. */
 			pmc_init();
 		}
+
 	}
 
 	/* Remember this process. */
@@ -228,5 +230,29 @@ PUBLIC void yield(void)
 			write_msr(IA32_PERFEVTSELx + 1, value);
 		}
 	}
-	switch_to(next, next_thrd);
+	
+	/* Schedule other cores if SMP enabled. */
+	if (smp_enabled)
+	{
+		if (next != IDLE)
+		{
+			unsigned i;
+
+			for (i = 1; i < smp_get_numcores(); i++)
+				if (cpus[i].state == CORE_READY)
+					break;
+
+			if (next != IDLE)
+			{
+				cpus[i].curr_proc = next;
+				cpus[i].curr_thread = next_thrd;
+				cpus[i].state = CORE_RUNNING;
+				ompic_send_ipi(i, IPI_SCHEDULE);
+			}
+		}
+	}
+	else
+	{
+		switch_to(next, next_thrd);
+	}
 }

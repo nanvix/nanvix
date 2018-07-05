@@ -68,6 +68,22 @@ PUBLIC void ompic_handle_ipi(void)
 
 	/* ACK IPI. */
 	ompic_writereg(OMPIC_CTRL(cpu), OMPIC_CTRL_IRQ_ACK);
+
+	/* Checks the core type. */
+	if (cpu == CORE_MASTER) 
+	{
+
+	}
+	else
+	{
+		uint16_t ipi_message;
+		ipi_message =  ompic_readreg(OMPIC_STAT(cpu));
+		ipi_message &= OMPIC_DATA(ipi_message);
+		curr_core = cpu;
+
+		if (ipi_message == IPI_SCHEDULE)
+			switch_to(cpus[cpu].curr_proc, cpus[cpu].curr_thread);
+	}
 }
 
 /*
