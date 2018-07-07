@@ -21,6 +21,7 @@
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <nanvix/klib.h>
+#include <nanvix/smp.h>
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
 #include <sys/types.h>
@@ -115,7 +116,7 @@ found:
 	/* Duplicate attached thread region.
 	 * There will be only one thread in
 	 * the son process according to POSIX */
-	preg = &curr_thread->pregs;
+	preg = &cpus[curr_core].curr_thread->pregs;
 
 	/* Thread region not in use. */
 	if (preg->reg == NULL)
@@ -154,7 +155,7 @@ dup_done:
 	proc->threads->retval = NULL;
 	proc->threads->flags = 0 << THRD_NEW;
 
-	kmemcpy(&proc->threads->fss, &curr_thread->fss, sizeof(struct fpu));
+	kmemcpy(&proc->threads->fss, &cpus[curr_core].curr_thread->fss, sizeof(struct fpu));
 
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
@@ -201,7 +202,7 @@ dup_done:
 	while (t != NULL)
 	{
 		/* New proc can be smaller than current proc. */
-		if (t != curr_thread)
+		if (t != cpus[curr_core].curr_thread)
 			proc->size -= t->pregs.reg->size;
 		t = t->next;
 	}

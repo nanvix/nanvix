@@ -405,13 +405,13 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 		detachreg(curr_proc, &curr_proc->pregs[i]);
 
 	 /* Clear current threads. */
-	detachreg(curr_proc, &curr_thread->pregs);
+	detachreg(curr_proc, &cpus[curr_core].curr_thread->pregs);
 
 	/* Clear other threads. */
 	t = curr_proc->threads;
 	while (t != NULL)
 	{
-		if (t != curr_thread)
+		if (t != cpus[curr_core].curr_thread)
 			clear_thread(t);
 		t = t->next;
 	}
@@ -424,7 +424,7 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	/* Attach stack region. */
 	if ((reg = allocreg(S_IRUSR | S_IWUSR, PAGE_SIZE, REGION_DOWNWARDS)) == NULL)
 		goto die0;
-	if (attachreg(curr_proc, &curr_thread->pregs, USTACK_ADDR - 1, reg))
+	if (attachreg(curr_proc, &cpus[curr_core].curr_thread->pregs, USTACK_ADDR - 1, reg))
 		goto die1;
 	unlockreg(reg);
 
