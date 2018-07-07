@@ -660,19 +660,23 @@ static int test_mem0(void)
  *                           Thread Test                                      *
  *============================================================================*/
 
+/* Number of threads for thread_test2. */
+#define NTHREAD_T2 2
+
 /* Thread return values, need to be on the heap. */
 int thread_return[THRD_MAX_PER_PROC];
 
 /*
- * @brief Thread long routine.
+ * @brief Thread ridiculously long routine.
  */
 static void *thread_long_routine_test(void *arg)
 {
 	((void)arg);
-	for (int i = 0; i < 4096; i++)
-		for (int j = 0; j < 4096; i++)
-			for (int k = 0; k < 4096; k++)
-				getpid(); /* system call force changing context. */
+
+	for (int i = 0; i < 32768; i++)
+		for (int j = 0; j < 32768; i++)
+			for (int k = 0; k < 32768; k++)
+				work_cpu();
 
 	/* TODO : should be call automatically after routine return. */
 	pthread_exit(NULL);
@@ -693,10 +697,7 @@ static void *thread_routine_test(void *arg)
 	id = *((int *)arg);
 
 	for (int i = 0; i < 64; i++)
-	{
 		work_cpu();
-		getpid(); /* system call force changing context. */
-	}
 
 	thread_return[id] = id;
 	/* TODO : should be call automatically after routine return. */
@@ -714,31 +715,81 @@ static void *thread_exit_routine_test(void* arg)
 }
 
 /*
+ * @brief Thread test multithreaded process fork.
+ *
+ * @details	Create a thread then call fork, wiping the non calling
+ *          thread out of memory. Generally speaking, forking a multithreaded
+ *          process is not a good practice though.
+ *
+ * @returns Zero if passed on test, and non-zero otherwise.
+ */
+static int thread_test3(void)
+{
+	int res;                           /* pthread_create return value. */
+	pthread_t thread;                  /* Threads identifier.          */
+	pid_t pid;                         /* Child process pid.           */
+	int arg;                           /* thread argument.             */
+
+	arg = 0;
+
+	/* Spawn a thread to be a multithreaded process. */
+	if ((res = pthread_create(&thread, NULL,
+							  thread_routine_test,
+							  (void *)&arg)) != 0)
+	{
+		printf("thread_test3 : not all threads created.\n");
+		exit(-1);
+	}
+
+	pid = fork();
+
+	/* Failed to fork(). */
+	if (pid < 0)
+		return (-1);
+
+	/* Child process. */
+	else if (pid == 0)
+		exit(0);
+
+	/* Wait for the spawned process. */
+	wait(NULL);
+	return (0);
+}
+
+/*
  * @brief Thread test exit cases.
- * These test brutally exits differents threads. We need to fork to exit
- * without killing father test process and to cleanup brutally exited
- * threads during process termination.
+ *
+ * @details	These test brutally exits differents threads. We need to fork
+ *          to exit without killing father test process and to cleanup
+ *          brutally exited threads during process termination.
+ *
+ * @returns Zero if passed on test, and non-zero otherwise.
  */
 static int thread_test2(void)
 {
-	pid_t pid;
-	int res;
-	int *ret;
-	int i;
-	int arg[8];
-	pthread_t threads[8];
-	void *(*start_routine)(void *);
-	char *argv[3];
+	int i;                             /* Loop index.                */
+	int res;                           /* pthread_xxx return value.  */
+	int *ret;                          /* pthread_join retval addr.  */
+	int arg[NTHREAD_T2];               /* Threads argument.          */
+	void *(*start_routine)(void *);    /* Threads start routine.     */
+	pthread_t threads[NTHREAD_T2];     /* Threads identifier.        */
+	pid_t pid;                         /* Child process pid.         */
+	char *argv[3];                     /* execv argument.            */
 
-	/* TODO: Execute something less polluting. */
-	argv[0] = "echo";
-	argv[1] = NULL;
+	/*
+	 * execvp argument initialisation.
+	 * Used to test if execvp run properly by checking
+	 * if a thread manage to create a file by execvp.
+	 */
+    argv[0] = "crtfile";
+    argv[1] = "test";
+    argv[2] = NULL;
 
 	/*
 	 * Do it enough times to force a regions table overflow if
 	 * memory is not properly cleared.
 	 */
-	for (int k = 0; k < 256; k++)
+	for (int k = 0; k < 4; k++)
 	{
 		/* Fork to exit without killing father test process. */
 		pid = fork();
@@ -751,17 +802,16 @@ static int thread_test2(void)
 		else if (pid == 0)
 		{
 			/* Case 1 : Main thread brutal exit. */
-			if (k < 64)
+			if (k < 1)
 			{
 				/* Init and launch multiple threads. */
-				for (i = 0; i < 8; i++)
+				for (i = 0; i < NTHREAD_T2; i++)
 				{
 					if ((res = pthread_create(&threads[i], NULL,
 											  thread_long_routine_test,
 											  NULL)) != 0)
 					{
-						printf("thread_test3 : not all threads created.\n");
-						fflush(stdout);
+						printf("thread_test2 : not all threads created.\n");
 						exit(-1);
 					}
 				}
@@ -769,9 +819,9 @@ static int thread_test2(void)
 				exit(0);
 			}
 			/* Case 2 : Secondary thread brutal exit. */
-			else if (k < 128)
+			else if (k < 2)
 			{
-				for (i = 7; i >= 0; i--)
+				for (i = NTHREAD_T2 - 1; i >= 0; i--)
 				{
 					/* Start some long tasks for standard threads. */
 					if (i != 0)
@@ -784,28 +834,26 @@ static int thread_test2(void)
 											  start_routine,
 											  NULL)) != 0)
 					{
-						printf("thread_test3 : not all threads created.\n");
-						fflush(stdout);
+						printf("thread_test2 : not all threads created.\n");
 						exit(-1);
 					}
 				}
 				pthread_join(threads[0], (void **)&ret);
 				/* Should be interrupted beforehand. */
-				printf("Error, thread_test3, pthread_join returned.\n");
-				fflush(stdout);
+				printf("Error, thread_test2, pthread_join returned.\n");
 				exit(-1);
 			}
 			/* Case 3 : Primary thread pthread exit. */
-			else if (k < 192)
+			else if (k < 3)
 			{
-				for (i = 7; i >= 0; i--)
+				for (i = NTHREAD_T2 - 1; i >= 0; i--)
 				{
 					arg[i] = i;
 					if ((res = pthread_create(&threads[i], NULL,
 											  thread_routine_test,
 											  (void *)(&arg[i]))) != 0)
 					{
-						printf("thread_test3 : not all threads created.\n");
+						printf("thread_test2 : not all threads created.\n");
 						fflush(stdout);
 						exit(-1);
 					}
@@ -817,32 +865,42 @@ static int thread_test2(void)
 			else
 			{
 				/* Init and launch multiple threads. */
-				for (i = 0; i < 8; i++)
+				for (i = 0; i < NTHREAD_T2; i++)
 				{
 					if ((res = pthread_create(&threads[i], NULL,
 											  thread_long_routine_test,
 											  NULL)) != 0)
 					{
-						printf("thread_test3 : not all threads created.\n");
-						fflush(stdout);
+						printf("thread_test2 : not all threads created.\n");
 						exit(-1);
 					}
 				}
 
 				/* Execute a useless program. */
-				execvp("echo", argv);
-				printf("thread_test3 : execvp error.\n");
-				fflush(stdout);
+				execvp("crtfile", argv);
+				printf("thread_test2 : execvp error.\n");
 			}
 		}
 		/* Will bury, hence cleanup brutually exited thread. */
 		wait(NULL);
+
+		/* Test execvp by checking file existence. */
+		if (k == 3)
+		{
+			if (unlink(argv[1]))
+			{
+				printf("thread_test2 : execvp wasn't properly executed\n");
+				return (-1);
+			}
+		}
 	}
 	return (0);
 }
 
 /*
  * @brief Thread test multiple threads creation and termination.
+ *
+ * @returns Zero if passed on test, and non-zero otherwise.
  */
 static int thread_test1(void)
 {
@@ -880,6 +938,8 @@ static int thread_test1(void)
 
 /*
  * @brief Thread test a single thread creation and termination.
+ *
+ * @returns Zero if passed on test, and non-zero otherwise.
  */
 static int thread_test0(void)
 {
@@ -889,7 +949,7 @@ static int thread_test0(void)
 	pthread_t thread;
 
 	/* Init and launch a thread. */
-	arg = 42;
+	arg = 5;
 	thread_return[0] = 0;
 	if ((res = pthread_create(&thread, NULL,
 							  thread_routine_test,
@@ -901,7 +961,7 @@ static int thread_test0(void)
 		return res;
 
 	/* Check if the thread ran and returned properly. */
-	if (*ret != 42)
+	if (*ret != 5)
 		return (-1);
 
 	return (0);
@@ -1018,6 +1078,8 @@ int main(int argc, char **argv)
 				(!thread_test1()) ? "PASSED" : "FAILED");
 			printf("  thread exit cases [%s]\n",
 				(!thread_test2()) ? "PASSED" : "FAILED");
+			printf("  multithreaded process fork [%s]\n",
+				(!thread_test3()) ? "PASSED" : "FAILED");
 		}
 
 		/* Wrong usage. */

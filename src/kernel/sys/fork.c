@@ -34,7 +34,8 @@ PUBLIC pid_t sys_fork(void)
 	int i;                /* Loop index.     */
 	int err;              /* Error?          */
 	struct process *proc; /* Process.        */
-	struct thread *thrd;  /* Thread.         */
+	struct thread *thrd;  /* New thread.     */
+	struct thread *t;     /* Tmp thread.     */
 	struct region *reg;   /* Memory region.  */
 	struct pregion *preg; /* Process region. */
 
@@ -114,7 +115,7 @@ found:
 	/* Duplicate attached thread region.
 	 * There will be only one thread in
 	 * the son process according to POSIX */
-	preg = &curr_proc->threads->pregs;
+	preg = &curr_thread->pregs;
 
 	/* Thread region not in use. */
 	if (preg->reg == NULL)
@@ -153,13 +154,12 @@ dup_done:
 	proc->threads->retval = NULL;
 	proc->threads->flags = 0 << THRD_NEW;
 
-	kmemcpy(&proc->threads->fss, &curr_proc->threads->fss, sizeof(struct fpu));
+	kmemcpy(&proc->threads->fss, &curr_thread->fss, sizeof(struct fpu));
 
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
 	proc->irqlvl = curr_proc->irqlvl;
 	proc->threads->pmcs.enable_counters = 0;
-	proc->size = curr_proc->size;
 	proc->pwd = curr_proc->pwd;
 	proc->pwd->count++;
 	proc->root = curr_proc->root;
@@ -196,8 +196,17 @@ dup_done:
 	proc->alarm = 0;
 	proc->next = NULL;
 	proc->chain = NULL;
+	proc->size = curr_proc->size;
+	t = curr_proc->threads;
+	while (t != NULL)
+	{
+		/* New proc can be smaller than current proc. */
+		if (t != curr_thread)
+			proc->size -= t->pregs.reg->size;
+		t = t->next;
+	}
 
-	
+
 
 	sched(proc);
 

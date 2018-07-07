@@ -39,7 +39,7 @@ PUBLIC void sched(struct process *proc)
 	t = proc->threads;
 	while (t != NULL)
 	{
-		if (t->state != THRD_WAITING && t->state != THRD_READY)
+		if (t->state != THRD_READY)
 		{
 			t->state = THRD_READY;
 			t->counter = 0;
@@ -83,7 +83,7 @@ PUBLIC void wakeup_join()
 	while(t != NULL)
 	{
 		if (t->state == THRD_WAITING)
-			t->state = THRD_READY;
+			sched_thread(curr_proc, t);
 		t = t->next;
 	}
 }
