@@ -227,7 +227,10 @@ switch_to:
 	l.slli r15, r15, PERCORE_SIZE_LOG2
 	l.add  r15, r13, r15
 
-	l.lwz r13, PERCORE_CURRTHREAD(r15)
+	l.lwz   r13, PERCORE_CURRTHREAD(r15)
+	l.sfeqi r13, 0
+	l.bf 1f
+	l.nop
 	l.lwz r15, THRD_KESP(r13)
 
 	/* Preserve registers state. */
@@ -248,7 +251,7 @@ switch_to:
 	l.sw 52(r1), r28
 	l.sw 56(r1), r30
 	l.sw THRD_KESP(r13), r1
-
+1:
 	/* Switch processes. */
 	LOAD_SYMBOL_2_GPR(r13, curr_proc)
 	l.sw 0(r13), r3
