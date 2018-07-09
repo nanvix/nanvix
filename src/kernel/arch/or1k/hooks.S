@@ -652,6 +652,11 @@ leave.out:
  * System call hook.
  */
 syscall:
+	l.sw   -8(r1), r2
+	l.sw   -4(r1), r9
+	l.addi r2, r1,  0
+	l.addi r1, r1, -8
+
 	/* Set 'handling system call' flag. */
 	LOAD_SYMBOL_2_GPR(r3, curr_proc)
 	l.lwz r3, 0(r3)
@@ -659,13 +664,21 @@ syscall:
 	l.ori r5, r5, (1 << PROC_SYS)
 	l.sw  PROC_FLAGS(r3), r5
 
+	/* Get intstack. */
+	LOAD_SYMBOL_2_GPR(r13, cpus)
+	LOAD_SYMBOL_2_GPR(r14, curr_core)
+	l.lwz  r14, 0(r14)
+	l.slli r14, r14, PERCORE_SIZE_LOG2
+	l.add  r14, r13, r14
+	l.lwz  r13, PERCORE_INTSTACK(r14)
+
 	/* Get system call parameters. */
-	l.lwz r3,  GPR3(r1)
-	l.lwz r4,  GPR4(r1)
-	l.lwz r5,  GPR5(r1)
-	l.lwz r6,  GPR6(r1)
-	l.lwz r7,  GPR7(r1)
-	l.lwz r11, GPR11(r1) /* syscall number. */
+	l.lwz r3,  GPR3(r13)
+	l.lwz r4,  GPR4(r13)
+	l.lwz r5,  GPR5(r13)
+	l.lwz r6,  GPR6(r13)
+	l.lwz r7,  GPR7(r13)
+	l.lwz r11, GPR11(r13) /* syscall number. */
 	
 	/* Check for bad system call. */
 	l.sfltui r11, NR_SYSCALLS
@@ -689,16 +702,40 @@ syscall:
 		l.nop
 
 	bad_syscall:
-		/* Copy return value to user stack. */
-		l.sw GPR11(r1), r11
-
 	return_syscall:
+		/* Get intstack. */
+		LOAD_SYMBOL_2_GPR(r13, cpus)
+		LOAD_SYMBOL_2_GPR(r14, curr_core)
+		l.lwz  r14, 0(r14)
+		l.slli r15, r14, PERCORE_SIZE_LOG2
+		l.add  r15, r13, r15
+		l.lwz  r13, PERCORE_INTSTACK(r15)
+		
+		/* Copy return value to user stack. */
+		l.sw GPR11(r13), r11
+
+		/*
+		 * Checks if we are serving another core, if so, skip
+		 * leave() and disable_interrupts() function.
+		 */
+		l.sfnei r14, 0
+		l.bf 1f
+		l.nop
+
 		/* Enter critical region. */
 		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
 		l.jalr r5
 		l.nop
 
 		l.j leave
+		l.nop
+	
+		/* Return from IPI. */
+	1:
+		l.ori r1, r2, 0
+		l.lwz r2, -8(r1)
+		l.lwz r9, -4(r1)
+		l.jr r9
 		l.nop
 
 /*
