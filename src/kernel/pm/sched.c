@@ -245,7 +245,7 @@ PUBLIC void yield(void)
 			if (next != IDLE)
 			{
 				cpus[i].curr_proc = next;
-				cpus[i].curr_thread = next_thrd;
+				cpus[i].next_thread = next_thrd;
 				cpus[i].state = CORE_RUNNING;
 				ompic_send_ipi(i, IPI_SCHEDULE);
 			}

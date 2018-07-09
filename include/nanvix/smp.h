@@ -59,8 +59,9 @@
 		struct intstack *ints;
 		struct thread *curr_thread;
 		struct process *curr_proc;
+		struct thread *next_thread;
 		unsigned state;
-		unsigned dummy[2];
+		unsigned dummy;
 	};
 
 	/* External functions. */
