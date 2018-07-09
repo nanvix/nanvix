@@ -46,6 +46,11 @@ PUBLIC spinlock_t boot_lock;
 PUBLIC struct per_core cpus[NR_CPUS];
 
 /**
+ * @brief CPUS kernel stack.
+ */
+PUBLIC char cpus_kstack[NR_CPUS][INT_FRAME_SIZE];
+
+/**
  * @brief Release the given CPU while waiting for the master core
  * deals with the IPI request.
  * 

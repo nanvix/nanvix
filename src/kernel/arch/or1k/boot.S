@@ -299,6 +299,17 @@ start_secondary_cores:
 		l.ori	r3, r3, lo(SPR_SR_IEE)
 		l.mtspr	r0, r3, SPR_SR
 
+		/* Setup kstack. */
+		LOAD_SYMBOL_2_GPR(r3, cpus_kstack)
+		l.mfspr r4, r0, SPR_COREID
+		l.muli  r4, r4, INT_FRAME_SIZE
+		l.add   r3, r3, r4
+
+		l.addi r3, r3,  INT_FRAME_SIZE
+		l.addi r3, r3, -DWORD_SIZE
+		l.or   r1, r3,  r0 /* Stack pointer. */  
+		l.or   r2, r1,  r0 /* Frame pointer. */
+
 		/* Unlock boot_lock. */
 		LOAD_SYMBOL_2_GPR(r3, boot_lock)
 		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
