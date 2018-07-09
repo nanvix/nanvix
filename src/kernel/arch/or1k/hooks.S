@@ -249,6 +249,14 @@
 
 	/* Virtual address. */
 	l.add r1, r1, r5
+
+	/* Save intstack. */
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	l.mfspr r5, r0, SPR_COREID
+	l.slli  r5, r5, PERCORE_SIZE_LOG2
+	l.add   r5, r3, r5
+	l.addi  r3, r5, PERCORE_INTSTACK
+	l.sw 0(r3), r1
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -685,11 +693,11 @@ syscall:
 		l.jalr r11
 		l.nop
 
-	return_syscall:
 	bad_syscall:
 		/* Copy return value to user stack. */
 		l.sw GPR11(r1), r11
 
+	return_syscall:
 		/* Enter critical region. */
 		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
 		l.jalr r5
