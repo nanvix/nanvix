@@ -222,10 +222,9 @@ switch_to:
 
 	/* Save process context. */
 	LOAD_SYMBOL_2_GPR(r13, cpus)
-	LOAD_SYMBOL_2_GPR(r15, curr_core)
-	l.lwz  r15, 0(r15)
-	l.slli r15, r15, PERCORE_SIZE_LOG2
-	l.add  r15, r13, r15
+	l.mfspr r15, r0,  SPR_COREID
+	l.slli  r15, r15, PERCORE_SIZE_LOG2
+	l.add   r15, r13, r15
 
 	l.lwz   r13, PERCORE_CURRTHREAD(r15)
 	l.sfeqi r13, 0
@@ -258,11 +257,10 @@ switch_to:
 
 	/* Switch thread */
 	LOAD_SYMBOL_2_GPR(r14, cpus)
-	LOAD_SYMBOL_2_GPR(r15, curr_core)
-	l.lwz  r15, 0(r15)
-	l.slli r15, r15, PERCORE_SIZE_LOG2
-	l.add  r15, r14, r15
-	l.addi r14, r15, PERCORE_CURRTHREAD
+	l.mfspr r15, r0,  SPR_COREID
+	l.slli  r15, r15, PERCORE_SIZE_LOG2
+	l.add   r15, r14, r15
+	l.addi  r14, r15, PERCORE_CURRTHREAD
 	l.sw 0(r14), r4
 
 	/* Load process context. */

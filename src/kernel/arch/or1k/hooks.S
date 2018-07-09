@@ -174,12 +174,10 @@
     
 	/* Save interrupt stack. */
 	LOAD_SYMBOL_2_GPR(r3, cpus)
-	LOAD_SYMBOL_2_GPR(r7, curr_core)
-	l.sub  r7, r7, r5
-	l.lwz  r7, 0(r7)
-	l.slli r7, r7, PERCORE_SIZE_LOG2
-	l.add  r7, r3, r7
-	l.sub  r7, r7, r5
+	l.mfspr r7, r0, SPR_COREID
+	l.slli  r7, r7, PERCORE_SIZE_LOG2
+	l.add   r7, r3, r7
+	l.sub   r7, r7, r5
 
 	l.lwz r3, PERCORE_CURRTHREAD(r7)
 	l.sub r3, r3, r5
@@ -217,12 +215,10 @@
 
 	/* User mode. */
 	LOAD_SYMBOL_2_GPR(r3,  cpus)
-	LOAD_SYMBOL_2_GPR(r30, curr_core)
-	l.sub  r30, r30, r5
-	l.lwz  r30, 0(r30)
-	l.slli r30, r30, PERCORE_SIZE_LOG2
-	l.add  r30, r3, r30
-	l.sub  r30, r30, r5
+	l.mfspr r30, r0,  SPR_COREID
+	l.slli  r30, r30, PERCORE_SIZE_LOG2
+	l.add   r30, r3, r30
+	l.sub   r30, r30, r5
 
 	l.lwz r3, PERCORE_CURRTHREAD(r30)
 	l.sub r3, r3, r5
@@ -537,11 +533,10 @@ trap_exception:
  */
 leave:
 	LOAD_SYMBOL_2_GPR(r3, cpus)
-	LOAD_SYMBOL_2_GPR(r4, curr_core)
-	l.lwz  r4, 0(r4)
-	l.slli r4, r4, PERCORE_SIZE_LOG2
-	l.add  r4, r3, r4
-	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+	l.mfspr r4, r0, SPR_COREID
+	l.slli  r4, r4, PERCORE_SIZE_LOG2
+	l.add   r4, r3, r4
+	l.lwz   r3, PERCORE_CURRTHREAD(r4)
 
 	/* Restore interrupt stack. */
 	l.lwz  r4, 0(r1)
