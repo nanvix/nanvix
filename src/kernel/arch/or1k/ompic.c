@@ -64,25 +64,31 @@ PUBLIC void ompic_send_ipi(uint32_t dstcore, uint16_t data)
  */
 PUBLIC void ompic_handle_ipi(void)
 {
-	unsigned cpu = smp_get_coreid();
+	unsigned cpu;
+	uint32_t ipi_message;
+	uint16_t ipi_type, ipi_sender;
+
+	/* Current core. */
+	cpu = smp_get_coreid();
 
 	/* ACK IPI. */
 	ompic_writereg(OMPIC_CTRL(cpu), OMPIC_CTRL_IRQ_ACK);
 
+	/* Get the IPI message. */
+	ipi_message =  ompic_readreg(OMPIC_STAT(cpu));
+	ipi_type    = OMPIC_DATA(ipi_message);
+	ipi_sender  = OMPIC_STAT_SRC(ipi_message);
+
 	/* Checks the core type. */
 	if (cpu == CORE_MASTER) 
 	{
-
+		curr_core = ipi_sender;
+		struct intstack *ints = cpus[curr_core].ints;
 	}
 	else
 	{
-		uint16_t ipi_message;
-		ipi_message =  ompic_readreg(OMPIC_STAT(cpu));
-		ipi_message &= OMPIC_DATA(ipi_message);
-		curr_core = cpu;
-
-		if (ipi_message == IPI_SCHEDULE)
-			switch_to(cpus[cpu].curr_proc, cpus[cpu].curr_thread);
+		if (ipi_type == IPI_SCHEDULE)
+			switch_to(cpus[cpu].curr_proc, cpus[cpu].next_thread);
 	}
 }
 

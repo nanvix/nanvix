@@ -37,7 +37,8 @@
 
 	#define OMPIC_STAT_IRQ_PENDING (1 << 30)
 
-	#define OMPIC_DATA(x) ((x) & 0xffff)
+	#define OMPIC_DATA(x)     ((x) & 0xffff)
+	#define OMPIC_STAT_SRC(x) (((x) >> 16) & 0x3fff)
 
 #ifndef _ASM_FILE_
 
