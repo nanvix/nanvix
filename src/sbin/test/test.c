@@ -678,8 +678,6 @@ static void *thread_long_routine_test(void *arg)
 			for (int k = 0; k < 32768; k++)
 				work_cpu();
 
-	/* TODO : should be call automatically after routine return. */
-	pthread_exit(NULL);
 	return NULL;
 }
 
@@ -700,9 +698,7 @@ static void *thread_routine_test(void *arg)
 		work_cpu();
 
 	thread_return[id] = id;
-	/* TODO : should be call automatically after routine return. */
-	pthread_exit((void *)(&thread_return[id]));
-	return NULL;
+	return (void *)(&thread_return[id]);
 }
 
 /*

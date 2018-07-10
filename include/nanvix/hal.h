@@ -72,7 +72,12 @@
 	EXTERN void setup(void);
 	EXTERN void user_mode(addr_t, addr_t);
 	EXTERN void switch_to(struct process *, struct thread *);
-	EXTERN addr_t forge_stack(void *, void *(*)( void * ), addr_t, void *);
+	EXTERN addr_t forge_stack(void * kstack,
+		   void *(*start_routine)( void * ),
+							 addr_t user_sp,
+								 void * arg,
+		  void (*__start_thread)( void * ));
+
 	EXTERN unsigned irq_lvl(unsigned);
 	/**@}*/	
 	

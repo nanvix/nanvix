@@ -295,7 +295,8 @@
 	EXTERN int sys_pthread_create(pthread_t *__pthread,
 			   _CONST pthread_attr_t *__pthread_attr_t,
 					  void *(*__start_routine)(void *),
-										  void *__arg);
+										   void *__arg,
+					   void (*__start_thread)(void *));
 
 	/*
 	 * Terminates current thread.
