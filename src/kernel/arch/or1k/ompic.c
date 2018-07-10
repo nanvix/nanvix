@@ -83,7 +83,7 @@ PUBLIC void ompic_handle_ipi(void)
 	if (cpu == CORE_MASTER) 
 	{
 		curr_core = ipi_sender;
-		struct intstack *ints = cpus[curr_core].ints;
+		struct intstack *ints = cpus[curr_core].curr_thread->ints;
 	}
 	else
 	{

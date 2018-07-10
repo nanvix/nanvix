@@ -144,7 +144,6 @@ PUBLIC void smp_init(void)
 		{
 			cpus[i].coreid = i;
 			cpus[i].syscallno = 0;
-			cpus[i].ints = NULL;
 			cpus[i].curr_thread = NULL;
 			cpus[i].curr_proc = NULL;
 			cpus[i].next_thread = NULL;
