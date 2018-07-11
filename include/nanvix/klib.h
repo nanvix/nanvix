@@ -298,4 +298,15 @@
 	 */
 	#define noop()
 	
+	/**
+	 * Produces an building error if the condition is not met.
+	 */
+	#define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
+
+	/**
+	 * Produces an building error if the condition is not power of two.
+	 */	
+	#define BUILD_BUG_ON_NOT_POWER_OF_2(n)			\
+		BUILD_BUG_ON(!(n) || (((n) & ((n) - 1))))
+	
 #endif /* NANVIX_KLIB_H_ */

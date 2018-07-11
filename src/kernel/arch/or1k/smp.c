@@ -109,6 +109,10 @@ PUBLIC unsigned smp_get_numcores(void)
  */
 PUBLIC void smp_init(void)
 {
+	/* Sanity check. */
+	BUILD_BUG_ON_NOT_POWER_OF_2(sizeof(struct per_core));
+	BUILD_BUG_ON(sizeof(struct per_core) != (1 << PERCORE_SIZE_LOG2));
+
 	unsigned numcores = smp_get_numcores();
 
 	kprintf("%d CPUs detected!", numcores);
