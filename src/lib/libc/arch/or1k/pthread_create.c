@@ -44,7 +44,6 @@ void __start_thread(void *(*__start_routine)(void *), void *arg)
 int pthread_create(pthread_t *__pthread, _CONST pthread_attr_t *__attr,
 				   void *(*__start_routine)(void *), void *__arg)
 {
-	((void)__start_routine);
 	register unsigned r3
         __asm__("r3") = (unsigned) __pthread;
     register unsigned r4

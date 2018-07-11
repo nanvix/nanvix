@@ -80,11 +80,10 @@ PUBLIC void sys_pthread_exit(void *retval)
 	/* Store return value pointer for a future join. */
 	curr_thread->retval = retval;
 
-	/*
-	 * TODO : if thread is detached, call directly clear_thread without waiting
-	 * for this thread to be joined.
-	 */
-	curr_thread->state = THRD_TERMINATED;
+	if (curr_thread->detachstate == PTHREAD_CREATE_DETACHED)
+		clear_thread(curr_thread);
+	else
+		curr_thread->state = THRD_TERMINATED;
 	wakeup_join();
 
 	/* Check if it was the last running thread. */

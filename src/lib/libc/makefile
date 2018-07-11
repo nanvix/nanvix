@@ -54,6 +54,7 @@ C_SRC = $(wildcard *.c)            \
 	$(wildcard unistd/*.c)         \
 	$(wildcard utime/*.c)          \
 	$(wildcard wchar/*.c)          \
+	$(wildcard pthread/*.c)        \
 
 # Assembly source files.
 ASM_SRC = $(wildcard arch/$(TARGET)/*.S) \

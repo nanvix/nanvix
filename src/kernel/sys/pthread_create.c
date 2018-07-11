@@ -126,12 +126,6 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	addr_t user_sp;                  /* User stack addr.   */
 
 
-	if (attr != NULL)
-	{
-		kprintf("TODO: pthread_create: attr not null");
-		goto error;
-	}
-
 	/* Check start routine address validity. */
 	if (start_routine == NULL
 			|| (addr_t)start_routine < UBASE_VIRT
@@ -152,6 +146,15 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	thrd->flags = 1 << THRD_NEW;
 	thrd->retval = NULL;
 	*pthread = thrd->tid;
+
+	/*
+	 * Check pthread attributes.
+	 * TODO: For now, we only handle detachstate attribute.
+	 */
+	if (attr != NULL)
+		thrd->detachstate = attr->detachstate;
+	else
+	    thrd->detachstate = PTHREAD_CREATE_JOINABLE;
 
 	/* Attach new thread in the process list. */
 	t = curr_proc->threads;
