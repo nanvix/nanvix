@@ -259,6 +259,9 @@ void	_EXFUN(pthread_exit, (void *__value_ptr));
 
 pthread_t	_EXFUN(pthread_self, (void));
 
+/* Init routine called before executing the thread supplied routine. */
+void _EXFUN(__start_thread, (void *(*__start_routine)(void *), void *arg));
+
 /* Compare Thread IDs, p1003.1c/Draft 10, p. 153 */
 
 int	_EXFUN(pthread_equal, (pthread_t __t1, pthread_t __t2));

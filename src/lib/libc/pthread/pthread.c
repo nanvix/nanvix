@@ -21,6 +21,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
+
+/*
+ * @brief Init routine called before executing the thread supplied routine.
+ *
+ * @details This can be seen as thread crt0, but set at runtime instead.
+ * It is useful here to be able to implicitly called pthread_exit, when
+ * start_routine return.
+ *
+ * @returns This routine will never return.
+ */
+void __start_thread(void *(*__start_routine)(void *), void *arg)
+{
+	void *ret;
+	ret = __start_routine(arg);
+	pthread_exit(ret);
+}
 
 /*
  * @brief Initializes the thread attributes.
