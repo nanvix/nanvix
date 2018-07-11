@@ -82,8 +82,19 @@ PUBLIC void ompic_handle_ipi(void)
 	/* Checks the core type. */
 	if (cpu == CORE_MASTER) 
 	{
-		curr_core = ipi_sender;
-		struct intstack *ints = cpus[curr_core].curr_thread->ints;
+		if (ipi_type == IPI_SYSCALL)
+		{
+			void (*sys)(void) = (void (*)(void))((unsigned)syscall + KBASE_VIRT);
+			
+			/* Do syscall. */
+			curr_core = ipi_sender;
+			sys();
+			curr_core = CORE_MASTER;
+
+			/* Release slave. */
+			spin_lock(&ipi_lock);
+			release_ipi = ipi_sender;
+		}
 	}
 	else
 	{

@@ -304,7 +304,7 @@
 		l.jalr r5
 		l.nop
 
-		l.j return_syscall
+		l.j 9f
 		l.nop
 
 	5:
@@ -703,7 +703,6 @@ syscall:
 		l.nop
 
 	bad_syscall:
-	return_syscall:
 		/* Get intstack. */
 		LOAD_SYMBOL_2_GPR(r13, cpus)
 		LOAD_SYMBOL_2_GPR(r14, curr_core)
@@ -721,7 +720,7 @@ syscall:
 		 * leave() and disable_interrupts() function.
 		 */
 		l.sfnei r14, 0
-		l.bf 1f
+		l.bf return_ipi
 		l.nop
 
 		/* Enter critical region. */
@@ -739,7 +738,7 @@ syscall:
 		l.nop
 	
 		/* Return from IPI. */
-	1:
+	return_ipi:
 		l.ori r1, r2, 0
 		l.lwz r2, -8(r1)
 		l.lwz r9, -4(r1)
