@@ -80,7 +80,7 @@
 	EXTERN unsigned release_ipi;
 	EXTERN spinlock_t ipi_lock;
 	EXTERN struct per_core cpus[NR_CPUS];
-	EXTERN char cpus_kstack[NR_CPUS][INT_FRAME_SIZE];
+	EXTERN char cpus_kstack[NR_CPUS][256];
 	EXTERN unsigned curr_core;
 
 #endif /* _ASM_FILE_ */
