@@ -18,37 +18,66 @@ environment, the x86 GNU C Compiler and the x86 GNU Binutils.
 If you are running a Debian-based Linux distribution, you can run
 the following commands.
 
-- To clone this repository:
+- To clone this repository (default folder name is nanvix):
 
 ```bash
-$ cd ~
-$ git clone --recursive https://github.com/ppenna/nanvix
+$ cd path/to/clone
+$ git clone --recursive https://github.com/nanvix/nanvix.git -b dev [folder-name]
 ```
 
 - To get the development environment setup:
-
 ```bash
-$ cd ~/nanvix
-$ sudo bash tools/dev/build-toolchain.sh
-$ sudo bash tools/dev/setup-bochs.sh
-$ sudo reboot now
+$ cd path/folder-name
+$ sudo bash tools/dev/setup-toolchain.sh
+$ sudo bash tools/dev/setup-qemu.sh
+```
+
+If using i386 architecture:
+```bash
+$ sudo bash tools/dev/arch/setup-toolchain-i386.sh
+```
+
+If using or1k architecture:
+```bash
+$ sudo bash tools/dev/arch/setup-toolchain-or1k.sh
 ```
 
 - To build Nanvix:
 
 ```bash
-$ cd ~/nanvix
-$ make nanvix
-$ sudo make image
+$ cd path/folder-name
 ```
-	
+
+If using i386 architecture:
+```bash
+$ make nanvix TARGET=i386
+$ sudo make image TARGET=i386
+```
+
+If using or1k architecture:
+```bash
+$ make nanvix TARGET=or1k
+$ sudo make image TARGET=or1k```
+```
+
 - To run Nanvix on a virtual machine:
 
 ```bash
-$ cd ~/nanvix
-$ make nanvix
-$ sudo make image
-$ sudo bash tools/run/run-bochs.sh
+$ cd path/folder-name
+```
+
+If using i386 architecture:
+```bash
+$ export TARGET=i386
+```
+
+If using or1k architecture:
+```bash
+$ export TARGET=or1k
+```
+
+```bash
+$ bash tools/run/run-qemu.sh
 ```
 
 ## LICENSE AND MAINTAINERS
