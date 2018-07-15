@@ -113,7 +113,6 @@
 	#define PROC_RECEIVED 12 /**< Received signals offset.       */
 	#define PROC_RESTORER 16 /**< Signal restorer.               */
 	#define PROC_HANDLERS 20 /**< Signal handlers offset.        */
-	#define PROC_IRQLVL  112 /**< IRQ Level offset.              */
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -133,7 +132,6 @@
 		unsigned received;                 /**< Received signals.       */
 		void (*restorer)(void);            /**< Signal restorer.        */
 		sighandler_t handlers[NR_SIGNALS]; /**< Signal handlers.        */
-		unsigned irqlvl;                   /**< Current IRQ level.      */
 		/**@}*/
 
 

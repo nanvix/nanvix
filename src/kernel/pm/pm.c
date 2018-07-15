@@ -114,7 +114,7 @@ PUBLIC void pm_init(void)
 	IDLE->restorer = NULL;
 	for (int i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;
-	IDLE->irqlvl = INT_LVL_5;
+	IDLE->threads->irqlvl = INT_LVL_5;
 	IDLE->threads->pmcs.enable_counters = 0;
 	IDLE->pgdir = idle_pgdir;
 	for (int i = 0; i < NR_PREGIONS; i++)

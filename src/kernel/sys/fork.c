@@ -159,7 +159,7 @@ dup_done:
 
 	for (i = 0; i < NR_SIGNALS; i++)
 		proc->handlers[i] = curr_proc->handlers[i];
-	proc->irqlvl = curr_proc->irqlvl;
+	proc->threads->irqlvl = cpus[curr_core].curr_thread->irqlvl;
 	proc->threads->pmcs.enable_counters = 0;
 	proc->pwd = curr_proc->pwd;
 	proc->pwd->count++;
