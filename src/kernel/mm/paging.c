@@ -309,6 +309,7 @@ PUBLIC void umappgtab(struct process *proc, addr_t addr)
 PUBLIC int crtpgdir(struct process *proc)
 {
 	void *kstack;             /* Kernel stack.     */
+	void *ipikstack;          /* IPI Kernel stack. */
 	struct pde *pgdir;        /* Page directory.   */
 	struct intstack *s1, *s2; /* Interrupt stacks. */
 	
@@ -322,6 +323,11 @@ PUBLIC int crtpgdir(struct process *proc)
 	if (kstack == NULL)
 		goto err1;
 
+	/* Get kernel page for IPI kernel stack. */
+	ipikstack = getkpg(1);
+	if (ipikstack == NULL)
+		goto err2;
+
 	/* Build page directory. */
 	pgdir[0] = curr_proc->pgdir[0];
 	pgdir[PGTAB(KBASE_VIRT)] = curr_proc->pgdir[PGTAB(KBASE_VIRT)];
@@ -334,9 +340,11 @@ PUBLIC int crtpgdir(struct process *proc)
 	
 	/* Clone kernel stack. */
 	kmemcpy(kstack, cpus[curr_core].curr_thread->kstack, KSTACK_SIZE);
+	
 	/* Adjust stack pointers. */
 	proc->threads->kesp = (cpus[curr_core].curr_thread->kesp -
 		(dword_t)cpus[curr_core].curr_thread->kstack)+(dword_t)kstack;
+	
 	s1 = (struct intstack *) proc->threads->kesp;
 	s1->old_kesp = proc->threads->kesp;
 	
@@ -357,9 +365,13 @@ PUBLIC int crtpgdir(struct process *proc)
 	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
 	proc->pgdir = pgdir;
 	proc->threads->kstack = kstack;
-	
+	proc->threads->ipikstack = (void *)((dword_t)ipikstack + PAGE_SIZE -
+		DWORD_SIZE);
+
 	return (0);
 
+err2:
+	putkpg(kstack);
 err1:
 	putkpg(pgdir);
 err0:
@@ -620,6 +632,7 @@ PUBLIC void dstrypgdir(struct process *proc)
 	while (t != NULL)
 	{
 		putkpg(t->kstack);
+		putkpg(t->ipikstack);
 		t = t->next;
 	}
 	putkpg(proc->pgdir);

@@ -67,6 +67,7 @@ removed:
 	 */
 	detachreg(proc, &thrd->pregs);
 	putkpg(thrd->kstack);
+	putkpg(thrd->ipikstack);
 
 	return (0);
 }

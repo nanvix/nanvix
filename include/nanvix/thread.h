@@ -45,6 +45,7 @@
 	#define THRD_FSS        12/**< FPU Saved Status offset.       */
 	#define THRD_PMC        16/**< Performance Counter Status.    */
 	#define THRD_INTSTACK   20/**< Interrupt Stack.               */
+	#define THRD_IPISTACK   24/**< IPI Kernel stack.              */
 	/**@}*/
 
 	/**
@@ -122,6 +123,7 @@
 		struct fpu fss;        /**< FPU Saved Status.       */
 		struct pmc pmcs;       /**< PMC status.             */
 		struct intstack *ints; /**< Interrupt Stack.        */
+		void *ipikstack;       /*<< IPI Kernel stack.       */
 		/**@}*/
 
 		/**

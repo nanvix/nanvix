@@ -34,24 +34,38 @@
 PRIVATE int setup_stack(addr_t user_sp, void *arg, struct thread *thrd,
 						void *(*start_routine)( void * ))
 {
-	void *kstack;   /* Kernel stack underlying page. */
-	addr_t kern_sp; /* Kernel stack pointer.         */
+	void *kstack;    /* Kernel stack underlying page. */
+	void *ipikstack; /* IPI kernel stack.             */
+	addr_t kern_sp;  /* Kernel stack pointer.         */
 
 	/* Get kernel page for kernel stack. */
 	kstack = getkpg(0);
 	if (kstack == NULL)
 	{
 		kprintf("cannot allocate kstack");
-		goto error;
+		goto error0;
 	}
+
+	/* Get kernel page for IPI kernel stack. */
+	ipikstack = getkpg(1);
+	if (ipikstack == NULL)
+	{
+		kprintf("cannot allocate ipi kstack");
+		goto error1;
+	}	
 
 	/* Forge the new stack and update the thread structure. */
 	kern_sp = forge_stack(kstack, start_routine, user_sp, arg);
 	thrd->kstack = kstack;
 	thrd->kesp = kern_sp;
+	thrd->ipikstack = (void *)((dword_t)ipikstack + PAGE_SIZE -
+		DWORD_SIZE);
+
 	return (0);
 
-error:
+error1:
+	putkpg(kstack);
+error0:
 	return (-1);
 }
 
