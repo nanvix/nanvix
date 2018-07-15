@@ -45,8 +45,9 @@
 	#define THRD_INTSTACK    12 /**< Interrupt Stack.               */
 	#define THRD_IPISTACK    16 /**< IPI Kernel stack.              */
 	#define THRD_IRQLVL      20 /**< IRQ Level offset.              */
-	#define THRD_FSS         24 /**< FPU Saved Status offset.       */
-	#define THRD_PMC        132 /**< Performance Counter Status.    */
+	#define THRD_INTLVL      24 /**< Interrupt level offset.        */
+	#define THRD_FSS         28 /**< FPU Saved Status offset.       */
+	#define THRD_PMC        136 /**< Performance Counter Status.    */
 	/**@}*/
 
 	/**
@@ -125,6 +126,7 @@
 		struct intstack *ints; /**< Interrupt Stack.        */
 		void *ipikstack;       /*<< IPI Kernel stack.       */
 		unsigned irqlvl;       /**< Current IRQ level.      */
+		dword_t intlvl;        /**< Interrupt level.        */
 		struct fpu fss;        /**< FPU Saved Status.       */
 		struct pmc pmcs;       /**< PMC status.             */
 		/**@}*/

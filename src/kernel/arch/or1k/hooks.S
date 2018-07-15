@@ -160,27 +160,22 @@
  * Enters in kernel.
  */
 .macro enter
-	LOAD_SYMBOL_2_GPR(r3, curr_proc)
+	LOAD_SYMBOL_2_GPR(r3, cpus)
 	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 
 	/* Increment interrupt level. */
-	l.sub r3, r3, r5
-	l.lwz r3, 0(r3)
-	l.sub r3, r3, r5 
-
-	l.lwz  r7, PROC_INTLVL(r3)
-	l.addi r7, r7, 1
-	l.sw   PROC_INTLVL(r3), r7
-    
-	/* Save interrupt stack. */
-	LOAD_SYMBOL_2_GPR(r3, cpus)
 	l.mfspr r7, r0, SPR_COREID
 	l.slli  r7, r7, PERCORE_SIZE_LOG2
 	l.add   r7, r3, r7
 	l.sub   r7, r7, r5
+	l.lwz   r3, PERCORE_CURRTHREAD(r7)
+	l.sub   r3, r3, r5
 
-	l.lwz r3, PERCORE_CURRTHREAD(r7)
-	l.sub r3, r3, r5
+	l.lwz  r7, THRD_INTLVL(r3)
+	l.addi r7, r7, 1
+	l.sw   THRD_INTLVL(r3), r7
+    
+	/* Save interrupt stack. */
 	l.lwz r7, THRD_KESP(r3)
 	l.sw 0(r1), r7
 
@@ -542,24 +537,15 @@ leave:
 	l.lwz  r4, 0(r1)
 	l.sw THRD_KESP(r3), r4
 
-	LOAD_SYMBOL_2_GPR(r3, curr_proc)
-	l.lwz r3, 0(r3)
-
 	/* Decrement interrupt level. */
-	l.lwz   r4, PROC_INTLVL(r3)
+	l.lwz   r4, THRD_INTLVL(r3)
 	l.addi  r4, r4, -1
-	l.sw PROC_INTLVL(r3), r4
+	l.sw THRD_INTLVL(r3), r4
 	l.sfnei r4, 0
 	l.bf leave.out
 	l.nop
 
 	/* Check if we were handling a system call. */
-	LOAD_SYMBOL_2_GPR(r3, cpus)
-	l.mfspr r4, r0, SPR_COREID
-	l.slli  r4, r4, PERCORE_SIZE_LOG2
-	l.add   r4, r3, r4
-	l.lwz   r3, PERCORE_CURRTHREAD(r4)
-
 	l.lwz  r15, THRD_FLAGS(r3)
 	l.ori  r17, r0,  (1 << THRD_SYS)
 	l.and  r19, r15, r17

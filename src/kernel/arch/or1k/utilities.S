@@ -345,11 +345,15 @@ fork_return:
  */
 pthread_create_return:
 	/* Decrement interrupt level. */
-	LOAD_SYMBOL_2_GPR(r3, curr_proc)
-    l.lwz r3, 0(r3)
-    l.lwz   r4, PROC_INTLVL(r3)
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	l.mfspr r4, r0, SPR_COREID
+	l.slli  r4, r4, PERCORE_SIZE_LOG2
+	l.add   r4, r3, r4
+	l.lwz   r3, PERCORE_CURRTHREAD(r4)
+
+    l.lwz   r4, THRD_INTLVL(r3)
     l.addi  r4, r4, -1
-    l.sw PROC_INTLVL(r3), r4
+    l.sw THRD_INTLVL(r3), r4
 
 	LOAD_SYMBOL_2_GPR(r15, leave.out)
 	l.sw GPR11(r1), r0
@@ -369,9 +373,12 @@ user_mode:
 	l.nop
 
 	/* Set interrupt level to "user level". */
-	LOAD_SYMBOL_2_GPR(r13, curr_proc)
-	l.lwz r13, 0(r13)
-	l.sw PROC_INTLVL(r13), r0
+	LOAD_SYMBOL_2_GPR(r13, cpus)
+	l.mfspr r14, r0, SPR_COREID
+	l.slli  r14, r14, PERCORE_SIZE_LOG2
+	l.add   r14, r13, r14
+	l.lwz   r13, PERCORE_CURRTHREAD(r14)
+	l.sw    THRD_INTLVL(r13), r0
 
 	/* Load data. */
 	LOAD_SYMBOL_2_GPR(r15, USER_SR)

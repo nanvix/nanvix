@@ -105,7 +105,7 @@ PUBLIC void pm_init(void)
 		
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;
-	IDLE->intlvl = 1;
+	IDLE->threads->intlvl = 1;
 	IDLE->flags = 0;
 	IDLE->received = 0;
 	IDLE->threads->kstack = idle_kstack;

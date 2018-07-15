@@ -108,11 +108,10 @@
 	 */
 	/**@{*/
 	#define PROC_CR3       0 /**< Page directory pointer offset. */
-	#define PROC_INTLVL    4 /**< Interrupt level offset.        */
-	#define PROC_FLAGS     8 /**< Process flags.                 */
-	#define PROC_RECEIVED 12 /**< Received signals offset.       */
-	#define PROC_RESTORER 16 /**< Signal restorer.               */
-	#define PROC_HANDLERS 20 /**< Signal handlers offset.        */
+	#define PROC_FLAGS     4 /**< Process flags.                 */
+	#define PROC_RECEIVED  8 /**< Received signals offset.       */
+	#define PROC_RESTORER 12 /**< Signal restorer.               */
+	#define PROC_HANDLERS 16 /**< Signal handlers offset.        */
 	/**@}*/
 
 #ifndef _ASM_FILE_
@@ -127,7 +126,6 @@
 		 */
 		/**@{*/
 		dword_t cr3;                       /**< Page directory pointer. */
-		dword_t intlvl;                    /**< Interrupt level.        */
 		unsigned flags;                    /**< Process flags.          */
 		unsigned received;                 /**< Received signals.       */
 		void (*restorer)(void);            /**< Signal restorer.        */
@@ -230,14 +228,14 @@
 	/**@}*/
 	
 	/**
-	 * @brief Asserts if a process was running in kernel mode.
+	 * @brief Asserts if a thread was running in kernel mode.
 	 * 
-	 * @param p Process to be queried about.
+	 * @param t Thread to be queried about.
 	 * 
-	 * @returns True if the process is running in kernel mode, and false
+	 * @returns True if the thread is running in kernel mode, and false
 	 *          otherwise.
 	 */
-	#define KERNEL_WAS_RUNNING(p) (((p)->intlvl > 1))
+	#define KERNEL_WAS_RUNNING(t) (((t)->intlvl > 1))
 	
 	/**
 	 * @brief Asserts if a process is the sessions leader.

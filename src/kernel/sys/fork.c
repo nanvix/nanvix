@@ -147,7 +147,7 @@ found:
 dup_done:
 	
 	/* Initialize process. */
-	proc->intlvl = 1;
+	proc->threads->intlvl = 1;
 	proc->received = 0;
 	proc->restorer = curr_proc->restorer;
 	proc->threads->tid = next_tid++;
