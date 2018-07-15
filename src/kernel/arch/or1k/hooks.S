@@ -554,12 +554,18 @@ leave:
 	l.nop
 
 	/* Check if we were handling a system call. */
-	l.lwz  r15, PROC_FLAGS(r3)
-	l.ori  r17, r0,  (1 << PROC_SYS)
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	l.mfspr r4, r0, SPR_COREID
+	l.slli  r4, r4, PERCORE_SIZE_LOG2
+	l.add   r4, r3, r4
+	l.lwz   r3, PERCORE_CURRTHREAD(r4)
+
+	l.lwz  r15, THRD_FLAGS(r3)
+	l.ori  r17, r0,  (1 << THRD_SYS)
 	l.and  r19, r15, r17
 	l.xori r17, r17, -1
 	l.and  r17, r15, r17
-	l.sw   PROC_FLAGS(r3), r17
+	l.sw   THRD_FLAGS(r3), r17
 	l.sfnei r19, 0
 	l.bnf check_signals
 	l.nop
@@ -658,20 +664,19 @@ syscall:
 	l.addi r1, r1, -8
 
 	/* Set 'handling system call' flag. */
-	LOAD_SYMBOL_2_GPR(r3, curr_proc)
-	l.lwz r3, 0(r3)
-	l.lwz r5, PROC_FLAGS(r3)
-	l.ori r5, r5, (1 << PROC_SYS)
-	l.sw  PROC_FLAGS(r3), r5
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	LOAD_SYMBOL_2_GPR(r4, curr_core)
+	l.lwz  r4, 0(r4)
+	l.slli r4, r4, PERCORE_SIZE_LOG2
+	l.add  r4, r3, r4
+	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+
+	l.lwz r5, THRD_FLAGS(r3)
+	l.ori r5, r5, (1 << THRD_SYS)
+	l.sw  THRD_FLAGS(r3), r5
 
 	/* Get intstack. */
-	LOAD_SYMBOL_2_GPR(r13, cpus)
-	LOAD_SYMBOL_2_GPR(r14, curr_core)
-	l.lwz  r14, 0(r14)
-	l.slli r14, r14, PERCORE_SIZE_LOG2
-	l.add  r14, r13, r14
-	l.lwz  r13, PERCORE_CURRTHREAD(r14)
-	l.lwz  r13, THRD_INTSTACK(r13)
+	l.lwz  r13, THRD_INTSTACK(r3)
 
 	/* Get system call parameters. */
 	l.lwz r3,  GPR3(r13)

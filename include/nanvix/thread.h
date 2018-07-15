@@ -59,7 +59,8 @@
 	 * @name Thread flags
 	 */
 	/**@{*/
-	#define THRD_NEW 0 /**< Is the thread new? */
+	#define THRD_NEW 0 /**< Is the thread new?      */
+	#define THRD_SYS 1 /**< Handling a system call? */
 	/**@}*/
 
 	/**
