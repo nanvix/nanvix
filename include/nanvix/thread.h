@@ -39,13 +39,13 @@
 	 * @name Offsets to hard-coded fields of a process
 	 */
 	/**@{*/
-	#define THRD_KESP       0 /**< Kernel stack pointer offset.   */
-	#define THRD_KSTACK     4 /**< Kernel stack pointer offset.   */
-	#define THRD_FLAGS      8 /**< Thread flags offset.           */
-	#define THRD_FSS        12/**< FPU Saved Status offset.       */
-	#define THRD_PMC        16/**< Performance Counter Status.    */
-	#define THRD_INTSTACK   20/**< Interrupt Stack.               */
-	#define THRD_IPISTACK   24/**< IPI Kernel stack.              */
+	#define THRD_KESP         0 /**< Kernel stack pointer offset.   */
+	#define THRD_KSTACK       4 /**< Kernel stack pointer offset.   */
+	#define THRD_FLAGS        8 /**< Thread flags offset.           */
+	#define THRD_INTSTACK    12 /**< Interrupt Stack.               */
+	#define THRD_IPISTACK    16 /**< IPI Kernel stack.              */
+	#define THRD_FSS         20 /**< FPU Saved Status offset.       */
+	#define THRD_PMC        128 /**< Performance Counter Status.    */
 	/**@}*/
 
 	/**
@@ -121,10 +121,10 @@
 		dword_t kesp;          /**< Kernel stack pointer.   */
 		void *kstack;          /**< Kernel stack pointer.   */
 		unsigned flags;        /**< Thread flags.           */
-		struct fpu fss;        /**< FPU Saved Status.       */
-		struct pmc pmcs;       /**< PMC status.             */
 		struct intstack *ints; /**< Interrupt Stack.        */
 		void *ipikstack;       /*<< IPI Kernel stack.       */
+		struct fpu fss;        /**< FPU Saved Status.       */
+		struct pmc pmcs;       /**< PMC status.             */
 		/**@}*/
 
 		/**
