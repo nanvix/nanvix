@@ -49,6 +49,7 @@
 .globl spin_init
 .globl spin_lock
 .globl spin_unlock
+.globl save_ipi_context
 
 /* Imported symbols. */
 .globl processor_reload
@@ -264,7 +265,24 @@ switch_to:
 	l.sw 0(r14), r4
 
 	/* Load process context. */
+	LOAD_SYMBOL_2_GPR(r14, smp_enabled)
+	l.lwz   r14, 0(r14)
+	l.sfeqi r14, 0
+	l.bf 2f
+	l.nop
+
+	l.lwz   r14, THRD_FLAGS(r4)
+	l.andi  r14, r14, (1 << THRD_SYS)
+	l.sfeqi r14, 0
+	l.bf 2f
+	l.nop
+
+	l.lwz r1, THRD_IPISTACK(r4)
+	l.j 3f
+	l.nop
+2:
 	l.lwz r1, THRD_KESP(r4)
+3:
 	l.jal tlb_flush
 	l.nop
 
@@ -458,6 +476,95 @@ forge_stack:
 	LOAD_SYMBOL_2_GPR(r15, USER_SR)
 	l.sw ESR(r3), r15
 
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                              save_ipi_context()                            *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Saves the current context for the master core into the
+ * current thread IPI stack.
+ */
+save_ipi_context:
+	l.sw   -8(r1), r2
+	l.sw   -4(r1), r9
+	l.addi r2, r1,  0
+	l.addi r1, r1, -16
+
+	/* Scratch registers. */
+	l.sw -12(r2), r3
+	l.sw -16(r2), r4
+
+	/* Retrieve the IPI stack. */
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	LOAD_SYMBOL_2_GPR(r4, curr_core)
+	l.lwz  r4, 0(r4)
+	l.slli r4, r4, PERCORE_SIZE_LOG2
+	l.add  r4, r3, r4
+	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+	l.lwz  r3, THRD_IPISTACK(r3)
+
+	/* General purpose registers. */
+	l.sw R0(r3)   , r0
+	l.sw SP(r3)   , r1
+	l.sw GPR2(r3) , r2
+	l.sw GPR5(r3) , r5
+	l.sw GPR6(r3) , r6
+	l.sw GPR7(r3) , r7
+	l.sw GPR8(r3) , r8
+	l.sw GPR9(r3) , r9
+	l.sw GPR10(r3), r10
+	l.sw GPR11(r3), r11
+	l.sw GPR12(r3), r12
+	l.sw GPR13(r3), r13
+	l.sw GPR14(r3), r14
+	l.sw GPR15(r3), r15
+	l.sw GPR16(r3), r16
+	l.sw GPR17(r3), r17
+	l.sw GPR18(r3), r18
+	l.sw GPR19(r3), r19
+	l.sw GPR20(r3), r20
+	l.sw GPR21(r3), r21
+	l.sw GPR22(r3), r22
+	l.sw GPR23(r3), r23
+	l.sw GPR24(r3), r24
+	l.sw GPR25(r3), r25
+	l.sw GPR26(r3), r26
+	l.sw GPR27(r3), r27
+	l.sw GPR28(r3), r28
+	l.sw GPR29(r3), r29
+	l.sw GPR30(r3), r30
+	l.sw GPR31(r3), r31
+
+	/* EPCR. */
+	LOAD_SYMBOL_2_GPR(r4, ret_from_ipi_context)
+	l.sw EPCR(r3), r4
+
+	/* EEAR. */
+	l.mfspr r4, r0, SPR_EEAR_BASE
+	l.sw EEAR(r3), r4
+
+	/* ESR. */
+	l.mfspr r4, r0, SPR_ESR_BASE
+	l.sw ESR(r3), r4
+
+	/* Save scratch registers. */
+	l.or  r5, r0, r3
+	l.lwz r3, -12(r2)
+	l.lwz r4, -16(r2)
+	l.sw GPR3(r5), r3
+	l.sw GPR4(r5), r4
+
+	l.j idle_smp
+	l.nop
+
+ret_from_ipi_context:
+	
+	l.ori r1, r2, 0
+	l.lwz r2, -8(r1)
+	l.lwz r9, -4(r1)
 	l.jr r9
 	l.nop
 

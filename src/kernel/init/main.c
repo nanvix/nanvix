@@ -29,6 +29,7 @@
 #include <nanvix/mm.h>
 #include <nanvix/clock.h>
 #include <nanvix/debug.h>
+#include <nanvix/smp.h>
 #include <fcntl.h>
 
 /* External declaration for cpu_init() function. */
@@ -39,6 +40,15 @@ extern void cpu_init(void);
  */
 PUBLIC void abort()
 {
+}
+
+/**
+ * @brief Idle for SMP.
+ */
+PUBLIC void idle_smp(void)
+{
+	while (1)
+		halt();
 }
 
 /**
@@ -67,30 +77,37 @@ PUBLIC void kmain(const char* cmdline)
 	/* Spawn init process. */
 	init();
 	
-	/* idle process. */	
-	while (1)
+	/* idle process single-core. */	
+	if (!smp_enabled)
 	{
-		/* Shutting down.*/
-		if (shutting_down)
+		while (1)
 		{
-			/* Bury zombie processes. */
-			for (p = FIRST_PROC; p <= LAST_PROC; p++)
+			/* Shutting down.*/
+			if (shutting_down)
 			{
-				if ((p->state == PROC_ZOMBIE) && (p->father == curr_proc))
-					bury(p);
+				/* Bury zombie processes. */
+				for (p = FIRST_PROC; p <= LAST_PROC; p++)
+				{
+					if ((p->state == PROC_ZOMBIE) && (p->father == curr_proc))
+						bury(p);
+				}
+				
+				/* Halt system. */
+				if (nprocs == 1)
+				{	
+					kprintf("you may now turn off your computer");
+					disable_interrupts();
+					while (1)
+						halt();
+				}
 			}
 			
-			/* Halt system. */
-			if (nprocs == 1)
-			{	
-				kprintf("you may now turn off your computer");
-				disable_interrupts();
-				while (1)
-					halt();
-			}
+			halt();
+			yield();
 		}
-		
-		halt();
-		yield();
 	}
+
+	/* idle process SMP. */
+	else
+		idle_smp();
 }

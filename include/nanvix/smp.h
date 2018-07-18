@@ -67,6 +67,7 @@
 	EXTERN unsigned smp_get_coreid(void);
 	EXTERN unsigned smp_get_numcores(void);
 	EXTERN void smp_init(void);
+	EXTERN void save_ipi_context(void);
 	
 	/* Spinlock primitives. */
 	EXTERN void spin_init(spinlock_t *);
