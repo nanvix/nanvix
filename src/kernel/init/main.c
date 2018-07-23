@@ -43,6 +43,40 @@ PUBLIC void abort()
 }
 
 /**
+ * @brief Idle for UniProcessor systems.
+ */
+PUBLIC void idle_up(void)
+{
+	struct process *p; /* Working process.  */
+
+	while (1)
+	{
+		/* Shutting down.*/
+		if (shutting_down)
+		{
+			/* Bury zombie processes. */
+			for (p = FIRST_PROC; p <= LAST_PROC; p++)
+			{
+				if ((p->state == PROC_ZOMBIE) && (p->father == curr_proc))
+					bury(p);
+			}
+				
+			/* Halt system. */
+			if (nprocs == 1)
+			{	
+				kprintf("you may now turn off your computer");
+				disable_interrupts();
+				while (1)
+					halt();
+			}
+		}
+			
+		halt();
+		yield();
+	}
+}
+
+/**
  * @brief Idle for SMP.
  */
 PUBLIC void idle_smp(void)
@@ -57,9 +91,7 @@ PUBLIC void idle_smp(void)
  * @param cmdline Command line parameters.
  */
 PUBLIC void kmain(const char* cmdline)
-{		
-	struct process *p; /* Working process.  */
-	
+{			
 	if(!kstrcmp(cmdline,"debug"))
 		dbg_init();
 
@@ -77,37 +109,9 @@ PUBLIC void kmain(const char* cmdline)
 	/* Spawn init process. */
 	init();
 	
-	/* idle process single-core. */	
+	/* Idle process accordingly to the architecture. */
 	if (!smp_enabled)
-	{
-		while (1)
-		{
-			/* Shutting down.*/
-			if (shutting_down)
-			{
-				/* Bury zombie processes. */
-				for (p = FIRST_PROC; p <= LAST_PROC; p++)
-				{
-					if ((p->state == PROC_ZOMBIE) && (p->father == curr_proc))
-						bury(p);
-				}
-				
-				/* Halt system. */
-				if (nprocs == 1)
-				{	
-					kprintf("you may now turn off your computer");
-					disable_interrupts();
-					while (1)
-						halt();
-				}
-			}
-			
-			halt();
-			yield();
-		}
-	}
-
-	/* idle process SMP. */
+		idle_up();
 	else
 		idle_smp();
 }
