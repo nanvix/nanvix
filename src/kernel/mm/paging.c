@@ -355,8 +355,18 @@ PUBLIC int crtpgdir(struct process *proc)
 #ifdef i386
 		s2->ebp = (s1->ebp - (dword_t)cpus[curr_core].curr_thread->kstack)
 			+ (dword_t)kstack;
+		
+		*(dword_t *)s2->ebp = *(dword_t *)s2->ebp -
+			(dword_t)cpus[curr_core].curr_thread->kstack + (dword_t)kstack;
 #elif or1k
+		s2->gpr[1] = (s1->gpr[1] - (dword_t)cpus[curr_core].curr_thread->kstack)
+			+ (dword_t)kstack;
+		
 		s2->gpr[2] = (s1->gpr[2] - (dword_t)cpus[curr_core].curr_thread->kstack)
+			+ (dword_t)kstack;
+
+		*(dword_t *)(s2->gpr[2] - sizeof(dword_t)) = *(dword_t *)(s2->gpr[2]
+			- sizeof(dword_t)) - (dword_t)cpus[curr_core].curr_thread->kstack
 			+ (dword_t)kstack;
 #endif
 	}
