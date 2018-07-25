@@ -59,19 +59,38 @@ PRIVATE void do_clock()
 {
 	ticks++;
 	
-	if (KERNEL_WAS_RUNNING(cpus[curr_core].curr_thread))
+	if (!smp_enabled)
 	{
-		curr_proc->ktime++;
-		clock_event();
-		return;
-	}
-	
-	curr_proc->utime++;
-	clock_event();
+		if (KERNEL_WAS_RUNNING(cpus[curr_core].curr_thread))
+		{
+			curr_proc->ktime++;
+			clock_event();
+			return;
+		}
 		
-	/* Give up processor time. */
-	if (--cpus[curr_core].curr_thread->counter == 0)
-		yield();
+		curr_proc->utime++;
+		clock_event();
+			
+		/* Give up processor time. */
+		if (--cpus[curr_core].curr_thread->counter == 0)
+			yield();
+	}
+	else
+	{
+		if (curr_core != CORE_MASTER)
+		{
+			curr_proc->ktime++;
+			clock_event();
+			return;
+		}
+
+		curr_proc->utime++;
+		clock_event();
+
+		/* Give up processor time. */
+		if (--curr_proc->counter == 0)
+			yield();
+	}
 }
 
 /*

@@ -111,6 +111,7 @@ PUBLIC void pm_init(void)
 	IDLE->threads->kstack = idle_kstack;
 	IDLE->threads->tid = next_tid++;
 	IDLE->threads->counter = PROC_QUANTUM;
+	IDLE->counter = 0;
 	IDLE->restorer = NULL;
 	for (int i = 0; i < NR_SIGNALS; i++)
 		IDLE->handlers[i] = SIG_DFL;

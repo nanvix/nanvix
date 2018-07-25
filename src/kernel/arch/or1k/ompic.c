@@ -84,8 +84,17 @@ PUBLIC void ompic_handle_ipi(void)
 	{
 		if (ipi_type == IPI_SYSCALL)
 		{
-			void (*sys)(void) = (void (*)(void))((unsigned)syscall + KBASE_VIRT);
-			
+			/**
+			 * The following statement is required due to limitations imposed
+			 * by the architecture: the offset between this function and the
+			 * target function is greater than the immediate value of the `l.j`
+			 * instruction (26 bits), which produces building errors. To avoid
+			 * this, a function pointer is used, which forces the compiler to
+			 * use a register to store the target address and perform the jump.
+			 */
+			voidfunction_t sys;
+			sys = (voidfunction_t)((addr_t)syscall + KBASE_VIRT);
+
 			/* Do syscall. */
 			curr_core = ipi_sender;
 			sys();
@@ -96,10 +105,23 @@ PUBLIC void ompic_handle_ipi(void)
 			release_ipi = ipi_sender;
 		}
 	}
+	/* Slave core. */
 	else
 	{
+		/* Executes a new thread. */
 		if (ipi_type == IPI_SCHEDULE)
 			switch_to(cpus[cpu].curr_proc, cpus[cpu].next_thread);
+
+		/* Stops the thread. */
+		else if (ipi_type == IPI_IDLE)
+		{
+			voidfunction_t idle;
+			idle = (voidfunction_t)((addr_t)slave_idle + KBASE_VIRT);
+			cpus[cpu].state = CORE_READY;
+			spin_unlock(&ipi_lock);
+			
+			idle();
+		}
 	}
 }
 

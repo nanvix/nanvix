@@ -188,6 +188,7 @@
 		 */
 		/**@{*/
 		unsigned state;          /**< Current state.          */
+		int counter;             /**< Remaining quantum.      */
 		int priority;            /**< Process priorities.     */
 		int nice;                /**< Nice for scheduling.    */
 		unsigned alarm;          /**< Alarm.                  */
@@ -216,7 +217,9 @@
 #endif
 	EXTERN void sndsig(struct process *, int);
 	EXTERN void wakeup(struct process **);
-	EXTERN void yield(void);
+	EXTERN void (*yield)(void);
+	EXTERN void yield_up(void);
+	EXTERN void yield_smp(void);
 	
 	/**
 	 * @name Process memory regions

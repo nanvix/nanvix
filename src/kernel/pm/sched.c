@@ -28,6 +28,11 @@
 #include <signal.h>
 
 /**
+ * Yields the processor.
+ */
+PUBLIC void (*yield)(void);
+
+/**
  * @brief Schedules a process to execution.
  * 
  * @param proc Process to be scheduled.
@@ -39,7 +44,7 @@ PUBLIC void sched(struct process *proc)
 	t = proc->threads;
 	while (t != NULL)
 	{
-		if (t->state != THRD_READY)
+		if (t->state == THRD_RUNNING)
 		{
 			t->state = THRD_READY;
 			t->counter = 0;
@@ -47,6 +52,7 @@ PUBLIC void sched(struct process *proc)
 		t = t->next;
 	}
 	proc->state = PROC_READY;
+	proc->counter = 0;
 }
 
 /**
@@ -121,9 +127,9 @@ PUBLIC void resume(struct process *proc)
 }
 
 /**
- * @brief Yields the processor.
+ * @brief Yields the processor while in UP.
  */
-PUBLIC void yield(void)
+PUBLIC void yield_up(void)
 {
 	struct process *p;        /* Working process.     */
 	struct process *next;     /* Next process to run. */
@@ -132,9 +138,9 @@ PUBLIC void yield(void)
 
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING
-			&& cpus[curr_core].curr_thread->state == THRD_RUNNING)
+			&& cpus[CORE_MASTER].curr_thread->state == THRD_RUNNING)
 	{
-		sched_thread(curr_proc, cpus[curr_core].curr_thread);
+		sched_thread(curr_proc, cpus[CORE_MASTER].curr_thread);
 
 		/* Checks if the current process have an active counter. */
 		if (cpus[curr_core].curr_thread->pmcs.enable_counters != 0)
@@ -231,28 +237,115 @@ PUBLIC void yield(void)
 		}
 	}
 	
-	/* Schedule other cores if SMP enabled. */
-	if (smp_enabled)
+	switch_to(next, next_thrd);
+}
+
+/**
+ * @brief Yields the processor while in SMP.
+ */
+PUBLIC void yield_smp(void)
+{
+	struct process *p;        /* Working process.     */
+	struct process *next;     /* Next process to run. */
+	struct thread *next_thrd; /* Next thread  to run. */
+	unsigned i;               /* Loop index.          */
+
+	/* Slave cores are not allowed here. */
+	if (smp_get_coreid() != CORE_MASTER)
+		kpanic("yield_smp: slave cores cannot yield");
+
+	/* If serving a slave core, saves the context. */
+	if (cpus[curr_core].curr_thread->flags & THRD_SYS)
+		save_ipi_context();
+
+	/* Only schedule if timer has expired. */
+	if (curr_proc->counter != 0)
+		return;
+
+	/* Ask and waits for other cores to stop current thread. */
+	for (i = 1; i < smp_get_numcores(); i++)
 	{
-		if (next != IDLE)
+		if (cpus[i].state == CORE_RUNNING)
 		{
-			unsigned i;
-
-			for (i = 1; i < smp_get_numcores(); i++)
-				if (cpus[i].state == CORE_READY)
-					break;
-
-			if (next != IDLE)
-			{
-				cpus[i].curr_proc = next;
-				cpus[i].next_thread = next_thrd;
-				cpus[i].state = CORE_RUNNING;
-				ompic_send_ipi(i, IPI_SCHEDULE);
-			}
+			spin_lock(&ipi_lock);
+			ompic_send_ipi(i, IPI_IDLE);
 		}
 	}
-	else
+	spin_lock(&ipi_lock);
+
+	/* Re-schedule process for execution. */
+	if (curr_proc->state == PROC_RUNNING)
+		sched(curr_proc);
+	
+	/* Remember this process. */
+	last_proc = curr_proc;
+
+	/* Check alarm. */
+	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
-		switch_to(next, next_thrd);
+		/* Skip invalid processes. */
+		if (!IS_VALID(p))
+			continue;
+		
+		/* Alarm has expired. */
+		if ((p->alarm) && (p->alarm < ticks))
+			p->alarm = 0, sndsig(p, SIGALRM);
+	}
+
+	/* Choose a process to run next. */
+	next = IDLE;
+	for (p = FIRST_PROC; p <= LAST_PROC; p++)
+	{
+		/* Skip non-ready process. */
+		if (p->state != PROC_READY)
+			continue;
+		
+		/*
+		 * Process with higher
+		 * waiting time found.
+		 */
+		if (p->counter > next->counter)
+		{
+			next->counter++;
+			next = p;
+		}
+			
+		/*
+		 * Increment waiting
+		 * time of process.
+		 */
+		else
+			p->counter++;
+	}
+	
+	/* Switch to next process. */
+	next->priority = PRIO_USER;
+	next->state = PROC_RUNNING;
+	next->counter = PROC_QUANTUM;
+
+	/* Send an IPI for each remaining core. */
+	next_thrd = next->threads;
+	i = 1;
+	
+	while (next_thrd != NULL)
+	{
+		if (next_thrd->state != THRD_READY)
+		{
+			next_thrd = next_thrd->next;
+			continue;
+		}
+
+		if (cpus[i].state != CORE_READY)
+			kpanic("yield_smp: core %d not ready yet!", i);
+
+		next_thrd->state = THRD_RUNNING;
+
+		cpus[i].curr_proc = next;
+		cpus[i].next_thread = next_thrd;
+		cpus[i].state = CORE_RUNNING;
+		ompic_send_ipi(i, IPI_SCHEDULE);
+		
+		next_thrd = next_thrd->next;
+		i++;
 	}
 }

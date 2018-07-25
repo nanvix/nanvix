@@ -561,7 +561,13 @@ leave:
 	 * So, let us be nice with other processes
 	 * and give them a chance to run.
 	 */
+	l.mfspr r15, r0, SPR_COREID
+	l.sfnei r15, CORE_MASTER
+	l.bf leave.out
+	l.nop
+
 	LOAD_SYMBOL_2_GPR(r15, yield)
+	l.lwz  r15, 0(r15)
 	l.jalr r15
 	l.nop
 

@@ -308,5 +308,10 @@
 	 */	
 	#define BUILD_BUG_ON_NOT_POWER_OF_2(n)			\
 		BUILD_BUG_ON(!(n) || (((n) & ((n) - 1))))
+
+	/**
+	 * Generic type for a pointer to a void function.
+	 */
+	typedef int (*voidfunction_t)(void); 
 	
 #endif /* NANVIX_KLIB_H_ */

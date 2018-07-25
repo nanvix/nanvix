@@ -47,6 +47,7 @@
 
 /* Exported symbols. */
 .globl start
+.globl slave_idle
 .globl idle_pgdir
 
 /*============================================================================*
@@ -316,8 +317,8 @@ start_secondary_cores:
 		l.jalr r5
 		l.nop
 
-	1:
-		l.j 1b
+	slave_idle:
+		l.j slave_idle
 		l.nop
 		l.nop
 		l.nop

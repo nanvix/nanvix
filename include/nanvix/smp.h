@@ -25,11 +25,12 @@
 	/* IPI Message types. */
 	#define IPI_WAKEUP      0x01
 	#define IPI_SCHEDULE    0x02
-	#define IPI_SYSCALL     0x04
-	#define IPI_INTERRUPT   0x08
-	#define IPI_EXCEPTION   0x10
-	#define IPI_VFAULT      0x20
-	#define IPI_PFAULT      0x40
+	#define IPI_IDLE        0x04
+	#define IPI_SYSCALL     0x08
+	#define IPI_INTERRUPT   0x10
+	#define IPI_EXCEPTION   0x20
+	#define IPI_VFAULT      0x40
+	#define IPI_PFAULT      0x80
 
 	/* Core state. */
 	#define CORE_READY   0x01
@@ -42,11 +43,10 @@
 	 * Offsets to hard-coded fields of per_core
 	 */
 	#define PERCORE_COREID      0
-	#define PERCORE_SYSCALLNO   4
-	#define PERCORE_CURRTHREAD  8
-	#define PERCORE_CURRPROC   12
-	#define PERCORE_NEXTTHREAD 16
-	#define PERCORE_STATE      20
+	#define PERCORE_CURRTHREAD  4
+	#define PERCORE_CURRPROC    8
+	#define PERCORE_NEXTTHREAD 12
+	#define PERCORE_STATE      16
 	#define PERCORE_SIZE_LOG2   5
 
 #ifndef _ASM_FILE_
@@ -55,12 +55,11 @@
 	struct per_core
 	{
 		unsigned coreid;
-		unsigned syscallno;
 		struct thread *curr_thread;
 		struct process *curr_proc;
 		struct thread *next_thread;
 		unsigned state;
-		unsigned dummy[2];
+		unsigned dummy[3];
 	};
 
 	/* External functions. */
@@ -68,6 +67,7 @@
 	EXTERN unsigned smp_get_numcores(void);
 	EXTERN void smp_init(void);
 	EXTERN void save_ipi_context(void);
+	EXTERN void slave_idle(void);
 	
 	/* Spinlock primitives. */
 	EXTERN void spin_init(spinlock_t *);
