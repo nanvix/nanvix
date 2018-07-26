@@ -111,15 +111,27 @@ PUBLIC void yield(void)
 			continue;
 		
 		/*
-		 * Process with higher
-		 * waiting time found.
+		 * Calculates process' real priority
+		 * considering static, dynamic and nice
+		 * priorities.
 		 */
-		if (p->counter > next->counter)
+		int p_real_priority = p->priority + p->nice - p->counter;
+		int next_real_priority = next->priority + next->nice - next->counter;
+
+		/*
+		 * The next chosen process
+		 * should be one of those with the
+		 * highest priority found which has been
+		 * waiting for the longest time.
+		 */
+		if (p_real_priority < next_real_priority ||
+			(p_real_priority == next_real_priority &&
+			 p->counter > next->counter))
 		{
 			next->counter++;
 			next = p;
 		}
-			
+ 
 		/*
 		 * Increment waiting
 		 * time of process.
