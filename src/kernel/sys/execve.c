@@ -444,8 +444,6 @@ PUBLIC int sys_execve(const char *filename, const char **argv, const char **envp
 	kmemcpy((void *)(USTACK_ADDR - ARG_MAX), stack, ARG_MAX);
 	
 	user_mode(entry, sp);
-	
-	/* Will not return. */
 	return (0);
 
 die1:

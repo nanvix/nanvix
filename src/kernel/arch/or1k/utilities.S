@@ -386,35 +386,81 @@ pthread_create_return:
  * Switches to user mode.
  */
 user_mode:
+	l.sw   -8(r1), r2
+	l.sw   -4(r1), r9
+	l.addi r2, r1,  0
+	l.addi r1, r1, -8
+
 	/* Enter critical region. */
 	l.jal disable_interrupts
 	l.nop
 
 	/* Set interrupt level to "user level". */
 	LOAD_SYMBOL_2_GPR(r13, cpus)
-	l.mfspr r14, r0, SPR_COREID
-	l.slli  r14, r14, PERCORE_SIZE_LOG2
-	l.add   r14, r13, r14
-	l.lwz   r13, PERCORE_CURRTHREAD(r14)
-	l.sw    THRD_INTLVL(r13), r0
+	LOAD_SYMBOL_2_GPR(r14, curr_core)
+	l.lwz  r14, 0(r14)
+	l.slli r14, r14, PERCORE_SIZE_LOG2
+	l.add  r14, r13, r14
+	l.lwz  r13, PERCORE_CURRTHREAD(r14)
+	l.ori  r14, r0, 1
+	l.sw   THRD_INTLVL(r13), r14
+
+	/* Reset flags. */
+	l.sw THRD_FLAGS(r13), r0
+
+	/* Retrieves the intstack. */
+	l.lwz r13, THRD_INTSTACK(r13)
 
 	/* Load data. */
 	LOAD_SYMBOL_2_GPR(r15, USER_SR)
-	l.mtspr r0, r15, SPR_ESR_BASE  /* Status register. */
-	l.mtspr r0, r3, SPR_EPCR_BASE  /* Entry point.     */
-	l.or r1, r0, r4                /* Stack.           */
-	l.or r2, r0, r4                /* Frame pointer.   */
+	l.sw ESR(r13), r15   /* Status register. */
+	l.sw EPCR(r13), r3   /* Entry point.     */
+	l.sw SP(r13),   r4   /* Stack.           */
+	l.sw GPR2(r13), r4   /* Frame pointer.   */
 
-	/* Configure argc, argv and envp. */
+	/* Configure argc, argv and envp. */	
 	l.or r15, r4, r0
 	l.lwz r3,  4(r15)  /* argc. */
 	l.lwz r4,  8(r15)  /* argv. */
 	l.lwz r5, 12(r15)  /* argp. */
+	l.sw GPR3(r13), r3
+	l.sw GPR4(r13), r4
+	l.sw GPR5(r13), r5
 
 	/* Clear registers. */
-	CLEAR_ALL_GPR
+	l.sw R0(r13),    r0
+	l.sw GPR6(r13) , r0
+	l.sw GPR7(r13) , r0
+	l.sw GPR8(r13) , r0
+	l.sw GPR9(r13) , r0
+	l.sw GPR10(r13), r0
+	l.sw GPR11(r13), r0
+	l.sw GPR12(r13), r0
+	l.sw GPR13(r13), r0
+	l.sw GPR14(r13), r0
+	l.sw GPR15(r13), r0
+	l.sw GPR16(r13), r0
+	l.sw GPR17(r13), r0
+	l.sw GPR18(r13), r0
+	l.sw GPR19(r13), r0
+	l.sw GPR20(r13), r0
+	l.sw GPR21(r13), r0
+	l.sw GPR22(r13), r0
+	l.sw GPR23(r13), r0
+	l.sw GPR24(r13), r0
+	l.sw GPR25(r13), r0
+	l.sw GPR26(r13), r0
+	l.sw GPR27(r13), r0
+	l.sw GPR28(r13), r0
+	l.sw GPR29(r13), r0
+	l.sw GPR30(r13), r0
+	l.sw GPR31(r13), r0
+	l.sw EEAR(r13),  r0
 
-	l.rfe
+	l.ori r1, r2, 0
+	l.lwz r2, -8(r1)
+	l.lwz r9, -4(r1)
+	l.jr r9
 	l.nop
 
 /*----------------------------------------------------------------------------*

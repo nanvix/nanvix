@@ -536,6 +536,7 @@ leave:
 	/* Restore interrupt stack. */
 	l.lwz  r4, 0(r1)
 	l.sw THRD_KESP(r3), r4
+	l.sw THRD_INTSTACK(r3), r4
 
 	/* Decrement interrupt level. */
 	l.lwz   r4, THRD_INTLVL(r3)
