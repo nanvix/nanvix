@@ -25,6 +25,21 @@
 #include <signal.h>
 
 /**
+ * @brief Calculates process' real priority.
+ *
+ * @details Calculates process' effective priority by
+ * considering static, dynamic and nice priorities. The
+ * lower this value is, higher is the process' priority.
+ *
+ * @param p Process that will have its priority calculated.
+ *
+ * @returns Integer value (negative or positive) that tells
+ * what is the effective priority of @p p.
+ */
+#define PRIORITY(p) ((p)->priority + (p)->nice - (p)->counter)
+
+
+/**
  * @brief Schedules a process to execution.
  * 
  * @param proc Process to be scheduled.
@@ -110,13 +125,8 @@ PUBLIC void yield(void)
 		if (p->state != PROC_READY)
 			continue;
 		
-		/*
-		 * Calculates process' real priority
-		 * considering static, dynamic and nice
-		 * priorities.
-		 */
-		int p_real_priority = p->priority + p->nice - p->counter;
-		int next_real_priority = next->priority + next->nice - next->counter;
+		int p_real_priority = PRIORITY(p);
+		int next_real_priority = PRIORITY(next);
 
 		/*
 		 * The next chosen process
