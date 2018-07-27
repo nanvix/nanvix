@@ -262,7 +262,13 @@ PUBLIC void yield_smp(void)
 	if (curr_proc->counter != 0)
 		return;
 
-	/* Ask and waits for other cores to stop current thread. */
+	/**
+	 * Ask and waits for other cores to stop current thread.
+	 * It's important to note that the usage of spinlocks below is
+	 * because we need to ensure that all the slave cores are
+	 * available to run a new process before we start to sending
+	 * IPIs to the cores to run the threads.
+	 */
 	for (i = 1; i < smp_get_numcores(); i++)
 	{
 		if (cpus[i].state == CORE_RUNNING)
@@ -293,7 +299,7 @@ PUBLIC void yield_smp(void)
 	}
 
 	/* Choose a process to run next. */
-	next = IDLE;
+	next = INIT;
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
 		/* Skip non-ready process. */
