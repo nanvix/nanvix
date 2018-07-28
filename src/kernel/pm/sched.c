@@ -36,8 +36,24 @@
  * @returns Integer value (negative or positive) that tells
  * what is the effective priority of @p p.
  */
-#define PRIORITY(p) ((p)->priority + (p)->nice - (p)->counter)
+#define PRIORITY(p)								\
+	((p)->priority + (p)->nice - (p)->counter)
 
+/**
+ * @brief Checks if the current next process (@p p1) should be updated.
+ *
+ * @details The next chosen process should be one of those with the
+ * highest priority found which has been waiting for the longest time.
+ *
+ * @param p1 Process currently selected to be executed.
+ * @param p2 Candidate for taking the place of p1 being selected to execute.
+ *
+ * @returns true if should update the next process to be executed,
+ * false otherwise.
+ */
+#define SHOULD_UPDATE(p1, p2, field)							\
+	(PRIORITY(p2) < PRIORITY(p1) ||								\
+	 (PRIORITY(p2) == PRIORITY(p1) && p2->field > p1->field))
 
 /**
  * @brief Schedules a process to execution.
@@ -125,18 +141,7 @@ PUBLIC void yield(void)
 		if (p->state != PROC_READY)
 			continue;
 		
-		int p_real_priority = PRIORITY(p);
-		int next_real_priority = PRIORITY(next);
-
-		/*
-		 * The next chosen process
-		 * should be one of those with the
-		 * highest priority found which has been
-		 * waiting for the longest time.
-		 */
-		if (p_real_priority < next_real_priority ||
-			(p_real_priority == next_real_priority &&
-			 p->counter > next->counter))
+		if (SHOULD_UPDATE(p1, p2, "counter"))
 		{
 			next->counter++;
 			next = p;

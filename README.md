@@ -57,7 +57,7 @@ $ sudo make image TARGET=i386
 If using or1k architecture:
 ```bash
 $ make nanvix TARGET=or1k
-$ sudo make image TARGET=or1k```
+$ sudo make image TARGET=or1k
 ```
 
 - To run Nanvix on a virtual machine:
