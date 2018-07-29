@@ -141,7 +141,7 @@ PUBLIC void yield(void)
 		if (p->state != PROC_READY)
 			continue;
 		
-		if (SHOULD_UPDATE(p1, p2, "counter"))
+		if (SHOULD_UPDATE(next, p, counter))
 		{
 			next->counter++;
 			next = p;
