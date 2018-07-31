@@ -36,7 +36,7 @@ wget --no-check-certificate "http://ftp.gnu.org/gnu/binutils/$BINUTILS_TAR"
 wget --no-check-certificate "http://ftp.gnu.org/gnu/gcc/$GCC_PACKAGE/$GCC_TAR"
 
 # Get required packages.
-apt-get install -y g++ doxygen genisoimage gdb
+apt-get install -y g++ doxygen genisoimage gdb xz-utils make
 
 # Export variables.
 export PREFIX=/usr/local/cross
