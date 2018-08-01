@@ -318,6 +318,13 @@
 		l.nop
 
 		/* SMP. */
+		LOAD_SYMBOL_2_GPR(r3, cpus)
+		l.mfspr r4, r0, SPR_COREID
+		l.slli  r4, r4, PERCORE_SIZE_LOG2
+		l.add   r3, r3, r4
+		LOAD_SYMBOL_2_GPR(r4, \handler)
+		l.sw    PERCORE_HANDLER(r3), r4
+
 		l.ori r3, r0, 0
 		l.ori r4, r0, IPI_EXCEPTION
 		LOAD_SYMBOL_2_GPR(r5, ompic_send_ipi)
@@ -464,13 +471,13 @@ bus_exception:
  *                         data_page_fault_exception()                        *
  *----------------------------------------------------------------------------*/
 data_page_fault_exception:
-	swint_handler 2 _do_page_pfault
+	swint_handler 2 _do_page_pfault + KBASE_VIRT
 
 /*----------------------------------------------------------------------------*
  *                           instruction_page_fault()                         *
  *----------------------------------------------------------------------------*/
 instruction_page_fault:
-	swint_handler 3 _do_page_pfault
+	swint_handler 3 _do_page_pfault + KBASE_VIRT
 
 /*----------------------------------------------------------------------------*
  *                            tick_timer_exception()                          *
@@ -753,11 +760,18 @@ _do_page_pfault:
 	l.addi r2, r1,  0
 	l.addi r1, r1, -8
 
-	l.lwz r3, EEAR(r4) /* addr.     */
-	l.or  r7, r4, r0   /* intstack. */
-	l.ori r4, r0, 2    /* err.      */
-	l.ori r5, r0, 0    /* dummy0.   */
-	l.ori r6, r0, 0    /* dummy1.   */
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	LOAD_SYMBOL_2_GPR(r4, curr_core)
+	l.lwz  r4, 0(r4)
+	l.slli r4, r4, PERCORE_SIZE_LOG2
+	l.add  r4, r3, r4
+	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+	
+	l.lwz  r7, THRD_INTSTACK(r3) /* intstack. */
+	l.lwz  r3, EEAR(r7)          /* addr.     */
+	l.ori r4, r0, 2              /* err.      */
+	l.ori r5, r0, 0              /* dummy0.   */
+	l.ori r6, r0, 0              /* dummy1.   */
 
 	LOAD_SYMBOL_2_GPR(r13, do_page_fault)
 	l.jalr r13
@@ -778,11 +792,18 @@ _do_page_vfault:
 	l.addi r2, r1,  0
 	l.addi r1, r1, -8
 
-	l.lwz r3, EEAR(r4) /* addr.     */
-	l.or  r7, r4, r0   /* intstack. */
-	l.ori r4, r0, 0    /* err.      */
-	l.ori r5, r0, 0    /* dummy0.   */
-	l.ori r6, r0, 0    /* dummy1.   */
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	LOAD_SYMBOL_2_GPR(r4, curr_core)
+	l.lwz  r4, 0(r4)
+	l.slli r4, r4, PERCORE_SIZE_LOG2
+	l.add  r4, r3, r4
+	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+
+	l.lwz  r7, THRD_INTSTACK(r3) /* intstack. */
+	l.lwz  r3, EEAR(r7)          /* addr.     */
+	l.ori r4, r0, 0              /* err.      */
+	l.ori r5, r0, 0              /* dummy0.   */
+	l.ori r6, r0, 0              /* dummy1.   */
 
 	LOAD_SYMBOL_2_GPR(r13, do_page_fault)
 	l.jalr r13
@@ -1046,7 +1067,7 @@ d_not_pte:
 	EXCEPTION_LOAD_GPR6
 	
 	/* Trigger a dtlb miss page fault. */
-	swint_handler 12 _do_page_vfault
+	swint_handler 12 _do_page_vfault + KBASE_VIRT
 
 /*----------------------------------------------------------------------------*
  *                          itlb_miss_handler                                 *
@@ -1146,4 +1167,4 @@ i_not_pte:
 	EXCEPTION_LOAD_GPR6
 	
 	/* Trigger a itlb miss page fault. */
-	swint_handler 13 _do_page_vfault
+	swint_handler 13 _do_page_vfault + KBASE_VIRT

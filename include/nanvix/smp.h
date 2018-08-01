@@ -47,6 +47,7 @@
 	#define PERCORE_CURRPROC    8
 	#define PERCORE_NEXTTHREAD 12
 	#define PERCORE_STATE      16
+	#define PERCORE_HANDLER    20
 	#define PERCORE_SIZE_LOG2   5
 
 #ifndef _ASM_FILE_
@@ -59,7 +60,8 @@
 		struct process *curr_proc;
 		struct thread *next_thread;
 		unsigned state;
-		unsigned dummy[3];
+		addr_t exception_handler;
+		unsigned dummy[2];
 	};
 
 	/* External functions. */

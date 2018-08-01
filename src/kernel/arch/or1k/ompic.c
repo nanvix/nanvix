@@ -82,6 +82,7 @@ PUBLIC void ompic_handle_ipi(void)
 	/* Checks the core type. */
 	if (cpu == CORE_MASTER) 
 	{
+		/* Syscalls. */
 		if (ipi_type == IPI_SYSCALL)
 		{
 			/**
@@ -104,7 +105,24 @@ PUBLIC void ompic_handle_ipi(void)
 			spin_lock(&ipi_lock);
 			release_ipi = ipi_sender;
 		}
+
+		/* Exceptions. */
+		else if (ipi_type == IPI_EXCEPTION)
+		{
+			voidfunction_t exception;
+			
+			/* Do exception. */
+			curr_core = ipi_sender;
+			exception = (voidfunction_t) cpus[curr_core].exception_handler;
+			exception();
+			curr_core = CORE_MASTER;
+
+			/* Release slave. */
+			spin_lock(&ipi_lock);
+			release_ipi = ipi_sender;
+		}
 	}
+	
 	/* Slave core. */
 	else
 	{
