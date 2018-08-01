@@ -1,3 +1,4 @@
+#include <nanvix/fs.h>
 #include <sys/sem.h>
 #include <errno.h>
 #include <nanvix/syscall.h>

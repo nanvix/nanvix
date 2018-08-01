@@ -40,6 +40,7 @@
 
 #include <nanvix/mm.h>
 #include <nanvix/syscall.h>
+#include <nanvix/pm.h>
 #include <nanvix/smp.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>

@@ -178,7 +178,7 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 		goto error;
 
 	/* Schedule our new thread to run. */
-	sched_thread(curr_proc, thrd);
+	sched(thrd);
 	return (0);
 
 error:

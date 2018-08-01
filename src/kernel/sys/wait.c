@@ -24,7 +24,7 @@
 #include <errno.h>
 
 /* Sleeping chain. */
-PRIVATE struct process *chain = NULL;
+PUBLIC struct thread *waiting_chain = NULL;
 
 /*
  * Waits for a child process to terminate.
@@ -94,7 +94,7 @@ repeat:
 		}
 	}
 
-	sleep(&chain, PRIO_USER);
+	sleep(&waiting_chain, PRIO_USER);
 	sig = issig();
 	
 	/* Go back and check what happened. */

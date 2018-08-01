@@ -31,8 +31,8 @@
 	#include <nanvix/const.h>
 	#include <nanvix/fs.h>
 	#include <nanvix/hal.h>
-	#include <nanvix/region.h>
 	#include <nanvix/thread.h>
+	#include <nanvix/region.h>
 	#include <sys/types.h>
 	#include <limits.h>
 	#include <signal.h>
@@ -74,20 +74,6 @@
 	/**@{*/
 	#define PROC_QUANTUM 50 /**< Quantum.                  */
 	#define NR_PREGIONS   3 /**< Number of memory regions. */
-	/**@}*/
-	
-	/**
-	 * @name Process priorities
-	 */
-	/**@{*/
-	#define PRIO_IO         -100 /**< Waiting for block operation. */
-	#define PRIO_BUFFER      -80 /**< Waiting for buffer.          */
-	#define PRIO_INODE       -60 /**< Waiting for inode.           */
-	#define PRIO_SUPERBLOCK  -40 /**< Waiting for super block.     */
-	#define PRIO_REGION      -20 /**< Waiting for memory region.   */
-	#define PRIO_TTY           0 /**< Waiting for terminal I/O.    */
-	#define PRIO_SIG          20 /**< Waiting for signal.          */
-	#define PRIO_USER         40 /**< User priority.               */
 	/**@}*/
 
 	/**
@@ -189,7 +175,6 @@
 		/**@{*/
 		unsigned state;          /**< Current state.          */
 		int counter;             /**< Remaining quantum.      */
-		int priority;            /**< Process priorities.     */
 		int nice;                /**< Nice for scheduling.    */
 		unsigned alarm;          /**< Alarm.                  */
 		struct process *next;    /**< Next process in a list. */
@@ -209,17 +194,18 @@
 	EXTERN void die(int);
 	EXTERN int issig(void);
 	EXTERN void pm_init(void);
-	EXTERN void sched(struct process *);
-	EXTERN void sched_thread(struct process *, struct thread *);
+	EXTERN void sched(struct thread *);
+	EXTERN void sched_process(struct process *);
 	EXTERN void wakeup_join();
 #ifdef BUILDING_KERNEL
-	EXTERN void sleep(struct process **, int);
+	EXTERN void sleep(struct thread **, int);
 #endif
 	EXTERN void sndsig(struct process *, int);
-	EXTERN void wakeup(struct process **);
+	EXTERN void wakeup(struct thread **);
 	EXTERN void (*yield)(void);
 	EXTERN void yield_up(void);
 	EXTERN void yield_smp(void);
+	EXTERN struct thread *waiting_chain;
 	
 	/**
 	 * @name Process memory regions

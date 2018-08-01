@@ -88,7 +88,7 @@ struct buffer
 	 */
 	/**@{*/
 	enum buffer_flags flags; /**< Flags.          */
-	struct process *chain;   /**< Sleeping chain. */
+	struct thread *chain;    /**< Sleeping chain. */
 	/**@}*/
 	
 	/**
@@ -115,12 +115,12 @@ PRIVATE struct buffer buffers[NR_BUFFERS];
 PRIVATE struct buffer free_buffers;
 
 /**
- * @brief Processes waiting for any block.
+ * @brief Threads waiting for any block.
  * 
- * @details Chain of processes that are sleeping, waiting for any block to
+ * @details Chain of threads that are sleeping, waiting for any block to
  *          become free.
  */
-PRIVATE struct process *chain = NULL;
+PRIVATE struct thread *chain = NULL;
 
 /**
  * @brief block buffer hash table.

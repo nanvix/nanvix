@@ -33,15 +33,27 @@
 PUBLIC void (*yield)(void);
 
 /**
- * @brief Schedules a process to execution.
+ * @brief Schedules a thread to execution.
  * 
+ * @param thrd Thread to be scheduled.
+ */
+PUBLIC void sched(struct thread *thrd)
+{
+	thrd->state = THRD_READY;
+	thrd->counter = 0;
+}
+
+/**
+ * @brief Schedules a process to execution.
+ *
  * @param proc Process to be scheduled.
  */
-PUBLIC void sched(struct process *proc)
+PUBLIC void sched_process(struct process *proc)
 {
 	struct thread *t;
-
+	proc->state = PROC_READY;
 	t = proc->threads;
+	
 	while (t != NULL)
 	{
 		if (t->state == THRD_RUNNING)
@@ -49,32 +61,6 @@ PUBLIC void sched(struct process *proc)
 			t->state = THRD_READY;
 			t->counter = 0;
 		}
-		t = t->next;
-	}
-	proc->state = PROC_READY;
-	proc->counter = 0;
-}
-
-/**
- * @brief Schedules only a thread to execution.
- *
- * @param proc Process to be scheduled.
- * @param thrd Thread to be scheduled.
- */
-PUBLIC void sched_thread(struct process *proc, struct thread *thrd)
-{
-	struct thread *t;
-
-	proc->state = PROC_READY;
-	thrd->state = THRD_READY;
-	thrd->counter = 0;
-
-	/* Test if there was already a thread running in this process. */
-	t = proc->threads;
-	while (t != NULL)
-	{
-		if (t->state == THRD_RUNNING)
-			proc->state = PROC_RUNNING;
 		t = t->next;
 	}
 }
@@ -86,10 +72,10 @@ PUBLIC void wakeup_join()
 {
 	struct thread *t;
 	t = curr_proc->threads;
-	while(t != NULL)
+	while (t != NULL)
 	{
 		if (t->state == THRD_WAITING)
-			sched_thread(curr_proc, t);
+			sched(t);
 		t = t->next;
 	}
 }
@@ -123,7 +109,7 @@ PUBLIC void resume(struct process *proc)
 {	
 	/* Resume only if process has stopped. */
 	if (proc->state == PROC_STOPPED)
-		sched(proc);
+		sched(proc->threads);
 }
 
 /**
@@ -140,7 +126,7 @@ PUBLIC void yield_up(void)
 	if (curr_proc->state == PROC_RUNNING
 			&& cpus[CORE_MASTER].curr_thread->state == THRD_RUNNING)
 	{
-		sched_thread(curr_proc, cpus[CORE_MASTER].curr_thread);
+		sched(cpus[CORE_MASTER].curr_thread);
 
 		/* Checks if the current process have an active counter. */
 		if (cpus[curr_core].curr_thread->pmcs.enable_counters != 0)
@@ -207,7 +193,6 @@ PUBLIC void yield_up(void)
 		kpanic("thread elected incoherent state : not ready");
 
 	/* Switch to next process. */
-	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
 	next_thrd->state = THRD_RUNNING;
 	next_thrd->counter = PROC_QUANTUM;
@@ -281,7 +266,7 @@ PUBLIC void yield_smp(void)
 
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING)
-		sched(curr_proc);
+		sched_process(curr_proc);
 	
 	/* Remember this process. */
 	last_proc = curr_proc;
@@ -325,7 +310,6 @@ PUBLIC void yield_smp(void)
 	}
 	
 	/* Switch to next process. */
-	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
 	next->counter = PROC_QUANTUM;
 

@@ -92,7 +92,7 @@ PUBLIC int sys_ps()
 		prepareValue(p->uid, uid, 10);
 
 		/* Priority */
-		prepareValue(p->priority, priority, 11);
+		prepareValue(p->threads->priority, priority, 11);
 
 		/* Nice */
 		prepareValue(p->nice, nice, 7);

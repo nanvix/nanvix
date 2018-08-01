@@ -23,14 +23,14 @@
 #include <signal.h>
 
 /* Sleeping chain. */
-PRIVATE struct process *chain = NULL;
+PRIVATE struct thread *chain = NULL;
 
 /*
- * Suspends the calling process until a signal is received.
+ * Suspends the calling thread until a signal is received.
  */
 PUBLIC int sys_pause()
 {	
-	/* Susped process. */
+	/* Suspend thread. */
 	while (1)
 	{
 		sleep(&chain, PRIO_USER);

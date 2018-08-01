@@ -1,3 +1,5 @@
+#include <nanvix/fs.h>
+#include <nanvix/smp.h>
 #include <sys/sem.h>
 #include <errno.h>
 
@@ -41,7 +43,7 @@ PUBLIC int sys_semwait(int idx)
 
 	while (semtable[idx].value <= 0)
 	{
-		sleep(semtable[idx].semwaiters,curr_proc->priority);
+		sleep(semtable[idx].semwaiters, cpus[curr_core].curr_thread->priority);
 		
 		/* Awaken by a signal. */
 		if (issig())

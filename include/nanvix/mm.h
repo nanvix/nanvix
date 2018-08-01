@@ -22,7 +22,6 @@
 	
 	#include <nanvix/const.h>
 	#include <nanvix/hal.h>
-	#include <nanvix/pm.h>
 	#include <sys/types.h>
 	
 	/* Kernel stack size. */

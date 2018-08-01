@@ -154,6 +154,8 @@ dup_done:
 	proc->threads->next = NULL;
 	proc->threads->retval = NULL;
 	proc->threads->flags = 0 << THRD_NEW;
+	proc->threads->next_thrd = NULL;
+	proc->threads->chain = NULL;
 
 	kmemcpy(&proc->threads->fss, &cpus[curr_core].curr_thread->fss, sizeof(struct fpu));
 
@@ -192,7 +194,7 @@ dup_done:
 	proc->ktime = 0;
 	proc->cutime = 0;
 	proc->cktime = 0;
-	proc->priority = curr_proc->priority;
+	proc->threads->priority = cpus[curr_core].curr_thread->priority;
 	proc->nice = curr_proc->nice;
 	proc->alarm = 0;
 	proc->next = NULL;
@@ -209,7 +211,7 @@ dup_done:
 
 
 
-	sched(proc);
+	sched(proc->threads);
 
 	curr_proc->nchildren++;
 	

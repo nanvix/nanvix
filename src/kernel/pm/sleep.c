@@ -21,29 +21,32 @@
 #include <nanvix/hal.h>
 #include <nanvix/klib.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 
 /**
- * @brief Sleeping chain for idle process.
+ * @brief Sleeping chain for idle thread.
  */
-PRIVATE struct process **idle_chain = NULL;
+PRIVATE struct thread **idle_chain = NULL;
 
 /**
- * @brief Puts the current process to sleep in a chain of sleeping processes.
+ * @brief Puts the current thread to sleep in a chain of sleeping threads.
  * 
- * @details Puts the current process to sleep in the chain of processes pointed
+ * @details Puts the current thread to sleep in the chain of threads pointed
  *          to by @p chain, with a  priority @p priority.
  * 
- *          If @p priority if greater than or equal to zero, then the process
+ *          If @p priority if greater than or equal to zero, then the thread
  *          is set to an interruptible sleeping state. Otherwise, it is put is
  *          an uninterruptible sleeping state.
  * 
- * @param chain    Sleeping chain where the process should be put.
- * @param priority Priority that the process shall assume after waking up.
+ * @param chain    Sleeping chain where the thread should be put.
+ * @param priority Priority that the thread shall assume after waking up.
  */
-PUBLIC void sleep(struct process **chain, int priority)
-{	
+PUBLIC void sleep(struct thread **chain, int priority)
+{
+	struct thread *curr_thread;
+
 	/*
-	 * Idle process trying to sleep. Although that may
+	 * Idle thread trying to sleep. Although that may
 	 * sound weird, it happens at system startup. So,
 	 * let's enable interrupts and do some busy waiting,
 	 * hoping that the  interrupt handler will wake us up.
@@ -58,36 +61,39 @@ PUBLIC void sleep(struct process **chain, int priority)
 	}
 
 	/*
-	 * The sleep request is interruptible and the process
+	 * The sleep request is interruptible and the thread
 	 * has already received a signal, so there is no
 	 * need to sleep.
 	 */
 	if ((priority >= 0) && (curr_proc->received))
 		return;
-		
-	/* Insert process in the sleeping chain. */
-	curr_proc->next = *chain;
-	*chain = curr_proc;
 	
-	/* Put process to sleep. */
-	curr_proc->state = (priority >= 0) ? PROC_WAITING : PROC_SLEEPING;
-	curr_proc->priority = priority;
-	curr_proc->chain = chain;
+	/* Current thread. */	
+	curr_thread = cpus[curr_core].curr_thread;
+
+	/* Insert thread in the sleeping chain. */
+	curr_thread->next_thrd = *chain;
+	*chain = curr_thread;
+	
+	/* Put thread to sleep. */
+	curr_thread->state = (priority >= 0) ? THRD_WAITING : THRD_SLEEPING;
+	curr_thread->priority = priority;
+	curr_thread->chain = chain;
 	
 	yield();
 }
 
 /**
- * @brief Wakes up all processes that are sleeping in a chain.
+ * @brief Wakes up all threads that are sleeping in a chain.
  * 
- * @param chain Chain of sleeping processes to be awaken.
+ * @param chain Chain of sleeping threads to be awaken.
  */
-PUBLIC void wakeup(struct process **chain)
+PUBLIC void wakeup(struct thread **chain)
 {	
 	/*
-	 * Wakeup idle process. Note that here we don't
-	 * schedule the idle process for execution, once
-	 * we expect that it is the only process in the
+	 * Wakeup idle thread. Note that here we don't
+	 * schedule the idle thread for execution, once
+	 * we expect that it is the only thread in the
 	 * system and it is doing some busy-waiting. 
 	 */
 	if (idle_chain == chain)
@@ -96,10 +102,10 @@ PUBLIC void wakeup(struct process **chain)
 		return;
 	}
 	
-	/* Wakeup sleeping processes. */
+	/* Wakeup sleeping threads. */
 	while (*chain != NULL)
 	{
 		sched(*chain);
-		*chain = (*chain)->next;
+		*chain = (*chain)->next_thrd;
 	}
 }

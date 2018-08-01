@@ -70,7 +70,7 @@
 		int count;                         /* Reference count.            */
 		size_t size;                       /* Region size.                */
 		struct miniregion *mtab[MREGIONS]; /* Mini region.                */
-		struct process *chain;             /* Sleeping chain.             */
+		struct thread *chain;              /* Sleeping chain.             */
 		struct pregion *preg;              /* Process region attached to. */
 		
 		/* File information. */

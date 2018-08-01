@@ -105,6 +105,9 @@ PRIVATE void _abort(int sig)
  */
 PUBLIC void sndsig(struct process *proc, int sig)
 {
+	struct thread *t;
+	struct thread *tmp;
+
 	/* 
 	 * SIGCHLD and SIGCONT are somewhat special. The receiving
 	 * process is resumed even if these signals are being ignored,
@@ -119,20 +122,23 @@ PUBLIC void sndsig(struct process *proc, int sig)
 	/* Set signal flag. */
 	proc->received |= (1 << sig);
 	
-	/* Wake up process. */
-	if (proc->state == PROC_WAITING)
+	/* Remove threads from sleeping chain. */
+	for (t = waiting_chain; t != NULL; t = t->next_thrd)
 	{
-		if (proc == *proc->chain)
-			*proc->chain = proc->next;
-		else
+		if (thrd_father(t) == proc)
 		{
-			struct process *p;
-			for (p = *proc->chain; p->next != proc; p = p->next)
-				noop() ;
-			p->next = proc->next;
+			if (t == waiting_chain)
+				waiting_chain = t->next_thrd;
+			else
+				tmp->next_thrd = t->next_thrd;
 		}
-		sched(proc);
+		tmp = t;
 	}
+
+	/* Wake up all threads. */
+	for (t = proc->threads; t != NULL; t = t->next)
+		if (t->state == THRD_WAITING)
+			sched(t);
 }
 
 /**

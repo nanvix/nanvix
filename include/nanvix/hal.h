@@ -38,8 +38,6 @@
 #endif	
 
 	#include <nanvix/const.h>
-	#include <nanvix/pm.h>
-	#include <nanvix/thread.h>
 	#include <stdlib.h>
 	
 	/* Forward definitions. */

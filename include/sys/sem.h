@@ -1,7 +1,6 @@
 #include <limits.h>
 #include <sys/types.h>
 #include <nanvix/config.h>
-#include <nanvix/pm.h>
 
 #ifndef SEM_H_
 #define SEM_H_
@@ -25,7 +24,7 @@
 		char name[MAX_SEM_NAME];				/* Semaphore name 										*/
 		short value;              				/* Value of the semaphore                    			*/
 		pid_t currprocs[PROC_MAX];				/* Processes using the semaphores						*/
-		struct process* semwaiters[PROC_MAX];	/* The size should be higher if threads are implemented */
+		struct thread* semwaiters[THRD_MAX];    /* The size should be higher if threads are implemented */
 		dev_t dev;								/* Semaphore descriptor device							*/
 		ino_t num;								/* Semaphore descriptor inode number					*/
 	};

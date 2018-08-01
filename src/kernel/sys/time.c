@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <nanvix/clock.h>
 #include <nanvix/mm.h>
+#include <nanvix/fs.h>
 #include <errno.h>
 
 /**

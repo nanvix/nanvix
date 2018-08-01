@@ -128,7 +128,7 @@
 		struct inode *free_next;  /**< Next inode in the free list.          */ 
 		struct inode *hash_next;  /**< Next inode in the hash table.         */ 
 		struct inode *hash_prev;  /**< Previous inode in the hash table.     */ 
-		struct process *chain;    /**< Sleeping chain.                       */ 
+		struct thread *chain;     /**< Sleeping chain.                       */ 
 		struct inode_operations * i_op;
 		union {
 			struct d_inode minix;
@@ -201,6 +201,7 @@
   }; 
  
   /* Forward definitions. */ 
+  struct process;
   EXTERN void fs_init(void); 
   EXTERN int permission(mode_t, uid_t, gid_t, struct process *, mode_t, int); 
   EXTERN char *getname(const char *); 

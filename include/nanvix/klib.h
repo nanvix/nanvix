@@ -31,7 +31,7 @@
 #define NANVIX_KLIB_H_
 
 	#include <nanvix/const.h>
-	#include <nanvix/pm.h>
+	#include <nanvix/thread.h>
 	#include <sys/types.h>
 	#include <stdarg.h>
 	#include <stdint.h>
@@ -103,7 +103,7 @@
 		unsigned head;                      /**< First character in the buf. */
 		unsigned tail;                      /**< Next free slot in the buf.  */
 		unsigned char buffer[KBUFFER_SIZE]; /**< Ring buffer.                */
-		struct process *chain;              /**< Sleeping chain.             */
+		struct thread *chain;               /**< Sleeping chain.             */
 	};
 	
 	/**

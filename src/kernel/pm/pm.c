@@ -73,8 +73,8 @@ PUBLIC unsigned nprocs = 0;
 /* semtable init */
 PUBLIC struct ksem semtable[SEM_OPEN_MAX];
 
-/* Processes waiting for a semaphore */
-PUBLIC struct process* semwaiters[PROC_MAX];
+/* Threads waiting for a semaphore */
+PUBLIC struct thread *semwaiters[THRD_MAX];
 
 PUBLIC struct ksem sembuf;
 
@@ -111,6 +111,8 @@ PUBLIC void pm_init(void)
 	IDLE->threads->kstack = idle_kstack;
 	IDLE->threads->tid = next_tid++;
 	IDLE->threads->counter = PROC_QUANTUM;
+	IDLE->threads->next_thrd = NULL;
+	IDLE->threads->chain = NULL;
 	IDLE->counter = 0;
 	IDLE->restorer = NULL;
 	for (int i = 0; i < NR_SIGNALS; i++)
@@ -144,7 +146,6 @@ PUBLIC void pm_init(void)
 	IDLE->cutime = 0;
 	IDLE->cktime = 0;
 	IDLE->state = PROC_RUNNING;
-	IDLE->priority = PRIO_USER;
 	IDLE->nice = NZERO;
 	IDLE->alarm = 0;
 	IDLE->next = NULL;

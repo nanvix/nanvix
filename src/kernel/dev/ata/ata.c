@@ -212,7 +212,7 @@ PRIVATE struct atadev
 	/* General information. */
 	int flags;             /* Flags (see above).                         */
 	struct ata_info info;  /* Device information.                        */
-	struct process *chain; /* Process waiting for operation to complete. */
+	struct thread *chain;  /* Thread waiting for operation to complete.  */
 	
 	/* Block operation queue. */
 	struct
@@ -221,7 +221,7 @@ PRIVATE struct atadev
 		int head;                                   /* Head.                 */
 		int tail;                                   /* Tail.                 */
 		struct request requests[ATADEV_QUEUE_SIZE]; /* Blocks.               */
-		struct process *chain;                      /* Processes wanting for *
+		struct thread *chain;                       /* Threads wanting for   *
 		                                             * a slot in the queue.  */
 	} queue;
 } ata_devices[4];
