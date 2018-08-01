@@ -25,22 +25,22 @@
 #include <signal.h>
 
 /**
- * @brief Calculates process' real priority.
+ * @brief Calculates the effective priority of a process.
  *
- * @details Calculates process' effective priority by
- * considering static, dynamic and nice priorities. The
- * lower this value is, higher is the process' priority.
+ * @details Calculates effective priority of a process by considering
+ * its static, dynamic and nice priorities. The lower this value is,
+ * the higher is the effective priority.
  *
- * @param p Process that will have its priority calculated.
+ * @param p Target process.
  *
- * @returns Integer value (negative or positive) that tells
- * what is the effective priority of @p p.
+ * @returns An integer value (negative or positive) that tells what is
+ * the effective priority of @p p.
  */
-#define PRIORITY(p)								\
+#define PRIORITY(p)                            \
 	((p)->priority + (p)->nice - (p)->counter)
 
 /**
- * @brief Checks if the current next process (@p p1) should be updated.
+ * @brief Checks if the current next process should be updated.
  *
  * @details The next chosen process should be one of those with the
  * highest priority found which has been waiting for the longest time.
@@ -48,11 +48,11 @@
  * @param p1 Process currently selected to be executed.
  * @param p2 Candidate for taking the place of p1 being selected to execute.
  *
- * @returns true if should update the next process to be executed,
+ * @returns True if should update the next process to be executed, and
  * false otherwise.
  */
-#define SHOULD_UPDATE(p1, p2, field)							\
-	(PRIORITY(p2) < PRIORITY(p1) ||								\
+#define SHOULD_UPDATE(p1, p2, field)                          \
+	(PRIORITY(p2) < PRIORITY(p1) ||                           \
 	 (PRIORITY(p2) == PRIORITY(p1) && p2->field > p1->field))
 
 /**
