@@ -51,7 +51,7 @@
  * @returns True if should update the next process to be executed, and
  * false otherwise.
  */
-#define SHOULD_UPDATE(p1, p2, field)                          \
+#define HIGHER_PRIORITY(p1, p2, field)                          \
 	(PRIORITY(p2) < PRIORITY(p1) ||                           \
 	 (PRIORITY(p2) == PRIORITY(p1) && p2->field > p1->field))
 
@@ -141,7 +141,8 @@ PUBLIC void yield(void)
 		if (p->state != PROC_READY)
 			continue;
 		
-		if (SHOULD_UPDATE(next, p, counter))
+		/* Higher priority process found. */
+		if (HIGHER_PRIORITY(next, p, counter))
 		{
 			next->counter++;
 			next = p;
