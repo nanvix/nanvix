@@ -156,6 +156,7 @@ dup_done:
 	proc->threads->flags = 0 << THRD_NEW;
 	proc->threads->next_thrd = NULL;
 	proc->threads->chain = NULL;
+	proc->threads->father = proc;
 
 	kmemcpy(&proc->threads->fss, &cpus[curr_core].curr_thread->fss, sizeof(struct fpu));
 

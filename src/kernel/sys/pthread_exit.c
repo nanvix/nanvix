@@ -36,7 +36,7 @@ PUBLIC int clear_thread(struct thread *thrd)
 	struct thread *tmp_thrd;
 	struct process *proc;
 
-	if ((proc = thrd_father(thrd)) == NULL)
+	if ((proc = thrd->father) == NULL)
 		kpanic ("thread scheduled not attached to a process");
 
 	tmp_thrd = proc->threads;

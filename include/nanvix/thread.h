@@ -159,8 +159,9 @@
 		 * @name General information
 		 */
 		/**@{*/
-		tid_t tid;          /**< Thread ID.              */
-		void *retval;       /**< Thread return value.    */
+		tid_t tid;              /**< Thread ID.                       */
+		void *retval;           /**< Thread return value.             */
+		struct process *father; /**< Father process.                  */
 		/**@}*/
 
 		/**
@@ -178,7 +179,6 @@
 
 	/* Forward definitions. */
 	EXTERN void thread_init(void);
-	EXTERN struct process *thrd_father(struct thread *);
 	EXTERN struct thread *get_free_thread();
 	EXTERN int clear_thread(struct thread *thrd);
 

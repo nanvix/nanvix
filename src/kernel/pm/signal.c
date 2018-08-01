@@ -125,7 +125,7 @@ PUBLIC void sndsig(struct process *proc, int sig)
 	/* Remove threads from sleeping chain. */
 	for (t = waiting_chain; t != NULL; t = t->next_thrd)
 	{
-		if (thrd_father(t) == proc)
+		if (t->father == proc)
 		{
 			if (t == waiting_chain)
 				waiting_chain = t->next_thrd;

@@ -44,29 +44,6 @@ PUBLIC void thread_init(void)
 }
 
 /**
- * @brief Find the process owner of a given thread.
- */
-PUBLIC struct process *thrd_father(struct thread * thrd)
-{
-    struct process *p;
-    struct thread *tmp_thrd;
-
-	/* Loop through all threads for all processes. */
-	for (p = proctab; p <= LAST_PROC; p++)
-    {
-		tmp_thrd = p->threads;
-		while (tmp_thrd != NULL)
-		{
-			if (tmp_thrd->tid == thrd->tid)
-				return p;
-			tmp_thrd = tmp_thrd->next;
-		}
-	}
-	kprintf("cannot find father thread");
-    return (NULL);
-}
-
-/**
  * @brief Find a free thread.
  */
 PUBLIC struct thread *get_free_thread()

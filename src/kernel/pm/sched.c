@@ -177,7 +177,7 @@ PUBLIC void yield_up(void)
 		{
 			next_thrd->counter++;
 			next_thrd = t;
-			if ((next = thrd_father(next_thrd)) == NULL)
+			if ((next = next_thrd->father) == NULL)
 				kpanic ("thread scheduled not attached to a process");
 		}
 

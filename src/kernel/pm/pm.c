@@ -113,6 +113,7 @@ PUBLIC void pm_init(void)
 	IDLE->threads->counter = PROC_QUANTUM;
 	IDLE->threads->next_thrd = NULL;
 	IDLE->threads->chain = NULL;
+	IDLE->threads->father = IDLE;
 	IDLE->counter = 0;
 	IDLE->restorer = NULL;
 	for (int i = 0; i < NR_SIGNALS; i++)

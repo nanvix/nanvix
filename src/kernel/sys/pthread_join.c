@@ -44,7 +44,7 @@ repeat:
 		if (t->tid == (tid_t)thread)
 		{
 			/* Check if joining a peer thread (i.e. in the same proc). */
-			if ((proc = thrd_father(t)) == NULL)
+			if ((proc = t->father) == NULL)
 				kpanic ("thread scheduled not attached to a process");
 			if (proc != curr_proc)
 			{
