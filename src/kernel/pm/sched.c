@@ -25,6 +25,37 @@
 #include <signal.h>
 
 /**
+ * @brief Calculates the effective priority of a process.
+ *
+ * @details Calculates effective priority of a process by considering
+ * its static, dynamic and nice priorities. The lower this value is,
+ * the higher is the effective priority.
+ *
+ * @param p Target process.
+ *
+ * @returns An integer value (negative or positive) that tells what is
+ * the effective priority of @p p.
+ */
+#define PRIORITY(p)                            \
+	((p)->priority + (p)->nice - (p)->counter)
+
+/**
+ * @brief Checks if the current next process should be updated.
+ *
+ * @details The next chosen process should be one of those with the
+ * highest priority found which has been waiting for the longest time.
+ *
+ * @param p1 Process currently selected to be executed.
+ * @param p2 Candidate for taking the place of p1 being selected to execute.
+ *
+ * @returns True if should update the next process to be executed, and
+ * false otherwise.
+ */
+#define HIGHER_PRIORITY(p1, p2)                               \
+	(PRIORITY(p2) < PRIORITY(p1) ||                           \
+	 (PRIORITY(p2) == PRIORITY(p1) && (p2)->counter > (p1)->counter))
+
+/**
  * @brief Schedules a process to execution.
  * 
  * @param proc Process to be scheduled.
@@ -110,16 +141,13 @@ PUBLIC void yield(void)
 		if (p->state != PROC_READY)
 			continue;
 		
-		/*
-		 * Process with higher
-		 * waiting time found.
-		 */
-		if (p->counter > next->counter)
+		/* Higher priority process found. */
+		if (HIGHER_PRIORITY(next, p))
 		{
 			next->counter++;
 			next = p;
 		}
-			
+ 
 		/*
 		 * Increment waiting
 		 * time of process.
