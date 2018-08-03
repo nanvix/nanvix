@@ -105,7 +105,7 @@ static void work_io(void)
 	int fd;            /* File descriptor. */
 	char buffer[2048]; /* Buffer.          */
 	
-	/* Open hdd. */
+	/* Open ramdisk. */
 	fd = open("/dev/ramdisk", O_RDONLY);
 	if (fd < 0)
 		_exit(EXIT_FAILURE);
