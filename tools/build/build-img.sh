@@ -94,7 +94,6 @@ function format {
 	$QEMU_VIRT bin/mknod.minix $1 /dev/klog 666 c 0 2 $ROOTUID $ROOTGID
 	$QEMU_VIRT bin/mknod.minix $1 /dev/ramdisk 666 b 0 0 $ROOTUID $ROOTGID
 	$QEMU_VIRT bin/mknod.minix $1 /dev/ramdisk1 666 b 1 0 $ROOTUID $ROOTGID
-	$QEMU_VIRT bin/mknod.minix $1 /dev/hdd 666 b 0 1 $ROOTUID $ROOTGID
 }
 
 #
