@@ -106,7 +106,7 @@ static void work_io(void)
 	char buffer[2048]; /* Buffer.          */
 	
 	/* Open hdd. */
-	fd = open("/dev/hdd", O_RDONLY);
+	fd = open("/dev/ramdisk", O_RDONLY);
 	if (fd < 0)
 		_exit(EXIT_FAILURE);
 	
