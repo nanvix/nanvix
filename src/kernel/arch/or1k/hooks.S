@@ -760,13 +760,38 @@ _do_page_pfault:
 	l.addi r2, r1,  0
 	l.addi r1, r1, -8
 
+	/**
+	 * Checks if are serving an exception triggered
+	 * from core master, or if it's the master serving
+	 * a slave IPI.
+	 */
 	LOAD_SYMBOL_2_GPR(r3, cpus)
 	LOAD_SYMBOL_2_GPR(r4, curr_core)
 	l.lwz  r4, 0(r4)
 	l.slli r4, r4, PERCORE_SIZE_LOG2
 	l.add  r4, r3, r4
+	l.lwz  r3, PERCORE_HANDLER(r4)
+
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+	l.sub r3, r3, r5
+	LOAD_SYMBOL_2_GPR(r5, _do_page_pfault)
+	l.sfeq r3, r5
+	l.bf 1f
+	l.nop
+
+	/* If not pfault. */
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	l.ori  r4, r0, CORE_MASTER
+	l.slli r4, r4, PERCORE_SIZE_LOG2
+	l.add  r4, r3, r4
 	l.lwz  r3, PERCORE_CURRTHREAD(r4)
-	
+	l.j 2f
+	l.nop
+
+	/* If pfault. */
+1:
+	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+2:
 	l.lwz  r7, THRD_INTSTACK(r3) /* intstack. */
 	l.lwz  r3, EEAR(r7)          /* addr.     */
 	l.ori r4, r0, 2              /* err.      */
@@ -792,13 +817,38 @@ _do_page_vfault:
 	l.addi r2, r1,  0
 	l.addi r1, r1, -8
 
+	/**
+	 * Checks if are serving an exception triggered
+	 * from core master, or if it's the master serving
+	 * a slave IPI.
+	 */
 	LOAD_SYMBOL_2_GPR(r3, cpus)
 	LOAD_SYMBOL_2_GPR(r4, curr_core)
 	l.lwz  r4, 0(r4)
 	l.slli r4, r4, PERCORE_SIZE_LOG2
 	l.add  r4, r3, r4
-	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+	l.lwz  r3, PERCORE_HANDLER(r4)
 
+	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
+	l.sub r3, r3, r5
+	LOAD_SYMBOL_2_GPR(r5, _do_page_vfault)
+	l.sfeq r3, r5
+	l.bf 1f
+	l.nop
+
+	/* If not vfault. */
+	LOAD_SYMBOL_2_GPR(r3, cpus)
+	l.ori  r4, r0, CORE_MASTER
+	l.slli r4, r4, PERCORE_SIZE_LOG2
+	l.add  r4, r3, r4
+	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+	l.j 2f
+	l.nop
+
+	/* If vfault. */
+1:
+	l.lwz  r3, PERCORE_CURRTHREAD(r4)
+2:
 	l.lwz  r7, THRD_INTSTACK(r3) /* intstack. */
 	l.lwz  r3, EEAR(r7)          /* addr.     */
 	l.ori r4, r0, 0              /* err.      */
