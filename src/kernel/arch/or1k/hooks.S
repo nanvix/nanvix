@@ -294,6 +294,9 @@
 		l.bnf 4b
 		l.nop
 
+		/* Reset release_ipi. */
+		l.sw 0(r4), r0
+
 		/* Unlock ipi_lock. */
 		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
 		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
@@ -339,6 +342,9 @@
 		l.sfeq r5, r3
 		l.bnf 7b
 		l.nop
+
+		/* Reset release_ipi. */
+		l.sw 0(r4), r0
 
 		/* Unlock ipi_lock. */
 		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
