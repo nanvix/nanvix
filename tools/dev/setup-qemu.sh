@@ -25,7 +25,7 @@
 #
 
 # QEMU.
-export QEMU_VERSION=2.12.0
+export QEMU_VERSION=3.0.0-rc3
 
 # Set working directory.
 export CURDIR=`pwd`
@@ -36,13 +36,19 @@ cd $WORKDIR
 # Retrieve the number of processor cores
 num_cores=`grep -c ^processor /proc/cpuinfo`
 
-# Get bochs.
+# Get qemu.
 wget "http://wiki.qemu-project.org/download/qemu-$QEMU_VERSION.tar.bz2"
 
 # Get required packages.
-apt-get install libglib2.0-dev zlib1g-dev libtool libsdl2-dev libpixman-1-dev dh-autoreconf -y
+DIST=$(uname -rv)
+if [[ ${DIST,,} = *"ubuntu"* || ${DIST,,} = *"debian"* ]]; then
+	apt-get install libglib2.0-dev zlib1g-dev \
+		libtool libsdl2-dev libpixman-1-dev dh-autoreconf -y
+elif [[ ${DIST,,} = *"arch"* ]]; then
+	pacman -S glibz2 zlib libtool sdl2 pixman autoconf --needed
+fi
 
-# Build Bochs
+# Build qemu
 tar -xjvf qemu-$QEMU_VERSION.tar.bz2
 cd qemu-$QEMU_VERSION
 ./configure --target-list=i386-softmmu,or1k-softmmu,or1k-linux-user --enable-sdl
