@@ -264,10 +264,27 @@ switch_to:
 	l.addi  r14, r15, PERCORE_CURRTHREAD
 	l.sw 0(r14), r4
 
-	/* Load process context. */
+	/**
+	 * Load process context
+	 *
+	 * There are 2 possible contexts to be restored:
+	 * 1) Core master returning from an old
+	 *    IPI context.
+	 *
+	 * 2) Core slave (or master in UP)
+	 *    returning a previous execution.
+	 *
+	 * In the first, the IPI kstack is restored
+	 * and in the later, the normal kernel thread.
+	 */
 	LOAD_SYMBOL_2_GPR(r14, smp_enabled)
 	l.lwz   r14, 0(r14)
 	l.sfeqi r14, 0
+	l.bf 2f
+	l.nop
+
+	l.mfspr r14, r0, SPR_COREID
+	l.sfnei r14, CORE_MASTER
 	l.bf 2f
 	l.nop
 
@@ -278,7 +295,8 @@ switch_to:
 	l.nop
 
 	l.lwz r1, THRD_IPISTACK(r4)
-	l.j 3f
+	LOAD_SYMBOL_2_GPR(r14, leave.out)
+	l.jr r14
 	l.nop
 2:
 	l.lwz r1, THRD_KESP(r4)

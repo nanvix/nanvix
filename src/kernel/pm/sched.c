@@ -241,7 +241,10 @@ PUBLIC void yield_smp(void)
 
 	/* If serving a slave core, saves the context. */
 	if (cpus[curr_core].curr_thread->flags & THRD_SYS)
+	{
 		save_ipi_context();
+		return;
+	}
 
 	/* Only schedule if timer has expired. */
 	if (curr_proc->counter != 0)
@@ -263,6 +266,7 @@ PUBLIC void yield_smp(void)
 		}
 	}
 	spin_lock(&ipi_lock);
+	spin_unlock(&ipi_lock);
 
 	/* Re-schedule process for execution. */
 	if (curr_proc->state == PROC_RUNNING)
@@ -317,11 +321,13 @@ PUBLIC void yield_smp(void)
 	next_thrd = next->threads;
 	i = 1;
 	
+	/* Re-schedule non-blocking threads. */
 	while (next_thrd != NULL)
 	{
-		if (next_thrd->state != THRD_READY)
+		if (next_thrd->state != THRD_READY || next_thrd->flags & THRD_SYS)
 		{
 			next_thrd = next_thrd->next;
+			i++;
 			continue;
 		}
 
@@ -333,9 +339,37 @@ PUBLIC void yield_smp(void)
 		cpus[i].curr_proc = next;
 		cpus[i].next_thread = next_thrd;
 		cpus[i].state = CORE_RUNNING;
+		cpus[i].exception_handler = 0;
 		ompic_send_ipi(i, IPI_SCHEDULE);
 		
 		next_thrd = next_thrd->next;
 		i++;
+	}
+
+	/* Re-schedule blocking threads. */
+	next_thrd = next->threads;
+	i = 1;
+
+	while (next_thrd != NULL)
+	{
+		if (next_thrd->state != THRD_READY && !(next_thrd->flags & THRD_SYS))
+		{
+			next_thrd = next_thrd->next;
+			i++;
+			continue;
+		}
+
+		if (cpus[i].state != CORE_READY)
+			kpanic("yield_smp: core %d not ready yet!", i);
+
+		next_thrd->state = THRD_RUNNING;
+		cpus[i].curr_proc = next;
+		cpus[i].curr_thread = next_thrd;
+		cpus[i].next_thread = NULL;
+		cpus[i].state = CORE_RUNNING;
+		cpus[i].exception_handler = 0;
+		
+		curr_core = i;
+		switch_to(next, next_thrd);
 	}
 }

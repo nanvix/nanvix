@@ -108,6 +108,9 @@ PUBLIC void kmain(const char* cmdline)
 
 	/* Spawn init process. */
 	init();
+
+	/* Init yield. */
+	yield();
 	
 	/* Idle process accordingly to the architecture. */
 	if (!smp_enabled)
