@@ -269,7 +269,12 @@ PUBLIC void mappgtab(struct process *proc, addr_t addr, void *pgtab)
 	
 	/* Flush changes. */
 	if (proc == curr_proc)
-		tlb_flush();
+	{
+		if (!smp_enabled)
+			tlb_flush();
+		else
+			cpus[curr_core].curr_thread->tlb_flush = 1;
+	}
 }
 
 /**
@@ -295,7 +300,12 @@ PUBLIC void umappgtab(struct process *proc, addr_t addr)
 	
 	/* Flush changes. */
 	if (proc == curr_proc)
-		tlb_flush();
+	{
+		if (!smp_enabled)
+			tlb_flush();
+		else
+			cpus[curr_core].curr_thread->tlb_flush = 1;
+	}
 }
 
 /**
@@ -437,7 +447,11 @@ PRIVATE int allocupg(addr_t vaddr, int writable)
 	pg = getpte(curr_proc, vaddr);
 	pte_init(pg, writable);
 	pg->frame = paddr;
-	tlb_flush();
+	
+	if (!smp_enabled)
+		tlb_flush();
+	else
+		cpus[curr_core].curr_thread->tlb_flush = 1;
 	
 	kmemset((void *)(vaddr), 0, PAGE_SIZE);
 	
@@ -510,7 +524,11 @@ PUBLIC void freeupg(struct pte *pg)
 
 done:
 	pte_clear(pg);
-	tlb_flush();
+
+	if (!smp_enabled)
+		tlb_flush();
+	else
+		cpus[curr_core].curr_thread->tlb_flush = 1;
 }
 
 /**
@@ -572,7 +590,11 @@ PRIVATE int cow_disable(struct pte *pg)
 
 	pte_cow_set(pg, 0);
 	pte_write_set(pg, 1);
-	tlb_flush();
+	
+	if (!smp_enabled)
+		tlb_flush();
+	else
+		cpus[curr_core].curr_thread->tlb_flush = 1;
 
 	return (0);
 }

@@ -362,13 +362,32 @@
 		l.nop
 
 	9:
+		/* Checks if TLB flush is needed. */
+		LOAD_SYMBOL_2_GPR(r3, cpus)
+		l.mfspr r4, r0, SPR_COREID
+		l.slli  r4, r4, PERCORE_SIZE_LOG2
+		l.add   r4, r3, r4
+		l.lwz   r3, PERCORE_CURRTHREAD(r4)
+		l.lwz   r4, THRD_TLBFLUSH(r3)
+
+		l.sfeq r4, r0
+		l.bf 10f
+		l.nop
+		LOAD_SYMBOL_2_GPR(r5, tlb_flush)
+		l.jalr r5
+		l.nop
+
+		/* Reset 'tlb_flush' field. */
+		l.sw THRD_TLBFLUSH(r3), r0
+
+	10:
 		/* Enter critical region. */
 		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
 		l.jalr r5
 		l.nop
 
 		/* Return from exception. */
-	10:
+	11:
 		l.j leave
 		l.nop
 .endm
