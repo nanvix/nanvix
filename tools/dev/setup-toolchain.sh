@@ -22,8 +22,13 @@
 # Get required packages.
 DIST=$(uname -rv)
 
-if [[ ${DIST,,} = *"ubuntu"* || ${DIST,,} = *"debian"* ]]; then
-	apt-get install g++ ddd genisoimage texinfo flex bison libncurses5-dev -y
-elif [[ ${DIST,,} = *"arch"* ]]; then
-	pacman -S gcc cdrtools texinfo flex bison ncurses --needed
-fi
+case ${DIST,,} in
+    *"ubuntu"*|*"debian"*)
+        apt-get install g++ ddd genisoimage texinfo flex bison libncurses5-dev -y
+        ;;
+    *"arch"*)
+        pacman -S gcc cdrtools texinfo flex bison ncurses --needed
+        ;;
+    *)
+        echo "Warning: your distro is not officially supported or tested by us"
+esac
