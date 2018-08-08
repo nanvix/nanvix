@@ -42,12 +42,11 @@
 	/**
 	 * Offsets to hard-coded fields of per_core
 	 */
-	#define PERCORE_COREID      0
-	#define PERCORE_CURRTHREAD  4
-	#define PERCORE_CURRPROC    8
-	#define PERCORE_NEXTTHREAD 12
-	#define PERCORE_STATE      16
-	#define PERCORE_HANDLER    20
+	#define PERCORE_CURRTHREAD  0
+	#define PERCORE_CURRPROC    4
+	#define PERCORE_NEXTTHREAD  8
+	#define PERCORE_STATE      12
+	#define PERCORE_HANDLER    16
 	#define PERCORE_SIZE_LOG2   5
 
 #ifndef _ASM_FILE_
@@ -55,13 +54,12 @@
 	/* per_core structure. */
 	struct per_core
 	{
-		unsigned coreid;
 		struct thread *curr_thread;
 		struct process *curr_proc;
 		struct thread *next_thread;
 		unsigned state;
 		addr_t exception_handler;
-		unsigned dummy[2];
+		unsigned dummy[3];
 	};
 
 	/* External functions. */

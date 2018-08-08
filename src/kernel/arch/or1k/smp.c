@@ -146,11 +146,11 @@ PUBLIC void smp_init(void)
 
 		for (unsigned i = 1; i < numcores; i++)
 		{
-			cpus[i].coreid = i;
 			cpus[i].curr_thread = NULL;
 			cpus[i].curr_proc = NULL;
 			cpus[i].next_thread = NULL;
 			cpus[i].state = CORE_READY;
+			cpus[i].exception_handler = 0;
 		}
 
 		yield = yield_smp;
