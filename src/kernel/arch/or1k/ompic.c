@@ -99,11 +99,12 @@ PUBLIC void ompic_handle_ipi(void)
 			/* Do syscall. */
 			curr_core = ipi_sender;
 			sys();
+			ipi_sender = curr_core;
 			curr_core = CORE_MASTER;
 
 			/* Release slave. */
 			spin_lock(&ipi_lock);
-			release_ipi = ipi_sender;
+			cpus[ipi_sender].release_ipi = 1;
 		}
 
 		/* Exceptions. */
@@ -115,11 +116,12 @@ PUBLIC void ompic_handle_ipi(void)
 			curr_core = ipi_sender;
 			exception = (voidfunction_t) cpus[curr_core].exception_handler;
 			exception();
+			ipi_sender = curr_core;
 			curr_core = CORE_MASTER;
 
 			/* Release slave. */
 			spin_lock(&ipi_lock);
-			release_ipi = ipi_sender;
+			cpus[ipi_sender].release_ipi = 1;
 		}
 	}
 	

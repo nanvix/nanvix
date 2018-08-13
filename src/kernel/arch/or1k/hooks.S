@@ -287,15 +287,18 @@
 
 		/* Waits for master. */
 	4:
-		l.mfspr r3, r0, SPR_COREID
-		LOAD_SYMBOL_2_GPR(r4, release_ipi)
-		l.lwa  r5, 0(r4)
-		l.sfeq r5, r3
-		l.bnf 4b
+		LOAD_SYMBOL_2_GPR(r3, cpus)
+		l.mfspr r4, r0, SPR_COREID
+		l.slli  r5, r4, PERCORE_SIZE_LOG2
+		l.add   r5, r3, r5
+		l.lwz   r3, PERCORE_RELEASE(r5)
+		
+		l.sfeq r3, r4
+		l.bnf  4b
 		l.nop
 
 		/* Reset release_ipi. */
-		l.sw 0(r4), r0
+		l.sw PERCORE_RELEASE(r5), r0
 
 		/* Unlock ipi_lock. */
 		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
@@ -336,15 +339,18 @@
 
 		/* Waits for master. */
 	7:
-		l.mfspr r3, r0, SPR_COREID
-		LOAD_SYMBOL_2_GPR(r4, release_ipi)
-		l.lwa  r5, 0(r4)
-		l.sfeq r5, r3
-		l.bnf 7b
+		LOAD_SYMBOL_2_GPR(r3, cpus)
+		l.mfspr r4, r0, SPR_COREID
+		l.slli  r5, r4, PERCORE_SIZE_LOG2
+		l.add   r5, r3, r5
+		l.lwz   r3, PERCORE_RELEASE(r5)
+		
+		l.sfeq r3, r4
+		l.bnf  7b
 		l.nop
 
 		/* Reset release_ipi. */
-		l.sw 0(r4), r0
+		l.sw PERCORE_RELEASE(r5), r0
 
 		/* Unlock ipi_lock. */
 		LOAD_SYMBOL_2_GPR(r3, ipi_lock)

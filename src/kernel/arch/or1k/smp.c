@@ -51,13 +51,6 @@ PUBLIC struct per_core cpus[NR_CPUS];
 PUBLIC char cpus_kstack[NR_CPUS][256];
 
 /**
- * @brief Release the given CPU while waiting for the master core
- * deals with the IPI request.
- * 
- */
-PUBLIC unsigned release_ipi = -1;
-
-/**
  * @brief IPI-lock, spin-lock that synchronizes the release
  * IPI.
  */
@@ -151,6 +144,7 @@ PUBLIC void smp_init(void)
 			cpus[i].next_thread = NULL;
 			cpus[i].state = CORE_READY;
 			cpus[i].exception_handler = 0;
+			cpus[i].release_ipi = 0;
 		}
 
 		yield = yield_smp;

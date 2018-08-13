@@ -340,6 +340,7 @@ PUBLIC void yield_smp(void)
 		cpus[i].next_thread = next_thrd;
 		cpus[i].state = CORE_RUNNING;
 		cpus[i].exception_handler = 0;
+		cpus[i].release_ipi = 0;
 		ompic_send_ipi(i, IPI_SCHEDULE);
 		
 		next_thrd = next_thrd->next;
@@ -368,6 +369,7 @@ PUBLIC void yield_smp(void)
 		cpus[i].next_thread = NULL;
 		cpus[i].state = CORE_RUNNING;
 		cpus[i].exception_handler = 0;
+		cpus[i].release_ipi = 0;
 		
 		curr_core = i;
 		switch_to(next, next_thrd);

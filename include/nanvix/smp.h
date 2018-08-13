@@ -47,6 +47,7 @@
 	#define PERCORE_NEXTTHREAD  8
 	#define PERCORE_STATE      12
 	#define PERCORE_HANDLER    16
+	#define PERCORE_RELEASE    20
 	#define PERCORE_SIZE_LOG2   5
 
 #ifndef _ASM_FILE_
@@ -59,7 +60,8 @@
 		struct thread *next_thread;
 		unsigned state;
 		addr_t exception_handler;
-		unsigned dummy[3];
+		unsigned release_ipi;
+		unsigned dummy[2];
 	};
 
 	/* External functions. */
@@ -78,7 +80,6 @@
 	EXTERN unsigned smp_enabled;
 	EXTERN unsigned release_cpu;
 	EXTERN spinlock_t boot_lock;
-	EXTERN unsigned release_ipi;
 	EXTERN spinlock_t ipi_lock;
 	EXTERN struct per_core cpus[NR_CPUS];
 	EXTERN char cpus_kstack[NR_CPUS][256];
