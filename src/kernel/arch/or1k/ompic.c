@@ -123,6 +123,9 @@ PUBLIC void ompic_handle_ipi(void)
 			spin_lock(&ipi_lock);
 			cpus[ipi_sender].release_ipi = 1;
 		}
+
+		/* Re-schedule blocking threads, if exist. */
+		sched_blocking_thread(curr_proc);
 	}
 	
 	/* Slave core. */

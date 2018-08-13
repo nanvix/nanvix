@@ -196,6 +196,7 @@
 	EXTERN void pm_init(void);
 	EXTERN void sched(struct thread *);
 	EXTERN void sched_process(struct process *);
+	EXTERN void sched_blocking_thread(struct process *);
 	EXTERN void wakeup_join();
 #ifdef BUILDING_KERNEL
 	EXTERN void sleep(struct thread **, int);

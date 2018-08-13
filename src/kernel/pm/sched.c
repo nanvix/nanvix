@@ -66,6 +66,45 @@ PUBLIC void sched_process(struct process *proc)
 }
 
 /**
+ * @brief Schedules a blocking thread for the current process.
+ *
+ * @param next Reference process to be queried.
+ */
+PUBLIC void sched_blocking_thread(struct process *next)
+{
+	struct thread *next_thrd; /* Next thread to run. */
+	unsigned i;               /* Loop index.         */
+
+	next_thrd = next->threads;
+	i = 1;
+
+	while (next_thrd != NULL)
+	{
+		if (next_thrd->state != THRD_READY && !(next_thrd->flags & THRD_SYS))
+		{
+			next_thrd = next_thrd->next;
+			i++;
+			continue;
+		}
+
+		if (cpus[i].state != CORE_READY)
+			kpanic("yield_smp: core %d not ready yet!", i);
+
+		next_thrd->state = THRD_RUNNING;
+		cpus[i].state = CORE_RUNNING;
+		cpus[i].curr_proc = next;
+		cpus[i].curr_thread = next_thrd;
+		cpus[i].next_thread = next_thrd;
+		cpus[i].exception_handler = 0;
+		cpus[i].release_ipi = 0;
+		
+		curr_core = i;
+		ompic_send_ipi(i, IPI_SCHEDULE);
+		switch_to(next, next_thrd);
+	}
+}
+
+/**
  * @brief Wakeup all potential joining thread.
  */
 PUBLIC void wakeup_join()
@@ -347,31 +386,6 @@ PUBLIC void yield_smp(void)
 		i++;
 	}
 
-	/* Re-schedule blocking threads. */
-	next_thrd = next->threads;
-	i = 1;
-
-	while (next_thrd != NULL)
-	{
-		if (next_thrd->state != THRD_READY && !(next_thrd->flags & THRD_SYS))
-		{
-			next_thrd = next_thrd->next;
-			i++;
-			continue;
-		}
-
-		if (cpus[i].state != CORE_READY)
-			kpanic("yield_smp: core %d not ready yet!", i);
-
-		next_thrd->state = THRD_RUNNING;
-		cpus[i].curr_proc = next;
-		cpus[i].curr_thread = next_thrd;
-		cpus[i].next_thread = NULL;
-		cpus[i].state = CORE_RUNNING;
-		cpus[i].exception_handler = 0;
-		cpus[i].release_ipi = 0;
-		
-		curr_core = i;
-		switch_to(next, next_thrd);
-	}
+	/* Re-schedule blocking threads, if exist. */
+	sched_blocking_thread(next);
 }
