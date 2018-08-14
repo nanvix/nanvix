@@ -279,15 +279,12 @@ PUBLIC void yield_smp(void)
 		kpanic("yield_smp: slave cores cannot yield");
 
 	/* If serving a slave core, saves the context. */
-	if (cpus[curr_core].curr_thread->flags & THRD_SYS)
+	if (curr_core != CORE_MASTER && cpus[curr_core].curr_thread->flags
+		& (1 << THRD_SYS))
 	{
 		save_ipi_context();
 		return;
 	}
-
-	/* Only schedule if timer has expired. */
-	if (curr_proc->counter != 0)
-		return;
 
 	/**
 	 * Ask and waits for other cores to stop current thread.
