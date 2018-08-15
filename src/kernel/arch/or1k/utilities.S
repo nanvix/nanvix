@@ -621,6 +621,11 @@ save_ipi_context:
 	l.sw GPR3(r5), r3
 	l.sw GPR4(r5), r4
 
+	/* Reset curr_core. */
+	LOAD_SYMBOL_2_GPR(r3, curr_core)
+	LOAD_SYMBOL_2_GPR(r4, CORE_MASTER)
+	l.sw 0(r3), r4
+
 	l.j idle_smp
 	l.nop
 
