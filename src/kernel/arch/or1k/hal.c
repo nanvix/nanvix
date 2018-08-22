@@ -32,21 +32,9 @@
  * Interrupt priority levels.
  */
 PRIVATE const unsigned int_lvls[16] = {
-	INT_LVL_3, /* Keyboard.                             */
-	INT_LVL_3, /* COM2.                                 */
-	INT_LVL_3, /* COM1.                                 */
-	INT_LVL_3, /* LPT2.                                 */
-	INT_LVL_0, /* Programmable interrupt timer.         */
-	INT_LVL_1, /* Floppy disk.                          */
-	INT_LVL_3, /* LPT1.                                 */
-	INT_LVL_0, /* CMOS real-time clock.                 */
-	INT_LVL_2, /* Legacy SCSI or NIC.                   */
-	INT_LVL_2, /* Legacy SCSI or NIC.                   */
-	INT_LVL_2, /* Legacy SCSI or NIC.                   */
-	INT_LVL_3, /* PS2 mouse.                            */
-	INT_LVL_4, /* FPU, co-processor or inter-processor. */
-	INT_LVL_1, /* Primary ATA hard disk.                */
-	INT_LVL_1  /* Secondary ATA hard disk.              */
+	INT_LVL_0, /* Timer.        */
+	INT_LVL_1, /* OMPIC.        */
+	INT_LVL_2, /* Serial port.  */
 };
 
 /*
@@ -65,12 +53,12 @@ PUBLIC unsigned irq_lvl(unsigned irq)
  * Interrupt masks table.
  */
 PRIVATE const uint32_t int_masks[6] = {
-	0x00000000, /* Level 0: all hardware interrupts disabled. */
-	0x00000000, /* Level 1: clock interrupts enabled.           */
-	0x00000000, /* Level 2: disk interrupts enabled.            */
-	0x00000000, /* Level 3: network interrupts enabled          */
-	0x00000004, /* Level 4: terminal interrupts enabled.        */
-	0x00000004  /* Level 5: 'all' hardware interrupts enabled.  */
+	0x00000000, /* Level 0: all hardware interrupts disabled.        */
+	0x00000001, /* Level 1: clock interrupts enabled.                */
+	0x00000002, /* Level 2: clock, ompic interrupts enabled.         */
+	0x00000006, /* Level 3: clock, ompic, serial interrupts enabled. */
+	0x00000006, /* Level 4-5: 'all' hardware interrupts enabled.     */
+	0x00000006
 };
 
 /**
@@ -86,19 +74,15 @@ PUBLIC unsigned processor_raise(unsigned irq)
 	irqlvl = irq_lvl(irq);
 	old_irqlvl = cpus[smp_get_coreid()].curr_thread->irqlvl;
 
-	/* Mask timer if needed. */
+	/* Timer ACK as soon as possible. */
 	if (irqlvl == INT_LVL_0)
-	{
-		/* Timer ACK. */
 		mtspr(SPR_TTMR, mfspr(SPR_TTMR) & ~SPR_TTMR_IP);
-		mtspr(SPR_SR, mfspr(SPR_SR) & ~SPR_SR_TEE);
-	}
-
-	/* Mask other interrupts. */
-	pic_mask(int_masks[irqlvl]);
 
 	/* Ack interrupt. */
 	pic_ack(irq);
+
+	/* Mask other interrupts. */
+	pic_mask(int_masks[irqlvl]);
 
 	return (old_irqlvl);
 }
