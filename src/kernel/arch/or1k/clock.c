@@ -111,11 +111,8 @@ PUBLIC void clock_init(unsigned freq)
 	rate = (CPU_CLOCK << 2)/freq;
 
 	/* Ensures that the clock is disabled. */
-	mtspr(SPR_TTMR, SPR_TTMR_RT | SPR_TTMR_IE | rate);
+	mtspr(SPR_TTMR, SPR_TTMR_RT | rate);
 	mtspr(SPR_TTCR, 0);
-
-	/* Setup the clock event. */
-	clock_event();
 
 	/* Unmask Timer Interrupt. */
 	mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
