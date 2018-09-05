@@ -152,6 +152,30 @@ PUBLIC void resume(struct process *proc)
 }
 
 /**
+ * @brief Checks if a given process is ready to run.
+ *
+ * @param proc Process to be checked.
+ *
+ * @return Returns 1 if a given process have at least
+ * one thread that is ready, 0 otherwise.
+ */
+PUBLIC int process_is_ready(struct process *proc)
+{
+	struct thread *t;
+	t = proc->threads;
+
+	while (t != NULL)
+	{
+		if (t->state == THRD_READY)
+			return (1);
+
+		t = t->next;
+	}
+
+	return (0);
+}
+
+/**
  * @brief Yields the processor while in UP.
  */
 PUBLIC void yield_up(void)
@@ -328,14 +352,14 @@ PUBLIC void yield_smp(void)
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
 		/* Skip non-ready process. */
-		if (p->state != PROC_READY)
+		if (!process_is_ready(p))
 			continue;
 		
 		/*
 		 * Process with higher
 		 * waiting time found.
 		 */
-		if (p->counter > next->counter)
+		if (p->counter >= next->counter)
 		{
 			next->counter++;
 			next = p;

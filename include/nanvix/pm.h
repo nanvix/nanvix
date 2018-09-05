@@ -257,7 +257,8 @@
 	#define IS_SUPERUSER(p) \
 		(((p)->uid == SUPERUSER) || ((p)->euid == SUPERUSER))
 	
-	/* Forward definitions. */	
+	/* Forward definitions. */
+	EXTERN int process_is_ready(struct process *);
 	EXTERN void resume(struct process *);
 	EXTERN void stop(void);
 	
