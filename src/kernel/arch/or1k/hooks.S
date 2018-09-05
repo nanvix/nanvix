@@ -260,6 +260,11 @@
 	swint\number:
 		exception_enter
 
+		l.ori r3, r0, (1 << INT_OMPIC)
+		LOAD_SYMBOL_2_GPR(r5, pic_mask)
+		l.jalr r5
+		l.nop
+
 		LOAD_SYMBOL_2_GPR(r5, enable_interrupts)
 		l.jalr r5
 		l.nop

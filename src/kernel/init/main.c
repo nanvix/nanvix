@@ -81,6 +81,14 @@ PUBLIC void idle_up(void)
  */
 PUBLIC void idle_smp(void)
 {
+	/**
+	 * Core master should be able to receive interrupts
+	 * while waiting for resources.
+	 */
+	pic_mask((1 << INT_COM1) | (1 << INT_OMPIC));
+	mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
+	enable_interrupts();
+
 	while (1)
 		halt();
 }

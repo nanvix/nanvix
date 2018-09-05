@@ -143,6 +143,15 @@ PUBLIC void ompic_handle_ipi(void)
 			cpus[cpu].state = CORE_READY;
 			spin_unlock(&ipi_lock);
 			
+			/**
+			 * Since we are inside an interrupt handler, the interrupts are
+			 * currently disabled and/or masked, so we need to enable and
+			 * unmask ompic interrupts to be able to receive IPIs from
+			 * master while the slave waits to be scheduled later.
+			 */
+			pic_mask(1 << INT_OMPIC);
+			enable_interrupts();
+
 			idle();
 		}
 	}
