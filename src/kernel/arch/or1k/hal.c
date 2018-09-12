@@ -82,7 +82,7 @@ PUBLIC unsigned processor_raise(unsigned irq)
 	pic_ack(irq);
 
 	/* Mask other interrupts. */
-	pic_mask(int_masks[irqlvl]);
+	pic_mask(int_masks[cpus[smp_get_coreid()].curr_thread->irqlvl = irqlvl]);
 
 	return (old_irqlvl);
 }
@@ -111,10 +111,7 @@ PUBLIC void processor_drop(unsigned irqlvl)
 PUBLIC void processor_reload(void)
 {
 	if (cpus[smp_get_coreid()].curr_thread->irqlvl > INT_LVL_0)
-	{
 		mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
-		mtspr(SPR_TTMR, mfspr(SPR_TTMR) | SPR_TTMR_IE);
-	}
 
 	/* Previous state. */
 	pic_mask(int_masks[cpus[smp_get_coreid()].curr_thread->irqlvl]);
