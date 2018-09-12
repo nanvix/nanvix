@@ -665,17 +665,7 @@ leave.out:
 	l.ori   r30, r30, (ENABLE_MMU)
 	l.mtspr r0,  r30, SPR_ESR_BASE
 
-	/* Let us check if we have to enable TTMR_IE. */
-	l.andi  r30, r30, (SPR_SR_IEE|SPR_SR_TEE)
-	l.sfnei r30, (SPR_SR_IEE|SPR_SR_TEE)
-	l.bf 1f
-	l.nop
 
-	l.mfspr r30, r0, SPR_TTMR
-	LOAD_SYMBOL_2_GPR(r31, SPR_TTMR_IE)
-	l.or    r30, r30, r31
-	l.mtspr r0, r30, SPR_TTMR
-1:
 	/* r30. */
 	l.lwz r30, GPR30(r1)
 

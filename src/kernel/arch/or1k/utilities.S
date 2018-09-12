@@ -88,17 +88,31 @@ tlb_flush:
  */
 enable_interrupts:
 
-	/* Enable HW interrupts. */
+	/* Checks if irqlvl 0, if so, disable interrupts. */
+	LOAD_SYMBOL_2_GPR(r13, cpus)
+	l.mfspr r15, r0,  SPR_COREID
+	l.slli  r15, r15, PERCORE_SIZE_LOG2
+	l.add   r15, r13, r15
+	l.lwz   r13, PERCORE_CURRTHREAD(r15)
+	l.lwz   r15, THRD_IRQLVL(r13)
+
+	l.sfnei r15, 0
+	l.bf 1f
+	l.nop
+
+	/* Disable HW interrupts. */
 	l.mfspr	r13, r0, SPR_SR
-	l.ori	r13, r13, lo(SPR_SR_IEE)
+	l.andi  r13, r13, hi(~(SPR_SR_IEE|SPR_SR_TEE))
+	l.andi  r13, r13, lo(~(SPR_SR_IEE|SPR_SR_TEE))
 	l.mtspr	r0, r13, SPR_SR
 
-	/* Enable Timer interrupts. */
-	l.mfspr r13, r0, SPR_TTMR
-	l.movhi	r15, hi(SPR_TTMR_IE)
-	l.ori	r15, r15, lo(SPR_TTMR_IE)
-	l.or    r13, r13, r15
-	l.mtspr r0, r13, SPR_TTMR
+	l.jr r9
+	l.nop
+1:
+	/* Enable HW interrupts. */
+	l.mfspr	r13, r0, SPR_SR
+	l.ori	r13, r13, lo(SPR_SR_IEE|SPR_SR_TEE)
+	l.mtspr	r0, r13, SPR_SR
 
 	l.jr r9
 	l.nop
@@ -114,17 +128,10 @@ disable_interrupts:
 
 	/* Disable HW interrupts. */
 	l.mfspr r15, r0, SPR_SR
-	l.movhi	r13, hi(~(SPR_SR_IEE))
-	l.ori	r13, r13, lo(~(SPR_SR_IEE))
+	l.movhi	r13, hi(~(SPR_SR_IEE|SPR_SR_TEE))
+	l.ori	r13, r13, lo(~(SPR_SR_IEE|SPR_SR_TEE))
 	l.and   r15, r15, r13
 	l.mtspr r0, r15, SPR_SR
-
-	/* Disable Timer interrupts. */
-	l.mfspr r15, r0, SPR_TTMR
-	l.movhi	r13, hi(~(SPR_TTMR_IE))
-	l.ori	r13, r13, lo(~(SPR_TTMR_IE))
-	l.and   r15, r15, r13
-	l.mtspr r0, r15, SPR_TTMR
 
 	l.jr r9
 	l.nop
