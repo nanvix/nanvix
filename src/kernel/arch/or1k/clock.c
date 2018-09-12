@@ -45,11 +45,12 @@ PRIVATE unsigned rate = 0;
 PRIVATE void clock_event()
 {
 	unsigned new_clock;
-	new_clock = rate;
+	new_clock  = mfspr(SPR_TTCR);
+	new_clock += rate;
 	new_clock &= SPR_TTMR_TP;
 
 	/* Set counter. */
-	mtspr(SPR_TTMR, SPR_TTMR_RT | SPR_TTMR_IE | new_clock);
+	mtspr(SPR_TTMR, SPR_TTMR_CR | SPR_TTMR_IE | new_clock);
 }
 
 /*
@@ -57,6 +58,9 @@ PRIVATE void clock_event()
  */
 PRIVATE void do_clock()
 {
+	/* Timer ACK. */
+	mtspr(SPR_TTMR, SPR_TTMR_CR);
+
 	ticks++;
 	
 	if (!smp_enabled)
@@ -108,12 +112,9 @@ PUBLIC void clock_init(unsigned freq)
 	set_hwint(INT_CLOCK, &do_clock);
 
 	/* Clock rate. */
-	rate = (CPU_CLOCK << 2)/freq;
+	rate = (CPU_CLOCK)/freq;
 
 	/* Ensures that the clock is disabled. */
-	mtspr(SPR_TTMR, SPR_TTMR_RT | rate);
 	mtspr(SPR_TTCR, 0);
-
-	/* Unmask Timer Interrupt. */
-	mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
+	mtspr(SPR_TTMR, SPR_TTMR_CR | SPR_TTMR_IE | rate);
 }
