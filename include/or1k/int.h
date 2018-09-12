@@ -70,7 +70,8 @@
 	#define ESR        140
 	
 	/* Stack frame size. */
-	#define INT_FRAME_SIZE 144
+	#define REDZONE 128
+	#define INT_FRAME_SIZE 144+REDZONE
 
 #ifndef _ASM_FILE_
 
