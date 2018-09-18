@@ -35,7 +35,7 @@
 	#include <semaphore.h>
 
 	/* Number of system calls. */
-	#define NR_SYSCALLS 61
+	#define NR_SYSCALLS 63
 	
 	/* System call numbers. */
 	#define NR_alarm           0
@@ -99,9 +99,11 @@
 	#define NR_pthread_create 58
 	#define NR_pthread_exit   59
 	#define NR_pthread_join   60
-	#define NR_semget         61
-	#define NR_semctl         62
-	#define NR_semop          63
+	#define NR_pthread_self   61
+	#define NR_pthread_detach 62
+	#define NR_semget         63
+	#define NR_semctl         64
+	#define NR_semop          65
 
 #ifndef _ASM_FILE_
 
@@ -295,7 +297,8 @@
 	EXTERN int sys_pthread_create(pthread_t *__pthread,
 			   _CONST pthread_attr_t *__pthread_attr_t,
 					  void *(*__start_routine)(void *),
-										  void *__arg);
+										   void *__arg,
+					   void (*__start_thread)(void *));
 
 	/*
 	 * Terminates current thread.
@@ -306,6 +309,16 @@
 	 * Join the specified thead.
 	 */
 	EXTERN int sys_pthread_join(pthread_t thread, void **retval);
+
+	/*
+	 * Returns the ID of the calling thread.
+	 */
+	EXTERN pthread_t sys_pthread_self(void);
+
+	/*
+	 * Marks the thread identified by thread as detached.
+	 */
+	EXTERN int sys_pthread_detach(pthread_t thread);
 
 	/* Forward definitions. */
 	EXTERN int sys_mount(const char *, const char *);

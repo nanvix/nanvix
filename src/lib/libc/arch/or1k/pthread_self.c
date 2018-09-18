@@ -19,39 +19,19 @@
  */
 
 #include <nanvix/syscall.h>
-#include <stdio.h>
-#include <pthread.h>
 
 /*
- * Creates a new thread.
+ * Returns the ID of the calling thread.
  */
-int pthread_create(pthread_t *__pthread, _CONST pthread_attr_t *__attr,
-				   void *(*__start_routine)(void *), void *__arg)
+PUBLIC int pthread_self(void)
 {
-	register unsigned r3
-        __asm__("r3") = (unsigned) __pthread;
-    register unsigned r4
-        __asm__("r4") = (unsigned) __attr;
-    register unsigned r5
-        __asm__("r5") = (unsigned) __start_routine;
-	register unsigned r6
-        __asm__("r6") = (unsigned) __arg;
-	register unsigned r7
-        __asm__("r7") = (unsigned) __start_thread;
-
-
 	register int ret
-		__asm__("r11") = NR_pthread_create;
+		__asm__("r11") = NR_pthread_self;
 
 	__asm__ volatile (
 		"l.sys 1"
 		: "=r" (ret)
-        : "r" (ret),
-          "r" (r3),
-          "r" (r4),
-          "r" (r5),
-          "r" (r6),
-          "r" (r7)
+        : "r" (ret)
 	);
 
 	return (ret);

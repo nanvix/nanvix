@@ -31,8 +31,10 @@
  * @brief Forge a "fake" stack for the new threads
  * and adjust the kernel stack pointer accordingly.
  */
-PRIVATE int setup_stack(addr_t user_sp, void *arg, struct thread *thrd,
-						void *(*start_routine)( void * ))
+PRIVATE int setup_stack(addr_t user_sp, void *arg,
+						struct thread *thrd,
+						void *(*start_routine)( void * ),
+						void (*start_thread)( void * ))
 {
 	void *kstack;    /* Kernel stack underlying page. */
 	void *ipikstack; /* IPI kernel stack.             */
@@ -55,7 +57,7 @@ PRIVATE int setup_stack(addr_t user_sp, void *arg, struct thread *thrd,
 	}	
 
 	/* Forge the new stack and update the thread structure. */
-	kern_sp = forge_stack(kstack, start_routine, user_sp, arg);
+	kern_sp = forge_stack(kstack, start_routine, user_sp, arg, start_thread);
 	thrd->kstack = kstack;
 	thrd->kesp = kern_sp;
 	thrd->ipikstack = (void *)((dword_t)ipikstack + PAGE_SIZE -
@@ -130,18 +132,13 @@ error:
  * @brief Creates a new thread.
  */
 PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
-							  void *(*start_routine)( void * ), void *arg)
+							  void *(*start_routine)( void * ), void *arg,
+							  void (*start_thread)( void * ))
 {
 	struct thread *thrd;             /* Thread.            */
 	struct thread *t;                /* Tmp thread.        */
 	addr_t user_sp;                  /* User stack addr.   */
 
-
-	if (attr != NULL)
-	{
-		kprintf("TODO: pthread_create: attr not null");
-		goto error;
-	}
 
 	/* Check start routine address validity. */
 	if (start_routine == NULL
@@ -165,6 +162,15 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	thrd->father = curr_proc;
 	*pthread = thrd->tid;
 
+	/*
+	 * Check pthread attributes.
+	 * TODO: For now, we only handle detachstate attribute.
+	 */
+	if (attr != NULL)
+		thrd->detachstate = attr->detachstate;
+	else
+	    thrd->detachstate = PTHREAD_CREATE_JOINABLE;
+
 	/* Attach new thread in the process list. */
 	t = curr_proc->threads;
 	while(t->next != NULL)
@@ -175,7 +181,7 @@ PUBLIC int sys_pthread_create(pthread_t *pthread, _CONST pthread_attr_t *attr,
 	if ((user_sp = alloc_attach_stack_reg(thrd)) == 0)
 		goto error;
 
-	if (setup_stack(user_sp, arg, thrd, start_routine) == -1)
+	if (setup_stack(user_sp, arg, thrd, start_routine, start_thread) == -1)
 		goto error;
 
 	/* Schedule our new thread to run. */

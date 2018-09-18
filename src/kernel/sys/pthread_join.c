@@ -35,21 +35,33 @@ PUBLIC int sys_pthread_join(pthread_t thread, void **retval)
 {
 	struct thread *t;
 	struct process *proc;
+	int found;
 
 repeat:
+	found = 0;
 	/* Look for thread to join. */
 	for (t = FIRST_THRD; t <= LAST_THRD; t++)
 	{
 		/* Found. */
 		if (t->tid == (tid_t)thread)
 		{
+			found = 1;
+
 			/* Check if joining a peer thread (i.e. in the same proc). */
 			if ((proc = t->father) == NULL)
-				kpanic ("thread scheduled not attached to a process");
+				kpanic ("error: thread scheduled not attached to a process");
+
 			if (proc != curr_proc)
 			{
-				kprintf ("trying to join a thread from a different process.");
-				return (-1);
+				kprintf ("error: trying to join a thread from a different process");
+				return (ESRCH);
+			}
+
+			/* Check if thread is detached. */
+			if (t->detachstate == PTHREAD_CREATE_DETACHED)
+			{
+				kprintf("error: trying to join a detached thread");
+				return (EINVAL);
 			}
 
 			/* Join. */
@@ -66,11 +78,18 @@ repeat:
 		}
 	}
 
+	/* Check if the thread with the supplied ID was found. */
+	if (!found)
+	{
+		kprintf("error: join thread ID wasn't found");
+		return (ESRCH);
+	}
+
 	/* Wait for a future thread to exit. */
 	cpus[curr_core].curr_thread->state = THRD_WAITING;
 	yield();
 
-	/* Repeat to check if the exiting thread is the one. */
+	/* Repeat to check if the thread with the supplied ID has exited. */
 	goto repeat;
 
 	return (-EINTR);

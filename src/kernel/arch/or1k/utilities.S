@@ -506,9 +506,9 @@ forge_stack:
 	/* General Purpose registers. */
 	l.sw R0(r3)   , r0
 	l.sw SP(r3)   , r5
-	l.sw GPR2(r3) , r5
-	l.sw GPR3(r3) , r6
-	l.sw GPR4(r3) , r0
+	l.sw GPR2(r3) , r5 /* First frame so SP and FP are the same.  */
+	l.sw GPR3(r3) , r4 /* start_thread 1st param : start_routine. */
+	l.sw GPR4(r3) , r6 /* start_thread 2nd param : argument.      */
 	l.sw GPR5(r3) , r0
 	l.sw GPR6(r3) , r0
 	l.sw GPR7(r3) , r0
@@ -538,7 +538,7 @@ forge_stack:
 	l.sw GPR31(r3), r0
 
 	/* EPCR. */
-	l.sw EPCR(r3), r4 /* Start routine. */
+	l.sw EPCR(r3), r7 /* start_thread initialization routine. */
 
 	/* EEAR. */
 	l.sw EEAR(r3), r0 /* Not used. */

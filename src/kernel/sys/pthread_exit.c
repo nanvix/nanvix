@@ -82,11 +82,11 @@ PUBLIC void sys_pthread_exit(void *retval)
 	/* Store return value pointer for a future join. */
 	cpus[curr_core].curr_thread->retval = retval;
 
-	/*
-	 * TODO : if thread is detached, call directly clear_thread without waiting
-	 * for this thread to be joined.
-	 */
-	cpus[curr_core].curr_thread->state = THRD_TERMINATED;
+	if (cpus[curr_core].curr_thread->detachstate == PTHREAD_CREATE_DETACHED)
+		clear_thread(cpus[curr_core].curr_thread);
+	else
+		cpus[curr_core].curr_thread->state = THRD_TERMINATED;
+
 	wakeup_join();
 
 	/* Check if it was the last running thread. */

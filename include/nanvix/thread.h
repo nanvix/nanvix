@@ -163,6 +163,7 @@
 		/**@{*/
 		tid_t tid;              /**< Thread ID.                       */
 		void *retval;           /**< Thread return value.             */
+		int detachstate;        /**< Thread detach state.             */
 		struct process *father; /**< Father process.                  */
 		/**@}*/
 
