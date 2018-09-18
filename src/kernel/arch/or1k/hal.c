@@ -95,9 +95,6 @@ PUBLIC unsigned processor_raise(unsigned irq)
 PUBLIC void processor_drop(unsigned irqlvl)
 {
 	cpus[smp_get_coreid()].curr_thread->irqlvl = irqlvl;
-	
-	if (irqlvl > INT_LVL_0)
-		mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
 
 	/* Previous state. */
 	pic_mask(int_masks[irqlvl]);
