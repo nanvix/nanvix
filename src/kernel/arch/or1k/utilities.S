@@ -33,6 +33,7 @@
 .globl idt_flush
 .globl tss_flush
 .globl tlb_flush
+.globl setup_interrupts
 .globl enable_interrupts
 .globl disable_interrupts
 .globl halt
@@ -75,6 +76,27 @@ tlb_flush:
 		l.sfeq	r17, r0
 		l.bnf	.loop
 		l.addi	r17, r17, -1
+
+	l.jr r9
+	l.nop
+
+/*----------------------------------------------------------------------------*
+ *                            setup_interrupts()                              *
+ *----------------------------------------------------------------------------*/
+ 
+/*
+ * Enables and unmask all hardware interrupts.
+ */
+setup_interrupts:
+	
+	/* Unmask HW ints. */
+	l.ori   r13, r0, lo((1 << INT_COM1) | (1 << INT_OMPIC))
+	l.mtspr r0, r13, SPR_PICMR
+
+	/* Enable Timer and HW interrupts. */
+	l.mfspr	r13, r0, SPR_SR
+	l.ori	r13, r13, lo(SPR_SR_IEE|SPR_SR_TEE)
+	l.mtspr	r0, r13, SPR_SR
 
 	l.jr r9
 	l.nop

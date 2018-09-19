@@ -61,6 +61,7 @@
 	 */
 	/**@{*/
 	EXTERN int set_hwint(int, void (*)(void));
+	EXTERN void setup_interrupts(void);
 	EXTERN void enable_interrupts(void);
 	EXTERN void disable_interrupts(void);
 	EXTERN void halt(void);
