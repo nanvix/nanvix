@@ -561,10 +561,11 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
 	struct atadev *dev;  /* ATA device.        */
 	buffer_t buf;        /* Buffer.            */
 	struct request *req; /* Request.           */
+	unsigned old_irqlvl; /* Old irqlvl.        */
 	
 	dev = &ata_devices[atadevid];
 
-	disable_interrupts();
+	old_irqlvl = processor_raise(0);
 	
 		/* Wait for a slot in the block operation queue. */
 		while (dev->queue.size == ATADEV_QUEUE_SIZE)
@@ -616,7 +617,7 @@ PRIVATE void ata_sched(unsigned atadevid, unsigned flags, ...)
 		if (req->flags & REQ_SYNC)
 			sleep(&dev->chain, PRIO_IO);
 	
-	enable_interrupts();
+	processor_drop(old_irqlvl);
 }
 
 /*

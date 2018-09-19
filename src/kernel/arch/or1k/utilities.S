@@ -88,27 +88,6 @@ tlb_flush:
  */
 enable_interrupts:
 
-	/* Checks if irqlvl 0, if so, disable interrupts. */
-	LOAD_SYMBOL_2_GPR(r13, cpus)
-	l.mfspr r15, r0,  SPR_COREID
-	l.slli  r15, r15, PERCORE_SIZE_LOG2
-	l.add   r15, r13, r15
-	l.lwz   r13, PERCORE_CURRTHREAD(r15)
-	l.lwz   r15, THRD_IRQLVL(r13)
-
-	l.sfnei r15, 0
-	l.bf 1f
-	l.nop
-
-	/* Disable HW interrupts. */
-	l.mfspr	r13, r0, SPR_SR
-	l.andi  r13, r13, hi(~(SPR_SR_IEE|SPR_SR_TEE))
-	l.andi  r13, r13, lo(~(SPR_SR_IEE|SPR_SR_TEE))
-	l.mtspr	r0, r13, SPR_SR
-
-	l.jr r9
-	l.nop
-1:
 	/* Enable HW interrupts. */
 	l.mfspr	r13, r0, SPR_SR
 	l.ori	r13, r13, lo(SPR_SR_IEE|SPR_SR_TEE)

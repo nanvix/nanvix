@@ -204,6 +204,8 @@ PRIVATE int tty_sleep_empty(struct tty *ttyp)
  */
 PRIVATE int tty_sleep_full(struct tty *ttyp)
 {
+	unsigned old_irqlvl;
+
 	/* Sleep while output buffer is full. */
 	while (KBUFFER_FULL(ttyp->output))
 	{
@@ -214,9 +216,9 @@ PRIVATE int tty_sleep_full(struct tty *ttyp)
 			return (-EINTR);
 		
 		/* Awaken by START character. */
-		disable_interrupts();
+		old_irqlvl = processor_raise(0);
 		console_write(&ttyp->output);
-		enable_interrupts();
+		processor_drop(old_irqlvl);
 	}
 	
 	return (0);
@@ -228,6 +230,7 @@ PRIVATE int tty_sleep_full(struct tty *ttyp)
 PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 {	
 	const char *p;
+	unsigned old_irqlvl;
 	
 	UNUSED(minor);
 	
@@ -254,9 +257,9 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
 		/* Flushes tty output buffer. */
 		if (!(tty.flags & TTY_STOPPED))
 		{
-			disable_interrupts();
+			old_irqlvl = processor_raise(0);
 			console_write(&tty.output);
-			enable_interrupts();
+			processor_drop(old_irqlvl);
 		}
 	}
 		
@@ -277,9 +280,10 @@ PRIVATE ssize_t tty_write(unsigned minor, const char *buf, size_t n)
  */
 PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 {
-	size_t i;         /* # bytes read.      */
-	unsigned char ch; /* Working character. */
-	unsigned char *p; /* Write pointer.     */
+	size_t i;            /* # bytes read.      */
+	unsigned char ch;    /* Working character. */
+	unsigned char *p;    /* Write pointer.     */
+	unsigned old_irqlvl; /* Old irqlvl.        */
 	
 	UNUSED(minor);
 	
@@ -287,7 +291,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 	p = (unsigned char *)buf;
 	
 	/* Read characters. */
-	disable_interrupts();
+	old_irqlvl = processor_raise(0);
 	while (i > 0)
 	{
 		/* Canonical mode. */
@@ -296,7 +300,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 			/* Wait for data to become available. */
 			if (tty_sleep_empty(&tty))
 			{
-				enable_interrupts();
+				processor_drop(old_irqlvl);
 				return (-EINTR);
 			}
 			
@@ -377,7 +381,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 					/* Wait for data to become available. */
 					if (tty_sleep_empty(&tty))
 					{
-						enable_interrupts();
+						processor_drop(old_irqlvl);
 						return (-EINTR);
 					}
 					
@@ -418,7 +422,7 @@ PRIVATE ssize_t tty_read(unsigned minor, char *buf, size_t n)
 
 out:
 
-	enable_interrupts();
+	processor_drop(old_irqlvl);
 	
 	return ((ssize_t)((char *)p - buf));
 }

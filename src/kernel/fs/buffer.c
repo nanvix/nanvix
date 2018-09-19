@@ -248,8 +248,9 @@ PUBLIC void buffer_share(struct buffer *buf)
  */
 PRIVATE struct buffer *getblk(dev_t dev, block_t num)
 {
-	unsigned i;         /* Hash table index. */
-	struct buffer *buf; /* Buffer.           */
+	unsigned i;          /* Hash table index. */
+	struct buffer *buf;  /* Buffer.           */
+	unsigned old_irqlvl; /* Old irqlvl.       */
 	
 	/* Should not happen. */
 	if ((dev == 0) && (num == 0))
@@ -259,7 +260,7 @@ repeat:
 
 	i = HASH(dev, num);
 
-	disable_interrupts();
+	old_irqlvl = processor_raise(0);
 
 	/* Search in hash table. */
 	for (buf = hashtab[i].hash_next; buf != &hashtab[i]; buf = buf->hash_next)
@@ -286,7 +287,7 @@ repeat:
 		}
 		
 		blklock(buf);
-		enable_interrupts();
+		processor_drop(old_irqlvl);
 		
 		return (buf);
 	}
@@ -315,7 +316,7 @@ repeat:
 	if (buf->flags & BUFFER_DIRTY)
 	{
 		blklock(buf);
-		enable_interrupts();
+		processor_drop(old_irqlvl);
 		bwrite(buf);
 		goto repeat;
 	}
@@ -336,7 +337,7 @@ repeat:
 	hashtab[i].hash_next = buf;
 	
 	blklock(buf);
-	enable_interrupts();
+	processor_drop(old_irqlvl);
 	
 	return (buf);
 }
@@ -352,7 +353,8 @@ repeat:
  */
 PUBLIC void blklock(struct buffer *buf)
 {
-	disable_interrupts();
+	unsigned old_irqlvl;
+	old_irqlvl = processor_raise(0);
 	
 	/* Wait for block buffer to become unlocked. */
 	while (buf->flags & BUFFER_LOCKED)
@@ -360,7 +362,7 @@ PUBLIC void blklock(struct buffer *buf)
 		
 	buf->flags |= BUFFER_LOCKED;
 
-	enable_interrupts();
+	processor_drop(old_irqlvl);
 }
 
 /**
@@ -375,12 +377,13 @@ PUBLIC void blklock(struct buffer *buf)
  */
 PUBLIC void blkunlock(struct buffer *buf)
 {
-	disable_interrupts();
+	unsigned old_irqlvl;
+	old_irqlvl = processor_raise(0);
 
 	buf->flags &= ~BUFFER_LOCKED;
 	wakeup(&buf->chain);
 
-	enable_interrupts();
+	processor_drop(old_irqlvl);
 }
 
 /**
@@ -395,7 +398,8 @@ PUBLIC void blkunlock(struct buffer *buf)
  */
 PUBLIC void brelse(struct buffer *buf)
 {
-	disable_interrupts();
+	unsigned old_irqlvl;
+	old_irqlvl = processor_raise(0);
 	
 	/* Double free. */
 	if (buf->count == 0)
@@ -430,7 +434,7 @@ PUBLIC void brelse(struct buffer *buf)
 	}
 
 	blkunlock(buf);
-	enable_interrupts();
+	processor_drop(old_irqlvl);
 }
 
 /**
@@ -506,6 +510,8 @@ PUBLIC void bwrite(struct buffer *buf)
  */
 PUBLIC void bsync(void)
 {
+	unsigned old_irqlvl;
+
 	/* Synchronize buffers. */
 	for (struct buffer *buf = &buffers[0]; buf < &buffers[NR_BUFFERS]; buf++)
 	{
@@ -522,13 +528,13 @@ PUBLIC void bsync(void)
 		 * Prevent double free, since a call
 		 * to brelse() will follow.
 		 */
-		disable_interrupts();
+		old_irqlvl = processor_raise(0);
 		if (buf->count++ == 0)
 		{
 			buf->free_prev->free_next = buf->free_next;
 			buf->free_next->free_prev = buf->free_prev;
 		}
-		enable_interrupts();
+		processor_drop(old_irqlvl);
 		
 		/*
 		 * This will cause the buffer to be
