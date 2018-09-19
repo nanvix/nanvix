@@ -260,9 +260,6 @@ switch_to:
 	l.sw 56(r1), r30
 	l.sw THRD_KESP(r13), r1
 1:
-	/* Switch processes. */
-	LOAD_SYMBOL_2_GPR(r13, curr_proc)
-	l.sw 0(r13), r3
 
 	/* Switch thread */
 	LOAD_SYMBOL_2_GPR(r14, cpus)

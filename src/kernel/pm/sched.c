@@ -285,6 +285,8 @@ PUBLIC void yield_up(void)
 		}
 	}
 	
+	/* Switch proceses. */
+	curr_proc = next;
 	switch_to(next, next_thrd);
 }
 
@@ -380,6 +382,9 @@ PUBLIC void yield_smp(void)
 	/* Send an IPI for each remaining core. */
 	next_thrd = next->threads;
 	i = 1;
+
+	/* Switch processes. */
+	curr_proc = next;
 	
 	/* Re-schedule non-blocking threads. */
 	while (next_thrd != NULL)
