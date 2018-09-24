@@ -303,7 +303,7 @@ start_secondary_cores:
 		/* Setup kstack. */
 		LOAD_SYMBOL_2_GPR(r3, cpus_kstack)
 		l.mfspr r4, r0, SPR_COREID
-		l.slli  r4, r4, 8
+		l.slli  r4, r4, PAGE_SHIFT
 		l.add   r3, r3, r4
 
 		l.addi r3, r3,  256

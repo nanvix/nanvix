@@ -48,7 +48,7 @@ PUBLIC struct per_core cpus[NR_CPUS];
 /**
  * @brief CPUS kernel stack.
  */
-PUBLIC char cpus_kstack[NR_CPUS][256];
+PUBLIC char cpus_kstack[NR_CPUS][PAGE_SIZE];
 
 /**
  * @brief IPI-lock, spin-lock that synchronizes the release
