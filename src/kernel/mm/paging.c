@@ -385,8 +385,7 @@ PUBLIC int crtpgdir(struct process *proc)
 	proc->cr3 = ADDR(pgdir) - KBASE_VIRT;
 	proc->pgdir = pgdir;
 	proc->threads->kstack = kstack;
-	proc->threads->ipikstack = (void *)((dword_t)ipikstack + PAGE_SIZE -
-		DWORD_SIZE);
+	proc->threads->ipikstack = ipikstack;
 
 	return (0);
 

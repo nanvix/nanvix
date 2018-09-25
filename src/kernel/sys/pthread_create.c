@@ -60,8 +60,7 @@ PRIVATE int setup_stack(addr_t user_sp, void *arg,
 	kern_sp = forge_stack(kstack, start_routine, user_sp, arg, start_thread);
 	thrd->kstack = kstack;
 	thrd->kesp = kern_sp;
-	thrd->ipikstack = (void *)((dword_t)ipikstack + PAGE_SIZE -
-		DWORD_SIZE);
+	thrd->ipikstack = ipikstack;
 
 	return (0);
 
