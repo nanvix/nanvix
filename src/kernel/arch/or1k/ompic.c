@@ -133,7 +133,10 @@ PUBLIC void ompic_handle_ipi(void)
 	{
 		/* Executes a new thread. */
 		if (ipi_type == IPI_SCHEDULE)
+		{
+			cpus[cpu].state = CORE_RUNNING;
 			switch_to(cpus[cpu].curr_proc, cpus[cpu].next_thread);
+		}
 
 		/* Stops the thread. */
 		else if (ipi_type == IPI_IDLE)

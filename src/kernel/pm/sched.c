@@ -80,7 +80,7 @@ PUBLIC void sched_blocking_thread(struct process *next)
 
 	while (next_thrd != NULL)
 	{
-		if (next_thrd->state != THRD_READY && !(next_thrd->flags & THRD_SYS))
+		if (next_thrd->state != THRD_READY || !(next_thrd->flags & THRD_SYS))
 		{
 			next_thrd = next_thrd->next;
 			i++;
@@ -91,7 +91,6 @@ PUBLIC void sched_blocking_thread(struct process *next)
 			kpanic("yield_smp: core %d not ready yet!", i);
 
 		next_thrd->state = THRD_RUNNING;
-		cpus[i].state = CORE_RUNNING;
 		cpus[i].curr_proc = next;
 		cpus[i].curr_thread = next_thrd;
 		cpus[i].next_thread = next_thrd;
@@ -99,6 +98,7 @@ PUBLIC void sched_blocking_thread(struct process *next)
 		cpus[i].release_ipi = 0;
 		
 		curr_core = i;
+		curr_proc = next;
 		ompic_send_ipi(i, IPI_SCHEDULE);
 		switch_to(next, next_thrd);
 	}
@@ -403,7 +403,6 @@ PUBLIC void yield_smp(void)
 
 		cpus[i].curr_proc = next;
 		cpus[i].next_thread = next_thrd;
-		cpus[i].state = CORE_RUNNING;
 		cpus[i].exception_handler = 0;
 		cpus[i].release_ipi = 0;
 		ompic_send_ipi(i, IPI_SCHEDULE);

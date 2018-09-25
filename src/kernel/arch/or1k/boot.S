@@ -40,6 +40,7 @@
 
 #include <nanvix/mm.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 #include <or1k/or1k.h>
 #include <or1k/asm_defs.h>
 #include <or1k/int.h>
@@ -318,10 +319,17 @@ start_secondary_cores:
 		l.nop
 
 	slave_idle:
-		l.j slave_idle
+		LOAD_SYMBOL_2_GPR(r3, cpus)
+		l.mfspr r5, r0, SPR_COREID
+		l.slli  r5, r5, PERCORE_SIZE_LOG2
+		l.add   r5, r3, r5
+		l.lwz   r3, PERCORE_STATE(r5)
+
+		l.sfnei r3, CORE_RUNNING
+		l.bf slave_idle
 		l.nop
-		l.nop
-		l.nop
+		
+		l.jr r9
 		l.nop
 
 /*----------------------------------------------------------------------------*

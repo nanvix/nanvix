@@ -82,7 +82,7 @@
 	EXTERN spinlock_t boot_lock;
 	EXTERN spinlock_t ipi_lock;
 	EXTERN struct per_core cpus[NR_CPUS];
-	EXTERN char cpus_kstack[NR_CPUS][256];
+	EXTERN char cpus_kstack[NR_CPUS][PAGE_SIZE];
 	EXTERN unsigned curr_core;
 
 #endif /* _ASM_FILE_ */
