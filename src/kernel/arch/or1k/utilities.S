@@ -89,6 +89,15 @@ tlb_flush:
  */
 setup_interrupts:
 	
+	/* Increase irqlvl. */
+	LOAD_SYMBOL_2_GPR(r13, cpus)
+	l.mfspr r15, r0,  SPR_COREID
+	l.slli  r15, r15, PERCORE_SIZE_LOG2
+	l.add   r15, r13, r15
+	l.lwz   r13, PERCORE_CURRTHREAD(r15)
+	l.ori   r15, r0,  5
+	l.sw    THRD_IRQLVL(r13), r15
+
 	/* Unmask HW ints. */
 	l.ori   r13, r0, lo((1 << INT_COM1) | (1 << INT_OMPIC))
 	l.mtspr r0, r13, SPR_PICMR
