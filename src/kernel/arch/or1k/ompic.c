@@ -112,10 +112,13 @@ PUBLIC void ompic_handle_ipi(void)
 		{
 			voidfunction_t exception;
 			
-			/* Do exception. */
 			curr_core = ipi_sender;
+			
+			/* Do exception. */
 			exception = (voidfunction_t) cpus[curr_core].exception_handler;
 			exception();
+			cpus[curr_core].exception_handler = 0;
+			
 			ipi_sender = curr_core;
 			curr_core = CORE_MASTER;
 
