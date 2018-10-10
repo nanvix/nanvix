@@ -47,8 +47,9 @@
 	#define THRD_IRQLVL      20 /**< IRQ Level offset.              */
 	#define THRD_INTLVL      24 /**< Interrupt level offset.        */
 	#define THRD_TLBFLUSH    28 /**< TLB flush indicator.           */
-	#define THRD_FSS         32 /**< FPU Saved Status offset.       */
-	#define THRD_PMC        140 /**< Performance Counter Status.    */
+	#define THRD_RELEASEIPI  32 /**< Release IPI.                   */
+	#define THRD_FSS         36 /**< FPU Saved Status offset.       */
+	#define THRD_PMC        144 /**< Performance Counter Status.    */
 	/**@}*/
 
 	/**
@@ -144,6 +145,7 @@
 		unsigned irqlvl;       /**< Current IRQ level.      */
 		dword_t intlvl;        /**< Interrupt level.        */
 		int tlb_flush;         /**< TLB Flush indicator.    */
+		unsigned release_ipi;  /**< Release IPI.            */
 		struct fpu fss;        /**< FPU Saved Status.       */
 		struct pmc pmcs;       /**< PMC status.             */
 		/**@}*/

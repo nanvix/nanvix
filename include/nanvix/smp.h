@@ -47,7 +47,6 @@
 	#define PERCORE_NEXTTHREAD  8
 	#define PERCORE_STATE      12
 	#define PERCORE_HANDLER    16
-	#define PERCORE_RELEASE    20
 	#define PERCORE_SIZE_LOG2   5
 
 #ifndef _ASM_FILE_
@@ -60,8 +59,7 @@
 		struct thread *next_thread;
 		unsigned state;
 		addr_t exception_handler;
-		unsigned release_ipi;
-		unsigned dummy[2];
+		unsigned dummy[3];
 	};
 
 	/* External functions. */

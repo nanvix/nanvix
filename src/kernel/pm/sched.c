@@ -95,7 +95,6 @@ PUBLIC void sched_blocking_thread(struct process *next)
 		cpus[i].curr_thread = next_thrd;
 		cpus[i].next_thread = next_thrd;
 		cpus[i].exception_handler = 0;
-		cpus[i].release_ipi = 0;
 		
 		curr_core = i;
 		curr_proc = next;
@@ -404,7 +403,6 @@ PUBLIC void yield_smp(void)
 		cpus[i].curr_proc = next;
 		cpus[i].next_thread = next_thrd;
 		cpus[i].exception_handler = 0;
-		cpus[i].release_ipi = 0;
 		ompic_send_ipi(i, IPI_SCHEDULE);
 		
 		next_thrd = next_thrd->next;

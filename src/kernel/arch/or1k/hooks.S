@@ -296,14 +296,15 @@
 		l.mfspr r4, r0, SPR_COREID
 		l.slli  r5, r4, PERCORE_SIZE_LOG2
 		l.add   r5, r3, r5
-		l.lwz   r3, PERCORE_RELEASE(r5)
+		l.lwz   r3, PERCORE_CURRTHREAD(r5)
+		l.lwz   r5, THRD_RELEASEIPI(r3)
 		
-		l.sfeq r3, r4
+		l.sfeq r4, r5
 		l.bnf  4b
 		l.nop
 
 		/* Reset release_ipi. */
-		l.sw PERCORE_RELEASE(r5), r0
+		l.sw THRD_RELEASEIPI(r3), r0
 
 		/* Unlock ipi_lock. */
 		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
@@ -348,14 +349,15 @@
 		l.mfspr r4, r0, SPR_COREID
 		l.slli  r5, r4, PERCORE_SIZE_LOG2
 		l.add   r5, r3, r5
-		l.lwz   r3, PERCORE_RELEASE(r5)
+		l.lwz   r3, PERCORE_CURRTHREAD(r5)
+		l.lwz   r5, THRD_RELEASEIPI(r3)
 		
-		l.sfeq r3, r4
+		l.sfeq r4, r5
 		l.bnf  7b
 		l.nop
 
 		/* Reset release_ipi. */
-		l.sw PERCORE_RELEASE(r5), r0
+		l.sw THRD_RELEASEIPI(r3), r0
 
 		/* Unlock ipi_lock. */
 		LOAD_SYMBOL_2_GPR(r3, ipi_lock)

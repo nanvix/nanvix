@@ -104,7 +104,7 @@ PUBLIC void ompic_handle_ipi(void)
 
 			/* Release slave. */
 			spin_lock(&ipi_lock);
-			cpus[ipi_sender].release_ipi = 1;
+			cpus[ipi_sender].curr_thread->release_ipi = 1;
 		}
 
 		/* Exceptions. */
@@ -124,7 +124,7 @@ PUBLIC void ompic_handle_ipi(void)
 
 			/* Release slave. */
 			spin_lock(&ipi_lock);
-			cpus[ipi_sender].release_ipi = 1;
+			cpus[ipi_sender].curr_thread->release_ipi = 1;
 		}
 
 		/* Re-schedule blocking threads, if exist. */

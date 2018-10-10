@@ -144,7 +144,6 @@ PUBLIC void smp_init(void)
 			cpus[i].next_thread = NULL;
 			cpus[i].state = CORE_READY;
 			cpus[i].exception_handler = 0;
-			cpus[i].release_ipi = 0;
 		}
 
 		yield = yield_smp;
