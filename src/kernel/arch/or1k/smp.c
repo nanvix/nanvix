@@ -61,6 +61,12 @@ PUBLIC spinlock_t ipi_lock;
  */
 PUBLIC unsigned curr_core = 0;
 
+/**
+ * @brief Indicates that the core master is serving remaining 
+ * IPIs at the moment.
+ */
+PUBLIC unsigned serving_ipis = 0;
+
 /*
  * @brief Gets the core number of the current processor.
  * @return Core number of the current processor.
@@ -143,7 +149,6 @@ PUBLIC void smp_init(void)
 			cpus[i].curr_proc = NULL;
 			cpus[i].next_thread = NULL;
 			cpus[i].state = CORE_READY;
-			cpus[i].exception_handler = 0;
 		}
 
 		yield = yield_smp;

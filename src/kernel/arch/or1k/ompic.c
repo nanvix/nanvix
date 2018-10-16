@@ -55,6 +55,19 @@ PUBLIC void ompic_writereg(uint32_t reg, uint32_t data)
  */
 PUBLIC void ompic_send_ipi(uint32_t dstcore, uint16_t data)
 {
+	unsigned cpu;
+	cpu = smp_get_coreid();
+
+	/* If slave, marks thread as waiting for IPI. */
+	if (cpu != CORE_MASTER)
+	{
+		cpus[cpu].curr_thread->ipi.waiting_ipi = 1;
+		cpus[cpu].curr_thread->ipi.release_ipi = 0;
+		cpus[cpu].curr_thread->ipi.coreid = cpu;
+		cpus[cpu].curr_thread->ipi.ipi_message = data;
+	}
+
+	/* Send IPI. */
 	ompic_writereg(OMPIC_CTRL(smp_get_coreid()), OMPIC_CTRL_IRQ_GEN |
 		OMPIC_CTRL_DST(dstcore)| OMPIC_DATA(data));
 }
@@ -67,6 +80,7 @@ PUBLIC void ompic_handle_ipi(void)
 	unsigned cpu;
 	uint32_t ipi_message;
 	uint16_t ipi_type, ipi_sender;
+	struct thread *next_thrd;
 
 	/* Current core. */
 	cpu = smp_get_coreid();
@@ -75,9 +89,42 @@ PUBLIC void ompic_handle_ipi(void)
 	ompic_writereg(OMPIC_CTRL(cpu), OMPIC_CTRL_IRQ_ACK);
 
 	/* Get the IPI message. */
-	ipi_message =  ompic_readreg(OMPIC_STAT(cpu));
-	ipi_type    = OMPIC_DATA(ipi_message);
-	ipi_sender  = OMPIC_STAT_SRC(ipi_message);
+	if (cpu != CORE_MASTER)
+	{
+		ipi_message =  ompic_readreg(OMPIC_STAT(cpu));
+		ipi_type    = OMPIC_DATA(ipi_message);
+		ipi_sender  = OMPIC_STAT_SRC(ipi_message);
+	}
+	else
+	{
+		/**
+		 * Sometimes this handler can be called from yield_smp() instead of do_hwint,
+		 * in this case we must check for all threads available if there's one that
+		 * is waiting for IPI, the master core will serve.
+		 */
+		next_thrd = curr_proc->threads;
+		while (next_thrd != NULL)
+		{
+			if (next_thrd->ipi.waiting_ipi && next_thrd->state != THRD_WAITING)
+			{
+				ipi_type = next_thrd->ipi.ipi_message;
+				ipi_sender = next_thrd->ipi.coreid;
+				break;
+			}
+			next_thrd = next_thrd->next;
+		}
+
+		/**
+		 * If no one thread was found, this means that some thread was previously
+		 * attended by yield_smp() instead of do_hwint() and this interrupt is
+		 * duplicated and should be discarted.
+		 */
+		if ( !(next_thrd->ipi.waiting_ipi && next_thrd->state != THRD_WAITING) )
+		{
+			kprintf(" == duplicated ==");
+			return;
+		}
+	}
 
 	/* Checks the core type. */
 	if (cpu == CORE_MASTER) 
@@ -104,7 +151,8 @@ PUBLIC void ompic_handle_ipi(void)
 
 			/* Release slave. */
 			spin_lock(&ipi_lock);
-			cpus[ipi_sender].curr_thread->release_ipi = 1;
+			cpus[ipi_sender].curr_thread->ipi.waiting_ipi = 0;
+			cpus[ipi_sender].curr_thread->ipi.release_ipi = 1;
 		}
 
 		/* Exceptions. */
@@ -115,16 +163,17 @@ PUBLIC void ompic_handle_ipi(void)
 			curr_core = ipi_sender;
 			
 			/* Do exception. */
-			exception = (voidfunction_t) cpus[curr_core].exception_handler;
+			exception = (voidfunction_t) cpus[curr_core].curr_thread->ipi.exception_handler;
 			exception();
-			cpus[curr_core].exception_handler = 0;
+			cpus[curr_core].curr_thread->ipi.exception_handler = 0;
 			
 			ipi_sender = curr_core;
 			curr_core = CORE_MASTER;
 
 			/* Release slave. */
 			spin_lock(&ipi_lock);
-			cpus[ipi_sender].curr_thread->release_ipi = 1;
+			cpus[ipi_sender].curr_thread->ipi.waiting_ipi = 0;
+			cpus[ipi_sender].curr_thread->ipi.release_ipi = 1;
 		}
 
 		/* Re-schedule blocking threads, if exist. */
@@ -146,6 +195,7 @@ PUBLIC void ompic_handle_ipi(void)
 		{
 			voidfunction_t idle;
 			idle = (voidfunction_t)((addr_t)slave_idle + KBASE_VIRT);
+			cpus[cpu].curr_thread->state = THRD_READY;
 			cpus[cpu].state = CORE_READY;
 			spin_unlock(&ipi_lock);
 			

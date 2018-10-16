@@ -34,6 +34,7 @@
 	#include <i386/pmc.h>
 	#include <sys/types.h>
 	#include <nanvix/region.h>
+	#include <nanvix/smp.h>
 
 	/**
 	 * @name Offsets to hard-coded fields of a process
@@ -47,9 +48,9 @@
 	#define THRD_IRQLVL      20 /**< IRQ Level offset.              */
 	#define THRD_INTLVL      24 /**< Interrupt level offset.        */
 	#define THRD_TLBFLUSH    28 /**< TLB flush indicator.           */
-	#define THRD_RELEASEIPI  32 /**< Release IPI.                   */
-	#define THRD_FSS         36 /**< FPU Saved Status offset.       */
-	#define THRD_PMC        144 /**< Performance Counter Status.    */
+	#define THRD_IPIDATA     32 /**< IPI data.                      */
+	#define THRD_FSS         64 /**< FPU Saved Status offset.       */
+	#define THRD_PMC        172 /**< Performance Counter Status.    */
 	/**@}*/
 
 	/**
@@ -145,7 +146,7 @@
 		unsigned irqlvl;       /**< Current IRQ level.      */
 		dword_t intlvl;        /**< Interrupt level.        */
 		int tlb_flush;         /**< TLB Flush indicator.    */
-		unsigned release_ipi;  /**< Release IPI.            */
+		struct ipi_data ipi;   /**< IPI data.               */
 		struct fpu fss;        /**< FPU Saved Status.       */
 		struct pmc pmcs;       /**< PMC status.             */
 		/**@}*/

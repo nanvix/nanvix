@@ -91,10 +91,11 @@ PUBLIC void sched_blocking_thread(struct process *next)
 			kpanic("yield_smp: core %d not ready yet!", i);
 
 		next_thrd->state = THRD_RUNNING;
+		next_thrd->ipi.exception_handler = 0;
+		
 		cpus[i].curr_proc = next;
 		cpus[i].curr_thread = next_thrd;
 		cpus[i].next_thread = next_thrd;
-		cpus[i].exception_handler = 0;
 		
 		curr_core = i;
 		curr_proc = next;
@@ -312,6 +313,20 @@ PUBLIC void yield_smp(void)
 	}
 
 	/**
+	 * Checks if there is at least one thread that is waiting for an IPI.
+	 */
+	serving_ipis = 1;
+	next_thrd = curr_proc->threads;
+	while (next_thrd != NULL)
+	{
+		if (next_thrd->ipi.waiting_ipi && next_thrd->state != THRD_WAITING)
+			ompic_handle_ipi();
+
+		next_thrd = next_thrd->next;
+	}
+	serving_ipis = 0;
+
+	/**
 	 * Ask and waits for other cores to stop current thread.
 	 * It's important to note that the usage of spinlocks below is
 	 * because we need to ensure that all the slave cores are
@@ -399,10 +414,10 @@ PUBLIC void yield_smp(void)
 			kpanic("yield_smp: core %d not ready yet!", i);
 
 		next_thrd->state = THRD_RUNNING;
+		next_thrd->ipi.exception_handler = 0;
 
 		cpus[i].curr_proc = next;
 		cpus[i].next_thread = next_thrd;
-		cpus[i].exception_handler = 0;
 		ompic_send_ipi(i, IPI_SCHEDULE);
 		
 		next_thrd = next_thrd->next;

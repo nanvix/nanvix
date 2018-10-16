@@ -27,7 +27,7 @@
 /**
  * @brief Thread table.
  */
-PUBLIC struct thread threadtab[THRD_MAX];
+PUBLIC struct thread threadtab[THRD_MAX] = {0};
 
 /**
  * @brief Next available process ID.

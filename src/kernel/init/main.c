@@ -82,6 +82,13 @@ PUBLIC void idle_up(void)
 PUBLIC void idle_smp(void)
 {
 	/**
+	 * If we are serving IPIs at the moment, we still need to
+	 * serve all IPIs before proceeding.
+	 */
+	if (serving_ipis)
+		yield();
+
+	/**
 	 * Core master should be able to receive interrupts
 	 * while waiting for resources.
 	 */

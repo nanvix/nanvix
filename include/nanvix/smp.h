@@ -46,8 +46,16 @@
 	#define PERCORE_CURRPROC    4
 	#define PERCORE_NEXTTHREAD  8
 	#define PERCORE_STATE      12
-	#define PERCORE_HANDLER    16
 	#define PERCORE_SIZE_LOG2   5
+
+	/** 
+	 * Offsets to hard-coded fields of ipi_data
+	 */
+	#define IPIDATA_RELEASEIPI  0
+	#define IPIDATA_WAITINGIPI  4
+	#define IPIDATA_COREID      8
+	#define IPIDATA_IPIMESSAGE 12
+	#define IPIDATA_HANDLER    16
 
 #ifndef _ASM_FILE_
 
@@ -58,6 +66,16 @@
 		struct process *curr_proc;
 		struct thread *next_thread;
 		unsigned state;
+		unsigned dummy[4];
+	};
+
+	/* ipi_data structure. */
+	struct ipi_data
+	{
+		unsigned release_ipi;
+		unsigned waiting_ipi;
+		unsigned coreid;
+		unsigned ipi_message;
 		addr_t exception_handler;
 		unsigned dummy[3];
 	};
@@ -82,6 +100,7 @@
 	EXTERN struct per_core cpus[NR_CPUS];
 	EXTERN char cpus_kstack[NR_CPUS][PAGE_SIZE];
 	EXTERN unsigned curr_core;
+	EXTERN unsigned serving_ipis;
 
 #endif /* _ASM_FILE_ */
 

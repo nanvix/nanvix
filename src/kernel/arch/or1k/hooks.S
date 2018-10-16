@@ -297,14 +297,14 @@
 		l.slli  r5, r4, PERCORE_SIZE_LOG2
 		l.add   r5, r3, r5
 		l.lwz   r3, PERCORE_CURRTHREAD(r5)
-		l.lwz   r5, THRD_RELEASEIPI(r3)
+		l.lwz   r5, THRD_IPIDATA + IPIDATA_RELEASEIPI(r3)
 		
 		l.sfeq r4, r5
 		l.bnf  4b
 		l.nop
 
 		/* Reset release_ipi. */
-		l.sw THRD_RELEASEIPI(r3), r0
+		l.sw THRD_IPIDATA + IPIDATA_RELEASEIPI(r3), r0
 
 		/* Unlock ipi_lock. */
 		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
@@ -332,10 +332,12 @@
 		/* SMP. */
 		LOAD_SYMBOL_2_GPR(r3, cpus)
 		l.mfspr r4, r0, SPR_COREID
-		l.slli  r4, r4, PERCORE_SIZE_LOG2
-		l.add   r3, r3, r4
+		l.slli  r5, r4, PERCORE_SIZE_LOG2
+		l.add   r5, r3, r5
+		l.lwz   r3, PERCORE_CURRTHREAD(r5)
+		l.addi  r3, r3, THRD_IPIDATA + IPIDATA_HANDLER
 		LOAD_SYMBOL_2_GPR(r4, \handler)
-		l.sw    PERCORE_HANDLER(r3), r4
+		l.sw 0(r3), r4
 
 		l.ori r3, r0, 0
 		l.ori r4, r0, IPI_EXCEPTION
@@ -350,14 +352,14 @@
 		l.slli  r5, r4, PERCORE_SIZE_LOG2
 		l.add   r5, r3, r5
 		l.lwz   r3, PERCORE_CURRTHREAD(r5)
-		l.lwz   r5, THRD_RELEASEIPI(r3)
+		l.lwz   r5, THRD_IPIDATA + IPIDATA_RELEASEIPI(r3)
 		
 		l.sfeq r4, r5
 		l.bnf  7b
 		l.nop
 
 		/* Reset release_ipi. */
-		l.sw THRD_RELEASEIPI(r3), r0
+		l.sw THRD_IPIDATA + IPIDATA_RELEASEIPI(r3), r0
 
 		/* Unlock ipi_lock. */
 		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
@@ -795,10 +797,11 @@ _do_page_pfault:
 	 */
 	LOAD_SYMBOL_2_GPR(r3, cpus)
 	LOAD_SYMBOL_2_GPR(r4, curr_core)
-	l.lwz  r4, 0(r4)
-	l.slli r4, r4, PERCORE_SIZE_LOG2
-	l.add  r4, r3, r4
-	l.lwz  r3, PERCORE_HANDLER(r4)
+	l.lwz   r4, 0(r4)
+	l.slli  r4, r4, PERCORE_SIZE_LOG2
+	l.add   r4, r3, r4
+	l.lwz   r3, PERCORE_CURRTHREAD(r4)
+	l.lwz   r3, THRD_IPIDATA + IPIDATA_HANDLER(r3)
 
 	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 	l.sub r3, r3, r5
@@ -852,10 +855,11 @@ _do_page_vfault:
 	 */
 	LOAD_SYMBOL_2_GPR(r3, cpus)
 	LOAD_SYMBOL_2_GPR(r4, curr_core)
-	l.lwz  r4, 0(r4)
-	l.slli r4, r4, PERCORE_SIZE_LOG2
-	l.add  r4, r3, r4
-	l.lwz  r3, PERCORE_HANDLER(r4)
+	l.lwz   r4, 0(r4)
+	l.slli  r4, r4, PERCORE_SIZE_LOG2
+	l.add   r4, r3, r4
+	l.lwz   r3, PERCORE_CURRTHREAD(r4)
+	l.lwz   r3, THRD_IPIDATA + IPIDATA_HANDLER(r3)
 
 	LOAD_SYMBOL_2_GPR(r5, KBASE_VIRT)
 	l.sub r3, r3, r5
