@@ -52,13 +52,23 @@ PUBLIC unsigned irq_lvl(unsigned irq)
 /*
  * Interrupt masks table.
  */
-PRIVATE const uint32_t int_masks[6] = {
-	0x00000000, /* Level 0: all hardware interrupts disabled.        */
-	0x00000001, /* Level 1: clock interrupts enabled.                */
-	0x00000002, /* Level 2: clock, ompic interrupts enabled.         */
-	0x00000006, /* Level 3: clock, ompic, serial interrupts enabled. */
-	0x00000006, /* Level 4-5: 'all' hardware interrupts enabled.     */
-	0x00000006
+PRIVATE const uint32_t int_masks[2][6] = {
+
+	/* Master masks. */
+	{0x00000000, /* Level 0: all hardware interrupts disabled.        */
+	 0x00000001, /* Level 1: clock interrupts enabled.                */
+	 0x00000002, /* Level 2: clock, ompic interrupts enabled.         */
+	 0x00000006, /* Level 3: clock, ompic, serial interrupts enabled. */
+	 0x00000006, /* Level 4-5: 'all' hardware interrupts enabled.     */
+	 0x00000006},
+
+	/* Slave masks. */
+	{0x00000000, /* Level 0-1: all hardware interrupts disabled.  */
+	 0x00000000, /* Levek 1.                                      */
+	 0x00000002, /* Level 2-5: ompic interrupts enabled.          */
+	 0x00000002, /* Level 3.                                      */
+	 0x00000002, /* Level 4.                                      */
+	 0x00000002} /* Level 5.                                      */
 };
 
 /**
@@ -70,6 +80,7 @@ PUBLIC unsigned processor_raise(unsigned irq)
 {
 	unsigned old_irqlvl;
 	unsigned irqlvl;
+	unsigned intmasks_idx;
 	
 	irqlvl = irq_lvl(irq);
 	old_irqlvl = cpus[smp_get_coreid()].curr_thread->irqlvl;
@@ -82,7 +93,10 @@ PUBLIC unsigned processor_raise(unsigned irq)
 	pic_ack(irq);
 
 	/* Mask other interrupts. */
-	pic_mask(int_masks[cpus[smp_get_coreid()].curr_thread->irqlvl = irqlvl]);
+	intmasks_idx = (smp_get_coreid() == CORE_MASTER) ? 0 : 1;
+	
+	pic_mask(int_masks[intmasks_idx]
+		[cpus[smp_get_coreid()].curr_thread->irqlvl = irqlvl]);
 
 	return (old_irqlvl);
 }
@@ -94,10 +108,12 @@ PUBLIC unsigned processor_raise(unsigned irq)
  */
 PUBLIC void processor_drop(unsigned irqlvl)
 {
+	unsigned intmasks_idx;
 	cpus[smp_get_coreid()].curr_thread->irqlvl = irqlvl;
 
 	/* Previous state. */
-	pic_mask(int_masks[irqlvl]);
+	intmasks_idx = (smp_get_coreid() == CORE_MASTER) ? 0 : 1;
+	pic_mask(int_masks[intmasks_idx][irqlvl]);
 }
 
 /**
@@ -107,9 +123,12 @@ PUBLIC void processor_drop(unsigned irqlvl)
  */
 PUBLIC void processor_reload(void)
 {
+	unsigned intmasks_idx;
+
 	if (cpus[smp_get_coreid()].curr_thread->irqlvl > INT_LVL_0)
 		mtspr(SPR_SR, mfspr(SPR_SR) | SPR_SR_TEE);
 
 	/* Previous state. */
-	pic_mask(int_masks[cpus[smp_get_coreid()].curr_thread->irqlvl]);
+	intmasks_idx = (smp_get_coreid() == CORE_MASTER) ? 0 : 1;
+	pic_mask(int_masks[intmasks_idx][cpus[smp_get_coreid()].curr_thread->irqlvl]);
 }
