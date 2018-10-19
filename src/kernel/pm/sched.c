@@ -80,7 +80,7 @@ PUBLIC void sched_blocking_thread(struct process *next)
 
 	while (next_thrd != NULL)
 	{
-		if (next_thrd->state != THRD_READY || !(next_thrd->flags & THRD_SYS))
+		if (next_thrd->state != THRD_READY || !(next_thrd->flags & (1 << THRD_SYS)))
 		{
 			next_thrd = next_thrd->next;
 			i++;
@@ -319,7 +319,7 @@ PUBLIC void yield_smp(void)
 	next_thrd = curr_proc->threads;
 	while (next_thrd != NULL)
 	{
-		if (next_thrd->ipi.waiting_ipi && next_thrd->state != THRD_WAITING)
+		if (next_thrd->ipi.waiting_ipi && next_thrd->state == THRD_RUNNING)
 			ompic_handle_ipi();
 
 		next_thrd = next_thrd->next;
@@ -403,7 +403,7 @@ PUBLIC void yield_smp(void)
 	/* Re-schedule non-blocking threads. */
 	while (next_thrd != NULL)
 	{
-		if (next_thrd->state != THRD_READY || next_thrd->flags & THRD_SYS)
+		if (next_thrd->state != THRD_READY || next_thrd->flags & (1 << THRD_SYS))
 		{
 			next_thrd = next_thrd->next;
 			i++;

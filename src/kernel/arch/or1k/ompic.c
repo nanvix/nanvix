@@ -105,7 +105,7 @@ PUBLIC void ompic_handle_ipi(void)
 		next_thrd = curr_proc->threads;
 		while (next_thrd != NULL)
 		{
-			if (next_thrd->ipi.waiting_ipi && next_thrd->state != THRD_WAITING)
+			if (next_thrd->ipi.waiting_ipi && next_thrd->state == THRD_RUNNING)
 			{
 				ipi_type = next_thrd->ipi.ipi_message;
 				ipi_sender = next_thrd->ipi.coreid;
