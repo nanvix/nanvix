@@ -246,8 +246,28 @@ switch_to:
 
 	l.lwz   r13, PERCORE_CURRTHREAD(r15)
 	l.sfeqi r13, 0
+	l.bf 2f
+	l.nop
+
+	/*
+	 * If smp enabled and has a pending syscall, we should
+	 * preserve the old context and not overwrite.
+	 */
+	LOAD_SYMBOL_2_GPR(r14, smp_enabled)
+	l.lwz   r14, 0(r14)
+	l.sfeqi r14, 0
 	l.bf 1f
 	l.nop
+
+	l.lwz   r14, THRD_FLAGS(r4)
+	l.andi  r14, r14, (1 << THRD_SYS)
+	l.sfeqi r14, 0
+	l.bf 1f
+	l.nop	
+
+	l.j 2f
+	l.nop
+1:
 	l.lwz r15, THRD_KESP(r13)
 
 	/* Preserve registers state. */
@@ -268,9 +288,21 @@ switch_to:
 	l.sw 52(r1), r28
 	l.sw 56(r1), r30
 	l.sw THRD_KESP(r13), r1
-1:
 
+2:
 	/* Switch thread */
+	LOAD_SYMBOL_2_GPR(r14, smp_enabled)
+	l.lwz   r14, 0(r14)
+	l.sfeqi r14, 0
+	l.bf 3f
+	l.nop
+
+	l.mfspr r15, r0,  SPR_COREID
+	l.sfeqi r15, CORE_MASTER
+	l.bf 4f
+	l.nop
+
+3:
 	LOAD_SYMBOL_2_GPR(r14, cpus)
 	l.mfspr r15, r0,  SPR_COREID
 	l.slli  r15, r15, PERCORE_SIZE_LOG2
@@ -278,6 +310,7 @@ switch_to:
 	l.addi  r14, r15, PERCORE_CURRTHREAD
 	l.sw 0(r14), r4
 
+4:
 	/**
 	 * Load process context
 	 *
@@ -294,27 +327,35 @@ switch_to:
 	LOAD_SYMBOL_2_GPR(r14, smp_enabled)
 	l.lwz   r14, 0(r14)
 	l.sfeqi r14, 0
-	l.bf 2f
-	l.nop
-
-	l.mfspr r14, r0, SPR_COREID
-	l.sfnei r14, CORE_MASTER
-	l.bf 2f
+	l.bf 6f
 	l.nop
 
 	l.lwz   r14, THRD_FLAGS(r4)
 	l.andi  r14, r14, (1 << THRD_SYS)
 	l.sfeqi r14, 0
-	l.bf 2f
+	l.bf 6f
 	l.nop
 
+	l.mfspr r14, r0, SPR_COREID
+	l.sfnei r14, CORE_MASTER
+	l.bf 5f
+	l.nop
+
+	/* Master context. */
 	l.lwz r1, THRD_IPISTACK(r4)
 	LOAD_SYMBOL_2_GPR(r14, leave.out)
 	l.jr r14
 	l.nop
-2:
+5:
+	/* Slave context. */
 	l.lwz r1, THRD_KESP(r4)
-3:
+	LOAD_SYMBOL_2_GPR(r14, leave.out)
+	l.jr r14
+	l.nop	
+
+6:
+	l.lwz r1, THRD_KESP(r4)
+7:
 	l.jal tlb_flush
 	l.nop
 
