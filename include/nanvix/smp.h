@@ -46,6 +46,7 @@
 	#define PERCORE_CURRPROC    4
 	#define PERCORE_NEXTTHREAD  8
 	#define PERCORE_STATE      12
+	#define PERCORE_IPIMESSAGE 16
 	#define PERCORE_SIZE_LOG2   5
 
 	/** 
@@ -66,7 +67,8 @@
 		struct process *curr_proc;
 		struct thread *next_thread;
 		unsigned state;
-		unsigned dummy[4];
+		unsigned ipi_message;
+		unsigned dummy[3];
 	};
 
 	/* ipi_data structure. */

@@ -67,6 +67,10 @@ PUBLIC void ompic_send_ipi(uint32_t dstcore, uint16_t data)
 		cpus[cpu].curr_thread->ipi.ipi_message = data;
 	}
 
+	/* If master, saves the IPI state in the target per core structure. */
+	else
+		cpus[dstcore].ipi_message = data;
+
 	/* Send IPI. */
 	ompic_writereg(OMPIC_CTRL(smp_get_coreid()), OMPIC_CTRL_IRQ_GEN |
 		OMPIC_CTRL_DST(dstcore)| OMPIC_DATA(data));
@@ -91,9 +95,12 @@ PUBLIC void ompic_handle_ipi(void)
 	/* Get the IPI message. */
 	if (cpu != CORE_MASTER)
 	{
-		ipi_message =  ompic_readreg(OMPIC_STAT(cpu));
-		ipi_type    = OMPIC_DATA(ipi_message);
-		ipi_sender  = OMPIC_STAT_SRC(ipi_message);
+		ipi_type = cpus[cpu].ipi_message;
+
+		if (ipi_type & IPI_SCHEDULE)
+			ipi_type = IPI_SCHEDULE;
+		else if (ipi_type & IPI_IDLE)
+			ipi_type = IPI_IDLE;
 	}
 	else
 	{
@@ -187,6 +194,7 @@ PUBLIC void ompic_handle_ipi(void)
 		if (ipi_type == IPI_SCHEDULE)
 		{
 			cpus[cpu].state = CORE_RUNNING;
+			cpus[cpu].ipi_message &= ~IPI_SCHEDULE;
 			switch_to(cpus[cpu].curr_proc, cpus[cpu].next_thread);
 		}
 
@@ -197,6 +205,7 @@ PUBLIC void ompic_handle_ipi(void)
 			idle = (voidfunction_t)((addr_t)slave_idle + KBASE_VIRT);
 			cpus[cpu].curr_thread->state = THRD_READY;
 			cpus[cpu].state = CORE_READY;
+			cpus[cpu].ipi_message &= ~IPI_IDLE;
 			spin_unlock(&ipi_lock);
 			
 			/**

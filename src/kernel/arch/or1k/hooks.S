@@ -272,7 +272,7 @@
 		/* Check if syscall. */
 		l.ori   r3, r0, \number
 		l.sfeqi r3, 9
-		l.bnf 6f
+		l.bnf 7f
 		l.nop
 
 		/* Syscall. */
@@ -280,7 +280,7 @@
 		/* Let us check if SMP. */
 		l.mfspr r3, r0, SPR_COREID
 		l.sfeqi r3, 0
-		l.bf 5f
+		l.bf 6f
 		l.nop
 
 		/* SMP. */
@@ -292,6 +292,20 @@
 
 		/* Waits for master. */
 	4:
+		LOAD_SYMBOL_2_GPR(r3, cpus)
+		l.mfspr r4, r0, SPR_COREID
+		l.slli  r5, r4, PERCORE_SIZE_LOG2
+		l.add   r5, r3, r5
+		l.lwz   r3, PERCORE_IPIMESSAGE(r5)
+		l.sfeqi r3, 0
+		l.bf 5f
+		l.nop
+
+		LOAD_SYMBOL_2_GPR(r5, ompic_handle_ipi)
+		l.jalr r5
+		l.nop
+
+	5:
 		LOAD_SYMBOL_2_GPR(r3, cpus)
 		l.mfspr r4, r0, SPR_COREID
 		l.slli  r5, r4, PERCORE_SIZE_LOG2
@@ -312,21 +326,21 @@
 		l.jalr r5
 		l.nop
 
-		l.j 9f
+		l.j 11f
 		l.nop
 
-	5:
+	6:
 		/* UP. */
 		l.j syscall
 		l.nop
 
-	6:
+	7:
 		/* Not syscall, lets do exception. */
 
 		/* Let us check if SMP. */
 		l.mfspr r3, r0, SPR_COREID
 		l.sfeqi r3, 0
-		l.bf 8f
+		l.bf 10f
 		l.nop
 
 		/* SMP. */
@@ -346,7 +360,21 @@
 		l.nop
 
 		/* Waits for master. */
-	7:
+	8:
+		LOAD_SYMBOL_2_GPR(r3, cpus)
+		l.mfspr r4, r0, SPR_COREID
+		l.slli  r5, r4, PERCORE_SIZE_LOG2
+		l.add   r5, r3, r5
+		l.lwz   r3, PERCORE_IPIMESSAGE(r5)
+		l.sfeqi r3, 0
+		l.bf 9f
+		l.nop
+
+		LOAD_SYMBOL_2_GPR(r5, ompic_handle_ipi)
+		l.jalr r5
+		l.nop
+
+	9:
 		LOAD_SYMBOL_2_GPR(r3, cpus)
 		l.mfspr r4, r0, SPR_COREID
 		l.slli  r5, r4, PERCORE_SIZE_LOG2
@@ -355,7 +383,7 @@
 		l.lwz   r5, THRD_IPIDATA + IPIDATA_RELEASEIPI(r3)
 		
 		l.sfeq r4, r5
-		l.bnf  7b
+		l.bnf  8b
 		l.nop
 
 		/* Reset release_ipi. */
@@ -367,16 +395,16 @@
 		l.jalr r5
 		l.nop
 
-		l.j 9f
+		l.j 11f
 		l.nop
 
-	8:
+	10:
 		l.or   r4, r1, r0
 		LOAD_SYMBOL_2_GPR(r5, \handler)
 		l.jalr r5
 		l.nop
 
-	9:
+	11:
 		/* Checks if TLB flush is needed. */
 		LOAD_SYMBOL_2_GPR(r3, cpus)
 		l.mfspr r4, r0, SPR_COREID
@@ -386,7 +414,7 @@
 		l.lwz   r4, THRD_TLBFLUSH(r3)
 
 		l.sfeq r4, r0
-		l.bf 10f
+		l.bf 12f
 		l.nop
 		LOAD_SYMBOL_2_GPR(r5, tlb_flush)
 		l.jalr r5
@@ -395,14 +423,14 @@
 		/* Reset 'tlb_flush' field. */
 		l.sw THRD_TLBFLUSH(r3), r0
 
-	10:
+	12:
 		/* Enter critical region. */
 		LOAD_SYMBOL_2_GPR(r5, disable_interrupts)
 		l.jalr r5
 		l.nop
 
 		/* Return from exception. */
-	11:
+	12:
 		l.j leave
 		l.nop
 .endm
