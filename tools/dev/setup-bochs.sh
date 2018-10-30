@@ -32,8 +32,23 @@ cd $WORKDIR
 export CFLAGS="-pipe -O3"
 export CXXFLAGS="-pipe -O3"
 
+
 # Get required packages.
-apt-get install -y libncurses5-dev
+DIST=$(uname -rv)
+
+case ${DIST,,} in
+    *"ubuntu"*|*"debian"*)
+        apt-get install -y libncurses5-dev
+        ;;
+    *"arch"*)
+        pacman -S ncurses --needed --noconfirm
+        ;;
+    *)
+        echo "Warning: your distro is not officially supported or tested by us"
+esac
+
+
+# Get required packages.
 
 # Get bochs.
 wget --no-check-certificate "http://sourceforge.net/projects/bochs/files/bochs/2.6.9/bochs-2.6.9.tar.gz"

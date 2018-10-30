@@ -36,7 +36,18 @@ wget --no-check-certificate "http://ftp.gnu.org/gnu/binutils/$BINUTILS_TAR"
 wget --no-check-certificate "http://ftp.gnu.org/gnu/gcc/$GCC_PACKAGE/$GCC_TAR"
 
 # Get required packages.
-apt-get install -y g++ doxygen genisoimage gdb xz-utils make
+DIST=$(uname -rv)
+
+case ${DIST,,} in
+    *"ubuntu"*|*"debian"*)
+        apt-get install -y g++ doxygen genisoimage gdb xz-utils make
+        ;;
+    *"arch"*)
+        pacman -S gcc doxygen cdrtools gdb xz make --needed --noconfirm
+        ;;
+    *)
+        echo "Warning: your distro is not officially supported or tested by us"
+esac
 
 # Export variables.
 export PREFIX=/usr/local/cross
