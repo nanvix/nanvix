@@ -203,7 +203,6 @@ PUBLIC void ompic_handle_ipi(void)
 		{
 			voidfunction_t idle;
 			idle = (voidfunction_t)((addr_t)slave_idle + KBASE_VIRT);
-			cpus[cpu].curr_thread->state = THRD_READY;
 			cpus[cpu].state = CORE_READY;
 			cpus[cpu].ipi_message &= ~IPI_IDLE;
 			spin_unlock(&ipi_lock);
