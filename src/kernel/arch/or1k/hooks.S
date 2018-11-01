@@ -737,6 +737,9 @@ syscall:
 	/* Get intstack. */
 	l.lwz  r13, THRD_INTSTACK(r3)
 
+	/* Save intstack into sys intstack pointer. */
+	l.sw THRD_SYSSTACK(r3), r13
+
 	/* Get system call parameters. */
 	l.lwz r3,  GPR3(r13)
 	l.lwz r4,  GPR4(r13)
@@ -774,7 +777,7 @@ syscall:
 		l.slli r15, r14, PERCORE_SIZE_LOG2
 		l.add  r15, r13, r15
 		l.lwz  r13, PERCORE_CURRTHREAD(r15)
-		l.lwz  r13, THRD_INTSTACK(r13)
+		l.lwz  r13, THRD_SYSSTACK(r13)
 		
 		/* Copy return value to user stack. */
 		l.sw GPR11(r13), r11

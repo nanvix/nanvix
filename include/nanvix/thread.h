@@ -44,13 +44,14 @@
 	#define THRD_KSTACK       4 /**< Kernel stack pointer offset.   */
 	#define THRD_FLAGS        8 /**< Thread flags offset.           */
 	#define THRD_INTSTACK    12 /**< Interrupt Stack.               */
-	#define THRD_IPISTACK    16 /**< IPI Kernel stack.              */
-	#define THRD_IRQLVL      20 /**< IRQ Level offset.              */
-	#define THRD_INTLVL      24 /**< Interrupt level offset.        */
-	#define THRD_TLBFLUSH    28 /**< TLB flush indicator.           */
-	#define THRD_IPIDATA     32 /**< IPI data.                      */
-	#define THRD_FSS         64 /**< FPU Saved Status offset.       */
-	#define THRD_PMC        172 /**< Performance Counter Status.    */
+	#define THRD_SYSSTACK    16 /**< Intstack pointer for syscalls. */
+	#define THRD_IPISTACK    20 /**< IPI Kernel stack.              */
+	#define THRD_IRQLVL      24 /**< IRQ Level offset.              */
+	#define THRD_INTLVL      28 /**< Interrupt level offset.        */
+	#define THRD_TLBFLUSH    32 /**< TLB flush indicator.           */
+	#define THRD_IPIDATA     36 /**< IPI data.                      */
+	#define THRD_FSS         68 /**< FPU Saved Status offset.       */
+	#define THRD_PMC        176 /**< Performance Counter Status.    */
 	/**@}*/
 
 	/**
@@ -142,6 +143,7 @@
 		void *kstack;          /**< Kernel stack pointer.   */
 		unsigned flags;        /**< Thread flags.           */
 		struct intstack *ints; /**< Interrupt Stack.        */
+		struct intstack *sysc; /**< Int stack for syscalls. */
 		void *ipikstack;       /*<< IPI Kernel stack.       */
 		unsigned irqlvl;       /**< Current IRQ level.      */
 		dword_t intlvl;        /**< Interrupt level.        */
