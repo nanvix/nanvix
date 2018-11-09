@@ -368,9 +368,15 @@ PUBLIC void yield_smp(void)
 	next = INIT;
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 	{
-		/* Skip non-ready process. */
+		/* Skip non-ready processes. */
 		if (!process_is_ready(p))
 			continue;
+
+		if (!process_is_ready(next))
+		{
+			next = p;
+			continue;
+		}
 		
 		/*
 		 * Process with higher
