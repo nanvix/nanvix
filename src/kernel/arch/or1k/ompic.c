@@ -126,7 +126,7 @@ PUBLIC void ompic_handle_ipi(void)
 		 * attended by yield_smp() instead of do_hwint() and this interrupt is
 		 * duplicated and should be discarted.
 		 */
-		if ( !(next_thrd->ipi.waiting_ipi && next_thrd->state != THRD_WAITING) )
+		if ( !(next_thrd->ipi.waiting_ipi && next_thrd->state == THRD_RUNNING) )
 		{
 			kprintf(" == duplicated ==");
 			return;
