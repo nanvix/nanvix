@@ -157,7 +157,6 @@ PUBLIC void ompic_handle_ipi(void)
 			curr_core = CORE_MASTER;
 
 			/* Release slave. */
-			spin_lock(&ipi_lock);
 			cpus[ipi_sender].curr_thread->ipi.waiting_ipi = 0;
 			cpus[ipi_sender].curr_thread->ipi.release_ipi = 1;
 		}
@@ -178,7 +177,6 @@ PUBLIC void ompic_handle_ipi(void)
 			curr_core = CORE_MASTER;
 
 			/* Release slave. */
-			spin_lock(&ipi_lock);
 			cpus[ipi_sender].curr_thread->ipi.waiting_ipi = 0;
 			cpus[ipi_sender].curr_thread->ipi.release_ipi = 1;
 		}

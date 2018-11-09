@@ -320,12 +320,6 @@
 		/* Reset release_ipi. */
 		l.sw THRD_IPIDATA + IPIDATA_RELEASEIPI(r3), r0
 
-		/* Unlock ipi_lock. */
-		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
-		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
-		l.jalr r5
-		l.nop
-
 		l.j 11f
 		l.nop
 
@@ -388,12 +382,6 @@
 
 		/* Reset release_ipi. */
 		l.sw THRD_IPIDATA + IPIDATA_RELEASEIPI(r3), r0
-
-		/* Unlock ipi_lock. */
-		LOAD_SYMBOL_2_GPR(r3, ipi_lock)
-		LOAD_SYMBOL_2_GPR(r5, spin_unlock)
-		l.jalr r5
-		l.nop
 
 		l.j 11f
 		l.nop
