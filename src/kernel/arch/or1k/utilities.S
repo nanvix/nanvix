@@ -250,23 +250,15 @@ switch_to:
 	l.nop
 
 	/*
-	 * If smp enabled and has a pending syscall, we should
-	 * preserve the old context and not overwrite.
+	 * If smp enabled we should preserve the
+	 * old context and not overwrite.
 	 */
 	LOAD_SYMBOL_2_GPR(r14, smp_enabled)
 	l.lwz   r14, 0(r14)
-	l.sfeqi r14, 0
-	l.bf 1f
+	l.sfnei r14, 0
+	l.bf 2f
 	l.nop
 
-	l.lwz   r14, THRD_FLAGS(r4)
-	l.andi  r14, r14, (1 << THRD_SYS)
-	l.sfeqi r14, 0
-	l.bf 1f
-	l.nop	
-
-	l.j 2f
-	l.nop
 1:
 	l.lwz r15, THRD_KESP(r13)
 
@@ -336,6 +328,9 @@ switch_to:
 	l.bf 6f
 	l.nop
 
+	l.jal tlb_flush
+	l.nop
+
 	l.mfspr r14, r0, SPR_COREID
 	l.sfnei r14, CORE_MASTER
 	l.bf 5f
@@ -386,6 +381,12 @@ switch_to:
 	l.nop
 
 	/* Restore stack. */
+	LOAD_SYMBOL_2_GPR(r14, smp_enabled)
+	l.lwz   r14, 0(r14)
+	l.sfnei r14, 0
+	l.bf 8f
+	l.nop
+
 	l.lwz r30, 56(r1)
 	l.lwz r28, 52(r1)
 	l.lwz r26, 48(r1)
@@ -403,11 +404,10 @@ switch_to:
 	l.lwz r29, 0(r1)
 	l.ori r29, r29, ENABLE_MMU
 	l.mtspr r0, r29, SPR_SR
-
 	l.addi r1, r1, 60
-
 	l.sw THRD_KESP(r4), r15
 
+8:
 	/* Processor reload. */
 	l.addi r1, r1, -4
 	l.sw   0(r1), r9
