@@ -94,7 +94,6 @@ PUBLIC void sched_blocking_thread(struct process *next)
 		next_thrd->ipi.exception_handler = 0;
 		
 		cpus[i].curr_proc = next;
-		cpus[i].curr_thread = next_thrd;
 		cpus[i].next_thread = next_thrd;
 		cpus[i].ipi_message = 0;
 		

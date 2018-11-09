@@ -41,6 +41,36 @@ PUBLIC void thread_init(void)
 {
 	/* Current running thread. */
 	cpus[CORE_MASTER].curr_thread = THRD_IDLE;
+	
+	/* Allocate new idle threads for each cpu available. */
+	if (smp_enabled)
+	{
+		struct thread *prev = THRD_IDLE;
+		struct thread *curr = THRD_IDLE + 1;
+		
+		for (int i = 1; i < smp_get_numcores(); i++)
+		{
+			curr->state = THRD_READY;
+			curr->next = NULL;
+			curr->flags = 0 << THRD_NEW;
+			curr->intlvl = 1;
+			curr->kstack = cpus_kstack[i];
+			curr->tid = next_tid++;
+			curr->counter = PROC_QUANTUM;
+			curr->next_thrd = NULL;
+			curr->chain = NULL;
+			curr->father = IDLE;
+			curr->irqlvl = INT_LVL_5;
+			curr->pmcs.enable_counters = 0;
+			curr->pregs.reg = NULL;
+			
+			cpus[i].curr_thread = curr;
+
+			prev->next = curr;
+			prev = curr;
+			curr++;
+		}
+	}
 }
 
 /**
