@@ -85,6 +85,7 @@ PUBLIC void ompic_handle_ipi(void)
 	uint32_t ipi_message;
 	uint16_t ipi_type, ipi_sender;
 	struct thread *next_thrd;
+	struct thread *curr_thread;
 
 	/* Current core. */
 	cpu = smp_get_coreid();
@@ -136,6 +137,9 @@ PUBLIC void ompic_handle_ipi(void)
 	/* Checks the core type. */
 	if (cpu == CORE_MASTER) 
 	{
+		/* Current thread. */
+		curr_thread = cpus[ipi_sender].next_thread;
+
 		/* Syscalls. */
 		if (ipi_type == IPI_SYSCALL)
 		{
@@ -157,8 +161,9 @@ PUBLIC void ompic_handle_ipi(void)
 			curr_core = CORE_MASTER;
 
 			/* Release slave. */
-			cpus[ipi_sender].curr_thread->ipi.waiting_ipi = 0;
-			cpus[ipi_sender].curr_thread->ipi.release_ipi = 1;
+			curr_thread = cpus[ipi_sender].next_thread;
+			curr_thread->ipi.waiting_ipi = 0;
+			curr_thread->ipi.release_ipi = 1;
 		}
 
 		/* Exceptions. */
@@ -169,16 +174,17 @@ PUBLIC void ompic_handle_ipi(void)
 			curr_core = ipi_sender;
 			
 			/* Do exception. */
-			exception = (voidfunction_t) cpus[curr_core].curr_thread->ipi.exception_handler;
+			exception = (voidfunction_t) curr_thread->ipi.exception_handler;
 			exception();
-			cpus[curr_core].curr_thread->ipi.exception_handler = 0;
+			curr_thread = cpus[curr_core].next_thread;
+			curr_thread->ipi.exception_handler = 0;
 			
 			ipi_sender = curr_core;
 			curr_core = CORE_MASTER;
 
 			/* Release slave. */
-			cpus[ipi_sender].curr_thread->ipi.waiting_ipi = 0;
-			cpus[ipi_sender].curr_thread->ipi.release_ipi = 1;
+			curr_thread->ipi.waiting_ipi = 0;
+			curr_thread->ipi.release_ipi = 1;
 		}
 
 		/* Re-schedule blocking threads, if exist. */
