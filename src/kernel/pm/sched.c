@@ -287,6 +287,7 @@ PUBLIC void yield_up(void)
 	
 	/* Switch proceses. */
 	curr_proc = next;
+	cpus[CORE_MASTER].next_thread = next_thrd;
 	switch_to(next, next_thrd);
 }
 

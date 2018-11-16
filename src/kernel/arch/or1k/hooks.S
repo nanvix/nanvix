@@ -764,7 +764,7 @@ syscall:
 		l.lwz  r14, 0(r14)
 		l.slli r15, r14, PERCORE_SIZE_LOG2
 		l.add  r15, r13, r15
-		l.lwz  r13, PERCORE_CURRTHREAD(r15)
+		l.lwz  r13, PERCORE_NEXTTHREAD(r15)
 		l.lwz  r13, THRD_SYSSTACK(r13)
 		
 		/* Copy return value to user stack. */
