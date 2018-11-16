@@ -343,6 +343,17 @@ switch_to:
 	l.nop
 5:
 	/* Slave context. */
+
+	/*
+	 * Since THRD_SYS is set, lets reset as earlier
+	 * as possible here.
+	 */
+	l.lwz  r14, THRD_FLAGS(r4)
+	l.ori  r15, r0,  (1 << THRD_SYS)
+	l.xori r15, r15, -1
+	l.and  r14, r14, r15
+	l.sw   THRD_FLAGS(r4), r14
+
 	l.lwz r1, THRD_KESP(r4)
 	LOAD_SYMBOL_2_GPR(r14, leave.out)
 	l.jr r14
