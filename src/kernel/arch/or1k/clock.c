@@ -112,7 +112,7 @@ PUBLIC void clock_init(unsigned freq)
 	set_hwint(INT_CLOCK, &do_clock);
 
 	/* Clock rate. */
-	rate = (CPU_CLOCK << 1)/freq;
+	rate = (CPU_CLOCK << 2)/freq;
 
 	/* Ensures that the clock is disabled. */
 	mtspr(SPR_TTCR, 0);

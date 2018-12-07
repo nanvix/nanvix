@@ -101,10 +101,6 @@ PUBLIC void do_hwint(unsigned irq)
 	}
 
 	old_irqlvl = processor_raise(irq);
-
-	if (irq != INT_COM1)
-		enable_interrupts();
-	
 	hwint_handlers[irq]();
 	disable_interrupts();
 
