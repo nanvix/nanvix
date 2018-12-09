@@ -48,7 +48,7 @@ PUBLIC void thread_init(void)
 		struct thread *prev = THRD_IDLE;
 		struct thread *curr = THRD_IDLE + 1;
 		
-		for (int i = 1; i < smp_get_numcores(); i++)
+		for (unsigned i = 1; i < smp_get_numcores(); i++)
 		{
 			curr->state = THRD_READY;
 			curr->next = NULL;

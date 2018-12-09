@@ -82,7 +82,6 @@ PUBLIC void ompic_send_ipi(uint32_t dstcore, uint16_t data)
 PUBLIC void ompic_handle_ipi(void)
 {
 	unsigned cpu;
-	uint32_t ipi_message;
 	uint16_t ipi_type, ipi_sender;
 	struct thread *next_thrd;
 	struct thread *curr_thread;
