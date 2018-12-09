@@ -38,6 +38,33 @@ PUBLIC unsigned release_cpu = -1;
  */
 PUBLIC spinlock_t boot_lock;
 
+/**
+ * @brief Individual structure per core.
+ */
+PUBLIC struct per_core cpus[NR_CPUS];
+
+/**
+ * @brief CPUS kernel stack.
+ */
+PUBLIC char cpus_kstack[NR_CPUS][PAGE_SIZE];
+
+/**
+ * @brief IPI-lock, spin-lock that synchronizes the release
+ * IPI.
+ */
+PUBLIC spinlock_t ipi_lock;
+
+/**
+ * Current core being serviced by master core.
+ */
+PUBLIC unsigned curr_core = 0;
+
+/**
+ * @brief Indicates that the core master is serving remaining 
+ * IPIs at the moment.
+ */
+PUBLIC unsigned serving_ipis = 0;
+
 /*
  * @brief Gets the core number of the current processor.
  * @return Core number of the current processor.
@@ -61,4 +88,6 @@ PUBLIC unsigned smp_get_numcores(void)
  */
 PUBLIC void smp_init(void)
 {
+	/* Enable single-core yield. */
+	yield = yield_up;
 }

@@ -40,7 +40,7 @@ PRIVATE void do_clock()
 {
 	ticks++;
 	
-	if (KERNEL_WAS_RUNNING(curr_proc))
+	if (KERNEL_WAS_RUNNING(cpus[curr_core].curr_thread))
 	{
 		curr_proc->ktime++;
 		return;

@@ -31,12 +31,18 @@
 .globl idt_flush
 .globl tss_flush
 .globl tlb_flush
+.globl setup_interrupts
 .globl enable_interrupts
 .globl disable_interrupts
 .globl halt
 .globl physcpy
 .globl switch_to
 .globl user_mode
+.globl forge_stack
+.globl save_ipi_context
+.globl spin_init
+.globl spin_lock
+.globl spin_unlock
 .globl fpu_init
 .globl pmc_init
 .globl read_pmc
@@ -103,6 +109,17 @@ idt_flush:
 tlb_flush:
 	movl %cr3, %eax
 	movl %eax, %cr3
+	ret
+
+/*----------------------------------------------------------------------------*
+ *                            setup_interrupts()                              *
+ *----------------------------------------------------------------------------*/
+ 
+/*
+ * Enables and unmask all hardware interrupts.
+ */
+setup_interrupts:
+	nop
 	ret
 
 /*----------------------------------------------------------------------------*
@@ -209,7 +226,8 @@ switch_to:
 	movl 8(%esp), %edx
 
 	/* Save process context. */
-	movl curr_thread, %eax
+	lea  cpus, %eax
+	movl PERCORE_CURRTHREAD(%eax), %eax
 	pushfl
 	pushl %ebx
 	pushl %esi
@@ -219,9 +237,9 @@ switch_to:
 	movl %esp, THRD_KESP(%eax)
 	fnsave THRD_FSS(%eax)
 	
-	/* Switch processes and threads. */
-	movl %ecx, curr_proc
-	movl %edx, curr_thread
+	/* Switch threads. */
+	lea  cpus, %eax
+	movl %edx, PERCORE_CURRTHREAD(%eax)
 
 	/* Load process address space. */
 	movl PROC_CR3(%ecx), %eax
@@ -240,8 +258,13 @@ switch_to:
 	pop %edx
 	pop %ecx
 	
+	/* New process?. */
 	btrl $PROC_NEW, PROC_FLAGS(%ecx)
 	jc fork_return
+	
+	/* New thread?. */
+	btrl $THRD_NEW, THRD_FLAGS(%edx)
+	jc pthread_create_return
 	
 	popl THRD_KESP(%edx)
 	
@@ -259,6 +282,19 @@ switch_to:
 fork_return:
 	movl $0, EAX(%esp)
 	jmp leave
+	
+/*
+ * Returns from pthread_create.
+ */
+pthread_create_return:
+	/* Decrement interrupt level. */
+	lea  cpus, %ebx
+	movl PERCORE_CURRTHREAD(%ebx), %ebx
+	decl THRD_INTLVL(%ebx)
+	
+	movl $0, EAX(%esp)
+	addl $4, %esp
+	jmp leave.out
 
 /*----------------------------------------------------------------------------*
  *                                 user_mode()                                *
@@ -275,24 +311,158 @@ user_mode:
 	cli
 	
 	/* Set interrupt level to "user level". */
-	movl curr_proc, %ebx
-    movl $0, PROC_INTLVL(%ebx)
+	lea  cpus, %eax
+	movl PERCORE_CURRTHREAD(%eax), %eax
+	movl $1, THRD_INTLVL(%eax)
 	
-	/* Load data segment selector. */
-	movw $USER_DS, %ax
-	movw %ax, %ds
-	movw %ax, %es
-	movw %ax, %fs
-	movw %ax, %gs
+	/* Reset flags. */
+	movl $0, THRD_FLAGS(%eax)
+
+	/* Retrieves the intstack. */
+	movl THRD_INTSTACK(%eax), %eax
 	
-	/* Build fake interrupt stack. */
-	pushl $USER_DS
-	pushl %edx
+	/* General Purpose registers. */
+	movl $0, EAX(%eax)
+	movl $0, EBX(%eax)
+	movl $0, ECX(%eax)
+	movl $0, EDX(%eax)
+	movl $0, ESI(%eax)
+	movl $0, EDI(%eax)
+	
+	/* Segments. */
+	movl $USER_CS, CS(%eax)
+	movl $USER_DS, DS(%eax)
+	movl $USER_DS, ES(%eax)
+	movl $USER_DS, FS(%eax)
+	movl $USER_DS, GS(%eax)
+	movl $USER_DS, SS(%eax)
+	
+	/* Stack. */
+	movl %edx, USERESP(%eax)
+	movl %edx, EBP(%eax)
+	
+	/* EFLAGS. */
 	pushfl
-	orl $0x200, (%esp)
-	pushl $USER_CS
-	pushl %ecx
-	iret
+	orl  $0x200, (%esp)
+	popl %edx
+	movl %edx, EFLAGS(%eax)
+	
+	/* EIP. */
+	movl %ecx, EIP(%eax)
+	
+	ret
+
+/*----------------------------------------------------------------------------*
+ *                                  forge_stack()                             *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Forge the expected stack for a new thread.
+ */
+forge_stack:
+	/* Preserve registers. */
+	pushl %ebx
+	pushl %esi
+	
+	/* Parameters. */
+	movl 12(%esp), %eax
+	movl 16(%esp), %ebx
+	movl 20(%esp), %ecx
+	movl 24(%esp), %edx
+	movl 28(%esp), %esi			
+	
+	/* Adjust kern_sp using kstack page */
+	addl $PAGE_SIZE,      %eax
+	subl $DWORD_SIZE,     %eax
+	subl $INT_FRAME_SIZE, %eax
+	pushl %eax /* kern_sp pointer will be returned */
+	
+	/* General Purpose registers. */
+	movl $0, EAX(%eax)
+	movl $0, EBX(%eax)
+	movl $0, ECX(%eax)
+	movl $0, EDX(%eax)
+	movl $0, ESI(%eax)
+	movl $0, EDI(%eax)
+	
+	/* Segments. */
+	movl $USER_CS, CS(%eax)	
+	movl $USER_DS, DS(%eax)
+	movl $USER_DS, ES(%eax)
+	movl $USER_DS, FS(%eax)
+	movl $USER_DS, GS(%eax)
+	movl $USER_DS, SS(%eax)
+	
+	/* Stack. */
+	subl $8,   %ecx
+	movl %ecx, USERESP(%eax)
+	movl %ecx, EBP(%eax)
+
+	/* start_thread parameters. */
+	movl %edx, 8(%ecx)
+	movl %ebx, 4(%ecx)
+	
+	/* EFLAGS. */
+	pushfl
+	orl   $0x200, (%esp)
+	popl  %edx
+	movl  %edx, EFLAGS(%eax)
+	
+	/* EIP. */
+	movl %esi, EIP(%eax)
+		
+	popl %eax
+	popl %esi
+	popl %ebx
+	ret
+	
+/*----------------------------------------------------------------------------*
+ *                              save_ipi_context()                            *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Saves the current context for the master core into the
+ * current thread IPI stack.
+ */
+save_ipi_context:
+	nop
+	ret
+	
+/*----------------------------------------------------------------------------*
+ *                                   spin_init                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Initializes the spin-lock with a given lock.
+ */
+spin_init:
+	nop
+	ret
+
+/*----------------------------------------------------------------------------*
+ *                                   spin_lock                                *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Spin-locks until the lock becomes 0, and so, locks again.
+ * lock = 0, unlocked
+ * lock = 1, locked
+ */
+spin_lock:
+	nop
+1:
+	ret
+
+/*----------------------------------------------------------------------------*
+ *                                  spin_unlock                               *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Unlocks the spin-lock.
+ */
+spin_unlock:
+	nop
+	ret
 
 /*----------------------------------------------------------------------------*
  *                                 fpu_init()                                 *
@@ -303,8 +473,8 @@ user_mode:
  */
 fpu_init:
 	fninit
-	movl curr_thread, %eax
-	fnsave  THRD_FSS(%eax)
+	lea threadtab, %eax
+	fnsave THRD_FSS(%eax)
 	ret
 
 /*----------------------------------------------------------------------------*

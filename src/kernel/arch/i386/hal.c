@@ -21,6 +21,7 @@
 #include <nanvix/const.h>
 #include <nanvix/hal.h>
 #include <nanvix/pm.h>
+#include <nanvix/smp.h>
 #include <stdint.h>
 
 /*============================================================================*
@@ -81,8 +82,8 @@ PUBLIC unsigned processor_raise(unsigned irq)
 {
 	unsigned old_irqlvl;
 	
-	old_irqlvl = curr_proc->irqlvl;
-	pic_mask(int_masks[curr_proc->irqlvl = irq_lvl(irq)]);
+	old_irqlvl = cpus[smp_get_coreid()].curr_thread->irqlvl;
+	pic_mask(int_masks[cpus[smp_get_coreid()].curr_thread->irqlvl = irq_lvl(irq)]);
 	
 	return (old_irqlvl);
 }
@@ -94,7 +95,7 @@ PUBLIC unsigned processor_raise(unsigned irq)
  */
 PUBLIC void processor_drop(unsigned irqlvl)
 {
-	pic_mask(int_masks[curr_proc->irqlvl = irqlvl]);
+	pic_mask(int_masks[cpus[smp_get_coreid()].curr_thread->irqlvl = irqlvl]);
 }
 
 /**
@@ -104,5 +105,5 @@ PUBLIC void processor_drop(unsigned irqlvl)
  */
 PUBLIC void processor_reload(void)
 {
-	pic_mask(int_masks[curr_proc->irqlvl]);
+	pic_mask(int_masks[cpus[smp_get_coreid()].curr_thread->irqlvl]);
 }

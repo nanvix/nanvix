@@ -65,6 +65,7 @@
 .globl hwint14
 .globl hwint15
 .globl leave
+.globl leave.out
 .globl do_hwint
 
 /*----------------------------------------------------------------------------*
@@ -101,18 +102,18 @@
 	movw $KERNEL_DS, %bx
 	movw %bx, %ds
 
-	movl curr_proc, %ebx
+	lea  cpus, %ebx
+	movl PERCORE_CURRTHREAD(%ebx), %ebx
 
-    /* Increment interrupt level. */
-    incl PROC_INTLVL(%ebx)
+	/* Increment interrupt level. */
+	incl THRD_INTLVL(%ebx)
     
-    /* Save interrupt stack. */
-    movl curr_thread, %ebx
-    pushl THRD_KESP(%ebx)
-    movl %esp, THRD_KESP(%ebx)
-
-    movl curr_proc, %ebx
+	/* Save interrupt stack. */
+	pushl THRD_KESP(%ebx)
+	movl %esp, THRD_KESP(%ebx)
     
+	/* Save intstack. */
+	movl %esp, THRD_INTSTACK(%ebx)
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -123,19 +124,21 @@
  * Leaves kernel.
  */
 leave:
-	movl curr_thread, %ebx
+	lea  cpus, %ebx
+	movl PERCORE_CURRTHREAD(%ebx), %ebx
 
 	/* Restore interrupt stack. */
-	popl THRD_KESP(%ebx)
-
-	movl curr_proc, %ebx
+	movl (%esp), %eax
+	movl %eax, THRD_KESP(%ebx)
+	movl %eax, THRD_INTSTACK(%ebx)
+	addl $4, %esp
 
 	/* Decrement interrupt level. */
-    decl PROC_INTLVL(%ebx)
-    jnz leave.out
+	decl THRD_INTLVL(%ebx)
+	jnz leave.out
 	
 	/* Check if we were handling a system call. */ 
-	btrl $PROC_SYS, PROC_FLAGS(%ebx)
+	btrl $THRD_SYS, THRD_FLAGS(%ebx)
 	jnc check_signals
 	
 	/*
@@ -143,7 +146,9 @@ leave:
 	 * So, let us be nice with other processes
 	 * and give them a chance to run.
 	 */
-	call yield
+	lea  yield,  %eax
+	movl (%eax), %eax
+	call *%eax
 
 	movl curr_proc, %ebx
 	
@@ -322,7 +327,7 @@ syscall:
 	enter
 	
 	/* Set 'handling system call' flag. */
-	btsl $PROC_SYS, PROC_FLAGS(%ebx)
+	btsl $THRD_SYS, THRD_FLAGS(%ebx)
 	
 	/* Leave critical region. */
 	sti
@@ -332,6 +337,7 @@ syscall:
 	movl EBX(%esp), %ebx
 	movl ECX(%esp), %ecx
 	movl EDX(%esp), %edx
+	movl ESI(%esp), %esi
 	movl EDI(%esp), %edi
 
 	/* Check for bad system call. */
@@ -349,11 +355,12 @@ syscall:
 
 		/* Do system call. */
 		pushl %edi
+		pushl %esi
 		pushl %edx
 		pushl %ecx
 		pushl %ebx
 		call *%eax
-		addl $16, %esp
+		addl $20, %esp
 	bad_syscall:
 
 	/* Copy return value to user stack. */

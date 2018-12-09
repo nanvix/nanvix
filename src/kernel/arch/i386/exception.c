@@ -21,6 +21,7 @@
 #include <nanvix/const.h>
 #include <nanvix/klib.h>
 #include <nanvix/mm.h>
+#include <nanvix/smp.h>
 #include <signal.h>
 
 /*
@@ -30,7 +31,7 @@
 PUBLIC void do_##name(int err, struct intstack s)                   \
 {                                                                   \
 	/* Die. */                                                      \
-	if (KERNEL_WAS_RUNNING(curr_proc))                              \
+	if (KERNEL_WAS_RUNNING(cpus[curr_core].curr_thread))            \
 	{                                                               \
 		kprintf("%s: %d", msg, err & 0xffff);                       \
 		dumpregs(&s);                                               \
@@ -108,7 +109,7 @@ PUBLIC void do_page_fault(addr_t addr, int err, int dummy0, int dummy1, struct i
 			return;
 	}
 	
-	if (KERNEL_WAS_RUNNING(curr_proc))
+	if (KERNEL_WAS_RUNNING(cpus[curr_core].curr_thread))
 	{
 		dumpregs(&s);
 		kpanic("kernel page fault %d at %x", err, addr);

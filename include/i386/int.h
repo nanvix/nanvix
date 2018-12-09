@@ -57,6 +57,9 @@
 	#define USERESP 60
 	#define SS      64
 
+	/* Stack frame size. */
+	#define INT_FRAME_SIZE 68
+
 #ifndef _ASM_FILE_
 
 	/*

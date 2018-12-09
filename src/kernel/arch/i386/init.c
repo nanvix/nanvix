@@ -108,9 +108,11 @@ PUBLIC void init(void)
 	{	
 		const char *argv[] = { "init", "/etc/inittab", NULL };
 		const char *envp[] = { "PATH=/bin:/sbin", "HOME=/", NULL };
-		execve("/sbin/init", argv, envp);
-
-		kprintf("failed to execute init");
-		_exit(-1);
+		
+		if (execve("/sbin/init", argv, envp))
+		{
+			kprintf("failed to execute init");
+			_exit(-1);	
+		}
 	}
 }
