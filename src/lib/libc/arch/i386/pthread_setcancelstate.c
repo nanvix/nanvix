@@ -1,6 +1,5 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -18,28 +17,10 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nanvix/syscall.h>
-#include <stdio.h>
-#include <pthread.h>
+#include <errno.h>
 
-/*
- * Creates a new thread.
- */
-int pthread_create(pthread_t *__pthread, _CONST pthread_attr_t *__attr,
-				   void *(*__start_routine)(void *), void *__arg)
+int pthread_setcancelstate (__attribute__((unused)) int __state,
+							__attribute__((unused)) int *__oldstate)
 {
-	int ret;
-	
-	__asm__ volatile (
-		"int $0x80"
-		: "=a" (ret)
-		: "0" (NR_pthread_create),
-		  "b" (__pthread),
-		  "c" (__attr),
-		  "d" (__start_routine),
-		  "S" (__arg),
-		  "D" (__start_thread)
-	);
-	
-	return (ret);
+	return (ENOSYS);
 }

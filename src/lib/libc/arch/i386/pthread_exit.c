@@ -1,6 +1,6 @@
 /*
- * Copyright(C) 2011-2017 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2017 Davidson Francis <davidsondfgl@gmail.com>
+ * Copyright(C) 2011-2018 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
+ *              2016-2018 Davidson Francis <davidsondfgl@gmail.com>
  *
  * This file is part of Nanvix.
  *
@@ -19,27 +19,18 @@
  */
 
 #include <nanvix/syscall.h>
-#include <stdio.h>
-#include <pthread.h>
 
 /*
- * Creates a new thread.
+ * Terminates a thread.
  */
-int pthread_create(pthread_t *__pthread, _CONST pthread_attr_t *__attr,
-				   void *(*__start_routine)(void *), void *__arg)
+PUBLIC void pthread_exit(void *retval)
 {
 	int ret;
-	
+
 	__asm__ volatile (
 		"int $0x80"
 		: "=a" (ret)
-		: "0" (NR_pthread_create),
-		  "b" (__pthread),
-		  "c" (__attr),
-		  "d" (__start_routine),
-		  "S" (__arg),
-		  "D" (__start_thread)
+		: "0" (NR_pthread_exit),
+		  "b" (retval)
 	);
-	
-	return (ret);
 }
