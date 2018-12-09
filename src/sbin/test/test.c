@@ -674,7 +674,7 @@ static void *thread_long_routine_test(void *arg)
 	((void)arg);
 
 	for (int i = 0; i < 32768; i++)
-		for (int j = 0; j < 32768; i++)
+		for (int j = 0; j < 32768; j++)
 			for (int k = 0; k < 32768; k++)
 				work_cpu();
 
