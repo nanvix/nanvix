@@ -1,6 +1,6 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
- *              2016-2016 Davidson Francis <davidsondfgl@gmail.com>
+ *				2016-2016 Davidson Francis <davidsondfgl@gmail.com>
  * 
  * This file is part of Nanvix.
  * 
@@ -35,13 +35,13 @@
 #include <pthread.h>
 
 /* Test flags. */
-#define VERBOSE  (1 << 10)
+#define VERBOSE	 (1 << 10)
 
 /* Test flags. */
 static unsigned flags = VERBOSE;
 
 /*============================================================================*
- *                             Synthetic Works                                *
+ *							   Synthetic Works								  *
  *============================================================================*/
 
 /**
@@ -71,10 +71,10 @@ static void work_cpu(void)
  */
 static void work_fpu(void)
 {
-	const int n = 16; /* Matrix size.    */
-	float a[16][16];  /* First operand.  */
+	const int n = 16; /* Matrix size.	 */
+	float a[16][16];  /* First operand.	 */
 	float b[16][16];  /* Second operand. */
-	float c[16][16];  /* Result.         */
+	float c[16][16];  /* Result.		 */
 	
 	/* Initialize matrices. */
 	for (int i = 0; i < n; i++)
@@ -103,16 +103,16 @@ static void work_fpu(void)
  */
 static void work_io(void)
 {
-	int fd;            /* File descriptor. */
-	char buffer[2048]; /* Buffer.          */
+	int fd;			   /* File descriptor. */
+	char buffer[2048]; /* Buffer.		   */
 	
-	/* Open hdd. */
-	fd = open("/dev/hdd", O_RDONLY);
+	/* Open ramdisk. */
+	fd = open("/dev/ramdisk", O_RDONLY);
 	if (fd < 0)
 		_exit(EXIT_FAILURE);
 	
 	/* Read data. */
-	for (size_t i = 0; i < MEMORY_SIZE; i += sizeof(buffer))
+	for (size_t i = 0; i < 256; i++)
 	{
 		if (read(fd, buffer, sizeof(buffer)) < 0)
 			_exit(EXIT_FAILURE);
@@ -123,7 +123,7 @@ static void work_io(void)
 }
 
 /*============================================================================*
- *                             Paging System Tests                            *
+ *							   Paging System Tests							  *
  *============================================================================*/
 
 /**
@@ -133,10 +133,10 @@ static void work_io(void)
  */
 static int demand_zero_test(void)
 {
-	const size_t size = PROC_SIZE_MAX/2; /* Buffer size.        */
-	char *buffer;                        /* Buffer.             */
-	struct tms timing;                   /* Timing information. */
-	clock_t t0, t1;                      /* Elapsed times.      */
+	const size_t size = PROC_SIZE_MAX/2; /* Buffer size.		*/
+	char *buffer;						 /* Buffer.				*/
+	struct tms timing;					 /* Timing information. */
+	clock_t t0, t1;						 /* Elapsed times.		*/
 
 	buffer = malloc(size);
 	assert(buffer != NULL);
@@ -178,9 +178,9 @@ static int foobar(int i)
  */
 static int stack_grow_test(void)
 {
-	struct tms timing;     /* Timing information. */
-	clock_t t0, t1;        /* Elapsed times.      */
-	const int size = 1024; /* Recursion size.     */
+	struct tms timing;	   /* Timing information. */
+	clock_t t0, t1;		   /* Elapsed times.	  */
+	const int size = 1024; /* Recursion size.	  */
 
 	t0 = times(&timing);
 	
@@ -196,23 +196,23 @@ static int stack_grow_test(void)
 }
 
 /*============================================================================*
- *                                  io_test                                   *
+ *									io_test									  *
  *============================================================================*/
 
 /**
  * @brief I/O testing module.
  * 
  * @details Reads sequentially the contents of the hard disk
-            to a in-memory buffer.
+ to a in-memory buffer.
  * 
  * @returns Zero if passed on test, and non-zero otherwise.
  */
 static int io_test(void)
 {
-	int fd;            /* File descriptor.    */
+	int fd;			   /* File descriptor.	  */
 	struct tms timing; /* Timing information. */
-	clock_t t0, t1;    /* Elapsed times.      */
-	char *buffer;      /* Buffer.             */
+	clock_t t0, t1;	   /* Elapsed times.	  */
+	char *buffer;	   /* Buffer.			  */
 	
 	/* Allocate buffer. */
 	buffer = malloc(MEMORY_SIZE);
@@ -244,7 +244,7 @@ static int io_test(void)
 }
 
 /*============================================================================*
- *                                sched_test                                  *
+ *								  sched_test								  *
  *============================================================================*/
 
 /**
@@ -280,7 +280,7 @@ static int sched_test0(void)
  * @brief Scheduling test 1.
  * 
  * @details Forces the priority inversion problem, to check how well the system
- *          performs on dynamic priorities.
+ *			performs on dynamic priorities.
  * 
  * @returns Zero if passed on test, and non-zero otherwise.
  */
@@ -324,15 +324,15 @@ static int sched_test1(void)
 static int sched_test2(void)
 {
 	pid_t pid[4];
-	
+
 	for (int i = 0; i < 4; i++)
 	{
 		pid[i] = fork();
-	
+		
 		/* Failed to fork(). */
 		if (pid[i] < 0)
 			return (-1);
-		
+	
 		/* Child process. */
 		else if (pid[i] == 0)
 		{
@@ -351,12 +351,12 @@ static int sched_test2(void)
 			}
 		}
 	}
-	
+
 	for (int i = 0; i < 4; i++)
 	{
 		if (i & 1)
 			wait(NULL);
-			
+		
 		else
 		{	
 			kill(pid[i], SIGCONT);
@@ -366,37 +366,76 @@ static int sched_test2(void)
 	
 	return (0);
 }
+
 /**
  * @brief Scheduling test 3.
  * 
  * @details Spawns several processes and stresses the scheduler.
  * 
  * @returns Zero if passed on test, and non-zero otherwise.
-*/
+ */
 static int sched_test3(void)
 {
 	pid_t child;
 	pid_t father;
-
+	
 	father = getpid();
-
+	
 	fork();
 	fork();
 	fork();
 	fork();
-
+		
 	/* Wait for children. */
 	while ((child = wait(NULL)) >= 0)
 		/* noop. */;
-
+	
 	/* Die. */
 	if (getpid() != father)
 		_exit(EXIT_SUCCESS);
-
+	
 	return (0);
 }
+
+/**
+ * @brief Scheduling test 4.
+ * 
+ * @details Spawns several processes and stresses the scheduler.
+ * 
+ * @returns Zero if passed on test, and non-zero otherwise.
+ */
+static int sched_test4(void)
+{
+	pid_t root = getpid();
+	
+	for (int i = 0; i < 16; i++)
+	{
+		pid_t pid = fork();
+
+		/* Failed to fork. */
+		if (pid < 0)
+			return -1;
+		
+		/* Parent process. */
+		else if (pid > 0)
+		{
+			fork();
+			nice(-i * NZERO);
+			break;
+		}
+	}
+
+	wait(NULL);
+	
+	work_cpu();
+	if (getpid() != root)
+		_exit(EXIT_SUCCESS);
+	
+	return (0);
+}
+
 /*============================================================================*
- *                             Semaphores Test                                *
+ *							   Semaphores Test								  *
  *============================================================================*/
 
 /**
@@ -431,14 +470,14 @@ static void producer(sem_t *sem, sem_t *empty, int n)
 	}
 }
 
-/*  
+/*	
  * @brief Producer consumer test.
  */
 static int sem_producer_consumer_test(void)
 {
-	int n;               /* Number of items.       */
-	mode_t mode;         /* Semaphore access mode. */
-	sem_t *empty, *full; /* Semaphores.            */
+	int n;				 /* Number of items.	   */
+	mode_t mode;		 /* Semaphore access mode. */
+	sem_t *empty, *full; /* Semaphores.			   */
 
 	/* Named semaphores. */
 	const char *sem1 = "/home/mysem/sem1";
@@ -568,24 +607,24 @@ static int sem_test_open_close(void)
 } 
 
 /*============================================================================*
- *                                FPU test                                    *
+ *								  FPU test									  *
  *============================================================================*/
 
 /**
  * @brief FPU testing module.
  * 
  * @details Performs a floating point operation, while trying to
-            mess up the stack from another process.
+ mess up the stack from another process.
  * 
  * @returns Zero if passed on test, and non-zero otherwise.
  */
 int fpu_test(void)
 {
 #ifdef i386
-	pid_t pid;     /* Child process ID.     */
-	float a = 6.7; /* First dummy operand.  */
+	pid_t pid;	   /* Child process ID.		*/
+	float a = 6.7; /* First dummy operand.	*/
 	float b = 1.2; /* Second dummy operand. */
-	float result;  /* Result.               */
+	float result;  /* Result.				*/
 	
 	/* Perform a/b */
 	__asm__ volatile(
@@ -631,10 +670,10 @@ int fpu_test(void)
 }
 
 /*============================================================================*
- *                           Memory Violation                                 *
+ *							 Memory Violation								  *
  *============================================================================*/
 
-/*  
+/*	
  * @brief Forces a memory violation.
  */
 static int test_mem0(void)
@@ -978,12 +1017,12 @@ static void usage(void)
 	printf("Usage: test [options]\n\n");
 	printf("Brief: Performs regression tests on Nanvix.\n\n");
 	printf("Options:\n");
-	printf("  fpu     Floating Point Unit Test\n");
-	printf("  io      I/O Test\n");
-	printf("  ipc     Interprocess Communication Test\n");
+	printf("  fpu	  Floating Point Unit Test\n");
+	printf("  io	  I/O Test\n");
+	printf("  ipc	  Interprocess Communication Test\n");
 	printf("  paging  Paging System Test\n");
-	printf("  stack   Stack growth Test\n");
-	printf("  sched   Scheduling Test\n");
+	printf("  stack	  Stack growth Test\n");
+	printf("  sched	  Scheduling Test\n");
 	printf("  sem	  Semaphore Tests\n");
 	printf("  mem	  Memory Violation Tests\n");
 	printf("  thread  Thread Tests\n");
@@ -1006,36 +1045,38 @@ int main(int argc, char **argv)
 		if (!strcmp(argv[i], "io"))
 		{
 			printf("I/O Test\n");
-			printf("  Result:             [%s]\n", 
-				(!io_test()) ? "PASSED" : "FAILED");
+			printf("  Result:			  [%s]\n", 
+				   (!io_test()) ? "PASSED" : "FAILED");
 		}
 		
 		/* Paging system test. */
 		else if (!strcmp(argv[i], "paging"))
 		{
 			printf("Demand Zero Test\n");
-			printf("  Result:             [%s]\n",
-				(!demand_zero_test()) ? "PASSED" : "FAILED");
+			printf("  Result:			  [%s]\n",
+				   (!demand_zero_test()) ? "PASSED" : "FAILED");
 		}
 
 		/* Stack growth test. */
 		else if (!strcmp(argv[i], "stack"))
 		{
 			printf("Stack Grow Test\n");
-			printf("  Result:             [%s]\n",
-				(!stack_grow_test()) ? "PASSED" : "FAILED");
+			printf("  Result:			  [%s]\n",
+				   (!stack_grow_test()) ? "PASSED" : "FAILED");
 		}
 		
 		/* Scheduling test. */
 		else if (!strcmp(argv[i], "sched"))
 		{
 			printf("Scheduling Tests\n");
-			printf("  waiting for child  [%s]\n",
-				(!sched_test0()) ? "PASSED" : "FAILED");
+			printf("  waiting for child	 [%s]\n",
+				   (!sched_test0()) ? "PASSED" : "FAILED");
 			printf("  dynamic priorities [%s]\n",
-				(!sched_test1()) ? "PASSED" : "FAILED");
-			printf("  scheduler stress   [%s]\n",
-				(!sched_test2() && !sched_test3()) ? "PASSED" : "FAILED");	
+				   (!sched_test1()) ? "PASSED" : "FAILED");
+			printf("  scheduler stress	 [%s]\n",
+				   (!sched_test2() &&
+					!sched_test3() &&
+					!sched_test4()) ? "PASSED" : "FAILED");
 		}
 
 		/* FPU test. */
@@ -1043,25 +1084,25 @@ int main(int argc, char **argv)
 		{
 			printf("Float Point Unit Test\n");
 			printf("  Result [%s]\n",
-				(!fpu_test()) ? "PASSED" : "FAILED");
+				   (!fpu_test()) ? "PASSED" : "FAILED");
 		}
 
 		/* Semaphore tests. */
 		else if (!strcmp(argv[i], "sem"))
 		{
 			printf("Semaphore Tests\n");
-			printf("  open and close    [%s]\n",
-				(!sem_test_open_close()) ? "PASSED" : "FAILED");
+			printf("  open and close	[%s]\n",
+				   (!sem_test_open_close()) ? "PASSED" : "FAILED");
 			printf("  producer consumer [%s]\n",
-				(!sem_producer_consumer_test()) ? "PASSED" : "FAILED");
+				   (!sem_producer_consumer_test()) ? "PASSED" : "FAILED");
 		}
 
 		/* Memory tests. */
 		else if (!strcmp(argv[i], "mem"))
 		{
 			printf("Memory Violation Tests\n");
-			printf("  null pointer      [%s]\n",
-				(!test_mem0()) ? "PASSED" : "FAILED");
+			printf("  null pointer		[%s]\n",
+				   (!test_mem0()) ? "PASSED" : "FAILED");
 		}
 
 		/* Thread tests. */

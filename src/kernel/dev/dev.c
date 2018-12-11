@@ -63,11 +63,11 @@ PUBLIC int cdev_register(unsigned major, const struct cdev *dev)
 {
 	/* Invalid major number? */
 	if (major >= NR_CHRDEV)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 	
 	/* Device already registered? */
 	if ((major == NULL_MAJOR) || (cdevsw[major] != NULL))
-		return (-EBUSY);
+		return (curr_proc->errno = -EBUSY);
 	
 	/* Register character device. */
 	cdevsw[major] = dev;
@@ -92,11 +92,11 @@ PUBLIC ssize_t cdev_write(dev_t dev, const void *buf, size_t n)
 	
 	/* Invalid device. */
 	if (cdevsw[MAJOR(dev)] == NULL)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 	
 	/* Operation not supported. */
 	if (cdevsw[MAJOR(dev)]->write == NULL)
-		return (-ENOTSUP);
+		return (curr_proc->errno = -ENOTSUP);
 	
 	return (cdevsw[MAJOR(dev)]->write(MINOR(dev), buf, n));
 }
@@ -119,11 +119,11 @@ PUBLIC ssize_t cdev_read(dev_t dev, void *buf, size_t n)
 	
 	/* Invalid device. */
 	if (cdevsw[MAJOR(dev)] == NULL)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 	
 	/* Operation not supported. */
 	if (cdevsw[MAJOR(dev)]->read == NULL)
-		return (-ENOTSUP);
+		return (curr_proc->errno = -ENOTSUP);
 	
 	return (cdevsw[MAJOR(dev)]->read(MINOR(dev), buf, n));
 }
@@ -139,11 +139,11 @@ PUBLIC int cdev_open(dev_t dev)
 	
 	/* Invalid device. */
 	if (cdevsw[MAJOR(dev)] == NULL)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 	
 	/* Operation not supported. */
 	if (cdevsw[MAJOR(dev)]->open == NULL)
-		return (-ENOTSUP);
+		return (curr_proc->errno = -ENOTSUP);
 		
 	return (cdevsw[MAJOR(dev)]->open(MINOR(dev)));
 }
@@ -155,15 +155,15 @@ PUBLIC int cdev_ioctl(dev_t dev, unsigned cmd, unsigned arg)
 {	
 	/* Null device. */
 	if (MAJOR(dev) == NULL_MAJOR)
-		return (-ENODEV);
+		return (curr_proc->errno = -ENODEV);
 	
 	/* Invalid device. */
 	if (cdevsw[MAJOR(dev)] == NULL)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 	
 	/* Operation not supported. */
 	if (cdevsw[MAJOR(dev)]->ioctl == NULL)
-		return (-ENOTSUP);
+		return (curr_proc->errno = -ENOTSUP);
 		
 	return (cdevsw[MAJOR(dev)]->ioctl(MINOR(dev), cmd, arg));
 }
@@ -184,11 +184,11 @@ PUBLIC int cdev_close(dev_t dev)
 		
 	/* Invalid device. */
 	if (cdevsw[MAJOR(dev)] == NULL)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 	
 	/* Operation not supported. */
 	if (cdevsw[MAJOR(dev)]->close == NULL)
-		return (-ENOTSUP);
+		return (curr_proc->errno = -ENOTSUP);
 		
 	return (cdevsw[MAJOR(dev)]->close(MINOR(dev)));
 }
@@ -296,11 +296,11 @@ PUBLIC int bdev_register(unsigned major, const struct bdev *dev)
 {
 	/* Invalid major number? */
 	if (major >= NR_BLKDEV)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 	
 	/* Device already registered? */
 	if (bdevsw[major] != NULL)
-		return (-EBUSY);
+		return (curr_proc->errno = -EBUSY);
 	
 	/* Register block device. */
 	bdevsw[major] = dev;
@@ -322,11 +322,11 @@ PUBLIC ssize_t bdev_write(dev_t dev, const char *buf, size_t n, off_t off)
 {
 	/* Invalid device. */
 	if (bdevsw[MAJOR(dev)] == NULL)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 	
 	/* Operation not supported. */
 	if (bdevsw[MAJOR(dev)]->write == NULL)
-		return (-ENOTSUP);
+		return (curr_proc->errno = -ENOTSUP);
 	
 	return (bdevsw[MAJOR(dev)]->write(MINOR(dev), buf, n, off));
 }
@@ -345,11 +345,11 @@ PUBLIC ssize_t bdev_read(dev_t dev, char *buf, size_t n, off_t off)
 {
 	/* Invalid device. */
 	if (bdevsw[MAJOR(dev)] == NULL)
-		return (-EINVAL);
+		return (curr_proc->errno = -EINVAL);
 		
 	/* Operation not supported. */
 	if (bdevsw[MAJOR(dev)]->read == NULL)
-		return (-ENOTSUP);
+		return (curr_proc->errno = -ENOTSUP);
 	
 	return (bdevsw[MAJOR(dev)]->read(MINOR(dev), buf, n, off));
 }
