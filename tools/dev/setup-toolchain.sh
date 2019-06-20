@@ -17,6 +17,21 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# macOS support
+if [ "x$(uname -rv | grep Darwin)" != "x" ];
+then
+    if [ "x$(which brew)" == "x" ];
+    then
+        echo "We only support macOS platforms that use homebrew."
+        echo "Please install homebrew (https://brew.sh/) and try again."
+        exit 1
+    fi
+
+    # Install macOS dependencies
+    brew install binutils bochs cdrtools doxygen gcc gnu-sed i386-elf-gcc
+    exit 0
+fi
+
 # Set working directory.
 export CURDIR=`pwd`
 export WORKDIR=$CURDIR/nanvix-toolchain

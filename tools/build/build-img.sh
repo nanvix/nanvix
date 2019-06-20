@@ -33,6 +33,42 @@ ROOTGID=0
 NOOBUID=1
 NOOBUID=1
 
+# macOS compatibility stuff
+if [ "x$(uname -rv | grep Darwin)" != "x" ];
+then
+    # On mac, better use GNU binutils strip rather than
+    # Apple preinstalled strip.
+    STRIP_TOOL=$(find /usr/local/Cellar/binutils/*/bin -name strip)
+    if [ "x$STRIP_TOOL" == "x" ];
+    then
+        echo "Couldn't find binutils' strip in your homebrew packages."
+        echo "Please run 'brew install binutils' and try again."
+        exit 1
+    fi
+
+    IMG_TOOL=$(which mkisofs)
+    if [ "x$IMG_TOOL" == "x" ];
+    then
+        echo "Could not find mkisofs."
+        echo "Please run 'brew install cdrtools' and try again."
+        exit 1
+    fi
+
+    # On mac, better use GNU sed rather than
+    # Apple preinstalled sed.
+    SED_TOOL=$(which gsed)
+    if [ "x$SED_TOOL" == "x" ];
+    then
+        echo "Could not find GNU sed."
+        echo "Please run 'brew install gnu-sed' and try again."
+        exit 1
+    fi
+else
+    # If you didn't have the money to buy a Mac...
+    STRIP_TOOL=$(which strip)
+    IMG_TOOL=$(which genisoimage)
+    SED_TOOL=$(which sed)
+fi
 
 #
 # Inserts disk in a loop device.
@@ -122,6 +158,7 @@ function copy_files
 		fi;
 	done
 }
+
 #
 # Strip a binary from it's debug symbols and
 # add a GNU debug link to the original binary
@@ -137,7 +174,7 @@ function strip_binary
 		cp $1 $1.debug
 
 		# Remove debug symbols from the file
-		strip --strip-debug --strip-unneeded $1
+		$STRIP_TOOL --strip-debug --strip-unneeded $1
 
 		objcopy --add-gnu-debuglink=$1.debug $1 2>/dev/null
 	fi;
@@ -160,7 +197,7 @@ format hdd.img 32708 16384
 copy_files hdd.img
 
 # Build initrd image.
-dd if=/dev/zero of=initrd.img bs=512K count=1
+dd if=/dev/zero of=initrd.img bs=512k count=1
 format initrd.img 128 512
 copy_files initrd.img
 
@@ -173,8 +210,8 @@ then
 	cp initrd.img nanvix-iso/initrd.img
 	cp tools/img/menu.lst nanvix-iso/boot/grub/menu.lst
 	cp tools/img/stage2_eltorito nanvix-iso/boot/grub/stage2_eltorito
-	sed -i 's/fd0/cd/g' nanvix-iso/boot/grub/menu.lst
-	genisoimage -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 \
+    $SED_TOOL -i 's/fd0/cd/g' nanvix-iso/boot/grub/menu.lst
+  	$IMG_TOOL -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 \
 		-input-charset utf-8 -boot-info-table -o nanvix.iso nanvix-iso
 else
 	LOOP=$(losetup -f)

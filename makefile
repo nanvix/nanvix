@@ -79,7 +79,7 @@ documentation:
 # Builds tools.
 tools:
 	mkdir -p $(BINDIR)
-	cd $(TOOLSDIR) && $(MAKE) all
+	cd $(TOOLSDIR)/build && bash ./build-tools.sh
 
 # Cleans compilation files.
 clean:
