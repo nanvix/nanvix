@@ -17,9 +17,6 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Toolchain
-CC = gcc
-
 # Toolchain configuration.
 CFLAGS    = -I $(INCDIR)/fs
 CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers

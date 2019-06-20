@@ -1,5 +1,5 @@
-# 
-# Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com> 
+#
+# Copyright(C) 2011-2014 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
 # This file is part of Nanvix.
 #
@@ -17,19 +17,19 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Toolchain configuration.
-CFLAGS    = -I $(INCDIR)/nanvix -DKERNEL_HASH=$(KEY)
-CFLAGS   += -std=c99 -pedantic-errors -fextended-identifiers
-CFLAGS   += -Wall -Wextra -Werror
-CFLAGS   += -D NDEBUG
+#! /bin/bash
 
-# Builds everything.
-all: useradd
+if [ "x$(uname -rv | grep Darwin)" == "x" ];
+then
+    cc=gcc
+else
+    # macOS compatibility stuff. Ok, that's ugly.
+    cc=$(find /usr/local/Cellar/gcc/*/bin -name "gcc-*" | grep -v ranlib | grep -v nm | grep -v "\-ar\-")
+    if [ "x$cc" == "x" ];
+    then
+        echo "Couldn't find gcc. Please run 'brew install gcc' and try again."
+        exit 1
+    fi
+fi
 
-# Builds cp.minix.
-useradd: useradd.c
-	$(CC) $(CFLAGS) $^ -o $(BINDIR)/$@
-
-# Cleans compilation files.
-clean:
-	@rm -f $(BINDIR)/useradd
+cd .. && make CC=$cc
