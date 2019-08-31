@@ -190,7 +190,16 @@
 	extern int setuid(pid_t uid);
 	
 	extern pid_t setpgrp(void);
+
+#ifndef __NANVIX_KERNEL__
+
+    /*
+     * Puts the current process to sleep.
+     */
+    extern unsigned sleep(unsigned seconds);
 	
+#endif /* __NANVIX_KERNEL__ */
+
 	/*
 	 * Schedules file system updates.
 	 */

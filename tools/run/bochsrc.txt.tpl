@@ -4,7 +4,7 @@ vgaromimage: file="/usr/local/share/bochs/VGABIOS-lgpl-latest"
 boot: cdrom
 log: bochsout.txt
 mouse: enabled=0
-clock: sync=none, time0=utc
+clock: #RT_ENABLED#
 display_library: term
 magic_break: enabled=1
 ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
