@@ -19,7 +19,6 @@
 
 # NOTES:
 #   - This script should work in any Linux distribution.
-#   - You should run this script with superuser privileges.
 
 VERSION_MAJOR=1
 VERSION_MINOR=0
@@ -29,7 +28,7 @@ RT=false
 
 version()
 {
-    echo "run (Nanvix tools) $VERSION_MAJOR.$VERSION_MINOR\n"
+    echo "run (Nanvix tools) $VERSION_MAJOR.$VERSION_MINOR"
     echo "Copyright(C) 2011-2014 Pedro H. Penna"
     echo "This is free software under the GNU General Public License Version 3."
     echo "There is NO WARRANTY, to the extent permitted by law."
@@ -37,11 +36,13 @@ version()
 
 usage()
 {
-    echo "Usage: run\n"
-    echo "Brief: Runs nanvix inside bochs.\n"
+    echo "Usage: run"
+    echo "Brief: Runs nanvix inside bochs."
     echo "Options:"
-    echo "      --help    Display this information and exit"
-    echo "      --version Display program version and exit"
+    echo "      --help       Display this information and exit"
+    echo "      --version    Display program version and exit"
+    echo "      --debug      Enables GDB support"
+    echo "      --real-time  Enables real-time clock support"
 }
 
 debug()
@@ -54,18 +55,19 @@ real_time()
     RT=true
 }
 
-update_bosch()
+update_bochs()
 {
+    cat $BOCHS_CONFIG.tpl > $BOCHS_CONFIG
     if [ "$DEBUG" = true ]; then
-        sed 's/#GDBSTUB_ENABLED#/1/' $BOCHS_CONFIG.tpl > $BOCHS_CONFIG
+        sed -i '' -e 's/#GDBSTUB_ENABLED#/1/' $BOCHS_CONFIG
     else
-        sed 's/#GDBSTUB_ENABLED#/0/' $BOCHS_CONFIG.tpl > $BOCHS_CONFIG
+        sed -i '' -e 's/#GDBSTUB_ENABLED#/0/' $BOCHS_CONFIG
     fi;
 
     if [ "$RT" = true ]; then
-        sed -i 's/#RT_ENABLED#/sync=realtime, time0=local, rtc_sync=0/' $BOCHS_CONFIG
+        sed -i '' -e 's/#RT_ENABLED#/sync=realtime, time0=local, rtc_sync=0/' $BOCHS_CONFIG
     else
-        sed -i 's/#RT_ENABLED#/sync=none, time0=utc/' $BOCHS_CONFIG
+        sed -i '' -e 's/#RT_ENABLED#/sync=none, time0=utc/' $BOCHS_CONFIG
     fi;
 }
 
@@ -96,6 +98,6 @@ while [ "$1" != "" ]; do
     shift
 done
 
-update_bosch
+update_bochs
 
 bochs -q -f tools/run/bochsrc.txt
