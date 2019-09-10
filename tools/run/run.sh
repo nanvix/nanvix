@@ -25,6 +25,7 @@ VERSION_MINOR=0
 BOCHS_CONFIG="tools/run/bochsrc.txt"
 DEBUG=false
 RT=false
+SDL=false
 
 version()
 {
@@ -41,33 +42,45 @@ usage()
     echo "Options:"
     echo "      --help       Display this information and exit"
     echo "      --version    Display program version and exit"
-    echo "      --debug      Enables GDB support"
-    echo "      --real-time  Enables real-time clock support"
+    echo "      --debug      Enables GDB support (default=false)"
+    echo "      --real-time  Enables real-time clock support (default=false)"
+    echo "      --sdl        Uses sdl2 display library (default=term)"
 }
 
 debug()
 {
     DEBUG=true
 }
-    
+
 real_time()
 {
     RT=true
+}
+
+sdl()
+{
+    SDL=true
 }
 
 update_bochs()
 {
     cat $BOCHS_CONFIG.tpl > $BOCHS_CONFIG
     if [ "$DEBUG" = true ]; then
-        sed -i '' -e 's/#GDBSTUB_ENABLED#/1/' $BOCHS_CONFIG
+        sed -i '' -e 's/#GDBSTUB#/gdbstub: enabled=1, port=1234/' $BOCHS_CONFIG
     else
-        sed -i '' -e 's/#GDBSTUB_ENABLED#/0/' $BOCHS_CONFIG
+        sed -i '' -e 's/#GDBSTUB#//' $BOCHS_CONFIG
     fi;
 
     if [ "$RT" = true ]; then
-        sed -i '' -e 's/#RT_ENABLED#/sync=realtime, time0=local, rtc_sync=0/' $BOCHS_CONFIG
+        sed -i '' -e 's/#CLOCK#/sync=realtime, time0=local, rtc_sync=0/' $BOCHS_CONFIG
     else
-        sed -i '' -e 's/#RT_ENABLED#/sync=none, time0=utc/' $BOCHS_CONFIG
+        sed -i '' -e 's/#CLOCK#/sync=none, time0=utc/' $BOCHS_CONFIG
+    fi;
+
+    if [ "$SDL" = true ]; then
+        sed -i '' -e 's/#DISPLAY#/sdl2/' $BOCHS_CONFIG
+    else
+        sed -i '' -e 's/#DISPLAY#/term/' $BOCHS_CONFIG
     fi;
 }
 
@@ -88,6 +101,9 @@ while [ "$1" != "" ]; do
             ;;
         -rt | --real-time)
             real_time
+            ;;
+        -s  | --sdl)
+            sdl
             ;;
         *)
             echo "ERROR: unknown parameter \"$PARAM\""
