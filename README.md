@@ -47,7 +47,7 @@ It relies on the Homebrew package manager (https://brew.sh), to get
 the necessary UNIX-like packages to build Nanvix.
 
 The general flow for building Nanvix on macOS from the root directory
-is as follows :
+is as follows:
 
 ```sh
 bash tools/dev/setup-toolchain.sh
@@ -57,13 +57,8 @@ make image
 
 Unlike the Linux-like systems procedure, this flow does not build
 bochs from source. Instead, it installs the bochs package using brew.
-As this package does not comme with gdb-stubs support, one last step
-will be to **remove** the following line from the
-`tools/run/bochsrc.txt.pl` file :
-
-```
-gdbstub: enabled=#GDBSTUB_ENABLED#, port=1234
-```
+As this package does not come with gdb-stubs support, you cannot run
+Nanvix with `--debug` option (see details below).
 
 ## Running
 
@@ -72,6 +67,9 @@ To run Nanvix, type the following command at the root directory:
 ```sh
 bash tools/run/run.sh
 ```
+
+The script above accepts some optional parameters to configure bochs.
+Please, run `bash tools/run/run.sh --help` for more details.
 
 ## License and Maintainers
 

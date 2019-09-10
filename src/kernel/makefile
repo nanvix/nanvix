@@ -51,6 +51,8 @@ OBJ = $(ASM_SRC:.S=.o) \
 # Executable file.
 EXEC = kernel
 
+CFLAGS += -D __NANVIX_KERNEL__
+
 # Linker configuration options.
 export LDFLAGS = -T arch/$(ARCH)/link.ld
 
