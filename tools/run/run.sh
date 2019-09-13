@@ -62,25 +62,23 @@ sdl()
     SDL=true
 }
 
-update_bochs()
+config_bochs()
 {
     cat $BOCHS_CONFIG.tpl > $BOCHS_CONFIG
     if [ "$DEBUG" = true ]; then
-        sed -i '' -e 's/#GDBSTUB#/gdbstub: enabled=1, port=1234/' $BOCHS_CONFIG
-    else
-        sed -i '' -e 's/#GDBSTUB#//' $BOCHS_CONFIG
+        echo "gdbstub: enabled=1, port=1234/" >> $BOCHS_CONFIG
     fi;
 
     if [ "$RT" = true ]; then
-        sed -i '' -e 's/#CLOCK#/sync=realtime, time0=local, rtc_sync=0/' $BOCHS_CONFIG
+        echo "clock: sync=realtime, time0=local, rtc_sync=0" >> $BOCHS_CONFIG
     else
-        sed -i '' -e 's/#CLOCK#/sync=none, time0=utc/' $BOCHS_CONFIG
+        echo "clock: sync=none, time0=utc" >> $BOCHS_CONFIG
     fi;
 
     if [ "$SDL" = true ]; then
-        sed -i '' -e 's/#DISPLAY#/sdl2/' $BOCHS_CONFIG
+        echo "display_library: sdl2" >> $BOCHS_CONFIG
     else
-        sed -i '' -e 's/#DISPLAY#/term/' $BOCHS_CONFIG
+        echo "display_library: term" >> $BOCHS_CONFIG
     fi;
 }
 
@@ -114,6 +112,6 @@ while [ "$1" != "" ]; do
     shift
 done
 
-update_bochs
+config_bochs
 
 bochs -q -f tools/run/bochsrc.txt
