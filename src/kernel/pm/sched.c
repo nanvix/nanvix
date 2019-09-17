@@ -116,5 +116,6 @@ PUBLIC void yield(void)
 	next->priority = PRIO_USER;
 	next->state = PROC_RUNNING;
 	next->counter = PROC_QUANTUM;
-	switch_to(next);
+	if (curr_proc != next)
+		switch_to(next);
 }
