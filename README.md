@@ -73,7 +73,7 @@ Please, run `bash tools/run/run.sh --help` for more details.
 
 ## Documentation
 
-See [the documentation](./doc/README.md) for an overview about the Nanvix system and detailed information.
+See [the documentation](https://github.com/nanvix/documentation/blob/master/README.md) for an overview about the Nanvix system and detailed information.
 
 ## License and Maintainers
 
