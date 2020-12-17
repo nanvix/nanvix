@@ -71,6 +71,10 @@ bash tools/run/run.sh
 The script above accepts some optional parameters to configure bochs.
 Please, run `bash tools/run/run.sh --help` for more details.
 
+## Documentation
+
+See [the documentation](./doc/README.md) for an overview about the Nanvix system and detailed information.
+
 ## License and Maintainers
 
 Nanvix is a free software that is under the GPL V3 license and is
