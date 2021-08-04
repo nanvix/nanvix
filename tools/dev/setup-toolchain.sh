@@ -57,7 +57,7 @@ case ${DIST,,} in
     *"ubuntu"*|*"debian"*)
         apt-get install -y g++ doxygen genisoimage gdb xz-utils make
         ;;
-    *"arch"*)
+    *"arch"*|*"manjaro"*)
         pacman -S gcc doxygen cdrtools gdb xz make --needed --noconfirm
         ;;
     *)
