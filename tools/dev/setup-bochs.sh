@@ -40,7 +40,7 @@ case ${DIST,,} in
     *"ubuntu"*|*"debian"*)
         apt-get install -y libncurses5-dev
         ;;
-    *"arch"*)
+    *"arch"*|*"manjaro"*)
         pacman -S ncurses --needed --noconfirm
         ;;
     *)
