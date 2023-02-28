@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 #
 # Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
 #
