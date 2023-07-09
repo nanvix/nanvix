@@ -1,8 +1,10 @@
-# Nanvix [![Build Status](https://travis-ci.org/nanvix/nanvix.svg?branch=master)](https://travis-ci.org/nanvix/nanvix) [![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/nanvix/shared_invite/enQtMzY2Nzg5OTQ4NTAyLWY1NWNkNjlmMDU1NjgwZmU2Njk5ODQxOTFmMGY0YjNlZWU0NWUxNThiNzgwNTAyMWE5YTcyOTc4Njk2NjBiZjk)
+# Nanvix
 
-## What Is Nanvix
+[![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/nanvix/shared_invite/zt-1yu30bs28-nsNmw8IwCyh6MBBV~B~X7w)
 
-Nanvix is a Unix-like operating system written by [Pedro H. Penna](https://github.com/ppenna) for
+## What Is Nanvix?
+
+Nanvix is a Unix-like operating system written by [Pedro Henrique Penna](https://github.com/ppenna) for
 educational purposes. It is designed to be simple and small, but also
 modern and fully featured.
 
@@ -40,7 +42,7 @@ Or you can build a Live System's Image by typing, at the same directory:
 make image
 ```
 
-### macOS
+### macOS (no longer maintained)
 
 The support of Nanvix on macOS is still experimental.
 It relies on the Homebrew package manager (https://brew.sh), to get
@@ -71,12 +73,8 @@ bash tools/run/run.sh
 The script above accepts some optional parameters to configure bochs.
 Please, run `bash tools/run/run.sh --help` for more details.
 
-## Documentation
-
-See [the documentation](https://github.com/nanvix/documentation/blob/master/README.md) for an overview about the Nanvix system and detailed information.
-
 ## License and Maintainers
 
 Nanvix is a free software that is under the GPL V3 license and is
-maintained by Pedro H. Penna. Any questions or suggestions send him an
+maintained by Pedro Henrique Penna. Any questions or suggestions send him an
 email: <pedrohenriquepenna@gmail.com>
