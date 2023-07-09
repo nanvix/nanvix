@@ -69,7 +69,7 @@ PUBLIC const char *skip_code(const char *buffer, int *i)
  */
 PUBLIC char get_code(const char *buffer)
 {
-	if ((buffer[0] == KERN_SOH_ASCII) && !(&buffer[1] == NULL))
+	if ((buffer[0] == KERN_SOH_ASCII) && !(buffer[1] == '\0'))
 	{
 		if ((buffer[1] >= '0' && buffer[1] <= '7'))
 			return buffer[1];	
