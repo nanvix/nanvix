@@ -23,6 +23,9 @@
 #
 export EDUCATIONAL_KERNEL=1
 
+# Target Architecture
+export ARCH := i486
+
 # Directories.
 export BINDIR   = $(CURDIR)/bin
 export SBINDIR  = $(BINDIR)/sbin
@@ -33,11 +36,12 @@ export LIBDIR   = $(CURDIR)/lib
 export DOXYDIR  = $(CURDIR)/doxygen
 export SRCDIR   = $(CURDIR)/src
 export TOOLSDIR = $(CURDIR)/tools
+export TOOLCHAIN_DIR ?= $(CURRDIR)/toolchain
 
 # Toolchain
-export CC = $(TARGET)-gcc
-export LD = $(TARGET)-ld
-export AR = $(TARGET)-ar
+export CC = $(TOOLCHAIN_DIR)/$(ARCH)/bin/$(ARCH)-elf-gcc
+export LD = $(TOOLCHAIN_DIR)/$(ARCH)/bin/$(ARCH)-elf-ld
+export AR = $(TOOLCHAIN_DIR)/$(ARCH)/bin/$(ARCH)-elf-ar
 
 # Random number for chaos.
 export KEY = 13
