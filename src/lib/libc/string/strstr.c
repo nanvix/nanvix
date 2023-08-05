@@ -1,22 +1,22 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
- 
+
 /*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
@@ -52,22 +52,22 @@
 
 /**
  * @file
- * 
+ *
  * @brief strstr() implementation.
  */
- 
+
 #include <stdlib.h>
 
 /**
  * @brief Finds a substring.
- * 
+ *
  * @param s1 Pointer to string to search.
  * @param s2 Pointer to substring to search for.
- * 
+ *
  * @returns A pointer to the located string or a null pointer if the string is
  *          not found. If @p s2 points to a string with zero length, the
  *          function returns @p s1.
- * 
+ *
  * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strstr(const char *s1, const char *s2)
@@ -82,7 +82,7 @@ char *strstr(const char *s1, const char *s2)
 	while (*s1 != '\0')
 	{
 		size_t i;
-		
+
 		i = 0;
 
 		while (1)

@@ -30,7 +30,7 @@
 	#define R_OK 1 /* May read.    */
 	#define W_OK 2 /* May write.   */
 	#define X_OK 4 /* May execute. */
-	
+
 	/* Starting positions for lseek() and fcntl(). */
 	#define SEEK_CUR 0 /* Set file offset to current plus offset. */
 	#define SEEK_END 1 /* Set file offset to EOF plus offset.     */
@@ -41,59 +41,59 @@
 	extern pid_t getpid(void);
 	extern pid_t getpgrp(void);
 	extern int pause(void);
-	
+
 	/*
 	 * Checks user permissions for a file.
 	 */
 	extern int access(const char *path, int amode);
-	
+
 	/*
 	 * Changes process' breakpoint value.
 	 */
 	extern void *sbrk(size_t size);
-	
+
 	/*
 	 * Changes process' breakpoint value.
 	 */
 	extern int brk(void *ptr);
-	
+
 	/*
 	 * Changes working directory.
 	 */
 	extern int chdir(const char *path);
-	
+
 	/*
 	 * Changes owner and group of a file.
 	 */
 	extern int chown(const char *path, uid_t owner, gid_t group);
-	
+
 	/*
 	 * Changes working directory.
 	 */
 	extern int chroot(const char *path);
-	
+
 	/*
 	 * Closes a file.
 	 */
 	extern int close(int fd);
-	
+
 	/*
 	 * Duplicates an opened file descriptor.
 	 */
 	#define dup(fd) \
 		fcntl(fd, F_DUPFD, 0)
-	
+
 	/*
 	 * Duplicates a file descriptor.
 	 */
 	extern int dup2(int oldfd, int newfd);
-	
+
 	/*
 	 * Executes a program.
 	 */
 	#define execv(path, argv) \
 		execve(path, argv, (char *const*)environ);
-	
+
 	/*
 	 * Executes a program.
 	 */
@@ -118,77 +118,77 @@
 	 * Gets the effective user group ID of the calling process.
 	 */
 	extern gid_t getegid(void);
-	
+
 	/*
 	 *  Gets the effective user ID of the calling process.
 	 */
 	extern uid_t geteuid(void);
-	
+
 	/*
 	 * Gets the real user group ID of the calling process.
 	 */
 	extern gid_t getgid(void);
-	
+
 	/*
 	 * Gets the parent process ID of the calling process.
 	 */
 	extern pid_t getppid(void);
-	
+
 	/*
 	 * Links a name to a file.
 	 */
 	extern int link(const char *path1, const char *path2);
-	
+
 	/*
 	 * Moves the read/write file offset.
 	 */
 	extern off_t lseek(int fd, off_t offset, int whence);
-	
+
 	/*
 	 * Changes the nice value of the calling process.
 	 */
 	extern int nice(int incr);
-	
+
 	/*
 	 * Gets the real user ID of the calling process.
 	 */
 	extern uid_t getuid(void);
-	
+
 	/*
 	 * Tests whether a file descriptor refers to a terminal.
 	 */
 	extern int isatty(int fd);
-	
+
 	/*
 	 * Creates an interprocess channel.
 	 */
 	extern int pipe(int fildes[2]);
-	
+
 	/*
 	 * Reads from a file.
 	 */
 	extern ssize_t read(int fd, void *buf, size_t n);
-	
+
 	/*
 	 * Sets the effective user group ID of the calling process.
 	 */
 	extern int setegid(gid_t gid);
-	
+
 	/*
 	 * Sets the real user group ID of the calling process.
 	 */
 	extern int setgid(gid_t gid);
-	
+
 	/*
 	 * Sets the effective user ID of the calling process.
 	 */
 	extern int seteuid(uid_t uid);
-	
+
 	/*
 	 * Sets the real user ID of the calling process.
 	 */
 	extern int setuid(pid_t uid);
-	
+
 	extern pid_t setpgrp(void);
 
 #ifndef __NANVIX_KERNEL__
@@ -197,24 +197,24 @@
      * Puts the current process to sleep.
      */
     extern unsigned sleep(unsigned seconds);
-	
+
 #endif /* __NANVIX_KERNEL__ */
 
 	/*
 	 * Schedules file system updates.
 	 */
 	extern void sync(void);
-	
+
 	/*
 	 * Removes a directory entry.
 	 */
 	extern int unlink(const char *path);
-	
+
 	/*
 	 * Writes to a file.
 	 */
 	extern ssize_t write(int fd, const void *buf, size_t n);
-	
+
 	extern int shutdown(void);
 
 	/*
@@ -226,7 +226,7 @@
 	 * Get system ticks
 	 */
 	extern int gticks(void);
-	
+
 	/* Environment variables. */
 	extern char **environ;
 

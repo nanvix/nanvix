@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -52,7 +52,7 @@
 
 /**
  * @file
- * 
+ *
  * @brief qsort() implementation.
  */
 
@@ -79,7 +79,7 @@ static int find_pivot(void *base, int i, int j, size_t size)
 	for (int k = i + 1; k <= j; k++)
     {
 		int res;
-		
+
 		next_key = (void *) (((char *) next_key) + size);
 		res = (*_cmp) (next_key, first_key);
 
@@ -168,7 +168,7 @@ static void _qsort(void *base, int i, int j, size_t size)
  * @brief Sorts a table of data.
  *
  * @param base  Array to sort.
- * @param nmemb Number of elements in the array. 
+ * @param nmemb Number of elements in the array.
  * @param size  Size of each element.
  * @param cmp   Comparison function.
  */

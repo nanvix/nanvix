@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -51,7 +51,7 @@ repeat:
 		/* Skip invalid processes. */
 		if (!IS_VALID(p))
 			continue;
-			
+
 		 /* Found. */
 		if (p->father == curr_proc)
 		{
@@ -61,24 +61,24 @@ repeat:
 				/* Already reported. */
 				if (p->status)
 					continue;
-				
+
 				p->status = 1 << 10;
-				
+
 				/* Get exit code. */
 				if (stat_loc != NULL)
 					*stat_loc = p->status;
-				
+
 				return (p->pid);
 			}
-			
+
 			/* Terminated. */
 			else if (p->state == PROC_ZOMBIE)
 			{
 				/* Get exit code. */
 				if (stat_loc != NULL)
 					*stat_loc = p->status;
-				
-				/* 
+
+				/*
 				 * Get information from child
 				 * process before burying it.
 				 */
@@ -88,7 +88,7 @@ repeat:
 
 				/* Bury child process. */
 				bury(p);
-				
+
 				return (pid);
 			}
 		}
@@ -96,10 +96,10 @@ repeat:
 
 	sleep(&chain, PRIO_USER);
 	sig = issig();
-	
+
 	/* Go back and check what happened. */
 	if ((sig == SIGNULL) || (sig == SIGCHLD))
 		goto repeat;
-		
+
 	return (-EINTR);
 }

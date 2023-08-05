@@ -1,25 +1,25 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /**
  * @file
- * 
+ *
  * @brief Minix file system specification.
  */
 
@@ -31,22 +31,22 @@
 /*============================================================================*
  *                              Block Information                             *
  *============================================================================*/
- 
+
 	/**
 	 * @brief Log 2 of block size.
 	 */
 	#define BLOCK_SIZE_LOG2 10
-	
+
 	/**
 	 * @brief Block size (in bytes).
 	 */
 	#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
-	
+
 	/**
 	 * @brief User for block number.
 	 */
 	typedef uint16_t block_t;
-	
+
 	/**
 	 * @brief Null block.
 	 */
@@ -60,7 +60,7 @@
  	 * @brief Superblock magic number.
  	 */
  	#define SUPER_MAGIC 0x137f
- 	
+
 	/**
 	 * @brief In-disk superblock.
 	 */
@@ -84,7 +84,7 @@
 	 * @brief Null inode.
 	 */
 	#define INODE_NULL 0
-	
+
 	/**
 	 * @brief Root inode.
 	 */
@@ -92,7 +92,7 @@
 
 	/**
 	 * @name Number of Zones
-	 * 
+	 *
 	 * @details Number of zones in an #inode.
 	 */
 	/**@{*/
@@ -104,37 +104,37 @@
 
 	/**
 	 * @name Zone Index
-	 * 
+	 *
 	 * @details Index of zones in an #inode.
 	 */
 	/**@{*/
-	#define ZONE_DIRECT                               0 /**< Direct zone.     */ 
+	#define ZONE_DIRECT                               0 /**< Direct zone.     */
 	#define ZONE_SINGLE               (NR_ZONES_DIRECT) /**< Single indirect. */
 	#define ZONE_DOUBLE (ZONE_SINGLE + NR_ZONES_SINGLE) /**< Double indirect. */
 	/**@}*/
 
 	/**
 	 * @name Zone Dimensions
-	 * 
+	 *
 	 * @details Dimension of zones.
 	 */
 	/**@{*/
-	
+
 	/** Number of zones in a direct zone. */
 	#define NR_DIRECT 1
 
 	/** Number of zones in a single indirect zone. */
 	#define NR_SINGLE (BLOCK_SIZE/sizeof(block_t))
-	
+
 	/** Number of zones in a double indirect zone. */
 	#define NR_DOUBLE ((BLOCK_SIZE/sizeof(block_t))*NR_SINGLE)
-	
+
 	/**@}*/
 
 	/**
 	 * @brief Disk inode.
 	 */
-	struct d_inode 
+	struct d_inode
 	{
 		uint16_t i_mode;            /**< Access permissions.                  */
 		uint16_t i_uid;             /**< User id of the file's owner          */
@@ -153,7 +153,7 @@
 	 * @brief Maximum name on a Minix file system.
 	 */
 	#define MINIX_NAME_MAX 14
-	
+
 	/*
 	 * Directory entry.
 	 */

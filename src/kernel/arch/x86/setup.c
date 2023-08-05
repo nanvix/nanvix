@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -45,11 +45,11 @@ PRIVATE void set_gdte
     /* Set segment base address. */
     gdt[n].base_low = (base & 0xffffff);
     gdt[n].base_high = (base >> 24) & 0xff;
-	
-    /* Set segment limit. */ 
+
+    /* Set segment limit. */
     gdt[n].limit_low = (limit & 0xffff);
     gdt[n].limit_high = (limit >> 16) & 0xf;
-    
+
     /* Set granularity and access. */
     gdt[n].granularity = granularity;
     gdt[n].access = access;
@@ -62,17 +62,17 @@ PRIVATE void tss_setup()
 {
 	/* Size-error checking. */
 	CHKSIZE(sizeof(struct tss), TSS_SIZE);
-	
+
 	/* Blank TSS. */
 	kmemset(&tss, 0, TSS_SIZE);
-	
+
 	/* Fill up TSS. */
 	tss.ss0 = KERNEL_DS;
 	tss.iomap = (TSS_SIZE - 1) << 16;
-	
+
 	/* Flush TSS. */
 	tss_flush();
-	
+
 	kprintf("kernel: tss at %x", &tss);
 }
 
@@ -88,7 +88,7 @@ PRIVATE void gdt_setup(void)
 	/* Blank GDT and GDT pointer. */
 	kmemset(gdt, 0, sizeof(gdt));
 	kmemset(&gdtptr, 0, GDTPTR_SIZE);
-	
+
     /* Set GDT entries. */
     set_gdte(GDT_NULL, 0, 0x00000, 0x0, 0x00);
     set_gdte(GDT_CODE_DPL0, 0, 0xfffff, 0xc, 0x9a);
@@ -96,11 +96,11 @@ PRIVATE void gdt_setup(void)
     set_gdte(GDT_CODE_DPL3, 0, 0xfffff, 0xc, 0xfa);
     set_gdte(GDT_DATA_DPL3, 0, 0xfffff, 0xc, 0xf2);
 	set_gdte(GDT_TSS, (unsigned) &tss, (unsigned)&tss + TSS_SIZE, 0x0, 0xe9);
-    
+
     /* Set GDT pointer. */
     gdtptr.size = sizeof(gdt) - 1;
     gdtptr.ptr = (unsigned) gdt;
-    
+
     /* Flush GDT. */
     gdt_flush(&gdtptr);
 }
@@ -114,33 +114,33 @@ PRIVATE void set_idte
 	/* Set handler. */
 	idt[n].handler_low = (handler & 0xffff);
     idt[n].handler_high = (handler >> 16) & 0xffff;
-     
+
     /* Set GDT selector. */
     idt[n].selector = selector;
-     
+
    /* Set type and flags. */
     idt[n].type = type;
     idt[n].flags = flags;
 }
- 
+
 /*
  * Sets up IDT.
  */
 PRIVATE void idt_setup(void)
 {
 	int i;
-	
+
 	/* Size-error checking. */
 	CHKSIZE(sizeof(struct idte), IDTE_SIZE);
 	CHKSIZE(sizeof(struct idtptr), IDTPTR_SIZE);
- 
+
 	/* Blank IDT and IDT pointer. */
 	kmemset(idt, 0, sizeof(idt));
 	kmemset(&idtptr, 0, IDTPTR_SIZE);
-     
+
     /* Re-initialize PIC. */
     pic_setup(0x20, 0x28);
-    
+
     /* Set software interrupts. */
     set_idte(0, (unsigned)swint0, KERNEL_CS, 0x8, IDT_INT32);
     set_idte(1, (unsigned)swint1, KERNEL_CS, 0x8, IDT_INT32);
@@ -161,7 +161,7 @@ PRIVATE void idt_setup(void)
     set_idte(16, (unsigned)swint16, KERNEL_CS, 0x8, IDT_INT32);
     for (i = 17; i < 32; i++)
         set_idte(i, (unsigned)swint17, KERNEL_CS, 0x8, IDT_INT32);
-     
+
     /* Set hardware interrupts. */
     set_idte(32, (unsigned)hwint0, KERNEL_CS, 0x8, IDT_INT32);
     set_idte(33, (unsigned)hwint1, KERNEL_CS, 0x8, IDT_INT32);
@@ -179,14 +179,14 @@ PRIVATE void idt_setup(void)
     set_idte(45, (unsigned)hwint13, KERNEL_CS, 0x8, IDT_INT32);
     set_idte(46, (unsigned)hwint14, KERNEL_CS, 0x8, IDT_INT32);
     set_idte(47, (unsigned)hwint15, KERNEL_CS, 0x8, IDT_INT32);
-     
+
     /* Set system call interrupt. */
     set_idte(128, (unsigned)syscall, KERNEL_CS, 0xe, IDT_INT32);
-  
+
     /* Set IDT pointer. */
     idtptr.size = sizeof(idt) - 1;
     idtptr.ptr = (unsigned)&idt;
-     
+
     /* Flush IDT. */
     idt_flush(&idtptr);
 }

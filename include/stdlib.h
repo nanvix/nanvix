@@ -1,25 +1,25 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /**
  * @file
- * 
+ *
  * @brief Standard library definitions.
  */
 
@@ -34,12 +34,12 @@
 	#include <sys/wait.h>
 
 #endif
-	
+
 	/**
 	 * @defgroup stdlib Standard Library
-	 * 
+	 *
 	 * @brief Standard library definitions.
-	 * 
+	 *
 	 * @todo abort()
 	 * @todo atof()
 	 * @todo mbstowcs()
@@ -84,52 +84,52 @@
 	#define EXIT_FAILURE 1 /**< Unsuccessful termination for exit(). */
 	#define EXIT_SUCCESS 0 /**< Successful termination for exit().   */
 	/**@}*/
-	
+
 	/**
 	 * @brief Maximum value returned by rand().
 	 */
 	#define RAND_MAX 0x7fffffff
-	
+
 	/**
 	 * @brief Maximum number of bytes in a locale character.
 	 */
 	#define MB_CUR_MAX ((size_t) 1)
-	
+
 	#define _NEED_NULL
 	#include <decl.h>
-	
+
 	/**
 	 * @brief Structure type returned by the div() function.
 	 */
-	typedef struct 
+	typedef struct
 	{
 		int quot; /**< Quotient.  */
 		int rem;  /**< Remainder. */
 	} div_t;
-	
+
 	/**
 	 * @brief Structure type returned by the ldiv() function.
 	 */
-	typedef struct 
+	typedef struct
 	{
 		int quot; /**< Quotient.  */
 		int rem;  /**< Remainder. */
 	} ldiv_t;
-	
+
 	/**
 	 * @brief Structure type returned by the lldiv() function.
 	 */
-	typedef struct 
+	typedef struct
 	{
 		int quot; /**< Quotient.  */
 		int rem;  /**< Remainder. */
 	} lldiv_t;
-	
+
 	#define _NEED_SIZE_T
 	#define _NEED_WCHAR_T
 	#define _NEED_WSTATUS
 	#include <decl.h>
-	
+
 	/* Forward definitions. */
 	extern void _Exit(int);
 	extern void abort(void);
@@ -180,7 +180,7 @@
 	extern int rand_r(unsigned *);
 	extern int setenv(const char *, const char *, int);
 	extern int unsetenv(const char *);
-	
+
 #endif
 
 #if defined(_XOPEN_SOURCE)
@@ -210,7 +210,7 @@
 	extern int unlockpt(int);
 
 #endif
-	
+
 	/**@}*/
 
 #endif /* STDLIB_H_ */

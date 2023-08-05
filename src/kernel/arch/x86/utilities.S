@@ -1,19 +1,19 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -53,7 +53,7 @@ gdt_flush:
 	/* Load GDT. */
 	mov 4(%esp), %eax
     lgdt (%eax)
-    
+
     /* Reload code segment. */
     ljmp $KERNEL_CS, $reload_cs
     reload_cs :
@@ -105,7 +105,7 @@ tlb_flush:
 /*----------------------------------------------------------------------------*
  *                            enable_interrupts()                             *
  *----------------------------------------------------------------------------*/
- 
+
 /*
  * Enables all hardware interrupts.
  */
@@ -116,7 +116,7 @@ enable_interrupts:
 /*----------------------------------------------------------------------------*
  *                            disable_interrupts()                            *
  *----------------------------------------------------------------------------*/
- 
+
 /*
  * Disables all hardware interrupts.
  */
@@ -127,7 +127,7 @@ disable_interrupts:
 /*----------------------------------------------------------------------------*
  *                                   halt()                                   *
  *----------------------------------------------------------------------------*/
- 
+
 /*
  * Halts the processor.
  */
@@ -145,7 +145,7 @@ halt:
 physcpy:
 	pushl %esi
 	pushl %edi
-	
+
 	/* Get parameters. */
 	movl 12(%esp), %edi
 	movl 16(%esp), %esi
@@ -157,7 +157,7 @@ physcpy:
 	subl $KBASE_VIRT, %eax
 	jmp *%eax
 	lower_kernel:
- 
+
   	/* Disable paging. */
   	movl %cr0, %eax
   	andl $0x80000000 - 1, %eax
@@ -176,22 +176,22 @@ physcpy.loop:
 	addl $4, %esi
 	addl $4, %edi
 	subl $4, %ecx
-	jnz physcpy.loop   
-  
+	jnz physcpy.loop
+
   	/* Re-enable paging. */
 	movl %cr0, %eax
 	orl $0x80000000, %eax
 	movl %eax, %cr0
-  
+
 	/* Come back to higher-half kernel. */
 	movl $higher_kernel, %eax
 	jmp *%eax
 	higher_kernel:
 	sti
-  
+
 	popl %edi
 	popl %esi
-  
+
     ret
 
 /*----------------------------------------------------------------------------*
@@ -214,7 +214,7 @@ switch_to:
 	pushl PROC_KESP(%eax)
 	movl %esp, PROC_KESP(%eax)
 	fnsave PROC_FSS(%eax)
-	
+
 	/* Switch processes. */
 	movl %ecx, curr_proc
 
@@ -224,7 +224,7 @@ switch_to:
 	movl PROC_KSTACK(%ecx), %eax
 	addl $PAGE_SIZE - DWORD_SIZE, %eax
 	movl %eax, TSS_ESP0 + tss
-	
+
 	/* Load process context. */
 	movl PROC_KESP(%ecx), %esp
 	frstor PROC_FSS(%ecx)
@@ -232,18 +232,18 @@ switch_to:
 	pushl %ecx
 	call processor_reload
 	popl %ecx
-	
+
 	btrl $PROC_NEW, PROC_FLAGS(%ecx)
 	jc fork_return
-	
+
 	popl PROC_KESP(%ecx)
-	
+
 	popl %ebp
 	popl %edi
 	popl %esi
 	popl %ebx
 	popfl
-	
+
 	ret
 
 /*
@@ -263,18 +263,18 @@ fork_return:
 user_mode:
 	movl 4(%esp), %ecx
 	movl 8(%esp), %edx
-	
+
 	/* Enter critical region. */
 	cli
-	
+
 	/* Set interrupt level to "user level". */
 	movl curr_proc, %ebx
     movl $0, PROC_INTLVL(%ebx)
-	
+
 	/* Load data segment selector. */
 	movw $USER_DS, %ax
 	movw %ax, %ds
-	
+
 	/* Build fake interrupt stack. */
 	pushl $USER_DS
 	pushl %edx

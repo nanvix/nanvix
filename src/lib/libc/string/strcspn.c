@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -52,7 +52,7 @@
 
 /**
  * @file
- * 
+ *
  * @brief strcspn() implementation.
  */
 
@@ -60,13 +60,13 @@
 
 /**
  * @brief Gets the length of a complementary substring.
- * 
+ *
  * @param s1 Pointer to string to search.
  * @param s2 Pointer to string to be checked against.
- * 
+ *
  * @returns The length of the computed segment of the string pointed to by
             @p s1.
- * 
+ *
  * @version IEEE Std 1003.1, 2013 Edition
  */
 size_t strcspn(const char *s1, const char *s2)
@@ -82,13 +82,13 @@ size_t strcspn(const char *s1, const char *s2)
 	{
 		c = *p++;
 		spanp = s2;
-		
+
 		do {
 			if ((sc = *spanp++) == c)
 				return (p - 1 - s1);
 		} while (sc != '\0');
 	}
-	
+
 	/* Not reached. */
 	return (0);
 }

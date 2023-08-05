@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -60,11 +60,11 @@
 	 * Saved registers during interrupt/exception.
 	 */
 	struct intstack
-	{   
+	{
 		dword_t old_kesp;
         dword_t ds;
         dword_t edi, esi, ebp, ebx, edx, ecx, eax;
-        dword_t eip, cs, eflags, useresp, ss;	
+        dword_t eip, cs, eflags, useresp, ss;
 	};
 
 	/* Software interrupt hooks. */
@@ -87,10 +87,10 @@
 	EXTERN void swint16();
 	EXTERN void swint17();
 	EXTERN void swint19();
-	
+
 	/* System call hook. */
 	EXTERN void syscall();
-	
+
 	/* Hardware interrupt hooks. */
 	EXTERN void hwint0();
 	EXTERN void hwint1();

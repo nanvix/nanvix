@@ -1,37 +1,37 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
  * Copyright (C) 1991-1996 Free Software Foundation, Inc.
- * 
+ *
  * This file is part of the GNU C Library.
- * 
+ *
  * The GNU C Library free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * The GNU C Library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
@@ -40,7 +40,7 @@
 
 /**
  * @file
- * 
+ *
  * @brief mbtowc() implementation.
  */
 
@@ -53,7 +53,7 @@
  */
 static int count = 0;
 static wint_t value = 0;
-	
+
 /**
  * @brief Internal mbtowc().
  */
@@ -162,7 +162,7 @@ static size_t _mbtowc(wchar_t *pwc, const char *s, size_t n)
  * @param pwc Wide-character code.
  * @param s   Wide-character.
  * @param n   Number of bytes to consider.
- * 
+ *
  * @returns If @p s is a null pointer, mbtowc() returns a non-zero or 0 value,
  *          if character encodings, respectively, do or do not have state-
  *          dependent encodings. If @p s is not a null pointer, mbtowc() either
@@ -170,17 +170,17 @@ static size_t _mbtowc(wchar_t *pwc, const char *s, size_t n)
  *          bytes that constitute the converted character (if the next @p n or
  *          fewer bytes form a valid character), or return -1 and sets errno to
  *          indicate the error (if they do not form a valid character).
- * 
+ *
  *          In no case the value returned is greater than @p n or the value of
  *          the MB_CUR_MAX macro.
- * 
+ *
  * @note The mbtowc() function is not thread-safe.
  */
 int mbtowc(wchar_t *pwc, const char *s, size_t n)
 {
 	int result;
 
-	/* 
+	/*
 	 * If S is NULL the function has to return null or not null
 	 * depending on the encoding having a state depending encoding or
 	 * not.  This is nonsense because any multibyte encoding has a

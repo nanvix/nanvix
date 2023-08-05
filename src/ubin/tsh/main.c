@@ -2,19 +2,19 @@
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
  *              2016-2016 Subhra S. Sarkar <rurtle.coder@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -116,7 +116,7 @@ static void syntax(void)
 static void sigmsg(int sig)
 {
 	char *msg;
-	
+
 	/* Parse signal. */
 	switch (sig)
 	{
@@ -133,9 +133,9 @@ static void sigmsg(int sig)
 		case SIGTERM: msg = "Terminated"; break;
 		case SIGALRM: msg = "Alarm"; break;
 		case SIGTRAP: msg = "Trace"; break;
-		default:      msg = "Other signal"; break;		
+		default:      msg = "Other signal"; break;
 	}
-	
+
 	fputs(msg, stderr);
 #ifdef WIFCORED
 	if (WIFCORED(s))
@@ -165,18 +165,18 @@ static void runcmd(const char **args, int argc, int *redir, int flags)
 	int status;    /* Exit status.      */
 	pid_t pid;     /* Child process ID. */
 	builtin_t cmd; /* Built-in command. */
-	
+
 	/* Checks built-in. */
 	if ((cmd = getbuiltin(args[0])) != NULL)
-	{	
+	{
 		closeredir(redir);
 		if ((shret = cmd(argc, args)) != EXIT_SUCCESS)
 			sherror();
 		return;
 	}
-	
+
 	pid = fork();
-	
+
 	/* Failed to fork. */
 	if (pid < 0)
 	{
@@ -184,16 +184,16 @@ static void runcmd(const char **args, int argc, int *redir, int flags)
 		shret = errno;
 		goto error;
 	}
-	
+
 	/* Parent process. */
 	if (pid > 0)
 	{
 		closeredir(redir);
-		
+
 		/* Piping... */
 		if (flags & CMD_PIPE)
 			return;
-		
+
 		/* Asynchronous execution. */
 		if (flags & CMD_ASYNC)
 		{
@@ -204,26 +204,26 @@ static void runcmd(const char **args, int argc, int *redir, int flags)
 		/* Wait child. */
 		while (wait(&status) != pid)
 			/* noop */;
-		
+
 		/* Abnormal termination. */
 		if (status != EXIT_SUCCESS)
 		{
 			/* Signal. */
 			if (WIFSIGNALED(status))
 				sigmsg(shret = WTERMSIG(status));
-			
+
 			/* Voluntary. */
 			else if (WIFEXITED(status))
 				shret = WEXITSTATUS(status);
-			
+
 			/* Stopped. */
 			else if  (WIFSTOPPED(status))
 				printf("[%d]+\tStopped\n", pid);
 		}
-		
+
 		return;
 	}
-	
+
 	/*
 	 * Child process.
 	 */
@@ -243,7 +243,7 @@ static void runcmd(const char **args, int argc, int *redir, int flags)
 			open("/dev/null", O_RDONLY);
 		}
 	}
-	
+
 	/* Redirections. */
 	for (i = 0; i < 2; i++)
 	{
@@ -257,7 +257,7 @@ static void runcmd(const char **args, int argc, int *redir, int flags)
 			close(redir[i]);
 		}
 	}
-		
+
 	execvp(args[0], (char * const *)args);
 	fprintf(stderr, "%s: failed to execute\n", args[0]);
 	exit(EXIT_FAILURE);
@@ -277,11 +277,11 @@ static char *eatchars(char *str)
 	{
 		if ((*str == '<') || (*str == '>'))
 			break;
-					
+
 		if ((*str == ' ') || (*str == '\t'))
 			break;
 	}
-	
+
 	return (str);
 }
 
@@ -291,42 +291,42 @@ static char *eatchars(char *str)
 static int getredir(char **redir, char *str)
 {
 	char *base;
-	
+
 	base = str;
 	*base = '\0';
-	
+
 	/* Eat initial whitespace. */
 	while (*++str != '\0')
 	{
 		if ((*str == ' ') || (*str == '\t'))
 			continue;
-		
+
 		break;
 	}
-	
+
 	/* Syntax error. */
 	if ((*str == '<') || (*str == '>'))
 	{
 		syntax();
 		return (-1);
 	}
-	
+
 	/* Early EOF. */
 	if (*str == '\0')
 	{
 		syntax();
 		return (-1);
 	}
-	
+
 	*redir = str;
 	str = eatchars(str);
-	
+
 	return (str - base);
 }
 
 /*
  * Parses a command block
- */ 
+ */
 static void pcmd(char *cmd, int *redir, int flags)
 {
 	int n;                             /* Number of characters to skip. */
@@ -335,21 +335,21 @@ static void pcmd(char *cmd, int *redir, int flags)
 	char *infile;                      /* Input file for redirection.   */
 	char *outfile;                     /* Output file for redirection.  */
 	const char *args[CMD_MAXARGS + 1]; /* Command arguments.            */
-	
+
 	/* File permissions. */
 	#define MAY_READ (S_IRUSR | S_IRGRP | S_IROTH)
 	#define MAY_WRITE (S_IWUSR | S_IWGRP | S_IWOTH)
-	
+
 	argc = 0;
 	infile = NULL;
 	outfile = NULL;
-	
+
 	/*
 	 * Parse command breaking it
 	 * down into arguments.
 	 */
 	for (p = cmd; *p != '\0'; /* empty*/)
-	{		
+	{
 		/* Parse character. */
 		switch (*p)
 		{
@@ -358,9 +358,9 @@ static void pcmd(char *cmd, int *redir, int flags)
 			case '\t':
 				*p++ = '\0';
 				break;
-			
+
 			/* Redirect input. */
-			case '<':			
+			case '<':
 				if ((argc == 0) || (infile != NULL))
 				{
 					syntax();
@@ -370,7 +370,7 @@ static void pcmd(char *cmd, int *redir, int flags)
 					goto error1;
 				p += n;
 				break;
-			
+
 			/* Redirect output. */
 			case '>':
 				if ((argc == 0) || (outfile != NULL))
@@ -382,7 +382,7 @@ static void pcmd(char *cmd, int *redir, int flags)
 					goto error1;
 				p += n;
 				break;
-			
+
 			/* Get argument. */
 			default:
 				/* Too many command arguments. */
@@ -391,16 +391,16 @@ static void pcmd(char *cmd, int *redir, int flags)
 					fprintf(stderr, "%s: too many arguments\n", args[0]);
 					goto error1;
 				}
-				
+
 				args[argc++] = p;
 				args[argc] = NULL;
-				
+
 				/* Eat command characters. */
 				p = eatchars(p);
 				break;
 		}
 	}
-	
+
 	/* Ignore empty commands. */
 	if (argc > 0)
 	{
@@ -409,9 +409,9 @@ static void pcmd(char *cmd, int *redir, int flags)
 		{
 			if (redir[0] != -1)
 				close(redir[0]);
-				
+
 			redir[0] = open(infile, O_RDONLY);
-			
+
 			if (redir[0] == -1)
 			{
 				fprintf(stderr, "%s: failed to open\n", infile);
@@ -419,23 +419,23 @@ static void pcmd(char *cmd, int *redir, int flags)
 				goto error0;
 			}
 		}
-				
+
 		/* Output redirection. */
 		if (outfile != NULL)
 		{
 			if (redir[1] != -1)
 				close(redir[1]);
-			
+
 			redir[1] = open(outfile, O_WRONLY|O_CREAT|O_TRUNC, MAY_READ|MAY_WRITE);
-						
+
 			if (redir[1] == -1)
 			{
 				fprintf(stderr, "%s: failed to open\n", outfile);
 				shret = errno;
 				goto error0;
-			}		
+			}
 		}
-		
+
 		runcmd((const char **)args, argc, redir, flags);
 		return;
 	}
@@ -456,10 +456,10 @@ static void ppipe(char *pipeblk, int flags)
 	int pipefd[2];   /* Pipe file descriptors.        */
 	int redir[2]; /* Redirection file descriptors. */
 	char *lastcmd;   /* Last command found.           */
-	
+
 	pipefd[0] = pipefd[1] = -1;
 	redir[0] = redir[1] = -1;
-	
+
 	/*
 	 * Parse pipe block breaking it
 	 * down into commands.
@@ -473,17 +473,17 @@ static void ppipe(char *pipeblk, int flags)
 			case '|':
 				syntax();
 				goto error1;
-			
+
 			/* Syntax error. */
 			case '\0':
 				syntax();
 				goto error1;
-			
+
 			/* Keep parsing. */
 			default:
 				break;
 		}
-		
+
 		/* Parse character. */
 		switch (*p)
 		{
@@ -496,19 +496,19 @@ static void ppipe(char *pipeblk, int flags)
 					fprintf(stderr, "%s: failed to pipe\n", TSH_NAME);
 					shret = errno;
 					goto error0;
-				};				
+				};
 				redir[1] = pipefd[1];
-				pcmd(lastcmd, redir, flags | CMD_PIPE);			
+				pcmd(lastcmd, redir, flags | CMD_PIPE);
 				lastcmd = p + 1;
 				break;
-			
+
 			/* Done parsing. */
 			case '\0':
 				redir[0] = pipefd[0];
 				redir[1] = -1;
 				pcmd(lastcmd, redir, flags);
 				return;
-			
+
 			/* Keep parsing. */
 			default:
 				break;
@@ -529,8 +529,8 @@ static void pline(char *line)
 {
 	char *p;        /* Working character.     */
 	char *lastpipe; /* Last pipe block found. */
-	
-	/* 
+
+	/*
 	 * Parse command line breaking it
 	 * down into pipe blocks.
 	 */
@@ -546,12 +546,12 @@ static void pline(char *line)
 				sherror();
 			case '\0':
 				return;
-			
+
 			/* Keep parsing. */
 			default:
 				break;
 		}
-		
+
 		/* Parse character. */
 		switch (*p)
 		{
@@ -561,12 +561,12 @@ static void pline(char *line)
 				ppipe(lastpipe, CMD_ASYNC);
 				lastpipe = p + 1;
 				break;
-			
+
 			/* Done parsing */
 			case '\0':
 				ppipe(lastpipe, 0);
 				return;
-			
+
 			/* Keep parsing. */
 			default:
 				break;
@@ -584,7 +584,7 @@ static int has_graph(const char *str)
 		if (isgraph(*str))
 				return (1);
 	}
-	
+
 	return (0);
 }
 
@@ -604,11 +604,11 @@ static int readline(char *line, int length, FILE *stream)
 	while (size > 0)
 	{
 		unsigned char ch;
-		
+
 		/* Nothing read. */
 		if (read(fd, &ch, 1) != 1)
 			return (-1);
-		
+
 		/* Erase. */
 		if ((ch == ERASE_CHAR(raw)) && (size < length))
 		{
@@ -616,7 +616,7 @@ static int readline(char *line, int length, FILE *stream)
 			size++;
 			putchar(ch);
 		}
-	
+
 		/* Kill. */
 		else if (ch == KILL_CHAR(raw))
 		{
@@ -625,18 +625,18 @@ static int readline(char *line, int length, FILE *stream)
 				putchar('\b'), size++;
 			p = line;
 		}
-		
-		/* End of file. */	
+
+		/* End of file. */
 		else if (ch == EOF_CHAR(raw))
 			return (0);
-	
+
 		/* UP and DOWN. */
 		else if ((ch == KUP) || (ch == KDOWN))
 		{
 			char *oldline;
-			
+
 			oldline = (ch == KUP) ? history_previous(hist) : history_next(hist);
-			
+
 			/* Clear actual command & screen */
 			while (size < length)
 				putchar('\b'), size++;
@@ -647,7 +647,7 @@ static int readline(char *line, int length, FILE *stream)
 			strncpy(line, oldline, LINELEN);
 			printf("%s", line);
 		}
-	
+
 		/* Keys */
 		else
 		{
@@ -669,7 +669,7 @@ static int readline(char *line, int length, FILE *stream)
 				putchar('\n');
 				break;
 			}
-			
+
 			/* Printable character. */
 			if (isprint(ch))
 			{
@@ -679,7 +679,7 @@ static int readline(char *line, int length, FILE *stream)
 			}
 		}
 	}
-	
+
 	return (1);
 }
 
@@ -693,7 +693,7 @@ static void usage(void)
 	printf("  <command file> Command file to read from\n");
 	printf("  --help         Displays this information and exits\n");
 	printf("  --version      Prints program version and exits\n");
-	
+
 	exit(EXIT_SUCCESS);
 }
 
@@ -705,14 +705,14 @@ static void readargs(int argc, char **argv)
 	int i;        /* Loop index.       */
 	char *arg;    /* Working argument. */
 	char *infile; /* Input file name.  */
-	
+
 	infile = NULL;
-	
+
 	/* Read program arguments. */
 	for (i = 0; i < argc; i++)
 	{
 		arg = argv[i];
-		
+
 		/* Print version. */
 		if (!strcmp(arg, "--version"))
 		{
@@ -720,24 +720,24 @@ static void readargs(int argc, char **argv)
 			puts(SH_COPYRIGHT);
 			exit(EXIT_SUCCESS);
 		}
-		
+
 		/* Display help. */
 		else if (!strcmp(arg, "--help"))
 			usage();
-		
+
 		/* Set input. */
 		else
 			infile = arg;
 	}
-	
+
 	/* Read from standard input. */
 	if (input == NULL)
 	{
 		input = stdin;
-		
+
 		/* Interactive shell. */
 		if (isatty(fileno(stdin)))
-		{	
+		{
 			shflags |= SH_INTERACTIVE;
 			signal(SIGINT, SIG_IGN);
 			signal(SIGQUIT, SIG_IGN);
@@ -746,12 +746,12 @@ static void readargs(int argc, char **argv)
 			setvbuf(stdout, NULL, _IONBF, 0);
 		}
 	}
-	
+
 	/* Read input from file. */
 	else
 	{
 		input = freopen(infile, "r", stdin);
-		
+
 		/* Failed to open input file. */
 		if (input == NULL)
 		{
@@ -774,9 +774,9 @@ int main(int argc, char **argv)
 	uid_t myuid;        /* uid of shell. */
 	char line[LINELEN]; /* Input line.   */
 #endif /* OPEN_MAX */
-	
+
 	readargs(argc, argv);
-	
+
 	myuid = getuid();
 
 #ifdef OPEN_MAX
@@ -803,7 +803,7 @@ int main(int argc, char **argv)
 		/* Print prompt character. */
 		if (shflags & SH_INTERACTIVE)
 			printf("%c ", (myuid == 0) ? '#' : '%');
-	
+
 		/* Read command line. */
 		switch (readline(line, LINELEN, input))
 		{
@@ -811,12 +811,12 @@ int main(int argc, char **argv)
 			case -1:
 				sherror();
 				break;
-			
+
 			/* End of file. */
 			case 0:
 				puts("\n");
 				goto out;
-			
+
 			/* Parse command line. */
 			case 1:
 				switch_canonical();
@@ -825,7 +825,7 @@ int main(int argc, char **argv)
 				break;
 		}
 	}
-	
+
 out:
 
 	switch_canonical();

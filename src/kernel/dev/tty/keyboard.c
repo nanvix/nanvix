@@ -1,23 +1,23 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna   <pedrohenriquepenna@gmail.com>
  *              2015-2016 Davidson Francis <davidsondfgl@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
- 
+
 #include <nanvix/const.h>
 #include <nanvix/dev.h>
 #include <nanvix/hal.h>
@@ -74,9 +74,9 @@
 
 /* Other keys. */
 #define KRLEFT_CTRL   0x1D
-#define KRRIGHT_CTRL  0x1D    
+#define KRRIGHT_CTRL  0x1D
 #define KRLEFT_ALT    0x38
-#define KRRIGHT_ALT   0x38    
+#define KRRIGHT_ALT   0x38
 #define KRLEFT_SHIFT  0x2A
 #define KRRIGHT_SHIFT 0x36
 #define KRCAPS_LOCK   0x3A
@@ -87,7 +87,7 @@
 #ifdef KEYBOARD_US
 
 /**
- * @brief Keymap: US International non-shifted key map. 
+ * @brief Keymap: US International non-shifted key map.
  */
 PRIVATE uint8_t ascii_non_shift[] = {
 	'\0', ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -99,7 +99,7 @@ PRIVATE uint8_t ascii_non_shift[] = {
 	0, 0, KHOME, KUP, KPGUP,'-', KLEFT, '5', KRIGHT, '+', KEND,
 	KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
 };
-                                    
+
 /**
  * @brief US International shifted keymap.
  */
@@ -117,7 +117,7 @@ PRIVATE uint8_t ascii_shift[] = {
 #else
 
 /**
- * @brief French non-shifted keymap. 
+ * @brief French non-shifted keymap.
  */
 PRIVATE uint8_t ascii_non_shift[] = {
 	0, ESC, '&', 'e', '\"', '\'', '(', '-', 'e', '_', 'c', 'a', ')', '=', BACKSPACE,
@@ -128,7 +128,7 @@ PRIVATE uint8_t ascii_non_shift[] = {
 	0, 0, KHOME, KUP, KPGUP, 0, KLEFT, 0, KRIGHT, 0, KEND,
 	KDOWN, KPGDN, KINS, KDEL, 0, 0, 0, KF11, KF12
 };
-                                    
+
 /**
  * @brief French shifted keymap.
  */
@@ -166,18 +166,18 @@ PRIVATE uint8_t parse_key_hit(void)
 {
 	uint8_t scancode;
 	uint8_t port_value;
-	
+
     scancode = inputb(0x60);
 
     port_value = inputb(0x61);
-    outputb(0x61, port_value | 0x80); 
-    outputb(0x61, port_value & ~0x80); 
-	
+    outputb(0x61, port_value | 0x80);
+    outputb(0x61, port_value & ~0x80);
+
 	/* A key was released. */
     if(scancode & 0x80)
     {
-        scancode &= 0x7F; 
-        
+        scancode &= 0x7F;
+
         /* Parse scan code. */
         switch (scancode)
         {
@@ -186,22 +186,22 @@ PRIVATE uint8_t parse_key_hit(void)
 			case KRRIGHT_SHIFT:
 				mode &= ~SHIFT;
 				break;
-			
+
 			/* CTRL. */
 			case KRLEFT_CTRL:
 				mode &= ~CTRL;
 				break;
-			
+
 			/* Any other. */
 			default:
 				mode &= ~ANY;
 				break;
 		}
     }
-   
-   	/* A key was pressed. */ 
-    else 
-    {   
+
+   	/* A key was pressed. */
+    else
+    {
         /* Parse scan code. */
         switch (scancode)
         {
@@ -210,19 +210,19 @@ PRIVATE uint8_t parse_key_hit(void)
 			case KRRIGHT_SHIFT:
 				mode |= SHIFT;
 				break;
-			
+
 			/* CTRL. */
 			case KRLEFT_CTRL:
 				mode |= CTRL;
 				break;
-			
+
 			/* Any other. */
 			default:
 				mode |= ANY;
 				break;
 		}
     }
-    
+
     return (scancode);
 }
 
@@ -233,40 +233,40 @@ PRIVATE uint8_t get_ascii(void)
 {
     uint8_t scancode;
     uint8_t code;
-    
+
     scancode = parse_key_hit();
 
 	/* Printable character. */
     if (mode & ANY)
     {
 		code = (mode & SHIFT) ? ascii_shift[scancode]:ascii_non_shift[scancode];
-									
+
 		/* CTRL pressed. */
 		if (mode & CTRL)
 			return ((code < 96) ? code - 64 : code - 96);
-		
+
 		return (code);
 	}
-        
+
     return (0);
 }
 
 /**
  * @brief Handles a keyboard interrupt.
- * 
+ *
  * @details Handles a keyboard interrupt, parsing scan codes received from the
  *          keyboard controller to ascii codes.
  */
 PUBLIC void do_keyboard_hit(void)
 {
 	uint8_t ascii_code;
-	
+
 	ascii_code = get_ascii();
-   
+
 	/* Ignore. */
 	if (ascii_code == 0)
 		return;
-   
+
 	/* Parse ASCII code. */
 	switch(ascii_code)
 	{
@@ -301,7 +301,7 @@ PUBLIC void do_keyboard_hit(void)
 PUBLIC void keyboard_init(void)
 {
 	set_hwint(INT_KEYBOARD, &do_keyboard_hit);
-	
+
     while (inputb(0x64) & 1)
 		inputb(0x60);
 }

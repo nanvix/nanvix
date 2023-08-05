@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -82,7 +82,7 @@
 	pushl %ebp
 	pushl %esi
 	pushl %edi
-	
+
 	/* Save data segment. */
 	pushl %ds
 .endm
@@ -102,11 +102,11 @@
 
     /* Increment interrupt level. */
     incl PROC_INTLVL(%ebx)
-    
+
     /* Save interrupt stack. */
     pushl PROC_KESP(%ebx)
     movl %esp, PROC_KESP(%ebx)
-    
+
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -125,11 +125,11 @@ leave:
 	/* Decrement interrupt level. */
     decl PROC_INTLVL(%ebx)
     jnz leave.out
-	
-	/* Check if we were handling a system call. */ 
+
+	/* Check if we were handling a system call. */
 	btrl $PROC_SYS, PROC_FLAGS(%ebx)
 	jnc check_signals
-	
+
 	/*
 	 * The kernel is non-preemptive.
 	 * So, let us be nice with other processes
@@ -138,7 +138,7 @@ leave:
 	call yield
 
 	movl curr_proc, %ebx
-	
+
 	/* Check signals. */
 	check_signals:
 		bsfl PROC_RECEIVED(%ebx), %eax
@@ -149,7 +149,7 @@ leave:
 		je default_signal
 		cmpl $_SIG_IGN, %ecx
 		je check_signals
-		
+
 			/* User signal. */
 			movl $_SIG_DFL, PROC_HANDLERS(%ebx, %eax, 4)
 			movl PROC_RESTORER(%ebx), %esi
@@ -165,7 +165,7 @@ leave:
 			pop %ebx
 			cmpl $0, %eax
 			je leave.out
-			
+
 			/* Build stack for signal handler. */
 			movl USERESP - 4(%esp), %eax
 			movl EIP - 4(%esp), %edx
@@ -188,7 +188,7 @@ leave:
 			movl %edx, -36(%eax)          # edi
 			movl %ebx, -40(%eax)          # Signal number.
 			movl %esi, -44(%eax)          # Restorer address.
-			
+
 			movl %ecx, EIP - 4(%esp)
 			subl $44, USERESP - 4(%esp)
 
@@ -269,12 +269,12 @@ swint:
 	pushl %esi
 	pushl %edi
 	pushl %ds
-	
+
 	enter
-	
+
 	/* Leave critical region. */
 	sti
-	
+
 	/* Call interrupt handler. */
 	pushl %eax
 	call *%ecx
@@ -282,7 +282,7 @@ swint:
 
 	/* Enter critical region. */
 	cli
-	
+
     jmp leave
 
 /*
@@ -306,27 +306,27 @@ _do_page_fault:
 syscall:
 	save
 	enter
-	
+
 	/* Set 'handling system call' flag. */
 	btsl $PROC_SYS, PROC_FLAGS(%ebx)
-	
+
 	/* Leave critical region. */
 	sti
-	
+
 	/* Get system call parameters. */
 	movl EAX(%esp), %eax
 	movl EBX(%esp), %ebx
 	movl ECX(%esp), %ecx
 	movl EDX(%esp), %edx
-	
+
 	/* Check for bad system call. */
 	cmpl $NR_SYSCALLS, %eax
 	jl good_syscall
-		movl $ENOSYS, %eax 
+		movl $ENOSYS, %eax
 		negl %eax
 	jmp bad_syscall
-	
-	good_syscall:	
+
+	good_syscall:
 		/* Get system call. */
 		shl $2, %eax
 		addl $syscalls_table, %eax
@@ -344,8 +344,8 @@ syscall:
 	movl %eax, EAX(%esp)
 
 	/* Enter critical region. */
-	cli	
-	
+	cli
+
 	jmp leave
 
 /*----------------------------------------------------------------------------*

@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -44,7 +44,7 @@ static int builtin_cd(int argc, const char **argv)
 		fputs("cd: failed\n", stderr);
 		return (EXIT_FAILURE);
 	}
-	
+
 	return (EXIT_SUCCESS);
 }
 
@@ -55,9 +55,9 @@ static int builtin_exit(int argc, const char **argv)
 {
 	((void)argc);
 	((void)argv);
-	
+
 	exit(shret);
-	
+
 	/* Never gets here. */
 	return (0);
 }
@@ -68,14 +68,14 @@ static int builtin_exit(int argc, const char **argv)
 static int builtin_wait(int argc, const char **argv)
 {
 	int status;
-	
+
 	((void)argc);
 	((void)argv);
-	
+
 	/* Wait for all child processes to complete */
 	while (wait(&status) != -1)
 		/* empty. */;
-	
+
 	return (EXIT_SUCCESS);
 }
 
@@ -90,6 +90,6 @@ builtin_t getbuiltin(const char *cmdname)
 		return (&builtin_exit);
 	else if (!strcmp(cmdname, "wait"))
 		return (&builtin_wait);
-	
+
 	return (NULL);
 }

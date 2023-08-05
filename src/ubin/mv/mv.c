@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -44,10 +44,10 @@ static void version(void)
 {
 	printf("mv (Nanvix Coreutils) %d.%d\n\n", VERSION_MAJOR, VERSION_MINOR);
 	printf("Copyright(C) 2011-2014 Pedro H. Penna\n");
-	printf("This is free software under the "); 
+	printf("This is free software under the ");
 	printf("GNU General Public License Version 3.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
-	
+
 	exit(EXIT_SUCCESS);
 }
 
@@ -61,7 +61,7 @@ static void usage(void)
 	printf("Options:\n");
 	printf("  --help    Display this information and exit\n");
 	printf("  --version Display program version and exit\n");
-	
+
 	exit(EXIT_SUCCESS);
 }
 
@@ -73,19 +73,19 @@ static void getargs(int argc, char *const argv[])
 	int i;     /* Loop index.       */
 	char *arg; /* Current argument. */
 	int state; /* Processing state. */
-	
+
 	/* Processing states. */
 	#define SET_NONE  0 /* Set none.           */
 	#define SET_NAME1 1 /* Set name of file 1. */
 	#define SET_NAME2 2 /* Set name of file 2. */
-	
+
 	state = SET_NAME1;
-	
+
 	/* Read command line arguments. */
 	for (i = 1; i < argc; i++)
 	{
 		arg = argv[i];
-		
+
 		/* Parse command line argument. */
 		if (!strcmp(arg, "--help")) {
 			usage();
@@ -108,9 +108,9 @@ static void getargs(int argc, char *const argv[])
 			fprintf(stderr, "mv: too many operands?\n");
 			usage();
 		}
-		
+
 	}
-	
+
 	/* Missing operands. */
 	if ((args.name1 == NULL) || (args.name2 == NULL))
 	{
@@ -125,7 +125,7 @@ static void getargs(int argc, char *const argv[])
 static void buildname(char *name1, char *name2, char *strbuf)
 {
 	char *p1, *p2;
-	
+
 	while ((*strbuf = *name2) != '\0') {
 		strbuf++; name2++;
 	}
@@ -151,18 +151,18 @@ int main(int argc, char *const argv[])
 	char *name2;           /* Name of file 2. */
 	struct stat st;        /* stat() buffer.  */
 	char strbuf[PATH_MAX]; /* String buffer.  */
-	
+
 	getargs(argc, argv);
-	
+
 	name2 = args.name2;
-	
+
 	/* Failed to stat(). */
 	if (stat(args.name1, &st) < 0)
 	{
 		fprintf(stderr, "mv: source file does not exist\n");
 		return (EXIT_FAILURE);
 	}
-	
+
 	/* Moving directory is not allowed. */
 	if (S_ISDIR(st.st_mode))
 	{
@@ -181,7 +181,7 @@ again:
 			name2 = strbuf;
 			goto again;
 		}
-		
+
 		/* Failed to unlink(). */
 		if (unlink(name2) < 0)
 		{
@@ -189,20 +189,20 @@ again:
 			return (EXIT_FAILURE);
 		}
 	}
-	
+
 	/* Failed to link(). */
 	if (link(args.name1, name2) < 0)
 	{
 		fprintf(stderr, "mv: cannot link()\n");
 		return (EXIT_FAILURE);
 	}
-	
+
 	/* Failed to unlink(). */
 	if (unlink(args.name1) < 0)
 	{
 		fprintf(stderr, "mv: cannot unlink()\n");
 		return (EXIT_FAILURE);
 	}
-	
+
 	return (EXIT_SUCCESS);
 }

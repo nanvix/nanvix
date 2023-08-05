@@ -47,12 +47,12 @@ PUBLIC char idle_kstack[KSTACK_SIZE];
 PUBLIC struct process proctab[PROC_MAX];
 
 /**
- * @brief Current running process. 
+ * @brief Current running process.
  */
 PUBLIC struct process *curr_proc = IDLE;
 
 /**
- * @brief Last running process. 
+ * @brief Last running process.
  */
 PUBLIC struct process *last_proc = IDLE;
 
@@ -70,14 +70,14 @@ PUBLIC unsigned nprocs = 0;
  * @brief Initializes the process management system.
  */
 PUBLIC void pm_init(void)
-{	
+{
 	int i;             /* Loop index.      */
 	struct process *p; /* Working process. */
-	
+
 	/* Initialize the process table. */
 	for (p = FIRST_PROC; p <= LAST_PROC; p++)
 		p->flags = 0, p->state = PROC_DEAD;
-		
+
 	/* Handcraft init process. */
 	IDLE->cr3 = (dword_t)idle_pgdir;
 	IDLE->intlvl = 1;
@@ -120,7 +120,7 @@ PUBLIC void pm_init(void)
 	IDLE->alarm = 0;
 	IDLE->next = NULL;
 	IDLE->chain = NULL;
-	
+
 	nprocs++;
 
 	enable_interrupts();

@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -52,7 +52,7 @@
 
 /**
  * @file
- * 
+ *
  * @brief memccpy() implementation.
  */
 
@@ -60,14 +60,14 @@
 
 /**
  * @brief Copies a memory area.
- * 
+ *
  * @details Copies no more than @p n bytes from memory area @p src to memory
  *          area @p dest, stopping when the character @p c is found.
- * 
+ *
  * @returns A pointer to the next character in @p dest after @p c, or #NULL if
  *          @p c was not found in the first @p n characters of @p src.
- * 
- * @note Does not check for the overflow of the receiving memory area. 
+ *
+ * @note Does not check for the overflow of the receiving memory area.
  */
 void *memccpy(void *restrict dest, const void *restrict src, int c, size_t n)
 {
@@ -75,12 +75,12 @@ void *memccpy(void *restrict dest, const void *restrict src, int c, size_t n)
 	{
 		unsigned char *destp = dest;
 		const unsigned char *srcp = src;
-		
+
 		do {
 			if ((*destp++ = *srcp++) == c)
 				return (dest);
 		} while (--n != 0);
 	}
-	
+
 	return (0);
 }

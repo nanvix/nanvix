@@ -1,27 +1,27 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef STAT_H_
 #define STAT_H_
-	
+
 	#include <sys/types.h>
-	
+
 	/* File types. */
     #ifndef __APPLE__
 	    #define S_IFMT  00170000
@@ -70,8 +70,8 @@
 		nlink_t st_nlink; /* Number of hard links to the file.              */
 		uid_t st_uid;     /* User ID of file.                               */
 		gid_t st_gid;     /* Group ID of file.                              */
-		off_t st_size;    /* For regular files, the file size in bytes.     
-                           * For symbolic links, the length in bytes of the 
+		off_t st_size;    /* For regular files, the file size in bytes.
+                           * For symbolic links, the length in bytes of the
                            * pathname contained in the symbolic link.       */
 		time_t st_atime;  /* Time of last access.                           */
 		time_t st_mtime;  /* Time of last data modification.                */

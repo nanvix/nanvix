@@ -1,19 +1,19 @@
 /*
  * Copyright(C) 2011-2017 Pedro H. Penna <pedrohenriquepenna@gmail.com>
  *              2017-2017 Clement Rouquier <clementrouquier@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -23,7 +23,7 @@
 #include <nanvix/dev.h>
 #include <nanvix/klib.h>
 #include <nanvix/syscall.h>
-#include <sys/types.h> 
+#include <sys/types.h>
 
 /* Error checking. */
 #if KLOG_SIZE > KBUFFER_SIZE
@@ -44,7 +44,7 @@ PRIVATE struct
 
 /**
  * @brief Add log level code (if present) to buffer and skip it
- * 
+ *
  * @param buffer        Buffer to be written in the kernel log.
  * @param n             Pointer on the number of characters to be written in the kernel log. (for updating)
  * @param head, tail    Pointers on buffer head and tail
@@ -71,7 +71,7 @@ PRIVATE const char *print_code(const char *buffer, int *n, int *head, int *tail,
 	{
 		klog.buffer[*tail] = p[i];
 		*tail = (*tail + 1)&(KLOG_SIZE - 1);
-		
+
 		if (*tail == *head)
 			*head = *head + 1;
 	}
@@ -83,7 +83,7 @@ PRIVATE const char *print_code(const char *buffer, int *n, int *head, int *tail,
 
 /**
  * @brief Add clock ticks to klog.buffer
- * 
+ *
  * @param head, tail    Pointers on buffer head and tail
  * @param char_printed  Number of chaf added to buffer for log_level (0 or (TL_CONST + size of int returned by sys_gticks()))
  */
@@ -117,7 +117,7 @@ PRIVATE void print_ticks(int *head, int *tail, int *char_printed)
 	{
 		klog.buffer[*tail] = buffer[i];
 		*tail = (*tail + 1)&(KLOG_SIZE - 1);
-		
+
 		if (*tail == *head)
 			*head = *head + 1;
 	}
@@ -127,10 +127,10 @@ PRIVATE void print_ticks(int *head, int *tail, int *char_printed)
 
 /**
  * @brief Writes to kernel log.
- * 
+ *
  * @param buffer Buffer to be written in the kernel log.
  * @param n      Number of characters to be written in the kernel log.
- * 
+ *
  * @returns The number of characters actually written to the kernel log.
  */
 PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
@@ -142,9 +142,9 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 	int lenght = (int) n;
 	int char_printed = 0; /* Useful for returning size */
 
-	
+
 	UNUSED(minor);
-	
+
 	/* Read pointers. */
 	head = klog.head;
 	tail = klog.tail;
@@ -160,9 +160,9 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 	while (lenght-- > 0)
 	{
 		klog.buffer[tail] = *p++;
-		
+
 		tail = (tail + 1)&(KLOG_SIZE - 1);
-		
+
 		if (tail == head)
 			head++;
 	}
@@ -170,37 +170,37 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 	/* Write back pointers. */
 	klog.head = head;
 	klog.tail = tail;
-	
+
 	return ((ssize_t)(char_printed + p - buffer));
 }
 
 /**
  * @brief Reads from kernel log.
- * 
+ *
  * @param buffer Buffer where the kernel log should be read to.
  * @param n      Number of characters to read.
- * 
- * @returns The number of characters actually read from the kernel log. 
+ *
+ * @returns The number of characters actually read from the kernel log.
  */
 PUBLIC ssize_t klog_read(unsigned minor, char *buffer, size_t n)
 {
 	int i;   /* Loop index.      */
 	char *p; /* Reading pointer. */
-	
+
 	UNUSED(minor);
-	
+
 	p = buffer;
-	
+
 	i = klog.head;
-	
+
 	/* Copy data to ring buffer. */
 	while ((n-- > 0) && (i != klog.tail))
 	{
 		*p++ = klog.buffer[i];
-		
+
 		i = (i + 1)&(KLOG_SIZE - 1);
 	}
-	
+
 	return ((ssize_t)(p - buffer));
 }
 
@@ -210,7 +210,7 @@ PUBLIC ssize_t klog_read(unsigned minor, char *buffer, size_t n)
 PRIVATE int klog_open(unsigned minor)
 {
 	UNUSED(minor);
-	
+
 	return (0);
 }
 
@@ -220,7 +220,7 @@ PRIVATE int klog_open(unsigned minor)
 PRIVATE int klog_close(unsigned minor)
 {
 	UNUSED(minor);
-	
+
 	return (0);
 }
 
@@ -234,7 +234,7 @@ PRIVATE struct cdev klog_driver = {
 	NULL,        /* ioctl() */
 	&klog_close  /* close() */
 };
-	
+
 /**
  * @brief Initializes the kernel log driver.
  */

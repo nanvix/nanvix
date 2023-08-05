@@ -20,7 +20,7 @@
 
 /**
  * @file nanvix/pm.h
- * 
+ *
  * @brief Process management system
  */
 
@@ -36,7 +36,7 @@
 	#include <sys/types.h>
 	#include <limits.h>
 	#include <signal.h>
-	
+
 	/**
 	 * @name Superuser credentials
 	 */
@@ -52,7 +52,7 @@
 	#define IDLE (&proctab[0]) /**< idle process. */
 	#define INIT (&proctab[1]) /**< init process. */
 	/**@}*/
-	
+
 	/**
 	 * @name Process table boundaries
 	 */
@@ -60,7 +60,7 @@
 	#define FIRST_PROC ((&proctab[1]))           /**< First process. */
 	#define LAST_PROC ((&proctab[PROC_MAX - 1])) /**< Last process.  */
 	/**@}*/
-	
+
 	/**
 	 * @name Process flags
 	 */
@@ -68,7 +68,7 @@
 	#define PROC_NEW 0 /**< Is the process new?     */
 	#define PROC_SYS 1 /**< Handling a system call? */
 	/**@}*/
-	
+
 	/**
 	 * @name Process parameters
 	 */
@@ -76,7 +76,7 @@
 	#define PROC_QUANTUM 50 /**< Quantum.                  */
 	#define NR_PREGIONS   4 /**< Number of memory regions. */
 	/**@}*/
-	
+
 	/**
 	 * @name Process priorities
 	 */
@@ -103,7 +103,7 @@
 	#define PROC_SLEEPING 5 /**< Waiting (uninterruptible). */
 	#define PROC_STOPPED  6 /**< Stopped.                   */
 	/**@}*/
-	
+
 	/**
 	 * @name Offsets to hard-coded fields of a process
 	 */
@@ -163,7 +163,7 @@
 		mode_t umask;                  /**< User file's creation mask. */
 		dev_t tty;                     /**< Associated tty device.     */
 		/**@}*/
-		
+
 		/**
 		 * @name General information
 		 */
@@ -206,7 +206,7 @@
 		struct process **chain;  /**< Sleeping chain.         */
 		/**@}*/
 	};
-	
+
 	/* Forward definitions. */
 	EXTERN void bury(struct process *);
 	EXTERN void die(int);
@@ -217,13 +217,13 @@
 #ifdef __NANVIX_KERNEL__
 
 	EXTERN void sleep(struct process **, int);
-	
+
 #endif /* __NANVIX_KERNEL__ */
 
     EXTERN void sndsig(struct process *, int);
 	EXTERN void wakeup(struct process **);
 	EXTERN void yield(void);
-	
+
 	/**
 	 * @name Process memory regions
 	 */
@@ -233,51 +233,51 @@
 	#define STACK(p) (&p->pregs[2]) /**< Stack region. */
 	#define HEAP(p)  (&p->pregs[3]) /**< Heap region.  */
 	/**@}*/
-	
+
 	/**
 	 * @brief Asserts if a process is running in kernel mode.
-	 * 
+	 *
 	 * @param p Process to be queried about.
-	 * 
+	 *
 	 * @returns True if the process is running in kernel mode, and false
 	 *          otherwise.
 	 */
 	#define KERNEL_RUNNING(p) ((p)->intlvl > 1)
-	
+
 	/**
 	 * @brief Asserts if a process is the sessions leader.
-	 * 
+	 *
 	 * @param p Process to be queried about.
-	 * 
+	 *
 	 * @returns True if the process is the session leader, and false otherwise.
 	 */
 	#define IS_LEADER(p) ((p)->pgrp->pid == (p)->pid)
-	
+
 	/**
 	 * @brief Asserts if a process is valid.
-	 * 
+	 *
 	 * @param p Process to be queried about.
-	 * 
+	 *
 	 * @returns True if the process is valid, and false otherwise.
 	 */
 	#define IS_VALID(p) \
 		(((p)->state != PROC_DEAD) || ((p)->flags & (1 << PROC_NEW)))
-	
+
 	/**
 	 * @brief Asserts if a process has superuser privileges.
-	 * 
+	 *
 	 * @param p Process to be queried about.
-	 * 
-	 * @returns True if the process has superuser privileges, and false 
+	 *
+	 * @returns True if the process has superuser privileges, and false
 	 *          otherwise.
 	 */
 	#define IS_SUPERUSER(p) \
 		(((p)->uid == SUPERUSER) || ((p)->euid == SUPERUSER))
-	
-	/* Forward definitions. */	
+
+	/* Forward definitions. */
 	EXTERN void resume(struct process *);
 	EXTERN void stop(void);
-	
+
 	/* Forward definitions. */
 	EXTERN int shutting_down;
 	EXTERN struct process proctab[PROC_MAX];

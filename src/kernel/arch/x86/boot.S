@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -59,17 +59,17 @@ mboot_header:
 /*
  * Kernel entry point.
  */
-start:	
+start:
 	cmpl $1, 20(%ebx)
 	jne halt
-	
+
 	/* Retrieve initrd location. */
 	movl 24(%ebx), %eax
 	movl (%eax), %eax
-	
+
 	/* Build initial RAM disk page table. */
 	movl $initrd_pgtab, %edi
-	addl $7, %eax	
+	addl $7, %eax
 	movl %eax, %ebx
 	addl $INITRD_SIZE, %ebx
 	cld
@@ -96,24 +96,24 @@ start:
 	movl $kpgtab + 3, idle_pgdir + PTE_SIZE*768       /* Kernel code + data at 0xc0000000 */
 	movl $kpool_pgtab + 3, idle_pgdir + PTE_SIZE*769  /* Kernel page pool at 0xc0400000   */
 	movl $initrd_pgtab + 3, idle_pgdir + PTE_SIZE*770 /* Init RAM disk at 0xc0800000      */
-	
+
 	/* Enable paging. */
 	movl $idle_pgdir, %eax
 	movl %eax, %cr3
 	movl %cr0, %eax
 	orl $0x80000000, %eax
 	movl %eax, %cr0
-	
+
 	/* Setup stack. */
 	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %ebp
 	movl $idle_kstack + PAGE_SIZE - DWORD_SIZE, %esp
-	
+
 	call setup
-	
+
 	call kmain
-	
+
 	cli
-	
+
 	halt:
 		hlt
 		jmp halt
@@ -122,8 +122,8 @@ start:
  *                                   kpgtab                                   *
  *----------------------------------------------------------------------------*/
 
-/* 
- * Kernel page table. 
+/*
+ * Kernel page table.
  */
 .align PAGE_SIZE
 kpgtab:
@@ -133,8 +133,8 @@ kpgtab:
  *                                kpool_pgtab                                 *
  *----------------------------------------------------------------------------*/
 
-/* 
- * Kernel pool page table. 
+/*
+ * Kernel pool page table.
  */
 .align PAGE_SIZE
 kpool_pgtab:
@@ -144,7 +144,7 @@ kpool_pgtab:
  *                                initrd_pgtab                                *
  *----------------------------------------------------------------------------*/
 
-/* 
+/*
  * Initial RAM disk page table.
  */
 .align PAGE_SIZE
@@ -155,7 +155,7 @@ initrd_pgtab:
  *                                  idle_pgdir                                *
  *----------------------------------------------------------------------------*/
 
-/* 
+/*
  * init page directory.
  */
 .align PAGE_SIZE

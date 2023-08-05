@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -33,7 +33,7 @@
 /* Video registers. */
 #define VIDEO_CRTL_REG 0x3d4 /* Video control register. */
 #define VIDEO_DATA_REG 0x3d5 /* Video data register.    */
-	
+
 /* Video control offset registers. */
 #define VIDEO_HTOT 0x00 /* Horizontal total.               */
 #define VIDEO_HDEE 0x01 /* Horizontal display enabled end. */
@@ -64,7 +64,7 @@
 /*
  * Console cursor.
  */
-PRIVATE struct 
+PRIVATE struct
 {
 	int x; /* Horizontal axis position. */
 	int y; /* Vertical axis position.   */
@@ -79,7 +79,7 @@ PRIVATE uint16_t *video = (uint16_t*)VIDEO_ADDR;
 PRIVATE void cursor_move(void)
 {
 	word_t cursor_location = cursor.y*VIDEO_WIDTH + cursor.x;
-	
+
 	outputb(VIDEO_CRTL_REG, VIDEO_CLH);
 	outputb(VIDEO_DATA_REG, (byte_t) ((cursor_location >> 8) & 0xFF));
 	outputb(VIDEO_CRTL_REG, VIDEO_CLL);
@@ -92,15 +92,15 @@ PRIVATE void cursor_move(void)
 PRIVATE void console_scrolldown(void)
 {
 	uint16_t *p;
-	
+
 	/* Pull lines up. */
 	for (p = video; p < (video + (VIDEO_HIGH-1)*(VIDEO_WIDTH)); p++)
 		*p = *(p + VIDEO_WIDTH);
-	
+
 	/* Blank last line. */
 	for (; p < video + VIDEO_HIGH*VIDEO_WIDTH; p++)
 		*p = (BLACK << 8) | (' ');
-		
+
 	/* Set cursor position. */
 	cursor.x = 0; cursor.y = VIDEO_HIGH - 1;
 }
@@ -109,7 +109,7 @@ PRIVATE void console_scrolldown(void)
  * Outputs a colored ASCII character on the console device.
  */
 PUBLIC void console_put(uint8_t ch, uint8_t color)
-{	
+{
 	/* Parse character. */
     switch (ch)
     {
@@ -118,13 +118,13 @@ PUBLIC void console_put(uint8_t ch, uint8_t color)
             cursor.y++;
             cursor.x = 0;
             break;
-            
+
         /* Tabulation. */
         case '\t':
             /* FIXME. */
             cursor.x += 4 - (cursor.x & 3);
             break;
-            
+
         /* Backspace. */
         case '\b':
             if (cursor.x > 0)
@@ -135,8 +135,8 @@ PUBLIC void console_put(uint8_t ch, uint8_t color)
                 cursor.y--;
             }
             video[cursor.y*VIDEO_WIDTH +cursor.x] = (color << 8) | (' ');
-            break;			
-        
+            break;
+
         /* Any other. */
         default:
             video[cursor.y*VIDEO_WIDTH +cursor.x] = (color << 8) | (ch);
@@ -161,11 +161,11 @@ PUBLIC void console_put(uint8_t ch, uint8_t color)
 PUBLIC void console_clear(void)
 {
 	uint16_t *p;
-	
+
 	/* Blank all lines. */
 	for (p = video; p < (video + VIDEO_HIGH*VIDEO_WIDTH); p++)
 		*p = (BLACK << 8) | (' ');
-	
+
 	/* Set console cursor position. */
 	cursor.x = cursor.y = 0;
 	cursor_move();
@@ -177,12 +177,12 @@ PUBLIC void console_clear(void)
 PUBLIC void console_write(struct kbuffer *buffer)
 {
 	uint8_t ch;
-	
+
 	/* Outputs all characters. */
 	while (!KBUFFER_EMPTY((*buffer)))
-	{ 
+	{
 		KBUFFER_GET((*buffer), ch);
-	
+
 		console_put(ch, WHITE);
 	}
 }
@@ -197,7 +197,7 @@ PUBLIC void console_init(void)
 	outputb(VIDEO_DATA_REG, 0x00);
 	outputb(VIDEO_CRTL_REG, VIDEO_CE);
 	outputb(VIDEO_DATA_REG, 0x1f);
-	
+
 	/* Clear the console. */
 	console_clear();
 }

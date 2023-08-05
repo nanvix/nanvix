@@ -57,46 +57,46 @@ void draw()
 		switch(comb[x])
 		{
 			case 0:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("\n");
 				break;
 			case 1:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("      **\n");
 				printf("\n");
 				break;
 			case 2:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("      **  **\n");
 				printf("\n");
 				break;
 			case 3:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("      **  **  **\n");
 				printf("\n");
 				break;
 			case 4:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("      **  **  **  **\n");
 				printf("\n");
 				break;
 			case 5:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("      **  **  **  **  **\n");
 				printf("\n");
 				break;
 			case 6:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("      **  **  **  **  **  **\n");
 				printf("\n");
 				break;
 			case 7:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("      **  **  **  **  **  **  **\n");
 				printf("\n");
 				break;
 			case 8:
-				for(y=1; y<tam; y++) 
+				for(y=1; y<tam; y++)
 					printf("      **  **  **  **  **  **  **  **\n");
 				printf("\n");
 				break;
@@ -116,7 +116,7 @@ void youWin()
 {
 	title();
 	printf("                              BRAVO!!!\n");
-	printf("                           voce me venceu\n\n\n");  
+	printf("                           voce me venceu\n\n\n");
 	printf("     ######     #    ######     #    ######  ####### #     #  #####\n");
 	printf("     #     #   # #   #     #   # #   #     # #       ##    # #     #\n");
 	printf("     #     #  #   #  #     #  #   #  #     # #       # #   # #       \n");
@@ -143,7 +143,7 @@ void itoa(int n, char* s)
 {
     int i, sign;
 
-    if ((sign = n) < 0) 
+    if ((sign = n) < 0)
         n = -n;
 
     i = 0;
@@ -154,7 +154,7 @@ void itoa(int n, char* s)
 
     if (sign < 0)
         s[i++] = '-';
-    
+
     s[i] = '\0';
     reverse(s);
 }
@@ -175,7 +175,7 @@ int newSum(int column)
 	{
 		if(x == column)
 			continue;
-		
+
 		sum = sum + nBin[ comb[x] ];
 	}
 	return sum;
@@ -228,7 +228,7 @@ void think()
             		continue;
 
             	sum = newSum(y) + nBin[ comb[y]-x ];
-            	
+
             	if (isSecure(sum) == true)
             	{
             		isSec = true;
@@ -259,7 +259,7 @@ void think()
 
 		printf("Ok, entao digite a fileira que deseja operar (1-4): ");
 		row = get() - 48;
-		
+
 		printf("Ok, agora me informe quantas pecas deseja remover: ");
 		count = get() - 48;
 

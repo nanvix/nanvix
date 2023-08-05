@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -30,16 +30,16 @@ PUBLIC int sys_setegid(gid_t gid)
 	/* Superuser authentication. */
 	if (IS_SUPERUSER(curr_proc))
 		curr_proc->egid = gid;
-		
+
 	else
 	{
 		/* No user authentication. */
 		if ((gid != curr_proc->gid) && (gid != curr_proc->sgid))
 			return (-EPERM);
-		
+
 		curr_proc->egid = gid;
 	}
-	
+
 	return (0);
 }
 

@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -52,7 +52,7 @@
 
 /**
  * @file
- * 
+ *
  * @brief strpbrk() implementation.
  */
 
@@ -60,21 +60,21 @@
 
 /**
  * @brief Scans a string for a byte.
- * 
+ *
  * @param s1 Pointer to string to scan.
  * @param s2 Pointer to string of bytes to scan for.
- * 
+ *
  * @returns A pointer to the byte or a null pointer if no byte from @p s2
  *          occurs in @p s1.
- * 
+ *
  * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strpbrk(const char *s1, const char *s2)
 {
 	const char *c;
-	
+
 	c = s2;
-	
+
 	if (*s1 == '\0')
 		return ((char *) NULL);
 
@@ -85,10 +85,10 @@ char *strpbrk(const char *s1, const char *s2)
 			if (*s1 == *c)
 				break;
 		}
-		
+
 		if (*c != '\0')
 			break;
-		
+
 		s1++;
 	}
 

@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -52,10 +52,10 @@
 
 /**
  * @file
- * 
+ *
  * @brief strtok() implementation.
  */
- 
+
 #include <stdlib.h>
 
 /**
@@ -65,13 +65,13 @@ static char *_scanpoint = NULL;
 
 /**
  * @brief Splits string into tokens.
- * 
+ *
  * @param s1 Pointer to string to split.
  * @param s2 Pointer to token string.
- * 
+ *
  * @returns A pointer to the first byte of a token. Otherwise, if there is no
  *          token a null pointer is returned.
- * 
+ *
  * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strtok(char *s1, const char *s2)
@@ -82,7 +82,7 @@ char *strtok(char *s1, const char *s2)
 
 	if ((s1 == NULL) && (_scanpoint == NULL))
       return (NULL);
-      
+
 	if (s1 != NULL)
 		scan = s1;
 	else
@@ -129,6 +129,6 @@ char *strtok(char *s1, const char *s2)
 
 	/* Reached end of string. */
 	_scanpoint = NULL;
-	
+
 	return (tok);
 }

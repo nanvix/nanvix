@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -31,14 +31,14 @@
 	#define O_EXCL	 00200 /* Exclusive use flag.                 */
 	#define O_NOCTTY 00400 /* Do not assign controlling terminal. */
 	#define O_TRUNC	 01000 /* Truncate file.                      */
-	
+
 	/* File status flags. */
 	#define O_APPEND   02000 /* Append mode.       */
 	#define O_NONBLOCK 04000 /* Non-blocking mode. */
-	
+
 	/* File descriptor flags. */
 	#define FD_CLOEXEC 01 /* Close on exec. */
-		
+
 	/* Commands for fcntl(). */
 	#define F_DUPFD  0 /* Duplicate file descriptor.                   */
 	#define F_GETFD  1 /* Get file descriptor flags.                   */
@@ -50,19 +50,19 @@
 	 * Returns file's access mode.
 	 */
 	#define ACCMODE(m) (m & O_ACCMODE)
-	
+
 	/*
 	 * Opens a file.
 	 */
 	extern int open(const char *path, int oflag, ...);
-	
+
 	/*
 	 * Manipulates file descriptor.
 	 */
 	extern int fcntl(int fd, int cmd, ...);
-	
+
 	/*
-	 * Creates a file. 
+	 * Creates a file.
 	 */
 	#define creat(path, mode) open(path, O_WRONLY | O_CREAT | O_TRUNC, mode)
 

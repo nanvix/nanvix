@@ -1,22 +1,22 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
- 
+
 /*
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
@@ -52,26 +52,26 @@
 
 /**
  * @file
- * 
+ *
  * @brief strspn() implementation.
  */
- 
+
 #include <stdlib.h>
 #include <sys/types.h>
 
 /**
  * @brief Gets the length of a substring.
- * 
+ *
  * @param Pointer to string.
  * @param Pointer to substring.
- * 
+ *
  * @returns The length of @p s1 is returned.
  */
 size_t strspn(const char *s1, const char *s2)
 {
 	const char *s;
 	const char *c;
-	
+
 	s = s1;
 
 	while (*s1 != '\0')
@@ -81,7 +81,7 @@ size_t strspn(const char *s1, const char *s2)
 			if (*s1 == *c)
 				break;
 		}
-		
+
 		if (*c == '\0')
 			break;
 		s1++;

@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -74,22 +74,22 @@ PRIVATE const uint16_t int_masks[6] = {
 
 /**
  * @brief Raises processor execution level.
- * 
+ *
  * @note This function must be called in an interrupt-safe environment.
  */
 PUBLIC unsigned processor_raise(unsigned irqlvl)
 {
 	unsigned old_irqlvl;
-	
+
 	old_irqlvl = curr_proc->irqlvl;
 	pic_mask(int_masks[curr_proc->irqlvl = irqlvl]);
-	
+
 	return (old_irqlvl);
 }
 
 /**
  * @brief Drops processor execution level.
- * 
+ *
  * @note This function must be called in an interrupt-safe environment.
  */
 PUBLIC void processor_drop(unsigned irqlvl)
@@ -99,7 +99,7 @@ PUBLIC void processor_drop(unsigned irqlvl)
 
 /**
  * @brief Reloads the processor execution level.
- * 
+ *
  * @note This function must be called in an interrupt-safe environment.
  */
 PUBLIC void processor_reload(void)

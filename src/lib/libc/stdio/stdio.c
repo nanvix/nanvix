@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -38,7 +38,7 @@ FILE *stderr = &streams[2]; /* Standard error.  */
 void stdio_cleanup(void)
 {
 	FILE *stream;
-	
+
 	/* Close all streams. */
 	for (stream = &streams[0]; stream < &streams[FOPEN_MAX]; stream++)
 	{
@@ -50,7 +50,7 @@ void stdio_cleanup(void)
 
 /**
  * @brief Finds a file stream that is not in use.
- * 
+ *
  * @returns A file stream that is not in use. If no such stream is found, NULL
  *          is returned otherwise.
  */
@@ -62,7 +62,7 @@ FILE *_getstream(void)
 		if (!(stream->flags & (_IORW | _IOREAD | _IOWRITE)))
 			return (stream);
 	}
-	
+
 	return (NULL);
 }
 

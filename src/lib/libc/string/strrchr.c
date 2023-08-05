@@ -1,18 +1,18 @@
 /*
  * Copyright(C) 2011-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
+ *
  * This file is part of Nanvix.
- * 
+ *
  * Nanvix is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Nanvix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
@@ -52,27 +52,27 @@
 
 /**
  * @file
- * 
+ *
  * @brief strrchr() implementation.
  */
- 
+
 #include <stdlib.h>
 
 /**
  * @brief String scanning operation.
- * 
+ *
  * @param s Pointer to string to search.
  * @param c Character to search for.
- * 
+ *
  * @returns A pointer to the byte, or a null pointer if @p c does not occur in
  *          the string.
- * 
+ *
  * @version IEEE Std 1003.1, 2013 Edition
  */
 char *strrchr(const char *s, int c)
 {
 	const char *last;
-	
+
 	last = NULL;
 
 	while (*s != '\0')
