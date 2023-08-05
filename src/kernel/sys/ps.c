@@ -80,7 +80,6 @@ PUBLIC int sys_ps()
 		    "NAME               PID   UID       PRIORITY   NICE"
 		    "   UTIME   KTIME     STATUS");
 
-
 	char name    [26];
 	char pid     [26];
 	char uid     [26];

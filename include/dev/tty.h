@@ -18,7 +18,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #ifndef TTY_H_
 #define TTY_H_
 

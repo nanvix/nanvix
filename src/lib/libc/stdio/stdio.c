@@ -66,4 +66,3 @@ FILE *_getstream(void)
 	return (NULL);
 }
 
-

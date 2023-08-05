@@ -586,7 +586,6 @@ int fpu_test(void)
 	return (result == 0x40b2aaaa);
 }
 
-
 /*============================================================================*
  *                                   main                                     *
  *============================================================================*/
@@ -664,7 +663,6 @@ int main(int argc, char **argv)
 			printf("  Result [%s]\n",
 				(!fpu_test()) ? "PASSED" : "FAILED");
 		}
-
 
 		/* Wrong usage. */
 		else

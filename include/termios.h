@@ -18,7 +18,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #ifndef TERMIOS_H_
 #define TERMIOS_H_
 

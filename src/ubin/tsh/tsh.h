@@ -19,7 +19,6 @@
  * along with Nanvix. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #ifndef TSH_H_
 #define TSH_H_
 

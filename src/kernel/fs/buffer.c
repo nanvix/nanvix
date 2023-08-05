@@ -75,7 +75,6 @@ PRIVATE struct process *chain = NULL;
  */
 PRIVATE struct buffer hashtab[BUFFERS_HASHTAB_SIZE];
 
-
 /**
  * @brief Hash function for block buffer hash table.
  *

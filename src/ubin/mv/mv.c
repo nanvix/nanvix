@@ -142,7 +142,6 @@ static void buildname(char *name1, char *name2, char *strbuf)
 	}
 }
 
-
 /*
  * Creates a link between two files
  */

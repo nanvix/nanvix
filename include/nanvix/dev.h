@@ -85,7 +85,6 @@
 		int (*close)(dev_t);                              /* Close.   */
 	};
 
-
 	EXTERN int cdev_register(unsigned, const struct cdev *);
 	EXTERN ssize_t cdev_write(dev_t, const void *, size_t);
 

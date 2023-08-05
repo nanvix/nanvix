@@ -21,7 +21,6 @@
 #include <stdio.h>
 #include <errno.h>
 
-
 /**
  * @brief Returns the (stdio) flags for a given mode.
  *

@@ -47,7 +47,6 @@
 #endif
 #endif
 
-
 #ifdef _NEED_SIZE_T
 #ifndef SIZE_T
 #define SIZE_T

@@ -26,7 +26,6 @@
 #ifndef NANVIX_FS_H_
 #define NANVIX_FS_H_
 
-
 	/* General file permissions. */
 	#define MAY_READ  (S_IRUSR | S_IRGRP | S_IROTH)     /* May read.        */
 	#define MAY_WRITE (S_IWUSR | S_IWGRP | S_IWOTH)     /* May write.       */
@@ -167,7 +166,6 @@
 	EXTERN void superblock_sync(void);
 	EXTERN block_t block_map(struct inode *, off_t, int);
 	EXTERN void block_free(struct superblock *, block_t, int);
-
 
 /*============================================================================*
  *                              File System Manager                           *

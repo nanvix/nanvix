@@ -294,7 +294,6 @@ PUBLIC void do_keyboard_hit(void)
 	}
 }
 
-
 /*
  * Initializes the keyboard driver.
  */

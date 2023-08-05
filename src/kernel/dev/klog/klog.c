@@ -142,7 +142,6 @@ PUBLIC ssize_t klog_write(unsigned minor, const char *buffer, size_t n)
 	int lenght = (int) n;
 	int char_printed = 0; /* Useful for returning size */
 
-
 	UNUSED(minor);
 
 	/* Read pointers. */

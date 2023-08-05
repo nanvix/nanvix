@@ -37,4 +37,3 @@ PUBLIC pid_t sys_setpgrp()
 	return (curr_proc->pgrp->pid);
 }
 
-

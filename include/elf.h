@@ -41,7 +41,6 @@
 	#define ELFDATA2LSB 1 /* Least significant byte in the lowest address */
 	#define ELFDATA2MSB 2 /* Most significant byte in the lowest address. */
 
-
 	#define PF_X (1 << 0)	/* Segment is executable */
 	#define PF_W (1 << 1)	/* Segment is writable */
 	#define PF_R (1 << 2)	/* Segment is readable */

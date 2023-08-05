@@ -28,7 +28,6 @@
 #include <nanvix/syscall.h>
 #include <fcntl.h>
 
-
 /**
  * @brief Forks the current process.
  *

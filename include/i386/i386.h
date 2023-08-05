@@ -86,7 +86,6 @@
 	 */
 	EXTERN void idt_flush(struct idtptr *idtptr);
 
-
 #endif /* _ASM_FILE_ */
 
 #endif /* I386_H_ */

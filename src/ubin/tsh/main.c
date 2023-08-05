@@ -144,7 +144,6 @@ static void sigmsg(int sig)
 	fputs("\n", stderr);
 }
 
-
 /*
  * Closes redirection files.
  */

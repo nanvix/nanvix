@@ -763,7 +763,6 @@ PRIVATE ssize_t ata_read(unsigned minor, char *buf, size_t n, off_t off)
 	return ((ssize_t)i);
 }
 
-
 /*
  * Writes bytes to a ATA device.
  */

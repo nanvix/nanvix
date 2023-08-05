@@ -35,7 +35,6 @@ static struct
 	char *target; /* Target file. */
 } args = { NULL, NULL };
 
-
 /*
  * Prints program version and exits.
  */

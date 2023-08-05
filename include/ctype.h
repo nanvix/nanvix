@@ -70,7 +70,6 @@
 #ifndef CTYPE_H_
 #define CTYPE_H_
 
-
 	#define _U  01
 	#define _L  02
 	#define _N  04

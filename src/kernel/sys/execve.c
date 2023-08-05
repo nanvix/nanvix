@@ -202,7 +202,6 @@ PRIVATE int copy_strings(int count, const char **strings, char *where, int p, co
 			str++;
 		}
 
-
 		/* Copy working string. */
 		while (length-- > 0)
 		{
@@ -272,10 +271,8 @@ PRIVATE addr_t create_tables(char *stack, size_t size, int p, int argc, int envc
 	}
 	(*((dword_t *)(stack + envp))) = 0;
 
-
 	return (USTACK_ADDR - size + sp);
 }
-
 
 /*
  * Builds arguments.

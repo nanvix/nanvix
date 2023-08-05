@@ -24,7 +24,6 @@
 #include <stdint.h>
 #include "tty.h"
 
-
 /* Video specifications (Text mode). */
 #define VIDEO_ADDR  0xb8000 /* Video memory address. */
 #define VIDEO_WIDTH      80 /* Video width.          */

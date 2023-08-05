@@ -81,7 +81,6 @@ PUBLIC struct file *getfile(void)
 	return (NULL);
 }
 
-
 /*
  * Closes a file.
  */
