@@ -293,7 +293,7 @@ PRIVATE void ata_device_select(int atadevid)
  */
 PRIVATE void ata_bus_wait(int bus)
 {
-	while (inputb(pio_ports[bus][ATA_REG_ASTATUS] & ATA_BUSY))
+	while (inputb(pio_ports[bus][ATA_REG_ASTATUS]) & ATA_BUSY)
 		/* noop*/ ;
 }
 
