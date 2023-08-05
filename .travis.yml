@@ -1,9 +1,0 @@
-sudo: required
-
-language: C
-
-services:
-  - docker
-
-script:
-- docker run -v"$(pwd):/root/nanvix" -p4567:4567 nanvix/nanvix:compilenv /bin/sh -c "cd /root/nanvix; make nanvix > /dev/null"
