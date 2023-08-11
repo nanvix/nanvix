@@ -36,12 +36,12 @@ export LIBDIR   = $(CURDIR)/lib
 export DOXYDIR  = $(CURDIR)/doxygen
 export SRCDIR   = $(CURDIR)/src
 export TOOLSDIR = $(CURDIR)/tools
-export TOOLCHAIN_DIR ?= $(CURRDIR)/toolchain
+export TOOLCHAIN_DIR ?= $(CURDIR)/toolchain
 
 # Toolchain
-export CC = $(TOOLCHAIN_DIR)/$(ARCH)/bin/$(ARCH)-elf-gcc
-export LD = $(TOOLCHAIN_DIR)/$(ARCH)/bin/$(ARCH)-elf-ld
-export AR = $(TOOLCHAIN_DIR)/$(ARCH)/bin/$(ARCH)-elf-ar
+export CC = $(TOOLCHAIN_DIR)/bin/$(ARCH)-elf-gcc
+export LD = $(TOOLCHAIN_DIR)/bin/$(ARCH)-elf-ld
+export AR = $(TOOLCHAIN_DIR)/bin/$(ARCH)-elf-ar
 
 # Random number for chaos.
 export KEY = 13
