@@ -92,3 +92,9 @@ clean:
 	@rm -rf $(DOCDIR)/*-kernel
 	cd $(SRCDIR) && $(MAKE) clean
 	cd $(TOOLSDIR) && $(MAKE) clean
+
+run-qemu:
+	bash $(TOOLSDIR)/run/qemu.sh "x86" "nanvix.iso" "--no-debug"
+
+debug-qemu:
+	bash $(TOOLSDIR)/run/qemu.sh "x86" "nanvix.iso" "--debug"
