@@ -31,7 +31,7 @@
 	#include <utime.h>
 
 	/* Number of system calls. */
-	#define NR_SYSCALLS 48
+	#define NR_SYSCALLS 51
 
 	/* System call numbers. */
 	#define NR_alarm     0

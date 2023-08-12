@@ -114,4 +114,4 @@ done
 
 config_bochs
 
-bochs -q -f tools/run/bochsrc.txt
+$TOOLCHAIN_DIR/bochs/bin/bochs -q -f tools/run/bochsrc.txt
