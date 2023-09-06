@@ -23,7 +23,7 @@
 *.a
 *.pdf
 bochsout.txt
-bin/*
+bin
 bin/sbin/*
 bin/ubin/*
 doc/*-kernel
@@ -47,9 +47,13 @@ toolchain
 # ISO Images
 *.img
 *.iso
-nanvix-iso/*
+nanvix-iso
 tools/run/bochsrc.txt
 
 # Exceptions.
 !doc/paper/img/*.pdf
 !doc/paper/*.pdf
+
+# IDEs
+.vs
+.vscode

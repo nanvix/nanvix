@@ -43,10 +43,11 @@
 .PHONY: clear
 .PHONY: nim
 .PHONY: sleep
+.PHONY: bthd
 
 # Builds everything.
 all: cat chgrp chmod chown cp echo kill ln login ls mv nice pwd rm stat sync \
-	 touch tsh ps clear nim sleep
+	 touch tsh ps clear nim sleep bthd
 
 # Builds cat.
 cat: 
@@ -144,6 +145,9 @@ nim:
 sleep: 
 	$(CC) $(CFLAGS) $(LDFLAGS) -D TESTE sleep/*.c -o $(UBINDIR)/sleep $(LIBDIR)/libc.a
 
+# Builds bthd.
+bthd: 
+	$(CC) $(CFLAGS) $(LDFLAGS) bthd/*.c -o $(UBINDIR)/bthd $(LIBDIR)/*.a
 
 # Clean compilation files.
 clean:
@@ -171,3 +175,4 @@ clean:
 	@rm -f $(UBINDIR)/clear
 	@rm -f $(UBINDIR)/nim
 	@rm -f $(UBINDIR)/sleep
+	@rm -f $(UBINDIR)/bthd

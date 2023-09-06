@@ -17,21 +17,24 @@
 # along with Nanvix.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Conflicts.
-.PHONY: libc
-.PHONY: bthread
+# C source files.
+C_SRC = $(wildcard *.c)           \
 
-# Builds everything.
-all: libc bthread
+# Object files.
+OBJ = $(C_SRC:.c=.o)   \
 
-# Builds C library.
-libc:
-	cd libc/ && $(MAKE) all
+# Library name.
+LIB = bthread.a
 
-bthread:
-	cd bthread/ && $(MAKE) all
+# Builds the library.
+all: $(OBJ)
+	$(AR) $(ARFLAGS) $(LIBDIR)/$(LIB) $^
+
+# Builds object file from C source file.
+%.o: %.c
+	$(CC) $< $(CFLAGS) -c -o $@
 
 # Cleans compilation files.
 clean:
-	cd libc && $(MAKE) clean
-	cd bthread && $(MAKE) clean
+	@rm -f $(LIBDIR)/$(LIB)
+	@rm -f $(OBJ)

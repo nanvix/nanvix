@@ -9,12 +9,11 @@ This document instructs you on how to setup your development environment.
 ## 1. Clone This Repository
 
 ```bash
-export WORKSPACE=$HOME/nanvix                   # Change this if you want.
-export INSTALL_DIR=$WORKSPACE                   # Change this if you want.
-mkdir -p $WORKDIR                               # Create workspace.
-cd $WORKDIR                                     # Switch to workspace.
-git clone https://github.com/nanvix/nanvix.git  # Clone repository.
-cd nanvix                                       # Switch to source tree.
+export WORKDIR=$HOME/nanvix                         # Change this if you want.
+export INSTALL_DIR=$WORKDIR                         # Change this if you want.
+mkdir -p $WORKDIR                                   # Create workspace.
+cd $WORKDIR                                         # Switch to workspace.
+git clone https://github.com/Bois-Barganhados-Studio/nanvix-user-level-thread.git .   # Clone repository.
 ```
 
 ## 2. Install Dependencies
