@@ -44,12 +44,12 @@
 	#define JMP_BUF_EBX     0
 	#define JMP_BUF_ESI     4
 	#define JMP_BUF_EDI     8
-	#define JMP_BUF_EIP    12
-	#define JMP_BUF_EFLAGS 16
-	#define JMP_BUF_EBP    20
-	#define JMP_BUF_ESP    24
-	#define JMP_BUF_KESP   28
-	#define JMP_BUF_INTLVL 32
+	#define JMP_BUF_EFLAGS 12
+	#define JMP_BUF_EBP    16
+	#define JMP_BUF_ESP    20
+	#define JMP_BUF_EIP    24	/* eip must be last */
+	#define JMP_BUF_KESP   28	/* don't know if this should be saved */
+	#define JMP_BUF_INTLVL 32	/* don't know if this should be saved */
 
 #ifndef _ASM_FILE_
 

@@ -39,7 +39,8 @@ C_SRC = $(wildcard *.c)           \
       $(wildcard utime/*.c)       \
 
 # Assembly source files.
-ASM_SRC = $(wildcard signal/*.S) \
+ASM_SRC =   $(wildcard setjmp/*.S) \
+            $(wildcard signal/*.S) \
 
 # Object files.
 OBJ = $(ASM_SRC:.S=.o) \
