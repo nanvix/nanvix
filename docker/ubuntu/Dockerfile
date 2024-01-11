@@ -28,4 +28,4 @@ RUN make nanvix
 RUN make image
 
 # Startup Nanvix
-RUN echo "qemu-system-x86_64 -hda /nanvix/hdd.img -initrd /nanvix/initrd.img -kernel /nanvix/bin/kernel -m 200M -machine pc -serial mon:stdio -append 'console=ttyS0' -nographic -device sga -curses" >> ~/.bashrc
+RUN echo "qemu-system-x86_64 -hda /nanvix/hdd.img -initrd /nanvix/initrd.img -kernel /nanvix/bin/kernel -m 200M -machine pc -serial mon:stdio -append 'console=ttyS0' -nographic -device sga -display curses" >> ~/.bashrc
