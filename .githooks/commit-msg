@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+commit_msg_file=$1
+commit_msg=`cat $commit_msg_file`
+max_length=50
+
+if [ $(echo "$commit_msg_title" | wc -c) -gt $max_length ]; then
+    echo "Commit message title is too long (maximum $max_length characters)"
+    exit 1
+fi
+
+if ! echo "$commit_msg" | grep -q -E '\[(sys)\] (B|E|F|W): '; then
+	echo "Commit message does not match pattern: '[module-name] (B|E|F|W): Short Description"
+    exit 1
+fi
