@@ -5,6 +5,7 @@
 bin/
 lib/
 target/
+*.iso
 Cargo.lock
 
 # IDEs
