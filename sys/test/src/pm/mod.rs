@@ -33,10 +33,10 @@ fn test_getpid() -> bool {
         Ok(pid) => {
             let expected: ProcessIdentifier = ProcessIdentifier::from(2);
             if pid == expected {
-                return true;
+                true
             } else {
                 libnanvix::log!("expected: {:?}, got: {:?}", expected, pid);
-                return false;
+                false
             }
         },
         _ => false,
@@ -66,10 +66,10 @@ fn test_gettid() -> bool {
         Ok(tid) => {
             let expected: ThreadIdentifier = ThreadIdentifier::from(2);
             if tid == expected {
-                return true;
+                true
             } else {
                 libnanvix::log!("expected: {:?}, got: {:?}", expected, tid);
-                return false;
+                false
             }
         },
         _ => false,
