@@ -5,6 +5,9 @@
 bin/
 lib/
 target/
+*.a
+*.o
+*.elf
 *.iso
 Cargo.lock
 
