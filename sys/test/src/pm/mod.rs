@@ -81,7 +81,7 @@ fn test_gettid() -> bool {
 //==================================================================================================
 
 ///
-/// **Description**
+/// # Description
 ///
 /// Tests kernel calls in the process management facility.
 ///
