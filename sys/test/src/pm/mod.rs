@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use ::libnanvix::{
+    GroupIdentifier,
     ProcessIdentifier,
     ThreadIdentifier,
     UserIdentifier,
@@ -133,6 +134,34 @@ fn test_geteuid() -> bool {
     }
 }
 
+//==================================================================================================
+// Tests for getgid()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Tests if [`libnanvix::getgid()`] returns the expected value.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+fn test_getgid() -> bool {
+    match libnanvix::getgid() {
+        Ok(gid) => {
+            let expected: GroupIdentifier = GroupIdentifier::ROOT;
+            if gid == expected {
+                true
+            } else {
+                libnanvix::log!("expected: {:?}, got: {:?}", expected, gid);
+                false
+            }
+        },
+        _ => false,
+    }
+}
+
 
 //==================================================================================================
 // Public Standalone Functions
@@ -148,4 +177,5 @@ pub fn test() {
     crate::test!(test_gettid());
     crate::test!(test_getuid());
     crate::test!(test_geteuid());
+    crate::test!(test_getgid());
 }
