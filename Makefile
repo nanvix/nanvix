@@ -8,6 +8,9 @@
 # Target Architecture
 export TARGET ?= x86
 
+# Target Machine
+export MACHINE ?= pc
+
 # Verbose build?
 export VERBOSE ?= no
 
@@ -25,7 +28,7 @@ export ROOT_DIR      := $(CURDIR)
 export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
-export IMAGE_DIR     := $(BUILD_DIR)/iso
+export IMAGE_DIR     := $(ROOT_DIR)/iso
 export SCRIPTS_DIR   := $(BUILD_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
