@@ -47,7 +47,20 @@ fn test_getpid() -> bool {
 // Tests for gettid()
 //==================================================================================================
 
-/// Tests if gettid() returns the expected value.
+///
+/// # Description
+///
+/// Tests if [`libnanvix::gettid()`] returns the expected value.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+/// # Notes
+///
+/// - This test assumes that the thread identifier of the current thread is 2. If the system
+///   image changes, this test must be updated.
+///
 fn test_gettid() -> bool {
     match libnanvix::gettid() {
         Ok(tid) => {
