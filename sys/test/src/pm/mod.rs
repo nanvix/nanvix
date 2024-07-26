@@ -14,7 +14,20 @@ use ::libnanvix::{
 // Tests for getpid()
 //==================================================================================================
 
-/// Tests if getpid() returns the expected value.
+///
+/// # Description
+///
+/// Tests if [`libnanvix::getpid()`] returns the expected value.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+/// # Notes
+///
+/// - This test assumes that the process identifier of the current process is 2. If the system
+///   image changes, this test must be updated.
+///
 fn test_getpid() -> bool {
     match libnanvix::getpid() {
         Ok(pid) => {
