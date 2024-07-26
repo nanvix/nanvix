@@ -106,6 +106,35 @@ fn test_getuid() -> bool {
 }
 
 //==================================================================================================
+// Tests for geteuid()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Tests if [`libnanvix::geteuid()`] returns the expected value.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+fn test_geteuid() -> bool {
+    match libnanvix::geteuid() {
+        Ok(euid) => {
+            let expected: UserIdentifier = UserIdentifier::ROOT;
+            if euid == expected {
+                true
+            } else {
+                libnanvix::log!("expected: {:?}, got: {:?}", expected, euid);
+                false
+            }
+        },
+        _ => false,
+    }
+}
+
+
+//==================================================================================================
 // Public Standalone Functions
 //==================================================================================================
 
@@ -118,4 +147,5 @@ pub fn test() {
     crate::test!(test_getpid());
     crate::test!(test_gettid());
     crate::test!(test_getuid());
+    crate::test!(test_geteuid());
 }
