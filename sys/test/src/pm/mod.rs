@@ -162,6 +162,34 @@ fn test_getgid() -> bool {
     }
 }
 
+//==================================================================================================
+// Tests for getegid()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Tests if [`libnanvix::getegid()`] returns the expected value.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+fn test_getegid() -> bool {
+    match libnanvix::getegid() {
+        Ok(egid) => {
+            let expected: GroupIdentifier = GroupIdentifier::ROOT;
+            if egid == expected {
+                true
+            } else {
+                libnanvix::log!("expected: {:?}, got: {:?}", expected, egid);
+                false
+            }
+        },
+        _ => false,
+    }
+}
+
 
 //==================================================================================================
 // Public Standalone Functions
@@ -178,4 +206,5 @@ pub fn test() {
     crate::test!(test_getuid());
     crate::test!(test_geteuid());
     crate::test!(test_getgid());
+    crate::test!(test_getegid());
 }
