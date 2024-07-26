@@ -17,7 +17,15 @@ use ::libnanvix::{
 /// Tests if getpid() returns the expected value.
 fn test_getpid() -> bool {
     match libnanvix::getpid() {
-        Ok(pid) => pid == ProcessIdentifier::from(1),
+        Ok(pid) => {
+            let expected: ProcessIdentifier = ProcessIdentifier::from(2);
+            if pid == expected {
+                return true;
+            } else {
+                libnanvix::log!("expected: {:?}, got: {:?}", expected, pid);
+                return false;
+            }
+        },
         _ => false,
     }
 }
@@ -29,7 +37,15 @@ fn test_getpid() -> bool {
 /// Tests if gettid() returns the expected value.
 fn test_gettid() -> bool {
     match libnanvix::gettid() {
-        Ok(tid) => tid == ThreadIdentifier::from(1),
+        Ok(tid) => {
+            let expected: ThreadIdentifier = ThreadIdentifier::from(2);
+            if tid == expected {
+                return true;
+            } else {
+                libnanvix::log!("expected: {:?}, got: {:?}", expected, tid);
+                return false;
+            }
+        },
         _ => false,
     }
 }
