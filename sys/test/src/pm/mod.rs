@@ -8,6 +8,7 @@
 use ::libnanvix::{
     ProcessIdentifier,
     ThreadIdentifier,
+    UserIdentifier,
 };
 
 //==================================================================================================
@@ -77,6 +78,34 @@ fn test_gettid() -> bool {
 }
 
 //==================================================================================================
+// Tests for getuid()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Tests if [`libnanvix::getuid()`] returns the expected value.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+fn test_getuid() -> bool {
+    match libnanvix::getuid() {
+        Ok(uid) => {
+            let expected: UserIdentifier = UserIdentifier::ROOT;
+            if uid == expected {
+                true
+            } else {
+                libnanvix::log!("expected: {:?}, got: {:?}", expected, uid);
+                false
+            }
+        },
+        _ => false,
+    }
+}
+
+//==================================================================================================
 // Public Standalone Functions
 //==================================================================================================
 
@@ -88,4 +117,5 @@ fn test_gettid() -> bool {
 pub fn test() {
     crate::test!(test_getpid());
     crate::test!(test_gettid());
+    crate::test!(test_getuid());
 }
