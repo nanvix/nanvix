@@ -144,7 +144,6 @@ impl DerefMut for KernelFrame {
 
 impl Drop for KernelFrame {
     fn drop(&mut self) {
-        trace!("freeing kernel page: {:?}", self.base);
         if let Err(e) = self.kpool.borrow_mut().free(self.base) {
             error!("failed to free kernel page pool: {:?}", e)
         }

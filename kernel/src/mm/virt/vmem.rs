@@ -748,8 +748,6 @@ impl Vmem {
 
 impl Drop for Vmem {
     fn drop(&mut self) {
-        trace!("drop()");
-
         while !self.user_pages.is_empty() {
             let vaddr = self
                 .user_pages
@@ -765,18 +763,16 @@ impl Drop for Vmem {
 
         // Unmap all kernel private kernel pages.
         while let Some(kpage) = self.private_kernel_pages.pop_front() {
-            trace!("freeing kernel page: {:?}", kpage.frame_address());
+            drop(kpage)
         }
 
         // Unmap shared kernel pages.
         while let Some(entry) = self.kernel_pages.pop_front() {
-            trace!("freeing shared kernel pages: {:?}", entry.borrow().frame_address());
             drop(entry);
         }
 
         // Unmap shared kernel page tables.
         while let Some(entry) = self.kernel_page_tables.pop_front() {
-            trace!("freeing share dkernel page table: {:?}", entry.borrow().0);
             drop(entry)
         }
     }
