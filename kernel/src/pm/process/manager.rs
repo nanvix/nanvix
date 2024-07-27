@@ -695,7 +695,7 @@ impl ProcessManager {
         mm.ctrl_upage(vmem, vaddr, access)
     }
 
-    pub fn attach_mmio(
+    pub fn mmio_alloc(
         &mut self,
         pid: ProcessIdentifier,
         region: IoMemoryRegion,
@@ -713,7 +713,7 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub fn detach_mmio(
+    pub fn mmio_free(
         &mut self,
         pid: ProcessIdentifier,
         addr: PageAligned<VirtualAddress>,

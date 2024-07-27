@@ -59,10 +59,10 @@ pub enum KcallNumber {
     MemoryCtrl,
     /// Copies a memory page.
     MemoryCopy,
-    /// Attaches a memory-mapped I/O region.
-    AttachMmio,
-    /// Detaches a memory-mapped I/O region.
-    DetachMmio,
+    /// Allocates a memory-mapped I/O region.
+    AllocMmio,
+    /// Releases a memory-mapped I/O region.
+    FreeMmio,
     /// Allocates a port-mapped I/O port.
     AllocPmio,
     /// Frees a port-mapped I/O port.
@@ -105,8 +105,8 @@ impl From<usize> for KcallNumber {
             20 => KcallNumber::MemoryUnmap,
             21 => KcallNumber::MemoryCtrl,
             22 => KcallNumber::MemoryCopy,
-            23 => KcallNumber::AttachMmio,
-            24 => KcallNumber::DetachMmio,
+            23 => KcallNumber::AllocMmio,
+            24 => KcallNumber::FreeMmio,
             25 => KcallNumber::AllocPmio,
             26 => KcallNumber::FreePmio,
             27 => KcallNumber::ReadPmio,

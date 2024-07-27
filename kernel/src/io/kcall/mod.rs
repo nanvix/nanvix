@@ -5,8 +5,8 @@
 // Modules
 //==================================================================================================
 
-mod ioattach;
-mod iodetach;
+mod mmio_alloc;
+mod mmio_free;
 mod pmio_alloc;
 mod pmio_free;
 mod pmio_read;
@@ -16,8 +16,8 @@ mod pmio_write;
 // Exports
 //==================================================================================================
 
-pub use ioattach::ioattach;
-pub use iodetach::iodetach;
+pub use mmio_alloc::mmio_alloc;
+pub use mmio_free::mmio_free;
 pub use pmio_alloc::pmio_alloc;
 pub use pmio_free::pmio_free;
 pub use pmio_read::pmio_read;
