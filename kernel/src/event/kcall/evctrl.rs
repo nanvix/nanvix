@@ -19,7 +19,10 @@ use ::sys::{
         Event,
         EventCtrlRequest,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -28,10 +31,11 @@ use ::sys::{
 
 fn do_evctrl(
     pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
     ev: Event,
     req: EventCtrlRequest,
 ) -> Result<Option<EventOwnership>, Error> {
-    EventManager::evctrl(pid, ev, req)
+    EventManager::evctrl(pid, tid, ev, req)
 }
 
 pub fn evctrl(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
@@ -47,7 +51,7 @@ pub fn evctrl(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
         Err(e) => return e.code.into_errno(),
     };
 
-    match do_evctrl(args.pid, ev, req) {
+    match do_evctrl(args.pid, args.tid, ev, req) {
         Ok(Some(ownership)) => match pm.add_event(ownership) {
             Ok(_) => 0,
             Err(e) => e.code.into_errno(),

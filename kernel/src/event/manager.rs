@@ -47,6 +47,7 @@ use ::sys::{
     pm::{
         Capability,
         ProcessIdentifier,
+        ThreadIdentifier,
     },
 };
 
@@ -77,12 +78,16 @@ impl Drop for EventOwnership {
         match self.em.try_borrow_mut() {
             Ok(mut em) => match self.ev {
                 Event::Interrupt(ev) => {
-                    if let Err(e) = em.do_evctrl_interrupt(None, ev, EventCtrlRequest::Unregister) {
+                    if let Err(e) =
+                        em.do_evctrl_interrupt(None, None, ev, EventCtrlRequest::Unregister)
+                    {
                         error!("failed to unregister interrupt: {:?}", e);
                     }
                 },
                 Event::Exception(ev) => {
-                    if let Err(e) = em.do_evctrl_exception(None, ev, EventCtrlRequest::Unregister) {
+                    if let Err(e) =
+                        em.do_evctrl_exception(None, None, ev, EventCtrlRequest::Unregister)
+                    {
                         error!("failed to unregister exception: {:?}", e);
                     }
                 },
@@ -97,9 +102,9 @@ impl Drop for EventOwnership {
 struct EventManagerInner {
     nevents: usize,
     wait: Option<Rc<Condvar>>,
-    interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
+    interrupt_ownership: [Option<ThreadIdentifier>; usize::BITS as usize],
     pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize],
-    exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
+    exception_ownership: [Option<ThreadIdentifier>; usize::BITS as usize],
     pending_exceptions: [LinkedList<(EventDescriptor, ExceptionEventInformation, Rc<Condvar>)>;
         usize::BITS as usize],
 }
@@ -110,6 +115,7 @@ impl EventManagerInner {
     fn do_evctrl_interrupt(
         &mut self,
         pid: Option<ProcessIdentifier>,
+        tid: Option<ThreadIdentifier>,
         ev: InterruptEvent,
         req: EventCtrlRequest,
     ) -> Result<(), Error> {
@@ -126,24 +132,31 @@ impl EventManagerInner {
             EventCtrlRequest::Register => {
                 // Check if PID is valid.
                 if let Some(pid) = pid {
-                    // Ensure that the process has the required capabilities.
-                    if !ProcessManager::has_capability(pid, Capability::InterruptControl)? {
-                        let reason: &str = "process does not have interrupt control capability";
-                        error!("do_evctrl_interrupt(): reason={:?}", reason);
-                        return Err(Error::new(ErrorCode::PermissionDenied, &reason));
+                    // Check if TID is valid.
+                    if let Some(tid) = tid {
+                        // Ensure that the process has the required capabilities.
+                        if !ProcessManager::has_capability(pid, Capability::InterruptControl)? {
+                            let reason: &str = "process does not have interrupt control capability";
+                            error!("do_evctrl_interrupt(): reason={:?}", reason);
+                            return Err(Error::new(ErrorCode::PermissionDenied, &reason));
+                        }
+
+                        // Check if target interrupt is already owned by another process.
+                        if self.interrupt_ownership[idx].is_some() {
+                            let reason: &str = "interrupt is already owned by another process";
+                            error!("do_evctrl_interrupt(): reason={:?}", reason);
+                            return Err(Error::new(ErrorCode::ResourceBusy, &reason));
+                        }
+
+                        // Register interrupt.
+                        self.interrupt_ownership[idx] = Some(tid);
+
+                        return Ok(());
                     }
 
-                    // Check if target interrupt is already owned by another process.
-                    if self.interrupt_ownership[idx].is_some() {
-                        let reason: &str = "interrupt is already owned by another process";
-                        error!("do_evctrl_interrupt(): reason={:?}", reason);
-                        return Err(Error::new(ErrorCode::ResourceBusy, &reason));
-                    }
-
-                    // Register interrupt.
-                    self.interrupt_ownership[idx] = Some(pid);
-
-                    return Ok(());
+                    let reason: &str = "invalid thread identifier";
+                    error!("do_evctrl_interrupt(): reason={:?}", reason);
+                    return Err(Error::new(ErrorCode::InvalidArgument, &reason));
                 }
 
                 let reason: &str = "invalid process identifier";
@@ -152,8 +165,8 @@ impl EventManagerInner {
             },
             EventCtrlRequest::Unregister => {
                 // If PID was supplied, check if it matches the current owner.
-                if let Some(pid) = pid {
-                    if self.interrupt_ownership[idx] != Some(pid) {
+                if let Some(tid) = tid {
+                    if self.interrupt_ownership[idx] != Some(tid) {
                         let reason: &str = "process does not own interrupt";
                         error!("do_evctrl_interrupt(): reason={:?}", reason);
                         return Err(Error::new(ErrorCode::PermissionDenied, &reason));
@@ -171,6 +184,7 @@ impl EventManagerInner {
     fn do_evctrl_exception(
         &mut self,
         pid: Option<ProcessIdentifier>,
+        tid: Option<ThreadIdentifier>,
         ev: ExceptionEvent,
         req: EventCtrlRequest,
     ) -> Result<(), Error> {
@@ -181,24 +195,30 @@ impl EventManagerInner {
             EventCtrlRequest::Register => {
                 // Check if PID is valid.
                 if let Some(pid) = pid {
-                    // Ensure that the process has the required capabilities.
-                    if !ProcessManager::has_capability(pid, Capability::ExceptionControl)? {
-                        let reason: &str = "process does not have exception control capability";
-                        error!("do_evctrl_exception(): reason={:?}", reason);
-                        return Err(Error::new(ErrorCode::PermissionDenied, &reason));
+                    if let Some(tid) = tid {
+                        // Ensure that the process has the required capabilities.
+                        if !ProcessManager::has_capability(pid, Capability::ExceptionControl)? {
+                            let reason: &str = "process does not have exception control capability";
+                            error!("do_evctrl_exception(): reason={:?}", reason);
+                            return Err(Error::new(ErrorCode::PermissionDenied, &reason));
+                        }
+
+                        // Check if target exception is already owned by another process.
+                        if self.exception_ownership[idx].is_some() {
+                            let reason: &str = "exception is already owned by another process";
+                            error!("do_evctrl_exception(): reason={:?}", reason);
+                            return Err(Error::new(ErrorCode::ResourceBusy, &reason));
+                        }
+
+                        // Register exception.
+                        self.exception_ownership[idx] = Some(tid);
+
+                        return Ok(());
                     }
 
-                    // Check if target exception is already owned by another process.
-                    if self.exception_ownership[idx].is_some() {
-                        let reason: &str = "exception is already owned by another process";
-                        error!("do_evctrl_exception(): reason={:?}", reason);
-                        return Err(Error::new(ErrorCode::ResourceBusy, &reason));
-                    }
-
-                    // Register exception.
-                    self.exception_ownership[idx] = Some(pid);
-
-                    return Ok(());
+                    let reason: &str = "invalid thread identifier";
+                    error!("do_evctrl_exception(): reason={:?}", reason);
+                    return Err(Error::new(ErrorCode::InvalidArgument, &reason));
                 }
 
                 let reason: &str = "invalid process identifier";
@@ -207,7 +227,7 @@ impl EventManagerInner {
             },
             EventCtrlRequest::Unregister => {
                 // If PID was supplied, check if it matches the current owner.
-                if let Some(pid) = pid {
+                if let Some(pid) = tid {
                     if self.exception_ownership[idx] != Some(pid) {
                         let reason: &str = "process does not own exception";
                         error!("do_evctrl_exception(): reason={:?}", reason);
@@ -379,15 +399,15 @@ impl EventManager {
             exceptions
         );
 
-        let mypid: ProcessIdentifier = ProcessManager::get_pid()?;
+        let mytid: ThreadIdentifier = ProcessManager::get_tid()?;
 
         // Ensure that the process has ownership of all target interrupts.
         for i in 0..usize::BITS {
             if (interrupts & (1 << i)) != 0 {
                 let idx: usize = i as usize;
 
-                if let Some(pid) = EventManager::get().try_borrow_mut()?.interrupt_ownership[idx] {
-                    if pid == mypid {
+                if let Some(tid) = EventManager::get().try_borrow_mut()?.interrupt_ownership[idx] {
+                    if tid == mytid {
                         continue;
                     }
                 }
@@ -402,8 +422,8 @@ impl EventManager {
         for i in 0..usize::BITS {
             if (exceptions & (1 << i)) != 0 {
                 let idx: usize = i as usize;
-                if let Some(pid) = EventManager::get().try_borrow_mut()?.exception_ownership[idx] {
-                    if pid == mypid {
+                if let Some(tid) = EventManager::get().try_borrow_mut()?.exception_ownership[idx] {
+                    if tid == mytid {
                         continue;
                     }
                 }
@@ -431,6 +451,7 @@ impl EventManager {
 
     pub fn evctrl(
         pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         ev: Event,
         req: EventCtrlRequest,
     ) -> Result<Option<EventOwnership>, Error> {
@@ -440,12 +461,20 @@ impl EventManager {
 
         match ev {
             Event::Interrupt(interrupt_event) => {
-                em.try_borrow_mut()?
-                    .do_evctrl_interrupt(Some(pid), interrupt_event, req)?;
+                em.try_borrow_mut()?.do_evctrl_interrupt(
+                    Some(pid),
+                    Some(tid),
+                    interrupt_event,
+                    req,
+                )?;
             },
             Event::Exception(exception_event) => {
-                em.try_borrow_mut()?
-                    .do_evctrl_exception(Some(pid), exception_event, req)?;
+                em.try_borrow_mut()?.do_evctrl_exception(
+                    Some(pid),
+                    Some(tid),
+                    exception_event,
+                    req,
+                )?;
             },
         }
 
@@ -527,7 +556,7 @@ pub fn init(hal: &mut Hal) {
         *list = LinkedList::default();
     }
 
-    let mut interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize] =
+    let mut interrupt_ownership: [Option<ThreadIdentifier>; usize::BITS as usize] =
         unsafe { mem::zeroed() };
     for entry in interrupt_ownership.iter_mut() {
         *entry = None;
@@ -542,7 +571,7 @@ pub fn init(hal: &mut Hal) {
         *list = LinkedList::default();
     }
 
-    let mut exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize] =
+    let mut exception_ownership: [Option<ThreadIdentifier>; usize::BITS as usize] =
         unsafe { mem::zeroed() };
     for entry in exception_ownership.iter_mut() {
         *entry = None;
