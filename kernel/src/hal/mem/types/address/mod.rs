@@ -10,18 +10,19 @@ mod frame;
 mod page;
 mod phys;
 mod test;
-mod virt;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use ::sys::mm::Address;
+pub use ::sys::mm::{
+    Address,
+    VirtualAddress,
+};
 pub use aligned::*;
 pub use frame::*;
 pub use page::*;
 pub use phys::*;
-pub use virt::*;
 
 //==================================================================================================
 // Standalone Functions

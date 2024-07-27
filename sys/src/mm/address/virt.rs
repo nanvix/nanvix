@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use crate::{
-    hal::mem::types::address::Address,
-    klib::{
+    error::Error,
+    mm::{
         self,
+        Address,
         Alignment,
     },
 };
-use ::sys::error::Error;
 
 //==================================================================================================
 // Structures
@@ -69,7 +69,7 @@ impl Address for VirtualAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
-        Ok(VirtualAddress::new(klib::align_up(self.0, align)))
+        Ok(VirtualAddress::new(mm::align_up(self.0, align)))
     }
 
     ///
@@ -87,7 +87,7 @@ impl Address for VirtualAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_down(&self, align: Alignment) -> Result<Self, Error> {
-        Ok(VirtualAddress::new(klib::align_down(self.0, align)))
+        Ok(VirtualAddress::new(mm::align_down(self.0, align)))
     }
 
     ///
@@ -105,7 +105,7 @@ impl Address for VirtualAddress {
     /// an error is returned instead.
     ///
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error> {
-        Ok(klib::is_aligned(self.0, align))
+        Ok(mm::is_aligned(self.0, align))
     }
 
     ///
