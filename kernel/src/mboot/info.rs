@@ -7,7 +7,7 @@
 
 use crate::{
     hal::{
-        arch::x86::cpu::madt::madt::MadtInfo,
+        arch::x86::cpu::madt::MadtInfo,
         mem::{
             MemoryRegion,
             TruncatedMemoryRegion,

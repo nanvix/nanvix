@@ -20,16 +20,6 @@ use self::{
     module::MbootModule,
 };
 use crate::{
-    arch::{
-        self,
-        cpu::{
-            acpi::{
-                AcpiSdtHeader,
-                Rsdp,
-            },
-            madt::Madt,
-        },
-    },
     error::{
         Error,
         ErrorCode,
@@ -37,7 +27,10 @@ use crate::{
     hal::{
         arch::x86::cpu::{
             self,
-            madt::madt::MadtInfo,
+            madt::{
+                self,
+                MadtInfo,
+            },
         },
         mem::{
             AccessPermission,
@@ -53,14 +46,22 @@ use crate::{
     kmod::KernelModule,
     mboot::info::BootInfo,
 };
-use alloc::{
+use ::alloc::{
     collections::LinkedList,
     string::{
         String,
         ToString,
     },
 };
-use core::mem;
+use ::arch::{
+    self,
+    cpu::acpi::{
+        AcpiSdtHeader,
+        Rsdp,
+    },
+};
+use ::core::mem;
+use arch::cpu::madt::Madt;
 
 //==================================================================================================
 // Constants
@@ -398,17 +399,10 @@ fn parse_acpiold(
         // Safety: `ptr` points to a valid `MbootAcpi`.
         MbootAcpi::from_raw(ptr as *const u8)?
     };
-    acpi.display();
-    let rsdp: Rsdp = unsafe { Rsdp::from_ptr(acpi.rsdp())? };
-    rsdp.display();
-    let rsdt: *const AcpiSdtHeader = rsdp.rsdt_addr as *const AcpiSdtHeader;
-    let rsdt: AcpiSdtHeader = unsafe { AcpiSdtHeader::from_ptr(rsdt) }?;
-    rsdt.display();
-
+    let rsdp: Rsdp = unsafe { Rsdp::from_ptr(acpi.rsdp()).unwrap() };
     let ptr: *const AcpiSdtHeader =
         unsafe { cpu::acpi::find_table_by_sig(rsdp.rsdt_addr as *const AcpiSdtHeader, "APIC")? };
-    rsdp.display();
-    let madt: Option<MadtInfo> = match unsafe { Madt::parse(ptr as *const Madt) } {
+    let madt: Option<MadtInfo> = match unsafe { madt::parse(ptr as *const Madt) } {
         Ok(madt) => {
             madt.display();
 

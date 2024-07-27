@@ -5,7 +5,7 @@
 // Configuration
 //==================================================================================================
 
-// #![deny(clippy::all)]
+#![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
 #![feature(allocator_api)] // kheap uses this.
@@ -27,7 +27,7 @@ extern crate alloc;
 
 use crate::{
     hal::{
-        arch::x86::cpu::madt::madt::MadtInfo,
+        arch::x86::cpu::madt::MadtInfo,
         mem::{
             AccessPermission,
             Address,
@@ -60,9 +60,11 @@ use hal::mem::TruncatedMemoryRegion;
 //==================================================================================================
 
 #[macro_use]
+extern crate arch;
+
+#[macro_use]
 mod macros;
 
-mod arch;
 mod config;
 mod debug;
 mod error;
@@ -88,12 +90,6 @@ mod uart;
 //==================================================================================================
 
 fn test() {
-    if !crate::arch::cpu::eflags::test() {
-        panic!("eflags tests failed");
-    }
-    if !crate::arch::mem::paging::test() {
-        panic!("paging tests failed");
-    }
     if !crate::hal::mem::test() {
         panic!("memory tests failed");
     }

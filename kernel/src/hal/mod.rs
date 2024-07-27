@@ -22,7 +22,7 @@ use crate::{
     hal::{
         arch::x86::{
             cpu::{
-                madt::madt::MadtInfo,
+                madt::MadtInfo,
                 ExceptionController,
             },
             Arch,

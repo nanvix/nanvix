@@ -5,35 +5,32 @@
 // Imports
 //==================================================================================================
 
-use alloc::boxed::Box;
+use ::alloc::boxed::Box;
 
 use crate::{
-    arch::mem::{
-        gdt::{
-            AccessAccessed,
-            AccessConforming,
-            AccessDescriptorType,
-            AccessDirection,
-            AccessDirectionConforming,
-            AccessExecutable,
-            AccessPresent,
-            AccessReadWrite,
-            AccessReadable,
-            AccessWritable,
-            DescriptorPrivilegeLegel,
-            Gdte,
-            GdteAccessByte,
-            GdteFlags,
-            GdteGranularity,
-            GdteLongMode,
-            GdteProtectedMode,
-        },
-        gdtr::Gdtr,
+    arch::mem::gdt::{
+        AccessAccessed,
+        AccessConforming,
+        AccessDescriptorType,
+        AccessDirection,
+        AccessDirectionConforming,
+        AccessExecutable,
+        AccessPresent,
+        AccessReadWrite,
+        AccessReadable,
+        AccessWritable,
+        DescriptorPrivilegeLegel,
+        Gdte,
+        GdteAccessByte,
+        GdteFlags,
+        GdteGranularity,
+        GdteLongMode,
+        GdteProtectedMode,
     },
     error::Error,
     hal::arch::x86::cpu::tss::TssRef,
 };
-use core::{
+use ::core::{
     arch,
     mem,
     pin::Pin,
@@ -45,28 +42,26 @@ use core::{
 
 pub struct Gdt(Pin<Box<[Gdte; 6]>>);
 
-pub struct GdtPtr(Pin<Box<Gdtr>>);
+pub struct GdtPtr(Pin<Box<::arch::mem::gdtr::Gdtr>>);
 
-impl Gdtr {
-    pub unsafe fn load(&self) {
-        // No data is pushed the stack, or write to the stack red-zone
-        arch::asm!(
-            "movl {ptr}, %eax",
-            "lgdt (%eax)",
-            "ljmp ${KERNEL_CS}, $2f",
-            "2:",
-            "movw ${KERNEL_DS}, %ax",
-            "movw %ax, %ds",
-            "movw %ax, %es",
-            "movw %ax, %fs",
-            "movw %ax, %gs",
-            "movw %ax, %ss",
-            ptr = in(reg) self as *const Gdtr,
-            KERNEL_CS = const SegmentSelector::KernelCode as u16,
-            KERNEL_DS = const SegmentSelector::KernelData as u16,
-            options(nostack, att_syntax)
-        );
-    }
+pub unsafe fn load(ptr: *const ::arch::mem::gdtr::Gdtr) {
+    // No data is pushed the stack, or write to the stack red-zone
+    arch::asm!(
+        "movl {ptr}, %eax",
+        "lgdt (%eax)",
+        "ljmp ${KERNEL_CS}, $2f",
+        "2:",
+        "movw ${KERNEL_DS}, %ax",
+        "movw %ax, %ds",
+        "movw %ax, %es",
+        "movw %ax, %fs",
+        "movw %ax, %gs",
+        "movw %ax, %ss",
+        ptr = in(reg) ptr,
+        KERNEL_CS = const SegmentSelector::KernelCode as u16,
+        KERNEL_DS = const SegmentSelector::KernelData as u16,
+        options(nostack, att_syntax)
+    );
 }
 
 /// Global descriptor table entries.
@@ -217,13 +212,13 @@ pub unsafe fn init(kstack: *const u8) -> Result<(Gdt, GdtPtr, TssRef), Error> {
     ])));
 
     // Set the GDTPTR.
-    let gdtr = GdtPtr(Pin::new(Box::new(Gdtr::new(
+    let gdtr = GdtPtr(Pin::new(Box::new(::arch::mem::gdtr::Gdtr::new(
         gdt.0.as_ptr() as u32,
         (mem::size_of_val(&*gdt.0)) as u16,
     ))));
 
     info!("loading the GDT...");
-    gdtr.0.load();
+    load(gdtr.0.as_ref().get_ref() as *const ::arch::mem::gdtr::Gdtr);
 
     // Load the TSS.
     tss.load(SegmentSelector::Tss as u16);

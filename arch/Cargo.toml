@@ -2,18 +2,13 @@
 # Licensed under the MIT License.
 
 [package]
-name = "kernel"
+name = "arch"
 version = "0.0.1"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
-description = "Nanvix Kernel"
+description = "Architecture-Specific Interface"
 homepage = "https://github.com/nanvix"
 
 [lib]
-path = "src/kmain.rs"
-crate-type = ["staticlib"]
-
-[dependencies]
-arch = { path = "../arch" }
-kcall = { path = "../kcall" }
+crate-type = ["lib"]

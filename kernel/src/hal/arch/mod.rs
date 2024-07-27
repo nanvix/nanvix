@@ -22,7 +22,7 @@ use crate::{
     error::Error,
     hal::{
         arch::x86::{
-            cpu::madt::madt::MadtInfo,
+            cpu::madt::MadtInfo,
             Arch,
         },
         io::{
