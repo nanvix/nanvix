@@ -31,6 +31,8 @@ fn do_capctl(
     capability: Capability,
     value: bool,
 ) -> Result<(), Error> {
+    trace!("do_capctl(): pid={:?}, capability={:?}, value={:?}", pid, capability, value);
+
     // Checks if the process has enough privileges.
     if pm.geteuid(pid)? != UserIdentifier::ROOT {
         let reason: &str = "permission denied";
