@@ -26,11 +26,24 @@ use ::sys::{
 // Standalone Functions
 //==================================================================================================
 
+fn do_send(pm: &mut ProcessManager, src: ProcessIdentifier, message: Message) -> Result<(), Error> {
+    trace!("do_send(): src={:?}, dst={:?}", src, message.destination);
+
+    // Sanity check message source.
+    if message.source != src {
+        let reason: &str = "invalid message source";
+        error!("do_send(): {}", reason);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    // TODO: Check if source process has permission to send message to destination process.
+
+    // Post message.
+    IpcManager::post_message(pm, message.destination, message)
+}
+
 pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
-    let src: ProcessIdentifier = match ProcessManager::get_pid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+    let src: ProcessIdentifier = args.pid;
 
     // Copy message to kernel space.
     let mut message: Message = Message::default();
@@ -38,21 +51,22 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
         return e.code.into_errno();
     }
 
-    // Sanity check message source.
-    if message.source != src {
-        let reason: &str = "invalid message source";
-        error!("send(): {}", reason);
-        return Error::new(ErrorCode::InvalidArgument, reason)
-            .code
-            .into_errno();
-    }
-
     // TODO: Check if source process has permission to send message to destination process.
 
     // Post message.
-    match IpcManager::post_message(pm, src, message) {
+    match do_send(pm, src, message) {
         Ok(_) => 0,
         Err(e) => e.code.into_errno(),
+    }
+}
+
+fn do_recv(pid: ProcessIdentifier) -> Result<Message, Error> {
+    trace!("do_recv(): pid={:?}", pid);
+
+    // Receive message.
+    match IpcManager::receive_message(pid) {
+        Ok(message) => Ok(message),
+        Err(e) => Err(e),
     }
 }
 
@@ -62,7 +76,7 @@ pub fn recv(msg: usize) -> i32 {
         Err(e) => return e.code.into_errno(),
     };
 
-    match IpcManager::receive_message(pid) {
+    match do_recv(pid) {
         Ok(message) => {
             if let Err(e) = pm::copy_to_user(pid, msg as *mut Message, &message) {
                 return e.code.into_errno();
