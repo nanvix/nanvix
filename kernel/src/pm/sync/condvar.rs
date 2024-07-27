@@ -55,6 +55,10 @@ impl Condvar {
     ///
     /// Wakes a single thread that is waiting on the target condition variable.
     ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
     pub fn notify_first(&self) -> Result<(), Error> {
         if let Some(tid) = self.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(tid)?;
@@ -66,19 +70,19 @@ impl Condvar {
     ///
     /// # Description
     ///
-    /// Wakes up all threads that are waiting on the target condition variable.
+    /// Wakes up a specific thread that is waiting on the target condition variable.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the target thread.
     ///
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn notify_all(&self) -> Result<(), Error> {
-        while let Some(tid) = self.sleeping.borrow_mut().pop_front() {
-            match ProcessManager::wakeup(tid) {
-                Ok(_) => continue,
-                Err(e) if e.code == ErrorCode::NoSuchEntry => continue,
-                Err(e) => return Err(e),
-            }
+    pub fn notify(&self, tid: ThreadIdentifier) -> Result<(), Error> {
+        if self.sleeping.borrow_mut().iter().any(|&t| t == tid) {
+            ProcessManager::wakeup(tid)?;
         }
 
         Ok(())

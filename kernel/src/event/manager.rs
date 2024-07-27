@@ -311,6 +311,16 @@ impl EventManagerInner {
             }
         };
 
+        // Get exception owner.
+        let tid: ThreadIdentifier = match self.exception_ownership[idx] {
+            Some(owner) => owner,
+            None => {
+                let reason: &str = "no owner for exception";
+                error!("resume_exception(): reason={:?}", reason);
+                unimplemented!("terminate process")
+            },
+        };
+
         // Search and remove event from pending exceptions.
         if let Some(entry) = self.pending_exceptions[idx]
             .iter()
@@ -318,7 +328,7 @@ impl EventManagerInner {
         {
             let (_enventinfo, _excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
 
-            if let Err(e) = resume.notify_all() {
+            if let Err(e) = resume.notify(tid) {
                 warn!("failed to notify all: {:?}", e);
                 unimplemented!("terminate process")
             }
@@ -333,7 +343,18 @@ impl EventManagerInner {
         let ev = Event::from(sys::event::InterruptEvent::try_from(idx)?);
         let eventid: EventDescriptor = EventDescriptor::new(self.nevents, ev);
         self.pending_interrupts[idx].push_back(eventid);
-        self.get_wait().notify_all()
+
+        // Get interrupt owner.
+        let tid: ThreadIdentifier = match self.interrupt_ownership[idx] {
+            Some(owner) => owner,
+            None => {
+                let reason: &str = "no owner for interrupt";
+                error!("wakeup_interrupt(): reason={:?}", reason);
+                return Err(Error::new(ErrorCode::NoSuchProcess, &reason));
+            },
+        };
+
+        self.get_wait().notify(tid)
     }
 
     fn wakeup_exception(
@@ -356,7 +377,19 @@ impl EventManagerInner {
             },
             resume.clone(),
         ));
-        self.get_wait().notify_all()?;
+
+        // Get exception owner.
+        let tid: ThreadIdentifier = match self.exception_ownership[idx] {
+            Some(owner) => owner,
+            None => {
+                let reason: &str = "no owner for exception";
+                error!("wakeup_exception(): reason={:?}", reason);
+                return Err(Error::new(ErrorCode::NoSuchProcess, &reason));
+            },
+        };
+
+        trace!("wakeup_exception(): tid={:?}", tid);
+        self.get_wait().notify(tid)?;
 
         Ok(resume)
     }
