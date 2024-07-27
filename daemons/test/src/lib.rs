@@ -10,6 +10,9 @@
 /// Tests process management kernel calls.
 mod pm;
 
+/// Tests memory management kernel calls.
+mod mm;
+
 //==================================================================================================
 // Macros
 //==================================================================================================
@@ -39,6 +42,7 @@ macro_rules! test {
 pub fn main() {
     nvx::log!("Running test server...");
     pm::test();
+    mm::test();
     let magic_string = "PANIC: Hello World!\n";
     let _ = ::nvx::debug::debug(magic_string.as_ptr(), magic_string.len());
     loop {
