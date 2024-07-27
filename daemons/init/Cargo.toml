@@ -7,7 +7,7 @@ version = "0.0.1"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
-description = "Nanvix Kernel"
+description = "Init Daemon"
 homepage = "https://github.com/nanvix"
 
 [lib]
