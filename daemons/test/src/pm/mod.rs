@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use ::libnanvix::{
+use ::nvx::{
     GroupIdentifier,
     ProcessIdentifier,
     ThreadIdentifier,
@@ -19,7 +19,7 @@ use ::libnanvix::{
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::getpid()`] returns the expected value.
+/// Tests if [`nvx::getpid()`] returns the expected value.
 ///
 /// # Returns
 ///
@@ -31,13 +31,13 @@ use ::libnanvix::{
 ///   image changes, this test must be updated.
 ///
 fn test_getpid() -> bool {
-    match libnanvix::getpid() {
+    match nvx::getpid() {
         Ok(pid) => {
             let expected: ProcessIdentifier = ProcessIdentifier::from(2);
             if pid == expected {
                 true
             } else {
-                libnanvix::log!("expected: {:?}, got: {:?}", expected, pid);
+                nvx::log!("expected: {:?}, got: {:?}", expected, pid);
                 false
             }
         },
@@ -52,7 +52,7 @@ fn test_getpid() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::gettid()`] returns the expected value.
+/// Tests if [`nvx::gettid()`] returns the expected value.
 ///
 /// # Returns
 ///
@@ -64,13 +64,13 @@ fn test_getpid() -> bool {
 ///   image changes, this test must be updated.
 ///
 fn test_gettid() -> bool {
-    match libnanvix::gettid() {
+    match nvx::gettid() {
         Ok(tid) => {
             let expected: ThreadIdentifier = ThreadIdentifier::from(2);
             if tid == expected {
                 true
             } else {
-                libnanvix::log!("expected: {:?}, got: {:?}", expected, tid);
+                nvx::log!("expected: {:?}, got: {:?}", expected, tid);
                 false
             }
         },
@@ -85,20 +85,20 @@ fn test_gettid() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::getuid()`] returns the expected value.
+/// Tests if [`nvx::getuid()`] returns the expected value.
 ///
 /// # Returns
 ///
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_getuid() -> bool {
-    match libnanvix::getuid() {
+    match nvx::getuid() {
         Ok(uid) => {
             let expected: UserIdentifier = UserIdentifier::ROOT;
             if uid == expected {
                 true
             } else {
-                libnanvix::log!("expected: {:?}, got: {:?}", expected, uid);
+                nvx::log!("expected: {:?}, got: {:?}", expected, uid);
                 false
             }
         },
@@ -113,20 +113,20 @@ fn test_getuid() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::geteuid()`] returns the expected value.
+/// Tests if [`nvx::geteuid()`] returns the expected value.
 ///
 /// # Returns
 ///
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_geteuid() -> bool {
-    match libnanvix::geteuid() {
+    match nvx::geteuid() {
         Ok(euid) => {
             let expected: UserIdentifier = UserIdentifier::ROOT;
             if euid == expected {
                 true
             } else {
-                libnanvix::log!("expected: {:?}, got: {:?}", expected, euid);
+                nvx::log!("expected: {:?}, got: {:?}", expected, euid);
                 false
             }
         },
@@ -141,20 +141,20 @@ fn test_geteuid() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::getgid()`] returns the expected value.
+/// Tests if [`nvx::getgid()`] returns the expected value.
 ///
 /// # Returns
 ///
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_getgid() -> bool {
-    match libnanvix::getgid() {
+    match nvx::getgid() {
         Ok(gid) => {
             let expected: GroupIdentifier = GroupIdentifier::ROOT;
             if gid == expected {
                 true
             } else {
-                libnanvix::log!("expected: {:?}, got: {:?}", expected, gid);
+                nvx::log!("expected: {:?}, got: {:?}", expected, gid);
                 false
             }
         },
@@ -169,20 +169,20 @@ fn test_getgid() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::getegid()`] returns the expected value.
+/// Tests if [`nvx::getegid()`] returns the expected value.
 ///
 /// # Returns
 ///
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_getegid() -> bool {
-    match libnanvix::getegid() {
+    match nvx::getegid() {
         Ok(egid) => {
             let expected: GroupIdentifier = GroupIdentifier::ROOT;
             if egid == expected {
                 true
             } else {
-                libnanvix::log!("expected: {:?}, got: {:?}", expected, egid);
+                nvx::log!("expected: {:?}, got: {:?}", expected, egid);
                 false
             }
         },
@@ -197,7 +197,7 @@ fn test_getegid() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::Capability::ExceptionControl`] capability may be acquired and release.
+/// Tests if [`nvx::Capability::ExceptionControl`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -205,8 +205,8 @@ fn test_getegid() -> bool {
 ///
 fn test_capctl_exception_control() -> bool {
     // Attempt to acquire and release exception control capability.
-    match libnanvix::capctl(libnanvix::Capability::ExceptionControl, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::ExceptionControl, false) {
+    match nvx::capctl(nvx::Capability::ExceptionControl, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::ExceptionControl, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -217,7 +217,7 @@ fn test_capctl_exception_control() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::Capability::InterruptControl`] capability may be acquired and release.
+/// Tests if [`nvx::Capability::InterruptControl`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -225,8 +225,8 @@ fn test_capctl_exception_control() -> bool {
 ///
 fn test_capctl_interrupt_control() -> bool {
     // Attempt to acquire and release interrupt control capability.
-    match libnanvix::capctl(libnanvix::Capability::InterruptControl, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::InterruptControl, false) {
+    match nvx::capctl(nvx::Capability::InterruptControl, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::InterruptControl, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -237,7 +237,7 @@ fn test_capctl_interrupt_control() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::Capability::IoManagement`] capability may be acquired and release.
+/// Tests if [`nvx::Capability::IoManagement`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -245,8 +245,8 @@ fn test_capctl_interrupt_control() -> bool {
 ///
 fn test_capctl_io_management() -> bool {
     // Attempt to acquire and release I/O management capability.
-    match libnanvix::capctl(libnanvix::Capability::IoManagement, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::IoManagement, false) {
+    match nvx::capctl(nvx::Capability::IoManagement, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::IoManagement, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -257,7 +257,7 @@ fn test_capctl_io_management() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::Capability::MemoryManagement`] capability may be acquired and release.
+/// Tests if [`nvx::Capability::MemoryManagement`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -265,8 +265,8 @@ fn test_capctl_io_management() -> bool {
 ///
 fn test_capctl_memory_management() -> bool {
     // Attempt to acquire and release memory management capability.
-    match libnanvix::capctl(libnanvix::Capability::MemoryManagement, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::MemoryManagement, false) {
+    match nvx::capctl(nvx::Capability::MemoryManagement, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::MemoryManagement, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -277,7 +277,7 @@ fn test_capctl_memory_management() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`libnanvix::Capability::ProcessManagement`] capability may be acquired and release.
+/// Tests if [`nvx::Capability::ProcessManagement`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -285,8 +285,8 @@ fn test_capctl_memory_management() -> bool {
 ///
 fn test_capctl_process_management() -> bool {
     // Attempt to acquire and release process management capability.
-    match libnanvix::capctl(libnanvix::Capability::ProcessManagement, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::ProcessManagement, false) {
+    match nvx::capctl(nvx::Capability::ProcessManagement, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::ProcessManagement, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -305,10 +305,10 @@ fn test_capctl_process_management() -> bool {
 ///
 fn test_capctl_invalid_acquire() -> bool {
     // Attempt to acquire exception control capability twice.
-    match libnanvix::capctl(libnanvix::Capability::ExceptionControl, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::ExceptionControl, true) {
+    match nvx::capctl(nvx::Capability::ExceptionControl, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::ExceptionControl, true) {
             Ok(()) => return false,
-            _ => match libnanvix::capctl(libnanvix::Capability::ExceptionControl, false) {
+            _ => match nvx::capctl(nvx::Capability::ExceptionControl, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -317,10 +317,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire interrupt control capability twice.
-    match libnanvix::capctl(libnanvix::Capability::InterruptControl, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::InterruptControl, true) {
+    match nvx::capctl(nvx::Capability::InterruptControl, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::InterruptControl, true) {
             Ok(()) => return false,
-            _ => match libnanvix::capctl(libnanvix::Capability::InterruptControl, false) {
+            _ => match nvx::capctl(nvx::Capability::InterruptControl, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -329,10 +329,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire I/O management capability twice.
-    match libnanvix::capctl(libnanvix::Capability::IoManagement, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::IoManagement, true) {
+    match nvx::capctl(nvx::Capability::IoManagement, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::IoManagement, true) {
             Ok(()) => return false,
-            _ => match libnanvix::capctl(libnanvix::Capability::IoManagement, false) {
+            _ => match nvx::capctl(nvx::Capability::IoManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -341,10 +341,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire memory management capability twice.
-    match libnanvix::capctl(libnanvix::Capability::MemoryManagement, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::MemoryManagement, true) {
+    match nvx::capctl(nvx::Capability::MemoryManagement, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::MemoryManagement, true) {
             Ok(()) => return false,
-            _ => match libnanvix::capctl(libnanvix::Capability::MemoryManagement, false) {
+            _ => match nvx::capctl(nvx::Capability::MemoryManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -353,10 +353,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire process management capability twice.
-    match libnanvix::capctl(libnanvix::Capability::ProcessManagement, true) {
-        Ok(()) => match libnanvix::capctl(libnanvix::Capability::ProcessManagement, true) {
+    match nvx::capctl(nvx::Capability::ProcessManagement, true) {
+        Ok(()) => match nvx::capctl(nvx::Capability::ProcessManagement, true) {
             Ok(()) => return false,
-            _ => match libnanvix::capctl(libnanvix::Capability::ProcessManagement, false) {
+            _ => match nvx::capctl(nvx::Capability::ProcessManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -378,31 +378,31 @@ fn test_capctl_invalid_acquire() -> bool {
 ///
 fn test_capctl_invalid_release() -> bool {
     // Attempt to release exception control capability without acquiring it.
-    match libnanvix::capctl(libnanvix::Capability::ExceptionControl, false) {
+    match nvx::capctl(nvx::Capability::ExceptionControl, false) {
         Ok(()) => return false,
         _ => (),
     }
 
     // Attempt to release interrupt control capability without acquiring it.
-    match libnanvix::capctl(libnanvix::Capability::InterruptControl, false) {
+    match nvx::capctl(nvx::Capability::InterruptControl, false) {
         Ok(()) => return false,
         _ => (),
     }
 
     // Attempt to release I/O management capability without acquiring it.
-    match libnanvix::capctl(libnanvix::Capability::IoManagement, false) {
+    match nvx::capctl(nvx::Capability::IoManagement, false) {
         Ok(()) => return false,
         _ => (),
     }
 
     // Attempt to release memory management capability without acquiring it.
-    match libnanvix::capctl(libnanvix::Capability::MemoryManagement, false) {
+    match nvx::capctl(nvx::Capability::MemoryManagement, false) {
         Ok(()) => return false,
         _ => (),
     }
 
     // Attempt to release process management capability without acquiring it.
-    match libnanvix::capctl(libnanvix::Capability::ProcessManagement, false) {
+    match nvx::capctl(nvx::Capability::ProcessManagement, false) {
         Ok(()) => return false,
         _ => (),
     }

@@ -5,7 +5,7 @@
 // Tests mmap()
 //==================================================================================================
 
-use libnanvix::{
+use nvx::{
     AccessPermission,
     ProcessIdentifier,
 };
@@ -21,12 +21,12 @@ use libnanvix::{
 ///
 fn test_mmap_munmap() -> bool {
     // Acquire memory management capability.
-    match libnanvix::capctl(libnanvix::Capability::MemoryManagement, true) {
+    match nvx::capctl(nvx::Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match libnanvix::getpid() {
+    let mypid: ProcessIdentifier = match nvx::getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -34,19 +34,19 @@ fn test_mmap_munmap() -> bool {
     let vaddr: usize = 0xa0000000;
 
     // Map a page.
-    match libnanvix::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+    match nvx::mmap(mypid, vaddr, AccessPermission::RDONLY) {
         Ok(_) => (),
         Err(_) => return false,
     }
 
     // Unmap the page.
-    match libnanvix::munmap(mypid, vaddr) {
+    match nvx::munmap(mypid, vaddr) {
         Ok(_) => (),
         Err(_) => return false,
     }
 
     // Release memory management capability.
-    match libnanvix::capctl(libnanvix::Capability::MemoryManagement, true) {
+    match nvx::capctl(nvx::Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }

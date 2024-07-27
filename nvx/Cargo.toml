@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 [package]
-name = "libnanvix"
+name = "nvx"
 version = "0.0.1"
 license-file = "LICENSE.txt"
 edition = "2021"

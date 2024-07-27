@@ -14,4 +14,4 @@ homepage = "https://github.com/nanvix"
 crate-type = ["staticlib"]
 
 [dependencies]
-libnanvix = { path = "../../nvx" }
+nvx = { path = "../../nvx" }

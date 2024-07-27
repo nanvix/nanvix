@@ -24,7 +24,7 @@ macro_rules! test {
     ($fn_name:ident($($arg:expr),*)) => {{
         match $fn_name($($arg),*) {
             true =>
-                libnanvix::log!("{} {}", "passed", stringify!($fn_name)),
+                nvx::log!("{} {}", "passed", stringify!($fn_name)),
             false =>
                 panic!("{} {}", "FAILED", stringify!($fn_name)),
         }
@@ -37,10 +37,10 @@ macro_rules! test {
 
 #[no_mangle]
 pub fn main() {
-    libnanvix::log!("Running test server...");
+    nvx::log!("Running test server...");
     pm::test();
     let magic_string = "PANIC: Hello World!\n";
-    let _ = libnanvix::debug(magic_string.as_ptr(), magic_string.len());
+    let _ = nvx::debug(magic_string.as_ptr(), magic_string.len());
     loop {
         core::hint::spin_loop()
     }

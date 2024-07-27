@@ -9,7 +9,7 @@
 
 #[no_mangle]
 pub fn main() {
-    libnanvix::log!("Running init server...");
+    nvx::log!("Running init server...");
     loop {
         core::hint::spin_loop()
     }
