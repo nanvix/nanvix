@@ -20,7 +20,7 @@ pub use constants::{
 };
 
 // TODO: review this re-export once system architecture is consolidated.
-pub use ::kcall::{
+pub use ::sys::mm::{
     align_down,
     align_up,
     is_aligned,

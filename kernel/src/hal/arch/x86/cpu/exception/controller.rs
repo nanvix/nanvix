@@ -9,7 +9,7 @@ use crate::hal::arch::{
     ContextInformation,
     ExceptionInformation,
 };
-use kcall::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

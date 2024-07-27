@@ -16,11 +16,16 @@ use crate::{
     mm::VirtMemoryManager,
     pm::ProcessManager,
 };
-use ::kcall::{
-    Capability,
-    Error,
-    ErrorCode,
-    ProcessIdentifier,
+
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::{
+        Capability,
+        ProcessIdentifier,
+    },
 };
 
 //==================================================================================================

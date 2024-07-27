@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::hal::mem::PhysicalAddress;
-use alloc::string::{
+use ::alloc::string::{
     String,
     ToString,
 };

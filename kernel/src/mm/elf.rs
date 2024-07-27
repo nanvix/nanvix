@@ -14,10 +14,6 @@
 
 use crate::{
     arch::mem,
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         arch::x86::mem::mmu,
         mem::{
@@ -38,6 +34,14 @@ use crate::{
         Vmem,
     },
 };
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
+
+//==================================================================================================
+// Constants
+//==================================================================================================
 
 // Number of indented elements in ELF header.
 const EI_NIDENT: usize = 16;

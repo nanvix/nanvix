@@ -5,15 +5,15 @@
 // Modules
 //==================================================================================================
 
-use crate::{
-    error::Error,
-    pm::ProcessManager,
-};
+use crate::pm::ProcessManager;
 use ::alloc::collections::LinkedList;
 use ::core::cell::RefCell;
-use ::kcall::{
-    ErrorCode,
-    ThreadIdentifier,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================

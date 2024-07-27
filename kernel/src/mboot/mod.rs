@@ -20,10 +20,6 @@ use self::{
     module::MbootModule,
 };
 use crate::{
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         arch::x86::cpu::{
             self,
@@ -61,6 +57,10 @@ use ::arch::{
     },
 };
 use ::core::mem;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 use arch::cpu::madt::Madt;
 
 //==================================================================================================

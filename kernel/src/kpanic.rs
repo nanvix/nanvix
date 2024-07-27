@@ -9,7 +9,7 @@ use crate::klog::{
     Klog,
     KlogLevel,
 };
-use core::{
+use ::core::{
     fmt::Write,
     hint,
     panic::PanicInfo,

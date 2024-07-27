@@ -7,21 +7,21 @@
 
 use crate::{
     arch::mem,
-    error::{
-        Error,
-        ErrorCode,
-    },
     klib::{
         self,
         slab::Slab,
     },
 };
-use alloc::alloc::{
+use ::alloc::alloc::{
     AllocError,
     GlobalAlloc,
     Layout,
 };
-use core::ptr;
+use ::core::ptr;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Constants

@@ -5,12 +5,14 @@
 // Imports
 //==================================================================================================
 
-use crate::{
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     mm::AccessPermission,
-    Error,
-    ErrorCode,
-    KcallNumber,
-    ProcessIdentifier,
+    number::KcallNumber,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -19,7 +21,7 @@ use crate::{
 
 pub fn mmap(pid: ProcessIdentifier, vaddr: usize, access: AccessPermission) -> Result<(), Error> {
     let result: i32 = unsafe {
-        crate::kcall3(KcallNumber::MemoryMap.into(), pid.into(), vaddr as u32, access.into())
+        crate::arch::kcall3(KcallNumber::MemoryMap.into(), pid.into(), vaddr as u32, access.into())
     };
 
     if result == 0 {
@@ -35,7 +37,7 @@ pub fn mmap(pid: ProcessIdentifier, vaddr: usize, access: AccessPermission) -> R
 
 pub fn munmap(pid: ProcessIdentifier, vaddr: usize) -> Result<(), Error> {
     let result: i32 =
-        unsafe { crate::kcall2(KcallNumber::MemoryUnmap.into(), pid.into(), vaddr as u32) };
+        unsafe { crate::arch::kcall2(KcallNumber::MemoryUnmap.into(), pid.into(), vaddr as u32) };
 
     if result == 0 {
         Ok(())

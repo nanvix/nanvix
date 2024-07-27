@@ -21,17 +21,16 @@ use crate::{
             process::{
                 state::ProcessState,
                 RunningProcess,
+                ZombieProcess,
             },
         },
         thread::ReadyThread,
     },
 };
-use ::kcall::{
-    Error,
-    ProcessIdentifier,
+use ::sys::{
+    error::Error,
+    pm::ProcessIdentifier,
 };
-
-use super::ZombieProcess;
 
 //==================================================================================================
 // Runnable Process

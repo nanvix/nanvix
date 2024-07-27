@@ -5,12 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::Error,
-    pm::sync::condvar::Condvar,
-};
+use crate::pm::sync::condvar::Condvar;
 use ::core::cell::RefCell;
-use ::kcall::ErrorCode;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Structures

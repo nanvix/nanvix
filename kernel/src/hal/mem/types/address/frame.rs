@@ -7,15 +7,14 @@
 
 use crate::{
     arch::mem::paging::FrameNumber,
-    error::Error,
     hal::mem::types::address::{
         Address,
+        PageAddress,
         PageAligned,
         PhysicalAddress,
     },
 };
-
-use super::PageAddress;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Structures

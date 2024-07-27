@@ -17,10 +17,6 @@ mod vmem;
 use crate::{
     arch::mem,
     config,
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         arch::x86::mem::mmu::{
             self,
@@ -45,11 +41,15 @@ use crate::{
     },
     klib,
 };
-use alloc::{
+use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
-use core::cmp::Ordering;
+use ::core::cmp::Ordering;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Exports

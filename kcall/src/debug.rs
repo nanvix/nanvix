@@ -5,10 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    Error,
-    ErrorCode,
-    KcallNumber,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    number::KcallNumber,
 };
 
 //==================================================================================================
@@ -29,7 +31,8 @@ use crate::{
 /// Upon success, empty is returned. Upon failure, an error is returned instead.
 ///
 pub fn debug(buf: *const u8, size: usize) -> Result<(), Error> {
-    let result: i32 = unsafe { crate::kcall2(KcallNumber::Debug.into(), buf as u32, size as u32) };
+    let result: i32 =
+        unsafe { crate::arch::kcall2(KcallNumber::Debug.into(), buf as u32, size as u32) };
 
     if result == 0 {
         Ok(())

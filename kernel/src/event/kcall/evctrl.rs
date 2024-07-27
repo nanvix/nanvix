@@ -13,11 +13,13 @@ use crate::{
     kcall::KcallArgs,
     pm::ProcessManager,
 };
-use ::kcall::{
-    Error,
-    Event,
-    EventCtrlRequest,
-    ProcessIdentifier,
+use ::sys::{
+    error::Error,
+    event::{
+        Event,
+        EventCtrlRequest,
+    },
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================

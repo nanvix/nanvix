@@ -7,14 +7,14 @@
 
 use crate::{
     arch::cpu::xapic,
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         io::IoMemoryRegion,
         mem::Address,
     },
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

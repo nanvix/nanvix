@@ -7,7 +7,6 @@
 
 use crate::{
     arch::mem,
-    error::Error,
     hal::mem::{
         Address,
         FrameAddress,
@@ -17,17 +16,18 @@ use crate::{
     },
     klib::bitmap::Bitmap,
 };
-use alloc::{
+use ::alloc::{
     rc::Rc,
     vec::Vec,
 };
-use core::{
+use ::core::{
     cell::RefCell,
     ops::{
         Deref,
         DerefMut,
     },
 };
+use ::sys::error::Error;
 
 //==================================================================================================
 // Kernel Page Pool Inner

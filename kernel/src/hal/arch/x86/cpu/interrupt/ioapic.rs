@@ -5,12 +5,12 @@
 // Imports
 //==================================================================================================
 
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 use crate::{
     arch::cpu::ioapic,
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         io::IoMemoryRegion,
         mem::Address,

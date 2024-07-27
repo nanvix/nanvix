@@ -9,12 +9,16 @@ use crate::{
     kcall::KcallArgs,
     pm::ProcessManager,
 };
-use ::kcall::{
-    Capability,
-    Error,
-    ErrorCode,
-    ProcessIdentifier,
-    UserIdentifier,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::{
+        Capability,
+        ProcessIdentifier,
+        UserIdentifier,
+    },
 };
 
 //==================================================================================================

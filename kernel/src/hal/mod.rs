@@ -15,10 +15,6 @@ pub mod mem;
 //==================================================================================================
 
 use crate::{
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         arch::x86::{
             cpu::{
@@ -46,6 +42,10 @@ use crate::{
 use ::alloc::{
     boxed::Box,
     collections::linked_list::LinkedList,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

@@ -28,7 +28,6 @@ pub use virt::{
 
 use crate::{
     arch::mem,
-    error::Error,
     hal::{
         arch::x86::mem::mmu::page_table::PageTable,
         mem::{
@@ -45,10 +44,11 @@ use crate::{
     kimage::KernelImage,
     mm::phys::PhysMemoryManager,
 };
-use alloc::{
+use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
+use ::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions

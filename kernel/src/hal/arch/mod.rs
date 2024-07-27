@@ -19,7 +19,6 @@ use crate::{
         },
         mem,
     },
-    error::Error,
     hal::{
         arch::x86::{
             cpu::madt::MadtInfo,
@@ -40,6 +39,7 @@ use crate::{
     },
 };
 use ::alloc::collections::linked_list::LinkedList;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Exports

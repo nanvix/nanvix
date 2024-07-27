@@ -40,7 +40,7 @@ pub fn main() {
     nvx::log!("Running test server...");
     pm::test();
     let magic_string = "PANIC: Hello World!\n";
-    let _ = nvx::debug(magic_string.as_ptr(), magic_string.len());
+    let _ = ::nvx::debug::debug(magic_string.as_ptr(), magic_string.len());
     loop {
         core::hint::spin_loop()
     }

@@ -21,7 +21,7 @@ use nvx::{
 ///
 fn test_mmap_munmap() -> bool {
     // Acquire memory management capability.
-    match nvx::capctl(nvx::Capability::MemoryManagement, true) {
+    match nvx::pm::capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
@@ -46,7 +46,7 @@ fn test_mmap_munmap() -> bool {
     }
 
     // Release memory management capability.
-    match nvx::capctl(nvx::Capability::MemoryManagement, true) {
+    match nvx::pm::capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }

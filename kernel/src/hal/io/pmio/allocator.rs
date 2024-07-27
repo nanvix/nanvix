@@ -5,25 +5,23 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::{
-        Error,
-        ErrorCode,
+use crate::hal::io::{
+    pmio::{
+        info::IoPortInfo,
+        ioport::IoPort,
     },
-    hal::io::{
-        pmio::{
-            info::IoPortInfo,
-            ioport::IoPort,
-        },
-        IoPortType,
-        IoPortWidth,
-    },
+    IoPortType,
+    IoPortWidth,
 };
 use ::alloc::{
     collections::LinkedList,
     rc::Rc,
 };
 use ::core::cell::RefCell;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Structures

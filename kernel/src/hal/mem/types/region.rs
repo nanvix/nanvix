@@ -5,16 +5,7 @@
 // Imports
 //==================================================================================================
 
-use alloc::string::{
-    String,
-    ToString,
-};
-
 use crate::{
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         arch::x86::mem::mmu,
         mem::types::{
@@ -28,6 +19,14 @@ use crate::{
         },
     },
     klib,
+};
+use ::alloc::string::{
+    String,
+    ToString,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

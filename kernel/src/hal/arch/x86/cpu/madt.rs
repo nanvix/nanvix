@@ -5,7 +5,6 @@
 // Imports
 //==================================================================================================
 
-use crate::error::Error;
 use ::alloc::collections::LinkedList;
 use ::arch::cpu::{
     acpi::AcpiSdtHeader,
@@ -22,6 +21,7 @@ use ::arch::cpu::{
         MadtLocalApicAddressOverride,
     },
 };
+use ::sys::error::Error;
 
 pub struct MadtInfo {
     pub sdt: AcpiSdtHeader,

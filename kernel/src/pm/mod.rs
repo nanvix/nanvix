@@ -16,7 +16,6 @@ pub mod thread;
 
 use crate::{
     config,
-    error::Error,
     hal::{
         arch::InterruptNumber,
         mem::{
@@ -31,7 +30,10 @@ use crate::{
         ThreadManager,
     },
 };
-use ::kcall::ProcessIdentifier;
+use ::sys::{
+    error::Error,
+    pm::ProcessIdentifier,
+};
 
 //==================================================================================================
 // Exports

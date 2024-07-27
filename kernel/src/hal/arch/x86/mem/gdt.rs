@@ -27,7 +27,6 @@ use crate::{
         GdteLongMode,
         GdteProtectedMode,
     },
-    error::Error,
     hal::arch::x86::cpu::tss::TssRef,
 };
 use ::core::{
@@ -35,6 +34,7 @@ use ::core::{
     mem,
     pin::Pin,
 };
+use ::sys::error::Error;
 
 //==================================================================================================
 // Global Variables

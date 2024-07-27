@@ -5,8 +5,7 @@
 // Imports
 //==================================================================================================
 
-use alloc::boxed::Box;
-
+use ::alloc::boxed::Box;
 use crate::{
     arch::mem::{
         self,
@@ -22,10 +21,6 @@ use crate::{
             UserSupervisorFlag,
         },
     },
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::mem::{
         AccessPermission,
         Address,
@@ -35,7 +30,11 @@ use crate::{
         PhysicalAddress,
     },
 };
-use core::ops::{
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
+use ::core::ops::{
     Deref,
     DerefMut,
 };

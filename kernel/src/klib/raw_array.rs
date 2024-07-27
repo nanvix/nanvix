@@ -5,10 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::error::{
-    Error,
-    ErrorCode,
-};
+use ::alloc::alloc;
 use ::core::{
     alloc::Layout,
     ops::{
@@ -18,7 +15,10 @@ use ::core::{
     ptr,
     slice,
 };
-use alloc::alloc;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Raw Array Storage

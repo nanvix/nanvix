@@ -21,35 +21,16 @@
 mod arch;
 
 /// Debug facilities.
-mod debug;
-
-/// Kernel error types.
-mod error;
+pub mod debug;
 
 /// Event handling kernel calls.
-mod event;
+pub mod event;
 
 /// Inter-Process Communication (IPC) kernel calls.
-mod ipc;
+pub mod ipc;
 
 /// Memory management kernel calls.
-mod mm;
-
-/// Numbers for kernel calls.
-mod number;
+pub mod mm;
 
 /// Process management kernel calls.
-mod pm;
-
-//==================================================================================================
-// Exports
-//==================================================================================================
-
-pub use arch::*;
-pub use debug::*;
-pub use error::*;
-pub use event::*;
-pub use ipc::*;
-pub use mm::*;
-pub use number::*;
-pub use pm::*;
+pub mod pm;

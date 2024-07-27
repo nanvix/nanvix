@@ -5,18 +5,17 @@
 // Imports
 //==================================================================================================
 
-use core::ops::Deref;
-
 use crate::{
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         arch::x86::mem::mmu,
         mem::Address,
     },
     klib::Alignment,
+};
+use ::core::ops::Deref;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

@@ -27,7 +27,6 @@ use crate::{
             MadtEntryLocalApic,
         },
     },
-    error::Error,
     hal::{
         arch::x86::{
             cpu::{
@@ -51,6 +50,7 @@ use crate::{
     },
 };
 use ::alloc::collections::LinkedList;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Exports

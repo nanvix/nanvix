@@ -5,22 +5,22 @@
 // Imports
 //==================================================================================================
 
-use super::{
-    Address,
-    FrameAddress,
-    VirtualAddress,
-};
 use crate::{
     arch::mem::{
         self,
         paging::FrameNumber,
     },
     config,
-    error::{
-        Error,
-        ErrorCode,
+    hal::mem::types::address::{
+        Address,
+        FrameAddress,
+        VirtualAddress,
     },
     klib::Alignment,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

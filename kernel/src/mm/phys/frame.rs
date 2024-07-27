@@ -10,10 +10,6 @@ use crate::{
         self,
         paging::FrameNumber,
     },
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::mem::{
         FrameAddress,
         PageAligned,
@@ -25,6 +21,10 @@ use crate::{
         bitmap::Bitmap,
         raw_array::RawArray,
     },
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

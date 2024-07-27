@@ -8,10 +8,6 @@
 use crate::{
     arch::mem,
     config,
-    error::{
-        Error,
-        ErrorCode,
-    },
     event::EventOwnership,
     hal::{
         self,
@@ -67,14 +63,20 @@ use ::core::cell::{
     RefCell,
     RefMut,
 };
-use ::kcall::{
-    Capability,
-    Event,
-    GroupIdentifier,
-    Message,
-    ProcessIdentifier,
-    ThreadIdentifier,
-    UserIdentifier,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    event::Event,
+    ipc::Message,
+    pm::{
+        Capability,
+        GroupIdentifier,
+        ProcessIdentifier,
+        ThreadIdentifier,
+        UserIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -309,7 +311,7 @@ impl ProcessManagerInner {
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///
+    ///GroupIdentifier
     pub fn wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
         while let Some(process) = self.suspended.pop_front() {

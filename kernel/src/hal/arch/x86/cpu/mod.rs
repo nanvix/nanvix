@@ -17,7 +17,6 @@ mod interrupt;
 use crate::{
     arch::cpu::cpuid,
     config,
-    error::Error,
     hal::{
         arch::x86::{
             cpu::tss::TssRef,
@@ -34,6 +33,7 @@ use crate::{
         },
     },
 };
+use ::sys::error::Error;
 use madt::MadtInfo;
 
 //==================================================================================================

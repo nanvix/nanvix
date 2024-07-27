@@ -10,10 +10,15 @@ use crate::{
     kcall::KcallArgs,
     pm::ProcessManager,
 };
-use ::kcall::{
-    Error,
-    ErrorCode,
-    ProcessIdentifier,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::{
+        Capability,
+        ProcessIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -28,7 +33,7 @@ fn do_pmio_free(
     trace!("do_pmio_free(): pid={:?}, portnum={:?}", pid, port_number);
 
     // Check if the process does not have I/O management capabilities.
-    if !ProcessManager::has_capability(pid, kcall::Capability::IoManagement)? {
+    if !ProcessManager::has_capability(pid, Capability::IoManagement)? {
         let reason: &'static str = "process does not have io management capabilities";
         error!("do_pmio_free(): {}", reason);
         return Err(Error::new(ErrorCode::PermissionDenied, &reason));

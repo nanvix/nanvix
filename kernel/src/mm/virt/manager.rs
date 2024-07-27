@@ -7,7 +7,6 @@
 
 use crate::{
     arch::mem,
-    error::Error,
     hal::{
         arch::x86::mem::mmu::page_table::PageTable,
         mem::{
@@ -34,10 +33,11 @@ use crate::{
         },
     },
 };
-use alloc::{
+use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
+use ::sys::error::Error;
 
 //==================================================================================================
 // Structures

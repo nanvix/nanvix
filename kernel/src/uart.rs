@@ -12,11 +12,7 @@
 // Imports
 //==================================================================================================
 
-use alloc::rc::Rc;
-use core::cell::RefCell;
-
 use crate::{
-    error::Error,
     hal::io::{
         IoPortAllocator,
         ReadOnlyIoPort,
@@ -24,6 +20,9 @@ use crate::{
     },
     stdout::Stdout,
 };
+use ::alloc::rc::Rc;
+use ::core::cell::RefCell;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Constants

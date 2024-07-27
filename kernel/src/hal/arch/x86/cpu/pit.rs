@@ -14,12 +14,12 @@
 
 use crate::{
     arch::cpu::pit,
-    error::Error,
     hal::io::{
         IoPortAllocator,
         ReadWriteIoPort,
     },
 };
+use ::sys::error::Error;
 
 //==================================================================================================
 // Structures

@@ -16,4 +16,4 @@ crate-type = ["staticlib"]
 
 [dependencies]
 arch = { path = "../arch" }
-kcall = { path = "../kcall" }
+sys = { path = "../sys" }

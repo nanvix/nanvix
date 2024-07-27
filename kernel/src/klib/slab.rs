@@ -5,15 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    klib::{
-        bitmap::Bitmap,
-        raw_array::RawArray,
-    },
+use crate::klib::{
+    bitmap::Bitmap,
+    raw_array::RawArray,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

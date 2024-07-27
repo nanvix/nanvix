@@ -1,8 +1,6 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use core::fmt::Debug;
-
 ///
 /// # Description
 ///
@@ -124,7 +122,7 @@ impl ApicBase {
     }
 }
 
-impl Debug for ApicBase {
+impl ::core::fmt::Debug for ApicBase {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(
             f,

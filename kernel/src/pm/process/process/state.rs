@@ -26,15 +26,19 @@ use crate::{
     },
 };
 use ::alloc::collections::LinkedList;
-use ::kcall::{
-    Capability,
-    Error,
-    ErrorCode,
-    Event,
-    GroupIdentifier,
-    Message,
-    ProcessIdentifier,
-    UserIdentifier,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    event::Event,
+    ipc::Message,
+    pm::{
+        Capability,
+        GroupIdentifier,
+        ProcessIdentifier,
+        UserIdentifier,
+    },
 };
 
 //==================================================================================================

@@ -5,12 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::Error,
-    pm::sync::condvar::Condvar,
-};
-use alloc::sync::Arc;
-use core::cell::RefCell;
+use crate::pm::sync::condvar::Condvar;
+use ::alloc::sync::Arc;
+use ::core::cell::RefCell;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Structures

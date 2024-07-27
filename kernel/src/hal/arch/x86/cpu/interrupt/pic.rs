@@ -17,14 +17,14 @@ use crate::{
         cpu::pic,
         io,
     },
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::io::{
         IoPortAllocator,
         ReadWriteIoPort,
     },
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

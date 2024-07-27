@@ -17,10 +17,6 @@ mod upool;
 use crate::{
     arch::mem,
     config,
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::mem::{
         Address,
         PageAligned,
@@ -34,7 +30,11 @@ use crate::{
         upool::Upool,
     },
 };
-use alloc::collections::LinkedList;
+use ::alloc::collections::LinkedList;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Exports

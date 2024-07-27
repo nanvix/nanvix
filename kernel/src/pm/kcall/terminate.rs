@@ -9,7 +9,7 @@ use crate::{
     kcall::KcallArgs,
     pm::ProcessManager,
 };
-use ::kcall::ProcessIdentifier;
+use ::sys::pm::ProcessIdentifier;
 
 //==================================================================================================
 // Standalone Functions

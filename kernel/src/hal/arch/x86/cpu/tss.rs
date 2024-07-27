@@ -5,20 +5,18 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    arch::cpu::tss::Tss,
-    error::{
-        Error,
-        ErrorCode,
-    },
-};
-use core::{
+use crate::arch::cpu::tss::Tss;
+use ::core::{
     arch,
     mem,
     ops::{
         Deref,
         DerefMut,
     },
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

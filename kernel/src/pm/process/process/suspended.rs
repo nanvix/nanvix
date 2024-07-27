@@ -16,7 +16,7 @@ use crate::pm::{
     },
     thread::SleepingThread,
 };
-use ::kcall::ThreadIdentifier;
+use ::sys::pm::ThreadIdentifier;
 
 //==================================================================================================
 // Suspended Process

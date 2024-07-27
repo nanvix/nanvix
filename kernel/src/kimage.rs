@@ -7,7 +7,6 @@
 
 use crate::{
     config,
-    error::Error,
     hal::{
         arch::x86::mem::mmu,
         mem::{
@@ -20,6 +19,7 @@ use crate::{
     },
     klib,
 };
+use ::sys::error::Error;
 
 extern "C" {
     static __TEXT_START: u8;

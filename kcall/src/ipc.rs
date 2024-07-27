@@ -4,41 +4,19 @@
 //==================================================================================================
 //  Imports
 //==================================================================================================
-
-use crate::{
-    Error,
-    ErrorCode,
-    KcallNumber,
-    ProcessIdentifier,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    number::KcallNumber,
 };
 
 //==================================================================================================
-//  Structures
+// Exports
 //==================================================================================================
 
-pub struct Message {
-    pub source: ProcessIdentifier,
-    pub destination: ProcessIdentifier,
-    pub payload: [u8; Self::SIZE],
-}
-
-//==================================================================================================
-//  Implementations
-//==================================================================================================
-
-impl Message {
-    pub const SIZE: usize = 64;
-}
-
-impl Default for Message {
-    fn default() -> Self {
-        Self {
-            source: ProcessIdentifier::KERNEL,
-            destination: ProcessIdentifier::KERNEL,
-            payload: [0; Self::SIZE],
-        }
-    }
-}
+pub use ::sys::ipc::*;
 
 //==================================================================================================
 // Send Message
@@ -46,7 +24,7 @@ impl Default for Message {
 
 pub fn send(message: &Message) -> Result<(), Error> {
     let result: i32 = unsafe {
-        crate::kcall1(KcallNumber::Send.into(), message as *const Message as usize as u32)
+        crate::arch::kcall1(KcallNumber::Send.into(), message as *const Message as usize as u32)
     };
 
     if result == 0 {
@@ -64,7 +42,7 @@ pub fn recv() -> Result<Message, Error> {
     let mut message: Message = Default::default();
 
     let result: i32 = unsafe {
-        crate::kcall1(KcallNumber::Recv.into(), &mut message as *mut Message as usize as u32)
+        crate::arch::kcall1(KcallNumber::Recv.into(), &mut message as *mut Message as usize as u32)
     };
 
     if result == 0 {

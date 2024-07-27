@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use core::fmt;
+use ::core::fmt;
 
 //==================================================================================================
 // Structures
@@ -20,7 +20,7 @@ pub struct Logger;
 
 impl fmt::Write for Logger {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let _ = kcall::debug(s.as_ptr(), s.len());
+        let _ = ::kcall::debug::debug(s.as_ptr(), s.len());
         Ok(())
     }
 }

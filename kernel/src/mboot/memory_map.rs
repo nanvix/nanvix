@@ -5,14 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    hal::mem::MemoryRegionType,
+use crate::hal::mem::MemoryRegionType;
+use ::core::mem;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
-use core::mem;
 
 //==================================================================================================
 // Multiboot Memory Type

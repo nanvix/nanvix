@@ -6,10 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         arch::{
             ContextInformation,
@@ -35,15 +31,23 @@ use ::core::{
     },
     mem,
 };
-use ::kcall::{
-    Capability,
-    Event,
-    EventCtrlRequest,
-    EventDescriptor,
-    EventInformation,
-    ExceptionEvent,
-    InterruptEvent,
-    ProcessIdentifier,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    event::{
+        Event,
+        EventCtrlRequest,
+        EventDescriptor,
+        EventInformation,
+        ExceptionEvent,
+        InterruptEvent,
+    },
+    pm::{
+        Capability,
+        ProcessIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -303,10 +307,10 @@ impl EventManagerInner {
         Ok(())
     }
 
-    fn wakeup_interrupt(&mut self, interrupts: usize) -> Result<(), kcall::Error> {
+    fn wakeup_interrupt(&mut self, interrupts: usize) -> Result<(), Error> {
         self.nevents += 1;
         let idx: usize = interrupts.trailing_zeros() as usize;
-        let ev = Event::from(kcall::InterruptEvent::try_from(idx)?);
+        let ev = Event::from(sys::event::InterruptEvent::try_from(idx)?);
         let eventid: EventDescriptor = EventDescriptor::new(self.nevents, ev);
         self.pending_interrupts[idx].push_back(eventid);
         self.get_wait().notify_all()
@@ -317,11 +321,11 @@ impl EventManagerInner {
         exceptions: usize,
         pid: ProcessIdentifier,
         info: &ExceptionInformation,
-    ) -> Result<Rc<Condvar>, kcall::Error> {
+    ) -> Result<Rc<Condvar>, Error> {
         trace!("wakeup_exception(): exceptions={:#x}, pid={:?}, info={:?}", exceptions, pid, info);
         self.nevents += 1;
         let idx: usize = exceptions.trailing_zeros() as usize;
-        let ev = Event::from(kcall::ExceptionEvent::try_from(idx)?);
+        let ev = Event::from(ExceptionEvent::try_from(idx)?);
         let eventid: EventDescriptor = EventDescriptor::new(self.nevents, ev);
         let resume: Rc<Condvar> = Rc::new(Condvar::new());
         self.pending_exceptions[idx].push_back((

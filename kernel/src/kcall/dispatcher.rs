@@ -11,9 +11,9 @@ use crate::{
     kcall::ScoreBoard,
     pm::ProcessManager,
 };
-use ::kcall::{
-    EventInformation,
-    KcallNumber,
+use ::sys::{
+    event::EventInformation,
+    number::KcallNumber,
 };
 
 //==================================================================================================

@@ -11,26 +11,27 @@ mod handler;
 //==================================================================================================
 // Imports
 //==================================================================================================
-use crate::{
+
+use crate::pm::{
+    sync::{
+        mutex::{
+            Mutex,
+            MutexGuard,
+        },
+        semaphore::Semaphore,
+    },
+    ProcessManager,
+};
+use ::core::fmt::Debug;
+use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
     pm::{
-        sync::{
-            mutex::{
-                Mutex,
-                MutexGuard,
-            },
-            semaphore::Semaphore,
-        },
-        ProcessManager,
+        ProcessIdentifier,
+        ThreadIdentifier,
     },
-};
-use core::fmt::Debug;
-use kcall::{
-    ProcessIdentifier,
-    ThreadIdentifier,
 };
 
 //==================================================================================================

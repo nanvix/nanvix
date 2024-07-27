@@ -12,26 +12,24 @@ pub mod mem;
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::Error,
-    hal::{
-        arch::x86::{
-            cpu::{
-                pit,
-                tss::TssRef,
-            },
-            mem::gdt::{
-                Gdt,
-                GdtPtr,
-            },
-            pit::Pit,
+use crate::hal::{
+    arch::x86::{
+        cpu::{
+            pit,
+            tss::TssRef,
         },
-        io::{
-            IoMemoryAllocator,
-            IoPortAllocator,
+        mem::gdt::{
+            Gdt,
+            GdtPtr,
         },
+        pit::Pit,
+    },
+    io::{
+        IoMemoryAllocator,
+        IoPortAllocator,
     },
 };
+use ::sys::error::Error;
 use cpu::madt::MadtInfo;
 
 //==================================================================================================

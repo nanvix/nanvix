@@ -7,7 +7,6 @@
 
 use crate::{
     debug,
-    error::ErrorCode,
     event,
     hal::Hal,
     io,
@@ -19,7 +18,10 @@ use crate::{
         ProcessManager,
     },
 };
-use ::kcall::KcallNumber;
+use ::sys::{
+    error::ErrorCode,
+    number::KcallNumber,
+};
 
 //==================================================================================================
 //  Standalone Functions

@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::event::manager::EventManager;
-use ::kcall::EventInformation;
+use ::sys::event::EventInformation;
 
 //==================================================================================================
 // Standalone Functions

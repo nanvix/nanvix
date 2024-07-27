@@ -10,10 +10,6 @@ use crate::{
         self,
         paging::PageDirectoryEntry,
     },
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::{
         arch::x86::mem::mmu::{
             self,
@@ -47,11 +43,15 @@ use crate::{
         },
     },
 };
-use alloc::{
+use ::alloc::{
     collections::LinkedList,
     rc::Rc,
 };
-use core::cell::RefCell;
+use ::core::cell::RefCell;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Constants

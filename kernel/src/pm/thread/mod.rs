@@ -5,16 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::Error,
-    hal::arch::ContextInformation,
-};
-use alloc::boxed::Box;
-use core::{
+use crate::hal::arch::ContextInformation;
+use ::alloc::boxed::Box;
+use ::core::{
     fmt::Debug,
     pin::Pin,
 };
-use kcall::ThreadIdentifier;
+use ::sys::{
+    error::Error,
+    pm::ThreadIdentifier,
+};
 
 //==================================================================================================
 // Thread

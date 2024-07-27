@@ -10,10 +10,6 @@ use crate::{
         self,
         cpu::msr,
     },
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::arch::x86::cpu::interrupt::{
         ioapic::{
             Ioapic,
@@ -30,6 +26,10 @@ use crate::{
         },
         InterruptNumber,
     },
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

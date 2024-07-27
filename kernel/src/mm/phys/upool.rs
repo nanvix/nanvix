@@ -7,21 +7,21 @@
 
 use crate::{
     arch::mem,
-    error::Error,
     hal::mem::FrameAddress,
     mm::phys::frame::FrameAllocator,
 };
-use alloc::{
+use ::alloc::{
     rc::Rc,
     vec::Vec,
 };
-use core::{
+use ::core::{
     cell::RefCell,
     ops::{
         Deref,
         DerefMut,
     },
 };
+use ::sys::error::Error;
 
 //==================================================================================================
 // User Frame Pool Inner

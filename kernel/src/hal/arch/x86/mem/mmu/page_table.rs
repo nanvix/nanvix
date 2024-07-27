@@ -21,10 +21,6 @@ use crate::{
             UserSupervisorFlag,
         },
     },
-    error::{
-        Error,
-        ErrorCode,
-    },
     hal::mem::{
         AccessPermission,
         Address,
@@ -34,10 +30,14 @@ use crate::{
         PhysicalAddress,
     },
 };
-use alloc::boxed::Box;
-use core::ops::{
+use ::alloc::boxed::Box;
+use ::core::ops::{
     Deref,
     DerefMut,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

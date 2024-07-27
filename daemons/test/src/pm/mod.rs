@@ -5,7 +5,8 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{
+use ::nvx::pm::{
+    Capability,
     GroupIdentifier,
     ProcessIdentifier,
     ThreadIdentifier,
@@ -31,7 +32,7 @@ use ::nvx::{
 ///   image changes, this test must be updated.
 ///
 fn test_getpid() -> bool {
-    match nvx::getpid() {
+    match nvx::pm::getpid() {
         Ok(pid) => {
             let expected: ProcessIdentifier = ProcessIdentifier::from(2);
             if pid == expected {
@@ -64,7 +65,7 @@ fn test_getpid() -> bool {
 ///   image changes, this test must be updated.
 ///
 fn test_gettid() -> bool {
-    match nvx::gettid() {
+    match nvx::pm::gettid() {
         Ok(tid) => {
             let expected: ThreadIdentifier = ThreadIdentifier::from(2);
             if tid == expected {
@@ -92,7 +93,7 @@ fn test_gettid() -> bool {
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_getuid() -> bool {
-    match nvx::getuid() {
+    match nvx::pm::getuid() {
         Ok(uid) => {
             let expected: UserIdentifier = UserIdentifier::ROOT;
             if uid == expected {
@@ -113,14 +114,14 @@ fn test_getuid() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`nvx::geteuid()`] returns the expected value.
+/// Tests if [`nvx::pm::geteuid()`] returns the expected value.
 ///
 /// # Returns
 ///
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_geteuid() -> bool {
-    match nvx::geteuid() {
+    match nvx::pm::geteuid() {
         Ok(euid) => {
             let expected: UserIdentifier = UserIdentifier::ROOT;
             if euid == expected {
@@ -148,7 +149,7 @@ fn test_geteuid() -> bool {
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_getgid() -> bool {
-    match nvx::getgid() {
+    match nvx::pm::getgid() {
         Ok(gid) => {
             let expected: GroupIdentifier = GroupIdentifier::ROOT;
             if gid == expected {
@@ -176,7 +177,7 @@ fn test_getgid() -> bool {
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_getegid() -> bool {
-    match nvx::getegid() {
+    match nvx::pm::getegid() {
         Ok(egid) => {
             let expected: GroupIdentifier = GroupIdentifier::ROOT;
             if egid == expected {
@@ -197,7 +198,7 @@ fn test_getegid() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`nvx::Capability::ExceptionControl`] capability may be acquired and release.
+/// Tests if [`Capability::ExceptionControl`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -205,8 +206,8 @@ fn test_getegid() -> bool {
 ///
 fn test_capctl_exception_control() -> bool {
     // Attempt to acquire and release exception control capability.
-    match nvx::capctl(nvx::Capability::ExceptionControl, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::ExceptionControl, false) {
+    match nvx::pm::capctl(Capability::ExceptionControl, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::ExceptionControl, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -217,7 +218,7 @@ fn test_capctl_exception_control() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`nvx::Capability::InterruptControl`] capability may be acquired and release.
+/// Tests if [`Capability::InterruptControl`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -225,8 +226,8 @@ fn test_capctl_exception_control() -> bool {
 ///
 fn test_capctl_interrupt_control() -> bool {
     // Attempt to acquire and release interrupt control capability.
-    match nvx::capctl(nvx::Capability::InterruptControl, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::InterruptControl, false) {
+    match nvx::pm::capctl(Capability::InterruptControl, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::InterruptControl, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -237,7 +238,7 @@ fn test_capctl_interrupt_control() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`nvx::Capability::IoManagement`] capability may be acquired and release.
+/// Tests if [`Capability::IoManagement`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -245,8 +246,8 @@ fn test_capctl_interrupt_control() -> bool {
 ///
 fn test_capctl_io_management() -> bool {
     // Attempt to acquire and release I/O management capability.
-    match nvx::capctl(nvx::Capability::IoManagement, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::IoManagement, false) {
+    match nvx::pm::capctl(Capability::IoManagement, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::IoManagement, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -257,7 +258,7 @@ fn test_capctl_io_management() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`nvx::Capability::MemoryManagement`] capability may be acquired and release.
+/// Tests if [`Capability::MemoryManagement`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -265,8 +266,8 @@ fn test_capctl_io_management() -> bool {
 ///
 fn test_capctl_memory_management() -> bool {
     // Attempt to acquire and release memory management capability.
-    match nvx::capctl(nvx::Capability::MemoryManagement, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::MemoryManagement, false) {
+    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::MemoryManagement, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -277,7 +278,7 @@ fn test_capctl_memory_management() -> bool {
 ///
 /// # Description
 ///
-/// Tests if [`nvx::Capability::ProcessManagement`] capability may be acquired and release.
+/// Tests if [`Capability::ProcessManagement`] capability may be acquired and release.
 ///
 /// # Returns
 ///
@@ -285,8 +286,8 @@ fn test_capctl_memory_management() -> bool {
 ///
 fn test_capctl_process_management() -> bool {
     // Attempt to acquire and release process management capability.
-    match nvx::capctl(nvx::Capability::ProcessManagement, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::ProcessManagement, false) {
+    match nvx::pm::capctl(Capability::ProcessManagement, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::ProcessManagement, false) {
             Ok(()) => true,
             _ => false,
         },
@@ -305,10 +306,10 @@ fn test_capctl_process_management() -> bool {
 ///
 fn test_capctl_invalid_acquire() -> bool {
     // Attempt to acquire exception control capability twice.
-    match nvx::capctl(nvx::Capability::ExceptionControl, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::ExceptionControl, true) {
+    match nvx::pm::capctl(Capability::ExceptionControl, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::ExceptionControl, true) {
             Ok(()) => return false,
-            _ => match nvx::capctl(nvx::Capability::ExceptionControl, false) {
+            _ => match nvx::pm::capctl(Capability::ExceptionControl, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -317,10 +318,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire interrupt control capability twice.
-    match nvx::capctl(nvx::Capability::InterruptControl, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::InterruptControl, true) {
+    match nvx::pm::capctl(Capability::InterruptControl, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::InterruptControl, true) {
             Ok(()) => return false,
-            _ => match nvx::capctl(nvx::Capability::InterruptControl, false) {
+            _ => match nvx::pm::capctl(Capability::InterruptControl, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -329,10 +330,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire I/O management capability twice.
-    match nvx::capctl(nvx::Capability::IoManagement, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::IoManagement, true) {
+    match nvx::pm::capctl(Capability::IoManagement, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::IoManagement, true) {
             Ok(()) => return false,
-            _ => match nvx::capctl(nvx::Capability::IoManagement, false) {
+            _ => match nvx::pm::capctl(Capability::IoManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -341,10 +342,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire memory management capability twice.
-    match nvx::capctl(nvx::Capability::MemoryManagement, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::MemoryManagement, true) {
+    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::MemoryManagement, true) {
             Ok(()) => return false,
-            _ => match nvx::capctl(nvx::Capability::MemoryManagement, false) {
+            _ => match nvx::pm::capctl(Capability::MemoryManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -353,10 +354,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire process management capability twice.
-    match nvx::capctl(nvx::Capability::ProcessManagement, true) {
-        Ok(()) => match nvx::capctl(nvx::Capability::ProcessManagement, true) {
+    match nvx::pm::capctl(Capability::ProcessManagement, true) {
+        Ok(()) => match nvx::pm::capctl(Capability::ProcessManagement, true) {
             Ok(()) => return false,
-            _ => match nvx::capctl(nvx::Capability::ProcessManagement, false) {
+            _ => match nvx::pm::capctl(Capability::ProcessManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -378,31 +379,31 @@ fn test_capctl_invalid_acquire() -> bool {
 ///
 fn test_capctl_invalid_release() -> bool {
     // Attempt to release exception control capability without acquiring it.
-    match nvx::capctl(nvx::Capability::ExceptionControl, false) {
+    match nvx::pm::capctl(Capability::ExceptionControl, false) {
         Ok(()) => return false,
         _ => (),
     }
 
     // Attempt to release interrupt control capability without acquiring it.
-    match nvx::capctl(nvx::Capability::InterruptControl, false) {
+    match nvx::pm::capctl(Capability::InterruptControl, false) {
         Ok(()) => return false,
         _ => (),
     }
 
     // Attempt to release I/O management capability without acquiring it.
-    match nvx::capctl(nvx::Capability::IoManagement, false) {
+    match nvx::pm::capctl(Capability::IoManagement, false) {
         Ok(()) => return false,
         _ => (),
     }
 
     // Attempt to release memory management capability without acquiring it.
-    match nvx::capctl(nvx::Capability::MemoryManagement, false) {
+    match nvx::pm::capctl(Capability::MemoryManagement, false) {
         Ok(()) => return false,
         _ => (),
     }
 
     // Attempt to release process management capability without acquiring it.
-    match nvx::capctl(nvx::Capability::ProcessManagement, false) {
+    match nvx::pm::capctl(Capability::ProcessManagement, false) {
         Ok(()) => return false,
         _ => (),
     }

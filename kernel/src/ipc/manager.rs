@@ -20,11 +20,13 @@ use ::core::{
     },
     mem,
 };
-use ::kcall::{
-    Error,
-    ErrorCode,
-    Message,
-    ProcessIdentifier,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================

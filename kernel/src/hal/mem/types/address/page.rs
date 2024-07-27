@@ -4,14 +4,11 @@
 use crate::{
     arch::mem,
     hal::mem::types::address::{
+        Address,
         PageAligned,
+        PageTableAligned,
         VirtualAddress,
     },
-};
-
-use super::{
-    Address,
-    PageTableAligned,
 };
 
 #[derive(Debug, Clone, Copy)]

@@ -7,7 +7,6 @@
 
 use crate::{
     arch::mem,
-    error::ErrorCode,
     hal::{
         arch::x86::mem::mmu,
         mem::{
@@ -19,6 +18,7 @@ use crate::{
     },
     klib::Alignment,
 };
+use ::sys::error::ErrorCode;
 
 //==================================================================================================
 // Standalone Functions

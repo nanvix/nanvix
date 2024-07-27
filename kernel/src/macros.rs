@@ -12,7 +12,7 @@
 ///
 macro_rules! info{
 	( $($arg:tt)* ) => ({
-		use core::fmt::Write;
+		use ::core::fmt::Write;
 		use crate::klog::KlogLevel;
 		let _ = write!(&mut crate::klog::Klog::get(module_path!(), KlogLevel::Info), $($arg)*);
 	})
@@ -29,7 +29,7 @@ macro_rules! info{
 ///
 macro_rules! trace{
 	( $($arg:tt)* ) => ({
-		use core::fmt::Write;
+		use ::core::fmt::Write;
 		use crate::klog::KlogLevel;
 		let _ = write!(&mut crate::klog::Klog::get(module_path!(), KlogLevel::Trace), $($arg)*);
 	})
@@ -46,7 +46,7 @@ macro_rules! trace{
 ///
 macro_rules! warn{
 	( $($arg:tt)* ) => ({
-		use core::fmt::Write;
+		use ::core::fmt::Write;
 		use crate::klog::KlogLevel;
 		let _ = write!(&mut crate::klog::Klog::get(module_path!(), KlogLevel::Warn), $($arg)*);
 	})
@@ -63,7 +63,7 @@ macro_rules! warn{
 ///
 macro_rules! error{
 	( $($arg:tt)* ) => ({
-		use core::fmt::Write;
+		use ::core::fmt::Write;
 		use crate::klog::KlogLevel;
 		let _ = write!(&mut crate::klog::Klog::get(module_path!(), KlogLevel::Error), $($arg)*);
 	})

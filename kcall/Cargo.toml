@@ -12,3 +12,7 @@ homepage = "https://github.com/nanvix"
 
 [lib]
 crate-type = ["lib"]
+
+
+[dependencies]
+sys = { path = "../sys" }

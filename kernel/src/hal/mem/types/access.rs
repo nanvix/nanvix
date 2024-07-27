@@ -6,7 +6,7 @@
 //==================================================================================================
 
 // TODO: review this re-export once system architecture is consolidated.
-pub use kcall::{
+pub use ::sys::mm::{
     AccessPermission,
     ExecutePermission,
     ReadPermission,

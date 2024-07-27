@@ -5,15 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    hal::arch,
+use crate::hal::arch;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
-use alloc::rc::Rc;
-use core::cell::RefCell;
+use ::alloc::rc::Rc;
+use ::core::cell::RefCell;
 
 //==================================================================================================
 // Structures

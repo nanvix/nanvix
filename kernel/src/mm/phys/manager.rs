@@ -5,20 +5,18 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::Error,
-    mm::phys::{
-        kpool::{
-            KernelFrame,
-            Kpool,
-        },
-        upool::{
-            Upool,
-            UserFrame,
-        },
+use crate::mm::phys::{
+    kpool::{
+        KernelFrame,
+        Kpool,
+    },
+    upool::{
+        Upool,
+        UserFrame,
     },
 };
-use alloc::vec::Vec;
+use ::alloc::vec::Vec;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions

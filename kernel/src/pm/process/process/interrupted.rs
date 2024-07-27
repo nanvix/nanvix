@@ -5,11 +5,13 @@
 // Imports
 //==================================================================================================
 
-use super::RunningProcess;
 use crate::{
     hal::arch::ContextInformation,
     pm::{
-        process::process::state::ProcessState,
+        process::process::{
+            state::ProcessState,
+            RunningProcess,
+        },
         thread::InterruptedThread,
     },
 };
