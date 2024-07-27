@@ -1,11 +1,20 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+#===============================================================================
+# Build Artifacts
+#===============================================================================
+
 # Asembly Source Files
 ASM := $(BUILD_DIR)/$(TARGET)/crt0.S
 
 # Object Files
 OBJS = $(ASM:.S=.$(TARGET).o)
+
+# Objects
+export NAME := test
+export LIB := lib$(NAME).a
+export BIN := $(NAME).$(EXEC_FORMAT)
 
 #===============================================================================
 # Toolchain Configuration
@@ -15,15 +24,13 @@ OBJS = $(ASM:.S=.$(TARGET).o)
 export LDFLAGS += -L $(BUILD_DIR)/$(TARGET) -T user.ld
 export LDFLAGS += --gc-sections -static --nostdlib --no-whole-archive
 
-# Objects
-export NAME := test
-export LIB := lib$(NAME).a
-export BIN := $(NAME).$(EXEC_FORMAT)
+#===============================================================================
+# Build Rules
+#===============================================================================
 
 all: all-lib $(OBJS)
 	$(LD) $(LDFLAGS) -o $(BINARIES_DIR)/$(BIN) $(OBJS) $(LIB)
 
-# Compile rust kernel object
 all-lib:
 	$(CARGO) build --lib $(CARGO_FLAGS)
 ifeq ($(RELEASE), yes)

@@ -1,0 +1,18 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "kernel"
+version = "0.0.1"
+license-file = "LICENSE.txt"
+edition = "2021"
+authors = ["The Maintainers of Nanvix"]
+description = "Nanvix Kernel"
+homepage = "https://github.com/nanvix"
+
+[lib]
+path = "src/kmain.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+kcall = { path = "../kcall" }

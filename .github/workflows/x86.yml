@@ -1,0 +1,98 @@
+# Copyright(c) 2011-2024 The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: x86
+
+on: push
+
+env:
+  TARGET_BRANCH: ${{ github.ref_name }}
+
+jobs:
+
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
+        script: |
+          rm -rf nanvix
+          git clone --recursive https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH}
+
+  build:
+    name: Build
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Build
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          cd nanvix
+          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 all
+
+  test-isapc:
+    name: Test (isapc)
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          cd nanvix
+          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 MACHINE=isapc run | tee output.txt
+          echo "Magic String: $(cat output.txt | tail -n 1)"
+          [ "$(cat output.txt | tail -n 1)" != "PANIC: Hello World!" ] && exit 1 || exit 0 ;
+
+  test-pc:
+    name: Test (pc)
+    needs: [test-isapc]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          cd nanvix
+          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 MACHINE=pc run | tee output.txt
+          echo "Magic String: $(cat output.txt | tail -n 1)"
+          [ "$(cat output.txt | tail -n 1)" != "PANIC: Hello World!" ] && exit 1 || exit 0 ;
+
+  cleanup:
+    name: Cleanup
+    needs: test-pc
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Cleanup
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          cd nanvix
+          git checkout --force dev
+          git clean -fdx
+          git remote prune origin

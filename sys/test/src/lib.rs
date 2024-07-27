@@ -7,6 +7,7 @@
 // Modules
 //==================================================================================================
 
+/// Tests process management kernel calls.
 mod pm;
 
 //==================================================================================================
@@ -38,6 +39,8 @@ macro_rules! test {
 pub fn main() {
     libnanvix::log!("Running test server...");
     pm::test();
+    let magic_string = "PANIC: Hello World!\n";
+    let _ = libnanvix::debug(magic_string.as_ptr(), magic_string.len());
     loop {
         core::hint::spin_loop()
     }

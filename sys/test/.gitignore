@@ -2,7 +2,13 @@
 # Licensed under the MIT License.
 
 # Build artifacts
+bin/
+lib/
 target/
+*.a
+*.o
+*.elf
+*.iso
 Cargo.lock
 
 # IDEs
