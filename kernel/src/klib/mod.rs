@@ -23,6 +23,5 @@ pub use constants::{
 pub use ::sys::mm::{
     align_down,
     align_up,
-    is_aligned,
     Alignment,
 };
