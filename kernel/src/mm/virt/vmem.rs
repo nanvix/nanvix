@@ -212,6 +212,7 @@ impl Vmem {
             let pgtable_storage: PageTableStorage = PageTableStorage::new();
             let page_table: PageTable = PageTable::new(pgtable_storage);
 
+            // FIXME: do not be so open about permissions.
             self.pgdir.map(
                 pt_vaddr,
                 page_table.physical_address()?,
@@ -293,8 +294,13 @@ impl Vmem {
                 let page_table: PageTable = PageTable::new(pgtable_storage);
 
                 let page_table_address: FrameAddress = page_table.physical_address()?;
-                self.pgdir
-                    .map(PageTableAddress::new(vaddr), page_table_address, false, access)?;
+                // FIXME: do not be so open about permissions.
+                self.pgdir.map(
+                    PageTableAddress::new(vaddr),
+                    page_table_address,
+                    false,
+                    AccessPermission::RDWR,
+                )?;
 
                 //===================================================================
                 // NOTE: if we fail beyond this point we should unmap the page table.
