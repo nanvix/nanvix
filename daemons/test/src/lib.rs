@@ -53,15 +53,23 @@ pub fn main() {
     pm::test();
     mm::test();
 
-    // Unblock init.
+    // Send unblock message to the init daemon.
     let message: Message =
         Message::new(ProcessIdentifier::from(1), ProcessIdentifier::from(2), [0; Message::SIZE]);
     if let Err(e) = ::nvx::ipc::send(&message) {
         ::nvx::log!("failed to unblock init (error={:?})", e);
     }
 
-    let _ = nvx::pm::exit(0);
-    loop {
-        core::hint::spin_loop()
+    // Wait ack message from the init daemon.
+    if let Err(e) = ::nvx::ipc::recv() {
+        ::nvx::log!("failed to receive ack message (error={:?})", e);
     }
+
+    // Force a page fault.
+    unsafe {
+        let ptr: *mut u8 = 0xa0000000 as *mut u8;
+        *ptr = 1;
+    }
+
+    unreachable!("the test daemon should have been killed by init");
 }
