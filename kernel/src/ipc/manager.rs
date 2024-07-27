@@ -44,34 +44,12 @@ impl IpcManagerInner {
         }
     }
 
-    fn receive_message(&mut self, pid: ProcessIdentifier) -> Result<Message, Error> {
-        // Check if process is already waiting for a message.
-        for (p, _) in &self.waiting {
-            if p == &pid {
-                let reason: &str = "process is already waiting for a message";
-                error!("wait() {}", reason);
-                return Err(Error::new(ErrorCode::OperationAlreadyInProgress, reason));
-            }
-        }
+    fn add_waiter(&mut self, pid: ProcessIdentifier, condvar: Rc<Condvar>) {
+        self.waiting.push_back((pid, condvar));
+    }
 
-        loop {
-            match ProcessManager::try_recv() {
-                Ok(Some(message)) => {
-                    break Ok(message);
-                },
-                Ok(None) => {},
-                Err(e) => break Err(e),
-            }
-
-            let condvar: Rc<Condvar> = Rc::new(Condvar::new());
-            self.waiting.push_back((pid, condvar.clone()));
-
-            if let Err(e) = condvar.wait() {
-                break Err(e);
-            }
-
-            self.waiting.retain(|(p, _)| p != &pid);
-        }
+    fn remove_waiter(&mut self, pid: ProcessIdentifier) {
+        self.waiting.retain(|(p, _)| p != &pid);
     }
 
     fn post_message(
@@ -104,7 +82,29 @@ static mut IPC_MANAGER: IpcManager = unsafe { mem::zeroed() };
 
 impl IpcManager {
     pub fn receive_message(pid: ProcessIdentifier) -> Result<Message, Error> {
-        Self::get_mut().try_borrow_mut()?.receive_message(pid)
+        loop {
+            match ProcessManager::try_recv() {
+                Ok(Some(message)) => {
+                    break Ok(message);
+                },
+                Ok(None) => {},
+                Err(e) => break Err(e),
+            }
+
+            let condvar: Rc<Condvar> = Rc::new(Condvar::new());
+
+            IpcManager::get_mut()
+                .try_borrow_mut()?
+                .add_waiter(pid, condvar.clone());
+
+            let result: Result<(), Error> = condvar.wait();
+
+            IpcManager::get_mut().try_borrow_mut()?.remove_waiter(pid);
+
+            if let Err(e) = result {
+                break Err(e);
+            }
+        }
     }
 
     pub fn post_message(
