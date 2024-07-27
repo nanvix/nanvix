@@ -9,10 +9,7 @@ use crate::pm::ProcessManager;
 use ::alloc::collections::LinkedList;
 use ::core::cell::RefCell;
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+    error::Error,
     pm::ThreadIdentifier,
 };
 
