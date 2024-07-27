@@ -55,7 +55,7 @@ impl Condvar {
     ///
     /// Wakes a single thread that is waiting on the target condition variable.
     ///
-    pub fn notify(&self) -> Result<(), Error> {
+    pub fn notify_first(&self) -> Result<(), Error> {
         if let Some(tid) = self.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(tid)?;
         }

@@ -63,7 +63,7 @@ impl IpcManagerInner {
         // Wake up process.
         for (p, c) in &self.waiting {
             if p == &pid {
-                c.notify()?;
+                c.notify_first()?;
                 break;
             }
         }

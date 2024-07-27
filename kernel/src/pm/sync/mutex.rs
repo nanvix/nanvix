@@ -65,7 +65,7 @@ impl MutexInner {
     ///
     unsafe fn unlock_unchecked(&self) -> Result<(), Error> {
         *self.locked.borrow_mut() = false;
-        self.sleeping.notify()
+        self.sleeping.notify_first()
     }
 }
 

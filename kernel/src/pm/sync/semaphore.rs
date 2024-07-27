@@ -104,7 +104,7 @@ impl Semaphore {
     ///
     pub fn up(&self) -> Result<(), Error> {
         *self.value.borrow_mut() += 1;
-        self.sleeping.notify()
+        self.sleeping.notify_first()
     }
 }
 
