@@ -5,7 +5,6 @@
 // Imports
 //==================================================================================================
 
-use ::alloc::boxed::Box;
 use crate::{
     arch::mem::{
         self,
@@ -30,13 +29,14 @@ use crate::{
         PhysicalAddress,
     },
 };
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
+use ::alloc::boxed::Box;
 use ::core::ops::{
     Deref,
     DerefMut,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================
