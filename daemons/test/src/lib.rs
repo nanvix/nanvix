@@ -14,6 +14,15 @@ mod pm;
 mod mm;
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::nvx::{
+    ipc::Message,
+    pm::ProcessIdentifier,
+};
+
+//==================================================================================================
 // Macros
 //==================================================================================================
 
@@ -40,9 +49,17 @@ macro_rules! test {
 
 #[no_mangle]
 pub fn main() {
-    nvx::log!("Running test server...");
+    ::nvx::log!("Running test server...");
     pm::test();
     mm::test();
+
+    // Unblock init.
+    let message: Message =
+        Message::new(ProcessIdentifier::from(1), ProcessIdentifier::from(2), [0; Message::SIZE]);
+    if let Err(e) = ::nvx::ipc::send(&message) {
+        ::nvx::log!("failed to unblock init (error={:?})", e);
+    }
+
     let _ = nvx::pm::exit(0);
     loop {
         core::hint::spin_loop()

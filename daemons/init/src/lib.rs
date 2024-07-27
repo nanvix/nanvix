@@ -9,7 +9,11 @@
 
 #[no_mangle]
 pub fn main() {
-    nvx::log!("Running init server...");
+    if let Err(e) = ::nvx::ipc::recv() {
+        ::nvx::log!("failed to receive unblock message (error={:?})", e);
+    }
+
+    ::nvx::log!("Running init server...");
     let magic_string: &str = "PANIC: Hello World!\n";
     let _ = ::nvx::debug::debug(magic_string.as_ptr(), magic_string.len());
     loop {
