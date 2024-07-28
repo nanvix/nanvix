@@ -92,6 +92,17 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
+    /// Base address of user heap.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    ///
+    pub const USER_HEAP_BASE: VirtualAddress = VirtualAddress::new(0xa0000000);
+
+    ///
+    /// # Description
+    ///
     /// Base address of user stack.
     ///
     /// # Notes

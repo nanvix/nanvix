@@ -160,6 +160,16 @@ pub fn check_config() {
     ) {
         panic!("user stack base address is not aligned to a page table boundary and it should");
     }
+    // Ensure that the user heap base address is aligned to a page boundary.
+    if !mm::is_aligned(config::memory_layout::USER_HEAP_BASE.into_raw_value(), mmu::PAGE_ALIGNMENT)
+    {
+        panic!("user heap base address is not aligned to a page boundary and it should");
+    }
+    // Ensure that the user heap base address is aligned to a page table boundary.
+    if !mm::is_aligned(config::memory_layout::USER_HEAP_BASE.into_raw_value(), mmu::PGTAB_ALIGNMENT)
+    {
+        panic!("user heap base address is not aligned to a page table boundary and it should");
+    }
 }
 
 /// Initializes the memory manager.
