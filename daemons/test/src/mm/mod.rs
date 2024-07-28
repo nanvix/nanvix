@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use ::nvx::{
+    config,
     mm::{
         AccessPermission,
         Address,
@@ -42,8 +43,7 @@ fn test_mmap_munmap() -> bool {
         Err(_) => return false,
     };
 
-    // TODO: Fix this to point to the start of the user heap.
-    let vaddr: VirtualAddress = VirtualAddress::new(0xa0000000);
+    let vaddr: VirtualAddress = config::memory_layout::USER_HEAP_BASE;
 
     // Map a page.
     match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
@@ -87,8 +87,7 @@ fn test_mmap_write_munmap() -> bool {
         Err(_) => return false,
     };
 
-    // TODO: Fix this to point to the start of the user heap.
-    let vaddr: VirtualAddress = VirtualAddress::new(0xa0000000);
+    let vaddr: VirtualAddress = config::memory_layout::USER_HEAP_BASE;
 
     // Map a page.
     match nvx::mm::mmap(mypid, vaddr, AccessPermission::WRONLY) {

@@ -21,10 +21,12 @@ mod mm;
 //==================================================================================================
 
 use ::nvx::{
+    config,
     ipc::{
         Message,
         MessageType,
     },
+    mm::Address,
     pm::ProcessIdentifier,
 };
 
@@ -81,7 +83,7 @@ pub fn main() {
     // Force a page fault.
     ::nvx::log!("triggering a page fault...");
     unsafe {
-        let ptr: *mut u8 = 0xa0000000 as *mut u8;
+        let ptr: *mut u8 = config::memory_layout::USER_HEAP_BASE.into_raw_value() as *mut u8;
         *ptr = 1;
     }
 
