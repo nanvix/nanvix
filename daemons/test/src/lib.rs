@@ -57,6 +57,7 @@ pub fn main() {
     mm::test();
 
     // Send unblock message to the init daemon.
+    ::nvx::log!("sending unblock message to init daemon...");
     let message: Message = Message::new(
         ProcessIdentifier::from(1),
         ProcessIdentifier::from(2),
@@ -68,11 +69,13 @@ pub fn main() {
     }
 
     // Wait ack message from the init daemon.
+    ::nvx::log!("waiting for ack message from init daemon...");
     if let Err(e) = ::nvx::ipc::recv() {
         ::nvx::log!("failed to receive ack message (error={:?})", e);
     }
 
     // Force a page fault.
+    ::nvx::log!("triggering a page fault...");
     unsafe {
         let ptr: *mut u8 = 0xa0000000 as *mut u8;
         *ptr = 1;

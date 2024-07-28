@@ -35,7 +35,7 @@ pub fn main() {
         panic!("failed to receive unblock message (error={:?})", e);
     }
 
-    ::nvx::log!("Running init server...");
+    ::nvx::log!("running init server...");
 
     // Acquire exception management capability.
     ::nvx::log!("acquiring exception management capability...");
@@ -54,6 +54,7 @@ pub fn main() {
     }
 
     // Ack test daemon.
+    ::nvx::log!("sending ack message to test daemon...");
     let message: Message = Message::new(
         ProcessIdentifier::from(2),
         ProcessIdentifier::from(1),
