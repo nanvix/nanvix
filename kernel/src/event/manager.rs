@@ -401,12 +401,11 @@ impl EventManagerInner {
         &mut self,
         pm: &mut ProcessManager,
         pid: ProcessIdentifier,
-        tid: ThreadIdentifier,
         message: Message,
     ) -> Result<(), Error> {
         pm.post_message(pid, message)?;
 
-        self.get_wait().notify_thread(tid)
+        self.get_wait().notify_process(pid)
     }
 
     fn get_wait(&self) -> &Rc<Condvar> {
@@ -515,10 +514,9 @@ impl EventManager {
         pid: ProcessIdentifier,
         message: Message,
     ) -> Result<(), Error> {
-        let tid: ThreadIdentifier = ThreadIdentifier::from(usize::from(pid));
         Self::get_mut()
             .try_borrow_mut()?
-            .post_message(pm, pid, tid, message)
+            .post_message(pm, pid, message)
     }
 
     fn try_borrow_mut(&self) -> Result<RefMut<EventManagerInner>, Error> {
