@@ -20,6 +20,9 @@
 #[path = "arch/x86.rs"]
 mod arch;
 
+/// Configuration constants.
+pub use ::sys::config;
+
 /// Debug facilities.
 pub mod debug;
 
