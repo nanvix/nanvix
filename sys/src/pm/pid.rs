@@ -28,6 +28,14 @@ pub struct ProcessIdentifier(usize);
 
 impl ProcessIdentifier {
     pub const KERNEL: ProcessIdentifier = ProcessIdentifier(0);
+
+    pub fn to_ne_bytes(&self) -> [u8; core::mem::size_of::<usize>()] {
+        self.0.to_ne_bytes()
+    }
+
+    pub fn from_ne_bytes(bytes: [u8; core::mem::size_of::<usize>()]) -> Self {
+        Self(usize::from_ne_bytes(bytes))
+    }
 }
 
 impl core::fmt::Debug for ProcessIdentifier {
