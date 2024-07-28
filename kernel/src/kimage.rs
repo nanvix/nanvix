@@ -109,7 +109,7 @@ impl KernelImage {
             AccessPermission::RDWR,
         )?;
 
-        let kernel_end: usize = 0x04000000;
+        let kernel_end: usize = (unsafe { &__KERNEL_END } as *const u8 as usize);
         let kpool_start: usize = klib::align_up(kernel_end, mmu::PGTAB_ALIGNMENT);
         let kpool_size: usize = config::kernel::KPOOL_SIZE;
         let kpool = MemoryRegion::new(
