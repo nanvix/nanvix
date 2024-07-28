@@ -11,10 +11,7 @@ use crate::{
     kcall::ScoreBoard,
     pm::ProcessManager,
 };
-use ::sys::{
-    event::EventInformation,
-    number::KcallNumber,
-};
+use ::sys::number::KcallNumber;
 
 //==================================================================================================
 //  Standalone Functions
@@ -51,7 +48,6 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             Ok(_) => unsafe { core::hint::unreachable_unchecked() },
             Err(e) => e.code.into_errno(),
         },
-        KcallNumber::Wait => event::wait(arg0 as *mut EventInformation),
         KcallNumber::Recv => ipc::recv(arg0 as usize),
         KcallNumber::Resume => event::resume(arg0 as usize),
         // Dispatch kernel call for remote execution.

@@ -7,7 +7,6 @@
 
 mod evctrl;
 mod resume;
-mod wait;
 
 //==================================================================================================
 // Exports
@@ -15,4 +14,3 @@ mod wait;
 
 pub use evctrl::evctrl;
 pub use resume::resume;
-pub use wait::wait;

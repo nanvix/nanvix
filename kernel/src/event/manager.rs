@@ -43,7 +43,10 @@ use ::sys::{
         ExceptionEvent,
         InterruptEvent,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::{
         Capability,
         ProcessIdentifier,
@@ -245,6 +248,7 @@ impl EventManagerInner {
 
     pub fn try_wait(
         &mut self,
+        pid: ProcessIdentifier,
         interrupts: usize,
         exceptions: usize,
     ) -> Result<Option<Message>, Error> {
@@ -277,20 +281,9 @@ impl EventManagerInner {
                             info.address = Some(entry.1.info.addr() as usize);
                             info.instruction = Some(entry.1.info.instruction() as usize);
 
-                            let mut message: Message = Message::default();
-                            let size: usize = core::mem::size_of::<EventInformation>();
-
-                            let src = unsafe {
-                                ::core::slice::from_raw_parts(
-                                    &info as *const EventInformation as *const u8,
-                                    size,
-                                )
-                            };
-
-                            // Copy bytes from src to message payload.
-                            for (i, byte) in src.iter().enumerate() {
-                                message.payload[i] = *byte;
-                            }
+                            let mut message: Message = Message::from(info);
+                            message.destination = pid;
+                            message.message_type = MessageType::Exception;
 
                             self.pending_exceptions[idx].push_back(entry);
 
@@ -442,17 +435,15 @@ impl EventManager {
         }
     }
 
-    pub fn wait() -> Result<Message, Error> {
+    pub fn wait(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<Message, Error> {
         trace!("do_wait()");
-
-        let mytid: ThreadIdentifier = ProcessManager::get_tid()?;
 
         // Get the interrupts that the process owns.
         let mut interrupts: usize = 0;
         for i in 0..usize::BITS {
             let idx: usize = i as usize;
-            if let Some(tid) = EventManager::get().try_borrow_mut()?.interrupt_ownership[idx] {
-                if tid == mytid {
+            if let Some(t) = EventManager::get().try_borrow_mut()?.interrupt_ownership[idx] {
+                if t == tid {
                     interrupts |= 1 << i;
                 }
             }
@@ -462,8 +453,8 @@ impl EventManager {
         let mut exceptions: usize = 0;
         for i in 0..usize::BITS {
             let idx: usize = i as usize;
-            if let Some(tid) = EventManager::get().try_borrow_mut()?.exception_ownership[idx] {
-                if tid == mytid {
+            if let Some(t) = EventManager::get().try_borrow_mut()?.exception_ownership[idx] {
+                if t == tid {
                     exceptions |= 1 << i;
                 }
             }
@@ -474,7 +465,7 @@ impl EventManager {
         loop {
             let message: Option<Message> = EventManager::get()
                 .try_borrow_mut()?
-                .try_wait(interrupts, exceptions)?;
+                .try_wait(pid, interrupts, exceptions)?;
 
             if let Some(message) = message {
                 break Ok(message);

@@ -64,10 +64,10 @@ pub fn main() {
         panic!("failed to unblock test daemon(error={:?})", e);
     }
 
-    let mut info: EventInformation = EventInformation::default();
-    if let Err(e) = ::nvx::event::wait(&mut info) {
-        panic!("failed to wait for page faults (error={:?})", e);
-    }
+    let info: EventInformation = match ::nvx::ipc::recv() {
+        Ok(message) => EventInformation::from(message),
+        Err(e) => panic!("failed to receive exception message (error={:?})", e),
+    };
 
     // Terminate the process.
     ::nvx::log!("terminating test daemon...");
