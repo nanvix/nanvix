@@ -496,7 +496,7 @@ impl ProcessManagerInner {
             Ok(ProcessRef::Zombie(process))
         } else {
             let reason: &str = "process not found";
-            error!("find_process(): {}", reason);
+            error!("find_process(): {} (pid={:?})", reason, pid);
             Err(Error::new(ErrorCode::NoSuchProcess, reason))
         }
     }
@@ -514,7 +514,7 @@ impl ProcessManagerInner {
             Ok(ProcessRefMut::Zombie(process))
         } else {
             let reason: &str = "process not found";
-            error!("find_process(): {}", reason);
+            error!("find_process(): {} (pid={:?})", reason, pid);
             Err(Error::new(ErrorCode::NoSuchProcess, reason))
         }
     }
