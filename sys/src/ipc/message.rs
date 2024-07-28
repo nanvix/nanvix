@@ -11,9 +11,16 @@ use crate::pm::ProcessIdentifier;
 //  Structures
 //==================================================================================================
 
+pub enum MessageType {
+    Interrupt,
+    Exception,
+    Ipc,
+}
+
 pub struct Message {
     pub source: ProcessIdentifier,
     pub destination: ProcessIdentifier,
+    pub message_type: MessageType,
     pub payload: [u8; Self::SIZE],
 }
 
@@ -43,11 +50,13 @@ impl Message {
         source: ProcessIdentifier,
         destination: ProcessIdentifier,
         payload: [u8; Self::SIZE],
+        message_type: MessageType,
     ) -> Self {
         Self {
             source,
             destination,
             payload,
+            message_type,
         }
     }
 }
@@ -58,6 +67,7 @@ impl Default for Message {
             source: ProcessIdentifier::KERNEL,
             destination: ProcessIdentifier::KERNEL,
             payload: [0; Self::SIZE],
+            message_type: MessageType::Ipc,
         }
     }
 }

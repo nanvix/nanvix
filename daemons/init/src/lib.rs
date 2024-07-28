@@ -14,7 +14,10 @@ use ::nvx::{
         EventInformation,
         ExceptionEvent,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::{
         Capability,
         ProcessIdentifier,
@@ -51,8 +54,12 @@ pub fn main() {
     }
 
     // Ack test daemon.
-    let message: Message =
-        Message::new(ProcessIdentifier::from(2), ProcessIdentifier::from(1), [0; Message::SIZE]);
+    let message: Message = Message::new(
+        ProcessIdentifier::from(2),
+        ProcessIdentifier::from(1),
+        [0; Message::SIZE],
+        MessageType::Ipc,
+    );
     if let Err(e) = ::nvx::ipc::send(&message) {
         panic!("failed to unblock test daemon(error={:?})", e);
     }

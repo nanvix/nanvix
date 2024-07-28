@@ -18,7 +18,10 @@ mod mm;
 //==================================================================================================
 
 use ::nvx::{
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::ProcessIdentifier,
 };
 
@@ -54,8 +57,12 @@ pub fn main() {
     mm::test();
 
     // Send unblock message to the init daemon.
-    let message: Message =
-        Message::new(ProcessIdentifier::from(1), ProcessIdentifier::from(2), [0; Message::SIZE]);
+    let message: Message = Message::new(
+        ProcessIdentifier::from(1),
+        ProcessIdentifier::from(2),
+        [0; Message::SIZE],
+        MessageType::Ipc,
+    );
     if let Err(e) = ::nvx::ipc::send(&message) {
         ::nvx::log!("failed to unblock init (error={:?})", e);
     }
