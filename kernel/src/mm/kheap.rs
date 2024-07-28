@@ -7,10 +7,7 @@
 
 use crate::{
     arch::mem,
-    klib::{
-        self,
-        slab::Slab,
-    },
+    klib::slab::Slab,
 };
 use ::alloc::alloc::{
     AllocError,
@@ -18,9 +15,12 @@ use ::alloc::alloc::{
     Layout,
 };
 use ::core::ptr;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    constants,
+    error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -111,8 +111,8 @@ impl Kheap {
 
         let heap_start_addr: *mut u8 = addr as *mut u8;
         let slab_size: usize = size / NUM_OF_SLABS;
-        info!("heap size: {} MB", size / klib::MEGABYTE);
-        info!("slab size: {} KB", slab_size / klib::KILOBYTE);
+        info!("heap size: {} MB", size / constants::MEGABYTE);
+        info!("slab size: {} KB", slab_size / constants::KILOBYTE);
         Ok(Kheap {
             slab_8_bytes: Slab::from_raw_parts(heap_start_addr, slab_size, 8)?,
             slab_16_bytes: Slab::from_raw_parts(

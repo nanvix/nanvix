@@ -19,6 +19,9 @@
 /// System configuration constants.
 pub mod config;
 
+/// System constants.
+pub mod constants;
+
 /// Error types.
 pub mod error;
 

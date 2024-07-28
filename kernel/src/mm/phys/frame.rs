@@ -17,14 +17,16 @@ use crate::{
         TruncatedMemoryRegion,
     },
     klib::{
-        self,
         bitmap::Bitmap,
         raw_array::RawArray,
     },
 };
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    constants,
+    error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -62,7 +64,7 @@ impl FrameAllocator {
         info!(
             "frame allocator capacity: {} frames, {} MB",
             frame_allocator.bitmap.number_of_bits(),
-            frame_allocator.bitmap.number_of_bits() * mem::FRAME_SIZE / klib::MEGABYTE
+            frame_allocator.bitmap.number_of_bits() * mem::FRAME_SIZE / constants::MEGABYTE
         );
 
         frame_allocator
