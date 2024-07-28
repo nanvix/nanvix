@@ -12,7 +12,7 @@ ASM := $(BUILD_DIR)/$(TARGET)/crt0.S
 OBJS = $(ASM:.S=.$(TARGET).o)
 
 # Objects
-export NAME := test
+export NAME := testd
 export LIB := lib$(NAME).a
 export BIN := $(NAME).$(EXEC_FORMAT)
 
