@@ -6,13 +6,14 @@
 //==================================================================================================
 
 pub mod kernel {
+    use crate::constants;
 
     ///
     /// # Description
     ///
     /// Total size of physical memory (in bytes).
     ///
-    pub const MEMORY_SIZE: usize = 256 * 1024 * 1024;
+    pub const MEMORY_SIZE: usize = 256 * constants::MEGABYTE;
 
     ///
     /// # Description
@@ -24,7 +25,7 @@ pub mod kernel {
     /// - This size be a multiple of a page size.
     /// - This size cannot exceed the size of a page table.
     ///
-    pub const KPOOL_SIZE: usize = 4 * 1024 * 1024;
+    pub const KPOOL_SIZE: usize = 4 * constants::MEGABYTE;
 
     ///
     /// # Description
@@ -37,7 +38,7 @@ pub mod kernel {
     /// - This size cannot exceed the size of a page table.
     /// - When changing this boot code should also be updated.
     ///
-    pub const KSTACK_SIZE: usize = 8 * 4096;
+    pub const KSTACK_SIZE: usize = 8 * 4 * constants::KILOBYTE;
 
     ///
     /// # Description
