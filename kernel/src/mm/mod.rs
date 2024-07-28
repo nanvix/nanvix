@@ -149,13 +149,15 @@ pub fn check_config() {
         panic!("user end address is not aligned to a page table boundary and it should");
     }
     // Ensure that the user stack base address is aligned to a page boundary.
-    if !mm::is_aligned(config::memory_layout::USER_STACK_TOP.into_raw_value(), mmu::PAGE_ALIGNMENT)
+    if !mm::is_aligned(config::memory_layout::USER_STACK_BASE.into_raw_value(), mmu::PAGE_ALIGNMENT)
     {
         panic!("user stack base address is not aligned to a page boundary and it should");
     }
     // Ensure that the user stack base address is aligned to a page table boundary.
-    if !mm::is_aligned(config::memory_layout::USER_STACK_TOP.into_raw_value(), mmu::PGTAB_ALIGNMENT)
-    {
+    if !mm::is_aligned(
+        config::memory_layout::USER_STACK_BASE.into_raw_value(),
+        mmu::PGTAB_ALIGNMENT,
+    ) {
         panic!("user stack base address is not aligned to a page table boundary and it should");
     }
 }
@@ -214,5 +216,5 @@ pub fn init(
 
 // Returns the user base stack address.
 pub fn user_stack_top() -> PageAligned<VirtualAddress> {
-    PageAligned::from_address(config::memory_layout::USER_STACK_TOP).unwrap()
+    PageAligned::from_address(config::memory_layout::USER_STACK_BASE).unwrap()
 }
