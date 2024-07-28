@@ -87,7 +87,7 @@ pub mod memory_layout {
     ///
     /// - This should be aligned to page and page table boundaries.
     ///
-    pub const USER_END: VirtualAddress = VirtualAddress::new(0xc0000000);
+    pub const USER_END: VirtualAddress = VirtualAddress::new(0xf0000000);
 
     ///
     /// # Description
