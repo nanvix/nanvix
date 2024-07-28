@@ -70,10 +70,15 @@ pub fn main() {
         Err(e) => panic!("failed to receive exception message (error={:?})", e),
     };
 
-    // Terminate the process.
+    // Terminate test daemon.
     ::nvx::log!("terminating test daemon...");
     if let Err(e) = ::nvx::pm::terminate(info.pid) {
         panic!("failed to terminate test daemon (error={:?})", e);
+    }
+
+    // Acknowledge exception event.
+    if let Err(e) = ::nvx::event::resume(info.id) {
+        panic!("failed to resume exception event (error={:?})", e);
     }
 
     let magic_string: &str = "PANIC: Hello World!\n";
