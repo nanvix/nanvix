@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 [package]
-name = "init"
+name = "initd"
 version = "0.0.1"
 license-file = "LICENSE.txt"
 edition = "2021"

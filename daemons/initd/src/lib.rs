@@ -35,7 +35,7 @@ pub fn main() {
         panic!("failed to receive unblock message (error={:?})", e);
     }
 
-    ::nvx::log!("running init server...");
+    ::nvx::log!("running init daemon...");
 
     // Acquire exception management capability.
     ::nvx::log!("acquiring exception management capability...");
