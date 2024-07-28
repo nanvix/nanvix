@@ -19,7 +19,10 @@ use crate::hal::Hal;
 //==================================================================================================
 
 pub use kcall::*;
-pub use manager::EventOwnership;
+pub use manager::{
+    EventManager,
+    EventOwnership,
+};
 
 //==================================================================================================
 // Standalone Functions

@@ -33,7 +33,6 @@ use ::sys::{
 ///
 pub fn kcall_handler(mut hal: Hal, mut mm: VirtMemoryManager, mut pm: ProcessManager) {
     event::init(&mut hal);
-    ipc::init();
 
     loop {
         // Read kernel call arguments from the scoreboard.

@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    ipc::IpcManager,
+    event::EventManager,
     kcall::KcallArgs,
     pm::{
         self,
@@ -39,7 +39,7 @@ fn do_send(pm: &mut ProcessManager, src: ProcessIdentifier, message: Message) ->
     // TODO: Check if source process has permission to send message to destination process.
 
     // Post message.
-    IpcManager::post_message(pm, message.destination, message)
+    EventManager::post_message(pm, message.destination, message)
 }
 
 pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
@@ -64,10 +64,7 @@ fn do_recv(pid: ProcessIdentifier) -> Result<Message, Error> {
     trace!("do_recv(): pid={:?}", pid);
 
     // Receive message.
-    match IpcManager::receive_message(pid) {
-        Ok(message) => Ok(message),
-        Err(e) => Err(e),
-    }
+    EventManager::wait(0, 0)
 }
 
 pub fn recv(msg: usize) -> i32 {

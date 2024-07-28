@@ -12,7 +12,6 @@ use crate::{
             ExceptionInformation,
             InterruptNumber,
         },
-        mem::VirtualAddress,
         Hal,
     },
     pm::{
@@ -44,6 +43,7 @@ use ::sys::{
         ExceptionEvent,
         InterruptEvent,
     },
+    ipc::Message,
     pm::{
         Capability,
         ProcessIdentifier,
@@ -245,12 +245,9 @@ impl EventManagerInner {
 
     pub fn try_wait(
         &mut self,
-        info: *mut EventInformation,
         interrupts: usize,
         exceptions: usize,
-    ) -> Result<bool, Error> {
-        let mypid: ProcessIdentifier = ProcessManager::get_pid()?;
-
+    ) -> Result<Option<Message>, Error> {
         for i in 0..Self::NUMBER_EVENTS {
             // Check if any interrupts were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 0 {
@@ -259,7 +256,7 @@ impl EventManagerInner {
                     if (interrupts & (1 << i)) != 0 {
                         let idx: usize = i as usize;
                         if let Some(_event) = self.pending_interrupts[idx].pop_front() {
-                            return Ok(true);
+                            return Ok(Some(Message::default()));
                         }
                     }
                 }
@@ -272,33 +269,46 @@ impl EventManagerInner {
                     if (exceptions & (1 << i)) != 0 {
                         let idx: usize = i as usize;
                         if let Some(entry) = self.pending_exceptions[idx].pop_front() {
-                            let dest: VirtualAddress =
-                                VirtualAddress::new(info as *mut EventInformation as usize);
+                            let mut info: EventInformation = EventInformation::default();
+                            info.id = entry.0.clone();
+                            info.pid = entry.1.pid;
+                            info.number = Some(entry.1.info.num() as usize);
+                            info.code = Some(entry.1.info.code() as usize);
+                            info.address = Some(entry.1.info.addr() as usize);
+                            info.instruction = Some(entry.1.info.instruction() as usize);
+
+                            let mut message: Message = Message::default();
                             let size: usize = core::mem::size_of::<EventInformation>();
 
-                            let mut src: EventInformation = EventInformation::default();
-                            src.id = entry.0.clone();
-                            src.pid = entry.1.pid;
-                            src.number = Some(entry.1.info.num() as usize);
-                            src.code = Some(entry.1.info.code() as usize);
-                            src.address = Some(entry.1.info.addr() as usize);
-                            src.instruction = Some(entry.1.info.instruction() as usize);
+                            let src = unsafe {
+                                ::core::slice::from_raw_parts(
+                                    &info as *const EventInformation as *const u8,
+                                    size,
+                                )
+                            };
 
-                            let src: *const EventInformation = &src as *const EventInformation;
-                            let src: VirtualAddress = VirtualAddress::new(src as usize);
-
-                            ProcessManager::vmcopy_to_user(mypid, dest, src, size)?;
+                            // Copy bytes from src to message payload.
+                            for (i, byte) in src.iter().enumerate() {
+                                message.payload[i] = *byte;
+                            }
 
                             self.pending_exceptions[idx].push_back(entry);
 
-                            return Ok(true);
+                            return Ok(Some(message));
                         }
                     }
                 }
             }
+
+            // Check if any messages were delivered.
+            match ProcessManager::try_recv() {
+                Ok(Some(message)) => return Ok(Some(message)),
+                Ok(None) => {},
+                Err(e) => return Err(e),
+            }
         }
 
-        Ok(false)
+        Ok(None)
     }
 
     fn resume_exception(&mut self, ev: ExceptionEvent) -> Result<(), Error> {
@@ -389,9 +399,21 @@ impl EventManagerInner {
         };
 
         trace!("wakeup_exception(): tid={:?}", tid);
-        self.get_wait().notify(tid)?;
+        let _ = self.get_wait().notify(tid);
 
         Ok(resume)
+    }
+
+    fn post_message(
+        &mut self,
+        pm: &mut ProcessManager,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        message: Message,
+    ) -> Result<(), Error> {
+        pm.post_message(pid, message)?;
+
+        self.get_wait().notify(tid)
     }
 
     fn get_wait(&self) -> &Rc<Condvar> {
@@ -420,17 +442,8 @@ impl EventManager {
         }
     }
 
-    pub fn wait(
-        info: *mut EventInformation,
-        interrupts: usize,
-        exceptions: usize,
-    ) -> Result<(), Error> {
-        trace!(
-            "do_wait(): info={:?}, interrupts={:#x}, exceptions={:#x}",
-            info,
-            interrupts,
-            exceptions
-        );
+    pub fn wait(interrupts: usize, exceptions: usize) -> Result<Message, Error> {
+        trace!("do_wait(): interrupts={:#x}, exceptions={:#x}", interrupts, exceptions);
 
         let mytid: ThreadIdentifier = ProcessManager::get_tid()?;
 
@@ -470,12 +483,12 @@ impl EventManager {
         let wait: Rc<Condvar> = EventManager::get().try_borrow_mut()?.get_wait().clone();
 
         loop {
-            let event_received: bool = EventManager::get()
+            let message: Option<Message> = EventManager::get()
                 .try_borrow_mut()?
-                .try_wait(info, interrupts, exceptions)?;
+                .try_wait(interrupts, exceptions)?;
 
-            if event_received {
-                break Ok(());
+            if let Some(message) = message {
+                break Ok(message);
             }
 
             wait.wait()?;
@@ -515,6 +528,17 @@ impl EventManager {
             EventCtrlRequest::Register => Ok(Some(EventOwnership { ev, em })),
             EventCtrlRequest::Unregister => Ok(None),
         }
+    }
+
+    pub fn post_message(
+        pm: &mut ProcessManager,
+        pid: ProcessIdentifier,
+        message: Message,
+    ) -> Result<(), Error> {
+        let tid: ThreadIdentifier = ThreadIdentifier::from(usize::from(pid));
+        Self::get_mut()
+            .try_borrow_mut()?
+            .post_message(pm, pid, tid, message)
     }
 
     fn try_borrow_mut(&self) -> Result<RefMut<EventManagerInner>, Error> {
