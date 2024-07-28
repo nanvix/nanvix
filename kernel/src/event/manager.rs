@@ -442,41 +442,30 @@ impl EventManager {
         }
     }
 
-    pub fn wait(interrupts: usize, exceptions: usize) -> Result<Message, Error> {
-        trace!("do_wait(): interrupts={:#x}, exceptions={:#x}", interrupts, exceptions);
+    pub fn wait() -> Result<Message, Error> {
+        trace!("do_wait()");
 
         let mytid: ThreadIdentifier = ProcessManager::get_tid()?;
 
-        // Ensure that the process has ownership of all target interrupts.
+        // Get the interrupts that the process owns.
+        let mut interrupts: usize = 0;
         for i in 0..usize::BITS {
-            if (interrupts & (1 << i)) != 0 {
-                let idx: usize = i as usize;
-
-                if let Some(tid) = EventManager::get().try_borrow_mut()?.interrupt_ownership[idx] {
-                    if tid == mytid {
-                        continue;
-                    }
+            let idx: usize = i as usize;
+            if let Some(tid) = EventManager::get().try_borrow_mut()?.interrupt_ownership[idx] {
+                if tid == mytid {
+                    interrupts |= 1 << i;
                 }
-
-                let reason: &str = "process does not own interrupt";
-                error!("do_wait(): reason={:?}", reason);
-                return Err(Error::new(ErrorCode::PermissionDenied, &reason));
             }
         }
 
-        // Ensure that the process has ownership of all target exceptions.
+        // Get the exceptions that the process owns.
+        let mut exceptions: usize = 0;
         for i in 0..usize::BITS {
-            if (exceptions & (1 << i)) != 0 {
-                let idx: usize = i as usize;
-                if let Some(tid) = EventManager::get().try_borrow_mut()?.exception_ownership[idx] {
-                    if tid == mytid {
-                        continue;
-                    }
+            let idx: usize = i as usize;
+            if let Some(tid) = EventManager::get().try_borrow_mut()?.exception_ownership[idx] {
+                if tid == mytid {
+                    exceptions |= 1 << i;
                 }
-
-                let reason: &str = "process does not own exception";
-                error!("do_wait(): reason={:?}", reason);
-                return Err(Error::new(ErrorCode::PermissionDenied, &reason));
             }
         }
 

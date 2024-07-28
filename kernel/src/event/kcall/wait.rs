@@ -22,12 +22,12 @@ use ::sys::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn wait(info: *mut EventInformation, interrupts: usize, exceptions: usize) -> i32 {
+pub fn wait(info: *mut EventInformation) -> i32 {
     let pid: ProcessIdentifier = match ProcessManager::get_pid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
-    match EventManager::wait(interrupts, exceptions) {
+    match EventManager::wait() {
         Ok(message) => {
             // Copy message payload to event
             let dst: VirtualAddress = match VirtualAddress::from_raw_value(info as usize) {

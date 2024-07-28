@@ -58,7 +58,7 @@ pub fn main() {
     }
 
     let mut info: EventInformation = EventInformation::default();
-    if let Err(e) = ::nvx::event::wait(&mut info, 0, 1 << usize::from(page_fault_exception)) {
+    if let Err(e) = ::nvx::event::wait(&mut info) {
         panic!("failed to wait for page faults (error={:?})", e);
     }
 

@@ -63,8 +63,8 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
 fn do_recv(pid: ProcessIdentifier) -> Result<Message, Error> {
     trace!("do_recv(): pid={:?}", pid);
 
-    // Receive message.
-    EventManager::wait(0, 0)
+    // Wait message.
+    EventManager::wait()
 }
 
 pub fn recv(msg: usize) -> i32 {

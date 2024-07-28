@@ -23,18 +23,9 @@ pub use ::sys::event::*;
 // Wait Event
 //==================================================================================================
 
-pub fn wait(
-    info: &mut EventInformation,
-    interrupts: usize,
-    exceptions: usize,
-) -> Result<(), Error> {
+pub fn wait(info: &mut EventInformation) -> Result<(), Error> {
     let result: i32 = unsafe {
-        crate::arch::kcall3(
-            KcallNumber::Wait.into(),
-            info as *mut EventInformation as u32,
-            interrupts as u32,
-            exceptions as u32,
-        )
+        crate::arch::kcall1(KcallNumber::Wait.into(), info as *mut EventInformation as u32)
     };
 
     if result == 0 {
