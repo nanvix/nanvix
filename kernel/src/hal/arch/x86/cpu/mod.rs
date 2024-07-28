@@ -16,7 +16,6 @@ mod interrupt;
 
 use crate::{
     arch::cpu::cpuid,
-    config,
     hal::{
         arch::x86::{
             cpu::tss::TssRef,
@@ -33,7 +32,10 @@ use crate::{
         },
     },
 };
-use ::sys::error::Error;
+use ::sys::{
+    config,
+    error::Error,
+};
 use madt::MadtInfo;
 
 //==================================================================================================
@@ -106,7 +108,7 @@ pub fn init(
     let (gdt, gdtr, tss) = unsafe { gdt::init(&kstack)? };
     unsafe { idt::init() };
 
-    let pit: Pit = Pit::new(ioports, config::TIMER_FREQ)?;
+    let pit: Pit = Pit::new(ioports, config::kernel::TIMER_FREQ)?;
 
     let controller: InterruptController = interrupt::init(ioports, ioaddresses, madt)?;
 

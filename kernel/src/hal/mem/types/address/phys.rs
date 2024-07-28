@@ -10,7 +10,6 @@ use crate::{
         self,
         paging::FrameNumber,
     },
-    config,
     hal::mem::types::address::{
         Address,
         FrameAddress,
@@ -18,9 +17,12 @@ use crate::{
     },
     klib::Alignment,
 };
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    config,
+    error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -42,7 +44,7 @@ pub struct PhysicalAddress(VirtualAddress);
 impl PhysicalAddress {
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
         // Check if `addr` lies outside of the physical address space.
-        if addr >= VirtualAddress::from_raw_value(config::MEMORY_SIZE)? {
+        if addr >= VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE)? {
             return Err(Error::new(
                 ErrorCode::BadAddress,
                 "address out of bounds of physical memory",
@@ -210,7 +212,7 @@ impl Address for PhysicalAddress {
     /// The maximum [`PhysicalAddress`].
     ///
     fn max_addr() -> usize {
-        config::MEMORY_SIZE - 1
+        config::kernel::MEMORY_SIZE - 1
     }
 
     fn into_raw_value(self) -> usize {

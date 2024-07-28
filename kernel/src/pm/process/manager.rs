@@ -7,7 +7,6 @@
 
 use crate::{
     arch::mem,
-    config,
     event::EventOwnership,
     hal::{
         self,
@@ -64,6 +63,7 @@ use ::core::cell::{
     RefMut,
 };
 use ::sys::{
+    config,
     error::{
         Error,
         ErrorCode,
@@ -162,10 +162,10 @@ impl ProcessManagerInner {
         kernel_func: VirtualAddress,
     ) -> Result<ReadyThread, Error> {
         let mut kpages: Vec<KernelPage> =
-            mm.alloc_kpages(true, config::KSTACK_SIZE / mem::PAGE_SIZE)?;
+            mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / mem::PAGE_SIZE)?;
 
         let base: PageAddress = kpages[0].base();
-        let size: usize = config::KSTACK_SIZE;
+        let size: usize = config::kernel::KSTACK_SIZE;
         let top = unsafe { (base.into_raw_value() as *mut u8).add(size) };
         let kernel_stack = VirtualAddress::from_raw_value(top as usize)?;
 
@@ -194,7 +194,7 @@ impl ProcessManagerInner {
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
 
         let user_stack: VirtualAddress = mm::user_stack_top().into_inner();
-        let user_func: VirtualAddress = mm::USER_BASE;
+        let user_func: VirtualAddress = ::sys::config::memory_layout::USER_BASE;
         let kernel_func: VirtualAddress =
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize)?;
         let thread: ReadyThread =
@@ -202,12 +202,12 @@ impl ProcessManagerInner {
 
         // Alloc user stack.
         let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(
-            mm::user_stack_top().into_raw_value() - config::KSTACK_SIZE - mem::PAGE_SIZE,
+            mm::user_stack_top().into_raw_value() - config::kernel::KSTACK_SIZE - mem::PAGE_SIZE,
         )?;
         mm.alloc_upages(
             &mut vmem,
             vaddr,
-            config::KSTACK_SIZE / mem::PAGE_SIZE,
+            config::kernel::KSTACK_SIZE / mem::PAGE_SIZE,
             AccessPermission::RDWR,
         )?;
 

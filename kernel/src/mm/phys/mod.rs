@@ -16,7 +16,6 @@ mod upool;
 
 use crate::{
     arch::mem,
-    config,
     hal::mem::{
         Address,
         PageAligned,
@@ -31,9 +30,12 @@ use crate::{
     },
 };
 use ::alloc::collections::LinkedList;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    config,
+    error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -54,9 +56,9 @@ pub use self::{
 //==================================================================================================
 
 /// Frame allocator storage.
-static mut FRAME_ALLOCATOR_STORAGE: [u8; config::MEMORY_SIZE
+static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
     / (mem::FRAME_SIZE * u8::BITS as usize)] =
-    [0; config::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
+    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
 
 //==================================================================================================
 // Standalone Functions

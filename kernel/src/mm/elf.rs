@@ -29,14 +29,16 @@ use crate::{
         Alignment,
     },
     mm::{
-        self,
         VirtMemoryManager,
         Vmem,
     },
 };
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    config,
+    error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -204,7 +206,7 @@ fn do_elf32_load(
         for phys_addr in (phys_addr_base..=phys_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(virt_addr);
 
-            if vaddr < mm::USER_BASE {
+            if vaddr < config::memory_layout::USER_BASE {
                 let reason: &str = "invalid load address";
                 error!("elf32_load: {}", reason);
                 return Err(Error::new(ErrorCode::BadFile, "invalid load address"));

@@ -15,7 +15,6 @@ pub mod thread;
 //==================================================================================================
 
 use crate::{
-    config,
     hal::{
         arch::InterruptNumber,
         mem::{
@@ -31,6 +30,7 @@ use crate::{
     },
 };
 use ::sys::{
+    config,
     error::Error,
     pm::ProcessIdentifier,
 };
@@ -67,7 +67,7 @@ pub fn timer_handler(_intnum: InterruptNumber) {
 
     unsafe { TIMER_TICKS = TIMER_TICKS.wrapping_add(1) };
 
-    if unsafe { TIMER_TICKS } % config::SCHEDULER_FREQ == 0 {
+    if unsafe { TIMER_TICKS } % config::kernel::SCHEDULER_FREQ == 0 {
         if let Err(e) = ProcessManager::switch() {
             error!("context switch failed: {:?}", e);
         }

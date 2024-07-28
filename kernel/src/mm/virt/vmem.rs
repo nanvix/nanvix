@@ -48,21 +48,17 @@ use ::alloc::{
     rc::Rc,
 };
 use ::core::cell::RefCell;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    config,
+    error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Constants
 //==================================================================================================
-
-/// Base address of user space.
-pub const USER_BASE: VirtualAddress = VirtualAddress::new(0x40000000);
-/// End address of user space.
-pub const USER_END: VirtualAddress = VirtualAddress::new(0xc0000000);
-/// Base address of user stack.
-pub const USER_STACK_TOP: VirtualAddress = VirtualAddress::new(0xc0000000);
 
 // TODO: `USER_BASE` should be aligned to a page boundary.
 
@@ -334,7 +330,7 @@ impl Vmem {
 
     /// Asserts whether an address lies in the user space.
     fn is_user_addr(virt_addr: VirtualAddress) -> bool {
-        virt_addr >= USER_BASE && virt_addr < USER_END
+        virt_addr >= config::memory_layout::USER_BASE && virt_addr < config::memory_layout::USER_END
     }
 
     /// Asserts wether an address lies in the kernel space.

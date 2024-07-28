@@ -18,8 +18,6 @@ pub use virt::{
     KernelPage,
     VirtMemoryManager,
     Vmem,
-    USER_BASE,
-    USER_STACK_TOP,
 };
 
 //==================================================================================================
@@ -29,7 +27,10 @@ pub use virt::{
 use crate::{
     arch::mem,
     hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
+        arch::x86::mem::mmu::{
+            self,
+            page_table::PageTable,
+        },
         mem::{
             Address,
             MemoryRegion,
@@ -48,7 +49,12 @@ use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
-use ::sys::error::Error;
+use ::core::panic;
+use ::sys::{
+    config,
+    error::Error,
+    mm,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -152,5 +158,5 @@ pub fn init(
 
 // Returns the user base stack address.
 pub fn user_stack_top() -> PageAligned<VirtualAddress> {
-    PageAligned::from_address(USER_STACK_TOP).unwrap()
+    PageAligned::from_address(config::memory_layout::USER_STACK_TOP).unwrap()
 }

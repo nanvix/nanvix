@@ -16,7 +16,6 @@ mod vmem;
 
 use crate::{
     arch::mem,
-    config,
     hal::{
         arch::x86::mem::mmu::{
             self,
@@ -46,9 +45,12 @@ use ::alloc::{
     vec::Vec,
 };
 use ::core::cmp::Ordering;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    config,
+    error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -57,11 +59,7 @@ use ::sys::error::{
 
 pub use kpage::KernelPage;
 pub use manager::VirtMemoryManager;
-pub use vmem::{
-    Vmem,
-    USER_BASE,
-    USER_STACK_TOP,
-};
+pub use vmem::Vmem;
 
 //==================================================================================================
 // Standalone Functions
@@ -154,7 +152,7 @@ pub fn init(
                 false,
                 AccessPermission::RDWR,
             )?;
-            if raw_vaddr == (config::MEMORY_SIZE - mem::PAGE_SIZE) {
+            if raw_vaddr == (config::kernel::MEMORY_SIZE - mem::PAGE_SIZE) {
                 break;
             }
             raw_vaddr = raw_vaddr + mem::PAGE_SIZE;

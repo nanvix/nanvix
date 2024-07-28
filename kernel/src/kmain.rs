@@ -65,7 +65,6 @@ extern crate arch;
 #[macro_use]
 mod macros;
 
-mod config;
 mod debug;
 mod event;
 mod hal;

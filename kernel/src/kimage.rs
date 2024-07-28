@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    config,
     hal::{
         arch::x86::mem::mmu,
         mem::{
@@ -19,7 +18,10 @@ use crate::{
     },
     klib,
 };
-use ::sys::error::Error;
+use ::sys::{
+    config,
+    error::Error,
+};
 
 extern "C" {
     static __TEXT_START: u8;
@@ -109,7 +111,7 @@ impl KernelImage {
 
         let kernel_end: usize = 0x04000000;
         let kpool_start: usize = klib::align_up(kernel_end, mmu::PGTAB_ALIGNMENT);
-        let kpool_size: usize = config::KPOOL_SIZE;
+        let kpool_size: usize = config::kernel::KPOOL_SIZE;
         let kpool = MemoryRegion::new(
             "kernel page pool",
             VirtualAddress::new(kpool_start),
