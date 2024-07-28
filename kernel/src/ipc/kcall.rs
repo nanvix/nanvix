@@ -19,10 +19,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::{
-        ProcessIdentifier,
-        ThreadIdentifier,
-    },
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -63,11 +60,11 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
     }
 }
 
-fn do_recv(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<Message, Error> {
+fn do_recv(pid: ProcessIdentifier) -> Result<Message, Error> {
     trace!("do_recv(): pid={:?}", pid);
 
     // Wait message.
-    EventManager::wait(pid, tid)
+    EventManager::wait(pid)
 }
 
 pub fn recv(msg: usize) -> i32 {
@@ -76,12 +73,7 @@ pub fn recv(msg: usize) -> i32 {
         Err(e) => return e.code.into_errno(),
     };
 
-    let tid: ThreadIdentifier = match ProcessManager::get_tid() {
-        Ok(tid) => tid,
-        Err(e) => return e.code.into_errno(),
-    };
-
-    match do_recv(pid, tid) {
+    match do_recv(pid) {
         Ok(message) => {
             if let Err(e) = pm::copy_to_user(pid, msg as *mut Message, &message) {
                 return e.code.into_errno();
