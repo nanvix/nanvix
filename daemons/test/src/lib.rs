@@ -7,6 +7,9 @@
 // Modules
 //==================================================================================================
 
+/// Tests event management kernel calls.
+mod event;
+
 /// Tests process management kernel calls.
 mod pm;
 
@@ -54,6 +57,7 @@ macro_rules! test {
 pub fn main() {
     ::nvx::log!("Running test server...");
     pm::test();
+    event::test();
     mm::test();
 
     // Send unblock message to the init daemon.
