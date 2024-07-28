@@ -331,7 +331,7 @@ impl EventManagerInner {
         {
             let (_enventinfo, _excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
 
-            if let Err(e) = resume.notify(tid) {
+            if let Err(e) = resume.notify_thread(tid) {
                 warn!("failed to notify all: {:?}", e);
                 unimplemented!("terminate process")
             }
@@ -357,7 +357,7 @@ impl EventManagerInner {
             },
         };
 
-        self.get_wait().notify(tid)
+        self.get_wait().notify_thread(tid)
     }
 
     fn wakeup_exception(
@@ -392,7 +392,7 @@ impl EventManagerInner {
         };
 
         trace!("wakeup_exception(): tid={:?}", tid);
-        let _ = self.get_wait().notify(tid);
+        let _ = self.get_wait().notify_thread(tid);
 
         Ok(resume)
     }
@@ -406,7 +406,7 @@ impl EventManagerInner {
     ) -> Result<(), Error> {
         pm.post_message(pid, message)?;
 
-        self.get_wait().notify(tid)
+        self.get_wait().notify_thread(tid)
     }
 
     fn get_wait(&self) -> &Rc<Condvar> {

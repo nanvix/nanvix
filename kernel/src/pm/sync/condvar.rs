@@ -77,7 +77,7 @@ impl Condvar {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn notify(&self, tid: ThreadIdentifier) -> Result<(), Error> {
+    pub fn notify_thread(&self, tid: ThreadIdentifier) -> Result<(), Error> {
         if self.sleeping.borrow_mut().iter().any(|&t| t == tid) {
             ProcessManager::wakeup(tid)?;
         }
