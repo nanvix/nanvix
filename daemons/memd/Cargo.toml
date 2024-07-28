@@ -1,0 +1,17 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "memd"
+version = "0.0.1"
+license-file = "LICENSE.txt"
+edition = "2021"
+authors = ["The Maintainers of Nanvix"]
+description = "Memory Management Daemon"
+homepage = "https://github.com/nanvix"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+nvx = { path = "../../nvx" }
