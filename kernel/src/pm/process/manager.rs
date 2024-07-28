@@ -453,7 +453,7 @@ impl ProcessManagerInner {
         while let Some(mut zombie) = self.zombies.pop_front() {
             let (thread, state, status) = zombie.bury();
             trace!(
-                "haversint resources (pid={:?}, tid={:?}, status={:?})",
+                "harvesting resources (pid={:?}, tid={:?}, status={:?})",
                 state.pid(),
                 thread.id(),
                 status
