@@ -81,10 +81,13 @@ impl Condvar {
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
     pub fn notify_process(&self, pid: ProcessIdentifier) -> Result<(), Error> {
-        for &(p, t) in self.sleeping.borrow_mut().iter() {
-            if p == pid {
-                ProcessManager::wakeup(t)?;
-            }
+        // Find process.
+        let idx: Option<usize> = self.sleeping.borrow().iter().position(|&(p, _)| p == pid);
+
+        // Remove process from sleeping queue.
+        if let Some(at) = idx {
+            let (_, tid) = self.sleeping.borrow_mut().remove(at);
+            ProcessManager::wakeup(tid)?;
         }
 
         Ok(())
