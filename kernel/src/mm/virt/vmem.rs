@@ -427,7 +427,7 @@ impl Vmem {
         }
 
         let reason: &str = "page not found";
-        error!("physcopy(): {}", reason);
+        error!("find_page(): {} (vaddr={:?})", reason, vaddr);
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 
