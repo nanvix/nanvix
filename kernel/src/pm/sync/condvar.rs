@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Imports
 //==================================================================================================
 
 use crate::pm::ProcessManager;
@@ -10,7 +10,10 @@ use ::alloc::collections::LinkedList;
 use ::core::cell::RefCell;
 use ::sys::{
     error::Error,
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -24,7 +27,7 @@ use ::sys::{
 ///
 pub struct Condvar {
     /// Threads that are sleeping on the condition variable.
-    sleeping: RefCell<LinkedList<ThreadIdentifier>>,
+    sleeping: RefCell<LinkedList<(ProcessIdentifier, ThreadIdentifier)>>,
 }
 
 //==================================================================================================
@@ -57,7 +60,7 @@ impl Condvar {
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
     pub fn notify_first(&self) -> Result<(), Error> {
-        if let Some(tid) = self.sleeping.borrow_mut().pop_front() {
+        if let Some((_, tid)) = self.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(tid)?;
         }
 
@@ -78,7 +81,7 @@ impl Condvar {
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
     pub fn notify_thread(&self, tid: ThreadIdentifier) -> Result<(), Error> {
-        if self.sleeping.borrow_mut().iter().any(|&t| t == tid) {
+        if self.sleeping.borrow_mut().iter().any(|&(_, t)| t == tid) {
             ProcessManager::wakeup(tid)?;
         }
 
@@ -91,9 +94,9 @@ impl Condvar {
     /// Waits on the condition variable.
     ///
     pub fn wait(&self) -> Result<(), Error> {
-        self.sleeping
-            .borrow_mut()
-            .push_back(ProcessManager::get_tid()?);
+        let pid: ProcessIdentifier = ProcessManager::get_pid()?;
+        let tid: ThreadIdentifier = ProcessManager::get_tid()?;
+        self.sleeping.borrow_mut().push_back((pid, tid));
 
         ProcessManager::sleep()?;
 
