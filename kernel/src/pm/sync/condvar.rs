@@ -70,28 +70,7 @@ impl Condvar {
     ///
     /// # Description
     ///
-    /// Wakes up a specific thread that is waiting on the target condition variable.
-    ///
-    /// # Parameters
-    ///
-    /// - `tid`: Identifier of the target thread.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
-    ///
-    pub fn notify_thread(&self, tid: ThreadIdentifier) -> Result<(), Error> {
-        if self.sleeping.borrow_mut().iter().any(|&(_, t)| t == tid) {
-            ProcessManager::wakeup(tid)?;
-        }
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Wakes up all thread of a process that are waiting on the target condition variable.
+    /// Wakes up all threads of a process that are waiting on the target condition variable.
     ///
     /// # Parameters
     ///
