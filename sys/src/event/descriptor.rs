@@ -54,6 +54,14 @@ impl EventDescriptor {
     pub fn is_exception(&self) -> bool {
         self.event().is_exception()
     }
+
+    pub fn to_ne_bytes(&self) -> [u8; core::mem::size_of::<usize>()] {
+        self.0.to_ne_bytes()
+    }
+
+    pub fn from_ne_bytes(bytes: [u8; core::mem::size_of::<usize>()]) -> Self {
+        Self(usize::from_ne_bytes(bytes))
+    }
 }
 
 impl Debug for EventDescriptor {
