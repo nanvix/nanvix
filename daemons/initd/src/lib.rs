@@ -81,6 +81,25 @@ pub fn main() {
         panic!("failed to resume exception event (error={:?})", e);
     }
 
+    // Unblock memory daemon.
+    ::nvx::log!("unblocking memory daemon...");
+    let message: Message = Message::new(
+        ProcessIdentifier::from(2),
+        ProcessIdentifier::from(3),
+        [0; Message::SIZE],
+        MessageType::Ipc,
+    );
+    if let Err(e) = ::nvx::ipc::send(&message) {
+        panic!("failed to unblock memory daemon (error={:?})", e);
+    }
+
+    // Wait for ack message from memory daemon.
+    ::nvx::log!("waiting for ack message from memory daemon...");
+    let _message: Message = match ::nvx::ipc::recv() {
+        Ok(message) => message,
+        Err(e) => panic!("failed to receive ack message from memory daemon (error={:?})", e),
+    };
+
     let magic_string: &str = "PANIC: Hello World!\n";
     let _ = ::nvx::debug::debug(magic_string.as_ptr(), magic_string.len());
     loop {
