@@ -272,13 +272,13 @@ impl EventManagerInner {
                     }
                 }
             }
+        }
 
-            // Check if any messages were delivered.
-            match ProcessManager::try_recv() {
-                Ok(Some(message)) => return Ok(Some(message)),
-                Ok(None) => {},
-                Err(e) => return Err(e),
-            }
+        // Check if any messages were delivered.
+        match ProcessManager::try_recv() {
+            Ok(Some(message)) => return Ok(Some(message)),
+            Ok(None) => {},
+            Err(e) => return Err(e),
         }
 
         Ok(None)
