@@ -22,6 +22,7 @@ use crate::{
         PhysicalAddress,
         TruncatedMemoryRegion,
         VirtualAddress,
+        MemoryRegionType,
     },
     klib::raw_array::RawArray,
     mm::phys::{
@@ -63,6 +64,37 @@ static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+fn parse_physical_memory_regions(
+    physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
+) -> Result<
+    (
+        LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
+        LinkedList<TruncatedMemoryRegion<PhysicalAddress>>
+    ),
+    Error,
+> {
+    let mut usable_physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>> =
+        LinkedList::new();
+    let mut reserved_physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>> =
+        LinkedList::new();
+
+    for region in physical_memory_regions {
+        match region.typ() {
+            MemoryRegionType::Usable => {
+                usable_physical_memory_regions.push_back(region);
+            },
+            MemoryRegionType::Reserved => {
+                reserved_physical_memory_regions.push_back(region);
+            }
+            _ => {
+                return Err(Error::new(ErrorCode::InvalidArgument, "Invalid memory type"));
+            },
+        }
+    }
+
+    Ok((reserved_physical_memory_regions, usable_physical_memory_regions))
+}
 
 fn book_physical_memory_regions(
     frame_allocator: &mut FrameAllocator,
@@ -131,7 +163,11 @@ pub fn init(
         };
         FrameAllocator::from_raw_storage(storage)?
     };
-    book_physical_memory_regions(&mut frame_allocator, physical_memory_regions)?;
+
+    let (reserved_memory_regions, usable_memory_regions) =
+        parse_physical_memory_regions(physical_memory_regions)?;
+
+    book_physical_memory_regions(&mut frame_allocator, reserved_memory_regions)?;
 
     book_mmio_regions(&mut frame_allocator, mmio_regions)?;
 
