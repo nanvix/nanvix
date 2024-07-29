@@ -89,41 +89,6 @@ pub fn init(
 
         let raw_vaddr: usize = region.start().into_raw_value();
 
-        let (page_table_addr, mut page_table): (PageTableAddress, PageTable) = if let Some(last) =
-            root_pagetables.pop_back()
-        {
-            let page_table_addr: PageTableAddress =
-                PageTableAddress::new(PageTableAligned::from_address(VirtualAddress::new(
-                    klib::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
-                ))?);
-
-            match page_table_addr.cmp(&last.0) {
-                Ordering::Greater => {
-                    root_pagetables.push_back(last);
-                    let page_table: PageTable = PageTable::new(PageTableStorage::new());
-                    let page_table_addr: PageTableAligned<VirtualAddress> =
-                        PageTableAligned::from_address(VirtualAddress::new(klib::align_down(
-                            raw_vaddr,
-                            mmu::PGTAB_ALIGNMENT,
-                        )))?;
-                    (PageTableAddress::new(page_table_addr), page_table)
-                },
-                Ordering::Equal => last,
-                Ordering::Less => {
-                    let reason: &str = "overlapping memory regions";
-                    error!("{}: {:#010x}", reason, raw_vaddr);
-                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
-                },
-            }
-        } else {
-            trace!("creating new page table for {:#010x}", raw_vaddr);
-            let page_table: PageTable = PageTable::new(PageTableStorage::new());
-            let page_table_addr: PageTableAligned<VirtualAddress> = PageTableAligned::from_address(
-                VirtualAddress::new(klib::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT)),
-            )?;
-            (PageTableAddress::new(page_table_addr), page_table)
-        };
-
         let mut paddr: FrameAddress = match region.typ() {
             MemoryRegionType::Mmio => {
                 let mmio_addr: VirtualAddress = region.start().into_inner();
@@ -143,6 +108,41 @@ pub fn init(
         let end: usize = raw_vaddr + (region.size() - 1);
 
         while raw_vaddr < end {
+            let (page_table_addr, mut page_table): (PageTableAddress, PageTable) =
+                if let Some(last) = root_pagetables.pop_back() {
+                    let page_table_addr: PageTableAddress =
+                        PageTableAddress::new(PageTableAligned::from_address(
+                            VirtualAddress::new(klib::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT)),
+                        )?);
+
+                    match page_table_addr.cmp(&last.0) {
+                        Ordering::Greater => {
+                            root_pagetables.push_back(last);
+                            let page_table: PageTable = PageTable::new(PageTableStorage::new());
+                            let page_table_addr: PageTableAligned<VirtualAddress> =
+                                PageTableAligned::from_address(VirtualAddress::new(
+                                    klib::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
+                                ))?;
+                            (PageTableAddress::new(page_table_addr), page_table)
+                        },
+                        Ordering::Equal => last,
+                        Ordering::Less => {
+                            let reason: &str = "overlapping memory regions";
+                            error!("{}: {:#010x}", reason, raw_vaddr);
+                            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                        },
+                    }
+                } else {
+                    trace!("creating new page table for {:#010x}", raw_vaddr);
+                    let page_table: PageTable = PageTable::new(PageTableStorage::new());
+                    let page_table_addr: PageTableAligned<VirtualAddress> =
+                        PageTableAligned::from_address(VirtualAddress::new(klib::align_down(
+                            raw_vaddr,
+                            mmu::PGTAB_ALIGNMENT,
+                        )))?;
+                    (PageTableAddress::new(page_table_addr), page_table)
+                };
+
             // FIXME: do not be so open about permissions and caching.
             page_table.map(
                 PageAddress::new(PageAligned::from_raw_value(raw_vaddr)?),
@@ -170,9 +170,9 @@ pub fn init(
                     PhysicalAddress::from_raw_value(raw_vaddr)?,
                 )?),
             };
-        }
 
-        root_pagetables.push_back((page_table_addr, page_table));
+            root_pagetables.push_back((page_table_addr, page_table));
+        }
     }
 
     Ok(root_pagetables)
