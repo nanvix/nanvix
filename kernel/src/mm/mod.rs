@@ -87,18 +87,26 @@ fn parse_memory_regions(
     while let Some(region) = memory_regions.pop_front() {
         if region.typ() == MemoryRegionType::Reserved || region.typ() == MemoryRegionType::Mmio {
             if PhysicalAddress::from_virtual_address(region.start()).is_ok() {
-                if region.typ() != MemoryRegionType::Usable {
-                    if let Ok(region) =
-                        TruncatedMemoryRegion::from_virtual_memory_region(region.clone())
-                    {
-                        physical_memory_regions.push_back(region);
-                    }
+                if let Ok(region) =
+                    TruncatedMemoryRegion::from_virtual_memory_region(region.clone())
+                {
+                    physical_memory_regions.push_back(region);
                 }
                 virtual_memory_regions
                     .push_back(TruncatedMemoryRegion::from_memory_region(region)?);
             } else {
                 other_virtual_memory_regions
                     .push_back(TruncatedMemoryRegion::from_memory_region(region)?);
+            }
+        } else {
+            if region.typ() == MemoryRegionType::Usable {
+                if PhysicalAddress::from_virtual_address(region.start()).is_ok() {
+                    if let Ok(region) =
+                        TruncatedMemoryRegion::from_virtual_memory_region(region.clone())
+                    {
+                        physical_memory_regions.push_back(region);
+                    }
+                }
             }
         }
     }
