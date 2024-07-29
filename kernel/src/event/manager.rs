@@ -274,6 +274,8 @@ impl EventManagerInner {
             }
         }
 
+        // FIXME: Delivery of IPC messages will starve if exception / interrupt rate is to high.
+
         // Check if any messages were delivered.
         match ProcessManager::try_recv() {
             Ok(Some(message)) => return Ok(Some(message)),
