@@ -240,7 +240,11 @@ impl EventManagerInner {
                     if (interrupts & (1 << i)) != 0 {
                         let idx: usize = i as usize;
                         if let Some(_event) = self.pending_interrupts[idx].pop_front() {
-                            return Ok(Some(Message::default()));
+                            let mut message: Message = Message::default();
+                            message.source = ProcessIdentifier::KERNEL;
+                            message.destination = pid;
+                            message.message_type = MessageType::Interrupt;
+                            return Ok(Some(message));
                         }
                     }
                 }
