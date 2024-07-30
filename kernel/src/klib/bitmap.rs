@@ -297,6 +297,24 @@ impl Bitmap {
 
         Ok((word, bit))
     }
+
+
+    ///
+    /// # Description
+    ///
+    /// Fill with value 1 all the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn fill_bitmap(&mut self) -> Result<(), Error> {
+        for word in self.bits.iter_mut() {
+            *word |= u8::MAX;
+        }
+        self.usage = self.number_of_bits;
+        Ok(())
+    }
 }
 
 //==================================================================================================
