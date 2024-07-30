@@ -105,7 +105,7 @@ fn book_physical_memory_regions(
     // Book physical memory that is not usable.
     for region in physical_memory_regions.iter() {
         info!("booking: {:?}", region);
-        frame_allocator.alloc_range(region)?;
+        frame_allocator.try_alloc_range(region)?;
     }
 
     Ok(())
@@ -134,6 +134,8 @@ fn book_mmio_regions(
                 Ok(()) => {},
                 // Frame lies outside addressable physical memory.
                 Err(e) if e.code == ErrorCode::InvalidArgument => {},
+                // Frame already allocated, continue try booking.
+                Err(e) if e.code == ErrorCode::ResourceBusy => {},
                 // Something went wrong.
                 Err(e) => {
                     warn!("failed to book frame for mmio region {:?} ({:?})", region, e);
@@ -142,6 +144,21 @@ fn book_mmio_regions(
             }
             start += mem::FRAME_SIZE;
         }
+    }
+
+    Ok(())
+}
+
+fn book_usable_memory_regions(
+    frame_allocator: &mut FrameAllocator,
+    usable_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
+)-> Result<(), Error> {
+    info!("Cleaning usable memory regions ...");
+
+    // Clean physical memory frame that are usable.
+    for region in usable_memory_regions.iter() {
+        info!("cleaning: {:?}", region);
+        frame_allocator.clear_range(region)?;
     }
 
     Ok(())
@@ -164,11 +181,19 @@ pub fn init(
         FrameAllocator::from_raw_storage(storage)?
     };
 
+    // Fill all frame bitmap.
+    frame_allocator.fill_storage()?;
+
     let (reserved_memory_regions, usable_memory_regions) =
         parse_physical_memory_regions(physical_memory_regions)?;
 
+    // Clear frames usable.
+    book_usable_memory_regions(&mut frame_allocator, usable_memory_regions)?;
+
+    // Alloc reserved regions.
     book_physical_memory_regions(&mut frame_allocator, reserved_memory_regions)?;
 
+    // Alloc mmio regions.
     book_mmio_regions(&mut frame_allocator, mmio_regions)?;
 
     // Initialize kernel page pool.
@@ -181,3 +206,4 @@ pub fn init(
 
     Ok(PhysMemoryManager::new(kpool, upool))
 }
+
