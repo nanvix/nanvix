@@ -118,6 +118,38 @@ impl FrameAllocator {
     ///
     /// # Description
     ///
+    /// Free all frames in the range `[start, end]`.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Start page frame address.
+    /// - `end`: End page frame address.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn clear_range(
+        &mut self,
+        region: &TruncatedMemoryRegion<PhysicalAddress>,
+    ) -> Result<(), Error> {
+        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+        let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+
+        // Clear all frames in the range.
+        for index in start_frame_number..=end_frame_number {
+            if let Err(e) = self.bitmap.clear(index) {
+                warn!("fail to clear frame {}.", index);
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Books a frame that was previously allocated.
     ///
     /// # Parameters
@@ -175,5 +207,50 @@ impl FrameAllocator {
         }
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Allocates all frames as possible in range.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Start page frame address.
+    /// - `end`: End page frame address.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn try_alloc_range(
+        &mut self,
+        region: &TruncatedMemoryRegion<PhysicalAddress>,
+    ) -> Result<(), Error> {
+        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+        let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+
+        // Try book all frames in the range.
+        for index in start_frame_number..=end_frame_number {
+            match self.bitmap.set(index) {
+                Ok(()) => continue,
+                Err(e) if e.code == ErrorCode::ResourceBusy => continue,
+                Err(e) => {
+                        warn!("fail to try book frame {}", index);
+                        return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Allocs all frames at once, without busy checks.
+    ///
+    pub fn fill_storage(&mut self) -> Result<(), Error> {
+        self.bitmap.fill_bitmap()
     }
 }
