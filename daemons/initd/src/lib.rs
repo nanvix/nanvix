@@ -26,16 +26,14 @@ pub fn main() {
         panic!("failed to receive unblock message (error={:?})", e);
     }
 
+    let mypid: ProcessIdentifier = ::nvx::pm::getpid().expect("failed to get pid");
+
     ::nvx::log!("running init daemon...");
 
     // Unblock memory daemon.
     ::nvx::log!("unblocking memory daemon...");
-    let message: Message = Message::new(
-        ProcessIdentifier::from(2),
-        ProcessIdentifier::from(3),
-        [0; Message::SIZE],
-        MessageType::Ipc,
-    );
+    let message: Message =
+        Message::new(mypid, ProcessIdentifier::from(3), [0; Message::SIZE], MessageType::Ipc);
     if let Err(e) = ::nvx::ipc::send(&message) {
         panic!("failed to unblock memory daemon (error={:?})", e);
     }
@@ -49,12 +47,8 @@ pub fn main() {
 
     // Ack test daemon.
     ::nvx::log!("sending ack message to test daemon...");
-    let message: Message = Message::new(
-        ProcessIdentifier::from(2),
-        ProcessIdentifier::from(1),
-        [0; Message::SIZE],
-        MessageType::Ipc,
-    );
+    let message: Message =
+        Message::new(mypid, ProcessIdentifier::from(1), [0; Message::SIZE], MessageType::Ipc);
     if let Err(e) = ::nvx::ipc::send(&message) {
         panic!("failed to unblock test daemon(error={:?})", e);
     }
