@@ -29,9 +29,14 @@ macro_rules! info{
 ///
 macro_rules! trace{
 	( $($arg:tt)* ) => ({
+		#[allow(unused_imports)]
 		use ::core::fmt::Write;
-		use crate::klog::KlogLevel;
-		let _ = write!(&mut crate::klog::Klog::get(module_path!(), KlogLevel::Trace), $($arg)*);
+		#[cfg(feature = "trace")]
+		let _ = write!(
+			&mut crate::klog::Klog::get(module_path!(),
+			crate::klog::KlogLevel::Trace),
+			$($arg)*
+		);
 	})
 }
 

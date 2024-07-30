@@ -24,6 +24,7 @@ pub struct Klog;
 
 /// Kernel log levels.
 pub enum KlogLevel {
+    #[cfg(feature = "trace")]
     Trace,
     Info,
     Warn,
@@ -73,6 +74,7 @@ impl fmt::Write for Klog {
 impl core::fmt::Debug for KlogLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            #[cfg(feature = "trace")]
             KlogLevel::Trace => write!(f, "TRACE"),
             KlogLevel::Info => write!(f, "INFO"),
             KlogLevel::Warn => write!(f, "WARN"),

@@ -24,6 +24,11 @@ export BIN := $(NAME).$(EXEC_FORMAT)
 export LDFLAGS += -L $(BUILD_DIR)/$(TARGET) -T kernel.ld
 export LDFLAGS += --gc-sections -static --nostdlib --no-whole-archive
 
+# Cargo
+ifneq ($(FEATURES),)
+	export CARGO_FEATURES := --features $(FEATURES)
+endif
+
 #===============================================================================
 # Build Rules
 #===============================================================================
@@ -32,7 +37,7 @@ all: all-lib $(OBJS)
 	$(LD) $(LDFLAGS) -o $(BINARIES_DIR)/$(BIN) $(OBJS) $(LIB)
 
 all-lib:
-	$(CARGO) build --lib $(CARGO_FLAGS)
+	$(CARGO) build --lib $(CARGO_FLAGS) $(CARGO_FEATURES)
 ifeq ($(RELEASE), yes)
 	@echo [CARGO] $(LIB)
 	cp --preserve target/$(TARGET)/release/$(LIB) $(LIB)

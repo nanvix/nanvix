@@ -17,3 +17,7 @@ crate-type = ["staticlib"]
 [dependencies]
 arch = { path = "../arch" }
 sys = { path = "../sys" }
+
+
+[features]
+trace = []

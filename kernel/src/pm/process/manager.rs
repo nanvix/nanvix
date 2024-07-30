@@ -451,13 +451,8 @@ impl ProcessManagerInner {
 
     pub fn harvest_zombies(&mut self) {
         while let Some(mut zombie) = self.zombies.pop_front() {
-            let (thread, state, status) = zombie.bury();
-            trace!(
-                "harvesting resources (pid={:?}, tid={:?}, status={:?})",
-                state.pid(),
-                thread.id(),
-                status
-            );
+            let (_thread, _state, _status) = zombie.bury();
+            trace!("harvesting resources (pid={:?}, status={:?})", _state.pid(), _status);
         }
     }
 

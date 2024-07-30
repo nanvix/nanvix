@@ -137,12 +137,6 @@ impl InterruptedThread {
 
 pub struct ZombieThread(Thread);
 
-impl ZombieThread {
-    pub fn id(&self) -> ThreadIdentifier {
-        self.0.id
-    }
-}
-
 //==================================================================================================
 // Thread Manager
 //==================================================================================================
