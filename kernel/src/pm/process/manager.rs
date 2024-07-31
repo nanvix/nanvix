@@ -449,10 +449,12 @@ impl ProcessManagerInner {
         self.interrupt_reason.take()
     }
 
-    pub fn harvest_zombies(&mut self) {
-        while let Some(mut zombie) = self.zombies.pop_front() {
-            let (_thread, _state, _status) = zombie.bury();
-            trace!("harvesting resources (pid={:?}, status={:?})", _state.pid(), _status);
+    pub fn harvest_zombies(&mut self) -> Option<(ProcessIdentifier, i32)> {
+        if let Some(mut zombie) = self.zombies.pop_front() {
+            let (_thread, state, status) = zombie.bury();
+            Some((state.pid(), status))
+        } else {
+            None
         }
     }
 
@@ -647,9 +649,8 @@ impl ProcessManager {
             .copy_to_user_unaligned(dst, src, size)
     }
 
-    pub fn harvest_zombies(&mut self) -> Result<(), Error> {
-        self.try_borrow_mut()?.harvest_zombies();
-        Ok(())
+    pub fn harvest_zombies(&mut self) -> Result<Option<(ProcessIdentifier, i32)>, Error> {
+        Ok(self.try_borrow_mut()?.harvest_zombies())
     }
 
     pub fn mmap(
