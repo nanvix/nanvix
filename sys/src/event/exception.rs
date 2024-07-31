@@ -56,7 +56,9 @@ pub enum ExceptionEvent {
 //==================================================================================================
 
 impl ExceptionEvent {
-    pub const VALUES: [Self; 32] = [
+    pub const NUMBER_EVENTS: usize = 32;
+
+    pub const VALUES: [Self; Self::NUMBER_EVENTS] = [
         Self::Exception0,
         Self::Exception1,
         Self::Exception2,
