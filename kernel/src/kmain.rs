@@ -93,14 +93,6 @@ fn test() {
     }
 }
 
-pub fn kernel_magic_string() -> ! {
-    let magic_string = "PANIC: Hello World!\n";
-    unsafe { crate::stdout::puts(magic_string) }
-    loop {
-        core::hint::spin_loop();
-    }
-}
-
 ///
 /// # Description
 ///
@@ -242,6 +234,4 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
         kcall::handler(hal, mm, pm)
     }
-
-    kernel_magic_string();
 }
