@@ -8,11 +8,19 @@
 //==================================================================================================
 
 use ::nvx::{
+    event::{
+        Event,
+        EventCtrlRequest,
+        SchedulingEvent,
+    },
     ipc::{
         Message,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        Capability,
+        ProcessIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -29,6 +37,21 @@ pub fn main() {
     let mypid: ProcessIdentifier = ::nvx::pm::getpid().expect("failed to get pid");
 
     ::nvx::log!("running init daemon...");
+
+    // Acquire process management capabilities.
+    ::nvx::log!("acquiring process managemnet capabilities...");
+    if let Err(e) = ::nvx::pm::capctl(Capability::ProcessManagement, true) {
+        panic!("failed to acquire process management capabilities (error={:?})", e);
+    }
+
+    // Subscribe to process termination.
+    ::nvx::log!("subscribing to process termination...");
+    if let Err(e) = ::nvx::event::evctrl(
+        Event::Scheduling(SchedulingEvent::ProcessTermination),
+        EventCtrlRequest::Register,
+    ) {
+        panic!("failed to subscribe to process termination (error={:?})", e);
+    }
 
     // Unblock memory daemon.
     ::nvx::log!("unblocking memory daemon...");
@@ -54,6 +77,25 @@ pub fn main() {
     }
 
     loop {
+        match ::nvx::ipc::recv() {
+            Ok(message) => match message.message_type {
+                MessageType::Exception => unreachable!("should not receive exceptions"),
+                MessageType::Ipc => unreachable!("should not receive IPC messages"),
+                MessageType::Interrupt => unreachable!("should not receive interrupts"),
+                MessageType::SchedulingEvent => {
+                    // Deserialize process identifier.
+                    let pid: ProcessIdentifier = ProcessIdentifier::from(u32::from_le_bytes(
+                        message.payload[0..4].try_into().unwrap(),
+                    )
+                        as usize);
+
+                    // Deserialize process status.
+                    let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
+                    ::nvx::log!("process terminated (pid={:?}, status={:?})", pid, status);
+                },
+            },
+            Err(e) => ::nvx::log!("failed to receive exception message (error={:?})", e),
+        }
         core::hint::spin_loop()
     }
 }

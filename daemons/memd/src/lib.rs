@@ -92,6 +92,9 @@ pub fn main() {
                 MessageType::Exception => handle_page_fault(EventInformation::from(message)),
                 MessageType::Ipc => handle_ipc_requests(),
                 MessageType::Interrupt => unreachable!("should not receive interrupts"),
+                MessageType::SchedulingEvent => {
+                    unreachable!("should not receive scheduling events")
+                },
             },
             Err(e) => ::nvx::log!("failed to receive exception message (error={:?})", e),
         }
