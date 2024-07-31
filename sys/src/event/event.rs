@@ -13,6 +13,7 @@ use crate::{
     event::{
         ExceptionEvent,
         InterruptEvent,
+        SchedulingEvent,
     },
 };
 
@@ -24,6 +25,7 @@ use crate::{
 pub enum Event {
     Interrupt(InterruptEvent),
     Exception(ExceptionEvent),
+    Scheduling(SchedulingEvent),
 }
 
 //==================================================================================================
@@ -31,7 +33,7 @@ pub enum Event {
 //==================================================================================================
 
 impl Event {
-    pub const BIT_LENGTH: usize = 6;
+    pub const BIT_LENGTH: usize = 7;
 
     pub fn is_interrupt(&self) -> bool {
         match self {
@@ -52,7 +54,12 @@ impl From<Event> for u32 {
     fn from(ev: Event) -> u32 {
         match ev {
             Event::Interrupt(ev) => u32::from(ev),
-            Event::Exception(ev) => 32 + (u32::from(ev)),
+            Event::Exception(ev) => InterruptEvent::NUMBER_EVENTS as u32 + (u32::from(ev)),
+            Event::Scheduling(ev) => {
+                InterruptEvent::NUMBER_EVENTS as u32
+                    + ExceptionEvent::NUMBER_EVENTS as u32
+                    + u32::from(ev)
+            },
         }
     }
 }
@@ -61,10 +68,21 @@ impl TryFrom<u32> for Event {
     type Error = Error;
 
     fn try_from(raw: u32) -> Result<Self, Self::Error> {
-        if raw > 64 {
+        if raw
+            > InterruptEvent::NUMBER_EVENTS as u32
+                + ExceptionEvent::NUMBER_EVENTS as u32
+                + SchedulingEvent::NUMBER_EVENTS as u32
+        {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid event"));
-        } else if raw >= 32 {
-            Ok(Event::Exception(ExceptionEvent::try_from(raw - 32)?))
+        } else if raw >= InterruptEvent::NUMBER_EVENTS as u32 + ExceptionEvent::NUMBER_EVENTS as u32
+        {
+            Ok(Event::Scheduling(SchedulingEvent::try_from(
+                raw - InterruptEvent::NUMBER_EVENTS as u32 - ExceptionEvent::NUMBER_EVENTS as u32,
+            )?))
+        } else if raw >= InterruptEvent::NUMBER_EVENTS as u32 {
+            Ok(Event::Exception(ExceptionEvent::try_from(
+                raw - InterruptEvent::NUMBER_EVENTS as u32,
+            )?))
         } else {
             Ok(Event::Interrupt(InterruptEvent::try_from(raw)?))
         }
@@ -94,5 +112,11 @@ impl From<InterruptEvent> for Event {
 impl From<ExceptionEvent> for Event {
     fn from(ev: ExceptionEvent) -> Event {
         Event::Exception(ev)
+    }
+}
+
+impl From<SchedulingEvent> for Event {
+    fn from(ev: SchedulingEvent) -> Event {
+        Event::Scheduling(ev)
     }
 }

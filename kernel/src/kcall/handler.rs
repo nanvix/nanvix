@@ -7,7 +7,10 @@
 
 use crate::{
     debug,
-    event,
+    event::{
+        self,
+        EventManager,
+    },
     hal::Hal,
     io,
     ipc,
@@ -20,6 +23,7 @@ use crate::{
 };
 use ::sys::{
     error::ErrorCode,
+    event::ProcessTerminationInfo,
     number::KcallNumber,
 };
 
@@ -104,7 +108,14 @@ pub fn kcall_handler(mut hal: Hal, mut mm: VirtMemoryManager, mut pm: ProcessMan
         match pm.harvest_zombies() {
             Ok(None) => {},
             Ok(Some((pid, status))) => {
-                info!("harvested zombie process: pid={:?}, status={:?}", pid, status);
+                match EventManager::notify_process_termination(ProcessTerminationInfo::new(
+                    pid, status,
+                )) {
+                    Ok(()) => {},
+                    Err(e) => {
+                        error!("failed to notify process termination: {:?}", e);
+                    },
+                }
             },
             Err(e) => {
                 error!("failed to harvest zombies: {:?}", e);

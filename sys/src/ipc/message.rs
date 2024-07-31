@@ -15,6 +15,7 @@ pub enum MessageType {
     Interrupt,
     Exception,
     Ipc,
+    SchedulingEvent,
 }
 
 pub struct Message {

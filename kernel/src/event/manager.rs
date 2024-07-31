@@ -42,6 +42,8 @@ use ::sys::{
         EventInformation,
         ExceptionEvent,
         InterruptEvent,
+        ProcessTerminationInfo,
+        SchedulingEvent,
     },
     ipc::{
         Message,
@@ -57,7 +59,7 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
-static mut MANAGER: EventManager = unsafe { mem::zeroed() };
+static mut MANAGER: Option<EventManager> = None;
 
 struct ExceptionEventInformation {
     pid: ProcessIdentifier,
@@ -89,6 +91,12 @@ impl Drop for EventOwnership {
                         error!("failed to unregister exception: {:?}", e);
                     }
                 },
+                Event::Scheduling(ev) => {
+                    if let Err(e) = em.do_evctrl_scheduling(None, ev, EventCtrlRequest::Unregister)
+                    {
+                        error!("failed to unregister scheduling event: {:?}", e);
+                    }
+                },
             },
             Err(e) => {
                 error!("failed to borrow event manager: {:?}", e);
@@ -105,10 +113,13 @@ struct EventManagerInner {
     exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
     pending_exceptions: [LinkedList<(EventDescriptor, ExceptionEventInformation, Rc<Condvar>)>;
         usize::BITS as usize],
+    scheduling_ownership: [Option<ProcessIdentifier>; SchedulingEvent::NUMBER_EVENTS],
+    pending_scheduling:
+        [LinkedList<(EventDescriptor, ProcessTerminationInfo)>; SchedulingEvent::NUMBER_EVENTS],
 }
 
 impl EventManagerInner {
-    const NUMBER_EVENTS: usize = 2;
+    const NUMBER_EVENTS: usize = 3;
 
     fn do_evctrl_interrupt(
         &mut self,
@@ -226,11 +237,67 @@ impl EventManagerInner {
         }
     }
 
+    fn do_evctrl_scheduling(
+        &mut self,
+        pid: Option<ProcessIdentifier>,
+        ev: SchedulingEvent,
+        req: EventCtrlRequest,
+    ) -> Result<(), Error> {
+        let idx: usize = usize::from(ev);
+
+        // Handle request.
+        match req {
+            EventCtrlRequest::Register => {
+                // Check if PID is valid.
+                if let Some(pid) = pid {
+                    // Ensure that the process has the required capabilities.
+                    if !ProcessManager::has_capability(pid, Capability::ProcessManagement)? {
+                        let reason: &str = "process does not have scheduling control capability";
+                        error!("do_evctrl_scheduling(): reason={:?}", reason);
+                        return Err(Error::new(ErrorCode::PermissionDenied, &reason));
+                    }
+
+                    // Check if target scheduling event is already owned by another process.
+                    if self.scheduling_ownership[idx].is_some() {
+                        let reason: &str = "scheduling event is already owned by another process";
+                        error!("do_evctrl_scheduling(): reason={:?}", reason);
+                        return Err(Error::new(ErrorCode::ResourceBusy, &reason));
+                    }
+
+                    // Register scheduling event.
+                    self.scheduling_ownership[idx] = Some(pid);
+
+                    return Ok(());
+                }
+
+                let reason: &str = "invalid process identifier";
+                error!("do_evctrl_scheduling(): reason={:?}", reason);
+                Err(Error::new(ErrorCode::InvalidArgument, &reason))
+            },
+            EventCtrlRequest::Unregister => {
+                // If PID was supplied, check if it matches the current owner.
+                if let Some(pid) = pid {
+                    if self.scheduling_ownership[idx] != Some(pid) {
+                        let reason: &str = "process does not own scheduling event";
+                        error!("do_evctrl_scheduling(): reason={:?}", reason);
+                        return Err(Error::new(ErrorCode::PermissionDenied, &reason));
+                    }
+                }
+
+                // Unregister scheduling event.
+                self.scheduling_ownership[idx] = None;
+
+                Ok(())
+            },
+        }
+    }
+
     pub fn try_wait(
         &mut self,
         pid: ProcessIdentifier,
         interrupts: usize,
         exceptions: usize,
+        scheduling: usize,
     ) -> Result<Option<Message>, Error> {
         for i in 0..Self::NUMBER_EVENTS {
             // Check if any interrupts were triggered.
@@ -270,6 +337,26 @@ impl EventManagerInner {
                             message.message_type = MessageType::Exception;
 
                             self.pending_exceptions[idx].push_back(entry);
+
+                            return Ok(Some(message));
+                        }
+                    }
+                }
+            }
+
+            // Check if any scheduling events wre triggered.
+            if ((self.nevents + i) % Self::NUMBER_EVENTS) == 2 {
+                for i in 0..SchedulingEvent::NUMBER_EVENTS {
+                    if (scheduling & (1 << i)) != 0 {
+                        let idx: usize = i as usize;
+                        if let Some((_ev, info)) = self.pending_scheduling[idx].pop_front() {
+                            let mut message: Message = Message::default();
+                            message.source = ProcessIdentifier::KERNEL;
+                            message.destination = pid;
+                            message.message_type = MessageType::SchedulingEvent;
+
+                            message.payload[0..core::mem::size_of::<ProcessTerminationInfo>()]
+                                .copy_from_slice(&info.to_ne_bytes());
 
                             return Ok(Some(message));
                         }
@@ -395,6 +482,32 @@ impl EventManagerInner {
         self.get_wait().notify_process(pid)
     }
 
+    fn notify_process_termination(&mut self, info: ProcessTerminationInfo) -> Result<(), Error> {
+        self.nevents += 1;
+        let ev: Event = Event::from(SchedulingEvent::ProcessTermination);
+        let eventid: EventDescriptor = EventDescriptor::new(self.nevents, ev);
+        self.pending_scheduling[SchedulingEvent::ProcessTermination as usize]
+            .push_back((eventid, info));
+
+        // Get scheduling event owner.
+        let pid: ProcessIdentifier =
+            match self.scheduling_ownership[SchedulingEvent::ProcessTermination as usize] {
+                Some(owner) => owner,
+                None => {
+                    let reason: &str = "no owner for scheduling event";
+                    error!("notify_process_termination(): reason={:?}", reason);
+                    unimplemented!("terminate process")
+                },
+            };
+
+        if let Err(e) = self.get_wait().notify_process(pid) {
+            error!("failed to notify process: {:?}", e);
+            unimplemented!("terminate process")
+        }
+
+        Ok(())
+    }
+
     fn get_wait(&self) -> &Rc<Condvar> {
         // NOTE: it is safe to unwrap because the wait field is always Some.
         self.wait.as_ref().unwrap()
@@ -416,7 +529,11 @@ impl EventManager {
                 Ok(())
             },
             Event::Exception(ev) => {
-                return EventManager::get().try_borrow_mut()?.resume_exception(ev);
+                return EventManager::get()?.try_borrow_mut()?.resume_exception(ev);
+            },
+            Event::Scheduling(_ev) => {
+                // No further action is required for scheduling events.
+                Ok(())
             },
         }
     }
@@ -428,7 +545,7 @@ impl EventManager {
         let mut interrupts: usize = 0;
         for i in 0..usize::BITS {
             let idx: usize = i as usize;
-            if let Some(p) = EventManager::get().try_borrow_mut()?.interrupt_ownership[idx] {
+            if let Some(p) = EventManager::get()?.try_borrow_mut()?.interrupt_ownership[idx] {
                 if p == pid {
                     interrupts |= 1 << i;
                 }
@@ -439,19 +556,29 @@ impl EventManager {
         let mut exceptions: usize = 0;
         for i in 0..usize::BITS {
             let idx: usize = i as usize;
-            if let Some(p) = EventManager::get().try_borrow_mut()?.exception_ownership[idx] {
+            if let Some(p) = EventManager::get()?.try_borrow_mut()?.exception_ownership[idx] {
                 if p == pid {
                     exceptions |= 1 << i;
                 }
             }
         }
 
-        let wait: Rc<Condvar> = EventManager::get().try_borrow_mut()?.get_wait().clone();
+        // Get the scheduling events that the process owns.
+        let mut scheduling: usize = 0;
+        for i in 0..SchedulingEvent::NUMBER_EVENTS {
+            if let Some(p) = EventManager::get()?.try_borrow_mut()?.scheduling_ownership[i] {
+                if p == pid {
+                    scheduling |= 1 << i;
+                }
+            }
+        }
+
+        let wait: Rc<Condvar> = EventManager::get()?.try_borrow_mut()?.get_wait().clone();
 
         loop {
-            let message: Option<Message> = EventManager::get()
+            let message: Option<Message> = EventManager::get()?
                 .try_borrow_mut()?
-                .try_wait(pid, interrupts, exceptions)?;
+                .try_wait(pid, interrupts, exceptions, scheduling)?;
 
             if let Some(message) = message {
                 break Ok(message);
@@ -468,7 +595,7 @@ impl EventManager {
     ) -> Result<Option<EventOwnership>, Error> {
         trace!("do_evctrl(): ev={:?}, req={:?}", ev, req);
 
-        let em: &'static mut EventManager = EventManager::get_mut();
+        let em: &'static mut EventManager = EventManager::get_mut()?;
 
         match ev {
             Event::Interrupt(interrupt_event) => {
@@ -478,6 +605,10 @@ impl EventManager {
             Event::Exception(exception_event) => {
                 em.try_borrow_mut()?
                     .do_evctrl_exception(Some(pid), exception_event, req)?;
+            },
+            Event::Scheduling(scheduling_event) => {
+                em.try_borrow_mut()?
+                    .do_evctrl_scheduling(Some(pid), scheduling_event, req)?;
             },
         }
 
@@ -492,9 +623,15 @@ impl EventManager {
         pid: ProcessIdentifier,
         message: Message,
     ) -> Result<(), Error> {
-        Self::get_mut()
+        Self::get_mut()?
             .try_borrow_mut()?
             .post_message(pm, pid, message)
+    }
+
+    pub fn notify_process_termination(info: ProcessTerminationInfo) -> Result<(), Error> {
+        Self::get_mut()?
+            .try_borrow_mut()?
+            .notify_process_termination(info)
     }
 
     fn try_borrow_mut(&self) -> Result<RefMut<EventManagerInner>, Error> {
@@ -508,12 +645,30 @@ impl EventManager {
         }
     }
 
-    fn get() -> &'static EventManager {
-        unsafe { &MANAGER }
+    fn get() -> Result<&'static EventManager, Error> {
+        unsafe {
+            match MANAGER {
+                Some(ref em) => Ok(em),
+                None => {
+                    let reason: &str = "event manager is not initialized";
+                    error!("get(): reason={:?}", reason);
+                    Err(Error::new(ErrorCode::TryAgain, reason))
+                },
+            }
+        }
     }
 
-    fn get_mut() -> &'static mut EventManager {
-        unsafe { &mut MANAGER }
+    fn get_mut() -> Result<&'static mut EventManager, Error> {
+        unsafe {
+            match MANAGER {
+                Some(ref mut em) => Ok(em),
+                None => {
+                    let reason: &str = "event manager is not initialized";
+                    error!("get_mut(): reason={:?}", reason);
+                    Err(Error::new(ErrorCode::TryAgain, reason))
+                },
+            }
+        }
     }
 }
 
@@ -523,11 +678,22 @@ impl EventManager {
 
 fn interrupt_handler(intnum: InterruptNumber) {
     trace!("interrupt_handler(): intnum={:?}", intnum);
-    if let Ok(mut em) = EventManager::get().try_borrow_mut() {
-        match em.wakeup_interrupt(1 << intnum as usize) {
-            Ok(_) => {},
-            Err(e) => error!("failed to wake up event manager: {:?}", e),
-        }
+    match EventManager::get_mut() {
+        Ok(em) => match em.try_borrow_mut() {
+            Ok(mut em) => match em.wakeup_interrupt(1 << intnum as usize) {
+                Ok(()) => {},
+                Err(e) => {
+                    error!("failed to wake up event manager: {:?}", e);
+                },
+            },
+            Err(e) => {
+                error!("failed to borrow event manager: {:?}", e);
+            },
+        },
+        Err(e) => {
+            error!("failed to get event manager: {:?}", e);
+            return;
+        },
     }
 }
 
@@ -541,16 +707,22 @@ fn exception_handler(info: &ExceptionInformation, _ctx: &ContextInformation) {
         },
     };
 
-    let resume: Rc<Condvar> = match EventManager::get().try_borrow_mut() {
-        Ok(mut em) => match em.wakeup_exception(1 << info.num() as usize, pid, info) {
-            Ok(resume) => resume,
+    let resume: Rc<Condvar> = match EventManager::get() {
+        Ok(em) => match em.try_borrow_mut() {
+            Ok(mut em) => match em.wakeup_exception(1 << info.num() as usize, pid, info) {
+                Ok(resume) => resume,
+                Err(e) => {
+                    error!("failed to wake up event manager: {:?}", e);
+                    return;
+                },
+            },
             Err(e) => {
-                error!("failed to wake up event manager: {:?}", e);
+                error!("failed to borrow event manager: {:?}", e);
                 return;
             },
         },
         Err(e) => {
-            error!("failed to borrow event manager: {:?}", e);
+            error!("failed to get event manager: {:?}", e);
             return;
         },
     };
@@ -590,17 +762,33 @@ pub fn init(hal: &mut Hal) {
         *entry = None;
     }
 
+    let mut pending_scheduling: [LinkedList<(EventDescriptor, ProcessTerminationInfo)>;
+        SchedulingEvent::NUMBER_EVENTS] = unsafe { mem::zeroed() };
+    for list in pending_scheduling.iter_mut() {
+        *list = LinkedList::default();
+    }
+
+    let mut scheduling_ownership: [Option<ProcessIdentifier>; SchedulingEvent::NUMBER_EVENTS] =
+        unsafe { mem::zeroed() };
+    for entry in scheduling_ownership.iter_mut() {
+        *entry = None;
+    }
+
     let em: RefCell<EventManagerInner> = RefCell::new(EventManagerInner {
         nevents: 0,
         pending_interrupts,
         interrupt_ownership,
         pending_exceptions,
         exception_ownership,
+        pending_scheduling,
+        scheduling_ownership,
         wait: Some(Rc::new(Condvar::new())),
     });
 
+    let manager: EventManager = EventManager(em);
+
     unsafe {
-        MANAGER = EventManager(em);
+        MANAGER = Some(manager);
     }
 
     hal.excpman.register_handler(exception_handler);
