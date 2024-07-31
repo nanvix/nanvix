@@ -39,9 +39,6 @@ fn handle_page_fault(info: EventInformation) {
     if let Err(e) = ::nvx::event::resume(info.id) {
         panic!("failed to resume exception event (error={:?})", e);
     }
-
-    let magic_string: &str = "PANIC: Hello World!\n";
-    let _ = ::nvx::debug::debug(magic_string.as_ptr(), magic_string.len());
 }
 
 fn handle_ipc_requests() {

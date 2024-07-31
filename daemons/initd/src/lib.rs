@@ -92,6 +92,11 @@ pub fn main() {
                     // Deserialize process status.
                     let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
                     ::nvx::log!("process terminated (pid={:?}, status={:?})", pid, status);
+
+                    if pid == ProcessIdentifier::from(1) {
+                        let magic_string: &str = "PANIC: Hello World!\n";
+                        let _ = ::nvx::debug::debug(magic_string.as_ptr(), magic_string.len());
+                    }
                 },
             },
             Err(e) => ::nvx::log!("failed to receive exception message (error={:?})", e),
