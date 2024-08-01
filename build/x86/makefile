@@ -3,8 +3,6 @@
 
 # Toolchain
 export CC := $(TOOLCHAIN_DIR)/i486/bin/i486-elf-gcc
-export LD := $(TOOLCHAIN_DIR)/i486/bin/i486-elf-ld
-export AR := $(TOOLCHAIN_DIR)/i486/bin/i486-elf-ar
 export CARGO := $(HOME)/.cargo/bin/cargo
 export RUSTC := $(HOME)/.cargo/bin/rustc
 export GCC_HOME := $(TOOLCHAIN_DIR)/i486/bin
