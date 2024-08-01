@@ -23,6 +23,7 @@ SECTIONS
 	/* Text section. */
 	.text : ALIGN(PAGE_SIZE)
 	{
+		*(.crt0*)
 		*(.text*)
 	}
 
