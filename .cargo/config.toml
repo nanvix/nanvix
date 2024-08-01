@@ -7,4 +7,8 @@ build-std-features = ["compiler-builtins-mem"]
 
 [build]
 target = ["targets/x86.json"]
-rustflags = ["-Csoft-float=yes", "-Crelocation-model=static"]
+rustflags = [
+    "-Csoft-float=yes",
+    "-Crelocation-model=static",
+    "-Cprefer-dynamic=no",
+]

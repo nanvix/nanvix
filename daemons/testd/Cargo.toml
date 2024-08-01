@@ -10,8 +10,10 @@ authors = ["The Maintainers of Nanvix"]
 description = "Test Daemon"
 homepage = "https://github.com/nanvix"
 
-[lib]
-crate-type = ["staticlib"]
+
+[[bin]]
+name = "testd"
+
 
 [dependencies]
 nvx = { path = "../../nvx" }

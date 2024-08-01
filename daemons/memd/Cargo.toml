@@ -10,8 +10,8 @@ authors = ["The Maintainers of Nanvix"]
 description = "Memory Management Daemon"
 homepage = "https://github.com/nanvix"
 
-[lib]
-crate-type = ["staticlib"]
+[[bin]]
+name = "memd"
 
 [dependencies]
 nvx = { path = "../../nvx" }

@@ -10,8 +10,8 @@ authors = ["The Maintainers of Nanvix"]
 description = "Init Daemon"
 homepage = "https://github.com/nanvix"
 
-[lib]
-crate-type = ["staticlib"]
+[[bin]]
+name = "initd"
 
 [dependencies]
 nvx = { path = "../../nvx" }
