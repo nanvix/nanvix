@@ -168,6 +168,15 @@ fn do_elf32_load(
         return Err(Error::new(ErrorCode::BadFile, "invalid elf file"));
     }
 
+    let entry: VirtualAddress = VirtualAddress::new(elf.e_entry as usize);
+
+    // Check if entry point does not match what we expect.
+    if entry != config::memory_layout::USER_BASE {
+        let reason: &str = "invalid binary entry point";
+        error!("do_elf32_load: {} (entry={:?})", reason, entry);
+        return Err(Error::new(ErrorCode::BadFile, "invalid entry point"));
+    }
+
     let phdr_base = unsafe {
         (elf as *const Elf32Fhdr as *const u8).offset(elf.e_phoff as isize) as *const Elf32Phdr
     };
@@ -226,7 +235,7 @@ fn do_elf32_load(
         }
     }
 
-    Ok(VirtualAddress::new(elf.e_entry as usize))
+    Ok(entry)
 }
 
 pub fn elf32_load(
