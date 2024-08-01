@@ -23,7 +23,7 @@
 		]
 	},
 	"executables": true,
-	"code-model": "kernel",
+	"code-model": "small",
 	"exe-suffix": ".elf",
 	"panic-strategy": "abort"
 }

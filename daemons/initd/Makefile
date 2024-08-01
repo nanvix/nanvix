@@ -13,7 +13,6 @@ OBJS = $(ASM:.S=.$(TARGET).o)
 
 # Objects
 export NAME := initd
-export LIB := lib$(NAME).a
 export BIN := $(NAME).$(EXEC_FORMAT)
 
 #===============================================================================
@@ -23,7 +22,6 @@ export BIN := $(NAME).$(EXEC_FORMAT)
 all: $(OBJS)
 	@PATH=$(GCC_HOME):$(PATH) $(CARGO) build --all $(CARGO_FLAGS)
 ifeq ($(RELEASE), yes)
-	@echo [CARGO] $(LIB)
 	cp --preserve target/$(TARGET)/release/$(BIN) $(BINARIES_DIR)/$(BIN)
 else
 	cp --preserve target/$(TARGET)/debug/$(BIN) $(BINARIES_DIR)/$(BIN)
@@ -32,7 +30,6 @@ endif
 clean:
 	$(CARGO) clean
 	rm -rf Cargo.lock
-	rm -rf $(LIB)
 	rm -rf $(OBJS)
 	rm -rf $(BINARIES_DIR)/$(BIN)
 

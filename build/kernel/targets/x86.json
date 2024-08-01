@@ -12,18 +12,19 @@
 	"linker": "i486-elf-gcc",
 	"pre-link-args": {
 		"gnu-cc": [
-			"-Tbuild/x86/user.ld",
+			"-Tbuild/x86/kernel/kernel.ld",
 			"-nostdlib",
 			"--entry=_do_start"
 		]
 	},
 	"post-link-args": {
 		"gnu-cc": [
-			"build/x86/crt0.x86.o"
+			"src/hal/arch/x86/start.x86.o",
+			"src/hal/arch/x86/hooks.x86.o"
 		]
 	},
 	"executables": true,
-	"code-model": "kernel",
+	"code-model": "small",
 	"exe-suffix": ".elf",
 	"panic-strategy": "abort"
 }

@@ -34,10 +34,6 @@ endif
 # Archiver Options
 export ARFLAGS = rc
 
-# Linker Options
-export LDFLAGS += -z noexecstack
-export LDFLAGS += --gc-sections -static --nostdlib --no-whole-archive
-
 # File format for executables.
 export EXEC_FORMAT := elf
 

@@ -18,6 +18,7 @@
 #![feature(linked_list_retain)] // vmem uses this.
 #![feature(never_type)] // exit() uses this.
 #![no_std]
+#![no_main]
 
 //==================================================================================================
 // Imports

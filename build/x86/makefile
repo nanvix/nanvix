@@ -14,8 +14,3 @@ export CFLAGS += -D__x86__
 
 # Compiler Options
 export CFLAGS += -nostdlib -ffreestanding -march=pentiumpro -Wstack-usage=4096
-
-# Linker Options
-export LDFLAGS += -nostdlib --entry=_do_start
-export LDFLAGS += -z common-page-size=0x1000
-export LDFLAGS += -z max-page-size=0x1000

@@ -13,16 +13,11 @@ OBJS = $(ASM:.S=.$(TARGET).o)
 
 # Objects
 export NAME := kernel
-export LIB := lib$(NAME).a
 export BIN := $(NAME).$(EXEC_FORMAT)
 
 #===============================================================================
 # Toolchain Configuration
 #===============================================================================
-
-# Linker Options
-export LDFLAGS += -L $(BUILD_DIR)/$(TARGET)/kernel -T kernel.ld
-export LDFLAGS += --gc-sections -static --nostdlib --no-whole-archive
 
 # Cargo
 ifneq ($(FEATURES),)
@@ -33,22 +28,17 @@ endif
 # Build Rules
 #===============================================================================
 
-all: all-lib $(OBJS)
-	$(LD) $(LDFLAGS) -o $(BINARIES_DIR)/$(BIN) $(OBJS) $(LIB)
-
-all-lib:
-	$(CARGO) build --lib $(CARGO_FLAGS) $(CARGO_FEATURES)
+all: $(OBJS)
+	@PATH=$(GCC_HOME):$(PATH) $(CARGO) build --all $(CARGO_FLAGS) $(CARGO_FEATURES)
 ifeq ($(RELEASE), yes)
-	@echo [CARGO] $(LIB)
-	cp --preserve target/$(TARGET)/release/$(LIB) $(LIB)
+	cp --preserve target/$(TARGET)/release/$(BIN) $(BINARIES_DIR)/$(BIN)
 else
-	cp --preserve target/$(TARGET)/debug/$(LIB) $(LIB)
+	cp --preserve target/$(TARGET)/debug/$(BIN) $(BINARIES_DIR)/$(BIN)
 endif
 
 clean:
 	$(CARGO) clean
 	rm -rf Cargo.lock
-	rm -rf $(LIB)
 	rm -rf $(OBJS)
 	rm -rf $(BINARIES_DIR)/$(BIN)
 

@@ -10,9 +10,9 @@ authors = ["The Maintainers of Nanvix"]
 description = "Nanvix Kernel"
 homepage = "https://github.com/nanvix"
 
-[lib]
+[[bin]]
+name = "kernel"
 path = "src/kmain.rs"
-crate-type = ["staticlib"]
 
 [dependencies]
 arch = { path = "../arch" }
