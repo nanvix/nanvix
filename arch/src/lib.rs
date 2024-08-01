@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-#![cfg_attr(not(test), no_std)]
+#![no_std]
 
 //==================================================================================================
 // Modules

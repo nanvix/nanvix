@@ -21,7 +21,7 @@ export BIN := $(NAME).$(EXEC_FORMAT)
 #===============================================================================
 
 # Linker Options
-export LDFLAGS += -L $(BUILD_DIR)/$(TARGET) -T kernel.ld
+export LDFLAGS += -L $(BUILD_DIR)/$(TARGET)/kernel -T kernel.ld
 export LDFLAGS += --gc-sections -static --nostdlib --no-whole-archive
 
 # Cargo

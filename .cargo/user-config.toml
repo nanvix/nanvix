@@ -1,0 +1,14 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[unstable]
+build-std = ["core", "alloc", "compiler_builtins"]
+build-std-features = ["compiler-builtins-mem"]
+
+[build]
+target = ["build/user/targets/x86.json"]
+rustflags = [
+    "-Csoft-float=yes",
+    "-Crelocation-model=static",
+    "-Cprefer-dynamic=no",
+]

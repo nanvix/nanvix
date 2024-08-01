@@ -6,7 +6,7 @@
 #===============================================================================
 
 # Asembly Source Files
-ASM := $(BUILD_DIR)/$(TARGET)/crt0.S
+ASM := $(BUILD_DIR)/$(TARGET)/user/crt0.S
 
 # Object Files
 OBJS = $(ASM:.S=.$(TARGET).o)

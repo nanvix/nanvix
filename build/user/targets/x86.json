@@ -1,5 +1,5 @@
 {
-	"cpu": "pentiumpro",
+	"cpu": "pentium4",
 	"data-layout": "e-m:e-p:32:32-f64:32:64-f80:32-n8:16:32-S128",
 	"llvm-target": "i686-unknown-none",
 	"target-endian": "little",
@@ -8,11 +8,22 @@
 	"features": "-mmx,-sse,+soft-float",
 	"os": "none",
 	"arch": "x86",
-	"linker-flavor": "ld",
+	"linker-flavor": "gnu-cc",
+	"linker": "i486-elf-gcc",
 	"pre-link-args": {
-		"ld": [
-			"-m32"
+		"gnu-cc": [
+			"-Tbuild/x86/user/user.ld",
+			"-nostdlib",
+			"--entry=_do_start"
 		]
 	},
+	"post-link-args": {
+		"gnu-cc": [
+			"build/x86/user/crt0.x86.o"
+		]
+	},
+	"executables": true,
+	"code-model": "kernel",
+	"exe-suffix": ".elf",
 	"panic-strategy": "abort"
 }
