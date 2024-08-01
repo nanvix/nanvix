@@ -23,12 +23,7 @@ mod mm;
 
 use nvx::{
     config,
-    ipc::{
-        Message,
-        MessageType,
-    },
     mm::Address,
-    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -58,28 +53,16 @@ macro_rules! test {
 
 #[no_mangle]
 pub fn main() {
+    // Wait unblock message from the init daemon.
+    ::nvx::log!("waiting for unblock message from init daemon...");
+    if let Err(e) = ::nvx::ipc::recv() {
+        ::nvx::log!("failed to receive ack message (error={:?})", e);
+    }
+
     ::nvx::log!("Running test server...");
     pm::test();
     event::test();
     mm::test();
-
-    // Send unblock message to the init daemon.
-    ::nvx::log!("sending unblock message to init daemon...");
-    let message: Message = Message::new(
-        ProcessIdentifier::from(1),
-        ProcessIdentifier::from(2),
-        [0; Message::SIZE],
-        MessageType::Ipc,
-    );
-    if let Err(e) = ::nvx::ipc::send(&message) {
-        ::nvx::log!("failed to unblock init (error={:?})", e);
-    }
-
-    // Wait ack message from the init daemon.
-    ::nvx::log!("waiting for ack message from init daemon...");
-    if let Err(e) = ::nvx::ipc::recv() {
-        ::nvx::log!("failed to receive ack message (error={:?})", e);
-    }
 
     // Force a page fault.
     ::nvx::log!("triggering a page fault...");
@@ -88,5 +71,5 @@ pub fn main() {
         *ptr = 1;
     }
 
-    unreachable!("the test daemon should have been killed by init");
+    unreachable!("the test daemon should have been killed");
 }

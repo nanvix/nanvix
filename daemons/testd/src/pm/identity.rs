@@ -27,13 +27,13 @@ use ::nvx::pm::{
 ///
 /// # Notes
 ///
-/// - This test assumes that the process identifier of the current process is 1. If the system
+/// - This test assumes that the process identifier of the current process is 3. If the system
 ///   image changes, this test must be updated.
 ///
 fn test_getpid() -> bool {
     match nvx::pm::getpid() {
         Ok(pid) => {
-            let expected: ProcessIdentifier = ProcessIdentifier::from(1);
+            let expected: ProcessIdentifier = ProcessIdentifier::from(3);
             if pid == expected {
                 true
             } else {
@@ -60,13 +60,13 @@ fn test_getpid() -> bool {
 ///
 /// # Notes
 ///
-/// - This test assumes that the thread identifier of the current thread is 1. If the system
+/// - This test assumes that the thread identifier of the current thread is 3. If the system
 ///   image changes, this test must be updated.
 ///
 fn test_gettid() -> bool {
     match nvx::pm::gettid() {
         Ok(tid) => {
-            let expected: ThreadIdentifier = ThreadIdentifier::from(1);
+            let expected: ThreadIdentifier = ThreadIdentifier::from(3);
             if tid == expected {
                 true
             } else {

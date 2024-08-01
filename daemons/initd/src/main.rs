@@ -30,14 +30,13 @@ use ::nvx::{
 
 #[no_mangle]
 pub fn main() {
-    // Wait unblock message from the test daemon.
-    if let Err(e) = ::nvx::ipc::recv() {
-        panic!("failed to receive unblock message (error={:?})", e);
-    }
+    ::nvx::log!("running init daemon...");
 
     let mypid: ProcessIdentifier = ::nvx::pm::getpid().expect("failed to get pid");
+    assert_eq!(mypid, ProcessIdentifier::INITD, "initd has unexpected pid");
 
-    ::nvx::log!("running init daemon...");
+    let memd: ProcessIdentifier = ProcessIdentifier::from(2);
+    let testd: ProcessIdentifier = ProcessIdentifier::from(3);
 
     // Acquire process management capabilities.
     ::nvx::log!("acquiring process managemnet capabilities...");
@@ -56,8 +55,7 @@ pub fn main() {
 
     // Unblock memory daemon.
     ::nvx::log!("unblocking memory daemon...");
-    let message: Message =
-        Message::new(mypid, ProcessIdentifier::from(3), [0; Message::SIZE], MessageType::Ipc);
+    let message: Message = Message::new(mypid, memd, [0; Message::SIZE], MessageType::Ipc);
     if let Err(e) = ::nvx::ipc::send(&message) {
         panic!("failed to unblock memory daemon (error={:?})", e);
     }
@@ -69,10 +67,9 @@ pub fn main() {
         Err(e) => panic!("failed to receive ack message from memory daemon (error={:?})", e),
     };
 
-    // Ack test daemon.
+    // Unblock test daemon.
     ::nvx::log!("sending ack message to test daemon...");
-    let message: Message =
-        Message::new(mypid, ProcessIdentifier::from(1), [0; Message::SIZE], MessageType::Ipc);
+    let message: Message = Message::new(mypid, testd, [0; Message::SIZE], MessageType::Ipc);
     if let Err(e) = ::nvx::ipc::send(&message) {
         panic!("failed to unblock test daemon(error={:?})", e);
     }
@@ -94,7 +91,7 @@ pub fn main() {
                     let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
                     ::nvx::log!("process terminated (pid={:?}, status={:?})", pid, status);
 
-                    if pid == ProcessIdentifier::from(1) {
+                    if pid == testd {
                         let magic_string: &str = "PANIC: Hello World!\n";
                         let _ = ::nvx::debug::debug(magic_string.as_ptr(), magic_string.len());
                     }

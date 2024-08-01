@@ -79,7 +79,7 @@ pub fn main() {
     // Ack init daemon.
     ::nvx::log!("sending ack message to init daemon...");
     let message: Message =
-        Message::new(mypid, ProcessIdentifier::from(2), [0; Message::SIZE], MessageType::Ipc);
+        Message::new(mypid, ProcessIdentifier::INITD, [0; Message::SIZE], MessageType::Ipc);
     if let Err(e) = ::nvx::ipc::send(&message) {
         panic!("failed to ack init (error={:?})", e);
     }
