@@ -1,15 +1,15 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-all: all-initd all-memd all-testd
+all: all-procd all-memd all-testd
 
-clean: clean-initd clean-memd clean-testd
+clean: clean-procd clean-memd clean-testd
 
-all-initd:
-	$(MAKE) -C initd all
+all-procd:
+	$(MAKE) -C procd all
 
-clean-initd:
-	$(MAKE) -C initd clean
+clean-procd:
+	$(MAKE) -C procd clean
 
 all-memd:
 	$(MAKE) -C memd all

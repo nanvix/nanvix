@@ -55,7 +55,7 @@ pub fn main() {
 
     ::nvx::log!("running memory management daemon (pid={:?})...", mypid);
 
-    // Wait unblock message from the init daemon.
+    // Wait unblock message from the process manager daemon.
     if let Err(e) = ::nvx::ipc::recv() {
         panic!("failed to receive unblock message (error={:?})", e);
     }
@@ -76,12 +76,12 @@ pub fn main() {
         panic!("failed to subscribe to page faults (error={:?})", e);
     }
 
-    // Ack init daemon.
-    ::nvx::log!("sending ack message to init daemon...");
+    // Ack process manager daemon.
+    ::nvx::log!("sending ack message to process manager daemon...");
     let message: Message =
-        Message::new(mypid, ProcessIdentifier::INITD, [0; Message::SIZE], MessageType::Ipc);
+        Message::new(mypid, ProcessIdentifier::PROCD, [0; Message::SIZE], MessageType::Ipc);
     if let Err(e) = ::nvx::ipc::send(&message) {
-        panic!("failed to ack init (error={:?})", e);
+        panic!("failed to ack process manager daemon (error={:?})", e);
     }
 
     loop {

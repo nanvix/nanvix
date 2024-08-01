@@ -2,16 +2,16 @@
 # Licensed under the MIT License.
 
 [package]
-name = "initd"
+name = "procd"
 version = "0.0.1"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
-description = "Init Daemon"
+description = "Process Management Daemon"
 homepage = "https://github.com/nanvix"
 
 [[bin]]
-name = "initd"
+name = "procd"
 
 [dependencies]
 nvx = { path = "../../nvx" }

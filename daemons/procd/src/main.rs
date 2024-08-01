@@ -30,10 +30,10 @@ use ::nvx::{
 
 #[no_mangle]
 pub fn main() {
-    ::nvx::log!("running init daemon...");
+    ::nvx::log!("running process manager daemon...");
 
     let mypid: ProcessIdentifier = ::nvx::pm::getpid().expect("failed to get pid");
-    assert_eq!(mypid, ProcessIdentifier::INITD, "initd has unexpected pid");
+    assert_eq!(mypid, ProcessIdentifier::PROCD, "procd has unexpected pid");
 
     let memd: ProcessIdentifier = ProcessIdentifier::from(2);
     let testd: ProcessIdentifier = ProcessIdentifier::from(3);

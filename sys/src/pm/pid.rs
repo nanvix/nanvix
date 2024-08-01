@@ -30,8 +30,8 @@ impl ProcessIdentifier {
     /// Identifier of the kernel process.
     pub const KERNEL: ProcessIdentifier = ProcessIdentifier(0);
 
-    /// Identifier of the init daemon process.
-    pub const INITD: ProcessIdentifier = ProcessIdentifier(1);
+    /// Identifier of the process manager daemon process.
+    pub const PROCD: ProcessIdentifier = ProcessIdentifier(1);
 
     pub fn to_ne_bytes(&self) -> [u8; core::mem::size_of::<usize>()] {
         self.0.to_ne_bytes()

@@ -12,7 +12,7 @@ ASM := $(BUILD_DIR)/$(TARGET)/user/crt0.S
 OBJS = $(ASM:.S=.$(TARGET).o)
 
 # Objects
-export NAME := initd
+export NAME := procd
 export BIN := $(NAME).$(EXEC_FORMAT)
 
 #===============================================================================

@@ -53,8 +53,8 @@ macro_rules! test {
 
 #[no_mangle]
 pub fn main() {
-    // Wait unblock message from the init daemon.
-    ::nvx::log!("waiting for unblock message from init daemon...");
+    // Wait unblock message from the process manager daemon.
+    ::nvx::log!("waiting for unblock message from process manager daemon...");
     if let Err(e) = ::nvx::ipc::recv() {
         ::nvx::log!("failed to receive ack message (error={:?})", e);
     }
