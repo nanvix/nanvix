@@ -156,6 +156,22 @@ impl Elf32Fhdr {
     }
 }
 
+///
+/// # Description
+///
+/// Loads an ELF32 binary into a target virtual memory space.
+///
+/// # Parameters
+///
+/// - `mm`: Virtual memory manager.
+/// - `vmem`: Target virtual memory space.
+/// - `elf`: ELF32 file header.
+///
+/// # Returns
+///
+/// Upon successful completion, the entry point of the ELF32 binary is returned. Otherwise, an error
+/// code is returned and the virtual memory space may be left in an inconsistent state.
+///
 fn do_elf32_load(
     mm: &mut VirtMemoryManager,
     vmem: &mut Vmem,
@@ -182,11 +198,13 @@ fn do_elf32_load(
     };
     let phdrs = unsafe { core::slice::from_raw_parts(phdr_base, elf.e_phnum as usize) };
 
+    // Load segments.
     for phdr in phdrs {
         if phdr.p_type != PT_LOAD {
             continue;
         }
 
+        // Check if the segment is not valid.
         if phdr.p_filesz > phdr.p_memsz {
             return Err(Error::new(ErrorCode::BadFile, "corrupted elf file"));
         }
@@ -197,6 +215,7 @@ fn do_elf32_load(
             .map_err(|_| Error::new(ErrorCode::BadFile, "invalid alignment value in elf file"))?;
         let mut virt_addr: usize = klib::align_down(phdr.p_vaddr as usize, align);
 
+        // Compute access permissions.
         let access: AccessPermission = if phdr.p_flags == (PF_R | PF_X) {
             AccessPermission::EXEC
         } else if phdr.p_flags == (PF_R | PF_W) {
@@ -212,6 +231,7 @@ fn do_elf32_load(
         let phys_addr_end: usize =
             klib::align_down(phys_addr_base + phdr.p_filesz as usize, mmu::PAGE_ALIGNMENT);
 
+        // Load segment page by page.
         for phys_addr in (phys_addr_base..=phys_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(virt_addr);
 
