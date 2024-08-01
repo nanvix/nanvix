@@ -34,18 +34,17 @@ fn test_subscribe_unsubscribe() -> bool {
         _ => return false,
     }
 
-    // Page fault exception.
-    let page_fault_exception: ExceptionEvent = ExceptionEvent::Exception14;
+    // Debug exception.
+    let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Attempt to subscribe to event.
-    match ::nvx::event::evctrl(Event::Exception(page_fault_exception), EventCtrlRequest::Register) {
+    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register) {
         Ok(()) => (),
         _ => return false,
     }
 
     // Attempt to unsubscribe from event.
-    match ::nvx::event::evctrl(Event::Exception(page_fault_exception), EventCtrlRequest::Unregister)
-    {
+    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister) {
         Ok(()) => (),
         _ => return false,
     }
@@ -67,11 +66,11 @@ fn test_subscribe_unsubscribe() -> bool {
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_subscribe_without_capability() -> bool {
-    // Page fault exception.
-    let page_fault_exception: ExceptionEvent = ExceptionEvent::Exception14;
+    // Debug exception.
+    let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Attempt to subscribe to event.
-    match ::nvx::event::evctrl(Event::Exception(page_fault_exception), EventCtrlRequest::Register) {
+    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register) {
         Ok(()) => false,
         _ => true,
     }
@@ -93,12 +92,11 @@ fn test_unsubscribe_without_subscription() -> bool {
         _ => return false,
     }
 
-    // Page fault exception.
-    let page_fault_exception: ExceptionEvent = ExceptionEvent::Exception14;
+    // Debug exception.
+    let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Attempt to unsubscribe from event.
-    match ::nvx::event::evctrl(Event::Exception(page_fault_exception), EventCtrlRequest::Unregister)
-    {
+    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister) {
         Ok(()) => return false,
         _ => (),
     }
@@ -126,11 +124,11 @@ fn test_unsubscribe_without_capability() -> bool {
         _ => return false,
     }
 
-    // Page fault exception.
-    let page_fault_exception: ExceptionEvent = ExceptionEvent::Exception14;
+    // Debug exception.
+    let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Subscribe to event.
-    match ::nvx::event::evctrl(Event::Exception(page_fault_exception), EventCtrlRequest::Register) {
+    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register) {
         Ok(()) => (),
         _ => return false,
     }
@@ -142,8 +140,7 @@ fn test_unsubscribe_without_capability() -> bool {
     }
 
     // Attempt to unsubscribe from event.
-    match ::nvx::event::evctrl(Event::Exception(page_fault_exception), EventCtrlRequest::Unregister)
-    {
+    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister) {
         Ok(()) => true,
         _ => false,
     }
