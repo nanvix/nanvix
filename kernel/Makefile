@@ -29,7 +29,7 @@ endif
 #===============================================================================
 
 all: $(OBJS)
-	@PATH=$(GCC_HOME):$(PATH) $(CARGO) build --all $(CARGO_FLAGS) $(CARGO_FEATURES)
+	@PATH=$(GCC_HOME):"$(PATH)" $(CARGO) build --all $(CARGO_FLAGS) $(CARGO_FEATURES)
 ifeq ($(RELEASE), yes)
 	cp --preserve target/$(TARGET)/release/$(BIN) $(BINARIES_DIR)/$(BIN)
 else

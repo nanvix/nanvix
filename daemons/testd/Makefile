@@ -20,7 +20,7 @@ export BIN := $(NAME).$(EXEC_FORMAT)
 #===============================================================================
 
 all: $(OBJS)
-	@PATH=$(GCC_HOME):$(PATH) $(CARGO) build --all $(CARGO_FLAGS)
+	@PATH=$(GCC_HOME):"$(PATH)" $(CARGO) build --all $(CARGO_FLAGS)
 ifeq ($(RELEASE), yes)
 	cp --preserve target/$(TARGET)/release/$(BIN) $(BINARIES_DIR)/$(BIN)
 else
