@@ -31,9 +31,6 @@ ifeq ($(RELEASE), yes)
 export CARGO_FLAGS += --release
 endif
 
-# Archiver Options
-export ARFLAGS = rc
-
 # File format for executables.
 export EXEC_FORMAT := elf
 

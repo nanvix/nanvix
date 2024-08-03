@@ -7,8 +7,5 @@ export CARGO := $(HOME)/.cargo/bin/cargo
 export RUSTC := $(HOME)/.cargo/bin/rustc
 export GCC_HOME := $(TOOLCHAIN_DIR)/i486/bin
 
-# Target Configuration
-export CFLAGS += -D__x86__
-
 # Compiler Options
 export CFLAGS += -nostdlib -ffreestanding -march=pentiumpro -Wstack-usage=4096
