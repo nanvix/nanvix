@@ -1,5 +1,1 @@
-# Copyright(c) The Maintainers of Nanvix.
-# Licensed under the MIT License.
-
-stack-size-threshold = 32768
-array-size-threshold = 4096
+build/rust/clippy.toml
