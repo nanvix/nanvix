@@ -12,14 +12,14 @@
 	"linker": "i486-elf-gcc",
 	"pre-link-args": {
 		"gnu-cc": [
-			"-Tbuild/x86/user/user.ld",
+			"-Tbuild/user/linker/x86/user.ld",
 			"-nostdlib",
 			"--entry=_do_start"
 		]
 	},
 	"post-link-args": {
 		"gnu-cc": [
-			"build/x86/user/crt0.x86.o"
+			"build/user/crt/x86/crt0.x86.o"
 		]
 	},
 	"executables": true,

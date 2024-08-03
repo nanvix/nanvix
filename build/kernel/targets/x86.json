@@ -12,7 +12,7 @@
 	"linker": "i486-elf-gcc",
 	"pre-link-args": {
 		"gnu-cc": [
-			"-Tbuild/x86/kernel/kernel.ld",
+			"-Tbuild/kernel/linker/x86/kernel.ld",
 			"-nostdlib",
 			"--entry=_do_start"
 		]

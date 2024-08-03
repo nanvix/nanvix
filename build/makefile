@@ -7,7 +7,7 @@ DEFAULT_GOAL := all
 # Toolchain Configuration
 #===============================================================================
 
-include $(BUILD_DIR)/$(TARGET)/makefile
+include $(BUILD_DIR)/mk/$(TARGET)/makefile
 
 # Compiler Options
 export CFLAGS += -std=c17
