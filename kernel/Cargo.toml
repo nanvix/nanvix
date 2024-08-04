@@ -15,9 +15,8 @@ name = "kernel"
 path = "src/kmain.rs"
 
 [dependencies]
-arch = { path = "../arch" }
+arch = { git = "https://github.com/nanvix/arch", verison = "0.0.1" }
 sys = { path = "../sys" }
-
 
 [features]
 trace = []
