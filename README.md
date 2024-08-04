@@ -1,10 +1,8 @@
-# Nanvix Kernel Call API
+# Nanvix
 
 [![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/nanvix/shared_invite/zt-1yu30bs28-nsNmw8IwCyh6MBBV~B~X7w)
 
-This repository hosts system services of Nanvix.
-
-> Nanvix is a distributed operating system for manycore platforms.
+This repository hosts of Nanvix, a research operating system.
 
 ## Usage Statement
 
