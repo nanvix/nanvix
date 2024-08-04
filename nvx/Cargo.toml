@@ -14,4 +14,4 @@ homepage = "https://github.com/nanvix"
 crate-type = ["lib"]
 
 [dependencies]
-kcall = { path = "../kcall" }
+kcall = { git = "https://github.com/nanvix/kcall", version = "0.0.1" }
