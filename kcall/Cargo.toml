@@ -15,4 +15,4 @@ crate-type = ["lib"]
 
 
 [dependencies]
-sys = { path = "../sys" }
+sys = { git = "https://github.com/nanvix/sys", version = "0.0.1" }
