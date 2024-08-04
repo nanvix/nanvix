@@ -2,3 +2,7 @@
 	path = build
 	url = https://github.com/nanvix/build
 	branch = dev
+[submodule "kernel"]
+	path = kernel
+	url = https://github.com/nanvix/kernel
+	branch = dev
