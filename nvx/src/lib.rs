@@ -22,7 +22,23 @@ mod panic;
 // Exports
 //==================================================================================================
 
-pub use kcall::*;
+/// Configuration constants.
+pub use kcall::config;
+
+/// Debug facilities.
+pub mod debug;
+
+/// Event handling kernel calls.
+pub mod event;
+
+/// Inter-Process Communication (IPC) kernel calls.
+pub mod ipc;
+
+/// Memory management kernel calls.
+pub mod mm;
+
+/// Process management kernel calls.
+pub mod pm;
 
 #[macro_export]
 macro_rules! log{
