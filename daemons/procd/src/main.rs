@@ -84,8 +84,7 @@ pub fn main() {
                     // Deserialize process identifier.
                     let pid: ProcessIdentifier = ProcessIdentifier::from(u32::from_le_bytes(
                         message.payload[0..4].try_into().unwrap(),
-                    )
-                        as usize);
+                    ));
 
                     // Deserialize process status.
                     let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
