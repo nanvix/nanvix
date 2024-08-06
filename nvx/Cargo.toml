@@ -15,3 +15,4 @@ crate-type = ["lib"]
 
 [dependencies]
 kcall = { git = "https://github.com/nanvix/kcall", branch = "releases/v0.0.2" }
+sys = { git = "https://github.com/nanvix/sys", branch = "releases/v1.1.0" }
