@@ -2,29 +2,19 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Imports
+// Modules
 //==================================================================================================
 
+mod lookup;
 mod message;
-mod syscall;
+mod shutdown;
+mod signup;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use ::kcall::pm::*;
-pub use message::{
-    lookup_response,
-    signup_response,
-    LookupMessage,
-    ProcessManagementMessage,
-    ProcessManagementMessageHeader,
-    ShutdownMessage,
-    SignupMessage,
-    SignupResponseMessage,
-};
-pub use syscall::{
-    lookup,
-    shutdown,
-    signup,
-};
+pub use lookup::*;
+pub use message::*;
+pub use shutdown::*;
+pub use signup::*;

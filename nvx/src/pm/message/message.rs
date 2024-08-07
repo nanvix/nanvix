@@ -26,6 +26,14 @@ use ::error::{
 pub enum ProcessManagementMessageHeader {
     /// Shutdown operation.
     Shutdown = 1,
+    /// Signup operation.
+    Signup = 2,
+    /// Signup response.
+    SignupResponse = 3,
+    /// Lookup operation.
+    Lookup = 4,
+    /// Lookup response.
+    LookupResponse = 5,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -34,6 +42,10 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             1 => Ok(ProcessManagementMessageHeader::Shutdown),
+            2 => Ok(ProcessManagementMessageHeader::Signup),
+            3 => Ok(ProcessManagementMessageHeader::SignupResponse),
+            4 => Ok(ProcessManagementMessageHeader::Lookup),
+            5 => Ok(ProcessManagementMessageHeader::LookupResponse),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -43,6 +55,10 @@ impl From<&ProcessManagementMessageHeader> for u8 {
     fn from(value: &ProcessManagementMessageHeader) -> Self {
         match value {
             ProcessManagementMessageHeader::Shutdown => 1,
+            ProcessManagementMessageHeader::Signup => 2,
+            ProcessManagementMessageHeader::SignupResponse => 3,
+            ProcessManagementMessageHeader::Lookup => 4,
+            ProcessManagementMessageHeader::LookupResponse => 5,
         }
     }
 }
