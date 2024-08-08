@@ -81,7 +81,7 @@ pub struct ProcessManagementMessage {
 }
 
 // NOTE: the size of a process management message must match the size of a system message payload.
-static_assert_size!(ProcessManagementMessage, SystemMessage::PAYLOAD_SIZE);
+::kcall::sys::static_assert_size!(ProcessManagementMessage, SystemMessage::PAYLOAD_SIZE);
 
 impl ProcessManagementMessage {
     /// Size of payload.

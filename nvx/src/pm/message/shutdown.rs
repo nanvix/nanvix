@@ -24,7 +24,7 @@ pub struct ShutdownMessage {
 }
 
 // NOTE: the size of a shutdown message must match the size of a process management message payload.
-static_assert_size!(ShutdownMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::kcall::sys::static_assert_size!(ShutdownMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations

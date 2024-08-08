@@ -19,18 +19,11 @@ pub mod logging;
 mod panic;
 
 //==================================================================================================
-// Imports
-//==================================================================================================
-
-#[macro_use]
-extern crate sys;
-
-//==================================================================================================
 // Exports
 //==================================================================================================
 
-/// Configuration constants.
-pub use kcall::config;
+/// Architecture-specific symbols.
+pub use ::kcall::arch;
 
 /// Debug facilities.
 pub mod debug;
@@ -40,6 +33,9 @@ pub mod event;
 
 /// Inter-Process Communication (IPC) kernel calls.
 pub mod ipc;
+
+/// System configuration.
+pub use ::kcall::sys;
 
 /// Memory management kernel calls.
 pub mod mm;

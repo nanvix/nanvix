@@ -48,7 +48,7 @@ pub struct LookupMessage {
 }
 
 // NOTE: The size of a lookup message must match the size of a process management message payload.
-static_assert_size!(LookupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::kcall::sys::static_assert_size!(LookupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 ///
 /// # Description
@@ -64,7 +64,7 @@ pub struct LookupResponseMessage {
 }
 
 // NOTE: The size of a lookup response message must match the size of a process management message payload.
-static_assert_size!(LookupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::kcall::sys::static_assert_size!(LookupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
