@@ -60,9 +60,22 @@ pub fn main() {
     }
 
     ::nvx::log!("Running test server...");
+
     pm::test();
     event::test();
     mm::test();
+
+    // Lookup memory daemon PID.
+    let name: &str = "memd";
+    ::nvx::log!("looking up memory daemon PID...");
+    match ::nvx::pm::lookup(name) {
+        Ok(pid) => {
+            ::nvx::log!("memory daemon PID: {:?}", pid);
+        },
+        Err(e) => {
+            ::nvx::log!("failed to lookup memory daemon PID (error={:?})", e);
+        },
+    }
 
     // Force a page fault.
     ::nvx::log!("triggering a page fault...");

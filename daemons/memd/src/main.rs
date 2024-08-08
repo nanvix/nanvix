@@ -8,6 +8,7 @@
 // Imports
 //==================================================================================================
 
+use ::error::Error;
 use nvx::{
     event::{
         Event,
@@ -18,10 +19,15 @@ use nvx::{
     ipc::{
         Message,
         MessageType,
+        SystemMessage,
+        SystemMessageHeader,
     },
     pm::{
         Capability,
         ProcessIdentifier,
+        ProcessManagementMessage,
+        ProcessManagementMessageHeader,
+        ShutdownMessage,
     },
 };
 
@@ -42,8 +48,38 @@ fn handle_page_fault(info: EventInformation) {
     }
 }
 
-fn handle_ipc_requests() {
-    unimplemented!()
+fn handle_ipc_request(message: Message) -> Result<bool, Error> {
+    let message: SystemMessage = SystemMessage::from_bytes(message.payload)?;
+
+    // Parse message.
+    match message.header {
+        // Parse process management message.
+        SystemMessageHeader::ProcessManagement => {
+            let message: ProcessManagementMessage =
+                ProcessManagementMessage::from_bytes(message.payload)?;
+            // Parse operation.
+            match message.header {
+                ProcessManagementMessageHeader::Shutdown => {
+                    let message: ShutdownMessage = ShutdownMessage::from_bytes(message.payload);
+                    ::nvx::log!("shutting down (code={:?})...", message.code);
+                    return Ok(true);
+                },
+                _ => {
+                    ::nvx::log!("received unknown process management message, ignoring...");
+                },
+            }
+        },
+        // Parse memory management message.
+        SystemMessageHeader::MemoryManagement => {
+            ::nvx::log!("received memory management message, ignoring...");
+        },
+        // Parse filesystem management message.
+        SystemMessageHeader::FilesystemManagement => {
+            ::nvx::log!("received filesystem management message, ignoring...");
+        },
+    }
+
+    Ok(false)
 }
 
 #[no_mangle]
@@ -52,13 +88,9 @@ pub fn main() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get pid (error={:?})", e),
     };
+    let myname: &str = "memd";
 
     ::nvx::log!("running memory management daemon (pid={:?})...", mypid);
-
-    // Wait unblock message from the process manager daemon.
-    if let Err(e) = ::nvx::ipc::recv() {
-        panic!("failed to receive unblock message (error={:?})", e);
-    }
 
     // Acquire exception management capability.
     ::nvx::log!("acquiring exception management capability...");
@@ -76,19 +108,20 @@ pub fn main() {
         panic!("failed to subscribe to page faults (error={:?})", e);
     }
 
-    // Ack process manager daemon.
-    ::nvx::log!("sending ack message to process manager daemon...");
-    let message: Message =
-        Message::new(mypid, ProcessIdentifier::PROCD, [0; Message::SIZE], MessageType::Ipc);
-    if let Err(e) = ::nvx::ipc::send(&message) {
-        panic!("failed to ack process manager daemon (error={:?})", e);
+    // Signup to the process manager daemon.
+    if let Err(e) = ::nvx::pm::signup(&mypid, &myname) {
+        panic!("failed to signup to process manager daemon (error={:?})", e);
     }
 
     loop {
         match ::nvx::ipc::recv() {
             Ok(message) => match message.message_type {
                 MessageType::Exception => handle_page_fault(EventInformation::from(message)),
-                MessageType::Ipc => handle_ipc_requests(),
+                MessageType::Ipc => match handle_ipc_request(message) {
+                    Ok(true) => break,
+                    Ok(false) => continue,
+                    Err(e) => ::nvx::log!("failed to handle ipc request (error={:?})", e),
+                },
                 MessageType::Interrupt => unreachable!("should not receive interrupts"),
                 MessageType::SchedulingEvent => {
                     unreachable!("should not receive scheduling events")
@@ -96,5 +129,14 @@ pub fn main() {
             },
             Err(e) => ::nvx::log!("failed to receive exception message (error={:?})", e),
         }
+    }
+
+    // Shutdown memory management daemon.
+    if let Err(e) = ::nvx::pm::exit(0) {
+        ::nvx::log!("failed to shutdown memory management daemon (error={:?})", e);
+    }
+
+    loop {
+        ::core::hint::spin_loop();
     }
 }
