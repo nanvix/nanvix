@@ -15,4 +15,4 @@ name = "procd"
 
 [dependencies]
 error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.1" }
-nvx = { path = "../../nvx" }
+nvx = { path = "../../nvx", features = ["slab-allocator"] }
