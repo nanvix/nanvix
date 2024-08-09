@@ -9,6 +9,7 @@
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
 #![feature(panic_info_message)]
+#![cfg_attr(feature = "slab-allocator", feature(allocator_api))]
 #![no_std]
 
 //==================================================================================================
@@ -17,6 +18,13 @@
 
 pub mod logging;
 mod panic;
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+#[cfg(feature = "slab-allocator")]
+extern crate alloc;
 
 //==================================================================================================
 // Exports
@@ -50,4 +58,14 @@ macro_rules! log{
 		use $crate::logging::Logger;
 		let _ = writeln!(&mut Logger, $($arg)*);
 	})
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+pub fn init() {
+    if let Err(e) = mm::init() {
+        panic!("failed to initialize memory manager: {:?}", e);
+    }
 }
