@@ -23,6 +23,7 @@ mod mm;
 
 use nvx::{
     mm::Address,
+    pm::ProcessIdentifier,
     sys::config,
 };
 
@@ -53,28 +54,35 @@ macro_rules! test {
 
 #[no_mangle]
 pub fn main() {
-    // Wait unblock message from the process manager daemon.
-    ::nvx::log!("waiting for unblock message from process manager daemon...");
-    if let Err(e) = ::nvx::ipc::recv() {
-        ::nvx::log!("failed to receive ack message (error={:?})", e);
-    }
-
     ::nvx::log!("Running test server...");
 
     pm::test();
     event::test();
     mm::test();
 
-    // Lookup memory daemon PID.
-    let name: &str = "memd";
-    ::nvx::log!("looking up memory daemon PID...");
-    match ::nvx::pm::lookup(name) {
-        Ok(pid) => {
-            ::nvx::log!("memory daemon PID: {:?}", pid);
-        },
-        Err(e) => {
-            ::nvx::log!("failed to lookup memory daemon PID (error={:?})", e);
-        },
+    let mypid: ProcessIdentifier = match ::nvx::pm::getpid() {
+        Ok(pid) => pid,
+        Err(e) => panic!("failed to get process identifier (error={:?})", e),
+    };
+
+    let myname = "testd";
+
+    // Signup to the process manager daemon.
+    if let Err(e) = ::nvx::pm::signup(&mypid, &myname) {
+        panic!("failed to signup to process manager daemon (error={:?})", e);
+    }
+
+    // Make sure that memory daemon is running.
+    loop {
+        match ::nvx::pm::lookup("memd") {
+            Ok(_) => {
+                ::nvx::log!("memory daemon is running");
+                break;
+            },
+            Err(e) => {
+                ::nvx::log!("memory daemon is not running (error={:?})", e);
+            },
+        }
     }
 
     // Force a page fault.
