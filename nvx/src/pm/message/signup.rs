@@ -49,7 +49,7 @@ pub struct SignupMessage {
 }
 
 // NOTE: The size of a signup message must match the size of a process management message payload.
-static_assert_size!(SignupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::kcall::sys::static_assert_size!(SignupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 ///
 /// # Description
@@ -66,7 +66,7 @@ pub struct SignupResponseMessage {
 }
 
 // NOTE: The size of a signup response message must match the size of a process management message payload.
-static_assert_size!(SignupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::kcall::sys::static_assert_size!(SignupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
