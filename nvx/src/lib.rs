@@ -63,8 +63,20 @@ macro_rules! log{
 // Standalone Functions
 //==================================================================================================
 
+/// Initializes system runtime.
 pub fn init() {
     if let Err(e) = mm::init() {
         panic!("failed to initialize memory manager: {:?}", e);
+    }
+}
+
+/// Cleans up system runtime.
+pub fn cleanup() {
+    if let Err(e) = mm::cleanup() {
+        panic!("failed to cleanup memory manager: {:?}", e);
+    }
+
+    if let Err(e) = ::kcall::pm::exit(0) {
+        panic!("failed to exit process manager daemon: {:?}", e);
     }
 }
