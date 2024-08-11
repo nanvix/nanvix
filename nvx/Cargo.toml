@@ -19,5 +19,5 @@ kcall = { git = "https://github.com/nanvix/kcall", branch = "releases/v2.0.2" }
 allocator = { git = "https://github.com/nanvix/allocator", branch = "releases/v0.0.2" }
 
 [features]
-default = []
+default = ["slab-allocator"]
 slab-allocator = []
