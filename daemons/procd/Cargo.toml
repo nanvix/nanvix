@@ -16,3 +16,15 @@ name = "procd"
 [dependencies]
 error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.2" }
 nvx = { path = "../../nvx", features = ["slab-allocator"] }
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = "symbols"
+debug-assertions = false
+overflow-checks = true
+lto = "fat"
+panic = 'abort'
+incremental = false
+codegen-units = 1
+rpath = false
