@@ -14,9 +14,18 @@ use ::error::Error;
 pub use ::kcall::mm::*;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Heap size (in bytes).
+#[cfg(feature = "slab-allocator")]
+const HEAP_SIZE: usize = ::kcall::sys::constants::MEGABYTE;
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
+/// Initializes memory management runtime.
 pub fn init() -> Result<(), Error> {
     #[cfg(feature = "slab-allocator")]
     {
@@ -29,8 +38,6 @@ pub fn init() -> Result<(), Error> {
         };
 
         let pid: ProcessIdentifier = kcall::pm::getpid()?;
-
-        const HEAP_SIZE: usize = ::kcall::sys::constants::MEGABYTE;
 
         // Acquire memory management capability.
         ::kcall::pm::capctl(kcall::pm::Capability::MemoryManagement, true)?;
@@ -55,5 +62,30 @@ pub fn init() -> Result<(), Error> {
         unsafe { Heap::init(start, HEAP_SIZE)? };
     }
 
+    Ok(())
+}
+
+/// Cleanups the memory management runtime.
+pub fn cleanup() -> Result<(), Error> {
+    #[cfg(feature = "slab-allocator")]
+    {
+        use ::kcall::{
+            arch::mem,
+            pm::ProcessIdentifier,
+            sys::config::memory_layout,
+        };
+
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
+
+        // Unmap underlying pages for the heap.
+        let start: usize = memory_layout::USER_HEAP_BASE.into_raw_value();
+        let end: usize = start + HEAP_SIZE;
+        for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
+            ::kcall::mm::munmap(pid, VirtualAddress::from_raw_value(vaddr)?)?;
+        }
+
+        // Release memory management capability.
+        ::kcall::pm::capctl(kcall::pm::Capability::MemoryManagement, false)?;
+    }
     Ok(())
 }
