@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::log;
-use ::core::hint;
+use ::core::{
+    hint,
+    panic::PanicMessage,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -21,13 +24,9 @@ pub fn panic_implementation(info: &::core::panic::PanicInfo) -> ! {
     };
 
     // Print panic information.
-    if let Some(m) = info.message() {
-        log!("PANIC file='{}', line={} :: {}", file, line, m);
-    } else if let Some(m) = info.payload().downcast_ref::<&str>() {
-        log!("PANIC file='{}', line={} :: {}", file, line, m);
-    } else {
-        log!("PANIC file='{}', line={} :: ?", file, line);
-    }
+    let m: PanicMessage = info.message();
+    log!("PANIC file='{}', line={} :: {}", file, line, m);
+
     loop {
         hint::spin_loop()
     }
