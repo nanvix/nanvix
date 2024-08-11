@@ -1,7 +1,7 @@
 # Copyright(c) 2011-2024 The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-name: x86
+name: x86 Release
 
 on: push
 
@@ -23,8 +23,8 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          rm -rf nanvix
-          git clone --recursive https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH}
+          rm -rf nanvix-release
+          git clone --recursive https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-release
 
   build:
     name: Build
@@ -39,8 +39,8 @@ jobs:
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
         script: |
-          cd nanvix
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 all
+          cd nanvix-release
+          make TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace all
 
   test-isapc:
     name: Test (isapc)
@@ -55,8 +55,8 @@ jobs:
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
         script: |
-          cd nanvix
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 MACHINE=isapc run | tee output.txt
+          cd nanvix-release
+          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace MACHINE=isapc run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "PANIC: Hello World!" ] && exit 1 || exit 0 ;
 
@@ -73,8 +73,8 @@ jobs:
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
         script: |
-          cd nanvix
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 MACHINE=pc run | tee output.txt
+          cd nanvix-release
+          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace MACHINE=pc run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "PANIC: Hello World!" ] && exit 1 || exit 0 ;
 
@@ -92,7 +92,7 @@ jobs:
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
         script: |
-          cd nanvix
+          cd nanvix-release
           git checkout --force dev
           git clean -fdx
           git remote prune origin

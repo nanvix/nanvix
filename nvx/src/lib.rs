@@ -8,7 +8,6 @@
 #![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
-#![feature(panic_info_message)]
 #![cfg_attr(feature = "slab-allocator", feature(allocator_api))]
 #![no_std]
 
