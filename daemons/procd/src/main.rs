@@ -317,9 +317,6 @@ impl Drop for ProcessDaemon {
         if let Err(e) = ::nvx::pm::capctl(Capability::ProcessManagement, false) {
             ::nvx::log!("failed to release process management capabilities (error={:?})", e);
         }
-
-        let magic_string: &str = "PANIC: Hello World!\n";
-        let _ = ::nvx::debug::debug(magic_string.as_ptr(), magic_string.len());
     }
 }
 
@@ -341,7 +338,5 @@ pub fn main() {
         procd.shutdown();
     }
 
-    loop {
-        ::core::hint::spin_loop();
-    }
+    ::nvx::cleanup();
 }
