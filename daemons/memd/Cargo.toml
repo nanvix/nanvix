@@ -15,7 +15,7 @@ name = "memd"
 
 [dependencies]
 error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.2" }
-nvx = { path = "../../nvx" }
+nvx = { path = "../../nvx", default-features = false }
 
 [profile.release]
 opt-level = 3
