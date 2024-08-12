@@ -325,18 +325,14 @@ impl Drop for ProcessDaemon {
 //==================================================================================================
 
 #[no_mangle]
-pub fn main() {
-    ::nvx::init();
+pub fn main() -> Result<(), Error> {
+    let mut procd: ProcessDaemon = match ProcessDaemon::init() {
+        Ok(procd) => procd,
+        Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
+    };
 
-    {
-        let mut procd: ProcessDaemon = match ProcessDaemon::init() {
-            Ok(procd) => procd,
-            Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
-        };
+    procd.run();
+    procd.shutdown();
 
-        procd.run();
-        procd.shutdown();
-    }
-
-    ::nvx::cleanup();
+    Ok(())
 }

@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "testd"
 
 [dependencies]
-nvx = { path = "../../nvx" }
+nvx = { path = "../../nvx", default-features = false }
 
 [profile.release]
 opt-level = 3

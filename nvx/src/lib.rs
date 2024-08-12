@@ -63,20 +63,46 @@ macro_rules! log{
 // Standalone Functions
 //==================================================================================================
 
+#[no_mangle]
+pub extern "C" fn _start() -> ! {
+    extern "Rust" {
+        fn main() -> Result<(), ::error::Error>;
+    }
+
+    // Initializes the system runtime.
+    init();
+
+    // Runs the main function.
+    let status: i32 = match unsafe { main() } {
+        Ok(_) => 0,
+        Err(e) => e.code.into_errno(),
+    };
+
+    // Cleans up the system runtime.
+    cleanup();
+
+    // Exits the runtime.
+    if let Err(e) = ::kcall::pm::exit(status) {
+        panic!("failed to exit process manager daemon: {:?}", e);
+    }
+
+    loop {
+        unsafe {
+            ::core::hint::unreachable_unchecked();
+        }
+    }
+}
+
 /// Initializes system runtime.
-pub fn init() {
+fn init() {
     if let Err(e) = mm::init() {
         panic!("failed to initialize memory manager: {:?}", e);
     }
 }
 
 /// Cleans up system runtime.
-pub fn cleanup() {
+fn cleanup() {
     if let Err(e) = mm::cleanup() {
         panic!("failed to cleanup memory manager: {:?}", e);
-    }
-
-    if let Err(e) = ::kcall::pm::exit(0) {
-        panic!("failed to exit process manager daemon: {:?}", e);
     }
 }
