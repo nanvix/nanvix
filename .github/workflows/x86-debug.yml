@@ -40,10 +40,11 @@ jobs:
         port: ${{ secrets.portnum }}
         script: |
           cd nanvix-debug
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace all
+          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc all
+          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc all
 
-  test-isapc:
-    name: Test (isapc)
+  test-qemu-isapc:
+    name: Test (qemu-isapc)
     needs: [build]
     runs-on: ubuntu-latest
     steps:
@@ -56,13 +57,13 @@ jobs:
         port: ${{ secrets.portnum }}
         script: |
           cd nanvix-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=isapc run | tee output.txt
+          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "PANIC: Hello World!" ] && exit 1 || exit 0 ;
 
-  test-pc:
-    name: Test (pc)
-    needs: [test-isapc]
+  test-qemu-pc:
+    name: Test (qemu-pc)
+    needs: [test-qemu-isapc]
     runs-on: ubuntu-latest
     steps:
     - name: Test
@@ -74,13 +75,13 @@ jobs:
         port: ${{ secrets.portnum }}
         script: |
           cd nanvix-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=pc run | tee output.txt
+          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "PANIC: Hello World!" ] && exit 1 || exit 0 ;
 
   cleanup:
     name: Cleanup
-    needs: test-pc
+    needs: test-qemu-pc
     if: always()
     runs-on: ubuntu-latest
     steps:
