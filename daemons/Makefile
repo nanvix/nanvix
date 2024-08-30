@@ -15,6 +15,7 @@ all-memd:
 	$(MAKE) -C memd all
 
 clean-memd:
+	$(MAKE) -C memd clean
 
 all-testd:
 	$(MAKE) -C testd all

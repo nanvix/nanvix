@@ -9,7 +9,7 @@
 export TARGET ?= x86
 
 # Target Machine
-export MACHINE ?= pc
+export MACHINE ?= qemu-pc
 
 # Verbose build?
 export VERBOSE ?= no
