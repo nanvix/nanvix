@@ -59,7 +59,7 @@ jobs:
           cd nanvix-debug
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "PANIC: Hello World!" ] && exit 1 || exit 0 ;
+          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
 
   test-qemu-pc:
     name: Test (qemu-pc)
@@ -77,7 +77,7 @@ jobs:
           cd nanvix-debug
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "PANIC: Hello World!" ] && exit 1 || exit 0 ;
+          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
 
   cleanup:
     name: Cleanup

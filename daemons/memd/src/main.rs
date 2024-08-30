@@ -123,6 +123,7 @@ pub fn main() {
                     Err(e) => ::nvx::log!("failed to handle ipc request (error={:?})", e),
                 },
                 MessageType::Interrupt => unreachable!("should not receive interrupts"),
+                MessageType::Ikc => unreachable!("should not receive ikc messages"),
                 MessageType::SchedulingEvent => {
                     unreachable!("should not receive scheduling events")
                 },

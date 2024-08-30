@@ -95,6 +95,7 @@ impl ProcessDaemon {
                             }
                         },
                         MessageType::Interrupt => unreachable!("should not receive interrupts"),
+                        MessageType::Ikc => unreachable!("should not receive IKC messages"),
                         MessageType::SchedulingEvent => {
                             match self.handle_scheduling_event(message) {
                                 Ok(true) => break,
