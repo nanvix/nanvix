@@ -14,8 +14,8 @@ homepage = "https://github.com/nanvix"
 name = "procd"
 
 [dependencies]
-error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.3" }
-nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.0.2", features = [
+error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.4" }
+nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.1.0", features = [
     "slab-allocator",
 ] }
 
