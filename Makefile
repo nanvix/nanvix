@@ -58,6 +58,7 @@ include $(BUILD_DIR)/makefile
 
 # Builds everything.
 all: make-dirs $(OBJS)
+	$(MAKE) -C benchmarks all
 	$(MAKE) -C daemons all
 	$(MAKE) -C kernel all
 
@@ -72,6 +73,7 @@ make-dirs: init
 
 # Cleans build.
 clean:
+	$(MAKE) -C benchmarks clean
 	$(MAKE) -C daemons clean
 	$(MAKE) -C kernel clean
 	rm -rf $(LIB)
