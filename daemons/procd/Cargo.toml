@@ -3,7 +3,7 @@
 
 [package]
 name = "procd"
-version = "0.0.3"
+version = "0.0.4"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
@@ -14,8 +14,8 @@ homepage = "https://github.com/nanvix"
 name = "procd"
 
 [dependencies]
-error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.4" }
-nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.1.0", features = [
+error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.5" }
+nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.1.2", features = [
     "slab-allocator",
 ] }
 
