@@ -1,0 +1,30 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "boottime"
+version = "0.0.1"
+license-file = "LICENSE.txt"
+edition = "2021"
+authors = ["The Maintainers of Nanvix"]
+description = "Echo Benchmark"
+homepage = "https://github.com/nanvix"
+
+[[bin]]
+name = "boottime"
+
+[dependencies]
+error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.5" }
+nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.2.0" }
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = "symbols"
+debug-assertions = false
+overflow-checks = true
+lto = "fat"
+panic = 'abort'
+incremental = false
+codegen-units = 1
+rpath = false
