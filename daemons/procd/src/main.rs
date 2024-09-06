@@ -94,6 +94,7 @@ impl ProcessDaemon {
                                 ::nvx::log!("failed to handle IPC message (error={:?})", e);
                             }
                         },
+                        MessageType::Empty => unreachable!("should not receive empty messages"),
                         MessageType::Interrupt => unreachable!("should not receive interrupts"),
                         MessageType::Ikc => unreachable!("should not receive IKC messages"),
                         MessageType::SchedulingEvent => {
