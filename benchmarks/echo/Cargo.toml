@@ -3,7 +3,7 @@
 
 [package]
 name = "echo"
-version = "0.0.2"
+version = "0.0.3"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
@@ -15,7 +15,7 @@ name = "echo"
 
 [dependencies]
 error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.5" }
-nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.2.0", features = [
+nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.3.1", features = [
     "slab-allocator",
 ] }
 
