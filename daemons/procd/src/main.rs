@@ -21,10 +21,6 @@ use ::core::{
     ffi::CStr,
     str,
 };
-use ::error::{
-    Error,
-    ErrorCode,
-};
 use ::nvx::{
     event::{
         Event,
@@ -44,6 +40,10 @@ use ::nvx::{
         ProcessManagementMessage,
         ProcessManagementMessageHeader,
         SignupMessage,
+    },
+    sys::error::{
+        Error,
+        ErrorCode,
     },
 };
 
