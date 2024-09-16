@@ -8,8 +8,7 @@
 // Imports
 //==================================================================================================
 
-use ::error::Error;
-use nvx::{
+use ::nvx::{
     event::{
         Event,
         EventCtrlRequest,
@@ -29,6 +28,7 @@ use nvx::{
         ProcessManagementMessageHeader,
         ShutdownMessage,
     },
+    sys::error::Error,
 };
 
 //==================================================================================================

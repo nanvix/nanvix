@@ -3,7 +3,7 @@
 
 [package]
 name = "boottime"
-version = "0.0.2"
+version = "0.0.3"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
@@ -14,8 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "boottime"
 
 [dependencies]
-error = { git = "https://github.com/nanvix/error", branch = "releases/v0.0.5" }
-nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.3.1" }
+nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.4.0" }
 
 [profile.release]
 opt-level = 3

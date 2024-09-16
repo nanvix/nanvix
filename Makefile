@@ -52,6 +52,11 @@ export IMAGE := nanvix.iso
 
 include $(BUILD_DIR)/makefile
 
+export CFLAGS := gcc
+export CFLAGS := -nostdlib -ffreestanding
+export CFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
+export CFLAGS += -Wstack-usage=4096 -Wall -Wextra -Werror
+
 #===============================================================================
 # Build Rules
 #===============================================================================
