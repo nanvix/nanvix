@@ -134,9 +134,8 @@ pub fn main() {
     }
 
     // Shutdown memory management daemon.
-    if let Err(e) = ::nvx::pm::exit(0) {
-        ::nvx::log!("failed to shutdown memory management daemon (error={:?})", e);
-    }
+    let e = ::nvx::pm::exit(0);
+    ::nvx::log!("failed to shutdown memory management daemon (error={:?})", e);
 
     loop {
         ::core::hint::spin_loop();
