@@ -3,7 +3,7 @@
 
 [package]
 name = "memd"
-version = "0.0.6"
+version = "0.0.7"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
