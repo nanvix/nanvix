@@ -66,6 +66,7 @@ all: make-dirs $(OBJS)
 	$(MAKE) -C benchmarks all
 	$(MAKE) -C daemons all
 	$(MAKE) -C kernel all
+	$(MAKE) -C microvm all
 
 # Performs local initialization.
 init:
@@ -81,6 +82,7 @@ clean:
 	$(MAKE) -C benchmarks clean
 	$(MAKE) -C daemons clean
 	$(MAKE) -C kernel clean
+	$(MAKE) -C microvm clean
 	rm -rf $(LIB)
 	rm -rf $(OBJS)
 	@rm -f $(IMAGE_DIR)/*.$(EXEC_FORMAT)
