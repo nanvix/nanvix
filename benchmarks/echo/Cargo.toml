@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "echo"
 
 [dependencies]
-nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.4.2" }
+nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.4.3" }
 
 [profile.release]
 opt-level = 3
