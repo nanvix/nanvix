@@ -2,16 +2,39 @@
 # Licensed under the MIT License.
 
 #===============================================================================
+# Build Options
+#===============================================================================
+
+# Target Architecture
+export TARGET ?= x86
+
+# Verbose build?
+export VERBOSE ?= no
+
+# Release Version?
+export RELEASE ?= no
+
+#===============================================================================
+# Directories
+#===============================================================================
+
+export ROOT_DIR      := $(CURDIR)
+export BINARIES_DIR  ?= $(ROOT_DIR)/bin
+export BUILD_DIR     := $(ROOT_DIR)/build
+
+#===============================================================================
+# Toolchain
+#===============================================================================
+
+# Toolchain
+export CARGO ?= $(HOME)/.cargo/bin/cargo
+
+#===============================================================================
 # Build Artifacts
 #===============================================================================
 
-# Asembly Source Files
-ASM := $(BUILD_DIR)/user/crt/$(TARGET)/crt0.S
-
-# Object Files
-OBJS = $(ASM:.S=.$(TARGET).o)
-
-# Objects
+# Binary
+export EXEC_FORMAT := elf
 export NAME := boottime
 export BIN := $(NAME).$(EXEC_FORMAT)
 
@@ -19,25 +42,20 @@ export BIN := $(NAME).$(EXEC_FORMAT)
 # Build Rules
 #===============================================================================
 
-all: $(OBJS)
-	PATH=$(GCC_HOME):"$(PATH)" $(CARGO) build --all $(CARGO_FLAGS)
+# Builds everything.
+all: make-dirs
+	$(CARGO) build --all $(CARGO_FLAGS)
 ifeq ($(RELEASE), yes)
 	cp --preserve target/$(TARGET)/release/$(BIN) $(BINARIES_DIR)/$(BIN)
 else
 	cp --preserve target/$(TARGET)/debug/$(BIN) $(BINARIES_DIR)/$(BIN)
 endif
 
+# Creates build directories.
+make-dirs:
+	@mkdir -p $(BINARIES_DIR)
+
 clean:
 	$(CARGO) clean
 	rm -rf Cargo.lock
-	rm -rf $(OBJS)
 	rm -rf $(BINARIES_DIR)/$(BIN)
-
-# Builds an assembly source file.
-%.$(TARGET).o: %.S
-ifeq ($(VERBOSE), no)
-	@echo [CC] $@
-	@$(CC) $(CFLAGS) $< -c -o $@
-else
-	$(CC) $(CFLAGS) $< -c -o $@
-endif
