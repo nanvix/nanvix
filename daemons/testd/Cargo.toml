@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "testd"
 
 [dependencies]
-nvx = { git = "https://github.com/nanvix/nvx", branch = "releases/v0.4.4", default-features = false }
+nvx = { path = "../../nvx", default-features = false }
 
 [build-dependencies]
 cc = "1.1.18"

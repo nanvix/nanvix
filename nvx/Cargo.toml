@@ -2,23 +2,25 @@
 # Licensed under the MIT License.
 
 [package]
-name = "memd"
-version = "0.0.8"
+name = "nvx"
+version = "0.4.4"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
-description = "Memory Management Daemon"
+description = "Nanvix Runtime Library"
 homepage = "https://github.com/nanvix"
 
-[[bin]]
-name = "memd"
+[lib]
+crate-type = ["lib"]
 
 [dependencies]
-nvx = { path = "../../nvx" }
+kernel = { path = "../kernel", features = ["kcall"] }
+talc = "4.4.1"
+spin = "0.9.8"
 
-[build-dependencies]
-cc = "1.1.18"
-cfg-if = "1.0.0"
+[features]
+default = ["allocator"]
+allocator = []
 
 [profile.release]
 opt-level = 3
