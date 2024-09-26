@@ -42,6 +42,7 @@ jobs:
           cd nanvix-release
           make TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace all MACHINE=qemu-isapc
           make TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace all MACHINE=qemu-pc
+          make TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace all MACHINE=qemu-baremetal
 
   test-qemu-isapc:
     name: Test (qemu-isapc)
@@ -79,9 +80,27 @@ jobs:
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
 
+  test-qemu-baremetal:
+    name: Test (qemu-baremetal)
+    needs: [test-qemu-pc]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          cd nanvix-release
+          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-baremetal all run | tee output.txt
+          echo "Magic String: $(cat output.txt | tail -n 1)"
+          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+
   cleanup:
     name: Cleanup
-    needs: test-qemu-pc
+    needs: test-qemu-baremetal
     if: always()
     runs-on: ubuntu-latest
     steps:
