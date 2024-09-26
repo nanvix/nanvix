@@ -63,8 +63,7 @@ export CFLAGS += -Wstack-usage=4096 -Wall -Wextra -Werror
 
 # Builds everything.
 all: make-dirs $(OBJS)
-	$(MAKE) -C benchmarks all
-	$(MAKE) -C daemons all
+	$(MAKE) -C src all
 	$(MAKE) -C kernel all
 	$(MAKE) -C microvm all
 
@@ -79,8 +78,7 @@ make-dirs: init
 
 # Cleans build.
 clean:
-	$(MAKE) -C benchmarks clean
-	$(MAKE) -C daemons clean
+	$(MAKE) -C src clean
 	$(MAKE) -C kernel clean
 	$(MAKE) -C microvm clean
 	rm -rf $(LIB)
