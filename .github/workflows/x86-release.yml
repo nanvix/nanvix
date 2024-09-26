@@ -26,9 +26,28 @@ jobs:
           rm -rf nanvix-release
           git clone --recursive https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-release
 
+  lint:
+    name: Lint
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Clippy
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          cd nanvix-release
+          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc clippy
+          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc clippy
+          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-baremetal clippy
+          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=microvm clippy
+
   build:
     name: Build
-    needs: setup
+    needs: lint
     runs-on: ubuntu-latest
     steps:
     - name: Build
