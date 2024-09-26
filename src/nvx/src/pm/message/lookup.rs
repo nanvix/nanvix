@@ -198,7 +198,7 @@ impl LookupResponseMessage {
     ///
     /// The corresponding byte array.
     ///
-    pub fn as_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
+    pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 }
@@ -282,7 +282,7 @@ pub fn lookup_response(
     // Construct a process management message.
     let pm_message = ProcessManagementMessage::new(
         ProcessManagementMessageHeader::LookupResponse,
-        lookup_response_message.as_bytes(),
+        lookup_response_message.into_bytes(),
     );
 
     // Construct a system message.

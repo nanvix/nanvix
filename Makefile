@@ -82,3 +82,7 @@ clean:
 	@rm -f $(IMAGE_DIR)/*.$(EXEC_FORMAT)
 	@rm -f $(IMAGE)
 	rm -rf $(BINARIES_DIR)/$(BIN)
+
+# Runs clippy.
+clippy:
+	$(MAKE) -C src clippy

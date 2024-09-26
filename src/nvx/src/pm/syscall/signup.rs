@@ -48,7 +48,7 @@ use ::sys::{
 ///
 pub fn signup(pid: &ProcessIdentifier, name: &str) -> Result<(), Error> {
     // Signup to the process manager daemon.
-    crate::pm::message::signup(pid.clone(), &name)?;
+    crate::pm::message::signup(*pid, name)?;
 
     // Wait unblock message from the process manager daemon.
     let message: Message = ::sys::kcall::ipc::recv()?;

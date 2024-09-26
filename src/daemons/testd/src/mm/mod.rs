@@ -22,7 +22,7 @@ use ::nvx::{
 // Tests mmap() and munmap()
 //==================================================================================================
 
-////
+///
 /// # Description
 ///
 /// Attempts to map as read only and then unmap it.

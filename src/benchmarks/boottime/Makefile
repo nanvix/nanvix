@@ -59,3 +59,6 @@ clean:
 	$(CARGO) clean
 	rm -rf Cargo.lock
 	rm -rf $(BINARIES_DIR)/$(BIN)
+
+clippy:
+	$(CARGO) clippy $(CARGO_FLAGS) -- -D warnings

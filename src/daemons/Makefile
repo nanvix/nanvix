@@ -5,11 +5,16 @@ all: all-procd all-memd all-testd
 
 clean: clean-procd clean-memd clean-testd
 
+clippy: clippy-procd clippy-memd clippy-testd
+
 all-procd:
 	$(MAKE) -C procd all
 
 clean-procd:
 	$(MAKE) -C procd clean
+
+clippy-procd:
+	$(MAKE) -C procd clippy
 
 all-memd:
 	$(MAKE) -C memd all
@@ -17,8 +22,14 @@ all-memd:
 clean-memd:
 	$(MAKE) -C memd clean
 
+clippy-memd:
+	$(MAKE) -C memd clippy
+
 all-testd:
 	$(MAKE) -C testd all
 
 clean-testd:
 	$(MAKE) -C testd clean
+
+clippy-testd:
+	$(MAKE) -C testd clippy
