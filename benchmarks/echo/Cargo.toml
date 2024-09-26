@@ -3,7 +3,7 @@
 
 [package]
 name = "echo"
-version = "0.0.5"
+version = "0.0.6"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
