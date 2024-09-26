@@ -63,10 +63,7 @@ export CFLAGS += -Wstack-usage=4096 -Wall -Wextra -Werror
 
 # Builds everything.
 all: make-dirs $(OBJS)
-	$(MAKE) -C benchmarks all
-	$(MAKE) -C daemons all
-	$(MAKE) -C kernel all
-	$(MAKE) -C microvm all
+	$(MAKE) -C src all
 
 # Performs local initialization.
 init:
@@ -79,10 +76,7 @@ make-dirs: init
 
 # Cleans build.
 clean:
-	$(MAKE) -C benchmarks clean
-	$(MAKE) -C daemons clean
-	$(MAKE) -C kernel clean
-	$(MAKE) -C microvm clean
+	$(MAKE) -C src clean
 	rm -rf $(LIB)
 	rm -rf $(OBJS)
 	@rm -f $(IMAGE_DIR)/*.$(EXEC_FORMAT)
