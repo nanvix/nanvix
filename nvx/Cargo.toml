@@ -14,16 +14,13 @@ homepage = "https://github.com/nanvix"
 crate-type = ["lib"]
 
 [dependencies]
-kernel = { git = "https://github.com/nanvix/kernel", branch = "releases/v0.7.1", features = [
-    "kcall",
-] }
+kernel = { path = "../kernel", features = ["kcall"] }
 talc = "4.4.1"
 spin = "0.9.8"
 
 [features]
 default = ["allocator"]
 allocator = []
-
 
 [profile.release]
 opt-level = 3
