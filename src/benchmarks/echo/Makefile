@@ -44,7 +44,7 @@ export BIN := $(NAME).$(EXEC_FORMAT)
 
 # Builds everything.
 all: make-dirs
-	$(CARGO) build --all --verbose $(CARGO_FLAGS)
+	$(CARGO) build --all $(CARGO_FLAGS)
 ifeq ($(RELEASE), yes)
 	cp --preserve target/$(TARGET)/release/$(BIN) $(BINARIES_DIR)/$(BIN)
 else
