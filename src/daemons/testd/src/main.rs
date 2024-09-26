@@ -65,10 +65,10 @@ pub fn main() {
         Err(e) => panic!("failed to get process identifier (error={:?})", e),
     };
 
-    let myname = "testd";
+    let myname: &str = "testd";
 
     // Signup to the process manager daemon.
-    if let Err(e) = ::nvx::pm::signup(&mypid, &myname) {
+    if let Err(e) = ::nvx::pm::signup(&mypid, myname) {
         panic!("failed to signup to process manager daemon (error={:?})", e);
     }
 

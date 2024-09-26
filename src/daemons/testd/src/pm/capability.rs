@@ -23,10 +23,7 @@ use ::nvx::pm::Capability;
 fn test_capctl_exception_control() -> bool {
     // Attempt to acquire and release exception control capability.
     match nvx::pm::capctl(Capability::ExceptionControl, true) {
-        Ok(()) => match nvx::pm::capctl(Capability::ExceptionControl, false) {
-            Ok(()) => true,
-            _ => false,
-        },
+        Ok(()) => matches!(nvx::pm::capctl(Capability::ExceptionControl, false), Ok(())),
         _ => false,
     }
 }
@@ -43,10 +40,7 @@ fn test_capctl_exception_control() -> bool {
 fn test_capctl_interrupt_control() -> bool {
     // Attempt to acquire and release interrupt control capability.
     match nvx::pm::capctl(Capability::InterruptControl, true) {
-        Ok(()) => match nvx::pm::capctl(Capability::InterruptControl, false) {
-            Ok(()) => true,
-            _ => false,
-        },
+        Ok(()) => matches!(nvx::pm::capctl(Capability::InterruptControl, false), Ok(())),
         _ => false,
     }
 }
@@ -63,10 +57,7 @@ fn test_capctl_interrupt_control() -> bool {
 fn test_capctl_io_management() -> bool {
     // Attempt to acquire and release I/O management capability.
     match nvx::pm::capctl(Capability::IoManagement, true) {
-        Ok(()) => match nvx::pm::capctl(Capability::IoManagement, false) {
-            Ok(()) => true,
-            _ => false,
-        },
+        Ok(()) => matches!(nvx::pm::capctl(Capability::IoManagement, false), Ok(())),
         _ => false,
     }
 }
@@ -83,10 +74,7 @@ fn test_capctl_io_management() -> bool {
 fn test_capctl_memory_management() -> bool {
     // Attempt to acquire and release memory management capability.
     match nvx::pm::capctl(Capability::MemoryManagement, true) {
-        Ok(()) => match nvx::pm::capctl(Capability::MemoryManagement, false) {
-            Ok(()) => true,
-            _ => false,
-        },
+        Ok(()) => matches!(nvx::pm::capctl(Capability::MemoryManagement, false), Ok(())),
         _ => false,
     }
 }
@@ -103,10 +91,7 @@ fn test_capctl_memory_management() -> bool {
 fn test_capctl_process_management() -> bool {
     // Attempt to acquire and release process management capability.
     match nvx::pm::capctl(Capability::ProcessManagement, true) {
-        Ok(()) => match nvx::pm::capctl(Capability::ProcessManagement, false) {
-            Ok(()) => true,
-            _ => false,
-        },
+        Ok(()) => matches!(nvx::pm::capctl(Capability::ProcessManagement, false), Ok(())),
         _ => false,
     }
 }
@@ -195,33 +180,28 @@ fn test_capctl_invalid_acquire() -> bool {
 ///
 fn test_capctl_invalid_release() -> bool {
     // Attempt to release exception control capability without acquiring it.
-    match nvx::pm::capctl(Capability::ExceptionControl, false) {
-        Ok(()) => return false,
-        _ => (),
+    if let Ok(()) = nvx::pm::capctl(Capability::ExceptionControl, false) {
+        return false;
     }
 
     // Attempt to release interrupt control capability without acquiring it.
-    match nvx::pm::capctl(Capability::InterruptControl, false) {
-        Ok(()) => return false,
-        _ => (),
+    if let Ok(()) = nvx::pm::capctl(Capability::InterruptControl, false) {
+        return false;
     }
 
     // Attempt to release I/O management capability without acquiring it.
-    match nvx::pm::capctl(Capability::IoManagement, false) {
-        Ok(()) => return false,
-        _ => (),
+    if let Ok(()) = nvx::pm::capctl(Capability::IoManagement, false) {
+        return false;
     }
 
     // Attempt to release memory management capability without acquiring it.
-    match nvx::pm::capctl(Capability::MemoryManagement, false) {
-        Ok(()) => return false,
-        _ => (),
+    if let Ok(()) = nvx::pm::capctl(Capability::MemoryManagement, false) {
+        return false;
     }
 
     // Attempt to release process management capability without acquiring it.
-    match nvx::pm::capctl(Capability::ProcessManagement, false) {
-        Ok(()) => return false,
-        _ => (),
+    if let Ok(()) = nvx::pm::capctl(Capability::ProcessManagement, false) {
+        return false;
     }
 
     true

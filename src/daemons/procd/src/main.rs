@@ -143,28 +143,23 @@ impl ProcessDaemon {
         ::nvx::log!("received system message (header={:?})", message.header);
 
         // Parse message.
-        match message.header {
-            // Parse process management message.
-            SystemMessageHeader::ProcessManagement => {
-                let message: ProcessManagementMessage =
-                    ProcessManagementMessage::from_bytes(message.payload)?;
+        if let SystemMessageHeader::ProcessManagement = message.header {
+            let message: ProcessManagementMessage =
+                ProcessManagementMessage::from_bytes(message.payload)?;
 
-                // Parse operation.
-                match message.header {
-                    ProcessManagementMessageHeader::Signup => {
-                        let message: SignupMessage = SignupMessage::from_bytes(message.payload);
-                        self.handle_signup(destionation, message)?;
-                    },
-                    ProcessManagementMessageHeader::Lookup => {
-                        let message: LookupMessage = LookupMessage::from_bytes(message.payload);
-                        self.handle_lookup(destionation, message)?;
-                    },
-                    // Ignore all other messages.
-                    _ => {},
-                }
-            },
-            // Ignore all other messages.
-            _ => {},
+            // Parse operation.
+            match message.header {
+                ProcessManagementMessageHeader::Signup => {
+                    let message: SignupMessage = SignupMessage::from_bytes(message.payload);
+                    self.handle_signup(destionation, message)?;
+                },
+                ProcessManagementMessageHeader::Lookup => {
+                    let message: LookupMessage = LookupMessage::from_bytes(message.payload);
+                    self.handle_lookup(destionation, message)?;
+                },
+                // Ignore all other messages.
+                _ => {},
+            }
         }
 
         Ok(())
@@ -243,7 +238,7 @@ impl ProcessDaemon {
             ::nvx::log!("looking up process (name={:?}, pname={:?})", name, pname);
 
             if pname == name {
-                ::nvx::pm::lookup_response(destination, pid.clone(), 0)?;
+                ::nvx::pm::lookup_response(destination, *pid, 0)?;
                 return Ok(());
             }
         }
@@ -261,14 +256,14 @@ impl ProcessDaemon {
 
         for (pid, pname) in self.processes.iter() {
             ::nvx::log!("shutting down process (pid={:?}, name={:?})", pid, pname);
-            ::nvx::pm::shutdown(pid.clone(), 0).expect("failed to broadcast shutdown message");
+            ::nvx::pm::shutdown(*pid, 0).expect("failed to broadcast shutdown message");
         }
 
         // Wait for memory daemon to terminate.
-        while self.processes.len() > 0 {
+        while !self.processes.is_empty() {
             match ::nvx::ipc::recv() {
-                Ok(message) => match message.message_type {
-                    MessageType::SchedulingEvent => {
+                Ok(message) => {
+                    if message.message_type == MessageType::SchedulingEvent {
                         // Deserialize process identifier.
                         let pid: ProcessIdentifier = ProcessIdentifier::from(u32::from_le_bytes(
                             message.payload[0..4].try_into().unwrap(),
@@ -293,10 +288,7 @@ impl ProcessDaemon {
                                 status
                             );
                         }
-                    },
-
-                    // Ignore all other messages.
-                    _ => {},
+                    }
                 },
                 Err(e) => ::nvx::log!("failed to receive exception message (error={:?})", e),
             }

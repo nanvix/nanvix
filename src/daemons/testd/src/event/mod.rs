@@ -50,10 +50,7 @@ fn test_subscribe_unsubscribe() -> bool {
     }
 
     // Release exception control capability.
-    match nvx::pm::capctl(Capability::ExceptionControl, false) {
-        Ok(()) => true,
-        _ => false,
-    }
+    matches!(nvx::pm::capctl(Capability::ExceptionControl, false), Ok(()))
 }
 
 ///
@@ -70,10 +67,10 @@ fn test_subscribe_without_capability() -> bool {
     let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Attempt to subscribe to event.
-    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register) {
-        Ok(()) => false,
-        _ => true,
-    }
+    !matches!(
+        ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register),
+        Ok(())
+    )
 }
 
 ///
@@ -96,16 +93,14 @@ fn test_unsubscribe_without_subscription() -> bool {
     let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Attempt to unsubscribe from event.
-    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister) {
-        Ok(()) => return false,
-        _ => (),
+    if let Ok(()) =
+        ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister)
+    {
+        return false;
     }
 
     // Release exception control capability.
-    match nvx::pm::capctl(Capability::ExceptionControl, false) {
-        Ok(()) => true,
-        _ => false,
-    }
+    matches!(nvx::pm::capctl(Capability::ExceptionControl, false), Ok(()))
 }
 
 ///
@@ -140,10 +135,10 @@ fn test_unsubscribe_without_capability() -> bool {
     }
 
     // Attempt to unsubscribe from event.
-    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister) {
-        Ok(()) => true,
-        _ => false,
-    }
+    matches!(
+        ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister),
+        Ok(())
+    )
 }
 
 //==================================================================================================
