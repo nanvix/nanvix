@@ -15,7 +15,9 @@
 // Modules
 //==================================================================================================
 
+#[cfg(target_os = "none")]
 pub mod logging;
+#[cfg(target_os = "none")]
 mod panic;
 
 //==================================================================================================
@@ -30,9 +32,11 @@ extern crate alloc;
 //==================================================================================================
 
 /// Architecture-specific symbols.
+#[cfg(target_os = "none")]
 pub use ::sys::kcall::arch;
 
 /// Debug facilities.
+#[cfg(target_os = "none")]
 pub mod debug;
 
 /// Event handling kernel calls.
@@ -51,6 +55,7 @@ pub mod mm;
 pub mod pm;
 
 #[macro_export]
+#[cfg(target_os = "none")]
 macro_rules! log{
 	( $($arg:tt)* ) => ({
 		use core::fmt::Write;
@@ -64,6 +69,7 @@ macro_rules! log{
 //==================================================================================================
 
 #[no_mangle]
+#[cfg(target_os = "none")]
 pub extern "C" fn _start() -> ! {
     extern "Rust" {
         fn main() -> Result<(), ::sys::error::Error>;
@@ -87,6 +93,7 @@ pub extern "C" fn _start() -> ! {
 }
 
 /// Initializes system runtime.
+#[cfg(target_os = "none")]
 fn init() {
     if let Err(e) = mm::init() {
         panic!("failed to initialize memory manager: {:?}", e);
@@ -94,6 +101,7 @@ fn init() {
 }
 
 /// Cleans up system runtime.
+#[cfg(target_os = "none")]
 fn cleanup() {
     if let Err(e) = mm::cleanup() {
         panic!("failed to cleanup memory manager: {:?}", e);

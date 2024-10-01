@@ -5,10 +5,10 @@
 // Exports
 //==================================================================================================
 
-pub use ::sys::{
-    event::*,
-    kcall::event::{
-        evctrl,
-        resume,
-    },
+pub use ::sys::event::*;
+
+#[cfg(target_os = "none")]
+pub use ::sys::kcall::event::{
+    evctrl,
+    resume,
 };

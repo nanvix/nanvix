@@ -15,10 +15,10 @@ pub use self::message::{
     SystemMessage,
     SystemMessageHeader,
 };
-pub use ::sys::{
-    ipc::*,
-    kcall::ipc::{
-        recv,
-        send,
-    },
+pub use ::sys::ipc::*;
+
+#[cfg(target_os = "none")]
+pub use ::sys::kcall::ipc::{
+    recv,
+    send,
 };

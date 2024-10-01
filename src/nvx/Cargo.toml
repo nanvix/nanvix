@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 crate-type = ["lib"]
 
 [dependencies]
-kernel = { path = "../kernel", features = ["kcall"] }
+kernel = { path = "../kernel", default-features = false, features = ["kcall"] }
 talc = "4.4.1"
 spin = "0.9.8"
 
