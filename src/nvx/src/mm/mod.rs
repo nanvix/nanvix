@@ -5,25 +5,26 @@
 // Modules
 //==================================================================================================
 
-#[cfg(feature = "allocator")]
+#[cfg(all(target_os = "none", feature = "allocator"))]
 mod allocator;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
+#[cfg(target_os = "none")]
 use ::sys::error::Error;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use ::sys::{
-    kcall::mm::{
-        mmap,
-        munmap,
-    },
-    mm::*,
+pub use ::sys::mm::*;
+
+#[cfg(target_os = "none")]
+pub use ::sys::kcall::mm::{
+    mmap,
+    munmap,
 };
 
 //==================================================================================================
@@ -31,7 +32,7 @@ pub use ::sys::{
 //==================================================================================================
 
 /// Heap size (in bytes). This value was chosen arbitrarily.
-#[cfg(feature = "allocator")]
+#[cfg(all(target_os = "none", feature = "allocator"))]
 const HEAP_SIZE: usize = 4 * ::sys::constants::MEGABYTE;
 
 //==================================================================================================
@@ -39,6 +40,7 @@ const HEAP_SIZE: usize = 4 * ::sys::constants::MEGABYTE;
 //==================================================================================================
 
 /// Initializes memory management runtime.
+#[cfg(target_os = "none")]
 pub fn init() -> Result<(), Error> {
     #[cfg(feature = "allocator")]
     {
@@ -80,6 +82,7 @@ pub fn init() -> Result<(), Error> {
 }
 
 /// Cleanups the memory management runtime.
+#[cfg(target_os = "none")]
 pub fn cleanup() -> Result<(), Error> {
     #[cfg(feature = "allocator")]
     {
