@@ -5,9 +5,6 @@
 # Build Options
 #===============================================================================
 
-# Target Architecture
-override TARGET := wasm32-wasip1
-
 # Verbose build?
 export VERBOSE ?= no
 
@@ -34,8 +31,8 @@ export CARGO ?= $(HOME)/.cargo/bin/cargo
 #===============================================================================
 
 # Binary
-export EXEC_FORMAT := wasm
-export NAME := hello
+export EXEC_FORMAT := elf
+export NAME := loader
 export BIN := $(NAME).$(EXEC_FORMAT)
 
 #===============================================================================
@@ -44,11 +41,11 @@ export BIN := $(NAME).$(EXEC_FORMAT)
 
 # Builds everything.
 all: make-dirs
-	$(CARGO) build --target=$(TARGET) --all $(CARGO_FLAGS)
+	$(CARGO) build --all $(CARGO_FLAGS)
 ifeq ($(RELEASE), yes)
-	cp --preserve target/$(TARGET)/release/$(BIN) $(BINARIES_DIR)/$(BIN)
+	cp --preserve target/release/$(NAME) $(BINARIES_DIR)/$(BIN)
 else
-	cp --preserve target/$(TARGET)/debug/$(BIN) $(BINARIES_DIR)/$(BIN)
+	cp --preserve target/debug/$(NAME) $(BINARIES_DIR)/$(BIN)
 endif
 
 # Creates build directories.
