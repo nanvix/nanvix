@@ -32,7 +32,7 @@ clean-kernel:
 	$(MAKE) -C kernel clean
 
 all-microvm:
-	$(MAKE) -C microvm
+	$(MAKE) -C microvm all-microvm
 
 clean-microvm:
-	$(MAKE) -C microvm clean
+	$(MAKE) -C microvm clean-microvm
