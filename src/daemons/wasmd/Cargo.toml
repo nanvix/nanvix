@@ -1,0 +1,44 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "wasmd"
+version = "0.0.1"
+license-file = "LICENSE.txt"
+edition = "2021"
+authors = ["The Maintainers of Nanvix"]
+description = "WASM Daemon"
+homepage = "https://github.com/nanvix"
+
+[[bin]]
+name = "wasmd"
+
+[dependencies]
+wasmi = { version = "0.36.0", default-features = false, features = [
+    "no-hash-maps",
+] }
+
+[target.x86.dependencies]
+nvx = { path = "../../nvx" }
+
+[target.'cfg(unix)'.dependencies]
+nvx = { path = "../../nvx", default-features = false }
+
+[build-dependencies]
+cc = "1.1.18"
+cfg-if = "1.0.0"
+
+[dev-dependencies]
+wasm-bindgen = "0.2.93"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = "symbols"
+debug-assertions = false
+overflow-checks = true
+lto = "fat"
+panic = 'abort'
+incremental = false
+codegen-units = 1
+rpath = false
