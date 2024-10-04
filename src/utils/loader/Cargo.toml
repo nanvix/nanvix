@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 nvx = { path = "../../nvx", default-features = false }
 wasmd = { path = "../../daemons/wasmd" }
-anyhow = "1.0.86"
+anyhow = "1.0.89"
 log = "0.4.22"
 flexi_logger = "0.28.5"
 serde = { version = "1.0", features = ["derive"] }
