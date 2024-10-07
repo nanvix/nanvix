@@ -35,16 +35,18 @@ use ::nvx::{
     },
     pm::{
         Capability,
-        LookupMessage,
         ProcessIdentifier,
-        ProcessManagementMessage,
-        ProcessManagementMessageHeader,
-        SignupMessage,
     },
     sys::error::{
         Error,
         ErrorCode,
     },
+};
+use ::procd::{
+    LookupMessage,
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
+    SignupMessage,
 };
 
 //==================================================================================================
@@ -185,21 +187,19 @@ impl ProcessDaemon {
 
                     ::nvx::log!("signing up process (pid={:?}, name={:?})", pid, s.as_bytes());
                     self.processes.insert(pid, s);
-                    ::nvx::pm::signup_response(destination, pid, 0)?;
+                    ::procd::signup_response(destination, pid, 0)?;
                 },
                 Err(_) => {
-                    ::nvx::pm::signup_response(
+                    ::procd::signup_response(
                         destination,
                         pid,
                         ErrorCode::InvalidArgument.into_errno(),
                     )?;
                 },
             },
-            Err(_) => ::nvx::pm::signup_response(
-                destination,
-                pid,
-                ErrorCode::InvalidArgument.into_errno(),
-            )?,
+            Err(_) => {
+                ::procd::signup_response(destination, pid, ErrorCode::InvalidArgument.into_errno())?
+            },
         }
 
         Ok(())
@@ -215,7 +215,7 @@ impl ProcessDaemon {
             Ok(name) => match name.to_str() {
                 Ok(s) => s,
                 Err(_) => {
-                    ::nvx::pm::lookup_response(
+                    ::procd::lookup_response(
                         destination,
                         ProcessIdentifier::from(u32::MAX),
                         ErrorCode::InvalidArgument.into_errno(),
@@ -224,7 +224,7 @@ impl ProcessDaemon {
                 },
             },
             Err(_) => {
-                ::nvx::pm::lookup_response(
+                ::procd::lookup_response(
                     destination,
                     ProcessIdentifier::from(u32::MAX),
                     ErrorCode::InvalidArgument.into_errno(),
@@ -238,11 +238,11 @@ impl ProcessDaemon {
             ::nvx::log!("looking up process (name={:?}, pname={:?})", name, pname);
 
             if pname == name {
-                ::nvx::pm::lookup_response(destination, *pid, 0)?;
+                ::procd::lookup_response(destination, *pid, 0)?;
                 return Ok(());
             }
         }
-        ::nvx::pm::lookup_response(
+        ::procd::lookup_response(
             destination,
             ProcessIdentifier::from(u32::MAX),
             ErrorCode::NoSuchEntry.into_errno(),
@@ -256,7 +256,7 @@ impl ProcessDaemon {
 
         for (pid, pname) in self.processes.iter() {
             ::nvx::log!("shutting down process (pid={:?}, name={:?})", pid, pname);
-            ::nvx::pm::shutdown(*pid, 0).expect("failed to broadcast shutdown message");
+            ::procd::shutdown(*pid, 0).expect("failed to broadcast shutdown message");
         }
 
         // Wait for memory daemon to terminate.

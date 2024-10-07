@@ -5,24 +5,24 @@
 // Imports
 //==================================================================================================
 
-use crate::{
+use crate::message::{
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
+    ShutdownMessage,
+};
+use ::nvx::{
     ipc::{
         SystemMessage,
         SystemMessageHeader,
     },
-    pm::message::{
-        ProcessManagementMessage,
-        ProcessManagementMessageHeader,
-        ShutdownMessage,
+    sys::{
+        error::Error,
+        ipc::{
+            Message,
+            MessageType,
+        },
+        pm::ProcessIdentifier,
     },
-};
-use ::sys::{
-    error::Error,
-    ipc::{
-        Message,
-        MessageType,
-    },
-    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -66,5 +66,5 @@ pub fn shutdown(destination: ProcessIdentifier, code: u8) -> Result<(), Error> {
     );
 
     // Send IPC message.
-    ::sys::kcall::ipc::send(&ipc_message)
+    ::nvx::ipc::send(&ipc_message)
 }

@@ -5,27 +5,27 @@
 // Imports
 //==================================================================================================
 
-use crate::{
+use crate::message::{
+    LookupResponseMessage,
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
+};
+use ::nvx::{
     ipc::{
         SystemMessage,
         SystemMessageHeader,
     },
-    pm::message::{
-        ProcessManagementMessage,
-        ProcessManagementMessageHeader,
-        SignupResponseMessage,
+    sys::{
+        error::{
+            Error,
+            ErrorCode,
+        },
+        ipc::{
+            Message,
+            MessageType,
+        },
+        pm::ProcessIdentifier,
     },
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::{
-        Message,
-        MessageType,
-    },
-    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -35,25 +35,25 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// Registers a process with the process manager daemon.
+/// Looks up a process by name.
 ///
 /// # Parameters
 ///
-/// - `pid`: Process identifier.
-/// - `name`: Process name.
+/// - `name`: Name of the process.
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+/// Upon successful completion, the process identifier of the process is returned. Upon failure, an
+/// error is returned instead.
 ///
-pub fn signup(pid: &ProcessIdentifier, name: &str) -> Result<(), Error> {
-    // Signup to the process manager daemon.
-    crate::pm::message::signup(*pid, name)?;
+pub fn lookup(name: &str) -> Result<ProcessIdentifier, Error> {
+    // Send lookup message.
+    crate::message::lookup(name)?;
 
-    // Wait unblock message from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::recv()?;
+    // Wait response from the process manager daemon.
+    let message: Message = ::nvx::ipc::recv()?;
 
-    // Parse message.
+    // Parse response.
     match message.message_type {
         MessageType::Ipc => {
             let message: SystemMessage = SystemMessage::from_bytes(message.payload)?;
@@ -67,15 +67,15 @@ pub fn signup(pid: &ProcessIdentifier, name: &str) -> Result<(), Error> {
 
                     // Parse operation.
                     match message.header {
-                        ProcessManagementMessageHeader::SignupResponse => {
-                            let message: SignupResponseMessage =
-                                SignupResponseMessage::from_bytes(message.payload);
+                        ProcessManagementMessageHeader::LookupResponse => {
+                            let message: LookupResponseMessage =
+                                LookupResponseMessage::from_bytes(message.payload);
 
                             match message.status {
-                                0 => Ok(()),
+                                0 => Ok(message.pid),
                                 _ => Err(Error::new(
                                     ErrorCode::try_from(message.status)?,
-                                    "failed to signup to process manager daemon",
+                                    "failed to lookup process",
                                 )),
                             }
                         },

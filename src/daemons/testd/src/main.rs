@@ -68,13 +68,13 @@ pub fn main() {
     let myname: &str = "testd";
 
     // Signup to the process manager daemon.
-    if let Err(e) = ::nvx::pm::signup(&mypid, myname) {
+    if let Err(e) = ::procd::signup(&mypid, myname) {
         panic!("failed to signup to process manager daemon (error={:?})", e);
     }
 
     // Make sure that memory daemon is running.
     loop {
-        match ::nvx::pm::lookup("memd") {
+        match ::procd::lookup("memd") {
             Ok(_) => {
                 ::nvx::log!("memory daemon is running");
                 break;

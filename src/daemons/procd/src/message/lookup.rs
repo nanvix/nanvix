@@ -5,30 +5,30 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    ipc::{
-        SystemMessage,
-        SystemMessageHeader,
-    },
-    pm::message::{
-        ProcessManagementMessage,
-        ProcessManagementMessageHeader,
-    },
+use crate::message::{
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
 };
 use ::core::{
     ffi::CStr,
     mem,
 };
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::nvx::{
     ipc::{
-        Message,
-        MessageType,
+        SystemMessage,
+        SystemMessageHeader,
     },
-    pm::ProcessIdentifier,
+    sys::{
+        error::{
+            Error,
+            ErrorCode,
+        },
+        ipc::{
+            Message,
+            MessageType,
+        },
+        pm::ProcessIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -48,7 +48,7 @@ pub struct LookupMessage {
 }
 
 // NOTE: The size of a lookup message must match the size of a process management message payload.
-::sys::static_assert_size!(LookupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(LookupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 ///
 /// # Description
@@ -64,7 +64,7 @@ pub struct LookupResponseMessage {
 }
 
 // NOTE: The size of a lookup response message must match the size of a process management message payload.
-::sys::static_assert_size!(LookupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(LookupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
@@ -239,7 +239,7 @@ pub fn lookup(name: &str) -> Result<(), Error> {
     );
 
     // FIXME: this should not be required.
-    let mypid = ::sys::kcall::pm::getpid()?;
+    let mypid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Construct a system message.
     let system_message: SystemMessage =
@@ -254,7 +254,7 @@ pub fn lookup(name: &str) -> Result<(), Error> {
     );
 
     // Send IPC message.
-    ::sys::kcall::ipc::send(&ipc_message)
+    ::nvx::ipc::send(&ipc_message)
 }
 
 ///
@@ -298,5 +298,5 @@ pub fn lookup_response(
     );
 
     // Send IPC message.
-    ::sys::kcall::ipc::send(&ipc_message)
+    ::nvx::ipc::send(&ipc_message)
 }

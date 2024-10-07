@@ -15,6 +15,7 @@ name = "testd"
 
 [dependencies]
 nvx = { path = "../../nvx", default-features = false }
+procd = { path = "../procd" }
 
 [build-dependencies]
 cc = "1.1.24"

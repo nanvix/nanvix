@@ -5,30 +5,30 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    ipc::{
-        SystemMessage,
-        SystemMessageHeader,
-    },
-    pm::message::{
-        ProcessManagementMessage,
-        ProcessManagementMessageHeader,
-    },
+use crate::message::{
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
 };
 use ::core::{
     ffi::CStr,
     mem,
 };
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::nvx::{
     ipc::{
-        Message,
-        MessageType,
+        SystemMessage,
+        SystemMessageHeader,
     },
-    pm::ProcessIdentifier,
+    sys::{
+        error::{
+            Error,
+            ErrorCode,
+        },
+        ipc::{
+            Message,
+            MessageType,
+        },
+        pm::ProcessIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -49,7 +49,7 @@ pub struct SignupMessage {
 }
 
 // NOTE: The size of a signup message must match the size of a process management message payload.
-::sys::static_assert_size!(SignupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(SignupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 ///
 /// # Description
@@ -66,7 +66,7 @@ pub struct SignupResponseMessage {
 }
 
 // NOTE: The size of a signup response message must match the size of a process management message payload.
-::sys::static_assert_size!(SignupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(SignupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
@@ -259,7 +259,7 @@ pub fn signup(pid: ProcessIdentifier, name: &str) -> Result<(), Error> {
         Message::new(pid, ProcessIdentifier::PROCD, MessageType::Ipc, system_message.into_bytes());
 
     // Send IPC message.
-    ::sys::kcall::ipc::send(&ipc_message)
+    ::nvx::ipc::send(&ipc_message)
 }
 
 ///
@@ -304,5 +304,5 @@ pub fn signup_response(
     );
 
     // Send IPC message.
-    ::sys::kcall::ipc::send(&ipc_message)
+    ::nvx::ipc::send(&ipc_message)
 }

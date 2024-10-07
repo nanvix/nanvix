@@ -12,9 +12,13 @@ homepage = "https://github.com/nanvix"
 
 [[bin]]
 name = "procd"
+required-features = ["nvx/allocator"]
 
 [dependencies]
-nvx = { path = "../../nvx" }
+nvx = { path = "../../nvx", default-features = false }
+
+[features]
+allocator = ["nvx/allocator"]
 
 [build-dependencies]
 cc = "1.1.24"
