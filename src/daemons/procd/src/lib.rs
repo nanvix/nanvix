@@ -14,13 +14,21 @@
 mod message;
 mod syscall;
 
+#[cfg(feature = "daemon")]
+mod daemon;
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+#[cfg(feature = "allocator")]
+extern crate alloc;
+
 //==================================================================================================
 // Exports
 //==================================================================================================
 
 pub use message::{
-    lookup_response,
-    signup_response,
     LookupMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
@@ -33,3 +41,6 @@ pub use syscall::{
     shutdown,
     signup,
 };
+
+#[cfg(feature = "daemon")]
+pub use daemon::ProcessDaemon;

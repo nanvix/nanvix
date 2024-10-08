@@ -175,6 +175,7 @@ impl SignupResponseMessage {
     /// - `pid`: Process identifier.
     /// - `status`: Status of the signup operation.
     ///
+    #[cfg(feature = "daemon")]
     pub fn new(pid: ProcessIdentifier, status: i32) -> Self {
         Self {
             pid,
@@ -209,6 +210,7 @@ impl SignupResponseMessage {
     ///
     /// The corresponding byte array.
     ///
+    #[cfg(feature = "daemon")]
     pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
@@ -277,6 +279,7 @@ pub fn signup(pid: ProcessIdentifier, name: &str) -> Result<(), Error> {
 ///
 /// Upon successful completion, empty result is returned. Otherwise, an error is returned.
 ///
+#[cfg(feature = "daemon")]
 pub fn signup_response(
     destination: ProcessIdentifier,
     pid: ProcessIdentifier,

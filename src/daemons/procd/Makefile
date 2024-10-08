@@ -29,7 +29,7 @@ export BUILD_DIR     := $(ROOT_DIR)/build
 # Toolchain
 export CARGO ?= $(HOME)/.cargo/bin/cargo
 
-export CARGO_FLAGS += --features allocator
+export CARGO_FLAGS += --features daemon
 
 #===============================================================================
 # Build Artifacts

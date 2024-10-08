@@ -18,7 +18,9 @@ required-features = ["nvx/allocator"]
 nvx = { path = "../../nvx", default-features = false }
 
 [features]
+default = []
 allocator = ["nvx/allocator"]
+daemon = ["allocator"]
 
 [build-dependencies]
 cc = "1.1.24"

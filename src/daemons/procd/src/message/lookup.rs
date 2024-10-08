@@ -164,6 +164,7 @@ impl LookupResponseMessage {
     ///
     /// A new lookup response message.
     ///
+    #[cfg(feature = "daemon")]
     pub fn new(pid: ProcessIdentifier, status: i32) -> Self {
         Self {
             pid,
@@ -198,6 +199,7 @@ impl LookupResponseMessage {
     ///
     /// The corresponding byte array.
     ///
+    #[cfg(feature = "daemon")]
     pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
@@ -271,6 +273,7 @@ pub fn lookup(name: &str) -> Result<(), Error> {
 ///
 /// Upon successful completion, empty result is returned. Otherwise, an error is returned.
 ///
+#[cfg(feature = "daemon")]
 pub fn lookup_response(
     destination: ProcessIdentifier,
     pid: ProcessIdentifier,
