@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::message::{
+    self,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     SignupResponseMessage,
@@ -47,8 +48,9 @@ use ::nvx::{
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
 pub fn signup(pid: &ProcessIdentifier, name: &str) -> Result<(), Error> {
-    // Signup to the process manager daemon.
-    crate::message::signup(*pid, name)?;
+    // Build signup message and send it.
+    let message: Message = message::signup_request(*pid, name)?;
+    ::nvx::ipc::send(&message)?;
 
     // Wait unblock message from the process manager daemon.
     let message: Message = ::nvx::ipc::recv()?;

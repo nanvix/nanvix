@@ -175,7 +175,6 @@ impl SignupResponseMessage {
     /// - `pid`: Process identifier.
     /// - `status`: Status of the signup operation.
     ///
-    #[cfg(feature = "daemon")]
     pub fn new(pid: ProcessIdentifier, status: i32) -> Self {
         Self {
             pid,
@@ -210,7 +209,6 @@ impl SignupResponseMessage {
     ///
     /// The corresponding byte array.
     ///
-    #[cfg(feature = "daemon")]
     pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
@@ -223,7 +221,7 @@ impl SignupResponseMessage {
 ///
 /// # Description
 ///
-/// Sends a signup message.
+/// Builds a signup request message.
 ///
 /// # Parameters
 ///
@@ -232,9 +230,10 @@ impl SignupResponseMessage {
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty result is returned. Otherwise, an error is returned.
+/// Upon successful completion, a signup request message is returned. Otherwise, an error is
+/// returned instead.
 ///
-pub fn signup(pid: ProcessIdentifier, name: &str) -> Result<(), Error> {
+pub fn signup_request(pid: ProcessIdentifier, name: &str) -> Result<Message, Error> {
     let name: [u8; SignupMessage::NAME_SIZE] = {
         let mut buffer: [u8; SignupMessage::NAME_SIZE] = [0; SignupMessage::NAME_SIZE];
         let name_bytes: &[u8] = name.as_bytes();
@@ -260,14 +259,13 @@ pub fn signup(pid: ProcessIdentifier, name: &str) -> Result<(), Error> {
     let ipc_message: Message =
         Message::new(pid, ProcessIdentifier::PROCD, MessageType::Ipc, system_message.into_bytes());
 
-    // Send IPC message.
-    ::nvx::ipc::send(&ipc_message)
+    Ok(ipc_message)
 }
 
 ///
 /// # Description
 ///
-/// Sends a signup response message.
+/// Builds a signup response message.
 ///
 /// # Parameters
 ///
@@ -277,14 +275,14 @@ pub fn signup(pid: ProcessIdentifier, name: &str) -> Result<(), Error> {
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty result is returned. Otherwise, an error is returned.
+/// Upon successful completion, a signup response message is returned. Otherwise, an error is
+/// returned instead.
 ///
-#[cfg(feature = "daemon")]
 pub fn signup_response(
     destination: ProcessIdentifier,
     pid: ProcessIdentifier,
     status: i32,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     // Construct a signup response message.
     let signup_response_message: SignupResponseMessage = SignupResponseMessage::new(pid, status);
 
@@ -306,6 +304,5 @@ pub fn signup_response(
         system_message.into_bytes(),
     );
 
-    // Send IPC message.
-    ::nvx::ipc::send(&ipc_message)
+    Ok(ipc_message)
 }

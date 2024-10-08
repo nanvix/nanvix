@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::message::{
+    self,
     LookupResponseMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
@@ -47,8 +48,9 @@ use ::nvx::{
 /// error is returned instead.
 ///
 pub fn lookup(name: &str) -> Result<ProcessIdentifier, Error> {
-    // Send lookup message.
-    crate::message::lookup(name)?;
+    // Build lookup message and send it.
+    let message: Message = message::lookup_request(name)?;
+    ::nvx::ipc::send(&message)?;
 
     // Wait response from the process manager daemon.
     let message: Message = ::nvx::ipc::recv()?;

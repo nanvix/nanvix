@@ -3,24 +3,16 @@
 
 [package]
 name = "procd"
-version = "0.0.8"
+version = "0.0.1"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
 description = "Process Management Daemon"
 homepage = "https://github.com/nanvix"
 
-[[bin]]
-name = "procd"
-required-features = ["nvx/allocator"]
-
 [dependencies]
-nvx = { path = "../../nvx", default-features = false }
-
-[features]
-default = []
-allocator = ["nvx/allocator"]
-daemon = ["allocator"]
+procd = { path = "../../libs/procd", features = ["daemon"] }
+nvx = { path = "../../nvx" }
 
 [build-dependencies]
 cc = "1.1.24"

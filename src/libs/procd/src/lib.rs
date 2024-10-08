@@ -11,17 +11,17 @@
 // Modules
 //==================================================================================================
 
-mod message;
-mod syscall;
-
 #[cfg(feature = "daemon")]
 mod daemon;
+mod message;
+#[cfg(feature = "syscall")]
+mod syscall;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "allocator")]
+#[cfg(feature = "daemon")]
 extern crate alloc;
 
 //==================================================================================================
@@ -29,16 +29,23 @@ extern crate alloc;
 //==================================================================================================
 
 pub use message::{
+    lookup_request,
+    lookup_response,
+    shutdown_request,
+    signup_request,
+    signup_response,
     LookupMessage,
+    LookupResponseMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     ShutdownMessage,
     SignupMessage,
+    SignupResponseMessage,
 };
 
+#[cfg(feature = "syscall")]
 pub use syscall::{
     lookup,
-    shutdown,
     signup,
 };
 

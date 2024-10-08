@@ -6,11 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    message::{
-        lookup_response,
-        signup_response,
-    },
-    syscall::shutdown,
+    message,
     LookupMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
@@ -153,11 +149,13 @@ impl ProcessDaemon {
             match message.header {
                 ProcessManagementMessageHeader::Signup => {
                     let message: SignupMessage = SignupMessage::from_bytes(message.payload);
-                    self.handle_signup(destionation, message)?;
+                    let message: Message = self.handle_signup(destionation, message)?;
+                    ::nvx::ipc::send(&message)?;
                 },
                 ProcessManagementMessageHeader::Lookup => {
                     let message: LookupMessage = LookupMessage::from_bytes(message.payload);
-                    self.handle_lookup(destionation, message)?;
+                    let message: Message = self.handle_lookup(destionation, message)?;
+                    ::nvx::ipc::send(&message)?;
                 },
                 // Ignore all other messages.
                 _ => {},
@@ -172,7 +170,7 @@ impl ProcessDaemon {
         &mut self,
         destination: ProcessIdentifier,
         message: SignupMessage,
-    ) -> Result<(), Error> {
+    ) -> Result<Message, Error> {
         let pid: ProcessIdentifier = message.pid;
         match CStr::from_bytes_until_nul(&message.name) {
             Ok(cstr) => match cstr.to_str() {
@@ -187,16 +185,18 @@ impl ProcessDaemon {
 
                     ::nvx::log!("signing up process (pid={:?}, name={:?})", pid, s.as_bytes());
                     self.processes.insert(pid, s);
-                    signup_response(destination, pid, 0)?;
+                    message::signup_response(destination, pid, 0)
                 },
-                Err(_) => {
-                    signup_response(destination, pid, ErrorCode::InvalidArgument.into_errno())?;
-                },
+                Err(_) => message::signup_response(
+                    destination,
+                    pid,
+                    ErrorCode::InvalidArgument.into_errno(),
+                ),
             },
-            Err(_) => signup_response(destination, pid, ErrorCode::InvalidArgument.into_errno())?,
+            Err(_) => {
+                message::signup_response(destination, pid, ErrorCode::InvalidArgument.into_errno())
+            },
         }
-
-        Ok(())
     }
 
     // Handles a lookup message.
@@ -204,26 +204,26 @@ impl ProcessDaemon {
         &self,
         destination: ProcessIdentifier,
         message: LookupMessage,
-    ) -> Result<(), Error> {
+    ) -> Result<Message, Error> {
         let name: &str = match CStr::from_bytes_until_nul(&message.name) {
             Ok(name) => match name.to_str() {
                 Ok(s) => s,
                 Err(_) => {
-                    lookup_response(
+                    let message: Message = message::lookup_response(
                         destination,
                         ProcessIdentifier::from(u32::MAX),
                         ErrorCode::InvalidArgument.into_errno(),
                     )?;
-                    return Ok(());
+                    return Ok(message);
                 },
             },
             Err(_) => {
-                lookup_response(
+                let message: Message = message::lookup_response(
                     destination,
                     ProcessIdentifier::from(u32::MAX),
                     ErrorCode::InvalidArgument.into_errno(),
                 )?;
-                return Ok(());
+                return Ok(message);
             },
         };
 
@@ -232,17 +232,17 @@ impl ProcessDaemon {
             ::nvx::log!("looking up process (name={:?}, pname={:?})", name, pname);
 
             if pname == name {
-                lookup_response(destination, *pid, 0)?;
-                return Ok(());
+                let message: Message = message::lookup_response(destination, *pid, 0)?;
+                return Ok(message);
             }
         }
-        lookup_response(
+        let message: Message = message::lookup_response(
             destination,
             ProcessIdentifier::from(u32::MAX),
             ErrorCode::NoSuchEntry.into_errno(),
         )?;
 
-        Ok(())
+        Ok(message)
     }
 
     pub fn shutdown(&mut self) {
@@ -250,7 +250,9 @@ impl ProcessDaemon {
 
         for (pid, pname) in self.processes.iter() {
             ::nvx::log!("shutting down process (pid={:?}, name={:?})", pid, pname);
-            shutdown(*pid, 0).expect("failed to broadcast shutdown message");
+            let message: Message =
+                message::shutdown_request(*pid, 0).expect("failed to broadcast shutdown message");
+            ::nvx::ipc::send(&message).expect("failed to broadcast shutdown message");
         }
 
         // Wait for memory daemon to terminate.

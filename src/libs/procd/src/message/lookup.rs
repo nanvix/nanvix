@@ -164,7 +164,6 @@ impl LookupResponseMessage {
     ///
     /// A new lookup response message.
     ///
-    #[cfg(feature = "daemon")]
     pub fn new(pid: ProcessIdentifier, status: i32) -> Self {
         Self {
             pid,
@@ -199,7 +198,6 @@ impl LookupResponseMessage {
     ///
     /// The corresponding byte array.
     ///
-    #[cfg(feature = "daemon")]
     pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
@@ -212,7 +210,7 @@ impl LookupResponseMessage {
 ///
 /// # Description
 ///
-/// Sends a lookup message.
+/// Builds a lookup request message.
 ///
 /// # Parameters
 ///
@@ -220,9 +218,10 @@ impl LookupResponseMessage {
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty is returned. Otherwise, an error is returned.
+/// Upon successful completion, a look up message is returned. Otherwise, an error is returned
+/// instead.
 ///
-pub fn lookup(name: &str) -> Result<(), Error> {
+pub fn lookup_request(name: &str) -> Result<Message, Error> {
     let name: [u8; LookupMessage::NAME_SIZE] = {
         let mut buffer = [0; LookupMessage::NAME_SIZE];
         let name_bytes = name.as_bytes();
@@ -255,14 +254,13 @@ pub fn lookup(name: &str) -> Result<(), Error> {
         system_message.into_bytes(),
     );
 
-    // Send IPC message.
-    ::nvx::ipc::send(&ipc_message)
+    Ok(ipc_message)
 }
 
 ///
 /// # Description
 ///
-/// Sends a lookup response message.
+/// Builds a lookup response message.
 ///
 /// # Parameters
 ///
@@ -271,14 +269,14 @@ pub fn lookup(name: &str) -> Result<(), Error> {
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty result is returned. Otherwise, an error is returned.
+/// Upon successful completion, a look up response message is returned. Otherwise, an error is
+/// returned instead.
 ///
-#[cfg(feature = "daemon")]
 pub fn lookup_response(
     destination: ProcessIdentifier,
     pid: ProcessIdentifier,
     status: i32,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     // Construct a lookup response message.
     let lookup_response_message = LookupResponseMessage::new(pid, status);
 
@@ -300,6 +298,5 @@ pub fn lookup_response(
         system_message.into_bytes(),
     );
 
-    // Send IPC message.
-    ::nvx::ipc::send(&ipc_message)
+    Ok(ipc_message)
 }
