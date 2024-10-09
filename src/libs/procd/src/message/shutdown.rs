@@ -5,8 +5,21 @@
 // Imports
 //==================================================================================================
 
-use crate::pm::message::ProcessManagementMessage;
+use crate::message::{
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
+};
 use ::core::mem;
+use ::nvx::{
+    ipc::{
+        Message,
+        MessageType,
+        SystemMessage,
+        SystemMessageHeader,
+    },
+    pm::ProcessIdentifier,
+    sys::error::Error,
+};
 
 //==================================================================================================
 // Structures
@@ -24,7 +37,7 @@ pub struct ShutdownMessage {
 }
 
 // NOTE: the size of a shutdown message must match the size of a process management message payload.
-::sys::static_assert_size!(ShutdownMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(ShutdownMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
@@ -83,4 +96,48 @@ impl ShutdownMessage {
     pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Builds a shutdown message.
+///
+/// # Parameters
+///
+/// - `destination`: Destination process.
+/// - `code`: Shutdown code.
+///
+/// # Returns
+///
+/// Upon successful completion, the IPC message is returned. Upon failure, an error is returned
+/// instead.
+///
+pub fn shutdown_request(destination: ProcessIdentifier, code: u8) -> Result<Message, Error> {
+    // Construct a shutdown message.
+    let shutdown_message: ShutdownMessage = ShutdownMessage::new(code);
+
+    // Construct a process management message.
+    let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::Shutdown,
+        shutdown_message.into_bytes(),
+    );
+
+    // Construct a system message.
+    let sys_message: SystemMessage =
+        SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
+
+    // Construct an IPC message.
+    let ipc_message: Message = Message::new(
+        ProcessIdentifier::PROCD,
+        destination,
+        MessageType::Ipc,
+        sys_message.into_bytes(),
+    );
+
+    Ok(ipc_message)
 }

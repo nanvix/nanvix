@@ -3,7 +3,7 @@
 
 [package]
 name = "memd"
-version = "0.0.8"
+version = "0.0.9"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
@@ -15,6 +15,7 @@ name = "memd"
 
 [dependencies]
 nvx = { path = "../../nvx" }
+procd = { path = "../../libs/procd", features = ["syscall"] }
 
 [build-dependencies]
 cc = "1.1.24"

@@ -21,11 +21,13 @@ pub use signup::*;
 // Imports
 //==================================================================================================
 
-use crate::ipc::SystemMessage;
 use ::core::mem;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::nvx::{
+    ipc::SystemMessage,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -97,7 +99,7 @@ pub struct ProcessManagementMessage {
 }
 
 // NOTE: the size of a process management message must match the size of a system message payload.
-::sys::static_assert_size!(ProcessManagementMessage, SystemMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(ProcessManagementMessage, SystemMessage::PAYLOAD_SIZE);
 
 impl ProcessManagementMessage {
     /// Size of payload.

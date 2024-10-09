@@ -5,30 +5,30 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    ipc::{
-        SystemMessage,
-        SystemMessageHeader,
-    },
-    pm::message::{
-        ProcessManagementMessage,
-        ProcessManagementMessageHeader,
-    },
+use crate::message::{
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
 };
 use ::core::{
     ffi::CStr,
     mem,
 };
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::nvx::{
     ipc::{
-        Message,
-        MessageType,
+        SystemMessage,
+        SystemMessageHeader,
     },
-    pm::ProcessIdentifier,
+    sys::{
+        error::{
+            Error,
+            ErrorCode,
+        },
+        ipc::{
+            Message,
+            MessageType,
+        },
+        pm::ProcessIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -38,60 +38,59 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// A message that encodes a sing up operation
+/// A message tha encodes a lookup system call.
 ///
 #[repr(C, packed)]
-pub struct SignupMessage {
-    /// Process identifier.
-    pub pid: ProcessIdentifier,
+pub struct LookupMessage {
+    /// Process name.
     pub name: [u8; Self::NAME_SIZE],
     _padding: [u8; Self::PADDING_SIZE],
 }
 
-// NOTE: The size of a signup message must match the size of a process management message payload.
-::sys::static_assert_size!(SignupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+// NOTE: The size of a lookup message must match the size of a process management message payload.
+::nvx::sys::static_assert_size!(LookupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 ///
 /// # Description
 ///
-/// A message that encodes the response of a signup operation.
+/// A message the encodes the result of a lookup system call
 ///
 #[repr(C, packed)]
-pub struct SignupResponseMessage {
+pub struct LookupResponseMessage {
     /// Process identifier.
     pub pid: ProcessIdentifier,
-    /// Status of the signup operation.
     pub status: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 
-// NOTE: The size of a signup response message must match the size of a process management message payload.
-::sys::static_assert_size!(SignupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+// NOTE: The size of a lookup response message must match the size of a process management message payload.
+::nvx::sys::static_assert_size!(LookupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<'a> SignupMessage {
-    /// Size of name.
+impl<'a> LookupMessage {
+    /// Name size.
     pub const NAME_SIZE: usize = 16;
-    /// Size of padding.
-    pub const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE
-        - mem::size_of::<ProcessIdentifier>()
-        - Self::NAME_SIZE;
+    /// Padding size.
+    pub const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE - Self::NAME_SIZE;
 
     ///
     /// # Description
     ///
-    /// Instantiates a new signup message.
+    /// Creates a new lookup message.
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `name`: Name of the process.
     ///
-    pub fn new(pid: ProcessIdentifier, name: [u8; Self::NAME_SIZE]) -> Self {
+    /// # Returns
+    ///
+    /// A new lookup message.
+    ///
+    pub fn new(name: [u8; Self::NAME_SIZE]) -> Self {
         Self {
-            pid,
             name,
             _padding: [0; Self::PADDING_SIZE],
         }
@@ -100,7 +99,7 @@ impl<'a> SignupMessage {
     ///
     /// # Description
     ///
-    /// Converts a byte array into a signup message.
+    /// Converts a byte array into a lookup message.
     ///
     /// # Parameters
     ///
@@ -108,7 +107,7 @@ impl<'a> SignupMessage {
     ///
     /// # Returns
     ///
-    /// A signup message.
+    /// A lookup message.
     ///
     pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
@@ -117,27 +116,14 @@ impl<'a> SignupMessage {
     ///
     /// # Description
     ///
-    /// Converts a signup message into a byte array.
+    /// Converts a lookup message into a byte array.
     ///
     /// # Returns
     ///
     /// The corresponding byte array.
     ///
-    pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
+    pub fn as_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the `pid` field encoded in the message.
-    ///
-    /// # Returns
-    ///
-    /// The `pid` field encoded in the message.
-    ///
-    pub fn pid(&self) -> ProcessIdentifier {
-        self.pid
     }
 
     ///
@@ -153,14 +139,14 @@ impl<'a> SignupMessage {
         match CStr::from_bytes_until_nul(&self.name) {
             Ok(name) => Ok(name),
             Err(_) => {
-                Err(Error::new(ErrorCode::InvalidMessage, "invalid name field in signup message"))
+                Err(Error::new(ErrorCode::InvalidMessage, "invalid name field in the message"))
             },
         }
     }
 }
 
-impl SignupResponseMessage {
-    /// Size of padding.
+impl LookupResponseMessage {
+    /// Padding size.
     pub const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE
         - mem::size_of::<ProcessIdentifier>()
         - mem::size_of::<i32>();
@@ -168,12 +154,15 @@ impl SignupResponseMessage {
     ///
     /// # Description
     ///
-    /// Instantiates a new signup response message.
+    /// Creates a new lookup response message.
     ///
     /// # Parameters
     ///
     /// - `pid`: Process identifier.
-    /// - `status`: Status of the signup operation.
+    ///
+    /// # Returns
+    ///
+    /// A new lookup response message.
     ///
     pub fn new(pid: ProcessIdentifier, status: i32) -> Self {
         Self {
@@ -186,7 +175,7 @@ impl SignupResponseMessage {
     ///
     /// # Description
     ///
-    /// Converts a byte array into a signup response message.
+    /// Converts a byte array into a lookup response message.
     ///
     /// # Parameters
     ///
@@ -194,7 +183,7 @@ impl SignupResponseMessage {
     ///
     /// # Returns
     ///
-    /// A signup response message.
+    /// A lookup response message.
     ///
     pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
@@ -203,7 +192,7 @@ impl SignupResponseMessage {
     ///
     /// # Description
     ///
-    /// Converts a signup response message into a byte array.
+    /// Converts a lookup response message into a byte array.
     ///
     /// # Returns
     ///
@@ -221,33 +210,80 @@ impl SignupResponseMessage {
 ///
 /// # Description
 ///
-/// Sends a signup message.
+/// Builds a lookup request message.
+///
+/// # Parameters
+///
+/// - `name`: Name of the process.
+///
+/// # Returns
+///
+/// Upon successful completion, a look up message is returned. Otherwise, an error is returned
+/// instead.
+///
+pub fn lookup_request(name: &str) -> Result<Message, Error> {
+    let name: [u8; LookupMessage::NAME_SIZE] = {
+        let mut buffer = [0; LookupMessage::NAME_SIZE];
+        let name_bytes = name.as_bytes();
+        let name_len = core::cmp::min(name_bytes.len(), LookupMessage::NAME_SIZE);
+        buffer[..name_len].copy_from_slice(&name_bytes[..name_len]);
+        buffer
+    };
+
+    // Construct a lookup message.
+    let lookup_message = LookupMessage::new(name);
+
+    // Construct a process management message.
+    let pm_message = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::Lookup,
+        lookup_message.as_bytes(),
+    );
+
+    // FIXME: this should not be required.
+    let mypid: ProcessIdentifier = ::nvx::pm::getpid()?;
+
+    // Construct a system message.
+    let system_message: SystemMessage =
+        SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
+
+    // Construct an IPC  message.
+    let ipc_message: Message = Message::new(
+        mypid,
+        ProcessIdentifier::PROCD,
+        MessageType::Ipc,
+        system_message.into_bytes(),
+    );
+
+    Ok(ipc_message)
+}
+
+///
+/// # Description
+///
+/// Builds a lookup response message.
 ///
 /// # Parameters
 ///
 /// - `pid`: Process identifier.
-/// - `name`: Process name.
+/// - `status`: Status of the lookup operation.
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty result is returned. Otherwise, an error is returned.
+/// Upon successful completion, a look up response message is returned. Otherwise, an error is
+/// returned instead.
 ///
-pub fn signup(pid: ProcessIdentifier, name: &str) -> Result<(), Error> {
-    let name: [u8; SignupMessage::NAME_SIZE] = {
-        let mut buffer: [u8; SignupMessage::NAME_SIZE] = [0; SignupMessage::NAME_SIZE];
-        let name_bytes: &[u8] = name.as_bytes();
-        let len: usize = core::cmp::min(name_bytes.len(), SignupMessage::NAME_SIZE);
-        buffer[..len].copy_from_slice(&name_bytes[..len]);
-        buffer
-    };
-
-    // Construct a signup message.
-    let signup_message: SignupMessage = SignupMessage::new(pid, name);
+pub fn lookup_response(
+    destination: ProcessIdentifier,
+    pid: ProcessIdentifier,
+    status: i32,
+) -> Result<Message, Error> {
+    // Construct a lookup response message.
+    let lookup_response_message = LookupResponseMessage::new(pid, status);
 
     // Construct a process management message.
-    let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
-        ProcessManagementMessageHeader::Signup,
-        signup_message.into_bytes(),
+    let pm_message = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::LookupResponse,
+        lookup_response_message.into_bytes(),
     );
 
     // Construct a system message.
@@ -255,47 +291,6 @@ pub fn signup(pid: ProcessIdentifier, name: &str) -> Result<(), Error> {
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     // Construct an IPC  message.
-    let ipc_message: Message =
-        Message::new(pid, ProcessIdentifier::PROCD, MessageType::Ipc, system_message.into_bytes());
-
-    // Send IPC message.
-    ::sys::kcall::ipc::send(&ipc_message)
-}
-
-///
-/// # Description
-///
-/// Sends a signup response message.
-///
-/// # Parameters
-///
-/// - `destination`: Destination process.
-/// - `pid`: Process identifier.
-/// - `status`: Status of the signup operation.
-///
-/// # Returns
-///
-/// Upon successful completion, empty result is returned. Otherwise, an error is returned.
-///
-pub fn signup_response(
-    destination: ProcessIdentifier,
-    pid: ProcessIdentifier,
-    status: i32,
-) -> Result<(), Error> {
-    // Construct a signup response message.
-    let signup_response_message: SignupResponseMessage = SignupResponseMessage::new(pid, status);
-
-    // Construct a process management message.
-    let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
-        ProcessManagementMessageHeader::SignupResponse,
-        signup_response_message.into_bytes(),
-    );
-
-    // Construct a system message.
-    let system_message: SystemMessage =
-        SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
-
-    // Construct an IPC message.
     let ipc_message: Message = Message::new(
         ProcessIdentifier::PROCD,
         destination,
@@ -303,6 +298,5 @@ pub fn signup_response(
         system_message.into_bytes(),
     );
 
-    // Send IPC message.
-    ::sys::kcall::ipc::send(&ipc_message)
+    Ok(ipc_message)
 }
