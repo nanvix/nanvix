@@ -3,7 +3,7 @@
 
 [package]
 name = "testd"
-version = "0.0.8"
+version = "0.0.9"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
