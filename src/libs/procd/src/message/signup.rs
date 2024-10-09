@@ -256,8 +256,13 @@ pub fn signup_request(pid: ProcessIdentifier, name: &str) -> Result<Message, Err
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     // Construct an IPC  message.
-    let ipc_message: Message =
-        Message::new(pid, ProcessIdentifier::PROCD, MessageType::Ipc, system_message.into_bytes());
+    let ipc_message: Message = Message::new(
+        pid,
+        crate::PROCD,
+        MessageType::Ipc,
+        None,
+        system_message.into_bytes(),
+    );
 
     Ok(ipc_message)
 }
@@ -298,9 +303,10 @@ pub fn signup_response(
 
     // Construct an IPC message.
     let ipc_message: Message = Message::new(
-        ProcessIdentifier::PROCD,
+        crate::PROCD,
         destination,
         MessageType::Ipc,
+        None,
         system_message.into_bytes(),
     );
 

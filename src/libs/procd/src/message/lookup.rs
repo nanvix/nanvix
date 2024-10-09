@@ -247,12 +247,8 @@ pub fn lookup_request(name: &str) -> Result<Message, Error> {
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     // Construct an IPC  message.
-    let ipc_message: Message = Message::new(
-        mypid,
-        ProcessIdentifier::PROCD,
-        MessageType::Ipc,
-        system_message.into_bytes(),
-    );
+    let ipc_message: Message =
+        Message::new(mypid, crate::PROCD, MessageType::Ipc, None, system_message.into_bytes());
 
     Ok(ipc_message)
 }
@@ -292,9 +288,10 @@ pub fn lookup_response(
 
     // Construct an IPC  message.
     let ipc_message: Message = Message::new(
-        ProcessIdentifier::PROCD,
+        crate::PROCD,
         destination,
         MessageType::Ipc,
+        None,
         system_message.into_bytes(),
     );
 
