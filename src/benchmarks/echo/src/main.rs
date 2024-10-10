@@ -41,6 +41,7 @@ pub fn main() -> Result<(), Error> {
                     message.destination,
                     message.source,
                     message.message_type,
+                    None,
                     message.payload,
                 );
 

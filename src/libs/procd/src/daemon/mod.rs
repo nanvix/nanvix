@@ -61,7 +61,7 @@ impl ProcessDaemon {
     pub fn init() -> Result<Self, Error> {
         ::nvx::log!("running process manager daemon...");
         let mypid: ProcessIdentifier = ::nvx::pm::getpid()?;
-        assert_eq!(mypid, ProcessIdentifier::PROCD, "process daemon has unexpected pid");
+        assert_eq!(mypid, crate::PROCD, "process daemon has unexpected pid");
 
         // Acquire process management capabilities.
         ::nvx::log!("acquiring process managemnet capabilities...");

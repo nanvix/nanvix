@@ -215,13 +215,14 @@ impl LookupResponseMessage {
 /// # Parameters
 ///
 /// - `name`: Name of the process.
+/// - `pid`: Process identifier.
 ///
 /// # Returns
 ///
 /// Upon successful completion, a look up message is returned. Otherwise, an error is returned
 /// instead.
 ///
-pub fn lookup_request(name: &str) -> Result<Message, Error> {
+pub fn lookup_request(name: &str, pid: ProcessIdentifier) -> Result<Message, Error> {
     let name: [u8; LookupMessage::NAME_SIZE] = {
         let mut buffer = [0; LookupMessage::NAME_SIZE];
         let name_bytes = name.as_bytes();
@@ -239,20 +240,13 @@ pub fn lookup_request(name: &str) -> Result<Message, Error> {
         lookup_message.as_bytes(),
     );
 
-    // FIXME: this should not be required.
-    let mypid: ProcessIdentifier = ::nvx::pm::getpid()?;
-
     // Construct a system message.
     let system_message: SystemMessage =
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     // Construct an IPC  message.
-    let ipc_message: Message = Message::new(
-        mypid,
-        ProcessIdentifier::PROCD,
-        MessageType::Ipc,
-        system_message.into_bytes(),
-    );
+    let ipc_message: Message =
+        Message::new(pid, crate::PROCD, MessageType::Ipc, None, system_message.into_bytes());
 
     Ok(ipc_message)
 }
@@ -292,9 +286,10 @@ pub fn lookup_response(
 
     // Construct an IPC  message.
     let ipc_message: Message = Message::new(
-        ProcessIdentifier::PROCD,
+        crate::PROCD,
         destination,
         MessageType::Ipc,
+        None,
         system_message.into_bytes(),
     );
 

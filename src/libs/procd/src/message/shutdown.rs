@@ -132,12 +132,8 @@ pub fn shutdown_request(destination: ProcessIdentifier, code: u8) -> Result<Mess
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     // Construct an IPC message.
-    let ipc_message: Message = Message::new(
-        ProcessIdentifier::PROCD,
-        destination,
-        MessageType::Ipc,
-        sys_message.into_bytes(),
-    );
+    let ipc_message: Message =
+        Message::new(crate::PROCD, destination, MessageType::Ipc, None, sys_message.into_bytes());
 
     Ok(ipc_message)
 }

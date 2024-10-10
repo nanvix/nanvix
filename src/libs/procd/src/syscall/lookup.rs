@@ -48,8 +48,11 @@ use ::nvx::{
 /// error is returned instead.
 ///
 pub fn lookup(name: &str) -> Result<ProcessIdentifier, Error> {
+    // FIXME: this should not be required.
+    let mypid: ProcessIdentifier = ::nvx::pm::getpid()?;
+
     // Build lookup message and send it.
-    let message: Message = message::lookup_request(name)?;
+    let message: Message = message::lookup_request(name, mypid)?;
     ::nvx::ipc::send(&message)?;
 
     // Wait response from the process manager daemon.
