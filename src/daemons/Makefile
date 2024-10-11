@@ -1,11 +1,20 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-all: all-procd all-memd all-testd all-wasmd
+all: all-linuxd all-procd all-memd all-testd all-wasmd
 
-clean: clean-procd clean-memd clean-testd clean-wasmd
+clean: clean-linuxd clean-procd clean-memd clean-testd clean-wasmd
 
-clippy: clippy-procd clippy-memd clippy-testd clippy-wasmd
+clippy: clippy-linuxd clippy-procd clippy-memd clippy-testd clippy-wasmd
+
+all-linuxd:
+	$(MAKE) -C linuxd all
+
+clean-linuxd:
+	$(MAKE) -C linuxd clean
+
+clippy-linuxd:
+	$(MAKE) -C linuxd clippy
 
 all-procd:
 	$(MAKE) -C procd all
