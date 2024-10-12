@@ -1,0 +1,36 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "linux-app"
+version = "0.0.1"
+license-file = "LICENSE.txt"
+edition = "2021"
+authors = ["The Maintainers of Nanvix"]
+description = "Linux App Benchmark"
+homepage = "https://github.com/nanvix"
+
+[[bin]]
+name = "linux-app"
+
+[dependencies]
+nvx = { path = "../../nvx" }
+linuxd = { path = "../../libs/linuxd", features = [
+    "syscall",
+], package = "linuxd-lib" }
+
+[build-dependencies]
+cc = "1.1.24"
+cfg-if = "1.0.0"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = "symbols"
+debug-assertions = false
+overflow-checks = true
+lto = "fat"
+panic = 'abort'
+incremental = false
+codegen-units = 1
+rpath = false
