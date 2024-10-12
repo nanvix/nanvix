@@ -1,0 +1,31 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "linuxd"
+version = "0.0.1"
+license-file = "LICENSE.txt"
+edition = "2021"
+authors = ["The Maintainers of Nanvix"]
+description = "Linux Provider Daemon"
+homepage = "https://github.com/nanvix"
+
+[dependencies]
+linuxd = { path = "../../libs/linuxd", package = "linuxd-lib" }
+nvx = { path = "../../nvx" }
+anyhow = "1.0.89"
+log = "0.4.22"
+flexi_logger = "0.29.1"
+libc = "0.2.159"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = "symbols"
+debug-assertions = false
+overflow-checks = true
+lto = "fat"
+panic = 'abort'
+incremental = false
+codegen-units = 1
+rpath = false
