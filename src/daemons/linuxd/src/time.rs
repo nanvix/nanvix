@@ -34,7 +34,7 @@ pub fn do_clock_getres(pid: ProcessIdentifier, request: ClockResolutionRequest) 
 
     let clk_id: libc::clockid_t = request.clock_id;
 
-    if linuxd::time::__is_clock_id_supported(clk_id) {
+    if !linuxd::time::__is_clock_id_supported(clk_id) {
         warn!("unsupported clock_id {:?}", clk_id);
         return crate::build_error(pid, ErrorCode::OperationNotSupported);
     }
@@ -74,7 +74,7 @@ pub fn do_clock_gettime(pid: ProcessIdentifier, request: GetClockTimeRequest) ->
 
     let clk_id: libc::clockid_t = request.clock_id;
 
-    if linuxd::time::__is_clock_id_supported(clk_id) {
+    if !linuxd::time::__is_clock_id_supported(clk_id) {
         warn!("unsupported clock_id {:?}", clk_id);
         return crate::build_error(pid, ErrorCode::OperationNotSupported);
     }
