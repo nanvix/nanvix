@@ -26,7 +26,7 @@ pub struct timespec {
     pub tv_nsec: core::ffi::c_long,
 }
 
-pub type clockid_t = ::core::ffi::c_int;
+pub type clockid_t = i32;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
