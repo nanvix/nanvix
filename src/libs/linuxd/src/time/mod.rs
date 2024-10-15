@@ -37,8 +37,3 @@ cfg_if::cfg_if! {
         };
     }
 }
-
-/// Helper function to check if a `clock_id` is supported.
-pub fn __is_clock_id_supported(clock_id: clockid_t) -> bool {
-    clock_id == CLOCK_REALTIME || clock_id == CLOCK_MONOTONIC
-}
