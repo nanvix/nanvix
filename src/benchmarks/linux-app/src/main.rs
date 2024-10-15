@@ -9,6 +9,7 @@
 //==================================================================================================
 
 use ::linuxd::{
+    fcntl,
     time::{
         self,
         timespec,
@@ -53,6 +54,21 @@ pub fn main() -> Result<(), Error> {
         },
         errno => {
             ::nvx::log!("failed to get clock time: {:?}", errno);
+        },
+    }
+
+    // Create a file named `foo.txt`.
+    match fcntl::openat(
+        fcntl::AT_FDCWD,
+        "foo.tmp",
+        fcntl::O_CREAT | fcntl::O_RDONLY,
+        fcntl::S_IRUSR | fcntl::S_IWUSR,
+    ) {
+        fd if fd >= 0 => {
+            ::nvx::log!("opened file foo.txt with fd {}", fd);
+        },
+        errno => {
+            ::nvx::log!("failed to open file foo.txt: {:?}", errno);
         },
     }
 

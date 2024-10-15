@@ -18,6 +18,9 @@ pub mod time;
 /// Virtual environments.
 pub mod venv;
 
+/// File control operations.
+pub mod fcntl;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -51,6 +54,8 @@ pub enum LinuxDaemonMessageHeader {
     JoinEnvResponse,
     LeaveEnvRequest,
     LeaveEnvResponse,
+    OpenAtRequest,
+    OpenAtResponse,
 }
 
 #[repr(C)]

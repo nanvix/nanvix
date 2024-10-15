@@ -12,6 +12,7 @@
 //==================================================================================================
 
 mod args;
+mod fcntl;
 mod time;
 mod venv;
 
@@ -28,6 +29,7 @@ use ::anyhow::Result;
 use ::core::panic;
 use ::flexi_logger::Logger;
 use ::linuxd::{
+    fcntl::message::OpenAtRequest,
     time::message::{
         ClockResolutionRequest,
         GetClockTimeRequest,
@@ -147,6 +149,11 @@ impl ProcessDaemon {
                                     let request: GetClockTimeRequest =
                                         GetClockTimeRequest::from_bytes(message.payload);
                                     time::do_clock_gettime(source, request)
+                                },
+                                LinuxDaemonMessageHeader::OpenAtRequest => {
+                                    let request: OpenAtRequest =
+                                        OpenAtRequest::from_bytes(message.payload);
+                                    fcntl::do_open_at(source, request)
                                 },
                                 _ => self.handle_bad_message(source, &message),
                             };
