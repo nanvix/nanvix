@@ -17,7 +17,10 @@ use linuxd::time::{
 use nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -32,12 +35,13 @@ pub fn do_clock_getres(pid: ProcessIdentifier, request: ClockResolutionRequest) 
         tv_nsec: 0,
     };
 
-    let clk_id: libc::clockid_t = request.clock_id;
-
-    if !linuxd::time::__is_clock_id_supported(clk_id) {
-        warn!("unsupported clock_id {:?}", clk_id);
-        return crate::build_error(pid, ErrorCode::OperationNotSupported);
-    }
+    let clk_id: libc::clockid_t = match LibcClockId::try_from(request.clock_id) {
+        Ok(clk_id) => clk_id.into(),
+        Err(error) => {
+            warn!("{:?}", error);
+            return crate::build_error(pid, ErrorCode::OperationNotSupported);
+        },
+    };
 
     debug!("libc::clock_getres(): clk_id={:?}", clk_id);
     match unsafe { libc::clock_getres(clk_id, &mut res) } {
@@ -72,12 +76,13 @@ pub fn do_clock_gettime(pid: ProcessIdentifier, request: GetClockTimeRequest) ->
         tv_nsec: 0,
     };
 
-    let clk_id: libc::clockid_t = request.clock_id;
-
-    if !linuxd::time::__is_clock_id_supported(clk_id) {
-        warn!("unsupported clock_id {:?}", clk_id);
-        return crate::build_error(pid, ErrorCode::OperationNotSupported);
-    }
+    let clk_id: libc::clockid_t = match LibcClockId::try_from(request.clock_id) {
+        Ok(clk_id) => clk_id.into(),
+        Err(error) => {
+            warn!("{:?}", error);
+            return crate::build_error(pid, ErrorCode::OperationNotSupported);
+        },
+    };
 
     debug!("libc::clock_gettime(): clk_id={:?}", clk_id);
     match unsafe { libc::clock_gettime(clk_id, &mut tp) } {
@@ -99,3 +104,27 @@ pub fn do_clock_gettime(pid: ProcessIdentifier, request: GetClockTimeRequest) ->
         },
     }
 }
+
+//==================================================================================================
+// LibcClockId
+//==================================================================================================
+
+/// Wrapper for `libc::clockid_t`.
+struct LibcClockId(libc::clockid_t);
+
+impl From<LibcClockId> for libc::clockid_t {
+    fn from(clk_id: LibcClockId) -> Self {
+        clk_id.0
+    }
+}
+
+impl LibcClockId {
+    fn try_from(clk_id: time::clockid_t) -> Result<Self, ::nvx::sys::error::Error> {
+        match clk_id {
+            time::CLOCK_REALTIME => Ok(LibcClockId(libc::CLOCK_REALTIME)),
+            time::CLOCK_MONOTONIC => Ok(LibcClockId(libc::CLOCK_MONOTONIC)),
+            _ => Err(Error::new(ErrorCode::OperationNotSupported, "unsupported clock_id")),
+        }
+    }
+}
+
