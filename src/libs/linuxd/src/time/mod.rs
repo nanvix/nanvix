@@ -20,10 +20,7 @@ pub type time_t = i64;
 
 pub struct timespec {
     pub tv_sec: time_t,
-    #[cfg(all(target_arch = "x86_64", target_pointer_width = "32"))]
     pub tv_nsec: i64,
-    #[cfg(not(all(target_arch = "x86_64", target_pointer_width = "32")))]
-    pub tv_nsec: core::ffi::c_long,
 }
 
 pub type clockid_t = i32;
