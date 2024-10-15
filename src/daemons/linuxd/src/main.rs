@@ -28,6 +28,10 @@ use ::anyhow::Result;
 use ::core::panic;
 use ::flexi_logger::Logger;
 use ::linuxd::{
+    time::message::{
+        ClockResolutionRequest,
+        GetClockTimeRequest,
+    },
     venv::message::{
         JoinEnvRequest,
         LeaveEnvRequest,
@@ -61,14 +65,6 @@ use ::std::{
         TcpStream,
     },
     sync::Once,
-};
-use linuxd::time::message::{
-    ClockResolutionRequest,
-    GetClockTimeRequest,
-};
-use time::{
-    do_clock_getres,
-    do_clock_gettime,
 };
 
 //==================================================================================================
@@ -145,12 +141,12 @@ impl ProcessDaemon {
                                 LinuxDaemonMessageHeader::GetClockResolutionRequest => {
                                     let request: ClockResolutionRequest =
                                         ClockResolutionRequest::from_bytes(message.payload);
-                                    do_clock_getres(source, request)
+                                    time::do_clock_getres(source, request)
                                 },
                                 LinuxDaemonMessageHeader::GetClockTimeRequest => {
                                     let request: GetClockTimeRequest =
                                         GetClockTimeRequest::from_bytes(message.payload);
-                                    do_clock_gettime(source, request)
+                                    time::do_clock_gettime(source, request)
                                 },
                                 _ => self.handle_bad_message(source, &message),
                             };
