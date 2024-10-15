@@ -30,10 +30,7 @@ use nvx::{
 pub fn do_clock_getres(pid: ProcessIdentifier, request: ClockResolutionRequest) -> Message {
     trace!("clock_getres(): pid={:?}, request={:?}", pid, request);
 
-    let mut res: libc::timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
+    let mut res: libc::timespec = LibcTimeSpec::default().into();
 
     let clk_id: libc::clockid_t = match LibcClockId::try_from(request.clock_id) {
         Ok(clk_id) => clk_id.into(),
@@ -46,10 +43,7 @@ pub fn do_clock_getres(pid: ProcessIdentifier, request: ClockResolutionRequest) 
     debug!("libc::clock_getres(): clk_id={:?}", clk_id);
     match unsafe { libc::clock_getres(clk_id, &mut res) } {
         0 => {
-            let res: time::timespec = time::timespec {
-                tv_sec: res.tv_sec,
-                tv_nsec: res.tv_nsec,
-            };
+            let res: time::timespec = LibcTimeSpec(res).into();
             debug!(
                 "libc::clock_getres(): {{ tv_sec: {:?}, tv_nsec: {:?} }}",
                 res.tv_sec, res.tv_nsec
@@ -71,10 +65,7 @@ pub fn do_clock_getres(pid: ProcessIdentifier, request: ClockResolutionRequest) 
 pub fn do_clock_gettime(pid: ProcessIdentifier, request: GetClockTimeRequest) -> Message {
     trace!("clock_gettime(): pid={:?}, request={:?}", pid, request);
 
-    let mut tp: libc::timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
+    let mut tp: libc::timespec = LibcTimeSpec::default().into();
 
     let clk_id: libc::clockid_t = match LibcClockId::try_from(request.clock_id) {
         Ok(clk_id) => clk_id.into(),
@@ -87,10 +78,7 @@ pub fn do_clock_gettime(pid: ProcessIdentifier, request: GetClockTimeRequest) ->
     debug!("libc::clock_gettime(): clk_id={:?}", clk_id);
     match unsafe { libc::clock_gettime(clk_id, &mut tp) } {
         0 => {
-            let tp: time::timespec = time::timespec {
-                tv_sec: tp.tv_sec,
-                tv_nsec: tp.tv_nsec,
-            };
+            let tp: time::timespec = LibcTimeSpec(tp).into();
             debug!(
                 "libc::clock_gettime(): {{ tv_sec: {:?}, tv_nsec: {:?} }}",
                 tp.tv_sec, tp.tv_nsec
@@ -128,3 +116,33 @@ impl LibcClockId {
     }
 }
 
+//==================================================================================================
+// LibcTimeSpec
+//==================================================================================================
+
+/// Wrapper for `libc::timespec`.
+struct LibcTimeSpec(libc::timespec);
+
+impl Default for LibcTimeSpec {
+    fn default() -> Self {
+        LibcTimeSpec(libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        })
+    }
+}
+
+impl From<LibcTimeSpec> for libc::timespec {
+    fn from(tp: LibcTimeSpec) -> Self {
+        tp.0
+    }
+}
+
+impl From<LibcTimeSpec> for time::timespec {
+    fn from(tp: LibcTimeSpec) -> Self {
+        time::timespec {
+            tv_sec: tp.0.tv_sec,
+            tv_nsec: tp.0.tv_nsec,
+        }
+    }
+}
