@@ -30,8 +30,6 @@ use ::nvx::{
 
 /// Get clock time.
 pub fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -> ffi::c_int {
-    assert!(crate::time::__is_clock_id_supported(clock_id), "unsupported clock_id {:?}", clock_id);
-
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),

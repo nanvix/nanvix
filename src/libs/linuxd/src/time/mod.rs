@@ -20,13 +20,10 @@ pub type time_t = i64;
 
 pub struct timespec {
     pub tv_sec: time_t,
-    #[cfg(all(target_arch = "x86_64", target_pointer_width = "32"))]
     pub tv_nsec: i64,
-    #[cfg(not(all(target_arch = "x86_64", target_pointer_width = "32")))]
-    pub tv_nsec: core::ffi::c_long,
 }
 
-pub type clockid_t = ::core::ffi::c_int;
+pub type clockid_t = i32;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
@@ -36,9 +33,4 @@ cfg_if::cfg_if! {
             clock_gettime,
         };
     }
-}
-
-/// Helper function to check if a `clock_id` is supported.
-pub fn __is_clock_id_supported(clock_id: clockid_t) -> bool {
-    clock_id == CLOCK_REALTIME || clock_id == CLOCK_MONOTONIC
 }
