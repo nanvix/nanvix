@@ -6,14 +6,13 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        UnlinkAtRequest,
-        UnlinkAtResponse,
+    unistd::message::{
+        CloseRequest,
+        CloseResponse,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::core::ffi;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -24,17 +23,14 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn unlinkat(dirfd: i32, pathname: &str, flags: ffi::c_int) -> i32 {
+pub fn close(fd: i32) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
 
     // Build request and send it.
-    let request: Message = match UnlinkAtRequest::build(pid, dirfd, pathname, flags) {
-        Ok(request) => request,
-        Err(e) => return e.code.into_errno(),
-    };
+    let request: Message = CloseRequest::build(pid, fd);
     if let Err(e) = ::nvx::ipc::send(&request) {
         return e.code.into_errno();
     }
@@ -58,17 +54,17 @@ pub fn unlinkat(dirfd: i32, pathname: &str, flags: ffi::c_int) -> i32 {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::UnlinkAtResponse => {
+                LinuxDaemonMessageHeader::CloseResponse => {
                     // Parse response.
-                    let response: UnlinkAtResponse = UnlinkAtResponse::from_bytes(message.payload);
+                    let response: CloseResponse = CloseResponse::from_bytes(message.payload);
 
                     // Return result.
                     response.ret
                 },
-                // Response was not parsed.
+                // Response was not successfully parsed.
                 _ => ErrorCode::InvalidMessage.into_errno(),
             },
-            // Response was not parsed.
+            // Response was not successfully parsed.
             Err(_) => ErrorCode::InvalidMessage.into_errno(),
         }
     }

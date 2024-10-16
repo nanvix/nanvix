@@ -15,6 +15,7 @@ use ::linuxd::{
         timespec,
         CLOCK_MONOTONIC,
     },
+    unistd,
     venv,
     venv::VirtualEnvironmentIdentifier,
 };
@@ -39,7 +40,7 @@ pub fn main() -> Result<(), Error> {
             ::nvx::log!("clock resolution: {}s {}ns", res.tv_sec, res.tv_nsec);
         },
         errno => {
-            ::nvx::log!("failed to get clock resolution: {:?}", errno);
+            panic!("failed to get clock resolution: {:?}", errno);
         },
     }
 
@@ -53,12 +54,12 @@ pub fn main() -> Result<(), Error> {
             ::nvx::log!("clock time: {}s {}ns", tp.tv_sec, tp.tv_nsec);
         },
         errno => {
-            ::nvx::log!("failed to get clock time: {:?}", errno);
+            panic!("failed to get clock time: {:?}", errno);
         },
     }
 
     // Create a file named `foo.txt`.
-    match fcntl::openat(
+    let fd: i32 = match fcntl::openat(
         fcntl::AT_FDCWD,
         "foo.tmp",
         fcntl::O_CREAT | fcntl::O_RDONLY,
@@ -66,9 +67,20 @@ pub fn main() -> Result<(), Error> {
     ) {
         fd if fd >= 0 => {
             ::nvx::log!("opened file foo.txt with fd {}", fd);
+            fd
         },
         errno => {
-            ::nvx::log!("failed to open file foo.txt: {:?}", errno);
+            panic!("failed to open file foo.txt: {:?}", errno);
+        },
+    };
+
+    // Close file.
+    match unistd::close(fd) {
+        0 => {
+            ::nvx::log!("closed file foo.txt");
+        },
+        errno => {
+            panic!("failed to close file foo.txt: {:?}", errno);
         },
     }
 
@@ -78,7 +90,7 @@ pub fn main() -> Result<(), Error> {
             ::nvx::log!("unlinked file foo.txt");
         },
         errno => {
-            ::nvx::log!("failed to unlink file foo.txt: {:?}", errno);
+            panic!("failed to unlink file foo.txt: {:?}", errno);
         },
     }
 
