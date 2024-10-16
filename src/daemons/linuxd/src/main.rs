@@ -32,6 +32,7 @@ use ::flexi_logger::Logger;
 use ::linuxd::{
     fcntl::message::{
         OpenAtRequest,
+        RenameAtRequest,
         UnlinkAtRequest,
     },
     time::message::{
@@ -169,6 +170,11 @@ impl ProcessDaemon {
                                     let request: CloseRequest =
                                         CloseRequest::from_bytes(message.payload);
                                     unistd::do_close(source, request)
+                                },
+                                LinuxDaemonMessageHeader::RenameAtRequest => {
+                                    let request: RenameAtRequest =
+                                        RenameAtRequest::from_bytes(message.payload);
+                                    fcntl::do_rename_at(source, request)
                                 },
                                 _ => self.handle_bad_message(source, &message),
                             };
