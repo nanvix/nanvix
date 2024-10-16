@@ -7,6 +7,7 @@
 
 use crate::{
     fcntl::mode_t,
+    limits,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -33,21 +34,19 @@ pub struct OpenAtRequest {
     pub dirfd: i32,
     pub flags: ffi::c_int,
     pub mode: mode_t,
-    pub pathname: [u8; Self::NAME_MAX],
+    pub pathname: [u8; limits::NAME_MAX],
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(OpenAtRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl OpenAtRequest {
-    pub const NAME_MAX: usize = 32;
-
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
         - mem::size_of::<ffi::c_int>()
         - mem::size_of::<mode_t>()
-        - Self::NAME_MAX;
+        - limits::NAME_MAX;
 
-    fn new(dirfd: i32, pathname: [u8; Self::NAME_MAX], flags: ffi::c_int, mode: mode_t) -> Self {
+    fn new(dirfd: i32, pathname: [u8; limits::NAME_MAX], flags: ffi::c_int, mode: mode_t) -> Self {
         Self {
             dirfd,
             flags,
@@ -73,11 +72,11 @@ impl OpenAtRequest {
         mode: mode_t,
     ) -> Result<Message, Error> {
         // Check if pathname is not too long.
-        if pathname.len() > Self::NAME_MAX {
+        if pathname.len() > limits::NAME_MAX {
             return Err(Error::new(ErrorCode::InvalidArgument, "pathname too long"));
         }
 
-        let mut pathname_bytes: [u8; Self::NAME_MAX] = [0u8; Self::NAME_MAX];
+        let mut pathname_bytes: [u8; limits::NAME_MAX] = [0u8; limits::NAME_MAX];
         pathname_bytes[..pathname.len()].copy_from_slice(pathname.as_bytes());
 
         let message: OpenAtRequest = OpenAtRequest::new(dirfd, pathname_bytes, flags, mode);
