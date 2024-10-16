@@ -14,6 +14,8 @@ use ::linuxd::{
     fcntl::message::{
         OpenAtRequest,
         OpenAtResponse,
+        RenameAtRequest,
+        RenameAtResponse,
         UnlinkAtRequest,
         UnlinkAtResponse,
     },
@@ -81,7 +83,7 @@ pub fn do_open_at(pid: ProcessIdentifier, request: OpenAtRequest) -> Message {
 }
 
 //==================================================================================================
-// do_unlinkat
+// do_unlink_at
 //==================================================================================================
 
 pub fn do_unlink_at(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Message {
@@ -116,6 +118,56 @@ pub fn do_unlink_at(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Message
         },
         errno => {
             debug!("libc::unlinkat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
+            crate::build_error(pid, error)
+        },
+    }
+}
+
+//==================================================================================================
+// do_rename_at
+//==================================================================================================
+
+pub fn do_rename_at(pid: ProcessIdentifier, request: RenameAtRequest) -> Message {
+    trace!("renameat(): pid={:?}, request={:?}", pid, request);
+
+    let olddirfd: i32 = request.olddirfd;
+    let newdirfd: i32 = request.newdirfd;
+
+    let oldpath: &str = match str::from_utf8(&request.oldpath) {
+        Ok(oldpath) => oldpath,
+        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+    };
+
+    let newpath: &str = match str::from_utf8(&request.newpath) {
+        Ok(newpath) => newpath,
+        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+    };
+
+    let olddirfd: LibcAtFlags = LibcAtFlags::from(olddirfd);
+    let newdirfd: LibcAtFlags = LibcAtFlags::from(newdirfd);
+
+    debug!(
+        "libc::renameat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}",
+        olddirfd.inner(),
+        oldpath,
+        newdirfd.inner(),
+        newpath
+    );
+    match unsafe {
+        libc::renameat(
+            olddirfd.inner(),
+            oldpath.as_bytes().as_ptr() as *const i8,
+            newdirfd.inner(),
+            newpath.as_bytes().as_ptr() as *const i8,
+        )
+    } {
+        ret if ret == 0 => {
+            debug!("libc::renameat(): success");
+            RenameAtResponse::build(pid, ret)
+        },
+        errno => {
+            debug!("libc::renameat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
             crate::build_error(pid, error)
         },

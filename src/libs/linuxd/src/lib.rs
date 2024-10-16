@@ -66,6 +66,8 @@ pub enum LinuxDaemonMessageHeader {
     UnlinkAtResponse,
     CloseRequest,
     CloseResponse,
+    RenameAtRequest,
+    RenameAtResponse,
 }
 
 #[repr(C)]
