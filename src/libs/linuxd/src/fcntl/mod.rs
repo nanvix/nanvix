@@ -11,6 +11,7 @@
 // Imports
 //==================================================================================================
 
+use crate::sys::types::mode_t;
 use core::ffi;
 
 //==================================================================================================
@@ -52,8 +53,6 @@ pub const S_IRWXO: mode_t = 0o007;
 pub const S_IROTH: mode_t = 0o004;
 pub const S_IWOTH: mode_t = 0o002;
 pub const S_IXOTH: mode_t = 0o001;
-
-pub type mode_t = ffi::c_int;
 
 pub const AT_REMOVEDIR: i32 = 0x200;
 pub const AT_FDCWD: i32 = -100;
