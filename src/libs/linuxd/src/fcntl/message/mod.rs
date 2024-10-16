@@ -6,6 +6,7 @@
 //==================================================================================================
 
 mod openat;
+mod renameat;
 mod unlinkat;
 
 //==================================================================================================
@@ -16,6 +17,10 @@ pub use self::{
     openat::{
         OpenAtRequest,
         OpenAtResponse,
+    },
+    renameat::{
+        RenameAtRequest,
+        RenameAtResponse,
     },
     unlinkat::{
         UnlinkAtRequest,

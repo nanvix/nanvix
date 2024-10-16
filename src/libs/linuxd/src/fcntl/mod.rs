@@ -25,6 +25,7 @@ cfg_if::cfg_if! {
         pub use self::syscall::{
             openat,
             unlinkat,
+            renameat,
         };
     }
 }
