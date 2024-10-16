@@ -84,8 +84,18 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Rename `foo.txt` to `bar.txt`.
+    match fcntl::renameat(fcntl::AT_FDCWD, "foo.tmp", fcntl::AT_FDCWD, "bar.tmp") {
+        0 => {
+            ::nvx::log!("renamed file foo.txt to bar.txt");
+        },
+        errno => {
+            panic!("failed to rename file foo.txt to bar.txt: {:?}", errno);
+        },
+    }
+
     // Unlink file named `foo.txt`.
-    match fcntl::unlinkat(fcntl::AT_FDCWD, "foo.tmp", 0) {
+    match fcntl::unlinkat(fcntl::AT_FDCWD, "bar.tmp", 0) {
         0 => {
             ::nvx::log!("unlinked file foo.txt");
         },
