@@ -14,6 +14,7 @@
 mod args;
 mod fcntl;
 mod time;
+mod unistd;
 mod venv;
 
 //==================================================================================================
@@ -37,6 +38,7 @@ use ::linuxd::{
         ClockResolutionRequest,
         GetClockTimeRequest,
     },
+    unistd::message::CloseRequest,
     venv::message::{
         JoinEnvRequest,
         LeaveEnvRequest,
@@ -162,6 +164,11 @@ impl ProcessDaemon {
                                     let request: UnlinkAtRequest =
                                         UnlinkAtRequest::from_bytes(message.payload);
                                     fcntl::do_unlink_at(source, request)
+                                },
+                                LinuxDaemonMessageHeader::CloseRequest => {
+                                    let request: CloseRequest =
+                                        CloseRequest::from_bytes(message.payload);
+                                    unistd::do_close(source, request)
                                 },
                                 _ => self.handle_bad_message(source, &message),
                             };

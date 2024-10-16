@@ -5,20 +5,13 @@
 // Modules
 //==================================================================================================
 
-mod openat;
-mod unlinkat;
+mod close;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::{
-    openat::{
-        OpenAtRequest,
-        OpenAtResponse,
-    },
-    unlinkat::{
-        UnlinkAtRequest,
-        UnlinkAtResponse,
-    },
+pub use self::close::{
+    CloseRequest,
+    CloseResponse,
 };
