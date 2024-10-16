@@ -7,7 +7,7 @@
 
 use crate::{
     fcntl::{
-        message::openat::{
+        message::{
             OpenAtRequest,
             OpenAtResponse,
         },
