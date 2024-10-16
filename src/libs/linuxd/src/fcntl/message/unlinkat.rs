@@ -6,18 +6,20 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::mode_t,
     limits,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
 use ::core::{
     ffi,
-    fmt::Debug,
+    fmt,
     mem,
 };
 use ::nvx::{
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::ProcessIdentifier,
     sys::error::{
         Error,
@@ -26,32 +28,29 @@ use ::nvx::{
 };
 
 //==================================================================================================
-// OpenAtRequest
+// UnlinkAtRequest
 //==================================================================================================
 
 #[repr(C, packed)]
-pub struct OpenAtRequest {
+pub struct UnlinkAtRequest {
     pub dirfd: i32,
-    pub flags: ffi::c_int,
-    pub mode: mode_t,
     pub pathname: [u8; limits::NAME_MAX],
+    pub flags: ffi::c_int,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(OpenAtRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(UnlinkAtRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
-impl OpenAtRequest {
+impl UnlinkAtRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
-        - mem::size_of::<ffi::c_int>()
-        - mem::size_of::<mode_t>()
-        - limits::NAME_MAX;
+        - limits::NAME_MAX
+        - mem::size_of::<ffi::c_int>();
 
-    fn new(dirfd: i32, pathname: [u8; limits::NAME_MAX], flags: ffi::c_int, mode: mode_t) -> Self {
+    fn new(dirfd: i32, pathname: [u8; limits::NAME_MAX], flags: ffi::c_int) -> Self {
         Self {
             dirfd,
-            flags,
-            mode,
             pathname,
+            flags,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -69,55 +68,51 @@ impl OpenAtRequest {
         dirfd: i32,
         pathname: &str,
         flags: ffi::c_int,
-        mode: mode_t,
     ) -> Result<Message, Error> {
-        // Check if pathname is not too long.
-        if pathname.len() > limits::NAME_MAX {
-            return Err(Error::new(ErrorCode::InvalidArgument, "pathname too long"));
+        // Check if pathname is too long.
+        if pathname.len() >= limits::NAME_MAX {
+            return Err(Error::new(ErrorCode::InvalidArgument, "pathname is too long"));
         }
 
         let mut pathname_bytes: [u8; limits::NAME_MAX] = [0u8; limits::NAME_MAX];
         pathname_bytes[..pathname.len()].copy_from_slice(pathname.as_bytes());
 
-        let message: OpenAtRequest = OpenAtRequest::new(dirfd, pathname_bytes, flags, mode);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::OpenAtRequest, message.into_bytes());
-        let message: Message = Message::new(
-            pid,
-            crate::LINUXD,
-            nvx::ipc::MessageType::Ikc,
-            None,
+        let message: UnlinkAtRequest = UnlinkAtRequest::new(dirfd, pathname_bytes, flags);
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
+            LinuxDaemonMessageHeader::UnlinkAtRequest,
             message.into_bytes(),
         );
+        let message: Message =
+            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
 
         Ok(message)
     }
 }
 
-impl Debug for OpenAtRequest {
-    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+impl fmt::Debug for UnlinkAtRequest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let dirfd: i32 = self.dirfd;
+        let pathname: &str = unsafe { core::str::from_utf8_unchecked(&self.pathname) };
         let flags: ffi::c_int = self.flags;
-        let mode: mode_t = self.mode;
-        write!(f, "{{ dirfd: {:?}, flags: {:?}, mode: {:?} }}", dirfd, flags, mode)
+        write!(f, "{{ dirfd: {}, pathname: {}, flags: {} }}", dirfd, pathname, flags)
     }
 }
 
 //==================================================================================================
-// OpenAtResponse
+// UnlinkAtResponse
 //==================================================================================================
 
 #[repr(C, packed)]
-pub struct OpenAtResponse {
+pub struct UnlinkAtResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(OpenAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(UnlinkAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
-impl OpenAtResponse {
+impl UnlinkAtResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    pub fn new(ret: i32) -> Self {
+    fn new(ret: i32) -> Self {
         Self {
             ret,
             _padding: [0; Self::PADDING_SIZE],
@@ -133,16 +128,13 @@ impl OpenAtResponse {
     }
 
     pub fn build(pid: ProcessIdentifier, ret: i32) -> Message {
-        let message: OpenAtResponse = OpenAtResponse::new(ret);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::OpenAtResponse, message.into_bytes());
-        let message: Message = Message::new(
-            crate::LINUXD,
-            pid,
-            nvx::ipc::MessageType::Ikc,
-            None,
+        let message: UnlinkAtResponse = UnlinkAtResponse::new(ret);
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
+            LinuxDaemonMessageHeader::UnlinkAtResponse,
             message.into_bytes(),
         );
+        let message: Message =
+            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
 
         message
     }

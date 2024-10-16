@@ -21,6 +21,9 @@ pub mod venv;
 /// File control operations.
 pub mod fcntl;
 
+/// Implementation-defined constants.
+pub mod limits;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -56,6 +59,8 @@ pub enum LinuxDaemonMessageHeader {
     LeaveEnvResponse,
     OpenAtRequest,
     OpenAtResponse,
+    UnlinkAtRequest,
+    UnlinkAtResponse,
 }
 
 #[repr(C)]

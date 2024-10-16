@@ -6,12 +6,19 @@
 //==================================================================================================
 
 pub mod openat;
+pub mod unlinkat;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::openat::{
-    OpenAtRequest,
-    OpenAtResponse,
+pub use self::{
+    openat::{
+        OpenAtRequest,
+        OpenAtResponse,
+    },
+    unlinkat::{
+        UnlinkAtRequest,
+        UnlinkAtResponse,
+    },
 };
