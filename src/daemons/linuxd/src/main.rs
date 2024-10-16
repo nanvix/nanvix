@@ -29,7 +29,10 @@ use ::anyhow::Result;
 use ::core::panic;
 use ::flexi_logger::Logger;
 use ::linuxd::{
-    fcntl::message::OpenAtRequest,
+    fcntl::message::{
+        OpenAtRequest,
+        UnlinkAtRequest,
+    },
     time::message::{
         ClockResolutionRequest,
         GetClockTimeRequest,
@@ -154,6 +157,11 @@ impl ProcessDaemon {
                                     let request: OpenAtRequest =
                                         OpenAtRequest::from_bytes(message.payload);
                                     fcntl::do_open_at(source, request)
+                                },
+                                LinuxDaemonMessageHeader::UnlinkAtRequest => {
+                                    let request: UnlinkAtRequest =
+                                        UnlinkAtRequest::from_bytes(message.payload);
+                                    fcntl::do_unlink_at(source, request)
                                 },
                                 _ => self.handle_bad_message(source, &message),
                             };

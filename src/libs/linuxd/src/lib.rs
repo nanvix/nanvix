@@ -59,6 +59,8 @@ pub enum LinuxDaemonMessageHeader {
     LeaveEnvResponse,
     OpenAtRequest,
     OpenAtResponse,
+    UnlinkAtRequest,
+    UnlinkAtResponse,
 }
 
 #[repr(C)]
