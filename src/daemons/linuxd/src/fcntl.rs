@@ -14,6 +14,8 @@ use ::linuxd::{
     fcntl::message::{
         OpenAtRequest,
         OpenAtResponse,
+        UnlinkAtRequest,
+        UnlinkAtResponse,
     },
 };
 use ::nvx::{
@@ -72,6 +74,48 @@ pub fn do_open_at(pid: ProcessIdentifier, request: OpenAtRequest) -> Message {
         },
         errno => {
             debug!("libc::openat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
+            crate::build_error(pid, error)
+        },
+    }
+}
+
+//==================================================================================================
+// do_unlinkat
+//==================================================================================================
+
+pub fn do_unlink_at(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Message {
+    trace!("unlinkat(): pid={:?}, request={:?}", pid, request);
+
+    let dirfd: i32 = request.dirfd;
+    let flags: ffi::c_int = request.flags;
+
+    let pathname: &str = match str::from_utf8(&request.pathname) {
+        Ok(pathname) => pathname,
+        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+    };
+
+    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let flags: LibcFileFlags = match LibcFileFlags::try_from(flags) {
+        Ok(flags) => flags,
+        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+    };
+
+    debug!(
+        "libc::unlinkat(): dirfd={:?}, pathname={:?}, flags={:?}",
+        dirfd.inner(),
+        pathname,
+        flags.inner()
+    );
+    match unsafe {
+        libc::unlinkat(dirfd.inner(), pathname.as_bytes().as_ptr() as *const i8, flags.inner())
+    } {
+        ret if ret == 0 => {
+            debug!("libc::unlinkat(): success");
+            UnlinkAtResponse::build(pid, ret)
+        },
+        errno => {
+            debug!("libc::unlinkat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
             crate::build_error(pid, error)
         },
@@ -155,10 +199,10 @@ impl LibcAtFlags {
     }
 
     fn from(flags: ffi::c_int) -> LibcAtFlags {
-        let libc_flags: libc::c_int = if flags == fcntl::AT_FDCWD {
-            libc::AT_FDCWD
-        } else {
-            flags
+        let libc_flags: libc::c_int = match flags {
+            fcntl::AT_FDCWD => libc::AT_FDCWD,
+            fcntl::AT_REMOVEDIR => libc::AT_REMOVEDIR,
+            _ => flags,
         };
 
         LibcAtFlags(libc_flags)

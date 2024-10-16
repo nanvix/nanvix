@@ -24,6 +24,7 @@ cfg_if::cfg_if! {
         mod syscall;
         pub use self::syscall::{
             openat,
+            unlinkat,
         };
     }
 }
@@ -53,4 +54,5 @@ pub const S_IXOTH: mode_t = 0o001;
 
 pub type mode_t = ffi::c_int;
 
+pub const AT_REMOVEDIR: i32 = 0x200;
 pub const AT_FDCWD: i32 = -100;

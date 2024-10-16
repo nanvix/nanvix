@@ -72,6 +72,16 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Unlink file named `foo.txt`.
+    match fcntl::unlinkat(fcntl::AT_FDCWD, "foo.tmp", 0) {
+        0 => {
+            ::nvx::log!("unlinked file foo.txt");
+        },
+        errno => {
+            ::nvx::log!("failed to unlink file foo.txt: {:?}", errno);
+        },
+    }
+
     venv::leave(env)?;
     ::nvx::log!("left environment {:?}", env);
 
