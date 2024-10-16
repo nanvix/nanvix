@@ -19,6 +19,7 @@ use ::linuxd::{
         UnlinkAtRequest,
         UnlinkAtResponse,
     },
+    sys::types::mode_t,
 };
 use ::nvx::{
     ipc::Message,
@@ -38,7 +39,7 @@ pub fn do_open_at(pid: ProcessIdentifier, request: OpenAtRequest) -> Message {
 
     let dirfd: i32 = request.dirfd;
     let flags: ffi::c_int = request.flags;
-    let mode: fcntl::mode_t = request.mode;
+    let mode: mode_t = request.mode;
 
     let pathname: &str = match str::from_utf8(&request.pathname) {
         Ok(pathname) => pathname,
@@ -214,8 +215,8 @@ impl LibcFileMode {
         self.0
     }
 
-    fn try_from(mode: fcntl::mode_t) -> Result<LibcFileMode, Error> {
-        let mode_mappings: [(fcntl::mode_t, u32); 12] = [
+    fn try_from(mode: mode_t) -> Result<LibcFileMode, Error> {
+        let mode_mappings: [(mode_t, u32); 12] = [
             (fcntl::S_IRWXU, libc::S_IRWXU),
             (fcntl::S_IRUSR, libc::S_IRUSR),
             (fcntl::S_IWUSR, libc::S_IWUSR),
