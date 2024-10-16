@@ -39,7 +39,7 @@ pub fn main() -> Result<(), Error> {
             ::nvx::log!("clock resolution: {}s {}ns", res.tv_sec, res.tv_nsec);
         },
         errno => {
-            ::nvx::log!("failed to get clock resolution: {:?}", errno);
+            panic!("failed to get clock resolution: {:?}", errno);
         },
     }
 
@@ -53,7 +53,7 @@ pub fn main() -> Result<(), Error> {
             ::nvx::log!("clock time: {}s {}ns", tp.tv_sec, tp.tv_nsec);
         },
         errno => {
-            ::nvx::log!("failed to get clock time: {:?}", errno);
+            panic!("failed to get clock time: {:?}", errno);
         },
     }
 
@@ -68,7 +68,7 @@ pub fn main() -> Result<(), Error> {
             ::nvx::log!("opened file foo.txt with fd {}", fd);
         },
         errno => {
-            ::nvx::log!("failed to open file foo.txt: {:?}", errno);
+            panic!("failed to open file foo.txt: {:?}", errno);
         },
     }
 
@@ -78,7 +78,7 @@ pub fn main() -> Result<(), Error> {
             ::nvx::log!("unlinked file foo.txt");
         },
         errno => {
-            ::nvx::log!("failed to unlink file foo.txt: {:?}", errno);
+            panic!("failed to unlink file foo.txt: {:?}", errno);
         },
     }
 
