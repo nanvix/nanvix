@@ -24,6 +24,9 @@ pub mod fcntl;
 /// Implementation-defined constants.
 pub mod limits;
 
+/// Standard symbolic constants and types.
+pub mod unistd;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -61,6 +64,8 @@ pub enum LinuxDaemonMessageHeader {
     OpenAtResponse,
     UnlinkAtRequest,
     UnlinkAtResponse,
+    CloseRequest,
+    CloseResponse,
 }
 
 #[repr(C)]

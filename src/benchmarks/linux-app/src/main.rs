@@ -15,6 +15,7 @@ use ::linuxd::{
         timespec,
         CLOCK_MONOTONIC,
     },
+    unistd,
     venv,
     venv::VirtualEnvironmentIdentifier,
 };
@@ -58,7 +59,7 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Create a file named `foo.txt`.
-    match fcntl::openat(
+    let fd: i32 = match fcntl::openat(
         fcntl::AT_FDCWD,
         "foo.tmp",
         fcntl::O_CREAT | fcntl::O_RDONLY,
@@ -66,9 +67,20 @@ pub fn main() -> Result<(), Error> {
     ) {
         fd if fd >= 0 => {
             ::nvx::log!("opened file foo.txt with fd {}", fd);
+            fd
         },
         errno => {
             panic!("failed to open file foo.txt: {:?}", errno);
+        },
+    };
+
+    // Close file.
+    match unistd::close(fd) {
+        0 => {
+            ::nvx::log!("closed file foo.txt");
+        },
+        errno => {
+            panic!("failed to close file foo.txt: {:?}", errno);
         },
     }
 
