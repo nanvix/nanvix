@@ -3,7 +3,7 @@
 
 [package]
 name = "linuxd"
-version = "0.0.1"
+version = "0.0.2"
 license-file = "LICENSE.txt"
 edition = "2021"
 authors = ["The Maintainers of Nanvix"]
