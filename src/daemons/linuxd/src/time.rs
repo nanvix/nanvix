@@ -5,13 +5,16 @@
 // Imports
 //==================================================================================================
 
-use linuxd::time::{
-    self,
-    message::{
-        ClockGetResolutionResponse,
-        ClockResolutionRequest,
-        GetClockTimeRequest,
-        GetClockTimeResponse,
+use linuxd::{
+    sys::types::clockid_t,
+    time::{
+        self,
+        message::{
+            ClockGetResolutionResponse,
+            ClockResolutionRequest,
+            GetClockTimeRequest,
+            GetClockTimeResponse,
+        },
     },
 };
 use nvx::{
@@ -105,7 +108,7 @@ impl From<LibcClockId> for libc::clockid_t {
 }
 
 impl LibcClockId {
-    fn try_from(clk_id: time::clockid_t) -> Result<Self, ::nvx::sys::error::Error> {
+    fn try_from(clk_id: clockid_t) -> Result<Self, ::nvx::sys::error::Error> {
         match clk_id {
             time::CLOCK_REALTIME => Ok(LibcClockId(libc::CLOCK_REALTIME)),
             time::CLOCK_MONOTONIC => Ok(LibcClockId(libc::CLOCK_MONOTONIC)),
