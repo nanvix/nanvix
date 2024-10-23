@@ -49,6 +49,7 @@ static mut ALLOCATOR: Allocator = Allocator;
 ///
 /// Upon success, empty is returned. Upon failure, an error is returned instead
 ///
+#[allow(static_mut_refs)]
 pub unsafe fn init(addr: usize, size: usize) -> Result<(), Error> {
     // Check if the heap was already initialized.
     if unsafe { HEAP.is_some() } {

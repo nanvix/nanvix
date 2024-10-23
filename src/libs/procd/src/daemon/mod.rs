@@ -84,7 +84,7 @@ impl ProcessDaemon {
         loop {
             match ::nvx::ipc::recv() {
                 Ok(message) => {
-                    ::nvx::log!("received message from={:?}", message.source,);
+                    ::nvx::log!("received message from={:?}", { message.source });
                     match message.message_type {
                         MessageType::Exception => unreachable!("should not receive exceptions"),
                         MessageType::Ipc => {
