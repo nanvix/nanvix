@@ -18,6 +18,8 @@ pub const CLOCK_MONOTONIC: clockid_t = 1;
 
 pub type time_t = i64;
 
+#[derive(Default, Debug, Clone, Copy)]
+#[repr(C, packed)]
 pub struct timespec {
     pub tv_sec: time_t,
     pub tv_nsec: i64,
