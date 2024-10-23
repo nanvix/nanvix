@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::mode_t,
     limits,
+    sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };

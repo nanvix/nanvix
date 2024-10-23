@@ -6,13 +6,11 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::{
-        message::{
-            OpenAtRequest,
-            OpenAtResponse,
-        },
-        mode_t,
+    fcntl::message::{
+        OpenAtRequest,
+        OpenAtResponse,
     },
+    sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
