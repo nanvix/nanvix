@@ -37,7 +37,7 @@ pub fn main() -> Result<(), Error> {
 
     match time::clock_getres(CLOCK_MONOTONIC, &mut res) {
         0 => {
-            ::nvx::log!("clock resolution: {}s {}ns", res.tv_sec, res.tv_nsec);
+            ::nvx::log!("clock resolution: {}s {}ns", { res.tv_sec }, { res.tv_nsec });
         },
         errno => {
             panic!("failed to get clock resolution: {:?}", errno);
@@ -51,7 +51,7 @@ pub fn main() -> Result<(), Error> {
 
     match time::clock_gettime(CLOCK_MONOTONIC, &mut tp) {
         0 => {
-            ::nvx::log!("clock time: {}s {}ns", tp.tv_sec, tp.tv_nsec);
+            ::nvx::log!("clock time: {}s {}ns", { tp.tv_sec }, { tp.tv_nsec });
         },
         errno => {
             panic!("failed to get clock time: {:?}", errno);

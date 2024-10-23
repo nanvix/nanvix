@@ -117,8 +117,8 @@ impl ProcessDaemon {
 
             trace!(
                 "message.source={:?}, message.destination={:?}, message.type={:?}",
-                message.source,
-                message.destination,
+                { message.source },
+                { message.destination },
                 message.message_type,
             );
 
@@ -176,7 +176,7 @@ impl ProcessDaemon {
                                         RenameAtRequest::from_bytes(message.payload);
                                     fcntl::do_rename_at(source, request)
                                 },
-                                _ => self.handle_bad_message(source, &message),
+                                _ => self.handle_bad_message(source),
                             };
                             self.send(message).unwrap();
                         },
@@ -227,12 +227,7 @@ impl ProcessDaemon {
         }
     }
 
-    fn handle_bad_message(
-        &self,
-        source: ProcessIdentifier,
-        message: &LinuxDaemonMessage,
-    ) -> Message {
-        error!("received bad message (header={:?})", message.header);
+    fn handle_bad_message(&self, source: ProcessIdentifier) -> Message {
         Message::new(
             self.pid,
             source,
