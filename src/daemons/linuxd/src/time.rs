@@ -44,10 +44,9 @@ pub fn do_clock_getres(pid: ProcessIdentifier, request: ClockResolutionRequest) 
     match unsafe { libc::clock_getres(clk_id, &mut res) } {
         0 => {
             let res: time::timespec = LibcTimeSpec(res).into();
-            debug!(
-                "libc::clock_getres(): {{ tv_sec: {:?}, tv_nsec: {:?} }}",
-                res.tv_sec, res.tv_nsec
-            );
+            debug!("libc::clock_getres(): {{ tv_sec: {:?}, tv_nsec: {:?} }}", { res.tv_sec }, {
+                res.tv_nsec
+            });
             ClockGetResolutionResponse::build(pid, res)
         },
         errno => {
@@ -79,10 +78,9 @@ pub fn do_clock_gettime(pid: ProcessIdentifier, request: GetClockTimeRequest) ->
     match unsafe { libc::clock_gettime(clk_id, &mut tp) } {
         0 => {
             let tp: time::timespec = LibcTimeSpec(tp).into();
-            debug!(
-                "libc::clock_gettime(): {{ tv_sec: {:?}, tv_nsec: {:?} }}",
-                tp.tv_sec, tp.tv_nsec
-            );
+            debug!("libc::clock_gettime(): {{ tv_sec: {:?}, tv_nsec: {:?} }}", { tp.tv_sec }, {
+                tp.tv_nsec
+            });
             GetClockTimeResponse::build(pid, tp)
         },
         errno => {

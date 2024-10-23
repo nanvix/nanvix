@@ -73,7 +73,7 @@ pub enum LinuxDaemonMessageHeader {
     RenameAtResponse,
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 pub struct LinuxDaemonMessage {
     /// Message header.
     pub header: LinuxDaemonMessageHeader,
