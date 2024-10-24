@@ -65,7 +65,7 @@ impl timespec {
     const SIZE: usize = Self::SIZE_OF_TV_SEC + Self::SIZE_OF_TV_NSEC;
 
     /// Converts a time spec structure to a byte array.
-    pub fn to_bytes(self) -> [u8; Self::SIZE] {
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         let mut bytes: [u8; Self::SIZE] = [0; Self::SIZE];
 
         // Convert seconds field.
