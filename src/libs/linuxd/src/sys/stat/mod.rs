@@ -138,7 +138,7 @@ impl stat {
         + Self::SIZE_OF_ST_BLOCKS;
 
     /// Converts a file status structure to a byte array.
-    pub fn to_bytes(self) -> [u8; Self::SIZE] {
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         let mut bytes: [u8; Self::SIZE] = [0; Self::SIZE];
 
         // Convert device ID field.
