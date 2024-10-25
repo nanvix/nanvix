@@ -7,6 +7,7 @@
 
 mod close;
 mod fdatasync;
+mod fsync;
 
 //==================================================================================================
 // Exports
@@ -20,5 +21,9 @@ pub use self::{
     fdatasync::{
         FileDataSyncRequest,
         FileDataSyncResponse,
+    },
+    fsync::{
+        FileSyncRequest,
+        FileSyncResponse,
     },
 };
