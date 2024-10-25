@@ -18,6 +18,7 @@ cfg_if::cfg_if! {
         mod syscall;
         pub use self::syscall::{
             close,
+            fdatasync,
         };
     }
 }
