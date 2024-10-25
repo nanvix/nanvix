@@ -54,7 +54,10 @@ use ::linuxd::{
         ClockResolutionRequest,
         GetClockTimeRequest,
     },
-    unistd::message::CloseRequest,
+    unistd::message::{
+        CloseRequest,
+        FileDataSyncRequest,
+    },
     venv::message::{
         JoinEnvRequest,
         LeaveEnvRequest,
@@ -195,7 +198,11 @@ impl ProcessDaemon {
                                     self.handle_fstatat_request(source, message);
                                     continue;
                                 },
-
+                                LinuxDaemonMessageHeader::FileDataSyncRequest => {
+                                    let request: FileDataSyncRequest =
+                                        FileDataSyncRequest::from_bytes(message.payload);
+                                    unistd::do_fdatasync(source, request)
+                                },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
                             self.send(message).unwrap();

@@ -6,12 +6,19 @@
 //==================================================================================================
 
 mod close;
+mod fdatasync;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::close::{
-    CloseRequest,
-    CloseResponse,
+pub use self::{
+    close::{
+        CloseRequest,
+        CloseResponse,
+    },
+    fdatasync::{
+        FileDataSyncRequest,
+        FileDataSyncResponse,
+    },
 };
