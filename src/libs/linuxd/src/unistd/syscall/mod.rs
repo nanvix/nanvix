@@ -7,6 +7,7 @@
 
 mod close;
 mod fdatasync;
+mod fsync;
 
 //==================================================================================================
 // Exports
@@ -15,4 +16,5 @@ mod fdatasync;
 pub use self::{
     close::close,
     fdatasync::fdatasync,
+    fsync::fsync,
 };

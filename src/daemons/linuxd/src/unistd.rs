@@ -10,6 +10,8 @@ use ::linuxd::unistd::message::{
     CloseResponse,
     FileDataSyncRequest,
     FileDataSyncResponse,
+    FileSyncRequest,
+    FileSyncResponse,
 };
 use ::nvx::{
     ipc::Message,
@@ -45,6 +47,25 @@ pub fn do_fdatasync(pid: ProcessIdentifier, request: FileDataSyncRequest) -> Mes
     debug!("libc::fdatasync(): fd={:?}", fd);
     match unsafe { libc::fdatasync(fd) } {
         ret if ret == 0 => FileDataSyncResponse::build(pid, ret),
+        ret => crate::build_error(
+            pid,
+            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+        ),
+    }
+}
+
+//==================================================================================================
+// do_fsync
+//==================================================================================================
+
+pub fn do_fsync(pid: ProcessIdentifier, request: FileSyncRequest) -> Message {
+    trace!("fsync(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+
+    debug!("libc::fsync(): fd={:?}", fd);
+    match unsafe { libc::fsync(fd) } {
+        ret if ret == 0 => FileSyncResponse::build(pid, ret),
         ret => crate::build_error(
             pid,
             ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),

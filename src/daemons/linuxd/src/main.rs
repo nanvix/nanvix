@@ -57,6 +57,7 @@ use ::linuxd::{
     unistd::message::{
         CloseRequest,
         FileDataSyncRequest,
+        FileSyncRequest,
     },
     venv::message::{
         JoinEnvRequest,
@@ -202,6 +203,11 @@ impl ProcessDaemon {
                                     let request: FileDataSyncRequest =
                                         FileDataSyncRequest::from_bytes(message.payload);
                                     unistd::do_fdatasync(source, request)
+                                },
+                                LinuxDaemonMessageHeader::FileSyncRequest => {
+                                    let request: FileSyncRequest =
+                                        FileSyncRequest::from_bytes(message.payload);
+                                    unistd::do_fsync(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };

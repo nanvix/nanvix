@@ -80,6 +80,8 @@ pub enum LinuxDaemonMessageHeader {
     FileStatResponsePart,
     FileDataSyncRequest,
     FileDataSyncResponse,
+    FileSyncRequest,
+    FileSyncResponse,
 }
 
 #[repr(C, packed)]

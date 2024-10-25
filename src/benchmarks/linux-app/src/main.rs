@@ -78,8 +78,18 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
-    // Synchronize a file's in-core state with storage device.
+    // Synchronize data changes to file.
     match unistd::fdatasync(fd) {
+        0 => {
+            ::nvx::log!("synchronized file foo.tmp with storage device");
+        },
+        errno => {
+            panic!("failed to synchronize file foo.tmp with storage device: {:?}", errno);
+        },
+    }
+
+    // Synchronize changes to a file.
+    match unistd::fsync(fd) {
         0 => {
             ::nvx::log!("synchronized file foo.tmp with storage device");
         },
