@@ -12,6 +12,8 @@
 // Modules
 //==================================================================================================
 
+extern crate alloc;
+
 /// Time types.
 pub mod time;
 
@@ -23,6 +25,9 @@ pub mod fcntl;
 
 /// Implementation-defined constants.
 pub mod limits;
+
+/// Messages.
+pub mod message;
 
 /// Standard symbolic constants and types.
 pub mod unistd;
