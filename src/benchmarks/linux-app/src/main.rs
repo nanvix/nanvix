@@ -10,6 +10,10 @@
 
 use ::linuxd::{
     fcntl,
+    sys::{
+        self,
+        stat::stat,
+    },
     time::{
         self,
         timespec,
@@ -58,7 +62,7 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Create a file named `foo.txt`.
+    // Create a file named `foo.tmp`.
     let fd: i32 = match fcntl::openat(
         fcntl::AT_FDCWD,
         "foo.tmp",
@@ -66,41 +70,66 @@ pub fn main() -> Result<(), Error> {
         fcntl::S_IRUSR | fcntl::S_IWUSR,
     ) {
         fd if fd >= 0 => {
-            ::nvx::log!("opened file foo.txt with fd {}", fd);
+            ::nvx::log!("opened file foo.tmp with fd {}", fd);
             fd
         },
         errno => {
-            panic!("failed to open file foo.txt: {:?}", errno);
+            panic!("failed to open file foo.tmp: {:?}", errno);
         },
     };
 
     // Close file.
     match unistd::close(fd) {
         0 => {
-            ::nvx::log!("closed file foo.txt");
+            ::nvx::log!("closed file foo.tmp");
         },
         errno => {
-            panic!("failed to close file foo.txt: {:?}", errno);
+            panic!("failed to close file foo.tmp: {:?}", errno);
         },
     }
 
-    // Rename `foo.txt` to `bar.txt`.
+    // Rename `foo.tmp` to `bar.tmp`.
     match fcntl::renameat(fcntl::AT_FDCWD, "foo.tmp", fcntl::AT_FDCWD, "bar.tmp") {
         0 => {
-            ::nvx::log!("renamed file foo.txt to bar.txt");
+            ::nvx::log!("renamed file foo.tmp to bar.tmp");
         },
         errno => {
-            panic!("failed to rename file foo.txt to bar.txt: {:?}", errno);
+            panic!("failed to rename file foo.tmp to bar.tmp: {:?}", errno);
         },
     }
 
-    // Unlink file named `foo.txt`.
-    match fcntl::unlinkat(fcntl::AT_FDCWD, "bar.tmp", 0) {
+    // Get status of file named `bar.tmp`.
+    let mut st: stat = stat::default();
+    match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut st, 0) {
         0 => {
-            ::nvx::log!("unlinked file foo.txt");
+            ::nvx::log!("got status of file bar.tmp");
+            ::nvx::log!("file statistics:");
+            ::nvx::log!("  st_dev: {}", { st.st_dev });
+            ::nvx::log!("  st_ino: {}", { st.st_ino });
+            ::nvx::log!("  st_mode: {}", { st.st_mode });
+            ::nvx::log!("  st_nlink: {}", { st.st_nlink });
+            ::nvx::log!("  st_uid: {}", { st.st_uid });
+            ::nvx::log!("  st_gid: {}", { st.st_gid });
+            ::nvx::log!("  st_rdev: {}", { st.st_rdev });
+            ::nvx::log!("  st_size: {}", { st.st_size });
+            ::nvx::log!("  st_blksize: {}", { st.st_blksize });
+            ::nvx::log!("  st_blocks: {}", { st.st_blocks });
+            ::nvx::log!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
+            ::nvx::log!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
+            ::nvx::log!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
         },
         errno => {
-            panic!("failed to unlink file foo.txt: {:?}", errno);
+            panic!("failed to get status of file bar.tmp: {:?}", errno);
+        },
+    }
+
+    // Unlink file named `foo.tmp`.
+    match fcntl::unlinkat(fcntl::AT_FDCWD, "bar.tmp", 0) {
+        0 => {
+            ::nvx::log!("unlinked file foo.tmp");
+        },
+        errno => {
+            panic!("failed to unlink file foo.tmp: {:?}", errno);
         },
     }
 

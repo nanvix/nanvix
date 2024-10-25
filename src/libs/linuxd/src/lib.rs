@@ -76,6 +76,8 @@ pub enum LinuxDaemonMessageHeader {
     CloseResponse,
     RenameAtRequest,
     RenameAtResponse,
+    FileStatRequestPart,
+    FileStatResponsePart,
 }
 
 #[repr(C, packed)]
