@@ -27,6 +27,7 @@ cfg_if::cfg_if! {
             openat,
             unlinkat,
             renameat,
+            posix_fallocate,
         };
     }
 }
@@ -39,7 +40,7 @@ pub const O_EXCL: ffi::c_int = 1 << 2;
 pub const O_TRUNC: ffi::c_int = 1 << 3;
 pub const O_RDONLY: ffi::c_int = 1 << 4;
 pub const O_WRONLY: ffi::c_int = 1 << 5;
-pub const O_RDWR: ffi::c_int = O_RDONLY | O_WRONLY;
+pub const O_RDWR: ffi::c_int = 1 << 6;
 
 pub const S_IRWXU: mode_t = 0o700;
 pub const S_IRUSR: mode_t = 0o400;

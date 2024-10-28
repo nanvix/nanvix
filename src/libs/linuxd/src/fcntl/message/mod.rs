@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod fallocate;
 mod openat;
 mod renameat;
 mod unlinkat;
@@ -14,6 +15,10 @@ mod unlinkat;
 //==================================================================================================
 
 pub use self::{
+    fallocate::{
+        FileSpaceControlRequest,
+        FileSpaceControlResponse,
+    },
     openat::{
         OpenAtRequest,
         OpenAtResponse,

@@ -66,7 +66,7 @@ pub fn main() -> Result<(), Error> {
     let fd: i32 = match fcntl::openat(
         fcntl::AT_FDCWD,
         "foo.tmp",
-        fcntl::O_CREAT | fcntl::O_RDONLY,
+        fcntl::O_CREAT | fcntl::O_RDWR | fcntl::O_TRUNC,
         fcntl::S_IRUSR | fcntl::S_IWUSR,
     ) {
         fd if fd >= 0 => {
@@ -81,10 +81,20 @@ pub fn main() -> Result<(), Error> {
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
     match unistd::lseek(fd, 1024, unistd::SEEK_END) {
         1024 => {
-            ::nvx::log!("truncated file foo.tmp to 1024 bytes");
+            ::nvx::log!("seek file foo.tmp to 1024 bytes");
         },
         offset => {
-            panic!("failed to truncate file foo.tmp to 1024 bytes: {:?}", offset);
+            panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
+        },
+    }
+
+    // Attempt to allocate space.
+    match fcntl::posix_fallocate(fd, 0, 1024) {
+        0 => {
+            ::nvx::log!("allocated space for file foo.tmp");
+        },
+        errno => {
+            panic!("failed to allocate space for file foo.tmp: {:?}", errno);
         },
     }
 
@@ -151,6 +161,11 @@ pub fn main() -> Result<(), Error> {
         errno => {
             panic!("failed to get status of file bar.tmp: {:?}", errno);
         },
+    }
+
+    // Sanity check file size.
+    if st.st_size != 1024 {
+        panic!("file size is not 1024 bytes");
     }
 
     // Unlink file named `foo.tmp`.
