@@ -28,6 +28,7 @@ cfg_if::cfg_if! {
             unlinkat,
             renameat,
             posix_fallocate,
+            posix_fadvise,
         };
     }
 }
@@ -57,3 +58,16 @@ pub const S_IXOTH: mode_t = 0o001;
 
 pub const AT_REMOVEDIR: i32 = 0x200;
 pub const AT_FDCWD: i32 = -100;
+
+/// The application has no advice to give on its behavior with respect to the specified data
+pub const POSIX_FADV_NORMAL: i32 = 0;
+/// The application expects to access the specified data sequentially from lower offsets to higher offsets.
+pub const POSIX_FADV_SEQUENTIAL: i32 = 1;
+/// The application expects to access the specified data in a random order.
+pub const POSIX_FADV_RANDOM: i32 = 2;
+/// The specified data will be accessed in the near future.
+pub const POSIX_FADV_WILLNEED: i32 = 3;
+/// The specified data will not be accessed in the near future.
+pub const POSIX_FADV_DONTNEED: i32 = 4;
+/// The specified data will be accessed once and then will not be used again.
+pub const POSIX_FADV_NOREUSE: i32 = 5;

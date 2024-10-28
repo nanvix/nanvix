@@ -12,6 +12,8 @@ use ::core::{
 use ::linuxd::{
     fcntl,
     fcntl::message::{
+        FileAdvisoryInformationRequest,
+        FileAdvisoryInformationResponse,
         FileSpaceControlRequest,
         FileSpaceControlResponse,
         OpenAtRequest,
@@ -287,6 +289,45 @@ pub fn do_posix_fallocate(pid: ProcessIdentifier, request: FileSpaceControlReque
 }
 
 //==================================================================================================
+// do_posix_fadvise
+//==================================================================================================
+
+pub fn do_posix_fadvise(
+    pid: ProcessIdentifier,
+    request: FileAdvisoryInformationRequest,
+) -> Message {
+    trace!("posix_fadvise(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+    let offset: off_t = request.offset;
+    let len: off_t = request.len;
+    let advice: LibcFileAdvice = match LibcFileAdvice::try_from(request.advice) {
+        Ok(advice) => advice,
+        Err(e) => return crate::build_error(pid, e.code),
+    };
+
+    debug!(
+        "libc::posix_fadvise(): fd={:?}, offset={:?}, len={:?}, advice={:?}",
+        fd,
+        offset,
+        len,
+        advice.inner()
+    );
+    match unsafe { libc::posix_fadvise(fd, offset, len, advice.inner()) } {
+        0 => {
+            debug!("libc::posix_fadvise(): success");
+            FileAdvisoryInformationResponse::build(pid, 0)
+        },
+        errno => {
+            debug!("libc::posix_fadvise(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            crate::build_error(pid, error)
+        },
+    }
+}
+
+//==================================================================================================
 
 struct LibcFileFlags(libc::c_int);
 
@@ -370,5 +411,27 @@ impl LibcAtFlags {
         };
 
         LibcAtFlags(libc_flags)
+    }
+}
+
+pub struct LibcFileAdvice(libc::c_int);
+
+impl LibcFileAdvice {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn try_from(advice: i32) -> Result<LibcFileAdvice, Error> {
+        let libc_advice: libc::c_int = match advice {
+            fcntl::POSIX_FADV_NORMAL => libc::POSIX_FADV_NORMAL,
+            fcntl::POSIX_FADV_RANDOM => libc::POSIX_FADV_RANDOM,
+            fcntl::POSIX_FADV_SEQUENTIAL => libc::POSIX_FADV_SEQUENTIAL,
+            fcntl::POSIX_FADV_WILLNEED => libc::POSIX_FADV_WILLNEED,
+            fcntl::POSIX_FADV_DONTNEED => libc::POSIX_FADV_DONTNEED,
+            fcntl::POSIX_FADV_NOREUSE => libc::POSIX_FADV_NOREUSE,
+            _ => return Err(Error::new(ErrorCode::InvalidArgument, "invalid advice")),
+        };
+
+        Ok(LibcFileAdvice(libc_advice))
     }
 }

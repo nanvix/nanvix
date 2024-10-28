@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod fadvise;
 mod fallocate;
 mod openat;
 mod renameat;
@@ -15,6 +16,10 @@ mod unlinkat;
 //==================================================================================================
 
 pub use self::{
+    fadvise::{
+        FileAdvisoryInformationRequest,
+        FileAdvisoryInformationResponse,
+    },
     fallocate::{
         FileSpaceControlRequest,
         FileSpaceControlResponse,

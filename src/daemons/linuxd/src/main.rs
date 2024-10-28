@@ -41,6 +41,7 @@ use ::anyhow::Result;
 use ::flexi_logger::Logger;
 use ::linuxd::{
     fcntl::message::{
+        FileAdvisoryInformationRequest,
         FileSpaceControlRequest,
         OpenAtRequest,
         RenameAtRequest,
@@ -226,6 +227,11 @@ impl ProcessDaemon {
                                     let request: FileTruncateRequest =
                                         FileTruncateRequest::from_bytes(message.payload);
                                     unistd::do_ftruncate(source, request)
+                                },
+                                LinuxDaemonMessageHeader::FileAdvisoryInformationRequest => {
+                                    let request: FileAdvisoryInformationRequest =
+                                        FileAdvisoryInformationRequest::from_bytes(message.payload);
+                                    fcntl::do_posix_fadvise(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
