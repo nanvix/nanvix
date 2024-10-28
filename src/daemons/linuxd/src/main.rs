@@ -58,6 +58,7 @@ use ::linuxd::{
         CloseRequest,
         FileDataSyncRequest,
         FileSyncRequest,
+        SeekRequest,
     },
     venv::message::{
         JoinEnvRequest,
@@ -208,6 +209,11 @@ impl ProcessDaemon {
                                     let request: FileSyncRequest =
                                         FileSyncRequest::from_bytes(message.payload);
                                     unistd::do_fsync(source, request)
+                                },
+                                LinuxDaemonMessageHeader::SeekRequest => {
+                                    let request: SeekRequest =
+                                        SeekRequest::from_bytes(message.payload);
+                                    unistd::do_lseek(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };

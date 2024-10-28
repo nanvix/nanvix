@@ -8,6 +8,7 @@
 mod close;
 mod fdatasync;
 mod fsync;
+mod lseek;
 
 //==================================================================================================
 // Exports
@@ -25,5 +26,9 @@ pub use self::{
     fsync::{
         FileSyncRequest,
         FileSyncResponse,
+    },
+    lseek::{
+        SeekRequest,
+        SeekResponse,
     },
 };

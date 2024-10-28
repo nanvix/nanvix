@@ -8,6 +8,7 @@
 mod close;
 mod fdatasync;
 mod fsync;
+mod lseek;
 
 //==================================================================================================
 // Exports
@@ -17,4 +18,5 @@ pub use self::{
     close::close,
     fdatasync::fdatasync,
     fsync::fsync,
+    lseek::lseek,
 };
