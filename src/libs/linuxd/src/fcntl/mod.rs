@@ -27,6 +27,7 @@ cfg_if::cfg_if! {
             openat,
             unlinkat,
             renameat,
+            posix_fallocate,
         };
     }
 }

@@ -12,6 +12,8 @@ use ::core::{
 use ::linuxd::{
     fcntl,
     fcntl::message::{
+        FileSpaceControlRequest,
+        FileSpaceControlResponse,
         OpenAtRequest,
         OpenAtResponse,
         RenameAtRequest,
@@ -28,7 +30,10 @@ use ::linuxd::{
             },
             stat,
         },
-        types::mode_t,
+        types::{
+            mode_t,
+            off_t,
+        },
     },
     time::timespec,
 };
@@ -251,6 +256,32 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Mess
             debug!("libc::fstatat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
             vec![crate::build_error(pid, error)]
+        },
+    }
+}
+
+//==================================================================================================
+// do_posix_fallocate
+//==================================================================================================
+
+pub fn do_posix_fallocate(pid: ProcessIdentifier, request: FileSpaceControlRequest) -> Message {
+    trace!("posix_fallocate(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+    let offset: off_t = request.offset;
+    let len: off_t = request.len;
+
+    debug!("libc::posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
+    match unsafe { libc::posix_fallocate(fd, offset, len) } {
+        0 => {
+            debug!("libc::posix_fallocate(): success");
+            FileSpaceControlResponse::build(pid, 0)
+        },
+        errno => {
+            debug!("libc::posix_fallocate(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            crate::build_error(pid, error)
         },
     }
 }

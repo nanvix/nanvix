@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod fallocate;
 mod openat;
 mod renameat;
 mod unlinkat;
@@ -14,6 +15,7 @@ mod unlinkat;
 //==================================================================================================
 
 pub use self::{
+    fallocate::posix_fallocate,
     openat::openat,
     renameat::renameat,
     unlinkat::unlinkat,

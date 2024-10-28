@@ -84,6 +84,8 @@ pub enum LinuxDaemonMessageHeader {
     FileSyncResponse,
     SeekRequest,
     SeekResponse,
+    FileSpaceControlRequest,
+    FileSpaceControlResponse,
 }
 
 #[repr(C, packed)]

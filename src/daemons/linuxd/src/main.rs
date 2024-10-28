@@ -41,6 +41,7 @@ use ::anyhow::Result;
 use ::flexi_logger::Logger;
 use ::linuxd::{
     fcntl::message::{
+        FileSpaceControlRequest,
         OpenAtRequest,
         RenameAtRequest,
         UnlinkAtRequest,
@@ -214,6 +215,11 @@ impl ProcessDaemon {
                                     let request: SeekRequest =
                                         SeekRequest::from_bytes(message.payload);
                                     unistd::do_lseek(source, request)
+                                },
+                                LinuxDaemonMessageHeader::FileSpaceControlRequest => {
+                                    let request: FileSpaceControlRequest =
+                                        FileSpaceControlRequest::from_bytes(message.payload);
+                                    fcntl::do_posix_fallocate(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
