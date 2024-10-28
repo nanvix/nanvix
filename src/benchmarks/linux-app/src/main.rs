@@ -88,8 +88,18 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Truncate file to 512 bytes.
+    match unistd::ftruncate(fd, 512) {
+        0 => {
+            ::nvx::log!("truncated file foo.tmp to 512 bytes");
+        },
+        errno => {
+            panic!("failed to truncate file foo.tmp to 512 bytes: {:?}", errno);
+        },
+    }
+
     // Attempt to allocate space.
-    match fcntl::posix_fallocate(fd, 0, 1024) {
+    match fcntl::posix_fallocate(fd, 512, 512) {
         0 => {
             ::nvx::log!("allocated space for file foo.tmp");
         },

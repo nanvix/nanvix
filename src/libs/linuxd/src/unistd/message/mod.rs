@@ -8,6 +8,7 @@
 mod close;
 mod fdatasync;
 mod fsync;
+mod ftruncate;
 mod lseek;
 
 //==================================================================================================
@@ -26,6 +27,10 @@ pub use self::{
     fsync::{
         FileSyncRequest,
         FileSyncResponse,
+    },
+    ftruncate::{
+        FileTruncateRequest,
+        FileTruncateResponse,
     },
     lseek::{
         SeekRequest,

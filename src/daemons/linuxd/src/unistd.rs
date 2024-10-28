@@ -7,6 +7,7 @@
 
 use ::core::ffi;
 use ::linuxd::{
+    sys::types::off_t,
     unistd,
     unistd::message::{
         CloseRequest,
@@ -15,6 +16,8 @@ use ::linuxd::{
         FileDataSyncResponse,
         FileSyncRequest,
         FileSyncResponse,
+        FileTruncateRequest,
+        FileTruncateResponse,
         SeekRequest,
         SeekResponse,
     },
@@ -103,6 +106,26 @@ pub fn do_lseek(pid: ProcessIdentifier, request: SeekRequest) -> Message {
             pid,
             ErrorCode::try_from(ret as i32)
                 .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+        ),
+    }
+}
+
+//==================================================================================================
+// do_ftruncate
+//==================================================================================================
+
+pub fn do_ftruncate(pid: ProcessIdentifier, request: FileTruncateRequest) -> Message {
+    trace!("ftruncate(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+    let length: off_t = request.length;
+
+    debug!("libc::ftruncate(): fd={:?}, length={:?}", fd, length);
+    match unsafe { libc::ftruncate(fd, length) } {
+        ret if ret == 0 => FileTruncateResponse::build(pid, ret),
+        ret => crate::build_error(
+            pid,
+            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
         ),
     }
 }
