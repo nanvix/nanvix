@@ -78,6 +78,16 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
+    // Move seek offset to the end of the (empty) file plus 1024 bytes.
+    match unistd::lseek(fd, 1024, unistd::SEEK_END) {
+        1024 => {
+            ::nvx::log!("truncated file foo.tmp to 1024 bytes");
+        },
+        offset => {
+            panic!("failed to truncate file foo.tmp to 1024 bytes: {:?}", offset);
+        },
+    }
+
     // Synchronize data changes to file.
     match unistd::fdatasync(fd) {
         0 => {
