@@ -59,6 +59,7 @@ use ::linuxd::{
         CloseRequest,
         FileDataSyncRequest,
         FileSyncRequest,
+        FileTruncateRequest,
         SeekRequest,
     },
     venv::message::{
@@ -220,6 +221,11 @@ impl ProcessDaemon {
                                     let request: FileSpaceControlRequest =
                                         FileSpaceControlRequest::from_bytes(message.payload);
                                     fcntl::do_posix_fallocate(source, request)
+                                },
+                                LinuxDaemonMessageHeader::FileTruncateRequest => {
+                                    let request: FileTruncateRequest =
+                                        FileTruncateRequest::from_bytes(message.payload);
+                                    unistd::do_ftruncate(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };

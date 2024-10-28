@@ -8,6 +8,7 @@
 mod close;
 mod fdatasync;
 mod fsync;
+mod ftruncate;
 mod lseek;
 
 //==================================================================================================
@@ -18,5 +19,6 @@ pub use self::{
     close::close,
     fdatasync::fdatasync,
     fsync::fsync,
+    ftruncate::ftruncate,
     lseek::lseek,
 };
