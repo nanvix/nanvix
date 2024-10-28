@@ -78,6 +78,16 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
+    // Advice normal access.
+    match fcntl::posix_fadvise(fd, 0, 0, fcntl::POSIX_FADV_NORMAL) {
+        0 => {
+            ::nvx::log!("advised normal access for file foo.tmp");
+        },
+        errno => {
+            panic!("failed to advise normal access for file foo.tmp: {:?}", errno);
+        },
+    }
+
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
     match unistd::lseek(fd, 1024, unistd::SEEK_END) {
         1024 => {
