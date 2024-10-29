@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use ::alloc::ffi::CString;
 use ::core::{
     ffi,
     str,
@@ -204,18 +205,16 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Mess
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
     let flag: i32 = request.flag;
     let flag: LibcFileFlags = LibcFileFlags(flag);
-    let path: &str = &request.path;
+    let path: CString = match CString::new(request.path.as_str()) {
+        Ok(c_string) => c_string,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
 
     let mut st: libc::stat = unsafe { core::mem::zeroed() };
 
     debug!("libc::fstatat(): dirfd={:?}, path={:?}, flag={:?}", dirfd.inner(), path, flag.inner());
     match unsafe {
-        libc::fstatat(
-            dirfd.inner(),
-            path.as_ptr() as *const i8,
-            &mut st as *mut libc::stat,
-            flag.inner(),
-        )
+        libc::fstatat(dirfd.inner(), path.as_ptr(), &mut st as *mut libc::stat, flag.inner())
     } {
         0 => {
             debug!("libc::fstatat(): success");
@@ -254,9 +253,11 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Mess
                 Err(e) => vec![crate::build_error(pid, e.code)],
             }
         },
-        errno => {
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fstatat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
