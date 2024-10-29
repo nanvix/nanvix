@@ -34,7 +34,7 @@ use ::nvx::{
 };
 
 //==================================================================================================
-// FileStatRequest
+// FileStatAtRequest
 //==================================================================================================
 
 ///
@@ -43,7 +43,7 @@ use ::nvx::{
 /// This struct represents the request message of the `fstatat()` system call.
 ///
 #[derive(Debug)]
-pub struct FileStatRequest {
+pub struct FileStatAtRequest {
     /// Directory file descriptor.
     pub dirfd: i32,
     /// Flags.
@@ -52,7 +52,7 @@ pub struct FileStatRequest {
     pub path: String,
 }
 
-impl FileStatRequest {
+impl FileStatAtRequest {
     /// Sizes of 'directory file descriptor' field.
     const SIZE_OF_DIRFD: usize = mem::size_of::<i32>();
     /// Sizes of 'flags' field.
@@ -78,11 +78,11 @@ impl FileStatRequest {
     /// Creates a new request message for the `fstatat()` system call.
     ///
     pub fn new(dirfd: i32, path: String, flag: i32) -> Self {
-        FileStatRequest { dirfd, flag, path }
+        FileStatAtRequest { dirfd, flag, path }
     }
 }
 
-impl MessageSerializer for FileStatRequest {
+impl MessageSerializer for FileStatAtRequest {
     ///
     /// # Description
     ///
@@ -108,7 +108,7 @@ impl MessageSerializer for FileStatRequest {
     }
 }
 
-impl MessageDeserializer for FileStatRequest {
+impl MessageDeserializer for FileStatAtRequest {
     ///
     /// # Description
     ///
@@ -158,11 +158,11 @@ impl MessageDeserializer for FileStatRequest {
         )
         .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid path"))?;
 
-        Ok(FileStatRequest { dirfd, flag, path })
+        Ok(FileStatAtRequest { dirfd, flag, path })
     }
 }
 
-impl MessagePartitioner for FileStatRequest {
+impl MessagePartitioner for FileStatAtRequest {
     ///
     /// # Description
     ///
@@ -187,7 +187,7 @@ impl MessagePartitioner for FileStatRequest {
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             pid,
-            LinuxDaemonMessageHeader::FileStatRequestPart,
+            LinuxDaemonMessageHeader::FileStatAtRequestPart,
             part_number,
             payload_size,
             payload,
@@ -196,7 +196,7 @@ impl MessagePartitioner for FileStatRequest {
 }
 
 //==================================================================================================
-// FileStatResponse
+// FileStatAtResponse
 //==================================================================================================
 
 ///
@@ -205,12 +205,12 @@ impl MessagePartitioner for FileStatRequest {
 /// This struct represents the response message of the `fstatat()` system call.
 ///
 #[derive(Debug)]
-pub struct FileStatResponse {
+pub struct FileStatAtResponse {
     /// File status.
     pub stat: stat,
 }
 
-impl FileStatResponse {
+impl FileStatAtResponse {
     /// Size of file status field.
     const SIZE_OF_STAT: usize = mem::size_of::<stat>();
 
@@ -220,11 +220,11 @@ impl FileStatResponse {
     /// Creates a new response message for the `fstatat()` system call.
     ///
     pub fn new(stat: stat) -> Self {
-        FileStatResponse { stat }
+        FileStatAtResponse { stat }
     }
 }
 
-impl MessageSerializer for FileStatResponse {
+impl MessageSerializer for FileStatAtResponse {
     ///
     /// # Description
     ///
@@ -244,7 +244,7 @@ impl MessageSerializer for FileStatResponse {
     }
 }
 
-impl MessageDeserializer for FileStatResponse {
+impl MessageDeserializer for FileStatAtResponse {
     ///
     /// # Description
     ///
@@ -264,13 +264,13 @@ impl MessageDeserializer for FileStatResponse {
             return Err(Error::new(ErrorCode::InvalidMessage, "message too short"));
         }
 
-        Ok(FileStatResponse {
+        Ok(FileStatAtResponse {
             stat: stat::try_from_bytes(bytes)?,
         })
     }
 }
 
-impl MessagePartitioner for FileStatResponse {
+impl MessagePartitioner for FileStatAtResponse {
     ///
     /// # Description
     ///
@@ -295,7 +295,7 @@ impl MessagePartitioner for FileStatResponse {
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_response(
             pid,
-            LinuxDaemonMessageHeader::FileStatResponsePart,
+            LinuxDaemonMessageHeader::FileStatAtResponsePart,
             part_number,
             payload_size,
             payload,

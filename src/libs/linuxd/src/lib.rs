@@ -76,8 +76,8 @@ pub enum LinuxDaemonMessageHeader {
     CloseResponse,
     RenameAtRequest,
     RenameAtResponse,
-    FileStatRequestPart,
-    FileStatResponsePart,
+    FileStatAtRequestPart,
+    FileStatAtResponsePart,
     FileDataSyncRequest,
     FileDataSyncResponse,
     FileSyncRequest,
@@ -90,6 +90,8 @@ pub enum LinuxDaemonMessageHeader {
     FileTruncateResponse,
     FileAdvisoryInformationRequest,
     FileAdvisoryInformationResponse,
+    FileStatRequest,
+    FileStatResponse,
 }
 
 #[repr(C, packed)]

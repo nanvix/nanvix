@@ -28,8 +28,9 @@ use ::linuxd::{
     sys::{
         stat::{
             message::{
+                FileStatAtRequest,
+                FileStatAtResponse,
                 FileStatRequest,
-                FileStatResponse,
             },
             stat,
         },
@@ -198,7 +199,7 @@ pub fn do_rename_at(pid: ProcessIdentifier, request: RenameAtRequest) -> Message
 // do_fstatat
 //==================================================================================================
 
-pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message> {
+pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Message> {
     trace!("fstatat(): pid={:?}, request={:?}", pid, request);
 
     let dirfd: i32 = request.dirfd;
@@ -246,7 +247,7 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Mess
 
             // Print size of stat structure.
             debug!("libc::fstatat(): size of stat={:?}", core::mem::size_of::<stat>());
-            let response = FileStatResponse::new(stat);
+            let response = FileStatAtResponse::new(stat);
 
             match response.into_parts(pid) {
                 Ok(messages) => messages,
@@ -324,6 +325,66 @@ pub fn do_posix_fadvise(
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno}"));
             crate::build_error(pid, error)
+        },
+    }
+}
+
+//==================================================================================================
+// do_fstat()
+//==================================================================================================
+
+pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message> {
+    trace!("fstatat(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+
+    let mut st: libc::stat = unsafe { core::mem::zeroed() };
+
+    debug!("libc::fstat(): fd={:?}", fd);
+    match unsafe { libc::fstat(fd, &mut st) } {
+        0 => {
+            debug!("libc::fstatat(): success");
+
+            let stat = stat {
+                st_dev: st.st_dev,
+                st_ino: st.st_ino,
+                st_mode: st.st_mode,
+                st_nlink: st.st_nlink,
+                st_uid: st.st_uid,
+                st_gid: st.st_gid,
+                st_rdev: st.st_rdev,
+                st_size: st.st_size,
+                st_atim: timespec {
+                    tv_sec: st.st_atime,
+                    tv_nsec: st.st_atime_nsec,
+                },
+                st_mtim: timespec {
+                    tv_sec: st.st_mtime,
+                    tv_nsec: st.st_mtime_nsec,
+                },
+                st_ctim: timespec {
+                    tv_sec: st.st_ctime,
+                    tv_nsec: st.st_ctime_nsec,
+                },
+                st_blksize: st.st_blksize,
+                st_blocks: st.st_blocks,
+            };
+
+            // Print size of stat structure.
+            debug!("libc::fstatat(): size of stat={:?}", core::mem::size_of::<stat>());
+            let response = FileStatAtResponse::new(stat);
+
+            match response.into_parts(pid) {
+                Ok(messages) => messages,
+                Err(e) => vec![crate::build_error(pid, e.code)],
+            }
+        },
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::fstatat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            vec![crate::build_error(pid, error)]
         },
     }
 }
