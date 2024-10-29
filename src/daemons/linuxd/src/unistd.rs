@@ -18,6 +18,8 @@ use ::linuxd::{
         FileSyncResponse,
         FileTruncateRequest,
         FileTruncateResponse,
+        ReadRequest,
+        ReadResponse,
         SeekRequest,
         SeekResponse,
         WriteRequest,
@@ -151,6 +153,33 @@ pub fn do_write(pid: ProcessIdentifier, request: WriteRequest) -> Message {
     debug!("libc::write(): fd={:?}, buffer={:?}", fd, buffer);
     match unsafe { libc::write(fd, buffer.as_ptr() as *const _, count) } {
         ret if ret >= 0 => WriteResponse::build(pid, ret as i32),
+        ret => crate::build_error(
+            pid,
+            ErrorCode::try_from(ret as i32)
+                .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+        ),
+    }
+}
+
+//==================================================================================================
+// do_read
+//==================================================================================================
+
+pub fn do_read(pid: ProcessIdentifier, request: ReadRequest) -> Message {
+    trace!("read(): pid={:?}, request={:?}", pid, request);
+
+    // Check if count is invalid.
+    if (request.count < 0) || (request.count > ReadResponse::BUFFER_SIZE as i32) {
+        return crate::build_error(pid, ErrorCode::InvalidArgument);
+    }
+    let fd: i32 = request.fd;
+    let count: usize = request.count as usize;
+
+    let mut buffer: [u8; ReadResponse::BUFFER_SIZE] = [0; ReadResponse::BUFFER_SIZE];
+
+    debug!("libc::read(): fd={:?}, buffer={:?}", fd, buffer);
+    match unsafe { libc::read(fd, buffer.as_mut_ptr() as *mut _, count) } {
+        ret if ret >= 0 => ReadResponse::build(pid, ret as i32, buffer),
         ret => crate::build_error(
             pid,
             ErrorCode::try_from(ret as i32)

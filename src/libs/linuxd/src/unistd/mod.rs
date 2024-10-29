@@ -36,6 +36,7 @@ cfg_if::cfg_if! {
             lseek,
             ftruncate,
             write,
+            read,
         };
     }
 }

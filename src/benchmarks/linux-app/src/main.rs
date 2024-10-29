@@ -99,6 +99,32 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Move seek offset start of file.
+    match unistd::lseek(fd, 0, unistd::SEEK_SET) {
+        0 => {
+            ::nvx::log!("seek file foo.tmp to 1024 bytes");
+        },
+        offset => {
+            panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
+        },
+    }
+
+    // Check if first 512 bytes are filled with ones.
+    let mut buffer: [u8; 512] = [0; 512];
+    match unistd::read(fd, &mut buffer) {
+        512 => {
+            ::nvx::log!("read 512 bytes from file foo.tmp");
+            (0..512).for_each(|i| {
+                if buffer[i] != 1 {
+                    panic!("file foo.tmp is not filled with ones");
+                }
+            });
+        },
+        errno => {
+            panic!("failed to read 512 bytes from file foo.tmp: {:?}", errno);
+        },
+    }
+
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
     match unistd::lseek(fd, 512, unistd::SEEK_END) {
         1024 => {
