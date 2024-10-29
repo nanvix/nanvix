@@ -51,7 +51,7 @@ use ::linuxd::{
         LinuxDaemonLongMessage,
         LinuxDaemonMessagePart,
     },
-    sys::stat::message::FileStatRequest,
+    sys::stat::message::FileStatAtRequest,
     time::message::{
         ClockResolutionRequest,
         GetClockTimeRequest,
@@ -199,7 +199,7 @@ impl ProcessDaemon {
                                         RenameAtRequest::from_bytes(message.payload);
                                     fcntl::do_rename_at(source, request)
                                 },
-                                LinuxDaemonMessageHeader::FileStatRequestPart => {
+                                LinuxDaemonMessageHeader::FileStatAtRequestPart => {
                                     self.handle_fstatat_request(source, message);
                                     continue;
                                 },
@@ -293,7 +293,7 @@ impl ProcessDaemon {
 
         match self
             .assembler
-            .process_message::<FileStatRequest>(source, part)
+            .process_message::<FileStatAtRequest>(source, part)
         {
             Ok(Some(messages)) => {
                 for message in messages {
@@ -382,10 +382,10 @@ pub fn build_error(pid: ProcessIdentifier, error: ErrorCode) -> Message {
     Message::new(linuxd::LINUXD, pid, MessageType::Ikc, Some(error), [0u8; Message::PAYLOAD_SIZE])
 }
 
-impl RequestAssemblerTrait for FileStatRequest {
+impl RequestAssemblerTrait for FileStatAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::FileStatRequest(
+        RequestAssemblerType::FileStatAtRequest(
             LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
@@ -395,19 +395,19 @@ impl RequestAssemblerTrait for FileStatRequest {
         part: LinuxDaemonMessagePart,
     ) -> Result<(), Error> {
         match assembler {
-            RequestAssemblerType::FileStatRequest(assembler) => assembler.add_part(part),
+            RequestAssemblerType::FileStatAtRequest(assembler) => assembler.add_part(part),
         }
     }
 
     fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
         match assembler {
-            RequestAssemblerType::FileStatRequest(assembler) => Ok(assembler.is_complete()),
+            RequestAssemblerType::FileStatAtRequest(assembler) => Ok(assembler.is_complete()),
         }
     }
 
     fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
         match assembler {
-            RequestAssemblerType::FileStatRequest(assembler) => assembler.take_parts(),
+            RequestAssemblerType::FileStatAtRequest(assembler) => assembler.take_parts(),
         }
     }
 

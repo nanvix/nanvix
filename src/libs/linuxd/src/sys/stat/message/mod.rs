@@ -12,6 +12,6 @@ mod fstatat;
 //==================================================================================================
 
 pub use fstatat::{
-    FileStatRequest,
-    FileStatResponse,
+    FileStatAtRequest,
+    FileStatAtResponse,
 };

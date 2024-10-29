@@ -13,8 +13,8 @@ use crate::{
     },
     sys::stat::{
         message::{
-            FileStatRequest,
-            FileStatResponse,
+            FileStatAtRequest,
+            FileStatAtResponse,
         },
         stat,
     },
@@ -84,7 +84,7 @@ fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> i32 {
         Err(e) => return e.code.into_errno(),
     };
 
-    let request: FileStatRequest = FileStatRequest::new(dirfd, path.to_string(), flag);
+    let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag);
     let requests: Vec<Message> = match request.into_parts(pid) {
         Ok(requests) => requests,
         Err(e) => return e.code.into_errno(),
@@ -139,7 +139,7 @@ fn fstatat_response(buf: &mut stat) -> i32 {
             // System call succeeded, parse response.
             match LinuxDaemonMessage::try_from_bytes(response.payload) {
                 Ok(message) => match message.header {
-                    LinuxDaemonMessageHeader::FileStatResponsePart => {
+                    LinuxDaemonMessageHeader::FileStatAtResponsePart => {
                         let part: LinuxDaemonMessagePart =
                             LinuxDaemonMessagePart::from_bytes(message.payload);
 
@@ -153,7 +153,7 @@ fn fstatat_response(buf: &mut stat) -> i32 {
 
                         let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
 
-                        match FileStatResponse::from_parts(&parts) {
+                        match FileStatAtResponse::from_parts(&parts) {
                             Ok(response) => {
                                 *buf = response.stat;
                                 break 0;

@@ -28,8 +28,8 @@ use ::linuxd::{
     sys::{
         stat::{
             message::{
-                FileStatRequest,
-                FileStatResponse,
+                FileStatAtRequest,
+                FileStatAtResponse,
             },
             stat,
         },
@@ -198,7 +198,7 @@ pub fn do_rename_at(pid: ProcessIdentifier, request: RenameAtRequest) -> Message
 // do_fstatat
 //==================================================================================================
 
-pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message> {
+pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Message> {
     trace!("fstatat(): pid={:?}, request={:?}", pid, request);
 
     let dirfd: i32 = request.dirfd;
@@ -246,7 +246,7 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Mess
 
             // Print size of stat structure.
             debug!("libc::fstatat(): size of stat={:?}", core::mem::size_of::<stat>());
-            let response = FileStatResponse::new(stat);
+            let response = FileStatAtResponse::new(stat);
 
             match response.into_parts(pid) {
                 Ok(messages) => messages,
