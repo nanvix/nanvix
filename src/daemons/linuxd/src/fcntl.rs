@@ -253,7 +253,8 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Mess
                 Err(e) => vec![crate::build_error(pid, e.code)],
             }
         },
-        errno => {
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fstatat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno}"));
