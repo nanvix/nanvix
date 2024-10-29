@@ -88,8 +88,19 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Fill first 512 bytes of file with ones.
+    let buffer: [u8; 512] = [1; 512];
+    match unistd::write(fd, &buffer) {
+        512 => {
+            ::nvx::log!("wrote 512 bytes to file foo.tmp");
+        },
+        errno => {
+            panic!("failed to write 512 bytes to file foo.tmp: {:?}", errno);
+        },
+    }
+
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
-    match unistd::lseek(fd, 1024, unistd::SEEK_END) {
+    match unistd::lseek(fd, 512, unistd::SEEK_END) {
         1024 => {
             ::nvx::log!("seek file foo.tmp to 1024 bytes");
         },

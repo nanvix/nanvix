@@ -65,6 +65,7 @@ use ::linuxd::{
         FileSyncRequest,
         FileTruncateRequest,
         SeekRequest,
+        WriteRequest,
     },
     venv::message::{
         JoinEnvRequest,
@@ -239,6 +240,11 @@ impl ProcessDaemon {
                                 LinuxDaemonMessageHeader::FileStatRequest => {
                                     self.handle_fstat_request(source, message);
                                     continue;
+                                },
+                                LinuxDaemonMessageHeader::WriteRequest => {
+                                    let request: WriteRequest =
+                                        WriteRequest::from_bytes(message.payload);
+                                    unistd::do_write(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };

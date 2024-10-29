@@ -20,6 +20,8 @@ use ::linuxd::{
         FileTruncateResponse,
         SeekRequest,
         SeekResponse,
+        WriteRequest,
+        WriteResponse,
     },
 };
 use ::nvx::{
@@ -126,6 +128,33 @@ pub fn do_ftruncate(pid: ProcessIdentifier, request: FileTruncateRequest) -> Mes
         ret => crate::build_error(
             pid,
             ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+        ),
+    }
+}
+
+//==================================================================================================
+// do_write
+//==================================================================================================
+
+pub fn do_write(pid: ProcessIdentifier, request: WriteRequest) -> Message {
+    trace!("write(): pid={:?}, request={:?}", pid, request);
+
+    // Check if count is invalid.
+    if (request.count < 0) || (request.count > WriteRequest::BUFFER_SIZE as i32) {
+        return crate::build_error(pid, ErrorCode::InvalidArgument);
+    }
+    let fd: i32 = request.fd;
+    let count: usize = request.count as usize;
+
+    let buffer: &[u8] = &request.buffer[..count];
+
+    debug!("libc::write(): fd={:?}, buffer={:?}", fd, buffer);
+    match unsafe { libc::write(fd, buffer.as_ptr() as *const _, count) } {
+        ret if ret >= 0 => WriteResponse::build(pid, ret as i32),
+        ret => crate::build_error(
+            pid,
+            ErrorCode::try_from(ret as i32)
+                .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
         ),
     }
 }

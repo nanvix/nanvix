@@ -10,6 +10,7 @@ mod fdatasync;
 mod fsync;
 mod ftruncate;
 mod lseek;
+mod write;
 
 //==================================================================================================
 // Exports
@@ -21,4 +22,5 @@ pub use self::{
     fsync::fsync,
     ftruncate::ftruncate,
     lseek::lseek,
+    write::write,
 };
