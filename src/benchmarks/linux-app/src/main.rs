@@ -138,6 +138,43 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Get status of file.
+    let path: &str = "foo.tmp";
+    let mut foo_tmp: stat = stat::default();
+    match sys::stat::stat(path, &mut foo_tmp) {
+        0 => {
+            ::nvx::log!("got status of file {}", path);
+            ::nvx::log!("file statistics:");
+            ::nvx::log!("  st_dev: {}", { foo_tmp.st_dev });
+            ::nvx::log!("  st_ino: {}", { foo_tmp.st_ino });
+            ::nvx::log!("  st_mode: {}", { foo_tmp.st_mode });
+            ::nvx::log!("  st_nlink: {}", { foo_tmp.st_nlink });
+            ::nvx::log!("  st_uid: {}", { foo_tmp.st_uid });
+            ::nvx::log!("  st_gid: {}", { foo_tmp.st_gid });
+            ::nvx::log!("  st_rdev: {}", { foo_tmp.st_rdev });
+            ::nvx::log!("  st_size: {}", { foo_tmp.st_size });
+            ::nvx::log!("  st_blksize: {}", { foo_tmp.st_blksize });
+            ::nvx::log!("  st_blocks: {}", { foo_tmp.st_blocks });
+            ::nvx::log!("  st_atime: {}s {}ns", { foo_tmp.st_atim.tv_sec }, {
+                foo_tmp.st_atim.tv_nsec
+            });
+            ::nvx::log!("  st_mtime: {}s {}ns", { foo_tmp.st_mtim.tv_sec }, {
+                foo_tmp.st_mtim.tv_nsec
+            });
+            ::nvx::log!("  st_ctime: {}s {}ns", { foo_tmp.st_ctim.tv_sec }, {
+                foo_tmp.st_ctim.tv_nsec
+            });
+        },
+        errno => {
+            panic!("failed to get status of file {:?}: {:?}", path, errno);
+        },
+    }
+
+    // Sanity check file size.
+    if foo_tmp.st_size != 1024 {
+        panic!("file size is not 1024 bytes");
+    }
+
     // Close file.
     match unistd::close(fd) {
         0 => {
@@ -159,33 +196,39 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Get status of file named `bar.tmp`.
-    let mut st: stat = stat::default();
-    match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut st, 0) {
+    let mut bar_tmp: stat = stat::default();
+    match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut bar_tmp, 0) {
         0 => {
             ::nvx::log!("got status of file bar.tmp");
             ::nvx::log!("file statistics:");
-            ::nvx::log!("  st_dev: {}", { st.st_dev });
-            ::nvx::log!("  st_ino: {}", { st.st_ino });
-            ::nvx::log!("  st_mode: {}", { st.st_mode });
-            ::nvx::log!("  st_nlink: {}", { st.st_nlink });
-            ::nvx::log!("  st_uid: {}", { st.st_uid });
-            ::nvx::log!("  st_gid: {}", { st.st_gid });
-            ::nvx::log!("  st_rdev: {}", { st.st_rdev });
-            ::nvx::log!("  st_size: {}", { st.st_size });
-            ::nvx::log!("  st_blksize: {}", { st.st_blksize });
-            ::nvx::log!("  st_blocks: {}", { st.st_blocks });
-            ::nvx::log!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
-            ::nvx::log!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
-            ::nvx::log!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
+            ::nvx::log!("  st_dev: {}", { bar_tmp.st_dev });
+            ::nvx::log!("  st_ino: {}", { bar_tmp.st_ino });
+            ::nvx::log!("  st_mode: {}", { bar_tmp.st_mode });
+            ::nvx::log!("  st_nlink: {}", { bar_tmp.st_nlink });
+            ::nvx::log!("  st_uid: {}", { bar_tmp.st_uid });
+            ::nvx::log!("  st_gid: {}", { bar_tmp.st_gid });
+            ::nvx::log!("  st_rdev: {}", { bar_tmp.st_rdev });
+            ::nvx::log!("  st_size: {}", { bar_tmp.st_size });
+            ::nvx::log!("  st_blksize: {}", { bar_tmp.st_blksize });
+            ::nvx::log!("  st_blocks: {}", { bar_tmp.st_blocks });
+            ::nvx::log!("  st_atime: {}s {}ns", { bar_tmp.st_atim.tv_sec }, {
+                bar_tmp.st_atim.tv_nsec
+            });
+            ::nvx::log!("  st_mtime: {}s {}ns", { bar_tmp.st_mtim.tv_sec }, {
+                bar_tmp.st_mtim.tv_nsec
+            });
+            ::nvx::log!("  st_ctime: {}s {}ns", { bar_tmp.st_ctim.tv_sec }, {
+                bar_tmp.st_ctim.tv_nsec
+            });
         },
         errno => {
             panic!("failed to get status of file bar.tmp: {:?}", errno);
         },
     }
 
-    // Sanity check file size.
-    if st.st_size != 1024 {
-        panic!("file size is not 1024 bytes");
+    // Ensure that foo.tmp and bar.tmp are the same file.
+    if foo_tmp.st_ino != bar_tmp.st_ino {
+        panic!("foo.tmp and bar.tmp are not the same file");
     }
 
     // Unlink file named `foo.tmp`.
