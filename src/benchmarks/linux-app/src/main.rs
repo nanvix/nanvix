@@ -139,6 +139,46 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Get status of file.
+    let mut st: stat = stat::default();
+    match sys::stat::fstat(fd, &mut st) {
+        0 => {
+            ::nvx::log!("got status of file foo.tmp");
+            ::nvx::log!("file statistics:");
+            ::nvx::log!("  st_dev: {}", { st.st_dev });
+            ::nvx::log!("  st_ino: {}", { st.st_ino });
+            ::nvx::log!("  st_mode: {}", { st.st_mode });
+            ::nvx::log!("  st_nlink: {}", { st.st_nlink });
+            ::nvx::log!("  st_uid: {}", { st.st_uid });
+            ::nvx::log!("  st_gid: {}", { st.st_gid });
+            ::nvx::log!("  st_rdev: {}", { st.st_rdev });
+            ::nvx::log!("  st_size: {}", { st.st_size });
+            ::nvx::log!("  st_blksize: {}", { st.st_blksize });
+            ::nvx::log!("  st_blocks: {}", { st.st_blocks });
+            ::nvx::log!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
+            ::nvx::log!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
+            ::nvx::log!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
+        },
+        errno => {
+            panic!("failed to get status of file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Sanity check file size.
+    if st.st_size != 1024 {
+        panic!("file size is not 1024 bytes");
+    }
+
+    // Close file.
+    match unistd::close(fd) {
+        0 => {
+            ::nvx::log!("closed file foo.tmp");
+        },
+        errno => {
+            panic!("failed to close file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Get status of file.
     let path: &str = "foo.tmp";
     let mut foo_tmp: stat = stat::default();
     match sys::stat::stat(path, &mut foo_tmp) {
@@ -167,21 +207,6 @@ pub fn main() -> Result<(), Error> {
         },
         errno => {
             panic!("failed to get status of file {:?}: {:?}", path, errno);
-        },
-    }
-
-    // Sanity check file size.
-    if foo_tmp.st_size != 1024 {
-        panic!("file size is not 1024 bytes");
-    }
-
-    // Close file.
-    match unistd::close(fd) {
-        0 => {
-            ::nvx::log!("closed file foo.tmp");
-        },
-        errno => {
-            panic!("failed to close file foo.tmp: {:?}", errno);
         },
     }
 

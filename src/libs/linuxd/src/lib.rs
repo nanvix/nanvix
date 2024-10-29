@@ -90,6 +90,8 @@ pub enum LinuxDaemonMessageHeader {
     FileTruncateResponse,
     FileAdvisoryInformationRequest,
     FileAdvisoryInformationResponse,
+    FileStatRequest,
+    FileStatResponse,
 }
 
 #[repr(C, packed)]

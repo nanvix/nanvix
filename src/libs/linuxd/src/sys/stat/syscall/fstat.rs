@@ -5,16 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::MessagePartitioner,
-    sys::stat::{
-        message::FileStatAtRequest,
-        stat,
-    },
-};
-use ::alloc::{
-    string::ToString,
-    vec::Vec,
+use crate::sys::stat::{
+    self,
+    message::FileStatRequest,
 };
 use ::nvx::{
     ipc::Message,
@@ -28,12 +21,11 @@ use ::nvx::{
 ///
 /// # Description
 ///
-/// The `fstatat()` system call obtains information about a file.
+/// The `stat()` system call obtains information about a file.
 ///
 /// # Parameters
 ///
-/// - `dirfd`: Directory file descriptor.
-/// - `path`: Path to the file.
+/// - `fd`: File descriptor of the file.
 /// - `buf`: Buffer to store file information.
 ///
 /// # Returns
@@ -41,9 +33,9 @@ use ::nvx::{
 /// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
 /// instead.
 ///
-pub fn fstatat(dirfd: i32, path: &str, buf: &mut stat, flag: i32) -> i32 {
+pub fn fstat(fd: i32, buf: &mut stat::stat) -> i32 {
     // Send request.
-    let status: i32 = fstatat_request(dirfd, path, flag);
+    let status: i32 = fstat_request(fd);
     if status != 0 {
         return status;
     }
@@ -55,37 +47,27 @@ pub fn fstatat(dirfd: i32, path: &str, buf: &mut stat, flag: i32) -> i32 {
 ///
 /// # Description
 ///
-/// This function sends a request to the daemon to execute the `fstatat()` system call.
+/// This function sends a request to the daemon to execute the `fstat()` system call.
 ///
 /// # Parameters
 ///
-/// - `dirfd`: Directory file descriptor.
-/// - `path`: Path to the file.
-/// - `flag`: Flags.
+/// - `fd`: File descriptor.
 ///
 /// # Returns
 ///
 /// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
 /// instead.
 ///
-fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> i32 {
+fn fstat_request(fd: i32) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
 
-    let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag);
-    let requests: Vec<Message> = match request.into_parts(pid) {
-        Ok(requests) => requests,
-        Err(e) => return e.code.into_errno(),
-    };
+    let message: Message = FileStatRequest::build(pid, fd);
 
-    for request in requests {
-        match ::nvx::ipc::send(&request) {
-            Ok(_) => (),
-            Err(e) => return e.code.into_errno(),
-        }
+    match ::nvx::ipc::send(&message) {
+        Ok(_) => 0,
+        Err(e) => e.code.into_errno(),
     }
-
-    0
 }

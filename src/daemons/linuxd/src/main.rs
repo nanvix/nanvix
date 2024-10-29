@@ -51,7 +51,10 @@ use ::linuxd::{
         LinuxDaemonLongMessage,
         LinuxDaemonMessagePart,
     },
-    sys::stat::message::FileStatAtRequest,
+    sys::stat::message::{
+        FileStatAtRequest,
+        FileStatRequest,
+    },
     time::message::{
         ClockResolutionRequest,
         GetClockTimeRequest,
@@ -233,6 +236,10 @@ impl ProcessDaemon {
                                         FileAdvisoryInformationRequest::from_bytes(message.payload);
                                     fcntl::do_posix_fadvise(source, request)
                                 },
+                                LinuxDaemonMessageHeader::FileStatRequest => {
+                                    self.handle_fstat_request(source, message);
+                                    continue;
+                                },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
                             self.send(message).unwrap();
@@ -308,6 +315,17 @@ impl ProcessDaemon {
                     error!("failed to send error message (error={:?})", e);
                 }
             },
+        }
+    }
+
+    fn handle_fstat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
+        let request: FileStatRequest = FileStatRequest::from_bytes(message.payload);
+
+        let messages = fcntl::do_fstat(source, request);
+        for message in messages {
+            if let Err(e) = self.send(message) {
+                error!("failed to send message (error={:?})", e);
+            }
         }
     }
 }
