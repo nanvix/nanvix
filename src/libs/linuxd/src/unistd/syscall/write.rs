@@ -6,6 +6,10 @@
 //==================================================================================================
 
 use crate::{
+    sys::types::{
+        size_t,
+        ssize_t,
+    },
     unistd::message::{
         WriteRequest,
         WriteResponse,
@@ -24,11 +28,24 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn write(fd: i32, buffer: &[u8]) -> i32 {
+pub fn write(fd: i32, buffer: *const u8, count: size_t) -> ssize_t {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
+    // Check if count is invalid.
+    if count <= 0 {
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
+    // Construct buffer from raw parts.
+    let buffer: &[u8] = unsafe { ::core::slice::from_raw_parts(buffer, count as usize) };
 
     let mut total_written: i32 = 0;
     let mut offset: usize = 0;
