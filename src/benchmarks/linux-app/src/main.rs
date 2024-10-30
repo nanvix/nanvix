@@ -14,6 +14,7 @@ use ::linuxd::{
         self,
         stat::stat,
         types::size_t,
+        uio,
     },
     time::{
         self,
@@ -89,14 +90,34 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Fill first 512 bytes of file with ones.
-    let buffer: [u8; 512] = [1; 512];
+    // Fill first 256 bytes of file with ones.
+    let buffer: [u8; 256] = [1; 256];
     match unistd::write(fd, buffer.as_ptr(), buffer.len() as size_t) {
-        512 => {
-            ::nvx::log!("wrote 512 bytes to file foo.tmp");
+        256 => {
+            ::nvx::log!("wrote 256 bytes to file foo.tmp");
         },
         errno => {
-            panic!("failed to write 512 bytes to file foo.tmp: {:?}", errno);
+            panic!("failed to write 256 bytes to file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Fill bytes [256..512] with ones using vectored i/o operations.
+    let iov: [uio::iovec; 2] = [
+        uio::iovec {
+            iov_base: buffer.as_ptr() as *mut u8,
+            iov_len: 128,
+        },
+        uio::iovec {
+            iov_base: unsafe { buffer.as_ptr().add(128) } as *mut u8,
+            iov_len: 128,
+        },
+    ];
+    match uio::writev(fd, iov.as_ptr(), iov.len() as i32) {
+        256 => {
+            ::nvx::log!("wrote 256 bytes to file foo.tmp");
+        },
+        errno => {
+            panic!("failed to write 256 bytes to file foo.tmp: {:?}", errno);
         },
     }
 
