@@ -90,18 +90,40 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Fill first 256 bytes of file with ones.
-    let buffer: [u8; 256] = [1; 256];
+    // Fill first 128 bytes of file with ones.
+    let buffer: [u8; 128] = [1; 128];
     match unistd::write(fd, buffer.as_ptr(), buffer.len() as size_t) {
-        256 => {
-            ::nvx::log!("wrote 256 bytes to file foo.tmp");
+        128 => {
+            ::nvx::log!("wrote 128 bytes to file foo.tmp");
         },
         errno => {
-            panic!("failed to write 256 bytes to file foo.tmp: {:?}", errno);
+            panic!("failed to write 128 bytes to file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Fill bytes [128, 256] with ones using partial write.
+    let buffer: [u8; 128] = [1; 128];
+    match unistd::pwrite(fd, buffer.as_ptr(), buffer.len() as size_t, 128) {
+        128 => {
+            ::nvx::log!("wrote 128 bytes to file foo.tmp");
+        },
+        errno => {
+            panic!("failed to write 128 bytes to file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Advance seek offset as partial writes do not change it.
+    match unistd::lseek(fd, 256, unistd::SEEK_SET) {
+        256 => {
+            ::nvx::log!("seek file foo.tmp to 256 bytes");
+        },
+        offset => {
+            panic!("failed to seek file foo.tmp to 256 bytes: {:?}", offset);
         },
     }
 
     // Fill bytes [256..512] with ones using vectored i/o operations.
+    let buffer: [u8; 256] = [1; 256];
     let iov: [uio::iovec; 2] = [
         uio::iovec {
             iov_base: buffer.as_ptr() as *mut u8,

@@ -96,6 +96,8 @@ pub enum LinuxDaemonMessageHeader {
     WriteResponse,
     ReadRequest,
     ReadResponse,
+    PartialWriteRequest,
+    PartialWriteResponse,
 }
 
 #[repr(C, packed)]

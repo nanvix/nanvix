@@ -10,6 +10,7 @@ mod fdatasync;
 mod fsync;
 mod ftruncate;
 mod lseek;
+mod pwrite;
 mod read;
 mod write;
 
@@ -23,6 +24,7 @@ pub use self::{
     fsync::fsync,
     ftruncate::ftruncate,
     lseek::lseek,
+    pwrite::pwrite,
     read::read,
     write::write,
 };
