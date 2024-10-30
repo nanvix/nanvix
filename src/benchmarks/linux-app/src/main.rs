@@ -13,6 +13,7 @@ use ::linuxd::{
     sys::{
         self,
         stat::stat,
+        types::size_t,
     },
     time::{
         self,
@@ -90,7 +91,7 @@ pub fn main() -> Result<(), Error> {
 
     // Fill first 512 bytes of file with ones.
     let buffer: [u8; 512] = [1; 512];
-    match unistd::write(fd, &buffer) {
+    match unistd::write(fd, buffer.as_ptr(), buffer.len() as size_t) {
         512 => {
             ::nvx::log!("wrote 512 bytes to file foo.tmp");
         },

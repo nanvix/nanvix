@@ -6,6 +6,10 @@
 //==================================================================================================
 
 use crate::{
+    sys::types::{
+        size_t,
+        ssize_t,
+    },
     unistd::message::{
         WriteRequest,
         WriteResponse,
@@ -24,13 +28,26 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn write(fd: i32, buffer: &[u8]) -> i32 {
+pub fn write(fd: i32, buffer: *const u8, count: size_t) -> ssize_t {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
 
-    let mut total_written: i32 = 0;
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
+    // Check if count is invalid.
+    if count <= 0 {
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
+    // Construct buffer from raw parts.
+    let buffer: &[u8] = unsafe { ::core::slice::from_raw_parts(buffer, count as usize) };
+
+    let mut total_written: ssize_t = 0;
     let mut offset: usize = 0;
 
     while offset < buffer.len() {
@@ -39,7 +56,7 @@ pub fn write(fd: i32, buffer: &[u8]) -> i32 {
         chunk[..chunk_size].copy_from_slice(&buffer[offset..offset + chunk_size]);
 
         // Build request and send it.
-        let request: Message = WriteRequest::build(pid, fd, chunk_size as i32, chunk);
+        let request: Message = WriteRequest::build(pid, fd, chunk_size as size_t, chunk);
         if let Err(e) = ::nvx::ipc::send(&request) {
             return e.code.into_errno();
         }

@@ -6,6 +6,10 @@
 //==================================================================================================
 
 use crate::{
+    sys::types::{
+        size_t,
+        ssize_t,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -26,16 +30,16 @@ use ::nvx::{
 #[repr(C, packed)]
 pub struct WriteRequest {
     pub fd: i32,
-    pub count: i32,
+    pub count: size_t,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
 ::nvx::sys::static_assert_size!(WriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl WriteRequest {
     pub const BUFFER_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<i32>();
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<size_t>();
 
-    fn new(fd: i32, count: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    fn new(fd: i32, count: size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { fd, count, buffer }
     }
 
@@ -50,7 +54,7 @@ impl WriteRequest {
     pub fn build(
         pid: ProcessIdentifier,
         fd: i32,
-        count: i32,
+        count: size_t,
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
         let message: WriteRequest = WriteRequest::new(fd, count, buffer);
@@ -70,15 +74,15 @@ impl WriteRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct WriteResponse {
-    pub count: i32,
+    pub count: ssize_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(WriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl WriteResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<ssize_t>();
 
-    fn new(count: i32) -> Self {
+    fn new(count: ssize_t) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],
@@ -93,7 +97,7 @@ impl WriteResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, count: i32) -> Message {
+    pub fn build(pid: ProcessIdentifier, count: ssize_t) -> Message {
         let message: WriteResponse = WriteResponse::new(count);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::WriteResponse, message.into_bytes());
