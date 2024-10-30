@@ -47,7 +47,7 @@ pub fn write(fd: i32, buffer: *const u8, count: size_t) -> ssize_t {
     // Construct buffer from raw parts.
     let buffer: &[u8] = unsafe { ::core::slice::from_raw_parts(buffer, count as usize) };
 
-    let mut total_written: i32 = 0;
+    let mut total_written: ssize_t = 0;
     let mut offset: usize = 0;
 
     while offset < buffer.len() {

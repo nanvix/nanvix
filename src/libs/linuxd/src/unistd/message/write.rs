@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    sys::types::size_t,
+    sys::types::{
+        size_t,
+        ssize_t,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -71,15 +74,15 @@ impl WriteRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct WriteResponse {
-    pub count: i32,
+    pub count: ssize_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(WriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl WriteResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<ssize_t>();
 
-    fn new(count: i32) -> Self {
+    fn new(count: ssize_t) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],
@@ -94,7 +97,7 @@ impl WriteResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, count: i32) -> Message {
+    pub fn build(pid: ProcessIdentifier, count: ssize_t) -> Message {
         let message: WriteResponse = WriteResponse::new(count);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::WriteResponse, message.into_bytes());
