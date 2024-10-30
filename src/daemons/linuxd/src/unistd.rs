@@ -7,7 +7,10 @@
 
 use ::core::ffi;
 use ::linuxd::{
-    sys::types::off_t,
+    sys::types::{
+        off_t,
+        size_t,
+    },
     unistd,
     unistd::message::{
         CloseRequest,
@@ -142,7 +145,7 @@ pub fn do_write(pid: ProcessIdentifier, request: WriteRequest) -> Message {
     trace!("write(): pid={:?}, request={:?}", pid, request);
 
     // Check if count is invalid.
-    if (request.count < 0) || (request.count > WriteRequest::BUFFER_SIZE as i32) {
+    if request.count > WriteRequest::BUFFER_SIZE as size_t {
         return crate::build_error(pid, ErrorCode::InvalidArgument);
     }
     let fd: i32 = request.fd;

@@ -56,7 +56,7 @@ pub fn write(fd: i32, buffer: *const u8, count: size_t) -> ssize_t {
         chunk[..chunk_size].copy_from_slice(&buffer[offset..offset + chunk_size]);
 
         // Build request and send it.
-        let request: Message = WriteRequest::build(pid, fd, chunk_size as i32, chunk);
+        let request: Message = WriteRequest::build(pid, fd, chunk_size as size_t, chunk);
         if let Err(e) = ::nvx::ipc::send(&request) {
             return e.code.into_errno();
         }
