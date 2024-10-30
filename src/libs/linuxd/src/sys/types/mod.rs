@@ -36,6 +36,9 @@ pub type off_t = i64;
 /// Used for file attributes.
 pub type mode_t = u32;
 
+/// Used for object sizes.
+pub type size_t = u32;
+
 /// Used for a count of bytes or an error indication.
 pub type ssize_t = i32;
 
