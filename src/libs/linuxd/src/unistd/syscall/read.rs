@@ -7,8 +7,8 @@
 
 use crate::{
     unistd::message::{
-        WriteRequest,
-        WriteResponse,
+        ReadRequest,
+        ReadResponse,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -24,22 +24,20 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn write(fd: i32, buffer: &[u8]) -> i32 {
+pub fn read(fd: i32, buffer: &mut [u8]) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
 
-    let mut total_written: i32 = 0;
-    let mut offset: usize = 0;
+    let mut total_read = 0;
+    let mut offset = 0;
 
     while offset < buffer.len() {
-        let chunk_size: usize = cmp::min(WriteRequest::BUFFER_SIZE, buffer.len() - offset);
-        let mut chunk: [u8; WriteRequest::BUFFER_SIZE] = [0; WriteRequest::BUFFER_SIZE];
-        chunk[..chunk_size].copy_from_slice(&buffer[offset..offset + chunk_size]);
+        let chunk_size: usize = cmp::min(ReadResponse::BUFFER_SIZE, buffer.len() - offset);
 
         // Build request and send it.
-        let request: Message = WriteRequest::build(pid, fd, chunk_size as i32, chunk);
+        let request: Message = ReadRequest::build(pid, fd, chunk_size as i32);
         if let Err(e) = ::nvx::ipc::send(&request) {
             return e.code.into_errno();
         }
@@ -63,12 +61,14 @@ pub fn write(fd: i32, buffer: &[u8]) -> i32 {
                 // Response was successfully parsed.
                 Ok(message) => match message.header {
                     // Response was successfully parsed.
-                    LinuxDaemonMessageHeader::WriteResponse => {
+                    LinuxDaemonMessageHeader::ReadResponse => {
                         // Parse response.
-                        let response: WriteResponse = WriteResponse::from_bytes(message.payload);
+                        let response: ReadResponse = ReadResponse::from_bytes(message.payload);
 
-                        // Update total written count.
-                        total_written += response.count;
+                        // Copy response buffer to user buffer.
+                        buffer[offset..offset + chunk_size]
+                            .copy_from_slice(&response.buffer[..chunk_size]);
+                        total_read += response.count;
                         offset += chunk_size;
                     },
                     _ => return ErrorCode::InvalidMessage.into_errno(),
@@ -79,5 +79,5 @@ pub fn write(fd: i32, buffer: &[u8]) -> i32 {
         }
     }
 
-    total_written
+    total_read
 }
