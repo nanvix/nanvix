@@ -37,6 +37,7 @@ cfg_if::cfg_if! {
             ftruncate,
             write,
             read,
+            pwrite,
         };
     }
 }

@@ -10,6 +10,7 @@ mod fdatasync;
 mod fsync;
 mod ftruncate;
 mod lseek;
+mod pwrite;
 mod read;
 mod write;
 
@@ -37,6 +38,10 @@ pub use self::{
     lseek::{
         SeekRequest,
         SeekResponse,
+    },
+    pwrite::{
+        PartialWriteRequest,
+        PartialWriteResponse,
     },
     read::{
         ReadRequest,
