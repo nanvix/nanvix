@@ -38,6 +38,7 @@ cfg_if::cfg_if! {
             write,
             read,
             pwrite,
+            pread,
         };
     }
 }

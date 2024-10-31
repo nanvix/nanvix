@@ -22,6 +22,8 @@ use ::linuxd::{
         FileSyncResponse,
         FileTruncateRequest,
         FileTruncateResponse,
+        PartialReadRequest,
+        PartialReadResponse,
         PartialWriteRequest,
         PartialWriteResponse,
         ReadRequest,
@@ -217,6 +219,37 @@ pub fn do_pwrite(pid: ProcessIdentifier, request: PartialWriteRequest) -> Messag
     );
     match unsafe { libc::pwrite(fd, buffer.as_ptr() as *const _, count, offset) } {
         ret if ret >= 0 => PartialWriteResponse::build(pid, ret as ssize_t),
+        ret => crate::build_error(
+            pid,
+            ErrorCode::try_from(ret as i32)
+                .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+        ),
+    }
+}
+
+//==================================================================================================
+// do_pread
+//==================================================================================================
+
+pub fn do_pread(pid: ProcessIdentifier, request: PartialReadRequest) -> Message {
+    trace!("pread(): pid={:?}, request={:?}", pid, request);
+
+    // Check if count is invalid.
+    if request.count > PartialReadResponse::BUFFER_SIZE as size_t {
+        return crate::build_error(pid, ErrorCode::InvalidArgument);
+    }
+    let fd: i32 = request.fd;
+    let count: usize = request.count as usize;
+    let offset: off_t = request.offset;
+
+    let mut buffer: [u8; PartialReadResponse::BUFFER_SIZE] = [0; PartialReadResponse::BUFFER_SIZE];
+
+    debug!(
+        "libc::pread(): fd={:?}, count={:?}, offset={:?}, buffer={:?}",
+        fd, count, offset, buffer
+    );
+    match unsafe { libc::pread(fd, buffer.as_mut_ptr() as *mut _, count, offset) } {
+        ret if ret >= 0 => PartialReadResponse::build(pid, ret as ssize_t, buffer),
         ret => crate::build_error(
             pid,
             ErrorCode::try_from(ret as i32)
