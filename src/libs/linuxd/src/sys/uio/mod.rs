@@ -33,6 +33,7 @@ cfg_if::cfg_if! {
         pub use self::syscall::{
             writev,
             readv,
+            pwritev,
         };
     }
 }

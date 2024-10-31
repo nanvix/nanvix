@@ -45,6 +45,11 @@ pub fn pwrite(fd: i32, buffer: *const u8, count: size_t, offset: off_t) -> ssize
         return ErrorCode::InvalidArgument.into_errno();
     }
 
+    // Check if offset is valid.
+    if offset < 0 {
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
     // Construct buffer from raw parts.
     let buffer: &[u8] = unsafe { ::core::slice::from_raw_parts(buffer, count as usize) };
 
