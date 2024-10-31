@@ -153,33 +153,59 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Check if first 256 bytes are filled with ones using partial reads.
-    let mut buffer: [u8; 256] = [0; 256];
+    // Check if first 128 bytes are filled with ones using partial reads.
+    let mut buffer: [u8; 128] = [0; 128];
     match unistd::pread(fd, buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
-        256 => {
-            ::nvx::log!("read 256 bytes from file foo.tmp");
-            (0..256).for_each(|i| {
+        128 => {
+            ::nvx::log!("read 128 bytes from file foo.tmp");
+            (0..128).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
                 }
             });
         },
         errno => {
-            panic!("failed to read 256 bytes from file foo.tmp: {:?}", errno);
+            panic!("failed to read 128 bytes from file foo.tmp: {:?}", errno);
         },
     }
 
     // Advance seek offset as partial reads do not change it.
-    match unistd::lseek(fd, 256, unistd::SEEK_SET) {
-        256 => {
-            ::nvx::log!("seek file foo.tmp to 256 bytes");
+    match unistd::lseek(fd, 128, unistd::SEEK_SET) {
+        128 => {
+            ::nvx::log!("seek file foo.tmp to 128 bytes");
         },
         offset => {
-            panic!("failed to seek file foo.tmp to 256 bytes: {:?}", offset);
+            panic!("failed to seek file foo.tmp to 128 bytes: {:?}", offset);
         },
     }
 
-    // Check if first 256 bytes are filled with ones.
+    // Check if bytes [128..256] are filled with ones using vectored i/o operations.
+    let mut buffer: [u8; 128] = [0; 128];
+    let iov: [uio::iovec; 2] = [
+        uio::iovec {
+            iov_base: buffer.as_mut_ptr(),
+            iov_len: 64,
+        },
+        uio::iovec {
+            iov_base: unsafe { buffer.as_mut_ptr().add(64) },
+            iov_len: 64,
+        },
+    ];
+    match uio::readv(fd, iov.as_ptr(), iov.len() as i32) {
+        128 => {
+            ::nvx::log!("read 128 bytes from file foo.tmp");
+            (0..128).for_each(|i| {
+                if buffer[i] != 1 {
+                    panic!("file foo.tmp is not filled with ones");
+                }
+            });
+        },
+        errno => {
+            panic!("failed to read 128 bytes from file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Check if [256..512] bytes are filled with ones.
     let mut buffer: [u8; 256] = [0; 256];
     match unistd::read(fd, buffer.as_mut_ptr(), buffer.len() as size_t) {
         256 => {
