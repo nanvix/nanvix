@@ -101,14 +101,35 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Fill bytes [128, 256] with ones using partial write.
-    let buffer: [u8; 128] = [1; 128];
+    // Fill bytes [128, 192] with ones using partial write.
+    let buffer: [u8; 64] = [1; 64];
     match unistd::pwrite(fd, buffer.as_ptr(), buffer.len() as size_t, 128) {
-        128 => {
-            ::nvx::log!("wrote 128 bytes to file foo.tmp");
+        64 => {
+            ::nvx::log!("wrote 64 bytes to file foo.tmp");
         },
         errno => {
-            panic!("failed to write 128 bytes to file foo.tmp: {:?}", errno);
+            panic!("failed to write 64 bytes to file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Fill bytes [192..256] with ones using offset partial write.
+    let buffer: [u8; 64] = [1; 64];
+    let iov: [uio::iovec; 2] = [
+        uio::iovec {
+            iov_base: buffer.as_ptr() as *mut u8,
+            iov_len: 32,
+        },
+        uio::iovec {
+            iov_base: unsafe { buffer.as_ptr().add(32) } as *mut u8,
+            iov_len: 32,
+        },
+    ];
+    match uio::pwritev(fd, iov.as_ptr(), iov.len() as i32, 192) {
+        64 => {
+            ::nvx::log!("wrote 64 bytes to file foo.tmp");
+        },
+        errno => {
+            panic!("failed to write 64 bytes to file foo.tmp: {:?}", errno);
         },
     }
 
