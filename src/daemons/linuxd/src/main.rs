@@ -64,6 +64,7 @@ use ::linuxd::{
         FileDataSyncRequest,
         FileSyncRequest,
         FileTruncateRequest,
+        PartialReadRequest,
         PartialWriteRequest,
         ReadRequest,
         SeekRequest,
@@ -257,6 +258,11 @@ impl ProcessDaemon {
                                     let request: PartialWriteRequest =
                                         PartialWriteRequest::from_bytes(message.payload);
                                     unistd::do_pwrite(source, request)
+                                },
+                                LinuxDaemonMessageHeader::PartialReadRequest => {
+                                    let request: PartialReadRequest =
+                                        PartialReadRequest::from_bytes(message.payload);
+                                    unistd::do_pread(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };

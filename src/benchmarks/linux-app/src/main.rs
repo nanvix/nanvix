@@ -153,19 +153,45 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Check if first 512 bytes are filled with ones.
-    let mut buffer: [u8; 512] = [0; 512];
-    match unistd::read(fd, buffer.as_mut_ptr(), buffer.len() as size_t) {
-        512 => {
-            ::nvx::log!("read 512 bytes from file foo.tmp");
-            (0..512).for_each(|i| {
+    // Check if first 256 bytes are filled with ones using partial reads.
+    let mut buffer: [u8; 256] = [0; 256];
+    match unistd::pread(fd, buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
+        256 => {
+            ::nvx::log!("read 256 bytes from file foo.tmp");
+            (0..256).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
                 }
             });
         },
         errno => {
-            panic!("failed to read 512 bytes from file foo.tmp: {:?}", errno);
+            panic!("failed to read 256 bytes from file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Advance seek offset as partial reads do not change it.
+    match unistd::lseek(fd, 256, unistd::SEEK_SET) {
+        256 => {
+            ::nvx::log!("seek file foo.tmp to 256 bytes");
+        },
+        offset => {
+            panic!("failed to seek file foo.tmp to 256 bytes: {:?}", offset);
+        },
+    }
+
+    // Check if first 256 bytes are filled with ones.
+    let mut buffer: [u8; 256] = [0; 256];
+    match unistd::read(fd, buffer.as_mut_ptr(), buffer.len() as size_t) {
+        256 => {
+            ::nvx::log!("read 256 bytes from file foo.tmp");
+            (0..256).for_each(|i| {
+                if buffer[i] != 1 {
+                    panic!("file foo.tmp is not filled with ones");
+                }
+            });
+        },
+        errno => {
+            panic!("failed to read 256 bytes from file foo.tmp: {:?}", errno);
         },
     }
 
