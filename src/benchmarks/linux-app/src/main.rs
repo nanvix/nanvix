@@ -174,19 +174,35 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Check if first 128 bytes are filled with ones using partial reads.
-    let mut buffer: [u8; 128] = [0; 128];
+    // Check if first 64 bytes are filled with ones using partial reads.
+    let mut buffer: [u8; 64] = [0; 64];
     match unistd::pread(fd, buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
-        128 => {
-            ::nvx::log!("read 128 bytes from file foo.tmp");
-            (0..128).for_each(|i| {
+        64 => {
+            ::nvx::log!("read 64 bytes from file foo.tmp");
+            (0..64).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
                 }
             });
         },
         errno => {
-            panic!("failed to read 128 bytes from file foo.tmp: {:?}", errno);
+            panic!("failed to read 64 bytes from file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Check if bytes [64..128] are filled with ones using offset partial reads.
+    let mut buffer: [u8; 64] = [0; 64];
+    match unistd::pread(fd, buffer.as_mut_ptr(), buffer.len() as size_t, 64) {
+        64 => {
+            ::nvx::log!("read 64 bytes from file foo.tmp");
+            (0..64).for_each(|i| {
+                if buffer[i] != 1 {
+                    panic!("file foo.tmp is not filled with ones");
+                }
+            });
+        },
+        errno => {
+            panic!("failed to read 64 bytes from file foo.tmp: {:?}", errno);
         },
     }
 

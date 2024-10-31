@@ -45,6 +45,11 @@ pub fn pread(fd: i32, buffer: *mut u8, count: size_t, offset: off_t) -> ssize_t 
         return ErrorCode::InvalidArgument.into_errno();
     }
 
+    // Check if offset is invalid.
+    if offset < 0 {
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
     // Construct buffer from raw parts.
     let buffer: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buffer, count as usize) };
 
