@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod preadv;
 mod pwritev;
 mod readv;
 mod writev;
@@ -13,6 +14,7 @@ mod writev;
 // Exports
 //==================================================================================================
 
+pub use preadv::preadv;
 pub use pwritev::pwritev;
 pub use readv::readv;
 pub use writev::writev;
