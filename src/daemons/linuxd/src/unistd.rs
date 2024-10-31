@@ -175,7 +175,7 @@ pub fn do_read(pid: ProcessIdentifier, request: ReadRequest) -> Message {
     trace!("read(): pid={:?}, request={:?}", pid, request);
 
     // Check if count is invalid.
-    if (request.count < 0) || (request.count > ReadResponse::BUFFER_SIZE as i32) {
+    if request.count > ReadResponse::BUFFER_SIZE as size_t {
         return crate::build_error(pid, ErrorCode::InvalidArgument);
     }
     let fd: i32 = request.fd;

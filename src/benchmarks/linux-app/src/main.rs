@@ -155,7 +155,7 @@ pub fn main() -> Result<(), Error> {
 
     // Check if first 512 bytes are filled with ones.
     let mut buffer: [u8; 512] = [0; 512];
-    match unistd::read(fd, &mut buffer) {
+    match unistd::read(fd, buffer.as_mut_ptr(), buffer.len() as size_t) {
         512 => {
             ::nvx::log!("read 512 bytes from file foo.tmp");
             (0..512).for_each(|i| {

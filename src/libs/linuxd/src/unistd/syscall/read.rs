@@ -6,6 +6,10 @@
 //==================================================================================================
 
 use crate::{
+    sys::types::{
+        size_t,
+        ssize_t,
+    },
     unistd::message::{
         ReadRequest,
         ReadResponse,
@@ -24,20 +28,33 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn read(fd: i32, buffer: &mut [u8]) -> i32 {
+pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
 
-    let mut total_read = 0;
-    let mut offset = 0;
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
+    // Check if count is invalid.
+    if count <= 0 {
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
+    // Construct buffer from raw parts.
+    let buffer: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buffer, count as usize) };
+
+    let mut total_read: ssize_t = 0;
+    let mut offset: usize = 0;
 
     while offset < buffer.len() {
         let chunk_size: usize = cmp::min(ReadResponse::BUFFER_SIZE, buffer.len() - offset);
 
         // Build request and send it.
-        let request: Message = ReadRequest::build(pid, fd, chunk_size as i32);
+        let request: Message = ReadRequest::build(pid, fd, chunk_size as size_t);
         if let Err(e) = ::nvx::ipc::send(&request) {
             return e.code.into_errno();
         }
