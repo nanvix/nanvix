@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    sys::types::size_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -26,7 +27,7 @@ use ::nvx::{
 #[repr(C, packed)]
 pub struct ReadRequest {
     pub fd: i32,
-    pub count: i32,
+    pub count: size_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(ReadRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
@@ -35,7 +36,7 @@ impl ReadRequest {
     pub const PADDING_SIZE: usize =
         LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<i32>();
 
-    fn new(fd: i32, count: i32) -> Self {
+    fn new(fd: i32, count: size_t) -> Self {
         Self {
             fd,
             count,
@@ -51,7 +52,7 @@ impl ReadRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32, count: i32) -> Message {
+    pub fn build(pid: ProcessIdentifier, fd: i32, count: size_t) -> Message {
         let message: ReadRequest = ReadRequest::new(fd, count);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::ReadRequest, message.into_bytes());
