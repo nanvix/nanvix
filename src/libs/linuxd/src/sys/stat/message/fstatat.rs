@@ -77,8 +77,13 @@ impl FileStatAtRequest {
     ///
     /// Creates a new request message for the `fstatat()` system call.
     ///
-    pub fn new(dirfd: i32, path: String, flag: i32) -> Self {
-        FileStatAtRequest { dirfd, flag, path }
+    pub fn new(dirfd: i32, path: String, flag: i32) -> Result<Self, Error> {
+        // Check if path is too long.
+        if path.len() > limits::PATH_MAX {
+            return Err(Error::new(ErrorCode::InvalidMessage, "path too long"));
+        }
+
+        Ok(FileStatAtRequest { dirfd, flag, path })
     }
 }
 
@@ -126,6 +131,11 @@ impl MessageDeserializer for FileStatAtRequest {
         // Check if message is too short.
         if bytes.len() < Self::OFFSET_OF_PATH {
             return Err(Error::new(ErrorCode::InvalidMessage, "message too short"));
+        }
+
+        // Check if message is too long.
+        if bytes.len() > Self::MAX_SIZE {
+            return Err(Error::new(ErrorCode::InvalidMessage, "message too long"));
         }
 
         // Deserialize directory file descriptor.
