@@ -74,7 +74,11 @@ fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> i32 {
         Err(e) => return e.code.into_errno(),
     };
 
-    let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag);
+    let request: FileStatAtRequest = match FileStatAtRequest::new(dirfd, path.to_string(), flag) {
+        Ok(request) => request,
+        Err(e) => return e.code.into_errno(),
+    };
+
     let requests: Vec<Message> = match request.into_parts(pid) {
         Ok(requests) => requests,
         Err(e) => return e.code.into_errno(),
