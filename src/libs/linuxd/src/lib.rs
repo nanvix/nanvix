@@ -100,6 +100,8 @@ pub enum LinuxDaemonMessageHeader {
     PartialWriteResponse,
     PartialReadRequest,
     PartialReadResponse,
+    SymbolicLinkAtRequestPart,
+    SymbolicLinkAtResponse,
 }
 
 #[repr(C, packed)]

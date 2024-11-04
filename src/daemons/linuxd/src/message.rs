@@ -95,6 +95,7 @@ impl RequestAssembler {
 
 pub enum RequestAssemblerType {
     FileStatAtRequest(LinuxDaemonLongMessage),
+    SymbolicLinkAtRequest(LinuxDaemonLongMessage),
 }
 
 pub trait RequestAssemblerTrait

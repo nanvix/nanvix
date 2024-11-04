@@ -45,6 +45,7 @@ use ::linuxd::{
         FileSpaceControlRequest,
         OpenAtRequest,
         RenameAtRequest,
+        SymbolicLinkAtRequest,
         UnlinkAtRequest,
     },
     message::{
@@ -264,6 +265,10 @@ impl ProcessDaemon {
                                         PartialReadRequest::from_bytes(message.payload);
                                     unistd::do_pread(source, request)
                                 },
+                                LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart => {
+                                    self.handle_symlinkat_request(source, message);
+                                    continue;
+                                },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
                             self.send(message).unwrap();
@@ -352,6 +357,29 @@ impl ProcessDaemon {
             }
         }
     }
+
+    fn handle_symlinkat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
+        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
+
+        match self
+            .assembler
+            .process_message::<SymbolicLinkAtRequest>(source, part)
+        {
+            Ok(Some(messages)) => {
+                for message in messages {
+                    if let Err(e) = self.send(message) {
+                        error!("failed to send message (error={:?})", e);
+                    }
+                }
+            },
+            Ok(None) => {},
+            Err(e) => {
+                if let Err(e) = self.send(self.do_error(source, e.code)) {
+                    error!("failed to send error message (error={:?})", e);
+                }
+            },
+        }
+    }
 }
 
 pub fn main() -> Result<()> {
@@ -438,22 +466,62 @@ impl RequestAssemblerTrait for FileStatAtRequest {
     ) -> Result<(), Error> {
         match assembler {
             RequestAssemblerType::FileStatAtRequest(assembler) => assembler.add_part(part),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
         }
     }
 
     fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
         match assembler {
             RequestAssemblerType::FileStatAtRequest(assembler) => Ok(assembler.is_complete()),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
         }
     }
 
     fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
         match assembler {
             RequestAssemblerType::FileStatAtRequest(assembler) => assembler.take_parts(),
+            _ => unreachable!("invalid assembler type"),
         }
     }
 
     fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_fstat_at(source, request)
+    }
+}
+
+impl RequestAssemblerTrait for SymbolicLinkAtRequest {
+    fn new_assembler() -> RequestAssemblerType {
+        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        RequestAssemblerType::SymbolicLinkAtRequest(
+            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+        )
+    }
+
+    fn add_part(
+        assembler: &mut RequestAssemblerType,
+        part: LinuxDaemonMessagePart,
+    ) -> Result<(), Error> {
+        match assembler {
+            RequestAssemblerType::SymbolicLinkAtRequest(assembler) => assembler.add_part(part),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
+        match assembler {
+            RequestAssemblerType::SymbolicLinkAtRequest(assembler) => Ok(assembler.is_complete()),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+        match assembler {
+            RequestAssemblerType::SymbolicLinkAtRequest(assembler) => assembler.take_parts(),
+            _ => unreachable!("invalid assembler type"),
+        }
+    }
+
+    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+        fcntl::do_symlinkat(source, request)
     }
 }
