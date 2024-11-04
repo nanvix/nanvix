@@ -6,11 +6,11 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        SymbolicLinkAtRequest,
-        SymbolicLinkAtResponse,
-    },
     message::MessagePartitioner,
+    unistd::message::{
+        LinkAtRequest,
+        LinkAtResponse,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -28,32 +28,43 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> i32 {
+pub fn linkat(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str, flags: i32) -> i32 {
     // Send request.
-    let status: i32 = symlinkat_request(target, dirfd, linkpath);
+    let status: i32 = linkat_request(olddirfd, oldpath, newdirfd, newpath, flags);
     if status != 0 {
         return status;
     }
 
     // Wait for response.
-    symlinkat_response()
+    linkat_response()
 }
 
-fn symlinkat_request(target: &str, dirfd: i32, linkpath: &str) -> i32 {
+fn linkat_request(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str, flags: i32) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
 
-    let request: SymbolicLinkAtRequest =
-        match SymbolicLinkAtRequest::new(target.to_string(), dirfd, linkpath.to_string()) {
-            Ok(request) => request,
-            Err(e) => return e.code.into_errno(),
-        };
+    let request: LinkAtRequest = match LinkAtRequest::new(
+        olddirfd,
+        oldpath.to_string(),
+        newdirfd,
+        newpath.to_string(),
+        flags,
+    ) {
+        Ok(request) => request,
+        Err(e) => {
+            ::nvx::log!("failed to create message: {:?}", e);
+            return e.code.into_errno();
+        },
+    };
 
     let requests: Vec<Message> = match request.into_parts(pid) {
         Ok(requests) => requests,
-        Err(e) => return e.code.into_errno(),
+        Err(e) => {
+            ::nvx::log!("failed to partition message: {:?}", e);
+            return e.code.into_errno();
+        },
     };
 
     // Send request.
@@ -67,7 +78,7 @@ fn symlinkat_request(target: &str, dirfd: i32, linkpath: &str) -> i32 {
     0
 }
 
-fn symlinkat_response() -> i32 {
+fn linkat_response() -> i32 {
     // Receive response.
     let response: Message = match ::nvx::ipc::recv() {
         Ok(response) => response,
@@ -87,10 +98,9 @@ fn symlinkat_response() -> i32 {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::SymbolicLinkAtResponse => {
+                LinuxDaemonMessageHeader::LinkAtResponse => {
                     // Parse response.
-                    let response: SymbolicLinkAtResponse =
-                        SymbolicLinkAtResponse::from_bytes(message.payload);
+                    let response: LinkAtResponse = LinkAtResponse::from_bytes(message.payload);
 
                     // Return result.
                     response.ret

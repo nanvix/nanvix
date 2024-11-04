@@ -9,6 +9,7 @@ mod close;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
+mod linkat;
 mod lseek;
 mod pread;
 mod pwrite;
@@ -24,6 +25,7 @@ pub use self::{
     fdatasync::fdatasync,
     fsync::fsync,
     ftruncate::ftruncate,
+    linkat::linkat,
     lseek::lseek,
     pread::pread,
     pwrite::pwrite,

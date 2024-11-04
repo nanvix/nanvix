@@ -65,6 +65,7 @@ use ::linuxd::{
         FileDataSyncRequest,
         FileSyncRequest,
         FileTruncateRequest,
+        LinkAtRequest,
         PartialReadRequest,
         PartialWriteRequest,
         ReadRequest,
@@ -269,6 +270,11 @@ impl ProcessDaemon {
                                     self.handle_symlinkat_request(source, message);
                                     continue;
                                 },
+                                LinuxDaemonMessageHeader::LinkAtRequestPart => {
+                                    debug!("received linkat request");
+                                    self.handle_linkat_request(source, message);
+                                    continue;
+                                },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
                             self.send(message).unwrap();
@@ -374,6 +380,29 @@ impl ProcessDaemon {
             },
             Ok(None) => {},
             Err(e) => {
+                if let Err(e) = self.send(self.do_error(source, e.code)) {
+                    error!("failed to send error message (error={:?})", e);
+                }
+            },
+        }
+    }
+    fn handle_linkat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
+        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
+
+        match self
+            .assembler
+            .process_message::<LinkAtRequest>(source, part)
+        {
+            Ok(Some(messages)) => {
+                for message in messages {
+                    if let Err(e) = self.send(message) {
+                        error!("failed to send message (error={:?})", e);
+                    }
+                }
+            },
+            Ok(None) => {},
+            Err(e) => {
+                error!("failed to process linkat request (error={:?})", e);
                 if let Err(e) = self.send(self.do_error(source, e.code)) {
                     error!("failed to send error message (error={:?})", e);
                 }
@@ -523,5 +552,46 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
 
     fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_symlinkat(source, request)
+    }
+}
+
+impl RequestAssemblerTrait for LinkAtRequest {
+    fn new_assembler() -> RequestAssemblerType {
+        debug!("creating linkat request assembler");
+        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        RequestAssemblerType::LinkAtRequest(
+            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+        )
+    }
+
+    fn add_part(
+        assembler: &mut RequestAssemblerType,
+        part: LinuxDaemonMessagePart,
+    ) -> Result<(), Error> {
+        debug!("adding part to linkat request");
+        match assembler {
+            RequestAssemblerType::LinkAtRequest(assembler) => assembler.add_part(part),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
+        debug!("checking if linkat request is complete");
+        match assembler {
+            RequestAssemblerType::LinkAtRequest(assembler) => Ok(assembler.is_complete()),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+        debug!("taking parts from linkat request");
+        match assembler {
+            RequestAssemblerType::LinkAtRequest(assembler) => assembler.take_parts(),
+            _ => unreachable!("invalid assembler type"),
+        }
+    }
+
+    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+        unistd::do_linkat(source, request)
     }
 }

@@ -9,6 +9,7 @@ mod close;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
+mod linkat;
 mod lseek;
 mod pread;
 mod pwrite;
@@ -35,6 +36,10 @@ pub use self::{
     ftruncate::{
         FileTruncateRequest,
         FileTruncateResponse,
+    },
+    linkat::{
+        LinkAtRequest,
+        LinkAtResponse,
     },
     lseek::{
         SeekRequest,
