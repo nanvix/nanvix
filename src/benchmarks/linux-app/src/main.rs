@@ -410,6 +410,26 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Create a symbolic link to `bar.tmp`.
+    match unistd::linkat(fcntl::AT_FDCWD, "bar.tmp", fcntl::AT_FDCWD, "baz.tmp", 0) {
+        0 => {
+            ::nvx::log!("created symbolic link baz.tmp to bar.tmp");
+        },
+        errno => {
+            panic!("failed to create symbolic link baz.tmp to bar.tmp: {:?}", errno);
+        },
+    }
+
+    // Unlink file named `baz.tmp`.
+    match fcntl::unlinkat(fcntl::AT_FDCWD, "baz.tmp", 0) {
+        0 => {
+            ::nvx::log!("unlinked file baz.tmp");
+        },
+        errno => {
+            panic!("failed to unlink file baz.tmp: {:?}", errno);
+        },
+    }
+
     // Get status of file named `bar.tmp`.
     let mut bar_tmp: stat = stat::default();
     match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut bar_tmp, 0) {

@@ -93,9 +93,11 @@ impl RequestAssembler {
     }
 }
 
+#[allow(clippy::enum_variant_names)]
 pub enum RequestAssemblerType {
     FileStatAtRequest(LinuxDaemonLongMessage),
     SymbolicLinkAtRequest(LinuxDaemonLongMessage),
+    LinkAtRequest(LinuxDaemonLongMessage),
 }
 
 pub trait RequestAssemblerTrait

@@ -39,6 +39,7 @@ cfg_if::cfg_if! {
             read,
             pwrite,
             pread,
+            linkat,
         };
     }
 }

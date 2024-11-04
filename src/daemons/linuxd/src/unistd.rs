@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use ::alloc::ffi::CString;
 use ::core::ffi;
 use ::linuxd::{
     sys::types::{
@@ -22,6 +23,8 @@ use ::linuxd::{
         FileSyncResponse,
         FileTruncateRequest,
         FileTruncateResponse,
+        LinkAtRequest,
+        LinkAtResponse,
         PartialReadRequest,
         PartialReadResponse,
         PartialWriteRequest,
@@ -255,6 +258,38 @@ pub fn do_pread(pid: ProcessIdentifier, request: PartialReadRequest) -> Message 
             ErrorCode::try_from(ret as i32)
                 .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
         ),
+    }
+}
+
+//==================================================================================================
+// do_linkat
+//==================================================================================================
+
+pub fn do_linkat(pid: ProcessIdentifier, request: LinkAtRequest) -> Vec<Message> {
+    trace!("linkat(): pid={:?}, request={:?}", pid, request);
+
+    let olddirfd: i32 = request.olddirfd;
+    let oldpath: CString = match CString::new(request.oldpath.as_str()) {
+        Ok(oldpath) => oldpath,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidArgument)],
+    };
+    let newdirfd: i32 = request.newdirfd;
+    let newpath: CString = match CString::new(request.newpath.as_str()) {
+        Ok(newpath) => newpath,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidArgument)],
+    };
+    let flags: i32 = request.flags;
+
+    debug!(
+        "libc::linkat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, flags={:?}",
+        olddirfd, oldpath, newdirfd, newpath, flags
+    );
+    match unsafe { libc::linkat(olddirfd, oldpath.as_ptr(), newdirfd, newpath.as_ptr(), flags) } {
+        ret if ret == 0 => vec![LinkAtResponse::build(pid, ret)],
+        ret => vec![crate::build_error(
+            pid,
+            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+        )],
     }
 }
 
