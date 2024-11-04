@@ -410,13 +410,13 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Create a symbolic link to `bar.tmp`.
+    // Create a hard link to `bar.tmp`.
     match unistd::linkat(fcntl::AT_FDCWD, "bar.tmp", fcntl::AT_FDCWD, "baz.tmp", 0) {
         0 => {
-            ::nvx::log!("created symbolic link baz.tmp to bar.tmp");
+            ::nvx::log!("created hard link baz.tmp to bar.tmp");
         },
         errno => {
-            panic!("failed to create symbolic link baz.tmp to bar.tmp: {:?}", errno);
+            panic!("failed to create hard link baz.tmp to bar.tmp: {:?}", errno);
         },
     }
 
