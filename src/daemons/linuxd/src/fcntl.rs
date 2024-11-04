@@ -19,6 +19,8 @@ use ::linuxd::{
         FileSpaceControlResponse,
         OpenAtRequest,
         OpenAtResponse,
+        ReadLinkAtRequest,
+        ReadLinkAtResponse,
         RenameAtRequest,
         RenameAtResponse,
         SymbolicLinkAtRequest,
@@ -425,6 +427,58 @@ pub fn do_symlinkat(pid: ProcessIdentifier, request: SymbolicLinkAtRequest) -> V
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::symlinkat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            vec![crate::build_error(pid, error)]
+        },
+    }
+}
+
+//==================================================================================================
+// do_readlinkat()
+//==================================================================================================
+
+pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<Message> {
+    trace!("readlinkat(): pid={:?}, request={:?}", pid, request);
+
+    let dirfd: i32 = request.dirfd;
+    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+
+    let path: CString = match CString::new(request.path.as_str()) {
+        Ok(path) => path,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    // TODO: Have a system-wide constant for this.
+    let mut buf: Vec<u8> = vec![0u8; ReadLinkAtResponse::BUFFER_SIZE_MAX];
+
+    debug!(
+        "libc::readlinkat(): dirfd={:?}, path={:?}, capacity={:?}",
+        dirfd.inner(),
+        path,
+        buf.capacity()
+    );
+    match unsafe {
+        libc::readlinkat(dirfd.inner(), path.as_ptr(), buf.as_mut_ptr() as *mut i8, buf.capacity())
+    } {
+        len if len >= 0 => {
+            debug!("libc::readlinkat(): success");
+
+            buf.truncate(len as usize);
+
+            let response: ReadLinkAtResponse = match ReadLinkAtResponse::new(buf) {
+                Ok(response) => response,
+                Err(e) => return vec![crate::build_error(pid, e.code)],
+            };
+
+            match response.into_parts(pid) {
+                Ok(messages) => messages,
+                Err(e) => vec![crate::build_error(pid, e.code)],
+            }
+        },
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::readlinkat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]

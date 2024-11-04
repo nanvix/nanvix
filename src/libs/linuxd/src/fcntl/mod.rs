@@ -30,6 +30,7 @@ cfg_if::cfg_if! {
             posix_fallocate,
             posix_fadvise,
             symlinkat,
+            readlinkat
         };
     }
 }

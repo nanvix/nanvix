@@ -104,6 +104,8 @@ pub enum LinuxDaemonMessageHeader {
     SymbolicLinkAtResponse,
     LinkAtRequestPart,
     LinkAtResponse,
+    ReadLinkAtRequestPart,
+    ReadLinkAtResponsePart,
 }
 
 #[repr(C, packed)]

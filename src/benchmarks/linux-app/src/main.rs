@@ -400,6 +400,23 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Readlink file named `baz.tmp`.
+    let mut buffer: [u8; 512] = [0; 512];
+    match fcntl::readlinkat(fcntl::AT_FDCWD, "baz.tmp", &mut buffer) {
+        len if len >= 0 => {
+            ::nvx::log!("read link baz.tmp");
+            // Print.
+            let mut i: usize = 0;
+            while buffer[i] != 0 {
+                ::nvx::log!("{}", buffer[i] as char);
+                i += 1;
+            }
+        },
+        errno => {
+            panic!("failed to read link baz.tmp: {:?}", errno);
+        },
+    }
+
     // Unlink file named `baz.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "baz.tmp", 0) {
         0 => {
@@ -410,13 +427,13 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Create a symbolic link to `bar.tmp`.
+    // Create a hard link to `bar.tmp`.
     match unistd::linkat(fcntl::AT_FDCWD, "bar.tmp", fcntl::AT_FDCWD, "baz.tmp", 0) {
         0 => {
-            ::nvx::log!("created symbolic link baz.tmp to bar.tmp");
+            ::nvx::log!("created hard link baz.tmp to bar.tmp");
         },
         errno => {
-            panic!("failed to create symbolic link baz.tmp to bar.tmp: {:?}", errno);
+            panic!("failed to create hard link baz.tmp to bar.tmp: {:?}", errno);
         },
     }
 
