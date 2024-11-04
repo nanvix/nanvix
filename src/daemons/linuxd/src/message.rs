@@ -98,6 +98,7 @@ pub enum RequestAssemblerType {
     FileStatAtRequest(LinuxDaemonLongMessage),
     SymbolicLinkAtRequest(LinuxDaemonLongMessage),
     LinkAtRequest(LinuxDaemonLongMessage),
+    ReadLinkAtRequest(LinuxDaemonLongMessage),
 }
 
 pub trait RequestAssemblerTrait

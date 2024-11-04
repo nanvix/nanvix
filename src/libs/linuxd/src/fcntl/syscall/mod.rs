@@ -8,6 +8,7 @@
 mod fadvise;
 mod fallocate;
 mod openat;
+mod readlinkat;
 mod renameat;
 mod symlinkat;
 mod unlinkat;
@@ -20,6 +21,7 @@ pub use self::{
     fadvise::posix_fadvise,
     fallocate::posix_fallocate,
     openat::openat,
+    readlinkat::readlinkat,
     renameat::renameat,
     symlinkat::symlinkat,
     unlinkat::unlinkat,

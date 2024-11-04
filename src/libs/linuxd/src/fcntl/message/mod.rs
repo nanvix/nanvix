@@ -8,6 +8,7 @@
 mod fadvise;
 mod fallocate;
 mod openat;
+mod readlinkat;
 mod renameat;
 mod symlinkat;
 mod unlinkat;
@@ -28,6 +29,10 @@ pub use self::{
     openat::{
         OpenAtRequest,
         OpenAtResponse,
+    },
+    readlinkat::{
+        ReadLinkAtRequest,
+        ReadLinkAtResponse,
     },
     renameat::{
         RenameAtRequest,
