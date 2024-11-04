@@ -21,6 +21,8 @@ use ::linuxd::{
         OpenAtResponse,
         RenameAtRequest,
         RenameAtResponse,
+        SymbolicLinkAtRequest,
+        SymbolicLinkAtResponse,
         UnlinkAtRequest,
         UnlinkAtResponse,
     },
@@ -382,6 +384,47 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fstatat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            vec![crate::build_error(pid, error)]
+        },
+    }
+}
+
+//==================================================================================================
+// do_symlinkat()
+//==================================================================================================
+
+pub fn do_symlinkat(pid: ProcessIdentifier, request: SymbolicLinkAtRequest) -> Vec<Message> {
+    trace!("symlinkat(): pid={:?}, request={:?}", pid, request);
+
+    let target: CString = match CString::new(request.target.as_str()) {
+        Ok(target) => target,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    let newdirfd: i32 = request.dirfd;
+    let newdirfd: LibcAtFlags = LibcAtFlags::from(newdirfd);
+
+    let linkpath: CString = match CString::new(request.linkpath.as_str()) {
+        Ok(linkpath) => linkpath,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    debug!(
+        "libc::symlinkat(): oldpath={:?}, newdirfd={:?}, newpath={:?}",
+        target,
+        newdirfd.inner(),
+        linkpath
+    );
+    match unsafe { libc::symlinkat(target.as_ptr(), newdirfd.inner(), linkpath.as_ptr()) } {
+        0 => {
+            debug!("libc::symlinkat(): success");
+            vec![SymbolicLinkAtResponse::build(pid, 0)]
+        },
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::symlinkat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]

@@ -9,6 +9,7 @@ mod fadvise;
 mod fallocate;
 mod openat;
 mod renameat;
+mod symlinkat;
 mod unlinkat;
 
 //==================================================================================================
@@ -20,5 +21,6 @@ pub use self::{
     fallocate::posix_fallocate,
     openat::openat,
     renameat::renameat,
+    symlinkat::symlinkat,
     unlinkat::unlinkat,
 };

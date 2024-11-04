@@ -9,6 +9,7 @@ mod fadvise;
 mod fallocate;
 mod openat;
 mod renameat;
+mod symlinkat;
 mod unlinkat;
 
 //==================================================================================================
@@ -31,6 +32,10 @@ pub use self::{
     renameat::{
         RenameAtRequest,
         RenameAtResponse,
+    },
+    symlinkat::{
+        SymbolicLinkAtRequest,
+        SymbolicLinkAtResponse,
     },
     unlinkat::{
         UnlinkAtRequest,
