@@ -99,6 +99,7 @@ pub enum RequestAssemblerType {
     SymbolicLinkAtRequest(LinuxDaemonLongMessage),
     LinkAtRequest(LinuxDaemonLongMessage),
     ReadLinkAtRequest(LinuxDaemonLongMessage),
+    MakeDirectoryAtRequest(LinuxDaemonLongMessage),
 }
 
 pub trait RequestAssemblerTrait
