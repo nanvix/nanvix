@@ -37,13 +37,13 @@ cfg_if::cfg_if! {
 
 //==================================================================================================
 
-pub const O_APPEND: ffi::c_int = 1 << 0;
-pub const O_CREAT: ffi::c_int = 1 << 1;
-pub const O_EXCL: ffi::c_int = 1 << 2;
-pub const O_TRUNC: ffi::c_int = 1 << 3;
-pub const O_RDONLY: ffi::c_int = 1 << 4;
-pub const O_WRONLY: ffi::c_int = 1 << 5;
-pub const O_RDWR: ffi::c_int = 1 << 6;
+pub const O_APPEND: i32 = 1 << 0;
+pub const O_CREAT: i32 = 1 << 1;
+pub const O_EXCL: i32 = 1 << 2;
+pub const O_TRUNC: i32 = 1 << 3;
+pub const O_RDONLY: i32 = 1 << 4;
+pub const O_WRONLY: i32 = 1 << 5;
+pub const O_RDWR: i32 = 1 << 6;
 /// Remove directory instead of file.
 pub const AT_REMOVEDIR: i32 = 1 << 9;
 
