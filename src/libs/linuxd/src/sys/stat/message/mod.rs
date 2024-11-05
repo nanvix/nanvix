@@ -7,13 +7,20 @@
 
 mod fstat;
 mod fstatat;
+mod utimensat;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use fstat::FileStatRequest;
-pub use fstatat::{
-    FileStatAtRequest,
-    FileStatAtResponse,
+pub use self::{
+    fstat::FileStatRequest,
+    fstatat::{
+        FileStatAtRequest,
+        FileStatAtResponse,
+    },
+    utimensat::{
+        UpdateFileAccessTimeAtRequest,
+        UpdateFileAccessTimeAtResponse,
+    },
 };

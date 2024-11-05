@@ -8,6 +8,7 @@
 mod fstat;
 mod fstatat;
 mod stat;
+mod utimensat;
 
 //==================================================================================================
 // Imports
@@ -39,6 +40,7 @@ use ::nvx::{
 pub use fstat::fstat;
 pub use fstatat::fstatat;
 pub use stat::stat;
+pub use utimensat::utimensat;
 
 //==================================================================================================
 // Standalone Functions

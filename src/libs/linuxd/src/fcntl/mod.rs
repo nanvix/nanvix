@@ -53,6 +53,8 @@ pub const O_WRONLY: i32 = 1 << 5;
 pub const O_RDWR: i32 = 1 << 6;
 /// Remove directory instead of file.
 pub const AT_REMOVEDIR: i32 = 1 << 9;
+/// Do not follow symbolic links.
+pub const AT_SYMLINK_NOFOLLOW: i32 = 1 << 10;
 
 pub const S_IRWXU: mode_t = 0o700;
 pub const S_IRUSR: mode_t = 0o400;
