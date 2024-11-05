@@ -7,6 +7,7 @@
 
 mod fadvise;
 mod fallocate;
+mod mkdirat;
 mod openat;
 mod readlinkat;
 mod renameat;
@@ -20,6 +21,7 @@ mod unlinkat;
 pub use self::{
     fadvise::posix_fadvise,
     fallocate::posix_fallocate,
+    mkdirat::mkdirat,
     openat::openat,
     readlinkat::readlinkat,
     renameat::renameat,

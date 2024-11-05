@@ -493,6 +493,26 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Create directory named `foo`.
+    match fcntl::mkdirat(fcntl::AT_FDCWD, "foo", fcntl::S_IRUSR | fcntl::S_IWUSR | fcntl::S_IXUSR) {
+        0 => {
+            ::nvx::log!("created directory foo");
+        },
+        errno => {
+            panic!("failed to create directory foo: {:?}", errno);
+        },
+    }
+
+    // Remove directory named `foo`.
+    match fcntl::unlinkat(fcntl::AT_FDCWD, "foo", fcntl::AT_REMOVEDIR) {
+        0 => {
+            ::nvx::log!("removed directory foo");
+        },
+        errno => {
+            panic!("failed to remove directory foo: {:?}", errno);
+        },
+    }
+
     venv::leave(env)?;
     ::nvx::log!("left environment {:?}", env);
 

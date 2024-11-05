@@ -106,6 +106,8 @@ pub enum LinuxDaemonMessageHeader {
     LinkAtResponse,
     ReadLinkAtRequestPart,
     ReadLinkAtResponsePart,
+    MakeDirectoryAtRequestPart,
+    MakeDirectoryAtResponse,
 }
 
 #[repr(C, packed)]

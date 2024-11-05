@@ -17,6 +17,8 @@ use ::linuxd::{
         FileAdvisoryInformationResponse,
         FileSpaceControlRequest,
         FileSpaceControlResponse,
+        MakeDirectoryAtRequest,
+        MakeDirectoryAtResponse,
         OpenAtRequest,
         OpenAtResponse,
         ReadLinkAtRequest,
@@ -479,6 +481,47 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::readlinkat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            vec![crate::build_error(pid, error)]
+        },
+    }
+}
+
+//==================================================================================================
+// do_mkdirat()
+//==================================================================================================
+
+pub fn do_mkdirat(pid: ProcessIdentifier, request: MakeDirectoryAtRequest) -> Vec<Message> {
+    trace!("mkdirat(): pid={:?}, request={:?}", pid, request);
+
+    let dirfd: i32 = request.dirfd;
+    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+
+    let pathname: CString = match CString::new(request.pathname.as_str()) {
+        Ok(pathname) => pathname,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    let mode: LibcFileMode = match LibcFileMode::try_from(request.mode) {
+        Ok(mode) => mode,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    debug!(
+        "libc::mkdirat(): dirfd={:?}, pathname={:?}, mode={:?}",
+        dirfd.inner(),
+        pathname,
+        mode.inner()
+    );
+    match unsafe { libc::mkdirat(dirfd.inner(), pathname.as_ptr(), mode.inner()) } {
+        0 => {
+            debug!("libc::mkdirat(): success");
+            vec![MakeDirectoryAtResponse::build(pid, 0)]
+        },
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::mkdirat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
