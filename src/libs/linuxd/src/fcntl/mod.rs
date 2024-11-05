@@ -12,7 +12,6 @@
 //==================================================================================================
 
 use crate::sys::types::mode_t;
-use core::ffi;
 
 //==================================================================================================
 // Modules
@@ -37,13 +36,22 @@ cfg_if::cfg_if! {
 
 //==================================================================================================
 
-pub const O_APPEND: ffi::c_int = 1 << 0;
-pub const O_CREAT: ffi::c_int = 1 << 1;
-pub const O_EXCL: ffi::c_int = 1 << 2;
-pub const O_TRUNC: ffi::c_int = 1 << 3;
-pub const O_RDONLY: ffi::c_int = 1 << 4;
-pub const O_WRONLY: ffi::c_int = 1 << 5;
-pub const O_RDWR: ffi::c_int = 1 << 6;
+/// Set append mode.
+pub const O_APPEND: i32 = 1 << 0;
+/// Create file if it does not exist.
+pub const O_CREAT: i32 = 1 << 1;
+/// Fail if not a new file.
+pub const O_EXCL: i32 = 1 << 2;
+/// Truncate file to size zero.
+pub const O_TRUNC: i32 = 1 << 3;
+/// Set read-only access.
+pub const O_RDONLY: i32 = 1 << 4;
+/// Set write-only access.
+pub const O_WRONLY: i32 = 1 << 5;
+/// Set read-write access.
+pub const O_RDWR: i32 = 1 << 6;
+/// Remove directory instead of file.
+pub const AT_REMOVEDIR: i32 = 1 << 9;
 
 pub const S_IRWXU: mode_t = 0o700;
 pub const S_IRUSR: mode_t = 0o400;
@@ -58,7 +66,7 @@ pub const S_IROTH: mode_t = 0o004;
 pub const S_IWOTH: mode_t = 0o002;
 pub const S_IXOTH: mode_t = 0o001;
 
-pub const AT_REMOVEDIR: i32 = 0x200;
+/// Use the current working directory to determine the target of relative file paths.
 pub const AT_FDCWD: i32 = -100;
 
 /// The application has no advice to give on its behavior with respect to the specified data
