@@ -100,6 +100,7 @@ pub enum RequestAssemblerType {
     LinkAtRequest(LinuxDaemonLongMessage),
     ReadLinkAtRequest(LinuxDaemonLongMessage),
     MakeDirectoryAtRequest(LinuxDaemonLongMessage),
+    UpdateFileAccessTimeAtRequest(LinuxDaemonLongMessage),
 }
 
 pub trait RequestAssemblerTrait

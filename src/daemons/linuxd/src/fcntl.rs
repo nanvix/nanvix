@@ -37,6 +37,8 @@ use ::linuxd::{
                 FileStatAtRequest,
                 FileStatAtResponse,
                 FileStatRequest,
+                UpdateFileAccessTimeAtRequest,
+                UpdateFileAccessTimeAtResponse,
             },
             stat,
         },
@@ -530,6 +532,67 @@ pub fn do_mkdirat(pid: ProcessIdentifier, request: MakeDirectoryAtRequest) -> Ve
 }
 
 //==================================================================================================
+// do_utimensat()
+//==================================================================================================
+
+pub fn do_utimensat(
+    pid: ProcessIdentifier,
+    request: UpdateFileAccessTimeAtRequest,
+) -> Vec<Message> {
+    trace!("utimensat(): pid={:?}, request={:?}", pid, request);
+
+    let dirfd: i32 = request.dirfd;
+    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+
+    let path: CString = match CString::new(request.path.as_str()) {
+        Ok(path) => path,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    let times: [timespec; 2] = request.times;
+
+    let libc_times: [libc::timespec; 2] = [
+        libc::timespec {
+            tv_sec: times[0].tv_sec,
+            tv_nsec: times[0].tv_nsec,
+        },
+        libc::timespec {
+            tv_sec: times[1].tv_sec,
+            tv_nsec: times[1].tv_nsec,
+        },
+    ];
+
+    let flag: LibcFileFlags = LibcFileFlags(request.flag);
+
+    debug!(
+        "libc::utimensat(): dirfd={:?}, path={:?}, flag={:?}, times[0].tv_sec={:?}, \
+         times[0].tv_nsec={:?}, times[1].tv_sec={:?}, times[1].tv_nsec={:?}",
+        dirfd.inner(),
+        path,
+        flag.inner(),
+        libc_times[0].tv_sec,
+        libc_times[0].tv_nsec,
+        libc_times[1].tv_sec,
+        libc_times[1].tv_nsec
+    );
+    match unsafe {
+        libc::utimensat(dirfd.inner(), path.as_ptr(), libc_times.as_ptr(), flag.inner())
+    } {
+        0 => {
+            debug!("libc::utimensat(): success");
+            vec![UpdateFileAccessTimeAtResponse::build(pid, 0)]
+        },
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::utimensat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            vec![crate::build_error(pid, error)]
+        },
+    }
+}
+
+//==================================================================================================
 
 struct LibcFileFlags(libc::c_int);
 
@@ -539,7 +602,7 @@ impl LibcFileFlags {
     }
 
     fn try_from(flags: ffi::c_int) -> Result<LibcFileFlags, Error> {
-        let flag_mappings: [(ffi::c_int, i32); 8] = [
+        let flag_mappings: [(ffi::c_int, i32); 9] = [
             (fcntl::O_APPEND, libc::O_APPEND),
             (fcntl::O_CREAT, libc::O_CREAT),
             (fcntl::O_EXCL, libc::O_EXCL),
@@ -548,6 +611,7 @@ impl LibcFileFlags {
             (fcntl::O_TRUNC, libc::O_TRUNC),
             (fcntl::O_WRONLY, libc::O_WRONLY),
             (fcntl::AT_REMOVEDIR, libc::AT_REMOVEDIR),
+            (fcntl::AT_SYMLINK_NOFOLLOW, libc::AT_SYMLINK_NOFOLLOW),
         ];
 
         // TODO: check for unsupported flags.
