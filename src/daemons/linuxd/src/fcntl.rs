@@ -496,7 +496,7 @@ impl LibcFileFlags {
     }
 
     fn try_from(flags: ffi::c_int) -> Result<LibcFileFlags, Error> {
-        let flag_mappings: [(ffi::c_int, i32); 7] = [
+        let flag_mappings: [(ffi::c_int, i32); 8] = [
             (fcntl::O_APPEND, libc::O_APPEND),
             (fcntl::O_CREAT, libc::O_CREAT),
             (fcntl::O_EXCL, libc::O_EXCL),
@@ -504,6 +504,7 @@ impl LibcFileFlags {
             (fcntl::O_RDWR, libc::O_RDWR),
             (fcntl::O_TRUNC, libc::O_TRUNC),
             (fcntl::O_WRONLY, libc::O_WRONLY),
+            (fcntl::AT_REMOVEDIR, libc::AT_REMOVEDIR),
         ];
 
         // TODO: check for unsupported flags.
@@ -565,8 +566,7 @@ impl LibcAtFlags {
     fn from(flags: ffi::c_int) -> LibcAtFlags {
         let libc_flags: libc::c_int = match flags {
             fcntl::AT_FDCWD => libc::AT_FDCWD,
-            fcntl::AT_REMOVEDIR => libc::AT_REMOVEDIR,
-            _ => flags,
+            _ => unreachable!("invalid at flags"),
         };
 
         LibcAtFlags(libc_flags)
