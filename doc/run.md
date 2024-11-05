@@ -15,7 +15,7 @@ This document instructs you on how to run Nanvix.
 
 ```bash
 # Run Nanvix in QEMU with default parameters:
-# make TARGET=x86 LOG_LEVEL=warn MACHINE=qemu-pc TIMEOUT=90 run
+# make TARGET=x86 MACHINE=qemu-pc VERBOSE=no RELEASE=no TIMEOUT=10 FEATURES= run
 make run
 ```
 
@@ -24,7 +24,10 @@ make run
 - `LOG_LEVEL=<trace|info|warn|error>`: Set the output log level.
 - `RELEASE=<yes|no>`: Enable/Disable release build.
 - `TARGET=x86`: Set target CPU architecture.
-- `TIMEOUT=<seconds>`: Set the timeout for the run script.
+- `TIMEOUT=<seconds>`: Set the timeout for the run script. You may want to override the default value if your development environment is a low-end machine (ie: old CPU, HD disk, low RAM).
+```bash
+make TIMEOUT=90 run
+```
 
 ## Running Nanvix in MicroVM
 
