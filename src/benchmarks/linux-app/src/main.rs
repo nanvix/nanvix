@@ -338,6 +338,59 @@ pub fn main() -> Result<(), Error> {
         panic!("file size is not 1024 bytes");
     }
 
+    // Update access time of file named `foo.tmp`.
+    let times: [timespec; 2] = [
+        timespec {
+            tv_sec: 1,
+            tv_nsec: 1,
+        },
+        timespec {
+            tv_sec: 1,
+            tv_nsec: 1,
+        },
+    ];
+    match sys::stat::futimens(fd, times) {
+        0 => {
+            ::nvx::log!("updated access time of file foo.tmp");
+        },
+        errno => {
+            panic!("failed to update access time of file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Get status of file named `foo.tmp`.
+    let mut st: stat = stat::default();
+    match sys::stat::fstat(fd, &mut st) {
+        0 => {
+            ::nvx::log!("got status of file foo.tmp");
+            ::nvx::log!("file statistics:");
+            ::nvx::log!("  st_dev: {}", { st.st_dev });
+            ::nvx::log!("  st_ino: {}", { st.st_ino });
+            ::nvx::log!("  st_mode: {}", { st.st_mode });
+            ::nvx::log!("  st_nlink: {}", { st.st_nlink });
+            ::nvx::log!("  st_uid: {}", { st.st_uid });
+            ::nvx::log!("  st_gid: {}", { st.st_gid });
+            ::nvx::log!("  st_rdev: {}", { st.st_rdev });
+            ::nvx::log!("  st_size: {}", { st.st_size });
+            ::nvx::log!("  st_blksize: {}", { st.st_blksize });
+            ::nvx::log!("  st_blocks: {}", { st.st_blocks });
+            ::nvx::log!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
+            ::nvx::log!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
+            ::nvx::log!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
+        },
+        errno => {
+            panic!("failed to get status of file foo.tmp: {:?}", errno);
+        },
+    }
+
+    // Ensure time of last access was updated.
+    if st.st_atim.tv_sec != 1 {
+        panic!("access time of file bar.tmp was not updated");
+    }
+    if st.st_atim.tv_nsec != 1 {
+        panic!("access time of file bar.tmp was not updated");
+    }
+
     // Close file.
     match unistd::close(fd) {
         0 => {

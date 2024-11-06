@@ -58,6 +58,7 @@ use ::linuxd::{
         FileStatAtRequest,
         FileStatRequest,
         UpdateFileAccessTimeAtRequest,
+        UpdateFileAccessTimeRequest,
     },
     time::message::{
         ClockResolutionRequest,
@@ -289,6 +290,11 @@ impl ProcessDaemon {
                                 LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart => {
                                     self.handle_utimensat(source, message);
                                     continue;
+                                },
+                                LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
+                                    let request: UpdateFileAccessTimeRequest =
+                                        UpdateFileAccessTimeRequest::from_bytes(message.payload);
+                                    fcntl::do_futimens(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
