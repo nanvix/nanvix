@@ -110,6 +110,8 @@ pub enum LinuxDaemonMessageHeader {
     MakeDirectoryAtResponse,
     UpdateFileAccessTimeAtRequestPart,
     UpdateFileAccessTimeAtResponse,
+    UpdateFileAccessTimeRequest,
+    UpdateFileAccessTimeResponse,
 }
 
 #[repr(C, packed)]

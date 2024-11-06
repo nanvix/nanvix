@@ -322,7 +322,8 @@ cfg_if::cfg_if! {
             fstatat,
             stat,
             fstat,
-            utimensat
+            utimensat,
+            futimens,
         };
     }
 }

@@ -7,6 +7,7 @@
 
 mod fstat;
 mod fstatat;
+mod futimens;
 mod utimensat;
 
 //==================================================================================================
@@ -18,6 +19,10 @@ pub use self::{
     fstatat::{
         FileStatAtRequest,
         FileStatAtResponse,
+    },
+    futimens::{
+        UpdateFileAccessTimeRequest,
+        UpdateFileAccessTimeResponse,
     },
     utimensat::{
         UpdateFileAccessTimeAtRequest,

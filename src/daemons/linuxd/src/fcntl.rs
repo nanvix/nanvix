@@ -39,6 +39,8 @@ use ::linuxd::{
                 FileStatRequest,
                 UpdateFileAccessTimeAtRequest,
                 UpdateFileAccessTimeAtResponse,
+                UpdateFileAccessTimeRequest,
+                UpdateFileAccessTimeResponse,
             },
             stat,
         },
@@ -588,6 +590,52 @@ pub fn do_utimensat(
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
+        },
+    }
+}
+
+//==================================================================================================
+// do_futimens()
+//==================================================================================================
+
+pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest) -> Message {
+    trace!("futimens(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+
+    let times: [timespec; 2] = request.times;
+
+    let libc_times: [libc::timespec; 2] = [
+        libc::timespec {
+            tv_sec: times[0].tv_sec,
+            tv_nsec: times[0].tv_nsec,
+        },
+        libc::timespec {
+            tv_sec: times[1].tv_sec,
+            tv_nsec: times[1].tv_nsec,
+        },
+    ];
+
+    debug!(
+        "libc::futimens(): fd={:?}, times[0].tv_sec={:?}, times[0].tv_nsec={:?}, \
+         times[1].tv_sec={:?}, times[1].tv_nsec={:?}",
+        fd,
+        libc_times[0].tv_sec,
+        libc_times[0].tv_nsec,
+        libc_times[1].tv_sec,
+        libc_times[1].tv_nsec
+    );
+    match unsafe { libc::futimens(fd, libc_times.as_ptr()) } {
+        0 => {
+            debug!("libc::futimens(): success");
+            UpdateFileAccessTimeResponse::build(pid, 0)
+        },
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::futimens(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            crate::build_error(pid, error)
         },
     }
 }
