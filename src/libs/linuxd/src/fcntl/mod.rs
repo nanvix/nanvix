@@ -31,6 +31,7 @@ cfg_if::cfg_if! {
             symlinkat,
             readlinkat,
             mkdirat,
+            fcntl,
         };
     }
 }
@@ -86,3 +87,29 @@ pub const POSIX_FADV_WILLNEED: i32 = 3;
 pub const POSIX_FADV_DONTNEED: i32 = 4;
 /// The specified data will be accessed once and then will not be used again.
 pub const POSIX_FADV_NOREUSE: i32 = 5;
+
+/// Duplicate the file descriptor.
+pub const F_DUPFD: i32 = 0;
+/// Duplicate the file descriptor and set the close-on-exec flag.
+pub const F_DUPFD_CLOEXEC: i32 = 1030;
+/// Get the file descriptor flags.
+pub const F_GETFD: i32 = 1;
+/// Set the file descriptor flags.
+pub const F_SETFD: i32 = 2;
+/// Get the file status flags and file access modes.
+pub const F_GETFL: i32 = 3;
+/// Set the file status flags.
+pub const F_SETFL: i32 = 4;
+/// Get owner (process or group) of the file.
+pub const F_GETOWN: i32 = 5;
+/// Set owner (process or group) of the file.
+pub const F_SETOWN: i32 = 6;
+// TODO: F_DUPFD_CLOEXEC
+// TODO: Support F_GETOWN_EX
+// TODO: Support F_SETOWN_EX
+// TODO: Support F_GETLK
+// TODO: Support F_SETLK
+// TODO: Support F_SETLKW
+// TODO: Support F_OFD_GETLK
+// TODO: Support F_OFD_SETLK
+// TODO: Support F_OFD_SETLKW

@@ -338,6 +338,21 @@ pub fn main() -> Result<(), Error> {
         panic!("file size is not 1024 bytes");
     }
 
+    // Get file access mode and the file status flags.
+    let flags: i32 = match fcntl::fcntl(fd, fcntl::F_GETFL, 0) {
+        flags if flags >= 0 => {
+            ::nvx::log!("got file access mode and file status flags {}", flags);
+            flags
+        },
+        errno => {
+            panic!("failed to get file access mode and file status flags: {:?}", errno);
+        },
+    };
+    // Check if file is open for reading and writing.
+    if (flags & fcntl::O_ACCMODE) != fcntl::O_RDWR {
+        panic!("file is not open for reading and writing");
+    }
+
     // Update access time of file named `foo.tmp`.
     let times: [timespec; 2] = [
         timespec {
