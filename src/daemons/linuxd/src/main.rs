@@ -42,6 +42,7 @@ use ::flexi_logger::Logger;
 use ::linuxd::{
     fcntl::message::{
         FileAdvisoryInformationRequest,
+        FileControlRequest,
         FileSpaceControlRequest,
         MakeDirectoryAtRequest,
         OpenAtRequest,
@@ -295,6 +296,11 @@ impl ProcessDaemon {
                                     let request: UpdateFileAccessTimeRequest =
                                         UpdateFileAccessTimeRequest::from_bytes(message.payload);
                                     fcntl::do_futimens(source, request)
+                                },
+                                LinuxDaemonMessageHeader::FileControlRequest => {
+                                    let request: FileControlRequest =
+                                        FileControlRequest::from_bytes(message.payload);
+                                    fcntl::do_fcntl(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };

@@ -15,6 +15,8 @@ use ::linuxd::{
     fcntl::message::{
         FileAdvisoryInformationRequest,
         FileAdvisoryInformationResponse,
+        FileControlRequest,
+        FileControlResponse,
         FileSpaceControlRequest,
         FileSpaceControlResponse,
         MakeDirectoryAtRequest,
@@ -641,6 +643,93 @@ pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest)
 }
 
 //==================================================================================================
+// do_fcntl()
+//==================================================================================================
+
+pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message {
+    trace!("fcntl(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+    let cmd: LibcFileControlCommand = match LibcFileControlCommand::try_from(request.cmd) {
+        Ok(cmd) => cmd,
+        Err(e) => return crate::build_error(pid, e.code),
+    };
+    let arg: u32 = request.arg;
+
+    debug!("libc::fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd.inner(), arg);
+
+    let ret: i32 = unsafe { libc::fcntl(fd, cmd.inner(), arg) };
+
+    match cmd.inner() {
+        libc::F_GETFD => {
+            if ret >= 0 {
+                debug!("libc::fcntl(): F_GETFD success");
+                todo!("convert file descriptor flags");
+            } else if ret == -1 {
+                let errno: i32 = unsafe { *libc::__errno_location() };
+                debug!("libc::fcntl(): errno={:?}", errno);
+                let error: ErrorCode = ErrorCode::try_from(-errno)
+                    .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+                crate::build_error(pid, error)
+            } else {
+                unreachable!("should not return -1")
+            }
+        },
+        libc::F_GETFL => {
+            if ret >= 0 {
+                debug!("libc::fcntl(): F_GETFL success");
+                let flags: i32 = match LibcFileFlags::try_from(ret) {
+                    Ok(flags) => flags.as_nanvix_flags(),
+                    Err(e) => return crate::build_error(pid, e.code),
+                };
+                FileControlResponse::build(pid, flags)
+            } else if ret == -1 {
+                let errno: i32 = unsafe { *libc::__errno_location() };
+                debug!("libc::fcntl(): errno={:?}", errno);
+                let error: ErrorCode = ErrorCode::try_from(-errno)
+                    .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+                crate::build_error(pid, error)
+            } else {
+                unreachable!("should not fail with a value other than -1")
+            }
+        },
+        libc::F_GETOWN => {
+            if ret >= 0 || ret != -1 {
+                debug!("libc::fcntl(): F_GETOWN success");
+                FileControlResponse::build(pid, ret)
+            } else {
+                unreachable!("should not return -1");
+            }
+        },
+        libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN => {
+            if ret == 0 {
+                debug!("libc::fcntl(): success");
+                FileControlResponse::build(pid, ret)
+            } else if ret == -1 {
+                let errno: i32 = unsafe { *libc::__errno_location() };
+                debug!("libc::fcntl(): errno={:?}", errno);
+                let error: ErrorCode = ErrorCode::try_from(-errno)
+                    .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+                crate::build_error(pid, error)
+            } else {
+                unreachable!("should not fail with a value other than -1")
+            }
+        },
+        libc::F_DUPFD | libc::F_DUPFD_CLOEXEC => {
+            if ret >= 0 {
+                debug!("libc::fcntl(): success");
+                FileControlResponse::build(pid, ret)
+            } else {
+                unreachable!("should not return a negative value");
+            }
+        },
+        _ => {
+            unreachable!("unsupported command");
+        },
+    }
+}
+
+//==================================================================================================
 
 struct LibcFileFlags(libc::c_int);
 
@@ -677,6 +766,26 @@ impl LibcFileFlags {
         }
 
         Ok(LibcFileFlags(libc_flags))
+    }
+
+    fn as_nanvix_flags(&self) -> i32 {
+        let mut flags: i32 = 0;
+
+        // Set access mode.
+        match self.0 & libc::O_ACCMODE {
+            libc::O_RDONLY => flags |= fcntl::O_RDONLY,
+            libc::O_WRONLY => flags |= fcntl::O_WRONLY,
+            libc::O_RDWR => flags |= fcntl::O_RDWR,
+            _ => {},
+        }
+
+        for (nanvix_flag, f) in Self::FLAG_MAPPINGS.iter() {
+            if (self.0 & f) == *f {
+                flags |= *nanvix_flag;
+            }
+        }
+
+        flags
     }
 }
 
@@ -752,5 +861,29 @@ impl LibcFileAdvice {
         };
 
         Ok(LibcFileAdvice(libc_advice))
+    }
+}
+
+struct LibcFileControlCommand(libc::c_int);
+
+impl LibcFileControlCommand {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn try_from(cmd: i32) -> Result<LibcFileControlCommand, Error> {
+        let libc_cmd: libc::c_int = match cmd {
+            fcntl::F_DUPFD => libc::F_DUPFD,
+            fcntl::F_DUPFD_CLOEXEC => libc::F_DUPFD_CLOEXEC,
+            fcntl::F_GETFD => libc::F_GETFD,
+            fcntl::F_SETFD => libc::F_SETFD,
+            fcntl::F_GETFL => libc::F_GETFL,
+            fcntl::F_SETFL => libc::F_SETFL,
+            fcntl::F_GETOWN => libc::F_GETOWN,
+            fcntl::F_SETOWN => libc::F_SETOWN,
+            _ => return Err(Error::new(ErrorCode::InvalidArgument, "invalid command")),
+        };
+
+        Ok(LibcFileControlCommand(libc_cmd))
     }
 }
