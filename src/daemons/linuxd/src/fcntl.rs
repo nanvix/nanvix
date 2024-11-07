@@ -645,27 +645,32 @@ pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest)
 struct LibcFileFlags(libc::c_int);
 
 impl LibcFileFlags {
+    const FLAG_MAPPINGS: [(i32, ffi::c_int); 6] = [
+        (fcntl::O_APPEND, libc::O_APPEND),
+        (fcntl::O_CREAT, libc::O_CREAT),
+        (fcntl::O_EXCL, libc::O_EXCL),
+        (fcntl::O_TRUNC, libc::O_TRUNC),
+        (fcntl::AT_REMOVEDIR, libc::AT_REMOVEDIR),
+        (fcntl::AT_SYMLINK_NOFOLLOW, libc::AT_SYMLINK_NOFOLLOW),
+    ];
+
     fn inner(&self) -> libc::c_int {
         self.0
     }
 
     fn try_from(flags: ffi::c_int) -> Result<LibcFileFlags, Error> {
-        let flag_mappings: [(ffi::c_int, i32); 9] = [
-            (fcntl::O_APPEND, libc::O_APPEND),
-            (fcntl::O_CREAT, libc::O_CREAT),
-            (fcntl::O_EXCL, libc::O_EXCL),
-            (fcntl::O_RDONLY, libc::O_RDONLY),
-            (fcntl::O_RDWR, libc::O_RDWR),
-            (fcntl::O_TRUNC, libc::O_TRUNC),
-            (fcntl::O_WRONLY, libc::O_WRONLY),
-            (fcntl::AT_REMOVEDIR, libc::AT_REMOVEDIR),
-            (fcntl::AT_SYMLINK_NOFOLLOW, libc::AT_SYMLINK_NOFOLLOW),
-        ];
-
         // TODO: check for unsupported flags.
-
         let mut libc_flags: libc::c_int = 0;
-        for (nanvix_flag, f) in flag_mappings.iter() {
+
+        // Set access mode.
+        match flags & fcntl::O_ACCMODE {
+            fcntl::O_RDONLY => libc_flags |= libc::O_RDONLY,
+            fcntl::O_WRONLY => libc_flags |= libc::O_WRONLY,
+            fcntl::O_RDWR => libc_flags |= libc::O_RDWR,
+            _ => {},
+        }
+
+        for (nanvix_flag, f) in Self::FLAG_MAPPINGS.iter() {
             if (flags & nanvix_flag) == *nanvix_flag {
                 libc_flags |= *f;
             }
