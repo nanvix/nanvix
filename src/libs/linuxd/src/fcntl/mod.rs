@@ -37,20 +37,22 @@ cfg_if::cfg_if! {
 
 //==================================================================================================
 
-/// Set append mode.
-pub const O_APPEND: i32 = 1 << 0;
-/// Create file if it does not exist.
-pub const O_CREAT: i32 = 1 << 1;
-/// Fail if not a new file.
-pub const O_EXCL: i32 = 1 << 2;
-/// Truncate file to size zero.
-pub const O_TRUNC: i32 = 1 << 3;
+/// Mask for file access mode.
+pub const O_ACCMODE: i32 = 0x3;
 /// Set read-only access.
-pub const O_RDONLY: i32 = 1 << 4;
+pub const O_RDONLY: i32 = 0;
 /// Set write-only access.
-pub const O_WRONLY: i32 = 1 << 5;
+pub const O_WRONLY: i32 = 1;
 /// Set read-write access.
-pub const O_RDWR: i32 = 1 << 6;
+pub const O_RDWR: i32 = 2;
+/// Set append mode.
+pub const O_APPEND: i32 = 1 << 5;
+/// Create file if it does not exist.
+pub const O_CREAT: i32 = 1 << 6;
+/// Fail if not a new file.
+pub const O_EXCL: i32 = 1 << 7;
+/// Truncate file to size zero.
+pub const O_TRUNC: i32 = 1 << 8;
 /// Remove directory instead of file.
 pub const AT_REMOVEDIR: i32 = 1 << 9;
 /// Do not follow symbolic links.
