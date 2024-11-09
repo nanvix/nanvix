@@ -1,11 +1,11 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-all: all-boottime all-echo all-linux-app
+all: all-boottime all-echo all-linux-app all-perf
 
-clean: clean-boottime clean-echo clean-linux-app
+clean: clean-boottime clean-echo clean-linux-app clean-perf
 
-clippy: clippy-boottime clippy-echo clippy-linux-app
+clippy: clippy-boottime clippy-echo clippy-linux-app clippy-perf
 
 all-echo:
 	$(MAKE) -C echo all
@@ -33,3 +33,12 @@ clean-linux-app:
 
 clippy-linux-app:
 	$(MAKE) -C linux-app clippy
+
+all-perf:
+	$(MAKE) -C perf all
+
+clean-perf:
+	$(MAKE) -C perf clean
+
+clippy-perf:
+	$(MAKE) -C perf clippy
