@@ -114,6 +114,8 @@ pub enum LinuxDaemonMessageHeader {
     UpdateFileAccessTimeResponse,
     FileControlRequest,
     FileControlResponse,
+    CreateSocketRequest,
+    CreateSocketResponse,
 }
 
 #[repr(C, packed)]
