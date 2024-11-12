@@ -686,6 +686,16 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Listen for connections on socket.
+    match sys::socket::listen(sockfd, 0) {
+        0 => {
+            ::nvx::log!("listening for connections on socket");
+        },
+        errno => {
+            panic!("failed to listen for connections on socket: {:?}", errno);
+        },
+    }
+
     // Close socket.
     match unistd::close(sockfd) {
         0 => {
