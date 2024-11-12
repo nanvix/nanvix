@@ -5,13 +5,20 @@
 // Modules
 //==================================================================================================
 
+mod bind;
 mod socket;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::socket::{
-    CreateSocketRequest,
-    CreateSocketResponse,
+pub use self::{
+    bind::{
+        BindSocketRequest,
+        BindSocketResponse,
+    },
+    socket::{
+        CreateSocketRequest,
+        CreateSocketResponse,
+    },
 };
