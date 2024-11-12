@@ -8,10 +8,16 @@
 // Imports
 //==================================================================================================
 
+use ::core::mem;
 use ::linuxd::{
     fcntl,
+    netinet::in_::{
+        in_addr,
+        sockaddr_in,
+    },
     sys::{
         self,
+        socket::socklen_t,
         stat::stat,
         types::size_t,
         uio,
@@ -652,6 +658,33 @@ pub fn main() -> Result<(), Error> {
             panic!("failed to create socket: {:?}", errno);
         },
     };
+
+    // Bind socket to address to 127.0.0.1.
+    let sockaddr_in: sockaddr_in = sockaddr_in {
+        sin_family: sys::socket::AF_INET,
+        sin_port: 0,
+        sin_addr: in_addr {
+            s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be(),
+        },
+        sin_zero: [0; 8],
+    };
+
+    match sys::socket::bind(
+        sockfd,
+        unsafe {
+            mem::transmute::<&linuxd::netinet::in_::sockaddr_in, &linuxd::sys::socket::sockaddr>(
+                &sockaddr_in,
+            )
+        },
+        core::mem::size_of::<sys::socket::sockaddr>() as socklen_t,
+    ) {
+        0 => {
+            ::nvx::log!("bound socket to address");
+        },
+        errno => {
+            panic!("failed to bind socket to address: {:?}", errno);
+        },
+    }
 
     // Close socket.
     match unistd::close(sockfd) {
