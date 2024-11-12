@@ -14,6 +14,7 @@
 mod args;
 mod fcntl;
 mod message;
+mod socket;
 mod time;
 mod unistd;
 mod venv;
@@ -55,11 +56,14 @@ use ::linuxd::{
         LinuxDaemonLongMessage,
         LinuxDaemonMessagePart,
     },
-    sys::stat::message::{
-        FileStatAtRequest,
-        FileStatRequest,
-        UpdateFileAccessTimeAtRequest,
-        UpdateFileAccessTimeRequest,
+    sys::{
+        socket::message::CreateSocketRequest,
+        stat::message::{
+            FileStatAtRequest,
+            FileStatRequest,
+            UpdateFileAccessTimeAtRequest,
+            UpdateFileAccessTimeRequest,
+        },
     },
     time::message::{
         ClockResolutionRequest,
@@ -301,6 +305,11 @@ impl ProcessDaemon {
                                     let request: FileControlRequest =
                                         FileControlRequest::from_bytes(message.payload);
                                     fcntl::do_fcntl(source, request)
+                                },
+                                LinuxDaemonMessageHeader::CreateSocketRequest => {
+                                    let request: CreateSocketRequest =
+                                        CreateSocketRequest::from_bytes(message.payload);
+                                    socket::do_socket(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };

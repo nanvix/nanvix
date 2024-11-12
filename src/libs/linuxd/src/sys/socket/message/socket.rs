@@ -1,0 +1,115 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::{
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
+};
+use ::core::{
+    fmt::Debug,
+    mem,
+};
+use ::nvx::{
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::ProcessIdentifier,
+};
+
+//==================================================================================================
+// CreateSocketRequest
+//==================================================================================================
+
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct CreateSocketRequest {
+    pub domain: i32,
+    pub typ: i32,
+    pub protocol: i32,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::nvx::sys::static_assert_size!(CreateSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+
+impl CreateSocketRequest {
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+        - mem::size_of::<i32>()
+        - mem::size_of::<i32>()
+        - mem::size_of::<i32>();
+
+    pub fn new(domain: i32, type_: i32, protocol: i32) -> Self {
+        Self {
+            domain,
+            typ: type_,
+            protocol,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    pub fn build(pid: ProcessIdentifier, domain: i32, typ: i32, protocol: i32) -> Message {
+        let message: Self = Self::new(domain, typ, protocol);
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
+            LinuxDaemonMessageHeader::CreateSocketRequest,
+            message.into_bytes(),
+        );
+        let message: Message =
+            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+
+        message
+    }
+}
+
+//==================================================================================================
+// CreateSocketResponse
+//==================================================================================================
+
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct CreateSocketResponse {
+    pub sockfd: i32,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::nvx::sys::static_assert_size!(CreateSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+
+impl CreateSocketResponse {
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+
+    pub fn new(sockfd: i32) -> Self {
+        Self {
+            sockfd,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    pub fn build(pid: ProcessIdentifier, sockfd: i32) -> Message {
+        let message: Self = Self::new(sockfd);
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
+            LinuxDaemonMessageHeader::CreateSocketResponse,
+            message.into_bytes(),
+        );
+        let message: Message =
+            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+
+        message
+    }
+}
