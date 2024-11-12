@@ -15,6 +15,8 @@ use ::linuxd::sys::socket::{
         CreateSocketResponse,
         ListenSocketRequest,
         ListenSocketResponse,
+        ShutdownSocketRequest,
+        ShutdownSocketResponse,
     },
     sockaddr,
     socklen_t,
@@ -155,6 +157,31 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
 }
 
 //==================================================================================================
+// do_shutdown
+//==================================================================================================
+
+pub fn do_shutdown(pid: ProcessIdentifier, request: ShutdownSocketRequest) -> Message {
+    trace!("shutdown(): pid={:?}, request={:?}", pid, request);
+
+    let sockfd: i32 = request.sockfd;
+    let how: LibcShutdownReason = match LibcShutdownReason::try_from(request.how) {
+        Ok(how) => how,
+        Err(e) => return crate::build_error(pid, e.code),
+    };
+
+    debug!("libc::shutdown(): sockfd={:?}, how={:?}", sockfd, how.inner());
+    match unsafe { libc::shutdown(sockfd, how.inner()) } {
+        -1 => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            crate::build_error(pid, error)
+        },
+        ret => ShutdownSocketResponse::build(pid, ret),
+    }
+}
+
+//==================================================================================================
 
 struct LibcSocketDomain(libc::sa_family_t);
 
@@ -203,5 +230,22 @@ impl LibcSocketAddress {
             sa_family: LibcSocketDomain::try_from(sockaddr.sa_family as i32)?.inner(),
             sa_data: unsafe { core::mem::transmute::<[u8; 14], [i8; 14]>(sockaddr.sa_data) },
         }))
+    }
+}
+
+struct LibcShutdownReason(libc::c_int);
+
+impl LibcShutdownReason {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn try_from(how: i32) -> Result<Self, Error> {
+        match how {
+            linuxd::sys::socket::SHUT_RD => Ok(Self(libc::SHUT_RD)),
+            linuxd::sys::socket::SHUT_WR => Ok(Self(libc::SHUT_WR)),
+            linuxd::sys::socket::SHUT_RDWR => Ok(Self(libc::SHUT_RDWR)),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid shutdown reason")),
+        }
     }
 }

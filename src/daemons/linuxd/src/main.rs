@@ -62,6 +62,7 @@ use ::linuxd::{
             BindSocketRequest,
             CreateSocketRequest,
             ListenSocketRequest,
+            ShutdownSocketRequest,
         },
         stat::message::{
             FileStatAtRequest,
@@ -330,6 +331,11 @@ impl ProcessDaemon {
                                     let request: AcceptSocketRequest =
                                         AcceptSocketRequest::from_bytes(message.payload);
                                     socket::do_accept(source, request)
+                                },
+                                LinuxDaemonMessageHeader::ShutdownSocketRequest => {
+                                    let request: ShutdownSocketRequest =
+                                        ShutdownSocketRequest::from_bytes(message.payload);
+                                    socket::do_shutdown(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
