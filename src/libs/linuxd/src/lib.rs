@@ -121,6 +121,8 @@ pub enum LinuxDaemonMessageHeader {
     CreateSocketResponse,
     BindSocketRequest,
     BindSocketResponse,
+    ListenSocketRequest,
+    ListenSocketResponse,
 }
 
 #[repr(C, packed)]

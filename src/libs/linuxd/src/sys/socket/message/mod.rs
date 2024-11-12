@@ -6,6 +6,7 @@
 //==================================================================================================
 
 mod bind;
+mod listen;
 mod socket;
 
 //==================================================================================================
@@ -16,6 +17,10 @@ pub use self::{
     bind::{
         BindSocketRequest,
         BindSocketResponse,
+    },
+    listen::{
+        ListenSocketRequest,
+        ListenSocketResponse,
     },
     socket::{
         CreateSocketRequest,

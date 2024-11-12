@@ -11,6 +11,8 @@ use ::linuxd::sys::socket::{
         BindSocketResponse,
         CreateSocketRequest,
         CreateSocketResponse,
+        ListenSocketRequest,
+        ListenSocketResponse,
     },
     sockaddr,
     socklen_t,
@@ -94,6 +96,28 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
             crate::build_error(pid, error)
         },
         _ => BindSocketResponse::build(pid, 0),
+    }
+}
+
+//==================================================================================================
+// do_listen
+//==================================================================================================
+
+pub fn do_listen(pid: ProcessIdentifier, request: ListenSocketRequest) -> Message {
+    trace!("listen(): pid={:?}, request={:?}", pid, request);
+
+    let sockfd: i32 = request.sockfd;
+    let backlog: i32 = request.backlog;
+
+    debug!("libc::listen(): sockfd={:?}, backlog={:?}", sockfd, backlog);
+    match unsafe { libc::listen(sockfd, backlog) } {
+        -1 => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            crate::build_error(pid, error)
+        },
+        _ => ListenSocketResponse::build(pid, 0),
     }
 }
 
