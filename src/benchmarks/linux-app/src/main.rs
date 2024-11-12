@@ -640,6 +640,29 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Create a socket.
+    let domain: i32 = sys::socket::AF_INET as i32;
+    let typ: i32 = sys::socket::SOCK_STREAM;
+    let sockfd: i32 = match sys::socket::socket(domain, typ, 0) {
+        sockfd if sockfd >= 0 => {
+            ::nvx::log!("created socket with fd {}", sockfd);
+            sockfd
+        },
+        errno => {
+            panic!("failed to create socket: {:?}", errno);
+        },
+    };
+
+    // Close socket.
+    match unistd::close(sockfd) {
+        0 => {
+            ::nvx::log!("closed socket");
+        },
+        errno => {
+            panic!("failed to close socket: {:?}", errno);
+        },
+    }
+
     venv::leave(env)?;
     ::nvx::log!("left environment {:?}", env);
 
