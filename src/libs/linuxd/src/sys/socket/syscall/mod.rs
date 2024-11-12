@@ -8,6 +8,7 @@
 mod accept;
 mod bind;
 mod listen;
+mod shutdown;
 mod socket;
 
 //==================================================================================================
@@ -18,5 +19,6 @@ pub use self::{
     accept::accept,
     bind::bind,
     listen::listen,
+    shutdown::shutdown,
     socket::socket,
 };

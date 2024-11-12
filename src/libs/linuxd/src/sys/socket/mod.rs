@@ -20,7 +20,8 @@ cfg_if::cfg_if! {
             socket,
             bind,
             listen,
-            accept
+            accept,
+            shutdown,
         };
     }
 }
@@ -44,6 +45,13 @@ pub const SOCK_RAW: i32 = 3;
 pub const SOCK_DGRAM: i32 = 2;
 /// Provides sequenced, reliable, bidirectional, connection-mode transmission paths for records.
 pub const SOCK_SEQPACKET: i32 = 5;
+
+/// Disables further receive operations.
+pub const SHUT_RD: i32 = 0;
+/// Disables further send operations.
+pub const SHUT_WR: i32 = 1;
+/// Disables further send and receive operations.
+pub const SHUT_RDWR: i32 = 2;
 
 /// Used for socket length.
 pub type socklen_t = u32;
