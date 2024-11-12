@@ -17,7 +17,10 @@ use ::linuxd::{
     },
     sys::{
         self,
-        socket::socklen_t,
+        socket::{
+            sockaddr,
+            socklen_t,
+        },
         stat::stat,
         types::size_t,
         uio,
@@ -659,10 +662,10 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
-    // Bind socket to address to 127.0.0.1.
+    // Bind socket to address to 127.0.0.1:8080.
     let sockaddr_in: sockaddr_in = sockaddr_in {
         sin_family: sys::socket::AF_INET,
-        sin_port: 0,
+        sin_port: u16::to_be(8080),
         sin_addr: in_addr {
             s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be(),
         },
@@ -693,6 +696,29 @@ pub fn main() -> Result<(), Error> {
         },
         errno => {
             panic!("failed to listen for connections on socket: {:?}", errno);
+        },
+    }
+
+    // Accept connection on socket.
+    let mut address: sockaddr = unsafe { core::mem::zeroed() };
+    let mut address_len: socklen_t = 0;
+    let connfd: i32 = match sys::socket::accept(sockfd, &mut address, &mut address_len) {
+        connfd if connfd >= 0 => {
+            ::nvx::log!("accepted connection on socket with fd {}", connfd);
+            connfd
+        },
+        errno => {
+            panic!("failed to accept connection on socket: {:?}", errno);
+        },
+    };
+
+    // Close connection.
+    match unistd::close(connfd) {
+        0 => {
+            ::nvx::log!("closed connection");
+        },
+        errno => {
+            panic!("failed to close connection: {:?}", errno);
         },
     }
 

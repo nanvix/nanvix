@@ -58,6 +58,7 @@ use ::linuxd::{
     },
     sys::{
         socket::message::{
+            AcceptSocketRequest,
             BindSocketRequest,
             CreateSocketRequest,
             ListenSocketRequest,
@@ -324,6 +325,11 @@ impl ProcessDaemon {
                                     let request: ListenSocketRequest =
                                         ListenSocketRequest::from_bytes(message.payload);
                                     socket::do_listen(source, request)
+                                },
+                                LinuxDaemonMessageHeader::AcceptSocketRequest => {
+                                    let request: AcceptSocketRequest =
+                                        AcceptSocketRequest::from_bytes(message.payload);
+                                    socket::do_accept(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
