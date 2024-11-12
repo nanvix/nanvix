@@ -20,6 +20,7 @@ cfg_if::cfg_if! {
             socket,
             bind,
             listen,
+            accept
         };
     }
 }

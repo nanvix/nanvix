@@ -7,6 +7,8 @@
 
 use ::linuxd::sys::socket::{
     message::{
+        AcceptSocketRequest,
+        AcceptSocketResponse,
         BindSocketRequest,
         BindSocketResponse,
         CreateSocketRequest,
@@ -118,6 +120,37 @@ pub fn do_listen(pid: ProcessIdentifier, request: ListenSocketRequest) -> Messag
             crate::build_error(pid, error)
         },
         _ => ListenSocketResponse::build(pid, 0),
+    }
+}
+
+//==================================================================================================
+// do_accept
+//==================================================================================================
+
+pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Message {
+    trace!("accept(): pid={:?}, request={:?}", pid, request);
+
+    let sockfd: i32 = request.sockfd;
+    let mut address: libc::sockaddr = unsafe { core::mem::zeroed() };
+    let mut address_len: libc::socklen_t =
+        core::mem::size_of::<libc::sockaddr>() as libc::socklen_t;
+
+    debug!("libc::accept(): sockfd={:?}", sockfd);
+    match unsafe { libc::accept(sockfd, &mut address, &mut address_len) } {
+        -1 => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            crate::build_error(pid, error)
+        },
+        sockfd => {
+            let sockaddr: sockaddr = sockaddr {
+                sa_family: address.sa_family as u16,
+                sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
+            };
+            let socklen: socklen_t = address_len as socklen_t;
+            AcceptSocketResponse::build(pid, sockfd, sockaddr, socklen)
+        },
     }
 }
 

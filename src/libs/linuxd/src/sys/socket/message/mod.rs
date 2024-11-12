@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod accept;
 mod bind;
 mod listen;
 mod socket;
@@ -14,6 +15,10 @@ mod socket;
 //==================================================================================================
 
 pub use self::{
+    accept::{
+        AcceptSocketRequest,
+        AcceptSocketResponse,
+    },
     bind::{
         BindSocketRequest,
         BindSocketResponse,
