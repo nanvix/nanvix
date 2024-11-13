@@ -8,6 +8,7 @@
 mod accept;
 mod bind;
 mod listen;
+mod shutdown;
 mod socket;
 
 //==================================================================================================
@@ -26,6 +27,10 @@ pub use self::{
     listen::{
         ListenSocketRequest,
         ListenSocketResponse,
+    },
+    shutdown::{
+        ShutdownSocketRequest,
+        ShutdownSocketResponse,
     },
     socket::{
         CreateSocketRequest,
