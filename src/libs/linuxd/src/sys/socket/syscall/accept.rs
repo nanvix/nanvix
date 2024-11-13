@@ -65,7 +65,7 @@ pub fn accept(sockfd: i32, addr: &mut sockaddr, addrlen: &mut socklen_t) -> i32 
                     // Response was successfully parsed.
                     *addr = response.sockaddr;
                     *addrlen = response.socklen;
-                    0
+                    response.sockfd
                 },
                 // Response was not successfully parsed.
                 _ => ErrorCode::InvalidMessage.into_errno(),

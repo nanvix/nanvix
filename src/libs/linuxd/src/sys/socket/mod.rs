@@ -22,6 +22,7 @@ cfg_if::cfg_if! {
             listen,
             accept,
             shutdown,
+            recv
         };
     }
 }
@@ -52,6 +53,17 @@ pub const SHUT_RD: i32 = 0;
 pub const SHUT_WR: i32 = 1;
 /// Disables further send and receive operations.
 pub const SHUT_RDWR: i32 = 2;
+
+/// Peeks at an incoming message.
+pub const MSG_PEEK: i32 = 0x2;
+/// Requests out-of-band data.
+pub const MSG_OOB: i32 = 0x1;
+/// Requests to block until the full amount of data can be returned.
+pub const MSG_WAITALL: i32 = 0x100;
+/// Terminates a record.
+pub const MSG_EOR: i32 = 0x8;
+/// Requests not to send SIGPIPE on errors.
+pub const MSG_NOSIGNAL: i32 = 0x4000;
 
 /// Used for socket length.
 pub type socklen_t = u32;

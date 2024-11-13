@@ -5,21 +5,26 @@
 // Imports
 //==================================================================================================
 
-use ::linuxd::sys::socket::{
-    message::{
-        AcceptSocketRequest,
-        AcceptSocketResponse,
-        BindSocketRequest,
-        BindSocketResponse,
-        CreateSocketRequest,
-        CreateSocketResponse,
-        ListenSocketRequest,
-        ListenSocketResponse,
-        ShutdownSocketRequest,
-        ShutdownSocketResponse,
+use ::linuxd::sys::{
+    socket::{
+        message::{
+            AcceptSocketRequest,
+            AcceptSocketResponse,
+            BindSocketRequest,
+            BindSocketResponse,
+            CreateSocketRequest,
+            CreateSocketResponse,
+            ListenSocketRequest,
+            ListenSocketResponse,
+            ReceiveSocketRequest,
+            ReceiveSocketResponse,
+            ShutdownSocketRequest,
+            ShutdownSocketResponse,
+        },
+        sockaddr,
+        socklen_t,
     },
-    sockaddr,
-    socklen_t,
+    types::size_t,
 };
 use ::nvx::{
     ipc::Message,
@@ -157,6 +162,40 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
 }
 
 //==================================================================================================
+// do_recv
+//==================================================================================================
+
+pub fn do_recv(pid: ProcessIdentifier, request: ReceiveSocketRequest) -> Message {
+    trace!("recv(): pid={:?}, request={:?}", pid, request);
+
+    let sockfd: i32 = request.sockfd;
+    let flags: LibcMessageFlags = match LibcMessageFlags::try_from(request.flags) {
+        Ok(flags) => flags,
+        Err(e) => return crate::build_error(pid, e.code),
+    };
+
+    let mut buffer: [u8; ReceiveSocketResponse::BUFFER_SIZE] =
+        [0; ReceiveSocketResponse::BUFFER_SIZE];
+
+    debug!("libc::recv(): sockfd={:?}, flags={:?}", sockfd, flags.inner());
+    match unsafe {
+        libc::recv(sockfd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len(), flags.inner())
+    } {
+        count if count >= 0 => {
+            debug!("libc::recv(): count={:?}", count);
+            ReceiveSocketResponse::build(pid, count as size_t, buffer)
+        },
+        -1 => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            crate::build_error(pid, error)
+        },
+        _ => unreachable!("libc::recv() returned invalid value"),
+    }
+}
+
+//==================================================================================================
 // do_shutdown
 //==================================================================================================
 
@@ -247,5 +286,39 @@ impl LibcShutdownReason {
             linuxd::sys::socket::SHUT_RDWR => Ok(Self(libc::SHUT_RDWR)),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid shutdown reason")),
         }
+    }
+}
+
+struct LibcMessageFlags(libc::c_int);
+
+impl LibcMessageFlags {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn try_from(flags: i32) -> Result<Self, Error> {
+        let mut flags = flags;
+        let mut libc_flags = 0;
+
+        let flag_mappings: [(i32, libc::c_int); 5] = [
+            (linuxd::sys::socket::MSG_PEEK, libc::MSG_PEEK),
+            (linuxd::sys::socket::MSG_OOB, libc::MSG_OOB),
+            (linuxd::sys::socket::MSG_WAITALL, libc::MSG_WAITALL),
+            (linuxd::sys::socket::MSG_EOR, libc::MSG_EOR),
+            (linuxd::sys::socket::MSG_NOSIGNAL, libc::MSG_NOSIGNAL),
+        ];
+
+        for (linuxd_flag, libc_flag) in &flag_mappings {
+            if flags & linuxd_flag != 0 {
+                libc_flags |= libc_flag;
+                flags &= !linuxd_flag;
+            }
+        }
+
+        if flags != 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid message flags"));
+        }
+
+        Ok(Self(libc_flags))
     }
 }
