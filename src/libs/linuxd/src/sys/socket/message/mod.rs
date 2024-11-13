@@ -9,6 +9,7 @@ mod accept;
 mod bind;
 mod listen;
 mod recv;
+mod send;
 mod shutdown;
 mod socket;
 
@@ -32,6 +33,10 @@ pub use self::{
     recv::{
         ReceiveSocketRequest,
         ReceiveSocketResponse,
+    },
+    send::{
+        SendSocketRequest,
+        SendSocketResponse,
     },
     shutdown::{
         ShutdownSocketRequest,

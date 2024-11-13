@@ -22,7 +22,8 @@ cfg_if::cfg_if! {
             listen,
             accept,
             shutdown,
-            recv
+            recv,
+            send,
         };
     }
 }

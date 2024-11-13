@@ -9,6 +9,7 @@ mod accept;
 mod bind;
 mod listen;
 mod recv;
+mod send;
 mod shutdown;
 mod socket;
 
@@ -21,6 +22,7 @@ pub use self::{
     bind::bind,
     listen::listen,
     recv::recv,
+    send::send,
     shutdown::shutdown,
     socket::socket,
 };
