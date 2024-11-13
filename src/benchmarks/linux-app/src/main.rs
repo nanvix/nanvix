@@ -723,6 +723,16 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Echo message back to connection.
+    match sys::socket::send(connfd, buffer.as_ptr(), buffer.len() as size_t, 0) {
+        len if len >= 0 => {
+            ::nvx::log!("sent {} bytes to connection", len);
+        },
+        errno => {
+            panic!("failed to send message to connection: {:?}", errno);
+        },
+    }
+
     // Disallow send and receive operations.
     match sys::socket::shutdown(connfd, sys::socket::SHUT_RDWR) {
         0 => {
