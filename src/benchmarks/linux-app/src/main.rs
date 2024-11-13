@@ -712,6 +712,17 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
+    // Receive message from connection.
+    let mut buffer: [u8; 32] = [0; 32];
+    match sys::socket::recv(connfd, buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
+        len if len >= 0 => {
+            ::nvx::log!("received {} bytes from connection", len);
+        },
+        errno => {
+            panic!("failed to receive message from connection: {:?}", errno);
+        },
+    }
+
     // Disallow send and receive operations.
     match sys::socket::shutdown(connfd, sys::socket::SHUT_RDWR) {
         0 => {
