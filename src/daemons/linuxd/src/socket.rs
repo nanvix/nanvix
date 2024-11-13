@@ -18,13 +18,18 @@ use ::linuxd::sys::{
             ListenSocketResponse,
             ReceiveSocketRequest,
             ReceiveSocketResponse,
+            SendSocketRequest,
+            SendSocketResponse,
             ShutdownSocketRequest,
             ShutdownSocketResponse,
         },
         sockaddr,
         socklen_t,
     },
-    types::size_t,
+    types::{
+        size_t,
+        ssize_t,
+    },
 };
 use ::nvx::{
     ipc::Message,
@@ -217,6 +222,45 @@ pub fn do_shutdown(pid: ProcessIdentifier, request: ShutdownSocketRequest) -> Me
             crate::build_error(pid, error)
         },
         ret => ShutdownSocketResponse::build(pid, ret),
+    }
+}
+
+//==================================================================================================
+// do_send
+//==================================================================================================
+
+pub fn do_send(pid: ProcessIdentifier, request: SendSocketRequest) -> Message {
+    trace!("send(): pid={:?}, request={:?}", pid, request);
+
+    let sockfd: i32 = request.sockfd;
+    let count: size_t = request.count;
+    let flags: LibcMessageFlags = match LibcMessageFlags::try_from(request.flags) {
+        Ok(flags) => flags,
+        Err(e) => return crate::build_error(pid, e.code),
+    };
+    let buffer: [u8; SendSocketRequest::BUFFER_SIZE] = request.buffer;
+
+    debug!(
+        "libc::send(): sockfd={:?}, count={:?}, flags={:?}, buffer={:?}",
+        sockfd,
+        count,
+        flags.inner(),
+        buffer
+    );
+    match unsafe {
+        libc::send(sockfd, buffer.as_ptr() as *const libc::c_void, count as usize, flags.inner())
+    } {
+        count if count >= 0 => {
+            debug!("libc::send(): count={:?}", count);
+            SendSocketResponse::build(pid, count as ssize_t)
+        },
+        -1 => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            crate::build_error(pid, error)
+        },
+        _ => unreachable!("libc::send() returned invalid value"),
     }
 }
 
