@@ -712,6 +712,16 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
+    // Disallow send and receive operations.
+    match sys::socket::shutdown(connfd, sys::socket::SHUT_RDWR) {
+        0 => {
+            ::nvx::log!("disallowed send and receive operations on connection");
+        },
+        errno => {
+            panic!("failed to disallow send and receive operations on connection: {:?}", errno);
+        },
+    }
+
     // Close connection.
     match unistd::close(connfd) {
         0 => {
