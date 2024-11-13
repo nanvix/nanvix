@@ -127,6 +127,8 @@ pub enum LinuxDaemonMessageHeader {
     AcceptSocketResponse,
     ShutdownSocketRequest,
     ShutdownSocketResponse,
+    ReceiveSocketRequest,
+    ReceiveSocketResponse,
 }
 
 #[repr(C, packed)]
