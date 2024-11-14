@@ -38,7 +38,7 @@ sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/boot
 
 ### Redirect Standard Error (Optional)
 
-Is possible redirect the standard error of the MicroVM to another terminal. This
+It's possible to redirect the standard error of the MicroVM to another terminal. This
 is useful for debugging.
 
 To do it, open a new terminal and get its tty path:
@@ -53,4 +53,27 @@ Now, in the first terminal, run the MicroVM with the `-stderr` option:
 ```bash
 # Assuming /dev/pts/5 is the tty of the new terminal.
 sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/boottime.elf -stderr dev/pts/5
+```
+
+### Running the Linux Daemon (Optional)
+
+There are more binaries available other than `boottime.elf`. One of them is `linux-app.elf`.
+In order to run it, get the terminal's tty path:
+
+```bash
+$ tty
+/dev/pts/5
+```
+
+Now open a second terminal and run the daemon on it:
+
+```bash
+rmdir foo ; rm -f *.tmp ; RUST_LOG=trace ./bin/linuxd.elf -server 127.0.0.1:1234
+```
+
+Removing the directory and files sets up the environment for the tests run in `linux-app.elf`.
+Now open a third terminal and run the MicroVM on it, redirecting stderr to the first terminal:
+
+```bash
+sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -stderr /dev/pts/5 -initrd bin/linux-app.elf -gateway 127.0.0.1:1234
 ```
