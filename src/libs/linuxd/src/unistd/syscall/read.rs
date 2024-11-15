@@ -82,6 +82,11 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
                         // Parse response.
                         let response: ReadResponse = ReadResponse::from_bytes(message.payload);
 
+                        // Check if any data was read.
+                        if response.count == 0 {
+                            break;
+                        }
+
                         // Copy response buffer to user buffer.
                         buffer[offset..offset + chunk_size]
                             .copy_from_slice(&response.buffer[..chunk_size]);
