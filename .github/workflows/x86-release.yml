@@ -3,7 +3,13 @@
 
 name: x86 Release
 
-on: push
+on:
+  push:
+    branches:
+      - 'enhancement-*'
+      - 'feature-*'
+      - 'bugfix-*'
+      - 'dev'
 
 env:
   TARGET_BRANCH: ${{ github.ref_name }}
