@@ -15,7 +15,7 @@ linuxd = { path = "../../libs/linuxd", package = "linuxd-lib" }
 nvx = { path = "../../nvx" }
 anyhow = "1.0.93"
 log = "0.4.22"
-flexi_logger = "0.29.1"
+flexi_logger = "0.29.6"
 libc = "0.2.159"
 
 [profile.release]
