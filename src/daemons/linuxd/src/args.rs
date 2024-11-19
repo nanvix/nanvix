@@ -19,6 +19,8 @@ use ::anyhow::Result;
 pub struct Args {
     /// Server socket address.
     bind_sockaddr: String,
+    /// Log to file?
+    log_to_file: bool,
 }
 
 //==================================================================================================
@@ -30,6 +32,8 @@ impl Args {
     const OPT_HELP: &'static str = "-help";
     /// Command-line option for setting bind socket address.
     const OPT_BIND_SOCKADDR: &'static str = "-bind-addr";
+    /// Command-line option for log redirecting.
+    const OPT_LOGFILE: &'static str = "-log-to-file";
 
     ///
     /// # Description
@@ -46,9 +50,8 @@ impl Args {
     /// program. Upon failure, the function returns an error.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
-        trace!("parse(): parsing command-line arguments...");
-
         let mut bind_sockaddr: String = String::new();
+        let mut log_to_file: bool = false;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -60,6 +63,9 @@ impl Args {
                 Self::OPT_BIND_SOCKADDR => {
                     i += 1;
                     bind_sockaddr = args[i].clone();
+                },
+                Self::OPT_LOGFILE => {
+                    log_to_file = true;
                 },
                 _ => {
                     return Err(anyhow::anyhow!("invalid argument"));
@@ -75,7 +81,10 @@ impl Args {
             return Err(anyhow::anyhow!("server socket address not set"));
         }
 
-        Ok(Self { bind_sockaddr })
+        Ok(Self {
+            bind_sockaddr,
+            log_to_file,
+        })
     }
 
     ///
@@ -88,7 +97,12 @@ impl Args {
     /// - `program_name`: Name of the program.
     ///
     pub fn usage(program_name: &str) {
-        println!("Usage: {} {} <server-sockaddr>", program_name, Self::OPT_BIND_SOCKADDR,);
+        println!(
+            "Usage: {} {} {} <server-sockaddr>",
+            program_name,
+            Self::OPT_LOGFILE,
+            Self::OPT_BIND_SOCKADDR,
+        );
     }
 
     ///
@@ -102,5 +116,18 @@ impl Args {
     ///
     pub fn bind_sockaddr(&self) -> String {
         self.bind_sockaddr.to_string()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the log file.
+    ///
+    /// # Returns
+    ///
+    /// The log file.
+    ///
+    pub fn log_to_file(&self) -> bool {
+        self.log_to_file
     }
 }

@@ -39,7 +39,10 @@ use self::{
     venv::VirtualEnviromentDirectory,
 };
 use ::anyhow::Result;
-use ::flexi_logger::Logger;
+use ::flexi_logger::{
+    FileSpec,
+    Logger,
+};
 use ::linuxd::{
     fcntl::message::{
         FileAdvisoryInformationRequest,
@@ -562,11 +565,10 @@ impl ProcessDaemon {
 }
 
 pub fn main() -> Result<()> {
-    initialize();
-
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
     let sockaddr: String = args.bind_sockaddr();
+    initialize(args.log_to_file());
 
     let listener = match TcpListener::bind(sockaddr.clone()) {
         Ok(l) => l,
@@ -603,13 +605,18 @@ pub fn main() -> Result<()> {
 ///
 /// If the logger cannot be initialized, the function will panic.
 ///
-pub fn initialize() {
+pub fn initialize(logfile: bool) {
     static INIT_LOG: Once = Once::new();
     INIT_LOG.call_once(|| {
-        Logger::try_with_env()
-            .expect("malformed RUST_LOG environment variable")
-            .start()
-            .expect("failed to initialize logger");
+        let logger = Logger::try_with_env().expect("malformed RUST_LOG environment variable");
+        if logfile {
+            logger
+                .log_to_file(FileSpec::default())
+                .start()
+                .expect("failed to initialize logger");
+        } else {
+            logger.start().expect("failed to initialize logger");
+        }
     });
 }
 
