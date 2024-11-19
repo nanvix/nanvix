@@ -566,7 +566,7 @@ pub fn main() -> Result<()> {
 
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    let sockaddr: String = args.server_sockaddr();
+    let sockaddr: String = args.bind_sockaddr();
 
     let listener = match TcpListener::bind(sockaddr.clone()) {
         Ok(l) => l,
