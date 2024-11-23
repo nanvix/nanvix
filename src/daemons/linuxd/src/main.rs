@@ -14,6 +14,7 @@
 mod args;
 mod fcntl;
 mod message;
+mod socket;
 mod time;
 mod unistd;
 mod venv;
@@ -55,11 +56,22 @@ use ::linuxd::{
         LinuxDaemonLongMessage,
         LinuxDaemonMessagePart,
     },
-    sys::stat::message::{
-        FileStatAtRequest,
-        FileStatRequest,
-        UpdateFileAccessTimeAtRequest,
-        UpdateFileAccessTimeRequest,
+    sys::{
+        socket::message::{
+            AcceptSocketRequest,
+            BindSocketRequest,
+            CreateSocketRequest,
+            ListenSocketRequest,
+            ReceiveSocketRequest,
+            SendSocketRequest,
+            ShutdownSocketRequest,
+        },
+        stat::message::{
+            FileStatAtRequest,
+            FileStatRequest,
+            UpdateFileAccessTimeAtRequest,
+            UpdateFileAccessTimeRequest,
+        },
     },
     time::message::{
         ClockResolutionRequest,
@@ -301,6 +313,41 @@ impl ProcessDaemon {
                                     let request: FileControlRequest =
                                         FileControlRequest::from_bytes(message.payload);
                                     fcntl::do_fcntl(source, request)
+                                },
+                                LinuxDaemonMessageHeader::CreateSocketRequest => {
+                                    let request: CreateSocketRequest =
+                                        CreateSocketRequest::from_bytes(message.payload);
+                                    socket::do_socket(source, request)
+                                },
+                                LinuxDaemonMessageHeader::BindSocketRequest => {
+                                    let request: BindSocketRequest =
+                                        BindSocketRequest::from_bytes(message.payload);
+                                    socket::do_bind(source, request)
+                                },
+                                LinuxDaemonMessageHeader::ListenSocketRequest => {
+                                    let request: ListenSocketRequest =
+                                        ListenSocketRequest::from_bytes(message.payload);
+                                    socket::do_listen(source, request)
+                                },
+                                LinuxDaemonMessageHeader::AcceptSocketRequest => {
+                                    let request: AcceptSocketRequest =
+                                        AcceptSocketRequest::from_bytes(message.payload);
+                                    socket::do_accept(source, request)
+                                },
+                                LinuxDaemonMessageHeader::ShutdownSocketRequest => {
+                                    let request: ShutdownSocketRequest =
+                                        ShutdownSocketRequest::from_bytes(message.payload);
+                                    socket::do_shutdown(source, request)
+                                },
+                                LinuxDaemonMessageHeader::ReceiveSocketRequest => {
+                                    let request: ReceiveSocketRequest =
+                                        ReceiveSocketRequest::from_bytes(message.payload);
+                                    socket::do_recv(source, request)
+                                },
+                                LinuxDaemonMessageHeader::SendSocketRequest => {
+                                    let request: SendSocketRequest =
+                                        SendSocketRequest::from_bytes(message.payload);
+                                    socket::do_send(source, request)
                                 },
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };

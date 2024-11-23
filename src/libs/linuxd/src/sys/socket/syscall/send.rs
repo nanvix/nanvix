@@ -6,13 +6,15 @@
 //==================================================================================================
 
 use crate::{
-    sys::types::{
-        size_t,
-        ssize_t,
-    },
-    unistd::message::{
-        ReadRequest,
-        ReadResponse,
+    sys::{
+        socket::message::{
+            SendSocketRequest,
+            SendSocketResponse,
+        },
+        types::{
+            size_t,
+            ssize_t,
+        },
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -28,7 +30,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
+pub fn send(sockfd: i32, buffer: *const u8, count: size_t, flags: i32) -> ssize_t {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
@@ -45,16 +47,19 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
     }
 
     // Construct buffer from raw parts.
-    let buffer: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buffer, count as usize) };
+    let buffer: &[u8] = unsafe { ::core::slice::from_raw_parts(buffer, count as usize) };
 
-    let mut total_read: ssize_t = 0;
+    let mut total_written: ssize_t = 0;
     let mut offset: usize = 0;
 
     while offset < buffer.len() {
-        let chunk_size: usize = cmp::min(ReadResponse::BUFFER_SIZE, buffer.len() - offset);
+        let chunk_size: usize = cmp::min(SendSocketRequest::BUFFER_SIZE, buffer.len() - offset);
+        let mut chunk: [u8; SendSocketRequest::BUFFER_SIZE] = [0; SendSocketRequest::BUFFER_SIZE];
+        chunk[..chunk_size].copy_from_slice(&buffer[offset..offset + chunk_size]);
 
         // Build request and send it.
-        let request: Message = ReadRequest::build(pid, fd, chunk_size as size_t);
+        let request: Message =
+            SendSocketRequest::build(pid, sockfd, chunk_size as size_t, flags, chunk);
         if let Err(e) = ::nvx::ipc::send(&request) {
             return e.code.into_errno();
         }
@@ -78,19 +83,13 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
                 // Response was successfully parsed.
                 Ok(message) => match message.header {
                     // Response was successfully parsed.
-                    LinuxDaemonMessageHeader::ReadResponse => {
+                    LinuxDaemonMessageHeader::SendSocketResponse => {
                         // Parse response.
-                        let response: ReadResponse = ReadResponse::from_bytes(message.payload);
+                        let response: SendSocketResponse =
+                            SendSocketResponse::from_bytes(message.payload);
 
-                        // Check if any data was read.
-                        if response.count == 0 {
-                            break;
-                        }
-
-                        // Copy response buffer to user buffer.
-                        buffer[offset..offset + chunk_size]
-                            .copy_from_slice(&response.buffer[..chunk_size]);
-                        total_read += response.count;
+                        // Update total written count.
+                        total_written += response.count;
                         offset += chunk_size;
                     },
                     _ => return ErrorCode::InvalidMessage.into_errno(),
@@ -101,5 +100,5 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
         }
     }
 
-    total_read
+    total_written
 }

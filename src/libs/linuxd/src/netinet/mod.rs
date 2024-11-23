@@ -5,14 +5,4 @@
 // Modules
 //==================================================================================================
 
-/// Sockets.
-pub mod socket;
-
-/// File status.
-pub mod stat;
-
-/// Types.
-pub mod types;
-
-/// Definitions for vector I/O operations.
-pub mod uio;
+pub mod in_;

@@ -29,6 +29,9 @@ pub mod limits;
 /// Messages.
 pub mod message;
 
+/// Internet protocols for network stack.
+pub mod netinet;
+
 /// Standard symbolic constants and types.
 pub mod unistd;
 
@@ -114,6 +117,20 @@ pub enum LinuxDaemonMessageHeader {
     UpdateFileAccessTimeResponse,
     FileControlRequest,
     FileControlResponse,
+    CreateSocketRequest,
+    CreateSocketResponse,
+    BindSocketRequest,
+    BindSocketResponse,
+    ListenSocketRequest,
+    ListenSocketResponse,
+    AcceptSocketRequest,
+    AcceptSocketResponse,
+    ShutdownSocketRequest,
+    ShutdownSocketResponse,
+    ReceiveSocketRequest,
+    ReceiveSocketResponse,
+    SendSocketRequest,
+    SendSocketResponse,
 }
 
 #[repr(C, packed)]

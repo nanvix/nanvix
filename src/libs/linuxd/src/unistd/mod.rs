@@ -26,6 +26,13 @@ pub const SEEK_HOLE: i32 = 3;
 /// Seek forwards from offset relative to start-of-file for a position not within a hole.
 pub const SEEK_DATA: i32 = 4;
 
+/// File number of standard input.
+pub const STDIN_FILENO: i32 = 0;
+/// File number of standard output.
+pub const STDOUT_FILENO: i32 = 1;
+/// File number of standard error.
+pub const STDERR_FILENO: i32 = 2;
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod syscall;

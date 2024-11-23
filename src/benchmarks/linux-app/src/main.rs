@@ -8,10 +8,19 @@
 // Imports
 //==================================================================================================
 
+use ::core::mem;
 use ::linuxd::{
     fcntl,
+    netinet::in_::{
+        in_addr,
+        sockaddr_in,
+    },
     sys::{
         self,
+        socket::{
+            sockaddr,
+            socklen_t,
+        },
         stat::stat,
         types::size_t,
         uio,
@@ -637,6 +646,120 @@ pub fn main() -> Result<(), Error> {
         },
         errno => {
             panic!("failed to remove directory foo: {:?}", errno);
+        },
+    }
+
+    // Create a socket.
+    let domain: i32 = sys::socket::AF_INET as i32;
+    let typ: i32 = sys::socket::SOCK_STREAM;
+    let sockfd: i32 = match sys::socket::socket(domain, typ, 0) {
+        sockfd if sockfd >= 0 => {
+            ::nvx::log!("created socket with fd {}", sockfd);
+            sockfd
+        },
+        errno => {
+            panic!("failed to create socket: {:?}", errno);
+        },
+    };
+
+    // Bind socket to address to 127.0.0.1:8080.
+    let sockaddr_in: sockaddr_in = sockaddr_in {
+        sin_family: sys::socket::AF_INET,
+        sin_port: u16::to_be(8080),
+        sin_addr: in_addr {
+            s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be(),
+        },
+        sin_zero: [0; 8],
+    };
+
+    match sys::socket::bind(
+        sockfd,
+        unsafe {
+            mem::transmute::<&linuxd::netinet::in_::sockaddr_in, &linuxd::sys::socket::sockaddr>(
+                &sockaddr_in,
+            )
+        },
+        core::mem::size_of::<sys::socket::sockaddr>() as socklen_t,
+    ) {
+        0 => {
+            ::nvx::log!("bound socket to address");
+        },
+        errno => {
+            panic!("failed to bind socket to address: {:?}", errno);
+        },
+    }
+
+    // Listen for connections on socket.
+    match sys::socket::listen(sockfd, 0) {
+        0 => {
+            ::nvx::log!("listening for connections on socket");
+        },
+        errno => {
+            panic!("failed to listen for connections on socket: {:?}", errno);
+        },
+    }
+
+    // Accept connection on socket.
+    let mut address: sockaddr = unsafe { core::mem::zeroed() };
+    let mut address_len: socklen_t = 0;
+    let connfd: i32 = match sys::socket::accept(sockfd, &mut address, &mut address_len) {
+        connfd if connfd >= 0 => {
+            ::nvx::log!("accepted connection on socket with fd {}", connfd);
+            connfd
+        },
+        errno => {
+            panic!("failed to accept connection on socket: {:?}", errno);
+        },
+    };
+
+    // Receive message from connection.
+    let mut buffer: [u8; 32] = [0; 32];
+    match sys::socket::recv(connfd, buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
+        len if len >= 0 => {
+            ::nvx::log!("received {} bytes from connection", len);
+        },
+        errno => {
+            panic!("failed to receive message from connection: {:?}", errno);
+        },
+    }
+
+    // Echo message back to connection.
+    match sys::socket::send(connfd, buffer.as_ptr(), buffer.len() as size_t, 0) {
+        len if len >= 0 => {
+            ::nvx::log!("sent {} bytes to connection", len);
+        },
+        errno => {
+            panic!("failed to send message to connection: {:?}", errno);
+        },
+    }
+
+    // Disallow send and receive operations.
+    match sys::socket::shutdown(connfd, sys::socket::SHUT_RDWR) {
+        0 => {
+            ::nvx::log!("disallowed send and receive operations on connection");
+        },
+        errno => {
+            panic!("failed to disallow send and receive operations on connection: {:?}", errno);
+        },
+    }
+
+    // Close connection.
+    match unistd::close(connfd) {
+        0 => {
+            ::nvx::log!("closed connection");
+        },
+        errno => {
+            panic!("failed to close connection: {:?}", errno);
+        },
+    }
+
+    // Close socket.
+    match unistd::close(sockfd) {
+        0 => {
+            ::nvx::log!("closed socket");
+        },
+        errno => {
+            panic!("failed to close socket: {:?}", errno);
         },
     }
 
