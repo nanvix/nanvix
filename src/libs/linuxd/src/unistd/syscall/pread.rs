@@ -95,6 +95,11 @@ pub fn pread(fd: i32, buffer: *mut u8, count: size_t, offset: off_t) -> ssize_t 
                         let response: PartialReadResponse =
                             PartialReadResponse::from_bytes(message.payload);
 
+                        // Check if any data was read.
+                        if response.count == 0 {
+                            break;
+                        }
+
                         // Copy response buffer to user buffer.
                         buffer[buffer_offset..buffer_offset + chunk_size]
                             .copy_from_slice(&response.buffer[..chunk_size]);
