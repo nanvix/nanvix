@@ -92,6 +92,11 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
                             .copy_from_slice(&response.buffer[..chunk_size]);
                         total_read += response.count;
                         offset += chunk_size;
+
+                        // Check if any data was read.
+                        if (response.count as usize) < chunk_size {
+                            break;
+                        }
                     },
                     _ => return ErrorCode::InvalidMessage.into_errno(),
                 },
