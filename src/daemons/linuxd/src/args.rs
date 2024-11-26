@@ -18,7 +18,9 @@ use ::anyhow::Result;
 ///
 pub struct Args {
     /// Server socket address.
-    server_sockaddr: String,
+    bind_sockaddr: String,
+    /// Log to file?
+    log_to_file: bool,
 }
 
 //==================================================================================================
@@ -28,7 +30,10 @@ pub struct Args {
 impl Args {
     /// Command-line option for printing the help message.
     const OPT_HELP: &'static str = "-help";
-    const OPT_SERVER_SOCKADDR: &'static str = "-server";
+    /// Command-line option for setting bind socket address.
+    const OPT_BIND_SOCKADDR: &'static str = "-bind-addr";
+    /// Command-line option for log redirecting.
+    const OPT_LOGFILE: &'static str = "-log-to-file";
 
     ///
     /// # Description
@@ -45,9 +50,8 @@ impl Args {
     /// program. Upon failure, the function returns an error.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
-        trace!("parse(): parsing command-line arguments...");
-
-        let mut server_sockaddr: String = String::new();
+        let mut bind_sockaddr: String = String::new();
+        let mut log_to_file: bool = false;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -56,9 +60,12 @@ impl Args {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("help message"));
                 },
-                Self::OPT_SERVER_SOCKADDR => {
+                Self::OPT_BIND_SOCKADDR => {
                     i += 1;
-                    server_sockaddr = args[i].clone();
+                    bind_sockaddr = args[i].clone();
+                },
+                Self::OPT_LOGFILE => {
+                    log_to_file = true;
                 },
                 _ => {
                     return Err(anyhow::anyhow!("invalid argument"));
@@ -68,7 +75,16 @@ impl Args {
             i += 1;
         }
 
-        Ok(Self { server_sockaddr })
+
+        // Check if server socket address was set.
+        if bind_sockaddr.is_empty() {
+            return Err(anyhow::anyhow!("server socket address not set"));
+        }
+
+        Ok(Self {
+            bind_sockaddr,
+            log_to_file,
+        })
     }
 
     ///
@@ -81,19 +97,37 @@ impl Args {
     /// - `program_name`: Name of the program.
     ///
     pub fn usage(program_name: &str) {
-        println!("Usage: {} {} <server-sockaddr>", program_name, Self::OPT_SERVER_SOCKADDR,);
+        println!(
+            "Usage: {} {} {} <server-sockaddr>",
+            program_name,
+            Self::OPT_LOGFILE,
+            Self::OPT_BIND_SOCKADDR,
+        );
     }
 
     ///
     /// # Description
     ///
-    /// Returns the server socket address.
+    /// Returns the bind socket address.
     ///
     /// # Returns
     ///
-    /// The server socket address.
+    /// The socket address of the bind socket.
     ///
-    pub fn server_sockaddr(&self) -> String {
-        self.server_sockaddr.to_string()
+    pub fn bind_sockaddr(&self) -> String {
+        self.bind_sockaddr.to_string()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the log file.
+    ///
+    /// # Returns
+    ///
+    /// The log file.
+    ///
+    pub fn log_to_file(&self) -> bool {
+        self.log_to_file
     }
 }

@@ -39,7 +39,10 @@ use self::{
     venv::VirtualEnviromentDirectory,
 };
 use ::anyhow::Result;
-use ::flexi_logger::Logger;
+use ::flexi_logger::{
+    FileSpec,
+    Logger,
+};
 use ::linuxd::{
     fcntl::message::{
         FileAdvisoryInformationRequest,
@@ -110,18 +113,27 @@ use ::nvx::{
         },
     },
 };
+use ::signal_hook::{
+    consts::SIGINT,
+    iterator::{
+        Signals,
+        SignalsInfo,
+    },
+};
 use ::std::{
     env,
+    fs,
     io::{
         ErrorKind,
         Read,
         Write,
     },
-    net::{
-        TcpListener,
-        TcpStream,
+    os::unix::net::{
+        UnixListener,
+        UnixStream,
     },
     sync::Once,
+    thread,
 };
 
 //==================================================================================================
@@ -131,7 +143,7 @@ use ::std::{
 pub struct ProcessDaemon {
     pid: ProcessIdentifier,
     assembler: RequestAssembler,
-    stream: TcpStream,
+    stream: UnixStream,
     venv: VirtualEnviromentDirectory,
 }
 
@@ -140,7 +152,7 @@ pub struct ProcessDaemon {
 //==================================================================================================
 
 impl ProcessDaemon {
-    pub fn init(stream: TcpStream) -> Result<Self, Error> {
+    pub fn init(stream: UnixStream) -> Result<Self, Error> {
         Ok(Self {
             pid: ProcessIdentifier::from(0),
             assembler: RequestAssembler::default(),
@@ -562,22 +574,37 @@ impl ProcessDaemon {
 }
 
 pub fn main() -> Result<()> {
-    initialize();
-
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    let sockaddr: String = args.server_sockaddr();
+    let sockaddr: String = args.bind_sockaddr();
+    initialize(args.log_to_file());
 
-    let listener = match TcpListener::bind(sockaddr.clone()) {
-        Ok(l) => l,
+    let listener: UnixListener = match UnixListener::bind(sockaddr.clone()) {
+        Ok(listener) => listener,
         Err(e) => {
-            anyhow::bail!("Failed to bind: {}", e);
+            error!("failed to bind to socket address (error={:?})", e);
+            anyhow::bail!("failed to bind to socket address");
         },
     };
-    let stream: TcpStream = match listener.accept() {
-        Ok((s, sockaddr)) => {
-            info!("Connected to: {}", sockaddr);
-            s
+
+    // Install signal handler.
+    let path: String = sockaddr.clone();
+    let mut signals: SignalsInfo = Signals::new([SIGINT])?;
+    thread::spawn(move || {
+        #[allow(clippy::never_loop)]
+        for sig in signals.forever() {
+            println!("Received signal {:?}", sig);
+            if let Err(e) = fs::remove_file(path.clone()) {
+                error!("failed to remove socket file (error={:?})", e);
+            }
+            // Exit process.
+            std::process::exit(0);
+        }
+    });
+    let stream: UnixStream = match listener.accept() {
+        Ok((stream, sockaddr)) => {
+            info!("Connected to: {:?}", sockaddr);
+            stream
         },
         Err(e) => {
             anyhow::bail!("Failed to connect: {}", e);
@@ -591,6 +618,8 @@ pub fn main() -> Result<()> {
 
     procd.run();
 
+    fs::remove_file(sockaddr)?;
+
     Ok(())
 }
 
@@ -603,13 +632,18 @@ pub fn main() -> Result<()> {
 ///
 /// If the logger cannot be initialized, the function will panic.
 ///
-pub fn initialize() {
+pub fn initialize(logfile: bool) {
     static INIT_LOG: Once = Once::new();
     INIT_LOG.call_once(|| {
-        Logger::try_with_env()
-            .expect("malformed RUST_LOG environment variable")
-            .start()
-            .expect("failed to initialize logger");
+        let logger = Logger::try_with_env().expect("malformed RUST_LOG environment variable");
+        if logfile {
+            logger
+                .log_to_file(FileSpec::default())
+                .start()
+                .expect("failed to initialize logger");
+        } else {
+            logger.start().expect("failed to initialize logger");
+        }
     });
 }
 
