@@ -93,7 +93,7 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
                         total_read += response.count;
                         offset += chunk_size;
 
-                        // Check if any data was read.
+                        // Check for partial read.
                         if (response.count as usize) < chunk_size {
                             break;
                         }
