@@ -89,8 +89,10 @@ use ::linuxd::{
         PartialReadRequest,
         PartialWriteRequest,
         ReadRequest,
+        ReadResponse,
         SeekRequest,
         WriteRequest,
+        WriteResponse,
     },
     venv::message::{
         JoinEnvRequest,
@@ -144,6 +146,7 @@ pub struct ProcessDaemon {
     pid: ProcessIdentifier,
     assembler: RequestAssembler,
     stream: UnixStream,
+    gateway_conn: Option<UnixStream>,
     venv: VirtualEnviromentDirectory,
 }
 
@@ -152,11 +155,12 @@ pub struct ProcessDaemon {
 //==================================================================================================
 
 impl ProcessDaemon {
-    pub fn init(stream: UnixStream) -> Result<Self, Error> {
+    pub fn init(stream: UnixStream, gateway_conn: Option<UnixStream>) -> Result<Self, Error> {
         Ok(Self {
             pid: ProcessIdentifier::from(0),
             assembler: RequestAssembler::default(),
             stream,
+            gateway_conn,
             venv: VirtualEnviromentDirectory::new(),
         })
     }
@@ -278,12 +282,67 @@ impl ProcessDaemon {
                                 LinuxDaemonMessageHeader::WriteRequest => {
                                     let request: WriteRequest =
                                         WriteRequest::from_bytes(message.payload);
-                                    unistd::do_write(source, request)
+
+                                    // Check if writing to gateway.
+                                    if request.fd == linuxd::unistd::STDOUT_FILENO {
+                                        if let Some(ref mut conn) = self.gateway_conn {
+                                            let count: usize = request.count as usize;
+                                            match conn.write_all(&request.buffer[..count]) {
+                                                Ok(_) => {
+                                                    debug!("wrote {} bytes to the gateway", count);
+                                                    WriteResponse::build(source, count as i32)
+                                                },
+                                                Err(e) => {
+                                                    debug!(
+                                                        "failed to write to the gateway \
+                                                         (error={:?})",
+                                                        e
+                                                    );
+                                                    // TODO: Check error conversion.
+                                                    build_error(source, ErrorCode::ConnectionReset)
+                                                },
+                                            }
+                                        } else {
+                                            error!("not connected to the gateway");
+                                            build_error(source, ErrorCode::HostUnreachable)
+                                        }
+                                    } else {
+                                        // Write to other file descriptor.
+                                        unistd::do_write(source, request)
+                                    }
                                 },
                                 LinuxDaemonMessageHeader::ReadRequest => {
                                     let request: ReadRequest =
                                         ReadRequest::from_bytes(message.payload);
-                                    unistd::do_read(source, request)
+
+                                    // Check if reading from gateway.
+                                    if request.fd == linuxd::unistd::STDIN_FILENO {
+                                        if let Some(ref mut conn) = self.gateway_conn {
+                                            let mut buf: [u8; ReadResponse::BUFFER_SIZE] =
+                                                [0u8; ReadResponse::BUFFER_SIZE];
+                                            match conn.read(&mut buf) {
+                                                Ok(count) => {
+                                                    debug!("read {} bytes from the gateway", count);
+                                                    ReadResponse::build(source, count as i32, buf)
+                                                },
+                                                Err(e) => {
+                                                    debug!(
+                                                        "failed to read from the gateway \
+                                                         (error={:?})",
+                                                        e
+                                                    );
+                                                    //TODO: Check error conversion.
+                                                    build_error(source, ErrorCode::ConnectionReset)
+                                                },
+                                            }
+                                        } else {
+                                            error!("not connected to the gateway");
+                                            build_error(source, ErrorCode::HostUnreachable)
+                                        }
+                                    } else {
+                                        // Read from other file descriptor.
+                                        unistd::do_read(source, request)
+                                    }
                                 },
                                 LinuxDaemonMessageHeader::PartialWriteRequest => {
                                     let request: PartialWriteRequest =
@@ -601,6 +660,20 @@ pub fn main() -> Result<()> {
             std::process::exit(0);
         }
     });
+
+    // Connect to gateway after binding to socket address, as a connection to the gateway will
+    // signal we are ready to accept commands.
+    let gateway_conn: Option<UnixStream> = match args.gateway_sockaddr() {
+        Some(sockaddr) => match UnixStream::connect(sockaddr) {
+            Ok(stream) => Some(stream),
+            Err(e) => {
+                error!("failed to connect to gateway (error={:?})", e);
+                anyhow::bail!("failed to connect to gateway");
+            },
+        },
+        None => None,
+    };
+
     let stream: UnixStream = match listener.accept() {
         Ok((stream, sockaddr)) => {
             info!("Connected to: {:?}", sockaddr);
@@ -611,7 +684,7 @@ pub fn main() -> Result<()> {
         },
     };
 
-    let mut procd: ProcessDaemon = match ProcessDaemon::init(stream) {
+    let mut procd: ProcessDaemon = match ProcessDaemon::init(stream, gateway_conn) {
         Ok(procd) => procd,
         Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
     };
