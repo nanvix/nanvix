@@ -287,7 +287,10 @@ impl ProcessDaemon {
                                     if request.fd == linuxd::unistd::STDOUT_FILENO {
                                         if let Some(ref mut conn) = self.gateway_conn {
                                             let count: usize = request.count as usize;
-                                            match conn.write_all(&request.buffer[..count]) {
+                                            let mut buffer: Vec<u8> = vec![0u8; count + 1];
+                                            buffer[0] = count as u8;
+                                            buffer[1..].copy_from_slice(&request.buffer[..count]);
+                                            match conn.write_all(&buffer) {
                                                 Ok(_) => {
                                                     debug!("wrote {} bytes to the gateway", count);
                                                     WriteResponse::build(source, count as i32)
