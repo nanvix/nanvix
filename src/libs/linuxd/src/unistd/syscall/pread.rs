@@ -105,6 +105,11 @@ pub fn pread(fd: i32, buffer: *mut u8, count: size_t, offset: off_t) -> ssize_t 
                             .copy_from_slice(&response.buffer[..chunk_size]);
                         total_read += response.count;
                         buffer_offset += chunk_size;
+
+                        // Check for partial read.
+                        if (response.count as usize) < chunk_size {
+                            break;
+                        }
                     },
                     _ => return ErrorCode::InvalidMessage.into_errno(),
                 },
