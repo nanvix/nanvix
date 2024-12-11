@@ -8,10 +8,20 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{
-    ipc::Message,
-    sys::error::Error,
+use ::linuxd::{
+    sys::types::{
+        size_t,
+        ssize_t,
+    },
+    unistd,
 };
+use ::nvx::sys::error::Error;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+const MAX_REQUEST_SIZE: usize = 32;
 
 //==================================================================================================
 // Standalone Functions
@@ -19,41 +29,21 @@ use ::nvx::{
 
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
-    // Magic string that will case the server to exit.
-    const MAGIC_STRING: &str = "exit";
-
-    // Loop until we receive the magic string.
     loop {
-        // Block until a message is received.
-        match ::nvx::ipc::recv() {
-            // Succeeded to receive a message.
-            Ok(message) => {
-                // Attempt interpret the payload as a string.
-                if let Ok(payload) = core::str::from_utf8(&message.payload) {
-                    // Check if we received the magic string.
-                    if payload.trim_end_matches('\0').trim() == MAGIC_STRING {
-                        break Ok(());
-                    }
-                }
+        let stdin: i32 = unistd::STDIN_FILENO;
+        let stdout: i32 = unistd::STDOUT_FILENO;
+        let mut buffer: [u8; MAX_REQUEST_SIZE] = [0; MAX_REQUEST_SIZE];
 
-                // Send a response.
-                let response: Message = Message::new(
-                    message.destination,
-                    message.source,
-                    message.message_type,
-                    None,
-                    message.payload,
-                );
+        let n: ssize_t = match unistd::read(stdin, buffer.as_mut_ptr(), buffer.len() as size_t) {
+            n if n >= 0 => n,
+            _ => 0,
+        };
 
-                // Send the response and check if we failed.
-                if let Err(e) = ::nvx::ipc::send(&response) {
-                    ::nvx::log!("failed to send message (error={:?}", e.code);
-                }
-            },
-            // Failed to receive a message.
-            Err(e) => {
-                ::nvx::log!("failed to receive message (error={:?})", e);
-            },
+        if n > 0 {
+            match unistd::write(stdout, buffer.as_ptr(), n as size_t) {
+                n if n >= 0 => {},
+                _ => {},
+            }
         }
     }
 }

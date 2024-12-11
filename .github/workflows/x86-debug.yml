@@ -143,9 +143,26 @@ jobs:
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
 
+  test-nanvixd:
+    name: Test (nanvixd)
+    needs: [test-microvm]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          cd nanvix-debug
+          sudo -E ./test.sh 127.0.0.1 8181 && exit 1 || exit 0
+
+
   cleanup:
     name: Cleanup
-    needs: test-microvm
+    needs: [test-nanvixd]
     if: always()
     runs-on: ubuntu-latest
     steps:
