@@ -21,39 +21,36 @@ mod args;
 #[macro_use]
 extern crate log;
 
-extern crate core_affinity;
-
 use self::args::Args;
-use anyhow::Result;
-use core_affinity::CoreId;
-use flexi_logger::Logger;
-use histogram::{
-    AtomicHistogram,
-    Histogram,
-};
-use serde_json::{
+use ::anyhow::Result;
+use ::flexi_logger::Logger;
+use ::serde_json::{
     json,
     Value,
 };
-use std::{
-    collections::VecDeque,
+use ::std::{
     env,
-    io::{
-        BufRead,
-        Read,
-        Write,
-    },
     sync::{
-        mpsc,
+        atomic::AtomicUsize,
         Arc,
-        Barrier,
         Once,
     },
     thread,
-    thread::JoinHandle,
     time::{
         Duration,
         Instant,
+    },
+};
+use ::tokio::{
+    io::{
+        AsyncBufReadExt,
+        AsyncReadExt,
+        AsyncWriteExt,
+    },
+    net::TcpStream,
+    sync::{
+        mpsc,
+        Mutex,
     },
 };
 
@@ -61,7 +58,8 @@ use std::{
 // Standalone Functions
 //==================================================================================================
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize logging system.
     initialize();
 
@@ -71,123 +69,38 @@ fn main() -> Result<()> {
     let frequency: u128 = args.frequency();
     let timeout: u64 = args.timeout();
     let sockaddr: String = args.server_sockaddr();
+    let latencies: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::with_capacity(2 ^ 16)));
 
-    let mut next_pid: usize = 0;
-    let stats: Arc<AtomicHistogram> = Arc::new(AtomicHistogram::new(7, 64)?);
+    let (stop_tx, stop_rx) = mpsc::channel(1);
 
-    let mut stream: std::net::TcpStream = match std::net::TcpStream::connect(sockaddr.clone()) {
-        Ok(s) => s,
-        Err(e) => {
-            anyhow::bail!("Failed to connect: {}", e);
-        },
-    };
-
-    let barrier: Arc<Barrier> = Arc::new(Barrier::new(nthreads + 1));
-
-    let core_ids: Vec<CoreId> = core_affinity::get_core_ids().unwrap();
-
-    if !core_affinity::set_for_current(core_ids[0]) {
-        anyhow::bail!("failed to set core affinity");
-    }
-
-    let core_ids: Vec<CoreId> = core_ids[1..]
-        .iter()
-        .take(nthreads)
-        .copied()
-        .collect::<Vec<_>>();
-
-    type ThreadResult = Result<usize, anyhow::Error>;
-
-    let threads: Vec<(JoinHandle<ThreadResult>, mpsc::Sender<bool>)> = core_ids
-        .into_iter()
-        .map(|id| {
-            let (stop_tx, stop_rx): (mpsc::Sender<bool>, mpsc::Receiver<bool>) =
-                mpsc::channel::<bool>();
-            let sockaddr: String = sockaddr.clone();
-            let stats: Arc<AtomicHistogram> = stats.clone();
-            let barrier: Arc<Barrier> = Arc::clone(&barrier);
-            // Create ping request.
-            let http_request: Vec<u8> = build_request(next_pid, 1, "ping".as_bytes());
-            next_pid += 1;
-            (
-                thread::spawn(move || {
-                    client(id, sockaddr, http_request, stats, barrier, frequency, stop_rx)
-                }),
-                stop_tx,
-            )
-        })
-        .collect::<Vec<_>>();
-
-    barrier.wait();
+    let sockaddr: String = sockaddr.clone();
+    let http_request: Arc<Vec<u8>> = Arc::new(build_request());
+    let latencies2: Arc<Mutex<Vec<u64>>> = latencies.clone();
+    let thread = tokio::spawn(async move {
+        client(latencies2, sockaddr, http_request, frequency, stop_rx).await
+    });
 
     thread::sleep(Duration::from_secs(timeout));
 
     // Stop all threads.
-    for (_, stop_tx) in threads.iter() {
-        stop_tx.send(true).unwrap();
+    if let Err(e) = stop_tx.send(true).await {
+        anyhow::bail!("failed to send stop signal: {}", e);
     }
+    let nrequests = thread.await??;
 
-    // Wait for the thread to finish
-    let mut block: usize = 0;
-    for (i, (handle, _stop_tx)) in threads.into_iter().enumerate() {
-        trace!("waiting on thread {}", i);
-        match handle.join() {
-            Ok(Ok(b)) => {
-                if b > block {
-                    block = b;
-                }
-            },
-            Ok(Err(e)) => {
-                anyhow::bail!("thread failed: {}", e);
-            },
-            Err(_) => {
-                anyhow::bail!("failed to join thread");
-            },
-        }
-    }
+    // Compute statistics from latencies.
+    let latencies_guard = latencies.lock().await;
+    let mut sorted_latencies: Vec<u64> = latencies_guard.clone();
+    sorted_latencies.sort();
 
-    // Create a JSON object with fields "source", "destination", and "input"
-    let exit_request = build_request(next_pid, 1, "exit".as_bytes());
+    let p50_index: usize = ((sorted_latencies.len() * 50) / 100).max(1) - 1;
+    let p99_index: usize = ((sorted_latencies.len() * 99) / 100).max(1) - 1;
 
-    stream.set_read_timeout(None)?;
+    let p50 = sorted_latencies[p50_index];
+    let p99 = sorted_latencies[p99_index];
 
-    // Send exit request.
-    send_request(&mut stream, &exit_request)?;
-    try_read_response(&mut stream)?;
-    trace!("exit request sent");
+    println!("{:?},{:?},{:?},{:?},{:?},{:?}", nthreads, frequency, timeout, nrequests, p50, p99);
 
-    let stats: Histogram = stats.load();
-
-    let p50: u64 = stats.percentile(0.50)?.unwrap().start();
-    let p90: u64 = stats.percentile(0.90)?.unwrap().start();
-    let p95: u64 = stats.percentile(0.95)?.unwrap().start();
-    let p99: u64 = stats.percentile(0.99)?.unwrap().start();
-
-    println!(
-        "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?}",
-        nthreads, frequency, timeout, p50, p90, p95, p99, block
-    );
-
-    Ok(())
-}
-
-fn send_request(stream: &mut std::net::TcpStream, bytes: &[u8]) -> Result<()> {
-    match stream.write_all(bytes) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            anyhow::bail!("Failed to write to stream: {}", e);
-        },
-    }
-}
-
-fn try_read_response(stream: &mut std::net::TcpStream) -> Result<()> {
-    let mut buf_reader = std::io::BufReader::new(stream);
-    for line in buf_reader.by_ref().lines() {
-        let line = line?;
-        if line.is_empty() {
-            break;
-        }
-    }
     Ok(())
 }
 
@@ -210,91 +123,84 @@ pub fn initialize() {
     });
 }
 
-fn client(
-    id: CoreId,
+async fn client(
+    latencies: Arc<Mutex<Vec<u64>>>,
     sockaddr: String,
-    http_request: Vec<u8>,
-    stats: Arc<AtomicHistogram>,
-    barrier: Arc<Barrier>,
+    http_request: Arc<Vec<u8>>,
     frequency: u128,
-    stop_rx: mpsc::Receiver<bool>,
+    mut stop_rx: mpsc::Receiver<bool>,
 ) -> Result<usize, anyhow::Error> {
-    if !core_affinity::set_for_current(id) {
-        anyhow::bail!("failed to set core affinity");
-    }
-
-    trace!("thread in core {:?}", id);
-
-    // Open a TCP connection to the server.
-    let mut stream: std::net::TcpStream = match std::net::TcpStream::connect(sockaddr) {
-        Ok(s) => s,
-        Err(e) => {
-            anyhow::bail!("Failed to connect: {}", e);
-        },
-    };
-    stream.set_read_timeout(Some(Duration::from_nanos(1)))?;
-
-    // Wait on the barrier
-    barrier.wait();
-
     // Send first request.
-    let mut inflight_requests: usize = 0;
     let mut stop_sending: bool = false;
     let mut last_sent: Instant = std::time::Instant::now();
-
-    let mut timers: VecDeque<Instant> = VecDeque::new();
-    let mut block: usize = 0;
-
-    let mut response: [u8; 1024] = [0u8; 1024];
+    let nrequests: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    let mut handles = Vec::new();
 
     loop {
-        if !stop_sending && last_sent.elapsed().as_nanos() >= frequency {
-            last_sent = std::time::Instant::now();
-            inflight_requests += 1;
-            send_request(&mut stream, &http_request)?;
-            timers.push_back(last_sent);
-        }
-
-        if stop_sending && inflight_requests > 0 {
-            break Ok(block);
-        }
-
-        // Attempt to read the response from the server
-        match stream.read(&mut response) {
-            Ok(n) => {
-                if n == 0 {
-                    anyhow::bail!("Connection closed by server");
+        if stop_sending {
+            debug!("stopping client...");
+            for handle in handles {
+                if let Err(e) = handle.await? {
+                    error!("failed to join handle: {}", e);
                 }
+            }
+            debug!("stopped!");
+            return Ok(nrequests.load(std::sync::atomic::Ordering::Relaxed));
+        } else if last_sent.elapsed().as_nanos() >= frequency {
+            let http_request2: Arc<Vec<u8>> = http_request.clone();
+            let sockaddr2: String = sockaddr.clone();
+            let requests2 = nrequests.clone();
+            let latencies2 = latencies.clone();
 
-                // Try to read the response
-                for line in response[..n].lines() {
-                    match line {
-                        Ok(line) => {
-                            if line.is_empty() {
-                                if let Some(now) = timers.pop_front() {
+            let handle = tokio::spawn(async move {
+                let now = std::time::Instant::now();
+                let mut stream: TcpStream = TcpStream::connect(sockaddr2).await?;
+                debug!("connected to server");
+                stream.write_all(&http_request2).await?;
+
+                // Read a line
+                loop {
+                    let mut response = vec![0u8; 1024];
+                    match stream.read(&mut response).await {
+                        Ok(n) => {
+                            if n == 0 {
+                                anyhow::bail!("Connection closed by server");
+                            }
+                            // Try to read the response
+                            let reader = tokio::io::BufReader::new(&response[..n] as &[u8]);
+                            let mut lines = reader.lines();
+                            let mut done = false;
+                            while let Some(line) = lines.next_line().await? {
+                                if line.is_empty() {
                                     let elapsed: u128 = now.elapsed().as_nanos();
-                                    stats.increment(elapsed as u64)?;
-                                    inflight_requests -= 1;
+
+                                    stream.shutdown().await?;
+                                    debug!("elapsed: {} ns", elapsed);
+                                    latencies2.lock().await.push(elapsed as u64);
+                                    requests2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                    done = true;
                                     break;
-                                } else {
-                                    anyhow::bail!("received response without sending request");
                                 }
+                            }
+
+                            if done {
+                                break;
                             }
                         },
                         Err(e) => {
-                            anyhow::bail!("Failed to read from stream: {}", e);
+                            anyhow::bail!("failed to read from socket: {}", e);
                         },
                     }
                 }
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                block += 1;
-                continue;
-            },
 
-            Err(e) => {
-                anyhow::bail!("Failed to read from stream: {}", e);
-            },
+                debug!("disconnected from server");
+
+                Ok(())
+            });
+
+            handles.push(handle);
+
+            last_sent = std::time::Instant::now();
         }
 
         if !stop_sending && stop_rx.try_recv().is_ok() {
@@ -303,11 +209,11 @@ fn client(
     }
 }
 
-fn build_request(source: usize, destination: usize, payload: &[u8]) -> Vec<u8> {
+fn build_request() -> Vec<u8> {
     let json_obj: Value = json!({
-        "source": source,
-        "destination": destination,
-        "payload": payload
+        "clientid": 1,
+        "program": "bin/echo.elf",
+        "args": ["hello, world"]
     });
 
     format!(
