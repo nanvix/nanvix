@@ -14,6 +14,10 @@
 
 extern crate alloc;
 
+/// C-Bindings.
+#[cfg(feature = "syscall")]
+pub mod bindings;
+
 /// Time types.
 pub mod time;
 
