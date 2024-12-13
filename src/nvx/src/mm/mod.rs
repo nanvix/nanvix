@@ -75,7 +75,7 @@ pub fn init() -> Result<(), Error> {
         }
 
         // Initialize the heap.
-        unsafe { allocator::init(start, HEAP_SIZE)? };
+        unsafe { allocator::init(start, HEAP_SIZE / 2)? };
     }
 
     Ok(())
@@ -111,4 +111,19 @@ pub fn cleanup() -> Result<(), Error> {
         kcall::pm::capctl(Capability::MemoryManagement, false)?;
     }
     Ok(())
+}
+
+#[no_mangle]
+#[cfg(all(target_os = "none", feature = "allocator"))]
+pub extern "C" fn sbrk(size: isize) -> *mut u8 {
+    static mut END: *mut u8 =
+        (::sys::config::memory_layout::USER_HEAP_BASE_RAW + HEAP_SIZE / 2) as *mut u8;
+
+    let old_end = unsafe {
+        let old_end = END;
+        END = END.offset(size);
+        old_end
+    };
+
+    old_end
 }
