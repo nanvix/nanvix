@@ -11,8 +11,8 @@ description = "Linux Provider Daemon"
 homepage = "https://github.com/nanvix"
 
 [dependencies]
-linuxd = { path = "../../libs/linuxd", package = "linuxd-lib" }
-nvx = { path = "../../nvx" }
+nvx = { path = "../../nvx", features = ["std"] }
+linuxd = { path = "../../libs/linuxd", package = "linuxd-lib", default-features = false }
 anyhow = "1.0.93"
 log = "0.4.22"
 flexi_logger = "0.29.6"

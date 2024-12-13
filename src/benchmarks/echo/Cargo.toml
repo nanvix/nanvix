@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "echo"
 
 [dependencies]
-nvx = { path = "../../nvx" }
+nvx = { path = "../../nvx", features = ["allocator"] }
 linuxd = { path = "../../libs/linuxd", features = [
     "syscall",
 ], package = "linuxd-lib" }

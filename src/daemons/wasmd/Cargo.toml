@@ -19,7 +19,7 @@ wasmi = { version = "0.36.0", default-features = false, features = [
 ] }
 
 [target.x86.dependencies]
-nvx = { path = "../../nvx" }
+nvx = { path = "../../nvx", features = ["allocator"] }
 
 [target.'cfg(unix)'.dependencies]
 nvx = { path = "../../nvx", default-features = false }

@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 crate-type = ["lib"]
 
 [dependencies]
-nvx = { path = "../../nvx", default-features = false }
+nvx = { path = "../../nvx" }
 
 [features]
 default = []
