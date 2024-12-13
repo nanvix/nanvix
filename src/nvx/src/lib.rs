@@ -9,7 +9,7 @@
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
 #![cfg_attr(feature = "allocator", feature(allocator_api))]
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 //==================================================================================================
 // Modules
