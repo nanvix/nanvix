@@ -6,7 +6,7 @@
 #===============================================================================
 
 # Target Architecture
-export TARGET ?= x86
+export TARGET := x86
 
 # Verbose build?
 export VERBOSE ?= no
@@ -18,8 +18,9 @@ export RELEASE ?= no
 # Directories
 #===============================================================================
 
-export ROOT_DIR  := $(CURDIR)
-export BUILD_DIR := $(ROOT_DIR)/build
+export ROOT_DIR      := $(CURDIR)
+export LIBRARIES_DIR ?= $(ROOT_DIR)/lib
+export BUILD_DIR     := $(ROOT_DIR)/build
 
 #===============================================================================
 # Toolchain
@@ -33,8 +34,8 @@ export CARGO ?= $(HOME)/.cargo/bin/cargo
 #===============================================================================
 
 # Binary
-export NAME := liblinuxd_lib
-export LIB := $(NAME).a
+export NAME := libnvx
+export LIBRARY := $(NAME).a
 
 #===============================================================================
 # Build Rules
@@ -44,14 +45,14 @@ export LIB := $(NAME).a
 all: make-dirs
 	$(CARGO) build --all $(CARGO_FLAGS)
 ifeq ($(RELEASE), yes)
-	cp --preserve target/$(TARGET)/release/$(LIB) $(LIBRARIES_DIR)/$(LIB)
+	cp --preserve target/$(TARGET)/release/$(LIBRARY) $(LIBRARIES_DIR)/$(LIBRARY)
 else
-	cp --preserve target/$(TARGET)/debug/$(LIB) $(LIBRARIES_DIR)/$(LIB)
+	cp --preserve target/$(TARGET)/debug/$(LIBRARY) $(LIBRARIES_DIR)/$(LIBRARY)
 endif
 
 # Creates build directories.
 make-dirs:
-	@mkdir -p $(BINARIES_DIR)
+	@mkdir -p $(LIBRARIES_DIR)
 
 clean:
 	$(CARGO) clean

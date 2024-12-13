@@ -1,10 +1,11 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-all: all-benchmarks all-daemons all-kernel all-libs all-microvm all-user all-utils all-nanvixd
+all: all-benchmarks all-daemons all-kernel all-libs all-microvm all-user all-utils all-nanvixd all-nvx
 
-clean: clean-benchmarks clean-daemons clean-kernel clean-libs clean-microvm clean-user clean-utils clean-nanvixd
+clean: clean-benchmarks clean-daemons clean-kernel clean-libs clean-microvm clean-user clean-utils clean-nanvixd clean-nvx
 
+# TODO: clippy-nvx
 clippy: clippy-benchmarks clippy-daemons clippy-libs clippy-user clippy-utils clippy-nanvixd
 
 all-benchmarks:
@@ -55,7 +56,7 @@ clean-utils:
 clippy-utils:
 	$(MAKE) -C utils clippy
 
-all-user:
+all-user: all-nvx all-libs
 	$(MAKE) -C user
 
 clean-user:
@@ -72,3 +73,12 @@ clean-nanvixd:
 
 clippy-nanvixd:
 	$(MAKE) -C nanvixd clippy
+
+all-nvx:
+	$(MAKE) -C nvx
+
+clean-nvx:
+	$(MAKE) -C nvx clean
+
+clippy-nvx:
+	$(MAKE) -C nvx clippy
