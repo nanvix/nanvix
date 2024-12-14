@@ -29,6 +29,9 @@ export BUILD_DIR     := $(ROOT_DIR)/build
 # Toolchain
 export CARGO ?= $(HOME)/.cargo/bin/cargo
 
+# Cargo Flags
+export CARGO_FLAGS += --lib --features=staticlib
+
 #===============================================================================
 # Build Artifacts
 #===============================================================================
@@ -43,7 +46,7 @@ export LIBRARY := $(NAME).a
 
 # Builds everything.
 all: make-dirs
-	$(CARGO) build --all $(CARGO_FLAGS)
+	$(CARGO) build $(CARGO_FLAGS)
 ifeq ($(RELEASE), yes)
 	cp --preserve target/$(TARGET)/release/$(LIBRARY) $(LIBRARIES_DIR)/$(LIBRARY)
 else
