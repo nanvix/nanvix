@@ -1,9 +1,9 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-all: all-hello all-hello-rust
+all: all-hello all-hello-rust all-hello-c
 
-clean: clean-hello clean-hello-rust
+clean: clean-hello clean-hello-rust clean-hello-c
 
 clippy: clippy-hello clippy-hello-rust
 
@@ -24,3 +24,9 @@ clean-hello-rust:
 
 clippy-hello-rust:
 	$(MAKE) -C hello-rust clippy
+
+all-hello-c:
+	$(MAKE) -C hello-c
+
+clean-hello-c:
+	$(MAKE) -C hello-c clean
