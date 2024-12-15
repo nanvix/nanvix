@@ -71,18 +71,16 @@ macro_rules! log{
 #[no_mangle]
 #[cfg(target_os = "none")]
 pub extern "C" fn _start() -> ! {
-    extern "Rust" {
-        fn main() -> Result<(), ::sys::error::Error>;
-    }
-
     // Initializes the system runtime.
     init();
 
-    // Runs the main function.
-    let status: i32 = match unsafe { main() } {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
-    };
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "staticlib")] {
+            let status: i32 = c_trampoline();
+        } else {
+            let status: i32 = rust_trampoline();
+        }
+    }
 
     // Cleans up the system runtime.
     cleanup();
@@ -90,6 +88,38 @@ pub extern "C" fn _start() -> ! {
     // Exits the runtime.
     let Err(e) = ::sys::kcall::pm::exit(status);
     panic!("failed to exit process manager daemon: {:?}", e);
+}
+
+///
+/// Trampoline for Rust applications.
+///
+#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+fn rust_trampoline() -> i32 {
+    extern "Rust" {
+        fn main() -> Result<(), ::sys::error::Error>;
+    }
+
+    // Runs the main function.
+    match unsafe { main() } {
+        Ok(_) => 0,
+        Err(e) => e.code.into_errno(),
+    }
+}
+
+///
+/// Trampoline for C applications.
+///
+#[cfg(all(target_os = "none", feature = "staticlib"))]
+fn c_trampoline() -> i32 {
+    extern "C" {
+        fn main(argc: i32, argv: *const *const u8) -> i32;
+    }
+
+    // TODO: set argc and argv.
+    let argc: i32 = 1;
+    let argv: *const *const u8 = core::ptr::null();
+
+    unsafe { main(argc, argv) }
 }
 
 /// Initializes system runtime.
