@@ -116,6 +116,7 @@ pub fn cleanup() -> Result<(), Error> {
 #[no_mangle]
 #[cfg(all(target_os = "none", feature = "allocator"))]
 pub extern "C" fn sbrk(size: isize) -> *mut u8 {
+    crate::log!("sbrk(): size = {}", size);
     static mut END: *mut u8 =
         (::sys::config::memory_layout::USER_HEAP_BASE_RAW + HEAP_SIZE / 2) as *mut u8;
 
