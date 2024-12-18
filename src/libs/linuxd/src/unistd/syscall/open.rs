@@ -2,35 +2,22 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Imports
 //==================================================================================================
 
-mod close;
-mod fdatasync;
-mod fsync;
-mod ftruncate;
-mod linkat;
-mod lseek;
-mod open;
-mod pread;
-mod pwrite;
-mod read;
-mod write;
+use crate::fcntl;
+use ::core::ffi;
+use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
-// Exports
+// Standalone Functions
 //==================================================================================================
 
-pub use self::{
-    close::close,
-    fdatasync::fdatasync,
-    fsync::fsync,
-    ftruncate::ftruncate,
-    linkat::linkat,
-    lseek::lseek,
-    open::open,
-    pread::pread,
-    pwrite::pwrite,
-    read::read,
-    write::write,
-};
+pub fn open(path: *const i8, flags: i32, mode: u32) -> i32 {
+    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    fcntl::openat(fcntl::AT_FDCWD, path, flags, mode)
+}
