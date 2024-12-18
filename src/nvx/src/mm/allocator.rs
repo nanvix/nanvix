@@ -52,7 +52,7 @@ static mut ALLOCATOR: Allocator = Allocator;
 #[allow(static_mut_refs)]
 pub unsafe fn init(addr: usize, size: usize) -> Result<(), Error> {
     // Check if the heap was already initialized.
-    if unsafe { HEAP.is_some() } {
+    if HEAP.is_some() {
         return Err(Error::new(ErrorCode::ResourceBusy, "heap already initialized"));
     }
 
