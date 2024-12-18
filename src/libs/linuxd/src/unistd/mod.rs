@@ -47,6 +47,7 @@ cfg_if::cfg_if! {
             pwrite,
             pread,
             linkat,
+            open,
         };
     }
 }
