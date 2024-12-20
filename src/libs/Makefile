@@ -1,14 +1,24 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-all: all-procd all-posix
+all: all-nvx all-procd all-posix
 
-clean: clean-procd clean-posix
+clean: clean-nvx clean-procd clean-posix
 
+# TODO: clippy-nvx
 # TODO: clippy-posix
 clippy: clippy-procd
 
-all-procd:
+all-nvx:
+	$(MAKE) -C nvx
+
+clean-nvx:
+	$(MAKE) -C nvx clean
+
+clippy-nvx:
+	$(MAKE) -C nvx clippy
+
+all-procd: all-nvx
 	$(MAKE) -C procd
 
 clean-procd:
@@ -17,7 +27,7 @@ clean-procd:
 clippy-procd:
 	$(MAKE) -C procd clippy
 
-all-posix:
+all-posix: all-nvx
 	$(MAKE) -C posix
 
 clean-posix:

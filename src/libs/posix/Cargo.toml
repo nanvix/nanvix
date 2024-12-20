@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
-nvx = { path = "../../nvx" }
+nvx = { path = "../../libs/nvx" }
 cfg-if = "1.0.0"
 num_enum = { version = "0.7.3", default-features = false }
 

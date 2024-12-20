@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nvx = { path = "../../nvx", default-features = false, features = ["std"] }
+nvx = { path = "../../libs/nvx", default-features = false, features = ["std"] }
 wasmd = { path = "../../daemons/wasmd" }
 anyhow = "1.0.89"
 log = "0.4.22"
