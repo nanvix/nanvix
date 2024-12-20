@@ -7,7 +7,15 @@
 
 use ::alloc::ffi::CString;
 use ::core::ffi;
-use ::linuxd::{
+use ::nvx::{
+    ipc::Message,
+    pm::ProcessIdentifier,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
+};
+use ::posix::{
     sys::types::{
         off_t,
         size_t,
@@ -35,14 +43,6 @@ use ::linuxd::{
         SeekResponse,
         WriteRequest,
         WriteResponse,
-    },
-};
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
-        Error,
-        ErrorCode,
     },
 };
 

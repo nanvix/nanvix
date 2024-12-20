@@ -10,7 +10,7 @@ use ::core::{
     ffi,
     str,
 };
-use ::linuxd::{
+use ::posix::{
     fcntl,
     fcntl::message::{
         FileAdvisoryInformationRequest,
