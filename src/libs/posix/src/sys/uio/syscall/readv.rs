@@ -26,6 +26,7 @@ use ::nvx::sys::error::ErrorCode;
 /// # Description
 ///
 /// Reads a vector of data from a file.
+#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
 pub fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize_t {
     // Check if number of elements in the vector is valid.
     if (iovcnt < 0) || (iovcnt > limits::IOV_MAX as i32) {

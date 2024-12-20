@@ -23,6 +23,7 @@ use ::nvx::sys::error::ErrorCode;
 // Standalone Functions
 //==================================================================================================
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
 pub fn pwritev(fd: i32, iov: *const iovec, iovcnt: i32, offset: off_t) -> ssize_t {
     // Check if number of elements in the vector is valid.
     if iovcnt < 0 {

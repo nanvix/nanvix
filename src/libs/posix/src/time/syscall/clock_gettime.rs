@@ -29,6 +29,7 @@ use ::nvx::{
 //==================================================================================================
 
 /// Get clock time.
+#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
 pub fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -> ffi::c_int {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,

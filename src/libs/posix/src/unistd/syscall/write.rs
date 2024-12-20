@@ -28,6 +28,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
 pub fn write(fd: i32, buffer: *const u8, count: size_t) -> ssize_t {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
