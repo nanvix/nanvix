@@ -29,7 +29,6 @@ use ::nvx::{
 // BindSocketRequest
 //==================================================================================================
 
-#[derive(Debug)]
 #[repr(C, packed)]
 pub struct BindSocketRequest {
     pub sockfd: i32,
@@ -77,6 +76,18 @@ impl BindSocketRequest {
             Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
 
         message
+    }
+}
+
+impl Debug for BindSocketRequest {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(
+            f,
+            "BindSocketRequest {{ sockfd: {}, sockaddr: {:?}, socklen: {} }}",
+            { self.sockfd },
+            self.sockaddr.clone(),
+            { self.socklen }
+        )
     }
 }
 

@@ -29,6 +29,7 @@ use ::nvx::{
 //==================================================================================================
 
 /// Get clock resolution.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn clock_getres(clock_id: clockid_t, res: *mut timespec) -> ffi::c_int {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,

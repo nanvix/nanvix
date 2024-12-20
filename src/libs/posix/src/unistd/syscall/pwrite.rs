@@ -29,6 +29,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
 pub fn pwrite(fd: i32, buffer: *const u8, count: size_t, offset: off_t) -> ssize_t {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
@@ -41,7 +42,7 @@ pub fn pwrite(fd: i32, buffer: *const u8, count: size_t, offset: off_t) -> ssize
     }
 
     // Check if count is invalid.
-    if count <= 0 {
+    if count == 0 {
         return ErrorCode::InvalidArgument.into_errno();
     }
 

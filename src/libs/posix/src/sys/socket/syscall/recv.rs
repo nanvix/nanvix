@@ -30,6 +30,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
 pub fn recv(sockfd: i32, buffer: *mut u8, length: size_t, flags: i32) -> ssize_t {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
@@ -42,7 +43,7 @@ pub fn recv(sockfd: i32, buffer: *mut u8, length: size_t, flags: i32) -> ssize_t
     }
 
     // Check if count is invalid.
-    if length <= 0 {
+    if length == 0 {
         return ErrorCode::InvalidArgument.into_errno();
     }
 
