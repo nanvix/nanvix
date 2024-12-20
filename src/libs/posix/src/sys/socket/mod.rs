@@ -73,7 +73,7 @@ pub type socklen_t = u32;
 pub type sa_family_t = u16;
 
 /// Describes the address of a socket.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[repr(C, packed)]
 pub struct sockaddr {
     /// Address family.
