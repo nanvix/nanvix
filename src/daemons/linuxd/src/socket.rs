@@ -5,7 +5,15 @@
 // Imports
 //==================================================================================================
 
-use ::linuxd::sys::{
+use ::nvx::{
+    ipc::Message,
+    pm::ProcessIdentifier,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
+};
+use ::posix::sys::{
     socket::{
         message::{
             AcceptSocketRequest,
@@ -29,14 +37,6 @@ use ::linuxd::sys::{
     types::{
         size_t,
         ssize_t,
-    },
-};
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
-        Error,
-        ErrorCode,
     },
 };
 
@@ -275,10 +275,10 @@ impl LibcSocketDomain {
 
     fn try_from(domain: i32) -> Result<Self, Error> {
         match domain as u16 {
-            linuxd::sys::socket::AF_INET => Ok(Self(libc::AF_INET as libc::sa_family_t)),
-            linuxd::sys::socket::AF_INET6 => Ok(Self(libc::AF_INET6 as libc::sa_family_t)),
-            linuxd::sys::socket::AF_UNIX => Ok(Self(libc::AF_UNIX as libc::sa_family_t)),
-            linuxd::sys::socket::AF_UNSPEC => Ok(Self(libc::AF_UNSPEC as libc::sa_family_t)),
+            ::posix::sys::socket::AF_INET => Ok(Self(libc::AF_INET as libc::sa_family_t)),
+            ::posix::sys::socket::AF_INET6 => Ok(Self(libc::AF_INET6 as libc::sa_family_t)),
+            ::posix::sys::socket::AF_UNIX => Ok(Self(libc::AF_UNIX as libc::sa_family_t)),
+            ::posix::sys::socket::AF_UNSPEC => Ok(Self(libc::AF_UNSPEC as libc::sa_family_t)),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid socket domain")),
         }
     }
@@ -293,9 +293,9 @@ impl LibcSocketType {
 
     fn try_from(type_: i32) -> Result<Self, Error> {
         match type_ {
-            linuxd::sys::socket::SOCK_STREAM => Ok(Self(libc::SOCK_STREAM)),
-            linuxd::sys::socket::SOCK_DGRAM => Ok(Self(libc::SOCK_DGRAM)),
-            linuxd::sys::socket::SOCK_SEQPACKET => Ok(Self(libc::SOCK_SEQPACKET)),
+            ::posix::sys::socket::SOCK_STREAM => Ok(Self(libc::SOCK_STREAM)),
+            ::posix::sys::socket::SOCK_DGRAM => Ok(Self(libc::SOCK_DGRAM)),
+            ::posix::sys::socket::SOCK_SEQPACKET => Ok(Self(libc::SOCK_SEQPACKET)),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid socket type")),
         }
     }
@@ -325,9 +325,9 @@ impl LibcShutdownReason {
 
     fn try_from(how: i32) -> Result<Self, Error> {
         match how {
-            linuxd::sys::socket::SHUT_RD => Ok(Self(libc::SHUT_RD)),
-            linuxd::sys::socket::SHUT_WR => Ok(Self(libc::SHUT_WR)),
-            linuxd::sys::socket::SHUT_RDWR => Ok(Self(libc::SHUT_RDWR)),
+            ::posix::sys::socket::SHUT_RD => Ok(Self(libc::SHUT_RD)),
+            ::posix::sys::socket::SHUT_WR => Ok(Self(libc::SHUT_WR)),
+            ::posix::sys::socket::SHUT_RDWR => Ok(Self(libc::SHUT_RDWR)),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid shutdown reason")),
         }
     }
@@ -345,17 +345,17 @@ impl LibcMessageFlags {
         let mut libc_flags = 0;
 
         let flag_mappings: [(i32, libc::c_int); 5] = [
-            (linuxd::sys::socket::MSG_PEEK, libc::MSG_PEEK),
-            (linuxd::sys::socket::MSG_OOB, libc::MSG_OOB),
-            (linuxd::sys::socket::MSG_WAITALL, libc::MSG_WAITALL),
-            (linuxd::sys::socket::MSG_EOR, libc::MSG_EOR),
-            (linuxd::sys::socket::MSG_NOSIGNAL, libc::MSG_NOSIGNAL),
+            (::posix::sys::socket::MSG_PEEK, libc::MSG_PEEK),
+            (::posix::sys::socket::MSG_OOB, libc::MSG_OOB),
+            (::posix::sys::socket::MSG_WAITALL, libc::MSG_WAITALL),
+            (::posix::sys::socket::MSG_EOR, libc::MSG_EOR),
+            (::posix::sys::socket::MSG_NOSIGNAL, libc::MSG_NOSIGNAL),
         ];
 
-        for (linuxd_flag, libc_flag) in &flag_mappings {
-            if flags & linuxd_flag != 0 {
+        for (posix_flag, libc_flag) in &flag_mappings {
+            if flags & posix_flag != 0 {
                 libc_flags |= libc_flag;
-                flags &= !linuxd_flag;
+                flags &= !posix_flag;
             }
         }
 
