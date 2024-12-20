@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "linux-app"
 
 [dependencies]
-nvx = { path = "../../nvx", features = ["allocator"] }
+nvx = { path = "../../libs/nvx", features = ["allocator"] }
 linuxd = { path = "../../libs/posix", features = [
     "syscall",
 ], package = "posix" }

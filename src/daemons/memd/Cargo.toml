@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "memd"
 
 [dependencies]
-nvx = { path = "../../nvx" }
+nvx = { path = "../../libs/nvx" }
 procd = { path = "../../libs/procd", features = ["syscall"] }
 
 [build-dependencies]
