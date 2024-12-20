@@ -38,6 +38,7 @@ use ::nvx::sys::error::ErrorCode;
 /// Upon successful completion, the number of bytes written is returned. Otherwise, a negative error
 /// code is returned.
 ///
+#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
 pub fn writev(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize_t {
     // Check if number of elements in the vector is valid.
     if iovcnt < 0 {
