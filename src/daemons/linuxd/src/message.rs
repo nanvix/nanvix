@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use ::alloc::collections::BTreeMap;
-use ::linuxd::message::{
+use ::posix::message::{
     LinuxDaemonLongMessage,
     LinuxDaemonMessagePart,
     MessagePartitioner,
