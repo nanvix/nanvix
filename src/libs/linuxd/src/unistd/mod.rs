@@ -48,6 +48,8 @@ cfg_if::cfg_if! {
             pread,
             linkat,
             open,
+            link,
+            unlink,
         };
     }
 }
