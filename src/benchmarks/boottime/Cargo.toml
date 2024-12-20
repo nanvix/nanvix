@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "boottime"
 
 [dependencies]
-nvx = { path = "../../nvx" }
+nvx = { path = "../../libs/nvx" }
 
 [build-dependencies]
 cc = "1.1.24"

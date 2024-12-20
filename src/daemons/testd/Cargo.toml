@@ -14,7 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "testd"
 
 [dependencies]
-nvx = { path = "../../nvx", default-features = false }
+nvx = { path = "../../libs/nvx", default-features = false }
 procd = { path = "../../libs/procd", features = ["syscall"] }
 
 [build-dependencies]
