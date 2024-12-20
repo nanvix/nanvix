@@ -5,9 +5,8 @@ all: all-nvx all-procd all-posix
 
 clean: clean-nvx clean-procd clean-posix
 
-# TODO: clippy-nvx
 # TODO: clippy-posix
-clippy: clippy-procd
+clippy: clippy-nvx clippy-procd
 
 all-nvx:
 	$(MAKE) -C nvx
