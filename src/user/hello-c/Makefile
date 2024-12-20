@@ -10,30 +10,25 @@ export PROGRAM_NAME := hello-c
 #===============================================================================
 
 # Libraries
-# TODO: Remove grouping to speed up linking.
-export LIBC_A := $(TOOLCHAIN_DIR)/i486-nanvix/lib/libc.a
-export LIBRARIES := $(LIBC_A)
-export LIBRARIES += $(LIBRARIES_DIR)/libposix.a
+export LIBRARIES := -lc $(LIBRARIES_DIR)/libposix.a
 
 # Source Files
-C_SOURCES := $(wildcard *.c)
-ASM_SOURCES := $(BUILD_DIR)/user/crt/$(TARGET)/crt0.S
+export SOURCES := $(wildcard *.c)
 
 # Object Files
-OBJECTS = $(ASM_SOURCES:.S=.o) $(C_SOURCES:.c=.o)
+export OBJECTS = $(SOURCES:.c=.o)
 
 # Binary
 export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
 
 # C Toolchain
-export CC := $(TOOLCHAIN_DIR)/i486/bin/i486-elf-gcc
+export CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
 
 # Compiler Options
-export CFLAGS += -nostdlib -ffreestanding -march=pentiumpro -Wstack-usage=4096
-export CFLAGS += -I $(TOOLCHAIN_DIR)/i486-nanvix/include
+export CFLAGS += -march=pentiumpro -Wstack-usage=4096
 
 # Linker Options
-export LDFLAGS := -z noexecstack -nostdlib -nostartfiles -ffreestanding -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
+export LDFLAGS := -z noexecstack -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
 
 #===============================================================================
 # Build Rules
@@ -55,16 +50,7 @@ clean:
 %.$(TARGET).o: %.c
 ifeq ($(VERBOSE), no)
 	@echo [CC] $@
-	@$GCC) $(CFLAGS) $< -c -o $@
+	@$(CC) $(CFLAGS) $< -c -o $@
 else
 	$(CC) $(CFLAGS) $< -c -o $@
-endif
-
-# Builds an assembly source file.
-%.$(TARGET).o: %.S
-ifeq ($(VERBOSE), no)
-	@echo [AS] $@
-	@$(CC) $(CFLAGS) -z noexecstack $< -c -o $@
-else
-	$(CC) $(CFLAGS) -z noexecstack $< -c -o $@
 endif
