@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 [package]
-name = "linuxd-lib"
+name = "posix"
 version = "0.5.0"
 license-file = "LICENSE.txt"
 edition = "2021"
