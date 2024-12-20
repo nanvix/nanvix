@@ -15,9 +15,9 @@ name = "linux-app"
 
 [dependencies]
 nvx = { path = "../../nvx", features = ["allocator"] }
-linuxd = { path = "../../libs/linuxd", features = [
+linuxd = { path = "../../libs/posix", features = [
     "syscall",
-], package = "linuxd-lib" }
+], package = "posix" }
 
 [build-dependencies]
 cc = "1.1.24"
