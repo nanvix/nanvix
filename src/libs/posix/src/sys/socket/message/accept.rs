@@ -72,7 +72,6 @@ impl AcceptSocketRequest {
 // AcceptSocketResponse
 //==================================================================================================
 
-#[derive(Debug)]
 #[repr(C, packed)]
 pub struct AcceptSocketResponse {
     pub sockfd: i32,
@@ -120,5 +119,17 @@ impl AcceptSocketResponse {
             Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
 
         message
+    }
+}
+
+impl Debug for AcceptSocketResponse {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "AcceptSocketResponse {{ sockfd: {}, sockaddr: {:?}, socklen: {} }}",
+            { self.sockfd },
+            self.sockaddr.clone(),
+            { self.socklen }
+        )
     }
 }
