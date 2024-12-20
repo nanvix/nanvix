@@ -42,7 +42,7 @@ pub fn pwrite(fd: i32, buffer: *const u8, count: size_t, offset: off_t) -> ssize
     }
 
     // Check if count is invalid.
-    if count <= 0 {
+    if count == 0 {
         return ErrorCode::InvalidArgument.into_errno();
     }
 

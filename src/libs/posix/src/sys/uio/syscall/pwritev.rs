@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     sys::{
         types::{
             off_t,
@@ -84,9 +83,7 @@ pub fn pwritev(fd: i32, iov: *const iovec, iovcnt: i32, offset: off_t) -> ssize_
     // Write in dry-mode run first and parse result.
     match do_writev(true) {
         // Dry-mode run was successful, now write for real.
-        count if count <= limits::SSIZE_MAX => do_writev(false),
-        // Dry-mode run failed because write request is too large.
-        count if count > limits::SSIZE_MAX => ErrorCode::InvalidArgument.into_errno() as ssize_t,
+        count if count >= 0 => do_writev(false),
         // Dry-mode run failed because some other error.
         err if err < 0 => err,
         // Dry-mode run failed because of an unexpected return value.
