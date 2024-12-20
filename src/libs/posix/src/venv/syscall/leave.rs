@@ -36,10 +36,10 @@ pub fn leave(env: VirtualEnvironmentIdentifier) -> Result<(), Error> {
 
     // Parse response.
     if response.status != 0 {
-        return Err(Error::new(
+        Err(Error::new(
             ::nvx::sys::error::ErrorCode::try_from(response.status)?,
             "failed to leave()",
-        ));
+        ))
     } else {
         match LinuxDaemonMessage::try_from_bytes(response.payload) {
             Ok(message) => match message.header {
