@@ -36,7 +36,7 @@ export CARGO_FLAGS += --lib --features=staticlib
 #===============================================================================
 
 # Binary
-export NAME := liblinuxd_lib
+export NAME := libposix
 export LIB := $(NAME).a
 
 #===============================================================================
