@@ -5,36 +5,12 @@
 // Modules
 //==================================================================================================
 
-mod close;
-mod fdatasync;
-mod fsync;
-mod ftruncate;
-mod link;
-mod linkat;
-mod lseek;
-mod open;
-mod pread;
-mod pwrite;
-mod read;
-mod unlink;
-mod write;
+use crate::fcntl;
 
 //==================================================================================================
-// Exports
+// Standalone Functions
 //==================================================================================================
 
-pub use self::{
-    close::close,
-    fdatasync::fdatasync,
-    fsync::fsync,
-    ftruncate::ftruncate,
-    link::link,
-    linkat::linkat,
-    lseek::lseek,
-    open::open,
-    pread::pread,
-    pwrite::pwrite,
-    read::read,
-    unlink::unlink,
-    write::write,
-};
+pub fn unlink(path: &str) -> i32 {
+    fcntl::unlinkat(crate::fcntl::AT_FDCWD, path, 0)
+}
