@@ -41,7 +41,7 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
     }
 
     // Check if count is invalid.
-    if count <= 0 {
+    if count == 0 {
         return ErrorCode::InvalidArgument.into_errno();
     }
 

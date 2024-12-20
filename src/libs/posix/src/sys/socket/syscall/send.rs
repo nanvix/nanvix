@@ -43,7 +43,7 @@ pub fn send(sockfd: i32, buffer: *const u8, count: size_t, flags: i32) -> ssize_
     }
 
     // Check if count is invalid.
-    if count <= 0 {
+    if count == 0 {
         return ErrorCode::InvalidArgument.into_errno();
     }
 
