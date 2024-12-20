@@ -5,7 +5,12 @@
 // Imports
 //==================================================================================================
 
-use ::linuxd::venv::{
+use ::nvx::{
+    ipc::Message,
+    pm::ProcessIdentifier,
+    sys::error::ErrorCode,
+};
+use ::posix::venv::{
     message::{
         JoinEnvRequest,
         JoinEnvResponse,
@@ -13,11 +18,6 @@ use ::linuxd::venv::{
         LeaveEnvResponse,
     },
     VirtualEnvironmentIdentifier,
-};
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::ErrorCode,
 };
 use ::std::collections::BTreeMap;
 

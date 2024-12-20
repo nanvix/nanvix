@@ -13,7 +13,7 @@ export PROGRAM_NAME := hello-c
 # TODO: Remove grouping to speed up linking.
 export LIBC_A := $(TOOLCHAIN_DIR)/i486-nanvix/lib/libc.a
 export LIBRARIES := $(LIBC_A)
-export LIBRARIES += $(LIBRARIES_DIR)/libposix.a_lib.a
+export LIBRARIES += $(LIBRARIES_DIR)/libposix.a
 
 # Source Files
 C_SOURCES := $(wildcard *.c)

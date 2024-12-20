@@ -43,7 +43,21 @@ use ::flexi_logger::{
     FileSpec,
     Logger,
 };
-use ::linuxd::{
+use ::nvx::{
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::ProcessIdentifier,
+    sys::{
+        config,
+        error::{
+            Error,
+            ErrorCode,
+        },
+    },
+};
+use ::posix::{
     fcntl::message::{
         FileAdvisoryInformationRequest,
         FileControlRequest,
@@ -100,20 +114,6 @@ use ::linuxd::{
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
-};
-use ::nvx::{
-    ipc::{
-        Message,
-        MessageType,
-    },
-    pm::ProcessIdentifier,
-    sys::{
-        config,
-        error::{
-            Error,
-            ErrorCode,
-        },
-    },
 };
 use ::signal_hook::{
     consts::SIGINT,
@@ -284,7 +284,7 @@ impl ProcessDaemon {
                                         WriteRequest::from_bytes(message.payload);
 
                                     // Check if writing to gateway.
-                                    if request.fd == linuxd::unistd::STDOUT_FILENO {
+                                    if request.fd == ::posix::unistd::STDOUT_FILENO {
                                         if let Some(ref mut conn) = self.gateway_conn {
                                             let count: usize = request.count as usize;
                                             let mut buffer: Vec<u8> = vec![0u8; count + 1];
@@ -319,7 +319,7 @@ impl ProcessDaemon {
                                         ReadRequest::from_bytes(message.payload);
 
                                     // Check if reading from gateway.
-                                    if request.fd == linuxd::unistd::STDIN_FILENO {
+                                    if request.fd == ::posix::unistd::STDIN_FILENO {
                                         if let Some(ref mut conn) = self.gateway_conn {
                                             let mut buf: [u8; ReadResponse::BUFFER_SIZE] =
                                                 [0u8; ReadResponse::BUFFER_SIZE];
@@ -738,7 +738,7 @@ pub fn initialize(logfile: bool) {
 /// A message with the error response.
 ///
 pub fn build_error(pid: ProcessIdentifier, error: ErrorCode) -> Message {
-    Message::new(linuxd::LINUXD, pid, MessageType::Ikc, Some(error), [0u8; Message::PAYLOAD_SIZE])
+    Message::new(::posix::LINUXD, pid, MessageType::Ikc, Some(error), [0u8; Message::PAYLOAD_SIZE])
 }
 
 impl RequestAssemblerTrait for FileStatAtRequest {
