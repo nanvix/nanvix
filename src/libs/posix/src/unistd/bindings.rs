@@ -1,20 +1,41 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::{
+    ffi::{
+        c_int,
+        c_void,
+    },
+    sys::types::{
+        off_t,
+        pid_t,
+        size_t,
+        ssize_t,
+    },
+};
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
 #[no_mangle]
-pub extern "C" fn close(fd: i32) -> i32 {
+pub extern "C" fn close(fd: c_int) -> c_int {
     ::nvx::log!("close(): fd = {}", fd);
     crate::unistd::close(fd)
 }
 
 #[no_mangle]
-pub extern "C" fn _exit(status: i32) -> ! {
+pub extern "C" fn _exit(status: c_int) -> ! {
     let Err(e) = nvx::sys::kcall::pm::exit(status);
     panic!("failed to terminate process (error={:?})", e);
 }
 
 #[no_mangle]
-pub extern "C" fn getpid() -> i32 {
+pub extern "C" fn getpid() -> pid_t {
     match nvx::sys::kcall::pm::getpid() {
         Ok(pid) => pid.into(),
         Err(_) => -1,
@@ -22,13 +43,13 @@ pub extern "C" fn getpid() -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn isatty(_fd: i32) -> i32 {
+pub extern "C" fn isatty(_fd: c_int) -> c_int {
     // TODO: Implement this system call.
     0
 }
 
 #[no_mangle]
-pub extern "C" fn lseek(fd: i32, offset: i64, whence: i32) -> i64 {
+pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
     ::nvx::log!("lseek(): fd = {}, offset = {}, whence = {}", fd, offset, whence);
     crate::unistd::lseek(fd, offset, whence)
 }
@@ -39,9 +60,9 @@ pub extern "C" fn lseek(fd: i32, offset: i64, whence: i32) -> i64 {
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn read(fd: i32, buffer: *mut u8, count: u32) -> i32 {
+pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> ssize_t {
     ::nvx::log!("read(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
-    crate::unistd::read(fd, buffer, count)
+    crate::unistd::read(fd, buffer as *mut u8, count)
 }
 
 ///
@@ -50,7 +71,7 @@ pub unsafe extern "C" fn read(fd: i32, buffer: *mut u8, count: u32) -> i32 {
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn write(fd: i32, buffer: *const u8, count: u32) -> i32 {
+pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) -> ssize_t {
     ::nvx::log!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
-    crate::unistd::write(fd, buffer, count)
+    crate::unistd::write(fd, buffer as *const u8, count)
 }
