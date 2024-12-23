@@ -10,7 +10,10 @@ export PROGRAM_NAME := hello-cpp
 #===============================================================================
 
 # Libraries
-export LIBRARIES := -lc -lstdc++ $(LIBRARIES_DIR)/libposix.a
+export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
+export LIBCXX := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libstdc++.a
+export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
+export LIBRARIES := -Wl,--start-group $(LIBC) $(LIBCXX) $(LIBPOSIX) -Wl,--end-group
 
 # Source Files
 export SOURCES := $(wildcard *.cpp)

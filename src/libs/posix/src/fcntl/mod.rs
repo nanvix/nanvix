@@ -113,3 +113,6 @@ pub const F_SETOWN: i32 = 6;
 // TODO: Support F_OFD_GETLK
 // TODO: Support F_OFD_SETLK
 // TODO: Support F_OFD_SETLKW
+
+#[cfg(all(feature = "syscall", feature = "staticlib"))]
+pub mod bindings;

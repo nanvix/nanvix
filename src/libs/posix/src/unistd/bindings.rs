@@ -36,6 +36,17 @@ pub extern "C" fn _exit(status: c_int) -> ! {
     panic!("failed to terminate process (error={:?})", e);
 }
 
+///
+/// # Safety
+///
+/// The function has undefined behavior if the `path` points to an invalid memory location.
+///
+#[no_mangle]
+pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_int {
+    ::nvx::log!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
+    -1
+}
+
 #[no_mangle]
 pub extern "C" fn getpid() -> pid_t {
     match nvx::sys::kcall::pm::getpid() {

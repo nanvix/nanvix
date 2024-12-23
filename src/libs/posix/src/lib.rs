@@ -14,10 +14,6 @@
 
 extern crate alloc;
 
-/// C-Bindings.
-#[cfg(feature = "syscall")]
-pub mod bindings;
-
 /// System error numbers.
 pub mod errno;
 
@@ -44,6 +40,9 @@ pub mod netinet;
 
 /// Standard symbolic constants and types.
 pub mod unistd;
+
+/// Signals
+pub mod signal;
 
 /// System-specific headers.
 pub mod sys;
