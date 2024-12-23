@@ -27,14 +27,14 @@ pub type gid_t = u32;
 /// Used for file serial numbers.
 pub type ino_t = u64;
 
+/// Used for file attributes.
+pub type mode_t = u32;
+
 /// Used for link counts.
 pub type nlink_t = u64;
 
 /// Used for file sizes.
 pub type off_t = i64;
-
-/// Used for file attributes.
-pub type mode_t = u32;
 
 /// Used for object sizes.
 pub type size_t = u32;
