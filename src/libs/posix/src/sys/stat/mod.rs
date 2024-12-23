@@ -327,3 +327,6 @@ cfg_if::cfg_if! {
         };
     }
 }
+
+#[cfg(all(feature = "syscall", feature = "staticlib"))]
+pub mod bindings;

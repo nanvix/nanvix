@@ -11,17 +11,6 @@ pub extern "C" fn kill(_pid: i32, _signal: i32) -> i32 {
 ///
 /// # Safety
 ///
-/// This function has undefined behavior if buf points to an invalid memory location.
-///
-#[no_mangle]
-pub unsafe extern "C" fn fstat(fd: i32, buf: *mut crate::sys::stat::stat) -> i32 {
-    ::nvx::log!("fstat(): fd = {}, buf = {:?}", fd, buf);
-    crate::sys::stat::fstat(fd, &mut *buf)
-}
-
-///
-/// # Safety
-///
 /// The function has undefined behavior if the `path` points to an invalid memory location.
 ///
 #[no_mangle]
