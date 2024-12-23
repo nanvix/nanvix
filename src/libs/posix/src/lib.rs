@@ -45,6 +45,9 @@ pub mod netinet;
 /// Standard symbolic constants and types.
 pub mod unistd;
 
+/// Signals
+pub mod signal;
+
 /// System-specific headers.
 pub mod sys;
 
