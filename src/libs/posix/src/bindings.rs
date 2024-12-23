@@ -80,3 +80,17 @@ pub unsafe extern "C" fn getentropy(_buffer: *mut u8, _length: u32) -> i32 {
     ::nvx::log!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
     -1
 }
+
+#[no_mangle]
+pub extern "C" fn _exit(status: i32) -> ! {
+    let Err(e) = nvx::sys::kcall::pm::exit(status);
+    panic!("failed to terminate process (error={:?})", e);
+}
+
+#[no_mangle]
+pub extern "C" fn getpid() -> i32 {
+    match nvx::sys::kcall::pm::getpid() {
+        Ok(pid) => pid.into(),
+        Err(_) => -1,
+    }
+}
