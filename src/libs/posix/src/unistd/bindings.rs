@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    errno::errno,
     ffi::{
         c_int,
         c_void,
@@ -17,6 +18,7 @@ use crate::{
         ssize_t,
     },
 };
+use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
 // Standalone Functions
@@ -38,14 +40,22 @@ pub extern "C" fn _exit(status: c_int) -> ! {
 pub extern "C" fn getpid() -> pid_t {
     match nvx::sys::kcall::pm::getpid() {
         Ok(pid) => pid.into(),
-        Err(_) => -1,
+        Err(e) => {
+            unsafe {
+                errno = e.code.into_errno();
+            }
+            -1
+        },
     }
 }
 
 #[no_mangle]
 pub extern "C" fn isatty(_fd: c_int) -> c_int {
     // TODO: Implement this system call.
-    0
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
 }
 
 #[no_mangle]
