@@ -3,29 +3,29 @@
 
 #===============================================================================
 
-export PROGRAM_NAME := hello-c
+export PROGRAM_NAME := hello-cpp
 
 #===============================================================================
 # Build Artifacts
 #===============================================================================
 
 # Libraries
-export LIBRARIES := -lc $(LIBRARIES_DIR)/libposix.a
+export LIBRARIES := -lc -lstdc++ $(LIBRARIES_DIR)/libposix.a
 
 # Source Files
-export SOURCES := $(wildcard *.c)
+export SOURCES := $(wildcard *.cpp)
 
 # Object Files
-export OBJECTS = $(SOURCES:.c=.o)
+export OBJECTS = $(SOURCES:.cpp=.o)
 
 # Binary
 export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
 
 # C Toolchain
-export CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
+export CXX := $(TOOLCHAIN_DIR)/bin/i686-nanvix-g++
 
 # Compiler Options
-export CFLAGS += -march=pentiumpro -Wstack-usage=4096
+export CXXFLAGS += -march=pentiumpro -Wstack-usage=4096
 
 # Linker Options
 export LDFLAGS := -z noexecstack -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
@@ -37,20 +37,20 @@ export LDFLAGS := -z noexecstack -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
 all: $(OBJECTS)
 ifeq ($(VERBOSE), no)
 	@echo [LD] $(BINARY)
-	@$(CC) $(LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
+	@$(CXX) $(LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
 else
-	$(CC) $(LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
+	$(CXX) $(LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
 endif
 
 clean:
 	rm -rf $(OBJECTS)
 	rm -rf $(BINARIES_DIR)/$(BINARY)
 
-# Builds C source files.
-%.$(TARGET).o: %.c
+# Builds C++ source files.
+%.o: %.cpp
 ifeq ($(VERBOSE), no)
-	@echo [CC] $@
-	@$(CC) $(CFLAGS) $< -c -o $@
+	@echo [CXX] $@
+	@$(CXX) $(CXXFLAGS) $< -c -o $@
 else
-	$(CC) $(CFLAGS) $< -c -o $@
+	$(CXX) $(CXXFLAGS) $< -c -o $@
 endif
