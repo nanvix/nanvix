@@ -14,10 +14,6 @@
 
 extern crate alloc;
 
-/// C-Bindings.
-#[cfg(feature = "syscall")]
-pub mod bindings;
-
 /// System error numbers.
 pub mod errno;
 
