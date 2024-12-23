@@ -12,7 +12,7 @@ homepage = "https://github.com/nanvix"
 
 [dependencies]
 nvx = { path = "../../libs/nvx", features = ["std"] }
-posix = { path = "../../libs/posix", package = "posix", default-features = false }
+posix = { path = "../../libs/posix", default-features = false }
 anyhow = "1.0.93"
 log = "0.4.22"
 flexi_logger = "0.29.6"

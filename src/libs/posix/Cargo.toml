@@ -19,7 +19,8 @@ cfg-if = "1.0.0"
 num_enum = { version = "0.7.3", default-features = false }
 
 [features]
-default = ["syscall", "nvx/allocator"]
+default = ["syscall", "allocator", "staticlib"]
+allocator = ["nvx/allocator"]
 syscall = []
 std = []
 staticlib = ["nvx/staticlib"]
