@@ -35,7 +35,6 @@ pub const STDERR_FILENO: i32 = 2;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
-        pub mod bindings;
         mod syscall;
         pub use self::syscall::{
             close,
@@ -54,3 +53,6 @@ cfg_if::cfg_if! {
         };
     }
 }
+
+#[cfg(all(feature = "syscall", feature = "staticlib"))]
+pub mod bindings;
