@@ -10,7 +10,9 @@ export PROGRAM_NAME := hello-c
 #===============================================================================
 
 # Libraries
-export LIBRARIES := -lc $(LIBRARIES_DIR)/libposix.a
+export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
+export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
+export LIBRARIES := -Wl,--start-group $(LIBC) $(LIBPOSIX) -Wl,--end-group
 
 # Source Files
 export SOURCES := $(wildcard *.c)
