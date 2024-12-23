@@ -42,7 +42,7 @@ pub extern "C" fn _exit(status: c_int) -> ! {
 /// The function has undefined behavior if the `path` points to an invalid memory location.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn getentropy(_buffer: *mut u8, _length: u32) -> i32 {
+pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_int {
     ::nvx::log!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
     -1
 }
