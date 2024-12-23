@@ -113,13 +113,20 @@ fn rust_trampoline() -> i32 {
 fn c_trampoline() -> i32 {
     extern "C" {
         fn main(argc: i32, argv: *const *const u8) -> i32;
+        fn _init();
+        fn _fini();
     }
 
     // TODO: set argc and argv.
     let argc: i32 = 1;
     let argv: *const *const u8 = core::ptr::null();
 
-    unsafe { main(argc, argv) }
+    unsafe {
+        _init();
+        let ret: i32 = main(argc, argv);
+        _fini();
+        ret
+    }
 }
 
 /// Initializes system runtime.

@@ -10,7 +10,7 @@ int main(int argc, const char *argv[])
     (void)argc;
     (void)argv;
 
-    fprintf(stderr, "Hello, World!\n");
+    fprintf(stderr, "Hello, World form C!\n");
 
     return (0);
 }
