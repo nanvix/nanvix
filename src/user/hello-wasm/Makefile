@@ -35,7 +35,7 @@ export CARGO ?= $(HOME)/.cargo/bin/cargo
 
 # Binary
 export EXEC_FORMAT := wasm
-export NAME := hello
+export NAME := hello-wasm
 export BIN := $(NAME).$(EXEC_FORMAT)
 
 #===============================================================================
