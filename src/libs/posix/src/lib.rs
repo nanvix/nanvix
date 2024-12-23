@@ -18,6 +18,12 @@ extern crate alloc;
 #[cfg(feature = "syscall")]
 pub mod bindings;
 
+/// System error numbers.
+pub mod errno;
+
+/// Foreign function interface.
+pub mod ffi;
+
 /// Time types.
 pub mod time;
 
