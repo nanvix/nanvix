@@ -15,8 +15,8 @@ name = "echo"
 
 [dependencies]
 nvx = { path = "../../libs/nvx", features = ["allocator"] }
-linuxd = { path = "../../libs/posix", features = [
-    "syscall",
+linuxd = { path = "../../libs/posix", default-features = false, features = [
+    "syscall", "allocator",
 ], package = "posix" }
 
 [build-dependencies]
