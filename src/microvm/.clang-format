@@ -1,0 +1,12 @@
+{
+    BasedOnStyle: Microsoft,
+    UseTab: Never,
+    TabWidth: 4,
+    IndentWidth: 4,
+    BreakBeforeBraces: Linux,
+    BinPackArguments: false,
+    ColumnLimit: 100,
+    IndentCaseLabels: true,
+    AllowAllParametersOfDeclarationOnNextLine: true,
+    AllowAllArgumentsOnNextLine: true,
+}

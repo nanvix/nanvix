@@ -1,3 +1,0 @@
-[submodule "microvm"]
-	path = src/microvm
-	url = https://github.com/nanvix/microvm
