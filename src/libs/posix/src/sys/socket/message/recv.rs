@@ -27,18 +27,22 @@ use ::nvx::{
 #[repr(C, packed)]
 pub struct ReceiveSocketRequest {
     pub sockfd: i32,
+    pub count: u32,
     pub flags: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(ReceiveSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ReceiveSocketRequest {
-    pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+        - mem::size_of::<i32>()
+        - mem::size_of::<u32>()
+        - mem::size_of::<i32>();
 
-    pub fn new(sockfd: i32, flags: i32) -> Self {
+    pub fn new(sockfd: i32, count: u32, flags: i32) -> Self {
         Self {
             sockfd,
+            count,
             flags,
             _padding: [0; Self::PADDING_SIZE],
         }
@@ -52,8 +56,8 @@ impl ReceiveSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32, flags: i32) -> Message {
-        let message: ReceiveSocketRequest = ReceiveSocketRequest::new(sockfd, flags);
+    pub fn build(pid: ProcessIdentifier, sockfd: i32, count: u32, flags: i32) -> Message {
+        let message: ReceiveSocketRequest = ReceiveSocketRequest::new(sockfd, count, flags);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ReceiveSocketRequest,
             message.into_bytes(),
