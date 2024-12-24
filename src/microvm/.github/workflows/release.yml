@@ -1,0 +1,101 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: Release
+
+on: push
+
+env:
+  TARGET_BRANCH: ${{ github.ref_name }}
+
+jobs:
+
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
+        script: |
+          rm -rf microvm-release
+          git clone --recursive https://github.com/nanvix/microvm.git --branch ${TARGET_BRANCH} microvm-release
+
+  lint:
+    name: Lint
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Clippy
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          source "$HOME/.cargo/env"
+          cd microvm-release
+          make clippy
+
+  build:
+    name: Build
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Build
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          source "$HOME/.cargo/env"
+          cd microvm-release
+          make
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          source "$HOME/.cargo/env"
+          cd microvm-release
+          sudo -E make run 2>&1 | tee output.txt
+          echo "Magic String: $(cat output.txt | tail -n 1)"
+          [ "$(cat output.txt | tail -n 1)" != "Hello, world!" ] && exit 1 || exit 0 ;
+
+
+  cleanup:
+    name: Cleanup
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Cleanup
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        script: |
+          cd microvm-release
+          sudo -E make clean
+          git checkout --force dev
+          git clean -fdx
+          git remote prune origin
