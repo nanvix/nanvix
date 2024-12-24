@@ -39,6 +39,7 @@ use ::posix::sys::{
         ssize_t,
     },
 };
+use ::std::cmp;
 
 //==================================================================================================
 // do_socket
@@ -179,12 +180,14 @@ pub fn do_recv(pid: ProcessIdentifier, request: ReceiveSocketRequest) -> Message
         Err(e) => return crate::build_error(pid, e.code),
     };
 
+    let recv_len: usize = cmp::min(ReceiveSocketResponse::BUFFER_SIZE, request.count as usize);
+
     let mut buffer: [u8; ReceiveSocketResponse::BUFFER_SIZE] =
         [0; ReceiveSocketResponse::BUFFER_SIZE];
 
     debug!("libc::recv(): sockfd={:?}, flags={:?}", sockfd, flags.inner());
     match unsafe {
-        libc::recv(sockfd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len(), flags.inner())
+        libc::recv(sockfd, buffer.as_mut_ptr() as *mut libc::c_void, recv_len, flags.inner())
     } {
         count if count >= 0 => {
             debug!("libc::recv(): count={:?}", count);
