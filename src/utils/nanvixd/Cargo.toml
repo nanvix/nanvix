@@ -20,7 +20,7 @@ hyper = { version = "1.5.1", features = ["full"] }
 tokio = { version = "1.41.1", features = ["full"] }
 http-body-util = "0.1.2"
 hyper-util = { version = "0.1.10", features = ["full"] }
-nvx = { path = "../libs/nvx", features = ["std"] }
+nvx = { path = "../../libs/nvx", features = ["std"] }
 
 [profile.release]
 opt-level = 3
