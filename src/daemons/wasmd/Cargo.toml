@@ -17,12 +17,8 @@ name = "wasmd"
 wasmi = { version = "0.36.0", default-features = false, features = [
     "no-hash-maps",
 ] }
-
-[target.x86.dependencies]
 nvx = { path = "../../libs/nvx", features = ["allocator"] }
-
-[target.'cfg(unix)'.dependencies]
-nvx = { path = "../../libs/nvx", default-features = false }
+posix = { path = "../../libs/posix", default-features = false, features = ["syscall", "allocator"] }
 
 [build-dependencies]
 cc = "1.1.24"
