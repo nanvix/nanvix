@@ -54,11 +54,11 @@ pub fn recv(sockfd: i32, buffer: *mut u8, length: size_t, flags: i32) -> ssize_t
     let mut buffer_offset: usize = 0;
 
     while buffer_offset < buffer.len() {
-        let chunk_size: usize =
+        let recv_len: usize =
             cmp::min(ReceiveSocketResponse::BUFFER_SIZE, buffer.len() - buffer_offset);
 
         // Build request and send it.
-        let request: Message = ReceiveSocketRequest::build(pid, sockfd, flags);
+        let request: Message = ReceiveSocketRequest::build(pid, sockfd, recv_len as u32, flags);
         if let Err(e) = ::nvx::ipc::send(&request) {
             return e.code.into_errno();
         }
@@ -88,10 +88,10 @@ pub fn recv(sockfd: i32, buffer: *mut u8, length: size_t, flags: i32) -> ssize_t
                             ReceiveSocketResponse::from_bytes(message.payload);
 
                         // Copy response buffer to user buffer.
-                        buffer[buffer_offset..buffer_offset + chunk_size]
-                            .copy_from_slice(&response.buffer[..chunk_size]);
+                        buffer[buffer_offset..buffer_offset + response.count as usize]
+                            .copy_from_slice(&response.buffer[..response.count as usize]);
                         total_read += response.count;
-                        buffer_offset += chunk_size;
+                        buffer_offset += response.count as usize;
                     },
                     _ => return ErrorCode::InvalidMessage.into_errno(),
                 },
