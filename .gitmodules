@@ -1,7 +1,3 @@
-[submodule "kernel"]
-	path = src/kernel
-	url = https://github.com/nanvix/kernel
-	branch = dev
 [submodule "microvm"]
 	path = src/microvm
 	url = https://github.com/nanvix/microvm

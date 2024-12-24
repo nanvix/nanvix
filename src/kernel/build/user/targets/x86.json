@@ -1,0 +1,29 @@
+{
+	"cpu": "pentium4",
+	"data-layout": "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128",
+	"llvm-target": "i686-unknown-none",
+	"target-endian": "little",
+	"target-pointer-width": "32",
+	"target-c-int-width": "32",
+	"features": "-mmx,-avx,-sse,-sse2,+soft-float",
+	"os": "none",
+	"arch": "x86",
+	"linker-flavor": "ld",
+	"linker": "ld",
+	"pre-link-args": {
+		"ld": [
+			"-Tbuild/user/linker/x86/user.ld",
+			"-nostdlib",
+			"--entry=_do_start",
+			"-melf_i386",
+			"--whole-archive",
+			"-luser",
+			"--no-whole-archive"
+		]
+	},
+	"executables": true,
+	"code-model": "small",
+	"exe-suffix": ".elf",
+	"panic-strategy": "abort",
+	"disable-redzone": true
+}
