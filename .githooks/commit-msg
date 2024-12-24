@@ -12,8 +12,8 @@ if [ $(echo "$commit_msg_title" | wc -c) -gt $max_length ]; then
     exit 1
 fi
 
-if ! echo "$commit_msg" | grep -q -E '\[(benchmarks|build|contrib|daemons|doc|git|kernel|libs|user)\] (B|E|F|W): '; then
+if ! echo "$commit_msg" | grep -q -E '\[(benchmarks|build|contrib|daemons|doc|git|kernel|libs|user|utils)\] (B|E|F|W): '; then
 	echo "Commit message does not match pattern: '[module-name] (B|E|F|W): Short Description"
-    echo "List of modules: benchmarks, build, contrib, daemons, doc, git, kernel, libs, user"
+    echo "List of modules: benchmarks, build, contrib, daemons, doc, git, kernel, libs, user, utils"
     exit 1
 fi
