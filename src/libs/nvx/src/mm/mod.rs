@@ -33,7 +33,7 @@ pub use ::sys::kcall::mm::{
 
 /// Heap size (in bytes). This value was chosen arbitrarily.
 #[cfg(all(target_os = "none", feature = "allocator"))]
-const HEAP_SIZE: usize = 4 * ::sys::constants::MEGABYTE;
+const HEAP_SIZE: usize = 8 * ::sys::constants::MEGABYTE;
 
 //==================================================================================================
 // Standalone Functions
