@@ -20,7 +20,7 @@ export VERBOSE ?= no
 export RELEASE ?= no
 
 # Timeout
-export TIMEOUT ?= 10
+export TIMEOUT ?= 90
 
 # FEATURES
 export FEATURES ?=
