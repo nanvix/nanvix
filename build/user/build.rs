@@ -11,7 +11,7 @@
 // Imports
 //==================================================================================================
 
-use ::std::{
+use std::{
     env,
     path::Path,
     process::{
@@ -66,7 +66,7 @@ fn main() {
     // Collect Assembly Source Files
     //==============================================================================================
 
-    let sources_dir: Vec<&str> = vec!["build/user/crt/x86"];
+    let sources_dir: Vec<&str> = vec!["build/x86"];
 
     // Collect *.S files in the sources directory
     let mut asm_sources = Vec::<String>::new();

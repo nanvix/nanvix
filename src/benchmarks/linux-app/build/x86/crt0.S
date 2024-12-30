@@ -1,0 +1,1 @@
+../../../../../build/user/crt/x86/crt0.S
