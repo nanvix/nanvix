@@ -30,7 +30,7 @@ jobs:
         envs: TARGET_BRANCH
         script: |
           rm -rf nanvix-release
-          git clone --recursive https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-release
+          git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-release
 
   lint:
     name: Lint
