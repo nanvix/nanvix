@@ -47,7 +47,11 @@ endif
 
 # Runs system in release mode.
 run: image
+ifneq ($(MACHINE),microvm)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
+else
+	sudo -E $(BINARIES_DIR)/microvm.elf -kernel $(BINARIES_DIR)/kernel.elf -initrd $(IMAGE) 2>&1
+endif
 
 # Runs system in debug mode.
 debug: image
