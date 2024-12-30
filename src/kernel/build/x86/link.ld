@@ -1,0 +1,1 @@
+../../../../build/kernel/linker/x86/kernel.ld
