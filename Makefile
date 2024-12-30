@@ -1,6 +1,8 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+DEFAULT_GOAL := all
+
 #===============================================================================
 # Build Options
 #===============================================================================
