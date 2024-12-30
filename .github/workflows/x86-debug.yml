@@ -3,6 +3,10 @@
 
 name: x86 Debug
 
+concurrency:
+  group: x86-debug
+  cancel-in-progress: false
+
 on:
   push:
     branches:
@@ -29,8 +33,20 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          rm -rf nanvix-debug
-          git clone --recursive https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-debug
+          if [ "${TARGET_BRANCH}" = "dev" ]; then
+            find . -type d -name 'nanvix-*-debug' -not -name 'nanvix-dev-debug' -exec rm -rf {} +
+            cd nanvix-dev-debug
+            git fetch origin
+            git reset --hard origin/${TARGET_BRANCH}
+          else
+            if [ ! -d "nanvix-${TARGET_BRANCH}-debug" ]; then
+              git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-${TARGET_BRANCH}-debug
+            else
+              cd nanvix-${TARGET_BRANCH}-debug
+              git fetch origin
+              git reset --hard origin/${TARGET_BRANCH}
+            fi
+          fi
 
   lint:
     name: Lint
@@ -44,12 +60,13 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc clippy
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc clippy
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-baremetal clippy
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=microvm clippy
+          cd nanvix-${TARGET_BRANCH}-debug
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --lint
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --lint
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --lint
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --lint
 
   build:
     name: Build
@@ -63,12 +80,13 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc all
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc all
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-baremetal all
-          make TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=microvm all
+          cd nanvix-${TARGET_BRANCH}-debug
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --build
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --build
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --build
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --build
 
   test-qemu-isapc:
     name: Test (qemu-isapc)
@@ -82,11 +100,10 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc all run | tee output.txt
-          echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+          cd nanvix-${TARGET_BRANCH}-debug
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --test
 
   test-qemu-pc:
     name: Test (qemu-pc)
@@ -100,11 +117,10 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc all run | tee output.txt
-          echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+          cd nanvix-${TARGET_BRANCH}-debug
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --test
 
   test-qemu-baremetal:
     name: Test (qemu-baremetal)
@@ -118,11 +134,10 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-baremetal all run | tee output.txt
-          echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+          cd nanvix-${TARGET_BRANCH}-debug
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --test
 
   test-microvm:
     name: Test (microvm)
@@ -136,12 +151,10 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=microvm all
-          sudo -E ./bin/microvm.elf -kernel ./bin/kernel.elf -initrd bin/boottime.elf 2>&1 | tee output.txt
-          echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+          cd nanvix-${TARGET_BRANCH}-debug
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --test
 
   test-nanvixd:
     name: Test (nanvixd)
@@ -155,8 +168,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
+          cd nanvix-${TARGET_BRANCH}-debug
           sudo -E ./test.sh 127.0.0.1 8181 && exit 1 || exit 0
 
 
@@ -173,8 +187,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
-          git checkout --force dev
-          git clean -fdx
-          git remote prune origin
+          if [ "${TARGET_BRANCH}" = "dev" ]; then
+            cd nanvix-dev-debug
+            git remote prune origin
+          fi

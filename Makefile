@@ -1,6 +1,8 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+DEFAULT_GOAL := all
+
 #===============================================================================
 # Build Options
 #===============================================================================
@@ -18,7 +20,7 @@ export VERBOSE ?= no
 export RELEASE ?= no
 
 # Timeout
-export TIMEOUT ?= 10
+export TIMEOUT ?= 90
 
 # FEATURES
 export FEATURES ?=
@@ -44,7 +46,11 @@ export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
 export KERNEL := nanvix.$(EXEC_FORMAT)
 
 # Image
+ifneq ($(MACHINE),microvm)
 export IMAGE := nanvix.iso
+else
+export IMAGE := $(BINARIES_DIR)/boottime.elf
+endif
 
 #===============================================================================
 # Toolchain
