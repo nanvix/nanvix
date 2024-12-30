@@ -11,7 +11,7 @@ description = "Orchestration Daemon for the Nanvix"
 homepage = "https://github.com/nanvix"
 
 [dependencies]
-anyhow = "1.0.93"
+anyhow = "1.0.95"
 flexi_logger = "0.29.6"
 log = "0.4.22"
 serde = { version = "1.0.215", features = ["derive"] }
