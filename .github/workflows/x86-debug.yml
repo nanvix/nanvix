@@ -3,6 +3,10 @@
 
 name: x86 Debug
 
+concurrency:
+  group: x86-debug
+  cancel-in-progress: false
+
 on:
   push:
     branches:
