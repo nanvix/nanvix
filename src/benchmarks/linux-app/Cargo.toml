@@ -22,15 +22,3 @@ linuxd = { path = "../../libs/posix", default-features = false, features = [
 [build-dependencies]
 cc = "1.1.24"
 cfg-if = "1.0.0"
-
-[profile.release]
-opt-level = 3
-debug = false
-strip = "symbols"
-debug-assertions = false
-overflow-checks = true
-lto = "fat"
-panic = 'abort'
-incremental = false
-codegen-units = 1
-rpath = false

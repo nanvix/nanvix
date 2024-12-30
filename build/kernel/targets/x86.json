@@ -12,7 +12,7 @@
 	"linker": "ld",
 	"pre-link-args": {
 		"ld": [
-			"-Tbuild/kernel/linker/x86/kernel.ld",
+			"-Tbuild/x86/link.ld",
 			"-nostdlib",
 			"--entry=_do_start",
 			"-melf_i386",
