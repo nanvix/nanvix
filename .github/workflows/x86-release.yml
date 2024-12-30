@@ -3,6 +3,10 @@
 
 name: x86 Release
 
+concurrency:
+  group: x86-release
+  cancel-in-progress: false
+
 on:
   push:
     branches:
