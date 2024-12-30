@@ -6,5 +6,5 @@ build-std = ["core", "alloc", "compiler_builtins"]
 build-std-features = ["compiler-builtins-mem"]
 
 [build]
-target = ["build/libs/targets/x86.json"]
+target = ["build/x86/target.json"]
 rustflags = ["-Crelocation-model=static", "-Cprefer-dynamic=no"]
