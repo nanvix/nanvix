@@ -14,9 +14,7 @@ homepage = "https://github.com/nanvix"
 name = "wasmd"
 
 [dependencies]
-wasmi = { version = "0.36.0", default-features = false, features = [
-    "no-hash-maps",
-] }
+wasmi = { version = "0.40.0", default-features = false }
 nvx = { path = "../../libs/nvx", features = ["allocator"] }
 posix = { path = "../../libs/posix", default-features = false, features = ["syscall", "allocator"] }
 
