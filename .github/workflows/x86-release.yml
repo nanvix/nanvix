@@ -13,6 +13,7 @@ on:
 
 env:
   TARGET_BRANCH: ${{ github.ref_name }}
+  TARGET_COMMIT: ${{ github.sha }}
 
 jobs:
 
@@ -27,15 +28,22 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
           if [ "${TARGET_BRANCH}" = "dev" ]; then
-            cd nanvix-${TARGET_BRANCH}-release
+            let last_merged_commit=`git log dev --merges --pretty=format:"%H" -n 1`
+            rm -f nanvix-${last_merged_commit}-release
+            cd nanvix-dev-release
             git fetch origin
             git reset --hard origin/${TARGET_BRANCH}
           else
-            rm -rf nanvix-${TARGET_BRANCH}-release
-            git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-${TARGET_BRANCH}-release
+            if [ ! -d "nanvix-${TARGET_COMMIT}-release" ]; then
+              git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-${TARGET_COMMIT}-release
+            else
+              cd nanvix-${TARGET_COMMIT}-release
+              git fetch origin
+              git reset --hard origin/${TARGET_BRANCH}
+            fi
           fi
 
   lint:
@@ -50,9 +58,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd nanvix-${TARGET_COMMIT}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --release --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --release --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --release --lint
@@ -70,9 +78,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd nanvix-${TARGET_COMMIT}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --release --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --release --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --release --build
@@ -90,9 +98,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd nanvix-${TARGET_COMMIT}-release
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
@@ -109,9 +117,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd nanvix-${TARGET_COMMIT}-release
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
@@ -128,9 +136,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd nanvix-${TARGET_COMMIT}-release
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-baremetal all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
@@ -147,9 +155,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd nanvix-${TARGET_COMMIT}-release
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain RELEASE=yes TARGET=x86 LOG_LEVEL=trace MACHINE=microvm all
           sudo -E ./bin/microvm.elf -kernel ./bin/kernel.elf -initrd bin/boottime.elf 2>&1 | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
@@ -167,9 +175,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd nanvix-${TARGET_COMMIT}-release
           sudo -E ./test.sh 127.0.0.1 8282 && exit 1 || exit 0
 
   cleanup:
@@ -185,7 +193,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
+        envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
-          git remote prune origin
+          if [ "${TARGET_BRANCH}" = "dev" ]; then
+            cd nanvix-dev-release
+            git remote prune origin
+          fi
