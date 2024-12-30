@@ -101,9 +101,7 @@ jobs:
         envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
           cd nanvix-${TARGET_COMMIT}-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc all run | tee output.txt
-          echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --test
 
   test-qemu-pc:
     name: Test (qemu-pc)
@@ -120,9 +118,7 @@ jobs:
         envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
           cd nanvix-${TARGET_COMMIT}-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc all run | tee output.txt
-          echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --test
 
   test-qemu-baremetal:
     name: Test (qemu-baremetal)
@@ -139,9 +135,7 @@ jobs:
         envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
           cd nanvix-${TARGET_COMMIT}-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-baremetal all run | tee output.txt
-          echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --test
 
   test-microvm:
     name: Test (microvm)
@@ -158,10 +152,7 @@ jobs:
         envs: TARGET_BRANCH,TARGET_COMMIT
         script: |
           cd nanvix-${TARGET_COMMIT}-debug
-          make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=microvm all
-          sudo -E ./bin/microvm.elf -kernel ./bin/kernel.elf -initrd bin/boottime.elf 2>&1 | tee output.txt
-          echo "Magic String: $(cat output.txt | tail -n 1)"
-          [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --test
 
   test-nanvixd:
     name: Test (nanvixd)
