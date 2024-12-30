@@ -9,7 +9,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.95"
-flexi_logger = "0.29.6"
+flexi_logger = "0.29.8"
 log = "0.4.22"
 kernel = { path = "../kernel", default-features = false }
 cfg-if = "1.0.0"
