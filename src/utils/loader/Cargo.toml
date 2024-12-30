@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 nvx = { path = "../../libs/nvx", default-features = false, features = ["std"] }
-anyhow = "1.0.89"
+anyhow = "1.0.95"
 log = "0.4.22"
 flexi_logger = "0.29.1"
 serde = { version = "1.0.210", features = ["derive"] }
