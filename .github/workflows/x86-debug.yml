@@ -29,8 +29,14 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          rm -rf nanvix-debug
-          git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-debug
+          if [ "${TARGET_BRANCH}" = "dev" ]; then
+            cd nanvix-${TARGET_BRANCH}-debug
+            git fetch origin
+            git reset --hard origin/${TARGET_BRANCH}
+          else
+            rm -rf nanvix-${TARGET_BRANCH}-debug
+            git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-${TARGET_BRANCH}-debug
+          fi
 
   lint:
     name: Lint
@@ -44,8 +50,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
+          cd nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --lint
@@ -63,8 +70,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
+          cd nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --build
@@ -82,8 +90,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
+          cd nanvix-${TARGET_BRANCH}-debug
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-isapc all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
@@ -100,8 +109,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
+          cd nanvix-${TARGET_BRANCH}-debug
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-pc all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
@@ -118,8 +128,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
+          cd nanvix-${TARGET_BRANCH}-debug
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=qemu-baremetal all run | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
           [ "$(cat output.txt | tail -n 1)" != "[DEBUG][kernel] hello, world!" ] && exit 1 || exit 0 ;
@@ -136,8 +147,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
+          cd nanvix-${TARGET_BRANCH}-debug
           make TIMEOUT=90 TOOLCHAIN_DIR=$HOME/toolchain TARGET=x86 LOG_LEVEL=trace MACHINE=microvm all
           sudo -E ./bin/microvm.elf -kernel ./bin/kernel.elf -initrd bin/boottime.elf 2>&1 | tee output.txt
           echo "Magic String: $(cat output.txt | tail -n 1)"
@@ -155,8 +167,9 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
+          cd nanvix-${TARGET_BRANCH}-debug
           sudo -E ./test.sh 127.0.0.1 8181 && exit 1 || exit 0
 
 
@@ -173,8 +186,7 @@ jobs:
         username: ${{ secrets.username }}
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
         script: |
-          cd nanvix-debug
-          git checkout --force dev
-          git clean -fdx
+          cd nanvix-${TARGET_BRANCH}-debug
           git remote prune origin
