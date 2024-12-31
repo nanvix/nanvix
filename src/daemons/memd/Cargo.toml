@@ -18,5 +18,5 @@ nvx = { path = "../../libs/nvx" }
 procd = { path = "../../libs/procd", features = ["syscall"] }
 
 [build-dependencies]
-cc = "1.1.24"
+cc = "1.2.6"
 cfg-if = "1.0.0"
