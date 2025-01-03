@@ -66,7 +66,7 @@ fn main() {
     // Collect Assembly Source Files
     //==============================================================================================
 
-    let sources_dir: Vec<&str> = vec!["build/x86"];
+    let sources_dir: Vec<&str> = vec!["build/user/crt/x86/"];
 
     // Collect *.S files in the sources directory
     let mut asm_sources = Vec::<String>::new();
@@ -125,5 +125,7 @@ fn main() {
     // Link Archive
     //==============================================================================================
 
+    println!("cargo::rustc-link-arg=-Tbuild/user/linker/x86/user.ld");
     println!("cargo::rustc-link-search=native={}", out_dir);
+    println!("cargo::rustc-link-lib=static:+whole-archive=user");
 }

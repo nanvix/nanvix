@@ -135,5 +135,7 @@ fn main() {
     // Link Archive
     //==============================================================================================
 
+    println!("cargo::rustc-link-arg=-Tbuild/kernel/linker/x86/kernel.ld");
     println!("cargo::rustc-link-search=native={}", out_dir);
+    println!("cargo::rustc-link-lib=static:+whole-archive=kernel");
 }

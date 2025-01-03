@@ -27,7 +27,7 @@ use ::nvx::{
     },
     sys::error::Error,
 };
-use ::procd::{
+use ::proc::{
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     ShutdownMessage,
@@ -111,7 +111,7 @@ pub fn main() {
     }
 
     // Signup to the process manager daemon.
-    if let Err(e) = ::procd::signup(&mypid, myname) {
+    if let Err(e) = ::proc::signup(&mypid, myname) {
         panic!("failed to signup to process manager daemon (error={:?})", e);
     }
 

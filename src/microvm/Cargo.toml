@@ -3,21 +3,23 @@
 
 [package]
 name = "microvm"
-authors = ["The Maintainers of Nanvix"]
-version = "1.2.2"
-edition = "2021"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
 
 [dependencies]
-anyhow = "1.0.95"
-flexi_logger = "0.29.8"
-log = "0.4.22"
-kernel = { path = "../kernel", default-features = false }
-cfg-if = "1.0.0"
+anyhow = { workspace = true }
+flexi_logger = { workspace = true }
+log = { workspace = true }
+sys = { workspace = true }
+cfg-if = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-kvm-bindings = "0.10.0"
-kvm-ioctls = "0.19.1"
-libc = "0.2.169"
+kvm-bindings = { workspace = true }
+kvm-ioctls = { workspace = true }
+libc = { workspace = true }
 
 [features]
 default = []

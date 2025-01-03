@@ -12,10 +12,12 @@ bin/
 lib/
 target/
 *.a
-*.o
 *.elf
+*.exe
 *.iso
 *.log
+*.o
+*.obj
 *.wasm
 Cargo.lock
 
