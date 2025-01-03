@@ -13,7 +13,7 @@
 //==================================================================================================
 
 #[cfg(target_os = "linux")]
-use crate::kvm::{
+use crate::vmm::microvm::kvm::{
     emulator::Emulator,
     partition::VirtualPartition,
     vcpu::{
@@ -24,7 +24,7 @@ use crate::kvm::{
     vmem::VirtualMemory,
 };
 
-use crate::config;
+use crate::vmm::microvm::config;
 use ::anyhow::Result;
 use ::std::{
     cell::RefCell,

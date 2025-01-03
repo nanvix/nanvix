@@ -50,13 +50,20 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 # File format for executables.
 export EXEC_FORMAT := elf
 
-# Image
+# File format for system image.
 ifeq ($(MACHINE),microvm)
 export IMAGE_FORMAT := $(EXEC_FORMAT)
-export IMAGE := $(BINARIES_DIR)/boottime.$(EXEC_FORMAT)
+else ifeq ($(MACHINE),hyperlight)
+export IMAGE_FORMAT := $(EXEC_FORMAT)
 else
 export IMAGE_FORMAT := iso
+endif
+
+# Image
+ifeq ($(IMAGE_FORMAT),iso)
 export IMAGE := nanvix.iso
+else
+export IMAGE := $(BINARIES_DIR)/boottime.$(EXEC_FORMAT)
 endif
 
 # Libraries
@@ -122,7 +129,9 @@ export KERNEL_CARGO_FEATURES := --no-default-features --features $(MACHINE) --fe
 
 # Rust flags for host target.
 export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
-export MICROVM_CARGO_FEATURES := $(if $(filter yes,$(PROFILER)),--features profiler,)
+export MICROVM_CARGO_FEATURES := --no-default-features
+export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(PROFILER)),--features profiler,)
+export MICROVM_CARGO_FEATURES += $(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
 
 # Optimization Flags
 ifeq ($(RELEASE),yes)
@@ -242,7 +251,7 @@ check: \
 
 # Runs system in release mode.
 run: image
-ifneq ($(MACHINE),microvm)
+ifeq ($(IMAGE_FORMAT),iso)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
 else
 	sudo -E $(BINARIES_DIR)/microvm.elf -kernel $(BINARIES_DIR)/kernel.elf -initrd $(IMAGE) 2>&1
@@ -250,7 +259,7 @@ endif
 
 # Runs system in debug mode.
 debug: image
-ifneq ($(MACHINE),microvm)
+ifeq ($(IMAGE_FORMAT),iso)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --debug $(TIMEOUT)
 endif
 
@@ -260,13 +269,13 @@ endif
 
 # Builds the system image.
 image: all
-ifeq ($(IMAGE), $(filter %.iso, $(IMAGE)))
+ifeq ($(IMAGE_FORMAT),iso)
 	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
 	$(GRUB_CMD) $(IMAGE_DIR) -o $(IMAGE)
 endif
 
 image-clean:
-ifeq ($(IMAGE), $(filter %.iso, $(IMAGE)))
+ifeq ($(IMAGE_FORMAT),iso)
 	$(RM_CMD) $(IMAGE_DIR)/*.$(EXEC_FORMAT)
 	$(RM_CMD) $(IMAGE)
 endif

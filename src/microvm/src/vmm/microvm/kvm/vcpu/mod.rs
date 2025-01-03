@@ -17,7 +17,7 @@ pub use exit::*;
 // Imports
 //==================================================================================================
 
-use crate::kvm::partition::VirtualPartition;
+use crate::vmm::microvm::kvm::partition::VirtualPartition;
 use ::anyhow::Result;
 use ::kvm_bindings::{
     kvm_regs,

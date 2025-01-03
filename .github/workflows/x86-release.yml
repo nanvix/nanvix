@@ -67,6 +67,7 @@ jobs:
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --release --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --release --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --release --lint
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=hyperlight --release --lint
 
   build:
     name: Build
@@ -87,6 +88,7 @@ jobs:
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --release --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --release --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --release --build
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=hyperlight --release --build
 
   test-qemu-isapc:
     name: Test (qemu-isapc)
@@ -173,9 +175,26 @@ jobs:
           cd nanvix-${TARGET_BRANCH}-release
           sudo -E ./test.sh 127.0.0.1 8282 && exit 1 || exit 0
 
+  test-hyperlight:
+    name: Test (hyperlight)
+    needs: [test-nanvixd]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
+        script: |
+          cd nanvix-${TARGET_BRANCH}-release
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=hyperlight --release --test
+
   cleanup:
     name: Cleanup
-    needs: [test-nanvixd]
+    needs: [test-hyperlight]
     if: always()
     runs-on: ubuntu-latest
     steps:

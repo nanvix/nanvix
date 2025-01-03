@@ -38,15 +38,10 @@ mod config;
 mod elf;
 mod io;
 mod logging;
-mod microvm;
-mod pal;
 mod vmm;
 
 #[cfg(feature = "profiler")]
 mod profiler;
-
-#[cfg(target_os = "linux")]
-mod kvm;
 
 //==================================================================================================
 // Imports
