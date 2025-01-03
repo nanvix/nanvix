@@ -15,7 +15,7 @@ from typing import List, Tuple
 
 # List of supported target machines.
 TARGET_MACHINES: List[str] = ["qemu-isapc",
-                              "qemu-pc", "qemu-baremetal", "microvm"]
+                              "qemu-pc", "qemu-baremetal", "microvm", "hyperlight"]
 
 # List of supported target architectures.
 TARGET_ARCHS: List[str] = ["x86"]
