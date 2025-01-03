@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 [package]
-name = "procd"
+name = "proc"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
@@ -10,10 +10,17 @@ authors.workspace = true
 description = "Process Management Daemon"
 homepage.workspace = true
 
+[lib]
+crate-type = ["lib"]
+
 [dependencies]
-proc = { workspace = true, features = ["daemon"] }
 nvx = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }
 cfg-if = { workspace = true }
+
+[features]
+default = []
+syscall = []
+daemon = ["nvx/allocator"]

@@ -2,43 +2,27 @@
 # Licensed under the MIT License.
 
 [package]
-name = "kernel"
+name = "sys"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Nanvix Kernel"
+description = "System Library"
 homepage.workspace = true
-
-[[bin]]
-name = "kernel"
-path = "src/kmain.rs"
 
 [dependencies]
 cfg-if = { workspace = true }
-sys = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }
 cfg-if = { workspace = true }
 
 [features]
-default = ["qemu-pc"]
+default = ["microvm"]
 
 # Machine Types
-microvm = [
-    "sys/microvm",
-    "stdio",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
-    "xapic",
-]
+microvm = ["stdio", "acpi", "cpuid", "ioapic", "madt", "msr", "pic", "xapic"]
 pc = [
-    "sys/pc",
     "bios",
     "cmos",
     "mboot",
@@ -52,11 +36,11 @@ pc = [
     "pic",
     "xapic",
 ]
-qemu-pc = ["sys/qemu-pc", "pc"]
-qemu-pc-smp = ["sys/qemu-pc-smp", "qemu-pc", "smp"]
-qemu-baremetal = ["sys/qemu-baremetal", "pc"]
-qemu-baremetal-smp = ["sys/qemu-baremetal-smp", "qemu-baremetal", "smp"]
-qemu-isapc = ["sys/qemu-isapc", "pc"]
+qemu-pc = ["pc"]
+qemu-pc-smp = ["qemu-pc", "smp"]
+qemu-baremetal = ["pc"]
+qemu-baremetal-smp = ["qemu-baremetal", "smp"]
+qemu-isapc = ["pc"]
 
 # Architecture Features
 acpi = []

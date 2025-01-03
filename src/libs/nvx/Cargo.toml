@@ -3,21 +3,21 @@
 
 [package]
 name = "nvx"
-version = "0.5.0"
-license-file = "LICENSE.txt"
-edition = "2021"
-authors = ["The Maintainers of Nanvix"]
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "Nanvix Runtime Library"
-homepage = "https://github.com/nanvix"
+homepage.workspace = true
 
 [lib]
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
-kernel = { path = "../../kernel", default-features = false, features = ["kcall"] }
-talc = "4.4.2"
-spin = "0.9.8"
-cfg-if = "1.0.0"
+sys = { workspace = true, features = ["kcall"] }
+talc = { workspace = true }
+spin = { workspace = true }
+cfg-if = { workspace = true }
 
 [features]
 default = []

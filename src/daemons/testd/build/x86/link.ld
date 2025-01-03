@@ -1,1 +1,0 @@
-../../../../../build/user/linker/x86/user.ld

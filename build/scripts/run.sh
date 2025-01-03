@@ -167,18 +167,15 @@ then
 fi
 
 # Verbose mode.
-if [[ ! -z $VERBOSE ]];
-then
-	echo "====================================================================="
-	echo "TARGET      = $TARGET"
-	echo "MACHINE     = $MACHINE"
-	echo "SCRIPT_DIR  = $SCRIPT_DIR"
-	echo "SCRIPT_NAME = $SCRIPT_NAME"
-	echo "IMAGE       = $IMAGE"
-	echo "MODE        = $MODE"
-	echo "TIMEOUT     = $TIMEOUT"
-	echo "====================================================================="
-fi
+echo "====================================================================="
+echo "TARGET      = $TARGET"
+echo "MACHINE     = $MACHINE"
+echo "SCRIPT_DIR  = $SCRIPT_DIR"
+echo "SCRIPT_NAME = $SCRIPT_NAME"
+echo "IMAGE       = $IMAGE"
+echo "MODE        = $MODE"
+echo "TIMEOUT     = $TIMEOUT"
+echo "====================================================================="
 
 case "$TARGET" in
 	"x86")
