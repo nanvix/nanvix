@@ -3,20 +3,20 @@
 
 [package]
 name = "posix"
-version = "0.5.0"
-license-file = "LICENSE.txt"
-edition = "2021"
-authors = ["The Maintainers of Nanvix"]
-description = "Linux Daemon Library"
-homepage = "https://github.com/nanvix"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "POSIX Library"
+homepage.workspace = true
 
 [lib]
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
-nvx = { path = "../../libs/nvx" }
-cfg-if = "1.0.0"
-num_enum = { version = "0.7.3", default-features = false }
+nvx = { workspace = true }
+cfg-if = { workspace = true }
+num_enum = { workspace = true }
 
 [features]
 default = ["syscall", "allocator", "staticlib"]

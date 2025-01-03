@@ -6,6 +6,7 @@ This document instructs you on how to run Nanvix.
 
 ## Table of Contents
 
+- [Table of Contents](#table-of-contents)
 - [Running Nanvix in QEMU with Default Parameters](#running-nanvix-in-qemu-with-default-parameters)
   - [List of Optional Run Parameters](#list-of-optional-run-parameters)
 - [Running Nanvix in MicroVM](#running-nanvix-in-microvm)
@@ -15,7 +16,7 @@ This document instructs you on how to run Nanvix.
 
 ```bash
 # Run Nanvix in QEMU with default parameters:
-# make TARGET=x86 MACHINE=qemu-pc VERBOSE=no RELEASE=no TIMEOUT=10 FEATURES= run
+# make TARGET=x86 MACHINE=qemu-pc VERBOSE=no RELEASE=no TIMEOUT=10 run
 make run
 ```
 

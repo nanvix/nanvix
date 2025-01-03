@@ -3,30 +3,18 @@
 
 [package]
 name = "linuxd"
-version = "0.4.0"
-license-file = "LICENSE.txt"
-edition = "2021"
-authors = ["The Maintainers of Nanvix"]
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "Linux Provider Daemon"
-homepage = "https://github.com/nanvix"
+homepage.workspace = true
 
 [dependencies]
-nvx = { path = "../../libs/nvx", features = ["std"] }
-posix = { path = "../../libs/posix", default-features = false }
-anyhow = "1.0.95"
-log = "0.4.22"
-flexi_logger = "0.29.8"
-libc = "0.2.169"
-signal-hook = "0.3.17"
-
-[profile.release]
-opt-level = 3
-debug = false
-strip = "symbols"
-debug-assertions = false
-overflow-checks = true
-lto = "fat"
-panic = 'abort'
-incremental = false
-codegen-units = 1
-rpath = false
+nvx = { workspace = true, features = ["std"] }
+posix = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+flexi_logger = { workspace = true }
+libc = { workspace = true }
+signal-hook = { workspace = true }

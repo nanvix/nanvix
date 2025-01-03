@@ -3,22 +3,20 @@
 
 [package]
 name = "linux-app"
-version = "0.0.1"
-license-file = "LICENSE.txt"
-edition = "2021"
-authors = ["The Maintainers of Nanvix"]
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "Linux App Benchmark"
-homepage = "https://github.com/nanvix"
+homepage.workspace = true
 
 [[bin]]
 name = "linux-app"
 
 [dependencies]
-nvx = { path = "../../libs/nvx", features = ["allocator"] }
-linuxd = { path = "../../libs/posix", default-features = false, features = [
-    "syscall", "allocator"
-], package = "posix" }
+nvx = { workspace = true, features = ["allocator"] }
+posix = { workspace = true, features = ["syscall", "allocator"] }
 
 [build-dependencies]
-cc = "1.2.6"
-cfg-if = "1.0.0"
+cc = { workspace = true }
+cfg-if = { workspace = true }
