@@ -5,7 +5,7 @@
 // Lint Configuration
 //==================================================================================================
 
-#![cfg_attr(feature = "microvm", allow(unused))]
+#![cfg_attr(any(feature = "microvm", feature = "hyperlight"), allow(unused))]
 
 //==================================================================================================
 // Exports

@@ -18,11 +18,34 @@ cc = { workspace = true }
 cfg-if = { workspace = true }
 
 [features]
-default = ["microvm"]
+default = ["qemu-pc"]
 
 # Machine Types
-microvm = ["stdio", "acpi", "cpuid", "ioapic", "madt", "msr", "pic", "xapic"]
+hyperlight = [
+    "putb",
+    "puts",
+    "stdio",
+    "acpi",
+    "cpuid",
+    "ioapic",
+    "madt",
+    "msr",
+    "pic",
+    "xapic",
+]
+microvm = [
+    "putb",
+    "stdio",
+    "acpi",
+    "cpuid",
+    "ioapic",
+    "madt",
+    "msr",
+    "pic",
+    "xapic",
+]
 pc = [
+    "putb",
     "bios",
     "cmos",
     "mboot",
@@ -57,6 +80,8 @@ bios = []
 cmos = []
 mboot = []
 pit = []
+putb = []
+puts = []
 stdio = []
 
 # Interface Features
