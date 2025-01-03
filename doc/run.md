@@ -2,11 +2,12 @@
 
 This document instructs you on how to run Nanvix.
 
-> The instructions in this document assume that you have already built Nanvix. For more information on how to build Nanvix, please refer to the [Building Nanvix](build.md) document.
+> ℹ️ The instructions in this document assume that you have already built
+Nanvix. For more information on how to build Nanvix, please refer to the
+[Building Nanvix](build.md) document.
 
 ## Table of Contents
 
-- [Table of Contents](#table-of-contents)
 - [Running Nanvix in QEMU with Default Parameters](#running-nanvix-in-qemu-with-default-parameters)
   - [List of Optional Run Parameters](#list-of-optional-run-parameters)
 - [Running Nanvix in MicroVM](#running-nanvix-in-microvm)
@@ -25,10 +26,7 @@ make run
 - `LOG_LEVEL=<trace|info|warn|error>`: Set the output log level.
 - `RELEASE=<yes|no>`: Enable/Disable release build.
 - `TARGET=x86`: Set target CPU architecture.
-- `TIMEOUT=<seconds>`: Set the timeout for the run script. You may want to override the default value if your development environment is a low-end machine (ie: old CPU, HD disk, low RAM).
-```bash
-make TIMEOUT=90 run
-```
+- `TIMEOUT=<seconds>`: Set the execution timeout.
 
 ## Running Nanvix in MicroVM
 
