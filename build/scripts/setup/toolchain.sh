@@ -1,187 +1,171 @@
 # Copyright(c) 2011-2024 The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-#===============================================================================
+#===================================================================================================
 # Script Arguments
-#===============================================================================
+#===================================================================================================
 
 TARGET=$1 # Target
 PREFIX=$2 # Prefix
 
-#===============================================================================
-# Setup Binutils
-#===============================================================================
-
-function setup_binutils
-{
-    local TARGET="$1-elf"
-    local PREFIX=$2
-    local VERSION=2.40
-
-    pushd $PWD
-
-    # Create build directory.
-    mkdir -p build-binutils && cd build-binutils
-
-    # Get sources.
-    wget https://ftp.gnu.org/gnu/binutils/binutils-$VERSION.tar.xz
-    tar -xvf binutils-$VERSION.tar.xz
-    cd binutils-$VERSION
-
-    # Build and install.
-    ./configure --target=$TARGET --prefix=$PREFIX --disable-nls --disable-sim
-    make all
-    make install
-
-    popd
-
-    # Cleanup build files.
-    rm -rf build-binutils
-}
-
-#===============================================================================
-# Setup GCC
-#===============================================================================
-
-function setup_gcc
-{
-    local TARGET="$1-elf"
-    local PREFIX=$2
-    local VERSION=13.1.0
-
-    pushd $PWD
-
-    # Create build directory.
-    mkdir -p build-gcc && cd build-gcc
-
-    # Get sources.
-    wget https://ftp.gnu.org/gnu/gcc/gcc-$VERSION/gcc-$VERSION.tar.xz
-    tar -xvf gcc-$VERSION.tar.xz
-    cd gcc-$VERSION
-
-    ./contrib/download_prerequisites
-
-    # Build and install.
-    mkdir build && cd build
-    ../configure \
-        --target=$TARGET  --prefix=$PREFIX \
-        --disable-nls --enable-languages=c --without-headers \
-        --disable-multilib $ABI
-    make all-gcc all-target-libgcc
-    make install-gcc install-target-libgcc
-
-    popd
-
-    # Cleanup build files.
-    rm -rf build-gcc
-}
-
-#===============================================================================
-# Setup GDB
-#===============================================================================
-
-function setup_gdb
-{
-    local TARGET="$1-elf"
-    local PREFIX=$2
-    local VERSION=13.1
-
-    pushd $PWD
-
-    # Create build directory.
-    mkdir -p build-gdb && cd build-gdb
-
-    # Get sources.
-	wget https://ftp.gnu.org/gnu/gdb/gdb-$VERSION.tar.xz
-	tar -xvf gdb-$VERSION.tar.xz
-	cd gdb-$VERSION
-
-	# Build and install.
-	./configure \
-        --target=$TARGET --prefix=$PREFIX \
-        --with-auto-load-safe-path=/ --with-guile=no
-	make
-	make install
-
-    popd
-
-    # Cleanup build files.
-    rm -rf build-gdb
-}
-
-#===============================================================================
-# Setup NewLib
-#===============================================================================
-
-function setup_newlib
-{
-    local TARGET="$1"
-    local PREFIX=$2
-    local VERSION=4.4.0
-
-    OLD_PATH=$PATH
-
-    pushd $PWD
-
-    export PATH=$PREFIX/bin:$PATH
-
-    cd "$PREFIX/bin"
-
-    for f in i486-elf-*; do filename=`echo $f | sed -e 's/-elf-/-nanvix-/g'` ; ln -s $f $filename; done
-
-    popd
-
-    pushd $PWD
-
-    # Get sources.
-    wget https://github.com/nanvix/newlib/archive/refs/tags/v$VERSION.tar.gz
-    tar -xvf v$VERSION.tar.gz
-    cd newlib-$VERSION
-
-    # Build and install.
-    ./configure --prefix=$HOME/toolchain --target=i486-nanvix  --disable-multilib
-    make
-    make install
-
-    popd
-
-    # Cleanup build files.
-    rm -rf newlib-$VERSION
-    rm -f v$VERSION.tar.gz
-
-    # Restore PATH
-    export PATH=$OLD_PATH
-}
-
-#===============================================================================
-# Setup Toolchain
-#===============================================================================
-
-function setup_toolchain
-{
-    local TARGET=$1
-    local PREFIX=$2/toolchain/$TARGET
-
-	setup_binutils $TARGET $PREFIX
-	setup_gcc $TARGET $PREFIX
-	setup_gdb $TARGET $PREFIX
-	setup_newlib $TARGET $PREFIX
-}
-
-#===============================================================================
-# Main
-#===============================================================================
-
-if [ -z "$PREFIX" ];
+if [ -z "$TARGET" ] || [[ "$TARGET" != "x86" ]];
 then
-    export PREFIX=$PWD
+    echo "Unsupported target: $TARGET"
+    exit 1
 fi
 
-case "$TARGET" in
-	"x86")
-        setup_toolchain "i486" $PREFIX
-        ;;
-    *)
-        echo "Unsupported target: $TARGET"
-        ;;
-esac
+
+if [ -z "$2" ];
+then
+    export PREFIX=$PWD/toolchain
+else
+    export PREFIX=$2
+fi
+
+#===================================================================================================
+# 1. Get Sources
+#===================================================================================================
+
+mkdir -p $PREFIX/src && cd $PREFIX/src
+
+git clone https://github.com/nanvix/binutils.git --branch nanvix/binutils-2.40 binutils
+git clone https://github.com/nanvix/gcc.git --branch nanvix/gcc-12.4.0 gcc
+git clone https://github.com/nanvix/newlib.git --branch nanvix/newlib-4.4.0 newlib
+
+#===================================================================================================
+# 2. Build Standalone Binutils
+#===================================================================================================
+
+export TARGET=i686-elf
+
+cd $PREFIX/src/binutils
+
+git clean -fdx
+
+./configure \
+    --target=$TARGET \
+    --prefix=$PREFIX \
+    --disable-multilib \
+    --disable-nls \
+    --disable-sim
+
+make -j `nproc` all
+make install
+
+#===================================================================================================
+# 3. Build Standalone GCC
+#===================================================================================================
+
+export TARGET=i686-elf
+
+cd $PREFIX/src/gcc
+
+git clean -fdx
+
+./contrib/download_prerequisites
+
+mkdir -p build && cd build
+
+../configure \
+    --target=$TARGET \
+    --prefix=$PREFIX \
+    --disable-multilib \
+    --disable-nls \
+    --enable-languages=c  \
+    --without-headers
+
+make -j `nproc` all-gcc all-target-libgcc
+make install-gcc install-target-libgcc
+
+#===================================================================================================
+# 4. Create Symbolic Links to Standalone Toolchain to Fool Newlib
+#===================================================================================================
+
+export TARGET=i686-elf
+
+cd $PREFIX/bin
+
+for f in $TARGET-*; do
+    filename=`echo $f | sed -e 's/-elf-/-nanvix-/g'`
+    ln -s $f $filename
+done
+
+#===================================================================================================
+# 5. Build Newlib
+#===================================================================================================
+
+export TARGET=i686-nanvix
+
+export OLD_PATH=$PATH
+export PATH=$PREFIX/bin:$PATH
+
+cd $PREFIX/src/newlib
+
+./configure \
+    --target=$TARGET \
+    --prefix=$PREFIX \
+    --disable-multilib
+
+make -j `nproc` all
+make install
+
+export PATH=$OLD_PATH
+
+#===================================================================================================
+# Populate SYSROOT
+#===================================================================================================
+
+export TARGET=i686-nanvix
+export SYSROOT=$PREFIX
+
+mkdir -p $PREFIX/usr/include
+cp -r $PREFIX/$TARGET/include/* $PREFIX/usr/include
+
+#===================================================================================================
+# Build Binutils for Nanvix
+#===================================================================================================
+
+export TARGET=i686-nanvix
+export SYSROOT=$PREFIX
+
+cd $PREFIX/src/binutils
+
+git clean -fdx
+
+./configure \
+    --target=$TARGET \
+    --prefix=$PREFIX \
+    --with-sysroot=$SYSROOT \
+    --disable-multilib \
+    --disable-nls \
+    --disable-sim
+
+make -j `nproc` all
+make install
+
+#===================================================================================================
+# Build GCC for Nanvix
+#===================================================================================================
+
+export TARGET=i686-nanvix
+export SYSROOT=$PREFIX
+
+cd $PREFIX/src/gcc
+
+git clean -fdx
+
+./contrib/download_prerequisites
+
+mkdir -p build && cd build
+
+../configure \
+    --target=$TARGET \
+    --prefix=$PREFIX \
+    --with-sysroot=$SYSROOT \
+    --disable-multilib \
+    --disable-nls \
+    --enable-languages=c,c++  \
+    --with-newlib
+
+make -j `nproc` all-gcc all-target-libgcc all-target-libstdc++-v3
+make -j install-gcc install-target-libgcc install-target-libstdc++-v3
