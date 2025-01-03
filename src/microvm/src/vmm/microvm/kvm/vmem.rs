@@ -6,10 +6,12 @@
 //==================================================================================================
 
 use crate::{
-    config,
     elf,
-    kvm::partition::VirtualPartition,
-    pal::FileMapping,
+    vmm::microvm::{
+        config,
+        kvm::partition::VirtualPartition,
+        pal::FileMapping,
+    },
 };
 use ::anyhow::Result;
 use ::kvm_bindings::kvm_userspace_memory_region;
