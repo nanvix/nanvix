@@ -182,10 +182,12 @@ export GRUB_CMD := grub-mkrescue
 ALL_GUEST_STATIC_LIBS := nvx posix
 ALL_GUEST_RUST_LIBS := proc sys
 
-ALL_GUEST_DAEMONS := memd procd testd wasmd
+ALL_GUEST_DAEMONS := memd procd wasmd
 ALL_GUEST_BENCHMARKS := echo boottime linux-app
 ALL_GUEST_APPLICATIONS := hello-rust
+ALL_GUEST_TESTS := testd
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
+ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := hello-wasm
 
