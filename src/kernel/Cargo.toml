@@ -17,6 +17,7 @@ path = "src/kmain.rs"
 [dependencies]
 cfg-if = { workspace = true }
 sys = { workspace = true }
+hyperlight_common = { workspace = true, optional = true }
 
 [build-dependencies]
 cc = { workspace = true }
@@ -26,8 +27,23 @@ cfg-if = { workspace = true }
 default = ["qemu-pc"]
 
 # Machine Types
+hyperlight = [
+    "sys/hyperlight",
+    "putb",
+    "puts",
+    "stdio",
+    "acpi",
+    "cpuid",
+    "ioapic",
+    "madt",
+    "msr",
+    "pic",
+    "xapic",
+    "dep:hyperlight_common",
+]
 microvm = [
     "sys/microvm",
+    "putb",
     "stdio",
     "acpi",
     "cpuid",
@@ -39,6 +55,7 @@ microvm = [
 ]
 pc = [
     "sys/pc",
+    "putb",
     "bios",
     "cmos",
     "mboot",
@@ -73,6 +90,8 @@ bios = []
 cmos = []
 mboot = []
 pit = []
+putb = []
+puts = []
 stdio = []
 
 # Interface Features

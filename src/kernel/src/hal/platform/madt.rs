@@ -5,7 +5,7 @@
 // Lint Configuration
 //==================================================================================================
 
-#![cfg_attr(feature = "microvm", allow(dead_code))]
+#![cfg_attr(any(feature = "microvm", feature = "hyperlight"), allow(unused))]
 
 //==================================================================================================
 // Imports
