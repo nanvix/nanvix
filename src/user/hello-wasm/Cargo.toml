@@ -3,13 +3,9 @@
 
 [package]
 name = "hello-wasm"
-version = "0.1.0"
-edition = "2021"
-
-[profile.release]
-opt-level = 'z'
-lto = true
-
-[profile.dev]
-opt-level = 'z'
-lto = true
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Hello World in WebAssembly"
+homepage.workspace = true

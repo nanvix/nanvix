@@ -9,7 +9,8 @@
 //==================================================================================================
 
 use ::core::mem;
-use ::linuxd::{
+use ::nvx::sys::error::Error;
+use ::posix::{
     fcntl,
     netinet::in_::{
         in_addr,
@@ -34,7 +35,6 @@ use ::linuxd::{
     venv,
     venv::VirtualEnvironmentIdentifier,
 };
-use ::nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -675,7 +675,7 @@ pub fn main() -> Result<(), Error> {
     match sys::socket::bind(
         sockfd,
         unsafe {
-            mem::transmute::<&linuxd::netinet::in_::sockaddr_in, &linuxd::sys::socket::sockaddr>(
+            mem::transmute::<&posix::netinet::in_::sockaddr_in, &posix::sys::socket::sockaddr>(
                 &sockaddr_in,
             )
         },

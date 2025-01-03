@@ -11,7 +11,7 @@
 extern crate alloc;
 
 use ::nvx::sys::error::Error;
-use ::procd::ProcessDaemon;
+use ::proc::ProcessDaemon;
 
 //==================================================================================================
 // Standalone Functions

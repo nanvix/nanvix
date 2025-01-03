@@ -3,20 +3,20 @@
 
 [package]
 name = "memd"
-version = "0.0.9"
-license-file = "LICENSE.txt"
-edition = "2021"
-authors = ["The Maintainers of Nanvix"]
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "Memory Management Daemon"
-homepage = "https://github.com/nanvix"
+homepage.workspace = true
 
 [[bin]]
 name = "memd"
 
 [dependencies]
-nvx = { path = "../../libs/nvx" }
-procd = { path = "../../libs/procd", features = ["syscall"] }
+nvx = { workspace = true }
+proc = { workspace = true, features = ["syscall"] }
 
 [build-dependencies]
-cc = "1.2.6"
-cfg-if = "1.0.0"
+cc = { workspace = true }
+cfg-if = { workspace = true }
