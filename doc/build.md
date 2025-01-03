@@ -2,7 +2,10 @@
 
 This document instructs you on how to build Nanvix.
 
-> The instructions in this document assume that you have your disposal a system with the development environment already set up. For more information on how to setup your development environment, please refer to the [Setting Up Your Development Environment](setup.md) document.
+> ℹ️ The instructions in this document assume that you have your disposal a
+system with the development environment already set up. For more information on
+how to setup your development environment, please refer to the [Setting Up Your
+Development Environment](setup.md) document.
 
 ## Table of Contents
 

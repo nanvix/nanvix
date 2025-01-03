@@ -21,6 +21,9 @@ if [[ "$1" == "--extra" ]]; then
         grub2            \
         libglib2.0-dev   \
         libgmp-dev       \
+        libgmp3-dev      \
+        libmpc-dev       \
+        libmpfr-dev      \
         libncurses5-dev  \
         libncursesw5     \
         libncursesw5-dev \
@@ -33,4 +36,3 @@ if [[ "$1" == "--extra" ]]; then
         qemu-system-x86  \
         texinfo          \
         xorriso
-fi

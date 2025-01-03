@@ -15,18 +15,20 @@ if [[ "$1" == "--extra" ]]; then
         clang               \
         doxygen             \
         flex                \
-        graphviz            \
-        grub                \
         glib2               \
         gmp                 \
-        ncurses             \
-        pixman              \
-        sdl2                \
+        graphviz            \
+        grub                \
+        libmpc              \
+        libmpfr             \
         mtools              \
+        ncurses             \
         ninja               \
+        pixman              \
         pkgconf             \
         python-virtualenv   \
         qemu-system-x86     \
+        sdl2                \
         texinfo             \
         xorriso
 fi
