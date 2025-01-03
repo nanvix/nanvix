@@ -453,7 +453,7 @@ check-microvm:
 	$(HOST_CARGO_CHECK_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
 
 clean-microvm:
-	$(HOST_CARGO_CLEAN_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
+	$(HOST_CARGO_CLEAN_CMD) -p microvm
 	$(RM_CMD) $(BINARIES_DIR)/microvm.elf
 
 clippy-microvm:
