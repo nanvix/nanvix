@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::{
+use crate::vmm::microvm::{
     kvm::{
         vcpu::VirtualProcessorExitContext,
         vmem::VirtualMemory,
