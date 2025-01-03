@@ -12,6 +12,7 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 flexi_logger = { workspace = true }
+hyperlight_host = { workspace = true, optional = true, features = ["kvm"] }
 log = { workspace = true }
 sys = { workspace = true }
 cfg-if = { workspace = true }
@@ -23,5 +24,6 @@ libc = { workspace = true }
 
 [features]
 default = []
+hyperlight = ["dep:hyperlight_host"]
 profiler = ["auto-calibrate"]
 auto-calibrate = []

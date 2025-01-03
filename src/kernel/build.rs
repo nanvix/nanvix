@@ -67,6 +67,9 @@ fn main() {
         if #[cfg(feature = "microvm")] {
             cflags.push("-D__microvm__");
         }
+        else if #[cfg(feature = "hyperlight")] {
+            cflags.push("-D__hyperlight__");
+        }
         else {
             cflags.push("-D__pc__");
         }

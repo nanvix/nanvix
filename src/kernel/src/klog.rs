@@ -126,8 +126,14 @@ impl core::fmt::Debug for KlogLevel {
 /// - It does not prevent concurrent access to the standard output device.
 ///
 pub unsafe fn puts(s: &str) {
-    // Write each byte of the string to the standard output device.
-    for b in s.bytes() {
-        platform::putb(b);
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "puts")] {
+            platform::puts(s);
+        } else if #[cfg(feature = "putb")] {
+            // Write each byte of the string to the standard output device.
+            for b in s.bytes() {
+                platform::putb(b);
+            }
+        }
     }
 }

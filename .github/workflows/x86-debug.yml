@@ -67,6 +67,7 @@ jobs:
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --lint
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=hyperlight --lint
 
   build:
     name: Build
@@ -87,6 +88,7 @@ jobs:
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --build
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=hyperlight --build
 
   test-qemu-isapc:
     name: Test (qemu-isapc)
@@ -173,10 +175,26 @@ jobs:
           cd nanvix-${TARGET_BRANCH}-debug
           sudo -E ./test.sh 127.0.0.1 8181 && exit 1 || exit 0
 
+  test-hyperlight:
+    name: Test (hyperlight)
+    needs: [test-nanvixd]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH
+        script: |
+          cd nanvix-${TARGET_BRANCH}-debug
+          python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=hyperlight --test
 
   cleanup:
     name: Cleanup
-    needs: [test-nanvixd]
+    needs: [test-hyperlight]
     if: always()
     runs-on: ubuntu-latest
     steps:
