@@ -1,10 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// TODO: remove this.
+#![allow(clippy::type_complexity)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
-
 use crate::{
     hal::{
         arch::x86::mem::mmu::{
