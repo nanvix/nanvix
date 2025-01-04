@@ -62,12 +62,6 @@ pub struct PageTable {
 // Implementations
 //==================================================================================================
 
-impl PageTableStorage {
-    pub fn new() -> Self {
-        Self::Heap(Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]))
-    }
-}
-
 impl Deref for PageTableStorage {
     type Target = [u32];
 

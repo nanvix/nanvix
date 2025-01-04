@@ -13,10 +13,7 @@ use crate::{
                 PageDirectory,
                 PageDirectoryStorage,
             },
-            page_table::{
-                PageTable,
-                PageTableStorage,
-            },
+            page_table::PageTable,
         },
         mem::{
             AccessPermission,
@@ -224,10 +221,11 @@ impl Vmem {
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
-    pub fn map_kpage(
+    pub fn map_kpage<T: Fn() -> PageTable>(
         &mut self,
         kpage: KernelPage,
         vaddr: PageAligned<VirtualAddress>,
+        page_table_allocator: T,
     ) -> Result<(), Error> {
         let pt_vaddr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
             ::sys::mm::align_down(vaddr.into_raw_value(), mmu::PGTAB_ALIGNMENT),
@@ -245,8 +243,7 @@ impl Vmem {
 
         // Check if page table does not exist.
         if !pde.is_present() {
-            let pgtable_storage: PageTableStorage = PageTableStorage::new();
-            let page_table: PageTable = PageTable::new(pgtable_storage);
+            let page_table: PageTable = page_table_allocator();
 
             // FIXME: do not be so open about permissions.
             self.pgdir.map(
@@ -295,11 +292,12 @@ impl Vmem {
     }
 
     /// Maps a page to the target virtual address space.
-    pub fn map(
+    pub fn map<T: Fn() -> PageTable>(
         &mut self,
         uframe: UserFrame,
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
+        page_table_allocator: T,
     ) -> Result<(), Error> {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
@@ -325,8 +323,7 @@ impl Vmem {
             // Get corresponding page table.
             // Check if corresponding page table does not exist.
             if !pde.is_present() {
-                let pgtable_storage: PageTableStorage = PageTableStorage::new();
-                let page_table: PageTable = PageTable::new(pgtable_storage);
+                let page_table: PageTable = page_table_allocator();
 
                 let page_table_address: FrameAddress = page_table.physical_address()?;
                 // FIXME: do not be so open about permissions.
