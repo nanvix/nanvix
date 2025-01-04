@@ -100,8 +100,6 @@ impl PageDirectory {
         supervisor: bool,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        trace!("map(): vaddr={:?}, paddr={:?}", vaddr, paddr);
-
         // Obtain a cached copy of the page directory entry.
         let pde: PageDirectoryEntry = match self.read_pde(vaddr) {
             Some(pde) => pde,
@@ -162,8 +160,6 @@ impl PageDirectory {
     /// instead.
     ///
     pub fn unmap(&mut self, pgtable_address: PageTableAddress) -> Result<FrameAddress, Error> {
-        trace!("unmap(): vaddr={:?}", pgtable_address);
-
         // Obtain a cached copy of the page directory entry.
         let pde: PageDirectoryEntry = match self.read_pde(pgtable_address) {
             Some(pde) => pde,
