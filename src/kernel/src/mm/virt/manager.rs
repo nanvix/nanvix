@@ -7,10 +7,7 @@
 
 use crate::{
     hal::{
-        arch::x86::mem::mmu::page_table::{
-            PageTable,
-            PageTableStorage,
-        },
+        arch::x86::mem::mmu::page_table::PageTable,
         mem::{
             AccessPermission,
             Address,
@@ -32,6 +29,7 @@ use crate::{
         virt::{
             kpage::KernelPage,
             vmem::Vmem,
+            PageTableStorage,
         },
     },
 };

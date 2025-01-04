@@ -17,10 +17,7 @@ mod vmem;
 use crate::hal::{
     arch::x86::mem::mmu::{
         self,
-        page_table::{
-            PageTable,
-            PageTableStorage,
-        },
+        page_table::PageTable,
     },
     mem::{
         AccessPermission,
@@ -41,7 +38,13 @@ use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
-use ::core::cmp::Ordering;
+use ::core::{
+    cmp::Ordering,
+    ops::{
+        Deref,
+        DerefMut,
+    },
+};
 use ::sys::{
     arch::mem,
     config,
@@ -58,6 +61,32 @@ use ::sys::{
 pub use kpage::KernelPage;
 pub use manager::VirtMemoryManager;
 pub use vmem::Vmem;
+
+//==================================================================================================
+// Structures and Enums
+//==================================================================================================
+
+pub enum PageTableStorage {
+    Heap(Box<[u32; mem::PAGE_SIZE / core::mem::size_of::<u32>()]>),
+}
+
+impl Deref for PageTableStorage {
+    type Target = [u32];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Heap(entries) => entries.deref(),
+        }
+    }
+}
+
+impl DerefMut for PageTableStorage {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Heap(entries) => entries.deref_mut(),
+        }
+    }
+}
 
 //==================================================================================================
 // Standalone Functions
