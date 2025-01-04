@@ -13,10 +13,7 @@ use crate::{
                 PageDirectory,
                 PageDirectoryStorage,
             },
-            page_table::{
-                PageTable,
-                PageTableStorage,
-            },
+            page_table::PageTable,
         },
         mem::{
             AccessPermission,
@@ -35,6 +32,7 @@ use crate::{
         virt::{
             kpage::KernelPage,
             upage::AttachedUserPage,
+            PageTableStorage,
         },
     },
 };

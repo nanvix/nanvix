@@ -17,6 +17,7 @@ pub mod kheap;
 use ::alloc::boxed::Box;
 pub use virt::{
     KernelPage,
+    PageTableStorage,
     VirtMemoryManager,
     Vmem,
 };
@@ -33,10 +34,7 @@ use crate::{
     hal::{
         arch::x86::mem::mmu::{
             self,
-            page_table::{
-                PageTable,
-                PageTableStorage,
-            },
+            page_table::PageTable,
         },
         mem::{
             Address,
