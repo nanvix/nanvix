@@ -67,10 +67,11 @@ pub use vmem::Vmem;
 pub fn init(
     mut virtual_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     mut mmio_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-) -> Result<LinkedList<(PageTableAddress, PageTable)>, Error> {
+) -> Result<LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>, Error> {
     info!("booking virtual memory regions ...");
 
-    let mut root_pagetables: LinkedList<(PageTableAddress, PageTable)> = LinkedList::new();
+    let mut root_pagetables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
+        LinkedList::new();
 
     // Sort memory regions by start address.
     let mut regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>> = {
@@ -105,7 +106,7 @@ pub fn init(
         let end: usize = raw_vaddr + (region.size() - 1);
 
         while raw_vaddr < end {
-            let (page_table_addr, mut page_table): (PageTableAddress, PageTable) =
+            let (page_table_addr, mut page_table): (PageTableAddress, PageTable<PageTableStorage>) =
                 if let Some(last) = root_pagetables.pop_back() {
                     let page_table_addr: PageTableAddress = PageTableAddress::new(
                         PageTableAligned::from_address(VirtualAddress::new(
@@ -119,7 +120,8 @@ pub fn init(
                             let pgtable_storage: PageTableStorage = PageTableStorage::Heap(
                                 Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]),
                             );
-                            let page_table: PageTable = PageTable::new(pgtable_storage);
+                            let page_table: PageTable<PageTableStorage> =
+                                PageTable::<PageTableStorage>::new(pgtable_storage);
                             let page_table_addr: PageTableAligned<VirtualAddress> =
                                 PageTableAligned::from_address(VirtualAddress::new(
                                     ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
@@ -138,7 +140,8 @@ pub fn init(
                     let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
                         [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
                     ));
-                    let page_table: PageTable = PageTable::new(pgtable_storage);
+                    let page_table: PageTable<PageTableStorage> =
+                        PageTable::<PageTableStorage>::new(pgtable_storage);
                     let page_table_addr: PageTableAligned<VirtualAddress> =
                         PageTableAligned::from_address(VirtualAddress::new(
                             ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),

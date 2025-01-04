@@ -207,7 +207,7 @@ pub fn init(
     // FIXME: the initial list of kernel pages should be spit out by the initialization.
     let (kernel_pages, kernel_page_tables): (
         LinkedList<KernelPage>,
-        LinkedList<(PageTableAddress, PageTable)>,
+        LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
 
     let (mut vmem, mut mm): (Vmem, VirtMemoryManager) =
@@ -227,7 +227,7 @@ pub fn init(
                 let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
                     [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
                 ));
-                let page_table: PageTable = PageTable::new(pgtable_storage);
+                let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
                 page_table
             };
 

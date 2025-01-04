@@ -53,9 +53,9 @@ pub enum PageTableStorage {
 ///
 /// A type that represents a page table.
 ///
-pub struct PageTable {
+pub struct PageTable<T: DerefMut<Target = [u32]>> {
     /// Entries.
-    entries: PageTableStorage,
+    entries: T,
 }
 
 //==================================================================================================
@@ -80,9 +80,9 @@ impl DerefMut for PageTableStorage {
     }
 }
 
-impl PageTable {
-    pub fn new(entries: PageTableStorage) -> Self {
-        let mut page_table: PageTable = Self { entries };
+impl<T: DerefMut<Target = [u32]>> PageTable<T> {
+    pub fn new(entries: T) -> Self {
+        let mut page_table: Self = Self { entries };
         page_table.clean();
         page_table
     }
