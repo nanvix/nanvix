@@ -68,6 +68,7 @@ pub use vmem::Vmem;
 
 pub enum PageTableStorage {
     Heap(Box<[u32; mem::PAGE_SIZE / core::mem::size_of::<u32>()]>),
+    KernelPage(KernelPage),
 }
 
 impl Deref for PageTableStorage {
@@ -76,6 +77,12 @@ impl Deref for PageTableStorage {
     fn deref(&self) -> &Self::Target {
         match self {
             Self::Heap(entries) => entries.deref(),
+            Self::KernelPage(page) => {
+                let base: *const u32 = page.base().into_raw_value() as *const u32;
+                unsafe {
+                    core::slice::from_raw_parts(base, mem::PAGE_SIZE / core::mem::size_of::<u32>())
+                }
+            },
         }
     }
 }
@@ -84,6 +91,15 @@ impl DerefMut for PageTableStorage {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
             Self::Heap(entries) => entries.deref_mut(),
+            Self::KernelPage(page) => {
+                let base: *mut u32 = page.base().into_raw_value() as *mut u32;
+                unsafe {
+                    core::slice::from_raw_parts_mut(
+                        base,
+                        mem::PAGE_SIZE / core::mem::size_of::<u32>(),
+                    )
+                }
+            },
         }
     }
 }
