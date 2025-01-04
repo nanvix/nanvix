@@ -77,7 +77,7 @@ impl VirtMemoryManager {
     ///
     pub fn new(
         kernel_pages: LinkedList<KernelPage>,
-        kernel_page_tables: LinkedList<(PageTableAddress, PageTable)>,
+        kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
         physman: PhysMemoryManager,
     ) -> Result<(Vmem, Self), Error> {
         let root: Vmem = Vmem::new(kernel_pages, kernel_page_tables)?;
@@ -125,7 +125,7 @@ impl VirtMemoryManager {
         let page_table_allocator = || {
             let pgtable_storage: PageTableStorage =
                 PageTableStorage::Heap(Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]));
-            let page_table: PageTable = PageTable::new(pgtable_storage);
+            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
             page_table
         };
 
@@ -175,7 +175,7 @@ impl VirtMemoryManager {
         let page_table_allocator = || {
             let pgtable_storage: PageTableStorage =
                 PageTableStorage::Heap(Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]));
-            let page_table: PageTable = PageTable::new(pgtable_storage);
+            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
             page_table
         };
 
