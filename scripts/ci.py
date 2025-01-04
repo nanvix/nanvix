@@ -47,23 +47,18 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
 
     with open(stdout_log_file, 'w') as stdout_file, open(stderr_log_file, 'w') as stderr_file:
         process = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
         # Poll stdout and stderr
         while True:
             stdout = process.stdout.readline()
-            stderr = process.stderr.readline()
 
-            if process.poll() is not None and stdout == '' and stderr == '':
+            if process.poll() is not None and stdout == '':
                 break
 
             if stdout:
                 print(stdout.strip())
                 stdout_file.write(stdout)
-
-            if stderr:
-                print(stderr.strip())
-                stderr_file.write(stderr)
 
         return_code = process.poll()
 
