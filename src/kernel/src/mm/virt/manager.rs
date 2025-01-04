@@ -34,7 +34,6 @@ use crate::{
     },
 };
 use ::alloc::{
-    boxed::Box,
     collections::LinkedList,
     rc::Rc,
     vec::Vec,
@@ -120,14 +119,20 @@ impl VirtMemoryManager {
             },
         };
 
-        let page_table_allocator = || {
-            let pgtable_storage: PageTableStorage =
-                PageTableStorage::Heap(Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]));
+        let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
+        let page_table_allocator = move || {
+            let kframe: KernelFrame = physman
+                .try_borrow_mut()
+                .unwrap()
+                .alloc_kernel_frame(true)
+                .unwrap();
+            let kpage: KernelPage = KernelPage::new(kframe);
+            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
             let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
             page_table
         };
 
-        vmem.map(uframe, vaddr, access, page_table_allocator)?;
+        vmem.map(uframe, vaddr, access, &page_table_allocator)?;
 
         // Check if the page should be cleared.
         if clear {
@@ -170,9 +175,16 @@ impl VirtMemoryManager {
     ) -> Result<(), Error> {
         trace!("alloc_upages(): vaddr={:?}, nframes={}", vaddr, nframes);
 
-        let page_table_allocator = || {
-            let pgtable_storage: PageTableStorage =
-                PageTableStorage::Heap(Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]));
+        let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
+
+        let page_table_allocator = move || {
+            let kframe: KernelFrame = physman
+                .try_borrow_mut()
+                .unwrap()
+                .alloc_kernel_frame(true)
+                .unwrap();
+            let kpage: KernelPage = KernelPage::new(kframe);
+            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
             let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
             page_table
         };
@@ -189,7 +201,7 @@ impl VirtMemoryManager {
         // FIXME: check if range is not busy.
 
         for uframe in uframes {
-            vmem.map(uframe, vaddr, access, page_table_allocator)?;
+            vmem.map(uframe, vaddr, access, &page_table_allocator)?;
             vaddr = PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE)?;
         }
 
