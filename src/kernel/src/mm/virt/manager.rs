@@ -121,15 +121,18 @@ impl VirtMemoryManager {
 
         let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
         let page_table_allocator = move || {
-            let kframe: KernelFrame = physman
-                .try_borrow_mut()
-                .unwrap()
-                .alloc_kernel_frame(true)
-                .unwrap();
+            let kframe: KernelFrame = match physman.try_borrow_mut() {
+                Ok(mut physman) => physman.alloc_kernel_frame(true)?,
+                Err(_) => {
+                    let reason: &str = "failed to borrow physical memory manager";
+                    error!("alloc_upage(): {}", reason);
+                    return Err(Error::new(ErrorCode::ResourceBusy, reason));
+                },
+            };
             let kpage: KernelPage = KernelPage::new(kframe);
             let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
             let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-            page_table
+            Ok(page_table)
         };
 
         vmem.map(uframe, vaddr, access, &page_table_allocator)?;
@@ -178,15 +181,18 @@ impl VirtMemoryManager {
         let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
 
         let page_table_allocator = move || {
-            let kframe: KernelFrame = physman
-                .try_borrow_mut()
-                .unwrap()
-                .alloc_kernel_frame(true)
-                .unwrap();
+            let kframe: KernelFrame = match physman.try_borrow_mut() {
+                Ok(mut physman) => physman.alloc_kernel_frame(true)?,
+                Err(_) => {
+                    let reason: &str = "failed to borrow physical memory manager";
+                    error!("alloc_upage(): {}", reason);
+                    return Err(Error::new(ErrorCode::ResourceBusy, reason));
+                },
+            };
             let kpage: KernelPage = KernelPage::new(kframe);
             let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
             let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-            page_table
+            Ok(page_table)
         };
 
         let uframes: Vec<UserFrame> = match self.physman.try_borrow_mut() {

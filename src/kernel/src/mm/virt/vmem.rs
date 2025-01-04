@@ -224,7 +224,7 @@ impl Vmem {
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
-    pub fn map_kpage<T: Fn() -> PageTable<PageTableStorage>>(
+    pub fn map_kpage<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
         &mut self,
         kpage: KernelPage,
         vaddr: PageAligned<VirtualAddress>,
@@ -246,7 +246,7 @@ impl Vmem {
 
         // Check if page table does not exist.
         if !pde.is_present() {
-            let page_table: PageTable<PageTableStorage> = page_table_allocator();
+            let page_table: PageTable<PageTableStorage> = page_table_allocator()?;
 
             // FIXME: do not be so open about permissions.
             self.pgdir.map(
@@ -295,7 +295,7 @@ impl Vmem {
     }
 
     /// Maps a page to the target virtual address space.
-    pub fn map<T: Fn() -> PageTable<PageTableStorage>>(
+    pub fn map<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
         &mut self,
         uframe: UserFrame,
         vaddr: PageAligned<VirtualAddress>,
@@ -326,7 +326,7 @@ impl Vmem {
             // Get corresponding page table.
             // Check if corresponding page table does not exist.
             if !pde.is_present() {
-                let page_table: PageTable<PageTableStorage> = page_table_allocator();
+                let page_table: PageTable<PageTableStorage> = page_table_allocator()?;
 
                 let page_table_address: FrameAddress = page_table.physical_address()?;
                 // FIXME: do not be so open about permissions.

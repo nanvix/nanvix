@@ -226,7 +226,7 @@ pub fn init(
                     [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
                 ));
                 let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-                page_table
+                Ok(page_table)
             };
 
             vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
