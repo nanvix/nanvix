@@ -14,6 +14,7 @@ mod virt;
 //==================================================================================================
 
 pub mod kheap;
+use ::alloc::boxed::Box;
 pub use virt::{
     KernelPage,
     VirtMemoryManager,
@@ -32,7 +33,10 @@ use crate::{
     hal::{
         arch::x86::mem::mmu::{
             self,
-            page_table::PageTable,
+            page_table::{
+                PageTable,
+                PageTableStorage,
+            },
         },
         mem::{
             Address,
@@ -218,7 +222,16 @@ pub fn init(
 
         while vaddr.into_inner() < end {
             let kpage: KernelPage = mm.alloc_kpage(false)?;
-            vmem.map_kpage(kpage, vaddr)?;
+
+            let page_table_allocator = || {
+                let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
+                    [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
+                ));
+                let page_table: PageTable = PageTable::new(pgtable_storage);
+                page_table
+            };
+
+            vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
 
             match vaddr.into_raw_value().checked_add(mem::PAGE_SIZE) {
                 Some(raw_addr) => vaddr = PageAligned::from_raw_value(raw_addr)?,

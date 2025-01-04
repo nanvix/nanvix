@@ -37,6 +37,7 @@ use crate::hal::{
     },
 };
 use ::alloc::{
+    boxed::Box,
     collections::LinkedList,
     vec::Vec,
 };
@@ -115,7 +116,10 @@ pub fn init(
                     match page_table_addr.cmp(&last.0) {
                         Ordering::Greater => {
                             root_pagetables.push_back(last);
-                            let page_table: PageTable = PageTable::new(PageTableStorage::new());
+                            let pgtable_storage: PageTableStorage = PageTableStorage::Heap(
+                                Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]),
+                            );
+                            let page_table: PageTable = PageTable::new(pgtable_storage);
                             let page_table_addr: PageTableAligned<VirtualAddress> =
                                 PageTableAligned::from_address(VirtualAddress::new(
                                     ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
@@ -131,7 +135,10 @@ pub fn init(
                     }
                 } else {
                     trace!("creating new page table for {:#010x}", raw_vaddr);
-                    let page_table: PageTable = PageTable::new(PageTableStorage::new());
+                    let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
+                        [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
+                    ));
+                    let page_table: PageTable = PageTable::new(pgtable_storage);
                     let page_table_addr: PageTableAligned<VirtualAddress> =
                         PageTableAligned::from_address(VirtualAddress::new(
                             ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
