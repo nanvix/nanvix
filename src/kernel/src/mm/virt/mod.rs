@@ -17,10 +17,7 @@ mod vmem;
 use crate::hal::{
     arch::x86::mem::mmu::{
         self,
-        page_table::{
-            PageTable,
-            PageTableStorage,
-        },
+        page_table::PageTable,
     },
     mem::{
         AccessPermission,
@@ -37,10 +34,17 @@ use crate::hal::{
     },
 };
 use ::alloc::{
+    boxed::Box,
     collections::LinkedList,
     vec::Vec,
 };
-use ::core::cmp::Ordering;
+use ::core::{
+    cmp::Ordering,
+    ops::{
+        Deref,
+        DerefMut,
+    },
+};
 use ::sys::{
     arch::mem,
     config,
@@ -59,6 +63,48 @@ pub use manager::VirtMemoryManager;
 pub use vmem::Vmem;
 
 //==================================================================================================
+// Structures and Enums
+//==================================================================================================
+
+pub enum PageTableStorage {
+    Heap(Box<[u32; mem::PAGE_SIZE / core::mem::size_of::<u32>()]>),
+    KernelPage(KernelPage),
+}
+
+impl Deref for PageTableStorage {
+    type Target = [u32];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Heap(entries) => entries.deref(),
+            Self::KernelPage(page) => {
+                let base: *const u32 = page.base().into_raw_value() as *const u32;
+                unsafe {
+                    core::slice::from_raw_parts(base, mem::PAGE_SIZE / core::mem::size_of::<u32>())
+                }
+            },
+        }
+    }
+}
+
+impl DerefMut for PageTableStorage {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Heap(entries) => entries.deref_mut(),
+            Self::KernelPage(page) => {
+                let base: *mut u32 = page.base().into_raw_value() as *mut u32;
+                unsafe {
+                    core::slice::from_raw_parts_mut(
+                        base,
+                        mem::PAGE_SIZE / core::mem::size_of::<u32>(),
+                    )
+                }
+            },
+        }
+    }
+}
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
@@ -66,10 +112,11 @@ pub use vmem::Vmem;
 pub fn init(
     mut virtual_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     mut mmio_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-) -> Result<LinkedList<(PageTableAddress, PageTable)>, Error> {
+) -> Result<LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>, Error> {
     info!("booking virtual memory regions ...");
 
-    let mut root_pagetables: LinkedList<(PageTableAddress, PageTable)> = LinkedList::new();
+    let mut root_pagetables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
+        LinkedList::new();
 
     // Sort memory regions by start address.
     let mut regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>> = {
@@ -104,7 +151,7 @@ pub fn init(
         let end: usize = raw_vaddr + (region.size() - 1);
 
         while raw_vaddr < end {
-            let (page_table_addr, mut page_table): (PageTableAddress, PageTable) =
+            let (page_table_addr, mut page_table): (PageTableAddress, PageTable<PageTableStorage>) =
                 if let Some(last) = root_pagetables.pop_back() {
                     let page_table_addr: PageTableAddress = PageTableAddress::new(
                         PageTableAligned::from_address(VirtualAddress::new(
@@ -115,7 +162,11 @@ pub fn init(
                     match page_table_addr.cmp(&last.0) {
                         Ordering::Greater => {
                             root_pagetables.push_back(last);
-                            let page_table: PageTable = PageTable::new(PageTableStorage::new());
+                            let pgtable_storage: PageTableStorage = PageTableStorage::Heap(
+                                Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]),
+                            );
+                            let page_table: PageTable<PageTableStorage> =
+                                PageTable::<PageTableStorage>::new(pgtable_storage);
                             let page_table_addr: PageTableAligned<VirtualAddress> =
                                 PageTableAligned::from_address(VirtualAddress::new(
                                     ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
@@ -131,7 +182,11 @@ pub fn init(
                     }
                 } else {
                     trace!("creating new page table for {:#010x}", raw_vaddr);
-                    let page_table: PageTable = PageTable::new(PageTableStorage::new());
+                    let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
+                        [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
+                    ));
+                    let page_table: PageTable<PageTableStorage> =
+                        PageTable::<PageTableStorage>::new(pgtable_storage);
                     let page_table_addr: PageTableAligned<VirtualAddress> =
                         PageTableAligned::from_address(VirtualAddress::new(
                             ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),

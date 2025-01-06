@@ -13,26 +13,19 @@ use crate::hal::mem::{
     PageAligned,
     PhysicalAddress,
 };
-use ::alloc::boxed::Box;
-use ::core::ops::{
-    Deref,
-    DerefMut,
-};
+use ::core::ops::DerefMut;
 use ::sys::{
-    arch::mem::{
-        self,
-        paging::{
-            AccessedFlag,
-            DirtyFlag,
-            FrameNumber,
-            PageCacheDisableFlag,
-            PageTableEntry,
-            PageTableEntryFlags,
-            PageWriteThroughFlag,
-            PresentFlag,
-            ReadWriteFlag,
-            UserSupervisorFlag,
-        },
+    arch::mem::paging::{
+        AccessedFlag,
+        DirtyFlag,
+        FrameNumber,
+        PageCacheDisableFlag,
+        PageTableEntry,
+        PageTableEntryFlags,
+        PageWriteThroughFlag,
+        PresentFlag,
+        ReadWriteFlag,
+        UserSupervisorFlag,
     },
     error::{
         Error,
@@ -43,52 +36,23 @@ use ::sys::{
 //==================================================================================================
 // Structures
 //==================================================================================================
-
-pub enum PageTableStorage {
-    Heap(Box<[u32; mem::PAGE_SIZE / core::mem::size_of::<u32>()]>),
-}
-
 ///
 /// # Description
 ///
 /// A type that represents a page table.
 ///
-pub struct PageTable {
+pub struct PageTable<T: DerefMut<Target = [u32]>> {
     /// Entries.
-    entries: PageTableStorage,
+    entries: T,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl PageTableStorage {
-    pub fn new() -> Self {
-        Self::Heap(Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]))
-    }
-}
-
-impl Deref for PageTableStorage {
-    type Target = [u32];
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Heap(entries) => entries.deref(),
-        }
-    }
-}
-
-impl DerefMut for PageTableStorage {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Self::Heap(entries) => entries.deref_mut(),
-        }
-    }
-}
-
-impl PageTable {
-    pub fn new(entries: PageTableStorage) -> Self {
-        let mut page_table: PageTable = Self { entries };
+impl<T: DerefMut<Target = [u32]>> PageTable<T> {
+    pub fn new(entries: T) -> Self {
+        let mut page_table: Self = Self { entries };
         page_table.clean();
         page_table
     }
