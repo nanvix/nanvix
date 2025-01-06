@@ -127,7 +127,7 @@ function run_qemu
 			cmd="timeout -s SIGINT --preserve-status --foreground $timeout $cmd"
 		fi
 
-		$cmd
+		$cmd 2> stderr.log
 	fi
 }
 
