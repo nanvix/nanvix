@@ -7,7 +7,7 @@
 
 use crate::collections::{
     bitmap::Bitmap,
-    raw_array::RawArray,
+    RawArray,
 };
 use ::sys::error::{
     Error,
