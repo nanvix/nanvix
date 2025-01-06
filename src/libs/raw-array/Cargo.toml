@@ -1,0 +1,22 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "raw-array"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Raw Array Container"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+cfg-if = { workspace = true }
+sys = { workspace = true }
+
+[features]
+default = []
+std = []
