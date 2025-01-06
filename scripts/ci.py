@@ -24,6 +24,9 @@ TARGET_ARCHS: List[str] = ["x86"]
 LOG_LEVELS: List[str] = ["trace", "debug", "info", "warning", "error"]
 
 
+# Magic string used for asserting test success.
+MAGIC_STRING: str = "hello, world!"
+
 # ======================================================================================================================
 # Standalone Functions
 # ======================================================================================================================
@@ -59,6 +62,11 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
             if stdout:
                 print(stdout.strip())
                 stdout_file.write(stdout)
+
+                # Check for magic string and send SIGINT if found.
+                if MAGIC_STRING in stdout:
+                    process.send_signal(subprocess.signal.SIGINT)
+                    break
 
         return_code = process.poll()
 
@@ -154,13 +162,13 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
     make("run", machine, arch, release,
          toolchain_dir, log_level, verbose, timeout)
 
-    # Check if last line of "test-stdout.log" contains magic string "hello, world!".
+    # Check if last line of "test-stdout.log" contains the magic string.
     with open("run-stdout.log", "r") as file:
         lines = file.readlines()
         last_line = lines[-1]
 
-        # Check if last line contains magic string.
-        if "hello, world!" not in last_line:
+        # Check if last line contains the magic string.
+        if MAGIC_STRING not in last_line:
             print("last line:", last_line)
             print("Test failed.")
             exit(1)
