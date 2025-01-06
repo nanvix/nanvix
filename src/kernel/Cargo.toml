@@ -16,6 +16,7 @@ path = "src/kmain.rs"
 
 [dependencies]
 cfg-if = { workspace = true }
+raw-array = { workspace = true }
 sys = { workspace = true }
 hyperlight_common = { workspace = true, optional = true }
 

@@ -12,7 +12,7 @@ mod test;
 // Imports
 //==================================================================================================
 
-use crate::collections::raw_array::RawArray;
+use crate::collections::RawArray;
 use ::sys::error::{
     Error,
     ErrorCode,
