@@ -192,7 +192,7 @@ def parse_args() -> argparse.Namespace:
                         help=f"Set log level {LOG_LEVELS}", default="trace")
     parser.add_argument("--verbose", action="store_true",
                         help="Enable verbose build", default=True)
-    parser.add_argument("--timeout", type=int, help="Set test timeout")
+    parser.add_argument("--timeout", type=int, help="Set test timeout", default=90)
     parser.add_argument("--lint", action="store_true",
                         help="Lint Nanvix source code", default=False)
     parser.add_argument("--build", action="store_true",
