@@ -37,6 +37,8 @@ pub struct Slab {
     index: Bitmap,
     /// Base address of data blocks.
     data_addr: *mut u8,
+    /// Number of index blocks in the slab.
+    num_index_blocks: usize,
     /// Number of data blocks in the slab.
     num_data_blocks: usize,
     /// Size of blocks in the slab.
@@ -133,6 +135,7 @@ impl Slab {
         }
 
         Ok(Slab {
+            num_index_blocks,
             num_data_blocks,
             block_size,
             data_addr,
@@ -153,7 +156,10 @@ impl Slab {
     pub fn allocate(&mut self) -> Result<*mut u8, Error> {
         let block: usize = self.index.alloc()?;
         // Safety: the start and resulting addresses are valid.
-        let block_addr: *mut u8 = unsafe { self.data_addr.add(block * self.block_size) };
+        let block_addr: *mut u8 = unsafe {
+            self.data_addr
+                .add((block - self.num_index_blocks) * self.block_size)
+        };
         Ok(block_addr)
     }
 
@@ -181,7 +187,8 @@ impl Slab {
 
         // Compute the block index.
         // Safety: we have already checked that ptr is within the bounds of the slab.
-        let index: usize = unsafe { ptr.sub_ptr(self.data_addr) } / self.block_size;
+        let index: usize =
+            self.num_index_blocks + unsafe { ptr.sub_ptr(self.data_addr) } / self.block_size;
 
         // Check if the block is already free.
         if !self.index.test(index)? {
