@@ -13,6 +13,7 @@ members = [
         "src/daemons/procd",
         "src/daemons/wasmd",
         "src/kernel",
+        "src/libs/error",
         "src/libs/nvx",
         "src/libs/posix",
         "src/libs/proc",
@@ -37,6 +38,7 @@ homepage = "https://github.com/nanvix"
 anyhow = "1.0.95"
 cc = "1.2.6"
 cfg-if = "1.0.0"
+error = { path = "src/libs/error", default-features = false }
 flexi_logger = "0.29.8"
 http-body-util = "0.1.2"
 hyperlight_common = { git = "https://github.com/nanvix/hyperlight", default-features = false, package = "hyperlight-common" }
