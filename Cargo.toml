@@ -64,7 +64,7 @@ wasmi = { version = "0.40.0", default-features = false }
 [profile.dev]
 opt-level = 0
 debug = true
-strip = true
+strip = false
 debug-assertions = true
 overflow-checks = true
 lto = false
