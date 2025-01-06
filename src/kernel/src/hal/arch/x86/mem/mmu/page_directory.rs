@@ -24,6 +24,7 @@ use ::sys::{
         paging::{
             AccessedFlag,
             DirtyFlag,
+            FrameNumber,
             PageCacheDisableFlag,
             PageDirectoryEntry,
             PageDirectoryEntryFlags,
@@ -144,6 +145,63 @@ impl PageDirectory {
         self.write_pde(vaddr, pde);
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Unmaps a page from the page directory.
+    ///
+    /// # Parameters
+    ///
+    /// - `pgtable_address`: Page table address.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, `Ok(())` is returned. Upon failure, an error is returned
+    /// instead.
+    ///
+    pub fn unmap(&mut self, pgtable_address: PageTableAddress) -> Result<FrameAddress, Error> {
+        trace!("unmap(): vaddr={:?}", pgtable_address);
+
+        // Obtain a cached copy of the page directory entry.
+        let pde: PageDirectoryEntry = match self.read_pde(pgtable_address) {
+            Some(pde) => pde,
+            None => {
+                let reason: &str = "failed to read page directory entry";
+                error!("unmap(): {}", reason);
+                return Err(Error::new(ErrorCode::TryAgain, reason));
+            },
+        };
+
+        // Check if page directory entry is present.
+        if !pde.is_present() {
+            let reason: &str = "page directory entry is not present";
+            error!("unmap(): {}", reason);
+            return Err(Error::new(ErrorCode::ResourceBusy, reason));
+        }
+
+        // Retrieve frame address.
+        let paddr: FrameAddress = FrameAddress::from_frame_number(pde.frame())?;
+
+        // Construct page directory entry.
+        let pde: PageDirectoryEntry = PageDirectoryEntry::new(
+            PageDirectoryEntryFlags::new(
+                PresentFlag::NotPresent,
+                ReadWriteFlag::ReadOnly,
+                UserSupervisorFlag::User,
+                PageWriteThroughFlag::WriteThrough,
+                PageCacheDisableFlag::CacheDisabled,
+                AccessedFlag::NotAccessed,
+                DirtyFlag::NotDirty,
+            ),
+            FrameNumber::NULL,
+        );
+
+        // Write page directory entry.
+        self.write_pde(pgtable_address, pde);
+
+        Ok(paddr)
     }
 
     pub fn clean(&mut self) {
