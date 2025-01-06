@@ -1,0 +1,18 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "error"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Error Codes for Nanvix"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+default = []
+std = []
