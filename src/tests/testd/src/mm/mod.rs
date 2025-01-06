@@ -15,7 +15,14 @@ use ::nvx::{
         Capability,
         ProcessIdentifier,
     },
-    sys::config,
+    sys::{
+        arch::mem,
+        config,
+        config::{
+            kernel,
+            memory_layout,
+        },
+    },
 };
 
 //==================================================================================================
@@ -126,6 +133,105 @@ fn test_mmap_write_munmap() -> bool {
     true
 }
 
+///
+/// # Description
+///
+/// Attempts to map and unmap a page many times.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+fn test_mmap_munmap_many_times_inplace() -> bool {
+    // Acquire memory management capability.
+    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+        Ok(()) => (),
+        _ => return false,
+    }
+
+    let mypid: ProcessIdentifier = match nvx::pm::getpid() {
+        Ok(pid) => pid,
+        Err(_) => return false,
+    };
+
+    let ntimes: usize = (kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
+
+    for _ in 0..ntimes {
+        let vaddr: VirtualAddress = memory_layout::USER_HEAP_BASE;
+
+        // Map a page.
+        match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+            Ok(_) => (),
+            Err(_) => return false,
+        }
+
+        // Unmap the page.
+        match nvx::mm::munmap(mypid, vaddr) {
+            Ok(_) => (),
+            Err(_) => return false,
+        }
+    }
+
+    // Release memory management capability.
+    match nvx::pm::capctl(Capability::MemoryManagement, false) {
+        Ok(()) => (),
+        _ => return false,
+    }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Attempts to map and unmap a page many times.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+fn test_mmap_munmap_many_times_rolling() -> bool {
+    // Acquire memory management capability.
+    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+        Ok(()) => (),
+        _ => return false,
+    }
+
+    let mypid: ProcessIdentifier = match nvx::pm::getpid() {
+        Ok(pid) => pid,
+        Err(_) => return false,
+    };
+
+    let ntimes: usize = (kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
+
+    for vaddr in (0..ntimes).map(|i| memory_layout::USER_HEAP_BASE_RAW + i * mem::PAGE_SIZE) {
+        let vaddr: VirtualAddress = match VirtualAddress::from_raw_value(vaddr) {
+            Ok(vaddr) => vaddr,
+            Err(_) => return false,
+        };
+
+        // Map a page.
+        match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+            Ok(_) => (),
+            Err(_) => return false,
+        }
+
+        // Unmap the page.
+        match nvx::mm::munmap(mypid, vaddr) {
+            Ok(_) => (),
+            Err(_) => return false,
+        }
+    }
+
+    // Release memory management capability.
+    match nvx::pm::capctl(Capability::MemoryManagement, false) {
+        Ok(()) => (),
+        _ => return false,
+    }
+
+    true
+}
+
 //==================================================================================================
 // Public Standalone Functions
 //==================================================================================================
@@ -138,4 +244,6 @@ fn test_mmap_write_munmap() -> bool {
 pub fn test() {
     crate::test!(test_mmap_munmap());
     crate::test!(test_mmap_write_munmap());
+    crate::test!(test_mmap_munmap_many_times_inplace());
+    crate::test!(test_mmap_munmap_many_times_rolling());
 }
