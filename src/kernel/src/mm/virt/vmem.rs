@@ -1,10 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// TODO: remove this.
+#![allow(clippy::type_complexity)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
-
 use crate::{
     hal::{
         arch::x86::mem::mmu::{
@@ -13,10 +15,7 @@ use crate::{
                 PageDirectory,
                 PageDirectoryStorage,
             },
-            page_table::{
-                PageTable,
-                PageTableStorage,
-            },
+            page_table::PageTable,
         },
         mem::{
             AccessPermission,
@@ -35,6 +34,7 @@ use crate::{
         virt::{
             kpage::KernelPage,
             upage::AttachedUserPage,
+            PageTableStorage,
         },
     },
 };
@@ -113,14 +113,14 @@ pub struct Vmem {
     /// Underlying page directory.
     pgdir: PageDirectory,
     /// List of kernel page tables.
-    kernel_page_tables: LinkedList<Rc<RefCell<(PageTableAddress, PageTable)>>>,
+    kernel_page_tables: LinkedList<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>>,
     /// List of kernel pages mapped in the virtual address space.
     /// NOTE: this currently excludes kernel pages that are identity mapped.
     kernel_pages: LinkedList<Rc<RefCell<KernelPage>>>,
     /// List of private kernel pages.
     private_kernel_pages: LinkedList<KernelPage>,
     /// List of user page tables.
-    user_page_tables: LinkedList<(PageTableAddress, PageTable)>,
+    user_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     //// User pages in the virtual address space.
     user_pages: BTreeMap<PageTableAddress, LinkedList<AttachedUserPage>>,
 }
@@ -129,7 +129,7 @@ impl Vmem {
     /// Initializes a new virtual memory space.
     pub fn new(
         mut kernel_pages: LinkedList<KernelPage>,
-        mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable)>,
+        mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     ) -> Result<Self, Error> {
         trace!("new()");
 
@@ -138,8 +138,9 @@ impl Vmem {
         pgdir.clean();
 
         // Map and store root page tables.
-        let mut kpage_tables: LinkedList<Rc<RefCell<(PageTableAddress, PageTable)>>> =
-            LinkedList::new();
+        let mut kpage_tables: LinkedList<
+            Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>,
+        > = LinkedList::new();
         while let Some((vaddr, page_table)) = kernel_page_tables.pop_front() {
             let page_table_address: FrameAddress = page_table.physical_address()?;
             // FIXME: do not be so open about permissions.
@@ -170,8 +171,9 @@ impl Vmem {
         pgdir.clean();
 
         // Map and store root page tables.
-        let mut kernel_page_tables: LinkedList<Rc<RefCell<(PageTableAddress, PageTable)>>> =
-            LinkedList::new();
+        let mut kernel_page_tables: LinkedList<
+            Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>,
+        > = LinkedList::new();
         for entry in from.kernel_page_tables.iter() {
             let page_table_address: FrameAddress = entry.borrow().1.physical_address()?;
             // FIXME: do not be so open about permissions.
@@ -224,10 +226,11 @@ impl Vmem {
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
-    pub fn map_kpage(
+    pub fn map_kpage<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
         &mut self,
         kpage: KernelPage,
         vaddr: PageAligned<VirtualAddress>,
+        page_table_allocator: T,
     ) -> Result<(), Error> {
         let pt_vaddr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
             ::sys::mm::align_down(vaddr.into_raw_value(), mmu::PGTAB_ALIGNMENT),
@@ -245,8 +248,7 @@ impl Vmem {
 
         // Check if page table does not exist.
         if !pde.is_present() {
-            let pgtable_storage: PageTableStorage = PageTableStorage::new();
-            let page_table: PageTable = PageTable::new(pgtable_storage);
+            let page_table: PageTable<PageTableStorage> = page_table_allocator()?;
 
             // FIXME: do not be so open about permissions.
             self.pgdir.map(
@@ -295,11 +297,12 @@ impl Vmem {
     }
 
     /// Maps a page to the target virtual address space.
-    pub fn map(
+    pub fn map<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
         &mut self,
         uframe: UserFrame,
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
+        page_table_allocator: T,
     ) -> Result<(), Error> {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
@@ -307,7 +310,7 @@ impl Vmem {
         }
 
         // Get corresponding page table.
-        let (pgtable_addr, page_table): (PageTableAddress, &mut PageTable) = {
+        let (pgtable_addr, page_table): (PageTableAddress, &mut PageTable<PageTableStorage>) = {
             let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
                 ::sys::mm::align_down(vaddr.into_raw_value(), mmu::PGTAB_ALIGNMENT),
             )?;
@@ -325,8 +328,7 @@ impl Vmem {
             // Get corresponding page table.
             // Check if corresponding page table does not exist.
             if !pde.is_present() {
-                let pgtable_storage: PageTableStorage = PageTableStorage::new();
-                let page_table: PageTable = PageTable::new(pgtable_storage);
+                let page_table: PageTable<PageTableStorage> = page_table_allocator()?;
 
                 let page_table_address: FrameAddress = page_table.physical_address()?;
                 // FIXME: do not be so open about permissions.
@@ -376,7 +378,10 @@ impl Vmem {
     }
 
     /// Looks up a page table in the list of page tables.
-    fn lookup_page_table(&mut self, pde: &PageDirectoryEntry) -> Result<&mut PageTable, Error> {
+    fn lookup_page_table(
+        &mut self,
+        pde: &PageDirectoryEntry,
+    ) -> Result<&mut PageTable<PageTableStorage>, Error> {
         // Check if corresponding page table does not exist.
         if !pde.is_present() {
             return Err(Error::new(ErrorCode::NoSuchEntry, "page table not present"));
@@ -386,7 +391,7 @@ impl Vmem {
         let pgtab_addr: FrameAddress = FrameAddress::from_frame_number(pde.frame())?;
 
         // Find corresponding page table.
-        let mut page_table: Option<&mut PageTable> = None;
+        let mut page_table: Option<&mut PageTable<PageTableStorage>> = None;
         for (_pgtable_vaddr, pt) in self.user_page_tables.iter_mut() {
             if pt.physical_address()? == pgtab_addr {
                 page_table = Some(pt);
@@ -407,7 +412,7 @@ impl Vmem {
     fn lookup_kernel_page_table(
         &mut self,
         pde: &PageDirectoryEntry,
-    ) -> Result<Rc<RefCell<(PageTableAddress, PageTable)>>, Error> {
+    ) -> Result<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>, Error> {
         // Check if corresponding page table does not exist.
         if !pde.is_present() {
             return Err(Error::new(ErrorCode::NoSuchEntry, "page table not present"));
@@ -417,7 +422,8 @@ impl Vmem {
         let pgtab_addr: FrameAddress = FrameAddress::from_frame_number(pde.frame())?;
 
         // Find corresponding page table.
-        let mut page_table: Option<Rc<RefCell<(PageTableAddress, PageTable)>>> = None;
+        let mut page_table: Option<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>> =
+            None;
         for pt in self.kernel_page_tables.iter_mut() {
             if pt.borrow().1.physical_address()? == pgtab_addr {
                 page_table = Some(pt.clone());
@@ -788,7 +794,7 @@ impl Vmem {
 
         let pgtable_vaddr = {
             // Get corresponding page table.
-            let (pgtable_vaddr, page_table): (PageTableAddress, &mut PageTable) = {
+            let (pgtable_vaddr, page_table): (PageTableAddress, &mut PageTable<PageTableStorage>) = {
                 let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
                     ::sys::mm::align_down(vaddr.into_raw_value(), mmu::PGTAB_ALIGNMENT),
                 )?;
@@ -884,7 +890,7 @@ impl Vmem {
         }
 
         // Get corresponding page table.
-        let page_table: &mut PageTable = {
+        let page_table: &mut PageTable<PageTableStorage> = {
             let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
                 ::sys::mm::align_down(vaddr.into_raw_value(), mmu::PGTAB_ALIGNMENT),
             )?;
