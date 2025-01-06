@@ -15,7 +15,7 @@ pub mod config;
 pub mod constants;
 
 /// Error codes.
-pub mod error;
+pub use ::error;
 
 /// Events.
 pub mod event;
