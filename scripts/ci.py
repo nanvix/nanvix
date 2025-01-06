@@ -192,8 +192,11 @@ def parse_args() -> argparse.Namespace:
                         help=f"Set target architecture {TARGET_ARCHS}", required=True)
 
     # Optional arguments.
-    parser.add_argument("--release", action="store_true",
-                        help="Build in release mode", default=False)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--release", action="store_true",
+                       help="Build in release mode", default=False)
+    group.add_argument("--debug", action="store_true",
+                       help="Build in debug mode", default=True)
     parser.add_argument("--toolchain-dir", type=str,
                         help="Set toolchain directory")
     parser.add_argument("--log-level", type=str,
@@ -221,6 +224,7 @@ def main() -> None:
     print(f"  - Toolchain directory: {args.toolchain_dir}")
     print(f"  - Log level: {args.log_level}")
     print(f"  - Release: {args.release}")
+    print(f"  - Debug: {args.debug}")
     print(f"  - Lint: {args.lint}")
     print(f"  - Build: {args.build}")
     print(f"  - Verbose: {args.verbose}")
@@ -228,17 +232,17 @@ def main() -> None:
 
     # Lint source code.
     if args.lint:
-        lint(args.target_machine, args.target_arch, args.release, args.toolchain_dir,
+        lint(args.target_machine, args.target_arch, args.release or not args.debug, args.toolchain_dir,
              args.log_level, args.verbose)
 
     # Build source code.
     if args.build or args.test:
-        build(args.target_machine, args.target_arch, args.release,
+        build(args.target_machine, args.target_arch, args.release or not args.debug,
               args.toolchain_dir, args.log_level, args.verbose)
 
     # Test Nanvix.
     if args.test:
-        test(args.target_machine, args.target_arch, args.release,
+        test(args.target_machine, args.target_arch, args.release or not args.debug,
              args.toolchain_dir, args.log_level, args.verbose, args.timeout)
 
 
