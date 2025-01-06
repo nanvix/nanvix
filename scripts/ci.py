@@ -24,6 +24,9 @@ TARGET_ARCHS: List[str] = ["x86"]
 LOG_LEVELS: List[str] = ["trace", "debug", "info", "warning", "error"]
 
 
+# Magic string used for asserting test success.
+MAGIC_STRING: str = "hello, world!"
+
 # ======================================================================================================================
 # Standalone Functions
 # ======================================================================================================================
@@ -59,6 +62,11 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
             if stdout:
                 print(stdout.strip())
                 stdout_file.write(stdout)
+
+                # Check for magic string and send SIGINT if found.
+                if MAGIC_STRING in stdout:
+                    process.send_signal(subprocess.signal.SIGINT)
+                    break
 
         return_code = process.poll()
 
@@ -154,13 +162,13 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
     make("run", machine, arch, release,
          toolchain_dir, log_level, verbose, timeout)
 
-    # Check if last line of "test-stdout.log" contains magic string "hello, world!".
+    # Check if last line of "test-stdout.log" contains the magic string.
     with open("run-stdout.log", "r") as file:
         lines = file.readlines()
         last_line = lines[-1]
 
-        # Check if last line contains magic string.
-        if "hello, world!" not in last_line:
+        # Check if last line contains the magic string.
+        if MAGIC_STRING not in last_line:
             print("last line:", last_line)
             print("Test failed.")
             exit(1)
@@ -184,8 +192,11 @@ def parse_args() -> argparse.Namespace:
                         help=f"Set target architecture {TARGET_ARCHS}", required=True)
 
     # Optional arguments.
-    parser.add_argument("--release", action="store_true",
-                        help="Build in release mode", default=False)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--release", action="store_true",
+                       help="Build in release mode", default=False)
+    group.add_argument("--debug", action="store_true",
+                       help="Build in debug mode", default=True)
     parser.add_argument("--toolchain-dir", type=str,
                         help="Set toolchain directory")
     parser.add_argument("--log-level", type=str,
@@ -213,6 +224,7 @@ def main() -> None:
     print(f"  - Toolchain directory: {args.toolchain_dir}")
     print(f"  - Log level: {args.log_level}")
     print(f"  - Release: {args.release}")
+    print(f"  - Debug: {args.debug}")
     print(f"  - Lint: {args.lint}")
     print(f"  - Build: {args.build}")
     print(f"  - Verbose: {args.verbose}")
@@ -220,17 +232,17 @@ def main() -> None:
 
     # Lint source code.
     if args.lint:
-        lint(args.target_machine, args.target_arch, args.release, args.toolchain_dir,
+        lint(args.target_machine, args.target_arch, args.release or not args.debug, args.toolchain_dir,
              args.log_level, args.verbose)
 
     # Build source code.
     if args.build or args.test:
-        build(args.target_machine, args.target_arch, args.release,
+        build(args.target_machine, args.target_arch, args.release or not args.debug,
               args.toolchain_dir, args.log_level, args.verbose)
 
     # Test Nanvix.
     if args.test:
-        test(args.target_machine, args.target_arch, args.release,
+        test(args.target_machine, args.target_arch, args.release or not args.debug,
              args.toolchain_dir, args.log_level, args.verbose, args.timeout)
 
 

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Toolchain directory.
+toolchain_dir=$(pwd)/toolchain
+
+# Check if toolchain directory exists.
+if [ ! -d "$toolchain_dir" ]; then
+  echo "toolchain directory not found"
+  exit 1
+fi
+
+# Check if there are any untracked files as this may impact the pipeline.
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Untracked files found, please commit or remove them before pushing."
+  exit 1
+fi
+
+# Get the name of the branch being pushed
+branch_name=$(git rev-parse --abbrev-ref HEAD)
+
+# Check if the branch name is "dev"
+if [ "$branch_name" = "dev" ]; then
+  echo "Running pipeline for branch 'dev'..."
+    ./scripts/pipeline.sh $toolchain_dir
+else
+    echo "Not on 'dev' branch, skipping pipeline."
+fi
