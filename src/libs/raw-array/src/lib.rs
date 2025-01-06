@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //==================================================================================================
 // Modules
 //==================================================================================================
@@ -12,7 +14,22 @@ mod test;
 // Imports
 //==================================================================================================
 
-use ::alloc::alloc;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "std")] {
+        use std::alloc;
+        use alloc::{
+            alloc,
+            dealloc,
+        };
+    } else {
+        extern crate alloc;
+        use alloc::alloc::{
+            alloc,
+            dealloc,
+        };
+    }
+}
+
 use ::core::{
     alloc::Layout,
     ops::{
@@ -71,7 +88,7 @@ impl<T> RawArrayStorage<T> {
             Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid layout")),
         };
         let ptr: ptr::NonNull<T> = {
-            let ptr: *mut u8 = unsafe { alloc::alloc(layout) };
+            let ptr: *mut u8 = unsafe { alloc(layout) };
             match ptr::NonNull::new(ptr as *mut T) {
                 Some(p) => p,
                 None => {
@@ -263,7 +280,7 @@ impl<T> Drop for RawArray<T> {
                     Err(_) => return,
                 };
                 unsafe {
-                    alloc::dealloc(ptr.as_ptr() as *mut u8, layout);
+                    dealloc(ptr.as_ptr() as *mut u8, layout);
                 }
             },
             RawArrayStorage::Unmanaged { .. } => (),
