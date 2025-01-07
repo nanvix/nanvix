@@ -11,6 +11,29 @@ use crate::fcntl;
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
+/// The `unlink()` system call deletes a name from the filesystem.
+///
+/// If that name was the last link to a file and no processes have the file open, the file is
+/// deleted and the space it was using is made available for reuse. have the file open, the file
+/// will remain in existence until the last file descriptor referring to it is closed.
+///
+/// If the name referred to a symbolic link, the link is removed.
+///
+/// If the name referred to a socket, FIFO, or device, the name for it is removed but processes
+/// which have the object open may continue to use it.
+///
+/// # Parameters
+///
+/// - `path`: path to the file to be unlinked.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, an error code is returned instead.
+///
 pub fn unlink(path: &str) -> i32 {
+    ::nvx::log!("unlink(): path = {:?}", path);
     fcntl::unlinkat(crate::fcntl::AT_FDCWD, path, 0)
 }
