@@ -2,13 +2,25 @@
 // Licensed under the MIT license.
 
 //==================================================================================================
+// Configuration
+//==================================================================================================
+
+#![feature(ptr_sub_ptr)] // Slab::deallocate() uses this.
+#![cfg_attr(not(feature = "std"), no_std)]
+
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+#[cfg(all(test, feature = "std"))]
+mod test;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::collections::{
-    Bitmap,
-    RawArray,
-};
+use ::bitmap::Bitmap;
+use ::raw_array::RawArray;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -176,7 +188,13 @@ impl Slab {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    pub fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
+    /// # Safety
+    ///
+    /// This function is unsafe for the following reasons:
+    ///
+    /// - It dereferences the pointer `ptr`.
+    ///
+    pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
         // Check if the pointer lies in a memory region that is not managed by this allocator.
         // Safety: the start and resulting addresses are valid.
         if ptr < self.data_addr
