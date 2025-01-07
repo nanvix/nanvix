@@ -22,5 +22,5 @@ num_enum = { workspace = true }
 default = ["syscall", "allocator", "staticlib"]
 allocator = ["nvx/allocator"]
 syscall = []
-std = []
+std = ["nvx/std"]
 staticlib = ["nvx/staticlib"]
