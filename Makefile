@@ -183,7 +183,7 @@ export GRUB_CMD := grub-mkrescue
 ALL_GUEST_STATIC_LIBS := nvx posix
 ALL_GUEST_RUST_LIBS := bitmap error proc raw-array slab sys
 
-ALL_GUEST_DAEMONS := memd procd wasmd
+ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo boottime linux-app
 ALL_GUEST_APPLICATIONS := hello-rust
 ALL_GUEST_TESTS := testd
@@ -205,6 +205,7 @@ all: \
 	init \
 	all-guest-staticlibs \
 	all-guest-binaries \
+	all-wasmd \
 	all-kernel \
 	all-wasm-binaries \
 	all-host-binaries \
@@ -220,6 +221,7 @@ init:
 clean: \
 	clean-guest-staticlibs \
 	clean-guest-binaries \
+	clean-wasmd \
 	clean-kernel \
 	clean-wasm-binaries \
 	clean-host-binaries \
@@ -243,6 +245,7 @@ check: \
 	check-guest-staticlibs \
 	check-guest-rlibs \
 	check-guest-binaries \
+	check-wasmd \
 	check-kernel \
 	check-wasm-binaries \
 	check-host-binaries \
@@ -345,14 +348,14 @@ test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(targ
 #===================================================================================================
 
 define GUEST_BINARY_RULES
-all-guest-binaries-$(1):
+all-guest-binaries-$(1): all-guest-staticlibs
 	$(GUEST_CARGO_BUILD_CMD) -p $(1)
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
 
 check-guest-binaries-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
 
-clean-guest-binaries-$(1):
+clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
@@ -362,15 +365,29 @@ endef
 
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
 
-all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(target)) all-guest-staticlibs
+all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(target))
 	$(MAKE) -C $(SOURCES_DIR)/user all
 
 check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),check-guest-binaries-$(target))
 
-clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target)) clean-guest-staticlibs
+clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
 	$(MAKE) -C $(SOURCES_DIR)/user clean
 
-clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))
+clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
+
+all-wasmd: all-wasm-binaries
+	$(GUEST_CARGO_BUILD_CMD) -p wasmd
+	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/wasmd.elf $(BINARIES_DIR)/wasmd.elf
+
+check-wasmd:
+	$(GUEST_CARGO_CHECK_CMD) -p wasmd
+
+clean-wasmd: clean-wasm-binaries
+	$(GUEST_CARGO_CLEAN_CMD) -p wasmd
+	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
+
+clippy-wasmd:
+	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd
 
 #===================================================================================================
 # Build Rules for Kernel Binary
