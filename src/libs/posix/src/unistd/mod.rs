@@ -50,6 +50,7 @@ cfg_if::cfg_if! {
             open,
             link,
             unlink,
+            sbrk
         };
     }
 }

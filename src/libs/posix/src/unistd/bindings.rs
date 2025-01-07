@@ -87,6 +87,40 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> 
 }
 
 ///
+/// # Description
+///
+/// Increments the program break.
+///
+/// # Parameters
+///
+/// - `size`: Number of bytes to increment the program break.
+///
+/// # Returns
+///
+/// Upon successful completion, the `sbrk()` function returns the address of the start of the newly
+/// allocated memory. Otherwise, it returns `(void *) -1` and sets `errno` to indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::syscall::sbrk()`]
+///
+#[no_mangle]
+pub extern "C" fn sbrk(size: isize) -> *mut u8 {
+    match crate::unistd::sbrk(size) {
+        // Succeeded to increment the program break.
+        Ok(ptr) => ptr,
+        // Failed to increment the program break.
+        Err(e) => {
+            // Set errno.
+            unsafe {
+                errno = e.code.into_errno();
+            }
+            (-1_isize) as *mut u8
+        },
+    }
+}
+
+///
 /// # Safety
 ///
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.
