@@ -19,6 +19,7 @@ members = [
         "src/libs/posix",
         "src/libs/proc",
         "src/libs/raw-array",
+        "src/libs/slab",
         "src/libs/sys",
         "src/microvm",
         "src/tests/testd",
@@ -60,6 +61,7 @@ raw-array = { path = "src/libs/raw-array", default-features = false }
 serde = { version = "1.0.217", default-features = false }
 serde_json = "1.0.134"
 signal-hook = "0.3.17"
+slab = { path = "src/libs/slab", default-features = false }
 spin = "0.9.8"
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
