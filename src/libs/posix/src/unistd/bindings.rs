@@ -176,6 +176,57 @@ pub extern "C" fn sbrk(size: isize) -> *mut u8 {
 ///
 /// # Description
 ///
+/// Creates a symbolic link named `linkpath` which contains the string `target`.
+///
+/// # Parameters
+///
+/// - `target`: Path to the file to be linked.
+/// - `linkpath`: Path to the new file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::syscall::symlink()`]
+///
+#[no_mangle]
+pub extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int {
+    // Convert C strings to Rust strings.
+    let target: &str = match unsafe { ffi::CStr::from_ptr(target).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+    let linkpath: &str = match unsafe { ffi::CStr::from_ptr(linkpath).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    let retcode: c_int = crate::unistd::symlink(target, linkpath);
+
+    // Check if the system call failed.
+    if retcode < 0 {
+        // System call failed. Set errno.
+        unsafe {
+            errno = match ErrorCode::try_from(retcode) {
+                Ok(e) => e.into_errno(),
+                Err(_) => {
+                    ::nvx::log!("symlink(): invalid error code ({})", retcode);
+                    ErrorCode::ValueOutOfRange.into_errno()
+                },
+            }
+        }
+        return -1;
+    }
+
+    0
+}
+
+///
+/// # Description
+///
 /// Deletes a name from the filesystem.
 ///
 /// # Parameters
