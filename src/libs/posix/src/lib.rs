@@ -41,6 +41,9 @@ pub mod netinet;
 /// Standard symbolic constants and types.
 pub mod unistd;
 
+/// Execution scheduling.
+pub mod sched;
+
 /// Signals
 pub mod signal;
 
