@@ -2,24 +2,24 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Imports
 //==================================================================================================
 
-mod capability;
-mod identity;
-mod sched;
+use ::nvx::sys::error::Error;
 
 //==================================================================================================
-// Public Standalone Functions
+// Standalone Functions
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// Tests kernel calls in the process management facility.
+/// Yields the processor.
 ///
-pub fn test() {
-    sched::test();
-    identity::test();
-    capability::test();
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Otherwise an error code is returned instead.
+///
+pub fn sched_yield() -> Result<(), Error> {
+    nvx::sys::kcall::sched::sched_yield()
 }
