@@ -31,9 +31,14 @@ pub use ::sys::kcall::mm::{
 // Constants
 //==================================================================================================
 
-/// Heap size (in bytes). This value was chosen arbitrarily.
-#[cfg(all(target_os = "none", feature = "allocator"))]
-const HEAP_SIZE: usize = 8 * ::sys::constants::MEGABYTE;
+cfg_if::cfg_if! {
+    if #[cfg(all(target_os = "none", feature = "allocator"))] {
+        /// Heap size (in bytes). This value was chosen arbitrarily.
+        pub const HEAP_SIZE: usize = 8 * ::sys::constants::MEGABYTE;
+        /// Based address for break address.
+        pub const BREAK_BASE_RAW: usize = ::sys::config::memory_layout::USER_HEAP_BASE_RAW + HEAP_SIZE/2;
+    }
+}
 
 //==================================================================================================
 // Standalone Functions
@@ -108,20 +113,4 @@ pub fn cleanup() -> Result<(), Error> {
         kcall::pm::capctl(Capability::MemoryManagement, false)?;
     }
     Ok(())
-}
-
-#[no_mangle]
-#[cfg(all(target_os = "none", feature = "allocator"))]
-pub extern "C" fn sbrk(size: isize) -> *mut u8 {
-    crate::log!("sbrk(): size = {}", size);
-    static mut END: *mut u8 =
-        (::sys::config::memory_layout::USER_HEAP_BASE_RAW + HEAP_SIZE / 2) as *mut u8;
-
-    let old_end = unsafe {
-        let old_end = END;
-        END = END.offset(size);
-        old_end
-    };
-
-    old_end
 }

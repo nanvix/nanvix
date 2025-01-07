@@ -16,6 +16,7 @@ mod open;
 mod pread;
 mod pwrite;
 mod read;
+mod sbrk;
 mod unlink;
 mod write;
 
@@ -35,6 +36,7 @@ pub use self::{
     pread::pread,
     pwrite::pwrite,
     read::read,
+    sbrk::sbrk,
     unlink::unlink,
     write::write,
 };
