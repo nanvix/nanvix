@@ -9,35 +9,21 @@
 #![no_std]
 #![no_main]
 
-extern crate alloc;
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+#[cfg(feature = "wasm_binary")]
+mod wasm_binary;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
+extern crate alloc;
+
 use ::alloc::vec::Vec;
-use ::core::mem;
 use ::nvx::sys::error::Error;
-use ::posix::{
-    ffi::c_int,
-    netinet::in_::{
-        in_addr,
-        sockaddr_in,
-    },
-    sys::{
-        self,
-        socket::{
-            self,
-            sockaddr,
-            socklen_t,
-        },
-        types::{
-            size_t,
-            ssize_t,
-        },
-    },
-    unistd,
-};
 use ::wasmi::{
     Caller,
     Engine,
@@ -93,14 +79,35 @@ fn fmodf(a: f32, b: f32) -> f32 {
     a % b
 }
 
-// const WASM_BYTES: &[u8] = include_bytes!("../bin/hello.wasm");
-
 struct WasmBinary {
     bytes: Vec<u8>,
 }
 
 impl WasmBinary {
-    pub fn from_network() -> Self {
+    #[cfg(not(feature = "wasm_binary"))]
+    pub fn new() -> Self {
+        use ::core::mem;
+        use ::posix::{
+            ffi::c_int,
+            netinet::in_::{
+                in_addr,
+                sockaddr_in,
+            },
+            sys::{
+                self,
+                socket::{
+                    self,
+                    sockaddr,
+                    socklen_t,
+                },
+                types::{
+                    size_t,
+                    ssize_t,
+                },
+            },
+            unistd,
+        };
+
         let sockfd: c_int = match socket::socket(socket::AF_INET as c_int, socket::SOCK_STREAM, 0) {
             sockfd if sockfd >= 0 => sockfd,
             errno => {
@@ -200,13 +207,20 @@ impl WasmBinary {
 
         Self { bytes: wasm_bytes }
     }
+
+    #[cfg(feature = "wasm_binary")]
+    pub fn new() -> Self {
+        Self {
+            bytes: wasm_binary::WASM_BYTES.to_vec(),
+        }
+    }
 }
 
 #[no_mangle]
 fn main() -> Result<(), Error> {
     ::nvx::log!("initializing wasm daemon...");
 
-    let wasm_binary = WasmBinary::from_network();
+    let wasm_binary = WasmBinary::new();
 
     let engine: Engine = Engine::default();
     let module = match Module::new(&engine, &wasm_binary.bytes) {

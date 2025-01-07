@@ -28,6 +28,9 @@ export HOST_CPU ?=
 # Log Level
 export LOG_LEVEL ?= warn
 
+# Wasm binary to embed in the WASM Daemon
+export NANVIX_WASM_BINARY ?=
+
 #===================================================================================================
 # Directories
 #===================================================================================================
