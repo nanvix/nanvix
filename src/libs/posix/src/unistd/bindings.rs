@@ -174,6 +174,52 @@ pub extern "C" fn sbrk(size: isize) -> *mut u8 {
 }
 
 ///
+/// # Description
+///
+/// Deletes a name from the filesystem.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file to be unlinked.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::unlink()`]
+///
+#[no_mangle]
+pub extern "C" fn unlink(path: *const c_char) -> c_int {
+    // Convert C string to Rust string.
+    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    let retcode: c_int = crate::unistd::unlink(path);
+
+    // Check if the system call failed.
+    if retcode < 0 {
+        // System call failed. Set errno.
+        unsafe {
+            errno = match ErrorCode::try_from(retcode) {
+                Ok(e) => e.into_errno(),
+                Err(_) => {
+                    ::nvx::log!("unlink(): invalid error code ({})", retcode);
+                    ErrorCode::ValueOutOfRange.into_errno()
+                },
+            }
+        }
+        return -1;
+    }
+
+    0
+}
+
+///
 /// # Safety
 ///
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.
