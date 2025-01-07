@@ -108,8 +108,8 @@ def make(target: str, machine: str, arch: str, release: bool, toolchain_dir: str
     return_code = run_command(
         command, f"{target}-stdout.log", f"{target}-stderr.log")
 
-    if return_code != 0:
-        print("Make failed.")
+    if return_code:
+        print(f"Make failed with code={return_code}.")
         exit(1)
 
 
