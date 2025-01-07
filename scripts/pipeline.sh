@@ -38,12 +38,13 @@ do
             printf "%-${PADDING}s" "$msg"
             start_time=$(date +%s%3N)
             python3 scripts/ci.py --${mode} --toolchain-dir=$TOOLCHAIN_DIR --target-arch=x86 --log-level=trace --target-machine=$target --${step} --timeout $TIMEOUT > $TTY
+            return_code=$?
             end_time=$(date +%s%3N)
             elapsed_time=$((end_time - start_time))
             total_elapsed_time=$((total_elapsed_time + elapsed_time))
             elapsed_seconds=$((elapsed_time / 1000))
             elapsed_milliseconds=$((elapsed_time % 1000))
-            if [ $? -ne 0 ]; then
+            if [ $return_code -ne 0 ]; then
                 echo -e " [${RED_COLOR}FAILED${NO_COLOR}] ${elapsed_seconds}.${elapsed_milliseconds}s"
                 failed_count=$((failed_count + 1))
             else
