@@ -19,4 +19,4 @@ sys = { workspace = true }
 
 [features]
 default = []
-std = []
+std = ["sys/std"]
