@@ -159,6 +159,9 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
         timeout (int, optional): Timeout. Defaults to None.
     """
 
+    make("run-unit-tests", machine, arch, release,
+         toolchain_dir, log_level, verbose, timeout)
+
     make("run", machine, arch, release,
          toolchain_dir, log_level, verbose, timeout)
 
