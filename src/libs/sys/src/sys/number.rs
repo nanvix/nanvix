@@ -69,7 +69,9 @@ pub enum KcallNumber {
     ReadPmio,
     /// Writes a value to a port-mapped I/O port.
     WritePmio,
-    /// Invalid.
+    /// Yields the processor.
+    SchedulerYield,
+    // Invalid.
     Invalid,
 }
 
@@ -108,6 +110,7 @@ impl From<usize> for KcallNumber {
             25 => KcallNumber::FreePmio,
             26 => KcallNumber::ReadPmio,
             27 => KcallNumber::WritePmio,
+            28 => KcallNumber::SchedulerYield,
             _ => KcallNumber::Invalid,
         }
     }
