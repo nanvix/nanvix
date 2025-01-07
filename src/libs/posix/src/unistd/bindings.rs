@@ -8,6 +8,7 @@
 use crate::{
     errno::errno,
     ffi::{
+        c_char,
         c_int,
         c_void,
     },
@@ -18,6 +19,7 @@ use crate::{
         ssize_t,
     },
 };
+use ::core::ffi;
 use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
@@ -67,6 +69,57 @@ pub extern "C" fn isatty(_fd: c_int) -> c_int {
         errno = ErrorCode::InvalidSysCall.into_errno();
     }
     -1
+}
+
+///
+/// # Description
+///
+/// Creates a new hard link to an existing file.
+///
+/// # Parameters
+///
+/// - `oldpath`: Path to the file to be linked.
+/// - `newpath`: Path to the new file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::link()`]
+///
+#[no_mangle]
+pub extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
+    // Convert C strings to Rust strings.
+    let oldpath: &str = match unsafe { ffi::CStr::from_ptr(oldpath).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+    let newpath: &str = match unsafe { ffi::CStr::from_ptr(newpath).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    let retcode: c_int = crate::unistd::link(oldpath, newpath);
+
+    // Check if the system call failed.
+    if retcode < 0 {
+        // System call failed. Set errno.
+        unsafe {
+            errno = match ErrorCode::try_from(retcode) {
+                Ok(e) => e.into_errno(),
+                Err(_) => {
+                    ::nvx::log!("link(): invalid error code ({})", retcode);
+                    ErrorCode::ValueOutOfRange.into_errno()
+                },
+            }
+        }
+        return -1;
+    }
+
+    0
 }
 
 #[no_mangle]
