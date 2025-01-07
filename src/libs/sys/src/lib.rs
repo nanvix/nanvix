@@ -9,7 +9,7 @@
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
 #![feature(never_type)] // exit() uses this.
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 //==================================================================================================
 // Modules
