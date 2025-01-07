@@ -10,11 +10,11 @@ use crate::{
         OpenAtRequest,
         OpenAtResponse,
     },
+    ffi::c_int,
     sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::core::ffi;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -25,7 +25,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn openat(dirfd: i32, pathname: &str, flags: ffi::c_int, mode: mode_t) -> i32 {
+pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
