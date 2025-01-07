@@ -167,6 +167,7 @@ export HOST_CARGO_BUILD_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) build $(CAR
 export HOST_CARGO_CLEAN_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) clean
 export HOST_CARGO_CHECK_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) check --message-format=json
 export HOST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) clippy
+export HOST_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) test --no-default-features --features=std
 
 # Utility Commands
 export RM_CMD := rm -f
@@ -247,6 +248,9 @@ check: \
 	check-host-binaries \
 	check-microvm
 
+run-unit-tests: \
+	test-guest-rlibs
+
 #===================================================================================================
 # Build Rules for Running and Debugging
 #===================================================================================================
@@ -323,6 +327,9 @@ check-guest-rlib-$(1):
 
 clippy-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
+
+test-guest-rlib-$(1):
+	$(HOST_CARGO_TEST_CMD) -p $(1)
 endef
 
 $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target))))
@@ -330,6 +337,8 @@ $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target)
 check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(target))
 
 clippy-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),clippy-guest-rlib-$(target))
+
+test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(target))
 
 #===================================================================================================
 # Build Rules for Guest Binaries

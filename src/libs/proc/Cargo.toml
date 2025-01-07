@@ -22,5 +22,6 @@ cfg-if = { workspace = true }
 
 [features]
 default = []
+std = ["nvx/std"]
 syscall = []
 daemon = ["nvx/allocator"]

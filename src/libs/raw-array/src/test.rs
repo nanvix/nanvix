@@ -5,11 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    collections::raw_array::RawArray,
-    error::ErrorCode,
-};
+use crate::RawArray;
 use ::core::ptr;
+use ::sys::error::ErrorCode;
 
 //==================================================================================================
 // Unit Tests
