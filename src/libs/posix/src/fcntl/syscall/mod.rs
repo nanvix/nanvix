@@ -9,6 +9,7 @@ mod fadvise;
 mod fallocate;
 mod fcntl;
 mod mkdirat;
+mod open;
 mod openat;
 mod readlinkat;
 mod renameat;
@@ -24,6 +25,7 @@ pub use self::{
     fallocate::posix_fallocate,
     fcntl::fcntl,
     mkdirat::mkdirat,
+    open::open,
     openat::openat,
     readlinkat::readlinkat,
     renameat::renameat,
