@@ -2,12 +2,25 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Tests for sched_yield()
 //==================================================================================================
 
-mod capability;
-mod identity;
-mod sched;
+///
+/// # Description
+///
+/// Tests if [`::nvx::pm::sched_yield`] works.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+fn test_sched_yield() -> bool {
+    // Yield the processor.
+    match nvx::sched::sched_yield() {
+        Ok(()) => true,
+        _ => false,
+    }
+}
 
 //==================================================================================================
 // Public Standalone Functions
@@ -19,7 +32,5 @@ mod sched;
 /// Tests kernel calls in the process management facility.
 ///
 pub fn test() {
-    sched::test();
-    identity::test();
-    capability::test();
+    crate::test!(test_sched_yield());
 }
