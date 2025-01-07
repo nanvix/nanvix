@@ -54,6 +54,9 @@ pub mod mm;
 /// Process management kernel calls.
 pub mod pm;
 
+/// Execution scheduling kernel calls.
+pub mod sched;
+
 #[macro_export]
 #[cfg(target_os = "none")]
 macro_rules! log{
