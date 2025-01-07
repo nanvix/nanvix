@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 # Toolchain directory.
 toolchain_dir=$(pwd)/toolchain
 
@@ -15,13 +18,13 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-# Get the name of the branch being pushed
-branch_name=$(git rev-parse --abbrev-ref HEAD)
+# Get the name of the target branch being pushed
+target_branch=$(git rev-parse --abbrev-ref HEAD@{upstream})
 
-# Check if the branch name is "dev"
-if [ "$branch_name" = "dev" ]; then
-  echo "Running pipeline for branch 'dev'..."
-    ./scripts/pipeline.sh $toolchain_dir
+# Check if the target branch name is "dev"
+if [ "$target_branch" = "origin/dev" ]; then
+  echo "Running pipeline for target branch 'dev'..."
+  ./scripts/pipeline.sh $toolchain_dir
 else
-    echo "Not on 'dev' branch, skipping pipeline."
+  echo "Target branch is not 'dev', skipping pipeline."
 fi
