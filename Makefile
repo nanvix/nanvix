@@ -181,7 +181,7 @@ export GRUB_CMD := grub-mkrescue
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := nvx posix
-ALL_GUEST_RUST_LIBS := bitmap error proc raw-array sys
+ALL_GUEST_RUST_LIBS := bitmap error proc raw-array slab sys
 
 ALL_GUEST_DAEMONS := memd procd wasmd
 ALL_GUEST_BENCHMARKS := echo boottime linux-app

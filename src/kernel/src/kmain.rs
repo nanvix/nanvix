@@ -17,7 +17,6 @@
 #![feature(linked_list_retain)] // vmem uses this.
 #![feature(never_type)] // exit() uses this.
 #![feature(stmt_expr_attributes)] // stdio uses this.
-#![feature(ptr_sub_ptr)] // Slab::deallocate() uses this.
 #![no_std]
 #![no_main]
 
