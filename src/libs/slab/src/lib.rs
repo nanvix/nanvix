@@ -188,7 +188,13 @@ impl Slab {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    pub fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
+    /// # Safety
+    ///
+    /// This function is unsafe for the following reasons:
+    ///
+    /// - It dereferences the pointer `ptr`.
+    ///
+    pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
         // Check if the pointer lies in a memory region that is not managed by this allocator.
         // Safety: the start and resulting addresses are valid.
         if ptr < self.data_addr
