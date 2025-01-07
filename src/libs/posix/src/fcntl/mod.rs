@@ -32,6 +32,7 @@ cfg_if::cfg_if! {
             readlinkat,
             mkdirat,
             fcntl,
+            open,
         };
     }
 }

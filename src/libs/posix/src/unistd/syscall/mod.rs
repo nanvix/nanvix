@@ -12,7 +12,6 @@ mod ftruncate;
 mod link;
 mod linkat;
 mod lseek;
-mod open;
 mod pread;
 mod pwrite;
 mod read;
@@ -33,7 +32,6 @@ pub use self::{
     link::link,
     linkat::linkat,
     lseek::lseek,
-    open::open,
     pread::pread,
     pwrite::pwrite,
     read::read,
