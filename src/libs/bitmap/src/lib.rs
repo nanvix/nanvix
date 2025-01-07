@@ -1,18 +1,20 @@
 // Copyright (c) The Maintainers of Nanvix.
 // Licensed under the MIT license.
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod test;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::collections::RawArray;
+use ::raw_array::RawArray;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -59,7 +61,6 @@ impl Bitmap {
         // Check if the length is invalid.
         if len == 0 || len >= i32::MAX as usize {
             let reason: &str = "invalid length";
-            trace!("new(): {reason} (len={len})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
@@ -151,7 +152,6 @@ impl Bitmap {
         }
 
         let reason: &str = "bitmap is full";
-        trace!("alloc(): {reason}");
         Err(Error::new(ErrorCode::OutOfMemory, reason))
     }
 
@@ -173,14 +173,12 @@ impl Bitmap {
         // Check if the size is invalid.
         if (size == 0) || (size > u8::BITS as usize) {
             let reason: &str = "invalid size";
-            trace!("alloc_range(): {reason} (size={size})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
         // Check if the size is out of bounds.
         if size > self.number_of_bits {
             let reason: &str = "size out of bounds";
-            trace!("alloc_range(): {reason} (size={size})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
@@ -210,7 +208,6 @@ impl Bitmap {
         }
 
         let reason: &str = "bitmap is full";
-        trace!("alloc_range(): {reason}");
         Err(Error::new(ErrorCode::OutOfMemory, reason))
     }
 
@@ -231,7 +228,6 @@ impl Bitmap {
         // Check if the bit is already set.
         if self.test(index)? {
             let reason: &str = "bit is already set";
-            trace!("set(): {reason} (index={index})");
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
         let (word, bit): (usize, usize) = self.index(index)?;
@@ -257,7 +253,6 @@ impl Bitmap {
         // Check if the bit is already cleared.
         if !self.test(index)? {
             let reason: &str = "bit is already cleared";
-            trace!("clear(): {reason} (index={index})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
         let (word, bit): (usize, usize) = self.index(index)?;
@@ -303,7 +298,6 @@ impl Bitmap {
         // Check if the index is out of bounds.
         if index >= self.bits.len() * u8::BITS as usize {
             let reason: &str = "index out of bounds";
-            trace!("index(): {reason} (index={index})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 

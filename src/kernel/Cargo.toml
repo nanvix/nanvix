@@ -15,6 +15,7 @@ name = "kernel"
 path = "src/kmain.rs"
 
 [dependencies]
+bitmap = { workspace = true }
 cfg-if = { workspace = true }
 raw-array = { workspace = true }
 sys = { workspace = true }
