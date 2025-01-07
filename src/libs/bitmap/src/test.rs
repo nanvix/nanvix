@@ -5,14 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    collections::{
-        raw_array::RawArray,
-        Bitmap,
-    },
-    error::Error,
-};
-use ::core::panic;
+use crate::Bitmap;
+use ::raw_array::RawArray;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Unit Tests
