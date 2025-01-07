@@ -8,6 +8,7 @@
 mod fstat;
 mod fstatat;
 mod futimens;
+mod lstat;
 mod stat;
 mod utimensat;
 
@@ -41,6 +42,7 @@ use ::nvx::{
 pub use fstat::fstat;
 pub use fstatat::fstatat;
 pub use futimens::futimens;
+pub use lstat::lstat;
 pub use stat::stat;
 pub use utimensat::utimensat;
 
