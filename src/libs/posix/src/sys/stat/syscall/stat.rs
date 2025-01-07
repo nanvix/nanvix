@@ -22,14 +22,15 @@ use crate::{
 ///
 /// # Parameters
 ///
-/// - `path`: Path to the file.
-/// - `buf`: Buffer to store file information.
+/// - `pathname`: Path to the file.
+/// - `statbuf`: Buffer to store file information.
 ///
 /// # Returns
 ///
 /// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
 /// instead.
 ///
-pub fn stat(path: &str, buf: &mut stat::stat) -> i32 {
-    sys::stat::fstatat(fcntl::AT_FDCWD, path, buf, 0)
+pub fn stat(pathname: &str, statbuf: &mut stat::stat) -> i32 {
+    ::nvx::log!("stat(): pathname = {:?}, statbuf = {:?}", pathname, statbuf);
+    sys::stat::fstatat(fcntl::AT_FDCWD, pathname, statbuf, 0)
 }
