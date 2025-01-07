@@ -128,4 +128,24 @@ fn main() {
     println!("cargo::rustc-link-arg=-Tbuild/user/linker/x86/user.ld");
     println!("cargo::rustc-link-search=native={}", out_dir);
     println!("cargo::rustc-link-lib=static:+whole-archive=user");
+
+    //==============================================================================================
+
+    // Collect all environment variables that start with "NANVIX_".
+    let nanvix_env_vars: Vec<(String, String)> = env::vars()
+        .filter(|(key, _)| key.starts_with("NANVIX_"))
+        .collect();
+
+    for (name, _value) in nanvix_env_vars.iter() {
+        println!("cargo:rerun-if-env-changed={}", name);
+
+        // Skip empty values.
+        if name.is_empty() {
+            continue;
+        }
+
+        let name: String = name.to_uppercase().replace("NANVIX_", "");
+        let feature: String = name.to_lowercase();
+        println!("cargo:rustc-cfg=feature=\"{}\"", feature);
+    }
 }

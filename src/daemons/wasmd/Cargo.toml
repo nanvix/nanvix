@@ -24,3 +24,7 @@ cfg-if = { workspace = true }
 
 [dev-dependencies]
 wasm-bindgen = { workspace = true }
+
+[features]
+default = []
+wasm_binary = []

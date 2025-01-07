@@ -9,35 +9,21 @@
 #![no_std]
 #![no_main]
 
-extern crate alloc;
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+#[cfg(feature = "wasm_binary")]
+mod wasm_binary;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
+extern crate alloc;
+
 use ::alloc::vec::Vec;
-use ::core::mem;
 use ::nvx::sys::error::Error;
-use ::posix::{
-    ffi::c_int,
-    netinet::in_::{
-        in_addr,
-        sockaddr_in,
-    },
-    sys::{
-        self,
-        socket::{
-            self,
-            sockaddr,
-            socklen_t,
-        },
-        types::{
-            size_t,
-            ssize_t,
-        },
-    },
-    unistd,
-};
 use ::wasmi::{
     Caller,
     Engine,
@@ -93,110 +79,151 @@ fn fmodf(a: f32, b: f32) -> f32 {
     a % b
 }
 
-// const WASM_BYTES: &[u8] = include_bytes!("../bin/hello.wasm");
+struct WasmBinary {
+    bytes: Vec<u8>,
+}
+
+impl WasmBinary {
+    #[cfg(not(feature = "wasm_binary"))]
+    pub fn new() -> Self {
+        use ::core::mem;
+        use ::posix::{
+            ffi::c_int,
+            netinet::in_::{
+                in_addr,
+                sockaddr_in,
+            },
+            sys::{
+                self,
+                socket::{
+                    self,
+                    sockaddr,
+                    socklen_t,
+                },
+                types::{
+                    size_t,
+                    ssize_t,
+                },
+            },
+            unistd,
+        };
+
+        let sockfd: c_int = match socket::socket(socket::AF_INET as c_int, socket::SOCK_STREAM, 0) {
+            sockfd if sockfd >= 0 => sockfd,
+            errno => {
+                panic!("failed to create socket (errno={})", errno);
+            },
+        };
+
+        // Bind socket to address to 127.0.0.1:8080.
+        let sockaddr_in: sockaddr_in = sockaddr_in {
+            sin_family: sys::socket::AF_INET,
+            sin_port: u16::to_be(8080),
+            sin_addr: in_addr {
+                s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be(),
+            },
+            sin_zero: [0; 8],
+        };
+
+        match sys::socket::bind(
+            sockfd,
+            unsafe {
+                mem::transmute::<&posix::netinet::in_::sockaddr_in, &posix::sys::socket::sockaddr>(
+                    &sockaddr_in,
+                )
+            },
+            core::mem::size_of::<sys::socket::sockaddr>() as socklen_t,
+        ) {
+            0 => {
+                ::nvx::log!("bound socket to address");
+            },
+            errno => {
+                panic!("failed to bind socket to address: {:?}", errno);
+            },
+        }
+
+        // Listen for connections on socket.
+        match sys::socket::listen(sockfd, 0) {
+            0 => {
+                ::nvx::log!("listening for connections on socket");
+            },
+            errno => {
+                panic!("failed to listen for connections on socket: {:?}", errno);
+            },
+        }
+
+        // Accept connection on socket.
+        let mut address: sockaddr = unsafe { core::mem::zeroed() };
+        let mut address_len: socklen_t = 0;
+        let connfd: i32 = match sys::socket::accept(sockfd, &mut address, &mut address_len) {
+            connfd if connfd >= 0 => {
+                ::nvx::log!("accepted connection on socket with fd {}", connfd);
+                connfd
+            },
+            errno => {
+                panic!("failed to accept connection on socket: {:?}", errno);
+            },
+        };
+
+        // Read payload size.
+        let mut payload_buffer: [u8; core::mem::size_of::<u32>()] =
+            [0; core::mem::size_of::<u32>()];
+        let payload_size = match socket::recv(
+            connfd,
+            &mut payload_buffer as *mut _ as *mut u8,
+            payload_buffer.len() as size_t,
+            0,
+        ) {
+            n if n == core::mem::size_of::<u32>() as ssize_t => u32::from_le_bytes(payload_buffer),
+            errno => {
+                panic!("failed to receive payload size: {:?}", errno);
+            },
+        };
+        ::nvx::log!("received payload size: {}", payload_size);
+
+        // Read payload.
+        let mut wasm_bytes: Vec<u8> = alloc::vec![0; payload_size as usize];
+        match socket::recv(connfd, wasm_bytes.as_mut_ptr(), payload_size as size_t, 0) {
+            n if n == payload_size as ssize_t => {
+                ::nvx::log!("received payload");
+            },
+            errno => {
+                panic!("failed to receive payload: {:?}", errno);
+            },
+        }
+
+        // Close connection.
+        match unistd::close(connfd) {
+            0 => {
+                ::nvx::log!("closed connection");
+            },
+            errno => {
+                panic!("failed to close connection: {:?}", errno);
+            },
+        }
+
+        wasm_bytes.shrink_to_fit();
+        ::nvx::log!("loading wasm file ({} bytes)", wasm_bytes.len());
+
+        Self { bytes: wasm_bytes }
+    }
+
+    #[cfg(feature = "wasm_binary")]
+    pub fn new() -> Self {
+        Self {
+            bytes: wasm_binary::WASM_BYTES.to_vec(),
+        }
+    }
+}
 
 #[no_mangle]
 fn main() -> Result<(), Error> {
     ::nvx::log!("initializing wasm daemon...");
 
-    let sockfd: c_int = match socket::socket(socket::AF_INET as c_int, socket::SOCK_STREAM, 0) {
-        sockfd if sockfd >= 0 => sockfd,
-        errno => {
-            panic!("failed to create socket (errno={})", errno);
-        },
-    };
+    let wasm_binary = WasmBinary::new();
 
-    // Bind socket to address to 127.0.0.1:8080.
-    let sockaddr_in: sockaddr_in = sockaddr_in {
-        sin_family: sys::socket::AF_INET,
-        sin_port: u16::to_be(8080),
-        sin_addr: in_addr {
-            s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be(),
-        },
-        sin_zero: [0; 8],
-    };
-
-    match sys::socket::bind(
-        sockfd,
-        unsafe {
-            mem::transmute::<&posix::netinet::in_::sockaddr_in, &posix::sys::socket::sockaddr>(
-                &sockaddr_in,
-            )
-        },
-        core::mem::size_of::<sys::socket::sockaddr>() as socklen_t,
-    ) {
-        0 => {
-            ::nvx::log!("bound socket to address");
-        },
-        errno => {
-            panic!("failed to bind socket to address: {:?}", errno);
-        },
-    }
-
-    // Listen for connections on socket.
-    match sys::socket::listen(sockfd, 0) {
-        0 => {
-            ::nvx::log!("listening for connections on socket");
-        },
-        errno => {
-            panic!("failed to listen for connections on socket: {:?}", errno);
-        },
-    }
-
-    // Accept connection on socket.
-    let mut address: sockaddr = unsafe { core::mem::zeroed() };
-    let mut address_len: socklen_t = 0;
-    let connfd: i32 = match sys::socket::accept(sockfd, &mut address, &mut address_len) {
-        connfd if connfd >= 0 => {
-            ::nvx::log!("accepted connection on socket with fd {}", connfd);
-            connfd
-        },
-        errno => {
-            panic!("failed to accept connection on socket: {:?}", errno);
-        },
-    };
-
-    // Read payload size.
-    let mut payload_buffer: [u8; core::mem::size_of::<u32>()] = [0; core::mem::size_of::<u32>()];
-    let payload_size = match socket::recv(
-        connfd,
-        &mut payload_buffer as *mut _ as *mut u8,
-        payload_buffer.len() as size_t,
-        0,
-    ) {
-        n if n == core::mem::size_of::<u32>() as ssize_t => u32::from_le_bytes(payload_buffer),
-        errno => {
-            panic!("failed to receive payload size: {:?}", errno);
-        },
-    };
-    ::nvx::log!("received payload size: {}", payload_size);
-
-    // Read payload.
-    let mut wasm_bytes: Vec<u8> = alloc::vec![0; payload_size as usize];
-    match socket::recv(connfd, wasm_bytes.as_mut_ptr(), payload_size as size_t, 0) {
-        n if n == payload_size as ssize_t => {
-            ::nvx::log!("received payload");
-        },
-        errno => {
-            panic!("failed to receive payload: {:?}", errno);
-        },
-    }
-
-    // Close connection.
-    match unistd::close(connfd) {
-        0 => {
-            ::nvx::log!("closed connection");
-        },
-        errno => {
-            panic!("failed to close connection: {:?}", errno);
-        },
-    }
-
-    wasm_bytes.shrink_to_fit();
-
-    ::nvx::log!("loading wasm file ({} bytes)", wasm_bytes.len());
     let engine: Engine = Engine::default();
-    let module = match Module::new(&engine, &wasm_bytes) {
+    let module = match Module::new(&engine, &wasm_binary.bytes) {
         Ok(module) => module,
         Err(err) => {
             panic!("Error: {:?}", err);
