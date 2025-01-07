@@ -17,7 +17,7 @@ export MACHINE ?= qemu-pc
 export RELEASE ?= no
 
 # Timeout
-export TIMEOUT ?= 10
+export TIMEOUT ?= 90
 
 # Enable Microvm profiler?
 export PROFILER ?= no
