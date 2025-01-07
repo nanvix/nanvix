@@ -68,10 +68,7 @@ pub fn init() -> Result<(), Error> {
         for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
             kcall::mm::mmap(pid, VirtualAddress::from_raw_value(vaddr)?, AccessPermission::RDWR)?;
 
-            // Zero page.
-            unsafe {
-                core::ptr::write_bytes(vaddr as *mut u8, 0, mem::PAGE_SIZE);
-            }
+            // NOTE: pages allocated with mmap() are always zeroed.
         }
 
         // Initialize the heap.
