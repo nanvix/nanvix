@@ -20,6 +20,7 @@ cfg-if = { workspace = true }
 
 [features]
 default = ["qemu-pc"]
+std = []
 
 # Machine Types
 hyperlight = [
