@@ -13,6 +13,7 @@ members = [
         "src/daemons/procd",
         "src/daemons/wasmd",
         "src/kernel",
+        "src/libs/bitmap",
         "src/libs/error",
         "src/libs/nvx",
         "src/libs/posix",
@@ -37,6 +38,7 @@ homepage = "https://github.com/nanvix"
 
 [workspace.dependencies]
 anyhow = "1.0.95"
+bitmap = { path = "src/libs/bitmap", default-features = false }
 cc = "1.2.6"
 cfg-if = "1.0.0"
 error = { path = "src/libs/error", default-features = false }
