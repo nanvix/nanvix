@@ -28,6 +28,10 @@ pub type blkcnt_t = i64;
 /// TODO: fix with of this type to conform to Linux and POSIX.
 pub type blksize_t = i64;
 
+/// Used for system times in clock ticks or `CLOCKS_PER_SEC`.
+/// TODO: fix with of this type to conform to Linux and POSIX.
+pub type clock_t = i64;
+
 /// Used for clock ID type in the clock and timer functions.
 pub type clockid_t = c_int;
 
