@@ -7,6 +7,7 @@
 
 mod fadvise;
 mod fallocate;
+mod fchownat;
 mod fcntl;
 mod mkdirat;
 mod open;
@@ -23,6 +24,7 @@ mod unlinkat;
 pub use self::{
     fadvise::posix_fadvise,
     fallocate::posix_fallocate,
+    fchownat::fchownat,
     fcntl::fcntl,
     mkdirat::mkdirat,
     open::open,
