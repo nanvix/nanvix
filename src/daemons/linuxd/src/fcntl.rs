@@ -10,11 +10,21 @@ use ::core::{
     ffi,
     str,
 };
+use ::nvx::{
+    ipc::Message,
+    pm::ProcessIdentifier,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
+};
 use ::posix::{
     fcntl,
     fcntl::message::{
         FileAdvisoryInformationRequest,
         FileAdvisoryInformationResponse,
+        FileChownAtRequest,
+        FileChownAtResponse,
         FileControlRequest,
         FileControlResponse,
         FileSpaceControlRequest,
@@ -52,14 +62,6 @@ use ::posix::{
         },
     },
     time::timespec,
-};
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
-        Error,
-        ErrorCode,
-    },
 };
 
 //==================================================================================================
@@ -725,6 +727,48 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
         },
         _ => {
             unreachable!("unsupported command");
+        },
+    }
+}
+
+//==================================================================================================
+// do_chownat()
+//==================================================================================================
+
+pub fn do_chownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<Message> {
+    trace!("fchownat(): pid={:?}, request={:?}", pid, request);
+
+    let dirfd: i32 = request.dirfd;
+    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+
+    let path: CString = match CString::new(request.path.as_str()) {
+        Ok(path) => path,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    let owner: u32 = request.owner;
+    let group: u32 = request.group;
+    let flag: LibcFileFlags = LibcFileFlags(request.flag);
+
+    debug!(
+        "libc::fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
+        dirfd.inner(),
+        path,
+        owner,
+        group,
+        flag.inner()
+    );
+    match unsafe { libc::fchownat(dirfd.inner(), path.as_ptr(), owner, group, flag.inner()) } {
+        0 => {
+            debug!("libc::fchownat(): success");
+            vec![FileChownAtResponse::build(pid)]
+        },
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::fchownat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            vec![crate::build_error(pid, error)]
         },
     }
 }

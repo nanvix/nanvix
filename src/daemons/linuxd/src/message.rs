@@ -6,15 +6,15 @@
 //==================================================================================================
 
 use ::alloc::collections::BTreeMap;
-use ::posix::message::{
-    LinuxDaemonLongMessage,
-    LinuxDaemonMessagePart,
-    MessagePartitioner,
-};
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
     sys::error::Error,
+};
+use ::posix::message::{
+    LinuxDaemonLongMessage,
+    LinuxDaemonMessagePart,
+    MessagePartitioner,
 };
 
 //==================================================================================================
@@ -101,6 +101,7 @@ pub enum RequestAssemblerType {
     ReadLinkAtRequest(LinuxDaemonLongMessage),
     MakeDirectoryAtRequest(LinuxDaemonLongMessage),
     UpdateFileAccessTimeAtRequest(LinuxDaemonLongMessage),
+    FileChownAtRequest(LinuxDaemonLongMessage),
 }
 
 pub trait RequestAssemblerTrait
