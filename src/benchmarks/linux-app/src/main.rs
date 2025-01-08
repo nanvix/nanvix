@@ -35,6 +35,7 @@ use ::posix::{
     venv,
     venv::VirtualEnvironmentIdentifier,
 };
+use posix::sys::times;
 
 //==================================================================================================
 // Standalone Functions
@@ -44,6 +45,15 @@ use ::posix::{
 pub fn main() -> Result<(), Error> {
     let env: VirtualEnvironmentIdentifier = venv::join(VirtualEnvironmentIdentifier::NEW)?;
     ::nvx::log!("joined environment {:?}", env);
+
+    match times::times(None) {
+        Ok(clock) => {
+            ::nvx::log!("times() returned {}", clock);
+        },
+        Err(e) => {
+            panic!("times() failed: {:?}", e);
+        },
+    }
 
     let mut res: timespec = timespec {
         tv_sec: 0,

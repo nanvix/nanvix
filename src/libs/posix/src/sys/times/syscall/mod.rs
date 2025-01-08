@@ -5,17 +5,10 @@
 // Modules
 //==================================================================================================
 
-/// Sockets.
-pub mod socket;
+mod times;
 
-/// File status.
-pub mod stat;
+//==================================================================================================
+// Exports
+//==================================================================================================
 
-/// File access and modification times structure.
-pub mod times;
-
-/// Types.
-pub mod types;
-
-/// Definitions for vector I/O operations.
-pub mod uio;
+pub use self::times::*;
