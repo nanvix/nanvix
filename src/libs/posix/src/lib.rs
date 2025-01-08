@@ -145,6 +145,8 @@ pub enum LinuxDaemonMessageHeader {
     SendSocketResponse,
     TimesRequest,
     TimesResponse,
+    ChownAtRequestPart,
+    FileChownAtResponse,
 }
 
 #[repr(C, packed)]

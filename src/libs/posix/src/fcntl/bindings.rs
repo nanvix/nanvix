@@ -11,7 +11,11 @@ use crate::{
         c_char,
         c_int,
     },
-    sys::types::mode_t,
+    sys::types::{
+        gid_t,
+        mode_t,
+        uid_t,
+    },
 };
 use ::core::ffi;
 use ::nvx::sys::error::ErrorCode;
@@ -66,4 +70,52 @@ pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int
     }
 
     0
+}
+
+///
+/// # Description
+///
+/// Changes the owner and group of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `owner`: Owner of the file.
+/// - `group`: Group of the file.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, the `fchownat()` system call returns empty. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::fcntl::fchownat()`]
+///
+#[no_mangle]
+pub extern "C" fn fchownat(
+    dirfd: c_int,
+    path: *const c_char,
+    owner: uid_t,
+    group: gid_t,
+    flag: c_int,
+) -> c_int {
+    // Convert C string to Rust string.
+    let pathname: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    match crate::fcntl::fchownat(dirfd, pathname, owner, group, flag) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe {
+                ::nvx::log!("fchownat(): invalid error code");
+                errno = e.code.into_errno();
+            }
+            -1
+        },
+    }
 }
