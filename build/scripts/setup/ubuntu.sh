@@ -36,3 +36,4 @@ if [[ "$1" == "--extra" ]]; then
         qemu-system-x86  \
         texinfo          \
         xorriso
+fi
