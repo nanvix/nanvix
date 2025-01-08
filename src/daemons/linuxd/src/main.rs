@@ -16,6 +16,7 @@ mod fcntl;
 mod message;
 mod socket;
 mod time;
+mod times;
 mod unistd;
 mod venv;
 
@@ -89,6 +90,7 @@ use ::posix::{
             UpdateFileAccessTimeAtRequest,
             UpdateFileAccessTimeRequest,
         },
+        times::message::TimesRequest,
     },
     time::message::{
         ClockResolutionRequest,
@@ -423,6 +425,12 @@ impl ProcessDaemon {
                                         SendSocketRequest::from_bytes(message.payload);
                                     socket::do_send(source, request)
                                 },
+                                LinuxDaemonMessageHeader::TimesRequest => {
+                                    let request: TimesRequest =
+                                        TimesRequest::from_bytes(message.payload);
+                                    times::do_times(source, request)
+                                },
+
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
                             };
                             self.send(message).unwrap();
