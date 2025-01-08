@@ -357,6 +357,16 @@ pub fn main() -> Result<(), Error> {
         panic!("file size is not 1024 bytes");
     }
 
+    // Change owner of file.
+    match fcntl::fchownat(fcntl::AT_FDCWD, "foo.tmp", st.st_uid, st.st_gid, 0) {
+        Ok(()) => {
+            ::nvx::log!("changed owner of file foo.tmp");
+        },
+        Err(e) => {
+            panic!("failed to change owner of file foo.tmp: {:?}", e);
+        },
+    };
+
     // Get file access mode and the file status flags.
     let flags: i32 = match fcntl::fcntl(fd, fcntl::F_GETFL, 0) {
         flags if flags >= 0 => {
