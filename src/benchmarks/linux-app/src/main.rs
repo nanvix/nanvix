@@ -74,12 +74,12 @@ pub fn main() -> Result<(), Error> {
         tv_nsec: 0,
     };
 
-    match time::clock_gettime(CLOCK_MONOTONIC, &mut tp) {
-        0 => {
+    match time::clock_gettime(CLOCK_MONOTONIC, Some(&mut tp)) {
+        Ok(()) => {
             ::nvx::log!("clock time: {}s {}ns", { tp.tv_sec }, { tp.tv_nsec });
         },
-        errno => {
-            panic!("failed to get clock time: {:?}", errno);
+        e => {
+            panic!("failed to get clock time: {:?}", e);
         },
     }
 
