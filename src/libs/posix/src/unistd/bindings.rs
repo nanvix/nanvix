@@ -13,10 +13,12 @@ use crate::{
         c_void,
     },
     sys::types::{
+        gid_t,
         off_t,
         pid_t,
         size_t,
         ssize_t,
+        uid_t,
     },
 };
 use ::core::ffi;
@@ -25,6 +27,46 @@ use ::nvx::sys::error::ErrorCode;
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Changes the user and group ownership of a file.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `owner`: User ID of the new owner.
+/// - `group`: Group ID of the new owner.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
+/// the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::chown()`]
+///
+#[no_mangle]
+pub extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
+    // Convert C string to Rust string.
+    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    match crate::unistd::chown(path, owner, group) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe {
+                ::nvx::log!("chown(): failed ({:?})", e);
+                errno = e.code.into_errno();
+            }
+            -1
+        },
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn close(fd: c_int) -> c_int {
