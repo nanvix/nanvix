@@ -358,7 +358,7 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Change owner of file.
-    match fcntl::fchownat(fcntl::AT_FDCWD, "foo.tmp", st.st_uid, st.st_gid, 0) {
+    match unistd::fchown(fd, st.st_uid, st.st_gid) {
         Ok(()) => {
             ::nvx::log!("changed owner of file foo.tmp");
         },
@@ -444,6 +444,16 @@ pub fn main() -> Result<(), Error> {
             panic!("failed to close file foo.tmp: {:?}", errno);
         },
     }
+
+    // Change owner of file.
+    match fcntl::fchownat(fcntl::AT_FDCWD, "foo.tmp", st.st_uid, st.st_gid, 0) {
+        Ok(()) => {
+            ::nvx::log!("changed owner of file foo.tmp");
+        },
+        Err(e) => {
+            panic!("failed to change owner of file foo.tmp: {:?}", e);
+        },
+    };
 
     // Get status of file.
     let path: &str = "foo.tmp";
