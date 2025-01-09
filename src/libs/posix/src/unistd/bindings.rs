@@ -14,6 +14,7 @@ use crate::{
     },
     sys::types::{
         gid_t,
+        mode_t,
         off_t,
         pid_t,
         size_t,
@@ -27,6 +28,45 @@ use ::nvx::sys::error::ErrorCode;
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Changes the mode of a file.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
+/// the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::chmod()`]
+///
+#[no_mangle]
+pub extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
+    // Convert C string to Rust string.
+    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    match crate::unistd::chmod(path, mode) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe {
+                ::nvx::log!("chmod(): failed ({:?})", e);
+                errno = e.code.into_errno();
+            }
+            -1
+        },
+    }
+}
 
 ///
 /// # Description
