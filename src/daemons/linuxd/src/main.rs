@@ -61,6 +61,7 @@ use ::nvx::{
 use ::posix::{
     fcntl::message::{
         FileAdvisoryInformationRequest,
+        FileChmodAtRequest,
         FileChownAtRequest,
         FileControlRequest,
         FileSpaceControlRequest,
@@ -99,6 +100,8 @@ use ::posix::{
     },
     unistd::message::{
         CloseRequest,
+        FileChmodRequest,
+        FileChownRequest,
         FileDataSyncRequest,
         FileSyncRequest,
         FileTruncateRequest,
@@ -139,10 +142,6 @@ use ::std::{
     },
     sync::Once,
     thread,
-};
-use posix::{
-    fcntl::message::FileChmodAtRequest,
-    unistd::message::FileChownRequest,
 };
 
 //==================================================================================================
@@ -447,6 +446,11 @@ impl ProcessDaemon {
                                 LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
                                     self.handle_chmodat(source, message);
                                     continue;
+                                },
+                                LinuxDaemonMessageHeader::FileChmodRequest => {
+                                    let request: FileChmodRequest =
+                                        FileChmodRequest::from_bytes(message.payload);
+                                    unistd::do_fchmod(source, request)
                                 },
 
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
