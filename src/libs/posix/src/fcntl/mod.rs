@@ -33,7 +33,8 @@ cfg_if::cfg_if! {
             mkdirat,
             fcntl,
             open,
-            fchownat
+            fchownat,
+            fchmodat
         };
     }
 }

@@ -145,10 +145,12 @@ pub enum LinuxDaemonMessageHeader {
     SendSocketResponse,
     TimesRequest,
     TimesResponse,
-    ChownAtRequestPart,
+    FileChownAtRequestPart,
     FileChownAtResponse,
     FileChownRequest,
     FileChownResponse,
+    FileChmodAtRequestPart,
+    FileChmodAtResponse,
 }
 
 #[repr(C, packed)]
