@@ -25,6 +25,8 @@ use ::posix::{
     unistd::message::{
         CloseRequest,
         CloseResponse,
+        FileChownRequest,
+        FileChownResponse,
         FileDataSyncRequest,
         FileDataSyncResponse,
         FileSyncRequest,
@@ -290,6 +292,32 @@ pub fn do_linkat(pid: ProcessIdentifier, request: LinkAtRequest) -> Vec<Message>
             pid,
             ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
         )],
+    }
+}
+
+//==================================================================================================
+// do_fchown
+//==================================================================================================
+
+pub fn do_fchown(pid: ProcessIdentifier, request: FileChownRequest) -> Message {
+    trace!("fchown(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+    let owner: u32 = request.owner;
+    let group: u32 = request.group;
+
+    debug!("libc::fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
+    match unsafe { libc::fchown(fd, owner, group) } {
+        0 => FileChownResponse::build(pid),
+        ret if ret == -1 => {
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
+        ret => unreachable!("libc::fchown() returned an invalid value ({:?})", ret),
     }
 }
 
