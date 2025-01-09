@@ -7,6 +7,7 @@
 
 mod chown;
 mod close;
+mod fchown;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
@@ -28,6 +29,7 @@ mod write;
 pub use self::{
     chown::chown,
     close::close,
+    fchown::fchown,
     fdatasync::fdatasync,
     fsync::fsync,
     ftruncate::ftruncate,
