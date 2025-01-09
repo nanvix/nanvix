@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod chown;
 mod close;
 mod fdatasync;
 mod fsync;
@@ -25,6 +26,7 @@ mod write;
 //==================================================================================================
 
 pub use self::{
+    chown::chown,
     close::close,
     fdatasync::fdatasync,
     fsync::fsync,
