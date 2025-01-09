@@ -32,11 +32,5 @@ use ::nvx::sys::error::Error;
 ///
 pub fn chown(path: &str, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::nvx::log!("chown(): path = {:?}, owner = {:?}, group = {:?}", path, owner, group);
-    crate::fcntl::fchownat(
-        crate::fcntl::AT_FDCWD,
-        path,
-        owner,
-        group,
-        crate::fcntl::AT_SYMLINK_NOFOLLOW,
-    )
+    crate::fcntl::fchownat(crate::fcntl::AT_FDCWD, path, owner, group, 0)
 }
