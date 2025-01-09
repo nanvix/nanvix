@@ -42,6 +42,8 @@ use ::sys::{
 /// A type that represents a page table.
 ///
 pub struct PageTable<T: DerefMut<Target = [u32]>> {
+    /// Number of pages mapped in the page table.
+    nmapped: usize,
     /// Entries.
     entries: T,
 }
@@ -52,9 +54,17 @@ pub struct PageTable<T: DerefMut<Target = [u32]>> {
 
 impl<T: DerefMut<Target = [u32]>> PageTable<T> {
     pub fn new(entries: T) -> Self {
-        let mut page_table: Self = Self { entries };
+        let mut page_table: Self = Self {
+            nmapped: 0,
+            entries,
+        };
         page_table.clean();
         page_table
+    }
+
+    /// Returns the number of pages mapped in the page table.
+    pub fn nmapped(&self) -> usize {
+        self.nmapped
     }
 
     /// Maps a physical address into a virtual address in the target page table.
@@ -117,6 +127,8 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
         // Write page table entry.
         self.write_pte(vaddr, pte);
 
+        self.nmapped += 1;
+
         Ok(())
     }
 
@@ -172,6 +184,8 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
 
         // Write page table entry.
         self.write_pte(page_address, pte);
+
+        self.nmapped -= 1;
 
         Ok(paddr)
     }
