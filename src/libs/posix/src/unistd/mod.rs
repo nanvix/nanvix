@@ -41,6 +41,7 @@ cfg_if::cfg_if! {
             chown,
             close,
             fdatasync,
+            fchmod,
             fchown,
             ftruncate,
             fsync,
