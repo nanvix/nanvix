@@ -35,14 +35,14 @@ jobs:
         script: |
           if [ "${TARGET_BRANCH}" = "dev" ]; then
             find . -type d -name 'nanvix-*-debug' -not -name 'nanvix-dev-debug' -exec rm -rf {} +
-            cd nanvix-dev-debug
+            cd github/nanvix-dev-debug
             git fetch origin
             git reset --hard origin/${TARGET_BRANCH}
           else
             if [ ! -d "nanvix-${TARGET_BRANCH}-debug" ]; then
-              git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-${TARGET_BRANCH}-debug
+              git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} github/nanvix-${TARGET_BRANCH}-debug
             else
-              cd nanvix-${TARGET_BRANCH}-debug
+              cd github/nanvix-${TARGET_BRANCH}-debug
               git fetch origin
               git reset --hard origin/${TARGET_BRANCH}
             fi
@@ -62,7 +62,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-debug
+          cd github/nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --lint
@@ -83,7 +83,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-debug
+          cd github/nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --build
@@ -104,7 +104,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-debug
+          cd github/nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --test
 
   test-qemu-pc:
@@ -121,7 +121,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-debug
+          cd github/nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --test
 
   test-qemu-baremetal:
@@ -138,7 +138,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-debug
+          cd github/nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --test
 
   test-microvm:
@@ -155,7 +155,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-debug
+          cd github/nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --test
 
   test-nanvixd:
@@ -172,7 +172,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-debug
+          cd github/nanvix-${TARGET_BRANCH}-debug
           sudo -E ./test.sh 127.0.0.1 8181 && exit 1 || exit 0
 
   test-hyperlight:
@@ -189,7 +189,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-debug
+          cd github/nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=hyperlight --test
 
   cleanup:
@@ -208,6 +208,6 @@ jobs:
         envs: TARGET_BRANCH
         script: |
           if [ "${TARGET_BRANCH}" = "dev" ]; then
-            cd nanvix-dev-debug
+            cd github/nanvix-dev-debug
             git remote prune origin
           fi
