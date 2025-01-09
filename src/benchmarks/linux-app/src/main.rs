@@ -455,6 +455,16 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
+    // Change file mode.
+    match fcntl::fchmodat(fcntl::AT_FDCWD, "foo.tmp", fcntl::S_IRUSR | fcntl::S_IWUSR, 0) {
+        Ok(()) => {
+            ::nvx::log!("changed file mode of file foo.tmp");
+        },
+        Err(e) => {
+            panic!("failed to change file mode of file foo.tmp: {:?}", e);
+        },
+    };
+
     // Get status of file.
     let path: &str = "foo.tmp";
     let mut foo_tmp: stat = stat::default();
