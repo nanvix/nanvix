@@ -14,10 +14,7 @@ use crate::{
         MessagePartitioner,
         MessageSerializer,
     },
-    sys::types::{
-        gid_t,
-        uid_t,
-    },
+    sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -45,42 +42,36 @@ use ::nvx::{
 };
 
 //==================================================================================================
-// FileChownAtRequest
+// FileChmodAtRequest
 //==================================================================================================
 
 #[derive(Debug)]
-pub struct FileChownAtRequest {
+pub struct FileChmodAtRequest {
     /// Directory file descriptor.
     pub dirfd: c_int,
-    /// Owner.
-    pub owner: uid_t,
-    /// Group.
-    pub group: gid_t,
+    /// Mode.
+    pub mode: mode_t,
     /// Flag.
     pub flag: c_int,
-    /// Path
+    /// Path.
     pub path: String,
 }
 
-impl FileChownAtRequest {
+impl FileChmodAtRequest {
     /// Size of 'directory file descriptor' field.
     pub const SIZE_OF_DIRFD: usize = mem::size_of::<c_int>();
-    /// Size of 'owner' field.
-    pub const SIZE_OF_OWNER: usize = mem::size_of::<uid_t>();
-    /// Size of 'group' field.
-    pub const SIZE_OF_GROUP: usize = mem::size_of::<gid_t>();
+    /// Size of 'mode' field.
+    pub const SIZE_OF_MODE: usize = mem::size_of::<mode_t>();
     /// Size of 'flag' field.
     pub const SIZE_OF_FLAG: usize = mem::size_of::<c_int>();
     /// Size of 'path length' field.
     pub const SIZE_OF_PATH_LENGTH: usize = mem::size_of::<u32>();
     /// Offset of 'directory file descriptor' field.
     pub const OFFSET_OF_DIRFD: usize = 0;
-    /// Offset of 'owner' field.
-    pub const OFFSET_OF_OWNER: usize = Self::OFFSET_OF_DIRFD + Self::SIZE_OF_DIRFD;
-    /// Offset of 'group' field.
-    pub const OFFSET_OF_GROUP: usize = Self::OFFSET_OF_OWNER + Self::SIZE_OF_OWNER;
+    /// Offset of 'mode' field.
+    pub const OFFSET_OF_MODE: usize = Self::OFFSET_OF_DIRFD + Self::SIZE_OF_DIRFD;
     /// Offset of 'flag' field.
-    pub const OFFSET_OF_FLAG: usize = Self::OFFSET_OF_GROUP + Self::SIZE_OF_GROUP;
+    pub const OFFSET_OF_FLAG: usize = Self::OFFSET_OF_MODE + Self::SIZE_OF_MODE;
     /// Offset of 'path length' field.
     pub const OFFSET_OF_PATH_LENGTH: usize = Self::OFFSET_OF_FLAG + Self::SIZE_OF_FLAG;
     /// Offset of 'path' field.
@@ -88,8 +79,7 @@ impl FileChownAtRequest {
 
     /// Maximum size of the message.
     pub const MAX_SIZE: usize = Self::SIZE_OF_DIRFD
-        + Self::SIZE_OF_OWNER
-        + Self::SIZE_OF_GROUP
+        + Self::SIZE_OF_MODE
         + Self::SIZE_OF_FLAG
         + Self::SIZE_OF_PATH_LENGTH
         + limits::PATH_MAX;
@@ -97,28 +87,21 @@ impl FileChownAtRequest {
     ///
     /// # Description
     ///
-    /// Creates a request message for the `fchownat()` system call.
+    /// Creates a request message for the `fchmodat()` system call.
     ///
     /// # Parameters
     ///
     /// - `dirfd`: Directory file descriptor.
-    /// - `owner`: Owner.
-    /// - `group`: Group.
+    /// - `mode`: Mode.
     /// - `flag`: Flags.
     /// - `path`: Path.
     ///
     /// # Returns
     ///
-    /// Upon success, the request message for the `fchownat()` system call is returned. Upon failure,
+    /// Upon success, the request message for the `fchmodat()` system call is returned. Upon failure,
     /// an error is returned instead.
     ///
-    pub fn new(
-        dirfd: c_int,
-        owner: uid_t,
-        group: gid_t,
-        flag: c_int,
-        path: &str,
-    ) -> Result<Self, Error> {
+    pub fn new(dirfd: c_int, mode: mode_t, flag: c_int, path: &str) -> Result<Self, Error> {
         // Check if path is too long.
         if path.len() > limits::PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "old path too long"));
@@ -126,19 +109,18 @@ impl FileChownAtRequest {
 
         Ok(Self {
             dirfd,
-            owner,
-            group,
+            mode,
             flag,
             path: path.to_string(),
         })
     }
 }
 
-impl MessageSerializer for FileChownAtRequest {
+impl MessageSerializer for FileChmodAtRequest {
     ///
     /// # Description
     ///
-    /// Serializes a request message for the `fchownat()` system call.
+    /// Serializes a request message for the `fchmodat()` system call.
     ///
     /// # Returns
     ///
@@ -148,8 +130,7 @@ impl MessageSerializer for FileChownAtRequest {
         let mut buffer: Vec<u8> = Vec::new();
 
         buffer.extend_from_slice(&self.dirfd.to_ne_bytes());
-        buffer.extend_from_slice(&self.owner.to_ne_bytes());
-        buffer.extend_from_slice(&self.group.to_ne_bytes());
+        buffer.extend_from_slice(&self.mode.to_ne_bytes());
         buffer.extend_from_slice(&self.flag.to_ne_bytes());
         buffer.extend_from_slice(&(self.path.len() as u32).to_ne_bytes());
         buffer.extend_from_slice(self.path.as_bytes());
@@ -158,11 +139,11 @@ impl MessageSerializer for FileChownAtRequest {
     }
 }
 
-impl MessageDeserializer for FileChownAtRequest {
+impl MessageDeserializer for FileChmodAtRequest {
     ///
     /// # Description
     ///
-    /// Deserializes a request message for the `fchownat()` system call.
+    /// Deserializes a request message for the `fchmodat()` system call.
     ///
     /// # Parameters
     ///
@@ -170,7 +151,7 @@ impl MessageDeserializer for FileChownAtRequest {
     ///
     /// # Returns
     ///
-    /// Upon success, the deserialized request message for the `fchownat()` system call is returned.
+    /// Upon success, the deserialized request message for the `fchmodat()` system call is returned.
     ///
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         // Check if message is too short.
@@ -180,25 +161,18 @@ impl MessageDeserializer for FileChownAtRequest {
 
         // Extract the 'directory file descriptor' field.
         let dirfd: c_int = c_int::from_ne_bytes(
-            bytes[Self::OFFSET_OF_DIRFD..Self::OFFSET_OF_OWNER]
+            bytes[Self::OFFSET_OF_DIRFD..Self::OFFSET_OF_MODE]
                 .try_into()
                 .map_err(|_| {
                     Error::new(ErrorCode::InvalidMessage, "invalid directory file descriptor")
                 })?,
         );
 
-        // Extract the 'owner' field.
-        let owner: uid_t = uid_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_OWNER..Self::OFFSET_OF_GROUP]
+        // Extract the 'mode' field.
+        let mode: mode_t = mode_t::from_ne_bytes(
+            bytes[Self::OFFSET_OF_MODE..Self::OFFSET_OF_FLAG]
                 .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid owner"))?,
-        );
-
-        // Extract the 'group' field.
-        let group: gid_t = gid_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_GROUP..Self::OFFSET_OF_FLAG]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid group"))?,
+                .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid mode"))?,
         );
 
         // Extract the 'flag' field.
@@ -208,7 +182,7 @@ impl MessageDeserializer for FileChownAtRequest {
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid flag"))?,
         );
 
-        // Extract path length.
+        // Extract the 'path length' field.
         let path_length: usize = u32::from_ne_bytes(
             bytes[Self::OFFSET_OF_PATH_LENGTH..Self::OFFSET_OF_PATH]
                 .try_into()
@@ -228,19 +202,18 @@ impl MessageDeserializer for FileChownAtRequest {
 
         Ok(Self {
             dirfd,
-            owner,
-            group,
+            mode,
             flag,
             path,
         })
     }
 }
 
-impl MessagePartitioner for FileChownAtRequest {
+impl MessagePartitioner for FileChmodAtRequest {
     ///
     /// # Description
     ///
-    /// Partitions a request message for the `fchownat()` system call.
+    /// Partitions a request message for the `fchmodat()` system call.
     ///
     /// # Parameters
     ///
@@ -261,7 +234,7 @@ impl MessagePartitioner for FileChownAtRequest {
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             pid,
-            LinuxDaemonMessageHeader::FileChownAtRequestPart,
+            LinuxDaemonMessageHeader::FileChmodAtRequestPart,
             part_number,
             payload_size,
             payload,
@@ -270,17 +243,18 @@ impl MessagePartitioner for FileChownAtRequest {
 }
 
 //==================================================================================================
-// FileChownAtResponse
+// FileChmodAtResponse
 //==================================================================================================
 
 #[derive(Debug)]
 #[repr(C, packed)]
-pub struct FileChownAtResponse {
+pub struct FileChmodAtResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChownAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(FileChmodAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
-impl FileChownAtResponse {
+impl FileChmodAtResponse {
+    /// Size of padding.
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
@@ -294,9 +268,9 @@ impl FileChownAtResponse {
     }
 
     pub fn build(pid: ProcessIdentifier) -> Message {
-        let message: FileChownAtResponse = FileChownAtResponse::new();
+        let message: FileChmodAtResponse = FileChmodAtResponse::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::FileChownAtResponse,
+            LinuxDaemonMessageHeader::FileChmodAtResponse,
             message.into_bytes(),
         );
         let message: Message =

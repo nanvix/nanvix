@@ -63,6 +63,10 @@ use ::posix::{
     },
     time::timespec,
 };
+use posix::fcntl::message::{
+    FileChmodAtRequest,
+    FileChmodAtResponse,
+};
 
 //==================================================================================================
 // do_openat
@@ -732,10 +736,10 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
 }
 
 //==================================================================================================
-// do_chownat()
+// do_fchownat()
 //==================================================================================================
 
-pub fn do_chownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<Message> {
+pub fn do_fchownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<Message> {
     trace!("fchownat(): pid={:?}, request={:?}", pid, request);
 
     let dirfd: i32 = request.dirfd;
@@ -766,6 +770,44 @@ pub fn do_chownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<Me
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fchownat(): errno={:?}", errno);
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            vec![crate::build_error(pid, error)]
+        },
+    }
+}
+
+//==================================================================================================
+// do_fchmodat()
+//==================================================================================================
+
+pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<Message> {
+    trace!("fchmodat(): pid={:?}, request={:?}", pid, request);
+
+    let dirfd: i32 = request.dirfd;
+    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+
+    let path: CString = match CString::new(request.path.as_str()) {
+        Ok(path) => path,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    let mode: LibcFileMode = match LibcFileMode::try_from(request.mode) {
+        Ok(mode) => mode,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+    };
+
+    let flag = LibcFileFlags(request.flag);
+
+    debug!("libc::fchmodat(): dirfd={:?}, path={:?}, mode={:?}", dirfd.inner(), path, mode.inner());
+    match unsafe { libc::fchmodat(dirfd.inner(), path.as_ptr(), mode.inner(), flag.inner()) } {
+        0 => {
+            debug!("libc::fchmodat(): success");
+            vec![FileChmodAtResponse::build(pid)]
+        },
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::fchmodat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]

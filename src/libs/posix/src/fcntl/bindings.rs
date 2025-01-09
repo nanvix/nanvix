@@ -75,6 +75,47 @@ pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int
 ///
 /// # Description
 ///
+/// Changes the mode of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `mode`:  Mode.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, the `fchmodat()` system call returns `0`. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::fcntl::fchmodat()`]
+///
+#[no_mangle]
+pub extern "C" fn fchmodat(dirfd: c_int, path: *const c_char, mode: mode_t, flag: c_int) -> c_int {
+    // Convert C string to Rust string.
+    let pathname: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    match crate::fcntl::fchmodat(dirfd, pathname, mode, flag) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe {
+                ::nvx::log!("fchmodat(): invalid error code");
+                errno = e.code.into_errno();
+            }
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
 /// Changes the owner and group of a file relative to a directory file descriptor.
 ///
 /// # Parameters
@@ -87,7 +128,7 @@ pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `fchownat()` system call returns empty. Otherwise, it returns
+/// Upon successful completion, the `fchownat()` system call returns `0`. Otherwise, it returns
 /// `-1` and sets `errno` to indicate the error.
 ///
 /// # See Also

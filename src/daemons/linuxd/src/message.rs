@@ -102,6 +102,7 @@ pub enum RequestAssemblerType {
     MakeDirectoryAtRequest(LinuxDaemonLongMessage),
     UpdateFileAccessTimeAtRequest(LinuxDaemonLongMessage),
     FileChownAtRequest(LinuxDaemonLongMessage),
+    FileChmodAtRequest(LinuxDaemonLongMessage),
 }
 
 pub trait RequestAssemblerTrait
