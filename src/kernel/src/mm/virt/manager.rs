@@ -165,8 +165,8 @@ impl VirtMemoryManager {
         vmem: &mut Vmem,
         vaddr: PageAligned<VirtualAddress>,
     ) -> Result<(), Error> {
-        vmem.unmap(vaddr)?;
-        Ok(())
+        let uframe: UserFrame = vmem.unmap(vaddr)?;
+        self.physman.borrow_mut().free_user_frame(uframe)
     }
 
     pub fn alloc_upages(
