@@ -44,6 +44,7 @@ cfg_if::cfg_if! {
             fchown,
             ftruncate,
             fsync,
+            lchmod,
             lchown,
             link,
             linkat,
