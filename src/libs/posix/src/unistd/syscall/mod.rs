@@ -11,6 +11,7 @@ mod fchown;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
+mod lchown;
 mod link;
 mod linkat;
 mod lseek;
@@ -33,6 +34,7 @@ pub use self::{
     fdatasync::fdatasync,
     fsync::fsync,
     ftruncate::ftruncate,
+    lchown::lchown,
     link::link,
     linkat::linkat,
     lseek::lseek,
