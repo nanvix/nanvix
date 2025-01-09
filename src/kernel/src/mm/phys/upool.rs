@@ -13,17 +13,8 @@ use ::alloc::{
     rc::Rc,
     vec::Vec,
 };
-use ::core::{
-    cell::RefCell,
-    ops::{
-        Deref,
-        DerefMut,
-    },
-};
-use ::sys::{
-    arch::mem,
-    error::Error,
-};
+use ::core::cell::RefCell;
+use ::sys::error::Error;
 
 //==================================================================================================
 // User Frame Pool Inner
@@ -126,8 +117,6 @@ impl UpoolInner {
 pub struct UserFrame {
     /// Frame address.
     addr: FrameAddress,
-    /// Back reference to the user page pool.
-    upool: Rc<RefCell<UpoolInner>>,
 }
 
 impl UserFrame {
@@ -145,8 +134,8 @@ impl UserFrame {
     ///
     /// A user frame.
     ///
-    fn new(addr: FrameAddress, upool: Rc<RefCell<UpoolInner>>) -> Self {
-        Self { addr, upool }
+    pub fn new(addr: FrameAddress) -> Self {
+        Self { addr }
     }
 
     ///
@@ -160,32 +149,6 @@ impl UserFrame {
     ///
     pub fn address(&self) -> FrameAddress {
         self.addr
-    }
-}
-
-impl Deref for UserFrame {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        unsafe {
-            core::slice::from_raw_parts(self.addr.into_raw_value() as *const u8, mem::PAGE_SIZE)
-        }
-    }
-}
-
-impl DerefMut for UserFrame {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe {
-            core::slice::from_raw_parts_mut(self.addr.into_raw_value() as *mut u8, mem::PAGE_SIZE)
-        }
-    }
-}
-
-impl Drop for UserFrame {
-    fn drop(&mut self) {
-        if let Err(err) = self.upool.borrow_mut().free(self.addr) {
-            error!("failed to free user frame: {:?}", err);
-        }
     }
 }
 
@@ -237,25 +200,40 @@ impl Upool {
     ///
     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
         let addr: FrameAddress = self.inner.borrow_mut().alloc()?;
-        let upage: UserFrame = UserFrame::new(addr, self.inner.clone());
-        // TODO: clear user page.
-        Ok(upage)
+        let uframe: UserFrame = UserFrame::new(addr);
+        Ok(uframe)
     }
 
     pub fn alloc_many(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
         trace!("alloc_many(): size={}", nframes);
 
         // Attempt to allocate pages.
-        let mut pages: Vec<FrameAddress> = self.inner.borrow_mut().alloc_many(nframes)?;
+        let mut uframes: Vec<FrameAddress> = self.inner.borrow_mut().alloc_many(nframes)?;
 
         // Create a vector of user pages.
         let mut upages: Vec<UserFrame> = Vec::new();
-        while let Some(page) = pages.pop() {
-            let upage: UserFrame = UserFrame::new(page, self.inner.clone());
-            // TODO: clear user page.
+        while let Some(page) = uframes.pop() {
+            let upage: UserFrame = UserFrame::new(page);
             upages.push(upage);
         }
 
         Ok(upages)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Frees a frame that was previously allocated from the user frame pool.
+    ///
+    /// # Parameters
+    ///
+    /// - `uframe`: User frame to be freed.
+    ///
+    /// # Returns
+    ///
+    /// On success, empty is returned. On failure, an error is returned instead.
+    ///
+    pub fn free(&mut self, uframe: UserFrame) -> Result<(), Error> {
+        self.inner.borrow_mut().free(uframe.address())
     }
 }
