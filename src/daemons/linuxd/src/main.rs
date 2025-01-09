@@ -60,8 +60,8 @@ use ::nvx::{
 };
 use ::posix::{
     fcntl::message::{
-        FileChownAtRequest,
         FileAdvisoryInformationRequest,
+        FileChownAtRequest,
         FileControlRequest,
         FileSpaceControlRequest,
         MakeDirectoryAtRequest,
@@ -140,6 +140,7 @@ use ::std::{
     sync::Once,
     thread,
 };
+use posix::unistd::message::FileChownRequest;
 
 //==================================================================================================
 // Structures
@@ -434,6 +435,11 @@ impl ProcessDaemon {
                                 LinuxDaemonMessageHeader::ChownAtRequestPart => {
                                     self.handle_chownat(source, message);
                                     continue;
+                                },
+                                LinuxDaemonMessageHeader::FileChownRequest => {
+                                    let request: FileChownRequest =
+                                        FileChownRequest::from_bytes(message.payload);
+                                    unistd::do_fchown(source, request)
                                 },
 
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
