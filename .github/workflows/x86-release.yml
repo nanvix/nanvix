@@ -35,14 +35,14 @@ jobs:
         script: |
           if [ "${TARGET_BRANCH}" = "dev" ]; then
             find . -type d -name 'nanvix-*-release' -not -name 'nanvix-dev-release' -exec rm -rf {} +
-            cd nanvix-dev-release
+            cd github/nanvix-dev-release
             git fetch origin
             git reset --hard origin/${TARGET_BRANCH}
           else
             if [ ! -d "nanvix-${TARGET_BRANCH}-release" ]; then
-              git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} nanvix-${TARGET_BRANCH}-release
+              git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} github/nanvix-${TARGET_BRANCH}-release
             else
-              cd nanvix-${TARGET_BRANCH}-release
+              cd github/nanvix-${TARGET_BRANCH}-release
               git fetch origin
               git reset --hard origin/${TARGET_BRANCH}
             fi
@@ -62,7 +62,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd github/nanvix-${TARGET_BRANCH}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --release --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --release --lint
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --release --lint
@@ -83,7 +83,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd github/nanvix-${TARGET_BRANCH}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --release --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --release --build
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --release --build
@@ -104,7 +104,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd github/nanvix-${TARGET_BRANCH}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-isapc --release --test
 
   test-qemu-pc:
@@ -121,7 +121,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd github/nanvix-${TARGET_BRANCH}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-pc --release --test
 
   test-qemu-baremetal:
@@ -138,7 +138,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd github/nanvix-${TARGET_BRANCH}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=qemu-baremetal --release --test
 
   test-microvm:
@@ -155,7 +155,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd github/nanvix-${TARGET_BRANCH}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --release --test
 
   test-nanvixd:
@@ -172,7 +172,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd github/nanvix-${TARGET_BRANCH}-release
           sudo -E ./test.sh 127.0.0.1 8282 && exit 1 || exit 0
 
   test-hyperlight:
@@ -189,7 +189,7 @@ jobs:
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH
         script: |
-          cd nanvix-${TARGET_BRANCH}-release
+          cd github/nanvix-${TARGET_BRANCH}-release
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=hyperlight --release --test
 
   cleanup:
@@ -208,6 +208,6 @@ jobs:
         envs: TARGET_BRANCH
         script: |
           if [ "${TARGET_BRANCH}" = "dev" ]; then
-            cd nanvix-dev-release
+            cd github/nanvix-dev-release
             git remote prune origin
           fi
