@@ -25,8 +25,6 @@ if [[ "$1" == "--extra" ]]; then
         libmpc-dev       \
         libmpfr-dev      \
         libncurses5-dev  \
-        libncursesw5     \
-        libncursesw5-dev \
         libpixman-1-dev  \
         libsdl2-dev      \
         mtools           \
