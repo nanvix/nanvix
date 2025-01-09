@@ -28,15 +28,15 @@ cd nanvix                                       # Switch to Nanvix source tree.
 ### Ubuntu 22.04
 
 ```bash
-cat build/scripts/setup/ubuntu.sh        # Inspect what is going to be installed.
-sudo -E ./build/scripts/setup/ubuntu.sh  # Install dependencies.
+cat build/scripts/setup/ubuntu.sh                # Inspect what is going to be installed.
+sudo -E ./build/scripts/setup/ubuntu.sh --extra  # Install dependencies.
 ```
 
 ### Arch Linux
 
 ```bash
-cat build/scripts/setup/arch.sh        # Inspect what is going to be installed.
-sudo -E ./build/scripts/setup/arch.sh  # Install dependencies.
+cat build/scripts/setup/arch.sh                # Inspect what is going to be installed.
+sudo -E ./build/scripts/setup/arch.sh --extra  # Install dependencies.
 ```
 
 ## Installing Rust toolchain
