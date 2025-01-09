@@ -28,7 +28,7 @@ use ::nvx::sys::error::Error;
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty is returned. Otherwise, it returns an error is returned.
+/// Upon successful completion, empty is returned. Otherwise, it returns an error.
 ///
 pub fn chown(path: &str, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::nvx::log!("chown(): path = {:?}, owner = {:?}, group = {:?}", path, owner, group);
