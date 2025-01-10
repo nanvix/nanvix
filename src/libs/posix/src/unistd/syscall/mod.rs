@@ -8,6 +8,7 @@
 mod chmod;
 mod chown;
 mod close;
+mod fchmod;
 mod fchown;
 mod fdatasync;
 mod fsync;
@@ -33,6 +34,7 @@ pub use self::{
     chmod::chmod,
     chown::chown,
     close::close,
+    fchmod::fchmod,
     fchown::fchown,
     fdatasync::fdatasync,
     fsync::fsync,
