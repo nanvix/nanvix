@@ -289,11 +289,11 @@ pub fn main() -> Result<(), Error> {
 
     // Truncate file to 512 bytes.
     match unistd::ftruncate(fd, 512) {
-        0 => {
+        Ok(()) => {
             ::nvx::log!("truncated file foo.tmp to 512 bytes");
         },
-        errno => {
-            panic!("failed to truncate file foo.tmp to 512 bytes: {:?}", errno);
+        Err(e) => {
+            panic!("failed to truncate file foo.tmp to 512 bytes ({:?})", e);
         },
     }
 

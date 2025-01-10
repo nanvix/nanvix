@@ -152,6 +152,38 @@ pub extern "C" fn fsync(fd: c_int) -> c_int {
 }
 
 ///
+/// # Description
+///
+/// Truncates a file to a specified length.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `length`: New size of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::ftruncate()`]
+///
+#[no_mangle]
+pub extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
+    match crate::unistd::ftruncate(fd, length) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe {
+                errno = e.code.into_errno();
+            }
+            -1
+        },
+    }
+}
+
+///
 /// # Safety
 ///
 /// The function has undefined behavior if the `path` points to an invalid memory location.
