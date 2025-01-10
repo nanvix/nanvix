@@ -19,10 +19,7 @@ use ::posix::{
     },
     sys::{
         self,
-        socket::{
-            sockaddr,
-            socklen_t,
-        },
+        socket::socklen_t,
         stat::stat,
         times,
         types::size_t,
@@ -725,6 +722,8 @@ pub fn main() -> Result<(), Error> {
 
     // TODO: test case for connect().
 
+    // TODO: test case for accept().
+
     match sys::socket::bind(
         sockfd,
         unsafe {
@@ -752,6 +751,16 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Close socket.
+    match unistd::close(sockfd) {
+        0 => {
+            ::nvx::log!("closed socket");
+        },
+        errno => {
+            panic!("failed to close socket: {:?}", errno);
+        },
+    }
+
     // Create a pair of connected sockets.
     let mut socket_fds: [c_int; 2] = [-1; 2];
 
@@ -773,6 +782,47 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    let mut buffer: [u8; 32] = [1; 32];
+
+    // Send message.
+    match sys::socket::send(socket_fds[0], buffer.as_ptr(), buffer.len() as size_t, 0) {
+        len if len >= 0 => {
+            ::nvx::log!("sent {} bytes to connection", len);
+        },
+        errno => {
+            panic!("failed to send message to connection: {:?}", errno);
+        },
+    }
+
+    // Receive message from connection.
+    match sys::socket::recv(socket_fds[1], buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
+        len if len >= 0 => {
+            ::nvx::log!("received {} bytes from connection", len);
+        },
+        errno => {
+            panic!("failed to receive message from connection: {:?}", errno);
+        },
+    }
+
+    // Sanity check message contents.
+    (0..32).for_each(|i| {
+        if buffer[i] != 1 {
+            panic!("message contents are not correct");
+        }
+    });
+
+    // Disallow send and receive operations.
+    for socketfd in &socket_fds {
+        match sys::socket::shutdown(*socketfd, sys::socket::SHUT_RDWR) {
+            0 => {
+                ::nvx::log!("disallowed send and receive operations on connection");
+            },
+            errno => {
+                panic!("failed to disallow send and receive operations on connection: {:?}", errno);
+            },
+        }
+    }
+
     // Close sockets.
     match unistd::close(socket_fds[0]) {
         0 => {
@@ -789,70 +839,6 @@ pub fn main() -> Result<(), Error> {
         },
         errno => {
             panic!("failed to close socket with fd {}: {:?}", socket_fds[1], errno);
-        },
-    }
-
-    // Accept connection on socket.
-    let mut address: sockaddr = unsafe { core::mem::zeroed() };
-    let mut address_len: socklen_t = 0;
-    let connfd: i32 = match sys::socket::accept(sockfd, &mut address, &mut address_len) {
-        connfd if connfd >= 0 => {
-            ::nvx::log!("accepted connection on socket with fd {}", connfd);
-            connfd
-        },
-        errno => {
-            panic!("failed to accept connection on socket: {:?}", errno);
-        },
-    };
-
-    // Receive message from connection.
-    let mut buffer: [u8; 32] = [0; 32];
-    match sys::socket::recv(connfd, buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
-        len if len >= 0 => {
-            ::nvx::log!("received {} bytes from connection", len);
-        },
-        errno => {
-            panic!("failed to receive message from connection: {:?}", errno);
-        },
-    }
-
-    // Echo message back to connection.
-    match sys::socket::send(connfd, buffer.as_ptr(), buffer.len() as size_t, 0) {
-        len if len >= 0 => {
-            ::nvx::log!("sent {} bytes to connection", len);
-        },
-        errno => {
-            panic!("failed to send message to connection: {:?}", errno);
-        },
-    }
-
-    // Disallow send and receive operations.
-    match sys::socket::shutdown(connfd, sys::socket::SHUT_RDWR) {
-        0 => {
-            ::nvx::log!("disallowed send and receive operations on connection");
-        },
-        errno => {
-            panic!("failed to disallow send and receive operations on connection: {:?}", errno);
-        },
-    }
-
-    // Close connection.
-    match unistd::close(connfd) {
-        0 => {
-            ::nvx::log!("closed connection");
-        },
-        errno => {
-            panic!("failed to close connection: {:?}", errno);
-        },
-    }
-
-    // Close socket.
-    match unistd::close(sockfd) {
-        0 => {
-            ::nvx::log!("closed socket");
-        },
-        errno => {
-            panic!("failed to close socket: {:?}", errno);
         },
     }
 
