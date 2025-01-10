@@ -11,4 +11,4 @@
 pub const PROGRAM_NAME: &str = "microvm";
 
 /// Default memory size.
-pub const DEFAULT_MEMORY_SIZE: usize = 128 * 1024 * 1024;
+pub const DEFAULT_MEMORY_SIZE: usize = 256 * 1024 * 1024;
