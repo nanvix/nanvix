@@ -40,6 +40,7 @@ use ::posix::sys::{
     },
 };
 use ::std::cmp;
+use posix::sys::socket::message::ConnectSocketRequest;
 
 //==================================================================================================
 // do_socket
@@ -111,6 +112,46 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
             crate::build_error(pid, error)
         },
         _ => BindSocketResponse::build(pid, 0),
+    }
+}
+
+//==================================================================================================
+// do_connect
+//==================================================================================================
+
+pub fn do_connect(pid: ProcessIdentifier, request: ConnectSocketRequest) -> Message {
+    trace!("connect(): pid={:?}, request={:?}", pid, request);
+
+    let sockfd: libc::c_int = request.sockfd;
+    let sockaddr: LibcSocketAddress = match LibcSocketAddress::try_from(request.sockaddr) {
+        Ok(sockaddr) => sockaddr,
+        Err(e) => return crate::build_error(pid, e.code),
+    };
+    let socklen: socklen_t = request.socklen;
+
+    debug!(
+        "libc::connect(): sockfd={:?}, sockaddr.sa_family={:?}, sockaddr.sa_data={:?}, \
+         socklen={:?}",
+        sockfd,
+        sockaddr.inner().sa_family,
+        sockaddr.inner().sa_data,
+        socklen
+    );
+
+    match unsafe {
+        libc::connect(
+            sockfd,
+            &sockaddr.inner() as *const libc::sockaddr,
+            socklen as libc::socklen_t,
+        )
+    } {
+        -1 => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            crate::build_error(pid, error)
+        },
+        sockfd => BindSocketResponse::build(pid, sockfd),
     }
 }
 
