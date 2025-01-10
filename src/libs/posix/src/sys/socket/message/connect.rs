@@ -27,19 +27,19 @@ use ::nvx::{
 };
 
 //==================================================================================================
-// BindSocketRequest
+// ConnectSocketRequest
 //==================================================================================================
 
 #[repr(C, packed)]
-pub struct BindSocketRequest {
+pub struct ConnectSocketRequest {
     pub sockfd: c_int,
     pub sockaddr: sockaddr,
     pub socklen: socklen_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(BindSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(ConnectSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
-impl BindSocketRequest {
+impl ConnectSocketRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
         - mem::size_of::<c_int>()
         - mem::size_of::<sockaddr>()
@@ -70,7 +70,7 @@ impl BindSocketRequest {
     ) -> Message {
         let message: Self = Self::new(sockfd, sockaddr, socklen);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::BindSocketRequest,
+            LinuxDaemonMessageHeader::ConnectSocketRequest,
             message.into_bytes(),
         );
         let message: Message =
@@ -80,36 +80,35 @@ impl BindSocketRequest {
     }
 }
 
-impl Debug for BindSocketRequest {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl Debug for ConnectSocketRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         write!(
             f,
-            "BindSocketRequest {{ sockfd: {}, sockaddr: {:?}, socklen: {} }}",
+            "ConnectSocketRequest {{ sockfd: {}, sockaddr: {:?}, socklen: {} }}",
             { self.sockfd },
-            self.sockaddr.clone(),
+            self.sockaddr,
             { self.socklen }
         )
     }
 }
 
 //==================================================================================================
-// BindSocketResponse
+// ConnectSocketResponse
 //==================================================================================================
 
-#[derive(Debug)]
 #[repr(C, packed)]
-pub struct BindSocketResponse {
-    pub ret: c_int,
+pub struct ConnectSocketResponse {
+    pub sockfd: c_int,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(BindSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::nvx::sys::static_assert_size!(ConnectSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
-impl BindSocketResponse {
+impl ConnectSocketResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>();
 
-    pub fn new(sockfd: c_int) -> Self {
+    pub fn new(ret: c_int) -> Self {
         Self {
-            ret: sockfd,
+            sockfd: ret,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -118,14 +117,14 @@ impl BindSocketResponse {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    pub fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: c_int) -> Message {
-        let message: Self = Self::new(sockfd);
+    pub fn build(pid: ProcessIdentifier, ret: c_int) -> Message {
+        let message: Self = Self::new(ret);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::BindSocketResponse,
+            LinuxDaemonMessageHeader::ConnectSocketResponse,
             message.into_bytes(),
         );
         let message: Message =

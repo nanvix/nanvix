@@ -7,6 +7,7 @@
 
 mod accept;
 mod bind;
+mod connect;
 mod listen;
 mod recv;
 mod send;
@@ -25,6 +26,10 @@ pub use self::{
     bind::{
         BindSocketRequest,
         BindSocketResponse,
+    },
+    connect::{
+        ConnectSocketRequest,
+        ConnectSocketResponse,
     },
     listen::{
         ListenSocketRequest,
