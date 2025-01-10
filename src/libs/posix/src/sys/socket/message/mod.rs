@@ -13,6 +13,7 @@ mod recv;
 mod send;
 mod shutdown;
 mod socket;
+mod socketpair;
 
 //==================================================================================================
 // Exports
@@ -50,5 +51,9 @@ pub use self::{
     socket::{
         CreateSocketRequest,
         CreateSocketResponse,
+    },
+    socketpair::{
+        CreateSocketPairRequest,
+        CreateSocketPairResponse,
     },
 };

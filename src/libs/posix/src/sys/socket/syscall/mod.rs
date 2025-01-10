@@ -13,6 +13,7 @@ mod recv;
 mod send;
 mod shutdown;
 mod socket;
+mod socketpair;
 
 //==================================================================================================
 // Exports
@@ -27,4 +28,5 @@ pub use self::{
     send::send,
     shutdown::shutdown,
     socket::socket,
+    socketpair::socketpair,
 };
