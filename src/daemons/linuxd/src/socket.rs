@@ -20,6 +20,9 @@ use ::posix::sys::{
             AcceptSocketResponse,
             BindSocketRequest,
             BindSocketResponse,
+            ConnectSocketRequest,
+            CreateSocketPairRequest,
+            CreateSocketPairResponse,
             CreateSocketRequest,
             CreateSocketResponse,
             ListenSocketRequest,
@@ -40,7 +43,6 @@ use ::posix::sys::{
     },
 };
 use ::std::cmp;
-use posix::sys::socket::message::ConnectSocketRequest;
 
 //==================================================================================================
 // do_socket
@@ -77,6 +79,48 @@ pub fn do_socket(pid: ProcessIdentifier, request: CreateSocketRequest) -> Messag
         sockfd => {
             debug!("libc::socket(): fd={:?}", sockfd);
             CreateSocketResponse::build(pid, sockfd)
+        },
+    }
+}
+
+//==================================================================================================
+// do_socketpair
+//==================================================================================================
+
+pub fn do_socketpair(pid: ProcessIdentifier, request: CreateSocketPairRequest) -> Message {
+    trace!("socketpair(): pid={:?}, request={:?}", pid, request);
+
+    let domain: LibcSocketDomain = match LibcSocketDomain::try_from(request.domain) {
+        Ok(domain) => domain,
+        Err(e) => return crate::build_error(pid, e.code),
+    };
+
+    let typ: LibcSocketType = match LibcSocketType::try_from(request.typ) {
+        Ok(typ) => typ,
+        Err(e) => return crate::build_error(pid, e.code),
+    };
+
+    let protocol: libc::c_int = request.protocol;
+
+    let mut sv: [libc::c_int; 2] = [0; 2];
+
+    debug!(
+        "libc::socketpair(): domain={:?}, type={:?}, protocol={:?}",
+        domain.inner(),
+        typ.inner(),
+        protocol
+    );
+    match unsafe { libc::socketpair(domain.inner() as i32, typ.inner(), protocol, sv.as_mut_ptr()) }
+    {
+        -1 => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            crate::build_error(pid, error)
+        },
+        _ => {
+            debug!("libc::socketpair(): fds={:?}", sv);
+            CreateSocketPairResponse::build(pid, sv[0], sv[1])
         },
     }
 }

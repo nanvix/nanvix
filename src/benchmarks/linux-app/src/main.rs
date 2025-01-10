@@ -12,6 +12,7 @@ use ::core::mem;
 use ::nvx::sys::error::Error;
 use ::posix::{
     fcntl,
+    ffi::c_int,
     netinet::in_::{
         in_addr,
         sockaddr_in,
@@ -23,6 +24,7 @@ use ::posix::{
             socklen_t,
         },
         stat::stat,
+        times,
         types::size_t,
         uio,
     },
@@ -35,7 +37,6 @@ use ::posix::{
     venv,
     venv::VirtualEnvironmentIdentifier,
 };
-use posix::sys::times;
 
 //==================================================================================================
 // Standalone Functions
@@ -748,6 +749,46 @@ pub fn main() -> Result<(), Error> {
         },
         errno => {
             panic!("failed to listen for connections on socket: {:?}", errno);
+        },
+    }
+
+    // Create a pair of connected sockets.
+    let mut socket_fds: [c_int; 2] = [-1; 2];
+
+    match sys::socket::socketpair(
+        sys::socket::AF_UNIX as c_int,
+        sys::socket::SOCK_STREAM,
+        0,
+        &mut socket_fds,
+    ) {
+        Ok(()) => {
+            ::nvx::log!(
+                "created pair of connected sockets with fds {} and {}",
+                socket_fds[0],
+                socket_fds[1]
+            );
+        },
+        Err(errno) => {
+            panic!("failed to create pair of connected sockets: {:?}", errno);
+        },
+    }
+
+    // Close sockets.
+    match unistd::close(socket_fds[0]) {
+        0 => {
+            ::nvx::log!("closed socket with fd {}", socket_fds[0]);
+        },
+        errno => {
+            panic!("failed to close socket with fd {}: {:?}", socket_fds[0], errno);
+        },
+    }
+
+    match unistd::close(socket_fds[1]) {
+        0 => {
+            ::nvx::log!("closed socket with fd {}", socket_fds[1]);
+        },
+        errno => {
+            panic!("failed to close socket with fd {}: {:?}", socket_fds[1], errno);
         },
     }
 

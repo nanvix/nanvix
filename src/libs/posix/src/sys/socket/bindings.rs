@@ -5,6 +5,8 @@
 // Imports
 //==================================================================================================
 
+use core::slice;
+
 use crate::{
     errno::errno,
     ffi::c_int,
@@ -13,6 +15,7 @@ use crate::{
         socklen_t,
     },
 };
+use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
 // Standalone Functions
@@ -46,6 +49,52 @@ pub unsafe extern "C" fn connect(
 ) -> c_int {
     match crate::sys::socket::connect(sockfd, unsafe { &*sockaddr }, len) {
         Ok(sockfd) => sockfd,
+        Err(e) => {
+            unsafe { errno = e.code.into_errno() }
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Creates a pair of connected sockets.
+///
+/// # Parameters
+///
+/// - `domain`: Communication domain.
+/// - `typ`: Socket type.
+/// - `protocol`: Protocol.
+/// - `socket_fds`: Array where the file descriptors of the sockets will be stored.
+///
+/// # Returns
+///
+/// The `socketpair()` function returns `0` on success. On error, it returns `-1` and sets `errno` to
+/// indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may deference raw pointers.
+///
+#[no_mangle]
+pub unsafe extern "C" fn socketpair(
+    domain: c_int,
+    typ: c_int,
+    protocol: c_int,
+    socket_fds: *mut c_int,
+) -> c_int {
+    // Check if socket pair is valid.
+    if socket_fds.is_null() {
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Reconstruct array.
+    let socket_fds: &mut [c_int] = slice::from_raw_parts_mut(socket_fds, 2);
+
+    match crate::sys::socket::socketpair(domain, typ, protocol, socket_fds) {
+        Ok(_) => 0,
         Err(e) => {
             unsafe { errno = e.code.into_errno() }
             -1
