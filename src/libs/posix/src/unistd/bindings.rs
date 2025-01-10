@@ -121,6 +121,37 @@ pub extern "C" fn _exit(status: c_int) -> ! {
 }
 
 ///
+/// # Description
+///
+/// Synchronizes changes to a file.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::fsync()`]
+///
+#[no_mangle]
+pub extern "C" fn fsync(fd: c_int) -> c_int {
+    match crate::unistd::fsync(fd) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe {
+                errno = e.code.into_errno();
+            }
+            -1
+        },
+    }
+}
+
+///
 /// # Safety
 ///
 /// The function has undefined behavior if the `path` points to an invalid memory location.

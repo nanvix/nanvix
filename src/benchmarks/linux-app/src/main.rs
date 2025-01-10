@@ -319,11 +319,11 @@ pub fn main() -> Result<(), Error> {
 
     // Synchronize changes to a file.
     match unistd::fsync(fd) {
-        0 => {
+        Ok(()) => {
             ::nvx::log!("synchronized file foo.tmp with storage device");
         },
-        errno => {
-            panic!("failed to synchronize file foo.tmp with storage device: {:?}", errno);
+        Err(e) => {
+            panic!("failed to synchronize file foo.tmp with storage device ({:?})", e);
         },
     }
 
