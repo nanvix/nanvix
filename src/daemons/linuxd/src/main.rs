@@ -81,6 +81,7 @@ use ::posix::{
             AcceptSocketRequest,
             BindSocketRequest,
             ConnectSocketRequest,
+            CreateSocketPairRequest,
             CreateSocketRequest,
             ListenSocketRequest,
             ReceiveSocketRequest,
@@ -457,6 +458,11 @@ impl ProcessDaemon {
                                     let request: ConnectSocketRequest =
                                         ConnectSocketRequest::from_bytes(message.payload);
                                     socket::do_connect(source, request)
+                                },
+                                LinuxDaemonMessageHeader::CreateSocketPairRequest => {
+                                    let request: CreateSocketPairRequest =
+                                        CreateSocketPairRequest::from_bytes(message.payload);
+                                    socket::do_socketpair(source, request)
                                 },
 
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),

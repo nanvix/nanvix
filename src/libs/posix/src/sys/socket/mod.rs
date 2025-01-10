@@ -25,6 +25,7 @@ cfg_if::cfg_if! {
             send,
             shutdown,
             socket,
+            socketpair,
         };
     }
 }
