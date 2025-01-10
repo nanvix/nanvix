@@ -722,6 +722,8 @@ pub fn main() -> Result<(), Error> {
         sin_zero: [0; 8],
     };
 
+    // TODO: test case for connect().
+
     match sys::socket::bind(
         sockfd,
         unsafe {

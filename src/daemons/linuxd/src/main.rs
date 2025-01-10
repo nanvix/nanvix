@@ -80,6 +80,7 @@ use ::posix::{
         socket::message::{
             AcceptSocketRequest,
             BindSocketRequest,
+            ConnectSocketRequest,
             CreateSocketRequest,
             ListenSocketRequest,
             ReceiveSocketRequest,
@@ -451,6 +452,11 @@ impl ProcessDaemon {
                                     let request: FileChmodRequest =
                                         FileChmodRequest::from_bytes(message.payload);
                                     unistd::do_fchmod(source, request)
+                                },
+                                LinuxDaemonMessageHeader::ConnectSocketRequest => {
+                                    let request: ConnectSocketRequest =
+                                        ConnectSocketRequest::from_bytes(message.payload);
+                                    socket::do_connect(source, request)
                                 },
 
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),

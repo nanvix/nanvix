@@ -153,6 +153,8 @@ pub enum LinuxDaemonMessageHeader {
     FileChmodAtResponse,
     FileChmodRequest,
     FileChmodResponse,
+    ConnectSocketRequest,
+    ConnectSocketResponse,
 }
 
 #[repr(C, packed)]
