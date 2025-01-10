@@ -367,6 +367,16 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
+    // Change file mode.
+    match unistd::fchmod(fd, fcntl::S_IRUSR | fcntl::S_IWUSR) {
+        Ok(()) => {
+            ::nvx::log!("changed file mode of file foo.tmp");
+        },
+        Err(e) => {
+            panic!("failed to change file mode of file foo.tmp: {:?}", e);
+        },
+    };
+
     // Get file access mode and the file status flags.
     let flags: i32 = match fcntl::fcntl(fd, fcntl::F_GETFL, 0) {
         flags if flags >= 0 => {

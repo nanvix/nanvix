@@ -151,6 +151,8 @@ pub enum LinuxDaemonMessageHeader {
     FileChownResponse,
     FileChmodAtRequestPart,
     FileChmodAtResponse,
+    FileChmodRequest,
+    FileChmodResponse,
 }
 
 #[repr(C, packed)]
