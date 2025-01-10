@@ -6,17 +6,18 @@
 //==================================================================================================
 
 use crate::{
-    unistd::message::{
-        FileSyncRequest,
-        FileSyncResponse,
-    },
+    ffi::c_int,
+    unistd::message::FileSyncRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -30,56 +31,36 @@ use ::nvx::{
 ///
 /// # Parameters
 ///
-/// - `fd: i32`: File descriptor.
+/// - `fd`: File descriptor.
 ///
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, a negative error code is returned.
 ///
-pub fn fsync(fd: i32) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+pub fn fsync(fd: c_int) -> Result<(), Error> {
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
     let request: Message = FileSyncRequest::build(pid, fd);
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
-        match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(e) => e.code.into_errno(),
-        }
+        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
+        ::nvx::log!("fsync(): failed ({:?})", error_code);
+        Err(Error::new(error_code, "fsync() failed"))
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => {
-                match message.header {
-                    // Response was successfully parsed.
-                    LinuxDaemonMessageHeader::FileSyncResponse => {
-                        let response: FileSyncResponse =
-                            FileSyncResponse::from_bytes(message.payload);
-                        // Return system call result value.
-                        response.ret
-                    },
-                    // Response was not successfully parsed.
-                    _ => ErrorCode::InvalidMessage.into_errno(),
-                }
-            },
-            // Response was not successfully parsed.
-            Err(e) => e.code.into_errno(),
+            LinuxDaemonMessageHeader::FileSyncResponse => Ok(()),
+            // Invalid response.
+            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
         }
     }
 }
