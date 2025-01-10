@@ -156,6 +156,45 @@ pub extern "C" fn isatty(_fd: c_int) -> c_int {
 ///
 /// # Description
 ///
+/// Changes the mode of a symbolic link.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
+/// the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::lchmod()`]
+///
+#[no_mangle]
+pub extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
+    // Convert C string to Rust string.
+    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+        Ok(pathname) => pathname,
+        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+    };
+
+    match crate::unistd::lchmod(path, mode) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe {
+                ::nvx::log!("lchmod(): failed ({:?})", e);
+                errno = e.code.into_errno();
+            }
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
 /// Changes the user and group ownership of a symbolic link.
 ///
 /// # Parameters
