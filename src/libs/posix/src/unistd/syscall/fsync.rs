@@ -35,7 +35,7 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, zero is returned. Otherwise, a negative error code is returned.
+/// Upon successful completion, empty is returned. Otherwise, an error is returned.
 ///
 pub fn fsync(fd: c_int) -> Result<(), Error> {
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
