@@ -25,6 +25,8 @@ use ::posix::sys::{
             CreateSocketPairResponse,
             CreateSocketRequest,
             CreateSocketResponse,
+            GetPeerNameRequest,
+            GetPeerNameResponse,
             ListenSocketRequest,
             ListenSocketResponse,
             ReceiveSocketRequest,
@@ -218,6 +220,37 @@ pub fn do_listen(pid: ProcessIdentifier, request: ListenSocketRequest) -> Messag
             crate::build_error(pid, error)
         },
         _ => ListenSocketResponse::build(pid, 0),
+    }
+}
+
+//==================================================================================================
+// do_getpeername
+//==================================================================================================
+
+pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Message {
+    trace!("getpeername(): pid={:?}, request={:?}", pid, request);
+
+    let sockfd: libc::c_int = request.sockfd;
+    let mut address: libc::sockaddr = unsafe { core::mem::zeroed() };
+    let mut address_len: libc::socklen_t =
+        core::mem::size_of::<libc::sockaddr>() as libc::socklen_t;
+
+    debug!("libc::getpeername(): sockfd={:?}", sockfd);
+    match unsafe { libc::getpeername(sockfd, &mut address, &mut address_len) } {
+        -1 => {
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            crate::build_error(pid, error)
+        },
+        _ => {
+            let sockaddr: sockaddr = sockaddr {
+                sa_family: address.sa_family as u16,
+                sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
+            };
+            let socklen: socklen_t = address_len;
+            GetPeerNameResponse::build(pid, sockaddr, socklen)
+        },
     }
 }
 
