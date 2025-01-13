@@ -20,6 +20,7 @@ cfg_if::cfg_if! {
             accept,
             bind,
             connect,
+            getpeername,
             listen,
             recv,
             send,

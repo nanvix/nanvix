@@ -83,6 +83,7 @@ use ::posix::{
             ConnectSocketRequest,
             CreateSocketPairRequest,
             CreateSocketRequest,
+            GetPeerNameRequest,
             ListenSocketRequest,
             ReceiveSocketRequest,
             SendSocketRequest,
@@ -463,6 +464,11 @@ impl ProcessDaemon {
                                     let request: CreateSocketPairRequest =
                                         CreateSocketPairRequest::from_bytes(message.payload);
                                     socket::do_socketpair(source, request)
+                                },
+                                LinuxDaemonMessageHeader::GetPeerNameRequest => {
+                                    let request: GetPeerNameRequest =
+                                        GetPeerNameRequest::from_bytes(message.payload);
+                                    socket::do_getpeername(source, request)
                                 },
 
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
