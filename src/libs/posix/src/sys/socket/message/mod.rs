@@ -8,6 +8,7 @@
 mod accept;
 mod bind;
 mod connect;
+mod getpeername;
 mod listen;
 mod recv;
 mod send;
@@ -31,6 +32,10 @@ pub use self::{
     connect::{
         ConnectSocketRequest,
         ConnectSocketResponse,
+    },
+    getpeername::{
+        GetPeerNameRequest,
+        GetPeerNameResponse,
     },
     listen::{
         ListenSocketRequest,
