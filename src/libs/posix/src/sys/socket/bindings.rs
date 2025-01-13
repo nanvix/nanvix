@@ -35,7 +35,7 @@ use ::nvx::sys::error::ErrorCode;
 /// # Returns
 ///
 /// The `connect()` function returns the file descriptor of the socket on success. On error, it
-/// return `-1` and sets `errno` to indicate the error.
+/// returns `-1` and sets `errno` to indicate the error.
 ///
 /// # Safety
 ///
@@ -49,6 +49,53 @@ pub unsafe extern "C" fn connect(
 ) -> c_int {
     match crate::sys::socket::connect(sockfd, unsafe { &*sockaddr }, len) {
         Ok(sockfd) => sockfd,
+        Err(e) => {
+            unsafe { errno = e.code.into_errno() }
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Gets the name of the peer socket.
+///
+/// # Parameters
+///
+/// - `sockfd`: File descriptor of the socket.
+/// - `sockaddr`: Location to store the address of the peer socket.
+/// - `len`: Location to store the size of the address.
+///
+/// # Returns
+///
+/// Upon successful completion, the `getpeername()` function returns `0`. Otherwise, on failure, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may deference raw pointers.
+///
+#[no_mangle]
+pub unsafe extern "C" fn getpeername(
+    sockfd: c_int,
+    sockaddr: *mut sockaddr,
+    len: *mut socklen_t,
+) -> c_int {
+    // Check if the address is valid.
+    if sockaddr.is_null() {
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Check if the length is valid.
+    if len.is_null() {
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    match crate::sys::socket::getpeername(sockfd, unsafe { &mut *sockaddr }, unsafe { &mut *len }) {
+        Ok(_) => 0,
         Err(e) => {
             unsafe { errno = e.code.into_errno() }
             -1

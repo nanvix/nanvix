@@ -19,7 +19,10 @@ use ::posix::{
     },
     sys::{
         self,
-        socket::socklen_t,
+        socket::{
+            sockaddr,
+            socklen_t,
+        },
         stat::stat,
         times,
         types::size_t,
@@ -780,6 +783,20 @@ pub fn main() -> Result<(), Error> {
         Err(errno) => {
             panic!("failed to create pair of connected sockets: {:?}", errno);
         },
+    }
+
+    // Get name of the peer socket.
+    let mut sockaddr: [sockaddr; 2] = unsafe { mem::zeroed() };
+    let mut addrlen: [socklen_t; 2] = [0; 2];
+    for i in 0..2 {
+        match sys::socket::getpeername(socket_fds[i], &mut sockaddr[i], &mut addrlen[i]) {
+            Ok(()) => {
+                ::nvx::log!("sockfd {:?} is connected to peer {:?}", socket_fds[i], sockaddr[i]);
+            },
+            errno => {
+                panic!("failed to get peer name of connection: {:?}", errno);
+            },
+        }
     }
 
     let mut buffer: [u8; 32] = [1; 32];
