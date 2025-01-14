@@ -21,6 +21,7 @@ cfg_if::cfg_if! {
             bind,
             connect,
             getpeername,
+            getsockname,
             listen,
             recv,
             send,
@@ -79,7 +80,7 @@ pub type socklen_t = u32;
 pub type sa_family_t = u16;
 
 /// Describes the address of a socket.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct sockaddr {
     /// Address family.
