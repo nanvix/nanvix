@@ -106,6 +106,53 @@ pub unsafe extern "C" fn getpeername(
 ///
 /// # Description
 ///
+/// Gets the name of the socket.
+///
+/// # Parameters
+///
+/// - `sockfd`: File descriptor of the socket.
+/// - `sockaddr`: Location to store the address of the socket.
+/// - `len`: Location to store the size of the address.
+///
+/// # Returns
+///
+/// Upon successful completion, the `getsockname()` function returns `0`. Otherwise, on failure, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may deference raw pointers.
+///
+#[no_mangle]
+pub unsafe extern "C" fn getsockname(
+    sockfd: c_int,
+    sockaddr: *mut sockaddr,
+    len: *mut socklen_t,
+) -> c_int {
+    // Check if the address is valid.
+    if sockaddr.is_null() {
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Check if the length is valid.
+    if len.is_null() {
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    match crate::sys::socket::getsockname(sockfd, &mut *sockaddr, &mut *len) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe { errno = e.code.into_errno() }
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
 /// Creates a pair of connected sockets.
 ///
 /// # Parameters

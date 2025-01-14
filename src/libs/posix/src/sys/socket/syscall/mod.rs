@@ -9,6 +9,7 @@ mod accept;
 mod bind;
 mod connect;
 mod getpeername;
+mod getsockname;
 mod listen;
 mod recv;
 mod send;
@@ -25,6 +26,7 @@ pub use self::{
     bind::bind,
     connect::connect,
     getpeername::getpeername,
+    getsockname::getsockname,
     listen::listen,
     recv::recv,
     send::send,
