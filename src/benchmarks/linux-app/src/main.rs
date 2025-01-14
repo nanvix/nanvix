@@ -785,17 +785,45 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
-    // Get name of the peer socket.
-    let mut sockaddr: [sockaddr; 2] = unsafe { mem::zeroed() };
-    let mut addrlen: [socklen_t; 2] = [0; 2];
+    // Get name of the local socket.
+    let mut sockaddr_self: [sockaddr; 2] = unsafe { mem::zeroed() };
+    let mut addrlen_self: [socklen_t; 2] = [0; 2];
     for i in 0..2 {
-        match sys::socket::getpeername(socket_fds[i], &mut sockaddr[i], &mut addrlen[i]) {
+        match sys::socket::getsockname(socket_fds[i], &mut sockaddr_self[i], &mut addrlen_self[i]) {
             Ok(()) => {
-                ::nvx::log!("sockfd {:?} is connected to peer {:?}", socket_fds[i], sockaddr[i]);
+                ::nvx::log!("sockfd {:?} is bound to {:?}", socket_fds[i], sockaddr_self[i]);
+            },
+            errno => {
+                panic!("failed to get local name of connection: {:?}", errno);
+            },
+        }
+    }
+
+    // Get name of the peer socket.
+    let mut sockaddr_peer: [sockaddr; 2] = unsafe { mem::zeroed() };
+    let mut addrlen_peer: [socklen_t; 2] = [0; 2];
+    for i in (0..2).rev() {
+        match sys::socket::getpeername(socket_fds[i], &mut sockaddr_peer[i], &mut addrlen_peer[i]) {
+            Ok(()) => {
+                ::nvx::log!(
+                    "sockfd {:?} is connected to peer {:?}",
+                    socket_fds[i],
+                    sockaddr_peer[i]
+                );
             },
             errno => {
                 panic!("failed to get peer name of connection: {:?}", errno);
             },
+        }
+    }
+
+    // Check if local and peer names are the same.
+    for i in 0..2 {
+        if addrlen_self[i] != addrlen_peer[i] {
+            panic!("local and peer names are not the same");
+        }
+        if sockaddr_self[i] != sockaddr_peer[i] {
+            panic!("local and peer names are not the same");
         }
     }
 
