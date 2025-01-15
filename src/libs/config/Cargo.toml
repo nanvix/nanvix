@@ -1,0 +1,12 @@
+[package]
+name = "config"
+version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
