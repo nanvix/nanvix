@@ -14,6 +14,7 @@ members = [
         "src/daemons/wasmd",
         "src/kernel",
         "src/libs/bitmap",
+        "src/libs/config",
         "src/libs/error",
         "src/libs/nvx",
         "src/libs/posix",
