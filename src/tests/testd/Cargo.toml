@@ -16,6 +16,7 @@ name = "testd"
 [dependencies]
 nvx = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }
+config = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

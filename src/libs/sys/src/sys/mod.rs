@@ -8,11 +8,8 @@
 /// Architecture-specific definitions.
 pub mod arch;
 
-/// m configuration constants.
+/// Configuration constants.
 pub mod config;
-
-/// System constants.
-pub mod constants;
 
 /// Error codes.
 pub use ::error;

@@ -17,11 +17,6 @@ use ::nvx::{
     },
     sys::{
         arch::mem,
-        config,
-        config::{
-            kernel,
-            memory_layout,
-        },
     },
 };
 
@@ -50,7 +45,7 @@ fn test_mmap_munmap() -> bool {
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = config::memory_layout::USER_HEAP_BASE;
+    let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
 
     // Map a page.
     match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
@@ -94,7 +89,7 @@ fn test_mmap_write_munmap() -> bool {
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = config::memory_layout::USER_HEAP_BASE;
+    let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
 
     // Map a page.
     match nvx::mm::mmap(mypid, vaddr, AccessPermission::WRONLY) {
@@ -154,10 +149,10 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = (kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
+    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
 
     for _ in 0..ntimes {
-        let vaddr: VirtualAddress = memory_layout::USER_HEAP_BASE;
+        let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
 
         // Map a page.
         match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
@@ -202,9 +197,9 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = (kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
+    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
 
-    for vaddr in (0..ntimes).map(|i| memory_layout::USER_HEAP_BASE_RAW + i * mem::PAGE_SIZE) {
+    for vaddr in (0..ntimes).map(|i| config::memory_layout::USER_HEAP_BASE_RAW + i * mem::PAGE_SIZE) {
         let vaddr: VirtualAddress = match VirtualAddress::from_raw_value(vaddr) {
             Ok(vaddr) => vaddr,
             Err(_) => return false,

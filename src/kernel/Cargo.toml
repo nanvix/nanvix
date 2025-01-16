@@ -17,6 +17,7 @@ path = "src/kmain.rs"
 [dependencies]
 bitmap = { workspace = true }
 cfg-if = { workspace = true }
+config = { workspace = true }
 raw-array = { workspace = true }
 slab = { workspace = true }
 sys = { workspace = true }

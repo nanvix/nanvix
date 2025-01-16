@@ -12,6 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 cfg-if = { workspace = true }
+config = { workspace = true }
 error = { workspace = true }
 
 [build-dependencies]

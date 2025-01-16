@@ -15,7 +15,6 @@ use ::sys::{
         self,
         paging::FrameNumber,
     },
-    config,
     error::{
         Error,
         ErrorCode,
