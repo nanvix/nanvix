@@ -12,6 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 nvx = { workspace = true, features = ["std"] }
+config = { workspace = true }
 posix = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }

@@ -34,9 +34,9 @@ pub use ::sys::kcall::mm::{
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "none", feature = "allocator"))] {
         /// Heap size (in bytes). This value was chosen arbitrarily.
-        pub const HEAP_SIZE: usize = 8 * ::sys::constants::MEGABYTE;
+        pub const HEAP_SIZE: usize = 8 * config::constants::MEGABYTE;
         /// Based address for break address.
-        pub const BREAK_BASE_RAW: usize = ::sys::config::memory_layout::USER_HEAP_BASE_RAW + HEAP_SIZE/2;
+        pub const BREAK_BASE_RAW: usize = config::memory_layout::USER_HEAP_BASE_RAW + HEAP_SIZE/2;
     }
 }
 
