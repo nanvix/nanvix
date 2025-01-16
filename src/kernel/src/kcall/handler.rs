@@ -114,7 +114,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                 // Check if the number of buffered messages in the kernel is not to high. We don't
                 // want to keep pushing messages to the kernel and then run out of memory.
                 if let Ok(number_buffered_messages) = pm.number_buffered_messages()  {
-                    if number_buffered_messages < ::sys::config::kernel::MAX_IKC_MESSAGES {
+                    if number_buffered_messages < config::kernel::MAX_IKC_MESSAGES {
                         // The number of messages that are buffered in the kernel is not too high,
                         // So attempt to read an inter-kernel communication message from the
                         // kernel's standard input.

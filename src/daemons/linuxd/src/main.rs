@@ -51,7 +51,6 @@ use ::nvx::{
     },
     pm::ProcessIdentifier,
     sys::{
-        config,
         error::{
             Error,
             ErrorCode,

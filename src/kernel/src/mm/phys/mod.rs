@@ -31,7 +31,6 @@ use crate::{
 use ::alloc::collections::LinkedList;
 use ::sys::{
     arch::mem,
-    config,
     error::{
         Error,
         ErrorCode,

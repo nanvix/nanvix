@@ -30,7 +30,6 @@ use crate::{
     },
 };
 use ::sys::{
-    config,
     error::Error,
     pm::ProcessIdentifier,
 };

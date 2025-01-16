@@ -46,7 +46,6 @@ use ::core::{
 };
 use ::sys::{
     arch::mem,
-    config,
     error::{
         Error,
         ErrorCode,

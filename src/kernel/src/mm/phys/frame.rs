@@ -22,12 +22,12 @@ use ::sys::{
         self,
         paging::FrameNumber,
     },
-    constants,
     error::{
         Error,
         ErrorCode,
     },
 };
+use config::constants;
 
 //==================================================================================================
 // Structures
