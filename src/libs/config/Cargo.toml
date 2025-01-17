@@ -13,6 +13,9 @@ homepage.workspace = true
 [lib]
 crate-type = ["lib"]
 
+[build-dependencies]
+toml = "0.8.19"
+
 [features]
 default = []
 std = []

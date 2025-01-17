@@ -12,6 +12,10 @@ TIMEOUT=$5  # Timeout
 export SCRIPT_NAME=$0
 export SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd)"
 
+# Target configuration
+MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../../config/kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')
+echo ">>> Memory Size: $MEMSIZE"
+
 #===================================================================================================
 # usage()
 #===================================================================================================
@@ -54,9 +58,6 @@ function run_qemu
 	local timeout=$5    # Timeout for test mode.
 	local GDB_PORT=1234 # GDB port used for debugging.
 	local cmd=""
-
-	# Target configuration.
-	local MEMSIZE=256M # Memory Size
 
 	# Check if the target is unsupported.
 	if [ $target != "i386" ]; then
@@ -141,9 +142,6 @@ function run_microvm()
 
 	# Base command.
 	local cmd="$MICROVM_PATH/microvm.elf"
-
-	# Machine configuration.
-	local MEMSIZE=256M # Memory Size
 
 	cmd="$cmd -kernel $image -memory $MEMSIZE"
 
