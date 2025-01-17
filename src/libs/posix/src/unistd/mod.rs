@@ -45,6 +45,7 @@ cfg_if::cfg_if! {
             fchown,
             ftruncate,
             fsync,
+            getpid,
             lchmod,
             lchown,
             link,

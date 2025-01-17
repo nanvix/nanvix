@@ -40,7 +40,7 @@ pub fn linkat(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str, flags:
 }
 
 fn linkat_request(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str, flags: i32) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
+    let pid: ProcessIdentifier = match crate::unistd::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };

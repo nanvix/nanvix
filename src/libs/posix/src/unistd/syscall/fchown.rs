@@ -47,7 +47,7 @@ use ::nvx::{
 pub fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::nvx::log!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
 
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
     // Build request and send it
     let request: Message = FileChownRequest::build(pid, fd, owner, group);
