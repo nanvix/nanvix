@@ -9,6 +9,7 @@ This repository hosts the source code of Nanvix, a research operating system.
 - For instructions on development environment setup, see [doc/setup.md](doc/setup.md).
 - For instructions on building, see [doc/build.md](doc/build.md).
 - For instructions on running, see [doc/run.md](doc/run.md).
+- For dev instructions (e.g., testing), see [doc/dev.md](doc/dev.md).
 
 ## Usage Statement
 
