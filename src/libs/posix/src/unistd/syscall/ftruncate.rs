@@ -40,7 +40,7 @@ use ::nvx::{
 /// Upon successful completion, empty is returned. Otherwise, an error is returned.
 ///
 pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
     // Build request and send it.
     let request: Message = FileTruncateRequest::build(pid, fd, length);

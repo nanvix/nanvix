@@ -196,7 +196,7 @@ pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_
 
 #[no_mangle]
 pub extern "C" fn getpid() -> pid_t {
-    match nvx::sys::kcall::pm::getpid() {
+    match crate::unistd::getpid() {
         Ok(pid) => pid.into(),
         Err(e) => {
             unsafe {

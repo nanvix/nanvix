@@ -30,7 +30,7 @@ use ::nvx::{
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
 pub fn write(fd: i32, buffer: *const u8, count: size_t) -> ssize_t {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
+    let pid: ProcessIdentifier = match crate::unistd::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
