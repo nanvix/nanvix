@@ -84,6 +84,16 @@ pub fn main() -> Result<(), Error> {
         },
     }
 
+    // Try to get PID
+    match unistd::getpid() {
+        Ok(pid) => {
+            ::nvx::log!("got PID {:#?}", pid);
+        },
+        Err(err) => {
+            panic!("failed to get PID: {:?}", err);
+        },
+    };
+
     // Create a file named `foo.tmp`.
     let fd: i32 = match fcntl::openat(
         fcntl::AT_FDCWD,
