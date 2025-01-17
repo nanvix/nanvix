@@ -12,7 +12,6 @@
 // Imports
 //==================================================================================================
 
-use crate::config;
 use ::anyhow::Result;
 use ::std::{
     env,
@@ -76,7 +75,7 @@ impl Args {
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut kernel_filename: String = String::new();
         let mut initrd_filename: Option<String> = None;
-        let mut memory_size: usize = config::DEFAULT_MEMORY_SIZE;
+        let mut memory_size: usize = ::config::kernel::MEMORY_SIZE;
         let mut vm_stderr: Option<String> = None;
         let mut gateway_addr: Option<String> = None;
         let mut log_to_file: bool = false;
@@ -185,7 +184,7 @@ impl Args {
             "Usage: {} {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} <socket-address>]",
             env::args()
                 .next()
-                .unwrap_or(config::PROGRAM_NAME.to_string()),
+                .unwrap_or("microvm".to_string()),
             Self::OPT_KERNEL,
             Self::OPT_MEMORY_SIZE,
             Self::OPT_INITRD,

@@ -52,21 +52,6 @@ pub struct Platform {
 }
 
 //==================================================================================================
-// Constants
-//==================================================================================================
-
-/// Bootloader magic number.
-pub const MICROVM_BOOT_MAGIC: u32 = 0x0c00ffee;
-
-/// Port number used for write requests to the standard output.
-#[cfg(feature = "stdio")]
-const STDOUT_PORT: u16 = 0xe9;
-
-/// Port number used read requests from the standard input.
-#[cfg(feature = "stdio")]
-const STDIN_PORT: u16 = 0xea;
-
-//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
@@ -87,7 +72,7 @@ const STDIN_PORT: u16 = 0xea;
 /// - It does not prevent concurrent access to the standard output device.
 ///
 pub unsafe fn putb(b: u8) {
-    ::sys::arch::io::out8(0xe9, b);
+    ::sys::arch::io::out8(::config::hal::DEFAULT_STDOUT_PORT, b);
 }
 
 ///
@@ -111,7 +96,7 @@ pub unsafe fn vmbus_write(addr: *const u8) {
     use core::hint;
 
     #[allow(clippy::unit_arg)]
-    hint::black_box(::sys::arch::io::out32(STDOUT_PORT, addr as u32));
+    hint::black_box(::sys::arch::io::out32(::config::hal::DEFAULT_STDOUT_PORT, addr as u32));
 }
 
 ///
@@ -135,7 +120,7 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
     use core::hint;
 
     #[allow(clippy::unit_arg)]
-    hint::black_box(::sys::arch::io::out32(STDIN_PORT, addr as u32))
+    hint::black_box(::sys::arch::io::out32(::config::hal::DEFAULT_STDIN_PORT, addr as u32))
 }
 
 ///
@@ -148,7 +133,7 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 /// This function never returns.
 ///
 pub fn shutdown() -> ! {
-    unsafe { ::sys::arch::io::out16(0x604, 0x2000) };
+    unsafe { ::sys::arch::io::out16(::config::hal::DEFAULT_VMM_PORT, 0x2000) };
     loop {
         core::hint::spin_loop();
     }
@@ -170,7 +155,7 @@ pub fn shutdown() -> ! {
 ///
 pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     // Check if magic number matches what we expect.
-    if magic != MICROVM_BOOT_MAGIC {
+    if magic != ::config::hal::DEFAULT_BOOT_MAGIC {
         let reason: &str = "invalid boot magic number";
         error!("parse_bootinfo(): magic={:#010x}, info={:#010x} (error={})", magic, info, reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
