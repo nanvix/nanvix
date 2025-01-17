@@ -70,7 +70,7 @@ pub struct Platform {
 //==================================================================================================
 
 /// Bootloader magic number.
-pub const MICROVM_BOOT_MAGIC: u32 = 0x0c00ffee;
+pub const MICROVM_BOOT_MAGIC: u32 = ::config::hal::DEFAULT_BOOT_MAGIC;
 
 //==================================================================================================
 // Standalone Functions
