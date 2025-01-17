@@ -19,7 +19,7 @@ use ::sys::{
         ErrorCode,
     },
 };
-use config::constants;
+use ::config::constants;
 
 //==================================================================================================
 // Constants
