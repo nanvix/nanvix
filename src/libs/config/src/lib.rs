@@ -13,94 +13,9 @@ pub mod constants;
 // Kernel
 //==================================================================================================
 
-pub mod kernel {
-    use crate::constants;
-
-    ///
-    /// # Description
-    ///
-    /// Total size of physical memory (in bytes).
-    ///
-    pub const MEMORY_SIZE: usize = 256 * constants::MEGABYTE;
-
-    ///
-    /// # Description
-    ///
-    /// Total size of the kernel pool (in bytes).
-    ///
-    /// # Notes
-    ///
-    /// - This size be a multiple of a page size.
-    /// - This size cannot exceed the size of a page table.
-    ///
-    pub const KPOOL_SIZE: usize = 4 * constants::MEGABYTE;
-
-    ///
-    /// # Description
-    ///
-    /// Kernel stack size (in bytes).
-    ///
-    /// # Notes
-    ///
-    /// - This size should be a multiple of a page size.
-    /// - This size cannot exceed the size of a page table.
-    /// - When changing this boot code should also be updated.
-    ///
-    pub const KSTACK_SIZE: usize = 8 * 4 * constants::KILOBYTE;
-
-    ///
-    /// # Description
-    ///
-    /// User stack size (in bytes).
-    ///
-    /// # Notes
-    ///
-    /// - This size should be a multiple of a page size.
-    ///
-    pub const USTACK_SIZE: usize = 16 * 4 * constants::KILOBYTE;
-
-    ///
-    /// # Description
-    ///
-    /// Timer frequency (in Hz).
-    ///
-    pub const TIMER_FREQ: u32 = 100;
-
-    ///
-    /// # Description
-    ///
-    /// Scheduler frequency (in ticks).
-    ///
-    /// # Notes
-    ///
-    /// - This should be a power of two.
-    ///
-    pub const SCHEDULER_FREQ: usize = 128;
-
-    ///
-    /// # Description
-    ///
-    /// Maximum number of messages that can be buffered by the kernel.
-    ///
-    /// # Notes
-    ///
-    /// - When this threshold is reached, inter-kernel communication is blocked.
-    /// - This value should be set according to the amount of memory available in the kernel heap.
-    ///
-    pub const MAX_IKC_MESSAGES: usize = 128;
-
-    ///
-    /// # Description
-    ///
-    /// Size of an IPC message.
-    ///
-    /// # Notes
-    ///
-    /// - The value of this function has direct impact on IPC performance.
-    /// - The default value is set to match the size of a cache line in x86 processors.
-    ///
-    pub const IPC_MESSAGE_SIZE: usize = 64;
-}
+// Note: Kernel constants are generated from kernel_config.toml via a build.rs file.
+// This is to allow these values to be easily used outside Rust code (e.g., in a Shell script).
+include!(concat!(env!("OUT_DIR"), "/kernel_config.rs"));
 
 //==================================================================================================
 // User Memory Layout
