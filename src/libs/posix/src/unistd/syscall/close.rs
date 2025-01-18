@@ -24,7 +24,7 @@ use ::nvx::{
 //==================================================================================================
 
 pub fn close(fd: i32) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
+    let pid: ProcessIdentifier = match crate::unistd::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };

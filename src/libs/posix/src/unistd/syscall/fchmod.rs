@@ -43,7 +43,7 @@ use ::nvx::{
 pub fn fchmod(fd: c_int, mode: mode_t) -> Result<(), Error> {
     ::nvx::log!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
     // Build request and send it
     let request: Message = FileChmodRequest::build(pid, fd, mode);
