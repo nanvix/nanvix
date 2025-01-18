@@ -14,6 +14,9 @@ on:
       - 'feature-*'
       - 'bugfix-*'
       - 'dev'
+  pull_request:
+    branches:
+      - 'dev'
 
 env:
   TARGET_BRANCH: ${{ github.ref_name }}
