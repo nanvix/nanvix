@@ -4,7 +4,7 @@ use std::path::Path;
 
 fn main() {
     // Read the TOML file
-    let kernel_config_content = fs::read_to_string("config-files/kernel_config.toml").expect("Failed to read kernel_config.toml");
+    let kernel_config_content = fs::read_to_string("build/kernel_config.toml").expect("Failed to read kernel_config.toml");
     let kernel_config: toml::Value = kernel_config_content.parse().expect("Invalid TOML format");
 
     // Prepare the output path
@@ -44,5 +44,5 @@ fn main() {
     fs::write(&dest_path, constants).expect("Failed to write kernel_config.rs");
 
     // Inform Cargo to rerun the build script if the TOML changes
-    println!("cargo:rerun-if-changed=config-files/kernel_config.toml");
+    println!("cargo:rerun-if-changed=build/kernel_config.toml");
 }

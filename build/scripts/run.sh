@@ -13,7 +13,7 @@ export SCRIPT_NAME=$0
 export SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd)"
 
 # Target configuration
-MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../../config/kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')
+MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')
 echo ">>> Memory Size: $MEMSIZE"
 
 #===================================================================================================

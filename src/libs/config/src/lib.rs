@@ -70,4 +70,7 @@ pub mod hal {
 
     /// I/O port that enables the guest to invoke functionalities of the virtual machine monitor.
     pub const DEFAULT_VMM_PORT: u16 = 0x604;
+
+    /// Default VMM shutdown command
+    pub const DEFAULT_VMM_SHUTDOWN_CMD: u16 = 0x2000;
 }
