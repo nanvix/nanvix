@@ -10,13 +10,22 @@ use crate::wasi::{
     Size,
     WasiCtxInner,
 };
-use ::alloc::ffi::CString;
+use ::alloc::{
+    ffi::CString,
+    string::String,
+    vec::Vec,
+};
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
 impl WasiCtxInner {
+    /// Read environment variable data.
+    pub(super) fn environ_get(&self) -> Result<Vec<String>, Errno> {
+        Ok(self.envs.clone())
+    }
+
     /// Returns environment variable data sizes.
     pub(super) fn environ_sizes_get(&self) -> Result<(Size, Size), Errno> {
         // Calculate the number of environment variables.

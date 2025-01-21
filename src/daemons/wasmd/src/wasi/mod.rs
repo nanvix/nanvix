@@ -79,11 +79,6 @@ impl WasiCtxInner {
         }
     }
 
-    // Returns the environment variables.
-    pub fn envs(&self) -> &Vec<String> {
-        &self.envs
-    }
-
     /// Returns a description of the given pre-opened capability.
     pub fn fd_prestat_get(&self, fd: Fd) -> Result<Prestat, Errno> {
         // Search for file descriptor in the list of pre-open directories.
@@ -243,8 +238,9 @@ impl WasiCtx {
         Self(RefCell::new(WasiCtxInner::new(stdin, stdout, stderr, preopen_dirs, envs)))
     }
 
-    fn envs(&self) -> Vec<String> {
-        self.0.borrow().envs().clone()
+    /// Read environment variable data.
+    pub fn environ_get(&self) -> Result<Vec<String>, Errno> {
+        self.0.borrow().environ_get()
     }
 
     /// Returns environment variable data sizes.
