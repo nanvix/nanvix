@@ -15,15 +15,13 @@ name = "wasmd"
 
 [dependencies]
 wasmi = { workspace = true }
+num_enum = { workspace = true }
 nvx = { workspace = true, features = ["allocator"] }
 posix = { workspace = true, features = ["syscall", "allocator"] }
 
 [build-dependencies]
 cc = { workspace = true }
 cfg-if = { workspace = true }
-
-[dev-dependencies]
-wasm-bindgen = { workspace = true }
 
 [features]
 default = []
