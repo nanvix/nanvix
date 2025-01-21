@@ -53,9 +53,9 @@ rustup target add wasm32-wasip1
 > ⚠️ This step may take some time to complete.
 
 ```bash
-export TARGET=x86                                  # Select x86 as your target architecture.
-export TOOLCHAIN_DIR=$PWD                          # Set this to the directory where the toolchain will be installed.
-./build/scripts/setup/toolchain.sh $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
+export TARGET=x86                                          # Select x86 as your target architecture.
+export TOOLCHAIN_DIR=$PWD                                  # Set this to the directory where the toolchain will be installed.
+./build/scripts/setup/toolchain.sh $TARGET $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
 ```
 
 ## Building QEMU (Optional)
