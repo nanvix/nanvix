@@ -11,6 +11,7 @@
 // Modules
 //==================================================================================================
 
+pub mod environ;
 pub mod types;
 
 //==================================================================================================
@@ -242,8 +243,13 @@ impl WasiCtx {
         Self(RefCell::new(WasiCtxInner::new(stdin, stdout, stderr, preopen_dirs, envs)))
     }
 
-    pub fn envs(&self) -> Vec<String> {
+    fn envs(&self) -> Vec<String> {
         self.0.borrow().envs().clone()
+    }
+
+    /// Returns environment variable data sizes.
+    pub fn environ_sizes_get(&self) -> Result<(Size, Size), Errno> {
+        self.0.borrow().environ_sizes_get()
     }
 
     pub fn fd_prestat_get(&self, fd: Fd) -> Result<Prestat, Errno> {
