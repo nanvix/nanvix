@@ -133,7 +133,7 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 /// This function never returns.
 ///
 pub fn shutdown() -> ! {
-    unsafe { ::sys::arch::io::out16(::config::hal::DEFAULT_VMM_PORT, 0x2000) };
+    unsafe { ::sys::arch::io::out16(::config::hal::DEFAULT_VMM_PORT, ::config::hal::DEFAULT_VMM_SHUTDOWN_CMD) };
     loop {
         core::hint::spin_loop();
     }
