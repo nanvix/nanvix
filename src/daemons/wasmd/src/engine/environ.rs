@@ -10,12 +10,14 @@ use crate::{
         HostState,
         WasmEngine,
     },
+    memory::WriteBytes,
     wasi::{
         types::Errno,
         WasiCtx,
     },
 };
 use ::alloc::sync::Arc;
+use ::core::mem;
 use ::wasmi::{
     Caller,
     Func,
@@ -80,13 +82,13 @@ impl WasmEngine {
 
     /// Read sizes of environment variables data.
     pub(super) fn define_environ_sizes_get(
-        _ctx: Arc<WasiCtx>,
+        ctx: Arc<WasiCtx>,
         linker: &mut Linker<HostState>,
         store: &mut Store<HostState>,
     ) {
         let environ_sizes_get: Func = Func::wrap(
             store,
-            move |_caller: Caller<'_, u32>,
+            move |mut caller: Caller<'_, u32>,
                   environ_count_offset: i32,
                   environ_data_size_offset: i32|
                   -> i32 {
@@ -95,7 +97,72 @@ impl WasmEngine {
                     environ_count_offset,
                     environ_data_size_offset
                 );
-                Errno::Nosys.into()
+
+                let memory: &mut [u8] = WasmEngine::get_memory_mut(&mut caller);
+
+                // Attempt to convert environ_count_offset.
+                let environ_count_offset: usize = match environ_count_offset.try_into() {
+                    Ok(environ_count_offset) => environ_count_offset,
+                    _ => {
+                        ::nvx::log!(
+                            "environ_sizes_get(): invalid environ_count_offset {:#010x}",
+                            environ_count_offset
+                        );
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Attempt to convert environ_data_size_offset.
+                let environ_data_size_offset: usize = match environ_data_size_offset.try_into() {
+                    Ok(environ_data_size_offset) => environ_data_size_offset,
+                    _ => {
+                        ::nvx::log!(
+                            "environ_sizes_get(): invalid environ_data_size_offset {:#010x}",
+                            environ_data_size_offset
+                        );
+                        return Errno::Inval.into();
+                    },
+                };
+
+                let (environ_count, environ_data_size): (u32, u32) = match ctx.environ_sizes_get() {
+                    Ok((environ_count, environ_data_size)) => {
+                        (environ_count.into(), environ_data_size.into())
+                    },
+                    Err(err) => {
+                        ::nvx::log!("environ_sizes_get(): {:?}", err);
+                        return err.into();
+                    },
+                };
+
+                // Ensure that data buffer is large enough to store the environment data.
+                if memory.len() < environ_count_offset + mem::size_of_val(&environ_count) {
+                    ::nvx::log!(
+                        "environ_sizes_get(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        environ_count_offset + mem::size_of_val(&environ_count)
+                    );
+                    return Errno::Inval.into();
+                }
+
+                // Ensure that data buffer is large enough to store the environment data size.
+                if memory.len() < environ_data_size_offset + mem::size_of_val(&environ_data_size) {
+                    ::nvx::log!(
+                        "environ_sizes_get(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        environ_data_size_offset + mem::size_of_val(&environ_data_size)
+                    );
+                    return Errno::Inval.into();
+                }
+
+                // NOTE: The offsets have been validated, so we can safely write data to memory.
+
+                // Write the number of environment variables to memory.
+                environ_count.write_le_bytes(&mut memory[environ_count_offset..]);
+
+                // Write the size of the environment data to memory.
+                environ_data_size.write_le_bytes(&mut memory[environ_data_size_offset..]);
+
+                Errno::Success.into()
             },
         );
         linker
