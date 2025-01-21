@@ -923,7 +923,7 @@ impl LibcAtFlags {
     fn from(flags: ffi::c_int) -> LibcAtFlags {
         let libc_flags: libc::c_int = match flags {
             fcntl::AT_FDCWD => libc::AT_FDCWD,
-            _ => unreachable!("invalid at flags"),
+            fd => fd,
         };
 
         LibcAtFlags(libc_flags)
