@@ -113,9 +113,11 @@ pub fn do_open_at(pid: ProcessIdentifier, request: OpenAtRequest) -> Message {
             debug!("libc::openat(): fd={:?}", fd);
             OpenAtResponse::build(pid, fd)
         },
-        errno => {
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::openat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
         },
     }
