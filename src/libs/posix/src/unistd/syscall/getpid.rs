@@ -17,5 +17,5 @@ use ::nvx::{pm::ProcessIdentifier, sys::error::Error};
 ///
 pub fn getpid() -> Result<ProcessIdentifier, Error> {
     ::nvx::log!("getpid()");
-    ::nvx::sys::kcall::pm::getpid()
+    ::nvx::pm::getpid()
 }
