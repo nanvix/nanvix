@@ -103,15 +103,15 @@ impl Emulator {
             // Write to an I/O port.
             VirtualProcessorExitContext::PmioOut(port, data, size) => match port {
                 // Write to standard output.
-                ::config::hal::DEFAULT_STDOUT_PORT => {
+                ::config::microvm::DEFAULT_STDOUT_PORT => {
                     (self.output)(&self.vmem, data, size)?;
                 },
                 // Read from standard input.
-                ::config::hal::DEFAULT_STDIN_PORT => {
+                ::config::microvm::DEFAULT_STDIN_PORT => {
                     (self.input)(&self.vmem, data, size)?;
                 },
                 // Write to the virtual machine monitor port.
-                ::config::hal::DEFAULT_VMM_PORT => {
+                ::config::microvm::DEFAULT_VMM_PORT => {
                     // TODO: check if data matches an expected command.
                     return Ok(false);
                 },

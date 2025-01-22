@@ -162,7 +162,7 @@ impl MicroVm {
     pub fn reset(&mut self, rip: u64) -> Result<()> {
         trace!("reset(): {:#010x}", rip);
         crate::timer!("vm_reset");
-        let rax: u64 = ::config::hal::DEFAULT_BOOT_MAGIC as u64;
+        let rax: u64 = ::config::microvm::DEFAULT_BOOT_MAGIC as u64;
 
         // Encode initrd location and size:
         // - Lower 12 bits encode the size in 4KB pages

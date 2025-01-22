@@ -17,7 +17,7 @@ path = "src/kmain.rs"
 [dependencies]
 bitmap = { workspace = true }
 cfg-if = { workspace = true }
-config = { workspace = true }
+config = { workspace = true, optional = true }
 raw-array = { workspace = true }
 slab = { workspace = true }
 sys = { workspace = true }
@@ -44,6 +44,8 @@ hyperlight = [
     "pic",
     "xapic",
     "dep:hyperlight_common",
+    "dep:config",
+    "config/hyperlight",
 ]
 microvm = [
     "sys/microvm",
@@ -56,6 +58,8 @@ microvm = [
     "msr",
     "pic",
     "xapic",
+    "dep:config",
+    "config/microvm",
 ]
 pc = [
     "sys/pc",
@@ -72,6 +76,8 @@ pc = [
     "msr",
     "pic",
     "xapic",
+    "dep:config",
+    "config/pc",
 ]
 qemu-pc = ["sys/qemu-pc", "pc"]
 qemu-pc-smp = ["sys/qemu-pc-smp", "qemu-pc", "smp"]

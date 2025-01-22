@@ -72,7 +72,7 @@ pub struct Platform {
 /// - It does not prevent concurrent access to the standard output device.
 ///
 pub unsafe fn putb(b: u8) {
-    ::sys::arch::io::out8(::config::hal::DEFAULT_STDOUT_PORT, b);
+    ::sys::arch::io::out8(::config::microvm::DEFAULT_STDOUT_PORT, b);
 }
 
 ///
@@ -96,7 +96,7 @@ pub unsafe fn vmbus_write(addr: *const u8) {
     use core::hint;
 
     #[allow(clippy::unit_arg)]
-    hint::black_box(::sys::arch::io::out32(::config::hal::DEFAULT_STDOUT_PORT, addr as u32));
+    hint::black_box(::sys::arch::io::out32(::config::microvm::DEFAULT_STDOUT_PORT, addr as u32));
 }
 
 ///
@@ -120,7 +120,7 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
     use core::hint;
 
     #[allow(clippy::unit_arg)]
-    hint::black_box(::sys::arch::io::out32(::config::hal::DEFAULT_STDIN_PORT, addr as u32))
+    hint::black_box(::sys::arch::io::out32(::config::microvm::DEFAULT_STDIN_PORT, addr as u32))
 }
 
 ///
@@ -133,7 +133,7 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 /// This function never returns.
 ///
 pub fn shutdown() -> ! {
-    unsafe { ::sys::arch::io::out16(::config::hal::DEFAULT_VMM_PORT, ::config::hal::DEFAULT_VMM_SHUTDOWN_CMD) };
+    unsafe { ::sys::arch::io::out16(::config::microvm::DEFAULT_VMM_PORT, ::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD) };
     loop {
         core::hint::spin_loop();
     }
@@ -155,7 +155,7 @@ pub fn shutdown() -> ! {
 ///
 pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     // Check if magic number matches what we expect.
-    if magic != ::config::hal::DEFAULT_BOOT_MAGIC {
+    if magic != ::config::microvm::DEFAULT_BOOT_MAGIC {
         let reason: &str = "invalid boot magic number";
         error!("parse_bootinfo(): magic={:#010x}, info={:#010x} (error={})", magic, info, reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));

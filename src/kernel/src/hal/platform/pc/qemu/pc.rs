@@ -16,7 +16,7 @@
 ///
 pub fn shutdown() -> ! {
     unsafe {
-        ::sys::arch::io::out16(::config::hal::DEFAULT_VMM_PORT, ::config::hal::DEFAULT_VMM_SHUTDOWN_CMD);
+        ::sys::arch::io::out16(::config::pc::DEFAULT_VMM_PORT, ::config::pc::DEFAULT_VMM_SHUTDOWN_CMD);
     };
     loop {
         core::hint::spin_loop();
