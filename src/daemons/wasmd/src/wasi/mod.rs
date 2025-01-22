@@ -11,6 +11,7 @@
 // Modules
 //==================================================================================================
 
+pub mod environ;
 pub mod types;
 
 //==================================================================================================
@@ -76,11 +77,6 @@ impl WasiCtxInner {
             files: Vec::new(),
             envs,
         }
-    }
-
-    // Returns the environment variables.
-    pub fn envs(&self) -> &Vec<String> {
-        &self.envs
     }
 
     /// Returns a description of the given pre-opened capability.
@@ -242,8 +238,14 @@ impl WasiCtx {
         Self(RefCell::new(WasiCtxInner::new(stdin, stdout, stderr, preopen_dirs, envs)))
     }
 
-    pub fn envs(&self) -> Vec<String> {
-        self.0.borrow().envs().clone()
+    /// Read environment variable data.
+    pub fn environ_get(&self) -> Result<Vec<String>, Errno> {
+        self.0.borrow().environ_get()
+    }
+
+    /// Returns environment variable data sizes.
+    pub fn environ_sizes_get(&self) -> Result<(Size, Size), Errno> {
+        self.0.borrow().environ_sizes_get()
     }
 
     pub fn fd_prestat_get(&self, fd: Fd) -> Result<Prestat, Errno> {
