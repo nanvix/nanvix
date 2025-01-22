@@ -24,7 +24,7 @@ use ::nvx::{
 //==================================================================================================
 
 pub fn lseek(fd: i32, offset: i64, whence: i32) -> i64 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
+    let pid: ProcessIdentifier = match crate::unistd::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno() as i64,
     };
