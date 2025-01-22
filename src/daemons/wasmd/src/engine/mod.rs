@@ -81,18 +81,21 @@ impl WasmEngine {
         envs.push("OS=nanvix".to_string());
         envs.push("HOME=/".to_string());
 
+        let args: Vec<String> = Vec::new();
+
         let ctx = WasiCtx::new(
             Descriptor::new(posix::unistd::STDIN_FILENO),
             Descriptor::new(posix::unistd::STDOUT_FILENO),
             Descriptor::new(posix::unistd::STDERR_FILENO),
             preopen_dirs,
             envs,
+            args,
         );
 
         let ctx: Arc<WasiCtx> = Arc::new(ctx);
 
         Self::define_args_get(&mut linker, &mut store);
-        Self::define_args_sizes_get(&mut linker, &mut store);
+        Self::define_args_sizes_get(ctx.clone(), &mut linker, &mut store);
         Self::define_clock_res_get(&mut linker, &mut store);
         Self::define_clock_time_get(&mut linker, &mut store);
         Self::define_environ_get(ctx.clone(), &mut linker, &mut store);

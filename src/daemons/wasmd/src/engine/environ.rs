@@ -47,14 +47,87 @@ impl WasmEngine {
     }
 
     pub(super) fn define_args_sizes_get(
+        ctx: Arc<WasiCtx>,
         linker: &mut Linker<HostState>,
         store: &mut Store<HostState>,
     ) {
-        let args_sizes_get: Func =
-            Func::wrap(store, |_caller: Caller<'_, u32>, arg0: i32, arg1: i32| -> i32 {
-                ::nvx::log!("args_sizes_get: {arg0}, {arg1}");
-                Errno::Nosys.into()
-            });
+        let args_sizes_get: Func = Func::wrap(
+            store,
+            move |mut caller: Caller<'_, u32>,
+                  args_count_offset: i32,
+                  args_data_size_offset: i32|
+                  -> i32 {
+                ::nvx::log!(
+                    "args_sizes_get(): args_count_offset={:?}, args_data_size_offset={:?}",
+                    args_count_offset,
+                    args_data_size_offset
+                );
+
+                let memory: &mut [u8] = WasmEngine::get_memory_mut(&mut caller);
+
+                // Attempt to convert args_count_offset.
+                let args_count_offset: usize = match args_count_offset.try_into() {
+                    Ok(args_count_offset) => args_count_offset,
+                    _ => {
+                        ::nvx::log!(
+                            "args_sizes_get(): invalid args_count_offset {:#010x}",
+                            args_count_offset
+                        );
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Attempt to convert args_data_size_offset.
+                let args_data_size_offset: usize = match args_data_size_offset.try_into() {
+                    Ok(args_data_size_offset) => args_data_size_offset,
+                    _ => {
+                        ::nvx::log!(
+                            "args_sizes_get(): invalid args_data_size_offset {:#010x}",
+                            args_data_size_offset
+                        );
+                        return Errno::Inval.into();
+                    },
+                };
+
+                let (args_count, args_data_size): (u32, u32) = match ctx.args_sizes_get() {
+                    Ok((args_count, args_data_size)) => (args_count.into(), args_data_size.into()),
+                    Err(err) => {
+                        ::nvx::log!("args_sizes_get(): {:?}", err);
+                        return err.into();
+                    },
+                };
+
+                // Ensure that data buffer is large enough to store the command-line arguments.
+                if memory.len() < args_count_offset + mem::size_of_val(&args_count) {
+                    ::nvx::log!(
+                        "args_sizes_get(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        args_count_offset + mem::size_of_val(&args_count)
+                    );
+                    return Errno::Inval.into();
+                }
+
+                // Ensure that data buffer is large enough to store the command-line data size.
+                if memory.len() < args_data_size_offset + mem::size_of_val(&args_data_size) {
+                    ::nvx::log!(
+                        "args_sizes_get(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        args_data_size_offset + mem::size_of_val(&args_data_size)
+                    );
+                    return Errno::Inval.into();
+                }
+
+                // NOTE: The offsets have been validated, so we can safely write data to memory.
+
+                // Write the number of command-line arguments to memory.
+                args_count.write_le_bytes(&mut memory[args_count_offset..]);
+
+                // Write the size of the command-line data to memory.
+                args_data_size.write_le_bytes(&mut memory[args_data_size_offset..]);
+
+                Errno::Success.into()
+            },
+        );
         linker
             .define("wasi_snapshot_preview1", "args_sizes_get", args_sizes_get)
             .unwrap();
