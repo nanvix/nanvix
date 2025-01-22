@@ -16,7 +16,7 @@ hyperlight_host = { workspace = true, optional = true, features = ["kvm"] }
 log = { workspace = true }
 sys = { workspace = true }
 cfg-if = { workspace = true }
-config = { workspace = true }
+config = { workspace = true, features = ["microvm"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 kvm-bindings = { workspace = true }

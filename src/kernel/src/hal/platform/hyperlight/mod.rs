@@ -66,13 +66,6 @@ pub struct Platform {
 }
 
 //==================================================================================================
-// Constants
-//==================================================================================================
-
-/// Bootloader magic number.
-pub const MICROVM_BOOT_MAGIC: u32 = ::config::hal::DEFAULT_BOOT_MAGIC;
-
-//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
@@ -178,7 +171,7 @@ pub fn shutdown() -> ! {
 ///
 pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     // Check if magic number matches what we expect.
-    if magic != MICROVM_BOOT_MAGIC {
+    if magic != ::config::hyperlight::DEFAULT_BOOT_MAGIC {
         let reason: &str = "invalid boot magic number";
         error!("parse_bootinfo(): magic={:#010x}, info={:#010x} (error={})", magic, info, reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));

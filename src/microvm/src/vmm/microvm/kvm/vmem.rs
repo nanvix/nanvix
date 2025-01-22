@@ -174,14 +174,14 @@ impl VirtualMemory {
         unsafe {
             ptr::copy_nonoverlapping(
                 initrd.ptr(),
-                self.ptr.add(::config::hal::DEFAULT_INITRD_BASE),
+                self.ptr.add(::config::microvm::DEFAULT_INITRD_BASE),
                 initrd.size(),
             );
         }
 
-        self._initrd = Some((::config::hal::DEFAULT_INITRD_BASE as u64, initrd.size()));
+        self._initrd = Some((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd.size()));
 
-        Ok((::config::hal::DEFAULT_INITRD_BASE as u64, initrd.size()))
+        Ok((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd.size()))
     }
 
     ///

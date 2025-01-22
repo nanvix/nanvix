@@ -49,13 +49,14 @@ pub mod memory_layout {
     /// Provides the raw value for [`USER_HEAP_BASE`], which can be used in constant-value expressions.
     ///
     pub const USER_HEAP_BASE_RAW: usize = 0xa0000000;
-
 }
 
 //==================================================================================================
 // Hardware Abstraction Layer
 //==================================================================================================
-pub mod hal {
+
+#[cfg(feature = "microvm")]
+pub mod microvm {
     /// Magic value that identifies the virtual machine monitor.
     pub const DEFAULT_BOOT_MAGIC: u32 = 0x0c00ffee;
 
@@ -74,3 +75,22 @@ pub mod hal {
     /// Default VMM shutdown command
     pub const DEFAULT_VMM_SHUTDOWN_CMD: u16 = 0x2000;
 }
+
+#[cfg(feature = "pc")]
+pub mod pc {
+    /// I/O port that is connected to the standard output of the virtual machine.
+    pub const DEFAULT_STDOUT_PORT: u16 = 0xe9;
+
+    /// I/O port that enables the guest to invoke functionalities of the virtual machine monitor.
+    pub const DEFAULT_VMM_PORT: u16 = 0x604;
+
+    /// Default VMM shutdown command
+    pub const DEFAULT_VMM_SHUTDOWN_CMD: u16 = 0x2000;
+}
+
+#[cfg(feature = "hyperlight")]
+pub mod hyperlight {
+    /// Magic value that identifies the virtual machine monitor.
+    pub const DEFAULT_BOOT_MAGIC: u32 = 0x0c00ffee;
+}
+

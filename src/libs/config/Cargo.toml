@@ -19,3 +19,6 @@ toml = "0.8.19"
 [features]
 default = []
 std = []
+hyperlight = []
+microvm = []
+pc = []
