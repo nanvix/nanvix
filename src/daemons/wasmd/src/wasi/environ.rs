@@ -21,6 +21,11 @@ use ::alloc::{
 //==================================================================================================
 
 impl WasiCtxInner {
+    /// Reads command-line argument data.
+    pub(super) fn args_get(&self) -> Result<Vec<String>, Errno> {
+        Ok(self.args.clone())
+    }
+
     /// Returns command-line argument data sizes.
     pub(super) fn args_sizes_get(&self) -> Result<(Size, Size), Errno> {
         // Calculate the number of command-line arguments.

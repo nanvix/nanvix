@@ -242,6 +242,11 @@ impl WasiCtx {
         Self(RefCell::new(WasiCtxInner::new(stdin, stdout, stderr, preopen_dirs, envs, args)))
     }
 
+    /// Reads command-line argument data.
+    pub fn args_get(&self) -> Result<Vec<String>, Errno> {
+        self.0.borrow().args_get()
+    }
+
     /// Returns command-line argument data sizes.
     pub fn args_sizes_get(&self) -> Result<(Size, Size), Errno> {
         self.0.borrow().args_sizes_get()

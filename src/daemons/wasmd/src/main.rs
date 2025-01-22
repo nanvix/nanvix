@@ -22,6 +22,7 @@ mod pal;
 mod memory;
 mod wasi;
 
+/// Static information for an embedded WASM binary.
 #[cfg(feature = "wasm_binary")]
 mod wasm_binary;
 
@@ -32,7 +33,10 @@ mod wasm_binary;
 extern crate alloc;
 
 use self::engine::WasmEngine;
-use ::alloc::vec::Vec;
+use ::alloc::{
+    string::String,
+    vec::Vec,
+};
 use ::nvx::sys::error::Error;
 
 #[no_mangle]
@@ -82,6 +86,8 @@ fn fmodf(a: f32, b: f32) -> f32 {
 }
 
 struct WasmBinary {
+    name: String,
+    args: Vec<String>,
     bytes: Vec<u8>,
 }
 
@@ -207,12 +213,24 @@ impl WasmBinary {
         wasm_bytes.shrink_to_fit();
         ::nvx::log!("loading wasm file ({} bytes)", wasm_bytes.len());
 
-        Self { bytes: wasm_bytes }
+        // TODO: receive name and args from remote.
+        Self {
+            name: "a.wasm".to_string(),
+            args: Vec::new(),
+            bytes: wasm_bytes,
+        }
     }
 
     #[cfg(feature = "wasm_binary")]
     pub fn new() -> Self {
+        use ::alloc::string::ToString;
+        let args: Vec<String> = wasm_binary::WASM_BINARY_ARGS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         Self {
+            name: wasm_binary::WASM_BINARY_NAME.to_string(),
+            args,
             bytes: wasm_binary::WASM_BYTES.to_vec(),
         }
     }
