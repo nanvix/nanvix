@@ -12,6 +12,8 @@
 //==================================================================================================
 
 pub mod environ;
+pub mod fd;
+pub mod path;
 pub mod types;
 
 //==================================================================================================
@@ -19,10 +21,8 @@ pub mod types;
 //==================================================================================================
 
 use crate::{
-    pal::{
-        self,
-        Descriptor,
-    },
+    engine::WasiFile,
+    pal::fs::File,
     wasi::types::Errno,
 };
 use ::alloc::{
@@ -39,39 +39,28 @@ pub use types::*;
 
 //==================================================================================================
 
-pub struct PreopenedDirectory {
-    descriptor: Descriptor,
-    path: String,
-}
-
-impl PreopenedDirectory {
-    pub fn new(fd: Descriptor, path: String) -> Self {
-        Self {
-            descriptor: fd,
-            path,
-        }
-    }
-}
-
 struct WasiCtxInner {
-    stdin: Descriptor,
-    stdout: Descriptor,
-    stderr: Descriptor,
-    files: Vec<Descriptor>,
-    preopen_dirs: Vec<PreopenedDirectory>,
+    next_wasi_fd: Fd,
+    stdin: WasiFile,
+    stdout: WasiFile,
+    stderr: WasiFile,
+    files: Vec<WasiFile>,
+    preopen_dirs: Vec<(WasiFile, String)>,
     envs: Vec<String>,
     args: Vec<String>,
 }
 impl WasiCtxInner {
     pub fn new(
-        stdin: Descriptor,
-        stdout: Descriptor,
-        stderr: Descriptor,
-        preopen_dirs: Vec<PreopenedDirectory>,
+        next_wasi_fd: Fd,
+        stdin: WasiFile,
+        stdout: WasiFile,
+        stderr: WasiFile,
+        preopen_dirs: Vec<(WasiFile, String)>,
         envs: Vec<String>,
         args: Vec<String>,
     ) -> Self {
         Self {
+            next_wasi_fd,
             stdin,
             stdout,
             stderr,
@@ -82,146 +71,27 @@ impl WasiCtxInner {
         }
     }
 
-    /// Returns a description of the given pre-opened capability.
-    pub fn fd_prestat_get(&self, fd: Fd) -> Result<Prestat, Errno> {
-        // Search for file descriptor in the list of pre-open directories.
-        for dir in &self.preopen_dirs {
-            match dir.descriptor.rawfd() == fd {
-                true => {
-                    return Ok(Prestat::new(dir.path.len().into()));
-                },
-                false => (),
-            }
-        }
-
-        ::nvx::log!("fd_prestat_get(): invalid file descriptor");
-        Err(Errno::Badf)
+    fn insert_file(&mut self, os_file: File, base_rights: Rights, inherited_rights: Rights) -> Fd {
+        let wasi_fd: Fd = self.next_wasi_fd;
+        self.files
+            .push(WasiFile::new(wasi_fd, Some(os_file), base_rights, inherited_rights));
+        self.next_wasi_fd += 1;
+        wasi_fd
     }
 
-    // Returns a description of the given pre-opened directory.
-    pub fn fd_prestat_dir_get(&self, fd: Fd) -> Result<String, Errno> {
+    fn get_file(&self, fd: Fd) -> Option<&WasiFile> {
         // Search for file descriptor in the list of pre-open directories.
-        for dir in &self.preopen_dirs {
-            match dir.descriptor.rawfd() == fd {
-                true => return Ok(dir.path.clone()),
-                false => (),
-            }
+        if let Some(file) = self
+            .preopen_dirs
+            .iter()
+            .find(|(file, _)| file.fd() == fd)
+            .map(|(file, _)| file)
+        {
+            return Some(file);
         }
 
-        ::nvx::log!("fd_prestat_dir_get(): invalid file descriptor");
-        Err(Errno::Badf)
-    }
-
-    fn get_fd(&self, fd: Fd) -> Option<&Descriptor> {
-        // Search for file descriptor in the list of pre-open directories.
-        for dir in &self.preopen_dirs {
-            match &dir.descriptor {
-                lookup_fd if lookup_fd.rawfd() == fd => return Some(&dir.descriptor),
-                _ => (),
-            }
-        }
-
-        // Search for file descriptor in the list of files.
-        for file in &self.files {
-            if file.rawfd() == fd {
-                return Some(file);
-            }
-        }
-
-        None
-    }
-
-    /// Opens a file or a directory.
-    pub fn path_open(
-        &mut self,
-        fd: Fd,
-        dirflags: &LookupFlags,
-        pathname: &str,
-        oflags: OpenFlags,
-        fs_rights_base: Rights,
-        fs_rights_inheriting: Rights,
-        fdflags: FdFlags,
-    ) -> Result<Fd, Errno> {
-        ::nvx::log!(
-            "path_open(): fd={:?}, dirflags={:#?}, pathname={:?}, oflags={:#?}, \
-             fs_rights_base={:#?}, fs_rights_inheriting={:#?}, fdflags={:#?}",
-            fd,
-            dirflags,
-            pathname,
-            oflags,
-            fs_rights_base,
-            fs_rights_inheriting,
-            fdflags
-        );
-        match self.get_fd(fd) {
-            Some(dirfd) => {
-                let mut flags: pal::OpenFlags = pal::OpenFlags::empty();
-
-                // Set creation flag.
-                if oflags.creat {
-                    flags.non_exclusive.create = true;
-                }
-
-                // Set directory flag.
-                if oflags.directory {
-                    flags.non_exclusive.directory = true;
-                }
-
-                // Set exclusive flag.
-                if oflags.excl {
-                    flags.non_exclusive.exclusive = true;
-                }
-
-                // Set truncation flag.
-                if oflags.trunc {
-                    flags.non_exclusive.truncate = true;
-                }
-
-                // Set append mode.
-                if fdflags.append {
-                    flags.non_exclusive.append = true;
-                }
-
-                // Set dsync mode.
-                if fdflags.dsync {
-                    flags.non_exclusive.dsync = true;
-                }
-
-                // Set non-blocking mode.
-                if fdflags.nonblock {
-                    flags.non_exclusive.non_block = true;
-                }
-
-                // Set rsync mode.
-                if fdflags.rsync {
-                    flags.non_exclusive.rsync = true;
-                }
-
-                // Set sync mode.
-                if fdflags.sync {
-                    flags.non_exclusive.sync = true;
-                }
-
-                // Set symlink follow flag.
-                if !dirflags.symlink_follow {
-                    flags.non_exclusive.no_follow = true;
-                }
-
-                let mode: pal::AccessMode = pal::AccessMode::default();
-                match dirfd.openat(pathname, &flags, &mode) {
-                    Ok(fd) => {
-                        let rawfd = fd.rawfd();
-                        self.files.push(fd);
-                        Ok(rawfd)
-                    },
-                    Err(e) => Err(Errno::try_from(e as u16).unwrap()),
-                }
-            },
-            _ => {
-                ::nvx::log!("path_open(): invalid file descriptor");
-                Err(Errno::Badf)
-            },
-        }
+        // Search for file descriptor in the list of open files.
+        self.files.iter().find(|file| file.fd() == fd)
     }
 }
 
@@ -232,14 +102,23 @@ unsafe impl Sync for WasiCtx {}
 
 impl WasiCtx {
     pub fn new(
-        stdin: Descriptor,
-        stdout: Descriptor,
-        stderr: Descriptor,
-        preopen_dirs: Vec<PreopenedDirectory>,
+        next_wasi_fd: Fd,
+        stdin: WasiFile,
+        stdout: WasiFile,
+        stderr: WasiFile,
+        preopen_dirs: Vec<(WasiFile, String)>,
         envs: Vec<String>,
         args: Vec<String>,
     ) -> Self {
-        Self(RefCell::new(WasiCtxInner::new(stdin, stdout, stderr, preopen_dirs, envs, args)))
+        Self(RefCell::new(WasiCtxInner::new(
+            next_wasi_fd,
+            stdin,
+            stdout,
+            stderr,
+            preopen_dirs,
+            envs,
+            args,
+        )))
     }
 
     /// Reads command-line argument data.
@@ -262,14 +141,22 @@ impl WasiCtx {
         self.0.borrow().environ_sizes_get()
     }
 
-    pub fn fd_prestat_get(&self, fd: Fd) -> Result<Prestat, Errno> {
-        self.0.borrow().fd_prestat_get(fd)
+    /// Closes a file descriptor.
+    pub fn fd_close(&self, fd: Fd) -> Result<(), Errno> {
+        self.0.borrow_mut().fd_close(fd)
     }
 
+    // Returns a description of the given pre-opened directory.
     pub fn fd_prestat_dir_get(&self, fd: Fd) -> Result<String, Errno> {
         self.0.borrow().fd_prestat_dir_get(fd)
     }
 
+    /// Returns a description of the given pre-opened file descriptor.
+    pub fn fd_prestat_get(&self, fd: Fd) -> Result<Prestat, Errno> {
+        self.0.borrow().fd_prestat_get(fd)
+    }
+
+    /// Opens a file or a directory.
     pub fn path_open(
         &self,
         fd: Fd,

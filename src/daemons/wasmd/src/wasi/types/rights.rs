@@ -75,6 +75,41 @@ impl Rights {
     const BIT_OFFSET_OF_POLL_FD_READWRITE: u8 = 27;
     const BIT_OFFSET_OF_SOCK_SHUTDOWN: u8 = 28;
     const BIT_OFFSET_OF_SOCK_ACCEPT: u8 = 29;
+
+    pub fn base_rights() -> Self {
+        Self {
+            fd_datasync: true,
+            fd_read: true,
+            fd_seek: true,
+            fd_fdstat_set_flags: true,
+            fd_sync: true,
+            fd_tell: true,
+            fd_write: true,
+            fd_advise: true,
+            fd_allocate: true,
+            path_create_directory: true,
+            path_create_file: true,
+            path_link_source: true,
+            path_link_target: true,
+            path_open: true,
+            fd_readdir: true,
+            path_readlink: true,
+            path_rename_source: true,
+            path_rename_target: true,
+            path_filestat_get: true,
+            path_filestat_set_size: true,
+            path_filestat_set_times: true,
+            fd_filestat_get: true,
+            fd_filestat_set_size: true,
+            fd_filestat_set_times: true,
+            path_symlink: true,
+            path_remove_directory: true,
+            path_unlink_file: true,
+            poll_fd_readwrite: true,
+            sock_shutdown: true,
+            sock_accept: true,
+        }
+    }
 }
 
 impl From<u64> for Rights {
