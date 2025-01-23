@@ -60,6 +60,7 @@ struct WasiCtxInner {
     files: Vec<Descriptor>,
     preopen_dirs: Vec<PreopenedDirectory>,
     envs: Vec<String>,
+    args: Vec<String>,
 }
 impl WasiCtxInner {
     pub fn new(
@@ -68,6 +69,7 @@ impl WasiCtxInner {
         stderr: Descriptor,
         preopen_dirs: Vec<PreopenedDirectory>,
         envs: Vec<String>,
+        args: Vec<String>,
     ) -> Self {
         Self {
             stdin,
@@ -76,6 +78,7 @@ impl WasiCtxInner {
             preopen_dirs,
             files: Vec::new(),
             envs,
+            args,
         }
     }
 
@@ -234,8 +237,19 @@ impl WasiCtx {
         stderr: Descriptor,
         preopen_dirs: Vec<PreopenedDirectory>,
         envs: Vec<String>,
+        args: Vec<String>,
     ) -> Self {
-        Self(RefCell::new(WasiCtxInner::new(stdin, stdout, stderr, preopen_dirs, envs)))
+        Self(RefCell::new(WasiCtxInner::new(stdin, stdout, stderr, preopen_dirs, envs, args)))
+    }
+
+    /// Reads command-line argument data.
+    pub fn args_get(&self) -> Result<Vec<String>, Errno> {
+        self.0.borrow().args_get()
+    }
+
+    /// Returns command-line argument data sizes.
+    pub fn args_sizes_get(&self) -> Result<(Size, Size), Errno> {
+        self.0.borrow().args_sizes_get()
     }
 
     /// Read environment variable data.
