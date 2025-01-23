@@ -5,13 +5,21 @@
 // Imports
 //==================================================================================================
 
+use core::mem;
+
 use crate::{
     engine::{
         HostState,
         WasmEngine,
     },
+    memory::WriteBytes,
     wasi::{
         types::Errno,
+        Fd,
+        FdFlags,
+        LookupFlags,
+        OpenFlags,
+        Rights,
         WasiCtx,
     },
 };
@@ -123,13 +131,13 @@ impl WasmEngine {
     }
 
     pub(super) fn define_path_open(
-        _ctx: Arc<WasiCtx>,
+        ctx: Arc<WasiCtx>,
         linker: &mut Linker<HostState>,
         store: &mut Store<HostState>,
     ) {
         let path_open: Func = Func::wrap(
             store,
-            move |_caller: Caller<'_, u32>,
+            move |mut caller: Caller<'_, u32>,
                   fd: i32,
                   dirflags: i32,
                   path_offset: i32,
@@ -154,7 +162,97 @@ impl WasmEngine {
                     fs_rights_inheriting,
                     fd_offset
                 );
-                Errno::Nosys.into()
+
+                let memory: &mut [u8] = WasmEngine::get_memory_mut(&mut caller);
+
+                // Attempt to convert path offset.
+                let path_offset: usize = match path_offset.try_into() {
+                    Ok(path_offset) => path_offset,
+                    _ => {
+                        ::nvx::log!("path_open(): invalid path offset {:#010x}", path_offset);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Attempt to convert path length.
+                let path_length: usize = match path_length.try_into() {
+                    Ok(path_length) => path_length,
+                    _ => {
+                        ::nvx::log!("path_open(): invalid path length {:#010x}", path_length);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Attempt to convert file descriptor offset.
+                let fd_offset: usize = match fd_offset.try_into() {
+                    Ok(fd_offset) => fd_offset,
+                    _ => {
+                        ::nvx::log!("path_open(): invalid fd offset {:#010x}", fd_offset);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Reconstruct directory flags.
+                let dirflags: LookupFlags = dirflags.into();
+
+                // Reconstruct open flags.
+                let oflags: OpenFlags = oflags.into();
+
+                // Reconstruct base rights.
+                let fs_rights_base: Rights = fs_rights_base.into();
+
+                // Reconstruct inheriting rights.
+                let fs_rights_inheriting: Rights = fs_rights_inheriting.into();
+
+                // Reconstruct file descriptor flags.
+                let fdflags: FdFlags = fdflags.into();
+
+                // Ensure that data is large enough to store path.
+                debug_assert!(
+                    memory.len() >= path_offset + path_length,
+                    "path_open(): buffer too small (size={:?}, required={:?})",
+                    memory.len(),
+                    path_offset + path_length
+                );
+
+                // Reconstruct path from path_offset and path_length.
+                let path: &str =
+                    match core::str::from_utf8(&memory[path_offset..path_offset + path_length]) {
+                        Ok(path) => path,
+                        _ => {
+                            ::nvx::log!("path_open(): invalid path");
+                            return Errno::Inval.into();
+                        },
+                    };
+
+                // Check if memory is large enough to store the file descriptor.
+                if memory.len() < fd_offset + mem::size_of::<Fd>() {
+                    ::nvx::log!(
+                        "path_open(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        fd_offset + mem::size_of::<Fd>()
+                    );
+                    return Errno::Inval.into();
+                }
+
+                let fd: Fd = match ctx.path_open(
+                    fd,
+                    &dirflags,
+                    path,
+                    oflags,
+                    fs_rights_base,
+                    fs_rights_inheriting,
+                    fdflags,
+                ) {
+                    Ok(fd) => fd,
+                    Err(e) => {
+                        return e.into();
+                    },
+                };
+
+                fd.write_le_bytes(&mut memory[fd_offset..]);
+
+                Errno::Success.into()
             },
         );
         linker

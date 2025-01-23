@@ -17,9 +17,13 @@ mod sock;
 //==================================================================================================
 
 use crate::{
-    pal::Descriptor,
+    pal::fs::{
+        File,
+        Path,
+    },
     wasi::{
-        PreopenedDirectory,
+        Fd,
+        Rights,
         WasiCtx,
     },
     WasmBinary,
@@ -54,6 +58,13 @@ type HostState = u32;
 // Structures
 //==================================================================================================
 
+pub struct WasiFile {
+    wasi_fd: Fd,
+    os_file: Option<File>,
+    base_rights: Rights,
+    _inherited_rights: Rights,
+}
+
 pub struct WasmEngine {
     _ctx: Arc<WasiCtx>,
     _engine: Engine,
@@ -67,15 +78,63 @@ pub struct WasmEngine {
 // Implementations
 //==================================================================================================
 
+impl WasiFile {
+    pub fn new(
+        wasi_fd: Fd,
+        os_file: Option<File>,
+        base_rights: Rights,
+        inherited_rights: Rights,
+    ) -> Self {
+        Self {
+            wasi_fd,
+            os_file,
+            base_rights,
+            _inherited_rights: inherited_rights,
+        }
+    }
+
+    pub fn file(&self) -> Option<&File> {
+        self.os_file.as_ref()
+    }
+
+    pub fn fd(&self) -> Fd {
+        self.wasi_fd
+    }
+
+    pub fn rights_base(&self) -> &Rights {
+        &self.base_rights
+    }
+}
+
 impl WasmEngine {
     pub fn new(wasm_binary: &WasmBinary, data: HostState) -> Self {
+        let mut next_wasi_fd: Fd = 0;
         let mut config: Config = Config::default();
         config.compilation_mode(wasmi::CompilationMode::Eager);
         let engine: Engine = Engine::new(&config);
         let mut store: Store<HostState> = Store::new(&engine, data);
         let mut linker: Linker<HostState> = Linker::new(&engine);
-        let mut preopen_dirs: Vec<PreopenedDirectory> = Vec::new();
-        preopen_dirs.push(PreopenedDirectory::new(Descriptor::new(3), "/".to_string()));
+        let mut preopen_dirs: Vec<(WasiFile, String)> = Vec::new();
+
+        // Standard input (stdin)
+        let stdin: WasiFile =
+            WasiFile::new(next_wasi_fd, None, Rights::base_rights(), Rights::base_rights());
+        next_wasi_fd += 1;
+        // Standard output (stdout)
+        let stdout: WasiFile =
+            WasiFile::new(next_wasi_fd, None, Rights::base_rights(), Rights::base_rights());
+        next_wasi_fd += 1;
+        // Standard error (stderr)
+        let stderr: WasiFile =
+            WasiFile::new(next_wasi_fd, None, Rights::base_rights(), Rights::base_rights());
+        next_wasi_fd += 1;
+
+        // Root directory.
+        let file: File = File::open(&Path::new(".")).unwrap();
+        let root: WasiFile =
+            WasiFile::new(next_wasi_fd, Some(file), Rights::base_rights(), Rights::base_rights());
+        next_wasi_fd += 1;
+        preopen_dirs.push((root, ".".to_string()));
 
         let mut envs: Vec<String> = Vec::new();
         envs.push("OS=nanvix".to_string());
@@ -85,14 +144,8 @@ impl WasmEngine {
         args.push(wasm_binary.name.clone());
         args.extend(wasm_binary.args.clone());
 
-        let ctx = WasiCtx::new(
-            Descriptor::new(posix::unistd::STDIN_FILENO),
-            Descriptor::new(posix::unistd::STDOUT_FILENO),
-            Descriptor::new(posix::unistd::STDERR_FILENO),
-            preopen_dirs,
-            envs,
-            args,
-        );
+        let ctx: WasiCtx =
+            WasiCtx::new(next_wasi_fd, stdin, stdout, stderr, preopen_dirs, envs, args);
 
         let ctx: Arc<WasiCtx> = Arc::new(ctx);
 
@@ -104,7 +157,7 @@ impl WasmEngine {
         Self::define_environ_sizes_get(ctx.clone(), &mut linker, &mut store);
         Self::define_fd_advise(&mut linker, &mut store);
         Self::define_fd_allocate(&mut linker, &mut store);
-        Self::define_fd_close(&mut linker, &mut store);
+        Self::define_fd_close(ctx.clone(), &mut linker, &mut store);
         Self::define_fd_datasync(&mut linker, &mut store);
         Self::define_fd_fdstat_get(&mut linker, &mut store);
         Self::define_fd_fdstat_set_flags(&mut linker, &mut store);
