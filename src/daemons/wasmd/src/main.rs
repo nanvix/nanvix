@@ -226,6 +226,7 @@ impl WasmBinary {
         ::nvx::log!("loading wasm file ({} bytes)", wasm_bytes.len());
 
         // TODO: receive name and args from remote.
+        // TODO: skip allocation of bytes and use static array instead.
         Self {
             name: "a.wasm".to_string(),
             args: Vec::new(),
