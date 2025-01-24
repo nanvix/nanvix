@@ -12,10 +12,7 @@ use crate::hal::mem::{
     MemoryRegionType,
     VirtualAddress,
 };
-use ::sys::{
-    config,
-    error::Error,
-};
+use ::sys::error::Error;
 
 extern "C" {
     static __TEXT_START: u8;
@@ -119,13 +116,13 @@ impl KernelImage {
         info!(
             "{:>6}: start={:#010x}, end={:#010x} size={:#010x}",
             "kpool",
-            config::memory_layout::KPOOL_BASE.into_raw_value(),
-            config::memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE,
+            ::sys::config::memory_layout::KPOOL_BASE.into_raw_value(),
+            ::sys::config::memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE,
             config::kernel::KPOOL_SIZE
         );
         let kpool = MemoryRegion::new(
             "kernel page pool",
-            config::memory_layout::KPOOL_BASE,
+            ::sys::config::memory_layout::KPOOL_BASE,
             config::kernel::KPOOL_SIZE,
             MemoryRegionType::Reserved,
             AccessPermission::RDWR,

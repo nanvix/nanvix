@@ -63,7 +63,6 @@ use ::core::cell::{
 };
 use ::sys::{
     arch::mem,
-    config,
     error::{
         Error,
         ErrorCode,

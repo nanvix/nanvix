@@ -12,7 +12,6 @@ use crate::{
     },
     ipc::typ::MessageType,
     pm::ProcessIdentifier,
-    sys::config,
 };
 use ::core::mem;
 

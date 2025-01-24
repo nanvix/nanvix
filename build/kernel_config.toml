@@ -1,0 +1,40 @@
+# Total size of physical memory (in bytes)
+memory_size = 268435456
+
+# Total size of the kernel pool (in bytes)
+# Notes:
+# - This size should be a multiple of a page size.
+# - This size cannot exceed the size of a page table.
+kpool_size = 4194304
+
+# Kernel stack size (in bytes)
+# Notes:
+# - This size should be a multiple of a page size.
+# - This size cannot exceed the size of a page table.
+# - When changing this, boot code should also be updated.
+kstack_size = 32768
+
+# User stack size (in bytes)
+# Notes:
+# - This size should be a multiple of a page size.
+ustack_size = 65536
+
+# Timer frequency (in Hz)
+timer_freq = 100
+
+# Scheduler frequency (in ticks)
+# Notes:
+# - This should be a power of two.
+scheduler_freq = 128
+
+# Maximum number of messages that can be buffered by the kernel
+# Notes:
+# - When this threshold is reached, inter-kernel communication is blocked.
+#  - This value should be set according to the amount of memory available in the kernel heap.
+max_ikc_messages = 128
+
+# Size of an IPC message.
+# Notes:
+# - The value of this function has direct impact on IPC performance.
+# - The default value is set to match the size of a cache line in x86 processors.
+ipc_message_size = 64

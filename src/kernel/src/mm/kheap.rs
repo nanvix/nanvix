@@ -14,12 +14,12 @@ use ::alloc::alloc::{
 use ::core::ptr;
 use ::sys::{
     arch::mem,
-    constants,
     error::{
         Error,
         ErrorCode,
     },
 };
+use ::config::constants;
 
 //==================================================================================================
 // Constants

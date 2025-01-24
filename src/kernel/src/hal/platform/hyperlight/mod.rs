@@ -56,10 +56,6 @@ use peb::{
     HyperlightPEB,
     ProcessEnvironmentBlock,
 };
-use sys::config::kernel::{
-    IPC_MESSAGE_SIZE,
-    KPOOL_SIZE,
-};
 
 //==================================================================================================
 // Structures
@@ -68,13 +64,6 @@ use sys::config::kernel::{
 pub struct Platform {
     pub arch: Arch,
 }
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-/// Bootloader magic number.
-pub const MICROVM_BOOT_MAGIC: u32 = 0x0c00ffee;
 
 //==================================================================================================
 // Standalone Functions
@@ -119,7 +108,7 @@ pub unsafe fn puts(message: &str) {
 ///
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_write(addr: *const u8) {
-    let data = core::slice::from_raw_parts(addr, IPC_MESSAGE_SIZE);
+    let data = core::slice::from_raw_parts(addr, config::kernel::IPC_MESSAGE_SIZE);
     let _ = ProcessEnvironmentBlock::vmbus_write(data);
 }
 
@@ -141,7 +130,7 @@ pub unsafe fn vmbus_write(addr: *const u8) {
 ///
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_read(addr: *mut u8) {
-    let data = core::slice::from_raw_parts_mut(addr, IPC_MESSAGE_SIZE);
+    let data = core::slice::from_raw_parts_mut(addr, config::kernel::IPC_MESSAGE_SIZE);
     let bytes = ProcessEnvironmentBlock::vmbus_read();
     if let Ok(bytes) = bytes {
         data.copy_from_slice(&bytes);
@@ -182,7 +171,7 @@ pub fn shutdown() -> ! {
 ///
 pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     // Check if magic number matches what we expect.
-    if magic != MICROVM_BOOT_MAGIC {
+    if magic != ::config::hyperlight::DEFAULT_BOOT_MAGIC {
         let reason: &str = "invalid boot magic number";
         error!("parse_bootinfo(): magic={:#010x}, info={:#010x} (error={})", magic, info, reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -327,7 +316,7 @@ pub fn init(
     memory_regions.push_back(heap_padding);
 
     // Register kpool guard page.
-    let kpool_guard_base: usize = memory_layout::KPOOL_BASE.into_raw_value() + KPOOL_SIZE;
+    let kpool_guard_base: usize = memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE;
     let kpool_guard_size: usize = mem::PAGE_SIZE;
     let kpool_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "kpool guard",

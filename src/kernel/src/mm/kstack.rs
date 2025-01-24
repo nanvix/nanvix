@@ -17,7 +17,6 @@ use crate::{
 };
 use ::alloc::vec::Vec;
 use ::sys::{
-    config,
     error::Error,
     mm::{
         Address,
