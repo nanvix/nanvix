@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
@@ -13,7 +15,7 @@ export SCRIPT_NAME=$0
 export SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd)"
 
 # Target configuration
-MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')
+MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')B
 echo ">>> Memory Size: $MEMSIZE"
 
 #===================================================================================================
