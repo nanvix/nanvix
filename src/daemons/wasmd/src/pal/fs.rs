@@ -73,6 +73,24 @@ pub struct File {
 }
 
 impl File {
+    pub fn stdin() -> File {
+        File {
+            rawfd: Fd(unistd::STDIN_FILENO),
+        }
+    }
+
+    pub fn stdout() -> File {
+        File {
+            rawfd: Fd(unistd::STDOUT_FILENO),
+        }
+    }
+
+    pub fn stderr() -> File {
+        File {
+            rawfd: Fd(unistd::STDERR_FILENO),
+        }
+    }
+
     /// Opens a file in read-only mode.
     pub fn open(path: &Path) -> Result<File, Error> {
         Self::options().read(true).openat(None, path)
