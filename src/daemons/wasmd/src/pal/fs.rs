@@ -105,6 +105,23 @@ impl File {
     pub fn as_raw_fd(&self) -> c_int {
         self.rawfd.0
     }
+
+    /// Writes a buffer to a file.
+    pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        match unistd::write(self.rawfd.0, buf.as_ptr(), buf.len() as u32) {
+            -1 => {
+                // Get `errno` and reset it.
+                let errno: c_int = unsafe {
+                    let errno: c_int = errno::errno;
+                    errno::errno = 0;
+                    errno
+                };
+                ::nvx::log!("write(): failed to write to file descriptor (errno={:?})", errno);
+                Err(Error { errno })
+            },
+            ret => Ok(ret as usize),
+        }
+    }
 }
 
 impl Drop for File {

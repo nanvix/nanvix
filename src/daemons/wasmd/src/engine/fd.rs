@@ -13,14 +13,18 @@ use crate::{
     memory::WriteBytes,
     wasi::{
         types::Errno,
+        Address,
         Fd,
+        IoVec,
+        Pointer,
         Prestat,
+        Size,
+        Slice,
         WasiCtx,
     },
 };
 use ::alloc::sync::Arc;
 use ::core::mem;
-use ::posix::unistd;
 use ::wasmi::{
     Caller,
     Func,
@@ -411,43 +415,88 @@ impl WasmEngine {
             .unwrap();
     }
 
-    pub(super) fn define_fd_write(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
+    pub(super) fn define_fd_write(
+        ctx: Arc<WasiCtx>,
+        linker: &mut Linker<HostState>,
+        store: &mut Store<HostState>,
+    ) {
         let fd_write: Func = Func::wrap(
             store,
-            |mut caller: Caller<'_, HostState>,
-             fd: i32,
-             iovs_ptr: i32,
-             iovs_len: i32,
-             nwritten_ptr: i32| {
-                // Ensure fd is 1 (stdout)
-                if fd != unistd::STDOUT_FILENO {
-                    return Errno::Badf.into();
+            move |mut caller: Caller<'_, HostState>,
+                  fd: i32,
+                  iovs_ptr: i32,
+                  iovs_len: i32,
+                  nwritten_ptr: i32|
+                  -> i32 {
+                ::nvx::log!(
+                    "fd_write(): fd={:?}, iovs_ptr={:?}, iovs_len={:?}, nwritten_ptr={:?}",
+                    fd,
+                    iovs_ptr,
+                    iovs_len,
+                    nwritten_ptr
+                );
+
+                let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
+
+                // Convert file descriptor.
+                let fd: Fd = fd;
+
+                // Attempt to convert I/O vector base pointer.
+                let iovs_ptr: Pointer<IoVec> =
+                    match Pointer::<IoVec>::new(Address::new(iovs_ptr as u32)) {
+                        Ok(iovs_ptr) => iovs_ptr,
+                        Err(_) => {
+                            ::nvx::log!("fd_write(): invalid iovs_ptr {:#010x}", iovs_ptr);
+                            return Errno::Inval.into();
+                        },
+                    };
+
+                // Attempt to convert I/O vector length.
+                let iovs_len: Size = match iovs_len.try_into() {
+                    Ok(iovs_len) => iovs_len,
+                    Err(_) => {
+                        ::nvx::log!("fd_write(): invalid iovs_len {:#010x}", iovs_len);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                let iovecs: Slice<'_, IoVec> =
+                    Slice::<IoVec>::for_raw_parts(memory, iovs_ptr, iovs_len);
+                let iovecs = match iovecs.as_ref() {
+                    Ok(iovecs) => iovecs,
+                    Err(_) => {
+                        ::nvx::log!("fd_write(): failed to get slice from memory");
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Attempt to convert pointer to number of bytes written.
+                let nwritten_ptr: usize = match nwritten_ptr.try_into() {
+                    Ok(nwritten_ptr) => nwritten_ptr,
+                    Err(_) => {
+                        ::nvx::log!("fd_write(): invalid nwritten_ptr {:#010x}", nwritten_ptr);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Check if memory is large enough to store the number of bytes written.
+                if memory.len() < nwritten_ptr + mem::size_of::<Size>() {
+                    ::nvx::log!(
+                        "fd_write(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        nwritten_ptr as usize + mem::size_of::<Size>()
+                    );
+                    return Errno::Inval.into();
                 }
 
-                let memory = Self::get_memory_mut(&mut caller);
-
-                // Read the iovec array
-                let mut total_written = 0;
-                for i in 0..iovs_len {
-                    let iovec_base = iovs_ptr as usize + i as usize * 8;
-                    let ptr =
-                        u32::from_le_bytes(memory[iovec_base..iovec_base + 4].try_into().unwrap())
-                            as usize;
-                    let len = u32::from_le_bytes(
-                        memory[iovec_base + 4..iovec_base + 8].try_into().unwrap(),
-                    ) as usize;
-
-                    let msg = core::str::from_utf8(&memory[ptr..ptr + len]).expect("Invalid utf8");
-                    ::nvx::log!("{msg}");
-                    total_written += len;
+                match ctx.fd_write(memory, fd, iovecs) {
+                    Ok(nwritten) => {
+                        // Write the number of bytes written to nwritten_ptr
+                        nwritten.write_le_bytes(&mut memory[nwritten_ptr..]);
+                        Errno::Success.into()
+                    },
+                    Err(e) => e.into(),
                 }
-
-                // Write the number of bytes written to nwritten_ptr
-                let nwritten_bytes = (total_written as u32).to_le_bytes();
-                let nwritten_ptr = nwritten_ptr as usize;
-                memory[nwritten_ptr..nwritten_ptr + 4].copy_from_slice(&nwritten_bytes);
-
-                0
             },
         );
         linker
