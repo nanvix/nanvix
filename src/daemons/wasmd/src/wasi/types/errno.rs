@@ -103,3 +103,12 @@ impl From<Errno> for i32 {
         errno as i32
     }
 }
+
+impl From<i32> for Errno {
+    fn from(errno: i32) -> Errno {
+        match Errno::try_from(errno as u16) {
+            Ok(errno) => errno,
+            Err(_) => Errno::Inval,
+        }
+    }
+}

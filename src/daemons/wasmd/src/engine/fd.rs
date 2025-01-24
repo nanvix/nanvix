@@ -6,13 +6,20 @@
 //==================================================================================================
 
 use crate::{
-    engine::WasmEngine,
+    engine::{
+        HostState,
+        WasmEngine,
+    },
+    memory::WriteBytes,
     wasi::{
         types::Errno,
+        Fd,
+        Prestat,
         WasiCtx,
     },
 };
 use ::alloc::sync::Arc;
+use ::core::mem;
 use ::posix::unistd;
 use ::wasmi::{
     Caller,
@@ -20,8 +27,6 @@ use ::wasmi::{
     Linker,
     Store,
 };
-
-use crate::engine::HostState;
 
 //==================================================================================================
 // Implementations
@@ -52,10 +57,21 @@ impl WasmEngine {
             .unwrap();
     }
 
-    pub(super) fn define_fd_close(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
-        let fd_close: Func = Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32| -> i32 {
-            ::nvx::log!("fd_close: {fd}");
-            Errno::Nosys.into()
+    pub(super) fn define_fd_close(
+        ctx: Arc<WasiCtx>,
+        linker: &mut Linker<HostState>,
+        store: &mut Store<HostState>,
+    ) {
+        let fd_close: Func = Func::wrap(store, move |_caller: Caller<'_, u32>, fd: i32| -> i32 {
+            ::nvx::log!("fd_close(): {:?}", fd);
+
+            // Convert file descriptor.
+            let fd: Fd = fd;
+
+            match ctx.fd_close(fd) {
+                Ok(()) => Errno::Success.into(),
+                Err(e) => e.into(),
+            }
         });
         linker
             .define("wasi_snapshot_preview1", "fd_close", fd_close)
@@ -185,20 +201,62 @@ impl WasmEngine {
 
     /// Returns the path of a pre-opened directory.
     pub(super) fn define_fd_prestat_dir_name(
-        _ctx: Arc<WasiCtx>,
+        ctx: Arc<WasiCtx>,
         linker: &mut Linker<HostState>,
         store: &mut Store<HostState>,
     ) {
         let fd_prestat_dir_name: Func = Func::wrap(
             store,
-            move |_caller: Caller<'_, u32>, fd: i32, path_buf_offset: i32, path_len: i32| -> i32 {
+            move |mut caller: Caller<'_, u32>,
+                  fd: i32,
+                  path_buf_offset: i32,
+                  path_len: i32|
+                  -> i32 {
                 ::nvx::log!(
-                    "fd_prestat_dir_name: fd={:?}, path_buf_offset={:?}, path_len={:?}",
+                    "fd_prestat_dir_name(): fd={:?}, path_buf_offset={:?}, path_len={:?}",
                     fd,
                     path_buf_offset,
                     path_len
                 );
-                Errno::Nosys.into()
+
+                let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
+
+                // Convert file descriptor.
+                let fd: Fd = fd;
+
+                // Attempt to convert the path buffer offset.
+                let path_buf_offset: usize = match path_buf_offset.try_into() {
+                    Ok(path_buf_offset) => path_buf_offset,
+                    _ => {
+                        ::nvx::log!(
+                            "fd_prestat_dir_name(): invalid path_buf_offset {:#010x}",
+                            path_buf_offset
+                        );
+                        return Errno::Inval.into();
+                    },
+                };
+
+                match ctx.fd_prestat_dir_get(fd) {
+                    Ok(dirname) => {
+                        let dirname_bytes: &[u8] = dirname.as_bytes();
+
+                        // Check if memory is large enough to store the directory name.
+                        if memory.len() < path_buf_offset + dirname_bytes.len() {
+                            ::nvx::log!(
+                                "fd_prestat_dir_name(): buffer too small (size={:?}, \
+                                 required={:?})",
+                                memory.len(),
+                                path_buf_offset + dirname_bytes.len()
+                            );
+                            return Errno::Inval.into();
+                        }
+
+                        dirname_bytes.write_le_bytes(&mut memory[path_buf_offset..]);
+
+                        Errno::Success.into()
+                    },
+                    Err(e) => e.into(),
+                }
             },
         );
         linker
@@ -206,17 +264,47 @@ impl WasmEngine {
             .unwrap();
     }
 
-    /// Returns a description of a pre-opened capability.
+    /// Returns a description of the given pre-opened file descriptor.
     pub(super) fn define_fd_prestat_get(
-        _ctx: Arc<WasiCtx>,
+        ctx: Arc<WasiCtx>,
         linker: &mut Linker<HostState>,
         store: &mut Store<HostState>,
     ) {
-        let fd_prestat_get: Func =
-            Func::wrap(store, move |_caller: Caller<'_, HostState>, fd: i32, offset: i32| -> i32 {
-                ::nvx::log!("fd_prestat_get(): fd={:?}, buf={:#010x}", fd, offset);
-                Errno::Nosys.into()
-            });
+        let fd_prestat_get: Func = Func::wrap(
+            store,
+            move |mut caller: Caller<'_, HostState>, fd: i32, prestat_offset: i32| -> i32 {
+                ::nvx::log!("fd_prestat_get(): fd={:?}, prestat_offset={:?}", fd, prestat_offset);
+
+                let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
+
+                // Convert file descriptor.
+                let fd: Fd = fd;
+
+                // Attempt to convert pre-stat offset.
+                let prestat_offset: usize = match prestat_offset.try_into() {
+                    Ok(prestat_offset) => prestat_offset,
+                    Err(_) => return Errno::Fault.into(),
+                };
+
+                // Check if memory is large enough to store pre-stat.
+                if memory.len() < prestat_offset + mem::size_of::<Prestat>() {
+                    ::nvx::log!(
+                        "fd_prestat_get(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        prestat_offset + mem::size_of::<Prestat>()
+                    );
+                    return Errno::Inval.into();
+                }
+
+                match ctx.fd_prestat_get(fd) {
+                    Ok(prestat) => {
+                        prestat.write_le_bytes(&mut memory[prestat_offset..]);
+                        Errno::Success.into()
+                    },
+                    Err(e) => e.into(),
+                }
+            },
+        );
         linker
             .define("wasi_snapshot_preview1", "fd_prestat_get", fd_prestat_get)
             .expect("should be able to add symbol to linker");
