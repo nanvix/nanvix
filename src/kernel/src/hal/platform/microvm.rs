@@ -164,10 +164,11 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     trace!("parse_bootinfo(): magic={:#010x}, info={:#010x}", magic, info);
 
     // Retrieve initrd information.
-    // - Lower 12 bits encode the size of the initrd.
+    // - Lower bits encode the size of the initrd.
     // - Higher bits encode the base address of the initrd.
-    let initrd_size: usize = info & 0xfff;
-    let initrd_base: usize = info & !0xfff;
+    let nzeros: usize = ::config::microvm::DEFAULT_INITRD_BASE.trailing_zeros() as usize;
+    let initrd_size: usize = info & ((1 << nzeros) - 1);
+    let initrd_base: usize = info & !((1 << nzeros) - 1);
 
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
 
