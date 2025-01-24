@@ -109,7 +109,7 @@ impl WasiCtxInner {
                     flags.write(true);
                 }
 
-                match flags.openat(dirfd.file(), &Path::new(pathname)) {
+                match flags.openat(Some(dirfd.file()), &Path::new(pathname)) {
                     Ok(file) => {
                         let fd: Fd = self.insert_file(file, fs_rights_base, fs_rights_inheriting);
                         Ok(fd)

@@ -60,7 +60,7 @@ type HostState = u32;
 
 pub struct WasiFile {
     wasi_fd: Fd,
-    os_file: Option<File>,
+    os_file: File,
     base_rights: Rights,
     _inherited_rights: Rights,
 }
@@ -79,12 +79,7 @@ pub struct WasmEngine {
 //==================================================================================================
 
 impl WasiFile {
-    pub fn new(
-        wasi_fd: Fd,
-        os_file: Option<File>,
-        base_rights: Rights,
-        inherited_rights: Rights,
-    ) -> Self {
+    pub fn new(wasi_fd: Fd, os_file: File, base_rights: Rights, inherited_rights: Rights) -> Self {
         Self {
             wasi_fd,
             os_file,
@@ -93,8 +88,12 @@ impl WasiFile {
         }
     }
 
-    pub fn file(&self) -> Option<&File> {
-        self.os_file.as_ref()
+    pub fn file(&self) -> &File {
+        &self.os_file
+    }
+
+    pub fn file_mut(&mut self) -> &mut File {
+        &mut self.os_file
     }
 
     pub fn fd(&self) -> Fd {
@@ -116,23 +115,40 @@ impl WasmEngine {
         let mut linker: Linker<HostState> = Linker::new(&engine);
         let mut preopen_dirs: Vec<(WasiFile, String)> = Vec::new();
 
+        let mut files: Vec<WasiFile> = Vec::new();
+
         // Standard input (stdin)
-        let stdin: WasiFile =
-            WasiFile::new(next_wasi_fd, None, Rights::base_rights(), Rights::base_rights());
+        let stdin: WasiFile = WasiFile::new(
+            next_wasi_fd,
+            File::stdin(),
+            Rights::base_rights(),
+            Rights::base_rights(),
+        );
+        files.push(stdin);
         next_wasi_fd += 1;
         // Standard output (stdout)
-        let stdout: WasiFile =
-            WasiFile::new(next_wasi_fd, None, Rights::base_rights(), Rights::base_rights());
+        let stdout: WasiFile = WasiFile::new(
+            next_wasi_fd,
+            File::stdout(),
+            Rights::base_rights(),
+            Rights::base_rights(),
+        );
+        files.push(stdout);
         next_wasi_fd += 1;
         // Standard error (stderr)
-        let stderr: WasiFile =
-            WasiFile::new(next_wasi_fd, None, Rights::base_rights(), Rights::base_rights());
+        let stderr: WasiFile = WasiFile::new(
+            next_wasi_fd,
+            File::stderr(),
+            Rights::base_rights(),
+            Rights::base_rights(),
+        );
+        files.push(stderr);
         next_wasi_fd += 1;
 
         // Root directory.
         let file: File = File::open(&Path::new(".")).unwrap();
         let root: WasiFile =
-            WasiFile::new(next_wasi_fd, Some(file), Rights::base_rights(), Rights::base_rights());
+            WasiFile::new(next_wasi_fd, file, Rights::base_rights(), Rights::base_rights());
         next_wasi_fd += 1;
         preopen_dirs.push((root, ".".to_string()));
 
@@ -144,8 +160,7 @@ impl WasmEngine {
         args.push(wasm_binary.name.clone());
         args.extend(wasm_binary.args.clone());
 
-        let ctx: WasiCtx =
-            WasiCtx::new(next_wasi_fd, stdin, stdout, stderr, preopen_dirs, envs, args);
+        let ctx: WasiCtx = WasiCtx::new(next_wasi_fd, files, preopen_dirs, envs, args);
 
         let ctx: Arc<WasiCtx> = Arc::new(ctx);
 

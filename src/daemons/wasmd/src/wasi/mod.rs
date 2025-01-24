@@ -42,31 +42,30 @@ pub use types::*;
 
 struct WasiCtxInner {
     next_wasi_fd: Fd,
-    stdin: WasiFile,
-    stdout: WasiFile,
-    stderr: WasiFile,
     files: Vec<WasiFile>,
     preopen_dirs: Vec<(WasiFile, String)>,
     envs: Vec<String>,
     args: Vec<String>,
 }
 impl WasiCtxInner {
+    /// Standard input file descriptor.
+    const STDIN: Fd = 0;
+    /// Standard output file descriptor.
+    const STDOUT: Fd = 1;
+    /// Standard error file descriptor.
+    const STDERR: Fd = 2;
+
     pub fn new(
         next_wasi_fd: Fd,
-        stdin: WasiFile,
-        stdout: WasiFile,
-        stderr: WasiFile,
+        files: Vec<WasiFile>,
         preopen_dirs: Vec<(WasiFile, String)>,
         envs: Vec<String>,
         args: Vec<String>,
     ) -> Self {
         Self {
             next_wasi_fd,
-            stdin,
-            stdout,
-            stderr,
             preopen_dirs,
-            files: Vec::new(),
+            files,
             envs,
             args,
         }
@@ -75,9 +74,30 @@ impl WasiCtxInner {
     fn insert_file(&mut self, os_file: File, base_rights: Rights, inherited_rights: Rights) -> Fd {
         let wasi_fd: Fd = self.next_wasi_fd;
         self.files
-            .push(WasiFile::new(wasi_fd, Some(os_file), base_rights, inherited_rights));
+            .push(WasiFile::new(wasi_fd, os_file, base_rights, inherited_rights));
         self.next_wasi_fd += 1;
         wasi_fd
+    }
+
+    fn remove_file(&mut self, fd: Fd) -> Result<(), Errno> {
+        // Check if we are removing stdin, stdout, or stderr.
+        if fd == Self::STDIN || fd == Self::STDOUT || fd == Self::STDERR {
+            ::nvx::log!("remove_file(): cannot remove stdin, stdout, nor stderr");
+            return Err(Errno::Badf);
+        }
+
+        // Find and remove file descriptor from the list of open files.
+        let num_open_files: usize = self.files.len();
+        self.files.retain(|file| file.fd() != fd);
+
+        // Check if file descriptor was removed.
+        if self.files.len() == num_open_files {
+            return Err(Errno::Badf);
+        }
+
+        debug_assert!(self.files.len() == num_open_files - 1);
+
+        Ok(())
     }
 
     fn get_file(&self, fd: Fd) -> Option<&WasiFile> {
@@ -94,6 +114,21 @@ impl WasiCtxInner {
         // Search for file descriptor in the list of open files.
         self.files.iter().find(|file| file.fd() == fd)
     }
+
+    fn get_file_mut(&mut self, fd: Fd) -> Option<&mut WasiFile> {
+        // Search for file descriptor in the list of pre-open directories.
+        if let Some(file) = self
+            .preopen_dirs
+            .iter_mut()
+            .find(|(file, _)| file.fd() == fd)
+            .map(|(file, _)| file)
+        {
+            return Some(file);
+        }
+
+        // Search for file descriptor in the list of open files.
+        self.files.iter_mut().find(|file| file.fd() == fd)
+    }
 }
 
 pub struct WasiCtx(RefCell<WasiCtxInner>);
@@ -104,22 +139,12 @@ unsafe impl Sync for WasiCtx {}
 impl WasiCtx {
     pub fn new(
         next_wasi_fd: Fd,
-        stdin: WasiFile,
-        stdout: WasiFile,
-        stderr: WasiFile,
+        files: Vec<WasiFile>,
         preopen_dirs: Vec<(WasiFile, String)>,
         envs: Vec<String>,
         args: Vec<String>,
     ) -> Self {
-        Self(RefCell::new(WasiCtxInner::new(
-            next_wasi_fd,
-            stdin,
-            stdout,
-            stderr,
-            preopen_dirs,
-            envs,
-            args,
-        )))
+        Self(RefCell::new(WasiCtxInner::new(next_wasi_fd, files, preopen_dirs, envs, args)))
     }
 
     /// Reads command-line argument data.
@@ -155,6 +180,11 @@ impl WasiCtx {
     /// Returns a description of the given pre-opened file descriptor.
     pub fn fd_prestat_get(&self, fd: Fd) -> Result<Prestat, Errno> {
         self.0.borrow().fd_prestat_get(fd)
+    }
+
+    /// Writes to a file descriptor.
+    pub fn fd_write(&self, memory: &[u8], fd: Fd, iovecs: &[IoVec]) -> Result<Size, Errno> {
+        self.0.borrow_mut().fd_write(memory, fd, iovecs)
     }
 
     /// Opens a file or a directory.
