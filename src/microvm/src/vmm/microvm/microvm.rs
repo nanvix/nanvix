@@ -164,14 +164,28 @@ impl MicroVm {
         crate::timer!("vm_reset");
         let rax: u64 = ::config::microvm::DEFAULT_BOOT_MAGIC as u64;
 
+        // Check if initrd is too large.
+        let nzeros: usize = ::config::microvm::DEFAULT_INITRD_BASE.trailing_zeros() as usize;
+        let max_initrd_size: usize = (1 << 12) * ((1 << nzeros) - 1);
+        if let Some((_, initrd_size)) = self.initrd {
+            if initrd_size > max_initrd_size {
+                return Err(anyhow::anyhow!(
+                    "initrd is too large (initrd_size={}, max_initrd_size={:?})",
+                    initrd_size,
+                    max_initrd_size
+                ));
+            }
+        }
+
         // Encode initrd location and size:
-        // - Lower 12 bits encode the size in 4KB pages
+        // - Lower bits encode the size in 4KB pages
         // - Higher bits encode the base address
         let (initrd_base, initrd_size): (u64, u64) = match self.initrd {
             Some((base, size)) => (base, size as u64),
             None => (0, 0),
         };
-        let rbx: u64 = (initrd_base & 0xfffff000) | ((initrd_size >> 12) & 0xfff);
+        let rbx: u64 =
+            (initrd_base & !((1 << nzeros) - 1)) | ((initrd_size >> 12) & ((1 << nzeros) - 1));
 
         self.vcpu.reset(rip, rax, rbx)
     }
