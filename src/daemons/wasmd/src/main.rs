@@ -91,6 +91,18 @@ struct WasmBinary {
     bytes: Vec<u8>,
 }
 
+impl core::fmt::Debug for WasmBinary {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(
+            f,
+            "WasmBinary {{ name: {}, args: {:?}, size: {:?} }}",
+            self.name,
+            self.args,
+            self.bytes.len()
+        )
+    }
+}
+
 impl WasmBinary {
     #[cfg(not(feature = "wasm_binary"))]
     pub fn new() -> Self {
@@ -242,7 +254,7 @@ fn main() -> Result<(), Error> {
 
     let wasm_binary = WasmBinary::new();
 
-    ::nvx::log!("wasm file loaded");
+    ::nvx::log!("wasm file loaded {:?}", wasm_binary);
 
     let mut engine = WasmEngine::new(&wasm_binary, 42);
 
