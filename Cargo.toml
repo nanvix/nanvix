@@ -14,6 +14,7 @@ members = [
         "src/daemons/wasmd",
         "src/kernel",
         "src/libs/bitmap",
+        "src/libs/config",
         "src/libs/error",
         "src/libs/nvx",
         "src/libs/posix",
@@ -42,6 +43,7 @@ anyhow = "1.0.95"
 bitmap = { path = "src/libs/bitmap", default-features = false }
 cc = "1.2.6"
 cfg-if = "1.0.0"
+config = { path = "src/libs/config", default-features = false }
 error = { path = "src/libs/error", default-features = false }
 flexi_logger = "0.29.8"
 http-body-util = "0.1.2"

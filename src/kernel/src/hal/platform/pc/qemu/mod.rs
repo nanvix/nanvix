@@ -42,5 +42,5 @@ pub use pc::shutdown;
 /// - It does not prevent concurrent access to the standard output device.
 ///
 pub unsafe fn putb(b: u8) {
-    ::sys::arch::io::out8(0xe9, b);
+    ::sys::arch::io::out8(::config::pc::DEFAULT_STDOUT_PORT, b);
 }

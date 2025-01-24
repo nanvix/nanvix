@@ -35,7 +35,6 @@ use ::sys::arch::{
 };
 
 use ::sys::{
-    config,
     error::{
         Error,
         ErrorCode,
@@ -161,7 +160,7 @@ fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     ioports.register_read_write(::sys::arch::cpu::pit::PIT_CTRL)?;
     ioports.register_read_write(::sys::arch::cpu::pit::PIT_DATA)?;
 
-    Pit::new(ioports, config::kernel::TIMER_FREQ)
+    Pit::new(ioports, ::config::kernel::TIMER_FREQ)
 }
 
 pub fn init(

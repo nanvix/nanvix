@@ -24,7 +24,6 @@ use crate::vmm::microvm::kvm::{
     vmem::VirtualMemory,
 };
 
-use crate::vmm::microvm::config;
 use ::anyhow::Result;
 use ::std::{
     cell::RefCell,
@@ -66,13 +65,6 @@ pub type OutputFn = dyn FnMut(&Rc<RefCell<VirtualMemory>>, u32, usize) -> Result
 //==================================================================================================
 
 impl MicroVm {
-    /// I/O port that is connected to the standard output of the virtual machine.
-    pub const STDOUT_PORT: u16 = config::STDOUT_PORT;
-    /// I/O port that is connected to the standard input of the virtual machine.
-    pub const STDIN_PORT: u16 = config::STDIN_PORT;
-    /// I/O port that enables the guest to invoke functionalities of the virtual machine monitor.
-    pub const VMM_PORT: u16 = config::VMM_PORT;
-
     ///
     /// # Description
     ///
@@ -170,7 +162,7 @@ impl MicroVm {
     pub fn reset(&mut self, rip: u64) -> Result<()> {
         trace!("reset(): {:#010x}", rip);
         crate::timer!("vm_reset");
-        let rax: u64 = config::MICROVM_MAGIC as u64;
+        let rax: u64 = ::config::microvm::DEFAULT_BOOT_MAGIC as u64;
 
         // Encode initrd location and size:
         // - Lower 12 bits encode the size in 4KB pages
