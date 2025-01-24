@@ -14,6 +14,7 @@
 pub mod environ;
 pub mod fd;
 pub mod path;
+pub mod sock;
 pub mod types;
 
 //==================================================================================================
@@ -176,5 +177,10 @@ impl WasiCtx {
             fs_rights_inheriting,
             fdflags,
         )
+    }
+
+    /// Accepts a new incoming connection on a socket.
+    pub fn sock_accept(&self, sockfd: Fd, fdflags: FdFlags) -> Result<Fd, Errno> {
+        self.0.borrow().sock_accept(sockfd, fdflags)
     }
 }

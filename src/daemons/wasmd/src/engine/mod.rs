@@ -191,12 +191,12 @@ impl WasmEngine {
         Self::define_proc_raise(&mut linker, &mut store);
         Self::define_sched_yield(&mut linker, &mut store);
         Self::define_random_get(&mut linker, &mut store);
-        Self::define_sock_accept(&mut linker, &mut store);
+        Self::define_sock_accept(ctx.clone(), &mut linker, &mut store);
         Self::define_sock_recv(&mut linker, &mut store);
         Self::define_sock_send(&mut linker, &mut store);
         Self::define_sock_shutdown(&mut linker, &mut store);
 
-        let module = match Module::new(&engine, &wasm_binary.bytes) {
+        let module: Module = match Module::new(&engine, &wasm_binary.bytes) {
             Ok(module) => module,
             Err(err) => {
                 panic!("Error: {:?}", err);
