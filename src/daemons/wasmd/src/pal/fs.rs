@@ -106,6 +106,23 @@ impl File {
         self.rawfd.0
     }
 
+    /// Reads from a file into a buffer.
+    pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
+        match unistd::read(self.rawfd.0, buf.as_mut_ptr(), buf.len() as u32) {
+            -1 => {
+                // Get `errno` and reset it.
+                let errno: c_int = unsafe {
+                    let errno: c_int = errno::errno;
+                    errno::errno = 0;
+                    errno
+                };
+                ::nvx::log!("read(): failed to read from file descriptor (errno={:?})", errno);
+                Err(Error { errno })
+            },
+            ret => Ok(ret as usize),
+        }
+    }
+
     /// Writes a buffer to a file.
     pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
         match unistd::write(self.rawfd.0, buf.as_ptr(), buf.len() as u32) {
