@@ -73,6 +73,24 @@ pub struct File {
 }
 
 impl File {
+    pub fn stdin() -> File {
+        File {
+            rawfd: Fd(unistd::STDIN_FILENO),
+        }
+    }
+
+    pub fn stdout() -> File {
+        File {
+            rawfd: Fd(unistd::STDOUT_FILENO),
+        }
+    }
+
+    pub fn stderr() -> File {
+        File {
+            rawfd: Fd(unistd::STDERR_FILENO),
+        }
+    }
+
     /// Opens a file in read-only mode.
     pub fn open(path: &Path) -> Result<File, Error> {
         Self::options().read(true).openat(None, path)
@@ -86,6 +104,40 @@ impl File {
     /// Extracts the raw file descriptor.
     pub fn as_raw_fd(&self) -> c_int {
         self.rawfd.0
+    }
+
+    /// Reads from a file into a buffer.
+    pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
+        match unistd::read(self.rawfd.0, buf.as_mut_ptr(), buf.len() as u32) {
+            -1 => {
+                // Get `errno` and reset it.
+                let errno: c_int = unsafe {
+                    let errno: c_int = errno::errno;
+                    errno::errno = 0;
+                    errno
+                };
+                ::nvx::log!("read(): failed to read from file descriptor (errno={:?})", errno);
+                Err(Error { errno })
+            },
+            ret => Ok(ret as usize),
+        }
+    }
+
+    /// Writes a buffer to a file.
+    pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        match unistd::write(self.rawfd.0, buf.as_ptr(), buf.len() as u32) {
+            -1 => {
+                // Get `errno` and reset it.
+                let errno: c_int = unsafe {
+                    let errno: c_int = errno::errno;
+                    errno::errno = 0;
+                    errno
+                };
+                ::nvx::log!("write(): failed to write to file descriptor (errno={:?})", errno);
+                Err(Error { errno })
+            },
+            ret => Ok(ret as usize),
+        }
     }
 }
 

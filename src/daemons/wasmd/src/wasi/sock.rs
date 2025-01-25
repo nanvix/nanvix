@@ -2,37 +2,26 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Imports
 //==================================================================================================
 
-mod address;
-mod errno;
-mod fd;
-mod fdflags;
-mod iovec;
-mod lookupflags;
-mod oflags;
-mod pointer;
-mod prestat;
-mod prestat_dir;
-mod rights;
-mod size;
-mod slice;
+use crate::wasi::{
+    types::{
+        Errno,
+        Fd,
+        FdFlags,
+    },
+    WasiCtxInner,
+};
 
 //==================================================================================================
-// Exports
+// Implementations
 //==================================================================================================
 
-pub use address::*;
-pub use errno::*;
-pub use fd::*;
-pub use fdflags::*;
-pub use iovec::*;
-pub use lookupflags::*;
-pub use oflags::*;
-pub use pointer::*;
-pub use prestat::*;
-pub use prestat_dir::*;
-pub use rights::*;
-pub use size::*;
-pub use slice::*;
+impl WasiCtxInner {
+    /// Accepts a new connection on a socket.
+    pub(super) fn sock_accept(&self, _sockfd: Fd, _fdflags: FdFlags) -> Result<Fd, Errno> {
+        // TODO: implement this operation.
+        Err(Errno::Nosys)
+    }
+}
