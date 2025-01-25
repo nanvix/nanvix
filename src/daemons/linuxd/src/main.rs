@@ -352,8 +352,22 @@ impl ProcessDaemon {
                                                 },
                                             }
                                         } else {
-                                            error!("not connected to the gateway");
-                                            build_error(source, ErrorCode::HostUnreachable)
+                                            // Not connected to the gateway, read from stdin.
+                                            let mut buffer: [u8; ReadResponse::BUFFER_SIZE] =
+                                                [0u8; ReadResponse::BUFFER_SIZE];
+                                            let count: usize = match ::std::io::stdin()
+                                                .read(&mut buffer)
+                                            {
+                                                Ok(count) => count,
+                                                Err(e) => {
+                                                    debug!(
+                                                        "failed to read from stdin (error={:?})",
+                                                        e
+                                                    );
+                                                    0
+                                                },
+                                            };
+                                            ReadResponse::build(source, count as ssize_t, buffer)
                                         }
                                     } else {
                                         // Read from other file descriptor.
