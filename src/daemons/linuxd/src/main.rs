@@ -50,11 +50,9 @@ use ::nvx::{
         MessageType,
     },
     pm::ProcessIdentifier,
-    sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
+    sys::error::{
+        Error,
+        ErrorCode,
     },
 };
 use ::posix::{
@@ -96,6 +94,7 @@ use ::posix::{
             UpdateFileAccessTimeRequest,
         },
         times::message::TimesRequest,
+        types::ssize_t,
     },
     time::message::{
         ClockResolutionRequest,
@@ -315,8 +314,13 @@ impl ProcessDaemon {
                                                 },
                                             }
                                         } else {
-                                            error!("not connected to the gateway");
-                                            build_error(source, ErrorCode::HostUnreachable)
+                                            // Not connected to the gateway, print to stdout.
+                                            let count: usize = request.count as usize;
+                                            let buffer: &[u8] = &request.buffer[..count];
+                                            let string: String =
+                                                String::from_utf8_lossy(buffer).to_string();
+                                            print!("{}", string);
+                                            WriteResponse::build(source, count as ssize_t)
                                         }
                                     } else {
                                         // Write to other file descriptor.
@@ -348,8 +352,22 @@ impl ProcessDaemon {
                                                 },
                                             }
                                         } else {
-                                            error!("not connected to the gateway");
-                                            build_error(source, ErrorCode::HostUnreachable)
+                                            // Not connected to the gateway, read from stdin.
+                                            let mut buffer: [u8; ReadResponse::BUFFER_SIZE] =
+                                                [0u8; ReadResponse::BUFFER_SIZE];
+                                            let count: usize = match ::std::io::stdin()
+                                                .read(&mut buffer)
+                                            {
+                                                Ok(count) => count,
+                                                Err(e) => {
+                                                    debug!(
+                                                        "failed to read from stdin (error={:?})",
+                                                        e
+                                                    );
+                                                    0
+                                                },
+                                            };
+                                            ReadResponse::build(source, count as ssize_t, buffer)
                                         }
                                     } else {
                                         // Read from other file descriptor.
