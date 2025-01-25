@@ -182,6 +182,11 @@ impl WasiCtx {
         self.0.borrow().fd_prestat_get(fd)
     }
 
+    /// Reads from a file descriptor.
+    pub fn fd_read(&self, memory: &mut [u8], fd: Fd, iovecs: &[IoVec]) -> Result<Size, Errno> {
+        self.0.borrow().fd_read(memory, fd, iovecs)
+    }
+
     /// Writes to a file descriptor.
     pub fn fd_write(&self, memory: &[u8], fd: Fd, iovecs: &[IoVec]) -> Result<Size, Errno> {
         self.0.borrow_mut().fd_write(memory, fd, iovecs)

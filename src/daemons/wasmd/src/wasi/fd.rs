@@ -72,6 +72,62 @@ impl WasiCtxInner {
         Err(Errno::Badf)
     }
 
+    /// Reads from a file descriptor.
+    pub fn fd_read(&self, memory: &mut [u8], fd: Fd, iovecs: &[IoVec]) -> Result<Size, Errno> {
+        let read_iovecs = |file: &File, memory: &mut [u8], dry_run: bool| -> Result<Size, Errno> {
+            let mut total_read: Size = Size::new(0);
+            for iovec in iovecs {
+                let ptr: Pointer<u8> = iovec.buf();
+                let len: Size = iovec.buf_len();
+
+                let mut buf: Slice<'_, u8> = Slice::<u8>::for_raw_parts(memory, ptr, len);
+                let buf: &mut [u8] = match buf.as_mut() {
+                    Ok(slice) => slice,
+                    Err(_) => {
+                        ::nvx::log!("fd_read(): failed to get slice from memory");
+                        return Err(Errno::Inval);
+                    },
+                };
+
+                let read: Size = if !dry_run {
+                    match file.read(buf) {
+                        Ok(read) => read.into(),
+                        Err(err) => {
+                            ::nvx::log!("fd_read(): failed to read from file (errno={:?})", err);
+                            return Err(Errno::from(err.value()));
+                        },
+                    }
+                } else {
+                    len
+                };
+
+                total_read += read;
+            }
+            Ok(total_read)
+        };
+
+        match self.get_file(fd) {
+            Some(file) => {
+                // Ensure that we have the right to invoke this operation.
+                if !file.rights_base().fd_read {
+                    ::nvx::log!("fd_read(): access denied");
+                    return Err(Errno::Acces);
+                }
+
+                let file: &File = file.file();
+
+                // Dry run to check for errors.
+                read_iovecs(file, memory, true)?;
+                // Normal run to read from the file.
+                read_iovecs(file, memory, false)
+            },
+            None => {
+                ::nvx::log!("fd_read(): invalid file descriptor");
+                return Err(Errno::Badf);
+            },
+        }
+    }
+
     /// Writes to a file descriptor.
     pub fn fd_write(&mut self, memory: &[u8], fd: Fd, iovecs: &[IoVec]) -> Result<Size, Errno> {
         let write_iovecs = |file: &mut File, dry_run: bool| -> Result<Size, Errno> {

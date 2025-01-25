@@ -23,7 +23,10 @@ use crate::{
         WasiCtx,
     },
 };
-use ::alloc::sync::Arc;
+use ::alloc::{
+    sync::Arc,
+    vec::Vec,
+};
 use ::core::mem;
 use ::wasmi::{
     Caller,
@@ -333,17 +336,90 @@ impl WasmEngine {
             .unwrap();
     }
 
-    pub(super) fn define_fd_read(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
+    pub(super) fn define_fd_read(
+        ctx: Arc<WasiCtx>,
+        linker: &mut Linker<HostState>,
+        store: &mut Store<HostState>,
+    ) {
         let fd_read: Func = Func::wrap(
             store,
-            |_caller: Caller<'_, u32>,
-             fd: i32,
-             iov_buf: i32,
-             iov_buf_len: i32,
-             offset: i32|
-             -> i32 {
-                ::nvx::log!("fd_read: {fd}, {iov_buf}, {iov_buf_len}, {offset}");
-                Errno::Nosys.into()
+            move |mut caller: Caller<'_, u32>,
+                  fd: i32,
+                  iovs_buf: i32,
+                  iovs_len: i32,
+                  nread_ptr: i32|
+                  -> i32 {
+                ::nvx::log!(
+                    "fd_read(): fd={:?}, iovs_buf={:?}, iovs_len={:?}, nread_ptr={:?}",
+                    fd,
+                    iovs_buf,
+                    iovs_len,
+                    nread_ptr
+                );
+
+                let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
+
+                // Convert file descriptor.
+                let fd: Fd = fd;
+
+                // Attempt to convert I/O vector base pointer.
+                let iovs_buf: Pointer<IoVec> =
+                    match Pointer::<IoVec>::new(Address::new(iovs_buf as u32)) {
+                        Ok(iov_buf) => iov_buf,
+                        Err(_) => {
+                            ::nvx::log!("fd_read(): invalid iov_buf {:#010x}", iovs_buf);
+                            return Errno::Inval.into();
+                        },
+                    };
+
+                // Attempt to convert I/O vector length.
+                let iovs_len: Size = match iovs_len.try_into() {
+                    Ok(iovs_len) => iovs_len,
+                    Err(_) => {
+                        ::nvx::log!("fd_read(): invalid iovs_len {:#010x}", iovs_len);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                let iovecs: Vec<IoVec> = {
+                    let iovecs: Slice<'_, IoVec> =
+                        Slice::<IoVec>::for_raw_parts(memory, iovs_buf, iovs_len);
+                    match iovecs.as_ref() {
+                        Ok(iovecs) => iovecs.to_vec(),
+                        Err(_) => {
+                            ::nvx::log!("fd_read(): failed to get slice from memory");
+                            return Errno::Inval.into();
+                        },
+                    }
+                };
+
+                // Attempt to convert pointer to number of bytes read.
+                let nread_ptr: usize = match nread_ptr.try_into() {
+                    Ok(nread_ptr) => nread_ptr,
+                    Err(_) => {
+                        ::nvx::log!("fd_read(): invalid nread_ptr {:#010x}", nread_ptr);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Check if memory is large enough to store the number of bytes read.
+                if memory.len() < nread_ptr + mem::size_of::<Size>() {
+                    ::nvx::log!(
+                        "fd_read(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        nread_ptr as usize + mem::size_of::<Size>()
+                    );
+                    return Errno::Inval.into();
+                }
+
+                match ctx.fd_read(memory, fd, &iovecs) {
+                    Ok(nread) => {
+                        // Write the number of bytes read to nread_ptr
+                        nread.write_le_bytes(&mut memory[nread_ptr..]);
+                        Errno::Success.into()
+                    },
+                    Err(e) => e.into(),
+                }
             },
         );
         linker
