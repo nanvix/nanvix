@@ -102,6 +102,7 @@ use ::posix::{
     },
     unistd::message::{
         CloseRequest,
+        CloseResponse,
         FileChmodRequest,
         FileChownRequest,
         FileDataSyncRequest,
@@ -242,7 +243,21 @@ impl ProcessDaemon {
                                 LinuxDaemonMessageHeader::CloseRequest => {
                                     let request: CloseRequest =
                                         CloseRequest::from_bytes(message.payload);
-                                    unistd::do_close(source, request)
+
+                                    // Inspect file descriptor that is being closed, as we need to
+                                    // handle standard file descriptors specially.
+                                    match request.fd {
+                                        // Closing standard file descriptors.
+                                        ::posix::unistd::STDIN_FILENO
+                                        | ::posix::unistd::STDOUT_FILENO
+                                        | ::posix::unistd::STDERR_FILENO => {
+                                            // Perform a fake close, as standard file descriptors
+                                            // are shared with the current process.
+                                            CloseResponse::build(source, 0)
+                                        },
+                                        // Closing other file descriptors.
+                                        _ => unistd::do_close(source, request),
+                                    }
                                 },
                                 LinuxDaemonMessageHeader::RenameAtRequest => {
                                     let request: RenameAtRequest =
