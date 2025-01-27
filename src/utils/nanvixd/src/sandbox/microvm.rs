@@ -7,7 +7,10 @@
 
 use crate::config;
 use ::anyhow::Result;
-use ::std::process::Stdio;
+use ::std::process::{
+    ExitStatus,
+    Stdio,
+};
 use ::tokio::process::{
     Child,
     Command,
@@ -25,7 +28,7 @@ pub struct Microvm(Option<Child>);
 
 impl Microvm {
     pub fn spawn(program: &str, addr: &str, stderr: &str) -> Result<Self> {
-        debug!("spawning microvm{program} {addr} {stderr}");
+        debug!("spawning microvm {program} {addr} {stderr}");
         let child = Command::new(format!("{}/microvm.elf", config::BINARY_DIRECTORY))
             .arg("-log-to-file")
             .arg("-kernel")
@@ -39,6 +42,23 @@ impl Microvm {
             .stdout(Stdio::piped())
             .spawn()?;
         Ok(Self(Some(child)))
+    }
+
+    /// Peek Microvm to check if it is still running.
+    pub fn peek(&mut self) -> Result<Option<ExitStatus>> {
+        if let Some(child) = &mut self.0 {
+            match child.try_wait() {
+                Ok(Some(status)) => Ok(Some(status)),
+                Ok(None) => Ok(None),
+                Err(e) => {
+                    let reason: String = format!("failed to wait for microvm (error={:?})", e);
+                    error!("peek(): {:?}", reason);
+                    Err(anyhow::anyhow!(reason))
+                },
+            }
+        } else {
+            Ok(None)
+        }
     }
 }
 
