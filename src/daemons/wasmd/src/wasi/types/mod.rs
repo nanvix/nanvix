@@ -20,6 +20,7 @@ mod prestat_dir;
 mod rights;
 mod size;
 mod slice;
+mod whence;
 
 //==================================================================================================
 // Exports
@@ -40,3 +41,4 @@ pub use prestat_dir::*;
 pub use rights::*;
 pub use size::*;
 pub use slice::*;
+pub use whence::*;
