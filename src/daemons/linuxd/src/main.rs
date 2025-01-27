@@ -102,6 +102,7 @@ use ::posix::{
     },
     unistd::message::{
         CloseRequest,
+        CloseResponse,
         FileChmodRequest,
         FileChownRequest,
         FileDataSyncRequest,
@@ -150,11 +151,11 @@ use ::std::{
 // Structures
 //==================================================================================================
 
-pub struct ProcessDaemon {
+pub struct ProcessDaemon<'a> {
     pid: ProcessIdentifier,
     assembler: RequestAssembler,
     stream: UnixStream,
-    gateway_conn: Option<UnixStream>,
+    gateway_conn: &'a mut Option<UnixStream>,
     venv: VirtualEnviromentDirectory,
 }
 
@@ -162,8 +163,11 @@ pub struct ProcessDaemon {
 // Implementations
 //==================================================================================================
 
-impl ProcessDaemon {
-    pub fn init(stream: UnixStream, gateway_conn: Option<UnixStream>) -> Result<Self, Error> {
+impl<'a> ProcessDaemon<'a> {
+    pub fn init(
+        stream: UnixStream,
+        gateway_conn: &'a mut Option<UnixStream>,
+    ) -> Result<Self, Error> {
         Ok(Self {
             pid: ProcessIdentifier::from(0),
             assembler: RequestAssembler::default(),
@@ -173,13 +177,13 @@ impl ProcessDaemon {
         })
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<(), Error> {
         loop {
             let message: Message = match self.recv() {
                 Ok(Some(message)) => message,
                 Ok(None) => {
                     info!("connection closed");
-                    break;
+                    break Ok(());
                 },
 
                 Err(e) => {
@@ -242,7 +246,21 @@ impl ProcessDaemon {
                                 LinuxDaemonMessageHeader::CloseRequest => {
                                     let request: CloseRequest =
                                         CloseRequest::from_bytes(message.payload);
-                                    unistd::do_close(source, request)
+
+                                    // Inspect file descriptor that is being closed, as we need to
+                                    // handle standard file descriptors specially.
+                                    match request.fd {
+                                        // Closing standard file descriptors.
+                                        ::posix::unistd::STDIN_FILENO
+                                        | ::posix::unistd::STDOUT_FILENO
+                                        | ::posix::unistd::STDERR_FILENO => {
+                                            // Perform a fake close, as standard file descriptors
+                                            // are shared with the current process.
+                                            CloseResponse::build(source, 0)
+                                        },
+                                        // Closing other file descriptors.
+                                        _ => unistd::do_close(source, request),
+                                    }
                                 },
                                 LinuxDaemonMessageHeader::RenameAtRequest => {
                                     let request: RenameAtRequest =
@@ -296,6 +314,7 @@ impl ProcessDaemon {
                                         if let Some(ref mut conn) = self.gateway_conn {
                                             let count: usize = request.count as usize;
                                             let mut buffer: Vec<u8> = vec![0u8; count + 1];
+                                            // TODO: make count 32-bit long.
                                             buffer[0] = count as u8;
                                             buffer[1..].copy_from_slice(&request.buffer[..count]);
                                             match conn.write_all(&buffer) {
@@ -334,20 +353,59 @@ impl ProcessDaemon {
                                     // Check if reading from gateway.
                                     if request.fd == ::posix::unistd::STDIN_FILENO {
                                         if let Some(ref mut conn) = self.gateway_conn {
-                                            let mut buf: [u8; ReadResponse::BUFFER_SIZE] =
-                                                [0u8; ReadResponse::BUFFER_SIZE];
-                                            match conn.read(&mut buf) {
-                                                Ok(count) => {
-                                                    debug!("read {} bytes from the gateway", count);
-                                                    ReadResponse::build(source, count as i32, buf)
+                                            // TODO: make count 32-bit long.
+                                            let mut len_buf: [u8; 1] = [0u8; 1];
+                                            match conn.read_exact(&mut len_buf) {
+                                                Ok(_) => {
+                                                    if len_buf[0] == 0 {
+                                                        debug!("read 0 bytes from the gateway");
+                                                        ReadResponse::build(
+                                                            source,
+                                                            0,
+                                                            [0u8; ReadResponse::BUFFER_SIZE],
+                                                        )
+                                                    } else {
+                                                        let count: usize = len_buf[0] as usize;
+                                                        let mut buf: Vec<u8> = vec![0u8; count];
+                                                        match conn.read_exact(&mut buf) {
+                                                            Ok(_) => {
+                                                                debug!(
+                                                                    "read {} bytes from the \
+                                                                     gateway",
+                                                                    count
+                                                                );
+                                                                let mut response_buf = [0u8;
+                                                                    ReadResponse::BUFFER_SIZE];
+                                                                response_buf[..count]
+                                                                    .copy_from_slice(&buf);
+                                                                ReadResponse::build(
+                                                                    source,
+                                                                    count as i32,
+                                                                    response_buf,
+                                                                )
+                                                            },
+                                                            Err(e) => {
+                                                                debug!(
+                                                                    "failed to read from the \
+                                                                     gateway (error={:?})",
+                                                                    e
+                                                                );
+                                                                // TODO: Check error conversion.
+                                                                build_error(
+                                                                    source,
+                                                                    ErrorCode::ConnectionReset,
+                                                                )
+                                                            },
+                                                        }
+                                                    }
                                                 },
                                                 Err(e) => {
                                                     debug!(
-                                                        "failed to read from the gateway \
+                                                        "failed to read length from the gateway \
                                                          (error={:?})",
                                                         e
                                                     );
-                                                    //TODO: Check error conversion.
+                                                    // TODO: Check error conversion.
                                                     build_error(source, ErrorCode::ConnectionReset)
                                                 },
                                             }
@@ -785,7 +843,7 @@ pub fn main() -> Result<()> {
 
     // Connect to gateway after binding to socket address, as a connection to the gateway will
     // signal we are ready to accept commands.
-    let gateway_conn: Option<UnixStream> = match args.gateway_sockaddr() {
+    let mut gateway_conn: Option<UnixStream> = match args.gateway_sockaddr() {
         Some(sockaddr) => match UnixStream::connect(sockaddr) {
             Ok(stream) => Some(stream),
             Err(e) => {
@@ -796,22 +854,26 @@ pub fn main() -> Result<()> {
         None => None,
     };
 
-    let stream: UnixStream = match listener.accept() {
-        Ok((stream, sockaddr)) => {
-            info!("Connected to: {:?}", sockaddr);
-            stream
-        },
-        Err(e) => {
-            anyhow::bail!("Failed to connect: {}", e);
-        },
-    };
+    loop {
+        let stream: UnixStream = match listener.accept() {
+            Ok((stream, sockaddr)) => {
+                info!("Connected to: {:?}", sockaddr);
+                stream
+            },
+            Err(e) => {
+                anyhow::bail!("Failed to connect: {}", e);
+            },
+        };
 
-    let mut procd: ProcessDaemon = match ProcessDaemon::init(stream, gateway_conn) {
-        Ok(procd) => procd,
-        Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
-    };
+        let mut procd: ProcessDaemon = match ProcessDaemon::init(stream, &mut gateway_conn) {
+            Ok(procd) => procd,
+            Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
+        };
 
-    procd.run();
+        if procd.run().is_err() {
+            break;
+        }
+    }
 
     fs::remove_file(sockaddr)?;
 

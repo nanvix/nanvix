@@ -52,25 +52,28 @@ impl Sandbox {
     }
 
     pub async fn load(&mut self, program: &str) -> Result<()> {
-        if self.linuxd_socket.is_some() {
-            return Ok(());
+        if self.linuxd_socket.is_none() {
+            match self.config.linuxd_listener().accept().await {
+                Ok((socket, _)) => {
+                    debug!("accepted connection from linux daemon {:?}", socket.peer_addr());
+                    self.linuxd_socket = Some(socket);
+                },
+
+                Err(_) => {
+                    let reason: String = "failed to accept connection".to_string();
+                    error!("{}", reason);
+                    anyhow::bail!(reason)
+                },
+            };
         }
 
-        match self.config.linuxd_listener().accept().await {
-            Ok((socket, _)) => {
-                debug!("accepted connection from linux daemon {:?}", socket.peer_addr());
-                self.linuxd_socket = Some(socket);
-            },
-
-            Err(_) => {
-                let reason: String = "failed to accept connection".to_string();
-                error!("{}", reason);
-                anyhow::bail!(reason)
-            },
-        };
-
-        if self.microvm.is_some() {
-            return Ok(());
+        // Peek VM status.
+        if let Some(mut microvm) = self.microvm.take() {
+            if let Ok(None) = microvm.peek() {
+                debug!("microvm is still running");
+                self.microvm = Some(microvm);
+                return Ok(());
+            }
         }
 
         match Microvm::spawn(program, self.config.linuxd_sockaddr(), self.config.console_file()) {
@@ -84,6 +87,11 @@ impl Sandbox {
             },
         };
 
+        Ok(())
+    }
+
+    pub fn unload(&mut self) -> Result<()> {
+        self.microvm.take();
         Ok(())
     }
 
