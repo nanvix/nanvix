@@ -151,11 +151,11 @@ use ::std::{
 // Structures
 //==================================================================================================
 
-pub struct ProcessDaemon {
+pub struct ProcessDaemon<'a> {
     pid: ProcessIdentifier,
     assembler: RequestAssembler,
     stream: UnixStream,
-    gateway_conn: Option<UnixStream>,
+    gateway_conn: &'a mut Option<UnixStream>,
     venv: VirtualEnviromentDirectory,
 }
 
@@ -163,8 +163,11 @@ pub struct ProcessDaemon {
 // Implementations
 //==================================================================================================
 
-impl ProcessDaemon {
-    pub fn init(stream: UnixStream, gateway_conn: Option<UnixStream>) -> Result<Self, Error> {
+impl<'a> ProcessDaemon<'a> {
+    pub fn init(
+        stream: UnixStream,
+        gateway_conn: &'a mut Option<UnixStream>,
+    ) -> Result<Self, Error> {
         Ok(Self {
             pid: ProcessIdentifier::from(0),
             assembler: RequestAssembler::default(),
@@ -174,13 +177,13 @@ impl ProcessDaemon {
         })
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<(), Error> {
         loop {
             let message: Message = match self.recv() {
                 Ok(Some(message)) => message,
                 Ok(None) => {
                     info!("connection closed");
-                    break;
+                    break Ok(());
                 },
 
                 Err(e) => {
@@ -800,7 +803,7 @@ pub fn main() -> Result<()> {
 
     // Connect to gateway after binding to socket address, as a connection to the gateway will
     // signal we are ready to accept commands.
-    let gateway_conn: Option<UnixStream> = match args.gateway_sockaddr() {
+    let mut gateway_conn: Option<UnixStream> = match args.gateway_sockaddr() {
         Some(sockaddr) => match UnixStream::connect(sockaddr) {
             Ok(stream) => Some(stream),
             Err(e) => {
@@ -811,22 +814,26 @@ pub fn main() -> Result<()> {
         None => None,
     };
 
-    let stream: UnixStream = match listener.accept() {
-        Ok((stream, sockaddr)) => {
-            info!("Connected to: {:?}", sockaddr);
-            stream
-        },
-        Err(e) => {
-            anyhow::bail!("Failed to connect: {}", e);
-        },
-    };
+    loop {
+        let stream: UnixStream = match listener.accept() {
+            Ok((stream, sockaddr)) => {
+                info!("Connected to: {:?}", sockaddr);
+                stream
+            },
+            Err(e) => {
+                anyhow::bail!("Failed to connect: {}", e);
+            },
+        };
 
-    let mut procd: ProcessDaemon = match ProcessDaemon::init(stream, gateway_conn) {
-        Ok(procd) => procd,
-        Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
-    };
+        let mut procd: ProcessDaemon = match ProcessDaemon::init(stream, &mut gateway_conn) {
+            Ok(procd) => procd,
+            Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
+        };
 
-    procd.run();
+        if procd.run().is_err() {
+            break;
+        }
+    }
 
     fs::remove_file(sockaddr)?;
 
