@@ -187,9 +187,9 @@ impl WasmEngine {
         Self::define_fd_read(ctx.clone(), &mut linker, &mut store);
         Self::define_fd_readdir(&mut linker, &mut store);
         Self::define_fd_renumber(&mut linker, &mut store);
-        Self::define_fd_seek(&mut linker, &mut store);
+        Self::define_fd_seek(ctx.clone(), &mut linker, &mut store);
         Self::define_fd_sync(&mut linker, &mut store);
-        Self::define_fd_tell(&mut linker, &mut store);
+        Self::define_fd_tell(ctx.clone(), &mut linker, &mut store);
         Self::define_fd_write(ctx.clone(), &mut linker, &mut store);
         Self::define_path_create_directory(ctx.clone(), &mut linker, &mut store);
         Self::define_path_filestat_get(&mut linker, &mut store);

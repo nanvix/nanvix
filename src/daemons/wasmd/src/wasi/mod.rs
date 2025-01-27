@@ -182,9 +182,19 @@ impl WasiCtx {
         self.0.borrow().fd_prestat_get(fd)
     }
 
+    /// Moves the offset of a file descriptor.
+    pub fn fd_seek(&self, fd: Fd, offset: FileDelta, whence: Whence) -> Result<FileSize, Errno> {
+        self.0.borrow_mut().fd_seek(fd, offset, whence)
+    }
+
     /// Reads from a file descriptor.
     pub fn fd_read(&self, memory: &mut [u8], fd: Fd, iovecs: &[IoVec]) -> Result<Size, Errno> {
         self.0.borrow().fd_read(memory, fd, iovecs)
+    }
+
+    /// Returns the current offset of a file descriptor.
+    pub fn fd_tell(&self, fd: Fd) -> Result<FileSize, Errno> {
+        self.0.borrow().fd_tell(fd)
     }
 
     /// Writes to a file descriptor.
