@@ -352,20 +352,58 @@ impl<'a> ProcessDaemon<'a> {
                                     // Check if reading from gateway.
                                     if request.fd == ::posix::unistd::STDIN_FILENO {
                                         if let Some(ref mut conn) = self.gateway_conn {
-                                            let mut buf: [u8; ReadResponse::BUFFER_SIZE] =
-                                                [0u8; ReadResponse::BUFFER_SIZE];
-                                            match conn.read(&mut buf) {
-                                                Ok(count) => {
-                                                    debug!("read {} bytes from the gateway", count);
-                                                    ReadResponse::build(source, count as i32, buf)
+                                            let mut len_buf: [u8; 1] = [0u8; 1];
+                                            match conn.read_exact(&mut len_buf) {
+                                                Ok(_) => {
+                                                    if len_buf[0] == 0 {
+                                                        debug!("read 0 bytes from the gateway");
+                                                        ReadResponse::build(
+                                                            source,
+                                                            0,
+                                                            [0u8; ReadResponse::BUFFER_SIZE],
+                                                        )
+                                                    } else {
+                                                        let count: usize = len_buf[0] as usize;
+                                                        let mut buf: Vec<u8> = vec![0u8; count];
+                                                        match conn.read_exact(&mut buf) {
+                                                            Ok(_) => {
+                                                                debug!(
+                                                                    "read {} bytes from the \
+                                                                     gateway",
+                                                                    count
+                                                                );
+                                                                let mut response_buf = [0u8;
+                                                                    ReadResponse::BUFFER_SIZE];
+                                                                response_buf[..count]
+                                                                    .copy_from_slice(&buf);
+                                                                ReadResponse::build(
+                                                                    source,
+                                                                    count as i32,
+                                                                    response_buf,
+                                                                )
+                                                            },
+                                                            Err(e) => {
+                                                                debug!(
+                                                                    "failed to read from the \
+                                                                     gateway (error={:?})",
+                                                                    e
+                                                                );
+                                                                // TODO: Check error conversion.
+                                                                build_error(
+                                                                    source,
+                                                                    ErrorCode::ConnectionReset,
+                                                                )
+                                                            },
+                                                        }
+                                                    }
                                                 },
                                                 Err(e) => {
                                                     debug!(
-                                                        "failed to read from the gateway \
+                                                        "failed to read length from the gateway \
                                                          (error={:?})",
                                                         e
                                                     );
-                                                    //TODO: Check error conversion.
+                                                    // TODO: Check error conversion.
                                                     build_error(source, ErrorCode::ConnectionReset)
                                                 },
                                             }

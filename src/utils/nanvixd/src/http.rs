@@ -156,6 +156,14 @@ impl HttpClient {
             anyhow::bail!(reason)
         }
 
+        // Forward request length to Sandbox.
+        let length = buf.len() as u8;
+        if let Err(e) = sandbox_socket.write_all(&[length]).await {
+            let reason: String = format!("failed to write length byte to sandbox (error={:?})", e);
+            error!("serve(): {}", reason);
+            anyhow::bail!(reason)
+        }
+
         // Forward request to Sandbox.
         if let Err(e) = sandbox_socket.write_all(&buf).await {
             let reason: String = format!("failed to write bytes to sandbox (error={:?})", e);
