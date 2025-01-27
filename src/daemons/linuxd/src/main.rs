@@ -151,7 +151,7 @@ use ::std::{
 // Structures
 //==================================================================================================
 
-pub struct ProcessDaemon<'a> {
+pub struct LinuxDaemon<'a> {
     pid: ProcessIdentifier,
     assembler: RequestAssembler,
     stream: UnixStream,
@@ -163,7 +163,7 @@ pub struct ProcessDaemon<'a> {
 // Implementations
 //==================================================================================================
 
-impl<'a> ProcessDaemon<'a> {
+impl<'a> LinuxDaemon<'a> {
     pub fn init(
         stream: UnixStream,
         gateway_conn: &'a mut Option<UnixStream>,
@@ -865,7 +865,7 @@ pub fn main() -> Result<()> {
             },
         };
 
-        let mut procd: ProcessDaemon = match ProcessDaemon::init(stream, &mut gateway_conn) {
+        let mut procd: LinuxDaemon = match LinuxDaemon::init(stream, &mut gateway_conn) {
             Ok(procd) => procd,
             Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
         };
