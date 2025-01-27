@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+mod assemble;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -11,7 +17,6 @@ use crate::{
     message::{
         RequestAssembler,
         RequestAssemblerTrait,
-        RequestAssemblerType,
     },
     socket,
     time,
@@ -45,10 +50,7 @@ use ::posix::{
         SymbolicLinkAtRequest,
         UnlinkAtRequest,
     },
-    message::{
-        LinuxDaemonLongMessage,
-        LinuxDaemonMessagePart,
-    },
+    message::LinuxDaemonMessagePart,
     sys::{
         socket::message::{
             AcceptSocketRequest,
@@ -175,343 +177,73 @@ impl<'a> LinuxDaemon<'a> {
                     match LinuxDaemonMessage::try_from_bytes(message.payload) {
                         Ok(message) => {
                             let message: Message = match message.header {
-                                LinuxDaemonMessageHeader::JoinEnvRequest => {
-                                    let request: JoinEnvRequest =
-                                        JoinEnvRequest::from_bytes(message.payload);
-                                    self.venv.join(source, request)
+                                // The system calls are interposed before being forwarded to the
+                                // backend provider.
+                                LinuxDaemonMessageHeader::CloseRequest
+                                | LinuxDaemonMessageHeader::ReadRequest
+                                | LinuxDaemonMessageHeader::WriteRequest => {
+                                    self.handle_special_messages(source, message)
                                 },
-                                LinuxDaemonMessageHeader::LeaveEnvRequest => {
-                                    let request: LeaveEnvRequest =
-                                        LeaveEnvRequest::from_bytes(message.payload);
-                                    self.venv.leave(source, request)
-                                },
-                                LinuxDaemonMessageHeader::GetClockResolutionRequest => {
-                                    let request: ClockResolutionRequest =
-                                        ClockResolutionRequest::from_bytes(message.payload);
-                                    time::do_clock_getres(source, request)
-                                },
-                                LinuxDaemonMessageHeader::GetClockTimeRequest => {
-                                    let request: GetClockTimeRequest =
-                                        GetClockTimeRequest::from_bytes(message.payload);
-                                    time::do_clock_gettime(source, request)
-                                },
-                                LinuxDaemonMessageHeader::OpenAtRequest => {
-                                    let request: OpenAtRequest =
-                                        OpenAtRequest::from_bytes(message.payload);
-                                    fcntl::do_open_at(source, request)
-                                },
-                                LinuxDaemonMessageHeader::UnlinkAtRequest => {
-                                    let request: UnlinkAtRequest =
-                                        UnlinkAtRequest::from_bytes(message.payload);
-                                    fcntl::do_unlink_at(source, request)
-                                },
-                                LinuxDaemonMessageHeader::CloseRequest => {
-                                    let request: CloseRequest =
-                                        CloseRequest::from_bytes(message.payload);
 
-                                    // Inspect file descriptor that is being closed, as we need to
-                                    // handle standard file descriptors specially.
-                                    match request.fd {
-                                        // Closing standard file descriptors.
-                                        ::posix::unistd::STDIN_FILENO
-                                        | ::posix::unistd::STDOUT_FILENO
-                                        | ::posix::unistd::STDERR_FILENO => {
-                                            // Perform a fake close, as standard file descriptors
-                                            // are shared with the current process.
-                                            CloseResponse::build(source, 0)
-                                        },
-                                        // Closing other file descriptors.
-                                        _ => unistd::do_close(source, request),
-                                    }
+                                // The following system calls have their request and response
+                                // data fit in a single message. Thus, they can be immediately
+                                // forwarded to the backend provider.
+                                LinuxDaemonMessageHeader::AcceptSocketRequest
+                                | LinuxDaemonMessageHeader::BindSocketRequest
+                                | LinuxDaemonMessageHeader::ConnectSocketRequest
+                                | LinuxDaemonMessageHeader::CreateSocketPairRequest
+                                | LinuxDaemonMessageHeader::CreateSocketRequest
+                                | LinuxDaemonMessageHeader::FileAdvisoryInformationRequest
+                                | LinuxDaemonMessageHeader::FileChmodRequest
+                                | LinuxDaemonMessageHeader::FileChownRequest
+                                | LinuxDaemonMessageHeader::FileControlRequest
+                                | LinuxDaemonMessageHeader::FileDataSyncRequest
+                                | LinuxDaemonMessageHeader::FileSpaceControlRequest
+                                | LinuxDaemonMessageHeader::FileSyncRequest
+                                | LinuxDaemonMessageHeader::FileTruncateRequest
+                                | LinuxDaemonMessageHeader::GetClockResolutionRequest
+                                | LinuxDaemonMessageHeader::GetClockTimeRequest
+                                | LinuxDaemonMessageHeader::GetPeerNameRequest
+                                | LinuxDaemonMessageHeader::GetSockNameRequest
+                                | LinuxDaemonMessageHeader::JoinEnvRequest
+                                | LinuxDaemonMessageHeader::LeaveEnvRequest
+                                | LinuxDaemonMessageHeader::ListenSocketRequest
+                                | LinuxDaemonMessageHeader::OpenAtRequest
+                                | LinuxDaemonMessageHeader::PartialReadRequest
+                                | LinuxDaemonMessageHeader::PartialWriteRequest
+                                | LinuxDaemonMessageHeader::ReceiveSocketRequest
+                                | LinuxDaemonMessageHeader::RenameAtRequest
+                                | LinuxDaemonMessageHeader::SeekRequest
+                                | LinuxDaemonMessageHeader::SendSocketRequest
+                                | LinuxDaemonMessageHeader::ShutdownSocketRequest
+                                | LinuxDaemonMessageHeader::TimesRequest
+                                | LinuxDaemonMessageHeader::UnlinkAtRequest
+                                | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
+                                    self.handle_short_request_messages(source, message)
                                 },
-                                LinuxDaemonMessageHeader::RenameAtRequest => {
-                                    let request: RenameAtRequest =
-                                        RenameAtRequest::from_bytes(message.payload);
-                                    fcntl::do_rename_at(source, request)
-                                },
-                                LinuxDaemonMessageHeader::FileStatAtRequestPart => {
-                                    self.handle_fstatat_request(source, message);
-                                    continue;
-                                },
-                                LinuxDaemonMessageHeader::FileDataSyncRequest => {
-                                    let request: FileDataSyncRequest =
-                                        FileDataSyncRequest::from_bytes(message.payload);
-                                    unistd::do_fdatasync(source, request)
-                                },
-                                LinuxDaemonMessageHeader::FileSyncRequest => {
-                                    let request: FileSyncRequest =
-                                        FileSyncRequest::from_bytes(message.payload);
-                                    unistd::do_fsync(source, request)
-                                },
-                                LinuxDaemonMessageHeader::SeekRequest => {
-                                    let request: SeekRequest =
-                                        SeekRequest::from_bytes(message.payload);
-                                    unistd::do_lseek(source, request)
-                                },
-                                LinuxDaemonMessageHeader::FileSpaceControlRequest => {
-                                    let request: FileSpaceControlRequest =
-                                        FileSpaceControlRequest::from_bytes(message.payload);
-                                    fcntl::do_posix_fallocate(source, request)
-                                },
-                                LinuxDaemonMessageHeader::FileTruncateRequest => {
-                                    let request: FileTruncateRequest =
-                                        FileTruncateRequest::from_bytes(message.payload);
-                                    unistd::do_ftruncate(source, request)
-                                },
-                                LinuxDaemonMessageHeader::FileAdvisoryInformationRequest => {
-                                    let request: FileAdvisoryInformationRequest =
-                                        FileAdvisoryInformationRequest::from_bytes(message.payload);
-                                    fcntl::do_posix_fadvise(source, request)
-                                },
+
+                                // The following system calls have their request data fit in a
+                                // single message, but their response data is too large to fit in a
+                                // single message. Thus, their response is split into multiple
+                                // messages.
                                 LinuxDaemonMessageHeader::FileStatRequest => {
-                                    self.handle_fstat_request(source, message);
+                                    self.handle_long_response_messages(source, message);
                                     continue;
                                 },
-                                LinuxDaemonMessageHeader::WriteRequest => {
-                                    let request: WriteRequest =
-                                        WriteRequest::from_bytes(message.payload);
 
-                                    // Check if writing to gateway.
-                                    if request.fd == ::posix::unistd::STDOUT_FILENO {
-                                        if let Some(ref mut conn) = self.gateway_conn {
-                                            let count: usize = request.count as usize;
-                                            let mut buffer: Vec<u8> = vec![0u8; count + 1];
-                                            // TODO: make count 32-bit long.
-                                            buffer[0] = count as u8;
-                                            buffer[1..].copy_from_slice(&request.buffer[..count]);
-                                            match conn.write_all(&buffer) {
-                                                Ok(_) => {
-                                                    debug!("wrote {} bytes to the gateway", count);
-                                                    WriteResponse::build(source, count as i32)
-                                                },
-                                                Err(e) => {
-                                                    debug!(
-                                                        "failed to write to the gateway \
-                                                         (error={:?})",
-                                                        e
-                                                    );
-                                                    // TODO: Check error conversion.
-                                                    build_error(source, ErrorCode::ConnectionReset)
-                                                },
-                                            }
-                                        } else {
-                                            // Not connected to the gateway, print to stdout.
-                                            let count: usize = request.count as usize;
-                                            let buffer: &[u8] = &request.buffer[..count];
-                                            let string: String =
-                                                String::from_utf8_lossy(buffer).to_string();
-                                            print!("{}", string);
-                                            WriteResponse::build(source, count as ssize_t)
-                                        }
-                                    } else {
-                                        // Write to other file descriptor.
-                                        unistd::do_write(source, request)
-                                    }
-                                },
-                                LinuxDaemonMessageHeader::ReadRequest => {
-                                    let request: ReadRequest =
-                                        ReadRequest::from_bytes(message.payload);
-
-                                    // Check if reading from gateway.
-                                    if request.fd == ::posix::unistd::STDIN_FILENO {
-                                        if let Some(ref mut conn) = self.gateway_conn {
-                                            // TODO: make count 32-bit long.
-                                            let mut len_buf: [u8; 1] = [0u8; 1];
-                                            match conn.read_exact(&mut len_buf) {
-                                                Ok(_) => {
-                                                    if len_buf[0] == 0 {
-                                                        debug!("read 0 bytes from the gateway");
-                                                        ReadResponse::build(
-                                                            source,
-                                                            0,
-                                                            [0u8; ReadResponse::BUFFER_SIZE],
-                                                        )
-                                                    } else {
-                                                        let count: usize = len_buf[0] as usize;
-                                                        let mut buf: Vec<u8> = vec![0u8; count];
-                                                        match conn.read_exact(&mut buf) {
-                                                            Ok(_) => {
-                                                                debug!(
-                                                                    "read {} bytes from the \
-                                                                     gateway",
-                                                                    count
-                                                                );
-                                                                let mut response_buf = [0u8;
-                                                                    ReadResponse::BUFFER_SIZE];
-                                                                response_buf[..count]
-                                                                    .copy_from_slice(&buf);
-                                                                ReadResponse::build(
-                                                                    source,
-                                                                    count as i32,
-                                                                    response_buf,
-                                                                )
-                                                            },
-                                                            Err(e) => {
-                                                                debug!(
-                                                                    "failed to read from the \
-                                                                     gateway (error={:?})",
-                                                                    e
-                                                                );
-                                                                // TODO: Check error conversion.
-                                                                build_error(
-                                                                    source,
-                                                                    ErrorCode::ConnectionReset,
-                                                                )
-                                                            },
-                                                        }
-                                                    }
-                                                },
-                                                Err(e) => {
-                                                    debug!(
-                                                        "failed to read length from the gateway \
-                                                         (error={:?})",
-                                                        e
-                                                    );
-                                                    // TODO: Check error conversion.
-                                                    build_error(source, ErrorCode::ConnectionReset)
-                                                },
-                                            }
-                                        } else {
-                                            // Not connected to the gateway, read from stdin.
-                                            let mut buffer: [u8; ReadResponse::BUFFER_SIZE] =
-                                                [0u8; ReadResponse::BUFFER_SIZE];
-                                            let count: usize = match ::std::io::stdin()
-                                                .read(&mut buffer)
-                                            {
-                                                Ok(count) => count,
-                                                Err(e) => {
-                                                    debug!(
-                                                        "failed to read from stdin (error={:?})",
-                                                        e
-                                                    );
-                                                    0
-                                                },
-                                            };
-                                            ReadResponse::build(source, count as ssize_t, buffer)
-                                        }
-                                    } else {
-                                        // Read from other file descriptor.
-                                        unistd::do_read(source, request)
-                                    }
-                                },
-                                LinuxDaemonMessageHeader::PartialWriteRequest => {
-                                    let request: PartialWriteRequest =
-                                        PartialWriteRequest::from_bytes(message.payload);
-                                    unistd::do_pwrite(source, request)
-                                },
-                                LinuxDaemonMessageHeader::PartialReadRequest => {
-                                    let request: PartialReadRequest =
-                                        PartialReadRequest::from_bytes(message.payload);
-                                    unistd::do_pread(source, request)
-                                },
-                                LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart => {
-                                    self.handle_symlinkat_request(source, message);
+                                // The following system calls have request data that is too large to
+                                // fit in a single message. Thus, their request is split into multiple
+                                // messages.
+                                LinuxDaemonMessageHeader::FileStatAtRequestPart
+                                | LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart
+                                | LinuxDaemonMessageHeader::LinkAtRequestPart
+                                | LinuxDaemonMessageHeader::ReadLinkAtRequestPart
+                                | LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart
+                                | LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart
+                                | LinuxDaemonMessageHeader::FileChownAtRequestPart
+                                | LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
+                                    self.handle_long_request_messages(source, message);
                                     continue;
-                                },
-                                LinuxDaemonMessageHeader::LinkAtRequestPart => {
-                                    debug!("received linkat request");
-                                    self.handle_linkat_request(source, message);
-                                    continue;
-                                },
-                                LinuxDaemonMessageHeader::ReadLinkAtRequestPart => {
-                                    self.handle_readlinkat_request(source, message);
-                                    continue;
-                                },
-                                LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart => {
-                                    self.handle_mkdirat_request(source, message);
-                                    continue;
-                                },
-                                LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart => {
-                                    self.handle_utimensat(source, message);
-                                    continue;
-                                },
-                                LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
-                                    let request: UpdateFileAccessTimeRequest =
-                                        UpdateFileAccessTimeRequest::from_bytes(message.payload);
-                                    fcntl::do_futimens(source, request)
-                                },
-                                LinuxDaemonMessageHeader::FileControlRequest => {
-                                    let request: FileControlRequest =
-                                        FileControlRequest::from_bytes(message.payload);
-                                    fcntl::do_fcntl(source, request)
-                                },
-                                LinuxDaemonMessageHeader::CreateSocketRequest => {
-                                    let request: CreateSocketRequest =
-                                        CreateSocketRequest::from_bytes(message.payload);
-                                    socket::do_socket(source, request)
-                                },
-                                LinuxDaemonMessageHeader::BindSocketRequest => {
-                                    let request: BindSocketRequest =
-                                        BindSocketRequest::from_bytes(message.payload);
-                                    socket::do_bind(source, request)
-                                },
-                                LinuxDaemonMessageHeader::ListenSocketRequest => {
-                                    let request: ListenSocketRequest =
-                                        ListenSocketRequest::from_bytes(message.payload);
-                                    socket::do_listen(source, request)
-                                },
-                                LinuxDaemonMessageHeader::AcceptSocketRequest => {
-                                    let request: AcceptSocketRequest =
-                                        AcceptSocketRequest::from_bytes(message.payload);
-                                    socket::do_accept(source, request)
-                                },
-                                LinuxDaemonMessageHeader::ShutdownSocketRequest => {
-                                    let request: ShutdownSocketRequest =
-                                        ShutdownSocketRequest::from_bytes(message.payload);
-                                    socket::do_shutdown(source, request)
-                                },
-                                LinuxDaemonMessageHeader::ReceiveSocketRequest => {
-                                    let request: ReceiveSocketRequest =
-                                        ReceiveSocketRequest::from_bytes(message.payload);
-                                    socket::do_recv(source, request)
-                                },
-                                LinuxDaemonMessageHeader::SendSocketRequest => {
-                                    let request: SendSocketRequest =
-                                        SendSocketRequest::from_bytes(message.payload);
-                                    socket::do_send(source, request)
-                                },
-                                LinuxDaemonMessageHeader::TimesRequest => {
-                                    let request: TimesRequest =
-                                        TimesRequest::from_bytes(message.payload);
-                                    times::do_times(source, request)
-                                },
-                                LinuxDaemonMessageHeader::FileChownAtRequestPart => {
-                                    self.handle_chownat(source, message);
-                                    continue;
-                                },
-                                LinuxDaemonMessageHeader::FileChownRequest => {
-                                    let request: FileChownRequest =
-                                        FileChownRequest::from_bytes(message.payload);
-                                    unistd::do_fchown(source, request)
-                                },
-                                LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
-                                    self.handle_chmodat(source, message);
-                                    continue;
-                                },
-                                LinuxDaemonMessageHeader::FileChmodRequest => {
-                                    let request: FileChmodRequest =
-                                        FileChmodRequest::from_bytes(message.payload);
-                                    unistd::do_fchmod(source, request)
-                                },
-                                LinuxDaemonMessageHeader::ConnectSocketRequest => {
-                                    let request: ConnectSocketRequest =
-                                        ConnectSocketRequest::from_bytes(message.payload);
-                                    socket::do_connect(source, request)
-                                },
-                                LinuxDaemonMessageHeader::CreateSocketPairRequest => {
-                                    let request: CreateSocketPairRequest =
-                                        CreateSocketPairRequest::from_bytes(message.payload);
-                                    socket::do_socketpair(source, request)
-                                },
-                                LinuxDaemonMessageHeader::GetPeerNameRequest => {
-                                    let request: GetPeerNameRequest =
-                                        GetPeerNameRequest::from_bytes(message.payload);
-                                    socket::do_getpeername(source, request)
-                                },
-                                LinuxDaemonMessageHeader::GetSockNameRequest => {
-                                    let request: GetSockNameRequest =
-                                        GetSockNameRequest::from_bytes(message.payload);
-                                    socket::do_getsockname(source, request)
                                 },
 
                                 _ => self.do_error(source, ErrorCode::InvalidMessage),
@@ -525,6 +257,233 @@ impl<'a> LinuxDaemon<'a> {
                     }
                 },
             }
+        }
+    }
+
+    fn handle_special_messages(
+        &mut self,
+        source: ProcessIdentifier,
+        message: LinuxDaemonMessage,
+    ) -> Message {
+        match message.header {
+            LinuxDaemonMessageHeader::CloseRequest => {
+                let request: CloseRequest = CloseRequest::from_bytes(message.payload);
+                self.handle_close_request(source, request)
+            },
+            LinuxDaemonMessageHeader::ReadRequest => {
+                let request: ReadRequest = ReadRequest::from_bytes(message.payload);
+                self.handle_read_request(source, request)
+            },
+            LinuxDaemonMessageHeader::WriteRequest => {
+                let request: WriteRequest = WriteRequest::from_bytes(message.payload);
+                self.handle_write_request(source, request)
+            },
+            header => {
+                // The following statement is unreachable, because the matching logic in this
+                // function should match the one in the `Self::run()` function.
+                unreachable!("unexpected special message {:?}", header)
+            },
+        }
+    }
+
+    fn handle_short_request_messages(
+        &mut self,
+        source: ProcessIdentifier,
+        message: LinuxDaemonMessage,
+    ) -> Message {
+        match message.header {
+            LinuxDaemonMessageHeader::AcceptSocketRequest => {
+                let request: AcceptSocketRequest = AcceptSocketRequest::from_bytes(message.payload);
+                socket::do_accept(source, request)
+            },
+            LinuxDaemonMessageHeader::BindSocketRequest => {
+                let request: BindSocketRequest = BindSocketRequest::from_bytes(message.payload);
+                socket::do_bind(source, request)
+            },
+            LinuxDaemonMessageHeader::ConnectSocketRequest => {
+                let request: ConnectSocketRequest =
+                    ConnectSocketRequest::from_bytes(message.payload);
+                socket::do_connect(source, request)
+            },
+            LinuxDaemonMessageHeader::CreateSocketPairRequest => {
+                let request: CreateSocketPairRequest =
+                    CreateSocketPairRequest::from_bytes(message.payload);
+                socket::do_socketpair(source, request)
+            },
+            LinuxDaemonMessageHeader::CreateSocketRequest => {
+                let request: CreateSocketRequest = CreateSocketRequest::from_bytes(message.payload);
+                socket::do_socket(source, request)
+            },
+            LinuxDaemonMessageHeader::FileAdvisoryInformationRequest => {
+                let request: FileAdvisoryInformationRequest =
+                    FileAdvisoryInformationRequest::from_bytes(message.payload);
+                fcntl::do_posix_fadvise(source, request)
+            },
+            LinuxDaemonMessageHeader::FileChmodRequest => {
+                let request: FileChmodRequest = FileChmodRequest::from_bytes(message.payload);
+                unistd::do_fchmod(source, request)
+            },
+            LinuxDaemonMessageHeader::FileChownRequest => {
+                let request: FileChownRequest = FileChownRequest::from_bytes(message.payload);
+                unistd::do_fchown(source, request)
+            },
+            LinuxDaemonMessageHeader::FileControlRequest => {
+                let request: FileControlRequest = FileControlRequest::from_bytes(message.payload);
+                fcntl::do_fcntl(source, request)
+            },
+            LinuxDaemonMessageHeader::FileDataSyncRequest => {
+                let request: FileDataSyncRequest = FileDataSyncRequest::from_bytes(message.payload);
+                unistd::do_fdatasync(source, request)
+            },
+            LinuxDaemonMessageHeader::FileSpaceControlRequest => {
+                let request: FileSpaceControlRequest =
+                    FileSpaceControlRequest::from_bytes(message.payload);
+                fcntl::do_posix_fallocate(source, request)
+            },
+            LinuxDaemonMessageHeader::FileSyncRequest => {
+                let request: FileSyncRequest = FileSyncRequest::from_bytes(message.payload);
+                unistd::do_fsync(source, request)
+            },
+            LinuxDaemonMessageHeader::FileTruncateRequest => {
+                let request: FileTruncateRequest = FileTruncateRequest::from_bytes(message.payload);
+                unistd::do_ftruncate(source, request)
+            },
+            LinuxDaemonMessageHeader::GetClockResolutionRequest => {
+                let request: ClockResolutionRequest =
+                    ClockResolutionRequest::from_bytes(message.payload);
+                time::do_clock_getres(source, request)
+            },
+            LinuxDaemonMessageHeader::GetClockTimeRequest => {
+                let request: GetClockTimeRequest = GetClockTimeRequest::from_bytes(message.payload);
+                time::do_clock_gettime(source, request)
+            },
+            LinuxDaemonMessageHeader::GetPeerNameRequest => {
+                let request: GetPeerNameRequest = GetPeerNameRequest::from_bytes(message.payload);
+                socket::do_getpeername(source, request)
+            },
+            LinuxDaemonMessageHeader::GetSockNameRequest => {
+                let request: GetSockNameRequest = GetSockNameRequest::from_bytes(message.payload);
+                socket::do_getsockname(source, request)
+            },
+            LinuxDaemonMessageHeader::JoinEnvRequest => {
+                let request: JoinEnvRequest = JoinEnvRequest::from_bytes(message.payload);
+                self.venv.join(source, request)
+            },
+            LinuxDaemonMessageHeader::LeaveEnvRequest => {
+                let request: LeaveEnvRequest = LeaveEnvRequest::from_bytes(message.payload);
+                self.venv.leave(source, request)
+            },
+            LinuxDaemonMessageHeader::ListenSocketRequest => {
+                let request: ListenSocketRequest = ListenSocketRequest::from_bytes(message.payload);
+                socket::do_listen(source, request)
+            },
+            LinuxDaemonMessageHeader::OpenAtRequest => {
+                let request: OpenAtRequest = OpenAtRequest::from_bytes(message.payload);
+                fcntl::do_open_at(source, request)
+            },
+            LinuxDaemonMessageHeader::PartialReadRequest => {
+                let request: PartialReadRequest = PartialReadRequest::from_bytes(message.payload);
+                unistd::do_pread(source, request)
+            },
+            LinuxDaemonMessageHeader::PartialWriteRequest => {
+                let request: PartialWriteRequest = PartialWriteRequest::from_bytes(message.payload);
+                unistd::do_pwrite(source, request)
+            },
+            LinuxDaemonMessageHeader::ReceiveSocketRequest => {
+                let request: ReceiveSocketRequest =
+                    ReceiveSocketRequest::from_bytes(message.payload);
+                socket::do_recv(source, request)
+            },
+            LinuxDaemonMessageHeader::RenameAtRequest => {
+                let request: RenameAtRequest = RenameAtRequest::from_bytes(message.payload);
+                fcntl::do_rename_at(source, request)
+            },
+            LinuxDaemonMessageHeader::SeekRequest => {
+                let request: SeekRequest = SeekRequest::from_bytes(message.payload);
+                unistd::do_lseek(source, request)
+            },
+            LinuxDaemonMessageHeader::SendSocketRequest => {
+                let request: SendSocketRequest = SendSocketRequest::from_bytes(message.payload);
+                socket::do_send(source, request)
+            },
+            LinuxDaemonMessageHeader::ShutdownSocketRequest => {
+                let request: ShutdownSocketRequest =
+                    ShutdownSocketRequest::from_bytes(message.payload);
+                socket::do_shutdown(source, request)
+            },
+            LinuxDaemonMessageHeader::TimesRequest => {
+                let request: TimesRequest = TimesRequest::from_bytes(message.payload);
+                times::do_times(source, request)
+            },
+            LinuxDaemonMessageHeader::UnlinkAtRequest => {
+                let request: UnlinkAtRequest = UnlinkAtRequest::from_bytes(message.payload);
+                fcntl::do_unlink_at(source, request)
+            },
+            LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
+                let request: UpdateFileAccessTimeRequest =
+                    UpdateFileAccessTimeRequest::from_bytes(message.payload);
+                fcntl::do_futimens(source, request)
+            },
+            header => {
+                // The following statement is unreachable, because the matching logic in this
+                // function should match the one in the `Self::run()` function.
+                unreachable!("unexpected short message {:?}", header)
+            },
+        }
+    }
+
+    fn handle_long_request_messages(
+        &mut self,
+        source: ProcessIdentifier,
+        message: LinuxDaemonMessage,
+    ) {
+        match message.header {
+            LinuxDaemonMessageHeader::FileStatAtRequestPart => {
+                self.handle_long_request::<FileStatAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart => {
+                self.handle_long_request::<SymbolicLinkAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::LinkAtRequestPart => {
+                self.handle_long_request::<LinkAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::ReadLinkAtRequestPart => {
+                self.handle_long_request::<ReadLinkAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart => {
+                self.handle_long_request::<MakeDirectoryAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart => {
+                self.handle_long_request::<UpdateFileAccessTimeAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::FileChownAtRequestPart => {
+                self.handle_long_request::<FileChownAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
+                self.handle_long_request::<FileChmodAtRequest>(source, &message);
+            },
+            header => {
+                // The following statement is unreachable, because the matching logic in this
+                // function should match the one in the `Self::run()` function.
+                unreachable!("unexpected long request message {:?}", header)
+            },
+        }
+    }
+
+    fn handle_long_response_messages(
+        &mut self,
+        source: ProcessIdentifier,
+        message: LinuxDaemonMessage,
+    ) {
+        match message.header {
+            LinuxDaemonMessageHeader::FileStatRequest => {
+                self.handle_fstat_request(source, message);
+            },
+            header => {
+                // The following statement is unreachable, because the matching logic in this
+                // function should match the one in the `Self::run()` function.
+                unreachable!("unexpected long response message {:?}", header)
+            },
         }
     }
 
@@ -569,33 +528,122 @@ impl<'a> LinuxDaemon<'a> {
         Message::new(self.pid, source, MessageType::Ikc, Some(code), [0u8; Message::PAYLOAD_SIZE])
     }
 
-    fn handle_fstatat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
-        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
+    fn handle_close_request(
+        &mut self,
+        source: ProcessIdentifier,
+        request: CloseRequest,
+    ) -> Message {
+        // Inspect file descriptor that is being closed, as we need to
+        // handle standard file descriptors specially.
+        match request.fd {
+            // Closing standard file descriptors.
+            ::posix::unistd::STDIN_FILENO
+            | ::posix::unistd::STDOUT_FILENO
+            | ::posix::unistd::STDERR_FILENO => {
+                // Perform a fake close, as standard file descriptors
+                // are shared with the current process.
+                CloseResponse::build(source, 0)
+            },
+            // Closing other file descriptors.
+            _ => unistd::do_close(source, request),
+        }
+    }
 
-        match self
-            .assembler
-            .process_message::<FileStatAtRequest>(source, part)
-        {
-            Ok(Some(messages)) => {
-                for message in messages {
-                    if let Err(e) = self.send(message) {
-                        error!("failed to send message (error={:?})", e);
-                    }
+    fn handle_write_request(
+        &mut self,
+        source: ProcessIdentifier,
+        request: WriteRequest,
+    ) -> Message {
+        // Check if writing to gateway.
+        if request.fd == ::posix::unistd::STDOUT_FILENO {
+            if let Some(ref mut conn) = self.gateway_conn {
+                let count: usize = request.count as usize;
+                let mut buffer: Vec<u8> = vec![0u8; count + 1];
+                // TODO: make count 32-bit long.
+                buffer[0] = count as u8;
+                buffer[1..].copy_from_slice(&request.buffer[..count]);
+                match conn.write_all(&buffer) {
+                    Ok(_) => {
+                        debug!("wrote {} bytes to the gateway", count);
+                        WriteResponse::build(source, count as i32)
+                    },
+                    Err(e) => {
+                        debug!("failed to write to the gateway (error={:?})", e);
+                        // TODO: Check error conversion.
+                        build_error(source, ErrorCode::ConnectionReset)
+                    },
                 }
-            },
-            Ok(None) => {},
-            Err(e) => {
-                if let Err(e) = self.send(self.do_error(source, e.code)) {
-                    error!("failed to send error message (error={:?})", e);
+            } else {
+                // Not connected to the gateway, print to stdout.
+                let count: usize = request.count as usize;
+                let buffer: &[u8] = &request.buffer[..count];
+                let string: String = String::from_utf8_lossy(buffer).to_string();
+                print!("{}", string);
+                WriteResponse::build(source, count as ssize_t)
+            }
+        } else {
+            // Write to other file descriptor.
+            unistd::do_write(source, request)
+        }
+    }
+
+    fn handle_read_request(&mut self, source: ProcessIdentifier, request: ReadRequest) -> Message {
+        // Check if reading from gateway.
+        if request.fd == ::posix::unistd::STDIN_FILENO {
+            if let Some(ref mut conn) = self.gateway_conn {
+                // TODO: make count 32-bit long.
+                let mut len_buf: [u8; 1] = [0u8; 1];
+                match conn.read_exact(&mut len_buf) {
+                    Ok(_) => {
+                        if len_buf[0] == 0 {
+                            debug!("read 0 bytes from the gateway");
+                            ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE])
+                        } else {
+                            let count: usize = len_buf[0] as usize;
+                            let mut buf: Vec<u8> = vec![0u8; count];
+                            match conn.read_exact(&mut buf) {
+                                Ok(_) => {
+                                    debug!("read {} bytes from the gateway", count);
+                                    let mut response_buf = [0u8; ReadResponse::BUFFER_SIZE];
+                                    response_buf[..count].copy_from_slice(&buf);
+                                    ReadResponse::build(source, count as i32, response_buf)
+                                },
+                                Err(e) => {
+                                    debug!("failed to read from the gateway (error={:?})", e);
+                                    // TODO: Check error conversion.
+                                    build_error(source, ErrorCode::ConnectionReset)
+                                },
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        debug!("failed to read length from the gateway (error={:?})", e);
+                        // TODO: Check error conversion.
+                        build_error(source, ErrorCode::ConnectionReset)
+                    },
                 }
-            },
+            } else {
+                // Not connected to the gateway, read from stdin.
+                let mut buffer: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+                let count: usize = match ::std::io::stdin().read(&mut buffer) {
+                    Ok(count) => count,
+                    Err(e) => {
+                        debug!("failed to read from stdin (error={:?})", e);
+                        0
+                    },
+                };
+                ReadResponse::build(source, count as ssize_t, buffer)
+            }
+        } else {
+            // Read from other file descriptor.
+            unistd::do_read(source, request)
         }
     }
 
     fn handle_fstat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
         let request: FileStatRequest = FileStatRequest::from_bytes(message.payload);
 
-        let messages = fcntl::do_fstat(source, request);
+        let messages: Vec<Message> = fcntl::do_fstat(source, request);
         for message in messages {
             if let Err(e) = self.send(message) {
                 error!("failed to send message (error={:?})", e);
@@ -603,13 +651,13 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn handle_symlinkat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
+    fn handle_long_request<T>(&mut self, source: ProcessIdentifier, message: &LinuxDaemonMessage)
+    where
+        T: RequestAssemblerTrait,
+    {
         let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
 
-        match self
-            .assembler
-            .process_message::<SymbolicLinkAtRequest>(source, part)
-        {
+        match self.assembler.process_message::<T>(source, part) {
             Ok(Some(messages)) => {
                 for message in messages {
                     if let Err(e) = self.send(message) {
@@ -619,463 +667,11 @@ impl<'a> LinuxDaemon<'a> {
             },
             Ok(None) => {},
             Err(e) => {
+                error!("failed to process request (error={:?})", e);
                 if let Err(e) = self.send(self.do_error(source, e.code)) {
                     error!("failed to send error message (error={:?})", e);
                 }
             },
         }
-    }
-    fn handle_linkat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
-        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
-
-        match self
-            .assembler
-            .process_message::<LinkAtRequest>(source, part)
-        {
-            Ok(Some(messages)) => {
-                for message in messages {
-                    if let Err(e) = self.send(message) {
-                        error!("failed to send message (error={:?})", e);
-                    }
-                }
-            },
-            Ok(None) => {},
-            Err(e) => {
-                error!("failed to process linkat request (error={:?})", e);
-                if let Err(e) = self.send(self.do_error(source, e.code)) {
-                    error!("failed to send error message (error={:?})", e);
-                }
-            },
-        }
-    }
-
-    fn handle_readlinkat_request(
-        &mut self,
-        source: ProcessIdentifier,
-        message: LinuxDaemonMessage,
-    ) {
-        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
-
-        match self
-            .assembler
-            .process_message::<ReadLinkAtRequest>(source, part)
-        {
-            Ok(Some(messages)) => {
-                for message in messages {
-                    if let Err(e) = self.send(message) {
-                        error!("failed to send message (error={:?})", e);
-                    }
-                }
-            },
-            Ok(None) => {},
-            Err(e) => {
-                error!("failed to process readlinkat request (error={:?})", e);
-                if let Err(e) = self.send(self.do_error(source, e.code)) {
-                    error!("failed to send error message (error={:?})", e);
-                }
-            },
-        }
-    }
-
-    fn handle_mkdirat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
-        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
-
-        match self
-            .assembler
-            .process_message::<MakeDirectoryAtRequest>(source, part)
-        {
-            Ok(Some(messages)) => {
-                for message in messages {
-                    if let Err(e) = self.send(message) {
-                        error!("failed to send message (error={:?})", e);
-                    }
-                }
-            },
-            Ok(None) => {},
-            Err(e) => {
-                error!("failed to process mkdirat request (error={:?})", e);
-                if let Err(e) = self.send(self.do_error(source, e.code)) {
-                    error!("failed to send error message (error={:?})", e);
-                }
-            },
-        }
-    }
-
-    fn handle_utimensat(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
-        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
-
-        match self
-            .assembler
-            .process_message::<UpdateFileAccessTimeAtRequest>(source, part)
-        {
-            Ok(Some(messages)) => {
-                for message in messages {
-                    if let Err(e) = self.send(message) {
-                        error!("failed to send message (error={:?})", e);
-                    }
-                }
-            },
-            Ok(None) => {},
-            Err(e) => {
-                error!("failed to process mkdirat request (error={:?})", e);
-                if let Err(e) = self.send(self.do_error(source, e.code)) {
-                    error!("failed to send error message (error={:?})", e);
-                }
-            },
-        }
-    }
-
-    fn handle_chownat(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
-        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
-
-        match self
-            .assembler
-            .process_message::<FileChownAtRequest>(source, part)
-        {
-            Ok(Some(messages)) => {
-                for message in messages {
-                    if let Err(e) = self.send(message) {
-                        error!("failed to send message (error={:?})", e);
-                    }
-                }
-            },
-            Ok(None) => {},
-            Err(e) => {
-                error!("failed to process fchownat request (error={:?})", e);
-                if let Err(e) = self.send(self.do_error(source, e.code)) {
-                    error!("failed to send error message (error={:?})", e);
-                }
-            },
-        }
-    }
-
-    fn handle_chmodat(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
-        let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
-
-        match self
-            .assembler
-            .process_message::<FileChmodAtRequest>(source, part)
-        {
-            Ok(Some(messages)) => {
-                for message in messages {
-                    if let Err(e) = self.send(message) {
-                        error!("failed to send message (error={:?})", e);
-                    }
-                }
-            },
-            Ok(None) => {},
-            Err(e) => {
-                error!("failed to process fchmodat request (error={:?})", e);
-                if let Err(e) = self.send(self.do_error(source, e.code)) {
-                    error!("failed to send error message (error={:?})", e);
-                }
-            },
-        }
-    }
-}
-
-impl RequestAssemblerTrait for FileStatAtRequest {
-    fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::FileStatAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
-        )
-    }
-
-    fn add_part(
-        assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
-        match assembler {
-            RequestAssemblerType::FileStatAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        match assembler {
-            RequestAssemblerType::FileStatAtRequest(assembler) => Ok(assembler.is_complete()),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        match assembler {
-            RequestAssemblerType::FileStatAtRequest(assembler) => assembler.take_parts(),
-            _ => unreachable!("invalid assembler type"),
-        }
-    }
-
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
-        fcntl::do_fstat_at(source, request)
-    }
-}
-
-impl RequestAssemblerTrait for SymbolicLinkAtRequest {
-    fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::SymbolicLinkAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
-        )
-    }
-
-    fn add_part(
-        assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
-        match assembler {
-            RequestAssemblerType::SymbolicLinkAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        match assembler {
-            RequestAssemblerType::SymbolicLinkAtRequest(assembler) => Ok(assembler.is_complete()),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        match assembler {
-            RequestAssemblerType::SymbolicLinkAtRequest(assembler) => assembler.take_parts(),
-            _ => unreachable!("invalid assembler type"),
-        }
-    }
-
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
-        fcntl::do_symlinkat(source, request)
-    }
-}
-
-impl RequestAssemblerTrait for LinkAtRequest {
-    fn new_assembler() -> RequestAssemblerType {
-        debug!("creating linkat request assembler");
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::LinkAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
-        )
-    }
-
-    fn add_part(
-        assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
-        debug!("adding part to linkat request");
-        match assembler {
-            RequestAssemblerType::LinkAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        debug!("checking if linkat request is complete");
-        match assembler {
-            RequestAssemblerType::LinkAtRequest(assembler) => Ok(assembler.is_complete()),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        debug!("taking parts from linkat request");
-        match assembler {
-            RequestAssemblerType::LinkAtRequest(assembler) => assembler.take_parts(),
-            _ => unreachable!("invalid assembler type"),
-        }
-    }
-
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
-        unistd::do_linkat(source, request)
-    }
-}
-
-impl RequestAssemblerTrait for ReadLinkAtRequest {
-    fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::ReadLinkAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
-        )
-    }
-
-    fn add_part(
-        assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
-        match assembler {
-            RequestAssemblerType::ReadLinkAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        match assembler {
-            RequestAssemblerType::ReadLinkAtRequest(assembler) => Ok(assembler.is_complete()),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        match assembler {
-            RequestAssemblerType::ReadLinkAtRequest(assembler) => assembler.take_parts(),
-            _ => unreachable!("invalid assembler type"),
-        }
-    }
-
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
-        fcntl::do_readlinkat(source, request)
-    }
-}
-
-impl RequestAssemblerTrait for MakeDirectoryAtRequest {
-    fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::MakeDirectoryAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
-        )
-    }
-
-    fn add_part(
-        assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
-        match assembler {
-            RequestAssemblerType::MakeDirectoryAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        match assembler {
-            RequestAssemblerType::MakeDirectoryAtRequest(assembler) => Ok(assembler.is_complete()),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        match assembler {
-            RequestAssemblerType::MakeDirectoryAtRequest(assembler) => assembler.take_parts(),
-            _ => unreachable!("invalid assembler type"),
-        }
-    }
-
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
-        fcntl::do_mkdirat(source, request)
-    }
-}
-
-impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
-    fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::UpdateFileAccessTimeAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
-        )
-    }
-
-    fn add_part(
-        assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
-        match assembler {
-            RequestAssemblerType::UpdateFileAccessTimeAtRequest(assembler) => {
-                assembler.add_part(part)
-            },
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        match assembler {
-            RequestAssemblerType::UpdateFileAccessTimeAtRequest(assembler) => {
-                Ok(assembler.is_complete())
-            },
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        match assembler {
-            RequestAssemblerType::UpdateFileAccessTimeAtRequest(assembler) => {
-                assembler.take_parts()
-            },
-            _ => unreachable!("invalid assembler type"),
-        }
-    }
-
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
-        fcntl::do_utimensat(source, request)
-    }
-}
-
-impl RequestAssemblerTrait for FileChownAtRequest {
-    fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::FileChownAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
-        )
-    }
-
-    fn add_part(
-        assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
-        match assembler {
-            RequestAssemblerType::FileChownAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        match assembler {
-            RequestAssemblerType::FileChownAtRequest(assembler) => Ok(assembler.is_complete()),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        match assembler {
-            RequestAssemblerType::FileChownAtRequest(assembler) => assembler.take_parts(),
-            _ => unreachable!("invalid assembler type"),
-        }
-    }
-
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
-        fcntl::do_fchownat(source, request)
-    }
-}
-
-impl RequestAssemblerTrait for FileChmodAtRequest {
-    fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        RequestAssemblerType::FileChmodAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
-        )
-    }
-
-    fn add_part(
-        assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
-        match assembler {
-            RequestAssemblerType::FileChmodAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        match assembler {
-            RequestAssemblerType::FileChmodAtRequest(assembler) => Ok(assembler.is_complete()),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
-        }
-    }
-
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        match assembler {
-            RequestAssemblerType::FileChmodAtRequest(assembler) => assembler.take_parts(),
-            _ => unreachable!("invalid assembler type"),
-        }
-    }
-
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
-        fcntl::do_fchmodat(source, request)
     }
 }
