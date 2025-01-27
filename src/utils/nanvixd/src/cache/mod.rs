@@ -140,27 +140,20 @@ impl SandboxCacheInner {
     /// Tries to cleanup the cache by evicting sandboxes that have expired.
     ///
     pub async fn try_cleanup(&mut self) {
-        let mut expired_sandboxes: Vec<SandboxTag> = Vec::new();
-
-        let mut locked_sandboxes: LockedSandboxTable = self.sandboxes.lock().await;
+        let locked_sandboxes: LockedSandboxTable = self.sandboxes.lock().await;
 
         // Collect all the sandboxes that have expired.
         let now: Instant = Instant::now();
         for (tag, (last_access, _sandbox)) in locked_sandboxes.iter() {
-            if let Ok(_locked_sandbox) = _sandbox.try_lock() {
+            if let Ok(mut locked_sandbox) = _sandbox.try_lock() {
                 if now - *last_access > self.keep_alive_timeout {
-                    expired_sandboxes.push(tag.clone());
+                    if let Err(err) = locked_sandbox.unload() {
+                        error!(
+                            "try_cleanup(): failed to unload sandbox {:?} (error={:?})",
+                            tag, err
+                        );
+                    }
                 }
-            }
-        }
-
-        // Remove expired sandboxes from the cache.
-        for tag in expired_sandboxes {
-            debug!("try_cleanup(): evicting sandbox {:?}", tag);
-            if locked_sandboxes.remove(&tag).is_none() {
-                // This condition is unreachable because we have just collected the expired sandboxes.
-                // while holding the lock on the cache of sandboxes.
-                unreachable!("attempted to remove sandbox that does not exist (tag={:?})", tag);
             }
         }
     }
