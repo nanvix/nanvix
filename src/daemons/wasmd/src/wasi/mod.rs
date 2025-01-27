@@ -187,6 +187,11 @@ impl WasiCtx {
         self.0.borrow().fd_read(memory, fd, iovecs)
     }
 
+    /// Returns the current offset of a file descriptor.
+    pub fn fd_tell(&self, fd: Fd) -> Result<FileSize, Errno> {
+        self.0.borrow().fd_tell(fd)
+    }
+
     /// Writes to a file descriptor.
     pub fn fd_write(&self, memory: &[u8], fd: Fd, iovecs: &[IoVec]) -> Result<Size, Errno> {
         self.0.borrow_mut().fd_write(memory, fd, iovecs)

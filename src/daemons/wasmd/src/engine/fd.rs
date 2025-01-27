@@ -12,14 +12,17 @@ use crate::{
     },
     memory::WriteBytes,
     wasi::{
-        types::Errno,
-        Address,
-        Fd,
-        IoVec,
-        Pointer,
-        Prestat,
-        Size,
-        Slice,
+        types::{
+            Address,
+            Errno,
+            Fd,
+            FileSize,
+            IoVec,
+            Pointer,
+            Prestat,
+            Size,
+            Slice,
+        },
         WasiCtx,
     },
 };
@@ -480,11 +483,52 @@ impl WasmEngine {
             .unwrap();
     }
 
-    pub(super) fn define_fd_tell(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
+    pub(super) fn define_fd_tell(
+        ctx: Arc<WasiCtx>,
+        linker: &mut Linker<HostState>,
+        store: &mut Store<HostState>,
+    ) {
         let fd_tell: Func =
-            Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32, newoffset: i32| -> i32 {
-                ::nvx::log!("fd_tell: {fd}, {newoffset}");
-                Errno::Nosys.into()
+            Func::wrap(store, move |mut caller: Caller<'_, u32>, fd: i32, newoffset: i32| -> i32 {
+                ::nvx::log!("fd_tell(): fd={:?}, newoffset={:?}", fd, newoffset);
+
+                let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
+
+                // Convert file descriptor.
+                let fd: Fd = fd;
+
+                // Attempt to convert pointer to new offset.
+                let newoffset: usize = match newoffset.try_into() {
+                    Ok(newoffset) => newoffset,
+                    Err(_) => return Errno::Inval.into(),
+                };
+
+                // Check if memory is large enough to store the new offset.
+                if memory.len() < newoffset + mem::size_of::<FileSize>() {
+                    ::nvx::log!(
+                        "fd_tell(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        newoffset + mem::size_of::<FileSize>()
+                    );
+                    return Errno::Inval.into();
+                }
+
+                match ctx.fd_tell(fd) {
+                    Ok(offset) => {
+                        // Attempt to convert offset to FileSize.
+                        let offset: FileSize = match offset.try_into() {
+                            Ok(offset) => offset,
+                            Err(_) => {
+                                ::nvx::log!("fd_tell(): failed to convert offset to FileSize");
+                                return Errno::TooBig.into();
+                            },
+                        };
+
+                        offset.write_le_bytes(&mut memory[newoffset..]);
+                        Errno::Success.into()
+                    },
+                    Err(e) => e.into(),
+                }
             });
         linker
             .define("wasi_snapshot_preview1", "fd_tell", fd_tell)
