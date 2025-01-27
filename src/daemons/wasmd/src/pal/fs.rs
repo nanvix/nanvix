@@ -85,6 +85,20 @@ impl From<off_t> for FileOffset {
     }
 }
 
+//==================================================================================================
+// File Whence
+//==================================================================================================
+
+/// Used for representing the position relative to which to set the offset of a file.A
+#[repr(i32)]
+pub enum FileWhence {
+    /// The offset is set to `offset`.
+    Set = unistd::SEEK_SET,
+    /// The offset is set to its current location plus `offset`.
+    Cur = unistd::SEEK_CUR,
+    /// The offset is set to the end of the file plus `offset`.
+    End = unistd::SEEK_END,
+}
 
 //==================================================================================================
 // File
