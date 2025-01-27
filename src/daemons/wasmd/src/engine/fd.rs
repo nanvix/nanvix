@@ -16,12 +16,14 @@ use crate::{
             Address,
             Errno,
             Fd,
+            FileDelta,
             FileSize,
             IoVec,
             Pointer,
             Prestat,
             Size,
             Slice,
+            Whence,
         },
         WasiCtx,
     },
@@ -460,12 +462,79 @@ impl WasmEngine {
             .unwrap();
     }
 
-    pub(super) fn define_fd_seek(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
+    pub(super) fn define_fd_seek(
+        ctx: Arc<WasiCtx>,
+        linker: &mut Linker<HostState>,
+        store: &mut Store<HostState>,
+    ) {
         let fd_seek: Func = Func::wrap(
             store,
-            |_caller: Caller<'_, u32>, fd: i32, offset: i64, whence: i32, newoffset: i32| -> i32 {
-                ::nvx::log!("fd_seek: {fd}, {offset}, {whence}, {newoffset}");
-                Errno::Nosys.into()
+            move |mut caller: Caller<'_, u32>,
+                  fd: i32,
+                  offset: i64,
+                  whence: i32,
+                  newoffset_offset: i32|
+                  -> i32 {
+                ::nvx::log!(
+                    "fd_seek(): fd={:?}, offset={:?}, whence={:?}, newoffset_offset={:?}",
+                    fd,
+                    offset,
+                    whence,
+                    newoffset_offset
+                );
+
+                let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
+
+                // Convert file descriptor.
+                let fd: Fd = fd;
+
+                // Attempt to convert offset.
+                let offset: FileDelta = match offset.try_into() {
+                    Ok(offset) => offset,
+                    Err(_) => {
+                        ::nvx::log!("fd_seek(): invalid offset {:#010x}", offset);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Attempt to convert whence.
+                let whence: Whence = match whence.try_into() {
+                    Ok(whence) => whence,
+                    Err(_) => {
+                        ::nvx::log!("fd_seek(): invalid whence {:#010x}", whence);
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Attempt to convert pointer to new offset.
+                let newoffset_offset: usize = match newoffset_offset.try_into() {
+                    Ok(newoffset_offset) => newoffset_offset,
+                    Err(_) => {
+                        ::nvx::log!(
+                            "fd_seek(): invalid newoffset offset {:#010x}",
+                            newoffset_offset
+                        );
+                        return Errno::Inval.into();
+                    },
+                };
+
+                // Check if memory is large enough to store the new offset.
+                if memory.len() < newoffset_offset + mem::size_of::<FileSize>() {
+                    ::nvx::log!(
+                        "fd_seek(): buffer too small (size={:?}, required={:?})",
+                        memory.len(),
+                        newoffset_offset + mem::size_of::<FileSize>()
+                    );
+                    return Errno::Inval.into();
+                }
+
+                match ctx.fd_seek(fd, offset, whence) {
+                    Ok(newoffset) => {
+                        newoffset.write_le_bytes(&mut memory[newoffset_offset..]);
+                        Errno::Success.into()
+                    },
+                    Err(e) => e.into(),
+                }
             },
         );
         linker
