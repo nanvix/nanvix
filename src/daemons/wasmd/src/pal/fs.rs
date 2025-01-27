@@ -160,6 +160,23 @@ impl File {
         }
     }
 
+    /// Moves the offset of a file descriptor.
+    pub fn seek(&mut self, offset: FileOffset, whence: FileWhence) -> Result<off_t, Error> {
+        match unistd::lseek(self.rawfd.0, offset.value(), whence as c_int) {
+            -1 => {
+                // Get `errno` and reset it.
+                let errno: c_int = unsafe {
+                    let errno: c_int = errno::errno;
+                    errno::errno = 0;
+                    errno
+                };
+                ::nvx::log!("seek(): failed to move file offset (errno={:?})", errno);
+                Err(Error { errno })
+            },
+            newoffset => Ok(newoffset),
+        }
+    }
+
     /// Returns the current offset of a file descriptor.
     pub fn tell(&self) -> Result<off_t, Error> {
         match unistd::lseek(self.rawfd.0, 0, unistd::SEEK_CUR) {
