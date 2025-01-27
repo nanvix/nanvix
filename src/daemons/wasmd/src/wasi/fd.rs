@@ -8,18 +8,20 @@
 use crate::{
     pal::fs::File,
     wasi::{
-        types::Errno,
+        types::{
+            Errno,
+            FileSize,
+            IoVec,
+            Pointer,
+            Prestat,
+            Size,
+        },
         Fd,
-        Pointer,
-        Prestat,
-        Size,
         Slice,
         WasiCtxInner,
     },
 };
 use ::alloc::string::String;
-
-use super::IoVec;
 
 //==================================================================================================
 // Implementations
@@ -123,6 +125,36 @@ impl WasiCtxInner {
             },
             None => {
                 ::nvx::log!("fd_read(): invalid file descriptor");
+                return Err(Errno::Badf);
+            },
+        }
+    }
+
+    /// Returns the current offset of a file descriptor.
+    pub fn fd_tell(&self, fd: Fd) -> Result<FileSize, Errno> {
+        match self.get_file(fd) {
+            Some(file) => {
+                // Ensure that we have the right to invoke this operation.
+                if !file.rights_base().fd_seek {
+                    ::nvx::log!("fd_tell(): access denied");
+                    return Err(Errno::Acces);
+                }
+
+                match file
+                    .file()
+                    .tell()
+                    .map_err(|err| Errno::from(err.value()))?
+                    .try_into()
+                {
+                    Ok(offset) => Ok(offset),
+                    Err(_) => {
+                        ::nvx::log!("fd_tell(): failed to convert offset to FileSize");
+                        return Err(Errno::TooBig);
+                    },
+                }
+            },
+            None => {
+                ::nvx::log!("fd_tell(): invalid file descriptor");
                 return Err(Errno::Badf);
             },
         }

@@ -14,7 +14,10 @@ use ::posix::{
     errno,
     fcntl,
     ffi::c_int,
-    sys::types::mode_t,
+    sys::types::{
+        mode_t,
+        off_t,
+    },
     unistd,
 };
 
@@ -120,6 +123,23 @@ impl File {
                 Err(Error { errno })
             },
             ret => Ok(ret as usize),
+        }
+    }
+
+    /// Returns the current offset of a file descriptor.
+    pub fn tell(&self) -> Result<off_t, Error> {
+        match unistd::lseek(self.rawfd.0, 0, unistd::SEEK_CUR) {
+            -1 => {
+                // Get `errno` and reset it.
+                let errno: c_int = unsafe {
+                    let errno: c_int = errno::errno;
+                    errno::errno = 0;
+                    errno
+                };
+                ::nvx::log!("tell(): failed to get file offset (errno={:?})", errno);
+                Err(Error { errno })
+            },
+            offset => Ok(offset),
         }
     }
 
