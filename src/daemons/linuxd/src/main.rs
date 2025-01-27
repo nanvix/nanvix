@@ -314,6 +314,7 @@ impl<'a> ProcessDaemon<'a> {
                                         if let Some(ref mut conn) = self.gateway_conn {
                                             let count: usize = request.count as usize;
                                             let mut buffer: Vec<u8> = vec![0u8; count + 1];
+                                            // TODO: make count 32-bit long.
                                             buffer[0] = count as u8;
                                             buffer[1..].copy_from_slice(&request.buffer[..count]);
                                             match conn.write_all(&buffer) {
@@ -352,6 +353,7 @@ impl<'a> ProcessDaemon<'a> {
                                     // Check if reading from gateway.
                                     if request.fd == ::posix::unistd::STDIN_FILENO {
                                         if let Some(ref mut conn) = self.gateway_conn {
+                                            // TODO: make count 32-bit long.
                                             let mut len_buf: [u8; 1] = [0u8; 1];
                                             match conn.read_exact(&mut len_buf) {
                                                 Ok(_) => {
