@@ -32,20 +32,7 @@ use ::alloc::string::String;
 impl WasiCtxInner {
     /// Closes a file descriptor.
     pub fn fd_close(&mut self, fd: Fd) -> Result<(), Errno> {
-        // TODO: Check if trying to close stdin, stdout, or stderr.
-
-        // Find and remove file descriptor from the list of open files.
-        let num_open_files: usize = self.files.len();
-        self.files.retain(|file| file.fd() != fd);
-
-        // Check if file descriptor was removed.
-        if self.files.len() == num_open_files {
-            return Err(Errno::Badf);
-        }
-
-        debug_assert!(self.files.len() == num_open_files - 1);
-
-        Ok(())
+        self.remove_file(fd)
     }
 
     /// Returns a description of the given pre-opened directory.
