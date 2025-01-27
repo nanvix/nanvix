@@ -14,7 +14,10 @@ use ::posix::{
     errno,
     fcntl,
     ffi::c_int,
-    sys::types::mode_t,
+    sys::types::{
+        mode_t,
+        off_t,
+    },
     unistd,
 };
 
@@ -61,6 +64,40 @@ impl Path {
             name: name.to_string(),
         }
     }
+}
+
+//==================================================================================================
+// File Offset
+//==================================================================================================
+
+/// A type representing an offset in a file.
+pub struct FileOffset(off_t);
+
+impl FileOffset {
+    pub fn value(&self) -> off_t {
+        self.0
+    }
+}
+
+impl From<off_t> for FileOffset {
+    fn from(offset: off_t) -> FileOffset {
+        FileOffset(offset)
+    }
+}
+
+//==================================================================================================
+// File Whence
+//==================================================================================================
+
+/// Used for representing the position relative to which to set the offset of a file.A
+#[repr(i32)]
+pub enum FileWhence {
+    /// The offset is set to `offset`.
+    Set = unistd::SEEK_SET,
+    /// The offset is set to its current location plus `offset`.
+    Cur = unistd::SEEK_CUR,
+    /// The offset is set to the end of the file plus `offset`.
+    End = unistd::SEEK_END,
 }
 
 //==================================================================================================
@@ -120,6 +157,40 @@ impl File {
                 Err(Error { errno })
             },
             ret => Ok(ret as usize),
+        }
+    }
+
+    /// Moves the offset of a file descriptor.
+    pub fn seek(&mut self, offset: FileOffset, whence: FileWhence) -> Result<off_t, Error> {
+        match unistd::lseek(self.rawfd.0, offset.value(), whence as c_int) {
+            -1 => {
+                // Get `errno` and reset it.
+                let errno: c_int = unsafe {
+                    let errno: c_int = errno::errno;
+                    errno::errno = 0;
+                    errno
+                };
+                ::nvx::log!("seek(): failed to move file offset (errno={:?})", errno);
+                Err(Error { errno })
+            },
+            newoffset => Ok(newoffset),
+        }
+    }
+
+    /// Returns the current offset of a file descriptor.
+    pub fn tell(&self) -> Result<off_t, Error> {
+        match unistd::lseek(self.rawfd.0, 0, unistd::SEEK_CUR) {
+            -1 => {
+                // Get `errno` and reset it.
+                let errno: c_int = unsafe {
+                    let errno: c_int = errno::errno;
+                    errno::errno = 0;
+                    errno
+                };
+                ::nvx::log!("tell(): failed to get file offset (errno={:?})", errno);
+                Err(Error { errno })
+            },
+            offset => Ok(offset),
         }
     }
 
