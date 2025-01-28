@@ -108,6 +108,7 @@ use ::std::{
         Read,
         Write,
     },
+    mem,
     os::unix::net::UnixStream,
 };
 
@@ -557,18 +558,26 @@ impl<'a> LinuxDaemon<'a> {
         // Check if writing to gateway.
         if request.fd == ::posix::unistd::STDOUT_FILENO {
             if let Some(ref mut conn) = self.gateway_conn {
+                // NOTE: we don't check if the write operation is too big, because its size is
+                // already bound by the maximum payload size of the message.
                 let count: usize = request.count as usize;
-                let mut buffer: Vec<u8> = vec![0u8; count + 1];
-                // TODO: make count 32-bit long.
-                buffer[0] = count as u8;
-                buffer[1..].copy_from_slice(&request.buffer[..count]);
-                match conn.write_all(&buffer) {
+                let length_buffer: [u8; mem::size_of::<u32>()] = (count as u32).to_le_bytes();
+                match conn.write_all(&length_buffer) {
                     Ok(_) => {
-                        debug!("wrote {} bytes to the gateway", count);
-                        WriteResponse::build(source, count as i32)
+                        match conn.write_all(&request.buffer[..count]) {
+                            Ok(_) => {
+                                debug!("wrote {} bytes to the gateway", count);
+                                WriteResponse::build(source, count as i32)
+                            },
+                            Err(e) => {
+                                debug!("failed to write buffer to the gateway (error={:?})", e);
+                                // TODO: Check error conversion.
+                                build_error(source, ErrorCode::ConnectionReset)
+                            },
+                        }
                     },
                     Err(e) => {
-                        debug!("failed to write to the gateway (error={:?})", e);
+                        debug!("failed to write length to the gateway (error={:?})", e);
                         // TODO: Check error conversion.
                         build_error(source, ErrorCode::ConnectionReset)
                     },
@@ -591,20 +600,21 @@ impl<'a> LinuxDaemon<'a> {
         // Check if reading from gateway.
         if request.fd == ::posix::unistd::STDIN_FILENO {
             if let Some(ref mut conn) = self.gateway_conn {
-                // TODO: make count 32-bit long.
-                let mut len_buf: [u8; 1] = [0u8; 1];
-                match conn.read_exact(&mut len_buf) {
+                let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
+                match conn.read_exact(&mut length_buffer) {
                     Ok(_) => {
-                        if len_buf[0] == 0 {
+                        let length: u32 = u32::from_le_bytes(length_buffer);
+                        if length == 0 {
                             debug!("read 0 bytes from the gateway");
                             ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE])
                         } else {
-                            let count: usize = len_buf[0] as usize;
+                            let count: usize = length as usize;
                             let mut buf: Vec<u8> = vec![0u8; count];
                             match conn.read_exact(&mut buf) {
                                 Ok(_) => {
                                     debug!("read {} bytes from the gateway", count);
-                                    let mut response_buf = [0u8; ReadResponse::BUFFER_SIZE];
+                                    let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                                        [0u8; ReadResponse::BUFFER_SIZE];
                                     response_buf[..count].copy_from_slice(&buf);
                                     ReadResponse::build(source, count as i32, response_buf)
                                 },
