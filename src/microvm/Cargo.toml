@@ -9,6 +9,14 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 
+[lib]
+name = "microvm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "microvm"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 flexi_logger = { workspace = true }
