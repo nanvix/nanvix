@@ -76,6 +76,20 @@ pub fn read() -> Result<Option<Message>, Error> {
     const NBYTES: usize = core::mem::size_of::<Message>();
     let mut message: [u8; NBYTES] = [0; NBYTES];
 
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "microvm")] {
+            // Read credits register.
+            let credits: u32 = unsafe {
+                core::ptr::read_volatile(::config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as *const u32)
+            };
+
+            // No message available.
+            if credits == 0 {
+                return Ok(None);
+            }
+        }
+    }
+
     // Read message from the kernel's standard input.
     // SAFETY: The standard input is present, initialized and thread-safe to read.
     unsafe {
