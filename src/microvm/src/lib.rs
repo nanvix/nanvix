@@ -16,41 +16,38 @@
 #![deny(clippy::all)]
 
 //==================================================================================================
+// Macros
+//==================================================================================================
+
+/// Use this macro to add the current scope to profiling.
+#[allow(unused)]
+#[macro_export]
+macro_rules! timer {
+    ($name:expr) => {
+        #[cfg(feature = "profiler")]
+        let _guard = ::profiler::PROFILER.with(|p| p.borrow_mut().sync_scope($name));
+    };
+}
+
+//==================================================================================================
 // Modules
 //==================================================================================================
 
-mod args;
-mod logging;
+mod elf;
+mod io;
+mod vmm;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use self::args::Args;
-use ::anyhow::Result;
-use ::microvm::Vmm;
-use ::std::env;
+// Must come first.
+#[macro_use]
+extern crate log;
 
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================
+#[cfg(target_os = "linux")]
+extern crate kvm_bindings;
+#[cfg(target_os = "linux")]
+extern crate kvm_ioctls;
 
-fn main() -> Result<()> {
-    // Parse command-line arguments.
-    let mut args: Args = args::Args::parse(env::args().collect())?;
-    let kernel_filename: String = args.kernel_filename().to_string();
-    let initrd_filename: Option<String> = args.initrd_filename();
-    let memory_size: usize = args.memory_size();
-    let stderr: Option<String> = args.take_vm_stderr();
-    let gateway_addr: Option<String> = args.gateway_addr();
-
-    // Initialize logger. If this fails, the program will panic.
-    logging::initialize(args.log_to_file());
-
-    let mut vmm: Vmm =
-        Vmm::new(memory_size, &kernel_filename, initrd_filename, stderr, gateway_addr)?;
-
-    vmm.run()?;
-
-    Ok(())
-}
+pub use crate::vmm::Vmm;
