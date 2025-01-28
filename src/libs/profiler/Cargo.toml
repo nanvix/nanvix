@@ -1,0 +1,21 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "profiler"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+cfg-if = { workspace = true }
+log = { workspace = true }
+
+[features]
+default = []
+auto-calibrate = []

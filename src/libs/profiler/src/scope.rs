@@ -5,7 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::profiler::PROFILER;
+use crate::PROFILER;
 use ::std::{
     cell::RefCell,
     fmt::{
