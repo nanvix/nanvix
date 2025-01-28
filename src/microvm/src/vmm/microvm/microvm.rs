@@ -242,4 +242,17 @@ impl MicroVm {
 
         Ok(())
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a reference to the virtual memory of the target virtual machine.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the virtual memory of the target virtual machine.
+    ///
+    pub fn vmem(&self) -> Arc<Mutex<VirtualMemory>> {
+        self.vmem.clone()
+    }
 }
