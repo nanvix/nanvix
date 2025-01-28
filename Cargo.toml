@@ -19,6 +19,7 @@ members = [
         "src/libs/nvx",
         "src/libs/posix",
         "src/libs/proc",
+        "src/libs/profiler",
         "src/libs/raw-array",
         "src/libs/slab",
         "src/libs/sys",
@@ -57,6 +58,7 @@ libc = "0.2.169"
 log = "0.4.22"
 num_enum = { version = "0.7.3", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
+profiler = { path = "src/libs/profiler", default-features = false }
 posix = { path = "src/libs/posix", default-features = false }
 proc = { path = "src/libs/proc", default-features = false }
 raw-array = { path = "src/libs/raw-array", default-features = false }
