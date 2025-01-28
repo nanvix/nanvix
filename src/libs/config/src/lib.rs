@@ -74,6 +74,15 @@ pub mod microvm {
 
     /// Default VMM shutdown command
     pub const DEFAULT_VMM_SHUTDOWN_CMD: u16 = 0x2000;
+
+    /// Default base address for MicroVM control registers.
+    pub const DEFAULT_MICROVM_CTRL_BASE: usize = 0x00000000;
+
+    /// Default base address for MicroVM null register. (32-bit wide read-only register)
+    pub const DEFAULT_MICROVM_CTRL_NULL: usize = 0x00000000;
+
+    /// Default base address for MicroVM credits register (32-bit wide read-only register)
+    pub const DEFAULT_MICROVM_CTRL_CREDITS: usize = 0x00000004;
 }
 
 #[cfg(feature = "pc")]
@@ -93,4 +102,3 @@ pub mod hyperlight {
     /// Magic value that identifies the virtual machine monitor.
     pub const DEFAULT_BOOT_MAGIC: u32 = 0x0c00ffee;
 }
-
