@@ -25,9 +25,9 @@ use crate::vmm::microvm::kvm::{
 };
 
 use ::anyhow::Result;
-use ::std::{
-    cell::RefCell,
-    rc::Rc,
+use ::std::sync::{
+    Arc,
+    Mutex,
 };
 
 //==================================================================================================
@@ -41,9 +41,9 @@ use ::std::{
 ///
 pub struct MicroVm {
     // Virtual partition that hosts the virtual machine.
-    _partition: Rc<RefCell<VirtualPartition>>,
+    _partition: Arc<Mutex<VirtualPartition>>,
     // Virtual memory of the virtual machine.
-    vmem: Rc<RefCell<VirtualMemory>>,
+    vmem: Arc<Mutex<VirtualMemory>>,
     // Virtual processor of the virtual machine.
     vcpu: VirtualProcessor,
     // Emulator of the virtual machine.
@@ -52,13 +52,16 @@ pub struct MicroVm {
     initrd: Option<(u64, usize)>,
 }
 
+unsafe impl Send for MicroVm {}
+unsafe impl Sync for MicroVm {}
+
 //==================================================================================================
 // Types
 //==================================================================================================
 
-pub type InputFn = dyn FnMut(&Rc<RefCell<VirtualMemory>>, u32, usize) -> Result<()>;
+pub type InputFn = dyn FnMut(&Arc<Mutex<VirtualMemory>>, u32, usize) -> Result<()>;
 
-pub type OutputFn = dyn FnMut(&Rc<RefCell<VirtualMemory>>, u32, usize) -> Result<()>;
+pub type OutputFn = dyn FnMut(&Arc<Mutex<VirtualMemory>>, u32, usize) -> Result<()>;
 
 //==================================================================================================
 // Implementations
@@ -85,11 +88,11 @@ impl MicroVm {
         trace!("new(): memory_size={}", memory_size);
         crate::timer!("vm_creation");
 
-        let partition: Rc<RefCell<VirtualPartition>> =
-            Rc::new(RefCell::new((VirtualPartition::new())?));
+        let partition: Arc<Mutex<VirtualPartition>> =
+            Arc::new(Mutex::new(VirtualPartition::new()?));
 
-        let vmem: Rc<RefCell<VirtualMemory>> =
-            Rc::new(RefCell::new(VirtualMemory::new(partition.clone(), memory_size)?));
+        let vmem: Arc<Mutex<VirtualMemory>> =
+            Arc::new(Mutex::new(VirtualMemory::new(partition.clone(), memory_size)?));
 
         let vcpu: VirtualProcessor = VirtualProcessor::new(partition.clone(), 0)?;
 
@@ -121,7 +124,11 @@ impl MicroVm {
     pub fn load_kernel(&mut self, kernel_filename: &str) -> Result<u64> {
         trace!("load_kernel(): {}", kernel_filename);
         crate::timer!("vm_load_kernel");
-        let entry: u64 = self.vmem.borrow_mut().load_kernel(kernel_filename)?;
+        let entry: u64 = self
+            .vmem
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .load_kernel(kernel_filename)?;
         Ok(entry)
     }
 
@@ -141,7 +148,11 @@ impl MicroVm {
     pub fn load_initrd(&mut self, initrd_filename: &str) -> Result<()> {
         trace!("load_initrd(): {}", initrd_filename);
         crate::timer!("vm_load_initrd");
-        let initrd: (u64, usize) = self.vmem.borrow_mut().load_initrd(initrd_filename)?;
+        let initrd: (u64, usize) = self
+            .vmem
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .load_initrd(initrd_filename)?;
         self.initrd = Some(initrd);
         Ok(())
     }

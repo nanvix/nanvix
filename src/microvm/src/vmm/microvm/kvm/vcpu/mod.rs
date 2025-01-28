@@ -27,9 +27,9 @@ use ::kvm_ioctls::{
     VcpuExit,
     VcpuFd,
 };
-use ::std::{
-    cell::RefCell,
-    rc::Rc,
+use ::std::sync::{
+    Arc,
+    Mutex,
 };
 
 //==================================================================================================
@@ -43,7 +43,7 @@ use ::std::{
 ///
 pub struct VirtualProcessor {
     // Handle to underlying virtual partition.
-    _partition: Rc<RefCell<VirtualPartition>>,
+    _partition: Arc<Mutex<VirtualPartition>>,
     // Handle to underlying virtual processor.
     fd: VcpuFd,
     // Processor state.
@@ -51,10 +51,14 @@ pub struct VirtualProcessor {
 }
 
 impl VirtualProcessor {
-    pub fn new(partition: Rc<RefCell<VirtualPartition>>, id: u64) -> Result<Self> {
+    pub fn new(partition: Arc<Mutex<VirtualPartition>>, id: u64) -> Result<Self> {
         trace!("new(): id={}", id);
         crate::timer!("vcpu_creation");
-        let fd: VcpuFd = partition.borrow().vm().create_vcpu(id)?;
+        let fd: VcpuFd = partition
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .vm()
+            .create_vcpu(id)?;
         Ok(Self {
             _partition: partition,
             fd,

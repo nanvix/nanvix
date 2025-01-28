@@ -15,11 +15,13 @@ use crate::{
 use ::anyhow::Result;
 use ::kvm_bindings::kvm_userspace_memory_region;
 use ::std::{
-    cell::RefCell,
     ptr::{
         self,
     },
-    rc::Rc,
+    sync::{
+        Arc,
+        Mutex,
+    },
 };
 
 //==================================================================================================
@@ -33,7 +35,7 @@ use ::std::{
 ///
 pub struct VirtualMemory {
     /// Underlying virtual partition.
-    partition: Rc<RefCell<VirtualPartition>>,
+    partition: Arc<Mutex<VirtualPartition>>,
     /// Virtual memory.
     ptr: *mut u8,
     /// Size of the virtual memory.
@@ -43,6 +45,9 @@ pub struct VirtualMemory {
     /// Initial RAM disk location and size.
     _initrd: Option<(u64, usize)>,
 }
+
+unsafe impl Send for VirtualMemory {}
+unsafe impl Sync for VirtualMemory {}
 
 //==================================================================================================
 // Implementations
@@ -64,7 +69,7 @@ impl VirtualMemory {
     /// Upon successful completion, the function returns the new virtual memory. Otherwise, it
     /// returns an error.
     ///
-    pub fn new(partition: Rc<RefCell<VirtualPartition>>, memory_size: usize) -> Result<Self> {
+    pub fn new(partition: Arc<Mutex<VirtualPartition>>, memory_size: usize) -> Result<Self> {
         trace!("new(): memory_size={}", memory_size);
         crate::timer!("vmem_creation");
 
@@ -106,7 +111,8 @@ impl VirtualMemory {
         };
         unsafe {
             vmem.partition
-                .borrow()
+                .lock()
+                .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
                 .vm()
                 .set_user_memory_region(mem_region)?
         };

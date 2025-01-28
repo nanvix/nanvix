@@ -33,12 +33,10 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::std::{
-    cell::RefCell,
     fs::File,
     io::Write,
     mem,
     os::unix::net::UnixStream,
-    rc::Rc,
     sync::{
         mpsc,
         mpsc::{
@@ -46,6 +44,8 @@ use ::std::{
             Sender,
             TryRecvError,
         },
+        Arc,
+        Mutex,
     },
     thread::JoinHandle,
     time::Duration,
@@ -62,7 +62,7 @@ use ::sys::ipc::{
 pub struct Vmm {
     _gateway_tx: Sender<Message>,
     _io_thread: Option<JoinHandle<Result<()>>>,
-    microvm: MicroVm,
+    microvm: Arc<Mutex<MicroVm>>,
 }
 
 //==================================================================================================
@@ -119,6 +119,7 @@ impl Vmm {
 
         microvm.reset(rip)?;
 
+        let microvm: Arc<Mutex<MicroVm>> = Arc::new(Mutex::new(microvm));
         Ok(Self {
             _gateway_tx: gateway_tx,
             _io_thread,
@@ -135,9 +136,10 @@ impl Vmm {
     ///
     /// * `args` - Arguments for the virtual machine monitor.
     pub fn run(&mut self) -> Result<()> {
-        self.microvm.run()?;
-
-        Ok(())
+        self.microvm
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .run()
     }
 
     ///
@@ -175,7 +177,7 @@ impl Vmm {
 
     fn build_input_fn(input_queue: Receiver<Message>) -> Box<microvm::InputFn> {
         // Input function used for emulating I/O port reads.
-        let input = move |vm: &Rc<RefCell<VirtualMemory>>, data, size| -> Result<()> {
+        let input = move |vm: &Arc<Mutex<VirtualMemory>>, data, size| -> Result<()> {
             // Check for invalid operand size.
             if size != 4 {
                 let reason: String = format!("invalid operand size (size={:?})", size);
@@ -186,12 +188,15 @@ impl Vmm {
             match input_queue.try_recv() {
                 Ok(mut msg) => {
                     msg.message_type = MessageType::Ikc;
-                    vm.borrow_mut().write_bytes(data as u64, &msg.to_bytes())?;
+                    vm.lock()
+                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+                        .write_bytes(data as u64, &msg.to_bytes())?;
                 },
                 // No message available.
                 Err(TryRecvError::Empty) => {
                     let empty_message = Message::default();
-                    vm.borrow_mut()
+                    vm.lock()
+                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
                         .write_bytes(data as u64, &empty_message.to_bytes())?;
                 },
                 // Channel has disconnected.
@@ -213,7 +218,7 @@ impl Vmm {
         queue: Sender<Message>,
     ) -> Box<microvm::OutputFn> {
         // Output function used for emulating I/O port writes.
-        let output = move |vm: &Rc<RefCell<VirtualMemory>>, data, size| -> Result<()> {
+        let output = move |vm: &Arc<Mutex<VirtualMemory>>, data, size| -> Result<()> {
             // Parse operand size do determine how to handle the operation.
             if size == 1 {
                 // Write to the standard error device.
@@ -238,7 +243,9 @@ impl Vmm {
             } else {
                 // Write to the standard output device.
                 let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
-                vm.borrow_mut().read_bytes(data as u64, &mut bytes)?;
+                vm.lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+                    .read_bytes(data as u64, &mut bytes)?;
 
                 let message: Message = match Message::try_from_bytes(bytes) {
                     Ok(message) => message,
