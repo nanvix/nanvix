@@ -214,6 +214,14 @@ impl File {
 
 impl Drop for File {
     fn drop(&mut self) {
+        // Do not close STDOUT, STDERR, or STDIN as it is shared with the runtime.
+        if self.rawfd.0 == unistd::STDOUT_FILENO
+            || self.rawfd.0 == unistd::STDERR_FILENO
+            || self.rawfd.0 == unistd::STDIN_FILENO
+        {
+            return;
+        }
+
         match unistd::close(self.rawfd.0) {
             // Success.
             0 => (),
