@@ -613,9 +613,23 @@ impl<'a> LinuxDaemon<'a> {
                             match conn.read_exact(&mut buf) {
                                 Ok(_) => {
                                     debug!("read {} bytes from the gateway", count);
+
+                                    // Truncate payload if it exceeds read request.
+                                    let count: usize = if count > request.count as usize {
+                                        warn!(
+                                            "handle_read_request(): truncating payload \
+                                             (requested={}, actual={})",
+                                            { request.count },
+                                            count
+                                        );
+                                        request.count as usize
+                                    } else {
+                                        count
+                                    };
+
                                     let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
                                         [0u8; ReadResponse::BUFFER_SIZE];
-                                    response_buf[..count].copy_from_slice(&buf);
+                                    response_buf[..count].copy_from_slice(&buf[..count]);
                                     ReadResponse::build(source, count as i32, response_buf)
                                 },
                                 Err(e) => {
