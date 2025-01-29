@@ -22,7 +22,10 @@ use crate::{
     time,
     times,
     unistd,
-    venv::VirtualEnviromentDirectory,
+    venv::{
+        VirtualEnviromentDirectory,
+        VirtualEnvironment,
+    },
 };
 use ::anyhow::Result;
 use ::nvx::{
@@ -148,7 +151,7 @@ impl<'a> LinuxDaemon<'a> {
                 Ok(Some(message)) => message,
                 Ok(None) => {
                     info!("connection closed");
-                    break Ok(());
+                    break;
                 },
 
                 Err(e) => {
@@ -259,6 +262,33 @@ impl<'a> LinuxDaemon<'a> {
                 },
             }
         }
+
+        self.send_eof()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sends an EOF message to the gateway, to indicate that the sandbox hung up the connection.
+    ///
+    /// # Returns
+    ///
+    /// The function returns `Ok(())` if the EOF message was sent successfully. Otherwise, it
+    /// returns an error.
+    ///
+    fn send_eof(&mut self) -> Result<(), Error> {
+        trace!("send_eof()");
+        if let Some(ref mut conn) = self.gateway_conn {
+            let eof: u32 = 0;
+            let length_buffer: [u8; mem::size_of::<u32>()] = eof.to_le_bytes();
+            if let Err(e) = conn.write_all(&length_buffer) {
+                let reason: &str = "failed to write EOF to the gateway";
+                error!("send_eof(): {:?} (error={:?}", reason, e);
+                return Err(Error::new(ErrorCode::ConnectionReset, reason));
+            }
+        }
+
+        Ok(())
     }
 
     fn handle_special_messages(
@@ -558,29 +588,36 @@ impl<'a> LinuxDaemon<'a> {
         // Check if writing to gateway.
         if request.fd == ::posix::unistd::STDOUT_FILENO {
             if let Some(ref mut conn) = self.gateway_conn {
-                // NOTE: we don't check if the write operation is too big, because its size is
-                // already bound by the maximum payload size of the message.
-                let count: usize = request.count as usize;
-                let length_buffer: [u8; mem::size_of::<u32>()] = (count as u32).to_le_bytes();
-                match conn.write_all(&length_buffer) {
-                    Ok(_) => {
-                        match conn.write_all(&request.buffer[..count]) {
-                            Ok(_) => {
-                                debug!("wrote {} bytes to the gateway", count);
-                                WriteResponse::build(source, count as i32)
-                            },
-                            Err(e) => {
-                                debug!("failed to write buffer to the gateway (error={:?})", e);
-                                // TODO: Check error conversion.
-                                build_error(source, ErrorCode::ConnectionReset)
-                            },
-                        }
-                    },
-                    Err(e) => {
-                        debug!("failed to write length to the gateway (error={:?})", e);
-                        // TODO: Check error conversion.
-                        build_error(source, ErrorCode::ConnectionReset)
-                    },
+                // Check if write size is invalid.
+                if request.count == 0 {
+                    // Writing zero-bytes to STDOUT is not allowed, as we used this to signal EOF.
+                    error!("handle_write_request(): trying to write zero bytes to STDOUT");
+                    build_error(source, ErrorCode::InvalidArgument)
+                } else {
+                    // NOTE: we don't check if the write operation is too big, because its size is
+                    // already bound by the maximum payload size of the message.
+                    let count: usize = request.count as usize;
+                    let length_buffer: [u8; mem::size_of::<u32>()] = (count as u32).to_le_bytes();
+                    match conn.write_all(&length_buffer) {
+                        Ok(_) => {
+                            match conn.write_all(&request.buffer[..count]) {
+                                Ok(_) => {
+                                    debug!("wrote {} bytes to the gateway", count);
+                                    WriteResponse::build(source, count as i32)
+                                },
+                                Err(e) => {
+                                    debug!("failed to write buffer to the gateway (error={:?})", e);
+                                    // TODO: Check error conversion.
+                                    build_error(source, ErrorCode::ConnectionReset)
+                                },
+                            }
+                        },
+                        Err(e) => {
+                            debug!("failed to write length to the gateway (error={:?})", e);
+                            // TODO: Check error conversion.
+                            build_error(source, ErrorCode::ConnectionReset)
+                        },
+                    }
                 }
             } else {
                 // Not connected to the gateway, print to stdout.
@@ -600,6 +637,23 @@ impl<'a> LinuxDaemon<'a> {
         // Check if reading from gateway.
         if request.fd == ::posix::unistd::STDIN_FILENO {
             if let Some(ref mut conn) = self.gateway_conn {
+                // Check if the process is associated with a virtual environment.
+                let env: &mut VirtualEnvironment = if let Some(env) = self.venv.get_mut(source) {
+                    env
+                } else {
+                    warn!(
+                        "handle_read_request(): process is not associated with a virtual \
+                         environment, returning EOF"
+                    );
+                    return ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]);
+                };
+
+                // Check if there are any outstanding messages ready to be read.
+                if let Some(message) = env.pop_stdin_message() {
+                    trace!("handle_read_request(): reading outstanding message");
+                    return message;
+                }
+
                 let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
                 match conn.read_exact(&mut length_buffer) {
                     Ok(_) => {
@@ -613,10 +667,50 @@ impl<'a> LinuxDaemon<'a> {
                             match conn.read_exact(&mut buf) {
                                 Ok(_) => {
                                     debug!("read {} bytes from the gateway", count);
+
+                                    // Truncate read request to fit in the response buffer.
+                                    let read_count: usize = if count > request.count as usize {
+                                        warn!(
+                                            "handle_read_request(): truncating payload \
+                                             (requested={}, actual={})",
+                                            { request.count },
+                                            count
+                                        );
+                                        request.count as usize
+                                    } else {
+                                        count
+                                    };
+
                                     let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
                                         [0u8; ReadResponse::BUFFER_SIZE];
-                                    response_buf[..count].copy_from_slice(&buf);
-                                    ReadResponse::build(source, count as i32, response_buf)
+                                    response_buf[..read_count].copy_from_slice(&buf[..read_count]);
+
+                                    // Check if there are any outstanding bytes to be read.
+                                    if count > read_count {
+                                        // Break outstanding bytes into multiple read responses.
+                                        for i in
+                                            (read_count..count).step_by(ReadResponse::BUFFER_SIZE)
+                                        {
+                                            let end: usize = i + ReadResponse::BUFFER_SIZE;
+                                            let end: usize = if end > count { count } else { end };
+                                            let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                                                [0u8; ReadResponse::BUFFER_SIZE];
+                                            response_buf[..end - i].copy_from_slice(&buf[i..end]);
+                                            env.push_stdin_message(ReadResponse::build(
+                                                source,
+                                                (end - i) as ssize_t,
+                                                response_buf,
+                                            ));
+                                        }
+                                    }
+                                    // Push EoF message.
+                                    env.push_stdin_message(ReadResponse::build(
+                                        source,
+                                        0,
+                                        [0u8; ReadResponse::BUFFER_SIZE],
+                                    ));
+
+                                    ReadResponse::build(source, read_count as ssize_t, response_buf)
                                 },
                                 Err(e) => {
                                     debug!("failed to read from the gateway (error={:?})", e);
