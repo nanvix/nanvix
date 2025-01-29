@@ -177,7 +177,7 @@ impl HttpClient {
                 anyhow::bail!(reason)
             },
         };
-        if let Err(e) = sandbox_socket.write_all(&length.to_be_bytes()).await {
+        if let Err(e) = sandbox_socket.write_all(&length.to_le_bytes()).await {
             let reason: String = format!("failed to write length byte to sandbox (error={:?})", e);
             error!("serve(): {}", reason);
             anyhow::bail!(reason)
