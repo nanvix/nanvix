@@ -17,6 +17,7 @@ use crate::{
         },
         mem::{
             MemoryRegion,
+            MemoryRegionType,
             PhysicalAddress,
             TruncatedMemoryRegion,
         },
@@ -38,6 +39,7 @@ use ::sys::{
         ErrorCode,
     },
     mm::{
+        AccessPermission,
         Address,
         VirtualAddress,
     },
@@ -199,11 +201,21 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
-    _memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
+    memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
     _mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
+    // Register MicroVM control registers.
+    let scratch_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+        "microvm-ctrl-registers",
+        VirtualAddress::from_raw_value(::config::microvm::DEFAULT_MICROVM_CTRL_BASE)?,
+        mem::PAGE_SIZE,
+        MemoryRegionType::Mmio,
+        AccessPermission::RDONLY,
+    )?;
+    memory_regions.push_back(scratch_region);
+
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
     })
