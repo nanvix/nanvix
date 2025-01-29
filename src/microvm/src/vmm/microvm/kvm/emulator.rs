@@ -16,9 +16,9 @@ use crate::vmm::microvm::{
     },
 };
 use ::anyhow::Result;
-use ::std::{
-    cell::RefCell,
-    rc::Rc,
+use std::sync::{
+    Arc,
+    Mutex,
 };
 
 //==================================================================================================
@@ -31,7 +31,7 @@ use ::std::{
 /// A structure that represents an instruction emulator for the virtual machine.
 ///
 pub struct Emulator {
-    vmem: Rc<RefCell<VirtualMemory>>,
+    vmem: Arc<Mutex<VirtualMemory>>,
     /// Input function used for emulating I/O port reads.
     input: Box<InputFn>,
     /// Output function used for emulating I/O port writes.
@@ -59,7 +59,7 @@ impl Emulator {
     /// error.
     ///
     pub fn new(
-        vmem: Rc<RefCell<VirtualMemory>>,
+        vmem: Arc<Mutex<VirtualMemory>>,
         input: Box<InputFn>,
         output: Box<OutputFn>,
     ) -> Result<Self> {

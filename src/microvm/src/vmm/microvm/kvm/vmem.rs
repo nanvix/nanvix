@@ -15,11 +15,13 @@ use crate::{
 use ::anyhow::Result;
 use ::kvm_bindings::kvm_userspace_memory_region;
 use ::std::{
-    cell::RefCell,
     ptr::{
         self,
     },
-    rc::Rc,
+    sync::{
+        Arc,
+        Mutex,
+    },
 };
 
 //==================================================================================================
@@ -33,7 +35,7 @@ use ::std::{
 ///
 pub struct VirtualMemory {
     /// Underlying virtual partition.
-    partition: Rc<RefCell<VirtualPartition>>,
+    partition: Arc<Mutex<VirtualPartition>>,
     /// Virtual memory.
     ptr: *mut u8,
     /// Size of the virtual memory.
@@ -42,7 +44,12 @@ pub struct VirtualMemory {
     kernel: Option<(u64, usize)>,
     /// Initial RAM disk location and size.
     _initrd: Option<(u64, usize)>,
+    /// Control register used to inform the guest about the number of messages ready to be consumed.
+    credits: u32,
 }
+
+unsafe impl Send for VirtualMemory {}
+unsafe impl Sync for VirtualMemory {}
 
 //==================================================================================================
 // Implementations
@@ -64,7 +71,7 @@ impl VirtualMemory {
     /// Upon successful completion, the function returns the new virtual memory. Otherwise, it
     /// returns an error.
     ///
-    pub fn new(partition: Rc<RefCell<VirtualPartition>>, memory_size: usize) -> Result<Self> {
+    pub fn new(partition: Arc<Mutex<VirtualPartition>>, memory_size: usize) -> Result<Self> {
         trace!("new(): memory_size={}", memory_size);
         crate::timer!("vmem_creation");
 
@@ -94,6 +101,7 @@ impl VirtualMemory {
             size: memory_size,
             kernel: None,
             _initrd: None,
+            credits: 0,
         };
 
         // Map memory into virtual machine.
@@ -106,7 +114,8 @@ impl VirtualMemory {
         };
         unsafe {
             vmem.partition
-                .borrow()
+                .lock()
+                .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
                 .vm()
                 .set_user_memory_region(mem_region)?
         };
@@ -211,6 +220,76 @@ impl VirtualMemory {
         }
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resets the value of the credits control register.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn reset_credits(&mut self) -> Result<()> {
+        trace!("reset_credits()");
+        self.credits = 0;
+        self.write_bytes(
+            config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as u64,
+            &self.credits.to_le_bytes(),
+        )
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Adds a credit to the credits control register.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn add_credit(&mut self) -> Result<()> {
+        trace!("add_credits()");
+        // Check for overflow.
+        if self.credits == u32::MAX {
+            let reason: String = "credits overflow".to_string();
+            error!("add_credits(): {}", reason);
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        self.credits += 1;
+
+        self.write_bytes(
+            config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as u64,
+            &self.credits.to_le_bytes(),
+        )
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Consumes a credit from the credits control register.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn consume_credit(&mut self) -> Result<()> {
+        trace!("consume_credits()");
+        // Check for overflow.
+        if self.credits == 0 {
+            let reason: String = "no credits available".to_string();
+            error!("consume_credits(): {}", reason);
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        self.credits -= 1;
+
+        self.write_bytes(
+            config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as u64,
+            &self.credits.to_le_bytes(),
+        )
     }
 
     ///
