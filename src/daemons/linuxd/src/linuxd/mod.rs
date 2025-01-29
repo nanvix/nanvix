@@ -148,7 +148,7 @@ impl<'a> LinuxDaemon<'a> {
                 Ok(Some(message)) => message,
                 Ok(None) => {
                     info!("connection closed");
-                    break Ok(());
+                    break;
                 },
 
                 Err(e) => {
@@ -259,6 +259,33 @@ impl<'a> LinuxDaemon<'a> {
                 },
             }
         }
+
+        self.send_eof()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sends an EOF message to the gateway, to indicate that the sandbox hung up the connection.
+    ///
+    /// # Returns
+    ///
+    /// The function returns `Ok(())` if the EOF message was sent successfully. Otherwise, it
+    /// returns an error.
+    ///
+    fn send_eof(&mut self) -> Result<(), Error> {
+        trace!("send_eof()");
+        if let Some(ref mut conn) = self.gateway_conn {
+            let eof: u32 = 0;
+            let length_buffer: [u8; mem::size_of::<u32>()] = eof.to_le_bytes();
+            if let Err(e) = conn.write_all(&length_buffer) {
+                let reason: &str = "failed to write EOF to the gateway";
+                error!("send_eof(): {:?} (error={:?}", reason, e);
+                return Err(Error::new(ErrorCode::ConnectionReset, reason));
+            }
+        }
+
+        Ok(())
     }
 
     fn handle_special_messages(
@@ -558,29 +585,36 @@ impl<'a> LinuxDaemon<'a> {
         // Check if writing to gateway.
         if request.fd == ::posix::unistd::STDOUT_FILENO {
             if let Some(ref mut conn) = self.gateway_conn {
-                // NOTE: we don't check if the write operation is too big, because its size is
-                // already bound by the maximum payload size of the message.
-                let count: usize = request.count as usize;
-                let length_buffer: [u8; mem::size_of::<u32>()] = (count as u32).to_le_bytes();
-                match conn.write_all(&length_buffer) {
-                    Ok(_) => {
-                        match conn.write_all(&request.buffer[..count]) {
-                            Ok(_) => {
-                                debug!("wrote {} bytes to the gateway", count);
-                                WriteResponse::build(source, count as i32)
-                            },
-                            Err(e) => {
-                                debug!("failed to write buffer to the gateway (error={:?})", e);
-                                // TODO: Check error conversion.
-                                build_error(source, ErrorCode::ConnectionReset)
-                            },
-                        }
-                    },
-                    Err(e) => {
-                        debug!("failed to write length to the gateway (error={:?})", e);
-                        // TODO: Check error conversion.
-                        build_error(source, ErrorCode::ConnectionReset)
-                    },
+                // Check if write size is invalid.
+                if request.count == 0 {
+                    // Writing zero-bytes to STDOUT is not allowed, as we used this to signal EOF.
+                    error!("handle_write_request(): trying to write zero bytes to STDOUT");
+                    build_error(source, ErrorCode::InvalidArgument)
+                } else {
+                    // NOTE: we don't check if the write operation is too big, because its size is
+                    // already bound by the maximum payload size of the message.
+                    let count: usize = request.count as usize;
+                    let length_buffer: [u8; mem::size_of::<u32>()] = (count as u32).to_le_bytes();
+                    match conn.write_all(&length_buffer) {
+                        Ok(_) => {
+                            match conn.write_all(&request.buffer[..count]) {
+                                Ok(_) => {
+                                    debug!("wrote {} bytes to the gateway", count);
+                                    WriteResponse::build(source, count as i32)
+                                },
+                                Err(e) => {
+                                    debug!("failed to write buffer to the gateway (error={:?})", e);
+                                    // TODO: Check error conversion.
+                                    build_error(source, ErrorCode::ConnectionReset)
+                                },
+                            }
+                        },
+                        Err(e) => {
+                            debug!("failed to write length to the gateway (error={:?})", e);
+                            // TODO: Check error conversion.
+                            build_error(source, ErrorCode::ConnectionReset)
+                        },
+                    }
                 }
             } else {
                 // Not connected to the gateway, print to stdout.

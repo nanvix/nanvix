@@ -190,25 +190,37 @@ impl HttpClient {
             anyhow::bail!(reason)
         }
 
-        // Read the response length from Sandbox.
-        let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
-        if let Err(e) = sandbox_socket.read_exact(&mut length_buffer).await {
-            let reason: String = format!("failed to read length byte from sandbox (error={:?})", e);
-            error!("serve(): {}", reason);
-            anyhow::bail!(reason)
+        let mut buf: Vec<u8> = Vec::new();
+
+        loop {
+            // Read the response length from Sandbox.
+            let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
+            if let Err(e) = sandbox_socket.read_exact(&mut length_buffer).await {
+                let reason: String =
+                    format!("failed to read length byte from sandbox (error={:?})", e);
+                error!("serve(): {}", reason);
+                anyhow::bail!(reason)
+            }
+
+            // Check if received EOF message.
+            let length: u32 = u32::from_le_bytes(length_buffer);
+            if length == 0 {
+                break;
+            }
+
+            // Read the actual data bytes from Sandbox.
+            let data_length: usize = length as usize;
+            let mut bytes: Vec<u8> = vec![0u8; data_length];
+            if let Err(e) = sandbox_socket.read_exact(&mut bytes).await {
+                let reason: String =
+                    format!("failed to read data bytes from sandbox (error={:?})", e);
+                error!("serve(): {}", reason);
+                anyhow::bail!(reason)
+            }
+            buf.extend_from_slice(&bytes);
         }
 
-        // Read the actual data bytes from Sandbox.
-        let length: u32 = u32::from_le_bytes(length_buffer);
-        let data_length: usize = length as usize;
-        let mut bytes: Vec<u8> = vec![0u8; data_length];
-        if let Err(e) = sandbox_socket.read_exact(&mut bytes).await {
-            let reason: String = format!("failed to read data bytes from sandbox (error={:?})", e);
-            error!("serve(): {}", reason);
-            anyhow::bail!(reason)
-        }
-
-        Ok(bytes)
+        Ok(buf)
     }
 }
 
