@@ -37,6 +37,7 @@ use ::serde_json::Value;
 use ::std::{
     self,
     future::Future,
+    mem,
     pin::Pin,
     sync::{
         atomic::AtomicUsize,
@@ -156,9 +157,27 @@ impl HttpClient {
             anyhow::bail!(reason)
         }
 
+        // Check if request is too large.
+        if buf.len() > config::MAX_PAYLOAD_SIZE {
+            let reason: String = format!(
+                "request is too large (size={}, limit={})",
+                buf.len(),
+                config::MAX_PAYLOAD_SIZE
+            );
+            error!("serve(): {}", reason);
+            anyhow::bail!(reason)
+        }
+
         // Forward request length to Sandbox.
-        let length = buf.len() as u8;
-        if let Err(e) = sandbox_socket.write_all(&[length]).await {
+        let length: u32 = match buf.len().try_into() {
+            Ok(length) => length,
+            Err(_) => {
+                let reason: String = "failed to convert request length".to_string();
+                error!("serve(): {}", reason);
+                anyhow::bail!(reason)
+            },
+        };
+        if let Err(e) = sandbox_socket.write_all(&length.to_be_bytes()).await {
             let reason: String = format!("failed to write length byte to sandbox (error={:?})", e);
             error!("serve(): {}", reason);
             anyhow::bail!(reason)
@@ -171,16 +190,17 @@ impl HttpClient {
             anyhow::bail!(reason)
         }
 
-        // Read the length byte from Sandbox.
-        let mut length_byte: [u8; 1] = [0u8; 1];
-        if let Err(e) = sandbox_socket.read_exact(&mut length_byte).await {
+        // Read the response length from Sandbox.
+        let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
+        if let Err(e) = sandbox_socket.read_exact(&mut length_buffer).await {
             let reason: String = format!("failed to read length byte from sandbox (error={:?})", e);
             error!("serve(): {}", reason);
             anyhow::bail!(reason)
         }
 
         // Read the actual data bytes from Sandbox.
-        let data_length: usize = length_byte[0] as usize;
+        let length: u32 = u32::from_le_bytes(length_buffer);
+        let data_length: usize = length as usize;
         let mut bytes: Vec<u8> = vec![0u8; data_length];
         if let Err(e) = sandbox_socket.read_exact(&mut bytes).await {
             let reason: String = format!("failed to read data bytes from sandbox (error={:?})", e);
