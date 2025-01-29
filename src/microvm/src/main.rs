@@ -25,7 +25,7 @@
 macro_rules! timer {
     ($name:expr) => {
         #[cfg(feature = "profiler")]
-        let _guard = $crate::profiler::PROFILER.with(|p| p.borrow_mut().sync_scope($name));
+        let _guard = ::profiler::PROFILER.with(|p| p.borrow_mut().sync_scope($name));
     };
 }
 
@@ -38,9 +38,6 @@ mod elf;
 mod io;
 mod logging;
 mod vmm;
-
-#[cfg(feature = "profiler")]
-mod profiler;
 
 //==================================================================================================
 // Imports
