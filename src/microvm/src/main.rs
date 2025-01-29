@@ -26,10 +26,21 @@ mod logging;
 // Imports
 //==================================================================================================
 
+/// Must come first.
+#[macro_use]
+extern crate log;
+
 use self::args::Args;
 use ::anyhow::Result;
-use ::microvm::Vmm;
-use ::std::env;
+use ::microvm::{
+    Gateway,
+    Vmm,
+};
+use ::std::{
+    env,
+    os::unix::net::UnixStream,
+    time::Duration,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -47,8 +58,25 @@ fn main() -> Result<()> {
     // Initialize logger. If this fails, the program will panic.
     logging::initialize(args.log_to_file());
 
-    let mut vmm: Vmm =
-        Vmm::new(memory_size, &kernel_filename, initrd_filename, stderr, gateway_addr)?;
+    let gateway: Option<Gateway> = match &gateway_addr {
+        Some(addr) => match UnixStream::connect(addr.clone()) {
+            Ok(conn) => {
+                conn.set_read_timeout(Some(Duration::from_millis(1)))?;
+                Some(Gateway::UnixStream(conn))
+            },
+            Err(e) => {
+                let reason: String = format!(
+                    "failed to connect to gateway (gateway_addr={:?}, error={:?})",
+                    addr, e
+                );
+                error!("main()(): {}", reason);
+                anyhow::bail!(reason)
+            },
+        },
+        None => None,
+    };
+
+    let mut vmm: Vmm = Vmm::new(memory_size, &kernel_filename, initrd_filename, stderr, gateway)?;
 
     vmm.run()?;
 

@@ -34,6 +34,7 @@ macro_rules! timer {
 //==================================================================================================
 
 mod elf;
+mod gateway;
 mod io;
 mod vmm;
 
@@ -50,4 +51,7 @@ extern crate kvm_bindings;
 #[cfg(target_os = "linux")]
 extern crate kvm_ioctls;
 
-pub use crate::vmm::Vmm;
+pub use crate::{
+    gateway::Gateway,
+    vmm::Vmm,
+};
