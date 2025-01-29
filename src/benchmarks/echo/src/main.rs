@@ -15,13 +15,17 @@ use ::posix::{
         ssize_t,
     },
     unistd,
+    venv::{
+        self,
+        VirtualEnvironmentIdentifier,
+    },
 };
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
-const MAX_REQUEST_SIZE: usize = 32;
+const MAX_REQUEST_SIZE: usize = 4096;
 
 //==================================================================================================
 // Standalone Functions
@@ -29,18 +33,29 @@ const MAX_REQUEST_SIZE: usize = 32;
 
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
+    let env: VirtualEnvironmentIdentifier = venv::join(VirtualEnvironmentIdentifier::NEW)?;
+
     let stdin: i32 = unistd::STDIN_FILENO;
     let stdout: i32 = unistd::STDOUT_FILENO;
     let mut buffer: [u8; MAX_REQUEST_SIZE] = [0; MAX_REQUEST_SIZE];
+    let mut n: usize = 0;
 
-    let n: ssize_t = match unistd::read(stdin, buffer.as_mut_ptr(), buffer.len() as size_t) {
-        n if n >= 0 => n,
-        _ => 0,
-    };
+    loop {
+        let nread: ssize_t =
+            match unistd::read(stdin, buffer[n..].as_mut_ptr(), (MAX_REQUEST_SIZE - n) as size_t) {
+                // Error encountered.
+                n if n < 0 => break,
+                // End of file reached.
+                n if n == 0 => break,
+                // Read some bytes.
+                n => n,
+            };
+        n += nread as usize;
+    }
 
     if n > 0 {
         unistd::write(stdout, buffer.as_ptr(), n as size_t);
     }
 
-    Ok(())
+    venv::leave(env)
 }
