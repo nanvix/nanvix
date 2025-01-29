@@ -22,7 +22,10 @@ use crate::{
     time,
     times,
     unistd,
-    venv::VirtualEnviromentDirectory,
+    venv::{
+        VirtualEnviromentDirectory,
+        VirtualEnvironment,
+    },
 };
 use ::anyhow::Result;
 use ::nvx::{
@@ -634,6 +637,23 @@ impl<'a> LinuxDaemon<'a> {
         // Check if reading from gateway.
         if request.fd == ::posix::unistd::STDIN_FILENO {
             if let Some(ref mut conn) = self.gateway_conn {
+                // Check if the process is associated with a virtual environment.
+                let env: &mut VirtualEnvironment = if let Some(env) = self.venv.get_mut(source) {
+                    env
+                } else {
+                    warn!(
+                        "handle_read_request(): process is not associated with a virtual \
+                         environment, returning EOF"
+                    );
+                    return ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]);
+                };
+
+                // Check if there are any outstanding messages ready to be read.
+                if let Some(message) = env.pop_stdin_message() {
+                    trace!("handle_read_request(): reading outstanding message");
+                    return message;
+                }
+
                 let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
                 match conn.read_exact(&mut length_buffer) {
                     Ok(_) => {
@@ -648,8 +668,8 @@ impl<'a> LinuxDaemon<'a> {
                                 Ok(_) => {
                                     debug!("read {} bytes from the gateway", count);
 
-                                    // Truncate payload if it exceeds read request.
-                                    let count: usize = if count > request.count as usize {
+                                    // Truncate read request to fit in the response buffer.
+                                    let read_count: usize = if count > request.count as usize {
                                         warn!(
                                             "handle_read_request(): truncating payload \
                                              (requested={}, actual={})",
@@ -663,8 +683,34 @@ impl<'a> LinuxDaemon<'a> {
 
                                     let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
                                         [0u8; ReadResponse::BUFFER_SIZE];
-                                    response_buf[..count].copy_from_slice(&buf[..count]);
-                                    ReadResponse::build(source, count as i32, response_buf)
+                                    response_buf[..read_count].copy_from_slice(&buf[..read_count]);
+
+                                    // Check if there are any outstanding bytes to be read.
+                                    if count > read_count {
+                                        // Break outstanding bytes into multiple read responses.
+                                        for i in
+                                            (read_count..count).step_by(ReadResponse::BUFFER_SIZE)
+                                        {
+                                            let end: usize = i + ReadResponse::BUFFER_SIZE;
+                                            let end: usize = if end > count { count } else { end };
+                                            let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                                                [0u8; ReadResponse::BUFFER_SIZE];
+                                            response_buf[..end - i].copy_from_slice(&buf[i..end]);
+                                            env.push_stdin_message(ReadResponse::build(
+                                                source,
+                                                (end - i) as ssize_t,
+                                                response_buf,
+                                            ));
+                                        }
+                                    }
+                                    // Push EoF message.
+                                    env.push_stdin_message(ReadResponse::build(
+                                        source,
+                                        0,
+                                        [0u8; ReadResponse::BUFFER_SIZE],
+                                    ));
+
+                                    ReadResponse::build(source, read_count as ssize_t, response_buf)
                                 },
                                 Err(e) => {
                                     debug!("failed to read from the gateway (error={:?})", e);
