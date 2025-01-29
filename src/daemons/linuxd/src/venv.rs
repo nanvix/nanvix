@@ -19,7 +19,10 @@ use ::posix::venv::{
     },
     VirtualEnvironmentIdentifier,
 };
-use ::std::collections::BTreeMap;
+use ::std::collections::{
+    BTreeMap,
+    VecDeque,
+};
 
 //==================================================================================================
 // Structures
@@ -28,19 +31,89 @@ use ::std::collections::BTreeMap;
 ///
 /// # Description
 ///
-/// Virtual environment directory.
+/// Virtual environment.
 ///
+#[derive(Debug)]
+pub struct VirtualEnvironment {
+    /// Identifier.
+    id: VirtualEnvironmentIdentifier,
+    /// Standard input messages not yet consumed.
+    stdin_messages: VecDeque<Message>,
+}
+
+///
+/// # Description
+///
+/// Virtual environment directory.
 ///
 pub struct VirtualEnviromentDirectory {
     /// Next environment identifier.
     next_env: VirtualEnvironmentIdentifier,
     /// Virtual environments.
-    processes: BTreeMap<ProcessIdentifier, VirtualEnvironmentIdentifier>,
+    processes: BTreeMap<ProcessIdentifier, VirtualEnvironment>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
+
+impl VirtualEnvironment {
+    ///
+    /// # Description
+    ///
+    /// Creates a new virtual environment.
+    ///
+    fn new(id: VirtualEnvironmentIdentifier) -> Self {
+        Self {
+            id,
+            stdin_messages: VecDeque::new(),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the identifier of the virtual environment.
+    ///
+    fn id(&self) -> VirtualEnvironmentIdentifier {
+        self.id
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Pushes a message to the standard input of the virtual environment.
+    ///
+    /// # Parameters
+    ///
+    /// - `message`: Message to push.
+    ///
+    pub fn push_stdin_message(&mut self, message: Message) {
+        self.stdin_messages.push_back(message);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Pops a message from the standard input of the virtual environment.
+    ///
+    /// # Returns
+    ///
+    /// If there are messages in the standard input, the function returns the next message.
+    /// Otherwise, it returns `None`.
+    ///
+    pub fn pop_stdin_message(&mut self) -> Option<Message> {
+        self.stdin_messages.pop_front()
+    }
+}
+
+impl PartialEq for VirtualEnvironment {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for VirtualEnvironment {}
 
 impl VirtualEnviromentDirectory {
     pub fn new() -> Self {
@@ -74,29 +147,29 @@ impl VirtualEnviromentDirectory {
             return crate::build_error(pid, ErrorCode::ResourceBusy);
         }
 
-        let mut env: VirtualEnvironmentIdentifier = request.env;
+        let mut envid: VirtualEnvironmentIdentifier = request.env;
 
         // Check wether the process requested to join a new environment or an existing one.
-        if env == VirtualEnvironmentIdentifier::NEW {
+        if envid == VirtualEnvironmentIdentifier::NEW {
             // Process requested to join a new environment.
-            env = self.next_env;
+            envid = self.next_env;
             self.next_env = self.next_env.next();
-            self.processes.insert(pid, env);
-            info!("process {:?} joined new environment {:?}", pid, env);
+            self.processes.insert(pid, VirtualEnvironment::new(envid));
+            info!("process {:?} joined new environment {:?}", pid, envid);
         } else {
             // Process requested to join an existing environment.
 
             // Check if environment exists.
-            if !self.processes.values().any(|&v| v == env) {
-                warn!("process {:?} requested to join non-existing environment {:?}", pid, env);
+            if !self.processes.values().any(|v| v.id() == envid) {
+                warn!("process {:?} requested to join non-existing environment {:?}", pid, envid);
                 return crate::build_error(pid, ErrorCode::NoSuchEntry);
             }
 
             // Join environment.
-            self.processes.insert(pid, env);
+            self.processes.insert(pid, VirtualEnvironment::new(envid));
         }
 
-        JoinEnvResponse::build(pid, env)
+        JoinEnvResponse::build(pid, envid)
     }
 
     ///
@@ -122,17 +195,35 @@ impl VirtualEnviromentDirectory {
             return crate::build_error(pid, ErrorCode::NoSuchEntry);
         }
 
-        let env: VirtualEnvironmentIdentifier = request.env;
+        let envid: VirtualEnvironmentIdentifier = request.env;
 
         // Check if the process has previously joined the environment.
-        if self.processes[&pid] != env {
-            error!("process {:?} has not previously joined environment {:?}", pid, env);
+        if self.processes[&pid].id() != envid {
+            error!("process {:?} has not previously joined environment {:?}", pid, envid);
             return crate::build_error(pid, ErrorCode::InvalidArgument);
         }
 
         // Leave environment.
         self.processes.remove(&pid);
 
-        LeaveEnvResponse::build(pid, env)
+        LeaveEnvResponse::build(pid, envid)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets a mutable reference to the virtual environment of a process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier.
+    ///
+    /// # Returns
+    ///
+    /// If there is a virtual environment associated with the process, the function returns a
+    /// mutable reference to the virtual environment. Otherwise, it returns `None`.
+    ///
+    pub fn get_mut(&mut self, pid: ProcessIdentifier) -> Option<&mut VirtualEnvironment> {
+        self.processes.get_mut(&pid)
     }
 }
