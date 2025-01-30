@@ -16,48 +16,30 @@
 #![deny(clippy::all)]
 
 //==================================================================================================
-// Macros
-//==================================================================================================
-
-/// Use this macro to add the current scope to profiling.
-#[allow(unused)]
-#[macro_export]
-macro_rules! timer {
-    ($name:expr) => {
-        #[cfg(feature = "profiler")]
-        let _guard = ::profiler::PROFILER.with(|p| p.borrow_mut().sync_scope($name));
-    };
-}
-
-//==================================================================================================
 // Modules
 //==================================================================================================
 
 mod args;
-mod elf;
-mod io;
 mod logging;
-mod vmm;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-// Must come first.
+/// Must come first.
 #[macro_use]
 extern crate log;
 
-#[cfg(target_os = "linux")]
-extern crate kvm_bindings;
-#[cfg(target_os = "linux")]
-extern crate kvm_ioctls;
-
-use crate::{
-    args::Args,
-    vmm::Vmm,
-};
+use self::args::Args;
 use ::anyhow::Result;
-use ::std::env;
+use ::microvm::{
+    Gateway,
+    Vmm,
+};
+use ::std::{
+    env,
+    os::unix::net::UnixStream,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -75,8 +57,25 @@ fn main() -> Result<()> {
     // Initialize logger. If this fails, the program will panic.
     logging::initialize(args.log_to_file());
 
-    let mut vmm: Vmm =
-        Vmm::new(memory_size, &kernel_filename, initrd_filename, stderr, gateway_addr)?;
+    let gateway: Option<Gateway> = match &gateway_addr {
+        Some(addr) => match UnixStream::connect(addr.clone()) {
+            Ok(conn) => {
+                conn.set_nonblocking(true)?;
+                Some(Gateway::UnixStream(conn))
+            },
+            Err(e) => {
+                let reason: String = format!(
+                    "failed to connect to gateway (gateway_addr={:?}, error={:?})",
+                    addr, e
+                );
+                error!("main()(): {}", reason);
+                anyhow::bail!(reason)
+            },
+        },
+        None => None,
+    };
+
+    let mut vmm: Vmm = Vmm::new(memory_size, &kernel_filename, initrd_filename, stderr, gateway)?;
 
     vmm.run()?;
 
