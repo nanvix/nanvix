@@ -156,3 +156,9 @@ mkdir -p build && cd build
 
 make -j `nproc` all-gcc all-target-libgcc all-target-libstdc++-v3
 make -j install-gcc install-target-libgcc install-target-libstdc++-v3
+
+#===================================================================================================
+# Cleanup Cloned Directories
+#===================================================================================================
+
+rm -rf binutils gcc newlib
