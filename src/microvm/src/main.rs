@@ -39,7 +39,6 @@ use ::microvm::{
 use ::std::{
     env,
     os::unix::net::UnixStream,
-    time::Duration,
 };
 
 //==================================================================================================
@@ -61,7 +60,7 @@ fn main() -> Result<()> {
     let gateway: Option<Gateway> = match &gateway_addr {
         Some(addr) => match UnixStream::connect(addr.clone()) {
             Ok(conn) => {
-                conn.set_read_timeout(Some(Duration::from_millis(1)))?;
+                conn.set_nonblocking(true)?;
                 Some(Gateway::UnixStream(conn))
             },
             Err(e) => {

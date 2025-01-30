@@ -10,7 +10,10 @@ extern crate kvm_bindings;
 #[cfg(target_os = "linux")]
 extern crate kvm_ioctls;
 
-use crate::io::IoThread;
+use crate::{
+    io::IoThread,
+    Gateway,
+};
 use ::anyhow::Result;
 use ::hyperlight_host::{
     sandbox::SandboxConfiguration,
@@ -25,7 +28,6 @@ use ::hyperlight_host::{
 use ::std::{
     fs::File,
     io::Write,
-    os::unix::net::UnixStream,
     sync::{
         mpsc,
         mpsc::{
@@ -71,29 +73,12 @@ impl Vmm {
         kernel_filename: &str,
         initrd_filename: Option<String>,
         stderr: Option<String>,
-        gateway_addr: Option<String>,
+        gateway_conn: Option<Gateway>,
     ) -> Result<Self> {
         crate::timer!("vmm_creation");
 
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
         let (gateway_tx, vm_rx) = mpsc::channel::<Message>();
-        let gateway_conn: Option<UnixStream> = match gateway_addr {
-            Some(addr) => match UnixStream::connect(addr.clone()) {
-                Ok(conn) => {
-                    conn.set_read_timeout(Some(Duration::from_millis(1)))?;
-                    Some(conn)
-                },
-                Err(e) => {
-                    let reason: String = format!(
-                        "failed to connect to gateway (gateway_addr={:?}, error={:?})",
-                        addr, e
-                    );
-                    error!("io_thread(): {}", reason);
-                    anyhow::bail!(reason)
-                },
-            },
-            None => None,
-        };
 
         // Spawn I/O thread.
         let _io_thread: Option<JoinHandle<Result<()>>> =
