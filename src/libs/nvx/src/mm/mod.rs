@@ -33,10 +33,9 @@ pub use ::sys::kcall::mm::{
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "none", feature = "allocator"))] {
-        /// Heap size (in bytes). This value was chosen arbitrarily.
-        pub const HEAP_SIZE: usize = 8 * config::constants::MEGABYTE;
         /// Based address for break address.
-        pub const BREAK_BASE_RAW: usize = config::memory_layout::USER_HEAP_BASE_RAW + HEAP_SIZE/2;
+        pub const BREAK_BASE_RAW: usize =
+            config::memory_layout::USER_HEAP_BASE_RAW + config::memory_layout::USER_HEAP_SIZE/2;
     }
 }
 
@@ -69,7 +68,7 @@ pub fn init() -> Result<(), Error> {
 
         // Map underlying pages for the heap.
         let start: usize = memory_layout::USER_HEAP_BASE.into_raw_value();
-        let end: usize = start + HEAP_SIZE;
+        let end: usize = start + config::memory_layout::USER_HEAP_SIZE;
         for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
             kcall::mm::mmap(pid, VirtualAddress::from_raw_value(vaddr)?, AccessPermission::RDWR)?;
 
@@ -77,7 +76,7 @@ pub fn init() -> Result<(), Error> {
         }
 
         // Initialize the heap.
-        unsafe { allocator::init(start, HEAP_SIZE / 2)? };
+        unsafe { allocator::init(start, config::memory_layout::USER_HEAP_SIZE / 2)? };
     }
 
     Ok(())
@@ -104,7 +103,7 @@ pub fn cleanup() -> Result<(), Error> {
 
         // Unmap underlying pages for the heap.
         let start: usize = memory_layout::USER_HEAP_BASE.into_raw_value();
-        let end: usize = start + HEAP_SIZE;
+        let end: usize = start + config::memory_layout::USER_HEAP_SIZE;
         for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
             kcall::mm::munmap(pid, VirtualAddress::from_raw_value(vaddr)?)?;
         }

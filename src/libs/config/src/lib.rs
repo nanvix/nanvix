@@ -49,6 +49,13 @@ pub mod memory_layout {
     /// Provides the raw value for [`USER_HEAP_BASE`], which can be used in constant-value expressions.
     ///
     pub const USER_HEAP_BASE_RAW: usize = 0xa0000000;
+
+    ///
+    /// # Description
+    ///
+    /// Size of the user heap.
+    ///
+    pub const USER_HEAP_SIZE: usize = 8 * crate::constants::MEGABYTE;
 }
 
 //==================================================================================================
