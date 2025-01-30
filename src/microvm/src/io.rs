@@ -5,14 +5,11 @@
 // Imports
 //==================================================================================================
 
+use crate::Gateway;
 use ::anyhow::Result;
 use ::std::{
-    io::{
-        Read,
-        Write,
-    },
-    mem,
-    os::unix::net::UnixStream,
+    collections::VecDeque,
+    io::ErrorKind,
     sync::mpsc::{
         Receiver,
         Sender,
@@ -36,13 +33,16 @@ use ::sys::ipc::Message;
 ///
 pub struct IoThread {
     /// Connection to the gateway.
-    gateway_conn: UnixStream,
+    gateway: Gateway,
     /// Gateway receiver.
-    gateway_rx: Receiver<Message>,
+    microvm_rx: Receiver<Message>,
     /// Gateway sender.
-    gateway_tx: Sender<Message>,
+    microvm_tx: Sender<Message>,
+    /// Queue of incoming messages.
+    incoming: VecDeque<Message>,
+    /// Queue of outgoing messages.
+    outgoing: VecDeque<Message>,
 }
-
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -55,21 +55,21 @@ impl IoThread {
     ///
     /// # Parameters
     ///
-    /// - `gateway_conn`: Connection to gateway.
-    /// - `gateway_rx`:   Gateway receiver.
-    /// - `gateway_tx`:   Gateway sender.
+    /// - `gateway`: Connection to gateway.
+    /// - `microvm_rx`: MicroVM receiver.
+    /// - `microvm_tx`: MicroVM sender.
     ///
     /// # Returns
     ///
     /// A handle to the I/O thread.
     ///
     pub fn spawn(
-        gateway_conn: UnixStream,
-        gateway_rx: Receiver<Message>,
-        gateway_tx: Sender<Message>,
+        gateway: Gateway,
+        microvm_rx: Receiver<Message>,
+        microvm_tx: Sender<Message>,
     ) -> JoinHandle<Result<()>> {
         thread::spawn(move || {
-            let mut io_thread: IoThread = IoThread::new(gateway_conn, gateway_rx, gateway_tx)?;
+            let mut io_thread: IoThread = IoThread::new(gateway, microvm_rx, microvm_tx)?;
             io_thread.run()?;
             Ok(())
         })
@@ -82,23 +82,25 @@ impl IoThread {
     ///
     /// # Parameters
     ///
-    /// - `gateway_conn`: Connection to gateway.
-    /// - `gateway_rx`:   Gateway receiver.
-    /// - `gateway_tx`:   Gateway sender.
+    /// - `gateway`: Connection to gateway.
+    /// - `microvm_rx`: MicroVM receiver.
+    /// - `microvm_tx`: MicroVM sender.
     ///
     /// # Returns
     ///
     /// Upon success, a new I/O thread is returned. Otherwise, an error is returned.
     ///
     fn new(
-        gateway_conn: UnixStream,
-        gateway_rx: Receiver<Message>,
-        gateway_tx: Sender<Message>,
+        gateway: Gateway,
+        microvm_rx: Receiver<Message>,
+        microvm_tx: Sender<Message>,
     ) -> Result<Self> {
         Ok(Self {
-            gateway_conn,
-            gateway_rx,
-            gateway_tx,
+            gateway,
+            microvm_rx,
+            microvm_tx,
+            incoming: VecDeque::new(),
+            outgoing: VecDeque::new(),
         })
     }
 
@@ -112,85 +114,124 @@ impl IoThread {
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
     fn run(&mut self) -> Result<()> {
+        let mut round: usize = 0;
+
+        // Cycle through actions to avoid starvation.
         loop {
-            self.send()?;
-            self.receive()?;
+            if round % 4 == 0 {
+                self.try_receive_from_microvm()?;
+            } else if round % 4 == 1 {
+                self.try_send_to_gateway()?;
+            } else if round % 4 == 2 {
+                self.try_receive_from_gateway()?;
+            } else {
+                self.try_send_to_microvm()?;
+            }
+            round += 1;
         }
     }
 
     ///
     /// # Description
     ///
-    /// Attempts to send pending messages to the gateway.
+    /// Attempts to receive a message from the gateway.
     ///
     /// # Returns
     ///
-    /// Upon success, empty is returned. Otherwise, an error is returned instead.
+    /// Upon success, the received message is returned. Otherwise, an error is returned.
     ///
-    /// # Errors
-    ///
-    /// If the message could not be sent, an error is returned.
-    ///
-    fn send(&mut self) -> Result<()> {
-        match self.gateway_rx.try_recv() {
-            Ok(msg) => {
-                let bytes: [u8; mem::size_of::<Message>()] = msg.to_bytes();
-
-                self.gateway_conn.write_all(&bytes)?
+    fn try_receive_from_gateway(&mut self) -> Result<()> {
+        match self.gateway.try_receive() {
+            Ok(message) => {
+                self.incoming.push_back(message);
+                Ok(())
             },
-            Err(TryRecvError::Empty) => {
-                // No message available.
-            },
-            Err(TryRecvError::Disconnected) => {
-                let reason: String = "the microvm has disconnected".to_string();
-                error!("send(): {}", reason);
-                anyhow::bail!(reason);
-            },
-        }
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Attempts to receive messages from the gateway.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, empty is returned. Otherwise, an error is returned instead.
-    ///
-    fn receive(&mut self) -> Result<()> {
-        let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
-        match self.gateway_conn.read_exact(&mut bytes) {
-            Ok(()) => {
-                let message: Message = match Message::try_from_bytes(bytes) {
-                    Ok(message) => message,
-                    Err(err) => {
-                        let reason: String = format!("failed to parse message (error={:?})", err);
-                        warn!("receive(): {}", reason);
-                        return Ok(());
-                    },
-                };
-
-                if let Err(e) = self.gateway_tx.send(message) {
-                    let reason: String =
-                        format!("failed to receive message to the microvm (error={:?})", e);
-                    error!("receive(): {}", reason);
-                    anyhow::bail!(reason);
-                }
-            },
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::WouldBlock => {
-                    return Ok(());
-                },
-                _ => {
+            Err(e) => {
+                if e.kind() == ErrorKind::WouldBlock {
+                    Ok(())
+                } else {
                     let reason: String =
                         format!("failed to receive message from the gateway (error={:?})", e);
-                    error!("receive(): {}", reason);
-                    anyhow::bail!(reason);
-                },
+                    error!("try_receive_from_gateway(): {}", reason);
+                    anyhow::bail!(reason)
+                }
             },
         }
-        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to receive a message from the MicroVM.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the received message is returned. Otherwise, an error is returned.
+    ///
+    fn try_receive_from_microvm(&mut self) -> Result<()> {
+        match self.microvm_rx.try_recv() {
+            Ok(message) => {
+                self.outgoing.push_back(message);
+                Ok(())
+            },
+            Err(TryRecvError::Empty) => Ok(()),
+            Err(TryRecvError::Disconnected) => {
+                let reason: String = "the microvm has disconnected".to_string();
+                error!("try_receive_from_microvm(): {}", reason);
+                anyhow::bail!(reason)
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to send a message to the gateway.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned.
+    ///
+    fn try_send_to_gateway(&mut self) -> Result<()> {
+        match self.outgoing.pop_front() {
+            Some(message) => {
+                let message_clone: Message = message.clone();
+                match self.gateway.try_send(message_clone) {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        if e.kind() == ErrorKind::WouldBlock {
+                            self.outgoing.push_front(message);
+                            Ok(())
+                        } else {
+                            let reason: String =
+                                format!("failed to send message to the gateway (error={:?})", e);
+                            error!("try_send_to_gateway(): {}", reason);
+                            anyhow::bail!(reason)
+                        }
+                    },
+                }
+            },
+            None => Ok(()),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to send a message to the MicroVM.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned.
+    ///
+    fn try_send_to_microvm(&mut self) -> Result<()> {
+        match self.incoming.pop_front() {
+            Some(message) => {
+                // NOTE: calling `send()` on a channel does not block.
+                self.microvm_tx.send(message)?;
+                Ok(())
+            },
+            None => Ok(()),
+        }
     }
 }

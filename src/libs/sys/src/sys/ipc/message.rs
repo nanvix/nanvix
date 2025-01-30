@@ -28,7 +28,7 @@ use ::core::mem;
 ///
 /// - All fields in this structure are intentionally public to enable zero-copy message parsing.
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(C, packed)]
 pub struct Message {
     /// Type of the message.
