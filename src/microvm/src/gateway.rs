@@ -9,6 +9,7 @@ use ::anyhow::Result;
 use ::std::{
     io::{
         Error,
+        ErrorKind,
         Read,
         Write,
     },
@@ -16,7 +17,6 @@ use ::std::{
     os::unix::net::UnixStream,
 };
 use ::sys::ipc::Message;
-use std::io::ErrorKind;
 
 //==================================================================================================
 // Structure
@@ -30,7 +30,7 @@ impl Gateway {
     ///
     /// # Description
     ///
-    /// Sends a message to the gateway.
+    /// Attempts to send a message to the gateway.
     ///
     /// # Parameters
     ///
@@ -40,7 +40,7 @@ impl Gateway {
     ///
     /// If the message was successfully sent, `Ok(())` is returned. Otherwise, an error is returned.
     ///
-    pub fn send(&mut self, message: Message) -> Result<(), Error> {
+    pub fn try_send(&mut self, message: Message) -> Result<(), Error> {
         match self {
             Gateway::UnixStream(stream) => {
                 let bytes: [u8; mem::size_of::<Message>()] = message.to_bytes();
@@ -59,13 +59,13 @@ impl Gateway {
     ///
     /// # Description
     ///
-    /// Receives a message from the gateway.
+    /// Attempts to receive a message from the gateway.
     ///
     /// # Returns
     ///
     /// Upon success, the received message is returned. Otherwise, an error is returned.
     ///
-    pub fn receive(&mut self) -> Result<Message, Error> {
+    pub fn try_receive(&mut self) -> Result<Message, Error> {
         match self {
             Gateway::UnixStream(stream) => {
                 let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
@@ -85,7 +85,7 @@ impl Gateway {
                     Err(e) => {
                         let reason: String = format!("failed to receive message ({:?})", e);
                         error!("receive(): {}", reason);
-                        return Err(e);
+                        Err(e)
                     },
                 }
             },
