@@ -687,6 +687,7 @@ impl Vmem {
     ///
     /// - `dst`: Virtual address of the destination page.
     /// - `src`: Virtual address of the source page.
+    /// - `size`: Number of bytes to copy.
     ///
     /// # Returns
     ///
@@ -696,6 +697,7 @@ impl Vmem {
         &mut self,
         dst: PageAligned<VirtualAddress>,
         src: PageAligned<PhysicalAddress>,
+        size: usize,
     ) -> Result<(), Error> {
         // Get corresponding user page.
         let uframe: FrameAddress = self.find_user_frame(dst)?;
@@ -706,7 +708,7 @@ impl Vmem {
         // Safety: `dst` and `src` point to valid memory locations and `mem::PAGE_SIZE` bytes are
         // readable from `src` and writable to `dst`.
         unsafe {
-            __phys_memcpy(dst, src, mem::PAGE_SIZE);
+            __phys_memcpy(dst, src, size);
         }
         Ok(())
     }
