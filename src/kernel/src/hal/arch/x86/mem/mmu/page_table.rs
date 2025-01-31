@@ -82,7 +82,11 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
             Some(pte) => pte,
             None => {
                 let reason: &str = "failed to read page table entry";
-                error!("map(): {}", reason);
+                error!(
+                    "map(): {} (vaddr={:?}, paddr={:?}, supervisor={:?}, writethrough={:?}, \
+                     cache={:?}, access={:?})",
+                    reason, vaddr, paddr, supervisor, writethrough, cache, access
+                );
                 return Err(Error::new(ErrorCode::TryAgain, reason));
             },
         };
@@ -90,7 +94,11 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
         // Check if page table entry is busy.
         if pte.is_present() {
             let reason: &str = "page table entry is busy";
-            error!("map(): {}", reason);
+            error!(
+                "map(): {} (vaddr={:?}, paddr={:?}, supervisor={:?}, writethrough={:?}, \
+                 cache={:?}, access={:?})",
+                reason, vaddr, paddr, supervisor, writethrough, cache, access
+            );
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
@@ -153,7 +161,7 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
             Some(pte) => pte,
             None => {
                 let reason: &str = "failed to read page table entry";
-                error!("unmap(): {}", reason);
+                error!("unmap(): {} (page_address={:?})", reason, page_address);
                 return Err(Error::new(ErrorCode::TryAgain, reason));
             },
         };
@@ -161,7 +169,7 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
         // Check if page is not present.
         if !pte.is_present() {
             let reason: &str = "page is not present";
-            error!("unmap(): {}", reason);
+            error!("unmap(): {} (page_address={:?})", reason, page_address);
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
@@ -210,7 +218,7 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
             Some(pte) => pte,
             None => {
                 let reason: &str = "failed to read page table entry";
-                error!("lookup(): {}", reason);
+                error!("lookup(): {} (page_address={:?})", reason, page_address);
                 return Err(Error::new(ErrorCode::TryAgain, reason));
             },
         };
@@ -218,7 +226,7 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
         // Check if page is not present.
         if !pte.is_present() {
             let reason: &str = "page is not present";
-            error!("lookup(): {}", reason);
+            error!("lookup(): {} (page_address={:?})", reason, page_address);
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
@@ -240,7 +248,11 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
             Some(pte) => pte,
             None => {
                 let reason: &str = "failed to read page table entry";
-                error!("change_access_permissions(): {}", reason);
+                error!(
+                    "change_access_permissions(): {} (page_address={:?}, supervisor={:?}, \
+                     access={:?})",
+                    reason, page_address, supervisor, access
+                );
                 return Err(Error::new(ErrorCode::TryAgain, reason));
             },
         };
@@ -248,7 +260,10 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
         // Check if page is not present.
         if !pte.is_present() {
             let reason: &str = "page is not present";
-            error!("change_access_permissions(): {}", reason);
+            error!(
+                "change_access_permissions(): {} (page_address={:?}, supervisor={:?}, access={:?})",
+                reason, page_address, supervisor, access
+            );
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
