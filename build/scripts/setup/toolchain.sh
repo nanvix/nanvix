@@ -7,25 +7,10 @@
 # Script Arguments
 #===================================================================================================
 
-TARGET=$1 # Target
-PREFIX=$2 # Prefix
-
-if [ -z "$TARGET" ] || [[ "$TARGET" != "x86" ]];
-then
-    echo "Unsupported target: $TARGET"
-    exit 1
-fi
-
-
-if [ -z "$2" ];
-then
-    export PREFIX=$PWD/toolchain
-else
-    export PREFIX=$2
-fi
+export PREFIX=${1:-$PWD/toolchain}
 
 #===================================================================================================
-# 1. Get Sources
+# Get Sources
 #===================================================================================================
 
 mkdir -p $PREFIX/src && cd $PREFIX/src
@@ -35,7 +20,7 @@ git clone https://github.com/nanvix/gcc.git --branch nanvix/gcc-12.4.0 gcc
 git clone https://github.com/nanvix/newlib.git --branch nanvix/newlib-4.4.0 newlib
 
 #===================================================================================================
-# 2. Build Standalone Binutils
+# Build Standalone Binutils
 #===================================================================================================
 
 export TARGET=i686-elf
@@ -55,7 +40,7 @@ make -j `nproc` all
 make install
 
 #===================================================================================================
-# 3. Build Standalone GCC
+# Build Standalone GCC
 #===================================================================================================
 
 export TARGET=i686-elf
@@ -80,7 +65,7 @@ make -j `nproc` all-gcc all-target-libgcc
 make install-gcc install-target-libgcc
 
 #===================================================================================================
-# 4. Create Symbolic Links to Standalone Toolchain to Fool Newlib
+# Create Symbolic Links to Standalone Toolchain to Fool Newlib
 #===================================================================================================
 
 export TARGET=i686-elf
@@ -93,7 +78,7 @@ for f in $TARGET-*; do
 done
 
 #===================================================================================================
-# 5. Build Newlib
+# Build Newlib
 #===================================================================================================
 
 export TARGET=i686-nanvix
@@ -171,3 +156,9 @@ mkdir -p build && cd build
 
 make -j `nproc` all-gcc all-target-libgcc all-target-libstdc++-v3
 make -j install-gcc install-target-libgcc install-target-libstdc++-v3
+
+#===================================================================================================
+# Cleanup Cloned Directories
+#===================================================================================================
+
+rm -rf binutils gcc newlib
