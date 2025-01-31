@@ -43,7 +43,7 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
 
         // Check for overflow.
         // TODO: remove this check and let the page fault handler run.
-        if new_end >= (mm::BREAK_BASE_RAW + mm::HEAP_SIZE / 2) as *mut u8 {
+        if new_end >= (mm::BREAK_BASE_RAW + mm::C_HEAP_SIZE) as *mut u8 {
             return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
         }
 
