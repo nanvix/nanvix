@@ -28,7 +28,10 @@ use crate::{
         Vmem,
     },
 };
-use ::core::cmp::max;
+use ::core::cmp::{
+    max,
+    min,
+};
 use ::sys::{
     arch::mem,
     config,
@@ -224,8 +227,8 @@ fn do_elf32_load(
 
         // Allocate segment.
         let size: usize = max(phdr.p_filesz as usize, phdr.p_memsz as usize);
-        let virt_addr_end: usize = ::sys::mm::align_down(virt_addr + size, mmu::PAGE_ALIGNMENT);
-        for vaddr in (virt_addr..=virt_addr_end).step_by(mem::PAGE_SIZE) {
+        let virt_addr_end: usize = ::sys::mm::align_up(virt_addr + size, mmu::PAGE_ALIGNMENT);
+        for vaddr in (virt_addr..virt_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
             // Check if address lies in user space.
             if vaddr < config::memory_layout::USER_BASE {
@@ -248,11 +251,10 @@ fn do_elf32_load(
             (elf as *const Elf32Fhdr as *const u8).offset(phdr.p_offset as isize) as usize
         };
 
-        let phys_addr_end: usize =
-            ::sys::mm::align_down(phys_addr_base + phdr.p_filesz as usize, mmu::PAGE_ALIGNMENT);
+        let phys_addr_end: usize = phys_addr_base + phdr.p_filesz as usize;
 
         // Load segment page by page.
-        for phys_addr in (phys_addr_base..=phys_addr_end).step_by(mem::PAGE_SIZE) {
+        for phys_addr in (phys_addr_base..phys_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(virt_addr);
 
             if vaddr < config::memory_layout::USER_BASE {
@@ -264,14 +266,16 @@ fn do_elf32_load(
             let paddr: PageAligned<PhysicalAddress> = PageAligned::from_raw_value(phys_addr)?;
             let vaddr: PageAligned<VirtualAddress> = PageAligned::from_address(vaddr)?;
 
+            let size: usize = min(mem::PAGE_SIZE, phys_addr_end - phys_addr);
+
             // Check if we should load the segment.
             if !dry_run {
                 // Load the segment.
                 // TODO: rollback memory allocation on failure.
-                vmem.memcpy(vaddr, paddr)?;
+                vmem.memcpy(vaddr, paddr, size)?;
             }
 
-            virt_addr += mem::PAGE_SIZE;
+            virt_addr += size;
         }
     }
 

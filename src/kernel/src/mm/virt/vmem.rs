@@ -687,6 +687,7 @@ impl Vmem {
     ///
     /// - `dst`: Virtual address of the destination page.
     /// - `src`: Virtual address of the source page.
+    /// - `size`: Number of bytes to copy.
     ///
     /// # Returns
     ///
@@ -696,17 +697,25 @@ impl Vmem {
         &mut self,
         dst: PageAligned<VirtualAddress>,
         src: PageAligned<PhysicalAddress>,
+        size: usize,
     ) -> Result<(), Error> {
         // Get corresponding user page.
         let uframe: FrameAddress = self.find_user_frame(dst)?;
         let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
-        let dst: *mut u8 = dst.into_raw_value() as *mut u8;
-        let src: *const u8 = (src.into_raw_value()) as *const u8;
+        let dst: usize = dst.into_raw_value();
+        let src: usize = src.into_raw_value();
+
+        // Check if memory regions overlap.
+        if Self::overlap(dst, size, src, size) {
+            let reason: &str = "memory regions overlap";
+            error!("memcpy(): {} (dst={:?}, src={:?}, size={:?})", reason, dst, src, size);
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
 
         // Safety: `dst` and `src` point to valid memory locations and `mem::PAGE_SIZE` bytes are
         // readable from `src` and writable to `dst`.
         unsafe {
-            __phys_memcpy(dst, src, mem::PAGE_SIZE);
+            __phys_memcpy(dst as *mut u8, src as *const u8, size);
         }
         Ok(())
     }
@@ -922,6 +931,34 @@ impl Vmem {
             .ctrl(false, page_address, access)?;
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests if a memory region overlaps with another.
+    ///
+    /// # Parameters.
+    ///
+    /// - `base1`: Base address of the first memory region.
+    /// - `size1`: Size of the first memory region.
+    /// - `base2`: Base address of the second memory region.
+    /// - `size2`: Size of the second memory region.
+    ///
+    /// # Returns
+    ///
+    /// If the memory regions overlap, `true` is returned. Otherwise, `false` is returned.
+    ///
+    fn overlap(base1: usize, size1: usize, base2: usize, size2: usize) -> bool {
+        let end1: usize = base1 + size1;
+        let end2: usize = base2 + size2;
+
+        // Check if one region is to the left of the other.
+        if base1 >= end2 || base2 >= end1 {
+            return false;
+        }
+
+        true
     }
 }
 
