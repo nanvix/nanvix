@@ -27,3 +27,14 @@ make all
 - `PROFILER=<yes|no>`: Enable/Disable profiler (`microvm` machine only).
 - `RELEASE=<yes|no>`: Enable/Disable release build.
 - `TARGET=x86`: Set target CPU architecture.
+
+## Build Nanvix Using Docker
+Nanvix now provides a Docker image containing the required toolchain. To build Nanvix using Docker, follow these steps:
+
+```bash
+# (1) Build the Docker image
+docker build -t nanvix/toolchain build/scripts/setup/
+
+# (2) Run the build inside a Docker container
+docker run --rm -v"$(pwd):/mnt" nanvix/toolchain /bin/bash -l -c "cd /mnt ; git config --global --add safe.directory /mnt ; make TOOLCHAIN_DIR=/opt MACHINE=microvm RELEASE=no PROFILER=yes LOG_LEVEL=error all"
+```
