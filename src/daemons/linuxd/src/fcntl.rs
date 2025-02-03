@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::time::LibcTimeSpec;
 use ::alloc::ffi::CString;
 use ::core::{
     ffi,
@@ -23,6 +24,8 @@ use ::posix::{
     fcntl::message::{
         FileAdvisoryInformationRequest,
         FileAdvisoryInformationResponse,
+        FileChmodAtRequest,
+        FileChmodAtResponse,
         FileChownAtRequest,
         FileChownAtResponse,
         FileControlRequest,
@@ -62,10 +65,6 @@ use ::posix::{
         },
     },
     time::timespec,
-};
-use posix::fcntl::message::{
-    FileChmodAtRequest,
-    FileChmodAtResponse,
 };
 
 //==================================================================================================
@@ -251,15 +250,30 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
                 st_size: st.st_size,
                 st_atim: timespec {
                     tv_sec: st.st_atime,
-                    tv_nsec: st.st_atime_nsec,
+                    tv_nsec: match st.st_atime_nsec.try_into() {
+                        Ok(nsec) => nsec,
+                        Err(_) => {
+                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                        },
+                    },
                 },
                 st_mtim: timespec {
                     tv_sec: st.st_mtime,
-                    tv_nsec: st.st_mtime_nsec,
+                    tv_nsec: match st.st_mtime_nsec.try_into() {
+                        Ok(nsec) => nsec,
+                        Err(_) => {
+                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                        },
+                    },
                 },
                 st_ctim: timespec {
                     tv_sec: st.st_ctime,
-                    tv_nsec: st.st_ctime_nsec,
+                    tv_nsec: match st.st_ctime_nsec.try_into() {
+                        Ok(nsec) => nsec,
+                        Err(_) => {
+                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                        },
+                    },
                 },
                 st_blksize: st.st_blksize,
                 st_blocks: st.st_blocks,
@@ -376,15 +390,30 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
                 st_size: st.st_size,
                 st_atim: timespec {
                     tv_sec: st.st_atime,
-                    tv_nsec: st.st_atime_nsec,
+                    tv_nsec: match st.st_atime_nsec.try_into() {
+                        Ok(nsec) => nsec,
+                        Err(_) => {
+                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                        },
+                    },
                 },
                 st_mtim: timespec {
                     tv_sec: st.st_mtime,
-                    tv_nsec: st.st_mtime_nsec,
+                    tv_nsec: match st.st_mtime_nsec.try_into() {
+                        Ok(nsec) => nsec,
+                        Err(_) => {
+                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                        },
+                    },
                 },
                 st_ctim: timespec {
                     tv_sec: st.st_ctime,
-                    tv_nsec: st.st_ctime_nsec,
+                    tv_nsec: match st.st_ctime_nsec.try_into() {
+                        Ok(nsec) => nsec,
+                        Err(_) => {
+                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                        },
+                    },
                 },
                 st_blksize: st.st_blksize,
                 st_blocks: st.st_blocks,
@@ -564,14 +593,8 @@ pub fn do_utimensat(
     let times: [timespec; 2] = request.times;
 
     let libc_times: [libc::timespec; 2] = [
-        libc::timespec {
-            tv_sec: times[0].tv_sec,
-            tv_nsec: times[0].tv_nsec,
-        },
-        libc::timespec {
-            tv_sec: times[1].tv_sec,
-            tv_nsec: times[1].tv_nsec,
-        },
+        Into::<LibcTimeSpec>::into(times[0]).into(),
+        Into::<LibcTimeSpec>::into(times[1]).into(),
     ];
 
     let flag: LibcFileFlags = LibcFileFlags(request.flag);
@@ -616,14 +639,8 @@ pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest)
     let times: [timespec; 2] = request.times;
 
     let libc_times: [libc::timespec; 2] = [
-        libc::timespec {
-            tv_sec: times[0].tv_sec,
-            tv_nsec: times[0].tv_nsec,
-        },
-        libc::timespec {
-            tv_sec: times[1].tv_sec,
-            tv_nsec: times[1].tv_nsec,
-        },
+        Into::<LibcTimeSpec>::into(times[0]).into(),
+        Into::<LibcTimeSpec>::into(times[1]).into(),
     ];
 
     debug!(
