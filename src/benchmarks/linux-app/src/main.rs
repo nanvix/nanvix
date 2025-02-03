@@ -723,10 +723,10 @@ pub fn main() -> Result<(), Error> {
         },
     };
 
-    // Bind socket to address to 127.0.0.1:8080.
+    // Bind socket to address to 127.0.0.1:8888.
     let sockaddr_in: sockaddr_in = sockaddr_in {
         sin_family: sys::socket::AF_INET,
-        sin_port: u16::to_be(8080),
+        sin_port: u16::to_be(8888),
         sin_addr: in_addr {
             s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be(),
         },
@@ -899,6 +899,12 @@ pub fn main() -> Result<(), Error> {
 
     venv::leave(env)?;
     ::nvx::log!("left environment {:?}", env);
+
+    // Magic string.
+    {
+        let magic_string: &[u8] = "ok".as_bytes();
+        unistd::write(unistd::STDOUT_FILENO, magic_string.as_ptr(), magic_string.len() as size_t);
+    }
 
     Ok(())
 }

@@ -176,6 +176,27 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
             print("Test failed.")
             exit(1)
 
+    # Check if nanvixd tests are supported.
+    if not has_nanvixd_tests(machine):
+        return
+
+    make("run-nanvixd-tests", machine, arch, release,
+            toolchain_dir, log_level, verbose, timeout)
+
+
+def has_nanvixd_tests(machine: str) -> bool:
+    """
+    Checks if Machine supports tests with nanvixd.
+
+    Args:
+        machine (str): Target machine.
+    """
+
+    if machine in ["microvm", "hyperlight"]:
+        return True
+    else:
+        return False
+
 
 def parse_args() -> argparse.Namespace:
     """

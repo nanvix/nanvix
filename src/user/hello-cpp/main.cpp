@@ -7,7 +7,7 @@
 
 int main()
 {
-    std::cerr.write("Hello, World from C++!\n", 24);
+    std::cout << "Hello, world from C++!" << std::endl;
 
     return 0;
 }

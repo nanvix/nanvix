@@ -158,26 +158,9 @@ jobs:
           cd github/nanvix-${TARGET_BRANCH}-debug
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=trace --target-machine=microvm --test
 
-  test-nanvixd:
-    name: Test (nanvixd)
-    needs: [test-microvm]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Test
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.hostname }}
-        username: ${{ secrets.username }}
-        key: ${{ secrets.sshkey }}
-        port: ${{ secrets.portnum }}
-        envs: TARGET_BRANCH
-        script: |
-          cd github/nanvix-${TARGET_BRANCH}-debug
-          sudo -E ./test.sh 127.0.0.1 8181 && exit 1 || exit 0
-
   test-hyperlight:
     name: Test (hyperlight)
-    needs: [test-nanvixd]
+    needs: [test-microvm]
     runs-on: ubuntu-latest
     steps:
     - name: Test
