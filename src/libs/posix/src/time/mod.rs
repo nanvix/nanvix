@@ -20,9 +20,12 @@ pub mod bindings;
 // Imports
 //==================================================================================================
 
-use crate::sys::types::{
-    clockid_t,
-    time_t,
+use crate::{
+    ffi::c_long,
+    sys::types::{
+        clockid_t,
+        time_t,
+    },
 };
 use ::core::mem;
 use ::nvx::sys::error::{
@@ -51,7 +54,7 @@ pub struct timespec {
     /// Seconds.
     pub tv_sec: time_t,
     /// Nano-seconds.
-    pub tv_nsec: i64,
+    pub tv_nsec: c_long,
 }
 ::nvx::sys::static_assert_size!(timespec, timespec::SIZE);
 
@@ -59,7 +62,7 @@ impl timespec {
     /// Size of the seconds field.
     const SIZE_OF_TV_SEC: usize = mem::size_of::<time_t>();
     /// Size of the nano-seconds field.
-    const SIZE_OF_TV_NSEC: usize = mem::size_of::<i64>();
+    const SIZE_OF_TV_NSEC: usize = mem::size_of::<c_long>();
     /// Offset of the seconds field.
     const OFFSET_OF_TV_SEC: usize = 0;
     /// Offset of the nano-seconds field.
@@ -90,14 +93,14 @@ impl timespec {
         }
 
         // Parse seconds field.
-        let tv_sec: i64 = i64::from_ne_bytes(
+        let tv_sec: time_t = time_t::from_ne_bytes(
             bytes[Self::OFFSET_OF_TV_SEC..Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC]
                 .try_into()
                 .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse tv_sec"))?,
         );
 
         // Parse nano-seconds field.
-        let tv_nsec: i64 = i64::from_ne_bytes(
+        let tv_nsec: c_long = c_long::from_ne_bytes(
             bytes[Self::OFFSET_OF_TV_NSEC..Self::OFFSET_OF_TV_NSEC + Self::SIZE_OF_TV_NSEC]
                 .try_into()
                 .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse tv_nsec"))?,
