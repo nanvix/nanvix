@@ -190,6 +190,14 @@ export CP_CMD := cp -f --preserve
 export GRUB_CMD := grub-mkrescue
 
 #===================================================================================================
+# Configuration for Tests
+#===================================================================================================
+
+export NANVIXD_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:8181,127.0.0.1:8282)
+export LINUXD_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:7171,127.0.0.1:7272)
+export SANDBOX_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:6161,127.0.0.1:6262)
+
+#===================================================================================================
 # Top-Level Targets
 #===================================================================================================
 
@@ -264,8 +272,10 @@ check: \
 	check-host-binaries \
 	check-microvm
 
-run-unit-tests: \
+run-unit-tests: all \
 	test-guest-rlibs
+
+run-nanvixd-tests: | test-echo test-hello-c test-hello-cpp test-linux-app
 
 #===================================================================================================
 # Build Rules for Running and Debugging
@@ -497,3 +507,27 @@ clean-microvm:
 
 clippy-microvm:
 	$(HOST_CARGO_CLIPPY_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
+
+#===================================================================================================
+# Rules for Running System Level tests
+#===================================================================================================
+
+test-echo: all
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo.elf '["hello world!"]' 'hello world!'
+endif
+
+test-hello-c: all
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-c.elf '[]' 'Hello, world from C!'
+endif
+
+test-hello-cpp: all
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-cpp.elf '[]' 'Hello, world from C++!'
+endif
+
+test-linux-app: all
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/linux-app.elf '[]' 'ok'
+endif
