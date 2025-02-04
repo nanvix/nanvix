@@ -10,7 +10,7 @@ PROGRAM_EXPECTED_OUTPUT=$6
 TIMEOUT=10
 
 # Run nanvixd.
-RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
+timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
     sudo -E \
     ./bin/nanvixd.elf \
         -http-addr ${NANVIXD_SOCKADDR} \
