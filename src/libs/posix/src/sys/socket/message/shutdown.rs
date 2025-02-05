@@ -76,17 +76,15 @@ impl ShutdownSocketRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct ShutdownSocketResponse {
-    pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(ShutdownSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ShutdownSocketResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
 
-    pub fn new(ret: i32) -> Self {
+    fn new() -> Self {
         Self {
-            ret,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -99,8 +97,8 @@ impl ShutdownSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, ret: i32) -> Message {
-        let message: Self = Self::new(ret);
+    pub fn build(pid: ProcessIdentifier) -> Message {
+        let message: Self = Self::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ShutdownSocketResponse,
             message.into_bytes(),
