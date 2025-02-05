@@ -131,13 +131,13 @@ pub struct SocketAddrV4 {
 }
 ::nvx::sys::static_assert_size!(SocketAddrV4, 6);
 
-impl Into<sockaddr_in> for SocketAddrV4 {
-    fn into(self) -> sockaddr_in {
-        sockaddr_in {
+impl From<SocketAddrV4> for sockaddr_in {
+    fn from(addr: SocketAddrV4) -> Self {
+        Self {
             sin_family: AF_INET,
-            sin_port: self.port.to_be(),
+            sin_port: addr.port.to_be(),
             sin_addr: in_addr {
-                s_addr: u32::from_be_bytes(self.addr.octets).to_be(),
+                s_addr: u32::from_be_bytes(addr.addr.octets).to_be(),
             },
             sin_zero: [0; 8],
         }
@@ -155,12 +155,12 @@ impl From<sockaddr_in> for SocketAddrV4 {
     }
 }
 
-impl Into<sockaddr> for SocketAddrV4 {
-    fn into(self) -> sockaddr {
+impl From<SocketAddrV4> for sockaddr {
+    fn from(addr: SocketAddrV4) -> Self {
         let mut sa_data: [u8; 14] = [0u8; 14];
-        sa_data[0..2].copy_from_slice(&self.port.to_be_bytes());
-        sa_data[2..6].copy_from_slice(&self.addr.octets);
-        sockaddr {
+        sa_data[0..2].copy_from_slice(&addr.port.to_be_bytes());
+        sa_data[2..6].copy_from_slice(&addr.addr.octets);
+        Self {
             sa_family: AF_INET,
             sa_data,
         }
@@ -219,9 +219,20 @@ pub enum SocketAddr {
 }
 ::nvx::sys::static_assert_size!(SocketAddr, 32);
 
-impl Into<sockaddr> for SocketAddr {
-    fn into(self) -> sockaddr {
-        match self {
+impl From<sockaddr> for SocketAddr {
+    fn from(addr: sockaddr) -> Self {
+        match addr.sa_family {
+            AF_INET => SocketAddr::V4(SocketAddrV4::from(addr)),
+            AF_INET6 => unimplemented!(),
+            AF_UNIX => Self::Unix(SocketAddrUnix),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl From<SocketAddr> for sockaddr {
+    fn from(addr: SocketAddr) -> Self {
+        match addr {
             SocketAddr::V4(addr) => addr.into(),
             SocketAddr::V6(_) => unimplemented!(),
             SocketAddr::Unix(_) => sockaddr {
@@ -232,26 +243,14 @@ impl Into<sockaddr> for SocketAddr {
     }
 }
 
-impl Into<(sockaddr, socklen_t)> for SocketAddr {
-    fn into(self) -> (sockaddr, socklen_t) {
-        let addr: sockaddr = self.into();
-        let len: socklen_t = match self {
+impl From<SocketAddr> for (sockaddr, socklen_t) {
+    fn from(addr: SocketAddr) -> (sockaddr, socklen_t) {
+        let len: socklen_t = match addr {
             SocketAddr::V4(_) => mem::size_of::<sockaddr_in>() as socklen_t,
             SocketAddr::V6(_) => unimplemented!(),
             SocketAddr::Unix(_) => 0,
         };
-        (addr, len)
-    }
-}
-
-impl From<sockaddr> for SocketAddr {
-    fn from(addr: sockaddr) -> Self {
-        match addr.sa_family {
-            AF_INET => SocketAddr::V4(SocketAddrV4::from(addr)),
-            AF_INET6 => unimplemented!(),
-            AF_UNIX => Self::Unix(SocketAddrUnix),
-            _ => unimplemented!(),
-        }
+        (addr.into(), len)
     }
 }
 
