@@ -97,6 +97,11 @@ pub fn recv(sockfd: i32, buffer: *mut u8, length: size_t, flags: i32) -> ssize_t
                             .copy_from_slice(&response.buffer[..response.count as usize]);
                         total_read += response.count;
                         buffer_offset += response.count as usize;
+
+                        // Check for partial receive.
+                        if (response.count as usize) < recv_len {
+                            break;
+                        }
                     },
                     _ => return ErrorCode::InvalidMessage.into_errno(),
                 },
