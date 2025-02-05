@@ -870,11 +870,11 @@ pub fn main() -> Result<(), Error> {
     // Disallow send and receive operations.
     for socketfd in &socket_fds {
         match sys::socket::shutdown(*socketfd, Shutdown::ReadWrite) {
-            0 => {
+            Ok(()) => {
                 ::nvx::log!("disallowed send and receive operations on connection");
             },
-            errno => {
-                panic!("failed to disallow send and receive operations on connection: {:?}", errno);
+            Err(error) => {
+                panic!("failed to disallow send and receive operations on connection: {:?}", error);
             },
         }
     }
