@@ -40,6 +40,7 @@ use ::posix::sys::{
         },
         sockaddr,
         socklen_t,
+        Shutdown,
     },
     types::{
         size_t,
@@ -362,20 +363,18 @@ pub fn do_shutdown(pid: ProcessIdentifier, request: ShutdownSocketRequest) -> Me
     trace!("shutdown(): pid={:?}, request={:?}", pid, request);
 
     let sockfd: i32 = request.sockfd;
-    let how: LibcShutdownReason = match LibcShutdownReason::try_from(request.how) {
-        Ok(how) => how,
-        Err(e) => return crate::build_error(pid, e.code),
-    };
+    let how: LibcShutdownReason = LibcShutdownReason::from(request.how);
 
     debug!("libc::shutdown(): sockfd={:?}, how={:?}", sockfd, how.inner());
     match unsafe { libc::shutdown(sockfd, how.inner()) } {
+        0 => ShutdownSocketResponse::build(pid),
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
         },
-        ret => ShutdownSocketResponse::build(pid, ret),
+        ret => unreachable!("libc::shutdown() returned invalid value {:?}", ret),
     }
 }
 
@@ -476,13 +475,14 @@ impl LibcShutdownReason {
     fn inner(&self) -> libc::c_int {
         self.0
     }
+}
 
-    fn try_from(how: i32) -> Result<Self, Error> {
+impl From<Shutdown> for LibcShutdownReason {
+    fn from(how: Shutdown) -> Self {
         match how {
-            ::posix::sys::socket::SHUT_RD => Ok(Self(libc::SHUT_RD)),
-            ::posix::sys::socket::SHUT_WR => Ok(Self(libc::SHUT_WR)),
-            ::posix::sys::socket::SHUT_RDWR => Ok(Self(libc::SHUT_RDWR)),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid shutdown reason")),
+            Shutdown::Read => Self(libc::SHUT_RD),
+            Shutdown::Write => Self(libc::SHUT_WR),
+            Shutdown::ReadWrite => Self(libc::SHUT_RDWR),
         }
     }
 }
