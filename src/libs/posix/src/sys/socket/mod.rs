@@ -89,3 +89,14 @@ pub struct sockaddr {
     pub sa_data: [u8; 14],
 }
 ::nvx::sys::static_assert_size!(sockaddr, 16);
+
+/// Describes how a socket should be shutdown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shutdown {
+    /// Disallows further receive operations.
+    Read,
+    /// Disallows further send operations.
+    Write,
+    /// Disallows further send and receive operations.
+    ReadWrite,
+}
