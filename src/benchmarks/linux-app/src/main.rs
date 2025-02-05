@@ -741,11 +741,11 @@ pub fn main() -> Result<(), Error> {
     let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
 
     match sys::socket::bind(sockfd, &sockaddr) {
-        0 => {
+        Ok(()) => {
             ::nvx::log!("bound socket to address");
         },
-        errno => {
-            panic!("failed to bind socket to address: {:?}", errno);
+        Err(error) => {
+            panic!("failed to bind socket to address (error={:?})", error);
         },
     }
 
