@@ -6,9 +6,12 @@
 //==================================================================================================
 
 use crate::{
-    sys::socket::message::{
-        ShutdownSocketRequest,
-        ShutdownSocketResponse,
+    sys::socket::{
+        message::{
+            ShutdownSocketRequest,
+            ShutdownSocketResponse,
+        },
+        Shutdown,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -23,7 +26,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn shutdown(sockfd: i32, how: i32) -> i32 {
+pub fn shutdown(sockfd: i32, how: Shutdown) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),

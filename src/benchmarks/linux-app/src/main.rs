@@ -22,6 +22,7 @@ use ::posix::{
         socket::{
             sockaddr,
             socklen_t,
+            Shutdown,
         },
         stat::stat,
         times,
@@ -868,7 +869,7 @@ pub fn main() -> Result<(), Error> {
 
     // Disallow send and receive operations.
     for socketfd in &socket_fds {
-        match sys::socket::shutdown(*socketfd, sys::socket::SHUT_RDWR) {
+        match sys::socket::shutdown(*socketfd, Shutdown::ReadWrite) {
             0 => {
                 ::nvx::log!("disallowed send and receive operations on connection");
             },
