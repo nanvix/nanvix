@@ -8,6 +8,7 @@
 // Imports
 //==================================================================================================
 
+use ::core::mem;
 use ::nvx::sys::error::Error;
 use ::posix::{
     fcntl,
@@ -807,10 +808,9 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Get name of the local socket.
-    let mut sockaddr_self: [sockaddr; 2] = unsafe { mem::zeroed() };
-    let mut addrlen_self: [socklen_t; 2] = [0; 2];
+    let mut sockaddr_self: [SocketAddr; 2] = unsafe { mem::zeroed() };
     for i in 0..2 {
-        match sys::socket::getsockname(socket_fds[i], &mut sockaddr_self[i], &mut addrlen_self[i]) {
+        match sys::socket::getsockname(socket_fds[i], &mut sockaddr_self[i]) {
             Ok(()) => {
                 ::nvx::log!("sockfd {:?} is bound to {:?}", socket_fds[i], sockaddr_self[i]);
             },
@@ -821,10 +821,9 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Get name of the peer socket.
-    let mut sockaddr_peer: [sockaddr; 2] = unsafe { mem::zeroed() };
-    let mut addrlen_peer: [socklen_t; 2] = [0; 2];
+    let mut sockaddr_peer: [SocketAddr; 2] = unsafe { mem::zeroed() };
     for i in (0..2).rev() {
-        match sys::socket::getpeername(socket_fds[i], &mut sockaddr_peer[i], &mut addrlen_peer[i]) {
+        match sys::socket::getpeername(socket_fds[i], &mut sockaddr_peer[i]) {
             Ok(()) => {
                 ::nvx::log!(
                     "sockfd {:?} is connected to peer {:?}",
@@ -840,9 +839,6 @@ pub fn main() -> Result<(), Error> {
 
     // Check if local and peer names are the same.
     for i in 0..2 {
-        if addrlen_self[i] != addrlen_peer[i] {
-            panic!("local and peer names are not the same");
-        }
         if sockaddr_self[i] != sockaddr_peer[i] {
             panic!("local and peer names are not the same");
         }

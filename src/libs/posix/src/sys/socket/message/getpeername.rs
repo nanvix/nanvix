@@ -7,10 +7,7 @@
 
 use crate::{
     ffi::c_int,
-    sys::socket::{
-        sockaddr,
-        socklen_t,
-    },
+    sys::socket::SocketAddr,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -74,20 +71,17 @@ impl GetPeerNameRequest {
 
 #[repr(C, packed)]
 pub struct GetPeerNameResponse {
-    pub sockaddr: sockaddr,
-    pub socklen: socklen_t,
+    pub sockaddr: SocketAddr,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(GetPeerNameResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl GetPeerNameResponse {
-    pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<sockaddr>() - mem::size_of::<socklen_t>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<SocketAddr>();
 
-    pub fn new(sockaddr: sockaddr, socklen: socklen_t) -> Self {
+    fn new(sockaddr: SocketAddr) -> Self {
         Self {
             sockaddr,
-            socklen,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -100,8 +94,8 @@ impl GetPeerNameResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockaddr: sockaddr, socklen: socklen_t) -> Message {
-        let message: Self = Self::new(sockaddr, socklen);
+    pub fn build(pid: ProcessIdentifier, sockaddr: SocketAddr) -> Message {
+        let message: Self = Self::new(sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::GetPeerNameResponse,
             message.into_bytes(),
