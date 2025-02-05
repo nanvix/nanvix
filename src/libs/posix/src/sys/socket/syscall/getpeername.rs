@@ -12,8 +12,7 @@ use crate::{
             GetPeerNameRequest,
             GetPeerNameResponse,
         },
-        sockaddr,
-        socklen_t,
+        SocketAddr,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -40,18 +39,13 @@ use ::nvx::{
 ///
 /// - `sockfd`: File descriptor of the socket.
 /// - `sockaddr`: Location to store the address of the peer socket.
-/// - `len`: Location to store the size of the address.
 ///
 /// # Returns
 ///
 /// Upon successful completion, empty is returned. Otherwise, an error number is returned.
 ///
-pub fn getpeername(
-    sockfd: c_int,
-    sockaddr: &mut sockaddr,
-    len: &mut socklen_t,
-) -> Result<(), Error> {
-    ::nvx::log!("getpeername(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+pub fn getpeername(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error> {
+    ::nvx::log!("getpeername(): sockfd={:?}, sockaddr={:?}", sockfd, sockaddr);
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
@@ -79,7 +73,6 @@ pub fn getpeername(
 
                 // Copy address and size.
                 *sockaddr = response.sockaddr;
-                *len = response.socklen;
 
                 Ok(())
             },

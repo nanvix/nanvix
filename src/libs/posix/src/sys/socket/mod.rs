@@ -15,6 +15,7 @@ use crate::netinet::in_::{
     in_addr,
     sockaddr_in,
 };
+use ::core::mem;
 
 //==================================================================================================
 // Modules
@@ -223,8 +224,23 @@ impl Into<sockaddr> for SocketAddr {
         match self {
             SocketAddr::V4(addr) => addr.into(),
             SocketAddr::V6(_) => unimplemented!(),
-            SocketAddr::Unix(_) => unimplemented!(),
+            SocketAddr::Unix(_) => sockaddr {
+                sa_family: AF_UNIX,
+                sa_data: [0; 14],
+            },
         }
+    }
+}
+
+impl Into<(sockaddr, socklen_t)> for SocketAddr {
+    fn into(self) -> (sockaddr, socklen_t) {
+        let addr: sockaddr = self.into();
+        let len: socklen_t = match self {
+            SocketAddr::V4(_) => mem::size_of::<sockaddr_in>() as socklen_t,
+            SocketAddr::V6(_) => unimplemented!(),
+            SocketAddr::Unix(_) => 0,
+        };
+        (addr, len)
     }
 }
 
@@ -233,7 +249,7 @@ impl From<sockaddr> for SocketAddr {
         match addr.sa_family {
             AF_INET => SocketAddr::V4(SocketAddrV4::from(addr)),
             AF_INET6 => unimplemented!(),
-            AF_UNIX => unimplemented!(),
+            AF_UNIX => Self::Unix(SocketAddrUnix),
             _ => unimplemented!(),
         }
     }

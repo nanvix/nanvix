@@ -253,8 +253,8 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let socklen: socklen_t = address_len;
-            GetPeerNameResponse::build(pid, sockaddr, socklen)
+            let sockaddr: SocketAddr = sockaddr.into();
+            GetPeerNameResponse::build(pid, sockaddr)
         },
     }
 }
