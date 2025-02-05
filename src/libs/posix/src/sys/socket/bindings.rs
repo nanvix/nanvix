@@ -13,6 +13,7 @@ use crate::{
     sys::socket::{
         sockaddr,
         socklen_t,
+        SocketAddr,
     },
 };
 use ::nvx::sys::error::ErrorCode;
@@ -141,8 +142,15 @@ pub unsafe extern "C" fn getsockname(
         return -1;
     }
 
-    match crate::sys::socket::getsockname(sockfd, &mut *sockaddr, &mut *len) {
-        Ok(_) => 0,
+    let mut sockaddr_: SocketAddr = SocketAddr::V4(Default::default());
+
+    match crate::sys::socket::getsockname(sockfd, &mut sockaddr_) {
+        Ok(_) => {
+            let (sockaddr_, len_): (sockaddr, socklen_t) = sockaddr_.into();
+            unsafe { *sockaddr = sockaddr_ };
+            unsafe { *len = len_ };
+            0
+        },
         Err(e) => {
             unsafe { errno = e.code.into_errno() }
             -1

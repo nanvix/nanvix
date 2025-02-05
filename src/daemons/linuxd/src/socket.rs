@@ -284,8 +284,8 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let socklen: socklen_t = address_len;
-            GetSockNameResponse::build(pid, sockaddr, socklen)
+            let sockaddr: SocketAddr = sockaddr.into();
+            GetSockNameResponse::build(pid, sockaddr)
         },
     }
 }
