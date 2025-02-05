@@ -87,6 +87,11 @@ pub fn recv(sockfd: i32, buffer: *mut u8, length: size_t, flags: i32) -> ssize_t
                         let response: ReceiveSocketResponse =
                             ReceiveSocketResponse::from_bytes(message.payload);
 
+                        // Check if any data was received.
+                        if response.count == 0 {
+                            break;
+                        }
+
                         // Copy response buffer to user buffer.
                         buffer[buffer_offset..buffer_offset + response.count as usize]
                             .copy_from_slice(&response.buffer[..response.count as usize]);
