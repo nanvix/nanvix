@@ -8,7 +8,6 @@
 // Imports
 //==================================================================================================
 
-use ::core::mem;
 use ::nvx::sys::error::Error;
 use ::posix::{
     fcntl,
@@ -20,10 +19,9 @@ use ::posix::{
     sys::{
         self,
         socket::{
-            sockaddr,
-            socklen_t,
             Shutdown,
             SocketAddr,
+            SocketAddrV4,
         },
         stat::stat,
         times,
@@ -747,6 +745,23 @@ pub fn main() -> Result<(), Error> {
         },
         errno => {
             panic!("failed to bind socket to address: {:?}", errno);
+        },
+    }
+
+    // Check if socket is bound to expected address.
+    let mut sockaddr_: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
+    match sys::socket::getsockname(sockfd, &mut sockaddr_) {
+        Ok(()) => {
+            if sockaddr_ != sockaddr {
+                panic!(
+                    "socket is not bound to expected address (expected: {:?}, actual: {:?})",
+                    sockaddr, sockaddr_
+                );
+            }
+            ::nvx::log!("socket is bound to address {:?}", sockaddr_);
+        },
+        Err(error) => {
+            panic!("failed to get local name of socket: {:?}", error);
         },
     }
 
