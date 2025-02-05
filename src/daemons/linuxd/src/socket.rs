@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use ::core::{
+    cmp,
+    mem,
+};
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -41,13 +45,13 @@ use ::posix::sys::{
         sockaddr,
         socklen_t,
         Shutdown,
+        SocketAddr,
     },
     types::{
         size_t,
         ssize_t,
     },
 };
-use ::std::cmp;
 
 //==================================================================================================
 // do_socket
@@ -142,7 +146,7 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
         Ok(sockaddr) => sockaddr,
         Err(e) => return crate::build_error(pid, e.code),
     };
-    let socklen: socklen_t = request.socklen;
+    let socklen: socklen_t = mem::size_of_val(&sockaddr) as socklen_t;
 
     debug!(
         "libc::bind(): sockfd={:?}, sockaddr.sa_family={:?}, sockaddr.sa_data={:?}, socklen={:?}",
@@ -151,9 +155,7 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
         sockaddr.inner().sa_data,
         socklen
     );
-    match unsafe {
-        libc::bind(sockfd, &sockaddr.inner() as *const libc::sockaddr, socklen as libc::socklen_t)
-    } {
+    match unsafe { libc::bind(sockfd, &sockaddr.inner() as *const libc::sockaddr, socklen) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             let error: ErrorCode = ErrorCode::try_from(-errno)
@@ -251,8 +253,8 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let socklen: socklen_t = address_len;
-            GetPeerNameResponse::build(pid, sockaddr, socklen)
+            let sockaddr: SocketAddr = sockaddr.into();
+            GetPeerNameResponse::build(pid, sockaddr)
         },
     }
 }
@@ -282,8 +284,8 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let socklen: socklen_t = address_len;
-            GetSockNameResponse::build(pid, sockaddr, socklen)
+            let sockaddr: SocketAddr = sockaddr.into();
+            GetSockNameResponse::build(pid, sockaddr)
         },
     }
 }
@@ -313,8 +315,8 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let socklen: socklen_t = address_len as socklen_t;
-            AcceptSocketResponse::build(pid, sockfd, sockaddr, socklen)
+            let sockaddr: SocketAddr = sockaddr.into();
+            AcceptSocketResponse::build(pid, sockfd, sockaddr)
         },
     }
 }
@@ -460,12 +462,25 @@ impl LibcSocketAddress {
     fn inner(&self) -> libc::sockaddr {
         self.0
     }
+}
 
-    fn try_from(sockaddr: sockaddr) -> Result<Self, Error> {
+impl TryFrom<sockaddr> for LibcSocketAddress {
+    type Error = Error;
+
+    fn try_from(sockaddr: sockaddr) -> Result<Self, Self::Error> {
         Ok(Self(libc::sockaddr {
             sa_family: LibcSocketDomain::try_from(sockaddr.sa_family as i32)?.inner(),
             sa_data: unsafe { core::mem::transmute::<[u8; 14], [i8; 14]>(sockaddr.sa_data) },
         }))
+    }
+}
+
+impl TryFrom<SocketAddr> for LibcSocketAddress {
+    type Error = Error;
+
+    fn try_from(sockaddr: SocketAddr) -> Result<Self, Self::Error> {
+        let sockaddr: sockaddr = sockaddr.into();
+        LibcSocketAddress::try_from(sockaddr)
     }
 }
 

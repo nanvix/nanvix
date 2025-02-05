@@ -12,8 +12,7 @@ use crate::{
             GetSockNameRequest,
             GetSockNameResponse,
         },
-        sockaddr,
-        socklen_t,
+        SocketAddr,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -40,18 +39,13 @@ use ::nvx::{
 ///
 /// - `sockfd`: File descriptor of the socket.
 /// - `sockaddr`: Location to store the address of the socket.
-/// - `len`: Location to store the size of the address.
 ///
 /// # Returns
 ///
 /// Upon successful completion, empty is returned. Otherwise, an error number is returned.
 ///
-pub fn getsockname(
-    sockfd: c_int,
-    sockaddr: &mut sockaddr,
-    len: &mut socklen_t,
-) -> Result<(), Error> {
-    ::nvx::log!("getsockname(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+pub fn getsockname(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error> {
+    ::nvx::log!("getsockname(): sockfd={:?}, sockaddr={:?}", sockfd, sockaddr);
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
@@ -77,9 +71,8 @@ pub fn getsockname(
                 let response: GetSockNameResponse =
                     GetSockNameResponse::from_bytes(message.payload);
 
-                // Copy address and size.
+                // Copy address.
                 *sockaddr = response.sockaddr;
-                *len = response.socklen;
 
                 Ok(())
             },

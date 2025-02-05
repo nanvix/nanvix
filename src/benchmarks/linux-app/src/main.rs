@@ -20,9 +20,9 @@ use ::posix::{
     sys::{
         self,
         socket::{
-            sockaddr,
-            socklen_t,
             Shutdown,
+            SocketAddr,
+            SocketAddrV4,
         },
         stat::stat,
         times,
@@ -738,20 +738,31 @@ pub fn main() -> Result<(), Error> {
 
     // TODO: test case for accept().
 
-    match sys::socket::bind(
-        sockfd,
-        unsafe {
-            mem::transmute::<&posix::netinet::in_::sockaddr_in, &posix::sys::socket::sockaddr>(
-                &sockaddr_in,
-            )
-        },
-        core::mem::size_of::<sys::socket::sockaddr>() as socklen_t,
-    ) {
+    let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
+
+    match sys::socket::bind(sockfd, &sockaddr) {
         0 => {
             ::nvx::log!("bound socket to address");
         },
         errno => {
             panic!("failed to bind socket to address: {:?}", errno);
+        },
+    }
+
+    // Check if socket is bound to expected address.
+    let mut sockaddr_: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
+    match sys::socket::getsockname(sockfd, &mut sockaddr_) {
+        Ok(()) => {
+            if sockaddr_ != sockaddr {
+                panic!(
+                    "socket is not bound to expected address (expected: {:?}, actual: {:?})",
+                    sockaddr, sockaddr_
+                );
+            }
+            ::nvx::log!("socket is bound to address {:?}", sockaddr_);
+        },
+        Err(error) => {
+            panic!("failed to get local name of socket: {:?}", error);
         },
     }
 
@@ -797,10 +808,9 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Get name of the local socket.
-    let mut sockaddr_self: [sockaddr; 2] = unsafe { mem::zeroed() };
-    let mut addrlen_self: [socklen_t; 2] = [0; 2];
+    let mut sockaddr_self: [SocketAddr; 2] = unsafe { mem::zeroed() };
     for i in 0..2 {
-        match sys::socket::getsockname(socket_fds[i], &mut sockaddr_self[i], &mut addrlen_self[i]) {
+        match sys::socket::getsockname(socket_fds[i], &mut sockaddr_self[i]) {
             Ok(()) => {
                 ::nvx::log!("sockfd {:?} is bound to {:?}", socket_fds[i], sockaddr_self[i]);
             },
@@ -811,10 +821,9 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Get name of the peer socket.
-    let mut sockaddr_peer: [sockaddr; 2] = unsafe { mem::zeroed() };
-    let mut addrlen_peer: [socklen_t; 2] = [0; 2];
+    let mut sockaddr_peer: [SocketAddr; 2] = unsafe { mem::zeroed() };
     for i in (0..2).rev() {
-        match sys::socket::getpeername(socket_fds[i], &mut sockaddr_peer[i], &mut addrlen_peer[i]) {
+        match sys::socket::getpeername(socket_fds[i], &mut sockaddr_peer[i]) {
             Ok(()) => {
                 ::nvx::log!(
                     "sockfd {:?} is connected to peer {:?}",
@@ -830,9 +839,6 @@ pub fn main() -> Result<(), Error> {
 
     // Check if local and peer names are the same.
     for i in 0..2 {
-        if addrlen_self[i] != addrlen_peer[i] {
-            panic!("local and peer names are not the same");
-        }
         if sockaddr_self[i] != sockaddr_peer[i] {
             panic!("local and peer names are not the same");
         }

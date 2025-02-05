@@ -7,10 +7,7 @@
 
 use crate::{
     ffi::c_int,
-    sys::socket::{
-        sockaddr,
-        socklen_t,
-    },
+    sys::socket::SocketAddr,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -33,23 +30,19 @@ use ::nvx::{
 #[repr(C, packed)]
 pub struct BindSocketRequest {
     pub sockfd: c_int,
-    pub sockaddr: sockaddr,
-    pub socklen: socklen_t,
+    pub sockaddr: SocketAddr,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(BindSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl BindSocketRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
-        - mem::size_of::<c_int>()
-        - mem::size_of::<sockaddr>()
-        - mem::size_of::<socklen_t>();
+    pub const PADDING_SIZE: usize =
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<SocketAddr>();
 
-    pub fn new(sockfd: c_int, sockaddr: sockaddr, socklen: socklen_t) -> Self {
+    pub fn new(sockfd: c_int, sockaddr: SocketAddr) -> Self {
         Self {
             sockfd,
             sockaddr,
-            socklen,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -62,13 +55,8 @@ impl BindSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(
-        pid: ProcessIdentifier,
-        sockfd: c_int,
-        sockaddr: sockaddr,
-        socklen: socklen_t,
-    ) -> Message {
-        let message: Self = Self::new(sockfd, sockaddr, socklen);
+    pub fn build(pid: ProcessIdentifier, sockfd: c_int, sockaddr: SocketAddr) -> Message {
+        let message: Self = Self::new(sockfd, sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::BindSocketRequest,
             message.into_bytes(),
@@ -82,13 +70,9 @@ impl BindSocketRequest {
 
 impl Debug for BindSocketRequest {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(
-            f,
-            "BindSocketRequest {{ sockfd: {}, sockaddr: {:?}, socklen: {} }}",
-            { self.sockfd },
-            self.sockaddr.clone(),
-            { self.socklen }
-        )
+        write!(f, "BindSocketRequest {{ sockfd: {}, sockaddr: {:?} }}", { self.sockfd }, {
+            self.sockaddr
+        },)
     }
 }
 
