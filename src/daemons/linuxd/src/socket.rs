@@ -367,13 +367,14 @@ pub fn do_shutdown(pid: ProcessIdentifier, request: ShutdownSocketRequest) -> Me
 
     debug!("libc::shutdown(): sockfd={:?}, how={:?}", sockfd, how.inner());
     match unsafe { libc::shutdown(sockfd, how.inner()) } {
+        0 => ShutdownSocketResponse::build(pid),
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
         },
-        ret => ShutdownSocketResponse::build(pid, ret),
+        ret => unreachable!("libc::shutdown() returned invalid value {:?}", ret),
     }
 }
 
