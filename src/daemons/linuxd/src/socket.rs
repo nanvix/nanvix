@@ -203,7 +203,7 @@ pub fn do_connect(pid: ProcessIdentifier, request: ConnectSocketRequest) -> Mess
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
         },
-        sockfd => BindSocketResponse::build(pid, sockfd),
+        sockfd => ConnectSocketResponse::build(pid, sockfd),
     }
 }
 
