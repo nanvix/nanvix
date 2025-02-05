@@ -59,6 +59,28 @@ impl WasmEngine {
                 // Reconstruct file descriptor flags.
                 let fdflags: FdFlags = fdflags.into();
 
+                // Check for invalid/unsupported file descriptor flags.
+                if fdflags.append {
+                    ::nvx::log!("sock_accept(): append to a file is invalid");
+                    return Errno::Inval.into();
+                };
+                if fdflags.sync {
+                    ::nvx::log!("sock_accept(): sync to a file is invalid");
+                    return Errno::Inval.into();
+                };
+                if fdflags.dsync {
+                    ::nvx::log!("sock_accept(): dsync to a file is invalid");
+                    return Errno::Inval.into();
+                };
+                if fdflags.rsync {
+                    ::nvx::log!("sock_accept(): rsync to a file is invalid");
+                    return Errno::Inval.into();
+                };
+                if fdflags.nonblock {
+                    ::nvx::log!("sock_accept(): nonblock to a file is not supported");
+                    return Errno::Notsup.into();
+                };
+
                 // Attempt to convert socket file descriptor offset.
                 let sockfd_offset: usize = match sockfd_offset.try_into() {
                     Ok(offset) => offset,
