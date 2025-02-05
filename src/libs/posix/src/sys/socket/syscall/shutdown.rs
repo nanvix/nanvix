@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    ffi::c_int,
     sys::socket::{
         message::{
             ShutdownSocketRequest,
@@ -26,7 +27,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn shutdown(sockfd: i32, how: Shutdown) -> i32 {
+pub fn shutdown(sockfd: c_int, how: Shutdown) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
