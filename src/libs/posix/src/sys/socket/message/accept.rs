@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    sys::socket::{
-        sockaddr,
-        socklen_t,
-    },
+    sys::socket::SocketAddr,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -75,23 +72,19 @@ impl AcceptSocketRequest {
 #[repr(C, packed)]
 pub struct AcceptSocketResponse {
     pub sockfd: i32,
-    pub sockaddr: sockaddr,
-    pub socklen: socklen_t,
+    pub sockaddr: SocketAddr,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(AcceptSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl AcceptSocketResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
-        - mem::size_of::<i32>()
-        - mem::size_of::<sockaddr>()
-        - mem::size_of::<socklen_t>();
+    pub const PADDING_SIZE: usize =
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<SocketAddr>();
 
-    pub fn new(sockfd: i32, sockaddr: sockaddr, socklen: socklen_t) -> Self {
+    pub fn new(sockfd: i32, sockaddr: SocketAddr) -> Self {
         Self {
             sockfd,
             sockaddr,
-            socklen,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -104,13 +97,8 @@ impl AcceptSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(
-        pid: ProcessIdentifier,
-        sockfd: i32,
-        sockaddr: sockaddr,
-        socklen: socklen_t,
-    ) -> Message {
-        let message: Self = Self::new(sockfd, sockaddr, socklen);
+    pub fn build(pid: ProcessIdentifier, sockfd: i32, sockaddr: SocketAddr) -> Message {
+        let message: Self = Self::new(sockfd, sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::AcceptSocketResponse,
             message.into_bytes(),
@@ -124,12 +112,8 @@ impl AcceptSocketResponse {
 
 impl Debug for AcceptSocketResponse {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "AcceptSocketResponse {{ sockfd: {}, sockaddr: {:?}, socklen: {} }}",
-            { self.sockfd },
-            self.sockaddr.clone(),
-            { self.socklen }
-        )
+        write!(f, "AcceptSocketResponse {{ sockfd: {}, sockaddr: {:?} }}", { self.sockfd }, {
+            self.sockaddr
+        })
     }
 }

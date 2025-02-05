@@ -41,6 +41,7 @@ use ::posix::sys::{
         sockaddr,
         socklen_t,
         Shutdown,
+        SocketAddr,
     },
     types::{
         size_t,
@@ -313,8 +314,8 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let socklen: socklen_t = address_len as socklen_t;
-            AcceptSocketResponse::build(pid, sockfd, sockaddr, socklen)
+            let sockaddr: SocketAddr = sockaddr.into();
+            AcceptSocketResponse::build(pid, sockfd, sockaddr)
         },
     }
 }
