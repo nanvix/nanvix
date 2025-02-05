@@ -11,8 +11,7 @@ use crate::{
             AcceptSocketRequest,
             AcceptSocketResponse,
         },
-        sockaddr,
-        socklen_t,
+        SocketAddr,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -27,7 +26,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn accept(sockfd: i32, addr: &mut sockaddr, addrlen: &mut socklen_t) -> i32 {
+pub fn accept(sockfd: i32, sockaddr: &mut SocketAddr) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
@@ -63,8 +62,7 @@ pub fn accept(sockfd: i32, addr: &mut sockaddr, addrlen: &mut socklen_t) -> i32 
                         AcceptSocketResponse::from_bytes(message.payload);
 
                     // Response was successfully parsed.
-                    *addr = response.sockaddr;
-                    *addrlen = response.socklen;
+                    *sockaddr = response.sockaddr;
                     response.sockfd
                 },
                 // Response was not successfully parsed.

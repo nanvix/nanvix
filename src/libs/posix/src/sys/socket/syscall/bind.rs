@@ -11,8 +11,7 @@ use crate::{
             BindSocketRequest,
             BindSocketResponse,
         },
-        sockaddr,
-        socklen_t,
+        SocketAddr,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -27,14 +26,14 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn bind(sockfd: i32, sockaddr: &sockaddr, len: socklen_t) -> i32 {
+pub fn bind(sockfd: i32, sockaddr: &SocketAddr) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
     };
 
     // Build request and send it.
-    let request: Message = BindSocketRequest::build(pid, sockfd, sockaddr.clone(), len);
+    let request: Message = BindSocketRequest::build(pid, sockfd, sockaddr.clone());
     if let Err(e) = ::nvx::ipc::send(&request) {
         return e.code.into_errno();
     }
