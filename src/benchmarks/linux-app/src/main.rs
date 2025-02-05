@@ -23,6 +23,7 @@ use ::posix::{
             sockaddr,
             socklen_t,
             Shutdown,
+            SocketAddr,
         },
         stat::stat,
         times,
@@ -738,15 +739,9 @@ pub fn main() -> Result<(), Error> {
 
     // TODO: test case for accept().
 
-    match sys::socket::bind(
-        sockfd,
-        unsafe {
-            mem::transmute::<&posix::netinet::in_::sockaddr_in, &posix::sys::socket::sockaddr>(
-                &sockaddr_in,
-            )
-        },
-        core::mem::size_of::<sys::socket::sockaddr>() as socklen_t,
-    ) {
+    let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
+
+    match sys::socket::bind(sockfd, &sockaddr) {
         0 => {
             ::nvx::log!("bound socket to address");
         },
