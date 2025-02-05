@@ -273,6 +273,7 @@ check: \
 	check-microvm
 
 run-unit-tests: all \
+	test-guest-staticlibs \
 	test-guest-rlibs
 
 run-nanvixd-tests: | test-echo test-hello-c test-hello-cpp test-linux-app
@@ -331,6 +332,9 @@ clean-guest-staticlib-$(1):
 
 clippy-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib
+
+test-guest-staticlib-$(1):
+	$(HOST_CARGO_TEST_CMD) -p $(1) --features=staticlib
 endef
 
 $(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))
@@ -342,6 +346,8 @@ check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),check-guest-st
 clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
 
 clippy-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clippy-guest-staticlib-$(target))
+
+test-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),test-guest-staticlib-$(target))
 
 #===================================================================================================
 # Build Rules for Guest Rust Libraries
