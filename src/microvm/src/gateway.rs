@@ -47,8 +47,12 @@ impl Gateway {
                 match stream.write_all(&bytes) {
                     Ok(_) => Ok(()),
                     Err(e) => {
-                        let reason: String = format!("failed to send message ({:?}", e);
-                        error!("send(): {}", reason);
+                        // Print error messages only if it is not a WouldBlock error to avoid spamming the logs.
+                        if e.kind() != ErrorKind::WouldBlock {
+                            let reason: String = format!("failed to send message ({:?}", e);
+                            error!("send(): {}", reason);
+                        }
+
                         Err(e)
                     },
                 }
@@ -83,8 +87,12 @@ impl Gateway {
                         Ok(message)
                     },
                     Err(e) => {
-                        let reason: String = format!("failed to receive message ({:?})", e);
-                        error!("receive(): {}", reason);
+                        // Print error messages only if it is not a WouldBlock error to avoid spamming the logs.
+                        if e.kind() != ErrorKind::WouldBlock {
+                            let reason: String = format!("failed to receive message ({:?})", e);
+                            error!("receive(): {}", reason);
+                        }
+
                         Err(e)
                     },
                 }
