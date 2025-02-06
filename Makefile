@@ -325,6 +325,7 @@ all-guest-staticlib-$(1):
 check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib
+	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 clean-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
