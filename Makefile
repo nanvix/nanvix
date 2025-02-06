@@ -325,6 +325,7 @@ all-guest-staticlib-$(1):
 check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib
+	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 clean-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
@@ -332,6 +333,7 @@ clean-guest-staticlib-$(1):
 
 clippy-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 test-guest-staticlib-$(1):
 	$(HOST_CARGO_TEST_CMD) -p $(1) --features=staticlib
@@ -356,9 +358,11 @@ test-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),test-guest-stat
 define GUEST_RLIB_RULES
 check-guest-rlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
+	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 clippy-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 test-guest-rlib-$(1):
 	$(HOST_CARGO_TEST_CMD) -p $(1)
