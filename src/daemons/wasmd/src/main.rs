@@ -38,6 +38,16 @@ use ::alloc::{
     vec::Vec,
 };
 use ::nvx::sys::error::Error;
+use ::posix::{
+    netinet::in_::{
+        in_addr,
+        sockaddr_in,
+    },
+    sys::{
+        self,
+        socket::SocketAddr,
+    },
+};
 
 #[no_mangle]
 fn fminf(a: f32, b: f32) -> f32 {
@@ -119,6 +129,7 @@ impl WasmBinary {
                     self,
                     sockaddr,
                     socklen_t,
+                    SocketAddr,
                 },
                 types::{
                     size_t,
@@ -145,15 +156,9 @@ impl WasmBinary {
             sin_zero: [0; 8],
         };
 
-        match sys::socket::bind(
-            sockfd,
-            unsafe {
-                mem::transmute::<&posix::netinet::in_::sockaddr_in, &posix::sys::socket::sockaddr>(
-                    &sockaddr_in,
-                )
-            },
-            core::mem::size_of::<sys::socket::sockaddr>() as socklen_t,
-        ) {
+        let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
+
+        match sys::socket::bind(sockfd, &sockaddr) {
             0 => {
                 ::nvx::log!("bound socket to address");
             },
@@ -175,7 +180,7 @@ impl WasmBinary {
         // Accept connection on socket.
         let mut address: sockaddr = unsafe { core::mem::zeroed() };
         let mut address_len: socklen_t = 0;
-        let connfd: i32 = match sys::socket::accept(sockfd, &mut address, &mut address_len) {
+        let connfd: i32 = match sys::socket::accept(sockfd, &mut address) {
             connfd if connfd >= 0 => {
                 ::nvx::log!("accepted connection on socket with fd {}", connfd);
                 connfd
@@ -188,12 +193,7 @@ impl WasmBinary {
         // Read payload size.
         let mut payload_buffer: [u8; core::mem::size_of::<u32>()] =
             [0; core::mem::size_of::<u32>()];
-        let payload_size = match socket::recv(
-            connfd,
-            &mut payload_buffer as *mut _ as *mut u8,
-            payload_buffer.len() as size_t,
-            0,
-        ) {
+        let payload_size = match socket::recv(connfd, &mut payload_buffer, 0) {
             n if n == core::mem::size_of::<u32>() as ssize_t => u32::from_le_bytes(payload_buffer),
             errno => {
                 panic!("failed to receive payload size: {:?}", errno);
@@ -203,7 +203,7 @@ impl WasmBinary {
 
         // Read payload.
         let mut wasm_bytes: Vec<u8> = alloc::vec![0; payload_size as usize];
-        match socket::recv(connfd, wasm_bytes.as_mut_ptr(), payload_size as size_t, 0) {
+        match socket::recv(connfd, &mut wasm_bytes, 0) {
             n if n == payload_size as ssize_t => {
                 ::nvx::log!("received payload");
             },
@@ -257,7 +257,24 @@ fn main() -> Result<(), Error> {
 
     ::nvx::log!("wasm file loaded {:?}", wasm_binary);
 
-    let mut engine = WasmEngine::new(&wasm_binary, 42);
+    let sock_addr: [u8; 4] = [127, 0, 0, 1];
+    let sock_port: u16 = 8080;
+    let sockaddr_in: sockaddr_in = sockaddr_in {
+        sin_family: match sys::socket::AF_INET.try_into() {
+            Ok(family) => family,
+            Err(_) => {
+                panic!("failed to convert address family");
+            },
+        },
+        sin_port: u16::to_be(sock_port),
+        sin_addr: in_addr {
+            s_addr: u32::from_be_bytes(sock_addr).to_be(),
+        },
+        sin_zero: [0; 8],
+    };
+
+    let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
+    let mut engine = WasmEngine::new(&wasm_binary, 42, &sockaddr);
 
     engine.run();
 
