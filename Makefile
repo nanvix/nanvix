@@ -333,6 +333,7 @@ clean-guest-staticlib-$(1):
 
 clippy-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 test-guest-staticlib-$(1):
 	$(HOST_CARGO_TEST_CMD) -p $(1) --features=staticlib
