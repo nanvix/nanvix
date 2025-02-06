@@ -719,12 +719,12 @@ pub fn main() -> Result<(), Error> {
     let typ: SocketType = SocketType::Stream;
     let protocol: Protocol = Protocol::Tcp;
     let sockfd: i32 = match sys::socket::socket(domain, typ, protocol) {
-        sockfd if sockfd >= 0 => {
+        Ok(sockfd) => {
             ::nvx::log!("created socket with fd {}", sockfd);
             sockfd
         },
-        errno => {
-            panic!("failed to create socket: {:?}", errno);
+        Err(error) => {
+            panic!("failed to create socket: {:?}", error);
         },
     };
 
