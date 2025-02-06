@@ -30,7 +30,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn accept(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<c_int, Error> {
+pub fn accept(sockfd: c_int, sockaddr: Option<&mut SocketAddr>) -> Result<c_int, Error> {
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
@@ -57,8 +57,10 @@ pub fn accept(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<c_int, Error> 
                     let response: AcceptSocketResponse =
                         AcceptSocketResponse::from_bytes(message.payload);
 
-                    // Response was successfully parsed.
-                    *sockaddr = response.sockaddr;
+                    // Save socket address, if requested.
+                    if let Some(sockaddr) = sockaddr {
+                        *sockaddr = response.sockaddr;
+                    }
                     Ok(response.sockfd)
                 },
                 // Response was not successfully parsed.
