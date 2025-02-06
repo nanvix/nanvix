@@ -73,6 +73,17 @@ pub const SHUT_WR: i32 = 1;
 /// Disables further send and receive operations.
 pub const SHUT_RDWR: i32 = 2;
 
+/// IP Protocol Numbers (https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml).
+mod ipproto {
+    /// Unspecified IP protocol ()
+    pub const IPPROTO_IP: i32 = 0;
+    /// Transmission Control Protocol.
+    pub const IPPROTO_TCP: i32 = 6;
+    /// User Datagram Protocol.
+    pub const IPPROTO_UDP: i32 = 17;
+}
+pub use ipproto::*;
+
 /// Peeks at an incoming message.
 pub const MSG_PEEK: i32 = 0x2;
 /// Requests out-of-band data.
@@ -115,6 +126,17 @@ pub enum AddressFamily {
     Unspec = AF_UNSPEC,
 }
 
+/// Describes communication protocol of a socket.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+pub enum Protocol {
+    /// Unspecified.
+    Unspec = IPPROTO_IP,
+    /// Transmission Control Protocol.
+    Tcp = IPPROTO_TCP,
+    /// User Datagram Protocol.
+    Udp = IPPROTO_UDP,
+}
 
 /// Describes how a socket should be shutdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
