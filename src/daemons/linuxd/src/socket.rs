@@ -25,6 +25,7 @@ use ::posix::sys::{
             BindSocketRequest,
             BindSocketResponse,
             ConnectSocketRequest,
+            ConnectSocketResponse,
             CreateSocketPairRequest,
             CreateSocketPairResponse,
             CreateSocketRequest,
@@ -162,7 +163,7 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
         },
-        _ => BindSocketResponse::build(pid, 0),
+        _ => BindSocketResponse::build(pid),
     }
 }
 
@@ -202,7 +203,7 @@ pub fn do_connect(pid: ProcessIdentifier, request: ConnectSocketRequest) -> Mess
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
         },
-        sockfd => BindSocketResponse::build(pid, sockfd),
+        sockfd => ConnectSocketResponse::build(pid, sockfd),
     }
 }
 

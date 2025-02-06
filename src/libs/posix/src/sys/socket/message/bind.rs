@@ -83,17 +83,15 @@ impl Debug for BindSocketRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct BindSocketResponse {
-    pub ret: c_int,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(BindSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl BindSocketResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
 
-    pub fn new(sockfd: c_int) -> Self {
+    fn new() -> Self {
         Self {
-            ret: sockfd,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -106,8 +104,8 @@ impl BindSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: c_int) -> Message {
-        let message: Self = Self::new(sockfd);
+    pub fn build(pid: ProcessIdentifier) -> Message {
+        let message: Self = Self::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::BindSocketResponse,
             message.into_bytes(),
