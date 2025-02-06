@@ -223,7 +223,7 @@ pub fn do_listen(pid: ProcessIdentifier, request: ListenSocketRequest) -> Messag
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
         },
-        _ => ListenSocketResponse::build(pid, 0),
+        _ => ListenSocketResponse::build(pid),
     }
 }
 

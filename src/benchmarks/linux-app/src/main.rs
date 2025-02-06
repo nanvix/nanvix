@@ -775,11 +775,11 @@ pub fn main() -> Result<(), Error> {
 
     // Listen for connections on socket.
     match sys::socket::listen(sockfd, 0) {
-        0 => {
+        Ok(()) => {
             ::nvx::log!("listening for connections on socket");
         },
-        errno => {
-            panic!("failed to listen for connections on socket: {:?}", errno);
+        Err(error) => {
+            panic!("failed to listen for connections on socket ({:?})", error);
         },
     }
 
