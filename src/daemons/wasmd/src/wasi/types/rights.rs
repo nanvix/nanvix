@@ -6,7 +6,7 @@
 //==================================================================================================
 
 /// File descriptor rights.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Rights {
     pub fd_datasync: bool,
     pub fd_read: bool,
