@@ -6,9 +6,14 @@
 //==================================================================================================
 
 use crate::{
-    sys::socket::message::{
-        CreateSocketRequest,
-        CreateSocketResponse,
+    sys::socket::{
+        message::{
+            CreateSocketRequest,
+            CreateSocketResponse,
+        },
+        AddressFamily,
+        Protocol,
+        SocketType,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -23,7 +28,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn socket(domain: i32, typ: i32, protocol: i32) -> i32 {
+pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> i32 {
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),

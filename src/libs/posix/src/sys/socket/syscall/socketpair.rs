@@ -7,9 +7,14 @@
 
 use crate::{
     ffi::c_int,
-    sys::socket::message::{
-        CreateSocketPairRequest,
-        CreateSocketPairResponse,
+    sys::socket::{
+        message::{
+            CreateSocketPairRequest,
+            CreateSocketPairResponse,
+        },
+        AddressFamily,
+        Protocol,
+        SocketType,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -44,9 +49,9 @@ use ::nvx::{
 /// The `socketpair()` function returns empty on success. On error, it returns an error.
 ///
 pub fn socketpair(
-    domain: c_int,
-    typ: c_int,
-    protocol: c_int,
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
     socket_fds: &mut [c_int],
 ) -> Result<(), Error> {
     ::nvx::log!("socketpair(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
