@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    ffi::c_int,
     sys::socket::{
         message::{
             AcceptSocketRequest,
@@ -19,37 +20,32 @@ use crate::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn accept(sockfd: i32, sockaddr: &mut SocketAddr) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+pub fn accept(sockfd: c_int, sockaddr: Option<&mut SocketAddr>) -> Result<c_int, Error> {
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
     let request: Message = AcceptSocketRequest::build(pid, sockfd);
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            Ok(error_code) => Err(Error::new(error_code, "failed to accept a connection")),
+            Err(e) => Err(e),
         }
     } else {
         // System call succeeded, parse response.
@@ -61,15 +57,17 @@ pub fn accept(sockfd: i32, sockaddr: &mut SocketAddr) -> i32 {
                     let response: AcceptSocketResponse =
                         AcceptSocketResponse::from_bytes(message.payload);
 
-                    // Response was successfully parsed.
-                    *sockaddr = response.sockaddr;
-                    response.sockfd
+                    // Save socket address, if requested.
+                    if let Some(sockaddr) = sockaddr {
+                        *sockaddr = response.sockaddr;
+                    }
+                    Ok(response.sockfd)
                 },
                 // Response was not successfully parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
+                _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },
             // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            Err(_) => Err(Error::new(ErrorCode::InvalidMessage, "invalid response")),
         }
     }
 }

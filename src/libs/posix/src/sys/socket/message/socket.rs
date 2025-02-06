@@ -6,6 +6,11 @@
 //==================================================================================================
 
 use crate::{
+    sys::socket::{
+        AddressFamily,
+        Protocol,
+        SocketType,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -28,20 +33,20 @@ use ::nvx::{
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct CreateSocketRequest {
-    pub domain: i32,
-    pub typ: i32,
-    pub protocol: i32,
+    pub domain: AddressFamily,
+    pub typ: SocketType,
+    pub protocol: Protocol,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(CreateSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl CreateSocketRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
-        - mem::size_of::<i32>()
-        - mem::size_of::<i32>()
-        - mem::size_of::<i32>();
+        - mem::size_of::<AddressFamily>()
+        - mem::size_of::<SocketType>()
+        - mem::size_of::<Protocol>();
 
-    pub fn new(domain: i32, type_: i32, protocol: i32) -> Self {
+    pub fn new(domain: AddressFamily, type_: SocketType, protocol: Protocol) -> Self {
         Self {
             domain,
             typ: type_,
@@ -58,7 +63,12 @@ impl CreateSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, domain: i32, typ: i32, protocol: i32) -> Message {
+    pub fn build(
+        pid: ProcessIdentifier,
+        domain: AddressFamily,
+        typ: SocketType,
+        protocol: Protocol,
+    ) -> Message {
         let message: Self = Self::new(domain, typ, protocol);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::CreateSocketRequest,

@@ -13,7 +13,10 @@ use crate::{
     sys::socket::{
         sockaddr,
         socklen_t,
+        AddressFamily,
+        Protocol,
         SocketAddr,
+        SocketType,
     },
 };
 use ::nvx::sys::error::ErrorCode;
@@ -99,7 +102,13 @@ pub unsafe extern "C" fn getpeername(
 
     match crate::sys::socket::getpeername(sockfd, &mut sockaddr_) {
         Ok(_) => {
-            let (sockaddr_, len_): (sockaddr, socklen_t) = sockaddr_.into();
+            let (sockaddr_, len_): (sockaddr, socklen_t) = match sockaddr_.try_into() {
+                Ok((sockaddr_, len_)) => (sockaddr_, len_),
+                Err(e) => {
+                    unsafe { errno = e.code.into_errno() };
+                    return -1;
+                },
+            };
             unsafe { *sockaddr = sockaddr_ };
             unsafe { *len = len_ };
             0
@@ -153,7 +162,13 @@ pub unsafe extern "C" fn getsockname(
 
     match crate::sys::socket::getsockname(sockfd, &mut sockaddr_) {
         Ok(_) => {
-            let (sockaddr_, len_): (sockaddr, socklen_t) = sockaddr_.into();
+            let (sockaddr_, len_): (sockaddr, socklen_t) = match sockaddr_.try_into() {
+                Ok((sockaddr_, len_)) => (sockaddr_, len_),
+                Err(e) => {
+                    unsafe { errno = e.code.into_errno() };
+                    return -1;
+                },
+            };
             unsafe { *sockaddr = sockaddr_ };
             unsafe { *len = len_ };
             0
@@ -201,6 +216,33 @@ pub unsafe extern "C" fn socketpair(
 
     // Reconstruct array.
     let socket_fds: &mut [c_int] = slice::from_raw_parts_mut(socket_fds, 2);
+
+    // Attempt to convert socket address family.
+    let domain: AddressFamily = match domain.try_into() {
+        Ok(domain) => domain,
+        Err(_error) => {
+            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            return -1;
+        },
+    };
+
+    // Attempt to convert socket type.
+    let typ: SocketType = match typ.try_into() {
+        Ok(typ) => typ,
+        Err(_error) => {
+            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            return -1;
+        },
+    };
+
+    // Attempt to convert socket protocol.
+    let protocol: Protocol = match protocol.try_into() {
+        Ok(protocol) => protocol,
+        Err(_error) => {
+            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            return -1;
+        },
+    };
 
     match crate::sys::socket::socketpair(domain, typ, protocol, socket_fds) {
         Ok(_) => 0,
