@@ -16,6 +16,7 @@ use crate::netinet::in_::{
     sockaddr_in,
 };
 use ::core::mem;
+use ::num_enum::TryFromPrimitive;
 
 //==================================================================================================
 // Modules
@@ -99,6 +100,21 @@ pub struct sockaddr {
     pub sa_data: [u8; 14],
 }
 ::nvx::sys::static_assert_size!(sockaddr, 16);
+
+/// Describes protocol family of a socket.
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+pub enum AddressFamily {
+    /// Internet domain sockets for use with IPv4 addresses.
+    Inet = AF_INET,
+    /// Internet domain sockets for use with IPv6 addresses.
+    Inet6 = AF_INET6,
+    /// Unix domain sockets.
+    Unix = AF_UNIX,
+    /// Unspecified.
+    Unspec = AF_UNSPEC,
+}
+
 
 /// Describes how a socket should be shutdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
