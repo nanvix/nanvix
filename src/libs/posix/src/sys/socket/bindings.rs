@@ -99,7 +99,13 @@ pub unsafe extern "C" fn getpeername(
 
     match crate::sys::socket::getpeername(sockfd, &mut sockaddr_) {
         Ok(_) => {
-            let (sockaddr_, len_): (sockaddr, socklen_t) = sockaddr_.into();
+            let (sockaddr_, len_): (sockaddr, socklen_t) = match sockaddr_.try_into() {
+                Ok((sockaddr_, len_)) => (sockaddr_, len_),
+                Err(e) => {
+                    unsafe { errno = e.code.into_errno() };
+                    return -1;
+                },
+            };
             unsafe { *sockaddr = sockaddr_ };
             unsafe { *len = len_ };
             0
@@ -153,7 +159,13 @@ pub unsafe extern "C" fn getsockname(
 
     match crate::sys::socket::getsockname(sockfd, &mut sockaddr_) {
         Ok(_) => {
-            let (sockaddr_, len_): (sockaddr, socklen_t) = sockaddr_.into();
+            let (sockaddr_, len_): (sockaddr, socklen_t) = match sockaddr_.try_into() {
+                Ok((sockaddr_, len_)) => (sockaddr_, len_),
+                Err(e) => {
+                    unsafe { errno = e.code.into_errno() };
+                    return -1;
+                },
+            };
             unsafe { *sockaddr = sockaddr_ };
             unsafe { *len = len_ };
             0

@@ -726,7 +726,10 @@ pub fn main() -> Result<(), Error> {
 
     // Bind socket to address to 127.0.0.1:8888.
     let sockaddr_in: sockaddr_in = sockaddr_in {
-        sin_family: sys::socket::AF_INET,
+        sin_family: match sys::socket::AF_INET.try_into() {
+            Ok(family) => family,
+            Err(e) => panic!("{:?}", e),
+        },
         sin_port: u16::to_be(8888),
         sin_addr: in_addr {
             s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be(),
