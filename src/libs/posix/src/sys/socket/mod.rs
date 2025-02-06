@@ -138,6 +138,20 @@ pub enum Protocol {
     Udp = IPPROTO_UDP,
 }
 
+/// Describes communication semantics of a socket.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+pub enum SocketType {
+    /// Provides sequenced, reliable, bidirectional, connection-mode byte streams.
+    Stream = SOCK_STREAM,
+    /// Provides raw network protocol access.
+    Raw = SOCK_RAW,
+    /// Provides datagrams, which are connectionless-mode, unreliable messages of fixed maximum length.
+    Datagram = SOCK_DGRAM,
+    /// Provides sequenced, reliable, bidirectional, connection-mode transmission paths for records.
+    SeqPacket = SOCK_SEQPACKET,
+}
+
 /// Describes how a socket should be shutdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shutdown {
