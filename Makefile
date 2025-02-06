@@ -362,6 +362,7 @@ check-guest-rlib-$(1):
 
 clippy-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 test-guest-rlib-$(1):
 	$(HOST_CARGO_TEST_CMD) -p $(1)
