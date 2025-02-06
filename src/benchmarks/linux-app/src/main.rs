@@ -864,12 +864,12 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Receive message from connection.
-    match sys::socket::recv(socket_fds[1], buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
-        len if len >= 0 => {
+    match sys::socket::recv(socket_fds[1], &mut buffer, 0) {
+        Ok(len) => {
             ::nvx::log!("received {} bytes from connection", len);
         },
-        errno => {
-            panic!("failed to receive message from connection: {:?}", errno);
+        Err(error) => {
+            panic!("failed to receive message from connection (error={:?})", error);
         },
     }
 
