@@ -430,7 +430,7 @@ impl LibcSocketDomain {
     }
 
     fn try_from(domain: i32) -> Result<Self, Error> {
-        match domain as u16 {
+        match domain {
             ::posix::sys::socket::AF_INET => Ok(Self(libc::AF_INET as libc::sa_family_t)),
             ::posix::sys::socket::AF_INET6 => Ok(Self(libc::AF_INET6 as libc::sa_family_t)),
             ::posix::sys::socket::AF_UNIX => Ok(Self(libc::AF_UNIX as libc::sa_family_t)),
@@ -480,7 +480,7 @@ impl TryFrom<SocketAddr> for LibcSocketAddress {
     type Error = Error;
 
     fn try_from(sockaddr: SocketAddr) -> Result<Self, Self::Error> {
-        let sockaddr: sockaddr = sockaddr.into();
+        let sockaddr: sockaddr = sockaddr.try_into()?;
         LibcSocketAddress::try_from(sockaddr)
     }
 }
