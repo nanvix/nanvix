@@ -154,7 +154,7 @@ endif
 #===================================================================================================
 
 # Tools
-export JAVY := $(HOME)/.cargo/bin/javy
+export JAVY ?= $(HOME)/.cargo/bin/javy
 
 # Javy compiler options.
 export JAVY_FLAGS := -J simd-json-builtins=n -C dynamic=no -C source-compression=y
