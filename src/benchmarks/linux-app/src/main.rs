@@ -20,9 +20,12 @@ use ::posix::{
     sys::{
         self,
         socket::{
+            AddressFamily,
+            Protocol,
             Shutdown,
             SocketAddr,
             SocketAddrV4,
+            SocketType,
         },
         stat::stat,
         times,
@@ -712,9 +715,10 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Create a socket.
-    let domain: i32 = sys::socket::AF_INET as i32;
-    let typ: i32 = sys::socket::SOCK_STREAM;
-    let sockfd: i32 = match sys::socket::socket(domain, typ, 0) {
+    let domain: AddressFamily = AddressFamily::Inet;
+    let typ: SocketType = SocketType::Stream;
+    let protocol: Protocol = Protocol::Tcp;
+    let sockfd: i32 = match sys::socket::socket(domain, typ, protocol) {
         sockfd if sockfd >= 0 => {
             ::nvx::log!("created socket with fd {}", sockfd);
             sockfd
@@ -793,9 +797,9 @@ pub fn main() -> Result<(), Error> {
     let mut socket_fds: [c_int; 2] = [-1; 2];
 
     match sys::socket::socketpair(
-        sys::socket::AF_UNIX as c_int,
-        sys::socket::SOCK_STREAM,
-        0,
+        AddressFamily::Unix,
+        SocketType::Stream,
+        Protocol::Unspec,
         &mut socket_fds,
     ) {
         Ok(()) => {

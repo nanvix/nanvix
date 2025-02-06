@@ -45,8 +45,11 @@ use ::posix::sys::{
         },
         sockaddr,
         socklen_t,
+        AddressFamily,
+        Protocol,
         Shutdown,
         SocketAddr,
+        SocketType,
     },
     types::{
         size_t,
@@ -66,12 +69,9 @@ pub fn do_socket(pid: ProcessIdentifier, request: CreateSocketRequest) -> Messag
         Err(e) => return crate::build_error(pid, e.code),
     };
 
-    let typ: LibcSocketType = match LibcSocketType::try_from(request.typ) {
-        Ok(typ) => typ,
-        Err(e) => return crate::build_error(pid, e.code),
-    };
+    let typ: LibcSocketType = LibcSocketType::from(request.typ);
 
-    let protocol: i32 = request.protocol;
+    let protocol: LibcSocketProtocol = LibcSocketProtocol::from(request.protocol);
 
     debug!(
         "libc::socket(): domain={:?}, type={:?}, protocol={:?}",
@@ -79,7 +79,7 @@ pub fn do_socket(pid: ProcessIdentifier, request: CreateSocketRequest) -> Messag
         typ.inner(),
         protocol
     );
-    match unsafe { libc::socket(domain.inner() as i32, typ.inner(), protocol) } {
+    match unsafe { libc::socket(domain.inner() as i32, typ.inner(), protocol.inner()) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             let error: ErrorCode = ErrorCode::try_from(-errno)
@@ -105,12 +105,9 @@ pub fn do_socketpair(pid: ProcessIdentifier, request: CreateSocketPairRequest) -
         Err(e) => return crate::build_error(pid, e.code),
     };
 
-    let typ: LibcSocketType = match LibcSocketType::try_from(request.typ) {
-        Ok(typ) => typ,
-        Err(e) => return crate::build_error(pid, e.code),
-    };
+    let typ: LibcSocketType = LibcSocketType::from(request.typ);
 
-    let protocol: libc::c_int = request.protocol;
+    let protocol: LibcSocketProtocol = LibcSocketProtocol::from(request.protocol);
 
     let mut sv: [libc::c_int; 2] = [0; 2];
 
@@ -120,8 +117,9 @@ pub fn do_socketpair(pid: ProcessIdentifier, request: CreateSocketPairRequest) -
         typ.inner(),
         protocol
     );
-    match unsafe { libc::socketpair(domain.inner() as i32, typ.inner(), protocol, sv.as_mut_ptr()) }
-    {
+    match unsafe {
+        libc::socketpair(domain.inner() as i32, typ.inner(), protocol.inner(), sv.as_mut_ptr())
+    } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             let error: ErrorCode = ErrorCode::try_from(-errno)
@@ -429,12 +427,11 @@ impl LibcSocketDomain {
         self.0
     }
 
-    fn try_from(domain: i32) -> Result<Self, Error> {
+    fn try_from(domain: AddressFamily) -> Result<Self, Error> {
         match domain {
-            ::posix::sys::socket::AF_INET => Ok(Self(libc::AF_INET as libc::sa_family_t)),
-            ::posix::sys::socket::AF_INET6 => Ok(Self(libc::AF_INET6 as libc::sa_family_t)),
-            ::posix::sys::socket::AF_UNIX => Ok(Self(libc::AF_UNIX as libc::sa_family_t)),
-            ::posix::sys::socket::AF_UNSPEC => Ok(Self(libc::AF_UNSPEC as libc::sa_family_t)),
+            AddressFamily::Inet => Ok(Self(libc::AF_INET as libc::sa_family_t)),
+            AddressFamily::Inet6 => Ok(Self(libc::AF_INET6 as libc::sa_family_t)),
+            AddressFamily::Unix => Ok(Self(libc::AF_UNIX as libc::sa_family_t)),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid socket domain")),
         }
     }
@@ -447,12 +444,29 @@ impl LibcSocketType {
         self.0
     }
 
-    fn try_from(type_: i32) -> Result<Self, Error> {
+    fn from(type_: SocketType) -> Self {
         match type_ {
-            ::posix::sys::socket::SOCK_STREAM => Ok(Self(libc::SOCK_STREAM)),
-            ::posix::sys::socket::SOCK_DGRAM => Ok(Self(libc::SOCK_DGRAM)),
-            ::posix::sys::socket::SOCK_SEQPACKET => Ok(Self(libc::SOCK_SEQPACKET)),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid socket type")),
+            SocketType::Datagram => Self(libc::SOCK_DGRAM),
+            SocketType::Stream => Self(libc::SOCK_STREAM),
+            SocketType::Raw => Self(libc::SOCK_RAW),
+            SocketType::SeqPacket => Self(libc::SOCK_SEQPACKET),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct LibcSocketProtocol(libc::c_int);
+
+impl LibcSocketProtocol {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn from(protocol: Protocol) -> Self {
+        match protocol {
+            Protocol::Unspec => Self(libc::IPPROTO_IP),
+            Protocol::Tcp => Self(libc::IPPROTO_TCP),
+            Protocol::Udp => Self(libc::IPPROTO_UDP),
         }
     }
 }
@@ -469,8 +483,18 @@ impl TryFrom<sockaddr> for LibcSocketAddress {
     type Error = Error;
 
     fn try_from(sockaddr: sockaddr) -> Result<Self, Self::Error> {
+        let domain: i32 = sockaddr.sa_family.into();
+        let domain: AddressFamily = match AddressFamily::try_from(domain) {
+            Ok(domain) => domain,
+            Err(_error) => {
+                return Err(Error::new(
+                    ErrorCode::InvalidArgument,
+                    "failed to convert socket address",
+                ))
+            },
+        };
         Ok(Self(libc::sockaddr {
-            sa_family: LibcSocketDomain::try_from(sockaddr.sa_family as i32)?.inner(),
+            sa_family: LibcSocketDomain::try_from(domain)?.inner(),
             sa_data: unsafe { core::mem::transmute::<[u8; 14], [i8; 14]>(sockaddr.sa_data) },
         }))
     }
