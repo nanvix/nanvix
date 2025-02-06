@@ -20,9 +20,12 @@ use ::posix::{
     sys::{
         self,
         socket::{
+            AddressFamily,
+            Protocol,
             Shutdown,
             SocketAddr,
             SocketAddrV4,
+            SocketType,
         },
         stat::stat,
         times,
@@ -712,21 +715,25 @@ pub fn main() -> Result<(), Error> {
     }
 
     // Create a socket.
-    let domain: i32 = sys::socket::AF_INET as i32;
-    let typ: i32 = sys::socket::SOCK_STREAM;
-    let sockfd: i32 = match sys::socket::socket(domain, typ, 0) {
-        sockfd if sockfd >= 0 => {
+    let domain: AddressFamily = AddressFamily::Inet;
+    let typ: SocketType = SocketType::Stream;
+    let protocol: Protocol = Protocol::Tcp;
+    let sockfd: i32 = match sys::socket::socket(domain, typ, protocol) {
+        Ok(sockfd) => {
             ::nvx::log!("created socket with fd {}", sockfd);
             sockfd
         },
-        errno => {
-            panic!("failed to create socket: {:?}", errno);
+        Err(error) => {
+            panic!("failed to create socket: {:?}", error);
         },
     };
 
     // Bind socket to address to 127.0.0.1:8888.
     let sockaddr_in: sockaddr_in = sockaddr_in {
-        sin_family: sys::socket::AF_INET,
+        sin_family: match sys::socket::AF_INET.try_into() {
+            Ok(family) => family,
+            Err(e) => panic!("{:?}", e),
+        },
         sin_port: u16::to_be(8888),
         sin_addr: in_addr {
             s_addr: u32::from_be_bytes([127, 0, 0, 1]).to_be(),
@@ -768,11 +775,11 @@ pub fn main() -> Result<(), Error> {
 
     // Listen for connections on socket.
     match sys::socket::listen(sockfd, 0) {
-        0 => {
+        Ok(()) => {
             ::nvx::log!("listening for connections on socket");
         },
-        errno => {
-            panic!("failed to listen for connections on socket: {:?}", errno);
+        Err(error) => {
+            panic!("failed to listen for connections on socket ({:?})", error);
         },
     }
 
@@ -790,9 +797,9 @@ pub fn main() -> Result<(), Error> {
     let mut socket_fds: [c_int; 2] = [-1; 2];
 
     match sys::socket::socketpair(
-        sys::socket::AF_UNIX as c_int,
-        sys::socket::SOCK_STREAM,
-        0,
+        AddressFamily::Unix,
+        SocketType::Stream,
+        Protocol::Unspec,
         &mut socket_fds,
     ) {
         Ok(()) => {
@@ -847,22 +854,22 @@ pub fn main() -> Result<(), Error> {
     let mut buffer: [u8; 32] = [1; 32];
 
     // Send message.
-    match sys::socket::send(socket_fds[0], buffer.as_ptr(), buffer.len() as size_t, 0) {
-        len if len >= 0 => {
+    match sys::socket::send(socket_fds[0], &buffer, 0) {
+        Ok(len) => {
             ::nvx::log!("sent {} bytes to connection", len);
         },
-        errno => {
-            panic!("failed to send message to connection: {:?}", errno);
+        Err(error) => {
+            panic!("failed to send message to connection (error={:?})", error);
         },
     }
 
     // Receive message from connection.
-    match sys::socket::recv(socket_fds[1], buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
-        len if len >= 0 => {
+    match sys::socket::recv(socket_fds[1], &mut buffer, 0) {
+        Ok(len) => {
             ::nvx::log!("received {} bytes from connection", len);
         },
-        errno => {
-            panic!("failed to receive message from connection: {:?}", errno);
+        Err(error) => {
+            panic!("failed to receive message from connection (error={:?})", error);
         },
     }
 

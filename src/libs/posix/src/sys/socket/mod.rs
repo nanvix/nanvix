@@ -16,6 +16,11 @@ use crate::netinet::in_::{
     sockaddr_in,
 };
 use ::core::mem;
+use ::num_enum::TryFromPrimitive;
+use ::nvx::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Modules
@@ -48,13 +53,13 @@ pub mod bindings;
 //==================================================================================================
 
 /// Internet domain sockets for use with IPv4 addresses.
-pub const AF_INET: sa_family_t = 2;
+pub const AF_INET: i32 = 2;
 /// Internet domain sockets for use with IPv6 addresses.
-pub const AF_INET6: sa_family_t = 10;
+pub const AF_INET6: i32 = 10;
 /// Unix domain sockets.
-pub const AF_UNIX: sa_family_t = 1;
+pub const AF_UNIX: i32 = 1;
 /// Unspecified.
-pub const AF_UNSPEC: sa_family_t = 0;
+pub const AF_UNSPEC: i32 = 0;
 
 /// Provides sequenced, reliable, bidirectional, connection-mode byte streams.
 pub const SOCK_STREAM: i32 = 1;
@@ -71,6 +76,17 @@ pub const SHUT_RD: i32 = 0;
 pub const SHUT_WR: i32 = 1;
 /// Disables further send and receive operations.
 pub const SHUT_RDWR: i32 = 2;
+
+/// IP Protocol Numbers (https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml).
+mod ipproto {
+    /// Unspecified IP protocol ()
+    pub const IPPROTO_IP: i32 = 0;
+    /// Transmission Control Protocol.
+    pub const IPPROTO_TCP: i32 = 6;
+    /// User Datagram Protocol.
+    pub const IPPROTO_UDP: i32 = 17;
+}
+pub use ipproto::*;
 
 /// Peeks at an incoming message.
 pub const MSG_PEEK: i32 = 0x2;
@@ -99,6 +115,46 @@ pub struct sockaddr {
     pub sa_data: [u8; 14],
 }
 ::nvx::sys::static_assert_size!(sockaddr, 16);
+
+/// Describes protocol family of a socket.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+pub enum AddressFamily {
+    /// Internet domain sockets for use with IPv4 addresses.
+    Inet = AF_INET,
+    /// Internet domain sockets for use with IPv6 addresses.
+    Inet6 = AF_INET6,
+    /// Unix domain sockets.
+    Unix = AF_UNIX,
+    /// Unspecified.
+    Unspec = AF_UNSPEC,
+}
+
+/// Describes communication protocol of a socket.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+pub enum Protocol {
+    /// Unspecified.
+    Unspec = IPPROTO_IP,
+    /// Transmission Control Protocol.
+    Tcp = IPPROTO_TCP,
+    /// User Datagram Protocol.
+    Udp = IPPROTO_UDP,
+}
+
+/// Describes communication semantics of a socket.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+pub enum SocketType {
+    /// Provides sequenced, reliable, bidirectional, connection-mode byte streams.
+    Stream = SOCK_STREAM,
+    /// Provides raw network protocol access.
+    Raw = SOCK_RAW,
+    /// Provides datagrams, which are connectionless-mode, unreliable messages of fixed maximum length.
+    Datagram = SOCK_DGRAM,
+    /// Provides sequenced, reliable, bidirectional, connection-mode transmission paths for records.
+    SeqPacket = SOCK_SEQPACKET,
+}
 
 /// Describes how a socket should be shutdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,16 +187,20 @@ pub struct SocketAddrV4 {
 }
 ::nvx::sys::static_assert_size!(SocketAddrV4, 6);
 
-impl From<SocketAddrV4> for sockaddr_in {
-    fn from(addr: SocketAddrV4) -> Self {
-        Self {
-            sin_family: AF_INET,
+impl TryFrom<SocketAddrV4> for sockaddr_in {
+    type Error = Error;
+
+    fn try_from(addr: SocketAddrV4) -> Result<Self, Self::Error> {
+        Ok(Self {
+            sin_family: AF_INET.try_into().map_err(|_| {
+                Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
+            })?,
             sin_port: addr.port.to_be(),
             sin_addr: in_addr {
                 s_addr: u32::from_be_bytes(addr.addr.octets).to_be(),
             },
             sin_zero: [0; 8],
-        }
+        })
     }
 }
 
@@ -155,15 +215,19 @@ impl From<sockaddr_in> for SocketAddrV4 {
     }
 }
 
-impl From<SocketAddrV4> for sockaddr {
-    fn from(addr: SocketAddrV4) -> Self {
+impl TryFrom<SocketAddrV4> for sockaddr {
+    type Error = Error;
+
+    fn try_from(addr: SocketAddrV4) -> Result<Self, Self::Error> {
         let mut sa_data: [u8; 14] = [0u8; 14];
         sa_data[0..2].copy_from_slice(&addr.port.to_be_bytes());
         sa_data[2..6].copy_from_slice(&addr.addr.octets);
-        Self {
-            sa_family: AF_INET,
+        Ok(Self {
+            sa_family: AF_INET.try_into().map_err(|_| {
+                Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
+            })?,
             sa_data,
-        }
+        })
     }
 }
 
@@ -221,7 +285,7 @@ pub enum SocketAddr {
 
 impl From<sockaddr> for SocketAddr {
     fn from(addr: sockaddr) -> Self {
-        match addr.sa_family {
+        match addr.sa_family.into() {
             AF_INET => SocketAddr::V4(SocketAddrV4::from(addr)),
             AF_INET6 => unimplemented!(),
             AF_UNIX => Self::Unix(SocketAddrUnix),
@@ -230,27 +294,36 @@ impl From<sockaddr> for SocketAddr {
     }
 }
 
-impl From<SocketAddr> for sockaddr {
-    fn from(addr: SocketAddr) -> Self {
+impl TryFrom<SocketAddr> for sockaddr {
+    type Error = Error;
+
+    fn try_from(addr: SocketAddr) -> Result<Self, Self::Error> {
         match addr {
-            SocketAddr::V4(addr) => addr.into(),
+            SocketAddr::V4(addr) => Ok(addr.try_into()?),
             SocketAddr::V6(_) => unimplemented!(),
-            SocketAddr::Unix(_) => sockaddr {
-                sa_family: AF_UNIX,
+            SocketAddr::Unix(_) => Ok(sockaddr {
+                sa_family: AF_INET.try_into().map_err(|_| {
+                    Error::new(
+                        ErrorCode::ValueOutOfRange,
+                        "failed to convert socket address family",
+                    )
+                })?,
                 sa_data: [0; 14],
-            },
+            }),
         }
     }
 }
 
-impl From<SocketAddr> for (sockaddr, socklen_t) {
-    fn from(addr: SocketAddr) -> (sockaddr, socklen_t) {
+impl TryFrom<SocketAddr> for (sockaddr, socklen_t) {
+    type Error = Error;
+
+    fn try_from(addr: SocketAddr) -> Result<(sockaddr, socklen_t), Self::Error> {
         let len: socklen_t = match addr {
             SocketAddr::V4(_) => mem::size_of::<sockaddr_in>() as socklen_t,
             SocketAddr::V6(_) => unimplemented!(),
             SocketAddr::Unix(_) => 0,
         };
-        (addr.into(), len)
+        Ok((addr.try_into()?, len))
     }
 }
 
@@ -268,7 +341,9 @@ mod test {
             },
             port: 80,
         };
-        let test_addr: sockaddr_in = expected_addr.into();
+        let test_addr: sockaddr_in = expected_addr
+            .try_into()
+            .expect("conversion from socket address should succeed");
         assert_eq!(expected_addr, SocketAddrV4::from(test_addr));
     }
 
@@ -276,7 +351,9 @@ mod test {
     #[test]
     fn test_ipv4_sockaddr_conversion() {
         let test_addr: sockaddr_in = sockaddr_in {
-            sin_family: AF_INET,
+            sin_family: AF_INET
+                .try_into()
+                .expect("converting address family should succeed"),
             sin_port: 80u16.to_be(),
             sin_addr: in_addr {
                 s_addr: u32::from_be_bytes([192, 168, 1, 1]).to_be(),
@@ -301,7 +378,9 @@ mod test {
             },
             port: 80,
         };
-        let test_addr: sockaddr = expected_addr.into();
+        let test_addr: sockaddr = expected_addr
+            .try_into()
+            .expect("socket address conversion should succeed");
         assert_eq!(expected_addr, SocketAddrV4::from(test_addr));
     }
 
@@ -309,7 +388,9 @@ mod test {
     #[test]
     fn test_ipv4_sockaddr_into_socket_addr() {
         let test_addr: sockaddr = sockaddr {
-            sa_family: AF_INET,
+            sa_family: AF_INET
+                .try_into()
+                .expect("converting address family should succeed"),
             sa_data: [0, 80, 192, 168, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
         };
         let expected_addr: SocketAddrV4 = SocketAddrV4 {
@@ -330,7 +411,9 @@ mod test {
             },
             port: 80,
         };
-        let test_addr: sockaddr = SocketAddr::V4(expected_addr).into();
+        let test_addr: sockaddr = SocketAddr::V4(expected_addr)
+            .try_into()
+            .expect("conversion should succeed");
         assert_eq!(expected_addr, SocketAddrV4::from(test_addr));
     }
 }
