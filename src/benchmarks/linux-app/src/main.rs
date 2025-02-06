@@ -854,12 +854,12 @@ pub fn main() -> Result<(), Error> {
     let mut buffer: [u8; 32] = [1; 32];
 
     // Send message.
-    match sys::socket::send(socket_fds[0], buffer.as_ptr(), buffer.len() as size_t, 0) {
-        len if len >= 0 => {
+    match sys::socket::send(socket_fds[0], &buffer, 0) {
+        Ok(len) => {
             ::nvx::log!("sent {} bytes to connection", len);
         },
-        errno => {
-            panic!("failed to send message to connection: {:?}", errno);
+        Err(error) => {
+            panic!("failed to send message to connection (error={:?})", error);
         },
     }
 
