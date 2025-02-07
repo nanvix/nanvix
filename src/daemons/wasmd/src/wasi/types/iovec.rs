@@ -35,7 +35,7 @@ pub struct IoVec {
 
 impl IoVec {
     /// Creates a new region of memory for scatter/gather writes.
-    pub fn for_raw_parts(buf: Pointer<u8>, buf_len: Size) -> Self {
+    pub fn from_raw_parts(buf: Pointer<u8>, buf_len: Size) -> Self {
         Self { buf, buf_len }
     }
 

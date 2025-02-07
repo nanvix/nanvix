@@ -22,8 +22,14 @@ pub mod types;
 //==================================================================================================
 
 use crate::{
-    engine::WasiFile,
-    pal::fs::File,
+    engine::{
+        WasiFile,
+        WasiSocket,
+    },
+    pal::{
+        fs::File,
+        socket::Socket,
+    },
     wasi::types::Errno,
 };
 use ::alloc::{
@@ -44,6 +50,7 @@ struct WasiCtxInner {
     next_wasi_fd: Fd,
     files: Vec<WasiFile>,
     preopen_dirs: Vec<(WasiFile, String)>,
+    preopen_sockets: Vec<WasiSocket>,
     envs: Vec<String>,
     args: Vec<String>,
 }
@@ -59,12 +66,14 @@ impl WasiCtxInner {
         next_wasi_fd: Fd,
         files: Vec<WasiFile>,
         preopen_dirs: Vec<(WasiFile, String)>,
+        preopen_sockets: Vec<WasiSocket>,
         envs: Vec<String>,
         args: Vec<String>,
     ) -> Self {
         Self {
             next_wasi_fd,
             preopen_dirs,
+            preopen_sockets,
             files,
             envs,
             args,
@@ -100,6 +109,19 @@ impl WasiCtxInner {
         Ok(())
     }
 
+    fn insert_socket(
+        &mut self,
+        socket: Socket,
+        base_rights: &Rights,
+        inherited_rights: &Rights,
+    ) -> Fd {
+        let wasi_fd: Fd = self.next_wasi_fd;
+        self.preopen_sockets
+            .push(WasiSocket::new(wasi_fd, socket, base_rights, inherited_rights));
+        self.next_wasi_fd += 1;
+        wasi_fd
+    }
+
     fn get_file(&self, fd: Fd) -> Option<&WasiFile> {
         // Search for file descriptor in the list of pre-open directories.
         if let Some(file) = self
@@ -129,6 +151,18 @@ impl WasiCtxInner {
         // Search for file descriptor in the list of open files.
         self.files.iter_mut().find(|file| file.fd() == fd)
     }
+
+    fn get_socket(&self, sockfd: Fd) -> Option<&WasiSocket> {
+        self.preopen_sockets
+            .iter()
+            .find(|socket| socket.fd() == sockfd)
+    }
+
+    fn get_socket_mut(&mut self, sockfd: Fd) -> Option<&mut WasiSocket> {
+        self.preopen_sockets
+            .iter_mut()
+            .find(|socket| socket.fd() == sockfd)
+    }
 }
 
 pub struct WasiCtx(RefCell<WasiCtxInner>);
@@ -141,10 +175,18 @@ impl WasiCtx {
         next_wasi_fd: Fd,
         files: Vec<WasiFile>,
         preopen_dirs: Vec<(WasiFile, String)>,
+        preopen_sockets: Vec<WasiSocket>,
         envs: Vec<String>,
         args: Vec<String>,
     ) -> Self {
-        Self(RefCell::new(WasiCtxInner::new(next_wasi_fd, files, preopen_dirs, envs, args)))
+        Self(RefCell::new(WasiCtxInner::new(
+            next_wasi_fd,
+            files,
+            preopen_dirs,
+            preopen_sockets,
+            envs,
+            args,
+        )))
     }
 
     /// Reads command-line argument data.
@@ -224,8 +266,39 @@ impl WasiCtx {
         )
     }
 
-    /// Accepts a new incoming connection on a socket.
+    /// Accepts an incoming connection.
     pub fn sock_accept(&self, sockfd: Fd, fdflags: FdFlags) -> Result<Fd, Errno> {
-        self.0.borrow().sock_accept(sockfd, fdflags)
+        self.0.borrow_mut().sock_accept(sockfd, fdflags)
+    }
+
+    /// Receives payload from socket connection.
+    pub fn sock_recv(
+        &self,
+        memory: &mut [u8],
+        connfd: Fd,
+        iovecs: &[IoVec],
+        riflags: RiFlags,
+    ) -> Result<(Size, RoFlags), Errno> {
+        self.0
+            .borrow_mut()
+            .sock_recv(memory, connfd, iovecs, riflags)
+    }
+
+    /// Sends payload to socket connection.
+    pub fn sock_send(
+        &self,
+        memory: &[u8],
+        connfd: Fd,
+        iovecs: &[IoVec],
+        siflags: SiFlags,
+    ) -> Result<Size, Errno> {
+        self.0
+            .borrow_mut()
+            .sock_send(memory, connfd, iovecs, siflags)
+    }
+
+    // Shutdowns send and receive operations on a socket.
+    pub fn sock_shutdown(&self, sockfd: Fd, how: SdFlags) -> Result<(), Errno> {
+        self.0.borrow_mut().sock_shutdown(sockfd, how)
     }
 }
