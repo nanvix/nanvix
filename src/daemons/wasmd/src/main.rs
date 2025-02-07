@@ -252,10 +252,11 @@ fn main() -> Result<(), Error> {
 
     ::nvx::log!("wasm file loaded {:?}", wasm_binary);
 
-    let sockaddr: SocketAddr = match SocketAddrV4::from_str("127.0.0.1:8080") {
-        Ok(sockaddr) => SocketAddr::V4(sockaddr),
+    let sockaddr: Option<SocketAddr> = match SocketAddrV4::from_str("127.0.0.1:8080") {
+        Ok(sockaddr) => Some(SocketAddr::V4(sockaddr)),
         Err(error) => {
-            panic!("{:?}", error);
+            ::nvx::log!("{:?}", error);
+            None
         },
     };
 
