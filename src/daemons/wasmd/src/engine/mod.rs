@@ -17,9 +17,13 @@ mod sock;
 //==================================================================================================
 
 use crate::{
-    pal::fs::{
-        File,
-        Path,
+    pal::{
+        self,
+        fs::{
+            File,
+            Path,
+        },
+        socket::Socket,
     },
     wasi::{
         Fd,
@@ -36,6 +40,7 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
+use ::posix::sys::socket::SocketAddr;
 use ::wasmi::{
     errors::ErrorKind,
     Caller,
@@ -61,6 +66,13 @@ type HostState = u32;
 pub struct WasiFile {
     wasi_fd: Fd,
     os_file: File,
+    base_rights: Rights,
+    _inherited_rights: Rights,
+}
+
+pub struct WasiSocket {
+    wasi_socket: Fd,
+    os_socket: Socket,
     base_rights: Rights,
     _inherited_rights: Rights,
 }
@@ -105,8 +117,40 @@ impl WasiFile {
     }
 }
 
+impl WasiSocket {
+    pub fn new(
+        wasi_socket: Fd,
+        os_socket: Socket,
+        base_rights: &Rights,
+        inherited_rights: &Rights,
+    ) -> Self {
+        Self {
+            wasi_socket,
+            os_socket,
+            base_rights: base_rights.clone(),
+            _inherited_rights: inherited_rights.clone(),
+        }
+    }
+
+    pub fn fd(&self) -> Fd {
+        self.wasi_socket
+    }
+
+    pub fn socket(&self) -> &Socket {
+        &self.os_socket
+    }
+
+    pub fn rights_base(&self) -> &Rights {
+        &self.base_rights
+    }
+
+    pub fn rights_inheriting(&self) -> &Rights {
+        &self._inherited_rights
+    }
+}
+
 impl WasmEngine {
-    pub fn new(wasm_binary: &WasmBinary, data: HostState) -> Self {
+    pub fn new(wasm_binary: &WasmBinary, data: HostState, sockaddr: &SocketAddr) -> Self {
         let mut next_wasi_fd: Fd = 0;
         let mut config: Config = Config::default();
         config.compilation_mode(wasmi::CompilationMode::Eager);
@@ -114,6 +158,7 @@ impl WasmEngine {
         let mut store: Store<HostState> = Store::new(&engine, data);
         let mut linker: Linker<HostState> = Linker::new(&engine);
         let mut preopen_dirs: Vec<(WasiFile, String)> = Vec::new();
+        let mut preopen_sockets: Vec<WasiSocket> = Vec::new();
 
         let mut files: Vec<WasiFile> = Vec::new();
 
@@ -152,6 +197,17 @@ impl WasmEngine {
         next_wasi_fd += 1;
         preopen_dirs.push((root, ".".to_string()));
 
+        // Populate pre-open sockets.
+        let os_socket: Socket = pal::setup_network(&sockaddr).unwrap();
+        let localhost: WasiSocket = WasiSocket::new(
+            next_wasi_fd,
+            os_socket,
+            &Rights::base_rights(),
+            &Rights::base_rights(),
+        );
+        preopen_sockets.push(localhost);
+        next_wasi_fd += 1;
+
         let mut envs: Vec<String> = Vec::new();
         envs.push("OS=nanvix".to_string());
         envs.push("HOME=/".to_string());
@@ -160,7 +216,8 @@ impl WasmEngine {
         args.push(wasm_binary.name.clone());
         args.extend(wasm_binary.args.clone());
 
-        let ctx: WasiCtx = WasiCtx::new(next_wasi_fd, files, preopen_dirs, envs, args);
+        let ctx: WasiCtx =
+            WasiCtx::new(next_wasi_fd, files, preopen_dirs, preopen_sockets, envs, args);
 
         let ctx: Arc<WasiCtx> = Arc::new(ctx);
 
@@ -207,9 +264,9 @@ impl WasmEngine {
         Self::define_sched_yield(&mut linker, &mut store);
         Self::define_random_get(&mut linker, &mut store);
         Self::define_sock_accept(ctx.clone(), &mut linker, &mut store);
-        Self::define_sock_recv(&mut linker, &mut store);
-        Self::define_sock_send(&mut linker, &mut store);
-        Self::define_sock_shutdown(&mut linker, &mut store);
+        Self::define_sock_recv(ctx.clone(), &mut linker, &mut store);
+        Self::define_sock_send(ctx.clone(), &mut linker, &mut store);
+        Self::define_sock_shutdown(ctx.clone(), &mut linker, &mut store);
 
         let module: Module = match Module::new(&engine, &wasm_binary.bytes) {
             Ok(module) => module,
