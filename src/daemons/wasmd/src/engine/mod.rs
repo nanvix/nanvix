@@ -150,7 +150,7 @@ impl WasiSocket {
 }
 
 impl WasmEngine {
-    pub fn new(wasm_binary: &WasmBinary, data: HostState, sockaddr: &SocketAddr) -> Self {
+    pub fn new(wasm_binary: &WasmBinary, data: HostState, sockaddr: &Option<SocketAddr>) -> Self {
         let mut next_wasi_fd: Fd = 0;
         let mut config: Config = Config::default();
         config.compilation_mode(wasmi::CompilationMode::Eager);
@@ -198,15 +198,17 @@ impl WasmEngine {
         preopen_dirs.push((root, ".".to_string()));
 
         // Populate pre-open sockets.
-        let os_socket: Socket = pal::setup_network(&sockaddr).unwrap();
-        let localhost: WasiSocket = WasiSocket::new(
-            next_wasi_fd,
-            os_socket,
-            &Rights::base_rights(),
-            &Rights::base_rights(),
-        );
-        preopen_sockets.push(localhost);
-        next_wasi_fd += 1;
+        if let Some(sockaddr) = sockaddr {
+            let os_socket: Socket = pal::setup_network(sockaddr).unwrap();
+            let localhost: WasiSocket = WasiSocket::new(
+                next_wasi_fd,
+                os_socket,
+                &Rights::base_rights(),
+                &Rights::base_rights(),
+            );
+            preopen_sockets.push(localhost);
+            next_wasi_fd += 1;
+        }
 
         let mut envs: Vec<String> = Vec::new();
         envs.push("OS=nanvix".to_string());

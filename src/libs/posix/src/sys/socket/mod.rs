@@ -15,7 +15,11 @@ use crate::netinet::in_::{
     in_addr,
     sockaddr_in,
 };
-use ::core::mem;
+use ::alloc::vec::Vec;
+use ::core::{
+    mem,
+    str::FromStr,
+};
 use ::num_enum::TryFromPrimitive;
 use ::nvx::sys::error::{
     Error,
@@ -186,6 +190,38 @@ pub struct SocketAddrV4 {
     port: u16,
 }
 ::nvx::sys::static_assert_size!(SocketAddrV4, 6);
+
+impl FromStr for SocketAddrV4 {
+    type Err = Error;
+
+    fn from_str(sockaddr: &str) -> Result<Self, Self::Err> {
+        let mut parts = sockaddr.split(':');
+        let addr: &str = match parts.next() {
+            Some(addr) => addr,
+            None => return Err(Error::new(ErrorCode::InvalidArgument, "invalid socket address")),
+        };
+        let port: &str = match parts.next() {
+            Some(port) => port,
+            None => return Err(Error::new(ErrorCode::InvalidArgument, "invalid socket address")),
+        };
+        let port: u16 = match port.parse::<u16>() {
+            Ok(port) => port,
+            Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid port number")),
+        };
+        let octets: Vec<u8> = match addr.split('.').map(|octet| octet.parse::<u8>()).collect() {
+            Ok(octets) => octets,
+            Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid ipv4 address")),
+        };
+        let octets: [u8; 4] = match octets.try_into() {
+            Ok(octets) => octets,
+            Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid ipv4 address")),
+        };
+        Ok(SocketAddrV4 {
+            addr: Ipv4Addr { octets },
+            port,
+        })
+    }
+}
 
 impl TryFrom<SocketAddrV4> for sockaddr_in {
     type Error = Error;
