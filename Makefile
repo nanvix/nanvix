@@ -29,7 +29,8 @@ export HOST_CPU ?=
 export LOG_LEVEL ?= warn
 
 # Wasm binary to embed in the WASM Daemon
-export NANVIX_WASM_BINARY ?=
+export WASM_BINARY ?= $(BINARIES_DIR)/hello-wasm.wasm
+export WASM_BINARY_ARGS ?= "Hello, world from WebAssembly!"
 
 #===================================================================================================
 # Directories
@@ -74,6 +75,13 @@ export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
 export LIBCXX := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libstdc++.a
 export LIBNVX := $(LIBRARIES_DIR)/libnvx.a
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
+
+# WASM binary to be embedded in the WASM Daemon
+ifneq ($(wildcard $(WASM_BINARY)),)
+export NANVIX_WASM_BINARY := $(WASM_BINARY)
+export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY))
+export NANVIX_WASM_BINARY_ARGS := $(WASM_BINARY_ARGS)
+endif
 
 #===================================================================================================
 # C Toolchain Configuration
