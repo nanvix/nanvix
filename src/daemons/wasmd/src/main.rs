@@ -37,16 +37,11 @@ use ::alloc::{
     string::String,
     vec::Vec,
 };
+use ::core::str::FromStr;
 use ::nvx::sys::error::Error;
-use ::posix::{
-    netinet::in_::{
-        in_addr,
-        sockaddr_in,
-    },
-    sys::{
-        self,
-        socket::SocketAddr,
-    },
+use ::posix::sys::socket::{
+    SocketAddr,
+    SocketAddrV4,
 };
 
 #[no_mangle]
@@ -257,24 +252,14 @@ fn main() -> Result<(), Error> {
 
     ::nvx::log!("wasm file loaded {:?}", wasm_binary);
 
-    let sock_addr: [u8; 4] = [127, 0, 0, 1];
-    let sock_port: u16 = 8080;
-    let sockaddr_in: sockaddr_in = sockaddr_in {
-        sin_family: match sys::socket::AF_INET.try_into() {
-            Ok(family) => family,
-            Err(_) => {
-                panic!("failed to convert address family");
-            },
+    let sockaddr: SocketAddr = match SocketAddrV4::from_str("127.0.0.1:8080") {
+        Ok(sockaddr) => SocketAddr::V4(sockaddr),
+        Err(error) => {
+            panic!("{:?}", error);
         },
-        sin_port: u16::to_be(sock_port),
-        sin_addr: in_addr {
-            s_addr: u32::from_be_bytes(sock_addr).to_be(),
-        },
-        sin_zero: [0; 8],
     };
 
-    let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
-    let mut engine = WasmEngine::new(&wasm_binary, 42, &sockaddr);
+    let mut engine: WasmEngine = WasmEngine::new(&wasm_binary, 42, &sockaddr);
 
     engine.run();
 
