@@ -30,7 +30,7 @@ export LOG_LEVEL ?= warn
 
 # Wasm binary to embed in the WASM Daemon
 export WASM_BINARY ?= $(BINARIES_DIR)/hello-wasm.wasm
-export WASM_BINARY_ARGS ?= "Hello, world from WebAssembly!"
+export WASM_BINARY_ARGS ?= ""
 
 # Wasm Daemon Socket Address
 export WASMD_SOCKADDR ?= 127.0.0.1:8585
@@ -84,7 +84,7 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 #===================================================================================================
 
 # WASM binary to be embedded in the WASM Daemon
-ifneq ($(wildcard $(WASM_BINARY)),)
+ifneq ($(WASM_BINARY),)
 export NANVIX_WASM_BINARY := $(WASM_BINARY)
 export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY))
 export NANVIX_WASM_BINARY_ARGS := $(WASM_BINARY_ARGS)
