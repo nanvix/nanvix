@@ -7,7 +7,6 @@ default-members = ["src/microvm"]
 members = [
         "src/benchmarks/boottime",
         "src/benchmarks/echo",
-        "src/benchmarks/linux-app",
         "src/daemons/linuxd",
         "src/daemons/memd",
         "src/daemons/procd",
@@ -24,6 +23,7 @@ members = [
         "src/libs/slab",
         "src/libs/sys",
         "src/microvm",
+        "src/tests/linux-app",
         "src/tests/testd",
         "src/user/hello-rust",
         "src/user/hello-wasm",
