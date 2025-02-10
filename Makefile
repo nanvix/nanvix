@@ -30,7 +30,7 @@ export LOG_LEVEL ?= warn
 
 # Wasm binary to embed in the WASM Daemon
 export WASM_BINARY ?= $(BINARIES_DIR)/hello-wasm.wasm
-export WASM_BINARY_ARGS ?= "Hello, world from WebAssembly!"
+export WASM_BINARY_ARGS ?= ""
 
 # Wasm Daemon Socket Address
 export WASMD_SOCKADDR ?= 127.0.0.1:8585
