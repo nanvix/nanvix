@@ -30,7 +30,7 @@ pub fn test() {
         fcntl::S_IRUSR | fcntl::S_IWUSR,
     ) {
         fd if fd >= 0 => {
-            ::nvx::log!("opened file foo.tmp with fd {}", fd);
+            ::nvx::info!("opened file foo.tmp with fd {}", fd);
             fd
         },
         errno => {
@@ -41,7 +41,7 @@ pub fn test() {
     // Advice normal access.
     match fcntl::posix_fadvise(fd, 0, 0, fcntl::POSIX_FADV_NORMAL) {
         0 => {
-            ::nvx::log!("advised normal access for file foo.tmp");
+            ::nvx::info!("advised normal access for file foo.tmp");
         },
         errno => {
             panic!("failed to advise normal access for file foo.tmp: {:?}", errno);
@@ -52,7 +52,7 @@ pub fn test() {
     let buffer: [u8; 128] = [1; 128];
     match unistd::write(fd, buffer.as_ptr(), buffer.len() as size_t) {
         128 => {
-            ::nvx::log!("wrote 128 bytes to file foo.tmp");
+            ::nvx::info!("wrote 128 bytes to file foo.tmp");
         },
         errno => {
             panic!("failed to write 128 bytes to file foo.tmp: {:?}", errno);
@@ -63,7 +63,7 @@ pub fn test() {
     let buffer: [u8; 64] = [1; 64];
     match unistd::pwrite(fd, buffer.as_ptr(), buffer.len() as size_t, 128) {
         64 => {
-            ::nvx::log!("wrote 64 bytes to file foo.tmp");
+            ::nvx::info!("wrote 64 bytes to file foo.tmp");
         },
         errno => {
             panic!("failed to write 64 bytes to file foo.tmp: {:?}", errno);
@@ -84,7 +84,7 @@ pub fn test() {
     ];
     match uio::pwritev(fd, iov.as_ptr(), iov.len() as i32, 192) {
         64 => {
-            ::nvx::log!("wrote 64 bytes to file foo.tmp");
+            ::nvx::info!("wrote 64 bytes to file foo.tmp");
         },
         errno => {
             panic!("failed to write 64 bytes to file foo.tmp: {:?}", errno);
@@ -94,7 +94,7 @@ pub fn test() {
     // Advance seek offset as partial writes do not change it.
     match unistd::lseek(fd, 256, unistd::SEEK_SET) {
         256 => {
-            ::nvx::log!("seek file foo.tmp to 256 bytes");
+            ::nvx::info!("seek file foo.tmp to 256 bytes");
         },
         offset => {
             panic!("failed to seek file foo.tmp to 256 bytes: {:?}", offset);
@@ -115,7 +115,7 @@ pub fn test() {
     ];
     match uio::writev(fd, iov.as_ptr(), iov.len() as i32) {
         256 => {
-            ::nvx::log!("wrote 256 bytes to file foo.tmp");
+            ::nvx::info!("wrote 256 bytes to file foo.tmp");
         },
         errno => {
             panic!("failed to write 256 bytes to file foo.tmp: {:?}", errno);
@@ -125,7 +125,7 @@ pub fn test() {
     // Move seek offset start of file.
     match unistd::lseek(fd, 0, unistd::SEEK_SET) {
         0 => {
-            ::nvx::log!("seek file foo.tmp to 1024 bytes");
+            ::nvx::info!("seek file foo.tmp to 1024 bytes");
         },
         offset => {
             panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
@@ -136,7 +136,7 @@ pub fn test() {
     let mut buffer: [u8; 64] = [0; 64];
     match unistd::pread(fd, buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
         64 => {
-            ::nvx::log!("read 64 bytes from file foo.tmp");
+            ::nvx::info!("read 64 bytes from file foo.tmp");
             (0..64).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
@@ -152,7 +152,7 @@ pub fn test() {
     let mut buffer: [u8; 64] = [0; 64];
     match unistd::pread(fd, buffer.as_mut_ptr(), buffer.len() as size_t, 64) {
         64 => {
-            ::nvx::log!("read 64 bytes from file foo.tmp");
+            ::nvx::info!("read 64 bytes from file foo.tmp");
             (0..64).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
@@ -167,7 +167,7 @@ pub fn test() {
     // Advance seek offset as partial reads do not change it.
     match unistd::lseek(fd, 128, unistd::SEEK_SET) {
         128 => {
-            ::nvx::log!("seek file foo.tmp to 128 bytes");
+            ::nvx::info!("seek file foo.tmp to 128 bytes");
         },
         offset => {
             panic!("failed to seek file foo.tmp to 128 bytes: {:?}", offset);
@@ -188,7 +188,7 @@ pub fn test() {
     ];
     match uio::readv(fd, iov.as_ptr(), iov.len() as i32) {
         128 => {
-            ::nvx::log!("read 128 bytes from file foo.tmp");
+            ::nvx::info!("read 128 bytes from file foo.tmp");
             (0..128).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
@@ -204,7 +204,7 @@ pub fn test() {
     let mut buffer: [u8; 256] = [0; 256];
     match unistd::read(fd, buffer.as_mut_ptr(), buffer.len() as size_t) {
         256 => {
-            ::nvx::log!("read 256 bytes from file foo.tmp");
+            ::nvx::info!("read 256 bytes from file foo.tmp");
             (0..256).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
@@ -219,7 +219,7 @@ pub fn test() {
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
     match unistd::lseek(fd, 512, unistd::SEEK_END) {
         1024 => {
-            ::nvx::log!("seek file foo.tmp to 1024 bytes");
+            ::nvx::info!("seek file foo.tmp to 1024 bytes");
         },
         offset => {
             panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
@@ -229,7 +229,7 @@ pub fn test() {
     // Truncate file to 512 bytes.
     match unistd::ftruncate(fd, 512) {
         Ok(()) => {
-            ::nvx::log!("truncated file foo.tmp to 512 bytes");
+            ::nvx::info!("truncated file foo.tmp to 512 bytes");
         },
         Err(e) => {
             panic!("failed to truncate file foo.tmp to 512 bytes ({:?})", e);
@@ -239,7 +239,7 @@ pub fn test() {
     // Attempt to allocate space.
     match fcntl::posix_fallocate(fd, 512, 512) {
         0 => {
-            ::nvx::log!("allocated space for file foo.tmp");
+            ::nvx::info!("allocated space for file foo.tmp");
         },
         errno => {
             panic!("failed to allocate space for file foo.tmp: {:?}", errno);
@@ -249,7 +249,7 @@ pub fn test() {
     // Synchronize data changes to file.
     match unistd::fdatasync(fd) {
         0 => {
-            ::nvx::log!("synchronized file foo.tmp with storage device");
+            ::nvx::info!("synchronized file foo.tmp with storage device");
         },
         errno => {
             panic!("failed to synchronize file foo.tmp with storage device: {:?}", errno);
@@ -259,7 +259,7 @@ pub fn test() {
     // Synchronize changes to a file.
     match unistd::fsync(fd) {
         Ok(()) => {
-            ::nvx::log!("synchronized file foo.tmp with storage device");
+            ::nvx::info!("synchronized file foo.tmp with storage device");
         },
         Err(e) => {
             panic!("failed to synchronize file foo.tmp with storage device ({:?})", e);
@@ -270,21 +270,21 @@ pub fn test() {
     let mut st: stat = stat::default();
     match sys::stat::fstat(fd, &mut st) {
         0 => {
-            ::nvx::log!("got status of file foo.tmp");
-            ::nvx::log!("file statistics:");
-            ::nvx::log!("  st_dev: {}", { st.st_dev });
-            ::nvx::log!("  st_ino: {}", { st.st_ino });
-            ::nvx::log!("  st_mode: {}", { st.st_mode });
-            ::nvx::log!("  st_nlink: {}", { st.st_nlink });
-            ::nvx::log!("  st_uid: {}", { st.st_uid });
-            ::nvx::log!("  st_gid: {}", { st.st_gid });
-            ::nvx::log!("  st_rdev: {}", { st.st_rdev });
-            ::nvx::log!("  st_size: {}", { st.st_size });
-            ::nvx::log!("  st_blksize: {}", { st.st_blksize });
-            ::nvx::log!("  st_blocks: {}", { st.st_blocks });
-            ::nvx::log!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
-            ::nvx::log!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
-            ::nvx::log!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
+            ::nvx::info!("got status of file foo.tmp");
+            ::nvx::info!("file statistics:");
+            ::nvx::info!("  st_dev: {}", { st.st_dev });
+            ::nvx::info!("  st_ino: {}", { st.st_ino });
+            ::nvx::info!("  st_mode: {}", { st.st_mode });
+            ::nvx::info!("  st_nlink: {}", { st.st_nlink });
+            ::nvx::info!("  st_uid: {}", { st.st_uid });
+            ::nvx::info!("  st_gid: {}", { st.st_gid });
+            ::nvx::info!("  st_rdev: {}", { st.st_rdev });
+            ::nvx::info!("  st_size: {}", { st.st_size });
+            ::nvx::info!("  st_blksize: {}", { st.st_blksize });
+            ::nvx::info!("  st_blocks: {}", { st.st_blocks });
+            ::nvx::info!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
+            ::nvx::info!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
+            ::nvx::info!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
         },
         errno => {
             panic!("failed to get status of file foo.tmp: {:?}", errno);
@@ -299,7 +299,7 @@ pub fn test() {
     // Change owner of file.
     match unistd::fchown(fd, st.st_uid, st.st_gid) {
         Ok(()) => {
-            ::nvx::log!("changed owner of file foo.tmp");
+            ::nvx::info!("changed owner of file foo.tmp");
         },
         Err(e) => {
             panic!("failed to change owner of file foo.tmp: {:?}", e);
@@ -309,7 +309,7 @@ pub fn test() {
     // Change file mode.
     match unistd::fchmod(fd, fcntl::S_IRUSR | fcntl::S_IWUSR) {
         Ok(()) => {
-            ::nvx::log!("changed file mode of file foo.tmp");
+            ::nvx::info!("changed file mode of file foo.tmp");
         },
         Err(e) => {
             panic!("failed to change file mode of file foo.tmp: {:?}", e);
@@ -319,7 +319,7 @@ pub fn test() {
     // Get file access mode and the file status flags.
     let flags: i32 = match fcntl::fcntl(fd, fcntl::F_GETFL, 0) {
         flags if flags >= 0 => {
-            ::nvx::log!("got file access mode and file status flags {}", flags);
+            ::nvx::info!("got file access mode and file status flags {}", flags);
             flags
         },
         errno => {
@@ -344,7 +344,7 @@ pub fn test() {
     ];
     match sys::stat::futimens(fd, times) {
         0 => {
-            ::nvx::log!("updated access time of file foo.tmp");
+            ::nvx::info!("updated access time of file foo.tmp");
         },
         errno => {
             panic!("failed to update access time of file foo.tmp: {:?}", errno);
@@ -355,21 +355,21 @@ pub fn test() {
     let mut st: stat = stat::default();
     match sys::stat::fstat(fd, &mut st) {
         0 => {
-            ::nvx::log!("got status of file foo.tmp");
-            ::nvx::log!("file statistics:");
-            ::nvx::log!("  st_dev: {}", { st.st_dev });
-            ::nvx::log!("  st_ino: {}", { st.st_ino });
-            ::nvx::log!("  st_mode: {}", { st.st_mode });
-            ::nvx::log!("  st_nlink: {}", { st.st_nlink });
-            ::nvx::log!("  st_uid: {}", { st.st_uid });
-            ::nvx::log!("  st_gid: {}", { st.st_gid });
-            ::nvx::log!("  st_rdev: {}", { st.st_rdev });
-            ::nvx::log!("  st_size: {}", { st.st_size });
-            ::nvx::log!("  st_blksize: {}", { st.st_blksize });
-            ::nvx::log!("  st_blocks: {}", { st.st_blocks });
-            ::nvx::log!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
-            ::nvx::log!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
-            ::nvx::log!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
+            ::nvx::info!("got status of file foo.tmp");
+            ::nvx::info!("file statistics:");
+            ::nvx::info!("  st_dev: {}", { st.st_dev });
+            ::nvx::info!("  st_ino: {}", { st.st_ino });
+            ::nvx::info!("  st_mode: {}", { st.st_mode });
+            ::nvx::info!("  st_nlink: {}", { st.st_nlink });
+            ::nvx::info!("  st_uid: {}", { st.st_uid });
+            ::nvx::info!("  st_gid: {}", { st.st_gid });
+            ::nvx::info!("  st_rdev: {}", { st.st_rdev });
+            ::nvx::info!("  st_size: {}", { st.st_size });
+            ::nvx::info!("  st_blksize: {}", { st.st_blksize });
+            ::nvx::info!("  st_blocks: {}", { st.st_blocks });
+            ::nvx::info!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
+            ::nvx::info!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
+            ::nvx::info!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
         },
         errno => {
             panic!("failed to get status of file foo.tmp: {:?}", errno);
@@ -387,7 +387,7 @@ pub fn test() {
     // Close file.
     match unistd::close(fd) {
         0 => {
-            ::nvx::log!("closed file foo.tmp");
+            ::nvx::info!("closed file foo.tmp");
         },
         errno => {
             panic!("failed to close file foo.tmp: {:?}", errno);
@@ -397,7 +397,7 @@ pub fn test() {
     // Change owner of file.
     match fcntl::fchownat(fcntl::AT_FDCWD, "foo.tmp", st.st_uid, st.st_gid, 0) {
         Ok(()) => {
-            ::nvx::log!("changed owner of file foo.tmp");
+            ::nvx::info!("changed owner of file foo.tmp");
         },
         Err(e) => {
             panic!("failed to change owner of file foo.tmp: {:?}", e);
@@ -407,7 +407,7 @@ pub fn test() {
     // Change file mode.
     match fcntl::fchmodat(fcntl::AT_FDCWD, "foo.tmp", fcntl::S_IRUSR | fcntl::S_IWUSR, 0) {
         Ok(()) => {
-            ::nvx::log!("changed file mode of file foo.tmp");
+            ::nvx::info!("changed file mode of file foo.tmp");
         },
         Err(e) => {
             panic!("failed to change file mode of file foo.tmp: {:?}", e);
@@ -419,25 +419,25 @@ pub fn test() {
     let mut foo_tmp: stat = stat::default();
     match sys::stat::stat(path, &mut foo_tmp) {
         0 => {
-            ::nvx::log!("got status of file {}", path);
-            ::nvx::log!("file statistics:");
-            ::nvx::log!("  st_dev: {}", { foo_tmp.st_dev });
-            ::nvx::log!("  st_ino: {}", { foo_tmp.st_ino });
-            ::nvx::log!("  st_mode: {}", { foo_tmp.st_mode });
-            ::nvx::log!("  st_nlink: {}", { foo_tmp.st_nlink });
-            ::nvx::log!("  st_uid: {}", { foo_tmp.st_uid });
-            ::nvx::log!("  st_gid: {}", { foo_tmp.st_gid });
-            ::nvx::log!("  st_rdev: {}", { foo_tmp.st_rdev });
-            ::nvx::log!("  st_size: {}", { foo_tmp.st_size });
-            ::nvx::log!("  st_blksize: {}", { foo_tmp.st_blksize });
-            ::nvx::log!("  st_blocks: {}", { foo_tmp.st_blocks });
-            ::nvx::log!("  st_atime: {}s {}ns", { foo_tmp.st_atim.tv_sec }, {
+            ::nvx::info!("got status of file {}", path);
+            ::nvx::info!("file statistics:");
+            ::nvx::info!("  st_dev: {}", { foo_tmp.st_dev });
+            ::nvx::info!("  st_ino: {}", { foo_tmp.st_ino });
+            ::nvx::info!("  st_mode: {}", { foo_tmp.st_mode });
+            ::nvx::info!("  st_nlink: {}", { foo_tmp.st_nlink });
+            ::nvx::info!("  st_uid: {}", { foo_tmp.st_uid });
+            ::nvx::info!("  st_gid: {}", { foo_tmp.st_gid });
+            ::nvx::info!("  st_rdev: {}", { foo_tmp.st_rdev });
+            ::nvx::info!("  st_size: {}", { foo_tmp.st_size });
+            ::nvx::info!("  st_blksize: {}", { foo_tmp.st_blksize });
+            ::nvx::info!("  st_blocks: {}", { foo_tmp.st_blocks });
+            ::nvx::info!("  st_atime: {}s {}ns", { foo_tmp.st_atim.tv_sec }, {
                 foo_tmp.st_atim.tv_nsec
             });
-            ::nvx::log!("  st_mtime: {}s {}ns", { foo_tmp.st_mtim.tv_sec }, {
+            ::nvx::info!("  st_mtime: {}s {}ns", { foo_tmp.st_mtim.tv_sec }, {
                 foo_tmp.st_mtim.tv_nsec
             });
-            ::nvx::log!("  st_ctime: {}s {}ns", { foo_tmp.st_ctim.tv_sec }, {
+            ::nvx::info!("  st_ctime: {}s {}ns", { foo_tmp.st_ctim.tv_sec }, {
                 foo_tmp.st_ctim.tv_nsec
             });
         },
@@ -449,7 +449,7 @@ pub fn test() {
     // Rename `foo.tmp` to `bar.tmp`.
     match fcntl::renameat(fcntl::AT_FDCWD, "foo.tmp", fcntl::AT_FDCWD, "bar.tmp") {
         0 => {
-            ::nvx::log!("renamed file foo.tmp to bar.tmp");
+            ::nvx::info!("renamed file foo.tmp to bar.tmp");
         },
         errno => {
             panic!("failed to rename file foo.tmp to bar.tmp: {:?}", errno);
@@ -459,7 +459,7 @@ pub fn test() {
     // Create a symbolic link to `bar.tmp`.
     match fcntl::symlinkat("bar.tmp", fcntl::AT_FDCWD, "baz.tmp") {
         0 => {
-            ::nvx::log!("created symbolic link baz.tmp to bar.tmp");
+            ::nvx::info!("created symbolic link baz.tmp to bar.tmp");
         },
         errno => {
             panic!("failed to create symbolic link baz.tmp to bar.tmp: {:?}", errno);
@@ -470,11 +470,11 @@ pub fn test() {
     let mut buffer: [u8; 512] = [0; 512];
     match fcntl::readlinkat(fcntl::AT_FDCWD, "baz.tmp", &mut buffer) {
         len if len >= 0 => {
-            ::nvx::log!("read link baz.tmp");
+            ::nvx::info!("read link baz.tmp");
             // Print.
             let mut i: usize = 0;
             while buffer[i] != 0 {
-                ::nvx::log!("{}", buffer[i] as char);
+                ::nvx::info!("{}", buffer[i] as char);
                 i += 1;
             }
         },
@@ -486,7 +486,7 @@ pub fn test() {
     // Unlink file named `baz.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "baz.tmp", 0) {
         0 => {
-            ::nvx::log!("unlinked file baz.tmp");
+            ::nvx::info!("unlinked file baz.tmp");
         },
         errno => {
             panic!("failed to unlink file baz.tmp: {:?}", errno);
@@ -496,7 +496,7 @@ pub fn test() {
     // Create a hard link to `bar.tmp`.
     match unistd::linkat(fcntl::AT_FDCWD, "bar.tmp", fcntl::AT_FDCWD, "baz.tmp", 0) {
         0 => {
-            ::nvx::log!("created hard link baz.tmp to bar.tmp");
+            ::nvx::info!("created hard link baz.tmp to bar.tmp");
         },
         errno => {
             panic!("failed to create hard link baz.tmp to bar.tmp: {:?}", errno);
@@ -506,7 +506,7 @@ pub fn test() {
     // Unlink file named `baz.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "baz.tmp", 0) {
         0 => {
-            ::nvx::log!("unlinked file baz.tmp");
+            ::nvx::info!("unlinked file baz.tmp");
         },
         errno => {
             panic!("failed to unlink file baz.tmp: {:?}", errno);
@@ -517,25 +517,25 @@ pub fn test() {
     let mut bar_tmp: stat = stat::default();
     match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut bar_tmp, 0) {
         0 => {
-            ::nvx::log!("got status of file bar.tmp");
-            ::nvx::log!("file statistics:");
-            ::nvx::log!("  st_dev: {}", { bar_tmp.st_dev });
-            ::nvx::log!("  st_ino: {}", { bar_tmp.st_ino });
-            ::nvx::log!("  st_mode: {}", { bar_tmp.st_mode });
-            ::nvx::log!("  st_nlink: {}", { bar_tmp.st_nlink });
-            ::nvx::log!("  st_uid: {}", { bar_tmp.st_uid });
-            ::nvx::log!("  st_gid: {}", { bar_tmp.st_gid });
-            ::nvx::log!("  st_rdev: {}", { bar_tmp.st_rdev });
-            ::nvx::log!("  st_size: {}", { bar_tmp.st_size });
-            ::nvx::log!("  st_blksize: {}", { bar_tmp.st_blksize });
-            ::nvx::log!("  st_blocks: {}", { bar_tmp.st_blocks });
-            ::nvx::log!("  st_atime: {}s {}ns", { bar_tmp.st_atim.tv_sec }, {
+            ::nvx::info!("got status of file bar.tmp");
+            ::nvx::info!("file statistics:");
+            ::nvx::info!("  st_dev: {}", { bar_tmp.st_dev });
+            ::nvx::info!("  st_ino: {}", { bar_tmp.st_ino });
+            ::nvx::info!("  st_mode: {}", { bar_tmp.st_mode });
+            ::nvx::info!("  st_nlink: {}", { bar_tmp.st_nlink });
+            ::nvx::info!("  st_uid: {}", { bar_tmp.st_uid });
+            ::nvx::info!("  st_gid: {}", { bar_tmp.st_gid });
+            ::nvx::info!("  st_rdev: {}", { bar_tmp.st_rdev });
+            ::nvx::info!("  st_size: {}", { bar_tmp.st_size });
+            ::nvx::info!("  st_blksize: {}", { bar_tmp.st_blksize });
+            ::nvx::info!("  st_blocks: {}", { bar_tmp.st_blocks });
+            ::nvx::info!("  st_atime: {}s {}ns", { bar_tmp.st_atim.tv_sec }, {
                 bar_tmp.st_atim.tv_nsec
             });
-            ::nvx::log!("  st_mtime: {}s {}ns", { bar_tmp.st_mtim.tv_sec }, {
+            ::nvx::info!("  st_mtime: {}s {}ns", { bar_tmp.st_mtim.tv_sec }, {
                 bar_tmp.st_mtim.tv_nsec
             });
-            ::nvx::log!("  st_ctime: {}s {}ns", { bar_tmp.st_ctim.tv_sec }, {
+            ::nvx::info!("  st_ctime: {}s {}ns", { bar_tmp.st_ctim.tv_sec }, {
                 bar_tmp.st_ctim.tv_nsec
             });
         },
@@ -562,7 +562,7 @@ pub fn test() {
     ];
     match sys::stat::utimensat(fcntl::AT_FDCWD, "bar.tmp", times, 0) {
         0 => {
-            ::nvx::log!("updated access time of file bar.tmp");
+            ::nvx::info!("updated access time of file bar.tmp");
         },
         errno => {
             panic!("failed to update access time of file bar.tmp: {:?}", errno);
@@ -573,25 +573,25 @@ pub fn test() {
     let mut bar_tmp: stat = stat::default();
     match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut bar_tmp, 0) {
         0 => {
-            ::nvx::log!("got status of file bar.tmp");
-            ::nvx::log!("file statistics:");
-            ::nvx::log!("  st_dev: {}", { bar_tmp.st_dev });
-            ::nvx::log!("  st_ino: {}", { bar_tmp.st_ino });
-            ::nvx::log!("  st_mode: {}", { bar_tmp.st_mode });
-            ::nvx::log!("  st_nlink: {}", { bar_tmp.st_nlink });
-            ::nvx::log!("  st_uid: {}", { bar_tmp.st_uid });
-            ::nvx::log!("  st_gid: {}", { bar_tmp.st_gid });
-            ::nvx::log!("  st_rdev: {}", { bar_tmp.st_rdev });
-            ::nvx::log!("  st_size: {}", { bar_tmp.st_size });
-            ::nvx::log!("  st_blksize: {}", { bar_tmp.st_blksize });
-            ::nvx::log!("  st_blocks: {}", { bar_tmp.st_blocks });
-            ::nvx::log!("  st_atime: {}s {}ns", { bar_tmp.st_atim.tv_sec }, {
+            ::nvx::info!("got status of file bar.tmp");
+            ::nvx::info!("file statistics:");
+            ::nvx::info!("  st_dev: {}", { bar_tmp.st_dev });
+            ::nvx::info!("  st_ino: {}", { bar_tmp.st_ino });
+            ::nvx::info!("  st_mode: {}", { bar_tmp.st_mode });
+            ::nvx::info!("  st_nlink: {}", { bar_tmp.st_nlink });
+            ::nvx::info!("  st_uid: {}", { bar_tmp.st_uid });
+            ::nvx::info!("  st_gid: {}", { bar_tmp.st_gid });
+            ::nvx::info!("  st_rdev: {}", { bar_tmp.st_rdev });
+            ::nvx::info!("  st_size: {}", { bar_tmp.st_size });
+            ::nvx::info!("  st_blksize: {}", { bar_tmp.st_blksize });
+            ::nvx::info!("  st_blocks: {}", { bar_tmp.st_blocks });
+            ::nvx::info!("  st_atime: {}s {}ns", { bar_tmp.st_atim.tv_sec }, {
                 bar_tmp.st_atim.tv_nsec
             });
-            ::nvx::log!("  st_mtime: {}s {}ns", { bar_tmp.st_mtim.tv_sec }, {
+            ::nvx::info!("  st_mtime: {}s {}ns", { bar_tmp.st_mtim.tv_sec }, {
                 bar_tmp.st_mtim.tv_nsec
             });
-            ::nvx::log!("  st_ctime: {}s {}ns", { bar_tmp.st_ctim.tv_sec }, {
+            ::nvx::info!("  st_ctime: {}s {}ns", { bar_tmp.st_ctim.tv_sec }, {
                 bar_tmp.st_ctim.tv_nsec
             });
         },
@@ -611,7 +611,7 @@ pub fn test() {
     // Unlink file named `foo.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "bar.tmp", 0) {
         0 => {
-            ::nvx::log!("unlinked file foo.tmp");
+            ::nvx::info!("unlinked file foo.tmp");
         },
         errno => {
             panic!("failed to unlink file foo.tmp: {:?}", errno);
@@ -621,7 +621,7 @@ pub fn test() {
     // Create directory named `foo`.
     match fcntl::mkdirat(fcntl::AT_FDCWD, "foo", fcntl::S_IRUSR | fcntl::S_IWUSR | fcntl::S_IXUSR) {
         0 => {
-            ::nvx::log!("created directory foo");
+            ::nvx::info!("created directory foo");
         },
         errno => {
             panic!("failed to create directory foo: {:?}", errno);
@@ -631,7 +631,7 @@ pub fn test() {
     // Remove directory named `foo`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "foo", fcntl::AT_REMOVEDIR) {
         0 => {
-            ::nvx::log!("removed directory foo");
+            ::nvx::info!("removed directory foo");
         },
         errno => {
             panic!("failed to remove directory foo: {:?}", errno);

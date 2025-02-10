@@ -54,13 +54,13 @@ pub fn socketpair(
     protocol: Protocol,
     socket_fds: &mut [c_int],
 ) -> Result<(), Error> {
-    ::nvx::log!("socketpair(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
+    ::nvx::trace!("socketpair(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Check if array of file descriptors has expected length.
     if socket_fds.len() != 2 {
         let reason: &str = "array of file descriptors must have length 2";
-        ::nvx::log!("socketpair(): failed ({:?})", reason);
+        ::nvx::error!("socketpair(): failed ({:?})", reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -75,7 +75,7 @@ pub fn socketpair(
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::nvx::log!("socketpair(): failed ({:?})", error_code);
+        ::nvx::error!("socketpair(): failed ({:?})", error_code);
         Err(Error::new(error_code, "socketpair() failed"))
     } else {
         // System call succeeded, parse response.

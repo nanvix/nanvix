@@ -34,6 +34,6 @@ use ::nvx::sys::error::Error;
 /// Upon successful completion, empty is returned. Otherwise, it returns an error is returned.
 ///
 pub fn lchown(path: &str, owner: uid_t, group: gid_t) -> Result<(), Error> {
-    ::nvx::log!("lchown(): path = {:?}, owner = {:?}, group = {:?}", path, owner, group);
+    ::nvx::trace!("lchown(): path = {:?}, owner = {:?}, group = {:?}", path, owner, group);
     crate::fcntl::fchownat(crate::fcntl::AT_FDCWD, path, owner, group, fcntl::AT_SYMLINK_NOFOLLOW)
 }

@@ -59,18 +59,6 @@ pub mod sched;
 
 #[macro_export]
 #[cfg(target_os = "none")]
-macro_rules! log{
-	( $($arg:tt)* ) => ({
-		use core::fmt::Write;
-        let _ = writeln!(
-            &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Trace),
-            $($arg)*
-        );
-	})
-}
-
-#[macro_export]
-#[cfg(target_os = "none")]
 macro_rules! trace{
     ( $($arg:tt)* ) => ({
 		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Trace {

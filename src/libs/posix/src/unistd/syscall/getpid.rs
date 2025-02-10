@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{pm::ProcessIdentifier, sys::error::Error};
+use ::nvx::{
+    pm::ProcessIdentifier,
+    sys::error::Error,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -16,6 +19,6 @@ use ::nvx::{pm::ProcessIdentifier, sys::error::Error};
 /// `getpid()` returns the process ID (PID) of the calling process.
 ///
 pub fn getpid() -> Result<ProcessIdentifier, Error> {
-    ::nvx::log!("getpid()");
+    ::nvx::trace!("getpid()");
     ::nvx::pm::getpid()
 }

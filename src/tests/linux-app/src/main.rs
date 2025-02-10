@@ -32,18 +32,18 @@ use ::posix::{
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
     let env: VirtualEnvironmentIdentifier = venv::join(VirtualEnvironmentIdentifier::NEW)?;
-    ::nvx::log!("joined environment {:?}", env);
+    ::nvx::info!("joined environment {:?}", env);
 
     // Run tests.
     clock::test();
     identity::test();
     file_system::test();
     if let Err(error) = network::test_network() {
-        ::nvx::log!("network test failed: {:?}", error);
+        ::nvx::error!("network test failed: {:?}", error);
     }
 
     venv::leave(env)?;
-    ::nvx::log!("left environment {:?}", env);
+    ::nvx::info!("left environment {:?}", env);
 
     // Magic string.
     {

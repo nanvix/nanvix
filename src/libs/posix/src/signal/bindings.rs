@@ -19,7 +19,7 @@ use crate::{
 
 #[no_mangle]
 pub extern "C" fn kill(_pid: pid_t, _signal: c_int) -> c_int {
-    ::nvx::log!("kill(): pid = {}, signal = {}", _pid, _signal);
+    ::nvx::trace!("kill(): pid = {}, signal = {}", _pid, _signal);
     // TODO: Implement this system call.
     unsafe {
         errno = ErrorCode::InvalidSysCall.into_errno();
