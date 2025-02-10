@@ -60,7 +60,7 @@ pub extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                ::nvx::log!("chmod(): failed ({:?})", e);
+                ::nvx::error!("chmod(): failed ({:?})", e);
                 errno = e.code.into_errno();
             }
             -1
@@ -100,7 +100,7 @@ pub extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_in
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                ::nvx::log!("chown(): failed ({:?})", e);
+                ::nvx::error!("chown(): failed ({:?})", e);
                 errno = e.code.into_errno();
             }
             -1
@@ -110,7 +110,7 @@ pub extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_in
 
 #[no_mangle]
 pub extern "C" fn close(fd: c_int) -> c_int {
-    ::nvx::log!("close(): fd = {}", fd);
+    ::nvx::trace!("close(): fd = {}", fd);
     crate::unistd::close(fd)
 }
 
@@ -190,7 +190,7 @@ pub extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_int {
-    ::nvx::log!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
+    ::nvx::trace!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
     -1
 }
 
@@ -247,7 +247,7 @@ pub extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                ::nvx::log!("lchmod(): failed ({:?})", e);
+                ::nvx::error!("lchmod(): failed ({:?})", e);
                 errno = e.code.into_errno();
             }
             -1
@@ -287,7 +287,7 @@ pub extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_i
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                ::nvx::log!("lchown(): failed ({:?})", e);
+                ::nvx::error!("lchown(): failed ({:?})", e);
                 errno = e.code.into_errno();
             }
             -1
@@ -335,7 +335,7 @@ pub extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int 
             errno = match ErrorCode::try_from(retcode) {
                 Ok(e) => e.into_errno(),
                 Err(_) => {
-                    ::nvx::log!("link(): invalid error code ({})", retcode);
+                    ::nvx::error!("link(): invalid error code ({})", retcode);
                     ErrorCode::ValueOutOfRange.into_errno()
                 },
             }
@@ -348,7 +348,7 @@ pub extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int 
 
 #[no_mangle]
 pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
-    ::nvx::log!("lseek(): fd = {}, offset = {}, whence = {}", fd, offset, whence);
+    ::nvx::trace!("lseek(): fd = {}, offset = {}, whence = {}", fd, offset, whence);
     crate::unistd::lseek(fd, offset, whence)
 }
 
@@ -359,7 +359,7 @@ pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> ssize_t {
-    ::nvx::log!("read(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
+    ::nvx::trace!("read(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
     crate::unistd::read(fd, buffer as *mut u8, count)
 }
 
@@ -437,7 +437,7 @@ pub extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_i
             errno = match ErrorCode::try_from(retcode) {
                 Ok(e) => e.into_errno(),
                 Err(_) => {
-                    ::nvx::log!("symlink(): invalid error code ({})", retcode);
+                    ::nvx::error!("symlink(): invalid error code ({})", retcode);
                     ErrorCode::ValueOutOfRange.into_errno()
                 },
             }
@@ -483,7 +483,7 @@ pub extern "C" fn unlink(path: *const c_char) -> c_int {
             errno = match ErrorCode::try_from(retcode) {
                 Ok(e) => e.into_errno(),
                 Err(_) => {
-                    ::nvx::log!("unlink(): invalid error code ({})", retcode);
+                    ::nvx::error!("unlink(): invalid error code ({})", retcode);
                     ErrorCode::ValueOutOfRange.into_errno()
                 },
             }
@@ -501,6 +501,6 @@ pub extern "C" fn unlink(path: *const c_char) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) -> ssize_t {
-    ::nvx::log!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
+    ::nvx::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
     crate::unistd::write(fd, buffer as *const u8, count)
 }

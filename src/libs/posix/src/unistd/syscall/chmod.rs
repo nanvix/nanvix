@@ -27,6 +27,6 @@ use ::nvx::sys::error::Error;
 /// Upon successful completion, empty is returned. Otherwise, it returns an error.
 ///
 pub fn chmod(path: &str, mode: mode_t) -> Result<(), Error> {
-    ::nvx::log!("chmod(): path = {:?}, mode = {:?}", path, mode);
+    ::nvx::trace!("chmod(): path = {:?}, mode = {:?}", path, mode);
     crate::fcntl::fchmodat(crate::fcntl::AT_FDCWD, path, mode, 0)
 }

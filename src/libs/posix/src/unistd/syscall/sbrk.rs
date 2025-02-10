@@ -34,7 +34,7 @@ use ::nvx::{
 /// allocated memory. Otherwise, it returns an error code.
 ///
 pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
-    ::nvx::log!("sbrk(): size = {}", size);
+    ::nvx::trace!("sbrk(): size = {}", size);
     static mut END: *mut u8 = mm::BREAK_BASE_RAW as *mut u8;
 
     let old_end: *mut u8 = unsafe {

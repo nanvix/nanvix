@@ -41,7 +41,7 @@ macro_rules! test {
     ($fn_name:ident($($arg:expr),*)) => {{
         match $fn_name($($arg),*) {
             true =>
-                nvx::log!("{} {}", "passed", stringify!($fn_name)),
+                nvx::info!("{} {}", "passed", stringify!($fn_name)),
             false =>
                 panic!("{} {}", "FAILED", stringify!($fn_name)),
         }
@@ -54,7 +54,7 @@ macro_rules! test {
 
 #[no_mangle]
 pub fn main() {
-    ::nvx::log!("Running test server...");
+    ::nvx::info!("Running test server...");
 
     pm::test();
     event::test();
@@ -76,17 +76,17 @@ pub fn main() {
     loop {
         match ::proc::lookup("memd") {
             Ok(_) => {
-                ::nvx::log!("memory daemon is running");
+                ::nvx::info!("memory daemon is running");
                 break;
             },
             Err(e) => {
-                ::nvx::log!("memory daemon is not running (error={:?})", e);
+                ::nvx::error!("memory daemon is not running (error={:?})", e);
             },
         }
     }
 
     // Force a page fault.
-    ::nvx::log!("triggering a page fault...");
+    ::nvx::info!("triggering a page fault...");
     unsafe {
         let ptr: *mut u8 = config::memory_layout::USER_HEAP_BASE.into_raw_value() as *mut u8;
         *ptr = 1;

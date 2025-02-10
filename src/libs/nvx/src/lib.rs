@@ -59,12 +59,72 @@ pub mod sched;
 
 #[macro_export]
 #[cfg(target_os = "none")]
-macro_rules! log{
-	( $($arg:tt)* ) => ({
-		use core::fmt::Write;
-		use $crate::logging::Logger;
-		let _ = writeln!(&mut Logger, $($arg)*);
-	})
+macro_rules! trace{
+    ( $($arg:tt)* ) => ({
+		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Trace {
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Trace),
+                $($arg)*
+            );
+        }
+    })
+}
+
+#[macro_export]
+#[cfg(target_os = "none")]
+macro_rules! debug{
+    ( $($arg:tt)* ) => ({
+		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Debug{
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Debug),
+                $($arg)*
+            );
+        }
+    })
+}
+
+#[macro_export]
+#[cfg(target_os = "none")]
+macro_rules! info{
+    ( $($arg:tt)* ) => ({
+		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Info {
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Info),
+                $($arg)*
+            );
+        }
+    })
+}
+
+#[macro_export]
+#[cfg(target_os = "none")]
+macro_rules! warn{
+    ( $($arg:tt)* ) => ({
+		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Warn{
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Warn),
+                $($arg)*
+            );
+        }
+    })
+}
+
+#[macro_export]
+#[cfg(target_os = "none")]
+macro_rules! error{
+    ( $($arg:tt)* ) => ({
+		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Error{
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Error),
+                $($arg)*
+            );
+        }
+    })
 }
 
 //==================================================================================================

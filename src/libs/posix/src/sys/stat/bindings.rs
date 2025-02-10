@@ -28,7 +28,7 @@ use crate::{
 ///
 #[no_mangle]
 pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
-    ::nvx::log!("fstat(): fd = {}, buf = {:?}", fd, buf);
+    ::nvx::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
     crate::sys::stat::fstat(fd, &mut *buf)
 }
 

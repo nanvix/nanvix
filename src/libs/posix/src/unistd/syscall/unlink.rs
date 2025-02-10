@@ -34,6 +34,6 @@ use crate::fcntl;
 /// Upon successful completion, `0` is returned. Otherwise, an error code is returned instead.
 ///
 pub fn unlink(path: &str) -> i32 {
-    ::nvx::log!("unlink(): path = {:?}", path);
+    ::nvx::trace!("unlink(): path = {:?}", path);
     fcntl::unlinkat(crate::fcntl::AT_FDCWD, path, 0)
 }

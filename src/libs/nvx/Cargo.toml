@@ -18,10 +18,18 @@ sys = { workspace = true, features = ["kcall"] }
 talc = { workspace = true }
 spin = { workspace = true }
 cfg-if = { workspace = true }
-config = { workspace = true}
+config = { workspace = true }
 
 [features]
 default = []
 allocator = []
 std = []
 staticlib = []
+
+# Logging Features
+trace = ["debug"]
+debug = ["info"]
+info = ["warn"]
+warn = ["error"]
+error = ["panic"]
+panic = []

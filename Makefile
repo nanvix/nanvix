@@ -402,18 +402,18 @@ test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(targ
 
 define GUEST_BINARY_RULES
 all-guest-binaries-$(1): all-guest-staticlibs
-	$(GUEST_CARGO_BUILD_CMD) -p $(1)
+	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=$(LOG_LEVEL)
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
 
 check-guest-binaries-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1)
+	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=$(LOG_LEVEL)
 
 clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 clippy-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL)
 endef
 
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))

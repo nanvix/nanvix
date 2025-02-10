@@ -61,7 +61,7 @@ pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int
             errno = match ErrorCode::try_from(retcode) {
                 Ok(e) => e.into_errno(),
                 Err(_) => {
-                    ::nvx::log!("open(): invalid error code");
+                    ::nvx::error!("open(): invalid error code");
                     ErrorCode::ValueOutOfRange.into_errno()
                 },
             };
@@ -105,7 +105,7 @@ pub extern "C" fn fchmodat(dirfd: c_int, path: *const c_char, mode: mode_t, flag
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                ::nvx::log!("fchmodat(): invalid error code");
+                ::nvx::error!("fchmodat(): invalid error code");
                 errno = e.code.into_errno();
             }
             -1
@@ -153,7 +153,7 @@ pub extern "C" fn fchownat(
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                ::nvx::log!("fchownat(): invalid error code");
+                ::nvx::error!("fchownat(): invalid error code");
                 errno = e.code.into_errno();
             }
             -1

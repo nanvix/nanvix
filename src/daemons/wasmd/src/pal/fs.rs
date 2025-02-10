@@ -136,7 +136,7 @@ impl File {
                     errno::errno = 0;
                     errno
                 };
-                ::nvx::log!("read(): failed to read from file descriptor (errno={:?})", errno);
+                ::nvx::error!("read(): failed to read from file descriptor (errno={:?})", errno);
                 Err(Error { errno })
             },
             ret => Ok(ret as usize),
@@ -153,7 +153,7 @@ impl File {
                     errno::errno = 0;
                     errno
                 };
-                ::nvx::log!("seek(): failed to move file offset (errno={:?})", errno);
+                ::nvx::error!("seek(): failed to move file offset (errno={:?})", errno);
                 Err(Error { errno })
             },
             newoffset => Ok(newoffset),
@@ -170,7 +170,7 @@ impl File {
                     errno::errno = 0;
                     errno
                 };
-                ::nvx::log!("tell(): failed to get file offset (errno={:?})", errno);
+                ::nvx::error!("tell(): failed to get file offset (errno={:?})", errno);
                 Err(Error { errno })
             },
             offset => Ok(offset),
@@ -187,7 +187,7 @@ impl File {
                     errno::errno = 0;
                     errno
                 };
-                ::nvx::log!("write(): failed to write to file descriptor (errno={:?})", errno);
+                ::nvx::error!("write(): failed to write to file descriptor (errno={:?})", errno);
                 Err(Error { errno })
             },
             ret => Ok(ret as usize),
@@ -216,7 +216,7 @@ impl Drop for File {
                     errno::errno = 0;
                     errno
                 };
-                ::nvx::log!("failed to close file descriptor (errno={:?})", errno);
+                ::nvx::error!("failed to close file descriptor (errno={:?})", errno);
                 // NOTE: We ignore errors on close, as the standard library does.
             },
             // Impossible.
@@ -285,7 +285,7 @@ impl OpenOptions {
         } else if self.write {
             flags.exclusive = ExclusiveOpenFlags::WriteOnly;
         } else {
-            ::nvx::log!("openat(): invalid file mode");
+            ::nvx::error!("openat(): invalid file mode");
             return Err(Error {
                 errno: ErrorCode::InvalidArgument.into_errno(),
             });
