@@ -2,7 +2,7 @@
 
 ## Testing syscalls
 
-Tests for syscalls can be found in `src/benchmarks/linux-app`.
+Tests for syscalls can be found in `src/tests/linux-app`.
 
 To run these tests, you can use the following commands:
 
@@ -18,4 +18,3 @@ RUST_LOG=debug ./bin/nanvixd.elf -http-addr 127.0.0.1:8080 -linuxd-addr 127.0.0.
 
 # (4) Send a curl to nanvixd specifying the program to run (e.g., linux-app.elf)
 curl -w "\n" --header "Content-Type: application/json" --request POST --data '{"clientid":1, "program":"bin/linux-app.elf", "args":[]}' http://localhost:8080
-
