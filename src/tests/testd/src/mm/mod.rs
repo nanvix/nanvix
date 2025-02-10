@@ -227,6 +227,78 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
     true
 }
 
+///
+/// # Description
+/// 
+/// Attemps to test that mmap always returns pages filled with zeros
+/// 
+/// # Returns
+/// 
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+fn test_mmap_munmap_return_zeros() -> bool {
+    // Acquire memory management capability.
+    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+        Ok(()) => (),
+        _ => return false,
+    }
+
+    let mypid: ProcessIdentifier = match nvx::pm::getpid() {
+        Ok(pid) => pid,
+        Err(_) => return false,
+    };
+
+    let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
+
+    // Map a page.
+    match nvx::mm::mmap(mypid, vaddr, AccessPermission::WRONLY) {
+        Ok(_) => (),
+        Err(_) => return false,
+    }
+
+    // Write to the page.
+    let data: [u8; 4] = [0xFF; 4];
+    let ptr: *mut u8 = vaddr.into_raw_value() as *mut u8;
+    unsafe {
+        ptr.copy_from(data.as_ptr(), data.len());
+    }
+
+    // Unmap the page.
+    match nvx::mm::munmap(mypid, vaddr) {
+        Ok(_) => (),
+        Err(_) => return false,
+    }
+
+    // Map the page again to read.
+    match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+        Ok(_) => (),
+        Err(_) => return false,
+    }
+
+    // Check if contents are zeros.
+    let zeros: [u8; 4] = [0; 4];
+    let mut read_data: [u8; 4] = [0xFF; 4];
+    unsafe {
+        ptr.copy_to(read_data.as_mut_ptr(), read_data.len());
+    }
+    if zeros != read_data {
+        return false;
+    }
+
+    // Unmap the page.
+    match nvx::mm::munmap(mypid, vaddr) {
+        Ok(_) => (),
+        Err(_) => return false,
+    }
+
+    // Release memory management capability.
+    match nvx::pm::capctl(Capability::MemoryManagement, false) {
+        Ok(()) => (),
+        _ => return false,
+    }
+
+    true
+}
+
 //==================================================================================================
 // Public Standalone Functions
 //==================================================================================================
@@ -241,4 +313,5 @@ pub fn test() {
     crate::test!(test_mmap_write_munmap());
     crate::test!(test_mmap_munmap_many_times_inplace());
     crate::test!(test_mmap_munmap_many_times_rolling());
+    crate::test!(test_mmap_munmap_return_zeros());
 }
