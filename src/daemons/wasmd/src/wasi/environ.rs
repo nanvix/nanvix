@@ -38,7 +38,7 @@ impl WasiCtxInner {
             .map(|s| match CString::new(s.as_str()) {
                 Ok(arg_cstr) => arg_cstr.into_bytes_with_nul().len(),
                 Err(_) => {
-                    ::nvx::log!("args_sizes_get(): skipping invalid command-line argument");
+                    ::nvx::error!("args_sizes_get(): skipping invalid command-line argument");
                     0
                 },
             })
@@ -65,7 +65,7 @@ impl WasiCtxInner {
             .map(|s| match CString::new(s.as_str()) {
                 Ok(env_cstr) => env_cstr.into_bytes_with_nul().len(),
                 Err(_) => {
-                    ::nvx::log!("environ_sizes_get(): skipping invalid environment variable");
+                    ::nvx::error!("environ_sizes_get(): skipping invalid environment variable");
                     0
                 },
             })

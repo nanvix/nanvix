@@ -45,7 +45,7 @@ use ::nvx::{
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
 pub fn clock_gettime(clock_id: clockid_t, tp: Option<&mut timespec>) -> Result<(), Error> {
-    ::nvx::log!("clock_gettime():clock_id={:?}, tp={:?}", clock_id, tp);
+    ::nvx::trace!("clock_gettime():clock_id={:?}, tp={:?}", clock_id, tp);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 

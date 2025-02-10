@@ -37,7 +37,7 @@ fn test_getpid() -> bool {
             if pid == expected {
                 true
             } else {
-                nvx::log!("expected: {:?}, got: {:?}", expected, pid);
+                nvx::error!("expected: {:?}, got: {:?}", expected, pid);
                 false
             }
         },
@@ -70,7 +70,7 @@ fn test_gettid() -> bool {
             if tid == expected {
                 true
             } else {
-                nvx::log!("expected: {:?}, got: {:?}", expected, tid);
+                nvx::error!("expected: {:?}, got: {:?}", expected, tid);
                 false
             }
         },
@@ -98,7 +98,7 @@ fn test_getuid() -> bool {
             if uid == expected {
                 true
             } else {
-                nvx::log!("expected: {:?}, got: {:?}", expected, uid);
+                nvx::error!("expected: {:?}, got: {:?}", expected, uid);
                 false
             }
         },
@@ -126,7 +126,7 @@ fn test_geteuid() -> bool {
             if euid == expected {
                 true
             } else {
-                nvx::log!("expected: {:?}, got: {:?}", expected, euid);
+                nvx::error!("expected: {:?}, got: {:?}", expected, euid);
                 false
             }
         },
@@ -154,7 +154,7 @@ fn test_getgid() -> bool {
             if gid == expected {
                 true
             } else {
-                nvx::log!("expected: {:?}, got: {:?}", expected, gid);
+                nvx::error!("expected: {:?}, got: {:?}", expected, gid);
                 false
             }
         },
@@ -182,7 +182,7 @@ fn test_getegid() -> bool {
             if egid == expected {
                 true
             } else {
-                nvx::log!("expected: {:?}, got: {:?}", expected, egid);
+                nvx::error!("expected: {:?}, got: {:?}", expected, egid);
                 false
             }
         },

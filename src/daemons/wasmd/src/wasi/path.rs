@@ -45,7 +45,7 @@ impl WasiCtxInner {
             Some(dirfd) => {
                 // Ensure that we have the right to invoke this operation.
                 if !dirfd.rights_base().path_open {
-                    ::nvx::log!("path_open(): access denied");
+                    ::nvx::error!("path_open(): access denied");
                     return Err(Errno::Acces);
                 }
 
@@ -76,27 +76,27 @@ impl WasiCtxInner {
 
                 // Set dsync mode.
                 if fdflags.dsync {
-                    ::nvx::log!("path_open(): dsync mode not supported");
+                    ::nvx::error!("path_open(): dsync mode not supported");
                 }
 
                 // Set non-blocking mode.
                 if fdflags.nonblock {
-                    ::nvx::log!("path_open(): non-blocking mode not supported");
+                    ::nvx::error!("path_open(): non-blocking mode not supported");
                 }
 
                 // Set rsync mode.
                 if fdflags.rsync {
-                    ::nvx::log!("path_open(): rsync mode not supported");
+                    ::nvx::error!("path_open(): rsync mode not supported");
                 }
 
                 // Set sync mode.
                 if fdflags.sync {
-                    ::nvx::log!("path_open(): sync mode not supported");
+                    ::nvx::error!("path_open(): sync mode not supported");
                 }
 
                 // Set symlink follow flag.
                 if !dirflags.symlink_follow {
-                    ::nvx::log!("path_open(): symlink follow flag not supported");
+                    ::nvx::error!("path_open(): symlink follow flag not supported");
                 }
 
                 // Set read mode.
@@ -118,7 +118,7 @@ impl WasiCtxInner {
                 }
             },
             None => {
-                ::nvx::log!("path_open(): invalid file descriptor (fd={:?})", dirfd);
+                ::nvx::error!("path_open(): invalid file descriptor (fd={:?})", dirfd);
                 Err(Errno::Badf)
             },
         }

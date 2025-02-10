@@ -45,7 +45,7 @@ impl WasiCtxInner {
             }
         }
 
-        ::nvx::log!("fd_prestat_dir_get(): invalid file descriptor");
+        ::nvx::error!("fd_prestat_dir_get(): invalid file descriptor");
         Err(Errno::Badf)
     }
 
@@ -59,7 +59,7 @@ impl WasiCtxInner {
             }
         }
 
-        ::nvx::log!("fd_prestat_get(): invalid file descriptor");
+        ::nvx::error!("fd_prestat_get(): invalid file descriptor");
         Err(Errno::Badf)
     }
 
@@ -75,7 +75,7 @@ impl WasiCtxInner {
                 let buf: &mut [u8] = match buf.as_mut() {
                     Ok(slice) => slice,
                     Err(_) => {
-                        ::nvx::log!("fd_read(): failed to get slice from memory");
+                        ::nvx::error!("fd_read(): failed to get slice from memory");
                         return Err(Errno::Inval);
                     },
                 };
@@ -84,7 +84,7 @@ impl WasiCtxInner {
                     match file.read(buf) {
                         Ok(read) => read.into(),
                         Err(err) => {
-                            ::nvx::log!("fd_read(): failed to read from file (errno={:?})", err);
+                            ::nvx::error!("fd_read(): failed to read from file (errno={:?})", err);
                             return Err(Errno::from(err.value()));
                         },
                     }
@@ -101,7 +101,7 @@ impl WasiCtxInner {
             Some(file) => {
                 // Ensure that we have the right to invoke this operation.
                 if !file.rights_base().fd_read {
-                    ::nvx::log!("fd_read(): access denied");
+                    ::nvx::error!("fd_read(): access denied");
                     return Err(Errno::Acces);
                 }
 
@@ -113,7 +113,7 @@ impl WasiCtxInner {
                 read_iovecs(file, memory, false)
             },
             None => {
-                ::nvx::log!("fd_read(): invalid file descriptor");
+                ::nvx::error!("fd_read(): invalid file descriptor");
                 return Err(Errno::Badf);
             },
         }
@@ -130,7 +130,7 @@ impl WasiCtxInner {
             Some(file) => {
                 // Ensure that we have the right to invoke this operation.
                 if !file.rights_base().fd_seek {
-                    ::nvx::log!("fd_seek(): access denied");
+                    ::nvx::error!("fd_seek(): access denied");
                     return Err(Errno::Acces);
                 }
 
@@ -142,13 +142,13 @@ impl WasiCtxInner {
                 {
                     Ok(offset) => Ok(offset),
                     Err(_) => {
-                        ::nvx::log!("fd_seek(): failed to convert offset to FileSize");
+                        ::nvx::error!("fd_seek(): failed to convert offset to FileSize");
                         return Err(Errno::TooBig);
                     },
                 }
             },
             None => {
-                ::nvx::log!("fd_seek(): invalid file descriptor");
+                ::nvx::error!("fd_seek(): invalid file descriptor");
                 return Err(Errno::Badf);
             },
         }
@@ -160,7 +160,7 @@ impl WasiCtxInner {
             Some(file) => {
                 // Ensure that we have the right to invoke this operation.
                 if !file.rights_base().fd_seek {
-                    ::nvx::log!("fd_tell(): access denied");
+                    ::nvx::error!("fd_tell(): access denied");
                     return Err(Errno::Acces);
                 }
 
@@ -172,13 +172,13 @@ impl WasiCtxInner {
                 {
                     Ok(offset) => Ok(offset),
                     Err(_) => {
-                        ::nvx::log!("fd_tell(): failed to convert offset to FileSize");
+                        ::nvx::error!("fd_tell(): failed to convert offset to FileSize");
                         return Err(Errno::TooBig);
                     },
                 }
             },
             None => {
-                ::nvx::log!("fd_tell(): invalid file descriptor");
+                ::nvx::error!("fd_tell(): invalid file descriptor");
                 return Err(Errno::Badf);
             },
         }
@@ -196,7 +196,7 @@ impl WasiCtxInner {
                 let buf: &[u8] = match buf.as_ref() {
                     Ok(slice) => slice,
                     Err(_) => {
-                        ::nvx::log!("fd_write(): failed to get slice from memory");
+                        ::nvx::error!("fd_write(): failed to get slice from memory");
                         return Err(Errno::Inval);
                     },
                 };
@@ -205,7 +205,7 @@ impl WasiCtxInner {
                     match file.write(buf) {
                         Ok(written) => written.into(),
                         Err(err) => {
-                            ::nvx::log!("fd_write(): failed to write to file (errno={:?})", err);
+                            ::nvx::error!("fd_write(): failed to write to file (errno={:?})", err);
                             return Err(Errno::from(err.value()));
                         },
                     }
@@ -222,7 +222,7 @@ impl WasiCtxInner {
             Some(file) => {
                 // Ensure that we have the right to invoke this operation.
                 if !file.rights_base().fd_write {
-                    ::nvx::log!("fd_write(): access denied");
+                    ::nvx::error!("fd_write(): access denied");
                     return Err(Errno::Acces);
                 }
 
@@ -234,7 +234,7 @@ impl WasiCtxInner {
                 write_iovecs(file, false)
             },
             None => {
-                ::nvx::log!("fd_write(): invalid file descriptor");
+                ::nvx::error!("fd_write(): invalid file descriptor");
                 return Err(Errno::Badf);
             },
         }

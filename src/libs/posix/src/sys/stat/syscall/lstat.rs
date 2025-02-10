@@ -33,6 +33,6 @@ use crate::{
 /// instead.
 ///
 pub fn lstat(pathname: &str, statbuf: &mut stat::stat) -> i32 {
-    ::nvx::log!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, statbuf);
+    ::nvx::trace!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, statbuf);
     sys::stat::fstatat(fcntl::AT_FDCWD, pathname, statbuf, fcntl::AT_SYMLINK_NOFOLLOW)
 }

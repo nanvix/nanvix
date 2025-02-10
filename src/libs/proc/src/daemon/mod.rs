@@ -59,16 +59,16 @@ impl ProcessDaemon {
 
     /// Initializes the process manager daemon.
     pub fn init() -> Result<Self, Error> {
-        ::nvx::log!("running process manager daemon...");
+        ::nvx::info!("running process manager daemon...");
         let mypid: ProcessIdentifier = ::nvx::pm::getpid()?;
         assert_eq!(mypid, crate::PROCD, "process daemon has unexpected pid");
 
         // Acquire process management capabilities.
-        ::nvx::log!("acquiring process managemnet capabilities...");
+        ::nvx::info!("acquiring process managemnet capabilities...");
         ::nvx::pm::capctl(Capability::ProcessManagement, true)?;
 
         // Subscribe to process termination.
-        ::nvx::log!("subscribing to process termination...");
+        ::nvx::info!("subscribing to process termination...");
         ::nvx::event::evctrl(
             Event::Scheduling(SchedulingEvent::ProcessTermination),
             EventCtrlRequest::Register,
@@ -84,12 +84,12 @@ impl ProcessDaemon {
         loop {
             match ::nvx::ipc::recv() {
                 Ok(message) => {
-                    ::nvx::log!("received message from={:?}", { message.source });
+                    ::nvx::info!("received message from={:?}", { message.source });
                     match message.message_type {
                         MessageType::Exception => unreachable!("should not receive exceptions"),
                         MessageType::Ipc => {
                             if let Err(e) = self.handle_ipc_message(message) {
-                                ::nvx::log!("failed to handle IPC message (error={:?})", e);
+                                ::nvx::error!("failed to handle IPC message (error={:?})", e);
                             }
                         },
                         MessageType::Empty => unreachable!("should not receive empty messages"),
@@ -100,13 +100,16 @@ impl ProcessDaemon {
                                 Ok(true) => break,
                                 Ok(false) => continue,
                                 Err(e) => {
-                                    ::nvx::log!("failed to handle scheduling event (error={:?})", e)
+                                    ::nvx::error!(
+                                        "failed to handle scheduling event (error={:?})",
+                                        e
+                                    )
                                 },
                             }
                         },
                     }
                 },
-                Err(e) => ::nvx::log!("failed to receive exception message (error={:?})", e),
+                Err(e) => ::nvx::error!("failed to receive exception message (error={:?})", e),
             }
         }
     }
@@ -116,15 +119,15 @@ impl ProcessDaemon {
         let pid: ProcessIdentifier =
             ProcessIdentifier::from(u32::from_le_bytes(message.payload[0..4].try_into().unwrap()));
 
-        ::nvx::log!("received scheduling event (pid={:?})", pid);
+        ::nvx::info!("received scheduling event (pid={:?})", pid);
 
         // Deserialize process status.
         let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
-        ::nvx::log!("process terminated (pid={:?}, status={:?})", pid, status);
+        ::nvx::info!("process terminated (pid={:?}, status={:?})", pid, status);
 
         // De-register process.
         if let Some(name) = self.processes.remove(&pid) {
-            ::nvx::log!("deregistering process (pid={:?}, name={:?})", pid, name);
+            ::nvx::info!("deregistering process (pid={:?}, name={:?})", pid, name);
 
             if name == Self::INITD_NAME {
                 return Ok(true);
@@ -138,7 +141,7 @@ impl ProcessDaemon {
         let destionation: ProcessIdentifier = message.source;
         let message: SystemMessage = SystemMessage::from_bytes(message.payload)?;
 
-        ::nvx::log!("received system message (header={:?})", message.header);
+        ::nvx::info!("received system message (header={:?})", message.header);
 
         // Parse message.
         if let SystemMessageHeader::ProcessManagement = message.header {
@@ -178,12 +181,12 @@ impl ProcessDaemon {
                     let s: String = name.to_string();
 
                     if s == "memd" {
-                        ::nvx::log!("signup memory daemon");
+                        ::nvx::info!("signup memory daemon");
                     } else {
-                        ::nvx::log!("signup other process = {:?}", name);
+                        ::nvx::info!("signup other process = {:?}", name);
                     }
 
-                    ::nvx::log!("signing up process (pid={:?}, name={:?})", pid, s.as_bytes());
+                    ::nvx::info!("signing up process (pid={:?}, name={:?})", pid, s.as_bytes());
                     self.processes.insert(pid, s);
                     message::signup_response(destination, pid, 0)
                 },
@@ -229,7 +232,7 @@ impl ProcessDaemon {
 
         // Check if process is the memory daemon.
         for (pid, pname) in self.processes.iter() {
-            ::nvx::log!("looking up process (name={:?}, pname={:?})", name, pname);
+            ::nvx::info!("looking up process (name={:?}, pname={:?})", name, pname);
 
             if pname == name {
                 let message: Message = message::lookup_response(destination, *pid, 0)?;
@@ -246,10 +249,10 @@ impl ProcessDaemon {
     }
 
     pub fn shutdown(&mut self) {
-        ::nvx::log!("shutting down process manager daemon...");
+        ::nvx::info!("shutting down process manager daemon...");
 
         for (pid, pname) in self.processes.iter() {
-            ::nvx::log!("shutting down process (pid={:?}, name={:?})", pid, pname);
+            ::nvx::info!("shutting down process (pid={:?}, name={:?})", pid, pname);
             let message: Message =
                 message::shutdown_request(*pid, 0).expect("failed to broadcast shutdown message");
             ::nvx::ipc::send(&message).expect("failed to broadcast shutdown message");
@@ -271,14 +274,14 @@ impl ProcessDaemon {
 
                         // De-register process.
                         if let Some(name) = self.processes.remove(&pid) {
-                            ::nvx::log!(
+                            ::nvx::info!(
                                 "process terminated (name={:?}, pid={:?}, status={:?})",
                                 name,
                                 pid,
                                 status
                             );
                         } else {
-                            ::nvx::log!(
+                            ::nvx::info!(
                                 "unknown process terminated (pid={:?}, status={:?})",
                                 pid,
                                 status
@@ -286,7 +289,7 @@ impl ProcessDaemon {
                         }
                     }
                 },
-                Err(e) => ::nvx::log!("failed to receive exception message (error={:?})", e),
+                Err(e) => ::nvx::error!("failed to receive exception message (error={:?})", e),
             }
         }
     }
@@ -295,17 +298,17 @@ impl ProcessDaemon {
 impl Drop for ProcessDaemon {
     fn drop(&mut self) {
         // Unsubscribe from scheduling events.
-        ::nvx::log!("unsubscribing from scheduling events...");
+        ::nvx::info!("unsubscribing from scheduling events...");
         if let Err(e) = ::nvx::event::evctrl(
             Event::Scheduling(SchedulingEvent::ProcessTermination),
             EventCtrlRequest::Unregister,
         ) {
-            ::nvx::log!("failed to unsubscribe from scheduling events (error={:?})", e);
+            ::nvx::error!("failed to unsubscribe from scheduling events (error={:?})", e);
         }
 
-        ::nvx::log!("shutting down process manager daemon...");
+        ::nvx::info!("shutting down process manager daemon...");
         if let Err(e) = ::nvx::pm::capctl(Capability::ProcessManagement, false) {
-            ::nvx::log!("failed to release process management capabilities (error={:?})", e);
+            ::nvx::error!("failed to release process management capabilities (error={:?})", e);
         }
     }
 }

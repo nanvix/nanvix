@@ -32,6 +32,6 @@ use crate::{
 /// Upon successful completion, `0` is returned. Otherwise, an error code is returned instead.
 ///
 pub fn link(oldpath: &str, newpath: &str) -> c_int {
-    ::nvx::log!("link(): oldpath = {:?}, newpath = {:?}", oldpath, newpath);
+    ::nvx::trace!("link(): oldpath = {:?}, newpath = {:?}", oldpath, newpath);
     unistd::linkat(fcntl::AT_FDCWD, oldpath, fcntl::AT_FDCWD, newpath, 0)
 }
