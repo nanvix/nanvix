@@ -420,11 +420,13 @@ $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target
 
 all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(target))
 	$(MAKE) -C $(SOURCES_DIR)/user all
+	$(MAKE) -C $(SOURCES_DIR)/tests all
 
 check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),check-guest-binaries-$(target))
 
 clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
 	$(MAKE) -C $(SOURCES_DIR)/user clean
+	$(MAKE) -C $(SOURCES_DIR)/tests clean
 
 clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
 
