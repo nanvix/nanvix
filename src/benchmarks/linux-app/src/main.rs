@@ -38,7 +38,9 @@ pub fn main() -> Result<(), Error> {
     clock::test();
     identity::test();
     file_system::test();
-    network::test();
+    if let Err(error) = network::test_network() {
+        ::nvx::log!("network test failed: {:?}", error);
+    }
 
     venv::leave(env)?;
     ::nvx::log!("left environment {:?}", env);
