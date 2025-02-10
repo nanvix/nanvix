@@ -5,8 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::log;
+use crate::logging::{
+    LogLevel,
+    Logger,
+};
 use ::core::{
+    fmt::Write,
     hint,
     panic::PanicMessage,
 };
@@ -25,7 +29,13 @@ pub fn panic_implementation(info: &::core::panic::PanicInfo) -> ! {
 
     // Print panic information.
     let m: PanicMessage = info.message();
-    log!("PANIC file='{}', line={} :: {}", file, line, m);
+    let _ = write!(
+        &mut Logger::get(module_path!(), LogLevel::Trace),
+        "PANIC file='{}', line={} :: {}",
+        file,
+        line,
+        m
+    );
 
     loop {
         hint::spin_loop()
