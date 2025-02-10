@@ -4,7 +4,10 @@
 // Imports
 //==================================================================================================
 
-use ::core::mem;
+use ::nvx::sys::error::{
+    Error,
+    ErrorCode,
+};
 use ::posix::{
     ffi::c_int,
     netinet::in_::{
@@ -21,30 +24,355 @@ use ::posix::{
             SocketAddrV4,
             SocketType,
         },
+        types::ssize_t,
     },
     unistd,
 };
 
 //==================================================================================================
+// Unbound Socket
+//==================================================================================================
+
+struct UnboundSocket {
+    sockfd: c_int,
+}
+
+impl UnboundSocket {
+    pub fn new(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Result<Self, Error> {
+        let sockfd: c_int = sys::socket::socket(domain, typ, protocol)?;
+
+        Ok(UnboundSocket { sockfd })
+    }
+
+    pub fn bind(self, sockaddr: &SocketAddr) -> Result<BoundSocket, (UnboundSocket, Error)> {
+        match sys::socket::bind(self.sockfd, &sockaddr) {
+            Ok(()) => Ok(BoundSocket { socket: self }),
+            Err(error) => Err((self, error)),
+        }
+    }
+}
+
+impl Drop for UnboundSocket {
+    fn drop(&mut self) {
+        match unistd::close(self.sockfd) {
+            0 => {},
+            errno => {
+                panic!("failed to close socket with fd {}: {:?}", self.sockfd, errno);
+            },
+        }
+    }
+}
+
+//==================================================================================================
+// Bound Socket
+//==================================================================================================
+
+struct BoundSocket {
+    socket: UnboundSocket,
+}
+
+impl BoundSocket {
+    pub fn getsockname(&self) -> Result<SocketAddr, Error> {
+        let mut sockaddr: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
+        sys::socket::getsockname(self.socket.sockfd, &mut sockaddr)?;
+        Ok(sockaddr)
+    }
+
+    pub fn listen(self) -> Result<ListeningSocket, (BoundSocket, Error)> {
+        match sys::socket::listen(self.socket.sockfd, 0) {
+            Ok(()) => Ok(ListeningSocket { socket: self }),
+            Err(error) => Err((self, error)),
+        }
+    }
+}
+
+//==================================================================================================
+// Listening Socket
+//==================================================================================================
+
+struct ListeningSocket {
+    socket: BoundSocket,
+}
+
+impl ListeningSocket {
+    fn getsockname(&self) -> Result<SocketAddr, Error> {
+        self.socket.getsockname()
+    }
+}
+
+//==================================================================================================
+// Connected Socket
+//==================================================================================================
+
+struct ConnectedSocket {
+    socket: BoundSocket,
+}
+
+impl ConnectedSocket {
+    fn pair(
+        domain: AddressFamily,
+        typ: SocketType,
+        protocol: Protocol,
+    ) -> Result<(Self, Self), Error> {
+        let mut socket_fds: [c_int; 2] = [-1; 2];
+
+        match sys::socket::socketpair(domain, typ, protocol, &mut socket_fds) {
+            Ok(()) => {},
+            Err(errno) => {
+                return Err(Error::from(errno));
+            },
+        }
+
+        let bound_socket_0: BoundSocket = BoundSocket {
+            socket: UnboundSocket {
+                sockfd: socket_fds[0],
+            },
+        };
+        let bound_socket_1: BoundSocket = BoundSocket {
+            socket: UnboundSocket {
+                sockfd: socket_fds[1],
+            },
+        };
+
+        Ok((
+            ConnectedSocket {
+                socket: bound_socket_0,
+            },
+            ConnectedSocket {
+                socket: bound_socket_1,
+            },
+        ))
+    }
+
+    fn getsockname(&self) -> Result<SocketAddr, Error> {
+        self.socket.getsockname()
+    }
+
+    fn getpeername(&self) -> Result<SocketAddr, Error> {
+        let mut sockaddr: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
+        sys::socket::getpeername(self.socket.socket.sockfd, &mut sockaddr)?;
+        Ok(sockaddr)
+    }
+
+    fn send(&self, buffer: &[u8], flags: c_int) -> Result<ssize_t, Error> {
+        sys::socket::send(self.socket.socket.sockfd, buffer, flags)
+    }
+
+    fn recv(&self, buffer: &mut [u8], flags: c_int) -> Result<ssize_t, Error> {
+        sys::socket::recv(self.socket.socket.sockfd, buffer, flags)
+    }
+
+    fn shutdown(&self, how: Shutdown) -> Result<(), Error> {
+        sys::socket::shutdown(self.socket.socket.sockfd, how)
+    }
+}
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn test() {
-    // Create a socket.
+fn new_unbound_socket(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+) -> Result<UnboundSocket, Error> {
+    UnboundSocket::new(domain, typ, protocol)
+}
+
+fn new_bound_socket(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    sockaddr: &SocketAddr,
+) -> Result<BoundSocket, Error> {
+    let unbound_socket: UnboundSocket = new_unbound_socket(domain, typ, protocol)?;
+    match unbound_socket.bind(sockaddr) {
+        Ok(bound_socket) => Ok(bound_socket),
+        Err((_unbound_socket, error)) => Err(error),
+    }
+}
+
+fn new_listening_socket(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    sockaddr: &SocketAddr,
+) -> Result<ListeningSocket, Error> {
+    let bound_socket: BoundSocket = new_bound_socket(domain, typ, protocol, sockaddr)?;
+    match bound_socket.listen() {
+        Ok(listen_socket) => Ok(listen_socket),
+        Err((_bound_socket, error)) => Err(error),
+    }
+}
+
+fn new_socket_pair(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+) -> Result<(ConnectedSocket, ConnectedSocket), Error> {
+    ConnectedSocket::pair(domain, typ, protocol)
+}
+
+fn test_create_socket_pair(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+) -> Result<(), Error> {
+    ::nvx::log!("test_create_socket_pair");
+    let (_socket_0, _socket_1): (ConnectedSocket, ConnectedSocket) =
+        new_socket_pair(domain, typ, protocol)?;
+    Ok(())
+}
+
+fn test_create_socket(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+) -> Result<(), Error> {
+    ::nvx::log!("test_create_socket");
+    let _unbound_socket: UnboundSocket = new_unbound_socket(domain, typ, protocol)?;
+    Ok(())
+}
+
+fn test_bind_socket(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    sockaddr: &SocketAddr,
+) -> Result<(), Error> {
+    ::nvx::log!("test_bind_socket");
+    let _bound_socket: BoundSocket = new_bound_socket(domain, typ, protocol, sockaddr)?;
+    Ok(())
+}
+
+fn test_listen_socket(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    sockaddr: &SocketAddr,
+) -> Result<(), Error> {
+    ::nvx::log!("test_listen_socket");
+    let _listen_socket: ListeningSocket = new_listening_socket(domain, typ, protocol, sockaddr)?;
+    Ok(())
+}
+
+fn test_getsockname_bound_socket(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    sockaddr: &SocketAddr,
+) -> Result<(), Error> {
+    ::nvx::log!("test_getsockname_bound_socket");
+    let bound_socket: BoundSocket = new_bound_socket(domain, typ, protocol, sockaddr)?;
+    let sockaddr_: SocketAddr = bound_socket.getsockname()?;
+    if sockaddr != &sockaddr_ {
+        return Err(Error::new(ErrorCode::RemoteAddressChanged, "remote address changed"));
+    }
+    Ok(())
+}
+
+fn test_getsockname_listening_socket(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    sockaddr: &SocketAddr,
+) -> Result<(), Error> {
+    ::nvx::log!("test_getsockname_listening_socket");
+    let listening_socket: ListeningSocket = new_listening_socket(domain, typ, protocol, sockaddr)?;
+    let sockaddr_: SocketAddr = listening_socket.getsockname()?;
+    if sockaddr != &sockaddr_ {
+        return Err(Error::new(ErrorCode::RemoteAddressChanged, "remote address changed"));
+    }
+    Ok(())
+}
+
+fn test_getsockname(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    sockaddr: &SocketAddr,
+) -> Result<(), Error> {
+    ::nvx::log!("test_getsockname");
+    test_getsockname_bound_socket(domain, typ, protocol, sockaddr)?;
+    test_getsockname_listening_socket(domain, typ, protocol, sockaddr)?;
+    Ok(())
+}
+
+fn test_getpeername(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+) -> Result<(), Error> {
+    ::nvx::log!("test_getpeername");
+
+    let (socket_0, socket_1): (ConnectedSocket, ConnectedSocket) =
+        new_socket_pair(domain, typ, protocol)?;
+
+    let sockaddr_self: [SocketAddr; 2] = [socket_0.getsockname()?, socket_1.getsockname()?];
+    let sockaddr_peer: [SocketAddr; 2] = [socket_1.getpeername()?, socket_0.getpeername()?];
+
+    for i in 0..2 {
+        if sockaddr_self[i] != sockaddr_peer[i] {
+            return Err(Error::new(ErrorCode::RemoteAddressChanged, "remote address changed"));
+        }
+    }
+
+    Ok(())
+}
+
+fn test_send_receive(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+) -> Result<(), Error> {
+    ::nvx::log!("test_send_receive");
+
+    let (socket_0, socket_1): (ConnectedSocket, ConnectedSocket) =
+        new_socket_pair(domain, typ, protocol)?;
+
+    let mut buffer: [u8; 32] = [1; 32];
+
+    // Send message.
+    socket_0.send(&buffer, 0)?;
+
+    // Zero out buffer.
+    for i in 0..32 {
+        buffer[i] = 0;
+    }
+
+    // Receive message from connection.
+    socket_1.recv(&mut buffer, 0)?;
+
+    // Sanity check message contents.
+    for i in 0..32 {
+        if buffer[i] != 1 {
+            return Err(Error::new(ErrorCode::InvalidMessage, "message contents are not correct"));
+        }
+    }
+
+    Ok(())
+}
+
+fn test_shutdown(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Result<(), Error> {
+    ::nvx::log!("test_shutdown");
+
+    let (socket_0, socket_1): (ConnectedSocket, ConnectedSocket) =
+        new_socket_pair(domain, typ, protocol)?;
+
+    // Disallow send and receive operations.
+    for socket in &[socket_0, socket_1] {
+        socket.shutdown(Shutdown::ReadWrite)?
+    }
+
+    Ok(())
+}
+
+pub fn test_network() -> Result<(), Error> {
+    ::nvx::log!("test_network");
     let domain: AddressFamily = AddressFamily::Inet;
     let typ: SocketType = SocketType::Stream;
     let protocol: Protocol = Protocol::Tcp;
-    let sockfd: i32 = match sys::socket::socket(domain, typ, protocol) {
-        Ok(sockfd) => {
-            ::nvx::log!("created socket with fd {}", sockfd);
-            sockfd
-        },
-        Err(error) => {
-            panic!("failed to create socket: {:?}", error);
-        },
-    };
 
-    // Bind socket to address to 127.0.0.1:8888.
     let sockaddr_in: sockaddr_in = sockaddr_in {
         sin_family: match sys::socket::AF_INET.try_into() {
             Ok(family) => family,
@@ -57,173 +385,21 @@ pub fn test() {
         sin_zero: [0; 8],
     };
 
-    // TODO: test case for connect().
-
-    // TODO: test case for accept().
-
     let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
 
-    match sys::socket::bind(sockfd, &sockaddr) {
-        Ok(()) => {
-            ::nvx::log!("bound socket to address");
-        },
-        Err(error) => {
-            panic!("failed to bind socket to address (error={:?})", error);
-        },
-    }
+    test_create_socket(domain, typ, protocol)?;
+    test_bind_socket(domain, typ, protocol, &sockaddr)?;
+    test_listen_socket(domain, typ, protocol, &sockaddr)?;
+    test_getsockname(domain, typ, protocol, &sockaddr)?;
 
-    // Check if socket is bound to expected address.
-    let mut sockaddr_: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
-    match sys::socket::getsockname(sockfd, &mut sockaddr_) {
-        Ok(()) => {
-            if sockaddr_ != sockaddr {
-                panic!(
-                    "socket is not bound to expected address (expected: {:?}, actual: {:?})",
-                    sockaddr, sockaddr_
-                );
-            }
-            ::nvx::log!("socket is bound to address {:?}", sockaddr_);
-        },
-        Err(error) => {
-            panic!("failed to get local name of socket: {:?}", error);
-        },
-    }
+    let domain: AddressFamily = AddressFamily::Unix;
+    let typ: SocketType = SocketType::Stream;
+    let protocol: Protocol = Protocol::Unspec;
 
-    // Listen for connections on socket.
-    match sys::socket::listen(sockfd, 0) {
-        Ok(()) => {
-            ::nvx::log!("listening for connections on socket");
-        },
-        Err(error) => {
-            panic!("failed to listen for connections on socket ({:?})", error);
-        },
-    }
+    test_create_socket_pair(domain, typ, protocol)?;
+    test_getpeername(domain, typ, protocol)?;
+    test_send_receive(domain, typ, protocol)?;
+    test_shutdown(domain, typ, protocol)?;
 
-    // Close socket.
-    match unistd::close(sockfd) {
-        0 => {
-            ::nvx::log!("closed socket");
-        },
-        errno => {
-            panic!("failed to close socket: {:?}", errno);
-        },
-    }
-
-    // Create a pair of connected sockets.
-    let mut socket_fds: [c_int; 2] = [-1; 2];
-
-    match sys::socket::socketpair(
-        AddressFamily::Unix,
-        SocketType::Stream,
-        Protocol::Unspec,
-        &mut socket_fds,
-    ) {
-        Ok(()) => {
-            ::nvx::log!(
-                "created pair of connected sockets with fds {} and {}",
-                socket_fds[0],
-                socket_fds[1]
-            );
-        },
-        Err(errno) => {
-            panic!("failed to create pair of connected sockets: {:?}", errno);
-        },
-    }
-
-    // Get name of the local socket.
-    let mut sockaddr_self: [SocketAddr; 2] = unsafe { mem::zeroed() };
-    for i in 0..2 {
-        match sys::socket::getsockname(socket_fds[i], &mut sockaddr_self[i]) {
-            Ok(()) => {
-                ::nvx::log!("sockfd {:?} is bound to {:?}", socket_fds[i], sockaddr_self[i]);
-            },
-            errno => {
-                panic!("failed to get local name of connection: {:?}", errno);
-            },
-        }
-    }
-
-    // Get name of the peer socket.
-    let mut sockaddr_peer: [SocketAddr; 2] = unsafe { mem::zeroed() };
-    for i in (0..2).rev() {
-        match sys::socket::getpeername(socket_fds[i], &mut sockaddr_peer[i]) {
-            Ok(()) => {
-                ::nvx::log!(
-                    "sockfd {:?} is connected to peer {:?}",
-                    socket_fds[i],
-                    sockaddr_peer[i]
-                );
-            },
-            errno => {
-                panic!("failed to get peer name of connection: {:?}", errno);
-            },
-        }
-    }
-
-    // Check if local and peer names are the same.
-    for i in 0..2 {
-        if sockaddr_self[i] != sockaddr_peer[i] {
-            panic!("local and peer names are not the same");
-        }
-    }
-
-    let mut buffer: [u8; 32] = [1; 32];
-
-    // Send message.
-    match sys::socket::send(socket_fds[0], &buffer, 0) {
-        Ok(len) => {
-            ::nvx::log!("sent {} bytes to connection", len);
-        },
-        Err(error) => {
-            panic!("failed to send message to connection (error={:?})", error);
-        },
-    }
-
-    // Receive message from connection.
-    match sys::socket::recv(socket_fds[1], &mut buffer, 0) {
-        Ok(len) => {
-            ::nvx::log!("received {} bytes from connection", len);
-        },
-        Err(error) => {
-            panic!("failed to receive message from connection (error={:?})", error);
-        },
-    }
-
-    // Sanity check message contents.
-    (0..32).for_each(|i| {
-        if buffer[i] != 1 {
-            panic!("message contents are not correct");
-        }
-    });
-
-    // Disallow send and receive operations.
-    for socketfd in &socket_fds {
-        match sys::socket::shutdown(*socketfd, Shutdown::ReadWrite) {
-            Ok(()) => {
-                ::nvx::log!("disallowed send and receive operations on connection");
-            },
-            Err(error) => {
-                panic!("failed to disallow send and receive operations on connection: {:?}", error);
-            },
-        }
-    }
-
-    // Close sockets.
-    match unistd::close(socket_fds[0]) {
-        0 => {
-            ::nvx::log!("closed socket with fd {}", socket_fds[0]);
-        },
-        errno => {
-            panic!("failed to close socket with fd {}: {:?}", socket_fds[0], errno);
-        },
-    }
-
-    match unistd::close(socket_fds[1]) {
-        0 => {
-            ::nvx::log!("closed socket with fd {}", socket_fds[1]);
-        },
-        errno => {
-            panic!("failed to close socket with fd {}: {:?}", socket_fds[1], errno);
-        },
-    }
+    Ok(())
 }
