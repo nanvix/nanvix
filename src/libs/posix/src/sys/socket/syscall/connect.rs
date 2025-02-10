@@ -47,7 +47,7 @@ use ::nvx::{
 /// The `connect()` function returns the file descriptor of the socket on success. On error, it returns an error.
 ///
 pub fn connect(sockfd: c_int, sockaddr: &sockaddr, len: socklen_t) -> Result<c_int, Error> {
-    ::nvx::log!("connect(): fd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+    ::nvx::trace!("connect(): fd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
@@ -61,7 +61,7 @@ pub fn connect(sockfd: c_int, sockaddr: &sockaddr, len: socklen_t) -> Result<c_i
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::nvx::log!("connect(): failed ({:?})", error_code);
+        ::nvx::error!("connect(): failed ({:?})", error_code);
         Err(Error::new(error_code, "connect() failed"))
     } else {
         // System call succeeded, parse response.

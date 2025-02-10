@@ -41,7 +41,7 @@ use ::nvx::{
 /// error.
 ///
 pub fn fchmod(fd: c_int, mode: mode_t) -> Result<(), Error> {
-    ::nvx::log!("fchmod(): fd={:?}, mode={:o}", fd, mode);
+    ::nvx::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 

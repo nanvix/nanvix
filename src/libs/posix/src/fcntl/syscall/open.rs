@@ -31,6 +31,6 @@ use crate::{
 /// the lowest numbered unused file descriptor. Otherwise, an error code is returned.
 ///
 pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> c_int {
-    ::nvx::log!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
+    ::nvx::trace!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
     fcntl::openat(fcntl::AT_FDCWD, pathname, flags, mode)
 }

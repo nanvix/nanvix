@@ -218,7 +218,7 @@ fn test_create_socket_pair(
     typ: SocketType,
     protocol: Protocol,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_create_socket_pair");
+    ::nvx::info!("test_create_socket_pair");
     let (_socket_0, _socket_1): (ConnectedSocket, ConnectedSocket) =
         new_socket_pair(domain, typ, protocol)?;
     Ok(())
@@ -229,7 +229,7 @@ fn test_create_socket(
     typ: SocketType,
     protocol: Protocol,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_create_socket");
+    ::nvx::info!("test_create_socket");
     let _unbound_socket: UnboundSocket = new_unbound_socket(domain, typ, protocol)?;
     Ok(())
 }
@@ -240,7 +240,7 @@ fn test_bind_socket(
     protocol: Protocol,
     sockaddr: &SocketAddr,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_bind_socket");
+    ::nvx::info!("test_bind_socket");
     let _bound_socket: BoundSocket = new_bound_socket(domain, typ, protocol, sockaddr)?;
     Ok(())
 }
@@ -251,7 +251,7 @@ fn test_listen_socket(
     protocol: Protocol,
     sockaddr: &SocketAddr,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_listen_socket");
+    ::nvx::info!("test_listen_socket");
     let _listen_socket: ListeningSocket = new_listening_socket(domain, typ, protocol, sockaddr)?;
     Ok(())
 }
@@ -262,7 +262,7 @@ fn test_getsockname_bound_socket(
     protocol: Protocol,
     sockaddr: &SocketAddr,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_getsockname_bound_socket");
+    ::nvx::info!("test_getsockname_bound_socket");
     let bound_socket: BoundSocket = new_bound_socket(domain, typ, protocol, sockaddr)?;
     let sockaddr_: SocketAddr = bound_socket.getsockname()?;
     if sockaddr != &sockaddr_ {
@@ -277,7 +277,7 @@ fn test_getsockname_listening_socket(
     protocol: Protocol,
     sockaddr: &SocketAddr,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_getsockname_listening_socket");
+    ::nvx::info!("test_getsockname_listening_socket");
     let listening_socket: ListeningSocket = new_listening_socket(domain, typ, protocol, sockaddr)?;
     let sockaddr_: SocketAddr = listening_socket.getsockname()?;
     if sockaddr != &sockaddr_ {
@@ -292,7 +292,7 @@ fn test_getsockname(
     protocol: Protocol,
     sockaddr: &SocketAddr,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_getsockname");
+    ::nvx::info!("test_getsockname");
     test_getsockname_bound_socket(domain, typ, protocol, sockaddr)?;
     test_getsockname_listening_socket(domain, typ, protocol, sockaddr)?;
     Ok(())
@@ -303,7 +303,7 @@ fn test_getpeername(
     typ: SocketType,
     protocol: Protocol,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_getpeername");
+    ::nvx::info!("test_getpeername");
 
     let (socket_0, socket_1): (ConnectedSocket, ConnectedSocket) =
         new_socket_pair(domain, typ, protocol)?;
@@ -325,7 +325,7 @@ fn test_send_receive(
     typ: SocketType,
     protocol: Protocol,
 ) -> Result<(), Error> {
-    ::nvx::log!("test_send_receive");
+    ::nvx::info!("test_send_receive");
 
     let (socket_0, socket_1): (ConnectedSocket, ConnectedSocket) =
         new_socket_pair(domain, typ, protocol)?;
@@ -354,7 +354,7 @@ fn test_send_receive(
 }
 
 fn test_shutdown(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Result<(), Error> {
-    ::nvx::log!("test_shutdown");
+    ::nvx::info!("test_shutdown");
 
     let (socket_0, socket_1): (ConnectedSocket, ConnectedSocket) =
         new_socket_pair(domain, typ, protocol)?;
@@ -368,7 +368,7 @@ fn test_shutdown(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> 
 }
 
 pub fn test_network() -> Result<(), Error> {
-    ::nvx::log!("test_network");
+    ::nvx::info!("test_network");
     let domain: AddressFamily = AddressFamily::Inet;
     let typ: SocketType = SocketType::Stream;
     let protocol: Protocol = Protocol::Tcp;

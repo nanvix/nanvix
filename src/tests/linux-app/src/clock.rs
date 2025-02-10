@@ -21,7 +21,7 @@ use ::posix::{
 pub fn test_times() {
     match times::times(None) {
         Ok(clock) => {
-            ::nvx::log!("times() returned {}", clock);
+            ::nvx::info!("times() returned {}", clock);
         },
         Err(e) => {
             panic!("times() failed: {:?}", e);
@@ -37,7 +37,7 @@ pub fn test_clock_getres() {
 
     match time::clock_getres(CLOCK_MONOTONIC, &mut res) {
         0 => {
-            ::nvx::log!("clock resolution: {}s {}ns", { res.tv_sec }, { res.tv_nsec });
+            ::nvx::info!("clock resolution: {}s {}ns", { res.tv_sec }, { res.tv_nsec });
         },
         errno => {
             panic!("failed to get clock resolution: {:?}", errno);
@@ -53,7 +53,7 @@ pub fn test_clock_gettime() {
 
     match time::clock_gettime(CLOCK_MONOTONIC, Some(&mut tp)) {
         Ok(()) => {
-            ::nvx::log!("clock time: {}s {}ns", { tp.tv_sec }, { tp.tv_nsec });
+            ::nvx::info!("clock time: {}s {}ns", { tp.tv_sec }, { tp.tv_nsec });
         },
         e => {
             panic!("failed to get clock time: {:?}", e);

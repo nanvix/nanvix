@@ -30,7 +30,7 @@ impl WasmEngine {
     ) {
         let clock_res_get: Func =
             Func::wrap(store, |_caller: Caller<'_, u32>, id: i32, offset: i32| -> i32 {
-                ::nvx::log!("clock_res_get: {id}, {offset}");
+                ::nvx::trace!("clock_res_get: {id}, {offset}");
                 Errno::Nosys.into()
             });
         linker
@@ -45,7 +45,7 @@ impl WasmEngine {
         let clock_time_get: Func = Func::wrap(
             store,
             |_caller: Caller<'_, u32>, id: i32, precision: i64, offset: i32| -> i32 {
-                ::nvx::log!("clock_time_get: {id}, {precision}, {offset}");
+                ::nvx::trace!("clock_time_get: {id}, {precision}, {offset}");
                 Errno::Nosys.into()
             },
         );

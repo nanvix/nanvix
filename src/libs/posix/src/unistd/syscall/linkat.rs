@@ -54,7 +54,7 @@ fn linkat_request(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str, fl
     ) {
         Ok(request) => request,
         Err(e) => {
-            ::nvx::log!("failed to create message: {:?}", e);
+            ::nvx::error!("failed to create message: {:?}", e);
             return e.code.into_errno();
         },
     };
@@ -62,7 +62,7 @@ fn linkat_request(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str, fl
     let requests: Vec<Message> = match request.into_parts(pid) {
         Ok(requests) => requests,
         Err(e) => {
-            ::nvx::log!("failed to partition message: {:?}", e);
+            ::nvx::error!("failed to partition message: {:?}", e);
             return e.code.into_errno();
         },
     };

@@ -278,7 +278,7 @@ impl WasmEngine {
         };
 
         let wasm_main: Func = Func::wrap(&mut store, |_caller: Caller<'_, HostState>| {
-            ::nvx::log!("wasm_main");
+            ::nvx::trace!("wasm_main");
         });
 
         linker.define("env", "_start", wasm_main).unwrap();
@@ -305,16 +305,16 @@ impl WasmEngine {
         if let Err(e) = self.start_fn.call(&mut self.store, ()) {
             match e.kind() {
                 ErrorKind::TrapCode(code) => {
-                    ::nvx::log!("Trap: {:?}", code);
+                    ::nvx::error!("Trap: {:?}", code);
                 },
                 ErrorKind::I32ExitStatus(status) => {
-                    ::nvx::log!("Exit status: {:?}", status);
+                    ::nvx::error!("Exit status: {:?}", status);
                 },
                 e => {
-                    ::nvx::log!("Error: {:?}", e);
+                    ::nvx::error!("Error: {:?}", e);
                 },
             }
-            ::nvx::log!("Error: {:?}", e);
+            ::nvx::error!("Error: {:?}", e);
         }
     }
 

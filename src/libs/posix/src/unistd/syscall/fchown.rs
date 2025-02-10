@@ -45,7 +45,7 @@ use ::nvx::{
 /// error.
 ///
 pub fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> Result<(), Error> {
-    ::nvx::log!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
+    ::nvx::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 

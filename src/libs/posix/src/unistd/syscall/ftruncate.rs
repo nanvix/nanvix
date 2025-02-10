@@ -53,7 +53,7 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::nvx::log!("ftruncate(): failed ({:?})", error_code);
+        ::nvx::error!("ftruncate(): failed ({:?})", error_code);
         Err(Error::new(error_code, "ftruncate() failed"))
     } else {
         // System call succeeded, parse response.

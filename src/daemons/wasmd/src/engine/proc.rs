@@ -26,7 +26,7 @@ use ::wasmi::{
 impl WasmEngine {
     pub(super) fn define_proc_exit(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
         let proc_exit: Func = Func::wrap(store, |_caller: Caller<'_, u32>, arg0: i32| {
-            ::nvx::log!("proc_exit: {arg0}");
+            ::nvx::trace!("proc_exit: {arg0}");
         });
 
         linker
@@ -36,7 +36,7 @@ impl WasmEngine {
 
     pub(super) fn define_proc_raise(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
         let proc_raise: Func = Func::wrap(store, |_caller: Caller<'_, u32>, sig: i32| -> i32 {
-            ::nvx::log!("proc_raise: {sig}");
+            ::nvx::trace!("proc_raise: {sig}");
             Errno::Nosys.into()
         });
         linker
@@ -46,7 +46,7 @@ impl WasmEngine {
 
     pub(super) fn define_sched_yield(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
         let sched_yield: Func = Func::wrap(store, |_caller: Caller<'_, u32>| -> i32 {
-            ::nvx::log!("sched_yield");
+            ::nvx::trace!("sched_yield");
             Errno::Nosys.into()
         });
 
@@ -58,7 +58,7 @@ impl WasmEngine {
     pub(super) fn define_random_get(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
         let random_get: Func =
             Func::wrap(store, |_caller: Caller<'_, u32>, buf: i32, buf_len: i32| -> i32 {
-                ::nvx::log!("random_get: {buf}, {buf_len}");
+                ::nvx::trace!("random_get: {buf}, {buf_len}");
                 Errno::Nosys.into()
             });
         linker

@@ -20,3 +20,12 @@ nvx = { workspace = true }
 [build-dependencies]
 cc = { workspace = true }
 cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace"]
+debug = ["nvx/debug"]
+info = ["nvx/info"]
+warn = ["nvx/warn"]
+error = ["nvx/error"]
+panic = ["nvx/panic"]

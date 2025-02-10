@@ -47,7 +47,7 @@ use ::nvx::{
 /// arbitrary point in the past. Otherwise, an error code is returned.
 ///
 pub fn times(buffer: Option<&mut tms>) -> Result<clock_t, Error> {
-    ::nvx::log!("times(): {:?}", buffer);
+    ::nvx::trace!("times(): {:?}", buffer);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
