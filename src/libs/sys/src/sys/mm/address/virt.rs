@@ -206,3 +206,17 @@ impl core::fmt::Debug for VirtualAddress {
         write!(f, "{:#010x}", self.0)
     }
 }
+
+impl ::core::ops::Add<usize> for VirtualAddress {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        VirtualAddress::new(self.0 + rhs)
+    }
+}
+
+impl ::core::ops::AddAssign<usize> for VirtualAddress {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 = self.0 + rhs;
+    }
+}
