@@ -512,7 +512,7 @@ impl Vmem {
                 }
 
                 let vaddr: PageAligned<VirtualAddress> =
-                    PageAligned::from_address(src.align_down(mmu::PAGE_ALIGNMENT)?)?;
+                    PageAligned::from_address(src.align_down(mmu::PAGE_ALIGNMENT))?;
                 let offset: usize = src.into_raw_value() - vaddr.into_raw_value();
                 let copy_size: usize = usize::min(size, mem::PAGE_SIZE - offset);
 
@@ -623,7 +623,7 @@ impl Vmem {
                 }
 
                 let vaddr: PageAligned<VirtualAddress> =
-                    PageAligned::from_address(dst.align_down(mmu::PAGE_ALIGNMENT)?)?;
+                    PageAligned::from_address(dst.align_down(mmu::PAGE_ALIGNMENT))?;
 
                 let offset: usize = dst.into_raw_value() - vaddr.into_raw_value();
                 let copy_size: usize = usize::min(mem::PAGE_SIZE - offset, size);

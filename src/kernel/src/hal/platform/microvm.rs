@@ -209,7 +209,7 @@ pub fn init(
     // Register MicroVM control registers.
     let scratch_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "microvm-ctrl-registers",
-        VirtualAddress::from_raw_value(::config::microvm::DEFAULT_MICROVM_CTRL_BASE)?,
+        VirtualAddress::from_raw_value(::config::microvm::DEFAULT_MICROVM_CTRL_BASE),
         mem::PAGE_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDONLY,
