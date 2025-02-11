@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use nvx::sys::arch::mem::PAGE_SIZE;
 use ::nvx::{
     mm::{
         AccessPermission,
@@ -256,7 +257,7 @@ fn test_mmap_munmap_return_zeros() -> bool {
     }
 
     // Write to the page.
-    let data: [u8; 4] = [0xFF; 4];
+    let data: [u8; PAGE_SIZE] = [0xFF; PAGE_SIZE];
     let ptr: *mut u8 = vaddr.into_raw_value() as *mut u8;
     unsafe {
         ptr.copy_from(data.as_ptr(), data.len());
@@ -275,8 +276,8 @@ fn test_mmap_munmap_return_zeros() -> bool {
     }
 
     // Check if contents are zeros.
-    let zeros: [u8; 4] = [0; 4];
-    let mut read_data: [u8; 4] = [0xFF; 4];
+    let zeros: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
+    let mut read_data: [u8; PAGE_SIZE] = [0xFF; PAGE_SIZE];
     unsafe {
         ptr.copy_to(read_data.as_mut_ptr(), read_data.len());
     }
