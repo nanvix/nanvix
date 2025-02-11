@@ -7,6 +7,8 @@
 
 #[cfg(all(target_os = "none", feature = "allocator"))]
 mod allocator;
+#[cfg(all(target_os = "none", feature = "allocator"))]
+pub mod heap;
 
 //==================================================================================================
 // Imports
@@ -53,6 +55,10 @@ cfg_if::cfg_if! {
     }
 }
 
+/// Page alignment.
+/// TODO: import this from kernel libraries.
+pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -64,7 +70,6 @@ pub fn init() -> Result<(), Error> {
     {
         use crate::mm::allocator;
         use ::sys::{
-            arch::mem,
             config::memory_layout,
             kcall::{
                 self,
@@ -80,17 +85,10 @@ pub fn init() -> Result<(), Error> {
         // Acquire memory management capability.
         kcall::pm::capctl(Capability::MemoryManagement, true)?;
 
-        // Map underlying pages for the heap.
-        let start: usize = memory_layout::USER_HEAP_BASE.into_raw_value();
-        let end: usize = start + config::memory_layout::USER_HEAP_SIZE;
-        for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
-            kcall::mm::mmap(pid, VirtualAddress::from_raw_value(vaddr), AccessPermission::RDWR)?;
-
-            // NOTE: pages allocated with mmap() are always zeroed.
-        }
-
         // Initialize the heap.
-        unsafe { allocator::init(start, RUST_HEAP_SIZE)? };
+        unsafe {
+            allocator::init(pid, memory_layout::USER_HEAP_BASE, RUST_HEAP_SIZE / 2, RUST_HEAP_SIZE)?
+        };
     }
 
     Ok(())
@@ -102,25 +100,11 @@ pub fn cleanup() -> Result<(), Error> {
     #[cfg(feature = "allocator")]
     {
         use ::sys::{
-            arch::mem,
-            config::memory_layout,
             kcall::{
                 self,
             },
-            pm::{
-                Capability,
-                ProcessIdentifier,
-            },
+            pm::Capability,
         };
-
-        let pid: ProcessIdentifier = kcall::pm::getpid()?;
-
-        // Unmap underlying pages for the heap.
-        let start: usize = memory_layout::USER_HEAP_BASE.into_raw_value();
-        let end: usize = start + config::memory_layout::USER_HEAP_SIZE;
-        for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
-            kcall::mm::munmap(pid, VirtualAddress::from_raw_value(vaddr))?;
-        }
 
         // Release memory management capability.
         kcall::pm::capctl(Capability::MemoryManagement, false)?;
