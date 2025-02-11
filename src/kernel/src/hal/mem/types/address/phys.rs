@@ -41,7 +41,7 @@ pub struct PhysicalAddress(VirtualAddress);
 impl PhysicalAddress {
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
         // Check if `addr` lies outside of the physical address space.
-        if addr >= VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE)? {
+        if addr >= VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE) {
             return Err(Error::new(
                 ErrorCode::BadAddress,
                 "address out of bounds of physical memory",
@@ -142,7 +142,7 @@ impl Address for PhysicalAddress {
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
     fn from_raw_value(value: usize) -> Result<Self, Error> {
-        Self::from_virtual_address(VirtualAddress::from_raw_value(value)?)
+        Self::from_virtual_address(VirtualAddress::from_raw_value(value))
     }
 
     ///
@@ -160,7 +160,7 @@ impl Address for PhysicalAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
-        Self::from_virtual_address(self.0.align_up(align)?)
+        Self::from_virtual_address(self.0.align_up(align))
     }
 
     ///
@@ -178,7 +178,7 @@ impl Address for PhysicalAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_down(&self, align: Alignment) -> Result<Self, Error> {
-        Self::from_virtual_address(self.0.align_down(align)?)
+        Self::from_virtual_address(self.0.align_down(align))
     }
 
     ///
@@ -196,7 +196,7 @@ impl Address for PhysicalAddress {
     /// an error is returned instead.
     ///
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error> {
-        self.0.is_aligned(align)
+        Ok(self.0.is_aligned(align))
     }
 
     ///

@@ -54,7 +54,7 @@ impl KernelImage {
         );
         let text = MemoryRegion::new(
             "kernel text",
-            VirtualAddress::from_raw_value(text_start)?,
+            VirtualAddress::from_raw_value(text_start),
             text_size,
             MemoryRegionType::Reserved,
             AccessPermission::EXEC,
@@ -70,7 +70,7 @@ impl KernelImage {
         );
         let rodata = MemoryRegion::new(
             "kernel read-only data",
-            VirtualAddress::from_raw_value(rodata_start)?,
+            VirtualAddress::from_raw_value(rodata_start),
             rodata_size,
             MemoryRegionType::Reserved,
             AccessPermission::RDONLY,
@@ -87,7 +87,7 @@ impl KernelImage {
             );
             Some(MemoryRegion::new(
                 "kernel data",
-                VirtualAddress::from_raw_value(data_start)?,
+                VirtualAddress::from_raw_value(data_start),
                 data_size,
                 MemoryRegionType::Reserved,
                 AccessPermission::RDWR,
@@ -106,7 +106,7 @@ impl KernelImage {
         );
         let bss = MemoryRegion::new(
             "kernel bss",
-            VirtualAddress::from_raw_value(bss_start)?,
+            VirtualAddress::from_raw_value(bss_start),
             bss_size,
             MemoryRegionType::Reserved,
             AccessPermission::RDWR,

@@ -123,8 +123,8 @@ fn register_bios_data_area(
 
     let bios_data_area: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "bios data area",
-        VirtualAddress::from_raw_value(bios::BiosDataArea::BASE)?
-            .align_down(x86::mem::mmu::PAGE_ALIGNMENT)?,
+        VirtualAddress::from_raw_value(bios::BiosDataArea::BASE)
+            .align_down(x86::mem::mmu::PAGE_ALIGNMENT),
         mem::PAGE_SIZE,
         MemoryRegionType::Reserved,
         AccessPermission::RDWR,
@@ -218,7 +218,7 @@ pub fn init(
     // Trampoline.
     let trampoline: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "trampoline",
-        VirtualAddress::from_raw_value(platform::TRAMPOLINE_ADDRESS.into_raw_value())?,
+        VirtualAddress::from_raw_value(platform::TRAMPOLINE_ADDRESS.into_raw_value()),
         mem::PAGE_SIZE,
         MemoryRegionType::Reserved,
         AccessPermission::RDWR,
@@ -241,7 +241,7 @@ pub fn init(
     // FIXME: https://github.com/nanvix/kernel/issues/435
     let bios: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "bios memory",
-        VirtualAddress::from_raw_value(0x000c0000)?,
+        VirtualAddress::from_raw_value(0x000c0000),
         48 * mem::PAGE_SIZE,
         MemoryRegionType::Reserved,
         AccessPermission::RDONLY,
