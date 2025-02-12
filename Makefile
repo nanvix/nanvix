@@ -545,21 +545,21 @@ clippy-microvm:
 #===================================================================================================
 
 test-echo: all
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo.elf '["hello world!"]' 'hello world!'
 endif
 
 test-hello-c: all
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-c.elf '[]' 'Hello, world from C!'
 endif
 
 test-hello-cpp: all
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm, hyperlight)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-cpp.elf '[]' 'Hello, world from C++!'
 endif
 
 test-linux-app: all
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/linux-app.elf '[]' 'ok'
 endif
