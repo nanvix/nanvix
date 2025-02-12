@@ -7,6 +7,12 @@
 
 use ::nvx::{
     mm,
+    mm::{
+        VirtualAddress,
+        PAGE_ALIGNMENT,
+    },
+    pm,
+    pm::ProcessIdentifier,
     sys::error::{
         Error,
         ErrorCode,
@@ -41,11 +47,22 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
         let old_end: *mut u8 = END;
         let new_end: *mut u8 = END.offset(size);
 
+        // Align the new end.
+        let new_end: *mut u8 = mm::align_up(new_end as usize, PAGE_ALIGNMENT) as *mut u8;
+
         // Check for overflow.
         // TODO: remove this check and let the page fault handler run.
         if new_end >= (mm::BREAK_BASE_RAW + mm::C_HEAP_SIZE) as *mut u8 {
             return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
         }
+
+        let pid: ProcessIdentifier = pm::getpid()?;
+
+        nvx::mm::heap::map_range(
+            pid,
+            VirtualAddress::from_raw_value(old_end as usize),
+            VirtualAddress::from_raw_value(new_end as usize),
+        )?;
 
         END = new_end;
         old_end
