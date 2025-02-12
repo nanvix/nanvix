@@ -84,7 +84,7 @@ pub fn init() -> Result<(), Error> {
         let start: usize = memory_layout::USER_HEAP_BASE.into_raw_value();
         let end: usize = start + config::memory_layout::USER_HEAP_SIZE;
         for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
-            kcall::mm::mmap(pid, VirtualAddress::from_raw_value(vaddr)?, AccessPermission::RDWR)?;
+            kcall::mm::mmap(pid, VirtualAddress::from_raw_value(vaddr), AccessPermission::RDWR)?;
 
             // NOTE: pages allocated with mmap() are always zeroed.
         }
@@ -119,7 +119,7 @@ pub fn cleanup() -> Result<(), Error> {
         let start: usize = memory_layout::USER_HEAP_BASE.into_raw_value();
         let end: usize = start + config::memory_layout::USER_HEAP_SIZE;
         for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
-            kcall::mm::munmap(pid, VirtualAddress::from_raw_value(vaddr)?)?;
+            kcall::mm::munmap(pid, VirtualAddress::from_raw_value(vaddr))?;
         }
 
         // Release memory management capability.

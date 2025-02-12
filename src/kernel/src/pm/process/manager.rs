@@ -204,7 +204,7 @@ impl ProcessManagerInner {
         let base: PageAddress = kpages[0].base();
         let size: usize = config::kernel::KSTACK_SIZE;
         let top: *mut u8 = unsafe { (base.into_raw_value() as *mut u8).add(size) };
-        let kernel_stack_top_addr: VirtualAddress = VirtualAddress::from_raw_value(top as usize)?;
+        let kernel_stack_top_addr: VirtualAddress = VirtualAddress::from_raw_value(top as usize);
 
         let context: ContextInformation = Self::forge_user_context(
             vmem,
@@ -250,7 +250,7 @@ impl ProcessManagerInner {
         let user_stack_top_addr: VirtualAddress = mm::user_stack_top().into_inner();
         let user_func: VirtualAddress = ::sys::config::memory_layout::USER_BASE;
         let kernel_func: VirtualAddress =
-            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize)?;
+            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
         let thread: ReadyThread =
             self.create_thread(mm, &mut vmem, user_stack_top_addr, user_func, kernel_func)?;
 
