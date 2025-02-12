@@ -35,14 +35,10 @@ use ::hyper::{
 use ::serde::Deserialize;
 use ::serde_json::Value;
 use ::std::{
-    self,
     future::Future,
     mem,
     pin::Pin,
-    sync::{
-        atomic::AtomicUsize,
-        Arc,
-    },
+    sync::Arc,
 };
 use ::tokio::{
     io::{
@@ -68,7 +64,7 @@ struct MessageJson {
 
 pub struct HttpClient {
     sandboxes: SandboxCache,
-    requestid: Arc<AtomicUsize>,
+    requestid: usize,
     linuxd_listener: Arc<UnixListener>,
     linuxd_sockaddr: String,
     sandbox_sockaddr: String,
@@ -78,7 +74,7 @@ pub struct HttpClient {
 impl HttpClient {
     pub fn new(
         sandboxes: SandboxCache,
-        requestid: Arc<AtomicUsize>,
+        requestid: usize,
         linuxd_listener: Arc<UnixListener>,
         linuxd_sockaddr: String,
         sandbox_sockaddr: String,
@@ -230,9 +226,7 @@ impl Service<Request<Incoming>> for HttpClient {
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn call(&self, request: Request<Incoming>) -> Self::Future {
-        let requestid = self
-            .requestid
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let requestid: usize = self.requestid;
         let sandbox_sockaddr: String = self.sandbox_sockaddr.clone();
         let linuxd_sockaddr: String = self.linuxd_sockaddr.clone();
         let nanvix_console: String = self.console_file.clone();
