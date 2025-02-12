@@ -224,7 +224,7 @@ pub fn init(
     const PEB_SIZE: usize = mem::PAGE_SIZE;
     let peb: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "peb",
-        VirtualAddress::from_raw_value(peb_base)?,
+        VirtualAddress::from_raw_value(peb_base),
         PEB_SIZE,
         MemoryRegionType::Reserved,
         AccessPermission::RDWR,
@@ -236,7 +236,7 @@ pub fn init(
     const HOST_FUNCTIONS_SIZE: usize = mem::PAGE_SIZE;
     let host_functions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "host functions",
-        VirtualAddress::from_raw_value(host_functions_base)?,
+        VirtualAddress::from_raw_value(host_functions_base),
         HOST_FUNCTIONS_SIZE,
         MemoryRegionType::Reserved,
         AccessPermission::RDWR,
@@ -248,7 +248,7 @@ pub fn init(
     const HOST_EXCEPTIONS_SIZE: usize = 4 * mem::PAGE_SIZE;
     let host_exceptions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "host exceptions",
-        VirtualAddress::from_raw_value(host_exceptions_base)?,
+        VirtualAddress::from_raw_value(host_exceptions_base),
         HOST_EXCEPTIONS_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDONLY,
@@ -260,7 +260,7 @@ pub fn init(
     const GUEST_ERROR_LOG_SIZE: usize = mem::PAGE_SIZE;
     let guest_error_log: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest error log",
-        VirtualAddress::from_raw_value(guest_error_log_base)?,
+        VirtualAddress::from_raw_value(guest_error_log_base),
         GUEST_ERROR_LOG_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDWR,
@@ -272,7 +272,7 @@ pub fn init(
     const INPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
     let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "input data buffer",
-        VirtualAddress::from_raw_value(input_data_base)?,
+        VirtualAddress::from_raw_value(input_data_base),
         INPUT_DATA_BUFFER_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDWR,
@@ -284,7 +284,7 @@ pub fn init(
     const OUTPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
     let output_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "output data buffer",
-        VirtualAddress::from_raw_value(output_data_base)?,
+        VirtualAddress::from_raw_value(output_data_base),
         OUTPUT_DATA_BUFFER_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDWR,
@@ -296,7 +296,7 @@ pub fn init(
     const GUEST_PANIC_CONTEXT_SIZE: usize = mem::PAGE_SIZE;
     let guest_panic_context: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest panic context",
-        VirtualAddress::from_raw_value(guest_panic_context_base)?,
+        VirtualAddress::from_raw_value(guest_panic_context_base),
         GUEST_PANIC_CONTEXT_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDWR,
@@ -309,7 +309,7 @@ pub fn init(
     let heap_padding_size: usize = memory_layout::KPOOL_BASE.into_raw_value() - heap_padding_base;
     let heap_padding: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "heap padding",
-        VirtualAddress::from_raw_value(heap_padding_base)?,
+        VirtualAddress::from_raw_value(heap_padding_base),
         heap_padding_size,
         MemoryRegionType::Reserved,
         AccessPermission::RDONLY,
@@ -317,11 +317,12 @@ pub fn init(
     memory_regions.push_back(heap_padding);
 
     // Register kpool guard page.
-    let kpool_guard_base: usize = memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE;
+    let kpool_guard_base: usize =
+        memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE;
     let kpool_guard_size: usize = mem::PAGE_SIZE;
     let kpool_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "kpool guard",
-        VirtualAddress::from_raw_value(kpool_guard_base)?,
+        VirtualAddress::from_raw_value(kpool_guard_base),
         kpool_guard_size,
         MemoryRegionType::Reserved,
         AccessPermission::RDONLY,
@@ -333,7 +334,7 @@ pub fn init(
     let guest_user_stack_size: usize = mem::PAGE_SIZE;
     let guest_user_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest user stack",
-        VirtualAddress::from_raw_value(guest_user_stack_base)?,
+        VirtualAddress::from_raw_value(guest_user_stack_base),
         guest_user_stack_size,
         MemoryRegionType::Reserved,
         AccessPermission::RDONLY,
@@ -345,7 +346,7 @@ pub fn init(
     let guest_user_stack_guard_size: usize = mem::PAGE_SIZE;
     let guest_user_stack_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest user stack guard",
-        VirtualAddress::from_raw_value(guest_user_stack_guard_base)?,
+        VirtualAddress::from_raw_value(guest_user_stack_guard_base),
         guest_user_stack_guard_size,
         MemoryRegionType::Reserved,
         AccessPermission::RDONLY,
@@ -357,7 +358,7 @@ pub fn init(
     let guest_kernel_stack_size: usize = mem::PAGE_SIZE;
     let guest_kernel_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest kernel stack",
-        VirtualAddress::from_raw_value(guest_kernel_stack_base)?,
+        VirtualAddress::from_raw_value(guest_kernel_stack_base),
         guest_kernel_stack_size,
         MemoryRegionType::Reserved,
         AccessPermission::RDONLY,
@@ -369,7 +370,7 @@ pub fn init(
     let guest_kernel_stack_guard_size: usize = mem::PAGE_SIZE;
     let guest_kernel_stack_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest kernel stack guard",
-        VirtualAddress::from_raw_value(guest_kernel_stack_guard_base)?,
+        VirtualAddress::from_raw_value(guest_kernel_stack_guard_base),
         guest_kernel_stack_guard_size,
         MemoryRegionType::Reserved,
         AccessPermission::RDONLY,
@@ -382,7 +383,7 @@ pub fn init(
     let guest_boot_stack_size: usize = mem::PAGE_SIZE;
     let guest_boot_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest boot stack",
-        VirtualAddress::from_raw_value(guest_boot_stack_base)?,
+        VirtualAddress::from_raw_value(guest_boot_stack_base),
         guest_boot_stack_size,
         MemoryRegionType::Reserved,
         AccessPermission::RDONLY,

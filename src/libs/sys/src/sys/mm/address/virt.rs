@@ -34,6 +34,73 @@ impl VirtualAddress {
     pub const fn new(value: usize) -> Self {
         Self(value)
     }
+
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new [`VirtualAddress`] from a raw value.
+    ///
+    /// # Parameters
+    ///
+    /// - `raw_addr`: The raw value.
+    ///
+    pub fn from_raw_value(raw_addr: usize) -> Self {
+        VirtualAddress::new(raw_addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Aligns the target [`VirtualAddress`] to the provided `alignment`. If the address is already
+    /// aligned, it is returned as is.
+    ///
+    /// # Parameters
+    ///
+    /// - `alignment`: The alignment to align the target address to.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn align_up(&self, align: Alignment) -> Self {
+        VirtualAddress::new(mm::align_up(self.0, align))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Aligns the target [`VirtualAddress`] down to the provided `alignment`. If the address is
+    /// already aligned, it is returned as is.
+    ///
+    /// # Parameters
+    ///
+    /// - `alignment`: The alignment to align the target address to.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn align_down(&self, align: Alignment) -> Self {
+        VirtualAddress::new(mm::align_down(self.0, align))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the target [`VirtualAddress`] is aligned to the provided `alignment`.
+    ///
+    /// # Parameters
+    ///
+    /// - `alignment`: The alignment to check.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
+    /// an error is returned instead.
+    ///
+    pub fn is_aligned(&self, align: Alignment) -> bool {
+        mm::is_aligned(self.0, align)
+    }
 }
 
 impl Address for VirtualAddress {
@@ -51,7 +118,7 @@ impl Address for VirtualAddress {
     /// - `Ok(Self)`: The new address.
     ///
     fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
-        Ok(VirtualAddress::new(raw_addr))
+        Ok(VirtualAddress::from_raw_value(raw_addr))
     }
 
     ///
@@ -69,7 +136,7 @@ impl Address for VirtualAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
-        Ok(VirtualAddress::new(mm::align_up(self.0, align)))
+        Ok(self.align_up(align))
     }
 
     ///
@@ -87,7 +154,7 @@ impl Address for VirtualAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_down(&self, align: Alignment) -> Result<Self, Error> {
-        Ok(VirtualAddress::new(mm::align_down(self.0, align)))
+        Ok(self.align_down(align))
     }
 
     ///
@@ -105,7 +172,7 @@ impl Address for VirtualAddress {
     /// an error is returned instead.
     ///
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error> {
-        Ok(mm::is_aligned(self.0, align))
+        Ok(self.is_aligned(align))
     }
 
     ///
@@ -137,5 +204,19 @@ impl Address for VirtualAddress {
 impl core::fmt::Debug for VirtualAddress {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "{:#010x}", self.0)
+    }
+}
+
+impl ::core::ops::Add<usize> for VirtualAddress {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        VirtualAddress::new(self.0 + rhs)
+    }
+}
+
+impl ::core::ops::AddAssign<usize> for VirtualAddress {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 = self.0 + rhs;
     }
 }

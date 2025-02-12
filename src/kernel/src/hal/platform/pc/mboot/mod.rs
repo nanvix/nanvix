@@ -281,7 +281,7 @@ fn parse_mmap(
         let typ: MemoryRegionType = entry.typ().into();
         let start: VirtualAddress = match entry.addr().try_into() {
             Ok(raw_addr) => {
-                VirtualAddress::from_raw_value(raw_addr)?.align_down(mmu::PAGE_ALIGNMENT)?
+                VirtualAddress::from_raw_value(raw_addr).align_down(mmu::PAGE_ALIGNMENT)
             },
             Err(_) => {
                 let reason: &'static str = "invalid memory region address";

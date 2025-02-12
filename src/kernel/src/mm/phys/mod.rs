@@ -90,7 +90,7 @@ fn book_mmio_regions(
         let mut start: usize = region.start().into_raw_value();
         let end: usize = start + (region.size() - 1);
         while start < end {
-            let mmio_addr: VirtualAddress = VirtualAddress::from_raw_value(start)?;
+            let mmio_addr: VirtualAddress = VirtualAddress::from_raw_value(start);
             let phys_addr: PageAligned<PhysicalAddress> = PageAligned::from_address(unsafe {
                 PhysicalAddress::from_mmio_address(mmio_addr)?
             })?;
