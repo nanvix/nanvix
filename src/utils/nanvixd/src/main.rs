@@ -88,11 +88,13 @@ pub async fn main() -> Result<()> {
                         let requestid: Arc<AtomicUsize> = requestid.clone();
                         let sandboxe_cache: SandboxCache = sandbox_cache.clone();
                         tokio::spawn(async move {
+                            let requestid: usize = requestid
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             let client =
                                 HttpClient::new(sandboxe_cache, requestid, linuxd_listener, linuxd_sockaddr, sandbox_sockaddr, console_file);
                             let io: TokioIo<TcpStream> = TokioIo::new(stream);
                             if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
-                                error!("failed to serve connection ({:?})", e);
+                                error!("failed to serve connection (requestid={:?}, error={:?})", requestid, e);
                             }
                         });
                     },
