@@ -226,7 +226,7 @@ ALL_GUEST_TESTS := testd linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
-ALL_WASM_BINARIES := hello-wasm
+ALL_WASM_BINARIES := hello-wasm noop-wasm-rust
 
 ALL_HOST_UTILS := echo-client loader nanvixd
 ALL_HOST_DAEMONS := linuxd

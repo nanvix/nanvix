@@ -8,6 +8,7 @@ members = [
         "src/benchmarks/boottime",
         "src/benchmarks/echo",
         "src/benchmarks/matmul",
+        "src/benchmarks/noop-wasm-rust",
         "src/daemons/linuxd",
         "src/daemons/memd",
         "src/daemons/procd",
