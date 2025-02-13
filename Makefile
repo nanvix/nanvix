@@ -433,11 +433,12 @@ ifneq ($(WASM_BINARY),)
 	$(eval export NANVIX_WASM_BINARY := $(realpath $(WASM_BINARY)))
 	$(eval export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY)))
 	$(eval export NANVIX_WASM_BINARY_ARGS := =$(WASM_BINARY_ARGS))
+	$(eval export WASMD_CARGO_FEATURES := --features wasm_binary)
 endif
 	@echo "NANVIX_WASM_BINARY=$(NANVIX_WASM_BINARY)"
 	@echo "NANVIX_WASM_BINARY_BASENAME=$(NANVIX_WASM_BINARY_BASENAME)"
 	@echo "NANVIX_WASM_BINARY_ARGS=$(NANVIX_WASM_BINARY_ARGS)"
-	$(GUEST_CARGO_BUILD_CMD) -p wasmd
+	$(GUEST_CARGO_BUILD_CMD) $(WASMD_CARGO_FEATURES) -p wasmd
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/wasmd.elf $(BINARIES_DIR)/wasmd.elf
 
 check-wasmd:

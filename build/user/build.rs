@@ -156,24 +156,6 @@ fn main() {
 
     //==============================================================================================
 
-    // Collect all environment variables that start with "NANVIX_".
-    let nanvix_env_vars: Vec<(String, String)> = env::vars()
-        .filter(|(key, _)| key.starts_with("NANVIX_"))
-        .collect();
-
-    for (name, _value) in nanvix_env_vars.iter() {
-        println!("cargo:rerun-if-env-changed={}", name);
-
-        // Skip empty values.
-        if name.is_empty() {
-            continue;
-        }
-
-        let name: String = name.to_uppercase().replace("NANVIX_", "");
-        let feature: String = name.to_lowercase();
-        println!("cargo:rustc-cfg=feature=\"{}\"", feature);
-    }
-
     // Get CARGO_MANIFEST_DIR Environment Variable.
     let manifest_dir: String = match env::var("CARGO_MANIFEST_DIR") {
         Ok(mdir) => mdir,
