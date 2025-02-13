@@ -69,6 +69,7 @@ pub fn init() -> Result<(), Error> {
     {
         use crate::mm::allocator;
         use ::sys::{
+            arch::mem,
             config::memory_layout,
             kcall::{
                 self,
@@ -86,7 +87,7 @@ pub fn init() -> Result<(), Error> {
 
         // Initialize the heap.
         unsafe {
-            allocator::init(pid, memory_layout::USER_HEAP_BASE, RUST_HEAP_SIZE / 2, RUST_HEAP_SIZE)?
+            allocator::init(pid, memory_layout::USER_HEAP_BASE, mem::PAGE_SIZE, RUST_HEAP_SIZE)?
         };
     }
 
