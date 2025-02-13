@@ -17,7 +17,7 @@ kstack_size = 32768
 # User stack size (in bytes)
 # Notes:
 # - This size should be a multiple of a page size.
-ustack_size = 65536
+ustack_size = 32768
 
 # Timer frequency (in Hz)
 timer_freq = 100
