@@ -85,7 +85,7 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 
 # WASM binary to be embedded in the WASM Daemon
 ifneq ($(WASM_BINARY),)
-export NANVIX_WASM_BINARY := $(WASM_BINARY)
+export NANVIX_WASM_BINARY := $(realpath $(WASM_BINARY))
 export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY))
 export NANVIX_WASM_BINARY_ARGS := $(WASM_BINARY_ARGS)
 endif
