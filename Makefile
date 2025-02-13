@@ -70,7 +70,7 @@ endif
 ifeq ($(IMAGE_FORMAT),iso)
 export IMAGE := nanvix.iso
 else
-export IMAGE := $(BINARIES_DIR)/boottime.$(EXEC_FORMAT)
+export IMAGE := $(BINARIES_DIR)/noop-rust-nostd.$(EXEC_FORMAT)
 endif
 
 # Libraries
@@ -220,7 +220,7 @@ ALL_GUEST_STATIC_LIBS := nvx posix
 ALL_GUEST_RUST_LIBS := bitmap error proc raw-array slab sys
 
 ALL_GUEST_DAEMONS := memd procd
-ALL_GUEST_BENCHMARKS := echo boottime matmul
+ALL_GUEST_BENCHMARKS := echo noop-rust-nostd matmul
 ALL_GUEST_APPLICATIONS := hello-rust
 ALL_GUEST_TESTS := testd linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)

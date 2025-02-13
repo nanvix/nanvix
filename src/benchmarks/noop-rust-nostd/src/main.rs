@@ -16,6 +16,6 @@ use ::nvx::sys::error::Error;
 //==================================================================================================
 
 #[no_mangle]
-pub fn main() -> Result<!, Error> {
-    ::nvx::pm::exit(0)
+pub fn main() -> Result<(), Error> {
+    Ok(())
 }
