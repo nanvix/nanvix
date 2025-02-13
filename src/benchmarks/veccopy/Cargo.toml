@@ -1,0 +1,36 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "veccopy"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "A Memory-Bound Benchmark"
+homepage.workspace = true
+
+[[bin]]
+name = "veccopy"
+
+[dependencies]
+nvx = { workspace = true, features = ["allocator"] }
+posix = { workspace = true, features = ["syscall", "allocator"] }
+serde = { workspace = true, default-features = false, features = ["derive"] }
+serde_json.workspace = true
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace"]
+debug = ["nvx/debug"]
+info = ["nvx/info"]
+warn = ["nvx/warn"]
+error = ["nvx/error"]
+panic = ["nvx/panic"]
