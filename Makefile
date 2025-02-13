@@ -432,14 +432,14 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 
 clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
 
-all-wasmd: all-wasm-binaries
+all-wasmd: all-wasm-binaries all-guest-binaries
 	$(GUEST_CARGO_BUILD_CMD) -p wasmd
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/wasmd.elf $(BINARIES_DIR)/wasmd.elf
 
 check-wasmd:
 	$(GUEST_CARGO_CHECK_CMD) -p wasmd
 
-clean-wasmd: clean-wasm-binaries
+clean-wasmd: clean-wasm-binaries clean-guest-binaries
 	$(GUEST_CARGO_CLEAN_CMD) -p wasmd
 	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
 
