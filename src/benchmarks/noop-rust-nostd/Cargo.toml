@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 [package]
-name = "boottime"
+name = "noop-rust-nostd"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
@@ -11,7 +11,7 @@ description = "Boot Time Benchmark"
 homepage.workspace = true
 
 [[bin]]
-name = "boottime"
+name = "noop-rust-nostd"
 
 [dependencies]
 cfg-if = { workspace = true }
