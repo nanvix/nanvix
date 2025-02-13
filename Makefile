@@ -70,7 +70,7 @@ endif
 ifeq ($(IMAGE_FORMAT),iso)
 export IMAGE := nanvix.iso
 else
-export IMAGE := $(BINARIES_DIR)/boottime.$(EXEC_FORMAT)
+export IMAGE := $(BINARIES_DIR)/noop-rust-nostd.$(EXEC_FORMAT)
 endif
 
 # Libraries
@@ -83,12 +83,6 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 # Nanvix Variables
 #===================================================================================================
 
-# WASM binary to be embedded in the WASM Daemon
-ifneq ($(WASM_BINARY),)
-export NANVIX_WASM_BINARY := $(WASM_BINARY)
-export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY))
-export NANVIX_WASM_BINARY_ARGS := $(WASM_BINARY_ARGS)
-endif
 
 # Socket address for the WASM Daemon
 ifneq ($(WASMD_SOCKADDR),)
@@ -149,6 +143,7 @@ export GUEST_RUST_FLAGS :="-C relocation-model=static -C prefer-dynamic=no"
 export GUEST_CARGO_FLAGS :=-Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
 export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET).json
 export KERNEL_CARGO_FEATURES := --no-default-features --features $(MACHINE) --features $(LOG_LEVEL)
+export WASMD_CARGO_FEATURES :=
 
 # Rust flags for host target.
 export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
@@ -225,13 +220,13 @@ ALL_GUEST_STATIC_LIBS := nvx posix
 ALL_GUEST_RUST_LIBS := bitmap error proc raw-array slab sys
 
 ALL_GUEST_DAEMONS := memd procd
-ALL_GUEST_BENCHMARKS := echo boottime matmul
+ALL_GUEST_BENCHMARKS := echo noop-rust-nostd matmul
 ALL_GUEST_APPLICATIONS := hello-rust
 ALL_GUEST_TESTS := testd linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
-ALL_WASM_BINARIES := hello-wasm
+ALL_WASM_BINARIES := hello-wasm noop-wasm-rust
 
 ALL_HOST_UTILS := echo-client loader nanvixd
 ALL_HOST_DAEMONS := linuxd
@@ -419,25 +414,37 @@ endef
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
 
 all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(target))
+	$(MAKE) -C $(SOURCES_DIR)/benchmarks all
 	$(MAKE) -C $(SOURCES_DIR)/user all
 	$(MAKE) -C $(SOURCES_DIR)/tests all
 
 check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),check-guest-binaries-$(target))
 
 clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
+	$(MAKE) -C $(SOURCES_DIR)/benchmarks clean
 	$(MAKE) -C $(SOURCES_DIR)/user clean
 	$(MAKE) -C $(SOURCES_DIR)/tests clean
 
 clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
 
-all-wasmd: all-wasm-binaries
-	$(GUEST_CARGO_BUILD_CMD) -p wasmd
+all-wasmd: all-wasm-binaries all-guest-binaries
+	@echo "WASM_BINARY=$(WASM_BINARY)"
+ifneq ($(WASM_BINARY),)
+	$(eval export NANVIX_WASM_BINARY := $(realpath $(WASM_BINARY)))
+	$(eval export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY)))
+	$(eval export NANVIX_WASM_BINARY_ARGS := =$(WASM_BINARY_ARGS))
+	$(eval export WASMD_CARGO_FEATURES := --features wasm_binary)
+endif
+	@echo "NANVIX_WASM_BINARY=$(NANVIX_WASM_BINARY)"
+	@echo "NANVIX_WASM_BINARY_BASENAME=$(NANVIX_WASM_BINARY_BASENAME)"
+	@echo "NANVIX_WASM_BINARY_ARGS=$(NANVIX_WASM_BINARY_ARGS)"
+	$(GUEST_CARGO_BUILD_CMD) $(WASMD_CARGO_FEATURES) -p wasmd
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/wasmd.elf $(BINARIES_DIR)/wasmd.elf
 
 check-wasmd:
 	$(GUEST_CARGO_CHECK_CMD) -p wasmd
 
-clean-wasmd: clean-wasm-binaries
+clean-wasmd: clean-wasm-binaries clean-guest-binaries
 	$(GUEST_CARGO_CLEAN_CMD) -p wasmd
 	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
 
