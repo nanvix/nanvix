@@ -83,12 +83,6 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 # Nanvix Variables
 #===================================================================================================
 
-# WASM binary to be embedded in the WASM Daemon
-ifneq ($(WASM_BINARY),)
-export NANVIX_WASM_BINARY := $(realpath $(WASM_BINARY))
-export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY))
-export NANVIX_WASM_BINARY_ARGS := $(WASM_BINARY_ARGS)
-endif
 
 # Socket address for the WASM Daemon
 ifneq ($(WASMD_SOCKADDR),)
@@ -149,6 +143,7 @@ export GUEST_RUST_FLAGS :="-C relocation-model=static -C prefer-dynamic=no"
 export GUEST_CARGO_FLAGS :=-Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
 export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET).json
 export KERNEL_CARGO_FEATURES := --no-default-features --features $(MACHINE) --features $(LOG_LEVEL)
+export WASMD_CARGO_FEATURES :=
 
 # Rust flags for host target.
 export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
@@ -433,6 +428,15 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
 
 all-wasmd: all-wasm-binaries all-guest-binaries
+	@echo "WASM_BINARY=$(WASM_BINARY)"
+ifneq ($(WASM_BINARY),)
+	$(eval export NANVIX_WASM_BINARY := $(realpath $(WASM_BINARY)))
+	$(eval export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY)))
+	$(eval export NANVIX_WASM_BINARY_ARGS := =$(WASM_BINARY_ARGS))
+endif
+	@echo "NANVIX_WASM_BINARY=$(NANVIX_WASM_BINARY)"
+	@echo "NANVIX_WASM_BINARY_BASENAME=$(NANVIX_WASM_BINARY_BASENAME)"
+	@echo "NANVIX_WASM_BINARY_ARGS=$(NANVIX_WASM_BINARY_ARGS)"
 	$(GUEST_CARGO_BUILD_CMD) -p wasmd
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/wasmd.elf $(BINARIES_DIR)/wasmd.elf
 
