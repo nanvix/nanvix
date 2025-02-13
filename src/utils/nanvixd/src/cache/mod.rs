@@ -175,7 +175,25 @@ impl SandboxCacheInner {
     async fn update_access_time(&mut self, tag: &SandboxTag) -> Result<()> {
         // Lock the table of sandboxes and attempt to retrieve the target sandbox.
         let mut locked_sandboxes: LockedSandboxTable = self.sandboxes.lock().await;
-        if let Some((last_access, _sandbox)) = locked_sandboxes.get_mut(tag) {
+        if let Some((last_access, sandbox)) = locked_sandboxes.get_mut(tag) {
+            // Check if sandbox should be immediately unloaded.
+            if self.keep_alive_timeout == Duration::from_secs(0) {
+                // Unload sandbox.
+                match sandbox.try_lock() {
+                    Ok(mut locked_sandbox) => {
+                        if let Err(err) = locked_sandbox.unload() {
+                            error!(
+                                "update_access_time(): failed to unload sandbox {:?} (error={:?})",
+                                tag, err
+                            );
+                        }
+                    },
+                    Err(_) => {
+                        warn!("update_access_time(): failed to lock sandbox {:?}", tag);
+                    },
+                }
+            }
+
             // Sandbox found, update access time.
             *last_access = Instant::now();
         }
