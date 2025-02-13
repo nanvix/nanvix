@@ -12,6 +12,7 @@ Nanvix. For more information on how to build Nanvix, please refer to the
   - [List of Optional Run Parameters](#list-of-optional-run-parameters)
 - [Running Nanvix in MicroVM](#running-nanvix-in-microvm)
   - [Redirect Standard Error (Optional)](#redirect-standard-error-optional)
+  - [Running the Linux Daemon (Optional)](#running-the-linux-daemon-optional)
 
 ## Running Nanvix in QEMU with Default Parameters
 
@@ -33,7 +34,7 @@ make run
 > ⚠️ This step assumes that you have superuser privileges on the system.
 
 ```bash
-sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/boottime.elf
+sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/noop-rust-nostd.elf
 ```
 
 ### Redirect Standard Error (Optional)
@@ -52,12 +53,12 @@ Now, in the first terminal, run the MicroVM with the `-stderr` option:
 
 ```bash
 # Assuming /dev/pts/5 is the tty of the new terminal.
-sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/boottime.elf -stderr dev/pts/5
+sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/noop-rust-nostd.elf -stderr dev/pts/5
 ```
 
 ### Running the Linux Daemon (Optional)
 
-There are more binaries available other than `boottime.elf`. One of them is `linux-app.elf`.
+There are more binaries available other than `noop-rust-nostd.elf`. One of them is `linux-app.elf`.
 In order to run it, get the terminal's tty path:
 
 ```bash
