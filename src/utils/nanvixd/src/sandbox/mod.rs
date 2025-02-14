@@ -92,6 +92,7 @@ impl Sandbox {
 
     pub fn unload(&mut self) -> Result<()> {
         self.microvm.take();
+        self.linuxd_socket.take();
         Ok(())
     }
 

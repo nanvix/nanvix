@@ -99,20 +99,20 @@ pub fn main() -> Result<()> {
         }
     });
 
-    // Connect to gateway after binding to socket address, as a connection to the gateway will
-    // signal we are ready to accept commands.
-    let mut gateway_conn: Option<UnixStream> = match args.gateway_sockaddr() {
-        Some(sockaddr) => match UnixStream::connect(sockaddr) {
-            Ok(stream) => Some(stream),
-            Err(e) => {
-                error!("failed to connect to gateway (error={:?})", e);
-                anyhow::bail!("failed to connect to gateway");
-            },
-        },
-        None => None,
-    };
-
     loop {
+        // Connect to gateway after binding to socket address, as a connection to the gateway will
+        // signal we are ready to accept commands.
+        let mut gateway_conn: Option<UnixStream> = match args.gateway_sockaddr() {
+            Some(sockaddr) => match UnixStream::connect(sockaddr) {
+                Ok(stream) => Some(stream),
+                Err(e) => {
+                    error!("failed to connect to gateway (error={:?})", e);
+                    anyhow::bail!("failed to connect to gateway");
+                },
+            },
+            None => None,
+        };
+
         let stream: UnixStream = match listener.accept() {
             Ok((stream, sockaddr)) => {
                 info!("Connected to: {:?}", sockaddr);
