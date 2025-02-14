@@ -2,16 +2,16 @@
 # Licensed under the MIT License.
 
 [package]
-name = "echo"
+name = "echo-rust-nostd"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Echo Benchmark"
+description = "Echo Benchmark for Rust"
 homepage.workspace = true
 
 [[bin]]
-name = "echo"
+name = "echo-rust-nostd"
 
 [dependencies]
 nvx = { workspace = true, features = ["allocator"] }

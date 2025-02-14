@@ -5,8 +5,9 @@
 resolver = "2"
 default-members = ["src/microvm"]
 members = [
-        "src/benchmarks/echo",
         "src/benchmarks/matmul",
+        "src/benchmarks/echo-rust-nostd",
+        "src/benchmarks/echo-wasm-rust",
         "src/benchmarks/noop-rust-nostd",
         "src/benchmarks/noop-wasm-rust",
         "src/daemons/linuxd",
