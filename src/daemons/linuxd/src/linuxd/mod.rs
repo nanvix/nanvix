@@ -286,9 +286,6 @@ impl<'a> LinuxDaemon<'a> {
                 error!("send_eof(): {:?} (error={:?}", reason, e);
                 return Err(Error::new(ErrorCode::ConnectionReset, reason));
             }
-
-            // Read and discard all requests that were not consumed.
-            while let Ok(Some(_message)) = Self::read_request(conn) {}
         }
 
         Ok(())
@@ -744,42 +741,6 @@ impl<'a> LinuxDaemon<'a> {
         } else {
             // Read from other file descriptor.
             unistd::do_read(source, request)
-        }
-    }
-
-    pub fn read_request(conn: &mut UnixStream) -> Result<Option<Vec<u8>>, ::std::io::Error> {
-        let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
-        match conn.read_exact(&mut length_buffer) {
-            Ok(()) => {
-                let length: u32 = u32::from_le_bytes(length_buffer);
-                if length == 0 {
-                    debug!("read_request(): read 0 bytes from the gateway");
-                    Ok(None)
-                } else {
-                    let count: usize = length as usize;
-                    let mut buf: Vec<u8> = vec![0u8; count];
-                    match conn.read_exact(&mut buf) {
-                        Ok(_) => {
-                            debug!("read_request(): read {} bytes from the gateway", count);
-                            Ok(Some(buf))
-                        },
-                        Err(error) => {
-                            debug!(
-                                "read_request(): failed to read from the gateway (error={:?})",
-                                error
-                            );
-                            Err(error)
-                        },
-                    }
-                }
-            },
-            Err(error) => {
-                error!(
-                    "read_request(): failed to read length from the gateway (error={:?})",
-                    error
-                );
-                Err(error)
-            },
         }
     }
 
