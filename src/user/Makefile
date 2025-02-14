@@ -1,15 +1,15 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-all: all-echo-js all-hello-c all-hello-cpp all-hello-js
+all: all-webpage-wasm-js all-hello-c all-hello-cpp all-hello-js
 
-clean: clean-echo-js clean-hello-c clean-hello-cpp clean-hello-js
+clean: clean-webpage-wasm-js clean-hello-c clean-hello-cpp clean-hello-js
 
-all-echo-js:
-	$(MAKE) -C echo-js
+all-webpage-wasm-js:
+	$(MAKE) -C webpage-wasm-js
 
-clean-echo-js:
-	$(MAKE) -C echo-js clean
+clean-webpage-wasm-js:
+	$(MAKE) -C webpage-wasm-js clean
 
 all-hello-c:
 	$(MAKE) -C hello-c
