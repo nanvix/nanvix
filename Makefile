@@ -220,13 +220,13 @@ ALL_GUEST_STATIC_LIBS := nvx posix
 ALL_GUEST_RUST_LIBS := bitmap error proc raw-array slab sys
 
 ALL_GUEST_DAEMONS := memd procd
-ALL_GUEST_BENCHMARKS := echo noop-rust-nostd matmul
+ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd matmul
 ALL_GUEST_APPLICATIONS := hello-rust
 ALL_GUEST_TESTS := testd linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
-ALL_WASM_BINARIES := hello-wasm noop-wasm-rust
+ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_UTILS := echo-client loader nanvixd
 ALL_HOST_DAEMONS := linuxd
@@ -291,7 +291,7 @@ run-unit-tests: all \
 	test-guest-staticlibs \
 	test-guest-rlibs
 
-run-nanvixd-tests: | test-echo test-hello-c test-hello-cpp test-linux-app
+run-nanvixd-tests: | test-echo-rust-nostd test-hello-c test-hello-cpp test-linux-app
 
 #===================================================================================================
 # Build Rules for Running and Debugging
@@ -551,9 +551,9 @@ clippy-microvm:
 # Rules for Running System Level tests
 #===================================================================================================
 
-test-echo: all
+test-echo-rust-nostd: all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo.elf '["hello world!"]' 'hello world!'
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-rust-nostd.elf '["hello world!"]' 'hello world!'
 endif
 
 test-hello-c: all
