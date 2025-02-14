@@ -21,8 +21,6 @@ use ::nvx::sys::error::Error;
 use ::posix::{
     sys::types::size_t,
     unistd,
-    venv,
-    venv::VirtualEnvironmentIdentifier,
 };
 
 //==================================================================================================
@@ -31,9 +29,6 @@ use ::posix::{
 
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
-    let env: VirtualEnvironmentIdentifier = venv::join(VirtualEnvironmentIdentifier::NEW)?;
-    ::nvx::info!("joined environment {:?}", env);
-
     // Run tests.
     clock::test();
     identity::test();
@@ -41,9 +36,6 @@ pub fn main() -> Result<(), Error> {
     if let Err(error) = network::test_network() {
         ::nvx::error!("network test failed: {:?}", error);
     }
-
-    venv::leave(env)?;
-    ::nvx::info!("left environment {:?}", env);
 
     // Magic string.
     {
