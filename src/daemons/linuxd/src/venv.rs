@@ -8,17 +8,12 @@
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
-};
-use ::posix::venv::{
-    message::{
-        JoinEnvRequest,
-        JoinEnvResponse,
-        LeaveEnvRequest,
-        LeaveEnvResponse,
+    sys::error::{
+        Error,
+        ErrorCode,
     },
-    VirtualEnvironmentIdentifier,
 };
+use ::posix::venv::VirtualEnvironmentIdentifier;
 use ::std::collections::{
     BTreeMap,
     VecDeque,
@@ -126,28 +121,33 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Description
     ///
-    /// Handles a join() request to a virtual environment.
+    /// Joins a virtual environment.
     ///
     /// # Parameters
     ///
-    /// - `pid`: Requesting process identifier.
-    /// - `request`: Join request.
+    /// - `pid`: Process identifier.
+    /// - `envid`: Virtual environment identifier.
     ///
     /// # Returns
     ///
-    /// A response message indicating whether the request was successful or not.
+    /// On success, an identifier to the virtual environment which the process joined is returned.
+    /// Otherwise, an error is returned.
     ///
-    ///
-    pub fn join(&mut self, pid: ProcessIdentifier, request: JoinEnvRequest) -> Message {
-        trace!("join(): pid={:?}, request={:?}", pid, request);
+    pub fn join(
+        &mut self,
+        pid: ProcessIdentifier,
+        mut envid: VirtualEnvironmentIdentifier,
+    ) -> Result<VirtualEnvironmentIdentifier, Error> {
+        trace!("join(): pid={:?}, envid={:?}", pid, envid);
 
         // Check if the process is already in an environment.
         if self.processes.contains_key(&pid) {
-            warn!("process {:?} is previously joined environment {:?}", pid, self.processes[&pid]);
-            return crate::build_error(pid, ErrorCode::ResourceBusy);
-        }
-
-        let mut envid: VirtualEnvironmentIdentifier = request.env;
+            error!("process {:?} is previously joined environment {:?}", pid, self.processes[&pid]);
+            return Err(Error::new(
+                ErrorCode::ResourceBusy,
+                "process is already in an environment",
+            ));
+        };
 
         // Check wether the process requested to join a new environment or an existing one.
         if envid == VirtualEnvironmentIdentifier::NEW {
@@ -161,52 +161,83 @@ impl VirtualEnviromentDirectory {
 
             // Check if environment exists.
             if !self.processes.values().any(|v| v.id() == envid) {
-                warn!("process {:?} requested to join non-existing environment {:?}", pid, envid);
-                return crate::build_error(pid, ErrorCode::NoSuchEntry);
+                error!("process {:?} requested to join non-existing environment {:?}", pid, envid);
+                return Err(Error::new(
+                    ErrorCode::NoSuchEntry,
+                    "virtual environment does not exist",
+                ));
             }
 
             // Join environment.
             self.processes.insert(pid, VirtualEnvironment::new(envid));
         }
 
-        JoinEnvResponse::build(pid, envid)
+        Ok(envid)
     }
 
     ///
     /// # Description
     ///
-    /// Handles a leave() request from a virtual environment.
+    /// Leaves a virtual environment.
     ///
     /// # Parameters
     ///
-    /// - `pid`: Requesting process identifier.
-    /// - `request`: Leave request.
+    /// - `pid`: Process identifier.
+    /// - `envid`: Virtual environment identifier.
     ///
     /// # Returns
     ///
-    /// A response message indicating whether the request was successful or not.
+    /// On success, an identifier to the virtual environment which the process left is returned.
+    /// Otherwise, an error is returned.
     ///
-    pub fn leave(&mut self, pid: ProcessIdentifier, request: LeaveEnvRequest) -> Message {
-        trace!("leave(): pid={:?}", pid);
+    #[allow(dead_code)]
+    pub fn leave(
+        &mut self,
+        pid: ProcessIdentifier,
+        envid: VirtualEnvironmentIdentifier,
+    ) -> Result<VirtualEnvironmentIdentifier, Error> {
+        trace!("leave(): pid={:?}, envid={:?}", pid, envid);
 
         // Check if the process has joined an environment.
         if !self.processes.contains_key(&pid) {
             error!("process {:?} has not joined an environment", pid);
-            return crate::build_error(pid, ErrorCode::NoSuchEntry);
+            return Err(Error::new(
+                ErrorCode::NoSuchEntry,
+                "process has not joined an environment",
+            ));
         }
-
-        let envid: VirtualEnvironmentIdentifier = request.env;
 
         // Check if the process has previously joined the environment.
         if self.processes[&pid].id() != envid {
             error!("process {:?} has not previously joined environment {:?}", pid, envid);
-            return crate::build_error(pid, ErrorCode::InvalidArgument);
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "process has not previously joined environment",
+            ));
         }
 
         // Leave environment.
         self.processes.remove(&pid);
 
-        LeaveEnvResponse::build(pid, envid)
+        Ok(envid)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets a reference to the virtual environment of a process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier.
+    ///
+    /// # Returns
+    ///
+    /// If there is a virtual environment associated with the process, the function returns a
+    /// reference to the virtual environment. Otherwise, it returns `None`.
+    ///
+    pub fn get(&self, pid: ProcessIdentifier) -> Option<&VirtualEnvironment> {
+        self.processes.get(&pid)
     }
 
     ///
