@@ -15,10 +15,6 @@ use ::posix::{
         ssize_t,
     },
     unistd,
-    venv::{
-        self,
-        VirtualEnvironmentIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -33,8 +29,6 @@ const MAX_REQUEST_SIZE: usize = 4096;
 
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
-    let env: VirtualEnvironmentIdentifier = venv::join(VirtualEnvironmentIdentifier::NEW)?;
-
     let stdin: i32 = unistd::STDIN_FILENO;
     let stdout: i32 = unistd::STDOUT_FILENO;
     let mut buffer: [u8; MAX_REQUEST_SIZE] = [0; MAX_REQUEST_SIZE];
@@ -57,5 +51,5 @@ pub fn main() -> Result<(), Error> {
         unistd::write(stdout, buffer.as_ptr(), n as size_t);
     }
 
-    venv::leave(env)
+    Ok(())
 }
