@@ -2,20 +2,20 @@
 # Licensed under the MIT License.
 
 [package]
-name = "boottime"
+name = "echo-rust-nostd"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Boot Time Benchmark"
+description = "Echo Benchmark for Rust"
 homepage.workspace = true
 
 [[bin]]
-name = "boottime"
+name = "echo-rust-nostd"
 
 [dependencies]
-cfg-if = { workspace = true }
-nvx = { workspace = true }
+nvx = { workspace = true, features = ["allocator"] }
+posix = { workspace = true, features = ["syscall", "allocator"] }
 
 [build-dependencies]
 cc = { workspace = true }

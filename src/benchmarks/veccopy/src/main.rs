@@ -9,10 +9,13 @@
 //==================================================================================================
 
 extern crate alloc;
-use ::alloc::vec::Vec;
+use config::memory_layout::USER_HEAP_BASE_RAW;
+use nvx::{mm::{AccessPermission, Address, VirtualAddress}, pm::ProcessIdentifier};
 use ::nvx::sys::error::Error;
 use serde::Deserialize;
 use serde_json::from_str;
+use ::nvx::sys::arch::mem;
+use fastrand::Rng;
 
 //==================================================================================================
 // Structs
@@ -20,13 +23,13 @@ use serde_json::from_str;
 
 #[derive(Deserialize)]
 pub struct Parameters {
-    vec_size: usize
+    seed: u64
 }
 
 impl Default for Parameters {
     fn default() -> Self {
         Self { 
-            vec_size: 10000
+            seed: 32
         }
     }
 }
@@ -45,24 +48,31 @@ fn main() -> Result<(), Error> {
         Parameters::default()
     };
 
-    let mut source: Vec<u32> = Vec::with_capacity(param.vec_size);  
-    for i in 0..param.vec_size {
-        source.push(i as u32); 
-    }
+    let mypid: ProcessIdentifier = ::nvx::pm::getpid().expect("failed to get process identifier");
 
-    for i in 0..param.vec_size {
-        source[i] = source[i] * 1; 
-    }
+    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
+    let mut rng: Rng = Rng::with_seed(param.seed);
 
-    let mut dst: Vec<u32> = Vec::with_capacity(param.vec_size);
-    unsafe {
-        dst.set_len(param.vec_size);
-    }
+    for _ in  0..ntimes {
+        let offset: usize = rng.usize(0..ntimes) * mem::PAGE_SIZE;
+        let vaddr: VirtualAddress = VirtualAddress::from_raw_value(USER_HEAP_BASE_RAW + offset);
+        
+        match ::nvx::mm::mmap(mypid, vaddr, AccessPermission::RDWR) {
+            Ok(_) => (),
+            Err(_) => ::nvx::error!("failed to map page in address {:?}", vaddr),
+        };  
 
-    // Perform memory copy
-    unsafe {
-        ::core::ptr::copy_nonoverlapping(source.as_ptr(), dst.as_mut_ptr(), param.vec_size);
-    }
+        // Touch a byte inside the page to ensure it's mapped
+        unsafe {
+            let ptr: *mut u8 = vaddr.as_mut_ptr();
+            core::ptr::write_volatile(ptr, rng.u8(..)); 
+        }
 
+        match ::nvx::mm::munmap(mypid, vaddr) {
+            Ok(_) => (),
+            Err(_) => ::nvx::error!("failed to unmap page in address {:?}", vaddr),
+        }; 
+
+    } 
     Ok(())
 }

@@ -1,47 +1,40 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-#![no_std]
-#![no_main]
-
-//==================================================================================================
-// Modules
-//==================================================================================================
-
-mod clock;
-mod file_system;
-mod identity;
-mod network;
-
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use ::nvx::sys::error::Error;
-use ::posix::{
-    sys::types::size_t,
-    unistd,
+use ::std::io::{
+    self,
+    Read,
+    Write,
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+const MAX_REQUEST_SIZE: usize = 4096;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
-pub fn main() -> Result<(), Error> {
-    // Run tests.
-    clock::test();
-    identity::test();
-    file_system::test();
-    if let Err(error) = network::test_network() {
-        ::nvx::error!("network test failed: {:?}", error);
+fn main() {
+    let mut buffer: [u8; MAX_REQUEST_SIZE] = [0; MAX_REQUEST_SIZE];
+    let mut n: usize = 0;
+
+    loop {
+        match io::stdin().read(&mut buffer[n..]) {
+            Ok(0) => break,          // End of file reached.
+            Ok(nread) => n += nread, // Read some bytes.
+            Err(_) => break,         // Error encountered.
+        }
     }
 
-    // Magic string.
-    {
-        let magic_string: &[u8] = "ok".as_bytes();
-        unistd::write(unistd::STDOUT_FILENO, magic_string.as_ptr(), magic_string.len() as size_t);
+    if n > 0 {
+        io::stdout().write_all(&buffer[..n]).unwrap();
+        io::stdout().flush().unwrap();
     }
-
-    Ok(())
 }

@@ -1,47 +1,47 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-#![no_std]
-#![no_main]
+#include <stddef.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 //==================================================================================================
-// Modules
+// Constants
 //==================================================================================================
 
-mod clock;
-mod file_system;
-mod identity;
-mod network;
+#define MAX_REQUEST_SIZE 4096
 
 //==================================================================================================
-// Imports
+// Global Variables
 //==================================================================================================
 
-use ::nvx::sys::error::Error;
-use ::posix::{
-    sys::types::size_t,
-    unistd,
-};
+char buffer[MAX_REQUEST_SIZE];
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
-pub fn main() -> Result<(), Error> {
-    // Run tests.
-    clock::test();
-    identity::test();
-    file_system::test();
-    if let Err(error) = network::test_network() {
-        ::nvx::error!("network test failed: {:?}", error);
+int main(void)
+{
+    ssize_t nread;
+    size_t n = 0;
+
+    while (1) {
+        nread = fread(buffer + n, 1, MAX_REQUEST_SIZE - n, stdin);
+        if (nread < 0) {
+            break; // Error encountered.
+        } else if (nread == 0) {
+            break; // End of file reached.
+        } else {
+            n += nread; // Read some bytes.
+        }
     }
 
-    // Magic string.
-    {
-        let magic_string: &[u8] = "ok".as_bytes();
-        unistd::write(unistd::STDOUT_FILENO, magic_string.as_ptr(), magic_string.len() as size_t);
+    if (n > 0) {
+        fwrite(buffer, 1, n, stdout);
+        fflush(stdout);
     }
 
-    Ok(())
+    return 0;
 }

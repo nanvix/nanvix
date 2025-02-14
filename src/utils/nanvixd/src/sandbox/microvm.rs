@@ -28,7 +28,6 @@ pub struct Microvm(Option<Child>);
 
 impl Microvm {
     pub fn spawn(program: &str, addr: &str, stderr: &str) -> Result<Self> {
-        debug!("spawning microvm {program} {addr} {stderr}");
         let child = Command::new(format!("{}/microvm.elf", config::BINARY_DIRECTORY))
             .arg("-log-to-file")
             .arg("-kernel")
@@ -41,6 +40,13 @@ impl Microvm {
             .arg(addr)
             .stdout(Stdio::piped())
             .spawn()?;
+        debug!(
+            "spawning microvm child.pid={:?} program={:?} addr={:?} stderr={:?}",
+            child.id(),
+            program,
+            addr,
+            stderr
+        );
         Ok(Self(Some(child)))
     }
 
@@ -66,13 +72,13 @@ impl Drop for Microvm {
     fn drop(&mut self) {
         if let Some(mut child) = self.0.take() {
             tokio::spawn(async move {
-                debug!("killing microvm");
+                debug!("killing microvm (child={:?})", child.id());
                 if let Err(e) = child.kill().await {
-                    error!("failed to kill microvm({:?})", e);
+                    error!("failed to kill microvm (child={:?}, Arror={:?})", child.id(), e);
                 }
 
                 if let Err(e) = child.wait().await {
-                    error!("failed to wait for microvm({:?})", e);
+                    error!("failed to wait for microvm (child{:?}, error={:?})", child.id(), e);
                 }
             });
         }

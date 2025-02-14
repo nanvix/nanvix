@@ -98,10 +98,7 @@ use ::posix::{
         WriteRequest,
         WriteResponse,
     },
-    venv::message::{
-        JoinEnvRequest,
-        LeaveEnvRequest,
-    },
+    venv::VirtualEnvironmentIdentifier,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -167,7 +164,18 @@ impl<'a> LinuxDaemon<'a> {
                 message.message_type,
             );
 
-            let source = message.source;
+            let source: ProcessIdentifier = message.source;
+
+            // Check if process is associated with a virtual environment.
+            if self.venv.get(source).is_none() {
+                // Join a new virtual environment.
+                if let Err(error) = self.venv.join(source, VirtualEnvironmentIdentifier::NEW) {
+                    warn!("failed to join new virtual environment (error={:?})", error);
+                    let message: Message = crate::build_error(source, error.code);
+                    self.send(message).unwrap();
+                }
+                // TODO: leave environment on process exit.
+            }
 
             match message.message_type {
                 nvx::ipc::MessageType::Empty => panic!("received empty message"),
@@ -209,8 +217,6 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::GetClockTimeRequest
                                 | LinuxDaemonMessageHeader::GetPeerNameRequest
                                 | LinuxDaemonMessageHeader::GetSockNameRequest
-                                | LinuxDaemonMessageHeader::JoinEnvRequest
-                                | LinuxDaemonMessageHeader::LeaveEnvRequest
                                 | LinuxDaemonMessageHeader::ListenSocketRequest
                                 | LinuxDaemonMessageHeader::OpenAtRequest
                                 | LinuxDaemonMessageHeader::PartialReadRequest
@@ -396,14 +402,6 @@ impl<'a> LinuxDaemon<'a> {
                 let request: GetSockNameRequest = GetSockNameRequest::from_bytes(message.payload);
                 socket::do_getsockname(source, request)
             },
-            LinuxDaemonMessageHeader::JoinEnvRequest => {
-                let request: JoinEnvRequest = JoinEnvRequest::from_bytes(message.payload);
-                self.venv.join(source, request)
-            },
-            LinuxDaemonMessageHeader::LeaveEnvRequest => {
-                let request: LeaveEnvRequest = LeaveEnvRequest::from_bytes(message.payload);
-                self.venv.leave(source, request)
-            },
             LinuxDaemonMessageHeader::ListenSocketRequest => {
                 let request: ListenSocketRequest = ListenSocketRequest::from_bytes(message.payload);
                 socket::do_listen(source, request)
@@ -585,6 +583,7 @@ impl<'a> LinuxDaemon<'a> {
         source: ProcessIdentifier,
         request: WriteRequest,
     ) -> Message {
+        trace!("handle_write_request(): source={:?}, request={:?}", source, request);
         // Check if writing to gateway.
         if request.fd == ::posix::unistd::STDOUT_FILENO {
             if let Some(ref mut conn) = self.gateway_conn {
@@ -634,6 +633,7 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     fn handle_read_request(&mut self, source: ProcessIdentifier, request: ReadRequest) -> Message {
+        trace!("handle_read_request(): source={:?}, request={:?}", source, request);
         // Check if reading from gateway.
         if request.fd == ::posix::unistd::STDIN_FILENO {
             if let Some(ref mut conn) = self.gateway_conn {

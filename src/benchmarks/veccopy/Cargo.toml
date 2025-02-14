@@ -14,6 +14,8 @@ homepage.workspace = true
 name = "veccopy"
 
 [dependencies]
+config = { workspace = true }
+fastrand = { workspace = true }
 nvx = { workspace = true, features = ["allocator"] }
 posix = { workspace = true, features = ["syscall", "allocator"] }
 serde = { workspace = true, default-features = false, features = ["derive"] }
