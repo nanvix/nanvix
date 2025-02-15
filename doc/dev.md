@@ -1,20 +1,32 @@
 # Developing Nanvix
 
-## Testing syscalls
+> ℹ️ The instructions in this document assume that you already know how to built
+Nanvix. For more information on how to build Nanvix, please refer to the
+[build.md](build.md) document.
 
-Tests for syscalls can be found in `src/tests/linux-app`.
+This document guides you through testing Nanvix.
 
-To run these tests, you can use the following commands:
+## Table of Contents
+
+- [Running Unit Tests](#running-unit-tests)
+- [Running System-Level Tests (MicroVM and Hyperlight Machines Only)](#running-system-level-tests-microvm-and-hyperlight-machines-only)
+
+## Running Unit Tests
+
+> ℹ️ This runs unit tests with the default build parameters. Check the
+[build.md](build.md) document for more information on how to change default
+build parameters.
 
 ```bash
-# (1) Set up the environment using Docker
-docker build -t nanvix/toolchain build/scripts/setup/
+make run-unit-tests
+```
 
-# (2) Build the project inside the Docker container
-docker run --rm -v"$(pwd):/mnt" nanvix/toolchain /bin/bash -l -c "cd /mnt ; git config --global --add safe.directory /mnt ; make TOOLCHAIN_DIR=/opt MACHINE=microvm RELEASE=no PROFILER=yes LOG_LEVEL=error all"
+## Running System-Level Tests (MicroVM and Hyperlight Machines Only)
 
-# (3) Run nanvixd
-RUST_LOG=debug ./bin/nanvixd.elf -http-addr 127.0.0.1:8080 -linuxd-addr 127.0.0.1:7070 -sandbox-addr 127.0.0.1:1234 -keep-alive 0
+> ℹ️ This runs system-level tests with the default build parameters.  Check the
+[build.md](build.md) document for more information on how to change default
+build parameters.
 
-# (4) Send a curl to nanvixd specifying the program to run (e.g., linux-app.elf)
-curl -w "\n" --header "Content-Type: application/json" --request POST --data '{"clientid":1, "program":"bin/linux-app.elf", "args":[]}' http://localhost:8080
+```bash
+make run-nanvixd-tests
+```
