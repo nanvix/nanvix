@@ -1,80 +1,93 @@
 # Running Nanvix
 
-This document instructs you on how to run Nanvix.
+> ℹ️ The instructions in this document assume that you already know how to build Nanvix. For more information on how to build Nanvix, please refer to the [build.md](build.md) document.
 
-> ℹ️ The instructions in this document assume that you have already built
-Nanvix. For more information on how to build Nanvix, please refer to the
-[Building Nanvix](build.md) document.
+This document provides instructions on how to run Nanvix.
 
 ## Table of Contents
 
-- [Running Nanvix in QEMU with Default Parameters](#running-nanvix-in-qemu-with-default-parameters)
-  - [List of Optional Run Parameters](#list-of-optional-run-parameters)
-- [Running Nanvix in MicroVM](#running-nanvix-in-microvm)
-  - [Redirect Standard Error (Optional)](#redirect-standard-error-optional)
-  - [Running the Linux Daemon (Optional)](#running-the-linux-daemon-optional)
+- [Running Nanvix Through the Build System](#running-nanvix-through-the-build-system)
+- [Running Nanvix in the MicroVM (Hyperlight and MicroVM Machines Only)](#running-nanvix-in-the-microvm-hyperlight-and-microvm-machines-only)
+  - [Step 1: Run the Linux Daemon](#step-1-run-the-linux-daemon)
+  - [Step 2: Run the MicroVM](#step-2-run-the-microvm)
+  - [Enabling Logging (Optional)](#enabling-logging-optional)
+  - [Redirecting Standard Error (Optional)](#redirecting-standard-error-optional)
+- [Running Nanvix with `nanvixd` (MicroVM and Hyperlight Machines Only)](#running-nanvix-with-nanvixd-microvm-and-hyperlight-machines-only)
+  - [Step 1: Run `nanvixd`](#step-1-run-nanvixd)
+  - [Step 2: Run an Application](#step-2-run-an-application)
 
-## Running Nanvix in QEMU with Default Parameters
+## Running Nanvix Through the Build System
+
+> ℹ️ This runs Nanvix with the default build parameters. Check the [build.md](build.md) document for more information on how to change default build parameters.
+
+To run Nanvix through the build system, simply execute:
 
 ```bash
-# Run Nanvix in QEMU with default parameters:
-# make TARGET=x86 MACHINE=qemu-pc VERBOSE=no RELEASE=no TIMEOUT=10 run
 make run
 ```
 
-### List of Optional Run Parameters
+## Running Nanvix in the MicroVM (Hyperlight and MicroVM Machines Only)
 
-- `LOG_LEVEL=<trace|info|warn|error>`: Set the output log level.
-- `RELEASE=<yes|no>`: Enable/Disable release build.
-- `TARGET=x86`: Set target CPU architecture.
-- `TIMEOUT=<seconds>`: Set the execution timeout.
+### Step 1: Run the Linux Daemon
 
-## Running Nanvix in MicroVM
-
-> ⚠️ This step assumes that you have superuser privileges on the system.
+Open a terminal and run the Linux Daemon:
 
 ```bash
-sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/noop-rust-nostd.elf
+./bin/linuxd.elf -bind-addr 127.0.0.1:1234
 ```
 
-### Redirect Standard Error (Optional)
+### Step 2: Run the MicroVM
 
-It's possible to redirect the standard error of the MicroVM to another terminal. This
-is useful for debugging.
-
-To do it, open a new terminal and get its tty path:
+Open a second terminal and run the MicroVM. Use the `-initrd` option to specify which application to run:
 
 ```bash
-$ tty
-/dev/pts/5
+sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust.elf
 ```
 
-Now, in the first terminal, run the MicroVM with the `-stderr` option:
+### Enabling Logging (Optional)
+
+To enable logging, set the `RUST_LOG` environment variable to `trace` when running the Linux Daemon and/or the MicroVM:
 
 ```bash
-# Assuming /dev/pts/5 is the tty of the new terminal.
-sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/noop-rust-nostd.elf -stderr dev/pts/5
+RUST_LOG=trace sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust.elf -gateway 127.0.0.1:1234
+RUST_LOG=trace ./bin/linuxd.elf -bind-addr 127.0.0.1:1234
 ```
 
-### Running the Linux Daemon (Optional)
+### Redirecting Standard Error (Optional)
 
-There are more binaries available other than `noop-rust-nostd.elf`. One of them is `linux-app.elf`.
-In order to run it, get the terminal's tty path:
+Redirecting the standard error of the MicroVM to another terminal can be useful for debugging.
+
+1. Open a new terminal and get its tty path:
+
+    ```bash
+    $ tty
+    /dev/pts/5
+    ```
+
+2. Run the MicroVM with the `-stderr` option, specifying the tty path:
+
+    ```bash
+    # Assuming /dev/pts/5 is the tty of the new terminal.
+    sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust.elf -stderr /dev/pts/5
+    ```
+
+## Running Nanvix with `nanvixd` (MicroVM and Hyperlight Machines Only)
+
+### Step 1: Run `nanvixd`
+
+Open a terminal and run `nanvixd`:
 
 ```bash
-$ tty
-/dev/pts/5
+sudo -E ./bin/nanvixd.elf -http-addr 127.0.0.1:8080 -linuxd-addr 127.0.0.1:7070 -sandbox-addr 127.0.0.1:1234 -keep-alive 0
 ```
 
-Now open a second terminal and run the daemon on it:
+### Step 2: Run an Application
+
+Open a second terminal and run an application using `curl`:
 
 ```bash
-rmdir foo ; rm -f *.tmp ; RUST_LOG=trace ./bin/linuxd.elf -server 127.0.0.1:1234
-```
-
-Removing the directory and files sets up the environment for the tests run in `linux-app.elf`.
-Now open a third terminal and run the MicroVM on it, redirecting stderr to the first terminal:
-
-```bash
-sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -stderr /dev/pts/5 -initrd bin/linux-app.elf -gateway 127.0.0.1:1234
+curl -w "\n" \
+  --header "Content-Type: application/json" \
+  --request POST \
+  --data '{"clientid":1, "program":"bin/hello-rust.elf", "args":[]}' http://localhost:8080
 ```
