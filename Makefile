@@ -291,7 +291,17 @@ run-unit-tests: all \
 	test-guest-staticlibs \
 	test-guest-rlibs
 
-run-nanvixd-tests: | test-echo-rust-nostd test-hello-c test-hello-cpp test-linux-app
+run-nanvixd-tests: | \
+	test-echo-c \
+	test-echo-cpp \
+	test-echo-rust-nostd \
+	test-echo-wasm-js \
+	test-echo-wasm-rust \
+	test-hello-c \
+	test-hello-cpp \
+	test-hello-js \
+	test-hello-wasm \
+	test-linux-app
 
 #===================================================================================================
 # Build Rules for Running and Debugging
@@ -551,9 +561,33 @@ clippy-microvm:
 # Rules for Running System Level tests
 #===================================================================================================
 
+test-echo-c: all
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-c.elf '["hello world!"]' 'hello world!'
+endif
+
+test-echo-cpp: all
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-cpp.elf '["hello world!"]' 'hello world!'
+endif
+
 test-echo-rust-nostd: all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-rust-nostd.elf '["hello world!"]' 'hello world!'
+endif
+
+test-echo-wasm-js: all
+ifeq ($(shell basename $(realpath $(WASM_BINARY))),echo-wasm-js.wasm)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '["hello world!"]' 'hello world!'
+endif
+endif
+
+test-echo-wasm-rust: all
+ifeq ($(shell basename $(realpath $(WASM_BINARY))),echo-wasm-rust.wasm)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '["hello world!"]' 'hello world!'
+endif
 endif
 
 test-hello-c: all
@@ -564,6 +598,20 @@ endif
 test-hello-cpp: all
 ifneq ($(strip $(filter $(MACHINE),microvm, hyperlight)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-cpp.elf '[]' 'Hello, world from C++!'
+endif
+
+test-hello-js: all
+ifeq ($(shell basename $(realpath $(WASM_BINARY))),hello-js.wasm)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '[]' 'Hello, world from JavaScript!'
+endif
+endif
+
+test-hello-wasm: all
+ifeq ($(shell basename $(realpath $(WASM_BINARY))),hello-wasm.wasm)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '[]' 'Hello, world!'
+endif
 endif
 
 test-linux-app: all
