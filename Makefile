@@ -577,14 +577,14 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 endif
 
 test-echo-wasm-js: all
-ifeq ($(shell basename $(realpath $(WASM_BINARY))),echo-wasm-js.wasm)
+ifeq ($(shell basename $(WASM_BINARY)),echo-wasm-js.wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '["hello world!"]' 'hello world!'
 endif
 endif
 
 test-echo-wasm-rust: all
-ifeq ($(shell basename $(realpath $(WASM_BINARY))),echo-wasm-rust.wasm)
+ifeq ($(shell basename $(WASM_BINARY)),echo-wasm-rust.wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '["hello world!"]' 'hello world!'
 endif
@@ -601,14 +601,14 @@ ifneq ($(strip $(filter $(MACHINE),microvm, hyperlight)),)
 endif
 
 test-hello-js: all
-ifeq ($(shell basename $(realpath $(WASM_BINARY))),hello-js.wasm)
+ifeq ($(shell basename $(WASM_BINARY)),hello-js.wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '[]' 'Hello, world from JavaScript!'
 endif
 endif
 
 test-hello-wasm: all
-ifeq ($(shell basename $(realpath $(WASM_BINARY))),hello-wasm.wasm)
+ifeq ($(shell basename $(WASM_BINARY)),hello-wasm.wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '[]' 'Hello, world!'
 endif
