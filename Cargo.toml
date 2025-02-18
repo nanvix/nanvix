@@ -45,7 +45,7 @@ homepage = "https://github.com/nanvix"
 [workspace.dependencies]
 anyhow = "1.0.95"
 bitmap = { path = "src/libs/bitmap", default-features = false }
-cc = "1.2.6"
+cc = "1.2.14"
 cfg-if = "1.0.0"
 config = { path = "src/libs/config", default-features = false }
 error = { path = "src/libs/error", default-features = false }
@@ -54,12 +54,12 @@ flexi_logger = "0.29.8"
 http-body-util = "0.1.2"
 hyperlight_common = { git = "https://github.com/nanvix/hyperlight", default-features = false, package = "hyperlight-common" }
 hyperlight_host = { git = "https://github.com/nanvix/hyperlight/", default-features = false, package = "hyperlight-host" }
-hyper = { version = "1.5.2", default-features = false }
-hyper-util = { version = "0.1.9", default-features = false }
-kvm-bindings = "0.10.0"
-kvm-ioctls = "0.19.1"
+hyper = { version = "1.6.0", default-features = false }
+hyper-util = { version = "0.1.10", default-features = false }
+kvm-bindings = "0.11.0"
+kvm-ioctls = "0.20.0"
 libc = "0.2.169"
-log = "0.4.22"
+log = "0.4.25"
 micromath = "2.1.0"
 num_enum = { version = "0.7.3", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
@@ -68,15 +68,14 @@ posix = { path = "src/libs/posix", default-features = false }
 proc = { path = "src/libs/proc", default-features = false }
 raw-array = { path = "src/libs/raw-array", default-features = false }
 serde = { version = "1.0.217", default-features = false }
-serde_json = { version = "1.0.134", default-features = false, features = [
+serde_json = { version = "1.0.138", default-features = false, features = [
         "alloc",
 ] }
 signal-hook = "0.3.17"
 slab = { path = "src/libs/slab", default-features = false }
-spin = "0.9.8"
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
-tokio = { version = "1.42.0", default-features = false }
+tokio = { version = "1.43.0", default-features = false }
 wasmi = { version = "0.40.0", default-features = false }
 
 [profile.dev]
