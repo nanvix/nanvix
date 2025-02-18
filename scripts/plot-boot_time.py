@@ -20,8 +20,6 @@ def parse_file(file_name):
 
 def plot_cumulative_sum(vet):
     for df,label in vet:
-        plt.clf()
-
         mean = df['TimeMicroSec'].mean() / 1000
         legend = label + " - " + str(f"{mean:.3f}") + "ms"
 
@@ -29,7 +27,6 @@ def plot_cumulative_sum(vet):
 
         # sort the data:
         df_sorted = np.sort(df['TimeMicroSec'])
-
 
         # calculate the proportional values of samples
         p = 1. * np.arange(len(df_sorted)) / (len(df_sorted) - 1)
@@ -42,7 +39,7 @@ def plot_cumulative_sum(vet):
         plt.xlabel(f"${funcname} Time$ (ms)")
         plt.ylabel('$Cumulative Probability$')
 
-        plt.savefig("csvdata/plots/" + "plot" + label + ".png")
+    plt.savefig("csvdata/plots/" + "plot.png")
 
 def main() -> None:
     vet = []
@@ -50,7 +47,7 @@ def main() -> None:
     vet.append((parse_file(file_name512) , "512M" ))
     vet.append((parse_file(file_name256) , "256M" ))
     vet.append((parse_file(file_name128) , "128M" ))
-    vet.append((parse_file(file_name128) , "64M" ))
+    vet.append((parse_file(file_name64) , "64M" ))
 
     plot_cumulative_sum(vet)
 
