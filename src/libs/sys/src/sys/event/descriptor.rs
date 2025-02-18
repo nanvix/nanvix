@@ -26,7 +26,7 @@ impl EventDescriptor {
     const EVENT_MASKLEN: usize = Event::BIT_LENGTH;
     const EVENT_MASK: usize = (1 << Self::EVENT_MASKLEN) - 1;
     const EVENT_SHIFT: usize = 0;
-    const ID_MASK: usize = !(1 << (usize::BITS - 1) | Self::EVENT_MASK);
+    const ID_MASK: usize = !((1 << (usize::BITS - 1)) | Self::EVENT_MASK);
     const ID_SHIFT: usize = Self::EVENT_SHIFT + Self::EVENT_MASKLEN;
 
     pub fn into_raw(&self) -> usize {
