@@ -45,7 +45,7 @@ homepage = "https://github.com/nanvix"
 [workspace.dependencies]
 anyhow = "1.0.95"
 bitmap = { path = "src/libs/bitmap", default-features = false }
-cc = "1.2.6"
+cc = "1.2.14"
 cfg-if = "1.0.0"
 config = { path = "src/libs/config", default-features = false }
 error = { path = "src/libs/error", default-features = false }
