@@ -16,7 +16,6 @@ crate-type = ["lib", "staticlib"]
 [dependencies]
 sys = { workspace = true, features = ["kcall"] }
 talc = { workspace = true }
-spin = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
 
