@@ -54,7 +54,7 @@ flexi_logger = "0.29.8"
 http-body-util = "0.1.2"
 hyperlight_common = { git = "https://github.com/nanvix/hyperlight", default-features = false, package = "hyperlight-common" }
 hyperlight_host = { git = "https://github.com/nanvix/hyperlight/", default-features = false, package = "hyperlight-host" }
-hyper = { version = "1.5.2", default-features = false }
+hyper = { version = "1.6.0", default-features = false }
 hyper-util = { version = "0.1.9", default-features = false }
 kvm-bindings = "0.10.0"
 kvm-ioctls = "0.19.1"
