@@ -58,8 +58,8 @@ function parse_boottime {
         do
             file=${DATA_PATH}/originalcsv/nanvix-boot_time-${memory}.csv
             paste -d ',' \
-                <(cat $file | grep '^\+,vm_run' | cut -d',' -f 5) \
-                <(cat $file | grep "^\+,vmm_creation" | cut -d',' -f 5) \
+                <(cat $file | grep '^+,vm_run' | cut -d',' -f 5) \
+                <(cat $file | grep '^+,vmm_creation' | cut -d',' -f 5) \
                 | awk -F',' '{print $1 + $2}' \
                 | sed "s/^/${memory},/g" \
                 >> ${DATA_PATH}/parsedcsv/parsed_nanvix-boot_time-${memory}.csv
