@@ -39,16 +39,16 @@ cd nanvix                                       # Switch to Nanvix source tree.
 
 ```bash
 # Assuming you are in the project's root directory.
-cat build/scripts/setup/ubuntu.sh                # Inspect what is going to be installed.
-sudo -E ./build/scripts/setup/ubuntu.sh --extra  # Install dependencies.
+cat ./scripts/setup/ubuntu.sh                # Inspect what is going to be installed.
+sudo -E ./scripts/setup/ubuntu.sh --extra  # Install dependencies.
 ```
 
 ### Arch Linux
 
 ```bash
 # Assuming you are in the project's root directory.
-cat build/scripts/setup/arch.sh                # Inspect what is going to be installed.
-sudo -E ./build/scripts/setup/arch.sh --extra  # Install dependencies.
+cat ./scripts/setup/arch.sh                # Inspect what is going to be installed.
+sudo -E ./scripts/setup/arch.sh --extra  # Install dependencies.
 ```
 
 ## Getting the Rust Toolchain
@@ -71,7 +71,7 @@ You can follow any of the approaches below.
 ```bash
 # Assuming you are in the project's root directory.
 export TOOLCHAIN_DIR=$PWD                          # Set this to the directory where the toolchain will be installed.
-./build/scripts/setup/toolchain.sh $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
+./scripts/setup/toolchain.sh $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
 ```
 
 ### Building a Docker Image from the Sources
@@ -80,7 +80,7 @@ export TOOLCHAIN_DIR=$PWD                          # Set this to the directory w
 
 ```bash
 # Assuming you are in the project's root directory.
-docker build -t nanvix/toolchain build/scripts/setup/
+docker build -t nanvix/toolchain ./scripts/setup/
 ```
 
 ### Getting a Pre-Built Docker Image
@@ -110,5 +110,5 @@ Follow this step if you want to use a version of QEMU that is known to work with
 ```bash
 # Assuming you are in the project's root directory.
 export TARGET=x86                      # Select x86 as your target architecture.
-./build/scripts/setup/qemu.sh $TARGET  # Build QEMU.
+./scripts/setup/qemu.sh $TARGET  # Build QEMU.
 ```
