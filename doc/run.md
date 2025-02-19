@@ -41,7 +41,7 @@ Open a terminal and run the Linux Daemon:
 Open a second terminal and run the MicroVM. Use the `-initrd` option to specify which application to run:
 
 ```bash
-sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust.elf
+sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf
 ```
 
 ### Enabling Logging (Optional)
@@ -49,7 +49,7 @@ sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust.elf
 To enable logging, set the `RUST_LOG` environment variable to `trace` when running the Linux Daemon and/or the MicroVM:
 
 ```bash
-RUST_LOG=trace sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust.elf -gateway 127.0.0.1:1234
+RUST_LOG=trace sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -gateway 127.0.0.1:1234
 RUST_LOG=trace ./bin/linuxd.elf -bind-addr 127.0.0.1:1234
 ```
 
@@ -68,7 +68,7 @@ Redirecting the standard error of the MicroVM to another terminal can be useful 
 
     ```bash
     # Assuming /dev/pts/5 is the tty of the new terminal.
-    sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust.elf -stderr /dev/pts/5
+    sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -stderr /dev/pts/5
     ```
 
 ## Running Nanvix with `nanvixd` (MicroVM and Hyperlight Machines Only)
@@ -89,5 +89,5 @@ Open a second terminal and run an application using `curl`:
 curl -w "\n" \
   --header "Content-Type: application/json" \
   --request POST \
-  --data '{"clientid":1, "program":"bin/hello-rust.elf", "args":[]}' http://localhost:8080
+  --data '{"clientid":1, "program":"bin/hello-rust-nostd.elf", "args":[]}' http://localhost:8080
 ```
