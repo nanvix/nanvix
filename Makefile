@@ -441,7 +441,10 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 
 # TODO: Uncomment the following line when clippy can be enabled for all binaries.
 # clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
-clippy-guest-binaries: clippy-guest-binaries-hello-rust clippy-guest-binaries-noop-rust-nostd
+clippy-guest-binaries: \
+	clippy-guest-binaries-hello-rust \
+	clippy-guest-binaries-echo-rust-nostd \
+	clippy-guest-binaries-noop-rust-nostd
 
 all-wasmd: all-wasm-binaries all-guest-binaries
 	@echo "WASM_BINARY=$(WASM_BINARY)"
