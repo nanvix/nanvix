@@ -28,7 +28,7 @@ impl TryFrom<i32> for RiFlags {
 
     fn try_from(val: i32) -> Result<Self, Self::Error> {
         // Check for invalid bits.
-        if val & !(1 << Self::BIT_OFFSET_OF_PEEK | 1 << Self::BIT_OFFSET_OF_OOB) != 0 {
+        if val & !((1 << Self::BIT_OFFSET_OF_PEEK) | (1 << Self::BIT_OFFSET_OF_OOB)) != 0 {
             return Err(());
         }
 

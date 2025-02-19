@@ -40,9 +40,9 @@ impl From<i16> for RoFlags {
     }
 }
 
-impl Into<u16> for &RoFlags {
-    fn into(self) -> u16 {
-        (self.trunc as u16) << RoFlags::BIT_OFFSET_OF_TRUNC
+impl From<&RoFlags> for u16 {
+    fn from(flags: &RoFlags) -> Self {
+        (flags.trunc as u16) << RoFlags::BIT_OFFSET_OF_TRUNC
     }
 }
 

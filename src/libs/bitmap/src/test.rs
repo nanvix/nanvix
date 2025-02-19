@@ -17,10 +17,7 @@ use ::sys::error::Error;
 fn test_helper_create_bitmap_from_raw_array(data: &mut [u8]) -> Result<Bitmap, Error> {
     let ptr: *mut u8 = data.as_mut_ptr();
     let len: usize = data.len();
-    let array = match unsafe { RawArray::from_raw_parts(ptr, len) } {
-        Ok(array) => array,
-        Err(e) => return Err(e),
-    };
+    let array = unsafe { RawArray::from_raw_parts(ptr, len)? };
 
     Ok(Bitmap::from_raw_array(array))
 }

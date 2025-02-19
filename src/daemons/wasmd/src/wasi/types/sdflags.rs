@@ -33,7 +33,7 @@ impl TryFrom<i32> for SdFlags {
 
     fn try_from(val: i32) -> Result<Self, Self::Error> {
         // Check for invalid bits.
-        if val & !(1 << Self::BIT_OFFSET_OF_RD | 1 << Self::BIT_OFFSET_OF_WR) != 0 {
+        if val & !((1 << Self::BIT_OFFSET_OF_RD) | (1 << Self::BIT_OFFSET_OF_WR)) != 0 {
             return Err(());
         }
 
@@ -44,9 +44,9 @@ impl TryFrom<i32> for SdFlags {
     }
 }
 
-impl Into<socket::Shutdown> for SdFlags {
-    fn into(self) -> socket::Shutdown {
-        match (self.rd, self.wr) {
+impl From<SdFlags> for socket::Shutdown {
+    fn from(flags: SdFlags) -> Self {
+        match (flags.rd, flags.wr) {
             (true, false) => socket::Shutdown::Read,
             (false, true) => socket::Shutdown::Write,
             (true, true) => socket::Shutdown::ReadWrite,

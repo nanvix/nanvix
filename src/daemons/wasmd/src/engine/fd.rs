@@ -414,7 +414,7 @@ impl WasmEngine {
                     ::nvx::error!(
                         "fd_read(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
-                        nread_ptr as usize + mem::size_of::<Size>()
+                        nread_ptr + mem::size_of::<Size>()
                     );
                     return Errno::Inval.into();
                 }
@@ -491,13 +491,7 @@ impl WasmEngine {
                 let fd: Fd = fd;
 
                 // Attempt to convert offset.
-                let offset: FileDelta = match offset.try_into() {
-                    Ok(offset) => offset,
-                    Err(_) => {
-                        ::nvx::error!("fd_seek(): invalid offset {:#010x}", offset);
-                        return Errno::Inval.into();
-                    },
-                };
+                let offset: FileDelta = offset;
 
                 // Attempt to convert whence.
                 let whence: Whence = match whence.try_into() {
@@ -587,13 +581,7 @@ impl WasmEngine {
                 match ctx.fd_tell(fd) {
                     Ok(offset) => {
                         // Attempt to convert offset to FileSize.
-                        let offset: FileSize = match offset.try_into() {
-                            Ok(offset) => offset,
-                            Err(_) => {
-                                ::nvx::error!("fd_tell(): failed to convert offset to FileSize");
-                                return Errno::TooBig.into();
-                            },
-                        };
+                        let offset: FileSize = offset;
 
                         offset.write_le_bytes(&mut memory[newoffset..]);
                         Errno::Success.into()
@@ -675,7 +663,7 @@ impl WasmEngine {
                     ::nvx::error!(
                         "fd_write(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
-                        nwritten_ptr as usize + mem::size_of::<Size>()
+                        nwritten_ptr + mem::size_of::<Size>()
                     );
                     return Errno::Inval.into();
                 }

@@ -39,9 +39,8 @@ impl WasiCtxInner {
     pub fn fd_prestat_dir_get(&self, fd: Fd) -> Result<String, Errno> {
         // Search for file descriptor in the list of pre-open directories.
         for (dir, name) in &self.preopen_dirs {
-            match dir.fd() == fd {
-                true => return Ok(name.clone()),
-                false => (),
+            if dir.fd() == fd {
+                return Ok(name.clone());
             }
         }
 
@@ -53,9 +52,8 @@ impl WasiCtxInner {
     pub fn fd_prestat_get(&self, fd: Fd) -> Result<Prestat, Errno> {
         // Search for file descriptor in the list of pre-open directories.
         for (dir, name) in &self.preopen_dirs {
-            match dir.fd() == fd {
-                true => return Ok(Prestat::new(Size::from(name.len()))),
-                false => (),
+            if dir.fd() == fd {
+                return Ok(Prestat::new(Size::from(name.len())));
             }
         }
 
@@ -114,7 +112,7 @@ impl WasiCtxInner {
             },
             None => {
                 ::nvx::error!("fd_read(): invalid file descriptor");
-                return Err(Errno::Badf);
+                Err(Errno::Badf)
             },
         }
     }
@@ -143,13 +141,13 @@ impl WasiCtxInner {
                     Ok(offset) => Ok(offset),
                     Err(_) => {
                         ::nvx::error!("fd_seek(): failed to convert offset to FileSize");
-                        return Err(Errno::TooBig);
+                        Err(Errno::TooBig)
                     },
                 }
             },
             None => {
                 ::nvx::error!("fd_seek(): invalid file descriptor");
-                return Err(Errno::Badf);
+                Err(Errno::Badf)
             },
         }
     }
@@ -173,13 +171,13 @@ impl WasiCtxInner {
                     Ok(offset) => Ok(offset),
                     Err(_) => {
                         ::nvx::error!("fd_tell(): failed to convert offset to FileSize");
-                        return Err(Errno::TooBig);
+                        Err(Errno::TooBig)
                     },
                 }
             },
             None => {
                 ::nvx::error!("fd_tell(): invalid file descriptor");
-                return Err(Errno::Badf);
+                Err(Errno::Badf)
             },
         }
     }
@@ -235,7 +233,7 @@ impl WasiCtxInner {
             },
             None => {
                 ::nvx::error!("fd_write(): invalid file descriptor");
-                return Err(Errno::Badf);
+                Err(Errno::Badf)
             },
         }
     }

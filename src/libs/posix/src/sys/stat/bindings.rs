@@ -56,14 +56,14 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
 /// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
 ///
 #[no_mangle]
-pub extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
+pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
     // Convert C string to Rust string.
-    let pathname: &str = match unsafe { ffi::CStr::from_ptr(pathname).to_str() } {
+    let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
 
-    let statbuf: &mut stat::stat = unsafe { &mut *statbuf };
+    let statbuf: &mut stat::stat = &mut *statbuf;
 
     crate::sys::stat::lstat(pathname, statbuf)
 }
@@ -92,14 +92,14 @@ pub extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_
 /// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
 ///
 #[no_mangle]
-pub extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
+pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
     // Convert C string to Rust string.
-    let pathname: &str = match unsafe { ffi::CStr::from_ptr(pathname).to_str() } {
+    let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
 
-    let statbuf: &mut stat::stat = unsafe { &mut *statbuf };
+    let statbuf: &mut stat::stat = &mut *statbuf;
 
     crate::sys::stat::stat(pathname, statbuf)
 }
