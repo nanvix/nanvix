@@ -45,10 +45,11 @@ use ::nvx::sys::error::ErrorCode;
 ///
 /// - [`crate::fcntl::open()`]
 ///
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
+pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
     // Convert C string to Rust string.
-    let pathname: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -57,15 +58,13 @@ pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int
 
     // Check if the system call failed.
     if retcode < 0 {
-        unsafe {
-            errno = match ErrorCode::try_from(retcode) {
-                Ok(e) => e.into_errno(),
-                Err(_) => {
-                    ::nvx::error!("open(): invalid error code");
-                    ErrorCode::ValueOutOfRange.into_errno()
-                },
-            };
-        }
+        errno = match ErrorCode::try_from(retcode) {
+            Ok(e) => e.into_errno(),
+            Err(_) => {
+                ::nvx::error!("open(): invalid error code");
+                ErrorCode::ValueOutOfRange.into_errno()
+            },
+        };
         return -1;
     }
 
@@ -93,10 +92,16 @@ pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int
 ///
 /// - [`crate::fcntl::fchmodat()`]
 ///
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn fchmodat(dirfd: c_int, path: *const c_char, mode: mode_t, flag: c_int) -> c_int {
+pub unsafe extern "C" fn fchmodat(
+    dirfd: c_int,
+    path: *const c_char,
+    mode: mode_t,
+    flag: c_int,
+) -> c_int {
     // Convert C string to Rust string.
-    let pathname: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -104,10 +109,8 @@ pub extern "C" fn fchmodat(dirfd: c_int, path: *const c_char, mode: mode_t, flag
     match crate::fcntl::fchmodat(dirfd, pathname, mode, flag) {
         Ok(_) => 0,
         Err(e) => {
-            unsafe {
-                ::nvx::error!("fchmodat(): invalid error code");
-                errno = e.code.into_errno();
-            }
+            ::nvx::error!("fchmodat(): invalid error code");
+            errno = e.code.into_errno();
             -1
         },
     }
@@ -135,8 +138,9 @@ pub extern "C" fn fchmodat(dirfd: c_int, path: *const c_char, mode: mode_t, flag
 ///
 /// - [`crate::fcntl::fchownat()`]
 ///
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn fchownat(
+pub unsafe extern "C" fn fchownat(
     dirfd: c_int,
     path: *const c_char,
     owner: uid_t,
@@ -144,7 +148,7 @@ pub extern "C" fn fchownat(
     flag: c_int,
 ) -> c_int {
     // Convert C string to Rust string.
-    let pathname: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -152,10 +156,8 @@ pub extern "C" fn fchownat(
     match crate::fcntl::fchownat(dirfd, pathname, owner, group, flag) {
         Ok(_) => 0,
         Err(e) => {
-            unsafe {
-                ::nvx::error!("fchownat(): invalid error code");
-                errno = e.code.into_errno();
-            }
+            ::nvx::error!("fchownat(): invalid error code");
+            errno = e.code.into_errno();
             -1
         },
     }

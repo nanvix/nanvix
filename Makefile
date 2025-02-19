@@ -217,7 +217,7 @@ export SANDBOX_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:6161,127.0.0.
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := nvx posix
-ALL_GUEST_RUST_LIBS := bitmap error proc raw-array slab sys
+ALL_GUEST_RUST_LIBS := bitmap config error proc raw-array slab sys
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd matmul
@@ -228,6 +228,7 @@ ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
+ALL_HOST_RUST_LIBS := profiler
 ALL_HOST_UTILS := echo-client loader nanvixd
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
@@ -270,21 +271,26 @@ distclean: clean
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 
 # Runs clippy.
-# TODO: enable clippy for 'guest-staticlibs', 'guest-rlibs' and 'gest-binaries'.
 clippy: \
 	clippy-kernel \
+	clippy-guest-binaries \
+	clippy-guest-rlibs \
+	clippy-guest-staticlibs \
+	clippy-wasmd \
 	clippy-wasm-binaries \
 	clippy-host-binaries \
+	clippy-host-rlibs \
 	clippy-microvm
 
 check: \
-	check-guest-staticlibs \
-	check-guest-rlibs \
-	check-guest-binaries \
-	check-wasmd \
 	check-kernel \
+	check-guest-binaries \
+	check-guest-rlibs \
+	check-guest-staticlibs \
+	check-wasmd \
 	check-wasm-binaries \
 	check-host-binaries \
+	check-host-rlibs \
 	check-microvm
 
 run-unit-tests: all \
@@ -435,7 +441,7 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 	$(MAKE) -C $(SOURCES_DIR)/user clean
 	$(MAKE) -C $(SOURCES_DIR)/tests clean
 
-clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
+clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))
 
 all-wasmd: all-wasm-binaries all-guest-binaries
 	@echo "WASM_BINARY=$(WASM_BINARY)"
@@ -508,6 +514,29 @@ check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),check-wasm-binaries-$
 clean-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clean-wasm-binaries-$(target))
 
 clippy-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clippy-wasm-binaries-$(target))
+
+#===================================================================================================
+# Build Rules for Host Rust Libraries
+#===================================================================================================
+
+define HOST_RLIB_RULES
+check-host-rlib-$(1):
+	$(HOST_CARGO_CHECK_CMD) -p $(1)
+
+clippy-host-rlib-$(1):
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
+
+test-host-rlib-$(1):
+	$(HOST_CARGO_TEST_CMD) -p $(1)
+endef
+
+$(foreach target,$(ALL_HOST_RUST_LIBS),$(eval $(call HOST_RLIB_RULES,$(target))))
+
+check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),check-host-rlib-$(target))
+
+clippy-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),clippy-host-rlib-$(target))
+
+test-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),test-host-rlib-$(target))
 
 #===================================================================================================
 # Build Rules for Host Binaries

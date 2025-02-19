@@ -81,7 +81,7 @@ impl Socket {
     }
 
     pub fn recv(&self, buffer: &mut [u8]) -> Result<usize, Error> {
-        match posix::sys::socket::recv(self.0 as i32, buffer, 0) {
+        match posix::sys::socket::recv(self.0, buffer, 0) {
             Ok(len) => {
                 ::nvx::info!("received {} bytes on socket with fd {}", len, self.0);
                 Ok(len as usize)
@@ -93,7 +93,7 @@ impl Socket {
     }
 
     pub fn send(&self, buffer: &[u8]) -> Result<usize, Error> {
-        match posix::sys::socket::send(self.0 as i32, buffer, 0) {
+        match posix::sys::socket::send(self.0, buffer, 0) {
             Ok(len) => {
                 ::nvx::info!("sent {} bytes on socket with fd {}", len, self.0);
                 Ok(len as usize)

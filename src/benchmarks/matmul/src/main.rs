@@ -102,6 +102,7 @@ fn main() -> Result<(), Error> {
 /// It divides the input matrices `m1` and `m2` into quadrants and recursively multiplies and adds
 /// them.
 ///
+#[allow(clippy::too_many_arguments)]
 fn matrix_mult(
     m1: &[i32],
     m2: &[i32],
