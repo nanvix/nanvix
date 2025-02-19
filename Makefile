@@ -403,6 +403,7 @@ check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(ta
 clippy-guest-rlibs: \
 	clippy-guest-rlib-error \
 	clippy-guest-rlib-bitmap \
+	clippy-guest-rlib-proc \
 	clippy-guest-rlib-raw-array \
 	clippy-guest-rlib-slab \
 	clippy-guest-rlib-sys
