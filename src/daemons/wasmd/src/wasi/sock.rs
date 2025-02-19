@@ -151,7 +151,7 @@ impl WasiCtxInner {
                         },
                     };
 
-                    let nsent = match socket.socket().send(&buffer) {
+                    let nsent = match socket.socket().send(buffer) {
                         Ok(nsent) => nsent,
                         Err(errno) => {
                             ::nvx::error!(

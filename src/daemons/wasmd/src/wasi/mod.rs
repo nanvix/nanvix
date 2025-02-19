@@ -245,6 +245,7 @@ impl WasiCtx {
     }
 
     /// Opens a file or a directory.
+    #[allow(clippy::too_many_arguments)]
     pub fn path_open(
         &self,
         fd: Fd,
