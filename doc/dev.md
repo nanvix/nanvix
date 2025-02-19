@@ -8,8 +8,15 @@ This document guides you through testing Nanvix.
 
 ## Table of Contents
 
+- [Table of Contents](#table-of-contents)
 - [Running Unit Tests](#running-unit-tests)
 - [Running System-Level Tests (MicroVM and Hyperlight Machines Only)](#running-system-level-tests-microvm-and-hyperlight-machines-only)
+
+## Running Full CI Pipeline
+
+```bash
+make ./scripts/pipeline.sh
+```
 
 ## Running Unit Tests
 
