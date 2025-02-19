@@ -1,0 +1,59 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: Setup
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: 'Release type'
+        required: true
+        default: 'release'
+        type: string
+    secrets:
+      hostname:
+        description: 'Hostname'
+        required: true
+      username:
+        description: 'Username'
+        required: true
+      sshkey:
+        description: 'SSH key'
+        required: true
+      portnum:
+        description: 'Port number'
+        required: true
+
+env:
+  TARGET_BRANCH: ${{ github.ref_name }}
+  RELEASE_TYPE: ${{ inputs.release }}
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH, RELEASE_TYPE
+        script: |
+          if [ "${TARGET_BRANCH}" = "dev" ]; then
+            find . -type d -name 'nanvix-*-${RELEASE_TYPE}' -not -name 'nanvix-dev-${RELEASE_TYPE}' -exec rm -rf {} +
+            cd github/nanvix-dev-${RELEASE_TYPE}
+            git fetch origin
+            git reset --hard origin/${TARGET_BRANCH}
+          else
+            if [ ! -d "github/nanvix-${TARGET_BRANCH}-${RELEASE_TYPE}" ]; then
+              git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} github/nanvix-${TARGET_BRANCH}-${RELEASE_TYPE}
+            else
+              cd github/nanvix-${TARGET_BRANCH}-${RELEASE_TYPE}
+              git fetch origin
+              git reset --hard origin/${TARGET_BRANCH}
+            fi
+          fi
