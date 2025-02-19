@@ -200,9 +200,8 @@ unsafe impl GlobalAlloc for Allocator {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let heap = ptr::addr_of_mut!(HEAP);
         if let Some(heap) = &mut *heap {
-            match ptr::NonNull::new(ptr) {
-                Some(ptr) => heap.free(ptr, layout),
-                None => (),
+            if let Some(ptr) = ptr::NonNull::new(ptr) {
+                heap.free(ptr, layout)
             }
         }
     }
