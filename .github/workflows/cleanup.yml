@@ -1,0 +1,49 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: Cleanup
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: 'Release type'
+        required: true
+        default: 'release'
+        type: string
+    secrets:
+      hostname:
+        description: 'Hostname'
+        required: true
+      username:
+        description: 'Username'
+        required: true
+      sshkey:
+        description: 'SSH key'
+        required: true
+      portnum:
+        description: 'Port number'
+        required: true
+
+env:
+  TARGET_BRANCH: ${{ github.ref_name }}
+  RELEASE_TYPE: ${{ inputs.release }}
+
+jobs:
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Cleanup
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH, RELEASE_TYPE
+        script: |
+          if [ "${TARGET_BRANCH}" = "dev" ]; then
+            cd github/nanvix-dev-${RELEASE_TYPE}
+            git remote prune origin
+          fi
