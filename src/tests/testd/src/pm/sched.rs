@@ -15,11 +15,7 @@
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_sched_yield() -> bool {
-    // Yield the processor.
-    match nvx::sched::sched_yield() {
-        Ok(()) => true,
-        _ => false,
-    }
+    matches!(nvx::sched::sched_yield(), Ok(()))
 }
 
 //==================================================================================================
