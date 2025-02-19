@@ -51,7 +51,7 @@ export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
 export IMAGE_DIR     := $(BUILD_DIR)/iso
-export SCRIPTS_DIR   := $(BUILD_DIR)/scripts
+export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
 export TARGETS_DIR   := $(BUILD_DIR)/targets
@@ -583,58 +583,58 @@ clippy-microvm:
 
 test-echo-c: all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-c.elf '["hello world!"]' 'hello world!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-c.elf '["hello world!"]' 'hello world!'
 endif
 
 test-echo-cpp: all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-cpp.elf '["hello world!"]' 'hello world!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-cpp.elf '["hello world!"]' 'hello world!'
 endif
 
 test-echo-rust-nostd: all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-rust-nostd.elf '["hello world!"]' 'hello world!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-rust-nostd.elf '["hello world!"]' 'hello world!'
 endif
 
 test-echo-wasm-js: all
 ifeq ($(shell basename $(WASM_BINARY)),echo-wasm-js.wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '["hello world!"]' 'hello world!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '["hello world!"]' 'hello world!'
 endif
 endif
 
 test-echo-wasm-rust: all
 ifeq ($(shell basename $(WASM_BINARY)),echo-wasm-rust.wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '["hello world!"]' 'hello world!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '["hello world!"]' 'hello world!'
 endif
 endif
 
 test-hello-c: all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-c.elf '[]' 'Hello, world from C!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-c.elf '[]' 'Hello, world from C!'
 endif
 
 test-hello-cpp: all
 ifneq ($(strip $(filter $(MACHINE),microvm, hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-cpp.elf '[]' 'Hello, world from C++!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-cpp.elf '[]' 'Hello, world from C++!'
 endif
 
 test-hello-js: all
 ifeq ($(shell basename $(WASM_BINARY)),hello-js.wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '[]' 'Hello, world from JavaScript!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '[]' 'Hello, world from JavaScript!'
 endif
 endif
 
 test-hello-wasm: all
 ifeq ($(shell basename $(WASM_BINARY)),hello-wasm.wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '[]' 'Hello, world!'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf '[]' 'Hello, world!'
 endif
 endif
 
 test-linux-app: all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/linux-app.elf '[]' 'ok'
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/linux-app.elf '[]' 'ok'
 endif
