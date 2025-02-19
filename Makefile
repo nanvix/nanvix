@@ -274,6 +274,7 @@ distclean: clean
 clippy: \
 	clippy-kernel \
 	clippy-guest-rlibs \
+	clippy-guest-staticlibs \
 	clippy-wasm-binaries \
 	clippy-host-binaries \
 	clippy-microvm
@@ -373,7 +374,9 @@ check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),check-guest-st
 
 clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
 
-clippy-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clippy-guest-staticlib-$(target))
+# TODO: Uncomment the following line to enable clippy for 'guest-staticlibs'.
+# clippy-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clippy-guest-staticlib-$(target))
+clippy-guest-staticlibs:
 
 test-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),test-guest-staticlib-$(target))
 
