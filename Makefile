@@ -439,17 +439,7 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 	$(MAKE) -C $(SOURCES_DIR)/user clean
 	$(MAKE) -C $(SOURCES_DIR)/tests clean
 
-# TODO: Uncomment the following line when clippy can be enabled for all binaries.
-# clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
-clippy-guest-binaries: \
-	clippy-guest-binaries-echo-rust-nostd \
-	clippy-guest-binaries-hello-rust \
-	clippy-guest-binaries-linux-app \
-	clippy-guest-binaries-memd \
-	clippy-guest-binaries-matmul \
-	clippy-guest-binaries-noop-rust-nostd \
-	clippy-guest-binaries-procd \
-	clippy-guest-binaries-testd
+clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))
 
 all-wasmd: all-wasm-binaries all-guest-binaries
 	@echo "WASM_BINARY=$(WASM_BINARY)"
