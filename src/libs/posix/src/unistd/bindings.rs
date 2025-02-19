@@ -48,10 +48,11 @@ use ::nvx::sys::error::ErrorCode;
 ///
 /// - [`crate::unistd::chmod()`]
 ///
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
+pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
     // Convert C string to Rust string.
-    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -59,10 +60,8 @@ pub extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
     match crate::unistd::chmod(path, mode) {
         Ok(_) => 0,
         Err(e) => {
-            unsafe {
-                ::nvx::error!("chmod(): failed ({:?})", e);
-                errno = e.code.into_errno();
-            }
+            ::nvx::error!("chmod(): failed ({:?})", e);
+            errno = e.code.into_errno();
             -1
         },
     }
@@ -88,10 +87,11 @@ pub extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
 ///
 /// - [`crate::unistd::chown()`]
 ///
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
+pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
     // Convert C string to Rust string.
-    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -99,10 +99,8 @@ pub extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_in
     match crate::unistd::chown(path, owner, group) {
         Ok(_) => 0,
         Err(e) => {
-            unsafe {
-                ::nvx::error!("chown(): failed ({:?})", e);
-                errno = e.code.into_errno();
-            }
+            ::nvx::error!("chown(): failed ({:?})", e);
+            errno = e.code.into_errno();
             -1
         },
     }
@@ -235,10 +233,11 @@ pub extern "C" fn isatty(_fd: c_int) -> c_int {
 ///
 /// - [`crate::unistd::lchmod()`]
 ///
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
+pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
     // Convert C string to Rust string.
-    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -246,10 +245,8 @@ pub extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
     match crate::unistd::lchmod(path, mode) {
         Ok(_) => 0,
         Err(e) => {
-            unsafe {
-                ::nvx::error!("lchmod(): failed ({:?})", e);
-                errno = e.code.into_errno();
-            }
+            ::nvx::error!("lchmod(): failed ({:?})", e);
+            errno = e.code.into_errno();
             -1
         },
     }
@@ -275,10 +272,11 @@ pub extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
 ///
 /// - [`crate::unistd::lchown()`]
 ///
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
+pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
     // Convert C string to Rust string.
-    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -314,14 +312,15 @@ pub extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_i
 ///
 /// - [`crate::unistd::link()`]
 ///
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
+pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
     // Convert C strings to Rust strings.
-    let oldpath: &str = match unsafe { ffi::CStr::from_ptr(oldpath).to_str() } {
+    let oldpath: &str = match ffi::CStr::from_ptr(oldpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
-    let newpath: &str = match unsafe { ffi::CStr::from_ptr(newpath).to_str() } {
+    let newpath: &str = match ffi::CStr::from_ptr(newpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -331,15 +330,13 @@ pub extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int 
     // Check if the system call failed.
     if retcode < 0 {
         // System call failed. Set errno.
-        unsafe {
-            errno = match ErrorCode::try_from(retcode) {
-                Ok(e) => e.into_errno(),
-                Err(_) => {
-                    ::nvx::error!("link(): invalid error code ({})", retcode);
-                    ErrorCode::ValueOutOfRange.into_errno()
-                },
-            }
-        }
+        errno = match ErrorCode::try_from(retcode) {
+            Ok(e) => e.into_errno(),
+            Err(_) => {
+                ::nvx::error!("link(): invalid error code ({})", retcode);
+                ErrorCode::ValueOutOfRange.into_errno()
+            },
+        };
         return -1;
     }
 
@@ -417,13 +414,14 @@ pub extern "C" fn sbrk(size: isize) -> *mut u8 {
 /// - [`crate::unistd::syscall::symlink()`]
 ///
 #[no_mangle]
-pub extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int {
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int {
     // Convert C strings to Rust strings.
-    let target: &str = match unsafe { ffi::CStr::from_ptr(target).to_str() } {
+    let target: &str = match ffi::CStr::from_ptr(target).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
-    let linkpath: &str = match unsafe { ffi::CStr::from_ptr(linkpath).to_str() } {
+    let linkpath: &str = match ffi::CStr::from_ptr(linkpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -433,15 +431,13 @@ pub extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_i
     // Check if the system call failed.
     if retcode < 0 {
         // System call failed. Set errno.
-        unsafe {
-            errno = match ErrorCode::try_from(retcode) {
-                Ok(e) => e.into_errno(),
-                Err(_) => {
-                    ::nvx::error!("symlink(): invalid error code ({})", retcode);
-                    ErrorCode::ValueOutOfRange.into_errno()
-                },
-            }
-        }
+        errno = match ErrorCode::try_from(retcode) {
+            Ok(e) => e.into_errno(),
+            Err(_) => {
+                ::nvx::error!("symlink(): invalid error code ({})", retcode);
+                ErrorCode::ValueOutOfRange.into_errno()
+            },
+        };
         return -1;
     }
 
@@ -467,9 +463,10 @@ pub extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_i
 /// - [`crate::unistd::unlink()`]
 ///
 #[no_mangle]
-pub extern "C" fn unlink(path: *const c_char) -> c_int {
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
     // Convert C string to Rust string.
-    let path: &str = match unsafe { ffi::CStr::from_ptr(path).to_str() } {
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
@@ -479,15 +476,13 @@ pub extern "C" fn unlink(path: *const c_char) -> c_int {
     // Check if the system call failed.
     if retcode < 0 {
         // System call failed. Set errno.
-        unsafe {
-            errno = match ErrorCode::try_from(retcode) {
-                Ok(e) => e.into_errno(),
-                Err(_) => {
-                    ::nvx::error!("unlink(): invalid error code ({})", retcode);
-                    ErrorCode::ValueOutOfRange.into_errno()
-                },
-            }
-        }
+        errno = match ErrorCode::try_from(retcode) {
+            Ok(e) => e.into_errno(),
+            Err(_) => {
+                ::nvx::error!("unlink(): invalid error code ({})", retcode);
+                ErrorCode::ValueOutOfRange.into_errno()
+            },
+        };
         return -1;
     }
 
