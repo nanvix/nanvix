@@ -271,9 +271,9 @@ distclean: clean
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 
 # Runs clippy.
-# TODO: enable clippy for 'gest-binaries'.
 clippy: \
 	clippy-kernel \
+	clippy-guest-binaries \
 	clippy-guest-rlibs \
 	clippy-guest-staticlibs \
 	clippy-wasm-binaries \
@@ -439,7 +439,9 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 	$(MAKE) -C $(SOURCES_DIR)/user clean
 	$(MAKE) -C $(SOURCES_DIR)/tests clean
 
-clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
+# TODO: Uncomment the following line when clippy can be enabled for all binaries.
+# clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
+clippy-guest-binaries:
 
 all-wasmd: all-wasm-binaries all-guest-binaries
 	@echo "WASM_BINARY=$(WASM_BINARY)"
