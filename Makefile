@@ -276,19 +276,21 @@ clippy: \
 	clippy-guest-binaries \
 	clippy-guest-rlibs \
 	clippy-guest-staticlibs \
+	clippy-wasmd \
 	clippy-wasm-binaries \
 	clippy-host-binaries \
 	clippy-host-rlibs \
 	clippy-microvm
 
 check: \
-	check-guest-staticlibs \
-	check-guest-rlibs \
-	check-guest-binaries \
-	check-wasmd \
 	check-kernel \
+	check-guest-binaries \
+	check-guest-rlibs \
+	check-guest-staticlibs \
+	check-wasmd \
 	check-wasm-binaries \
 	check-host-binaries \
+	check-host-rlibs \
 	check-microvm
 
 run-unit-tests: all \

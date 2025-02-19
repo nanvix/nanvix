@@ -106,7 +106,7 @@ impl WasmEngine {
                                 memory.len(),
                                 argv_offset as usize + mem::size_of_val(&argv_offset)
                             );
-                            return Err(Errno::Inval.into());
+                            return Err(Errno::Inval);
                         }
 
                         // Check if memory is too small to store the command-line argument data.
@@ -116,7 +116,7 @@ impl WasmEngine {
                                 memory.len(),
                                 argv_buf_offset as usize + arg_cstr_bytes.len()
                             );
-                            return Err(Errno::Inval.into());
+                            return Err(Errno::Inval);
                         }
 
                         // Check if changes should be written to memory.
@@ -322,7 +322,7 @@ impl WasmEngine {
                                 environ_ptrs_offset as usize
                                     + mem::size_of_val(&environ_ptrs_offset)
                             );
-                            return Err(Errno::Inval.into());
+                            return Err(Errno::Inval);
                         }
 
                         // Check if memory is too small to store the environment data.
@@ -332,7 +332,7 @@ impl WasmEngine {
                                 memory.len(),
                                 env_buf_offset as usize + env_cstr_bytes.len()
                             );
-                            return Err(Errno::Inval.into());
+                            return Err(Errno::Inval);
                         }
 
                         // Check if changes should be written to memory.
