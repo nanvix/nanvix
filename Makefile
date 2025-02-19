@@ -273,6 +273,7 @@ distclean: clean
 # TODO: enable clippy for 'guest-staticlibs', 'guest-rlibs' and 'gest-binaries'.
 clippy: \
 	clippy-kernel \
+	clippy-guest-rlibs \
 	clippy-wasm-binaries \
 	clippy-host-binaries \
 	clippy-microvm
@@ -397,7 +398,9 @@ $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target)
 
 check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(target))
 
-clippy-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),clippy-guest-rlib-$(target))
+# TODO: Uncomment this line when clippy is enabled for 'guest-rlibs'.
+# clippy-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),clippy-guest-rlib-$(target))
+clippy-guest-rlibs:
 
 test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(target))
 
