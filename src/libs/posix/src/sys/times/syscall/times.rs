@@ -61,7 +61,7 @@ pub fn times(buffer: Option<&mut tms>) -> Result<clock_t, Error> {
     // Check wether system call succeeded or not.
     if response.status != 0 {
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        return Err(Error::new(error_code, "times() failed"));
+        Err(Error::new(error_code, "times() failed"))
     } else {
         // System call succeeded, parse response.
         let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
@@ -82,7 +82,7 @@ pub fn times(buffer: Option<&mut tms>) -> Result<clock_t, Error> {
 
                 Ok(elapsed)
             },
-            _ => return Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
+            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
         }
     }
 }

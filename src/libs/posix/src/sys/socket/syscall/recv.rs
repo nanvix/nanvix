@@ -38,7 +38,7 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<ssize_t, Err
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Check if count is invalid.
-    if buffer.len() == 0 {
+    if buffer.is_empty() {
         return Err(Error::new(ErrorCode::InvalidArgument, "buffer length is zero"));
     }
 

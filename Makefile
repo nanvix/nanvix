@@ -376,7 +376,7 @@ clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-st
 
 # TODO: Uncomment the following line to enable clippy for 'guest-staticlibs'.
 # clippy-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clippy-guest-staticlib-$(target))
-clippy-guest-staticlibs: clippy-guest-staticlib-nvx
+clippy-guest-staticlibs: clippy-guest-staticlib-nvx clippy-guest-staticlib-posix
 
 test-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),test-guest-staticlib-$(target))
 
