@@ -445,7 +445,8 @@ clippy-guest-binaries: \
 	clippy-guest-binaries-echo-rust-nostd \
 	clippy-guest-binaries-hello-rust \
 	clippy-guest-binaries-matmul \
-	clippy-guest-binaries-noop-rust-nostd
+	clippy-guest-binaries-noop-rust-nostd \
+	clippy-guest-binaries-procd
 
 all-wasmd: all-wasm-binaries all-guest-binaries
 	@echo "WASM_BINARY=$(WASM_BINARY)"
