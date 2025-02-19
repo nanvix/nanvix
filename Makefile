@@ -404,7 +404,8 @@ clippy-guest-rlibs: \
 	clippy-guest-rlib-error \
 	clippy-guest-rlib-bitmap \
 	clippy-guest-rlib-raw-array \
-	clippy-guest-rlib-slab
+	clippy-guest-rlib-slab \
+	clippy-guest-rlib-sys
 
 test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(target))
 
