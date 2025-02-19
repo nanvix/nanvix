@@ -444,6 +444,7 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 clippy-guest-binaries: \
 	clippy-guest-binaries-echo-rust-nostd \
 	clippy-guest-binaries-hello-rust \
+	clippy-guest-binaries-linux-app \
 	clippy-guest-binaries-memd \
 	clippy-guest-binaries-matmul \
 	clippy-guest-binaries-noop-rust-nostd \
