@@ -400,7 +400,7 @@ check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(ta
 
 # TODO: Uncomment this line when clippy is enabled for 'guest-rlibs'.
 # clippy-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),clippy-guest-rlib-$(target))
-clippy-guest-rlibs: clippy-guest-rlib-slab clippy-guest-rlib-raw-array
+clippy-guest-rlibs: clippy-guest-rlib-slab clippy-guest-rlib-raw-array clippy-guest-rlib-error
 
 test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(target))
 
