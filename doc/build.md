@@ -41,6 +41,7 @@ docker run \
 - `LOG_LEVEL=warn`: Set the output log level to `warn`.
 - `RELEASE=no`: Disable release build (implies debug build).
 - `PROFILER=no`: Disable profiler for MicroVM.
+- `IMAGE=bin/hello-rust-nostd.elf`: Set the system image to `bin/hello-rust-nostd.elf`.
 
 ## List of Optional Build Parameters
 
@@ -51,3 +52,4 @@ docker run \
 - `RELEASE=<yes|no>`: Enable/Disable release build.
 - `TARGET=<architecture>`: Set the target CPU architecture.
 - `TIMEOUT=<seconds>`: Set the execution timeout.
+- `IMAGE=<image>`: Set system image.
