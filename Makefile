@@ -11,7 +11,7 @@
 export TARGET ?= x86
 
 # Target Machine
-export MACHINE ?= qemu-pc
+export MACHINE ?= microvm
 
 # Release Version?
 export RELEASE ?= no
@@ -35,6 +35,13 @@ export WASM_BINARY_ARGS ?= ""
 # Wasm Daemon Socket Address
 export WASMD_SOCKADDR ?= 127.0.0.1:8585
 
+# Default System Image
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+export IMAGE ?= $(BINARIES_DIR)/noop-rust-nostd.elf
+else
+export IMAGE ?= nanvix.iso
+endif
+
 #===================================================================================================
 # Directories
 #===================================================================================================
@@ -56,22 +63,6 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 
 # File format for executables.
 export EXEC_FORMAT := elf
-
-# File format for system image.
-ifeq ($(MACHINE),microvm)
-export IMAGE_FORMAT := $(EXEC_FORMAT)
-else ifeq ($(MACHINE),hyperlight)
-export IMAGE_FORMAT := $(EXEC_FORMAT)
-else
-export IMAGE_FORMAT := iso
-endif
-
-# Image
-ifeq ($(IMAGE_FORMAT),iso)
-export IMAGE := nanvix.iso
-else
-export IMAGE := $(BINARIES_DIR)/noop-rust-nostd.$(EXEC_FORMAT)
-endif
 
 # Libraries
 export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
@@ -315,7 +306,7 @@ run-nanvixd-tests: | \
 
 # Runs system in release mode.
 run: image
-ifeq ($(IMAGE_FORMAT),iso)
+ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
 else
 	sudo -E $(BINARIES_DIR)/microvm.elf -kernel $(BINARIES_DIR)/kernel.elf -initrd $(IMAGE) 2>&1
@@ -323,7 +314,7 @@ endif
 
 # Runs system in debug mode.
 debug: image
-ifeq ($(IMAGE_FORMAT),iso)
+ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --debug $(TIMEOUT)
 endif
 
@@ -333,13 +324,13 @@ endif
 
 # Builds the system image.
 image: all
-ifeq ($(IMAGE_FORMAT),iso)
+ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
 	$(GRUB_CMD) $(IMAGE_DIR) -o $(IMAGE)
 endif
 
 image-clean:
-ifeq ($(IMAGE_FORMAT),iso)
+ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(RM_CMD) $(IMAGE_DIR)/*.$(EXEC_FORMAT)
 	$(RM_CMD) $(IMAGE)
 endif
