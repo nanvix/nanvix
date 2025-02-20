@@ -15,6 +15,10 @@ mod virt;
 
 pub mod kheap;
 use ::alloc::boxed::Box;
+use ::sys::arch::mem::{
+    PAGE_ALIGNMENT,
+    PGTAB_ALIGNMENT,
+};
 pub use virt::{
     KernelPage,
     PageTableStorage,
@@ -32,10 +36,7 @@ pub mod kredzone;
 
 use crate::{
     hal::{
-        arch::x86::mem::mmu::{
-            self,
-            page_table::PageTable,
-        },
+        arch::x86::mem::mmu::page_table::PageTable,
         mem::{
             Address,
             MemoryRegion,
@@ -121,7 +122,7 @@ fn parse_memory_regions(
 ///
 pub fn check_config() {
     // Ensure that the kernel pool size is multiple of a page size.
-    if !mm::is_aligned(config::kernel::KPOOL_SIZE, mmu::PAGE_ALIGNMENT) {
+    if !mm::is_aligned(config::kernel::KPOOL_SIZE, PAGE_ALIGNMENT) {
         panic!("kernel pool size is not multiple of a page size and it should");
     }
     // Ensure that the kernel pool size fits in a single page table.
@@ -129,7 +130,7 @@ pub fn check_config() {
         panic!("kernel pool size does not fit in a single page table and it should");
     }
     // Ensure that the kernel stack size is multiple of a page size.
-    if !mm::is_aligned(config::kernel::KSTACK_SIZE, mmu::PAGE_ALIGNMENT) {
+    if !mm::is_aligned(config::kernel::KSTACK_SIZE, PAGE_ALIGNMENT) {
         panic!("kernel stack size is not multiple of a page size and it should");
     }
     // Ensure that the kernel stack size fits in a single page table.
@@ -137,40 +138,40 @@ pub fn check_config() {
         panic!("kernel stack size does not fit in a single page table and it should");
     }
     // Ensure that the user base address is aligned to a page boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_BASE.into_raw_value(), mmu::PAGE_ALIGNMENT) {
+    if !mm::is_aligned(sys::config::memory_layout::USER_BASE.into_raw_value(), PAGE_ALIGNMENT) {
         panic!("user base address is not aligned to a page boundary and it should");
     }
     // Ensure that the user base address is aligned to a page table boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_BASE.into_raw_value(), mmu::PGTAB_ALIGNMENT) {
+    if !mm::is_aligned(sys::config::memory_layout::USER_BASE.into_raw_value(), PGTAB_ALIGNMENT) {
         panic!("user base address is not aligned to a page table boundary and it should");
     }
     // Ensure that the user end address is aligned to a page boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_END.into_raw_value(), mmu::PAGE_ALIGNMENT) {
+    if !mm::is_aligned(sys::config::memory_layout::USER_END.into_raw_value(), PAGE_ALIGNMENT) {
         panic!("user end address is not aligned to a page boundary and it should");
     }
     // Ensure that the user end address is aligned to a page table boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_END.into_raw_value(), mmu::PGTAB_ALIGNMENT) {
+    if !mm::is_aligned(sys::config::memory_layout::USER_END.into_raw_value(), PGTAB_ALIGNMENT) {
         panic!("user end address is not aligned to a page table boundary and it should");
     }
     // Ensure that the user stack base address is aligned to a page boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_STACK_BASE.into_raw_value(), mmu::PAGE_ALIGNMENT)
+    if !mm::is_aligned(sys::config::memory_layout::USER_STACK_BASE.into_raw_value(), PAGE_ALIGNMENT)
     {
         panic!("user stack base address is not aligned to a page boundary and it should");
     }
     // Ensure that the user stack base address is aligned to a page table boundary.
     if !mm::is_aligned(
         sys::config::memory_layout::USER_STACK_BASE.into_raw_value(),
-        mmu::PGTAB_ALIGNMENT,
+        PGTAB_ALIGNMENT,
     ) {
         panic!("user stack base address is not aligned to a page table boundary and it should");
     }
     // Ensure that the user heap base address is aligned to a page boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_HEAP_BASE.into_raw_value(), mmu::PAGE_ALIGNMENT)
+    if !mm::is_aligned(sys::config::memory_layout::USER_HEAP_BASE.into_raw_value(), PAGE_ALIGNMENT)
     {
         panic!("user heap base address is not aligned to a page boundary and it should");
     }
     // Ensure that the user heap base address is aligned to a page table boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_HEAP_BASE.into_raw_value(), mmu::PGTAB_ALIGNMENT)
+    if !mm::is_aligned(sys::config::memory_layout::USER_HEAP_BASE.into_raw_value(), PGTAB_ALIGNMENT)
     {
         panic!("user heap base address is not aligned to a page table boundary and it should");
     }

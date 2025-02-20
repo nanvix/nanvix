@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    hal::{
-        arch::x86::mem::mmu,
-        mem::PageAligned,
-    },
+    hal::mem::PageAligned,
     mm::{
         KernelPage,
         VirtMemoryManager,
@@ -17,6 +14,7 @@ use crate::{
 };
 use ::alloc::vec::Vec;
 use ::sys::{
+    arch::mem::PAGE_ALIGNMENT,
     error::Error,
     mm::{
         Address,
@@ -82,8 +80,8 @@ impl KernelStack {
         let size: usize = config::kernel::KSTACK_SIZE;
         // SAFETY: The following call to unwrap is safe because the base address of the kernel stack
         // and the size of the kernel stack are both page aligned.
-        debug_assert!(::sys::mm::is_aligned(base, mmu::PAGE_ALIGNMENT));
-        debug_assert!(::sys::mm::is_aligned(size, mmu::PAGE_ALIGNMENT));
+        debug_assert!(::sys::mm::is_aligned(base, PAGE_ALIGNMENT));
+        debug_assert!(::sys::mm::is_aligned(size, PAGE_ALIGNMENT));
         PageAligned::from_raw_value(base + size).unwrap()
     }
 }
