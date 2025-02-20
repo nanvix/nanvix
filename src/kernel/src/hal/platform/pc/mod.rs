@@ -124,7 +124,7 @@ fn register_bios_data_area(
     let bios_data_area: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "bios data area",
         VirtualAddress::from_raw_value(bios::BiosDataArea::BASE)
-            .align_down(x86::mem::mmu::PAGE_ALIGNMENT),
+            .align_down(::sys::arch::mem::PAGE_ALIGNMENT),
         mem::PAGE_SIZE,
         MemoryRegionType::Reserved,
         AccessPermission::RDWR,
