@@ -21,7 +21,10 @@ use ::sys::error::Error;
 // Exports
 //==================================================================================================
 
-pub use ::sys::mm::*;
+pub use ::sys::{
+    arch::mem::*,
+    mm::*,
+};
 
 #[cfg(target_os = "none")]
 pub use ::sys::kcall::mm::{
@@ -54,10 +57,6 @@ cfg_if::cfg_if! {
             config::memory_layout::USER_HEAP_BASE_RAW + RUST_HEAP_SIZE;
     }
 }
-
-/// Page alignment.
-/// TODO: import this from kernel libraries.
-pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
 
 //==================================================================================================
 // Standalone Functions
