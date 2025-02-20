@@ -133,6 +133,19 @@ jobs:
       sshkey: ${{ secrets.sshkey }}
       portnum: ${{ secrets.portnum }}
 
+  benchmark:
+    name: Benchmark
+    needs: build-release
+    uses: ./.github/workflows/benchmark.yml
+    with:
+      release: 'release'
+      log-level: 'error'
+    secrets:
+      hostname: ${{ secrets.hostname }}
+      username: ${{ secrets.username }}
+      sshkey: ${{ secrets.sshkey }}
+      portnum: ${{ secrets.portnum }}
+
   cleanup-release:
     name: Cleanup Release
     needs: test-release

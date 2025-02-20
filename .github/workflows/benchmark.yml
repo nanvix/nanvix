@@ -1,0 +1,70 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: Benchmark
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: 'Release type'
+        required: true
+        default: 'release'
+        type: string
+      log-level:
+        description: 'Log level'
+        required: true
+        default: 'error'
+        type: string
+    secrets:
+      hostname:
+        description: 'Hostname'
+        required: true
+      username:
+        description: 'Username'
+        required: true
+      sshkey:
+        description: 'SSH key'
+        required: true
+      portnum:
+        description: 'Port number'
+        required: true
+
+env:
+  TARGET_BRANCH: ${{ github.ref_name }}
+  RELEASE_TYPE: ${{ inputs.release }}
+  LOG_LEVEL: ${{ inputs.log-level }}
+
+jobs:
+  benchmark-microvm:
+    name: Benchmark (microvm)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Benchmark
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH, RELEASE_TYPE, LOG_LEVEL
+        script: |
+          cd github/nanvix-${TARGET_BRANCH}-${RELEASE_TYPE}
+          python scripts/ci.py --target-machine microvm --target-arch x86 --profile
+    - name: Publish
+      uses: actions/upload-artifact@v4
+      with:
+        name: Publish
+        path: csvdata/plots/plots.png
+    - name: Clean
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostname }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.sshkey }}
+        port: ${{ secrets.portnum }}
+        envs: TARGET_BRANCH, RELEASE_TYPE, LOG_LEVEL
+        script: |
+          rm -rf csvdata
+          make clean
+
