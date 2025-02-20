@@ -18,7 +18,6 @@ This document guides you through building Nanvix. You can either use native tool
 > ℹ️ This builds Nanvix with the default parameters.
 
 ```bash
-# Build Nanvix with default parameters:
 make all
 ```
 
@@ -27,7 +26,6 @@ make all
 > ℹ️ This builds Nanvix with the default parameters except for the toolchain directory.
 
 ```bash
-# Build Nanvix with default parameters:
 docker run \
   --rm -v"$(pwd):/mnt" \
   nanvix/toolchain \
@@ -38,11 +36,12 @@ docker run \
 ## Default Build Parameters
 
 - `TOOLCHAIN_DIR=$PWD/toolchain`: Set the toolchain directory to the current working directory.
-- `MACHINE=qemu-pc`: Set the target machine to `qemu-pc`.
+- `MACHINE=microvm`: Set the target machine to `microvm`.
 - `TARGET=x86`: Set the target CPU architecture to `x86`.
 - `LOG_LEVEL=warn`: Set the output log level to `warn`.
 - `RELEASE=no`: Disable release build (implies debug build).
 - `PROFILER=no`: Disable profiler for MicroVM.
+- `IMAGE=bin/hello-rust-nostd.elf`: Set the system image to `bin/hello-rust-nostd.elf`.
 
 ## List of Optional Build Parameters
 
@@ -53,3 +52,4 @@ docker run \
 - `RELEASE=<yes|no>`: Enable/Disable release build.
 - `TARGET=<architecture>`: Set the target CPU architecture.
 - `TIMEOUT=<seconds>`: Set the execution timeout.
+- `IMAGE=<image>`: Set system image.

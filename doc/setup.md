@@ -21,6 +21,7 @@ build and run Nanvix. In summary, you will:
   - [Building from the Sources (Recommended)](#building-from-the-sources-recommended)
   - [Building a Docker Image from the Sources](#building-a-docker-image-from-the-sources)
   - [Getting a Pre-Built Docker Image](#getting-a-pre-built-docker-image)
+- [Building JaveScript to WebAssembly Toolchain (Optional)](#building-javescript-to-webassembly-toolchain-optional)
 - [Building QEMU (Optional)](#building-qemu-optional)
 
 ## Clone this Repository
@@ -88,13 +89,26 @@ docker build -t nanvix/toolchain build/scripts/setup/
 docker pull nanvix/toolchain
 ```
 
-## Building QEMU (Optional)
-
-Follow this step if you want to use a version of QEMU that is known to work with Nanvix.
+## Building JaveScript to WebAssembly Toolchain (Optional)
 
 > ⚠️ This step may take some time to complete.
 
+Follow this step if you want to build the JavaScript to WebAssembly (Javy) toolchain for Nanvix.
+
 ```bash
+git clone https://github.com/nanvix/javy
+cargo build -p javy-plugin --target=wasm32-wasip1 -r
+cargo install --path crates/cli
+```
+
+## Building QEMU (Optional)
+
+> ⚠️ This step may take some time to complete.
+
+Follow this step if you want to use a version of QEMU that is known to work with Nanvix.
+
+```bash
+# Assuming you are in the project's root directory.
 export TARGET=x86                      # Select x86 as your target architecture.
 ./build/scripts/setup/qemu.sh $TARGET  # Build QEMU.
 ```
