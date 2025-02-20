@@ -198,6 +198,19 @@ def has_nanvixd_tests(machine: str) -> bool:
         return False
 
 
+def benchmark():
+    """
+    Profile kernel nanvix on the microvm.
+    """
+    command = ["scripts/benchmark.sh"]
+
+    return_code = run_command(
+        command, f"-benchmark-microvm-stdout.log", f"benchmark-microvm-stderr.log")
+
+    if return_code:
+        print(f"Benchmark failed with code={return_code}.")
+        exit(1)
+
 def parse_args() -> argparse.Namespace:
     """
     Parses command-line arguments.
@@ -234,6 +247,8 @@ def parse_args() -> argparse.Namespace:
                         help="Build Nanvix", default=False)
     parser.add_argument("--test", action="store_true",
                         help="Test Nanvix (implies --build)", default=False)
+    parser.add_argument("--profile", action="store_true",
+                        help="Profile Nanvix running on microvm (independent build)", default=False)
 
     return parser.parse_args()
 
@@ -269,6 +284,8 @@ def main() -> None:
         test(args.target_machine, args.target_arch, args.release or not args.debug,
              args.toolchain_dir, args.log_level, args.verbose, args.timeout)
 
+    if args.profile & (args.target_machine == "microvm"):
+        benchmark()
 
 if __name__ == "__main__":
     main()
