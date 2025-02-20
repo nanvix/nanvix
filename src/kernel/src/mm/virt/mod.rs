@@ -14,10 +14,7 @@ mod vmem;
 //==================================================================================================
 
 use crate::hal::{
-    arch::x86::mem::mmu::{
-        self,
-        page_table::PageTable,
-    },
+    arch::x86::mem::mmu::page_table::PageTable,
     mem::{
         AccessPermission,
         Address,
@@ -45,7 +42,10 @@ use ::core::{
     },
 };
 use ::sys::{
-    arch::mem,
+    arch::{
+        mem,
+        mem::PGTAB_ALIGNMENT,
+    },
     error::{
         Error,
         ErrorCode,
@@ -151,11 +151,10 @@ pub fn init(
         while raw_vaddr < end {
             let (page_table_addr, mut page_table): (PageTableAddress, PageTable<PageTableStorage>) =
                 if let Some(last) = root_pagetables.pop_back() {
-                    let page_table_addr: PageTableAddress = PageTableAddress::new(
-                        PageTableAligned::from_address(VirtualAddress::new(
-                            ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
-                        ))?,
-                    );
+                    let page_table_addr: PageTableAddress =
+                        PageTableAddress::new(PageTableAligned::from_address(
+                            VirtualAddress::new(::sys::mm::align_down(raw_vaddr, PGTAB_ALIGNMENT)),
+                        )?);
 
                     match page_table_addr.cmp(&last.0) {
                         Ordering::Greater => {
@@ -167,7 +166,7 @@ pub fn init(
                                 PageTable::<PageTableStorage>::new(pgtable_storage);
                             let page_table_addr: PageTableAligned<VirtualAddress> =
                                 PageTableAligned::from_address(VirtualAddress::new(
-                                    ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
+                                    ::sys::mm::align_down(raw_vaddr, PGTAB_ALIGNMENT),
                                 ))?;
                             (PageTableAddress::new(page_table_addr), page_table)
                         },
@@ -187,7 +186,7 @@ pub fn init(
                         PageTable::<PageTableStorage>::new(pgtable_storage);
                     let page_table_addr: PageTableAligned<VirtualAddress> =
                         PageTableAligned::from_address(VirtualAddress::new(
-                            ::sys::mm::align_down(raw_vaddr, mmu::PGTAB_ALIGNMENT),
+                            ::sys::mm::align_down(raw_vaddr, PGTAB_ALIGNMENT),
                         ))?;
                     (PageTableAddress::new(page_table_addr), page_table)
                 };

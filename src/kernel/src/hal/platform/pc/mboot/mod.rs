@@ -52,12 +52,15 @@ use ::alloc::{
 };
 use ::core::mem;
 use ::sys::{
-    arch::cpu::{
-        acpi::{
-            AcpiSdtHeader,
-            Rsdp,
+    arch::{
+        cpu::{
+            acpi::{
+                AcpiSdtHeader,
+                Rsdp,
+            },
+            madt::Madt,
         },
-        madt::Madt,
+        mem::PAGE_ALIGNMENT,
     },
     error::{
         Error,
@@ -280,9 +283,7 @@ fn parse_mmap(
     for entry in mmap {
         let typ: MemoryRegionType = entry.typ().into();
         let start: VirtualAddress = match entry.addr().try_into() {
-            Ok(raw_addr) => {
-                VirtualAddress::from_raw_value(raw_addr).align_down(mmu::PAGE_ALIGNMENT)
-            },
+            Ok(raw_addr) => VirtualAddress::from_raw_value(raw_addr).align_down(PAGE_ALIGNMENT),
             Err(_) => {
                 let reason: &'static str = "invalid memory region address";
                 error!("parse_mmap(): {}", reason);
