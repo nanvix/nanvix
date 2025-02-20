@@ -5,18 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::{
-    arch::x86::mem::mmu,
-    mem::{
-        types::address::{
-            PhysicalAddress,
-            VirtualAddress,
-        },
-        Address,
+use crate::hal::mem::{
+    types::address::{
+        PhysicalAddress,
+        VirtualAddress,
     },
+    Address,
 };
 use ::core::ops::Deref;
 use ::sys::{
+    arch::mem::PAGE_ALIGNMENT,
     error::{
         Error,
         ErrorCode,
@@ -35,7 +33,7 @@ impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
-        if !addr.is_aligned(mmu::PAGE_ALIGNMENT)? {
+        if !addr.is_aligned(PAGE_ALIGNMENT)? {
             return Err(Error::new(ErrorCode::BadAddress, "unaligned virtual address"));
         }
 

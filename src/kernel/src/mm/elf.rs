@@ -13,15 +13,12 @@
 //==================================================================================================
 
 use crate::{
-    hal::{
-        arch::x86::mem::mmu,
-        mem::{
-            AccessPermission,
-            Address,
-            PageAligned,
-            PhysicalAddress,
-            VirtualAddress,
-        },
+    hal::mem::{
+        AccessPermission,
+        Address,
+        PageAligned,
+        PhysicalAddress,
+        VirtualAddress,
     },
     mm::{
         VirtMemoryManager,
@@ -33,7 +30,10 @@ use ::core::cmp::{
     min,
 };
 use ::sys::{
-    arch::mem,
+    arch::{
+        mem,
+        mem::PAGE_ALIGNMENT,
+    },
     config,
     error::{
         Error,
@@ -227,7 +227,7 @@ fn do_elf32_load(
 
         // Allocate segment.
         let size: usize = max(phdr.p_filesz as usize, phdr.p_memsz as usize);
-        let virt_addr_end: usize = ::sys::mm::align_up(virt_addr + size, mmu::PAGE_ALIGNMENT);
+        let virt_addr_end: usize = ::sys::mm::align_up(virt_addr + size, PAGE_ALIGNMENT);
         for vaddr in (virt_addr..virt_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
             // Check if address lies in user space.
