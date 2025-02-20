@@ -24,7 +24,7 @@ NANVIX_CPU_MASK=0,1
 MANY_TIME=500
 
 # Nanvix memory size
-MEMORY_SIZE=(64 128 256 512 1024)
+MEMORYS=(64 128 256 512 1024)
 
 function run_nanvix {
     sudo -E nice -n -20 taskset -a -c ${NANVIX_CPU_MASK} ${BINARIES_PATH}/${MICROVM} \
@@ -54,12 +54,12 @@ function compile_nanvix {
 }
 
 function parse_boottime {
-    for memory in "${MEMORY_SIZE[@]}";
+    for memory in "${MEMORYS[@]}";
         do
             file=${DATA_PATH}/originalcsv/nanvix-boot_time-${memory}.csv
             paste -d ',' \
-                <(cat $file | grep '^+,vm_run' | cut -d',' -f 5) \
-                <(cat $file | grep '^+,vmm_creation' | cut -d',' -f 5) \
+                <(cat ${file} | grep '^+,vm_run' | cut -d',' -f 5) \
+                <(cat ${file} | grep '^+,vmm_creation' | cut -d',' -f 5) \
                 | awk -F',' '{print $1 + $2}' \
                 | sed "s/^/${memory},/g" \
                 >> ${DATA_PATH}/parsedcsv/parsed_nanvix-boot_time-${memory}.csv
@@ -80,7 +80,7 @@ mkdir -p ${DATA_PATH}/originalcsv
 mkdir -p ${DATA_PATH}/parsedcsv
 mkdir -p ${DATA_PATH}/plots
 
-for MEMORY_SIZE in 64 128 256 512 1024;
+for MEMORY_SIZE in "${MEMORYS[@]}";
 do
     compile_nanvix $MEMORY_SIZE
     for IT in $( eval echo {1..$MANY_TIME} );
