@@ -11,7 +11,7 @@
 export TARGET ?= x86
 
 # Target Machine
-export MACHINE ?= qemu-pc
+export MACHINE ?= microvm
 
 # Release Version?
 export RELEASE ?= no
@@ -35,6 +35,13 @@ export WASM_BINARY_ARGS ?= ""
 # Wasm Daemon Socket Address
 export WASMD_SOCKADDR ?= 127.0.0.1:8585
 
+# Default System Image
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+export IMAGE ?= $(BINARIES_DIR)/noop-rust-nostd.elf
+else
+export IMAGE ?= nanvix.iso
+endif
+
 #===================================================================================================
 # Directories
 #===================================================================================================
@@ -44,7 +51,7 @@ export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
 export IMAGE_DIR     := $(BUILD_DIR)/iso
-export SCRIPTS_DIR   := $(BUILD_DIR)/scripts
+export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
 export TARGETS_DIR   := $(BUILD_DIR)/targets
@@ -56,22 +63,6 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 
 # File format for executables.
 export EXEC_FORMAT := elf
-
-# File format for system image.
-ifeq ($(MACHINE),microvm)
-export IMAGE_FORMAT := $(EXEC_FORMAT)
-else ifeq ($(MACHINE),hyperlight)
-export IMAGE_FORMAT := $(EXEC_FORMAT)
-else
-export IMAGE_FORMAT := iso
-endif
-
-# Image
-ifeq ($(IMAGE_FORMAT),iso)
-export IMAGE := nanvix.iso
-else
-export IMAGE := $(BINARIES_DIR)/noop-rust-nostd.$(EXEC_FORMAT)
-endif
 
 # Libraries
 export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
@@ -217,7 +208,7 @@ export SANDBOX_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:6161,127.0.0.
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := nvx posix
-ALL_GUEST_RUST_LIBS := bitmap error proc raw-array slab sys
+ALL_GUEST_RUST_LIBS := bitmap config error proc raw-array slab sys
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd matmul veccopy
@@ -228,6 +219,7 @@ ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
+ALL_HOST_RUST_LIBS := profiler
 ALL_HOST_UTILS := echo-client loader nanvixd
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
@@ -270,28 +262,43 @@ distclean: clean
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 
 # Runs clippy.
-# TODO: enable clippy for 'guest-staticlibs', 'guest-rlibs' and 'gest-binaries'.
 clippy: \
 	clippy-kernel \
+	clippy-guest-binaries \
+	clippy-guest-rlibs \
+	clippy-guest-staticlibs \
+	clippy-wasmd \
 	clippy-wasm-binaries \
 	clippy-host-binaries \
+	clippy-host-rlibs \
 	clippy-microvm
 
 check: \
-	check-guest-staticlibs \
-	check-guest-rlibs \
-	check-guest-binaries \
-	check-wasmd \
 	check-kernel \
+	check-guest-binaries \
+	check-guest-rlibs \
+	check-guest-staticlibs \
+	check-wasmd \
 	check-wasm-binaries \
 	check-host-binaries \
+	check-host-rlibs \
 	check-microvm
 
 run-unit-tests: all \
 	test-guest-staticlibs \
 	test-guest-rlibs
 
-run-nanvixd-tests: | test-echo-rust-nostd test-hello-c test-hello-cpp test-linux-app
+run-nanvixd-tests: | \
+	test-echo-c \
+	test-echo-cpp \
+	test-echo-rust-nostd \
+	test-echo-wasm-js \
+	test-echo-wasm-rust \
+	test-hello-c \
+	test-hello-cpp \
+	test-hello-js \
+	test-hello-wasm \
+	test-linux-app
 
 #===================================================================================================
 # Build Rules for Running and Debugging
@@ -299,7 +306,7 @@ run-nanvixd-tests: | test-echo-rust-nostd test-hello-c test-hello-cpp test-linux
 
 # Runs system in release mode.
 run: image
-ifeq ($(IMAGE_FORMAT),iso)
+ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
 else
 	sudo -E $(BINARIES_DIR)/microvm.elf -kernel $(BINARIES_DIR)/kernel.elf -initrd $(IMAGE) 2>&1
@@ -307,7 +314,7 @@ endif
 
 # Runs system in debug mode.
 debug: image
-ifeq ($(IMAGE_FORMAT),iso)
+ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --debug $(TIMEOUT)
 endif
 
@@ -317,13 +324,13 @@ endif
 
 # Builds the system image.
 image: all
-ifeq ($(IMAGE_FORMAT),iso)
+ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
 	$(GRUB_CMD) $(IMAGE_DIR) -o $(IMAGE)
 endif
 
 image-clean:
-ifeq ($(IMAGE_FORMAT),iso)
+ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(RM_CMD) $(IMAGE_DIR)/*.$(EXEC_FORMAT)
 	$(RM_CMD) $(IMAGE)
 endif
@@ -425,7 +432,7 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 	$(MAKE) -C $(SOURCES_DIR)/user clean
 	$(MAKE) -C $(SOURCES_DIR)/tests clean
 
-clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))A
+clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))
 
 all-wasmd: all-wasm-binaries all-guest-binaries
 	@echo "WASM_BINARY=$(WASM_BINARY)"
@@ -500,6 +507,29 @@ clean-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clean-wasm-binaries-$
 clippy-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clippy-wasm-binaries-$(target))
 
 #===================================================================================================
+# Build Rules for Host Rust Libraries
+#===================================================================================================
+
+define HOST_RLIB_RULES
+check-host-rlib-$(1):
+	$(HOST_CARGO_CHECK_CMD) -p $(1)
+
+clippy-host-rlib-$(1):
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
+
+test-host-rlib-$(1):
+	$(HOST_CARGO_TEST_CMD) -p $(1)
+endef
+
+$(foreach target,$(ALL_HOST_RUST_LIBS),$(eval $(call HOST_RLIB_RULES,$(target))))
+
+check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),check-host-rlib-$(target))
+
+clippy-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),clippy-host-rlib-$(target))
+
+test-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),test-host-rlib-$(target))
+
+#===================================================================================================
 # Build Rules for Host Binaries
 #===================================================================================================
 
@@ -551,22 +581,54 @@ clippy-microvm:
 # Rules for Running System Level tests
 #===================================================================================================
 
-test-echo-rust-nostd: all
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/echo-rust-nostd.elf '["hello world!"]' 'hello world!'
-endif
+comma:=,
 
-test-hello-c: all
+define TEST_RULE
+test-$(1): all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-c.elf '[]' 'Hello, world from C!'
+	@echo "Running test $(1)..."
+ifeq ($(MACHINE),hyperlight)
+	@if [ `stat -c%s "bin/$(1).elf"` -gt 33554432 ]; then \
+		echo "\033[31mWarning: bin/$(1).elf exceeds 32 MB, skipping test.\033[0m"; \
+	else \
+		sudo -v; \
+		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3); \
+	fi
+else
+	sudo -v; \
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3)
 endif
-
-test-hello-cpp: all
-ifneq ($(strip $(filter $(MACHINE),microvm, hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/hello-cpp.elf '[]' 'Hello, world from C++!'
 endif
+endef
 
-test-linux-app: all
+$(eval $(call TEST_RULE,echo-c,'["hello world!"]','hello world!'))
+$(eval $(call TEST_RULE,echo-cpp,'["hello world!"]','hello world!'))
+$(eval $(call TEST_RULE,echo-rust-nostd,'["hello world!"]','hello world!'))
+$(eval $(call TEST_RULE,hello-c,'[]','Hello$(comma) world from C!'))
+$(eval $(call TEST_RULE,hello-cpp,'[]','Hello$(comma) world from C++!'))
+$(eval $(call TEST_RULE,linux-app,'[]','ok'))
+
+define WASM_TEST_RULE
+test-$(1): all
+ifeq ($(shell basename $(WASM_BINARY)),$(1).wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	./scripts/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/linux-app.elf '[]' 'ok'
+	@echo "Running test $(1)..."
+ifeq ($(MACHINE),hyperlight)
+	@if [ `stat -c%s "bin/wasmd.elf"` -gt 33554432 ]; then \
+		echo "\033[31mWarning: bin/wasmd.elf exceeds 32 MB, skipping test!\033[0m"; \
+	else \
+		sudo -v; \
+		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3); \
+	fi
+else
+	sudo -v; \
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3)
 endif
+endif
+endif
+endef
+
+$(eval $(call WASM_TEST_RULE,echo-wasm-js,'["hello world!"]','hello world!'))
+$(eval $(call WASM_TEST_RULE,echo-wasm-rust,'["hello world!"]','hello world!'))
+$(eval $(call WASM_TEST_RULE,hello-js,'[]','Hello$(comma) world from JavaScript!'))
+$(eval $(call WASM_TEST_RULE,hello-wasm,'[]','Hello$(comma) world!'))

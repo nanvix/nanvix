@@ -14,16 +14,14 @@ use crate::logging::{
 #[allow(unused_imports)]
 use ::core::fmt::Write;
 
-use crate::mm::{
-    heap::Heap,
-    PAGE_ALIGNMENT,
-};
+use crate::mm::heap::Heap;
 use ::alloc::alloc::{
     GlobalAlloc,
     Layout,
 };
 use ::core::ptr;
 use ::sys::{
+    arch::mem::PAGE_ALIGNMENT,
     error::{
         Error,
         ErrorCode,
@@ -200,9 +198,8 @@ unsafe impl GlobalAlloc for Allocator {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let heap = ptr::addr_of_mut!(HEAP);
         if let Some(heap) = &mut *heap {
-            match ptr::NonNull::new(ptr) {
-                Some(ptr) => heap.free(ptr, layout),
-                None => (),
+            if let Some(ptr) = ptr::NonNull::new(ptr) {
+                heap.free(ptr, layout)
             }
         }
     }

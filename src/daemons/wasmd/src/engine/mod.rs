@@ -210,9 +210,7 @@ impl WasmEngine {
             next_wasi_fd += 1;
         }
 
-        let mut envs: Vec<String> = Vec::new();
-        envs.push("OS=nanvix".to_string());
-        envs.push("HOME=/".to_string());
+        let envs: Vec<String> = alloc::vec!["OS=nanvix".to_string(), "HOME=/".to_string()];
 
         let mut args: Vec<String> = Vec::new();
         args.push(wasm_binary.name.clone());

@@ -40,7 +40,10 @@ use ::alloc::{
     string::ToString,
 };
 use ::sys::{
-    arch::mem,
+    arch::{
+        mem,
+        mem::PAGE_ALIGNMENT,
+    },
     config::memory_layout,
     error::{
         Error,
@@ -220,7 +223,7 @@ pub fn init(
     }
     // Register PEB structure.
     let peb_base: usize =
-        ::sys::mm::align_up(unsafe { &__KERNEL_END } as *const u8 as usize, mmu::PAGE_ALIGNMENT);
+        ::sys::mm::align_up(unsafe { &__KERNEL_END } as *const u8 as usize, PAGE_ALIGNMENT);
     const PEB_SIZE: usize = mem::PAGE_SIZE;
     let peb: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "peb",

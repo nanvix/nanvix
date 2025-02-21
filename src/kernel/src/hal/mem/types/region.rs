@@ -5,25 +5,25 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::{
-    arch::x86::mem::mmu,
-    mem::types::{
-        access::AccessPermission,
-        address::{
-            Address,
-            PageAligned,
-            PhysicalAddress,
-            VirtualAddress,
-        },
+use crate::hal::mem::types::{
+    access::AccessPermission,
+    address::{
+        Address,
+        PageAligned,
+        PhysicalAddress,
+        VirtualAddress,
     },
 };
 use ::alloc::string::{
     String,
     ToString,
 };
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    arch::mem::PAGE_ALIGNMENT,
+    error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -175,12 +175,12 @@ impl<T: Address> TruncatedMemoryRegion<T> {
         perm: AccessPermission,
     ) -> Result<Self, Error> {
         // Truncate the size of the memory region to a multiple of the page size.
-        let size: usize = ::sys::mm::align_up(size, mmu::PAGE_ALIGNMENT);
+        let size: usize = ::sys::mm::align_up(size, PAGE_ALIGNMENT);
         Ok(Self(MemoryRegion::new(name, start, size, typ, perm)?))
     }
 
     pub fn from_memory_region(region: MemoryRegion<T>) -> Result<Self, Error> {
-        let start: T = region.start().align_down(mmu::PAGE_ALIGNMENT)?;
+        let start: T = region.start().align_down(PAGE_ALIGNMENT)?;
         let start: PageAligned<T> = PageAligned::from_address(start)?;
         let name: String = region.name();
         let size: usize = region.size();

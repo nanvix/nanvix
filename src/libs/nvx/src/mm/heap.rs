@@ -14,9 +14,11 @@ use crate::logging::{
 #[allow(unused_imports)]
 use ::core::fmt::Write;
 
-use crate::mm::PAGE_ALIGNMENT;
 use ::sys::{
-    arch::mem,
+    arch::{
+        mem,
+        mem::PAGE_ALIGNMENT,
+    },
     error::{
         Error,
         ErrorCode,

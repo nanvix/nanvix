@@ -29,6 +29,7 @@ use crate::{
 
 impl WasiCtxInner {
     /// Opens a file or a directory.
+    #[allow(clippy::too_many_arguments)]
     pub fn path_open(
         &mut self,
         dirfd: Fd,
@@ -114,7 +115,7 @@ impl WasiCtxInner {
                         let fd: Fd = self.insert_file(file, fs_rights_base, fs_rights_inheriting);
                         Ok(fd)
                     },
-                    Err(e) => return Err(e.value().into()),
+                    Err(e) => Err(e.value().into()),
                 }
             },
             None => {

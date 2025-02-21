@@ -45,7 +45,7 @@ impl UnboundSocket {
     }
 
     pub fn bind(self, sockaddr: &SocketAddr) -> Result<BoundSocket, (UnboundSocket, Error)> {
-        match sys::socket::bind(self.sockfd, &sockaddr) {
+        match sys::socket::bind(self.sockfd, sockaddr) {
             Ok(()) => Ok(BoundSocket { socket: self }),
             Err(error) => Err((self, error)),
         }
@@ -119,7 +119,7 @@ impl ConnectedSocket {
         match sys::socket::socketpair(domain, typ, protocol, &mut socket_fds) {
             Ok(()) => {},
             Err(errno) => {
-                return Err(Error::from(errno));
+                return Err(errno);
             },
         }
 
@@ -336,16 +336,16 @@ fn test_send_receive(
     socket_0.send(&buffer, 0)?;
 
     // Zero out buffer.
-    for i in 0..32 {
-        buffer[i] = 0;
+    for b in &mut buffer {
+        *b = 0;
     }
 
     // Receive message from connection.
     socket_1.recv(&mut buffer, 0)?;
 
     // Sanity check message contents.
-    for i in 0..32 {
-        if buffer[i] != 1 {
+    for b in &buffer {
+        if *b != 1 {
             return Err(Error::new(ErrorCode::InvalidMessage, "message contents are not correct"));
         }
     }

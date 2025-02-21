@@ -9,6 +9,24 @@ PROGRAM_EXPECTED_OUTPUT=$6
 
 TIMEOUT=10
 
+kill_children() {
+    local parent_pid=$1
+
+    if [ -z "$parent_pid" ]; then
+           return
+    fi
+
+    # Find all child processes
+    local children=$(pgrep -P $parent_pid)
+    for child in $children; do
+        # Recursively call the function for each child process
+        kill_children $child
+    done
+
+    # Kill the parent process
+    sudo /usr/bin/pkill -e -INT -P $parent_pid
+}
+
 # Run nanvixd.
 timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
     sudo -E \
@@ -39,18 +57,14 @@ curl \
 # Check if curl.log contains the expected output.
 if grep -q "${PROGRAM_EXPECTED_OUTPUT}" curl.log; then
     echo "Test passed."
-    echo "Killing $NANVIXD_PID"
-    /usr/bin/kill -s SIGINT $NANVIXD_PID
-    echo "Killed $NANVIXD_PID"
+    kill_children $NANVIXD_PID
     sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
     sudo -E rm -f /tmp/${LINUXD_SOCKADDR}*.socket
     sudo -E rm -f /tmp/${SANDBOX_SOCKADDR}*.socket
     exit 0
 else
     echo "Test failed."
-    echo "Killing $NANVIXD_PID"
-    /usr/bin/kill -s SIGINT $NANVIXD_PID
-    echo "Killed $NANVIXD_PID"
+    kill_children $NANVIXD_PID
     sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
     sudo -E rm -f /tmp/${LINUXD_SOCKADDR}*.socket
     sudo -E rm -f /tmp/${SANDBOX_SOCKADDR}*.socket

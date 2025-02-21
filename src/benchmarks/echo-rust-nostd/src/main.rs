@@ -40,7 +40,7 @@ pub fn main() -> Result<(), Error> {
                 // Error encountered.
                 n if n < 0 => break,
                 // End of file reached.
-                n if n == 0 => break,
+                0 => break,
                 // Read some bytes.
                 n => n,
             };

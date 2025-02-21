@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 [package]
-name = "hello-rust"
+name = "hello-rust-nostd"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
@@ -11,7 +11,7 @@ description = "Hello World in Rust"
 homepage.workspace = true
 
 [[bin]]
-name = "hello-rust"
+name = "hello-rust-nostd"
 
 [dependencies]
 nvx = { workspace = true, features = ["allocator"] }
