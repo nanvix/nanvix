@@ -149,6 +149,15 @@ impl ProcessManagerInner {
         kernel_stack: VirtualAddress,
         enable_interrupts: bool,
     ) -> Result<ContextInformation, Error> {
+        trace!(
+            "forge_user_context(): user_stack={:?}, user_func={:?}, kernel_func={:?}, \
+             kernel_stack={:?}, enable_interrupts={}",
+            user_stack,
+            user_func,
+            kernel_func,
+            kernel_stack,
+            enable_interrupts
+        );
         let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
         let esp: u32 = unsafe {
             hal::arch::forge_user_stack(
