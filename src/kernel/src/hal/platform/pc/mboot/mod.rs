@@ -24,7 +24,6 @@ use self::{
 };
 use crate::{
     hal::{
-        arch::x86::mem::mmu,
         mem::{
             AccessPermission,
             Address,
