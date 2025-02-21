@@ -174,9 +174,7 @@ impl ProcessManagerInner {
     ///
     /// - `mm`: Memory manager to use.
     /// - `vmem`: Virtual memory to use.
-    /// - `user_stack_top_addr`: User stack top address.
     /// - `user_func`: User function.
-    /// - `kernel_func`: Kernel function.
     ///
     /// # Returns
     ///
@@ -189,14 +187,19 @@ impl ProcessManagerInner {
         vmem: &mut Vmem,
         user_stack_top_addr: VirtualAddress,
         user_func: VirtualAddress,
-        kernel_func: VirtualAddress,
     ) -> Result<ReadyThread, Error> {
         trace!(
-            "create_thread(): user_stack_top_addr={:?}, user_func={:?}, kernel_func={:?}",
+            "create_thread(): user_stack_top_addr={:?}, user_func={:?}",
             user_stack_top_addr,
-            user_func,
-            kernel_func
+            user_func
         );
+
+        extern "C" {
+            pub fn __leave_kernel_to_user_mode();
+        }
+
+        let kernel_func: VirtualAddress =
+            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
 
         let mut kpages: Vec<KernelPage> =
             mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / mem::PAGE_SIZE)?;
@@ -219,7 +222,20 @@ impl ProcessManagerInner {
             vmem.add_private_kernel_page(kpage);
         }
 
-        self.tm.create_thread(context)
+        let thread: ReadyThread = self.tm.create_thread(context)?;
+
+        // Alloc user stack.
+        let user_stack_base_addr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(
+            user_stack_top_addr.into_raw_value() - config::kernel::USTACK_SIZE,
+        )?;
+        mm.alloc_upages(
+            vmem,
+            user_stack_base_addr,
+            config::kernel::USTACK_SIZE / mem::PAGE_SIZE,
+            AccessPermission::RDWR,
+        )?;
+
+        Ok(thread)
     }
 
     ///
@@ -249,21 +265,8 @@ impl ProcessManagerInner {
         // Create a new thread.
         let user_stack_top_addr: VirtualAddress = mm::user_stack_top().into_inner();
         let user_func: VirtualAddress = ::sys::config::memory_layout::USER_BASE;
-        let kernel_func: VirtualAddress =
-            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
         let thread: ReadyThread =
-            self.create_thread(mm, &mut vmem, user_stack_top_addr, user_func, kernel_func)?;
-
-        // Alloc user stack.
-        let user_stack_base_addr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(
-            user_stack_top_addr.into_raw_value() - config::kernel::USTACK_SIZE,
-        )?;
-        mm.alloc_upages(
-            &mut vmem,
-            user_stack_base_addr,
-            config::kernel::USTACK_SIZE / mem::PAGE_SIZE,
-            AccessPermission::RDWR,
-        )?;
+            self.create_thread(mm, &mut vmem, user_stack_top_addr, user_func)?;
 
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
