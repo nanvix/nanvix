@@ -48,12 +48,17 @@ use ::sys::{
     },
 };
 
+#[cfg(feature = "pit")]
+use crate::hal::platform::pit::Pit;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
 
 pub struct Platform {
     pub arch: Arch,
+    #[cfg(feature = "pit")]
+    pub _pit: Pit,
 }
 
 //==================================================================================================
@@ -211,6 +216,15 @@ fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     Ok(())
 }
 
+#[cfg(feature = "pit")]
+fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
+    // Register ports for the PIT.
+
+    ioports.register_read_write(::sys::arch::cpu::pit::PIT_CTRL)?;
+    ioports.register_read_write(::sys::arch::cpu::pit::PIT_DATA)?;
+
+    Pit::new(ioports, ::config::kernel::TIMER_FREQ)
+}
 
 pub fn init(
     ioports: &mut IoPortAllocator,
@@ -235,5 +249,7 @@ pub fn init(
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
+        #[cfg(feature = "pit")]
+        _pit: register_pit(ioports)?,
     })
 }
