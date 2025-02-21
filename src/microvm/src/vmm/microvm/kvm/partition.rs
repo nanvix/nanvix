@@ -54,6 +54,12 @@ impl VirtualPartition {
             error!("new(): {}", reason);
             anyhow::bail!(reason);
         }
+        let has_irqchip_support: bool = kvm.check_extension(kvm_ioctls::Cap::Irqchip);
+        if !has_irqchip_support {
+            let reason: &str = "irqchip is not supported";
+            error!("new(): {}", reason);
+            anyhow::bail!(reason);
+        }
 
         Ok(Self { _kvm: kvm, vm })
     }
