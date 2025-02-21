@@ -6,6 +6,8 @@
 //==================================================================================================
 
 mod exit;
+mod irqchip;
+mod timer;
 
 //==================================================================================================
 // Exports
@@ -31,6 +33,8 @@ use ::std::sync::{
     Arc,
     Mutex,
 };
+use irqchip::IrqChip;
+use timer::Timer;
 
 //==================================================================================================
 // Structures
@@ -42,11 +46,15 @@ use ::std::sync::{
 /// A structure that represents a virtual processor.
 ///
 pub struct VirtualProcessor {
-    // Handle to underlying virtual partition.
+    /// Handle to underlying virtual partition.
     _partition: Arc<Mutex<VirtualPartition>>,
-    // Handle to underlying virtual processor.
+    /// Handle to underlying virtual processor.
     fd: VcpuFd,
-    // Processor state.
+    /// Handle to underlying interrupt controller.
+    _irqchip: IrqChip,
+    /// Handle to timer.
+    _timer: Timer,
+    /// Processor state.
     online: bool,
 }
 
@@ -54,14 +62,23 @@ impl VirtualProcessor {
     pub fn new(partition: Arc<Mutex<VirtualPartition>>, id: u64) -> Result<Self> {
         trace!("new(): id={}", id);
         crate::timer!("vcpu_creation");
+
+        // Setup interrupt controller.
+        let irqchip: IrqChip = IrqChip::new(&partition)?;
+        // Create programmable interrupt timer.
+        let timer: Timer = Timer::new(&partition)?;
+
         let fd: VcpuFd = partition
             .lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
             .vm()
             .create_vcpu(id)?;
+
         Ok(Self {
             _partition: partition,
             fd,
+            _irqchip: irqchip,
+            _timer: timer,
             online: false,
         })
     }

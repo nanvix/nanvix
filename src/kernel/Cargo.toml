@@ -57,6 +57,7 @@ microvm = [
     "madt",
     "msr",
     "pic",
+    "pit",
     "xapic",
     "dep:config",
     "config/microvm",

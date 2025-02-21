@@ -2,13 +2,6 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Lint Exceptions
-//==================================================================================================
-
-// Not all functions are used.
-#![allow(dead_code)]
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -32,8 +25,8 @@ pub struct Pit {
 
 impl Pit {
     pub fn new(ioports: &mut IoPortAllocator, freq: u32) -> Result<Self, Error> {
-        let ctrl = ioports.allocate_read_write(pit::PIT_CTRL)?;
-        let data = ioports.allocate_read_write(pit::PIT_DATA)?;
+        let ctrl: ReadWriteIoPort = ioports.allocate_read_write(pit::PIT_CTRL)?;
+        let data: ReadWriteIoPort = ioports.allocate_read_write(pit::PIT_DATA)?;
 
         let mut pit = Self { ctrl, data };
 
