@@ -7,6 +7,7 @@
 
 mod exit;
 mod irqchip;
+mod timer;
 
 //==================================================================================================
 // Exports
@@ -33,6 +34,7 @@ use ::std::sync::{
     Mutex,
 };
 use irqchip::IrqChip;
+use timer::Timer;
 
 //==================================================================================================
 // Structures
@@ -50,6 +52,8 @@ pub struct VirtualProcessor {
     fd: VcpuFd,
     /// Handle to underlying interrupt controller.
     _irqchip: IrqChip,
+    /// Handle to timer.
+    _timer: Timer,
     /// Processor state.
     online: bool,
 }
@@ -61,6 +65,9 @@ impl VirtualProcessor {
 
         // Setup interrupt controller.
         let irqchip: IrqChip = IrqChip::new(&partition)?;
+        // Create programmable interrupt timer.
+        let timer: Timer = Timer::new(&partition)?;
+
         let fd: VcpuFd = partition
             .lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
@@ -71,6 +78,7 @@ impl VirtualProcessor {
             _partition: partition,
             fd,
             _irqchip: irqchip,
+            _timer: timer,
             online: false,
         })
     }
