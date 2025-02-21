@@ -160,5 +160,8 @@ pub unsafe fn in32(port: u16) -> u32 {
 /// Waits for an I/O operation to complete.
 ///
 pub fn wait() {
-    unsafe { out8(0x80, 0) };
+    #[cfg(feature = "pc")]
+    unsafe {
+        out8(0x80, 0)
+    };
 }

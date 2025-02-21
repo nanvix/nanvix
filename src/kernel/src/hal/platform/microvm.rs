@@ -33,7 +33,10 @@ use ::alloc::{
     string::ToString,
 };
 use ::sys::{
-    arch::mem,
+    arch::{
+        cpu::pic,
+        mem,
+    },
     error::{
         Error,
         ErrorCode,
@@ -45,12 +48,17 @@ use ::sys::{
     },
 };
 
+#[cfg(feature = "pit")]
+use crate::hal::platform::pit::Pit;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
 
 pub struct Platform {
     pub arch: Arch,
+    #[cfg(feature = "pit")]
+    pub _pit: Pit,
 }
 
 //==================================================================================================
@@ -198,6 +206,26 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
 }
 
+#[cfg(feature = "pic")]
+fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
+    // Register I/O ports for 8259 PIC.
+    ioports.register_read_write(pic::PIC_CTRL_MASTER as u16)?;
+    ioports.register_read_write(pic::PIC_DATA_MASTER as u16)?;
+    ioports.register_read_write(pic::PIC_CTRL_SLAVE as u16)?;
+    ioports.register_read_write(pic::PIC_DATA_SLAVE as u16)?;
+    Ok(())
+}
+
+#[cfg(feature = "pit")]
+fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
+    // Register ports for the PIT.
+
+    ioports.register_read_write(::sys::arch::cpu::pit::PIT_CTRL)?;
+    ioports.register_read_write(::sys::arch::cpu::pit::PIT_DATA)?;
+
+    Pit::new(ioports, ::config::kernel::TIMER_FREQ)
+}
+
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
@@ -206,6 +234,9 @@ pub fn init(
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
+    #[cfg(feature = "pic")]
+    register_pic_ioports(ioports)?;
+
     // Register MicroVM control registers.
     let scratch_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "microvm-ctrl-registers",
@@ -218,5 +249,7 @@ pub fn init(
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
+        #[cfg(feature = "pit")]
+        _pit: register_pit(ioports)?,
     })
 }

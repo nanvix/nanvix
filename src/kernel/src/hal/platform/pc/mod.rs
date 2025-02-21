@@ -25,7 +25,6 @@ use crate::hal::{
     platform::{
         self,
         madt::MadtInfo,
-        pit::Pit,
     },
 };
 use ::alloc::collections::linked_list::LinkedList;
@@ -42,6 +41,9 @@ use ::sys::{
     mm::VirtualAddress,
 };
 
+#[cfg(feature = "pit")]
+use crate::hal::platform::pit::Pit;
+
 //==================================================================================================
 // Modules
 //==================================================================================================
@@ -57,9 +59,6 @@ pub mod bios;
 
 #[cfg(feature = "cmos")]
 pub mod cmos;
-
-#[cfg(feature = "pit")]
-pub mod pit;
 
 #[cfg(feature = "mboot")]
 pub mod mboot;
@@ -99,7 +98,7 @@ pub struct Platform {
     #[cfg(feature = "cmos")]
     pub _cmos: cmos::Cmos,
     #[cfg(feature = "pit")]
-    pub _pit: pit::Pit,
+    pub _pit: Pit,
     pub arch: Arch,
 }
 
