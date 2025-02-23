@@ -1000,11 +1000,25 @@ impl ProcessManager {
         Self::get_mut()?.try_borrow_mut()?.wakeup(tid)
     }
 
-    pub fn switch() -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Switches the context of the calling thread with the next ready thread.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a context switch, causing the current thread to
+    /// block until it is woken up by another thread.
+    ///
+    pub unsafe fn switch() -> Result<(), Error> {
         let (from, to): (*mut ContextInformation, *mut ContextInformation) =
             { Self::get_mut()?.try_borrow_mut()?.schedule() };
 
-        unsafe { ContextInformation::switch(from, to) }
+        ContextInformation::switch(from, to);
 
         Ok(())
     }

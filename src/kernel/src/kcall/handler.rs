@@ -82,7 +82,10 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                         KcallNumber::FreePmio => io::pmio_free(pm, args),
                         KcallNumber::ReadPmio => io::pmio_read(pm, args),
                         KcallNumber::WritePmio => io::pmio_write(pm, args),
-                        KcallNumber::SchedulerYield => pm::sched_yield(),
+                        KcallNumber::SchedulerYield => {
+                            // Nothing to do, as this operation already yielded the processor.
+                            0
+                        },
                         _ => {
                             error!("invalid kernel call");
                             ErrorCode::InvalidSysCall.into_errno()
@@ -95,7 +98,8 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                 Err(e) => match e.code {
                     ErrorCode::Interrupted => break,
                     ErrorCode::OperationWouldBlock => {
-                        if let Err(e) = ProcessManager::switch() {
+                        // SAFETY: the kernel process does not hold any resources.
+                        if let Err(e) = unsafe { ProcessManager::switch() } {
                             error!("context switch failed: {:?}", e);
                         }
                     },
