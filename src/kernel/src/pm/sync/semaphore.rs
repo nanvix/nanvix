@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::pm::sync::condvar::Condvar;
+use crate::pm::{
+    sync::condvar::Condvar,
+    SleepError,
+};
 use ::core::cell::RefCell;
 use ::sys::error::{
     Error,
@@ -62,7 +65,7 @@ impl Semaphore {
     ///
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
     ///
-    pub fn down(&self) -> Result<(), Error> {
+    pub fn down(&self) -> Result<(), SleepError> {
         while *self.value.borrow() == 0 {
             self.sleeping.wait()?;
         }
