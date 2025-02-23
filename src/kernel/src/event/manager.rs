@@ -16,6 +16,7 @@ use crate::{
     },
     pm::{
         sync::condvar::Condvar,
+        InterruptReason,
         ProcessManager,
         SleepError,
     },
@@ -740,39 +741,47 @@ fn interrupt_handler(intnum: InterruptNumber) {
     }
 }
 
-fn exception_handler(info: &ExceptionInformation, _ctx: &ContextInformation) {
+fn do_exception_handler(
+    info: &ExceptionInformation,
+    ctx: &ContextInformation,
+) -> Result<(), SleepError> {
     trace!("exception_handler(): info={:?}", info);
-    let pid: ProcessIdentifier = match ProcessManager::get_pid() {
-        Ok(pid) => pid,
-        Err(e) => {
-            error!("failed to get process identifier: {:?}", e);
-            return;
-        },
-    };
 
-    let resume: Rc<Condvar> = match EventManager::get() {
-        Ok(em) => match em.try_borrow_mut() {
-            Ok(mut em) => match em.wakeup_exception(1 << info.num() as usize, pid, info) {
-                Ok(resume) => resume,
-                Err(e) => {
-                    error!("failed to wake up event manager: {:?}", e);
-                    return;
-                },
-            },
-            Err(e) => {
-                error!("failed to borrow event manager: {:?}", e);
-                return;
-            },
-        },
-        Err(e) => {
-            error!("failed to get event manager: {:?}", e);
-            return;
-        },
-    };
+    let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
 
-    if resume.wait().is_err() {
-        let e = ProcessManager::exit(-1);
-        unreachable!("failed to terminate process (error={:?})", e);
+    // Check if exception was triggered by the kernel.
+    if pid == ProcessIdentifier::KERNEL {
+        error!("{:?}", info);
+        error!("{:?}", ctx);
+        panic!("the kernel triggered an exception");
+    }
+
+    let resume: Rc<Condvar> = EventManager::get()
+        .map_err(SleepError::Generic)?
+        .try_borrow_mut()
+        .map_err(SleepError::Generic)?
+        .wakeup_exception(1 << info.num() as usize, pid, info)
+        .map_err(SleepError::Generic)?;
+
+    resume.wait()
+}
+
+fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
+    if let Err(sleep_error) = do_exception_handler(info, ctx) {
+        error!("exception_handler(): {:?}", sleep_error);
+
+        let status: i32 = match sleep_error {
+            SleepError::Generic(generic_error) => generic_error.code.into_errno(),
+            SleepError::Interrupted(InterruptReason::Killed) => ErrorCode::Interrupted.into_errno(),
+        };
+
+        // SAFETY: the calling process is not the kernel.
+        unsafe {
+            let error: Error = ProcessManager::exit(status).unwrap_err();
+            error!("{:?}", info);
+            error!("{:?}", ctx);
+            panic!("failed to exit() (error={:?})", error);
+        }
     }
 }
 
