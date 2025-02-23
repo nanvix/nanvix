@@ -36,7 +36,11 @@ use ::sys::{
 //==================================================================================================
 
 pub use kcall::*;
-pub use process::ProcessManager;
+pub use process::{
+    ProcessManager,
+    SleepError,
+};
+pub use thread::InterruptReason;
 
 //==================================================================================================
 // Standalone Functions

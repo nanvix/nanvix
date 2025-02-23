@@ -79,6 +79,16 @@ use ::sys::{
 };
 
 //==================================================================================================
+// Sleep Error
+//==================================================================================================
+
+#[derive(Debug)]
+pub enum SleepError {
+    Interrupted(InterruptReason),
+    Generic(Error),
+}
+
+//==================================================================================================
 // Process Manager Inner
 //==================================================================================================
 
@@ -746,6 +756,11 @@ impl ProcessManager {
         }
     }
 
+    pub fn abort() -> Result<!, Error> {
+        trace!("abort()");
+        ProcessManager::exit(ErrorCode::Interrupted.into_errno())
+    }
+
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
         self.try_borrow_mut()?.terminate(pid)
     }
@@ -928,23 +943,24 @@ impl ProcessManager {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn sleep() -> Result<(), Error> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            Self::get_mut()?.try_borrow_mut()?.sleep();
+    pub fn sleep() -> Result<(), SleepError> {
+        let (from, to): (*mut ContextInformation, *mut ContextInformation) = Self::get_mut()
+            .map_err(SleepError::Generic)?
+            .try_borrow_mut()
+            .map_err(SleepError::Generic)?
+            .sleep();
 
         unsafe { ContextInformation::switch(from, to) }
 
-        let interrupt_reason: Option<InterruptReason> =
-            Self::get_mut()?.try_borrow_mut()?.interrupt_reason();
+        let interrupt_reason: Option<InterruptReason> = Self::get_mut()
+            .map_err(SleepError::Generic)?
+            .try_borrow_mut()
+            .map_err(SleepError::Generic)?
+            .interrupt_reason();
 
-        match interrupt_reason {
-            Some(InterruptReason::Killed) => {
-                let reason: &str = "interrupted";
-                error!("sleep(): {}", reason);
-
-                return Err(Error::new(ErrorCode::Interrupted, reason));
-            },
-            None => {},
+        if let Some(reason) = interrupt_reason {
+            error!("sleep(): interrupted (reason={:?})", reason);
+            return Err(SleepError::Interrupted(reason));
         }
 
         Ok(())

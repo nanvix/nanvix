@@ -17,4 +17,5 @@ mod state;
 pub use manager::{
     init,
     ProcessManager,
+    SleepError,
 };
