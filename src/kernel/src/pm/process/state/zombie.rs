@@ -9,6 +9,7 @@ use crate::pm::{
     process::state::ProcessState,
     thread::ZombieThread,
 };
+use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
 // Zombie Process
@@ -17,35 +18,37 @@ use crate::pm::{
 ///
 /// # Description
 ///
-/// A type that represents a zombie process. A zombie process is a process that has finished its
-/// execution and is waiting for its parent to collect its exit status and release its resources.
+/// A type that represents a process that finished its execution and is waiting for its parent
+/// to collect its exit status and release its resources.
 ///
 pub struct ZombieProcess {
-    zombie: Option<ZombieThread>,
-    process: Option<ProcessState>,
+    zombie_threads: NonEmptyVecDeque<ZombieThread>,
+    process: ProcessState,
     status: i32,
 }
 
 impl ZombieProcess {
-    pub const KILLED: i32 = -1;
-
-    pub fn new(process: ProcessState, zombie: ZombieThread, status: i32) -> Self {
+    pub(super) fn new(
+        process: ProcessState,
+        zombie_threads: NonEmptyVecDeque<ZombieThread>,
+        status: i32,
+    ) -> Self {
         Self {
-            zombie: Some(zombie),
-            process: Some(process),
+            zombie_threads,
+            process,
             status,
         }
     }
 
     pub fn state(&self) -> &ProcessState {
-        self.process.as_ref().unwrap()
+        &self.process
     }
 
     pub fn state_mut(&mut self) -> &mut ProcessState {
-        self.process.as_mut().unwrap()
+        &mut self.process
     }
 
-    pub fn bury(&mut self) -> (ZombieThread, ProcessState, i32) {
-        (self.zombie.take().unwrap(), self.process.take().unwrap(), self.status)
+    pub fn bury(self) -> (NonEmptyVecDeque<ZombieThread>, ProcessState, i32) {
+        (self.zombie_threads, self.process, self.status)
     }
 }

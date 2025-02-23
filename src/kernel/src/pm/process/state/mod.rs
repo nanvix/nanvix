@@ -2,13 +2,20 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![forbid(clippy::unwrap_used)]
+#![forbid(clippy::expect_used)]
+
+//==================================================================================================
 // Modules
 //==================================================================================================
 
 mod interrupted;
 mod runnable;
 mod running;
-mod suspended;
+mod sleeping;
 mod zombie;
 
 //==================================================================================================
@@ -55,13 +62,10 @@ use ::sys::{
 // Exports
 //==================================================================================================
 
-pub use interrupted::{
-    InterruptReason,
-    InterruptedProcess,
-};
+pub use interrupted::InterruptedProcess;
 pub use runnable::RunnableProcess;
 pub use running::RunningProcess;
-pub use suspended::SleepingProcess;
+pub use sleeping::SleepingProcess;
 pub use zombie::ZombieProcess;
 
 //==================================================================================================
