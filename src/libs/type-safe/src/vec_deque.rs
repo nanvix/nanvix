@@ -5,10 +5,13 @@
 // Imports
 //==================================================================================================
 
-use ::alloc::collections::VecDeque;
+use ::alloc::collections::{
+    vec_deque,
+    VecDeque,
+};
 
 //==================================================================================================
-// Structures
+// Non Empty Vector Dequeue
 //==================================================================================================
 
 ///
@@ -123,7 +126,7 @@ impl<T> NonEmptyVecDeque<T> {
     ///
     pub fn remove_if(
         mut self,
-        mut condition: impl FnMut(&mut T) -> bool,
+        condition: impl Fn(&mut T) -> bool,
     ) -> Result<(VecDeque<T>, T), Self> {
         if condition(&mut self.head) {
             match self.tail.take() {
@@ -171,9 +174,9 @@ impl<T> NonEmptyVecDeque<T> {
     /// The function returns a new type-safe vector with the results of applying `f` to each element
     /// of `self`.
     ///
-    pub fn map<U, F>(mut vec_deque: NonEmptyVecDeque<U>, mut f: F) -> NonEmptyVecDeque<T>
+    pub fn map<U, F>(mut vec_deque: NonEmptyVecDeque<U>, f: F) -> NonEmptyVecDeque<T>
     where
-        F: FnMut(U) -> T,
+        F: Fn(U) -> T,
     {
         let new_head: T = f(vec_deque.head);
         let new_tail: Option<VecDeque<T>> = match vec_deque.tail.take() {
@@ -189,6 +192,90 @@ impl<T> NonEmptyVecDeque<T> {
         NonEmptyVecDeque {
             head: new_head,
             tail: new_tail,
+        }
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            passed_head: false,
+            head: Some(&self.head),
+            tail: self.tail.as_ref().map(|tail| tail.iter()),
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut {
+            passed_head: false,
+            head: Some(&mut self.head),
+            tail: self.tail.as_mut().map(|tail| tail.iter_mut()),
+        }
+    }
+}
+
+//==================================================================================================
+// Iterator
+//==================================================================================================
+
+///
+/// # Description
+///
+/// An iterator over the elements of a non-empty vector.
+///
+pub struct Iter<'a, T> {
+    /// Indicates if the head element has been passed.
+    passed_head: bool,
+    /// The head element.
+    head: Option<&'a T>,
+    /// The remaining elements.
+    tail: Option<vec_deque::Iter<'a, T>>,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if !self.passed_head {
+            self.passed_head = true;
+            self.head.take()
+        } else {
+            match self.tail {
+                Some(ref mut tail) => tail.next(),
+                None => None,
+            }
+        }
+    }
+}
+
+//==================================================================================================
+// Mutable Iterator
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A mutable iterator over the elements of a non-empty vector.
+///
+pub struct IterMut<'a, T> {
+    /// Indicates if the head element has been passed.
+    passed_head: bool,
+    /// The head element.
+    head: Option<&'a mut T>,
+    /// The remaining elements.
+    tail: Option<vec_deque::IterMut<'a, T>>,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if !self.passed_head {
+            self.passed_head = true;
+            self.head.take()
+        } else {
+            match self.tail {
+                Some(ref mut tail) => tail.next(),
+                None => None,
+            }
         }
     }
 }
@@ -324,6 +411,54 @@ mod test {
         assert_eq!(new_vec_deque.head, 1);
         assert_eq!(new_vec_deque.tail, Some(VecDeque::from([2])));
     }
+
+    #[test]
+    fn test_iter() {
+        let vec_deque = NonEmptyVecDeque::new(0);
+        let mut iter = vec_deque.iter();
+        assert_eq!(iter.next(), Some(&0));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_iter_with_tail() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        let mut iter = vec_deque.iter();
+        assert_eq!(iter.next(), Some(&0));
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_iter_mut() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        {
+            let mut iter = vec_deque.iter_mut();
+            if let Some(value) = iter.next() {
+                *value += 1;
+            }
+        }
+        assert_eq!(vec_deque.head, 1);
+        assert_eq!(vec_deque.tail, None);
+    }
+
+    #[test]
+    fn test_iter_mut_with_tail() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        {
+            let mut iter = vec_deque.iter_mut();
+            if let Some(value) = iter.next() {
+                *value += 1;
+            }
+            if let Some(value) = iter.next() {
+                *value += 1;
+            }
+        }
+        assert_eq!(vec_deque.head, 1);
+        assert_eq!(vec_deque.tail, Some(VecDeque::from([2])));
+    }
 }
 
 //==================================================================================================
@@ -394,6 +529,26 @@ mod benchmarks {
         b.iter(|| {
             let vec = NonEmptyVecDeque::from(VecDeque::from([0, 1])).unwrap();
             black_box(NonEmptyVecDeque::map(vec, |value| value + 1));
+        });
+    }
+
+    #[bench]
+    fn bench_iter(b: &mut Bencher) {
+        b.iter(|| {
+            let vec = NonEmptyVecDeque::from(VecDeque::from([0, 1])).unwrap();
+            for value in vec.iter() {
+                black_box(value);
+            }
+        });
+    }
+
+    #[bench]
+    fn bench_iter_mut(b: &mut Bencher) {
+        b.iter(|| {
+            let mut vec = NonEmptyVecDeque::from(VecDeque::from([0, 1])).unwrap();
+            for value in vec.iter_mut() {
+                black_box(value);
+            }
         });
     }
 }
