@@ -34,7 +34,6 @@ use crate::{
         process::{
             identity::ProcessIdentity,
             state::{
-                InterruptReason,
                 InterruptedProcess,
                 ProcessRef,
                 ProcessRefMut,
@@ -46,6 +45,7 @@ use crate::{
             },
         },
         thread::{
+            InterruptReason,
             ReadyThread,
             ThreadManager,
         },
@@ -119,13 +119,18 @@ impl ProcessManagerInner {
         tm: ThreadManager,
     ) -> Self {
         let kernel: RunnableProcess = RunnableProcess::new(
-            ProcessIdentifier::from(0),
+            ProcessIdentifier::KERNEL,
             ProcessIdentity::new(UserIdentifier::ROOT, GroupIdentifier::ROOT),
             kernel,
             root,
         );
 
-        let (kernel, _): (RunningProcess, *mut ContextInformation) = kernel.run();
+        let (kernel, reason, _): (
+            RunningProcess,
+            Option<InterruptReason>,
+            *mut ContextInformation,
+        ) = kernel.run();
+        debug_assert!(reason.is_none(), "kernel process should not be interrupted");
 
         Self {
             interrupt_capable,
@@ -298,15 +303,23 @@ impl ProcessManagerInner {
 
         // Select next ready process to run.
         if let Some(next_process) = self.interrupted.pop_back() {
-            let (next_process, reason, next_context) = next_process.resume();
+            let (next_process, reason, next_context): (
+                RunningProcess,
+                InterruptReason,
+                *mut ContextInformation,
+            ) = next_process.resume();
             self.interrupt_reason = Some(reason);
             self.running = Some(next_process);
             (previous_context, next_context)
         } else {
             let next_process: RunnableProcess = self.take_ready();
-            let (next_process, next_context): (RunningProcess, *mut ContextInformation) =
-                next_process.run();
+            let (next_process, reason, next_context): (
+                RunningProcess,
+                Option<InterruptReason>,
+                *mut ContextInformation,
+            ) = next_process.run();
 
+            self.interrupt_reason = reason;
             self.running = Some(next_process);
             (previous_context, next_context)
         }
@@ -353,14 +366,24 @@ impl ProcessManagerInner {
 
         match running_process.sleep() {
             Ok((runnable_process, previous_context)) => {
-                let (next_process, next_context) = runnable_process.run();
+                let (next_process, reason, next_context): (
+                    RunningProcess,
+                    Option<InterruptReason>,
+                    *mut ContextInformation,
+                ) = runnable_process.run();
+                self.interrupt_reason = reason;
                 self.running = Some(next_process);
                 (previous_context, next_context)
             },
             Err((suspended_process, previous_context)) => {
                 self.suspended.push_back(suspended_process);
                 let next_process: RunnableProcess = self.take_ready();
-                let (next_process, next_context) = next_process.run();
+                let (next_process, reason, next_context): (
+                    RunningProcess,
+                    Option<InterruptReason>,
+                    *mut ContextInformation,
+                ) = next_process.run();
+                self.interrupt_reason = reason;
                 self.running = Some(next_process);
                 (previous_context, next_context)
             },
@@ -379,25 +402,56 @@ impl ProcessManagerInner {
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///GroupIdentifier
+    ///
     pub fn wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
+        let runnable_process: RunnableProcess = match self.try_wakeup(tid) {
+            Some(runnable_process) => runnable_process,
+            None => {
+                let reason: &str = "thread not found";
+                error!("wake_up(): {}", reason);
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            },
+        };
+
+        self.ready.push_back(runnable_process);
+
+        Ok(())
+    }
+
+    fn try_wakeup(&mut self, tid: ThreadIdentifier) -> Option<RunnableProcess> {
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
         while let Some(process) = self.suspended.pop_front() {
-            match process.wakeup_sleeping_thread(tid) {
+            match process.wakeup(tid) {
                 Ok(runnable_process) => {
-                    self.ready.push_back(runnable_process);
                     while let Some(process) = suspended.pop_front() {
                         self.suspended.push_back(process);
                     }
-                    return Ok(());
+                    return Some(runnable_process);
                 },
                 Err(suspended_process) => suspended.push_back(suspended_process),
             }
         }
+        while let Some(process) = suspended.pop_front() {
+            self.suspended.push_back(process);
+        }
 
-        let reason: &str = "thread not found";
-        error!("wake_up(): {}", reason);
-        Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
+        while let Some(process) = self.ready.pop_front() {
+            match process.wakeup(tid) {
+                Ok(runnable_process) => {
+                    while let Some(process) = ready.pop_front() {
+                        self.ready.push_back(process);
+                    }
+                    return Some(runnable_process);
+                },
+                Err(ready_process) => ready.push_back(ready_process),
+            }
+        }
+        while let Some(process) = ready.pop_front() {
+            self.ready.push_back(process);
+        }
+
+        None
     }
 
     pub fn exit(
@@ -413,7 +467,8 @@ impl ProcessManagerInner {
 
         match running_process.exit(status) {
             Ok((runnable_process, previous_context)) => {
-                let (running_process, next_context) = runnable_process.run();
+                let (running_process, reason, next_context) = runnable_process.run();
+                self.interrupt_reason = reason;
                 self.running = Some(running_process);
                 Ok((previous_context, next_context))
             },
@@ -422,7 +477,8 @@ impl ProcessManagerInner {
 
                 match self.ready.pop_front() {
                     Some(runnable_process) => {
-                        let (running_process, next_context) = runnable_process.run();
+                        let (running_process, reason, next_context) = runnable_process.run();
+                        self.interrupt_reason = reason;
                         self.running = Some(running_process);
                         Ok((previous_context, next_context))
                     },
@@ -450,9 +506,16 @@ impl ProcessManagerInner {
         // Check if target process is ready.
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
             let process: RunnableProcess = self.ready.remove(process);
-            let process: ZombieProcess = process.terminate();
-            self.zombies.push_back(process);
-            return Ok(());
+            match process.terminate() {
+                Ok(runnable_process) => {
+                    self.ready.push_back(runnable_process);
+                    return Ok(());
+                },
+                Err(zombie_process) => {
+                    self.zombies.push_back(zombie_process);
+                    return Ok(());
+                },
+            }
         }
 
         // Check if target process is suspended.
@@ -518,7 +581,7 @@ impl ProcessManagerInner {
     }
 
     pub fn harvest_zombies(&mut self) -> Option<(ProcessIdentifier, i32)> {
-        if let Some(mut zombie) = self.zombies.pop_front() {
+        if let Some(zombie) = self.zombies.pop_front() {
             let (_thread, state, status) = zombie.bury();
             Some((state.pid(), status))
         } else {
@@ -567,7 +630,7 @@ impl ProcessManagerInner {
     }
 
     fn find_process_mut(&mut self, pid: ProcessIdentifier) -> Result<ProcessRefMut, Error> {
-        if self.get_running_mut().state_mut().pid() == pid {
+        if self.get_running_mut().state().pid() == pid {
             Ok(ProcessRefMut::Running(self.get_running_mut()))
         } else if let Some(process) = self.ready.iter_mut().find(|p| p.state().pid() == pid) {
             Ok(ProcessRefMut::Runnable(process))
@@ -874,10 +937,14 @@ impl ProcessManager {
         let interrupt_reason: Option<InterruptReason> =
             Self::get_mut()?.try_borrow_mut()?.interrupt_reason();
 
-        if interrupt_reason.is_some() {
-            let reason: &str = "interrupted";
-            error!("sleep(): {}", reason);
-            return Err(Error::new(ErrorCode::Interrupted, reason));
+        match interrupt_reason {
+            Some(InterruptReason::Killed) => {
+                let reason: &str = "interrupted";
+                error!("sleep(): {}", reason);
+
+                return Err(Error::new(ErrorCode::Interrupted, reason));
+            },
+            None => {},
         }
 
         Ok(())

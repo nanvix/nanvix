@@ -597,7 +597,11 @@ impl EventManager {
                 break Ok(message);
             }
 
-            wait.wait()?;
+            // Wait for an event to be delivered and check for errors.
+            if let Err(error) = wait.wait() {
+                let error: Result<!, Error> = ProcessManager::exit(error.code.into_errno());
+                unreachable!("failed to terminate process (error={:?})", error);
+            }
         }
     }
 
