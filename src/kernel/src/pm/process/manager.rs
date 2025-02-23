@@ -366,7 +366,7 @@ impl ProcessManagerInner {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn sleep(&mut self) -> (*mut ContextInformation, *mut ContextInformation) {
+    fn sleep(&mut self) -> (*mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to sleep.
@@ -464,10 +464,7 @@ impl ProcessManagerInner {
         None
     }
 
-    pub fn exit(
-        &mut self,
-        status: i32,
-    ) -> Result<(*mut ContextInformation, *mut ContextInformation), Error> {
+    pub fn exit(&mut self, status: i32) -> (*mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to exit.
@@ -480,7 +477,7 @@ impl ProcessManagerInner {
                 let (running_process, reason, next_context) = runnable_process.run();
                 self.interrupt_reason = reason;
                 self.running = Some(running_process);
-                Ok((previous_context, next_context))
+                (previous_context, next_context)
             },
             Err((zombie_process, previous_context)) => {
                 self.zombies.push_back(zombie_process);
@@ -490,9 +487,9 @@ impl ProcessManagerInner {
                         let (running_process, reason, next_context) = runnable_process.run();
                         self.interrupt_reason = reason;
                         self.running = Some(running_process);
-                        Ok((previous_context, next_context))
+                        (previous_context, next_context)
                     },
-                    None => unreachable!("there should be a process ready to run"),
+                    None => unreachable!("the kernel process is always ready to run"),
                 }
             },
         }
@@ -745,20 +742,31 @@ impl ProcessManager {
             .has_capability(capability))
     }
 
-    pub fn exit(status: i32) -> Result<!, Error> {
-        trace!("exit({:?})", status);
+    ///
+    /// # Description
+    ///
+    /// Exits the calling process.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function does not return. Otherwise, an error code is
+    /// returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it may cause the calling process to exit.
+    ///
+    /// This function is safe to use if an only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    ///
+    pub unsafe fn exit(status: i32) -> Result<!, Error> {
+        trace!("exit(): status={:?}", status);
         let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            Self::get_mut()?.try_borrow_mut()?.exit(status)?;
+            Self::get_mut()?.try_borrow_mut()?.exit(status);
 
-        unsafe {
-            ContextInformation::switch(from, to);
-            core::hint::unreachable_unchecked()
-        }
-    }
-
-    pub fn abort() -> Result<!, Error> {
-        trace!("abort()");
-        ProcessManager::exit(ErrorCode::Interrupted.into_errno())
+        ContextInformation::switch(from, to);
+        core::hint::unreachable_unchecked()
     }
 
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
@@ -943,14 +951,23 @@ impl ProcessManager {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn sleep() -> Result<(), SleepError> {
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a context switch, causing the current thread to
+    /// block until it is woken up by another thread.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    ///
+    pub unsafe fn sleep() -> Result<(), SleepError> {
         let (from, to): (*mut ContextInformation, *mut ContextInformation) = Self::get_mut()
             .map_err(SleepError::Generic)?
             .try_borrow_mut()
             .map_err(SleepError::Generic)?
             .sleep();
 
-        unsafe { ContextInformation::switch(from, to) }
+        ContextInformation::switch(from, to);
 
         let interrupt_reason: Option<InterruptReason> = Self::get_mut()
             .map_err(SleepError::Generic)?
