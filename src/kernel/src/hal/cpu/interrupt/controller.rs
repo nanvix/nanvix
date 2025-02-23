@@ -104,13 +104,11 @@ impl InterruptController {
     }
 
     pub fn try_get() -> Result<InterruptController, Error> {
-        unsafe {
-            match INTERRUPT_CONTROLLER.clone() {
-                Some(controller) => Ok(controller),
-                None => {
-                    Err(Error::new(ErrorCode::NoSuchDevice, "interrupt controller not initialized"))
-                },
-            }
+        match unsafe { INTERRUPT_CONTROLLER.clone() } {
+            Some(controller) => Ok(controller),
+            None => {
+                Err(Error::new(ErrorCode::NoSuchDevice, "interrupt controller not initialized"))
+            },
         }
     }
 }

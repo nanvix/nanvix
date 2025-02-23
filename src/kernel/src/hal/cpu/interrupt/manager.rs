@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::hal::{
-    arch,
+    arch::{
+        self,
+        InterruptHandler,
+    },
     cpu::interrupt::InterruptController,
 };
 use ::sys::error::{
@@ -105,19 +108,36 @@ impl InterruptManager {
     ///
     #[no_mangle]
     extern "C" fn do_interrupt(intnum: arch::InterruptNumber) {
-        match InterruptController::try_get() {
+        let handler: InterruptHandler = match InterruptController::try_get() {
             Ok(controller) => {
                 if let Err(e) = controller.ack(intnum) {
-                    error!("failed to acknowledge interrupt: {:?}", e);
+                    {
+                        error!("failed to acknowledge interrupt: {:?}", e);
+                        return;
+                    }
                 }
 
                 match controller.get_handler(intnum) {
-                    Ok(Some(handler)) => handler(intnum),
-                    Ok(None) => error!("no handler for interrupt {:?}", intnum as u32),
-                    Err(e) => error!("failed to get handler: {:?}", e),
+                    Ok(Some(handler)) => handler,
+                    Ok(None) => {
+                        error!("no handler for interrupt {:?}", intnum as u32);
+                        return;
+                    },
+                    Err(e) => {
+                        error!("failed to get handler: {:?}", e);
+                        return;
+                    },
                 }
             },
-            Err(e) => error!("failed to get pic: {:?}", e),
+            Err(e) => {
+                error!("failed to get pic: {:?}", e);
+                return;
+            },
+        };
+
+        // SAFETY: The interrupt handler is called without holding any resources.
+        unsafe {
+            handler(intnum);
         }
     }
 }

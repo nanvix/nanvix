@@ -62,12 +62,12 @@ pub fn copy_to_user<T>(pid: ProcessIdentifier, dst: *mut T, src: &T) -> Result<(
     ProcessManager::vmcopy_to_user(pid, dst, src, size)
 }
 
-pub fn timer_handler(_intnum: InterruptNumber) {
+pub unsafe fn timer_handler(_intnum: InterruptNumber) {
     static mut TIMER_TICKS: usize = 0;
 
-    unsafe { TIMER_TICKS = TIMER_TICKS.wrapping_add(1) };
+    TIMER_TICKS = TIMER_TICKS.wrapping_add(1);
 
-    if unsafe { TIMER_TICKS } % config::kernel::SCHEDULER_FREQ == 0 {
+    if TIMER_TICKS % config::kernel::SCHEDULER_FREQ == 0 {
         if let Err(e) = ProcessManager::switch() {
             error!("context switch failed: {:?}", e);
         }

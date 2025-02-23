@@ -47,7 +47,7 @@ pub const INTERRUPT_VECTOR_LENGTH: usize = 256;
 ///
 /// A type that represents an interrupt handler.
 ///
-pub type InterruptHandler = fn(InterruptNumber);
+pub type InterruptHandler = unsafe fn(InterruptNumber);
 
 #[no_mangle]
 static mut INTERRUPT_VECTOR: [Option<InterruptHandler>; INTERRUPT_VECTOR_LENGTH] =
