@@ -11,10 +11,7 @@ use ::core::{
     fmt::Debug,
     pin::Pin,
 };
-use ::sys::{
-    error::Error,
-    pm::ThreadIdentifier,
-};
+use ::sys::pm::ThreadIdentifier;
 
 //==================================================================================================
 // Thread
@@ -169,11 +166,11 @@ impl ThreadManager {
         )
     }
 
-    pub fn create_thread(&mut self, context: ContextInformation) -> Result<ReadyThread, Error> {
+    pub fn create_thread(&mut self, context: ContextInformation) -> ReadyThread {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(Into::<usize>::into(self.next_id) + 1);
 
-        Ok(ReadyThread(Thread::new(id, context)))
+        ReadyThread(Thread::new(id, context))
     }
 }
 
