@@ -157,65 +157,17 @@ impl ProcessManagerInner {
     }
 
     fn forge_user_context(
-        vmem: &Vmem,
+        mm: &mut VirtMemoryManager,
+        vmem: &mut Vmem,
         user_stack: VirtualAddress,
         user_func: VirtualAddress,
-        kernel_func: VirtualAddress,
-        kernel_stack: VirtualAddress,
         enable_interrupts: bool,
     ) -> Result<ContextInformation, Error> {
         trace!(
-            "forge_user_context(): user_stack={:?}, user_func={:?}, kernel_func={:?}, \
-             kernel_stack={:?}, enable_interrupts={}",
+            "forge_user_context(): user_stack={:?}, user_func={:?}, enable_interrupts={}",
             user_stack,
             user_func,
-            kernel_func,
-            kernel_stack,
             enable_interrupts
-        );
-        let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
-        let esp: u32 = unsafe {
-            hal::arch::forge_user_stack(
-                kernel_stack.into_raw_value() as *mut u8,
-                user_stack.into_raw_value(),
-                user_func.into_raw_value(),
-                kernel_func.into_raw_value(),
-                enable_interrupts,
-            )
-        } as u32;
-        let esp0: u32 = kernel_stack.into_raw_value() as u32;
-
-        trace!("forge_context(): cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp, esp0);
-        Ok(ContextInformation::new(cr3, esp, esp0))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Creates a new thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `mm`: Memory manager to use.
-    /// - `vmem`: Virtual memory to use.
-    /// - `user_func`: User function.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the new thread is returned. Otherwise, an error is returned
-    /// instead.
-    ///
-    fn create_thread(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        vmem: &mut Vmem,
-        user_stack_top_addr: VirtualAddress,
-        user_func: VirtualAddress,
-    ) -> Result<ReadyThread, Error> {
-        trace!(
-            "create_thread(): user_stack_top_addr={:?}, user_func={:?}",
-            user_stack_top_addr,
-            user_func
         );
 
         extern "C" {
@@ -225,33 +177,32 @@ impl ProcessManagerInner {
         let kernel_func: VirtualAddress =
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
 
+        // Alloc kernel pages for the kernel stack.
+        // NOTE: if we fail, kernel pages allocated for the kernel stack are deallocated.
         let mut kpages: Vec<KernelPage> =
             mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / mem::PAGE_SIZE)?;
-
         let base: PageAddress = kpages[0].base();
-        let size: usize = config::kernel::KSTACK_SIZE;
-        let top: *mut u8 = unsafe { (base.into_raw_value() as *mut u8).add(size) };
-        let kernel_stack_top_addr: VirtualAddress = VirtualAddress::from_raw_value(top as usize);
+        let kernel_stack: usize =
+            unsafe { (base.into_raw_value() as *mut u8).add(config::kernel::KSTACK_SIZE) } as usize;
 
-        let context: ContextInformation = Self::forge_user_context(
-            vmem,
-            user_stack_top_addr,
-            user_func,
-            kernel_func,
-            kernel_stack_top_addr,
-            self.interrupt_capable,
-        )?;
+        let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
+        let esp: u32 = unsafe {
+            hal::arch::forge_user_stack(
+                kernel_stack as *mut u8,
+                user_stack.into_raw_value(),
+                user_func.into_raw_value(),
+                kernel_func.into_raw_value(),
+                enable_interrupts,
+            )
+        } as u32;
+        let esp0: u32 = kernel_stack as u32;
 
-        while let Some(kpage) = kpages.pop() {
-            vmem.add_private_kernel_page(kpage);
-        }
+        trace!("forge_context(): cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp, esp0);
+        let context: ContextInformation = ContextInformation::new(cr3, esp, esp0);
 
-        let thread: ReadyThread = self.tm.create_thread(context)?;
-
-        // Alloc user stack.
-        let user_stack_base_addr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(
-            user_stack_top_addr.into_raw_value() - config::kernel::USTACK_SIZE,
-        )?;
+        // Alloc user stack and map it.
+        let user_stack_base_addr: PageAligned<VirtualAddress> =
+            PageAligned::from_raw_value(user_stack.into_raw_value() - config::kernel::USTACK_SIZE)?;
         mm.alloc_upages(
             vmem,
             user_stack_base_addr,
@@ -259,7 +210,14 @@ impl ProcessManagerInner {
             AccessPermission::RDWR,
         )?;
 
-        Ok(thread)
+        // NOTE: if we fail, beyond this point we must unmap kernel pages from `vmem`.
+
+        // Map kernel stack.
+        while let Some(kpage) = kpages.pop() {
+            vmem.add_private_kernel_page(kpage);
+        }
+
+        Ok(context)
     }
 
     ///
@@ -289,8 +247,14 @@ impl ProcessManagerInner {
         // Create a new thread.
         let user_stack_top_addr: VirtualAddress = mm::user_stack_top().into_inner();
         let user_func: VirtualAddress = ::sys::config::memory_layout::USER_BASE;
-        let thread: ReadyThread =
-            self.create_thread(mm, &mut vmem, user_stack_top_addr, user_func)?;
+        let context: ContextInformation = Self::forge_user_context(
+            mm,
+            &mut vmem,
+            user_stack_top_addr,
+            user_func,
+            self.interrupt_capable,
+        )?;
+        let thread: ReadyThread = self.tm.create_thread(context);
 
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
