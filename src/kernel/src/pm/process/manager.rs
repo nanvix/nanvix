@@ -51,11 +51,15 @@ use crate::{
             InterruptReason,
             ReadyThread,
             ThreadManager,
+            ZombieThread,
         },
     },
 };
 use ::alloc::{
-    collections::LinkedList,
+    collections::{
+        vec_deque::VecDeque,
+        LinkedList,
+    },
     rc::Rc,
     vec::Vec,
 };
@@ -80,6 +84,7 @@ use ::sys::{
         UserIdentifier,
     },
 };
+use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
 // Sleep Error
@@ -572,9 +577,51 @@ impl ProcessManagerInner {
         self.interrupt_reason.take()
     }
 
-    pub fn harvest_zombies(&mut self) -> Option<(ProcessIdentifier, i32)> {
+    pub fn harvest_zombies(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+    ) -> Option<(ProcessIdentifier, i32)> {
         if let Some(zombie) = self.zombies.pop_front() {
-            let (_thread, state, status) = zombie.bury();
+            let (zombie_threads, mut state, status): (
+                NonEmptyVecDeque<ZombieThread>,
+                ProcessState,
+                i32,
+            ) = zombie.bury();
+            let (mut more_zombie_threads, zombie_thread): (VecDeque<ZombieThread>, ZombieThread) =
+                zombie_threads.pop_front();
+            more_zombie_threads.push_front(zombie_thread);
+
+            // Traverse the list of zombie threads.
+            while let Some(zombie_thread) = more_zombie_threads.pop_front() {
+                // Harvest zombie thread.
+                if let Some(user_stack) = zombie_thread.harvest() {
+                    // Traverse pages belonging to user stack.
+                    let base: usize = user_stack.base().into_raw_value();
+                    let top: usize = user_stack.top().into_raw_value();
+                    // TODO: Use an iterator for this.
+                    for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                        let vaddr: PageAligned<VirtualAddress> =
+                            match PageAligned::from_raw_value(raw_addr) {
+                                Ok(vaddr) => vaddr,
+                                Err(_) => {
+                                    // SAFETY: the following condition is unreachable, because
+                                    // pages in the user stack are always page-aligned.
+                                    unreachable!("address conversion should succeed")
+                                },
+                            };
+                        // Attempt to unmap page
+                        if let Err(error) = mm.unmap_upage(state.vmem_mut(), vaddr) {
+                            // We failed, but this is not too bad, as we will free all pages
+                            // when wiping out the address space anyways.
+                            warn!(
+                                "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
+                                vaddr, error
+                            );
+                        }
+                    }
+                }
+            }
+
             Some((state.pid(), status))
         } else {
             None
@@ -784,8 +831,11 @@ impl ProcessManager {
             .copy_to_user_unaligned(dst, src, size)
     }
 
-    pub fn harvest_zombies(&mut self) -> Result<Option<(ProcessIdentifier, i32)>, Error> {
-        Ok(self.try_borrow_mut()?.harvest_zombies())
+    pub fn harvest_zombies(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+    ) -> Result<Option<(ProcessIdentifier, i32)>, Error> {
+        Ok(self.try_borrow_mut()?.harvest_zombies(mm))
     }
 
     pub fn mmap(
