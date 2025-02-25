@@ -18,7 +18,10 @@ use crate::pm::{
         SleepingThread,
     },
 };
-use ::alloc::collections::vec_deque::VecDeque;
+use ::alloc::{
+    boxed::Box,
+    collections::vec_deque::VecDeque,
+};
 use ::sys::pm::ThreadIdentifier;
 use ::type_safe::NonEmptyVecDeque;
 
@@ -32,13 +35,13 @@ use ::type_safe::NonEmptyVecDeque;
 /// A type that represents a process that is waiting for a condition to be satisfied.
 ///
 pub struct SleepingProcess {
-    state: ProcessState,
+    state: Box<ProcessState>,
     sleeping_threads: NonEmptyVecDeque<SleepingThread>,
 }
 
 impl SleepingProcess {
     pub(super) fn new(
-        process: ProcessState,
+        process: Box<ProcessState>,
         sleeping_threads: NonEmptyVecDeque<SleepingThread>,
     ) -> Self {
         Self {

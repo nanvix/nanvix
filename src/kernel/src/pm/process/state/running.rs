@@ -24,6 +24,7 @@ use crate::{
         },
     },
 };
+use ::alloc::boxed::Box;
 use ::sys::pm::ThreadIdentifier;
 use ::type_safe::NonEmptyVecDeque;
 
@@ -38,7 +39,7 @@ use ::type_safe::NonEmptyVecDeque;
 ///
 pub struct RunningProcess {
     /// Process state.
-    state: ProcessState,
+    state: Box<ProcessState>,
     /// Running thread.
     running: RunningThread,
     /// Ready threads.
@@ -57,7 +58,7 @@ pub struct RunningProcess {
 
 impl RunningProcess {
     pub(super) fn new(
-        state: ProcessState,
+        state: Box<ProcessState>,
         running: RunningThread,
         ready: Option<NonEmptyVecDeque<ReadyThread>>,
         interrupted: Option<NonEmptyVecDeque<InterruptedThread>>,

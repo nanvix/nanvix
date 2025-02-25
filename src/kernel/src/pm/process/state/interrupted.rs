@@ -19,7 +19,10 @@ use crate::{
         },
     },
 };
-use ::alloc::collections::vec_deque::VecDeque;
+use ::alloc::{
+    boxed::Box,
+    collections::vec_deque::VecDeque,
+};
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -32,13 +35,13 @@ use ::type_safe::NonEmptyVecDeque;
 /// A type that represents a process that was interrupted.
 ///
 pub struct InterruptedProcess {
-    state: ProcessState,
+    state: Box<ProcessState>,
     interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
 }
 
 impl InterruptedProcess {
     pub(super) fn new(
-        process: ProcessState,
+        process: Box<ProcessState>,
         interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
     ) -> Self {
         Self {
