@@ -56,6 +56,7 @@ use crate::{
     },
 };
 use ::alloc::{
+    boxed::Box,
     collections::{
         vec_deque::VecDeque,
         LinkedList,
@@ -584,7 +585,7 @@ impl ProcessManagerInner {
         if let Some(zombie) = self.zombies.pop_front() {
             let (zombie_threads, mut state, status): (
                 NonEmptyVecDeque<ZombieThread>,
-                ProcessState,
+                Box<ProcessState>,
                 i32,
             ) = zombie.bury();
             let (mut more_zombie_threads, zombie_thread): (VecDeque<ZombieThread>, ZombieThread) =

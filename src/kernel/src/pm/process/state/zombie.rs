@@ -9,6 +9,7 @@ use crate::pm::{
     process::state::ProcessState,
     thread::ZombieThread,
 };
+use ::alloc::boxed::Box;
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -23,13 +24,13 @@ use ::type_safe::NonEmptyVecDeque;
 ///
 pub struct ZombieProcess {
     zombie_threads: NonEmptyVecDeque<ZombieThread>,
-    process: ProcessState,
+    process: Box<ProcessState>,
     status: i32,
 }
 
 impl ZombieProcess {
     pub(super) fn new(
-        process: ProcessState,
+        process: Box<ProcessState>,
         zombie_threads: NonEmptyVecDeque<ZombieThread>,
         status: i32,
     ) -> Self {
@@ -48,7 +49,7 @@ impl ZombieProcess {
         &mut self.process
     }
 
-    pub fn bury(self) -> (NonEmptyVecDeque<ZombieThread>, ProcessState, i32) {
+    pub fn bury(self) -> (NonEmptyVecDeque<ZombieThread>, Box<ProcessState>, i32) {
         (self.zombie_threads, self.process, self.status)
     }
 }

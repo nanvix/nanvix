@@ -35,6 +35,7 @@ use crate::{
         },
     },
 };
+use ::alloc::boxed::Box;
 use ::sys::{
     error::Error,
     pm::ProcessIdentifier,
@@ -50,7 +51,7 @@ use sys::{
 //==================================================================================================
 
 pub struct RunnableProcessWithReadyThread {
-    state: ProcessState,
+    state: Box<ProcessState>,
     ready_threads: NonEmptyVecDeque<ReadyThread>,
     interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>>,
     sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -66,7 +67,7 @@ impl RunnableProcessWithReadyThread {
         user_stack_allocator: Option<UserStackAllocator>,
     ) -> Self {
         Self {
-            state: ProcessState::new(pid, identity, vmem, user_stack_allocator),
+            state: Box::new(ProcessState::new(pid, identity, vmem, user_stack_allocator)),
             ready_threads: NonEmptyVecDeque::new(ready_thread),
             interrupted_threads: None,
             sleeping_threads: None,
@@ -75,7 +76,7 @@ impl RunnableProcessWithReadyThread {
     }
 
     fn from_state(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: NonEmptyVecDeque<ReadyThread>,
         interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -189,7 +190,7 @@ impl RunnableProcessWithReadyThread {
 }
 
 pub struct RunnableProcessWithInterruptedThreads {
-    state: ProcessState,
+    state: Box<ProcessState>,
     ready_threads: Option<NonEmptyVecDeque<ReadyThread>>,
     interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
     sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -198,7 +199,7 @@ pub struct RunnableProcessWithInterruptedThreads {
 
 impl RunnableProcessWithInterruptedThreads {
     fn new(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: Option<NonEmptyVecDeque<ReadyThread>>,
         interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -308,7 +309,7 @@ impl RunnableProcessWithInterruptedThreads {
 }
 
 pub struct RunnableProcessWithReadyAndInteruptThread {
-    state: ProcessState,
+    state: Box<ProcessState>,
     ready_threads: NonEmptyVecDeque<ReadyThread>,
     interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
     sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -317,7 +318,7 @@ pub struct RunnableProcessWithReadyAndInteruptThread {
 
 impl RunnableProcessWithReadyAndInteruptThread {
     fn new(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: NonEmptyVecDeque<ReadyThread>,
         interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -450,7 +451,7 @@ impl RunnableProcess {
     }
 
     pub fn from_state_with_ready_thread(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: NonEmptyVecDeque<ReadyThread>,
         interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -466,7 +467,7 @@ impl RunnableProcess {
     }
 
     pub fn from_state_with_interrupted_threads(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: Option<NonEmptyVecDeque<ReadyThread>>,
         interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
