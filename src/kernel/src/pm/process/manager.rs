@@ -174,6 +174,16 @@ impl ProcessManagerInner {
             pub fn __leave_kernel_to_user_mode();
         }
 
+        // Ensure that user function lies within the user address space.
+        if !Vmem::is_user_addr(user_func) {
+            let reason: &str = "user function is not within the user address space";
+            error!(
+                "forge_context(): {} (user_stack={:?}, user_func={:?})",
+                reason, user_stack, user_func
+            );
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
         let kernel_func: VirtualAddress =
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
 
