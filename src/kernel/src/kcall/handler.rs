@@ -141,7 +141,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
             }
         }
 
-        match pm.harvest_zombies() {
+        match pm.harvest_zombies(mm) {
             Ok(None) => {},
             Ok(Some((pid, status))) => {
                 // Check if init daemon process terminated.
@@ -164,7 +164,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
         }
     }
 
-    while let Ok(Some((pid, status))) = pm.harvest_zombies() {
+    while let Ok(Some((pid, status))) = pm.harvest_zombies(mm) {
         info!("harvested zombie process: pid={:?}, status={:?}", pid, status);
     }
 }

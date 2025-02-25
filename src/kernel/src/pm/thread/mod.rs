@@ -25,7 +25,7 @@ pub struct Thread {
     /// Thread identifier.
     id: ThreadIdentifier,
     /// User stack.
-    _user_stack: Option<UserStack>,
+    user_stack: Option<UserStack>,
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
 }
@@ -39,7 +39,7 @@ impl Thread {
         Self {
             id,
             context: Box::pin(context),
-            _user_stack: user_stack,
+            user_stack,
         }
     }
 
@@ -159,6 +159,12 @@ impl InterruptedThread {
 
 #[allow(unused)]
 pub struct ZombieThread(Thread);
+
+impl ZombieThread {
+    pub fn harvest(mut self) -> Option<UserStack> {
+        self.0.user_stack.take()
+    }
+}
 
 //==================================================================================================
 // Thread Manager
