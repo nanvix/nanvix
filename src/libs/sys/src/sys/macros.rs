@@ -4,6 +4,22 @@
 ///
 /// # Description
 ///
+/// Asserts if a condition is true at compile time.
+///
+/// # Parameters
+///
+/// - `$condition:expr`: Condition to be checked.
+///
+#[macro_export]
+macro_rules! static_assert {
+    ($condition:expr) => {
+        const _: () = [(); 1][($condition) as usize ^ 1];
+    };
+}
+
+///
+/// # Description
+///
 /// Asserts if a type has an expected size at compile time.
 ///
 /// # Parameters
