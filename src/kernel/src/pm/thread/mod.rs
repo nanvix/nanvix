@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::arch::ContextInformation;
+use crate::{
+    hal::arch::ContextInformation,
+    mm::ustack::UserStack,
+};
 use ::alloc::boxed::Box;
 use ::core::{
     fmt::Debug,
@@ -18,18 +21,25 @@ use ::sys::pm::ThreadIdentifier;
 //==================================================================================================
 
 #[derive(Debug)]
-struct Thread {
+pub struct Thread {
     /// Thread identifier.
     id: ThreadIdentifier,
+    /// User stack.
+    _user_stack: Option<UserStack>,
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
 }
 
 impl Thread {
-    pub fn new(id: ThreadIdentifier, context: ContextInformation) -> Self {
+    pub fn new(
+        id: ThreadIdentifier,
+        user_stack: Option<UserStack>,
+        context: ContextInformation,
+    ) -> Self {
         Self {
             id,
             context: Box::pin(context),
+            _user_stack: user_stack,
         }
     }
 
@@ -81,8 +91,12 @@ impl RunningThread {
 pub struct ReadyThread(Thread);
 
 impl ReadyThread {
-    pub fn new(id: ThreadIdentifier, context: ContextInformation) -> Self {
-        Self(Thread::new(id, context))
+    pub fn new(
+        id: ThreadIdentifier,
+        user_stack: Option<UserStack>,
+        context: ContextInformation,
+    ) -> Self {
+        Self(Thread::new(id, user_stack, context))
     }
 
     pub fn resume(mut self) -> (RunningThread, *mut ContextInformation) {
@@ -157,7 +171,7 @@ pub struct ThreadManager {
 impl ThreadManager {
     fn new() -> (ReadyThread, Self) {
         let kernel: ReadyThread =
-            ReadyThread::new(ThreadIdentifier::from(0), ContextInformation::default());
+            ReadyThread::new(ThreadIdentifier::from(0), None, ContextInformation::default());
         (
             kernel,
             Self {
@@ -166,11 +180,15 @@ impl ThreadManager {
         )
     }
 
-    pub fn create_thread(&mut self, context: ContextInformation) -> ReadyThread {
+    pub fn create_thread(
+        &mut self,
+        user_stack: Option<UserStack>,
+        context: ContextInformation,
+    ) -> ReadyThread {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(Into::<usize>::into(self.next_id) + 1);
 
-        ReadyThread(Thread::new(id, context))
+        ReadyThread(Thread::new(id, user_stack, context))
     }
 }
 

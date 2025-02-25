@@ -12,6 +12,7 @@ use crate::{
     },
     mm::{
         elf::Elf32Fhdr,
+        ustack::UserStackAllocator,
         VirtMemoryManager,
         Vmem,
     },
@@ -62,9 +63,10 @@ impl RunnableProcessWithReadyThread {
         identity: ProcessIdentity,
         ready_thread: ReadyThread,
         vmem: Vmem,
+        user_stack_allocator: Option<UserStackAllocator>,
     ) -> Self {
         Self {
-            state: ProcessState::new(pid, identity, vmem),
+            state: ProcessState::new(pid, identity, vmem, user_stack_allocator),
             ready_threads: NonEmptyVecDeque::new(ready_thread),
             interrupted_threads: None,
             sleeping_threads: None,
@@ -436,12 +438,14 @@ impl RunnableProcess {
         identity: ProcessIdentity,
         ready_thread: ReadyThread,
         vmem: Vmem,
+        user_stack_allocator: Option<UserStackAllocator>,
     ) -> Self {
         RunnableProcess::WithReadyThread(RunnableProcessWithReadyThread::new(
             pid,
             identity,
             ready_thread,
             vmem,
+            user_stack_allocator,
         ))
     }
 
