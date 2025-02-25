@@ -300,6 +300,11 @@ impl Vmem {
     ) -> Result<(), Error> {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
+            let reason: &str = "address is not in user space";
+            error!(
+                "map(): {} (uframe={:?}, vaddr={:?}, access={:?})",
+                reason, uframe, vaddr, access
+            );
             return Err(Error::new(ErrorCode::BadAddress, "address is not in user space"));
         }
 
