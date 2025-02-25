@@ -24,8 +24,11 @@ use crate::{
         },
     },
     mm::{
-        self,
         elf::Elf32Fhdr,
+        ustack::{
+            UserStack,
+            UserStackAllocator,
+        },
         KernelPage,
         VirtMemoryManager,
         Vmem,
@@ -62,7 +65,7 @@ use ::core::cell::{
     RefMut,
 };
 use ::sys::{
-    arch::mem,
+    arch::mem::PAGE_SIZE,
     error::{
         Error,
         ErrorCode,
@@ -133,6 +136,7 @@ impl ProcessManagerInner {
             ProcessIdentity::new(UserIdentifier::ROOT, GroupIdentifier::ROOT),
             kernel,
             root,
+            None,
         );
 
         let (kernel, reason, _): (
@@ -159,7 +163,7 @@ impl ProcessManagerInner {
     fn forge_user_context(
         mm: &mut VirtMemoryManager,
         vmem: &mut Vmem,
-        user_stack: VirtualAddress,
+        user_stack: &UserStack,
         user_func: VirtualAddress,
         enable_interrupts: bool,
     ) -> Result<ContextInformation, Error> {
@@ -190,7 +194,7 @@ impl ProcessManagerInner {
         // Alloc kernel pages for the kernel stack.
         // NOTE: if we fail, kernel pages allocated for the kernel stack are deallocated.
         let mut kpages: Vec<KernelPage> =
-            mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / mem::PAGE_SIZE)?;
+            mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / PAGE_SIZE)?;
         let base: PageAddress = kpages[0].base();
         let kernel_stack: usize =
             unsafe { (base.into_raw_value() as *mut u8).add(config::kernel::KSTACK_SIZE) } as usize;
@@ -199,7 +203,7 @@ impl ProcessManagerInner {
         let esp: u32 = unsafe {
             hal::arch::forge_user_stack(
                 kernel_stack as *mut u8,
-                user_stack.into_raw_value(),
+                user_stack.top().into_raw_value(),
                 user_func.into_raw_value(),
                 kernel_func.into_raw_value(),
                 enable_interrupts,
@@ -211,12 +215,10 @@ impl ProcessManagerInner {
         let context: ContextInformation = ContextInformation::new(cr3, esp, esp0);
 
         // Alloc user stack and map it.
-        let user_stack_base_addr: PageAligned<VirtualAddress> =
-            PageAligned::from_raw_value(user_stack.into_raw_value() - config::kernel::USTACK_SIZE)?;
         mm.alloc_upages(
             vmem,
-            user_stack_base_addr,
-            config::kernel::USTACK_SIZE / mem::PAGE_SIZE,
+            user_stack.base(),
+            user_stack.size() / PAGE_SIZE,
             AccessPermission::RDWR,
         )?;
 
@@ -254,23 +256,32 @@ impl ProcessManagerInner {
         // Create a new memory address space for the process.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
 
-        // Create a new thread.
-        let user_stack_top_addr: VirtualAddress = mm::user_stack_top().into_inner();
+        // Create a stack allocator.
+        let user_stack_allocator: UserStackAllocator = UserStackAllocator::new()?;
+
+        // Create a kernel context.
+        let user_stack: UserStack = user_stack_allocator.alloc()?;
         let user_func: VirtualAddress = ::sys::config::memory_layout::USER_BASE;
         let context: ContextInformation = Self::forge_user_context(
             mm,
             &mut vmem,
-            user_stack_top_addr,
+            &user_stack,
             user_func,
             self.interrupt_capable,
         )?;
-        let thread: ReadyThread = self.tm.create_thread(context);
+
+        //==============================================================
+        // NOTE: if we fail beyond this point we need to page mappings.
+        //==============================================================
+
+        let thread: ReadyThread = self.tm.create_thread(Some(user_stack), context);
 
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
         self.next_pid = ProcessIdentifier::from(Into::<u32>::into(pid) + 1);
         let identity: ProcessIdentity = self.get_running().state().identity().clone();
-        let process: RunnableProcess = RunnableProcess::new(pid, identity, thread, vmem);
+        let process: RunnableProcess =
+            RunnableProcess::new(pid, identity, thread, vmem, Some(user_stack_allocator));
 
         // Add process to the queue of ready processes.
         self.ready.push_back(process);
