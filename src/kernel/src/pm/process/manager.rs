@@ -975,6 +975,32 @@ impl ProcessManager {
         ProcessManager(pm)
     }
 
+    fn get<'a>() -> Result<&'a ProcessManager, Error> {
+        unsafe {
+            match PROCESS_MANAGER {
+                Some(ref pm) => Ok(pm),
+                None => {
+                    let reason: &str = "process manager not initialized";
+                    error!("get(): {}", reason);
+                    Err(Error::new(ErrorCode::TryAgain, reason))
+                },
+            }
+        }
+    }
+
+    fn get_mut<'a>() -> Result<&'a mut ProcessManager, Error> {
+        unsafe {
+            match PROCESS_MANAGER {
+                Some(ref mut pm) => Ok(pm),
+                None => {
+                    let reason: &str = "process manager not initialized";
+                    error!("get_mut(): {}", reason);
+                    Err(Error::new(ErrorCode::TryAgain, reason))
+                },
+            }
+        }
+    }
+
     /// Creates a new process.
     pub fn create_process(
         &mut self,
@@ -1520,32 +1546,6 @@ impl ProcessManager {
                 error!("try_borrow_mut(): {}", reason);
                 Err(Error::new(ErrorCode::ResourceBusy, reason))
             },
-        }
-    }
-
-    fn get<'a>() -> Result<&'a ProcessManager, Error> {
-        unsafe {
-            match PROCESS_MANAGER {
-                Some(ref pm) => Ok(pm),
-                None => {
-                    let reason: &str = "process manager not initialized";
-                    error!("get(): {}", reason);
-                    Err(Error::new(ErrorCode::TryAgain, reason))
-                },
-            }
-        }
-    }
-
-    fn get_mut<'a>() -> Result<&'a mut ProcessManager, Error> {
-        unsafe {
-            match PROCESS_MANAGER {
-                Some(ref mut pm) => Ok(pm),
-                None => {
-                    let reason: &str = "process manager not initialized";
-                    error!("get_mut(): {}", reason);
-                    Err(Error::new(ErrorCode::TryAgain, reason))
-                },
-            }
         }
     }
 }
