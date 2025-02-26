@@ -123,8 +123,8 @@ impl VirtMemoryManager {
     ///
     #[allow(dead_code)] // TODO: remove this ling allowance when the function is used.
     pub unsafe fn get<'a>() -> &'a VirtMemoryManager {
-        if let Some(ref em) = MEMORY_MANAGER {
-            em
+        if let Some(ref mm) = MEMORY_MANAGER {
+            mm
         } else {
             cold_path();
             panic!("the memory manager is not initialized");
@@ -147,8 +147,8 @@ impl VirtMemoryManager {
     /// - Access to the memory manager is synchronized.
     ///
     pub unsafe fn get_mut<'a>() -> &'a mut VirtMemoryManager {
-        if let Some(ref mut em) = MEMORY_MANAGER {
-            em
+        if let Some(ref mut mm) = MEMORY_MANAGER {
+            mm
         } else {
             cold_path();
             panic!("the memory manager is not initialized");
