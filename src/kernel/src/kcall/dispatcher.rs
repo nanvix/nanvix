@@ -58,7 +58,10 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             let e: Error = unsafe { ProcessManager::exit(arg0 as i32).unwrap_err() };
             e.code.into_errno()
         },
-        KcallNumber::JoinThread => pm::join_thread(arg0, arg1),
+        KcallNumber::JoinThread => match pm::join_thread(arg0, arg1) {
+            Ok(status) => status as i32,
+            Err(sleep_error) => handle_sleep_error(sleep_error).unwrap(),
+        },
         KcallNumber::ExitThread => {
             // SAFETY: the calling process is not the kernel.
             let e: Error = unsafe { ProcessManager::exit_thread(arg0 as usize).unwrap_err() };

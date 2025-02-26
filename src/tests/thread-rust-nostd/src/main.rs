@@ -17,10 +17,7 @@
 use ::nvx::{
     pm::ThreadIdentifier,
     sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
+        error::Error,
         kcall::pm,
     },
 };
@@ -55,15 +52,7 @@ pub fn main() -> Result<(), Error> {
 
     // Wait for the worker thread to exit and check if it returns the expected value.
     let mut retval: usize = 0;
-    loop {
-        match pm::join_thread(worker_tid, &mut retval) {
-            Ok(_) => break,
-            Err(error) if error.code != ErrorCode::OperationWouldBlock => {
-                break;
-            },
-            _ => continue,
-        }
-    }
+    pm::join_thread(worker_tid, &mut retval).unwrap();
     assert_eq!(retval, EXPECTED_EXIT_STATUS);
 
     // Write magic string to signal that the test passed.

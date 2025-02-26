@@ -47,6 +47,7 @@ use crate::{
                 ZombieProcess,
             },
         },
+        sync::condvar::Condvar,
         thread::{
             InterruptReason,
             ReadyThread,
@@ -62,6 +63,7 @@ use ::alloc::{
         LinkedList,
     },
     rc::Rc,
+    sync::Arc,
     vec::Vec,
 };
 use ::core::cell::{
@@ -836,32 +838,33 @@ impl ProcessManagerInner {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn try_join_thread(
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
-    ) -> Result<ZombieThread, Error> {
-        match self.find_process_mut(pid)? {
+    ) -> Result<ZombieThread, Result<Arc<Condvar>, Error>> {
+        match self.find_process_mut(pid).map_err(Err)? {
             ProcessRefMut::Running(process) => process.try_join_thread(tid),
             ProcessRefMut::Runnable(_) => {
                 let reason: &str = "process is runnable";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
+                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
             ProcessRefMut::Sleeping(_) => {
                 let reason: &str = "process is sleeping";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                Err(Error::new(ErrorCode::OperationWouldBlock, reason))
+                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
             ProcessRefMut::Interrupted(_) => {
                 let reason: &str = "process is interrupted";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
+                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
             ProcessRefMut::Zombie(_) => {
                 let reason: &str = "process is a zombie";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
+                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
         }
     }
@@ -1057,52 +1060,72 @@ impl ProcessManager {
         core::hint::unreachable_unchecked()
     }
 
-    pub fn join_thread(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<usize, Error> {
+    pub fn join_thread(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<usize, SleepError> {
         trace!("join_thread(): pid={:?}, tid={:?}", pid, tid);
-        let pm: &mut ProcessManager = Self::get_mut()?;
 
-        let zombie_thread: ZombieThread = pm.try_borrow_mut()?.try_join_thread(pid, tid)?;
+        loop {
+            let result: Result<ZombieThread, Result<Arc<Condvar>, Error>> = Self::get_mut()
+                .map_err(SleepError::Generic)?
+                .try_borrow_mut()
+                .map_err(SleepError::Generic)?
+                .try_join_thread(pid, tid);
 
-        let status: usize = zombie_thread.status();
+            match result {
+                Ok(zombie_thread) => {
+                    let status: usize = zombie_thread.status();
 
-        // SAFETY: This is the only thread running, thus access to the virtual memory manager is synchronized.
-        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+                    // SAFETY: This is the only thread running, thus access to the virtual memory manager is synchronized.
+                    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
 
-        // Harvest zombie thread.
-        if let Some(user_stack) = zombie_thread.harvest() {
-            // Traverse pages belonging to user stack.
-            let base: usize = user_stack.base().into_raw_value();
-            let top: usize = user_stack.top().into_raw_value();
-            // TODO: Use an iterator for this.
-            for raw_addr in (base..top).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr)
-                {
-                    Ok(vaddr) => vaddr,
-                    Err(_) => {
-                        // SAFETY: the following condition is unreachable, because
-                        // pages in the user stack are always page-aligned.
-                        unreachable!("address conversion should succeed")
-                    },
-                };
-                // Attempt to unmap page
-                if let Err(error) = mm.unmap_upage(
-                    pm.try_borrow_mut()?
-                        .find_process_mut(pid)?
-                        .state_mut()
-                        .vmem_mut(),
-                    vaddr,
-                ) {
-                    // We failed, but this is not too bad, as we will free all pages
-                    // when wiping out the address space anyways.
-                    warn!(
-                        "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
-                        vaddr, error
-                    );
-                }
+                    // Harvest zombie thread.
+                    if let Some(user_stack) = zombie_thread.harvest() {
+                        // Traverse pages belonging to user stack.
+                        let base: usize = user_stack.base().into_raw_value();
+                        let top: usize = user_stack.top().into_raw_value();
+                        // TODO: Use an iterator for this.
+                        for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                            let vaddr: PageAligned<VirtualAddress> =
+                                match PageAligned::from_raw_value(raw_addr) {
+                                    Ok(vaddr) => vaddr,
+                                    Err(_) => {
+                                        // SAFETY: the following condition is unreachable, because
+                                        // pages in the user stack are always page-aligned.
+                                        unreachable!("address conversion should succeed")
+                                    },
+                                };
+                            // Attempt to unmap page
+                            if let Err(error) = mm.unmap_upage(
+                                Self::get_mut()
+                                    .map_err(SleepError::Generic)?
+                                    .try_borrow_mut()
+                                    .map_err(SleepError::Generic)?
+                                    .find_process_mut(pid)
+                                    .map_err(SleepError::Generic)?
+                                    .state_mut()
+                                    .vmem_mut(),
+                                vaddr,
+                            ) {
+                                // We failed, but this is not too bad, as we will free all pages
+                                // when wiping out the address space anyways.
+                                warn!(
+                                    "harvest_zombies(): failed to unmap page (vaddr={:?}, \
+                                     error={:?})",
+                                    vaddr, error
+                                );
+                            }
+                        }
+                    }
+
+                    break Ok(status);
+                },
+
+                Err(Ok(join_cond)) => {
+                    join_cond.wait()?;
+                },
+
+                Err(Err(error)) => break Err(SleepError::Generic(error)),
             }
         }
-
-        Ok(status)
     }
 
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
