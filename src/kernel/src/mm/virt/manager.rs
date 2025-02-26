@@ -146,7 +146,6 @@ impl VirtMemoryManager {
     ///
     /// - Access to the memory manager is synchronized.
     ///
-    #[allow(dead_code)] // TODO: remove this ling allowance when the function is used.
     pub unsafe fn get_mut<'a>() -> &'a mut VirtMemoryManager {
         if let Some(ref mut em) = MEMORY_MANAGER {
             em

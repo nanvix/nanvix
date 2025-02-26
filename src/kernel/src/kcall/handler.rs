@@ -87,7 +87,6 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                             0
                         },
                         KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
-                        KcallNumber::JoinThread => pm::join_thread(pm, mm, args),
                         _ => {
                             error!("invalid kernel call");
                             ErrorCode::InvalidSysCall.into_errno()

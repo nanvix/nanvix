@@ -25,7 +25,13 @@ use crate::{
     },
 };
 use ::alloc::boxed::Box;
-use ::sys::pm::ThreadIdentifier;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::ThreadIdentifier,
+};
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -295,5 +301,60 @@ impl RunningProcess {
         } else {
             Err(self)
         }
+    }
+
+    pub fn try_join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
+        // Check if the thread is the running thread.
+        if self.running.id() == tid {
+            let reason: &str = "thread is running";
+            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+        }
+
+        // Search for thread in zombie threads.
+        if let Some(zombie_threads) = self.zombie.take() {
+            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
+                Ok((zombie_threads, zombie_thread)) => {
+                    self.zombie = NonEmptyVecDeque::from(zombie_threads);
+                    return Ok(zombie_thread);
+                },
+                Err(zombie_threads) => {
+                    self.zombie = Some(zombie_threads);
+                },
+            }
+        }
+
+        // Search for thread in ready threads.
+        if let Some(ready_threads) = &self.ready {
+            for ready_thread in ready_threads.iter() {
+                if ready_thread.tid() == tid {
+                    let reason: &str = "thread is running";
+                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                }
+            }
+        }
+
+        // Search for thread in sleeping threads.
+        if let Some(sleeping_threads) = self.sleeping_threads.as_ref() {
+            for sleeping_thread in sleeping_threads.iter() {
+                if sleeping_thread.id() == tid {
+                    let reason: &str = "thread is sleeping";
+                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                }
+            }
+        }
+
+        // Search for thread in interrupted threads.
+        if let Some(interrupted_threads) = self.interrupted_threads.as_ref() {
+            for interrupted_thread in interrupted_threads.iter() {
+                if interrupted_thread.tid() == tid {
+                    let reason: &str = "thread is interrupted";
+                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                }
+            }
+        }
+
+        let reason: &str = "thread not found";
+        error!("join_thread(): {:?} (state={:?})", reason, self.state());
+        Err(Error::new(ErrorCode::NoSuchProcess, reason))
     }
 }

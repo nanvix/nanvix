@@ -5,40 +5,38 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    kcall::KcallArgs,
-    mm::VirtMemoryManager,
-    pm::{
-        self,
-        ProcessManager,
-    },
+use crate::pm::{
+    self,
+    ProcessManager,
 };
 use ::sys::{
     error::Error,
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
-use sys::pm::ProcessIdentifier;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-fn do_join_thread(
-    pm: &mut ProcessManager,
-    mm: &mut VirtMemoryManager,
-    pid: ProcessIdentifier,
-    tid: ThreadIdentifier,
-) -> Result<usize, Error> {
-    pm.join_thread(mm, pid, tid)
+fn do_join_thread(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<usize, Error> {
+    ProcessManager::join_thread(pid, tid)
 }
 
-pub fn join_thread(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
+pub fn join_thread(arg0: u32, arg1: u32) -> i32 {
     // Unpack kernel call arguments.
-    let tid: ThreadIdentifier = ThreadIdentifier::from(args.arg0 as usize);
-    let retval: *mut usize = args.arg1 as *mut usize;
+    let tid: ThreadIdentifier = ThreadIdentifier::from(arg0 as usize);
+    let retval: *mut usize = arg1 as *mut usize;
 
-    match do_join_thread(pm, mm, args.pid, tid) {
-        Ok(status) => match pm::copy_to_user::<usize>(args.pid, retval, &status) {
+    let pid: ProcessIdentifier = match ProcessManager::get_pid() {
+        Ok(pid) => pid,
+        Err(e) => return e.code.into_errno(),
+    };
+
+    match do_join_thread(pid, tid) {
+        Ok(status) => match pm::copy_to_user::<usize>(pid, retval, &status) {
             Ok(_) => 0,
             Err(e) => e.code.into_errno(),
         },
