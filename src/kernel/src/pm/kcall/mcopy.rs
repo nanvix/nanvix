@@ -35,6 +35,7 @@ use ::sys::{
 //==================================================================================================
 
 fn do_mcopy(
+    pm: &mut ProcessManager,
     mm: &mut VirtMemoryManager,
     src_pid: ProcessIdentifier,
     src_vaddr: PageAligned<VirtualAddress>,
@@ -45,7 +46,7 @@ fn do_mcopy(
     let kpage: KernelPage = mm.alloc_kpage(true)?;
 
     // Copy to kernel page.
-    ProcessManager::vmcopy_from_user(
+    pm.vmcopy_from_user(
         src_pid,
         kpage.base().into_virtual_address().into_inner(),
         src_vaddr.into_inner(),
@@ -63,7 +64,7 @@ fn do_mcopy(
     Ok(())
 }
 
-pub fn mcopy(mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
+pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
     // Check if the calling process has memory management capabilities.
     match ProcessManager::has_capability(args.pid, Capability::MemoryManagement) {
         Ok(true) => (),
@@ -89,7 +90,7 @@ pub fn mcopy(mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
             Err(e) => return e.code.into_errno(),
         };
 
-    match do_mcopy(mm, src_pid, src_vaddr, dst_pid, dst_vaddr) {
+    match do_mcopy(pm, mm, src_pid, src_vaddr, dst_pid, dst_vaddr) {
         Ok(_) => 0,
         Err(e) => e.code.into_errno(),
     }

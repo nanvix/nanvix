@@ -47,7 +47,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
             Ok(scoreboard) => match scoreboard.handle() {
                 Ok(args) => {
                     let ret: i32 = match KcallNumber::from(args.number) {
-                        KcallNumber::Debug => debug::debug(args),
+                        KcallNumber::Debug => debug::debug(pm, args),
                         KcallNumber::GetPid => {
                             // NOTE: this should be handled by the dispatcher.
                             // However we emit an invalid system call, just in case.
@@ -74,7 +74,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                         KcallNumber::MemoryMap => pm::mmap(pm, mm, args),
                         KcallNumber::MemoryUnmap => pm::munmap(pm, mm, args),
                         KcallNumber::MemoryCtrl => pm::mctrl(pm, mm, args),
-                        KcallNumber::MemoryCopy => pm::mcopy(mm, args),
+                        KcallNumber::MemoryCopy => pm::mcopy(pm, mm, args),
                         KcallNumber::Send => ipc::send(pm, args),
                         KcallNumber::AllocMmio => io::mmio_alloc(hal, pm, args),
                         KcallNumber::FreeMmio => io::mmio_free(pm, args),

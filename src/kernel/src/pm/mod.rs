@@ -46,12 +46,17 @@ pub use thread::InterruptReason;
 // Standalone Functions
 //==================================================================================================
 
-pub fn copy_from_user<T>(pid: ProcessIdentifier, dst: &mut T, src: *const T) -> Result<(), Error> {
+pub fn copy_from_user<T>(
+    pm: &mut ProcessManager,
+    pid: ProcessIdentifier,
+    dst: &mut T,
+    src: *const T,
+) -> Result<(), Error> {
     let dst: VirtualAddress = VirtualAddress::from_raw_value(dst as *mut T as usize);
     let src: VirtualAddress = VirtualAddress::from_raw_value(src as usize);
     let size: usize = core::mem::size_of::<T>();
 
-    ProcessManager::vmcopy_from_user(pid, dst, src, size)
+    pm.vmcopy_from_user(pid, dst, src, size)
 }
 
 pub fn copy_to_user<T>(pid: ProcessIdentifier, dst: *mut T, src: &T) -> Result<(), Error> {
