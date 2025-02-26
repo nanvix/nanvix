@@ -71,6 +71,12 @@ pub enum KcallNumber {
     WritePmio,
     /// Yields the processor.
     SchedulerYield,
+    /// Create a new thread.
+    CreateThread,
+    /// Terminates the calling thread.
+    ExitThread,
+    /// Joins with a terminated thread.
+    JoinThread,
     // Invalid.
     Invalid,
 }
@@ -111,6 +117,9 @@ impl From<usize> for KcallNumber {
             26 => KcallNumber::ReadPmio,
             27 => KcallNumber::WritePmio,
             28 => KcallNumber::SchedulerYield,
+            29 => KcallNumber::CreateThread,
+            30 => KcallNumber::ExitThread,
+            31 => KcallNumber::JoinThread,
             _ => KcallNumber::Invalid,
         }
     }

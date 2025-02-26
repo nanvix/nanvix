@@ -25,14 +25,14 @@ use ::type_safe::NonEmptyVecDeque;
 pub struct ZombieProcess {
     zombie_threads: NonEmptyVecDeque<ZombieThread>,
     process: Box<ProcessState>,
-    status: i32,
+    status: usize,
 }
 
 impl ZombieProcess {
     pub(super) fn new(
         process: Box<ProcessState>,
         zombie_threads: NonEmptyVecDeque<ZombieThread>,
-        status: i32,
+        status: usize,
     ) -> Self {
         Self {
             zombie_threads,
@@ -49,7 +49,7 @@ impl ZombieProcess {
         &mut self.process
     }
 
-    pub fn bury(self) -> (NonEmptyVecDeque<ZombieThread>, Box<ProcessState>, i32) {
+    pub fn bury(self) -> (NonEmptyVecDeque<ZombieThread>, Box<ProcessState>, usize) {
         (self.zombie_threads, self.process, self.status)
     }
 }
