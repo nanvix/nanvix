@@ -66,10 +66,13 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
-use ::core::cell::{
-    Ref,
-    RefCell,
-    RefMut,
+use ::core::{
+    cell::{
+        Ref,
+        RefCell,
+        RefMut,
+    },
+    hint::unlikely,
 };
 use ::sys::{
     arch::mem::PAGE_SIZE,
@@ -1516,18 +1519,36 @@ impl ProcessManager {
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
 /// Initializes the process manager.
+///
+/// # Parameters
+///
+/// - `interrupt_capable`: Indicates whether the process manager is interrupt capable.
+/// - `kernel`: Kernel process.
+/// - `root`: Root virtual memory.
+/// - `tm`: Thread manager.
+///
+/// # Returns
+///
+/// A handle to the process manager is returned.
 pub fn init(
     interrupt_capable: bool,
     kernel: ReadyThread,
     root: Vmem,
     tm: ThreadManager,
 ) -> ProcessManager {
-    // TODO: check for double initialization.
+    // Check if the process manager is already initialized.
+    if unlikely(unsafe { PROCESS_MANAGER.is_some() }) {
+        panic!("process manager was already initialized");
+    }
 
     let pm: Rc<RefCell<ProcessManagerInner>> =
         Rc::new(RefCell::new(ProcessManagerInner::new(interrupt_capable, kernel, root, tm)));
 
+    // SAFETY: This happens during kernel initialization and no other threads are running.
     unsafe { PROCESS_MANAGER = Some(ProcessManager(pm.clone())) };
 
     ProcessManager(pm)
