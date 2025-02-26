@@ -38,7 +38,13 @@ use ::alloc::{
     rc::Rc,
     vec::Vec,
 };
-use ::core::cell::RefCell;
+use ::core::{
+    cell::RefCell,
+    hint::{
+        cold_path,
+        unlikely,
+    },
+};
 use ::sys::{
     arch::mem,
     error::{
@@ -46,6 +52,13 @@ use ::sys::{
         ErrorCode,
     },
 };
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Memory manager.
+static mut MEMORY_MANAGER: Option<VirtMemoryManager> = None;
 
 //==================================================================================================
 // Structures
@@ -56,12 +69,93 @@ use ::sys::{
 ///
 /// Memory manager.
 ///
+#[derive(Clone)]
 pub struct VirtMemoryManager {
     /// Physical memory manager.
     physman: Rc<RefCell<PhysMemoryManager>>,
 }
 
 impl VirtMemoryManager {
+    ///
+    /// # Description
+    ///
+    /// Initializes the virtual memory manager.
+    ///
+    /// # Parameters
+    /// - `kernel_pages`: Kernel pages.
+    /// - `kernel_page_tables`: Kernel page tables.
+    /// - `physman`: Physical memory manager.
+    ///
+    pub fn init(
+        kernel_pages: LinkedList<KernelPage>,
+        kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+        physman: PhysMemoryManager,
+    ) -> Result<(Vmem, VirtMemoryManager), Error> {
+        // Check if the memory manager is already initialized.
+        if unlikely(unsafe { MEMORY_MANAGER.is_some() }) {
+            panic!("memory manager already initialized");
+        }
+
+        let (root, manager): (Vmem, VirtMemoryManager) =
+            VirtMemoryManager::new(kernel_pages, kernel_page_tables, physman)?;
+
+        // SAFETY: This happens during kernel initialization, no other threads are running.
+        unsafe {
+            MEMORY_MANAGER = Some(manager.clone());
+        }
+        Ok((root, manager))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets a reference to the memory manager.
+    ///
+    /// # Safety
+    ///
+    /// This function panics if the memory manager is not initialized.
+    ///
+    /// This function is unsafe because it operates on a global variable.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    ///
+    /// - Access to the memory manager is synchronized.
+    ///
+    #[allow(dead_code)] // TODO: remove this ling allowance when the function is used.
+    pub unsafe fn get<'a>() -> &'a VirtMemoryManager {
+        if let Some(ref em) = MEMORY_MANAGER {
+            em
+        } else {
+            cold_path();
+            panic!("the memory manager is not initialized");
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets a mutable reference to the memory manager.
+    ///
+    /// # Safety
+    ///
+    /// This function panics if the memory manager is not initialized.
+    ///
+    /// This function is unsafe because it operates on a global variable.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    ///
+    /// - Access to the memory manager is synchronized.
+    ///
+    #[allow(dead_code)] // TODO: remove this ling allowance when the function is used.
+    pub unsafe fn get_mut<'a>() -> &'a mut VirtMemoryManager {
+        if let Some(ref mut em) = MEMORY_MANAGER {
+            em
+        } else {
+            cold_path();
+            panic!("the memory manager is not initialized");
+        }
+    }
+
     ///
     /// # Description
     ///
@@ -72,7 +166,7 @@ impl VirtMemoryManager {
     /// - `kernel_page_tables`: Kernel page tables.
     /// - `physman`: Physical memory manager.
     ///
-    pub fn new(
+    fn new(
         kernel_pages: LinkedList<KernelPage>,
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
         physman: PhysMemoryManager,
