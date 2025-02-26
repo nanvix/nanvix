@@ -99,6 +99,23 @@ impl Condvar {
     ///
     /// # Description
     ///
+    /// Wakes up all threads waiting on the target condition variable.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    pub fn notify_all(&self) -> Result<(), Error> {
+        while let Some((pid, tid)) = self.sleeping.borrow_mut().pop_front() {
+            ProcessManager::wakeup(pid, tid)?;
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Waits on the condition variable.
     ///
     /// # Safety
