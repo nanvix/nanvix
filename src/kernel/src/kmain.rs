@@ -17,6 +17,8 @@
 #![feature(linked_list_retain)] // vmem uses this.
 #![feature(never_type)] // exit() uses this.
 #![feature(stmt_expr_attributes)] // stdio uses this.
+#![feature(likely_unlikely)] // performance hints.
+#![feature(cold_path)] // performance hints.
 #![no_std]
 #![no_main]
 
