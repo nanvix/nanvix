@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+mod r#unsafe;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -66,16 +68,10 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
-use ::core::{
-    cell::{
-        Ref,
-        RefCell,
-        RefMut,
-    },
-    hint::{
-        cold_path,
-        unlikely,
-    },
+use ::core::cell::{
+    Ref,
+    RefCell,
+    RefMut,
 };
 use ::sys::{
     arch::mem::PAGE_SIZE,
@@ -653,7 +649,30 @@ impl ProcessManagerInner {
         }
     }
 
-    pub fn exit_thread(
+    ///
+    /// # Description
+    ///
+    /// Exits the calling thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: Exit status.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function does not return. Otherwise, an error code is
+    /// returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables and it may panic.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub(super) unsafe fn exit_thread(
         &mut self,
         status: usize,
     ) -> (*mut ContextInformation, *mut ContextInformation) {
@@ -940,89 +959,34 @@ impl ProcessManagerInner {
 
 pub struct ProcessManager(Rc<RefCell<ProcessManagerInner>>);
 
-static mut PROCESS_MANAGER: Option<ProcessManager> = None;
-
 impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Initializes the process manager.
-    ///
-    /// # Parameters
-    ///
-    /// - `interrupt_capable`: Indicates whether the process manager is interrupt capable.
-    /// - `kernel`: Kernel process.
-    /// - `root`: Root virtual memory.
-    /// - `tm`: Thread manager.
+    /// Returns the ID of the calling process.
     ///
     /// # Returns
     ///
-    /// A handle to the process manager is returned.
-    pub fn init(
-        interrupt_capable: bool,
-        kernel: ReadyThread,
-        root: Vmem,
-        tm: ThreadManager,
-    ) -> ProcessManager {
-        // Check if the process manager is already initialized.
-        if unlikely(unsafe { PROCESS_MANAGER.is_some() }) {
-            panic!("process manager was already initialized");
-        }
-
-        let pm: Rc<RefCell<ProcessManagerInner>> =
-            Rc::new(RefCell::new(ProcessManagerInner::new(interrupt_capable, kernel, root, tm)));
-
-        // SAFETY: This happens during kernel initialization and no other threads are running.
-        unsafe { PROCESS_MANAGER = Some(ProcessManager(pm.clone())) };
-
-        ProcessManager(pm)
+    /// Upon successful completion, the ID of the calling process is returned. Otherwise, an error
+    /// code is returned instead.
+    ///
+    pub fn get_pid(&self) -> Result<ProcessIdentifier, Error> {
+        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
+        Ok(self.try_borrow()?.get_running().state().pid())
     }
 
     ///
     /// # Description
     ///
-    /// Gets a reference to the process manager.
+    /// Returns the ID of the calling thread.
     ///
-    /// # Safety
+    /// # Returns
     ///
-    /// This function panics if the process manager is not initialized.
+    /// Upon successful completion, the ID of the calling thread is returned. Otherwise, an error
+    /// code is returned instead.
     ///
-    /// This function is unsafe because it operates on a global variable.
-    ///
-    /// This function is safe to use if an only if the following conditions are met:
-    ///
-    /// - The process manager is initialized.
-    ///
-    unsafe fn get<'a>() -> &'a ProcessManager {
-        if let Some(ref pm) = PROCESS_MANAGER {
-            pm
-        } else {
-            cold_path();
-            panic!("process manager is not initialized");
-        }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Gets a mutable reference to the process manager.
-    ///
-    /// # Safety
-    ///
-    /// This function panics if the process manager is not initialized.
-    ///
-    /// This function is unsafe because it operates on a global variable.
-    ///
-    /// This function is safe to use if an only if the following conditions are met:
-    ///
-    /// - The process manager is initialized.
-    unsafe fn get_mut<'a>() -> &'a mut ProcessManager {
-        if let Some(ref mut pm) = PROCESS_MANAGER {
-            pm
-        } else {
-            cold_path();
-            panic!("process manager is not initialized");
-        }
+    pub fn get_tid(&self) -> Result<ThreadIdentifier, Error> {
+        Ok(self.try_borrow()?.get_running().get_tid())
     }
 
     /// Creates a new process.
@@ -1041,6 +1005,18 @@ impl ProcessManager {
         user_func: VirtualAddress,
     ) -> Result<ThreadIdentifier, Error> {
         self.try_borrow_mut()?.create_thread(mm, pid, user_func)
+    }
+
+    pub fn has_capability(
+        &self,
+        pid: ProcessIdentifier,
+        capability: Capability,
+    ) -> Result<bool, Error> {
+        Ok(self
+            .try_borrow()?
+            .find_process(pid)?
+            .state()
+            .has_capability(capability))
     }
 
     pub fn exec(
@@ -1105,122 +1081,6 @@ impl ProcessManager {
         self.try_borrow_mut()?.capctl(pid, capability, value)
     }
 
-    pub fn has_capability(pid: ProcessIdentifier, capability: Capability) -> Result<bool, Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        let pm: &ProcessManager = unsafe { Self::get() };
-        Ok(pm
-            .try_borrow()?
-            .find_process(pid)?
-            .state()
-            .has_capability(capability))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Exits the calling process.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this function does not return. Otherwise, an error code is
-    /// returned instead.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it may cause the calling process to exit.
-    ///
-    /// This function is safe to use if an only if the following conditions are met:
-    ///
-    /// - The calling process is not the kernel process.
-    ///
-    pub unsafe fn exit(status: i32) -> Result<!, Error> {
-        trace!("exit(): status={:?}", status);
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            unsafe { Self::get_mut() }.try_borrow_mut()?.exit(status);
-
-        ContextInformation::switch(from, to);
-        core::hint::unreachable_unchecked()
-    }
-
-    pub unsafe fn exit_thread(status: usize) -> Result<!, Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            unsafe { Self::get_mut() }
-                .try_borrow_mut()?
-                .exit_thread(status);
-
-        ContextInformation::switch(from, to);
-        core::hint::unreachable_unchecked()
-    }
-
-    pub fn join_thread(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<usize, SleepError> {
-        trace!("join_thread(): pid={:?}, tid={:?}", pid, tid);
-
-        loop {
-            // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-            let result: Result<ZombieThread, Result<Arc<Condvar>, Error>> =
-                unsafe { Self::get_mut() }
-                    .try_borrow_mut()
-                    .map_err(SleepError::Generic)?
-                    .try_join_thread(pid, tid);
-
-            match result {
-                Ok(zombie_thread) => {
-                    let status: usize = zombie_thread.status();
-
-                    // SAFETY: This is the only thread running, thus access to the virtual memory manager is synchronized.
-                    // Harvest zombie thread.
-                    if let Some(user_stack) = zombie_thread.harvest() {
-                        // Traverse pages belonging to user stack.
-                        let base: usize = user_stack.base().into_raw_value();
-                        let top: usize = user_stack.top().into_raw_value();
-                        // TODO: Use an iterator for this.
-                        for raw_addr in (base..top).step_by(PAGE_SIZE) {
-                            let vaddr: PageAligned<VirtualAddress> =
-                                match PageAligned::from_raw_value(raw_addr) {
-                                    Ok(vaddr) => vaddr,
-                                    Err(_) => {
-                                        // SAFETY: the following condition is unreachable, because
-                                        // pages in the user stack are always page-aligned.
-                                        unreachable!("address conversion should succeed")
-                                    },
-                                };
-                            // Attempt to unmap page
-                            // SAFETY: This is the only thread running, thus access to the memory manager and the process manager are synchronized.
-                            if let Err(error) = unsafe { VirtMemoryManager::get_mut() }.unmap_upage(
-                                unsafe { Self::get_mut() }
-                                    .try_borrow_mut()
-                                    .map_err(SleepError::Generic)?
-                                    .find_process_mut(pid)
-                                    .map_err(SleepError::Generic)?
-                                    .state_mut()
-                                    .vmem_mut(),
-                                vaddr,
-                            ) {
-                                // We failed, but this is not too bad, as we will free all pages
-                                // when wiping out the address space anyways.
-                                warn!(
-                                    "harvest_zombies(): failed to unmap page (vaddr={:?}, \
-                                     error={:?})",
-                                    vaddr, error
-                                );
-                            }
-                        }
-                    }
-
-                    break Ok(status);
-                },
-
-                Err(Ok(join_cond)) => {
-                    join_cond.wait()?;
-                },
-
-                Err(Err(error)) => break Err(SleepError::Generic(error)),
-            }
-        }
-    }
-
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
         self.try_borrow_mut()?.terminate(pid)
     }
@@ -1239,14 +1099,13 @@ impl ProcessManager {
     }
 
     pub fn vmcopy_to_user(
+        &mut self,
         pid: ProcessIdentifier,
         dst: VirtualAddress,
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        unsafe { Self::get_mut() }
-            .try_borrow_mut()?
+        self.try_borrow_mut()?
             .find_process_mut(pid)?
             .state_mut()
             .copy_to_user_unaligned(dst, src, size)
@@ -1373,141 +1232,6 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Returns the ID of the calling process.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the ID of the calling process is returned. Otherwise, an error
-    /// code is returned instead.
-    ///
-    pub fn get_pid() -> Result<ProcessIdentifier, Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        Ok(unsafe { Self::get() }
-            .try_borrow()?
-            .get_running()
-            .state()
-            .pid())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the ID of the calling thread.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the ID of the calling thread is returned. Otherwise, an error
-    /// code is returned instead.
-    ///
-    pub fn get_tid() -> Result<ThreadIdentifier, Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        Ok(unsafe { Self::get() }.try_borrow()?.get_running().get_tid())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Puts the calling thread to sleep.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it performs a context switch, causing the current thread to
-    /// block until it is woken up by another thread.
-    ///
-    /// This function is safe to use if and only if the following conditions are met:
-    ///
-    /// - The calling process is not the kernel process.
-    ///
-    pub unsafe fn sleep() -> Result<(), SleepError> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) = Self::get_mut()
-            .try_borrow_mut()
-            .map_err(SleepError::Generic)?
-            .sleep();
-
-        ContextInformation::switch(from, to);
-
-        let interrupt_reason: Option<InterruptReason> = Self::get_mut()
-            .try_borrow_mut()
-            .map_err(SleepError::Generic)?
-            .interrupt_reason();
-
-        if let Some(reason) = interrupt_reason {
-            error!("sleep(): interrupted (reason={:?})", reason);
-            return Err(SleepError::Interrupted(reason));
-        }
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Wakes up a thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: ID of the process to wake up.
-    /// - `tid`: ID of the thread to wake up.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///
-    pub fn wakeup(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        unsafe { Self::get_mut() }
-            .try_borrow_mut()?
-            .wakeup(pid, tid)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Switches the context of the calling thread with the next ready thread.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it performs a context switch, causing the current thread to
-    /// block until it is woken up by another thread.
-    ///
-    pub unsafe fn switch() -> Result<(), Error> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            { Self::get_mut().try_borrow_mut()?.schedule() };
-
-        ContextInformation::switch(from, to);
-
-        Ok(())
-    }
-
-    pub fn add_event(&mut self, ownership: EventOwnership) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .get_running_mut()
-            .state_mut()
-            .add_event(ownership);
-
-        Ok(())
-    }
-
-    pub fn remove_event(&mut self, ev: &Event) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .get_running_mut()
-            .state_mut()
-            .remove_event(ev);
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
     /// Sends a message to a process.
     ///
     /// # Parameters
@@ -1527,27 +1251,22 @@ impl ProcessManager {
         Ok(())
     }
 
-    ///
-    /// # Description
-    ///
-    /// Attempts to receive a message.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the message is returned. Otherwise, an error code is returned
-    /// instead.
-    ///
-    pub fn try_recv() -> Result<Option<Message>, Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        let mut pm: RefMut<ProcessManagerInner> = unsafe { Self::get_mut() }.try_borrow_mut()?;
-        let running: &mut RunningProcess = pm.get_running_mut();
-        match running.state_mut().receive_message() {
-            Some(message) => {
-                pm.number_buffered_messages -= 1;
-                Ok(Some(message))
-            },
-            None => Ok(None),
-        }
+    pub fn add_event(&mut self, ownership: EventOwnership) -> Result<(), Error> {
+        self.try_borrow_mut()?
+            .get_running_mut()
+            .state_mut()
+            .add_event(ownership);
+
+        Ok(())
+    }
+
+    pub fn remove_event(&mut self, ev: &Event) -> Result<(), Error> {
+        self.try_borrow_mut()?
+            .get_running_mut()
+            .state_mut()
+            .remove_event(ev);
+
+        Ok(())
     }
 
     ///
@@ -1587,7 +1306,3 @@ impl ProcessManager {
         }
     }
 }
-
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================

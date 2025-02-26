@@ -19,15 +19,51 @@ use ::sys::pm::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn join_thread(arg0: u32, arg1: u32) -> Result<usize, SleepError> {
+///
+/// # Description
+///
+/// Joins a thread.
+///
+/// # Parameters
+///
+/// - `pid`: Process identifier in which the thread is running.
+/// - `arg0`: Thread identifier of the thread to join.
+/// - `arg1`: Store location for the return value of the thread.
+///
+/// # Returns
+///
+/// Upon successful completion, the status of the thread is returned. Otherwise, an error code is
+/// returned instead.
+///
+/// # Safety
+///
+/// This function panics if the kernel process tries to sleep.
+///
+/// This function is unsafe because it blocks the calling thread until it is woken up by another
+/// thread.
+///
+/// This function is safe to use if and only if the following conditions are met:
+///
+/// - The calling process is not the kernel process.
+/// - This function is invoked without holding any resources.
+/// - The process manager is initialized.
+/// - Access to the process manager is synchronized.
+/// - The memory manager is initialized.
+/// - Access to the memory manager is synchronized.
+///
+pub unsafe fn join_thread(
+    pid: ProcessIdentifier,
+    arg0: u32,
+    arg1: u32,
+) -> Result<usize, SleepError> {
     // Unpack kernel call arguments.
     let tid: ThreadIdentifier = ThreadIdentifier::from(arg0 as usize);
     let retval: *mut usize = arg1 as *mut usize;
-    let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
 
     let status: usize = ProcessManager::join_thread(pid, tid)?;
 
-    pm::copy_to_user::<usize>(pid, retval, &status).map_err(SleepError::Generic)?;
+    pm::copy_to_user::<usize>(ProcessManager::get_mut(), pid, retval, &status)
+        .map_err(SleepError::Generic)?;
 
     Ok(0)
 }

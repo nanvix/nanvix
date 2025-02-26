@@ -27,11 +27,12 @@ use ::sys::{
 //==================================================================================================
 
 fn do_evctrl(
+    pm: &mut ProcessManager,
     pid: ProcessIdentifier,
     ev: Event,
     req: EventCtrlRequest,
 ) -> Result<Option<EventOwnership>, Error> {
-    EventManager::evctrl(pid, ev, req)
+    EventManager::evctrl(pm, pid, ev, req)
 }
 
 pub fn evctrl(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
@@ -47,7 +48,7 @@ pub fn evctrl(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
         Err(e) => return e.code.into_errno(),
     };
 
-    match do_evctrl(args.pid, ev, req) {
+    match do_evctrl(pm, args.pid, ev, req) {
         Ok(Some(ownership)) => match pm.add_event(ownership) {
             Ok(_) => 0,
             Err(e) => e.code.into_errno(),

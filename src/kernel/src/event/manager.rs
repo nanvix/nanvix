@@ -84,17 +84,28 @@ impl Drop for EventOwnership {
         match self.em.try_borrow_mut() {
             Ok(mut em) => match self.ev {
                 Event::Interrupt(ev) => {
-                    if let Err(e) = em.do_evctrl_interrupt(None, ev, EventCtrlRequest::Unregister) {
+                    // SAFETY: This is the only thread running, thus access to the memory manager is synchronized.
+                    let pm: &ProcessManager = unsafe { ProcessManager::get() };
+                    if let Err(e) =
+                        em.do_evctrl_interrupt(pm, None, ev, EventCtrlRequest::Unregister)
+                    {
                         error!("failed to unregister interrupt: {:?}", e);
                     }
                 },
                 Event::Exception(ev) => {
-                    if let Err(e) = em.do_evctrl_exception(None, ev, EventCtrlRequest::Unregister) {
+                    // SAFETY: This is the only thread running, thus access to the memory manager is synchronized.
+                    let pm: &ProcessManager = unsafe { ProcessManager::get() };
+                    if let Err(e) =
+                        em.do_evctrl_exception(pm, None, ev, EventCtrlRequest::Unregister)
+                    {
                         error!("failed to unregister exception: {:?}", e);
                     }
                 },
                 Event::Scheduling(ev) => {
-                    if let Err(e) = em.do_evctrl_scheduling(None, ev, EventCtrlRequest::Unregister)
+                    // SAFETY: This is the only thread running, thus access to the memory manager is synchronized.
+                    let pm: &ProcessManager = unsafe { ProcessManager::get() };
+                    if let Err(e) =
+                        em.do_evctrl_scheduling(pm, None, ev, EventCtrlRequest::Unregister)
                     {
                         error!("failed to unregister scheduling event: {:?}", e);
                     }
@@ -126,6 +137,7 @@ impl EventManagerInner {
 
     fn do_evctrl_interrupt(
         &mut self,
+        pm: &ProcessManager,
         pid: Option<ProcessIdentifier>,
         ev: InterruptEvent,
         req: EventCtrlRequest,
@@ -144,7 +156,7 @@ impl EventManagerInner {
                 // Check if PID is valid.
                 if let Some(pid) = pid {
                     // Ensure that the process has the required capabilities.
-                    if !ProcessManager::has_capability(pid, Capability::InterruptControl)? {
+                    if !pm.has_capability(pid, Capability::InterruptControl)? {
                         let reason: &str = "process does not have interrupt control capability";
                         error!("do_evctrl_interrupt(): reason={:?}", reason);
                         return Err(Error::new(ErrorCode::PermissionDenied, reason));
@@ -187,6 +199,7 @@ impl EventManagerInner {
 
     fn do_evctrl_exception(
         &mut self,
+        pm: &ProcessManager,
         pid: Option<ProcessIdentifier>,
         ev: ExceptionEvent,
         req: EventCtrlRequest,
@@ -199,7 +212,7 @@ impl EventManagerInner {
                 // Check if PID is valid.
                 if let Some(pid) = pid {
                     // Ensure that the process has the required capabilities.
-                    if !ProcessManager::has_capability(pid, Capability::ExceptionControl)? {
+                    if !pm.has_capability(pid, Capability::ExceptionControl)? {
                         let reason: &str = "process does not have exception control capability";
                         error!("do_evctrl_exception(): reason={:?}", reason);
                         return Err(Error::new(ErrorCode::PermissionDenied, reason));
@@ -242,6 +255,7 @@ impl EventManagerInner {
 
     fn do_evctrl_scheduling(
         &mut self,
+        pm: &ProcessManager,
         pid: Option<ProcessIdentifier>,
         ev: SchedulingEvent,
         req: EventCtrlRequest,
@@ -254,7 +268,7 @@ impl EventManagerInner {
                 // Check if PID is valid.
                 if let Some(pid) = pid {
                     // Ensure that the process has the required capabilities.
-                    if !ProcessManager::has_capability(pid, Capability::ProcessManagement)? {
+                    if !pm.has_capability(pid, Capability::ProcessManagement)? {
                         let reason: &str = "process does not have scheduling control capability";
                         error!("do_evctrl_scheduling(): reason={:?}", reason);
                         return Err(Error::new(ErrorCode::PermissionDenied, reason));
@@ -295,7 +309,32 @@ impl EventManagerInner {
         }
     }
 
-    pub fn try_wait(
+    ///
+    /// # Description
+    ///
+    /// Attempts to wait on an event.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the target process.
+    /// - `interrupts`: Bit mask of interrupts.
+    /// - `exceptions`: Bit mask of exceptions.
+    /// - `scheduling`: Bit mask of scheduling events.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the function returns the message that was delivered. Otherwise,
+    /// an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn try_wait(
         &mut self,
         pid: ProcessIdentifier,
         interrupts: usize,
@@ -379,15 +418,34 @@ impl EventManagerInner {
 
         // Check if any messages were delivered.
         match ProcessManager::try_recv() {
-            Ok(Some(message)) => return Ok(Some(message)),
-            Ok(None) => {},
-            Err(e) => return Err(e),
+            Ok(Some(message)) => Ok(Some(message)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
         }
-
-        Ok(None)
     }
 
-    fn resume_exception(&mut self, ev: ExceptionEvent) -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Resumes execution after an exception.
+    ///
+    /// # Parameters
+    ///
+    /// - `ev`: Exception event.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    unsafe fn resume_exception(&mut self, ev: ExceptionEvent) -> Result<(), Error> {
         let idx: usize = usize::from(ev);
 
         let is_pending_exception = |evdesc: &EventDescriptor, ev: &ExceptionEvent| -> bool {
@@ -423,7 +481,28 @@ impl EventManagerInner {
         Ok(())
     }
 
-    fn wakeup_interrupt(&mut self, interrupts: usize) -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Wakes up a process that is waiting on an interrupt.
+    ///
+    /// # Parameters
+    ///
+    /// - `interrupts`: Bit mask of interrupts.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    unsafe fn wakeup_interrupt(&mut self, interrupts: usize) -> Result<(), Error> {
         // Check if an spurious interrupt was received.
         if self.interrupt_capable {
             let reason: &str = "interrupt manager is not capable of handlin ginterrupts";
@@ -450,7 +529,33 @@ impl EventManagerInner {
         self.get_wait().notify_process(pid)
     }
 
-    fn wakeup_exception(
+    ///
+    /// # Description
+    ///
+    /// Wakes up a process that is waiting on an exception.
+    ///
+    /// # Parameters
+    ///
+    /// - `exceptions`: Bit mask of exceptions.
+    /// - `pid`: Identifier of the target process.
+    /// - `info`: Exception information.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, a condition variable is returned. Otherwise, an error is returned
+    /// instead.
+    ///
+    /// # Safety
+    ///
+    /// This function panics if the process manager is not initialized.
+    ///
+    /// This function is unsafe because it operates on a global variable.
+    ///
+    /// This function is safe to use if an only if the following conditions are met:
+    ///
+    /// - The process manager is initialized.
+    ///
+    unsafe fn wakeup_exception(
         &mut self,
         exceptions: usize,
         pid: ProcessIdentifier,
@@ -498,10 +603,37 @@ impl EventManagerInner {
     ) -> Result<(), Error> {
         pm.post_message(pid, message)?;
 
-        self.get_wait().notify_process(pid)
+        // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
+        unsafe { self.get_wait().notify_process(pid) }
     }
 
-    fn notify_process_termination(&mut self, info: ProcessTerminationInfo) -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Notifies the process manager that a process has terminated.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: Information about the process termination.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function panics if the process manager is not initialized.
+    ///
+    /// This function is unsafe because it operates on a global variable.
+    ///
+    /// This function is safe to use if an only if the following conditions are met:
+    ///
+    /// - The process manager is initialized.
+    ///
+    unsafe fn notify_process_termination(
+        &mut self,
+        info: ProcessTerminationInfo,
+    ) -> Result<(), Error> {
         self.nevents += 1;
         let ev: Event = Event::from(SchedulingEvent::ProcessTermination);
         let eventid: EventDescriptor = EventDescriptor::new(self.nevents, ev);
@@ -538,7 +670,28 @@ impl EventManagerInner {
 pub struct EventManager(RefCell<EventManagerInner>);
 
 impl EventManager {
-    pub fn resume(evdesc: EventDescriptor) -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Resumes an execution after an event.
+    ///
+    /// # Parameters
+    ///
+    /// - `evdesc`: Event descriptor.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn resume(evdesc: EventDescriptor) -> Result<(), Error> {
         trace!("do_resume(): evdesc={:?}", evdesc);
         match evdesc.event() {
             Event::Interrupt(_ev) => {
@@ -553,7 +706,24 @@ impl EventManager {
         }
     }
 
-    pub fn wait(pid: ProcessIdentifier) -> Result<Message, SleepError> {
+    ///
+    /// # Description
+    ///
+    /// Waits for an event to be delivered.
+    ///
+    /// # Safety
+    ///
+    /// This function panics if the kernel process tries to sleep.
+    ///
+    /// This function is unsafe because it blocks the calling thread until it is woken up by another
+    /// thread.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    /// - This function is invoked without holding any resources.
+    ///
+    pub unsafe fn wait(pid: ProcessIdentifier) -> Result<Message, SleepError> {
         trace!("do_wait()");
 
         // Get the interrupts that the process owns.
@@ -628,6 +798,7 @@ impl EventManager {
     }
 
     pub fn evctrl(
+        pm: &mut ProcessManager,
         pid: ProcessIdentifier,
         ev: Event,
         req: EventCtrlRequest,
@@ -645,15 +816,15 @@ impl EventManager {
                     return Err(Error::new(ErrorCode::OperationNotSupported, reason));
                 }
                 em.try_borrow_mut()?
-                    .do_evctrl_interrupt(Some(pid), interrupt_event, req)?;
+                    .do_evctrl_interrupt(pm, Some(pid), interrupt_event, req)?;
             },
             Event::Exception(exception_event) => {
                 em.try_borrow_mut()?
-                    .do_evctrl_exception(Some(pid), exception_event, req)?;
+                    .do_evctrl_exception(pm, Some(pid), exception_event, req)?;
             },
             Event::Scheduling(scheduling_event) => {
                 em.try_borrow_mut()?
-                    .do_evctrl_scheduling(Some(pid), scheduling_event, req)?;
+                    .do_evctrl_scheduling(pm, Some(pid), scheduling_event, req)?;
             },
         }
 
@@ -673,7 +844,31 @@ impl EventManager {
             .post_message(pm, pid, message)
     }
 
-    pub fn notify_process_termination(info: ProcessTerminationInfo) -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Notifies the event manager that a process has terminated.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: Information about the process termination.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    ///
+    /// # Safety
+    ///
+    /// This function panics if the process manager is not initialized.
+    ///
+    /// This function is unsafe because it operates on a global variable.
+    ///
+    /// This function is safe to use if an only if the following conditions are met:
+    ///
+    /// - The process manager is initialized.
+    ///
+    pub unsafe fn notify_process_termination(info: ProcessTerminationInfo) -> Result<(), Error> {
         Self::get_mut()?
             .try_borrow_mut()?
             .notify_process_termination(info)
@@ -725,7 +920,8 @@ fn interrupt_handler(intnum: InterruptNumber) {
     trace!("interrupt_handler(): intnum={:?}", intnum);
     match EventManager::get_mut() {
         Ok(em) => match em.try_borrow_mut() {
-            Ok(mut em) => match em.wakeup_interrupt(1 << intnum as usize) {
+            // SAFETY: the calling process does not hold a mutable reference to the inner state of the process manager.
+            Ok(mut em) => match unsafe { em.wakeup_interrupt(1 << intnum as usize) } {
                 Ok(()) => {},
                 Err(e) => {
                     error!("failed to wake up event manager: {:?}", e);
@@ -747,7 +943,10 @@ fn do_exception_handler(
 ) -> Result<(), SleepError> {
     trace!("exception_handler(): info={:?}", info);
 
-    let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
+    // SAFETY: This is the only thread running, thus access to the memory manager is synchronized.
+    let pid: ProcessIdentifier = unsafe { ProcessManager::get() }
+        .get_pid()
+        .map_err(SleepError::Generic)?;
 
     // Check if exception was triggered by the kernel.
     if pid == ProcessIdentifier::KERNEL {
@@ -756,14 +955,18 @@ fn do_exception_handler(
         panic!("the kernel triggered an exception");
     }
 
-    let resume: Rc<Condvar> = EventManager::get()
-        .map_err(SleepError::Generic)?
-        .try_borrow_mut()
-        .map_err(SleepError::Generic)?
-        .wakeup_exception(1 << info.num() as usize, pid, info)
-        .map_err(SleepError::Generic)?;
+    // SAFETY: the calling process does hold a mutable reference to the inner state of the process manager.
+    let resume: Rc<Condvar> = unsafe {
+        EventManager::get()
+            .map_err(SleepError::Generic)?
+            .try_borrow_mut()
+            .map_err(SleepError::Generic)?
+            .wakeup_exception(1 << info.num() as usize, pid, info)
+            .map_err(SleepError::Generic)?
+    };
 
-    resume.wait()
+    // SAFETY: The calling thread is not the kernel and no resources are held.
+    unsafe { resume.wait() }
 }
 
 fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {

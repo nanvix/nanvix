@@ -92,7 +92,8 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                             ErrorCode::InvalidSysCall.into_errno()
                         },
                     };
-                    if let Err(e) = scoreboard.handled(ret) {
+                    // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
+                    if let Err(e) = unsafe { scoreboard.handled(ret) } {
                         warn!("failed to signal kernel call handled: {:?}", e)
                     }
                 },
@@ -150,10 +151,13 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                     // It was, so we should shutdown.
                     break;
                 }
-                match EventManager::notify_process_termination(ProcessTerminationInfo::new(
-                    pid,
-                    status as i32,
-                )) {
+                // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
+                match unsafe {
+                    EventManager::notify_process_termination(ProcessTerminationInfo::new(
+                        pid,
+                        status as i32,
+                    ))
+                } {
                     Ok(()) => {},
                     Err(e) => {
                         error!("failed to notify process termination: {:?}", e);

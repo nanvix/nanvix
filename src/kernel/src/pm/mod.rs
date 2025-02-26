@@ -59,12 +59,17 @@ pub fn copy_from_user<T>(
     pm.vmcopy_from_user(pid, dst, src, size)
 }
 
-pub fn copy_to_user<T>(pid: ProcessIdentifier, dst: *mut T, src: &T) -> Result<(), Error> {
+pub fn copy_to_user<T>(
+    pm: &mut ProcessManager,
+    pid: ProcessIdentifier,
+    dst: *mut T,
+    src: &T,
+) -> Result<(), Error> {
     let dst: VirtualAddress = VirtualAddress::from_raw_value(dst as usize);
     let src: VirtualAddress = VirtualAddress::from_raw_value(src as *const T as usize);
     let size: usize = core::mem::size_of::<T>();
 
-    ProcessManager::vmcopy_to_user(pid, dst, src, size)
+    pm.vmcopy_to_user(pid, dst, src, size)
 }
 
 pub unsafe fn timer_handler(_intnum: InterruptNumber) {

@@ -62,7 +62,15 @@ impl Condvar {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn notify_first(&self) -> Result<(), Error> {
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn notify_first(&self) -> Result<(), Error> {
         if let Some((pid, tid)) = self.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(pid, tid)?;
         }
@@ -83,7 +91,15 @@ impl Condvar {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn notify_process(&self, pid: ProcessIdentifier) -> Result<(), Error> {
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn notify_process(&self, pid: ProcessIdentifier) -> Result<(), Error> {
         // Find process.
         let idx: Option<usize> = self.sleeping.borrow().iter().position(|&(p, _)| p == pid);
 
@@ -105,7 +121,15 @@ impl Condvar {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn notify_all(&self) -> Result<(), Error> {
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn notify_all(&self) -> Result<(), Error> {
         while let Some((pid, tid)) = self.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(pid, tid)?;
         }
@@ -122,20 +146,31 @@ impl Condvar {
     ///
     /// This function panics if the kernel process tries to sleep.
     ///
-    pub fn wait(&self) -> Result<(), SleepError> {
-        let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
+    /// This function is unsafe because it blocks the calling thread until it is woken up by another
+    /// thread.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    /// - This function is invoked without holding any resources.
+    ///
+    pub unsafe fn wait(&self) -> Result<(), SleepError> {
+        let pid: ProcessIdentifier = unsafe { ProcessManager::get() }
+            .get_pid()
+            .map_err(SleepError::Generic)?;
 
         // Check if the kernel process is trying to sleep.
         if pid == ProcessIdentifier::KERNEL {
             panic!("kernel process cannot sleep");
         }
 
-        let tid: ThreadIdentifier = ProcessManager::get_tid().map_err(SleepError::Generic)?;
+        let tid: ThreadIdentifier = unsafe { ProcessManager::get() }
+            .get_tid()
+            .map_err(SleepError::Generic)?;
 
         self.sleeping.borrow_mut().push_back((pid, tid));
 
-        // SAFETY: the calling process is not the kernel.
-        unsafe { ProcessManager::sleep() }
+        ProcessManager::sleep()
     }
 }
 
