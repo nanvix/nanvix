@@ -690,7 +690,7 @@ impl EventManager {
         }
     }
 
-    fn get() -> Result<&'static EventManager, Error> {
+    fn get<'a>() -> Result<&'a EventManager, Error> {
         unsafe {
             match MANAGER {
                 Some(ref em) => Ok(em),
@@ -703,7 +703,7 @@ impl EventManager {
         }
     }
 
-    fn get_mut() -> Result<&'static mut EventManager, Error> {
+    fn get_mut<'a>() -> Result<&'a mut EventManager, Error> {
         unsafe {
             match MANAGER {
                 Some(ref mut em) => Ok(em),
