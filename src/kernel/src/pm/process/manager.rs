@@ -940,6 +940,41 @@ pub struct ProcessManager(Rc<RefCell<ProcessManagerInner>>);
 static mut PROCESS_MANAGER: Option<ProcessManager> = None;
 
 impl ProcessManager {
+    ///
+    /// # Description
+    ///
+    /// Initializes the process manager.
+    ///
+    /// # Parameters
+    ///
+    /// - `interrupt_capable`: Indicates whether the process manager is interrupt capable.
+    /// - `kernel`: Kernel process.
+    /// - `root`: Root virtual memory.
+    /// - `tm`: Thread manager.
+    ///
+    /// # Returns
+    ///
+    /// A handle to the process manager is returned.
+    pub fn init(
+        interrupt_capable: bool,
+        kernel: ReadyThread,
+        root: Vmem,
+        tm: ThreadManager,
+    ) -> ProcessManager {
+        // Check if the process manager is already initialized.
+        if unlikely(unsafe { PROCESS_MANAGER.is_some() }) {
+            panic!("process manager was already initialized");
+        }
+
+        let pm: Rc<RefCell<ProcessManagerInner>> =
+            Rc::new(RefCell::new(ProcessManagerInner::new(interrupt_capable, kernel, root, tm)));
+
+        // SAFETY: This happens during kernel initialization and no other threads are running.
+        unsafe { PROCESS_MANAGER = Some(ProcessManager(pm.clone())) };
+
+        ProcessManager(pm)
+    }
+
     /// Creates a new process.
     pub fn create_process(
         &mut self,
@@ -1518,38 +1553,3 @@ impl ProcessManager {
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Initializes the process manager.
-///
-/// # Parameters
-///
-/// - `interrupt_capable`: Indicates whether the process manager is interrupt capable.
-/// - `kernel`: Kernel process.
-/// - `root`: Root virtual memory.
-/// - `tm`: Thread manager.
-///
-/// # Returns
-///
-/// A handle to the process manager is returned.
-pub fn init(
-    interrupt_capable: bool,
-    kernel: ReadyThread,
-    root: Vmem,
-    tm: ThreadManager,
-) -> ProcessManager {
-    // Check if the process manager is already initialized.
-    if unlikely(unsafe { PROCESS_MANAGER.is_some() }) {
-        panic!("process manager was already initialized");
-    }
-
-    let pm: Rc<RefCell<ProcessManagerInner>> =
-        Rc::new(RefCell::new(ProcessManagerInner::new(interrupt_capable, kernel, root, tm)));
-
-    // SAFETY: This happens during kernel initialization and no other threads are running.
-    unsafe { PROCESS_MANAGER = Some(ProcessManager(pm.clone())) };
-
-    ProcessManager(pm)
-}
