@@ -37,7 +37,7 @@ fn do_mmio_free(
     trace!("do_mmio_free(): pid={:?}, addr={:?}", pid, addr.into_inner());
 
     // Check if process does not have I/O management capabilities.
-    if !ProcessManager::has_capability(pid, Capability::IoManagement)? {
+    if !pm.has_capability(pid, Capability::IoManagement)? {
         let reason: &'static str = "process does not have I/O management capabilities";
         error!("do_mmio_free(): {}", reason);
         return Err(Error::new(ErrorCode::PermissionDenied, reason));

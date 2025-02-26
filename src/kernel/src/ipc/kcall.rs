@@ -85,19 +85,12 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
     }
 }
 
-fn do_recv(pid: ProcessIdentifier) -> Result<Message, SleepError> {
+pub unsafe fn recv(pid: ProcessIdentifier, msg: usize) -> Result<(), SleepError> {
     trace!("do_recv(): pid={:?}", pid);
-
-    // Wait message.
-    EventManager::wait(pid)
-}
-
-pub fn recv(msg: usize) -> Result<(), SleepError> {
-    let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
-
-    match do_recv(pid) {
+    match EventManager::wait(pid) {
         Ok(message) => {
-            pm::copy_to_user(pid, msg as *mut Message, &message).map_err(SleepError::Generic)
+            pm::copy_to_user(ProcessManager::get_mut(), pid, msg as *mut Message, &message)
+                .map_err(SleepError::Generic)
         },
         Err(sleep_error) => Err(sleep_error),
     }

@@ -106,7 +106,15 @@ impl RunningThread {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn wakeup_join_cond(&self) -> Result<(), Error> {
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn wakeup_join_cond(&self) -> Result<(), Error> {
         // NOTE: we must wake up all, otherwise some threads can be left waiting forever.
         self.0.join_cond.notify_all()
     }

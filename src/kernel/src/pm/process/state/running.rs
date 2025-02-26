@@ -212,8 +212,34 @@ impl RunningProcess {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Exits the calling thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: Exit status.
+    ///
+    /// # Returns
+    ///
+    /// If the process becomes a runnable process, a tuple containing the runnable process and the
+    /// context information of the running thread is returned. If the process becomes a sleeping
+    /// process, a tuple containing the sleeping process and the context information of the running
+    /// thread is returned. If the process becomes a zombie process, a tuple containing the zombie
+    /// process and the context information of the running thread is returned.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables and it may panic.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    /// - The calling process does not hold a reference to the process manager.
+    ///
     #[allow(clippy::type_complexity)]
-    pub fn exit_thread(
+    pub unsafe fn exit_thread(
         mut self,
         status: usize,
     ) -> Result<

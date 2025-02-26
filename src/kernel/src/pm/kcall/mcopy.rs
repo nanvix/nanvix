@@ -54,7 +54,7 @@ fn do_mcopy(
     )?;
 
     // Copy from kernel page.
-    ProcessManager::vmcopy_to_user(
+    pm.vmcopy_to_user(
         dst_pid,
         dst_vaddr.into_inner(),
         kpage.base().into_virtual_address().into_inner(),
@@ -66,7 +66,7 @@ fn do_mcopy(
 
 pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
     // Check if the calling process has memory management capabilities.
-    match ProcessManager::has_capability(args.pid, Capability::MemoryManagement) {
+    match pm.has_capability(args.pid, Capability::MemoryManagement) {
         Ok(true) => (),
         Ok(false) => {
             let reason: &str = "process does not have memory management capabilities";
