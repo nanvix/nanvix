@@ -142,7 +142,7 @@ pub struct ProcessState {
     /// I/O ports.
     pmio: LinkedList<AnyIoPort>,
     /// User stack allocator.
-    _user_stack_allocator: Option<UserStackAllocator>,
+    user_stack_allocator: Option<UserStackAllocator>,
 }
 
 impl ProcessState {
@@ -161,7 +161,7 @@ impl ProcessState {
             mailbox: Mailbox::default(),
             mmio: LinkedList::new(),
             pmio: LinkedList::new(),
-            _user_stack_allocator: user_stack_allocator,
+            user_stack_allocator,
         }
     }
 
@@ -320,6 +320,10 @@ impl ProcessState {
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
+    }
+
+    pub fn get_user_stack_allocator_mut(&mut self) -> Option<&mut UserStackAllocator> {
+        self.user_stack_allocator.as_mut()
     }
 }
 

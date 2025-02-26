@@ -14,7 +14,10 @@ use ::core::{
     fmt::Debug,
     pin::Pin,
 };
-use ::sys::pm::ThreadIdentifier;
+use ::sys::{
+    error::ErrorCode,
+    pm::ThreadIdentifier,
+};
 
 //==================================================================================================
 // Thread
@@ -78,9 +81,15 @@ impl RunningThread {
         self.0.id
     }
 
-    pub fn exit(mut self) -> (ZombieThread, *mut ContextInformation) {
+    pub fn exit(mut self, status: usize) -> (ZombieThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.0.context_mut();
-        (ZombieThread(self.0), ctx)
+        (
+            ZombieThread {
+                state: self.0,
+                status,
+            },
+            ctx,
+        )
     }
 }
 
@@ -99,13 +108,20 @@ impl ReadyThread {
         Self(Thread::new(id, user_stack, context))
     }
 
+    pub fn tid(&self) -> ThreadIdentifier {
+        self.0.id
+    }
+
     pub fn resume(mut self) -> (RunningThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.0.context_mut();
         (RunningThread(self.0), ctx)
     }
 
     pub fn terminate(self) -> ZombieThread {
-        ZombieThread(self.0)
+        ZombieThread {
+            state: self.0,
+            status: ErrorCode::Interrupted.into_errno() as usize,
+        }
     }
 }
 
@@ -147,6 +163,10 @@ pub struct InterruptedThread {
 }
 
 impl InterruptedThread {
+    pub fn tid(&self) -> ThreadIdentifier {
+        self.thread.id
+    }
+
     pub fn resume(mut self) -> (RunningThread, InterruptReason, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.thread.context_mut();
         (RunningThread(self.thread), self.reason, ctx)
@@ -158,11 +178,22 @@ impl InterruptedThread {
 //==================================================================================================
 
 #[allow(unused)]
-pub struct ZombieThread(Thread);
+pub struct ZombieThread {
+    status: usize,
+    state: Thread,
+}
 
 impl ZombieThread {
+    pub fn tid(&self) -> ThreadIdentifier {
+        self.state.id
+    }
+
     pub fn harvest(mut self) -> Option<UserStack> {
-        self.0.user_stack.take()
+        self.state.user_stack.take()
+    }
+
+    pub fn status(&self) -> usize {
+        self.status
     }
 }
 

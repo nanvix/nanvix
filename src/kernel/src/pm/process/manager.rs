@@ -241,6 +241,139 @@ impl ProcessManagerInner {
     ///
     /// # Description
     ///
+    /// Creates a new thread in the running process.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Memory manager to use.
+    /// - `pid`: Process identifier.
+    /// - `user_func`: User function to execute.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the thread identifier of the new thread is returned.
+    /// Otherwise, an error is returned instead.
+    ///
+    fn create_thread(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        pid: ProcessIdentifier,
+        user_func: VirtualAddress,
+    ) -> Result<ThreadIdentifier, Error> {
+        trace!("create_thread(): pid={:?}, user_func={:?}", pid, user_func);
+
+        let ready_thread: ReadyThread = {
+            let enable_interrupts: bool = self.interrupt_capable;
+
+            // Find corresponding process.
+            let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+
+            // Ensure that the process is in a valid state.
+            if let ProcessRefMut::Running(_) = process {
+                // TODO: Re-evaluate this condition when we support multicore.
+                let reason: &str = "process is running";
+                error!("create_thread(): {}", reason);
+                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            }
+            if let ProcessRefMut::Interrupted(_) = process {
+                let reason: &str = "process is interrupted";
+                error!("create_thread(): {}", reason);
+                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            }
+            if let ProcessRefMut::Zombie(_) = process {
+                let reason: &str = "process is a zombie";
+                error!("create_thread(): {}", reason);
+                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            }
+            // TODO: include runnable process with interrupted threads.
+
+            // Allocate a new user stack.
+            let user_stack: UserStack = match process.state_mut().get_user_stack_allocator_mut() {
+                Some(user_stack_allocator) => user_stack_allocator.alloc()?,
+                None => {
+                    // The user stack allocator is not available.
+                    panic!(
+                        "create_thread(): user stack allocator not found, is this the kernel \
+                         process?"
+                    );
+                },
+            };
+
+            // Create a kernel context.
+            let context: ContextInformation = Self::forge_user_context(
+                mm,
+                process.state_mut().vmem_mut(),
+                &user_stack,
+                user_func,
+                enable_interrupts,
+            )?;
+
+            //==============================================================
+            // NOTE: if we fail beyond this point we need to page mappings.
+            //==============================================================
+
+            // Create a new thread.
+            self.tm.create_thread(Some(user_stack), context)
+        };
+
+        Ok(self.try_add_thread(pid, ready_thread))
+    }
+
+    fn try_add_thread(
+        &mut self,
+        pid: ProcessIdentifier,
+        ready_thread: ReadyThread,
+    ) -> ThreadIdentifier {
+        let tid: ThreadIdentifier = ready_thread.tid();
+
+        // Search process in the list of sleeping processes.
+        let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
+        while let Some(process) = self.suspended.pop_front() {
+            // Found.
+            if process.state().pid() == pid {
+                let ready_process: RunnableProcess = process.add_thread(ready_thread);
+                // Rollback list to its original state.
+                while let Some(process) = suspended.pop_front() {
+                    self.suspended.push_back(process);
+                }
+                // Push process to the list of ready processes.
+                self.ready.push_back(ready_process);
+                return tid;
+            }
+            suspended.push_back(process);
+        }
+        // Process is not in the list of sleeping processes, rollback list to its original state.
+        while let Some(process) = suspended.pop_front() {
+            self.suspended.push_back(process);
+        }
+
+        // Search process in the list of ready processes.
+        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
+        while let Some(process) = self.ready.pop_front() {
+            // Found.
+            if process.state().pid() == pid {
+                let ready_process: RunnableProcess = process.add_thread(ready_thread);
+                // Rollback list to its original state.
+                while let Some(process) = ready.pop_front() {
+                    self.ready.push_back(process);
+                }
+                // Push process to the list of ready processes.
+                self.ready.push_back(ready_process);
+                return tid;
+            }
+            ready.push_back(process);
+        }
+        // Process is not in the list of ready processes, rollback list to its original state.
+        while let Some(process) = ready.pop_front() {
+            self.ready.push_back(process);
+        }
+
+        unreachable!("process must be either sleeping or runnable")
+    }
+
+    ///
+    /// # Description
+    ///
     /// Creates a new process.
     ///
     /// # Parameters
@@ -303,7 +436,7 @@ impl ProcessManagerInner {
         self.ready.push_back(previous_process);
 
         // Select next ready process to run.
-        if let Some(next_process) = self.interrupted.pop_back() {
+        if let Some(next_process) = self.interrupted.pop_front() {
             let (next_process, reason, next_context): (
                 RunningProcess,
                 InterruptReason,
@@ -398,18 +531,32 @@ impl ProcessManagerInner {
     ///
     /// # Parameters
     ///
+    /// - `pid`: ID of the process to wake up.
     /// - `tid`: ID of the thread to wake up.
     ///
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
-        let runnable_process: RunnableProcess = match self.try_wakeup(tid) {
+    pub fn wakeup(&mut self, pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
+        if self.get_running().state().pid() == pid {
+            let running_process: RunningProcess = self.take_running();
+            match running_process.wakeup(tid) {
+                Ok(running_process) => {
+                    self.running = Some(running_process);
+                    return Ok(());
+                },
+                Err(running_process) => {
+                    self.running = Some(running_process);
+                },
+            }
+        }
+
+        let runnable_process: RunnableProcess = match self.try_wakeup(pid, tid) {
             Some(runnable_process) => runnable_process,
             None => {
                 let reason: &str = "thread not found";
-                error!("wake_up(): {}", reason);
+                error!("wake_up(): {} (pid={:?}. tid={:?})", reason, pid, tid);
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             },
         };
@@ -419,17 +566,25 @@ impl ProcessManagerInner {
         Ok(())
     }
 
-    fn try_wakeup(&mut self, tid: ThreadIdentifier) -> Option<RunnableProcess> {
+    fn try_wakeup(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Option<RunnableProcess> {
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
         while let Some(process) = self.suspended.pop_front() {
-            match process.wakeup(tid) {
-                Ok(runnable_process) => {
-                    while let Some(process) = suspended.pop_front() {
-                        self.suspended.push_back(process);
-                    }
-                    return Some(runnable_process);
-                },
-                Err(suspended_process) => suspended.push_back(suspended_process),
+            if process.state().pid() == pid {
+                match process.wakeup(tid) {
+                    Ok(runnable_process) => {
+                        while let Some(process) = suspended.pop_front() {
+                            self.suspended.push_back(process);
+                        }
+                        return Some(runnable_process);
+                    },
+                    Err(suspended_process) => suspended.push_back(suspended_process),
+                }
+            } else {
+                suspended.push_back(process)
             }
         }
         while let Some(process) = suspended.pop_front() {
@@ -438,14 +593,18 @@ impl ProcessManagerInner {
 
         let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
         while let Some(process) = self.ready.pop_front() {
-            match process.wakeup(tid) {
-                Ok(runnable_process) => {
-                    while let Some(process) = ready.pop_front() {
-                        self.ready.push_back(process);
-                    }
-                    return Some(runnable_process);
-                },
-                Err(ready_process) => ready.push_back(ready_process),
+            if process.state().pid() == pid {
+                match process.wakeup(tid) {
+                    Ok(runnable_process) => {
+                        while let Some(process) = ready.pop_front() {
+                            self.ready.push_back(process);
+                        }
+                        return Some(runnable_process);
+                    },
+                    Err(ready_process) => ready.push_back(ready_process),
+                }
+            } else {
+                ready.push_back(process)
             }
         }
         while let Some(process) = ready.pop_front() {
@@ -471,6 +630,54 @@ impl ProcessManagerInner {
                 (previous_context, next_context)
             },
             Err((zombie_process, previous_context)) => {
+                self.zombies.push_back(zombie_process);
+
+                match self.ready.pop_front() {
+                    Some(runnable_process) => {
+                        let (running_process, reason, next_context) = runnable_process.run();
+                        self.interrupt_reason = reason;
+                        self.running = Some(running_process);
+                        (previous_context, next_context)
+                    },
+                    None => unreachable!("the kernel process is always ready to run"),
+                }
+            },
+        }
+    }
+
+    pub fn exit_thread(
+        &mut self,
+        status: usize,
+    ) -> (*mut ContextInformation, *mut ContextInformation) {
+        trace!("exit_thread(): status={:#x?}", status);
+        let running_process: RunningProcess = self.take_running();
+
+        // Check if kernel is trying to exit.
+        if running_process.state().pid() == ProcessIdentifier::KERNEL {
+            panic!("kernel process cannot exit");
+        }
+
+        match running_process.exit_thread(status) {
+            Ok((runnable_process, previous_context)) => {
+                let (running_process, reason, next_context) = runnable_process.run();
+                self.interrupt_reason = reason;
+                self.running = Some(running_process);
+                (previous_context, next_context)
+            },
+            Err(Ok((sleeping_process, previous_context))) => {
+                self.suspended.push_back(sleeping_process);
+
+                match self.ready.pop_front() {
+                    Some(runnable_process) => {
+                        let (running_process, reason, next_context) = runnable_process.run();
+                        self.interrupt_reason = reason;
+                        self.running = Some(running_process);
+                        (previous_context, next_context)
+                    },
+                    None => unreachable!("the kernel process is always ready to run"),
+                }
+            },
+            Err(Err((zombie_process, previous_context))) => {
                 self.zombies.push_back(zombie_process);
 
                 match self.ready.pop_front() {
@@ -581,12 +788,12 @@ impl ProcessManagerInner {
     pub fn harvest_zombies(
         &mut self,
         mm: &mut VirtMemoryManager,
-    ) -> Option<(ProcessIdentifier, i32)> {
+    ) -> Option<(ProcessIdentifier, usize)> {
         if let Some(zombie) = self.zombies.pop_front() {
             let (zombie_threads, mut state, status): (
                 NonEmptyVecDeque<ZombieThread>,
                 Box<ProcessState>,
-                i32,
+                usize,
             ) = zombie.bury();
             let (mut more_zombie_threads, zombie_thread): (VecDeque<ZombieThread>, ZombieThread) =
                 zombie_threads.pop_front();
@@ -627,6 +834,68 @@ impl ProcessManagerInner {
         } else {
             None
         }
+    }
+
+    pub fn join_thread(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<usize, Error> {
+        let zombie_thread: ZombieThread = match self.find_process_mut(pid)? {
+            ProcessRefMut::Running(_) => {
+                let reason: &str = "process is running";
+                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            },
+            ProcessRefMut::Runnable(process) => process.join_thread(tid),
+            ProcessRefMut::Sleeping(process) => process.join_thread(tid),
+            ProcessRefMut::Interrupted(_) => {
+                let reason: &str = "process is interrupted";
+                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            },
+            ProcessRefMut::Zombie(_) => {
+                let reason: &str = "process is a zombie";
+                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            },
+        }?;
+
+        let status: usize = zombie_thread.status();
+        debug!("join_thread(): status={:#x?}", status);
+
+        // Harvest zombie thread.
+        if let Some(user_stack) = zombie_thread.harvest() {
+            // Traverse pages belonging to user stack.
+            let base: usize = user_stack.base().into_raw_value();
+            let top: usize = user_stack.top().into_raw_value();
+            // TODO: Use an iterator for this.
+            for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr)
+                {
+                    Ok(vaddr) => vaddr,
+                    Err(_) => {
+                        // SAFETY: the following condition is unreachable, because
+                        // pages in the user stack are always page-aligned.
+                        unreachable!("address conversion should succeed")
+                    },
+                };
+                // Attempt to unmap page
+                if let Err(error) =
+                    mm.unmap_upage(self.find_process_mut(pid)?.state_mut().vmem_mut(), vaddr)
+                {
+                    // We failed, but this is not too bad, as we will free all pages
+                    // when wiping out the address space anyways.
+                    warn!(
+                        "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
+                        vaddr, error
+                    );
+                }
+            }
+        }
+
+        Ok(status)
     }
 
     fn take_ready(&mut self) -> RunnableProcess {
@@ -703,6 +972,16 @@ impl ProcessManager {
         mm: &mut VirtMemoryManager,
     ) -> Result<ProcessIdentifier, Error> {
         self.try_borrow_mut()?.create_process(mm)
+    }
+
+    /// Creates a new thread.
+    pub fn create_thread(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        pid: ProcessIdentifier,
+        user_func: VirtualAddress,
+    ) -> Result<ThreadIdentifier, Error> {
+        self.try_borrow_mut()?.create_thread(mm, pid, user_func)
     }
 
     pub fn exec(
@@ -802,6 +1081,23 @@ impl ProcessManager {
         core::hint::unreachable_unchecked()
     }
 
+    pub unsafe fn exit_thread(status: usize) -> Result<!, Error> {
+        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
+            Self::get_mut()?.try_borrow_mut()?.exit_thread(status);
+
+        ContextInformation::switch(from, to);
+        core::hint::unreachable_unchecked()
+    }
+
+    pub fn join_thread(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<usize, Error> {
+        self.try_borrow_mut()?.join_thread(mm, pid, tid)
+    }
+
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
         self.try_borrow_mut()?.terminate(pid)
     }
@@ -835,7 +1131,7 @@ impl ProcessManager {
     pub fn harvest_zombies(
         &mut self,
         mm: &mut VirtMemoryManager,
-    ) -> Result<Option<(ProcessIdentifier, i32)>, Error> {
+    ) -> Result<Option<(ProcessIdentifier, usize)>, Error> {
         Ok(self.try_borrow_mut()?.harvest_zombies(mm))
     }
 
@@ -1026,14 +1322,15 @@ impl ProcessManager {
     ///
     /// # Parameters
     ///
+    /// - `pid`: ID of the process to wake up.
     /// - `tid`: ID of the thread to wake up.
     ///
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn wakeup(tid: ThreadIdentifier) -> Result<(), Error> {
-        Self::get_mut()?.try_borrow_mut()?.wakeup(tid)
+    pub fn wakeup(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
+        Self::get_mut()?.try_borrow_mut()?.wakeup(pid, tid)
     }
 
     ///
