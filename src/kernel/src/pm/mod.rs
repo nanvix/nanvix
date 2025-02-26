@@ -107,7 +107,7 @@ pub fn init(hal: &mut Hal, root: Vmem) -> Result<ProcessManager, Error> {
     // Initialize the thread manager.
     info!("initializing the thread manager...");
     let (kernel, tm): (ReadyThread, ThreadManager) = thread::init();
-    let pm: ProcessManager = process::init(interrupt_capable, kernel, root, tm);
+    let pm: ProcessManager = ProcessManager::init(interrupt_capable, kernel, root, tm);
 
     Ok(pm)
 }
