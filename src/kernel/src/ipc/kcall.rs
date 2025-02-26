@@ -44,7 +44,7 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
 
     // Copy message to kernel space.
     let mut message: Message = Message::default();
-    if let Err(e) = pm::copy_from_user(src, &mut message, args.arg0 as *const Message) {
+    if let Err(e) = pm::copy_from_user(pm, src, &mut message, args.arg0 as *const Message) {
         return e.code.into_errno();
     }
 

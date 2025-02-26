@@ -33,7 +33,7 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn debug(args: &KcallArgs) -> i32 {
+pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
     // Buffer size in bytes.
     // NOTE: This value was chosen to be smaller than a page, but big enough for along messages.
     const BUFFER_SIZE: usize = 256;
@@ -52,7 +52,7 @@ pub fn debug(args: &KcallArgs) -> i32 {
     let src: VirtualAddress = VirtualAddress::new(user_buffer);
     let dst: VirtualAddress = VirtualAddress::new(kernel_buffer.as_mut_ptr() as usize);
 
-    if let Err(e) = ProcessManager::vmcopy_from_user(args.pid, dst, src, size) {
+    if let Err(e) = pm.vmcopy_from_user(args.pid, dst, src, size) {
         return e.code.into_errno();
     }
 
