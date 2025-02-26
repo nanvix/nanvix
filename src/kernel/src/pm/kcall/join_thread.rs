@@ -8,38 +8,26 @@
 use crate::pm::{
     self,
     ProcessManager,
+    SleepError,
 };
-use ::sys::{
-    error::Error,
-    pm::{
-        ProcessIdentifier,
-        ThreadIdentifier,
-    },
+use ::sys::pm::{
+    ProcessIdentifier,
+    ThreadIdentifier,
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-fn do_join_thread(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<usize, Error> {
-    ProcessManager::join_thread(pid, tid)
-}
-
-pub fn join_thread(arg0: u32, arg1: u32) -> i32 {
+pub fn join_thread(arg0: u32, arg1: u32) -> Result<usize, SleepError> {
     // Unpack kernel call arguments.
     let tid: ThreadIdentifier = ThreadIdentifier::from(arg0 as usize);
     let retval: *mut usize = arg1 as *mut usize;
+    let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
 
-    let pid: ProcessIdentifier = match ProcessManager::get_pid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+    let status: usize = ProcessManager::join_thread(pid, tid)?;
 
-    match do_join_thread(pid, tid) {
-        Ok(status) => match pm::copy_to_user::<usize>(pid, retval, &status) {
-            Ok(_) => 0,
-            Err(e) => e.code.into_errno(),
-        },
-        Err(e) => e.code.into_errno(),
-    }
+    pm::copy_to_user::<usize>(pid, retval, &status).map_err(SleepError::Generic)?;
+
+    Ok(0)
 }

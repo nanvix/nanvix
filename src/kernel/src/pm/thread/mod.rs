@@ -8,14 +8,22 @@
 use crate::{
     hal::arch::ContextInformation,
     mm::ustack::UserStack,
+    pm::sync::condvar::Condvar,
 };
-use ::alloc::boxed::Box;
+use ::alloc::{
+    boxed::Box,
+    fmt,
+    sync::Arc,
+};
 use ::core::{
     fmt::Debug,
     pin::Pin,
 };
 use ::sys::{
-    error::ErrorCode,
+    error::{
+        Error,
+        ErrorCode,
+    },
     pm::ThreadIdentifier,
 };
 
@@ -23,12 +31,13 @@ use ::sys::{
 // Thread
 //==================================================================================================
 
-#[derive(Debug)]
 pub struct Thread {
     /// Thread identifier.
     id: ThreadIdentifier,
     /// User stack.
     user_stack: Option<UserStack>,
+    /// Condition variable for join.
+    join_cond: Arc<Condvar>,
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
 }
@@ -43,11 +52,18 @@ impl Thread {
             id,
             context: Box::pin(context),
             user_stack,
+            join_cond: Arc::new(Condvar::new()),
         }
     }
 
     fn context_mut(&mut self) -> *mut ContextInformation {
         self.context.as_mut().get_mut() as *mut ContextInformation
+    }
+}
+
+impl fmt::Debug for Thread {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Thread {{ id: {:?} }}", self.id)
     }
 }
 
@@ -79,6 +95,20 @@ impl RunningThread {
     ///
     pub fn id(&self) -> ThreadIdentifier {
         self.0.id
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Wakes up all threads waiting on the join condition variable.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    pub fn wakeup_join_cond(&self) -> Result<(), Error> {
+        // NOTE: we must wake up all, otherwise some threads can be left waiting forever.
+        self.0.join_cond.notify_all()
     }
 
     pub fn exit(mut self, status: usize) -> (ZombieThread, *mut ContextInformation) {
@@ -123,6 +153,10 @@ impl ReadyThread {
             status: ErrorCode::Interrupted.into_errno() as usize,
         }
     }
+
+    pub fn join_cond(&self) -> Arc<Condvar> {
+        self.0.join_cond.clone()
+    }
 }
 
 //==================================================================================================
@@ -145,6 +179,10 @@ impl SleepingThread {
 
     pub fn id(&self) -> ThreadIdentifier {
         self.0.id
+    }
+
+    pub fn join_cond(&self) -> Arc<Condvar> {
+        self.0.join_cond.clone()
     }
 }
 
@@ -170,6 +208,10 @@ impl InterruptedThread {
     pub fn resume(mut self) -> (RunningThread, InterruptReason, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.thread.context_mut();
         (RunningThread(self.thread), self.reason, ctx)
+    }
+
+    pub fn join_cond(&self) -> Arc<Condvar> {
+        self.thread.join_cond.clone()
     }
 }
 

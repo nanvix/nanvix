@@ -15,6 +15,7 @@ use crate::{
             RunnableProcess,
             ZombieProcess,
         },
+        sync::condvar::Condvar,
         thread::{
             InterruptedThread,
             ReadyThread,
@@ -24,7 +25,11 @@ use crate::{
         },
     },
 };
-use ::alloc::boxed::Box;
+use ::alloc::{
+    boxed::Box,
+    sync::Arc,
+};
+use ::core::hint::cold_path;
 use ::sys::{
     error::{
         Error,
@@ -218,6 +223,12 @@ impl RunningProcess {
             (ZombieProcess, *mut ContextInformation),
         >,
     > {
+        // Wake up threads waiting on the join condition.
+        if let Err(error) = self.running.wakeup_join_cond() {
+            cold_path();
+            panic!("failed to wake up threads on join condition (error={:?})", error);
+        }
+
         let (zombie_thread, ctx) = self.running.exit(status);
         let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(zombie_threads) => zombie_threads,
@@ -303,11 +314,15 @@ impl RunningProcess {
         }
     }
 
-    pub fn try_join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
+    #[allow(clippy::type_complexity)]
+    pub fn try_join_thread(
+        &mut self,
+        tid: ThreadIdentifier,
+    ) -> Result<ZombieThread, Result<Arc<Condvar>, Error>> {
         // Check if the thread is the running thread.
         if self.running.id() == tid {
             let reason: &str = "thread is running";
-            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            return Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)));
         }
 
         // Search for thread in zombie threads.
@@ -324,37 +339,37 @@ impl RunningProcess {
         }
 
         // Search for thread in ready threads.
-        if let Some(ready_threads) = &self.ready {
-            for ready_thread in ready_threads.iter() {
+        if let Some(ready_threads) = &mut self.ready {
+            for ready_thread in ready_threads.iter_mut() {
                 if ready_thread.tid() == tid {
-                    let reason: &str = "thread is running";
-                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                    let join_cond: Arc<Condvar> = ready_thread.join_cond();
+                    return Err(Ok(join_cond));
                 }
             }
         }
 
         // Search for thread in sleeping threads.
-        if let Some(sleeping_threads) = self.sleeping_threads.as_ref() {
+        if let Some(sleeping_threads) = &mut self.sleeping_threads {
             for sleeping_thread in sleeping_threads.iter() {
                 if sleeping_thread.id() == tid {
-                    let reason: &str = "thread is sleeping";
-                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                    let join_cond: Arc<Condvar> = sleeping_thread.join_cond();
+                    return Err(Ok(join_cond));
                 }
             }
         }
 
         // Search for thread in interrupted threads.
-        if let Some(interrupted_threads) = self.interrupted_threads.as_ref() {
+        if let Some(interrupted_threads) = &mut self.interrupted_threads {
             for interrupted_thread in interrupted_threads.iter() {
                 if interrupted_thread.tid() == tid {
-                    let reason: &str = "thread is interrupted";
-                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                    let join_cond: Arc<Condvar> = interrupted_thread.join_cond();
+                    return Err(Ok(join_cond));
                 }
             }
         }
 
         let reason: &str = "thread not found";
         error!("join_thread(): {:?} (state={:?})", reason, self.state());
-        Err(Error::new(ErrorCode::NoSuchProcess, reason))
+        Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
     }
 }
