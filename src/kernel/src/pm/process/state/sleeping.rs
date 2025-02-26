@@ -23,13 +23,7 @@ use ::alloc::{
     boxed::Box,
     collections::vec_deque::VecDeque,
 };
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    pm::ThreadIdentifier,
-};
+use ::sys::pm::ThreadIdentifier;
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -112,31 +106,5 @@ impl SleepingProcess {
             Some(self.sleeping_threads),
             self.zombie_threads.take(),
         )
-    }
-
-    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
-        if let Some(zombie_threads) = self.zombie_threads.take() {
-            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
-                Ok((zombie_threads, zombie_thread)) => {
-                    self.zombie_threads = NonEmptyVecDeque::from(zombie_threads);
-                    return Ok(zombie_thread);
-                },
-                Err(zombie_threads) => {
-                    self.zombie_threads = Some(zombie_threads);
-                },
-            }
-        }
-
-        // Search for thread in sleeping threads.
-        for sleeping_thread in self.sleeping_threads.iter() {
-            if sleeping_thread.id() == tid {
-                let reason: &str = "thread is sleeping";
-                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-            }
-        }
-
-        let reason: &str = "thread not found";
-        error!("join_thread(): {:?} (state={:?})", reason, self.state());
-        Err(Error::new(ErrorCode::NoSuchProcess, reason))
     }
 }

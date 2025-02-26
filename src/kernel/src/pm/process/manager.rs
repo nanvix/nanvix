@@ -836,66 +836,34 @@ impl ProcessManagerInner {
         }
     }
 
-    pub fn join_thread(
+    fn try_join_thread(
         &mut self,
-        mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
-    ) -> Result<usize, Error> {
-        let zombie_thread: ZombieThread = match self.find_process_mut(pid)? {
-            ProcessRefMut::Running(_) => {
-                let reason: &str = "process is running";
+    ) -> Result<ZombieThread, Error> {
+        match self.find_process_mut(pid)? {
+            ProcessRefMut::Running(process) => process.try_join_thread(tid),
+            ProcessRefMut::Runnable(_) => {
+                let reason: &str = "process is runnable";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
             },
-            ProcessRefMut::Runnable(process) => process.join_thread(tid),
-            ProcessRefMut::Sleeping(process) => process.join_thread(tid),
+            ProcessRefMut::Sleeping(_) => {
+                let reason: &str = "process is sleeping";
+                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                Err(Error::new(ErrorCode::OperationWouldBlock, reason))
+            },
             ProcessRefMut::Interrupted(_) => {
                 let reason: &str = "process is interrupted";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
             },
             ProcessRefMut::Zombie(_) => {
                 let reason: &str = "process is a zombie";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
             },
-        }?;
-
-        let status: usize = zombie_thread.status();
-        debug!("join_thread(): status={:#x?}", status);
-
-        // Harvest zombie thread.
-        if let Some(user_stack) = zombie_thread.harvest() {
-            // Traverse pages belonging to user stack.
-            let base: usize = user_stack.base().into_raw_value();
-            let top: usize = user_stack.top().into_raw_value();
-            // TODO: Use an iterator for this.
-            for raw_addr in (base..top).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr)
-                {
-                    Ok(vaddr) => vaddr,
-                    Err(_) => {
-                        // SAFETY: the following condition is unreachable, because
-                        // pages in the user stack are always page-aligned.
-                        unreachable!("address conversion should succeed")
-                    },
-                };
-                // Attempt to unmap page
-                if let Err(error) =
-                    mm.unmap_upage(self.find_process_mut(pid)?.state_mut().vmem_mut(), vaddr)
-                {
-                    // We failed, but this is not too bad, as we will free all pages
-                    // when wiping out the address space anyways.
-                    warn!(
-                        "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
-                        vaddr, error
-                    );
-                }
-            }
         }
-
-        Ok(status)
     }
 
     fn take_ready(&mut self) -> RunnableProcess {
@@ -1089,13 +1057,52 @@ impl ProcessManager {
         core::hint::unreachable_unchecked()
     }
 
-    pub fn join_thread(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        pid: ProcessIdentifier,
-        tid: ThreadIdentifier,
-    ) -> Result<usize, Error> {
-        self.try_borrow_mut()?.join_thread(mm, pid, tid)
+    pub fn join_thread(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<usize, Error> {
+        trace!("join_thread(): pid={:?}, tid={:?}", pid, tid);
+        let pm: &mut ProcessManager = Self::get_mut()?;
+
+        let zombie_thread: ZombieThread = pm.try_borrow_mut()?.try_join_thread(pid, tid)?;
+
+        let status: usize = zombie_thread.status();
+
+        // SAFETY: This is the only thread running, thus access to the virtual memory manager is synchronized.
+        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+
+        // Harvest zombie thread.
+        if let Some(user_stack) = zombie_thread.harvest() {
+            // Traverse pages belonging to user stack.
+            let base: usize = user_stack.base().into_raw_value();
+            let top: usize = user_stack.top().into_raw_value();
+            // TODO: Use an iterator for this.
+            for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr)
+                {
+                    Ok(vaddr) => vaddr,
+                    Err(_) => {
+                        // SAFETY: the following condition is unreachable, because
+                        // pages in the user stack are always page-aligned.
+                        unreachable!("address conversion should succeed")
+                    },
+                };
+                // Attempt to unmap page
+                if let Err(error) = mm.unmap_upage(
+                    pm.try_borrow_mut()?
+                        .find_process_mut(pid)?
+                        .state_mut()
+                        .vmem_mut(),
+                    vaddr,
+                ) {
+                    // We failed, but this is not too bad, as we will free all pages
+                    // when wiping out the address space anyways.
+                    warn!(
+                        "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
+                        vaddr, error
+                    );
+                }
+            }
+        }
+
+        Ok(status)
     }
 
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {

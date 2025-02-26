@@ -184,49 +184,6 @@ impl RunnableProcessWithReadyThread {
         }
     }
 
-    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
-        if let Some(zombie_threads) = self.zombie_threads.take() {
-            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
-                Ok((zombie_threads, zombie_thread)) => {
-                    self.zombie_threads = NonEmptyVecDeque::from(zombie_threads);
-                    return Ok(zombie_thread);
-                },
-                Err(zombie_threads) => {
-                    self.zombie_threads = Some(zombie_threads);
-                },
-            }
-        }
-        // Search for thread in ready threads.
-        for ready_thread in self.ready_threads.iter() {
-            if ready_thread.tid() == tid {
-                let reason: &str = "thread is running";
-                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-            }
-        }
-        // Search for thread in sleeping threads.
-        if let Some(sleeping_threads) = self.sleeping_threads.as_ref() {
-            for sleeping_thread in sleeping_threads.iter() {
-                if sleeping_thread.id() == tid {
-                    let reason: &str = "thread is sleeping";
-                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-                }
-            }
-        }
-        // Search for thread in interrupted threads.
-        if let Some(interrupted_threads) = self.interrupted_threads.as_ref() {
-            for interrupted_thread in interrupted_threads.iter() {
-                if interrupted_thread.tid() == tid {
-                    let reason: &str = "thread is interrupted";
-                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-                }
-            }
-        }
-
-        let reason: &str = "thread not found";
-        error!("join_thread(): {:?} (state={:?})", reason, self.state());
-        Err(Error::new(ErrorCode::NoSuchProcess, reason))
-    }
-
     fn exec(
         &mut self,
         mm: &mut VirtMemoryManager,
@@ -358,49 +315,6 @@ impl RunnableProcessWithInterruptedThreads {
         } else {
             Err(self)
         }
-    }
-
-    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
-        if let Some(zombie_threads) = self.zombie_threads.take() {
-            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
-                Ok((zombie_threads, zombie_thread)) => {
-                    self.zombie_threads = NonEmptyVecDeque::from(zombie_threads);
-                    return Ok(zombie_thread);
-                },
-                Err(zombie_threads) => {
-                    self.zombie_threads = Some(zombie_threads);
-                },
-            }
-        }
-        // Search for thread in ready threads.
-        if let Some(ready_threads) = self.ready_threads.as_ref() {
-            for ready_thread in ready_threads.iter() {
-                if ready_thread.tid() == tid {
-                    let reason: &str = "thread is running";
-                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-                }
-            }
-        }
-        // Search for thread in interrupted threads.
-        for interrupted_thread in self.interrupted_threads.iter() {
-            if interrupted_thread.tid() == tid {
-                let reason: &str = "thread is interrupted";
-                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-            }
-        }
-        // Search for thread in sleeping threads.
-        if let Some(sleeping_threads) = self.sleeping_threads.as_ref() {
-            for sleeping_thread in sleeping_threads.iter() {
-                if sleeping_thread.id() == tid {
-                    let reason: &str = "thread is sleeping";
-                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-                }
-            }
-        }
-
-        let reason: &str = "thread not found";
-        error!("join_thread(): {:?} (state={:?})", reason, self.state());
-        Err(Error::new(ErrorCode::NoSuchProcess, reason))
     }
 
     fn add_thread(
@@ -537,47 +451,6 @@ impl RunnableProcessWithReadyAndInteruptThread {
         }
     }
 
-    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
-        if let Some(zombie_threads) = self.zombie_threads.take() {
-            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
-                Ok((zombie_threads, zombie_thread)) => {
-                    self.zombie_threads = NonEmptyVecDeque::from(zombie_threads);
-                    return Ok(zombie_thread);
-                },
-                Err(zombie_threads) => {
-                    self.zombie_threads = Some(zombie_threads);
-                },
-            }
-        }
-        // Search for thread in ready threads.
-        for ready_thread in self.ready_threads.iter() {
-            if ready_thread.tid() == tid {
-                let reason: &str = "thread is running";
-                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-            }
-        }
-        // Search for thread in interrupted threads.
-        for interrupted_thread in self.interrupted_threads.iter() {
-            if interrupted_thread.tid() == tid {
-                let reason: &str = "thread is interrupted";
-                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-            }
-        }
-        // Search for thread in sleeping threads.
-        if let Some(sleeping_threads) = self.sleeping_threads.as_ref() {
-            for sleeping_thread in sleeping_threads.iter() {
-                if sleeping_thread.id() == tid {
-                    let reason: &str = "thread is sleeping";
-                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
-                }
-            }
-        }
-
-        let reason: &str = "thread not found";
-        error!("join_thread(): {:?} (state={:?})", reason, self.state());
-        Err(Error::new(ErrorCode::NoSuchProcess, reason))
-    }
-
     fn add_thread(mut self, ready_thread: ReadyThread) -> Self {
         self.ready_threads.push_back(ready_thread);
         self
@@ -698,14 +571,6 @@ impl RunnableProcess {
             RunnableProcess::WithReadyThread(process) => process.run(),
             RunnableProcess::WithInterruptedThreads(process) => process.run(),
             RunnableProcess::ReadyAndInteruptThread(process) => process.run(),
-        }
-    }
-
-    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
-        match self {
-            RunnableProcess::WithReadyThread(process) => process.join_thread(tid),
-            RunnableProcess::WithInterruptedThreads(process) => process.join_thread(tid),
-            RunnableProcess::ReadyAndInteruptThread(process) => process.join_thread(tid),
         }
     }
 

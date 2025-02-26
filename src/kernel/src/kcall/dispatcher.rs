@@ -10,6 +10,7 @@ use crate::{
     ipc,
     kcall::ScoreBoard,
     pm::{
+        self,
         InterruptReason,
         ProcessManager,
         SleepError,
@@ -57,6 +58,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             let e: Error = unsafe { ProcessManager::exit(arg0 as i32).unwrap_err() };
             e.code.into_errno()
         },
+        KcallNumber::JoinThread => pm::join_thread(arg0, arg1),
         KcallNumber::ExitThread => {
             // SAFETY: the calling process is not the kernel.
             let e: Error = unsafe { ProcessManager::exit_thread(arg0 as usize).unwrap_err() };
