@@ -1455,7 +1455,7 @@ impl ProcessManager {
         }
     }
 
-    fn get() -> Result<&'static ProcessManager, Error> {
+    fn get<'a>() -> Result<&'a ProcessManager, Error> {
         unsafe {
             match PROCESS_MANAGER {
                 Some(ref pm) => Ok(pm),
@@ -1468,7 +1468,7 @@ impl ProcessManager {
         }
     }
 
-    fn get_mut() -> Result<&'static mut ProcessManager, Error> {
+    fn get_mut<'a>() -> Result<&'a mut ProcessManager, Error> {
         unsafe {
             match PROCESS_MANAGER {
                 Some(ref mut pm) => Ok(pm),
