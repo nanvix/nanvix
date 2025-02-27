@@ -207,8 +207,13 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn exit_thread(status: usize) -> Result<!, Error> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            Self::get_mut().try_borrow_mut()?.exit_thread(status);
+        let (join_cond, from, to): (
+            Arc<Condvar>,
+            *mut ContextInformation,
+            *mut ContextInformation,
+        ) = Self::get_mut().try_borrow_mut()?.exit_thread(status);
+
+        join_cond.notify_all()?;
 
         ContextInformation::switch(from, to);
         core::hint::unreachable_unchecked()
