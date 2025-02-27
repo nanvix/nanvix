@@ -689,17 +689,16 @@ impl ProcessManagerInner {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it operates on global variables and it may panic.
+    /// This function is unsafe because it may panic.
     ///
     /// This function is safe to use if and only if the following conditions are met:
     ///
     /// - The calling process is not the kernel process.
-    /// - The calling process does not hold a reference to the process manager.
     ///
     pub(super) unsafe fn exit_thread(
         &mut self,
         status: usize,
-    ) -> (*mut ContextInformation, *mut ContextInformation) {
+    ) -> (Arc<Condvar>, *mut ContextInformation, *mut ContextInformation) {
         trace!("exit_thread(): status={:#x?}", status);
         let running_process: RunningProcess = self.take_running();
 
@@ -709,13 +708,13 @@ impl ProcessManagerInner {
         }
 
         match running_process.exit_thread(status) {
-            Ok((runnable_process, previous_context)) => {
+            Ok((join_cond, runnable_process, previous_context)) => {
                 let (running_process, reason, next_context) = runnable_process.run();
                 self.interrupt_reason = reason;
                 self.running = Some(running_process);
-                (previous_context, next_context)
+                (join_cond, previous_context, next_context)
             },
-            Err(Ok((sleeping_process, previous_context))) => {
+            Err(Ok((join_cond, sleeping_process, previous_context))) => {
                 self.suspended.push_back(sleeping_process);
 
                 match self.ready.pop_front() {
@@ -723,12 +722,12 @@ impl ProcessManagerInner {
                         let (running_process, reason, next_context) = runnable_process.run();
                         self.interrupt_reason = reason;
                         self.running = Some(running_process);
-                        (previous_context, next_context)
+                        (join_cond, previous_context, next_context)
                     },
                     None => unreachable!("the kernel process is always ready to run"),
                 }
             },
-            Err(Err((zombie_process, previous_context))) => {
+            Err(Err((join_cond, zombie_process, previous_context))) => {
                 self.zombies.push_back(zombie_process);
 
                 match self.ready.pop_front() {
@@ -736,7 +735,7 @@ impl ProcessManagerInner {
                         let (running_process, reason, next_context) = runnable_process.run();
                         self.interrupt_reason = reason;
                         self.running = Some(running_process);
-                        (previous_context, next_context)
+                        (join_cond, previous_context, next_context)
                     },
                     None => unreachable!("the kernel process is always ready to run"),
                 }

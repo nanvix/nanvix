@@ -29,7 +29,6 @@ use ::alloc::{
     boxed::Box,
     sync::Arc,
 };
-use ::core::hint::cold_path;
 use ::sys::{
     error::{
         Error,
@@ -229,31 +228,18 @@ impl RunningProcess {
     /// thread is returned. If the process becomes a zombie process, a tuple containing the zombie
     /// process and the context information of the running thread is returned.
     ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it operates on global variables and it may panic.
-    ///
-    /// This function is safe to use if and only if the following conditions are met:
-    ///
-    /// - The calling process is not the kernel process.
-    /// - The calling process does not hold a reference to the process manager.
-    ///
     #[allow(clippy::type_complexity)]
-    pub unsafe fn exit_thread(
+    pub fn exit_thread(
         mut self,
         status: usize,
     ) -> Result<
-        (RunnableProcess, *mut ContextInformation),
+        (Arc<Condvar>, RunnableProcess, *mut ContextInformation),
         Result<
-            (SleepingProcess, *mut ContextInformation),
-            (ZombieProcess, *mut ContextInformation),
+            (Arc<Condvar>, SleepingProcess, *mut ContextInformation),
+            (Arc<Condvar>, ZombieProcess, *mut ContextInformation),
         >,
     > {
-        // Wake up threads waiting on the join condition.
-        if let Err(error) = self.running.wakeup_join_cond() {
-            cold_path();
-            panic!("failed to wake up threads on join condition (error={:?})", error);
-        }
+        let join_cond: Arc<Condvar> = self.running.join_cond();
 
         let (zombie_thread, ctx) = self.running.exit(status);
         let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
@@ -264,6 +250,7 @@ impl RunningProcess {
         if let Some(ready_threads) = self.ready.take() {
             if let Some(interrupted_threads) = self.interrupted_threads.take() {
                 Ok((
+                    join_cond,
                     RunnableProcess::from_state_with_ready_and_interrupted_threads(
                         self.state,
                         ready_threads,
@@ -275,6 +262,7 @@ impl RunningProcess {
                 ))
             } else {
                 Ok((
+                    join_cond,
                     RunnableProcess::from_state_with_ready_thread(
                         self.state,
                         ready_threads,
@@ -287,6 +275,7 @@ impl RunningProcess {
             }
         } else if let Some(interrupted_threads) = self.interrupted_threads.take() {
             Ok((
+                join_cond,
                 RunnableProcess::from_state_with_interrupted_threads(
                     self.state,
                     self.ready.take(),
@@ -297,9 +286,13 @@ impl RunningProcess {
                 ctx,
             ))
         } else if let Some(sleeping_threads) = self.sleeping_threads.take() {
-            Err(Ok((SleepingProcess::new(self.state, sleeping_threads, Some(zombie_threads)), ctx)))
+            Err(Ok((
+                join_cond,
+                SleepingProcess::new(self.state, sleeping_threads, Some(zombie_threads)),
+                ctx,
+            )))
         } else {
-            Err(Err((ZombieProcess::new(self.state, zombie_threads, status), ctx)))
+            Err(Err((join_cond, ZombieProcess::new(self.state, zombie_threads, status), ctx)))
         }
     }
 

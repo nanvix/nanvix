@@ -20,10 +20,7 @@ use ::core::{
     pin::Pin,
 };
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+    error::ErrorCode,
     pm::ThreadIdentifier,
 };
 
@@ -106,17 +103,9 @@ impl RunningThread {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it operates on global variables.
-    ///
-    /// This function is safe to use if and only if the following conditions are met:
-    ///
-    /// - The calling process does not hold a reference to the process manager.
-    ///
-    pub unsafe fn wakeup_join_cond(&self) -> Result<(), Error> {
+    pub fn join_cond(&self) -> Arc<Condvar> {
         // NOTE: we must wake up all, otherwise some threads can be left waiting forever.
-        self.0.join_cond.notify_all()
+        self.0.join_cond.clone()
     }
 
     pub fn exit(mut self, status: usize) -> (ZombieThread, *mut ContextInformation) {
