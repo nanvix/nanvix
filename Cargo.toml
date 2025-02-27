@@ -29,6 +29,7 @@ members = [
         "src/microvm",
         "src/tests/linux-app",
         "src/tests/testd",
+        "src/tests/thread-nowait-rust-nostd",
         "src/tests/thread-rust-nostd",
         "src/user/hello-rust-nostd",
         "src/user/hello-wasm",
