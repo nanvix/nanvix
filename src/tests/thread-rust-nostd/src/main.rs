@@ -36,6 +36,9 @@ const EXPECTED_MASTER_TID: usize = 1;
 /// Expected identifiers of the worker thread.
 const EXPECTED_WORKER_TID: usize = 2;
 
+/// Expected argument passed to the worker thread.
+const EXPECTED_WORKER_ARG: usize = 0xbadcafe;
+
 /// Expected exit status of the worker thread.
 const EXPECTED_EXIT_STATUS: usize = 0xdeadbeef;
 
@@ -47,7 +50,7 @@ pub fn main() -> Result<(), Error> {
     assert_eq!(master_tid, ThreadIdentifier::from(EXPECTED_MASTER_TID));
 
     // Create a worker thread and check if its identifier matches the expected value.
-    let worker_tid: ThreadIdentifier = pm::create_thread(worker).unwrap();
+    let worker_tid: ThreadIdentifier = pm::create_thread(worker, EXPECTED_WORKER_ARG).unwrap();
     assert_eq!(worker_tid, ThreadIdentifier::from(EXPECTED_WORKER_TID));
 
     // Wait for the worker thread to exit and check if it returns the expected value.
@@ -65,7 +68,10 @@ pub fn main() -> Result<(), Error> {
 }
 
 /// Worker thread.
-fn worker() -> ! {
+fn worker(arg: usize) -> usize {
+    // Check if worker argument matches the expected value.
+    assert_eq!(arg, EXPECTED_WORKER_ARG);
+
     // Get the worker thread identifier and check if it matches the expected value.
     let worker_tid: ThreadIdentifier = pm::gettid().unwrap();
     assert_eq!(worker_tid, ThreadIdentifier::from(EXPECTED_WORKER_TID));

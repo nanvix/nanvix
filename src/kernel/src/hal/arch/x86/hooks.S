@@ -496,6 +496,11 @@ __context_switch:
  */
 __leave_kernel_to_user_mode:
 
+    /* TODO: zero out all registers. */
+
+    popl %ecx /* user function argument */
+    popl %edx /* user function */
+
     /*
      * Restore data segment registers.
      */
