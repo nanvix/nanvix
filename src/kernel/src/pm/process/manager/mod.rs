@@ -174,13 +174,18 @@ impl ProcessManagerInner {
         mm: &mut VirtMemoryManager,
         vmem: &mut Vmem,
         user_stack: &UserStack,
-        user_func: VirtualAddress,
+        user_wrapper_fn: VirtualAddress,
+        user_fn: VirtualAddress,
+        user_fn_arg: usize,
         enable_interrupts: bool,
     ) -> Result<ContextInformation, Error> {
         trace!(
-            "forge_user_context(): user_stack={:?}, user_func={:?}, enable_interrupts={}",
+            "forge_user_context(): user_stack={:?}, user_wrapper_fn={:#x?}, user_fn={:#x?}, \
+             user_fn_arg={:#x?}, enable_interrupts={:?}",
             user_stack,
-            user_func,
+            user_wrapper_fn,
+            user_fn,
+            user_fn_arg,
             enable_interrupts
         );
 
@@ -188,15 +193,18 @@ impl ProcessManagerInner {
             pub fn __leave_kernel_to_user_mode();
         }
 
-        // Ensure that user function lies within the user address space.
-        if !Vmem::is_user_addr(user_func) {
-            let reason: &str = "user function is not within the user address space";
+        // Ensure that user wrapper function lies within the user address space.
+        if !Vmem::is_user_addr(user_wrapper_fn) {
+            let reason: &str = "user wrapper function is not within the user address space";
             error!(
                 "forge_context(): {} (user_stack={:?}, user_func={:?})",
-                reason, user_stack, user_func
+                reason, user_stack, user_fn
             );
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
+
+        // NOTE: we don't check if the user function lies within the user address space, because
+        // if it is not it will self-crash.
 
         let kernel_func: VirtualAddress =
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
@@ -214,7 +222,9 @@ impl ProcessManagerInner {
             hal::arch::forge_user_stack(
                 kernel_stack as *mut u8,
                 user_stack.top().into_raw_value(),
-                user_func.into_raw_value(),
+                user_wrapper_fn.into_raw_value(),
+                user_fn.into_raw_value(),
+                user_fn_arg,
                 kernel_func.into_raw_value(),
                 enable_interrupts,
             )
@@ -262,9 +272,17 @@ impl ProcessManagerInner {
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
-        user_func: VirtualAddress,
+        user_wrapper_fn: VirtualAddress,
+        user_fn: VirtualAddress,
+        user_fn_arg: usize,
     ) -> Result<ThreadIdentifier, Error> {
-        trace!("create_thread(): pid={:?}, user_func={:?}", pid, user_func);
+        trace!(
+            "create_thread(): pid={:?}, user_wrapper_fn={:#x?}, user_fn={:#x?}, user_fn_arg={:#x?}",
+            pid,
+            user_wrapper_fn,
+            user_fn,
+            user_fn_arg
+        );
 
         let ready_thread: ReadyThread = {
             let enable_interrupts: bool = self.interrupt_capable;
@@ -308,7 +326,9 @@ impl ProcessManagerInner {
                 mm,
                 process.state_mut().vmem_mut(),
                 &user_stack,
-                user_func,
+                user_wrapper_fn,
+                user_fn,
+                user_fn_arg,
                 enable_interrupts,
             )?;
 
@@ -404,12 +424,16 @@ impl ProcessManagerInner {
 
         // Create a kernel context.
         let user_stack: UserStack = user_stack_allocator.alloc()?;
-        let user_func: VirtualAddress = ::sys::config::memory_layout::USER_BASE;
+        let user_wrapper_fn: VirtualAddress = ::sys::config::memory_layout::USER_BASE; // TODO: improve this.
+        let user_fn: VirtualAddress = VirtualAddress::from_raw_value(0);
+        let user_fn_arg: usize = 0;
         let context: ContextInformation = Self::forge_user_context(
             mm,
             &mut vmem,
             &user_stack,
-            user_func,
+            user_wrapper_fn,
+            user_fn,
+            user_fn_arg,
             self.interrupt_capable,
         )?;
 
@@ -1002,9 +1026,12 @@ impl ProcessManager {
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
-        user_func: VirtualAddress,
+        user_wrapper_fn: VirtualAddress,
+        user_fn: VirtualAddress,
+        user_fn_arg: usize,
     ) -> Result<ThreadIdentifier, Error> {
-        self.try_borrow_mut()?.create_thread(mm, pid, user_func)
+        self.try_borrow_mut()?
+            .create_thread(mm, pid, user_wrapper_fn, user_fn, user_fn_arg)
     }
 
     pub fn has_capability(
