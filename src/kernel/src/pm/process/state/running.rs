@@ -359,7 +359,7 @@ impl RunningProcess {
 
         // Search for thread in ready threads.
         if let Some(ready_threads) = &mut self.ready {
-            for ready_thread in ready_threads.iter_mut() {
+            for ready_thread in ready_threads.iter() {
                 if ready_thread.tid() == tid {
                     let join_cond: Arc<Condvar> = ready_thread.join_cond();
                     return Err(Ok(join_cond));
