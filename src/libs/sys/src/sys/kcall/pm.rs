@@ -215,7 +215,10 @@ pub extern "C" fn _start_thread(func: extern "C" fn(usize) -> usize, arg: usize)
     unreachable!("failed to exit thread");
 }
 
-pub fn create_thread(user_fn: fn(usize) -> usize, arg: usize) -> Result<ThreadIdentifier, Error> {
+pub fn create_thread(
+    user_fn: extern "C" fn(usize) -> usize,
+    arg: usize,
+) -> Result<ThreadIdentifier, Error> {
     extern "C" {
         fn _do_start_thread() -> !;
     }

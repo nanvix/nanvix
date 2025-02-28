@@ -67,7 +67,7 @@ pub fn main() -> Result<(), Error> {
 
 /// Worker thread.
 #[allow(unreachable_code)]
-fn worker(arg: usize) -> usize {
+extern "C" fn worker(arg: usize) -> usize {
     // Check if worker argument matches the expected value.
     assert_eq!(arg, EXPECTED_WORKER_ARG);
 
