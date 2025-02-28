@@ -24,3 +24,11 @@ allocator = ["nvx/allocator"]
 syscall = []
 std = ["nvx/std"]
 staticlib = ["nvx/staticlib"]
+
+# Logging
+trace = ["nvx/trace"]
+debug = ["nvx/debug"]
+info = ["nvx/info"]
+warn = ["nvx/warn"]
+error = ["nvx/error"]
+panic = ["nvx/panic"]

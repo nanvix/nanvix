@@ -343,12 +343,12 @@ endif
 
 define GUEST_STATICLIB_RULES
 all-guest-staticlib-$(1):
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=staticlib
+	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/lib$(1).a $(LIBRARIES_DIR)/lib$(1).a
 
 check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib
+	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 clean-guest-staticlib-$(1):
@@ -356,11 +356,11 @@ clean-guest-staticlib-$(1):
 	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
 
 clippy-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 test-guest-staticlib-$(1):
-	$(HOST_CARGO_TEST_CMD) -p $(1) --features=staticlib
+	$(HOST_CARGO_TEST_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 endef
 
 $(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))
