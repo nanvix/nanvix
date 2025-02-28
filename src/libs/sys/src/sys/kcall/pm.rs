@@ -254,7 +254,7 @@ pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i32, Err
         retval as *mut usize as u32
     );
 
-    if result < 0 {
+    if result != 0 {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to join thread"))
     } else {
         Ok(result)
