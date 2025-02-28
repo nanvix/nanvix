@@ -699,8 +699,9 @@ impl ProcessManagerInner {
         &mut self,
         status: usize,
     ) -> (Arc<Condvar>, *mut ContextInformation, *mut ContextInformation) {
-        trace!("exit_thread(): status={:#x?}", status);
         let running_process: RunningProcess = self.take_running();
+
+        trace!("exit_thread(): status={:#x?}, tid={:?}", status, running_process.get_tid());
 
         // Check if kernel is trying to exit.
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
