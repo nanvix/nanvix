@@ -13,6 +13,7 @@ use crate::{
     },
     pm::ProcessManager,
 };
+use ::core::hint::cold_path;
 use ::sys::{
     error::Error,
     mm::VirtualAddress,
@@ -52,7 +53,14 @@ pub fn create_thread(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: 
     }
 
     match do_create_thread(pm, mm, args.pid, user_wrapper_fn, user_fn, user_fn_arg) {
-        Ok(tid) => tid.into(),
+        Ok(tid) => match tid.try_into() {
+            Ok(tid) => tid,
+            Err(error) => {
+                cold_path();
+                warn!("do_kcall(): failed to convert tid to i32 (error={:?})", error);
+                error.code.into_errno()
+            },
+        },
         Err(e) => e.code.into_errno(),
     }
 }

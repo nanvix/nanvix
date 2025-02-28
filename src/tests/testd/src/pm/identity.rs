@@ -66,7 +66,7 @@ fn test_getpid() -> bool {
 fn test_gettid() -> bool {
     match nvx::pm::gettid() {
         Ok(tid) => {
-            let expected: ThreadIdentifier = ThreadIdentifier::from(3);
+            let expected: ThreadIdentifier = From::<u32>::from(3);
             if tid == expected {
                 true
             } else {
