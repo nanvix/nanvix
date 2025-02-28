@@ -16,6 +16,7 @@ use crate::{
         SleepError,
     },
 };
+use ::core::hint::cold_path;
 use ::sys::{
     error::{
         Error,
@@ -61,7 +62,14 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         // Handle `getpid()` locally.
         KcallNumber::GetPid => pid.into(),
         // Handle `gettid()` locally.
-        KcallNumber::GetTid => tid.into(),
+        KcallNumber::GetTid => match tid.try_into() {
+            Ok(tid) => tid,
+            Err(error) => {
+                cold_path();
+                warn!("do_kcall(): failed to convert tid to i32 (error={:?})", error);
+                error.code.into_errno()
+            },
+        },
         KcallNumber::Exit => {
             // SAFETY: the calling process is not the kernel.
             let e: Error = unsafe { ProcessManager::exit(arg0 as i32).unwrap_err() };

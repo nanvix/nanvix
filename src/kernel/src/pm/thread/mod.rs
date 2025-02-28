@@ -247,11 +247,11 @@ pub struct ThreadManager {
 impl ThreadManager {
     fn new() -> (ReadyThread, Self) {
         let kernel: ReadyThread =
-            ReadyThread::new(ThreadIdentifier::from(0), None, ContextInformation::default());
+            ReadyThread::new(From::<u32>::from(0), None, ContextInformation::default());
         (
             kernel,
             Self {
-                next_id: ThreadIdentifier::from(1),
+                next_id: From::<u32>::from(1),
             },
         )
     }
