@@ -33,6 +33,18 @@ pub mod bindings;
 // Structures
 //==================================================================================================
 
+/// Scheduling policies.
+pub mod sched_policy {
+    /// Another scheduling policy.
+    pub const SCHED_OTHER: crate::ffi::c_int = 0;
+
+    /// FIFO scheduling policy.
+    pub const SCHED_FIFO: crate::ffi::c_int = 1;
+
+    /// Round-robin scheduling policy.
+    pub const SCHED_RR: crate::ffi::c_int = 2;
+}
+
 ///
 /// # Description
 ///
