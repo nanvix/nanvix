@@ -3,6 +3,7 @@
  * Licensed under the MIT License.
  */
 
+#include <sched.h>
 #include <stdint.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -122,6 +123,9 @@ int main(int argc, const char *argv[])
                            sizeof(blksize_t) +       // st_blksize
                            sizeof(blkcnt_t)          // st_blocks
     );
+
+    // Assert types in <sched.h>.A
+    STATIC_ASSERT_SIZE(struct sched_param, sizeof(int));
 
     return (0);
 }
