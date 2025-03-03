@@ -95,6 +95,11 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
         // SAFETY: The calling thread does not hold a reference to the process manager.
         KcallNumber::Resume => unsafe { event::resume(arg0 as usize) },
+        // SAFETY: The calling thread is not the kernel, no resources are held, and the calling process does not hold a reference to the process manager.
+        KcallNumber::MutexLock => match unsafe { pm::lock_mutex(arg0 as usize) } {
+            Ok(()) => 0,
+            Err(sleep_error) => handle_sleep_error(sleep_error).unwrap(),
+        },
         // Dispatch kernel call for remote execution.
         _ => match ScoreBoard::get_mut() {
             // SAFETY: The calling thread is not the kernel and no resources are held.

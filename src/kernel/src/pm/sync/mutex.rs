@@ -95,6 +95,26 @@ impl Mutex {
             sleeping: Condvar::new(),
         }))
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the reference count of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// The reference count of the mutex.
+    ///
+    /// # Safety
+    ///
+    /// This method by itself is safe, but using it correctly requires extra care. Another thread
+    /// can change the strong count at any time, including potentially between calling this method
+    /// and acting on the result.
+    ///
+    pub fn reference_count(&self) -> usize {
+        Arc::strong_count(&self.0)
+    }
+
     ///
     /// # Description
     ///

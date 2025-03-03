@@ -77,6 +77,10 @@ pub enum KcallNumber {
     ExitThread,
     /// Joins with a terminated thread.
     JoinThread,
+    /// Locks a mutex.
+    MutexLock,
+    /// Unlocks a mutex.
+    MutexUnlock,
     // Invalid.
     Invalid,
 }
@@ -120,6 +124,8 @@ impl From<usize> for KcallNumber {
             29 => KcallNumber::CreateThread,
             30 => KcallNumber::ExitThread,
             31 => KcallNumber::JoinThread,
+            32 => KcallNumber::MutexLock,
+            33 => KcallNumber::MutexUnlock,
             _ => KcallNumber::Invalid,
         }
     }

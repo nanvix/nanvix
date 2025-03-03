@@ -12,6 +12,7 @@ mod geteuid;
 mod getgid;
 mod getuid;
 mod join_thread;
+mod lock_mutex;
 mod mcopy;
 mod mctrl;
 mod mmap;
@@ -21,6 +22,7 @@ mod seteuid;
 mod setgid;
 mod setuid;
 mod terminate;
+mod unlock_mutex;
 
 //==================================================================================================
 // Exports
@@ -33,6 +35,7 @@ pub use geteuid::geteuid;
 pub use getgid::getgid;
 pub use getuid::getuid;
 pub use join_thread::join_thread;
+pub use lock_mutex::lock_mutex;
 pub use mcopy::mcopy;
 pub use mctrl::mctrl;
 pub use mmap::mmap;
@@ -42,3 +45,4 @@ pub use seteuid::seteuid;
 pub use setgid::setgid;
 pub use setuid::setuid;
 pub use terminate::terminate;
+pub use unlock_mutex::unlock_mutex;

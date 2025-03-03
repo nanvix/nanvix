@@ -8,10 +8,14 @@
 use crate::{
     hal::arch::ContextInformation,
     mm::ustack::UserStack,
-    pm::sync::condvar::Condvar,
+    pm::sync::{
+        condvar::Condvar,
+        mutex::MutexGuard,
+    },
 };
 use ::alloc::{
     boxed::Box,
+    collections::btree_map::BTreeMap,
     fmt,
     sync::Arc,
 };
@@ -21,6 +25,7 @@ use ::core::{
 };
 use ::sys::{
     error::ErrorCode,
+    mm::VirtualAddress,
     pm::ThreadIdentifier,
 };
 
@@ -37,6 +42,8 @@ pub struct Thread {
     join_cond: Arc<Condvar>,
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
+    /// Lookup table of locked mutexes.
+    locked_mutexes: BTreeMap<VirtualAddress, MutexGuard>,
 }
 
 impl Thread {
@@ -50,6 +57,7 @@ impl Thread {
             context: Box::pin(context),
             user_stack,
             join_cond: Arc::new(Condvar::new()),
+            locked_mutexes: BTreeMap::new(),
         }
     }
 
@@ -118,6 +126,20 @@ impl RunningThread {
             ctx,
         )
     }
+
+    ///
+    /// # Description
+    ///
+    /// Stores a mutex guard in the target thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the mutex.
+    /// - `guard`: Mutex guard.
+    ///
+    pub fn put_mutex_guard(&mut self, addr: VirtualAddress, guard: MutexGuard) {
+        self.0.locked_mutexes.insert(addr, guard);
+    }
 }
 
 //==================================================================================================
@@ -180,6 +202,23 @@ impl SleepingThread {
 
     pub fn join_cond(&self) -> Arc<Condvar> {
         self.0.join_cond.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the mutex guard associated with the target thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// If the mutex guard is found, it is returned. Otherwise, `None` is returned instead.
+    ///
+    pub fn take_mutex_guard(&mut self, addr: VirtualAddress) -> Option<MutexGuard> {
+        self.0.locked_mutexes.remove(&addr)
     }
 }
 
