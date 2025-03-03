@@ -1,0 +1,31 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "thread-rust-nostd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Tests for Thread API"
+homepage.workspace = true
+
+[[bin]]
+name = "thread-rust-nostd"
+
+[dependencies]
+nvx = { workspace = true, features = ["allocator"] }
+posix = { workspace = true, features = ["syscall", "allocator"] }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace"]
+debug = ["nvx/debug"]
+info = ["nvx/info"]
+warn = ["nvx/warn"]
+error = ["nvx/error"]
+panic = ["nvx/panic"]

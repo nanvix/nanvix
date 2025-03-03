@@ -26,6 +26,7 @@ pub use virt::{
     Vmem,
 };
 pub mod kstack;
+pub mod ustack;
 
 #[cfg(feature = "smp")]
 pub mod kredzone;
@@ -239,9 +240,4 @@ pub fn init(
     }
 
     Ok((vmem, mm))
-}
-
-// Returns the user base stack address.
-pub fn user_stack_top() -> PageAligned<VirtualAddress> {
-    PageAligned::from_address(sys::config::memory_layout::USER_STACK_BASE).unwrap()
 }

@@ -12,6 +12,7 @@ use crate::{
     },
     mm::{
         elf::Elf32Fhdr,
+        ustack::UserStackAllocator,
         VirtMemoryManager,
         Vmem,
     },
@@ -34,6 +35,7 @@ use crate::{
         },
     },
 };
+use ::alloc::boxed::Box;
 use ::sys::{
     error::Error,
     pm::ProcessIdentifier,
@@ -49,7 +51,7 @@ use sys::{
 //==================================================================================================
 
 pub struct RunnableProcessWithReadyThread {
-    state: ProcessState,
+    state: Box<ProcessState>,
     ready_threads: NonEmptyVecDeque<ReadyThread>,
     interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>>,
     sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -62,9 +64,10 @@ impl RunnableProcessWithReadyThread {
         identity: ProcessIdentity,
         ready_thread: ReadyThread,
         vmem: Vmem,
+        user_stack_allocator: Option<UserStackAllocator>,
     ) -> Self {
         Self {
-            state: ProcessState::new(pid, identity, vmem),
+            state: Box::new(ProcessState::new(pid, identity, vmem, user_stack_allocator)),
             ready_threads: NonEmptyVecDeque::new(ready_thread),
             interrupted_threads: None,
             sleeping_threads: None,
@@ -73,7 +76,7 @@ impl RunnableProcessWithReadyThread {
     }
 
     fn from_state(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: NonEmptyVecDeque<ReadyThread>,
         interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -149,7 +152,11 @@ impl RunnableProcessWithReadyThread {
                 Some(zombie_threads),
             ))
         } else {
-            Err(ZombieProcess::new(self.state, zombie_threads, ErrorCode::Interrupted.into_errno()))
+            Err(ZombieProcess::new(
+                self.state,
+                zombie_threads,
+                ErrorCode::Interrupted.into_errno() as usize,
+            ))
         }
     }
 
@@ -177,6 +184,49 @@ impl RunnableProcessWithReadyThread {
         }
     }
 
+    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
+        if let Some(zombie_threads) = self.zombie_threads.take() {
+            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
+                Ok((zombie_threads, zombie_thread)) => {
+                    self.zombie_threads = NonEmptyVecDeque::from(zombie_threads);
+                    return Ok(zombie_thread);
+                },
+                Err(zombie_threads) => {
+                    self.zombie_threads = Some(zombie_threads);
+                },
+            }
+        }
+        // Search for thread in ready threads.
+        for ready_thread in self.ready_threads.iter() {
+            if ready_thread.tid() == tid {
+                let reason: &str = "thread is running";
+                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+            }
+        }
+        // Search for thread in sleeping threads.
+        if let Some(sleeping_threads) = self.sleeping_threads.as_ref() {
+            for sleeping_thread in sleeping_threads.iter() {
+                if sleeping_thread.id() == tid {
+                    let reason: &str = "thread is sleeping";
+                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                }
+            }
+        }
+        // Search for thread in interrupted threads.
+        if let Some(interrupted_threads) = self.interrupted_threads.as_ref() {
+            for interrupted_thread in interrupted_threads.iter() {
+                if interrupted_thread.tid() == tid {
+                    let reason: &str = "thread is interrupted";
+                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                }
+            }
+        }
+
+        let reason: &str = "thread not found";
+        error!("join_thread(): {:?} (state={:?})", reason, self.state());
+        Err(Error::new(ErrorCode::NoSuchProcess, reason))
+    }
+
     fn exec(
         &mut self,
         mm: &mut VirtMemoryManager,
@@ -184,10 +234,16 @@ impl RunnableProcessWithReadyThread {
     ) -> Result<VirtualAddress, Error> {
         mm.load_elf(self.state.vmem_mut(), elf)
     }
+
+    fn add_thread(mut self, ready_thread: ReadyThread) -> Self {
+        self.ready_threads.push_back(ready_thread);
+
+        self
+    }
 }
 
 pub struct RunnableProcessWithInterruptedThreads {
-    state: ProcessState,
+    state: Box<ProcessState>,
     ready_threads: Option<NonEmptyVecDeque<ReadyThread>>,
     interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
     sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -196,7 +252,7 @@ pub struct RunnableProcessWithInterruptedThreads {
 
 impl RunnableProcessWithInterruptedThreads {
     fn new(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: Option<NonEmptyVecDeque<ReadyThread>>,
         interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -303,10 +359,73 @@ impl RunnableProcessWithInterruptedThreads {
             Err(self)
         }
     }
+
+    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
+        if let Some(zombie_threads) = self.zombie_threads.take() {
+            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
+                Ok((zombie_threads, zombie_thread)) => {
+                    self.zombie_threads = NonEmptyVecDeque::from(zombie_threads);
+                    return Ok(zombie_thread);
+                },
+                Err(zombie_threads) => {
+                    self.zombie_threads = Some(zombie_threads);
+                },
+            }
+        }
+        // Search for thread in ready threads.
+        if let Some(ready_threads) = self.ready_threads.as_ref() {
+            for ready_thread in ready_threads.iter() {
+                if ready_thread.tid() == tid {
+                    let reason: &str = "thread is running";
+                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                }
+            }
+        }
+        // Search for thread in interrupted threads.
+        for interrupted_thread in self.interrupted_threads.iter() {
+            if interrupted_thread.tid() == tid {
+                let reason: &str = "thread is interrupted";
+                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+            }
+        }
+        // Search for thread in sleeping threads.
+        if let Some(sleeping_threads) = self.sleeping_threads.as_ref() {
+            for sleeping_thread in sleeping_threads.iter() {
+                if sleeping_thread.id() == tid {
+                    let reason: &str = "thread is sleeping";
+                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                }
+            }
+        }
+
+        let reason: &str = "thread not found";
+        error!("join_thread(): {:?} (state={:?})", reason, self.state());
+        Err(Error::new(ErrorCode::NoSuchProcess, reason))
+    }
+
+    fn add_thread(
+        mut self,
+        ready_thread: ReadyThread,
+    ) -> RunnableProcessWithReadyAndInteruptThread {
+        let ready_threads = match self.ready_threads.take() {
+            Some(mut ready_threads) => {
+                ready_threads.push_back(ready_thread);
+                ready_threads
+            },
+            None => NonEmptyVecDeque::new(ready_thread),
+        };
+        RunnableProcessWithReadyAndInteruptThread::new(
+            self.state,
+            ready_threads,
+            self.interrupted_threads,
+            self.sleeping_threads.take(),
+            self.zombie_threads.take(),
+        )
+    }
 }
 
 pub struct RunnableProcessWithReadyAndInteruptThread {
-    state: ProcessState,
+    state: Box<ProcessState>,
     ready_threads: NonEmptyVecDeque<ReadyThread>,
     interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
     sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -315,7 +434,7 @@ pub struct RunnableProcessWithReadyAndInteruptThread {
 
 impl RunnableProcessWithReadyAndInteruptThread {
     fn new(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: NonEmptyVecDeque<ReadyThread>,
         interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -417,6 +536,52 @@ impl RunnableProcessWithReadyAndInteruptThread {
             Err(self)
         }
     }
+
+    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
+        if let Some(zombie_threads) = self.zombie_threads.take() {
+            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
+                Ok((zombie_threads, zombie_thread)) => {
+                    self.zombie_threads = NonEmptyVecDeque::from(zombie_threads);
+                    return Ok(zombie_thread);
+                },
+                Err(zombie_threads) => {
+                    self.zombie_threads = Some(zombie_threads);
+                },
+            }
+        }
+        // Search for thread in ready threads.
+        for ready_thread in self.ready_threads.iter() {
+            if ready_thread.tid() == tid {
+                let reason: &str = "thread is running";
+                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+            }
+        }
+        // Search for thread in interrupted threads.
+        for interrupted_thread in self.interrupted_threads.iter() {
+            if interrupted_thread.tid() == tid {
+                let reason: &str = "thread is interrupted";
+                return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+            }
+        }
+        // Search for thread in sleeping threads.
+        if let Some(sleeping_threads) = self.sleeping_threads.as_ref() {
+            for sleeping_thread in sleeping_threads.iter() {
+                if sleeping_thread.id() == tid {
+                    let reason: &str = "thread is sleeping";
+                    return Err(Error::new(ErrorCode::OperationWouldBlock, reason));
+                }
+            }
+        }
+
+        let reason: &str = "thread not found";
+        error!("join_thread(): {:?} (state={:?})", reason, self.state());
+        Err(Error::new(ErrorCode::NoSuchProcess, reason))
+    }
+
+    fn add_thread(mut self, ready_thread: ReadyThread) -> Self {
+        self.ready_threads.push_back(ready_thread);
+        self
+    }
 }
 
 ///
@@ -436,17 +601,19 @@ impl RunnableProcess {
         identity: ProcessIdentity,
         ready_thread: ReadyThread,
         vmem: Vmem,
+        user_stack_allocator: Option<UserStackAllocator>,
     ) -> Self {
         RunnableProcess::WithReadyThread(RunnableProcessWithReadyThread::new(
             pid,
             identity,
             ready_thread,
             vmem,
+            user_stack_allocator,
         ))
     }
 
     pub fn from_state_with_ready_thread(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: NonEmptyVecDeque<ReadyThread>,
         interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
@@ -462,13 +629,29 @@ impl RunnableProcess {
     }
 
     pub fn from_state_with_interrupted_threads(
-        state: ProcessState,
+        state: Box<ProcessState>,
         ready_threads: Option<NonEmptyVecDeque<ReadyThread>>,
         interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
         sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
         zombie_threads: Option<NonEmptyVecDeque<ZombieThread>>,
     ) -> Self {
         RunnableProcess::WithInterruptedThreads(RunnableProcessWithInterruptedThreads::new(
+            state,
+            ready_threads,
+            interrupted_threads,
+            sleeping_threads,
+            zombie_threads,
+        ))
+    }
+
+    pub fn from_state_with_ready_and_interrupted_threads(
+        state: Box<ProcessState>,
+        ready_threads: NonEmptyVecDeque<ReadyThread>,
+        interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
+        sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
+        zombie_threads: Option<NonEmptyVecDeque<ZombieThread>>,
+    ) -> Self {
+        RunnableProcess::ReadyAndInteruptThread(RunnableProcessWithReadyAndInteruptThread::new(
             state,
             ready_threads,
             interrupted_threads,
@@ -518,6 +701,14 @@ impl RunnableProcess {
         }
     }
 
+    pub fn join_thread(&mut self, tid: ThreadIdentifier) -> Result<ZombieThread, Error> {
+        match self {
+            RunnableProcess::WithReadyThread(process) => process.join_thread(tid),
+            RunnableProcess::WithInterruptedThreads(process) => process.join_thread(tid),
+            RunnableProcess::ReadyAndInteruptThread(process) => process.join_thread(tid),
+        }
+    }
+
     pub fn wakeup(self, tid: ThreadIdentifier) -> Result<RunnableProcess, RunnableProcess> {
         match self {
             RunnableProcess::WithReadyThread(process) => match process.wakeup(tid) {
@@ -546,6 +737,20 @@ impl RunnableProcess {
                 let reason: &str = "process is terminating";
                 error!("exec(): {:?} (state={:?})", reason, self.state());
                 Err(Error::new(ErrorCode::Interrupted, reason))
+            },
+        }
+    }
+
+    pub fn add_thread(self, ready_thread: ReadyThread) -> Self {
+        match self {
+            RunnableProcess::WithReadyThread(process) => {
+                RunnableProcess::WithReadyThread(process.add_thread(ready_thread))
+            },
+            RunnableProcess::WithInterruptedThreads(process) => {
+                RunnableProcess::ReadyAndInteruptThread(process.add_thread(ready_thread))
+            },
+            RunnableProcess::ReadyAndInteruptThread(process) => {
+                RunnableProcess::ReadyAndInteruptThread(process.add_thread(ready_thread))
             },
         }
     }

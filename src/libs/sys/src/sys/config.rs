@@ -5,8 +5,8 @@
 // User Memory Layout
 //==================================================================================================
 pub mod memory_layout {
-    use config::memory_layout::*;
     use crate::mm::VirtualAddress;
+    use config::memory_layout::*;
     ///
     /// # Description
     ///
@@ -45,6 +45,17 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
+    /// Base address of user stack.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    ///
+    pub const USER_STACK_BASE: VirtualAddress = VirtualAddress::new(USER_STACK_BASE_RAW);
+
+    ///
+    /// # Description
+    ///
     /// Base address of user heap.
     ///
     /// # Notes
@@ -52,15 +63,4 @@ pub mod memory_layout {
     /// - This should be aligned to page and page table boundaries.
     ///
     pub const USER_HEAP_BASE: VirtualAddress = VirtualAddress::new(USER_HEAP_BASE_RAW);
-
-    ///
-    /// # Description
-    ///
-    /// Base address of user stack.
-    ///
-    /// # Notes
-    ///
-    /// - This should be aligned to page and page table boundaries.
-    ///
-    pub const USER_STACK_BASE: VirtualAddress = USER_END;
 }

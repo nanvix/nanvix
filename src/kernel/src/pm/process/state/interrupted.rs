@@ -16,10 +16,14 @@ use crate::{
             InterruptReason,
             InterruptedThread,
             SleepingThread,
+            ZombieThread,
         },
     },
 };
-use ::alloc::collections::vec_deque::VecDeque;
+use ::alloc::{
+    boxed::Box,
+    collections::vec_deque::VecDeque,
+};
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -32,18 +36,21 @@ use ::type_safe::NonEmptyVecDeque;
 /// A type that represents a process that was interrupted.
 ///
 pub struct InterruptedProcess {
-    state: ProcessState,
+    state: Box<ProcessState>,
     interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
+    zombie_threads: Option<NonEmptyVecDeque<ZombieThread>>,
 }
 
 impl InterruptedProcess {
     pub(super) fn new(
-        process: ProcessState,
+        process: Box<ProcessState>,
         interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
+        zombie_threads: Option<NonEmptyVecDeque<ZombieThread>>,
     ) -> Self {
         Self {
             state: process,
             interrupted_threads,
+            zombie_threads,
         }
     }
 
@@ -55,7 +62,7 @@ impl InterruptedProcess {
         &mut self.state
     }
 
-    pub fn resume(self) -> (RunningProcess, InterruptReason, *mut ContextInformation) {
+    pub fn resume(mut self) -> (RunningProcess, InterruptReason, *mut ContextInformation) {
         let (interrupted_threads, next_thread): (VecDeque<InterruptedThread>, InterruptedThread) =
             self.interrupted_threads.pop_front();
         let (thread, reason, ctx) = next_thread.resume();
@@ -66,7 +73,7 @@ impl InterruptedProcess {
                 None,
                 NonEmptyVecDeque::from(interrupted_threads),
                 None,
-                None,
+                self.zombie_threads.take(),
             ),
             reason,
             ctx,

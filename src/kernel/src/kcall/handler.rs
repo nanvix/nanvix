@@ -86,6 +86,8 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                             // Nothing to do, as this operation already yielded the processor.
                             0
                         },
+                        KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
+                        KcallNumber::JoinThread => pm::join_thread(pm, mm, args),
                         _ => {
                             error!("invalid kernel call");
                             ErrorCode::InvalidSysCall.into_errno()
@@ -141,7 +143,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
             }
         }
 
-        match pm.harvest_zombies() {
+        match pm.harvest_zombies(mm) {
             Ok(None) => {},
             Ok(Some((pid, status))) => {
                 // Check if init daemon process terminated.
@@ -150,7 +152,8 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                     break;
                 }
                 match EventManager::notify_process_termination(ProcessTerminationInfo::new(
-                    pid, status,
+                    pid,
+                    status as i32,
                 )) {
                     Ok(()) => {},
                     Err(e) => {
@@ -164,7 +167,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
         }
     }
 
-    while let Ok(Some((pid, status))) = pm.harvest_zombies() {
+    while let Ok(Some((pid, status))) = pm.harvest_zombies(mm) {
         info!("harvested zombie process: pid={:?}, status={:?}", pid, status);
     }
 }

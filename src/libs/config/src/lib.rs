@@ -46,9 +46,38 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
+    /// Base address of user stack.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    ///
+    pub const USER_STACK_BASE_RAW: usize = USER_END_RAW;
+
+    ///
+    /// # Description
+    ///
     /// Provides the raw value for [`USER_HEAP_BASE`], which can be used in constant-value expressions.
     ///
     pub const USER_HEAP_BASE_RAW: usize = 0xa0000000;
+
+    ///
+    /// # Description
+    ///
+    /// Size of the user stack.
+    ///
+    /// # Notes:
+    ///
+    /// - This size should be a multiple of a page size.
+    ///
+    pub const USER_STACK_SIZE: usize = 32 * crate::constants::KILOBYTE;
+
+    ///
+    /// # Description
+    ///
+    /// Number of entries in the user stack. This should be a multiple of 8.
+    ///
+    pub const NUM_USER_STACK_ENTRIES: usize = 8;
 
     ///
     /// # Description

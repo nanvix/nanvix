@@ -175,6 +175,7 @@ pub fn capctl(capability: Capability, value: bool) -> Result<(), Error> {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to capctl()"))
     }
 }
+
 //==================================================================================================
 // Terminate
 //==================================================================================================
@@ -186,5 +187,43 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
         Ok(())
     } else {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate()"))
+    }
+}
+
+//==================================================================================================
+// Create Thread
+//==================================================================================================
+
+pub fn create_thread(user_func: fn() -> !) -> Result<ThreadIdentifier, Error> {
+    let result: i32 = kcall1!(KcallNumber::CreateThread.into(), user_func as usize as u32);
+
+    ThreadIdentifier::try_from(result)
+}
+
+//==================================================================================================
+// Exit Thread
+//==================================================================================================
+
+pub fn exit_thread(status: usize) -> Result<!, Error> {
+    let result: i32 = kcall1!(KcallNumber::ExitThread.into(), status as u32);
+
+    Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate thread"))
+}
+
+//==================================================================================================
+// Join Thread
+//==================================================================================================
+
+pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i32, Error> {
+    let result: i32 = kcall2!(
+        KcallNumber::JoinThread.into(),
+        usize::from(tid) as u32,
+        retval as *mut usize as u32
+    );
+
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to join thread"))
+    } else {
+        Ok(result)
     }
 }
