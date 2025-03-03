@@ -5,14 +5,17 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::arch::ContextInformation;
+use crate::{
+    hal::arch::ContextInformation,
+    mm::ustack::UserStack,
+};
 use ::alloc::boxed::Box;
 use ::core::{
     fmt::Debug,
     pin::Pin,
 };
 use ::sys::{
-    error::Error,
+    error::ErrorCode,
     pm::ThreadIdentifier,
 };
 
@@ -21,18 +24,25 @@ use ::sys::{
 //==================================================================================================
 
 #[derive(Debug)]
-struct Thread {
+pub struct Thread {
     /// Thread identifier.
     id: ThreadIdentifier,
+    /// User stack.
+    user_stack: Option<UserStack>,
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
 }
 
 impl Thread {
-    pub fn new(id: ThreadIdentifier, context: ContextInformation) -> Self {
+    pub fn new(
+        id: ThreadIdentifier,
+        user_stack: Option<UserStack>,
+        context: ContextInformation,
+    ) -> Self {
         Self {
             id,
             context: Box::pin(context),
+            user_stack,
         }
     }
 
@@ -71,9 +81,15 @@ impl RunningThread {
         self.0.id
     }
 
-    pub fn exit(mut self) -> (ZombieThread, *mut ContextInformation) {
+    pub fn exit(mut self, status: usize) -> (ZombieThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.0.context_mut();
-        (ZombieThread(self.0), ctx)
+        (
+            ZombieThread {
+                state: self.0,
+                status,
+            },
+            ctx,
+        )
     }
 }
 
@@ -84,8 +100,16 @@ impl RunningThread {
 pub struct ReadyThread(Thread);
 
 impl ReadyThread {
-    pub fn new(id: ThreadIdentifier, context: ContextInformation) -> Self {
-        Self(Thread::new(id, context))
+    pub fn new(
+        id: ThreadIdentifier,
+        user_stack: Option<UserStack>,
+        context: ContextInformation,
+    ) -> Self {
+        Self(Thread::new(id, user_stack, context))
+    }
+
+    pub fn tid(&self) -> ThreadIdentifier {
+        self.0.id
     }
 
     pub fn resume(mut self) -> (RunningThread, *mut ContextInformation) {
@@ -94,7 +118,10 @@ impl ReadyThread {
     }
 
     pub fn terminate(self) -> ZombieThread {
-        ZombieThread(self.0)
+        ZombieThread {
+            state: self.0,
+            status: ErrorCode::Interrupted.into_errno() as usize,
+        }
     }
 }
 
@@ -136,6 +163,10 @@ pub struct InterruptedThread {
 }
 
 impl InterruptedThread {
+    pub fn tid(&self) -> ThreadIdentifier {
+        self.thread.id
+    }
+
     pub fn resume(mut self) -> (RunningThread, InterruptReason, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.thread.context_mut();
         (RunningThread(self.thread), self.reason, ctx)
@@ -147,7 +178,24 @@ impl InterruptedThread {
 //==================================================================================================
 
 #[allow(unused)]
-pub struct ZombieThread(Thread);
+pub struct ZombieThread {
+    status: usize,
+    state: Thread,
+}
+
+impl ZombieThread {
+    pub fn tid(&self) -> ThreadIdentifier {
+        self.state.id
+    }
+
+    pub fn harvest(mut self) -> Option<UserStack> {
+        self.state.user_stack.take()
+    }
+
+    pub fn status(&self) -> usize {
+        self.status
+    }
+}
 
 //==================================================================================================
 // Thread Manager
@@ -160,7 +208,7 @@ pub struct ThreadManager {
 impl ThreadManager {
     fn new() -> (ReadyThread, Self) {
         let kernel: ReadyThread =
-            ReadyThread::new(ThreadIdentifier::from(0), ContextInformation::default());
+            ReadyThread::new(ThreadIdentifier::from(0), None, ContextInformation::default());
         (
             kernel,
             Self {
@@ -169,11 +217,15 @@ impl ThreadManager {
         )
     }
 
-    pub fn create_thread(&mut self, context: ContextInformation) -> Result<ReadyThread, Error> {
+    pub fn create_thread(
+        &mut self,
+        user_stack: Option<UserStack>,
+        context: ContextInformation,
+    ) -> ReadyThread {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(Into::<usize>::into(self.next_id) + 1);
 
-        Ok(ReadyThread(Thread::new(id, context)))
+        ReadyThread(Thread::new(id, user_stack, context))
     }
 }
 

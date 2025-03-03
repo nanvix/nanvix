@@ -6,10 +6,12 @@
 //==================================================================================================
 
 mod capctl;
+mod create_thread;
 mod getegid;
 mod geteuid;
 mod getgid;
 mod getuid;
+mod join_thread;
 mod mcopy;
 mod mctrl;
 mod mmap;
@@ -25,10 +27,12 @@ mod terminate;
 //==================================================================================================
 
 pub use capctl::capctl;
+pub use create_thread::create_thread;
 pub use getegid::getegid;
 pub use geteuid::geteuid;
 pub use getgid::getgid;
 pub use getuid::getuid;
+pub use join_thread::join_thread;
 pub use mcopy::mcopy;
 pub use mctrl::mctrl;
 pub use mmap::mmap;

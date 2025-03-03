@@ -63,8 +63,8 @@ impl Condvar {
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
     pub fn notify_first(&self) -> Result<(), Error> {
-        if let Some((_, tid)) = self.sleeping.borrow_mut().pop_front() {
-            ProcessManager::wakeup(tid)?;
+        if let Some((pid, tid)) = self.sleeping.borrow_mut().pop_front() {
+            ProcessManager::wakeup(pid, tid)?;
         }
 
         Ok(())
@@ -89,8 +89,8 @@ impl Condvar {
 
         // Remove process from sleeping queue.
         if let Some(at) = idx {
-            let (_, tid) = self.sleeping.borrow_mut().remove(at);
-            ProcessManager::wakeup(tid)?;
+            let (pid, tid) = self.sleeping.borrow_mut().remove(at);
+            ProcessManager::wakeup(pid, tid)?;
         }
 
         Ok(())

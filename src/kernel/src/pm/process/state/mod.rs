@@ -36,7 +36,10 @@ use crate::{
         },
     },
     ipc::Mailbox,
-    mm::Vmem,
+    mm::{
+        ustack::UserStackAllocator,
+        Vmem,
+    },
     pm::process::{
         capability::Capabilities,
         identity::ProcessIdentity,
@@ -138,10 +141,17 @@ pub struct ProcessState {
     mmio: LinkedList<IoMemoryRegion>,
     /// I/O ports.
     pmio: LinkedList<AnyIoPort>,
+    /// User stack allocator.
+    user_stack_allocator: Option<UserStackAllocator>,
 }
 
 impl ProcessState {
-    pub fn new(pid: ProcessIdentifier, identity: ProcessIdentity, vmem: Vmem) -> Self {
+    pub fn new(
+        pid: ProcessIdentifier,
+        identity: ProcessIdentity,
+        vmem: Vmem,
+        user_stack_allocator: Option<UserStackAllocator>,
+    ) -> Self {
         Self {
             pid,
             identity,
@@ -151,6 +161,7 @@ impl ProcessState {
             mailbox: Mailbox::default(),
             mmio: LinkedList::new(),
             pmio: LinkedList::new(),
+            user_stack_allocator,
         }
     }
 
@@ -309,6 +320,10 @@ impl ProcessState {
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
+    }
+
+    pub fn get_user_stack_allocator_mut(&mut self) -> Option<&mut UserStackAllocator> {
+        self.user_stack_allocator.as_mut()
     }
 }
 

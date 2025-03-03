@@ -15,7 +15,6 @@ use crate::{
     hal::{
         arch::x86::{
             self,
-            mem::mmu,
             Arch,
         },
         io::{
