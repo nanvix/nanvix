@@ -18,6 +18,7 @@ path = "src/kmain.rs"
 bitmap = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true, optional = true }
+type-safe = { workspace = true }
 raw-array = { workspace = true }
 slab = { workspace = true }
 sys = { workspace = true }

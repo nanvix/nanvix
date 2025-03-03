@@ -25,6 +25,7 @@ members = [
         "src/libs/raw-array",
         "src/libs/slab",
         "src/libs/sys",
+        "src/libs/type-safe",
         "src/microvm",
         "src/tests/linux-app",
         "src/tests/testd",
@@ -76,6 +77,7 @@ slab = { path = "src/libs/slab", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
 tokio = { version = "1.43.0", default-features = false }
+type-safe = { path = "src/libs/type-safe", default-features = false }
 wasmi = { version = "0.40.0", default-features = false }
 
 [profile.dev]

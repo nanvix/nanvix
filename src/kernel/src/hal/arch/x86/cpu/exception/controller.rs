@@ -162,8 +162,8 @@ pub unsafe extern "C" fn do_exception(
     match HANDLER {
         Some(handler) => handler(excp, ctx),
         None => {
-            info!("{:?}", excp);
-            info!("{:?}", ctx);
+            error!("{:?}", excp);
+            error!("{:?}", ctx);
             panic!("unhandled exception");
         },
     }

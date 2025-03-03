@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::pm::ProcessManager;
+use crate::pm::{
+    process::SleepError,
+    ProcessManager,
+};
 use ::alloc::collections::LinkedList;
 use ::core::cell::RefCell;
 use ::sys::{
@@ -98,14 +101,24 @@ impl Condvar {
     ///
     /// Waits on the condition variable.
     ///
-    pub fn wait(&self) -> Result<(), Error> {
-        let pid: ProcessIdentifier = ProcessManager::get_pid()?;
-        let tid: ThreadIdentifier = ProcessManager::get_tid()?;
+    /// # Safety
+    ///
+    /// This function panics if the kernel process tries to sleep.
+    ///
+    pub fn wait(&self) -> Result<(), SleepError> {
+        let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
+
+        // Check if the kernel process is trying to sleep.
+        if pid == ProcessIdentifier::KERNEL {
+            panic!("kernel process cannot sleep");
+        }
+
+        let tid: ThreadIdentifier = ProcessManager::get_tid().map_err(SleepError::Generic)?;
+
         self.sleeping.borrow_mut().push_back((pid, tid));
 
-        ProcessManager::sleep()?;
-
-        Ok(())
+        // SAFETY: the calling process is not the kernel.
+        unsafe { ProcessManager::sleep() }
     }
 }
 

@@ -109,8 +109,11 @@ impl SleepingThread {
         ReadyThread(self.0)
     }
 
-    pub fn interrupt(self) -> InterruptedThread {
-        InterruptedThread(self.0)
+    pub fn interrupt(self, reason: InterruptReason) -> InterruptedThread {
+        InterruptedThread {
+            thread: self.0,
+            reason,
+        }
     }
 
     pub fn id(&self) -> ThreadIdentifier {
@@ -122,12 +125,20 @@ impl SleepingThread {
 // Interrupted Thread
 //==================================================================================================
 
-pub struct InterruptedThread(Thread);
+#[derive(Debug, PartialEq, Eq)]
+pub enum InterruptReason {
+    /// Process was killed.
+    Killed,
+}
+pub struct InterruptedThread {
+    thread: Thread,
+    reason: InterruptReason,
+}
 
 impl InterruptedThread {
-    pub fn resume(mut self) -> (RunningThread, *mut ContextInformation) {
-        let ctx: *mut ContextInformation = self.0.context_mut();
-        (RunningThread(self.0), ctx)
+    pub fn resume(mut self) -> (RunningThread, InterruptReason, *mut ContextInformation) {
+        let ctx: *mut ContextInformation = self.thread.context_mut();
+        (RunningThread(self.thread), self.reason, ctx)
     }
 }
 

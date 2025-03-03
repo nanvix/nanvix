@@ -16,7 +16,9 @@ use crate::{
     },
     pm::{
         sync::condvar::Condvar,
+        InterruptReason,
         ProcessManager,
+        SleepError,
     },
 };
 use ::alloc::{
@@ -551,14 +553,19 @@ impl EventManager {
         }
     }
 
-    pub fn wait(pid: ProcessIdentifier) -> Result<Message, Error> {
+    pub fn wait(pid: ProcessIdentifier) -> Result<Message, SleepError> {
         trace!("do_wait()");
 
         // Get the interrupts that the process owns.
         let mut interrupts: usize = 0;
         for i in 0..usize::BITS {
             let idx: usize = i as usize;
-            if let Some(p) = EventManager::get()?.try_borrow_mut()?.interrupt_ownership[idx] {
+            if let Some(p) = EventManager::get()
+                .map_err(SleepError::Generic)?
+                .try_borrow_mut()
+                .map_err(SleepError::Generic)?
+                .interrupt_ownership[idx]
+            {
                 if p == pid {
                     interrupts |= 1 << i;
                 }
@@ -569,7 +576,12 @@ impl EventManager {
         let mut exceptions: usize = 0;
         for i in 0..usize::BITS {
             let idx: usize = i as usize;
-            if let Some(p) = EventManager::get()?.try_borrow_mut()?.exception_ownership[idx] {
+            if let Some(p) = EventManager::get()
+                .map_err(SleepError::Generic)?
+                .try_borrow_mut()
+                .map_err(SleepError::Generic)?
+                .exception_ownership[idx]
+            {
                 if p == pid {
                     exceptions |= 1 << i;
                 }
@@ -579,24 +591,38 @@ impl EventManager {
         // Get the scheduling events that the process owns.
         let mut scheduling: usize = 0;
         for i in 0..SchedulingEvent::NUMBER_EVENTS {
-            if let Some(p) = EventManager::get()?.try_borrow_mut()?.scheduling_ownership[i] {
+            if let Some(p) = EventManager::get()
+                .map_err(SleepError::Generic)?
+                .try_borrow_mut()
+                .map_err(SleepError::Generic)?
+                .scheduling_ownership[i]
+            {
                 if p == pid {
                     scheduling |= 1 << i;
                 }
             }
         }
 
-        let wait: Rc<Condvar> = EventManager::get()?.try_borrow_mut()?.get_wait().clone();
+        let wait: Rc<Condvar> = EventManager::get()
+            .map_err(SleepError::Generic)?
+            .try_borrow_mut()
+            .map_err(SleepError::Generic)?
+            .get_wait()
+            .clone();
 
         loop {
-            let message: Option<Message> = EventManager::get()?
-                .try_borrow_mut()?
-                .try_wait(pid, interrupts, exceptions, scheduling)?;
+            let message: Option<Message> = EventManager::get()
+                .map_err(SleepError::Generic)?
+                .try_borrow_mut()
+                .map_err(SleepError::Generic)?
+                .try_wait(pid, interrupts, exceptions, scheduling)
+                .map_err(SleepError::Generic)?;
 
             if let Some(message) = message {
                 break Ok(message);
             }
 
+            // Wait for an event to be delivered.
             wait.wait()?;
         }
     }
@@ -715,39 +741,47 @@ fn interrupt_handler(intnum: InterruptNumber) {
     }
 }
 
-fn exception_handler(info: &ExceptionInformation, _ctx: &ContextInformation) {
+fn do_exception_handler(
+    info: &ExceptionInformation,
+    ctx: &ContextInformation,
+) -> Result<(), SleepError> {
     trace!("exception_handler(): info={:?}", info);
-    let pid: ProcessIdentifier = match ProcessManager::get_pid() {
-        Ok(pid) => pid,
-        Err(e) => {
-            error!("failed to get process identifier: {:?}", e);
-            return;
-        },
-    };
 
-    let resume: Rc<Condvar> = match EventManager::get() {
-        Ok(em) => match em.try_borrow_mut() {
-            Ok(mut em) => match em.wakeup_exception(1 << info.num() as usize, pid, info) {
-                Ok(resume) => resume,
-                Err(e) => {
-                    error!("failed to wake up event manager: {:?}", e);
-                    return;
-                },
-            },
-            Err(e) => {
-                error!("failed to borrow event manager: {:?}", e);
-                return;
-            },
-        },
-        Err(e) => {
-            error!("failed to get event manager: {:?}", e);
-            return;
-        },
-    };
+    let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
 
-    if resume.wait().is_err() {
-        let e = ProcessManager::exit(-1);
-        unreachable!("failed to terminate process (error={:?})", e);
+    // Check if exception was triggered by the kernel.
+    if pid == ProcessIdentifier::KERNEL {
+        error!("{:?}", info);
+        error!("{:?}", ctx);
+        panic!("the kernel triggered an exception");
+    }
+
+    let resume: Rc<Condvar> = EventManager::get()
+        .map_err(SleepError::Generic)?
+        .try_borrow_mut()
+        .map_err(SleepError::Generic)?
+        .wakeup_exception(1 << info.num() as usize, pid, info)
+        .map_err(SleepError::Generic)?;
+
+    resume.wait()
+}
+
+fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
+    if let Err(sleep_error) = do_exception_handler(info, ctx) {
+        error!("exception_handler(): {:?}", sleep_error);
+
+        let status: i32 = match sleep_error {
+            SleepError::Generic(generic_error) => generic_error.code.into_errno(),
+            SleepError::Interrupted(InterruptReason::Killed) => ErrorCode::Interrupted.into_errno(),
+        };
+
+        // SAFETY: the calling process is not the kernel.
+        unsafe {
+            let error: Error = ProcessManager::exit(status).unwrap_err();
+            error!("{:?}", info);
+            error!("{:?}", ctx);
+            panic!("failed to exit() (error={:?})", error);
+        }
     }
 }
 

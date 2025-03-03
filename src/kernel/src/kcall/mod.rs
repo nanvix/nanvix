@@ -21,6 +21,7 @@ use crate::pm::{
         semaphore::Semaphore,
     },
     ProcessManager,
+    SleepError,
 };
 use ::core::fmt::Debug;
 use ::sys::{
@@ -115,10 +116,10 @@ impl ScoreBoard {
         arg1: u32,
         arg2: u32,
         arg3: u32,
-    ) -> Result<i32, Error> {
+    ) -> Result<i32, SleepError> {
         let _guard: MutexGuard = self.lock.lock()?;
-        let pid: ProcessIdentifier = ProcessManager::get_pid()?;
-        let tid: ThreadIdentifier = ProcessManager::get_tid()?;
+        let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
+        let tid: ThreadIdentifier = ProcessManager::get_tid().map_err(SleepError::Generic)?;
         self.args = KcallArgs {
             pid,
             tid,
@@ -128,7 +129,7 @@ impl ScoreBoard {
             arg3,
             number,
         };
-        self.dispatched.up()?;
+        self.dispatched.up().map_err(SleepError::Generic)?;
         self.handled.down()?;
 
         Ok(self.ret)
