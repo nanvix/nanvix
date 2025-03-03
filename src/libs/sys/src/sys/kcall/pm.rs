@@ -13,6 +13,7 @@ use crate::{
     kcall0,
     kcall1,
     kcall2,
+    kcall3,
     number::KcallNumber,
     pm::{
         Capability,
@@ -194,8 +195,40 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
 // Create Thread
 //==================================================================================================
 
-pub fn create_thread(user_func: fn() -> !) -> Result<ThreadIdentifier, Error> {
-    let result: i32 = kcall1!(KcallNumber::CreateThread.into(), user_func as usize as u32);
+::core::arch::global_asm!(concat!(
+    ".global _do_start_thread\n",
+    ".extern _start_thread\n",
+    ".type _do_start_thread, @function\n",
+    "_do_start_thread:\n",
+    // Start call stack frame
+    "    mov ebp, esp\n",
+    "    push ecx\n",
+    "    push edx\n",
+    "    call _start_thread\n",
+    "1: jmp 1b"
+));
+
+#[no_mangle]
+pub extern "C" fn _start_thread(func: extern "C" fn(usize) -> usize, arg: usize) -> ! {
+    let status = func(arg);
+    let _ = exit_thread(status);
+    unreachable!("failed to exit thread");
+}
+
+pub fn create_thread(
+    user_fn: extern "C" fn(usize) -> usize,
+    arg: usize,
+) -> Result<ThreadIdentifier, Error> {
+    extern "C" {
+        fn _do_start_thread() -> !;
+    }
+
+    let result: i32 = kcall3!(
+        KcallNumber::CreateThread.into(),
+        _do_start_thread as usize as u32,
+        user_fn as usize as u32,
+        arg as u32
+    );
 
     ThreadIdentifier::try_from(result)
 }
@@ -221,7 +254,7 @@ pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i32, Err
         retval as *mut usize as u32
     );
 
-    if result < 0 {
+    if result != 0 {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to join thread"))
     } else {
         Ok(result)

@@ -43,7 +43,7 @@ fn do_mmap(
 
 pub fn mmap(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
     // Check if the calling process has memory management capabilities.
-    match ProcessManager::has_capability(args.pid, Capability::MemoryManagement) {
+    match pm.has_capability(args.pid, Capability::MemoryManagement) {
         Ok(true) => (),
         Ok(false) => {
             let reason: &str = "process does not have memory management capabilities";

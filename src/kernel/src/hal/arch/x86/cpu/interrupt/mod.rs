@@ -75,7 +75,9 @@ pub use number::InterruptNumber;
 ///
 /// - `kernel_stack_top`: Pointer to the top of the kernel stack.
 /// - `user_stack_top`: Top address of user stack.
-/// - `user_func`: User function.
+/// - `user_wrapper_fn`: User wrapper function.
+/// - `user_fn`: User function.
+/// - `user_fn_arg`: Argument passed in to `user_fn`
 /// - `kernel_func`: Kernel function.
 /// - `enable_interrupts`: Enable interrupts?
 ///
@@ -87,48 +89,63 @@ pub use number::InterruptNumber;
 ///
 /// Behavior is undefined if any of the following conditions are violated:
 ///
-/// - `stackp` must point to a valid location in memory.
+/// - `kernel_stack_top` must point to a valid location in memory.
 ///
 pub unsafe fn forge_user_stack(
     kernel_stack_top: *mut u8,
     user_stack_top: usize,
-    user_func: usize,
+    user_wrapper_fn: usize,
+    user_fn: usize,
+    user_fn_arg: usize,
     kernel_func: usize,
     enable_interrupts: bool,
 ) -> *mut u8 {
-    let mut stackp: *mut u32 = kernel_stack_top as *mut u32;
+    // Get pointer to kernel stack.
+    let mut kstackp: *mut u32 = kernel_stack_top as *mut u32;
 
-    // User DS
-    stackp = stackp.offset(-1);
-    *stackp = gdt::SegmentSelector::UserData as u32;
+    // Push User Function on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = user_fn as u32;
 
-    // User ESP
-    stackp = stackp.offset(-1);
-    *stackp = user_stack_top as u32;
+    // Push User DS on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = gdt::SegmentSelector::UserData as u32;
 
-    // EFLAGS
+    // Push User ESP on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = (user_stack_top) as u32;
+
+    // Push EFLAGS on the kernel stack.
     let mut eflags: EflagsRegister = eflags::EflagsRegister::default();
     eflags.interrupt = if enable_interrupts {
         eflags::InterruptFlag::Set
     } else {
         eflags::InterruptFlag::Clear
     };
-    stackp = stackp.offset(-1);
-    *stackp = eflags.into_raw_value();
+    kstackp = kstackp.offset(-1);
+    *kstackp = eflags.into_raw_value();
 
-    // User CS
-    stackp = stackp.offset(-1);
-    *stackp = gdt::SegmentSelector::UserCode as u32;
+    // Push User CS on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = gdt::SegmentSelector::UserCode as u32;
 
-    // User EIP
-    stackp = stackp.offset(-1);
-    *stackp = user_func as u32;
+    // Push User EIP on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = user_wrapper_fn as u32;
 
-    // Kernel EIP
-    stackp = stackp.offset(-1);
-    *stackp = kernel_func as u32;
+    // Push User function on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = user_fn as u32;
 
-    stackp as *mut u8
+    // Push User Function Argument on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = user_fn_arg as u32;
+
+    // Push Kernel EIP on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = kernel_func as u32;
+
+    kstackp as *mut u8
 }
 
 fn build_interrupt_map(madt: &MadtInfo) -> InterruptMap {

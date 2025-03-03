@@ -210,7 +210,7 @@ pub fn init(
     ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
 
     let (mut vmem, mut mm): (Vmem, VirtMemoryManager) =
-        VirtMemoryManager::new(kernel_pages, kernel_page_tables, physman)?;
+        VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
 
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {

@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+mod r#unsafe;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -47,6 +49,7 @@ use crate::{
                 ZombieProcess,
             },
         },
+        sync::condvar::Condvar,
         thread::{
             InterruptReason,
             ReadyThread,
@@ -62,6 +65,7 @@ use ::alloc::{
         LinkedList,
     },
     rc::Rc,
+    sync::Arc,
     vec::Vec,
 };
 use ::core::cell::{
@@ -170,13 +174,18 @@ impl ProcessManagerInner {
         mm: &mut VirtMemoryManager,
         vmem: &mut Vmem,
         user_stack: &UserStack,
-        user_func: VirtualAddress,
+        user_wrapper_fn: VirtualAddress,
+        user_fn: VirtualAddress,
+        user_fn_arg: usize,
         enable_interrupts: bool,
     ) -> Result<ContextInformation, Error> {
         trace!(
-            "forge_user_context(): user_stack={:?}, user_func={:?}, enable_interrupts={}",
+            "forge_user_context(): user_stack={:?}, user_wrapper_fn={:#x?}, user_fn={:#x?}, \
+             user_fn_arg={:#x?}, enable_interrupts={:?}",
             user_stack,
-            user_func,
+            user_wrapper_fn,
+            user_fn,
+            user_fn_arg,
             enable_interrupts
         );
 
@@ -184,15 +193,18 @@ impl ProcessManagerInner {
             pub fn __leave_kernel_to_user_mode();
         }
 
-        // Ensure that user function lies within the user address space.
-        if !Vmem::is_user_addr(user_func) {
-            let reason: &str = "user function is not within the user address space";
+        // Ensure that user wrapper function lies within the user address space.
+        if !Vmem::is_user_addr(user_wrapper_fn) {
+            let reason: &str = "user wrapper function is not within the user address space";
             error!(
                 "forge_context(): {} (user_stack={:?}, user_func={:?})",
-                reason, user_stack, user_func
+                reason, user_stack, user_fn
             );
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
+
+        // NOTE: we don't check if the user function lies within the user address space, because
+        // if it is not it will self-crash.
 
         let kernel_func: VirtualAddress =
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
@@ -210,7 +222,9 @@ impl ProcessManagerInner {
             hal::arch::forge_user_stack(
                 kernel_stack as *mut u8,
                 user_stack.top().into_raw_value(),
-                user_func.into_raw_value(),
+                user_wrapper_fn.into_raw_value(),
+                user_fn.into_raw_value(),
+                user_fn_arg,
                 kernel_func.into_raw_value(),
                 enable_interrupts,
             )
@@ -258,9 +272,17 @@ impl ProcessManagerInner {
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
-        user_func: VirtualAddress,
+        user_wrapper_fn: VirtualAddress,
+        user_fn: VirtualAddress,
+        user_fn_arg: usize,
     ) -> Result<ThreadIdentifier, Error> {
-        trace!("create_thread(): pid={:?}, user_func={:?}", pid, user_func);
+        trace!(
+            "create_thread(): pid={:?}, user_wrapper_fn={:#x?}, user_fn={:#x?}, user_fn_arg={:#x?}",
+            pid,
+            user_wrapper_fn,
+            user_fn,
+            user_fn_arg
+        );
 
         let ready_thread: ReadyThread = {
             let enable_interrupts: bool = self.interrupt_capable;
@@ -304,7 +326,9 @@ impl ProcessManagerInner {
                 mm,
                 process.state_mut().vmem_mut(),
                 &user_stack,
-                user_func,
+                user_wrapper_fn,
+                user_fn,
+                user_fn_arg,
                 enable_interrupts,
             )?;
 
@@ -400,12 +424,16 @@ impl ProcessManagerInner {
 
         // Create a kernel context.
         let user_stack: UserStack = user_stack_allocator.alloc()?;
-        let user_func: VirtualAddress = ::sys::config::memory_layout::USER_BASE;
+        let user_wrapper_fn: VirtualAddress = ::sys::config::memory_layout::USER_BASE; // TODO: improve this.
+        let user_fn: VirtualAddress = VirtualAddress::from_raw_value(0);
+        let user_fn_arg: usize = 0;
         let context: ContextInformation = Self::forge_user_context(
             mm,
             &mut vmem,
             &user_stack,
-            user_func,
+            user_wrapper_fn,
+            user_fn,
+            user_fn_arg,
             self.interrupt_capable,
         )?;
 
@@ -645,12 +673,35 @@ impl ProcessManagerInner {
         }
     }
 
-    pub fn exit_thread(
+    ///
+    /// # Description
+    ///
+    /// Exits the calling thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: Exit status.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function does not return. Otherwise, an error code is
+    /// returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it may panic.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    ///
+    pub(super) unsafe fn exit_thread(
         &mut self,
         status: usize,
-    ) -> (*mut ContextInformation, *mut ContextInformation) {
-        trace!("exit_thread(): status={:#x?}", status);
+    ) -> (Arc<Condvar>, *mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
+
+        trace!("exit_thread(): status={:#x?}, tid={:?}", status, running_process.get_tid());
 
         // Check if kernel is trying to exit.
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
@@ -658,13 +709,13 @@ impl ProcessManagerInner {
         }
 
         match running_process.exit_thread(status) {
-            Ok((runnable_process, previous_context)) => {
+            Ok((join_cond, runnable_process, previous_context)) => {
                 let (running_process, reason, next_context) = runnable_process.run();
                 self.interrupt_reason = reason;
                 self.running = Some(running_process);
-                (previous_context, next_context)
+                (join_cond, previous_context, next_context)
             },
-            Err(Ok((sleeping_process, previous_context))) => {
+            Err(Ok((join_cond, sleeping_process, previous_context))) => {
                 self.suspended.push_back(sleeping_process);
 
                 match self.ready.pop_front() {
@@ -672,12 +723,12 @@ impl ProcessManagerInner {
                         let (running_process, reason, next_context) = runnable_process.run();
                         self.interrupt_reason = reason;
                         self.running = Some(running_process);
-                        (previous_context, next_context)
+                        (join_cond, previous_context, next_context)
                     },
                     None => unreachable!("the kernel process is always ready to run"),
                 }
             },
-            Err(Err((zombie_process, previous_context))) => {
+            Err(Err((join_cond, zombie_process, previous_context))) => {
                 self.zombies.push_back(zombie_process);
 
                 match self.ready.pop_front() {
@@ -685,7 +736,7 @@ impl ProcessManagerInner {
                         let (running_process, reason, next_context) = runnable_process.run();
                         self.interrupt_reason = reason;
                         self.running = Some(running_process);
-                        (previous_context, next_context)
+                        (join_cond, previous_context, next_context)
                     },
                     None => unreachable!("the kernel process is always ready to run"),
                 }
@@ -836,66 +887,35 @@ impl ProcessManagerInner {
         }
     }
 
-    pub fn join_thread(
+    #[allow(clippy::type_complexity)]
+    fn try_join_thread(
         &mut self,
-        mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
-    ) -> Result<usize, Error> {
-        let zombie_thread: ZombieThread = match self.find_process_mut(pid)? {
-            ProcessRefMut::Running(_) => {
-                let reason: &str = "process is running";
+    ) -> Result<ZombieThread, Result<Arc<Condvar>, Error>> {
+        match self.find_process_mut(pid).map_err(Err)? {
+            ProcessRefMut::Running(process) => process.try_join_thread(tid),
+            ProcessRefMut::Runnable(_) => {
+                let reason: &str = "process is runnable";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
-            ProcessRefMut::Runnable(process) => process.join_thread(tid),
-            ProcessRefMut::Sleeping(process) => process.join_thread(tid),
+            ProcessRefMut::Sleeping(_) => {
+                let reason: &str = "process is sleeping";
+                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
+            },
             ProcessRefMut::Interrupted(_) => {
                 let reason: &str = "process is interrupted";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
             ProcessRefMut::Zombie(_) => {
                 let reason: &str = "process is a zombie";
                 error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
-        }?;
-
-        let status: usize = zombie_thread.status();
-        debug!("join_thread(): status={:#x?}", status);
-
-        // Harvest zombie thread.
-        if let Some(user_stack) = zombie_thread.harvest() {
-            // Traverse pages belonging to user stack.
-            let base: usize = user_stack.base().into_raw_value();
-            let top: usize = user_stack.top().into_raw_value();
-            // TODO: Use an iterator for this.
-            for raw_addr in (base..top).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr)
-                {
-                    Ok(vaddr) => vaddr,
-                    Err(_) => {
-                        // SAFETY: the following condition is unreachable, because
-                        // pages in the user stack are always page-aligned.
-                        unreachable!("address conversion should succeed")
-                    },
-                };
-                // Attempt to unmap page
-                if let Err(error) =
-                    mm.unmap_upage(self.find_process_mut(pid)?.state_mut().vmem_mut(), vaddr)
-                {
-                    // We failed, but this is not too bad, as we will free all pages
-                    // when wiping out the address space anyways.
-                    warn!(
-                        "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
-                        vaddr, error
-                    );
-                }
-            }
         }
-
-        Ok(status)
     }
 
     fn take_ready(&mut self) -> RunnableProcess {
@@ -963,9 +983,36 @@ impl ProcessManagerInner {
 
 pub struct ProcessManager(Rc<RefCell<ProcessManagerInner>>);
 
-static mut PROCESS_MANAGER: Option<ProcessManager> = None;
-
 impl ProcessManager {
+    ///
+    /// # Description
+    ///
+    /// Returns the ID of the calling process.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the ID of the calling process is returned. Otherwise, an error
+    /// code is returned instead.
+    ///
+    pub fn get_pid(&self) -> Result<ProcessIdentifier, Error> {
+        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
+        Ok(self.try_borrow()?.get_running().state().pid())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the ID of the calling thread.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the ID of the calling thread is returned. Otherwise, an error
+    /// code is returned instead.
+    ///
+    pub fn get_tid(&self) -> Result<ThreadIdentifier, Error> {
+        Ok(self.try_borrow()?.get_running().get_tid())
+    }
+
     /// Creates a new process.
     pub fn create_process(
         &mut self,
@@ -979,9 +1026,24 @@ impl ProcessManager {
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
-        user_func: VirtualAddress,
+        user_wrapper_fn: VirtualAddress,
+        user_fn: VirtualAddress,
+        user_fn_arg: usize,
     ) -> Result<ThreadIdentifier, Error> {
-        self.try_borrow_mut()?.create_thread(mm, pid, user_func)
+        self.try_borrow_mut()?
+            .create_thread(mm, pid, user_wrapper_fn, user_fn, user_fn_arg)
+    }
+
+    pub fn has_capability(
+        &self,
+        pid: ProcessIdentifier,
+        capability: Capability,
+    ) -> Result<bool, Error> {
+        Ok(self
+            .try_borrow()?
+            .find_process(pid)?
+            .state()
+            .has_capability(capability))
     }
 
     pub fn exec(
@@ -1046,83 +1108,31 @@ impl ProcessManager {
         self.try_borrow_mut()?.capctl(pid, capability, value)
     }
 
-    pub fn has_capability(pid: ProcessIdentifier, capability: Capability) -> Result<bool, Error> {
-        Ok(Self::get()?
-            .try_borrow()?
-            .find_process(pid)?
-            .state()
-            .has_capability(capability))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Exits the calling process.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this function does not return. Otherwise, an error code is
-    /// returned instead.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it may cause the calling process to exit.
-    ///
-    /// This function is safe to use if an only if the following conditions are met:
-    ///
-    /// - The calling process is not the kernel process.
-    ///
-    pub unsafe fn exit(status: i32) -> Result<!, Error> {
-        trace!("exit(): status={:?}", status);
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            Self::get_mut()?.try_borrow_mut()?.exit(status);
-
-        ContextInformation::switch(from, to);
-        core::hint::unreachable_unchecked()
-    }
-
-    pub unsafe fn exit_thread(status: usize) -> Result<!, Error> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            Self::get_mut()?.try_borrow_mut()?.exit_thread(status);
-
-        ContextInformation::switch(from, to);
-        core::hint::unreachable_unchecked()
-    }
-
-    pub fn join_thread(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        pid: ProcessIdentifier,
-        tid: ThreadIdentifier,
-    ) -> Result<usize, Error> {
-        self.try_borrow_mut()?.join_thread(mm, pid, tid)
-    }
-
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
         self.try_borrow_mut()?.terminate(pid)
     }
 
     pub fn vmcopy_from_user(
+        &mut self,
         pid: ProcessIdentifier,
         dst: VirtualAddress,
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        Self::get_mut()?
-            .try_borrow_mut()?
+        self.try_borrow_mut()?
             .find_process_mut(pid)?
             .state_mut()
             .copy_from_user_unaligned(dst, src, size)
     }
 
     pub fn vmcopy_to_user(
+        &mut self,
         pid: ProcessIdentifier,
         dst: VirtualAddress,
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        Self::get_mut()?
-            .try_borrow_mut()?
+        self.try_borrow_mut()?
             .find_process_mut(pid)?
             .state_mut()
             .copy_to_user_unaligned(dst, src, size)
@@ -1249,134 +1259,6 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Returns the ID of the calling process.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the ID of the calling process is returned. Otherwise, an error
-    /// code is returned instead.
-    ///
-    pub fn get_pid() -> Result<ProcessIdentifier, Error> {
-        Ok(Self::get()?.try_borrow()?.get_running().state().pid())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the ID of the calling thread.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the ID of the calling thread is returned. Otherwise, an error
-    /// code is returned instead.
-    ///
-    pub fn get_tid() -> Result<ThreadIdentifier, Error> {
-        Ok(Self::get()?.try_borrow()?.get_running().get_tid())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Puts the calling thread to sleep.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it performs a context switch, causing the current thread to
-    /// block until it is woken up by another thread.
-    ///
-    /// This function is safe to use if and only if the following conditions are met:
-    ///
-    /// - The calling process is not the kernel process.
-    ///
-    pub unsafe fn sleep() -> Result<(), SleepError> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) = Self::get_mut()
-            .map_err(SleepError::Generic)?
-            .try_borrow_mut()
-            .map_err(SleepError::Generic)?
-            .sleep();
-
-        ContextInformation::switch(from, to);
-
-        let interrupt_reason: Option<InterruptReason> = Self::get_mut()
-            .map_err(SleepError::Generic)?
-            .try_borrow_mut()
-            .map_err(SleepError::Generic)?
-            .interrupt_reason();
-
-        if let Some(reason) = interrupt_reason {
-            error!("sleep(): interrupted (reason={:?})", reason);
-            return Err(SleepError::Interrupted(reason));
-        }
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Wakes up a thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: ID of the process to wake up.
-    /// - `tid`: ID of the thread to wake up.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///
-    pub fn wakeup(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
-        Self::get_mut()?.try_borrow_mut()?.wakeup(pid, tid)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Switches the context of the calling thread with the next ready thread.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it performs a context switch, causing the current thread to
-    /// block until it is woken up by another thread.
-    ///
-    pub unsafe fn switch() -> Result<(), Error> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            { Self::get_mut()?.try_borrow_mut()?.schedule() };
-
-        ContextInformation::switch(from, to);
-
-        Ok(())
-    }
-
-    pub fn add_event(&mut self, ownership: EventOwnership) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .get_running_mut()
-            .state_mut()
-            .add_event(ownership);
-
-        Ok(())
-    }
-
-    pub fn remove_event(&mut self, ev: &Event) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .get_running_mut()
-            .state_mut()
-            .remove_event(ev);
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
     /// Sends a message to a process.
     ///
     /// # Parameters
@@ -1396,26 +1278,22 @@ impl ProcessManager {
         Ok(())
     }
 
-    ///
-    /// # Description
-    ///
-    /// Attempts to receive a message.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the message is returned. Otherwise, an error code is returned
-    /// instead.
-    ///
-    pub fn try_recv() -> Result<Option<Message>, Error> {
-        let mut pm: RefMut<ProcessManagerInner> = Self::get_mut()?.try_borrow_mut()?;
-        let running: &mut RunningProcess = pm.get_running_mut();
-        match running.state_mut().receive_message() {
-            Some(message) => {
-                pm.number_buffered_messages -= 1;
-                Ok(Some(message))
-            },
-            None => Ok(None),
-        }
+    pub fn add_event(&mut self, ownership: EventOwnership) -> Result<(), Error> {
+        self.try_borrow_mut()?
+            .get_running_mut()
+            .state_mut()
+            .add_event(ownership);
+
+        Ok(())
+    }
+
+    pub fn remove_event(&mut self, ev: &Event) -> Result<(), Error> {
+        self.try_borrow_mut()?
+            .get_running_mut()
+            .state_mut()
+            .remove_event(ev);
+
+        Ok(())
     }
 
     ///
@@ -1454,51 +1332,4 @@ impl ProcessManager {
             },
         }
     }
-
-    fn get<'a>() -> Result<&'a ProcessManager, Error> {
-        unsafe {
-            match PROCESS_MANAGER {
-                Some(ref pm) => Ok(pm),
-                None => {
-                    let reason: &str = "process manager not initialized";
-                    error!("get(): {}", reason);
-                    Err(Error::new(ErrorCode::TryAgain, reason))
-                },
-            }
-        }
-    }
-
-    fn get_mut<'a>() -> Result<&'a mut ProcessManager, Error> {
-        unsafe {
-            match PROCESS_MANAGER {
-                Some(ref mut pm) => Ok(pm),
-                None => {
-                    let reason: &str = "process manager not initialized";
-                    error!("get_mut(): {}", reason);
-                    Err(Error::new(ErrorCode::TryAgain, reason))
-                },
-            }
-        }
-    }
-}
-
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================
-
-/// Initializes the process manager.
-pub fn init(
-    interrupt_capable: bool,
-    kernel: ReadyThread,
-    root: Vmem,
-    tm: ThreadManager,
-) -> ProcessManager {
-    // TODO: check for double initialization.
-
-    let pm: Rc<RefCell<ProcessManagerInner>> =
-        Rc::new(RefCell::new(ProcessManagerInner::new(interrupt_capable, kernel, root, tm)));
-
-    unsafe { PROCESS_MANAGER = Some(ProcessManager(pm.clone())) };
-
-    ProcessManager(pm)
 }
