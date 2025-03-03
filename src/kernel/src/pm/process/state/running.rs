@@ -93,6 +93,19 @@ impl RunningProcess {
         &mut self.state
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable reference to the running thread.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the running thread.
+    ///
+    pub fn running_mut(&mut self) -> &mut RunningThread {
+        &mut self.running
+    }
+
     pub fn schedule(mut self) -> (RunnableProcess, *mut ContextInformation) {
         let running_thread = self.running;
         let (ready_thread, ctx) = running_thread.schedule();
@@ -390,5 +403,18 @@ impl RunningProcess {
         let reason: &str = "thread not found";
         error!("join_thread(): {:?} (state={:?})", reason, self.state());
         Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
+    }
+
+    pub fn get_sleeping_thread_mut(
+        &mut self,
+        tid: ThreadIdentifier,
+    ) -> Option<&mut SleepingThread> {
+        if let Some(sleeping_threads) = self.sleeping_threads.as_mut() {
+            sleeping_threads
+                .iter_mut()
+                .find(|thread| thread.id() == tid)
+        } else {
+            None
+        }
     }
 }

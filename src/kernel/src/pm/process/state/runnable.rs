@@ -197,6 +197,19 @@ impl RunnableProcessWithReadyThread {
 
         self
     }
+
+    pub fn get_sleeping_thread_mut(
+        &mut self,
+        tid: ThreadIdentifier,
+    ) -> Option<&mut SleepingThread> {
+        if let Some(sleeping_threads) = self.sleeping_threads.as_mut() {
+            sleeping_threads
+                .iter_mut()
+                .find(|thread| thread.id() == tid)
+        } else {
+            None
+        }
+    }
 }
 
 pub struct RunnableProcessWithInterruptedThreads {
@@ -336,6 +349,19 @@ impl RunnableProcessWithInterruptedThreads {
             self.zombie_threads.take(),
         )
     }
+
+    pub fn get_sleeping_thread_mut(
+        &mut self,
+        tid: ThreadIdentifier,
+    ) -> Option<&mut SleepingThread> {
+        if let Some(sleeping_threads) = self.sleeping_threads.as_mut() {
+            sleeping_threads
+                .iter_mut()
+                .find(|thread| thread.id() == tid)
+        } else {
+            None
+        }
+    }
 }
 
 pub struct RunnableProcessWithReadyAndInteruptThread {
@@ -454,6 +480,19 @@ impl RunnableProcessWithReadyAndInteruptThread {
     fn add_thread(mut self, ready_thread: ReadyThread) -> Self {
         self.ready_threads.push_back(ready_thread);
         self
+    }
+
+    pub fn get_sleeping_thread_mut(
+        &mut self,
+        tid: ThreadIdentifier,
+    ) -> Option<&mut SleepingThread> {
+        if let Some(sleeping_threads) = self.sleeping_threads.as_mut() {
+            sleeping_threads
+                .iter_mut()
+                .find(|thread| thread.id() == tid)
+        } else {
+            None
+        }
     }
 }
 
@@ -616,6 +655,21 @@ impl RunnableProcess {
             },
             RunnableProcess::ReadyAndInteruptThread(process) => {
                 RunnableProcess::ReadyAndInteruptThread(process.add_thread(ready_thread))
+            },
+        }
+    }
+
+    pub fn get_sleeping_thread_mut(
+        &mut self,
+        tid: ThreadIdentifier,
+    ) -> Option<&mut SleepingThread> {
+        match self {
+            RunnableProcess::WithReadyThread(process) => process.get_sleeping_thread_mut(tid),
+            RunnableProcess::WithInterruptedThreads(process) => {
+                process.get_sleeping_thread_mut(tid)
+            },
+            RunnableProcess::ReadyAndInteruptThread(process) => {
+                process.get_sleeping_thread_mut(tid)
             },
         }
     }

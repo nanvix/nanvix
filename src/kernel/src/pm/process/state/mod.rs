@@ -40,12 +40,19 @@ use crate::{
         ustack::UserStackAllocator,
         Vmem,
     },
-    pm::process::{
-        capability::Capabilities,
-        identity::ProcessIdentity,
+    pm::{
+        process::{
+            capability::Capabilities,
+            identity::ProcessIdentity,
+        },
+        sync::mutex::Mutex,
     },
 };
-use ::alloc::collections::LinkedList;
+use ::alloc::collections::{
+    btree_map::BTreeMap,
+    LinkedList,
+};
+use ::config::kernel::MUTEX_OPEN_MAX;
 use ::sys::{
     error::{
         Error,
@@ -143,6 +150,8 @@ pub struct ProcessState {
     pmio: LinkedList<AnyIoPort>,
     /// User stack allocator.
     user_stack_allocator: Option<UserStackAllocator>,
+    /// Mutexes.
+    mutexes: BTreeMap<VirtualAddress, Mutex>,
 }
 
 impl ProcessState {
@@ -162,6 +171,7 @@ impl ProcessState {
             mmio: LinkedList::new(),
             pmio: LinkedList::new(),
             user_stack_allocator,
+            mutexes: BTreeMap::new(),
         }
     }
 
@@ -308,6 +318,65 @@ impl ProcessState {
     ) -> Result<(), Error> {
         let port: &mut AnyIoPort = self.get_pmio_mut(port_number)?;
         port.write(port_width, value)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutex that is associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// On success, the mutex that is associated with the given address is returned.  If no mutex is
+    /// associated with the given address, a new mutex is created and returned.  On failure, an
+    /// error is returned instead.
+    ///
+    pub fn get_mutex(&mut self, addr: VirtualAddress) -> Result<Mutex, Error> {
+        trace!("get_mutex(): addr={:#x?}", addr);
+
+        // Check if maximum number of mutexes has been reached.
+        if self.mutexes.len() >= MUTEX_OPEN_MAX {
+            let reason: &'static str = "maximum number of mutexes reached";
+            error!("get_mutex(): {:?} (addr={:#x?})", reason, addr);
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
+        Ok(self.mutexes.entry(addr).or_insert_with(Mutex::new).clone())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Releases a mutex associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty result is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn put_mutex(&mut self, addr: VirtualAddress) -> Result<(), Error> {
+        trace!("put_mutex(): addr={:#x?}", addr);
+
+        // Check if mutex exists.
+        if !self.mutexes.contains_key(&addr) {
+            let reason: &'static str = "mutex not found";
+            error!("put_mutex(): {:?} (addr={:#x?})", reason, addr);
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        }
+
+        let _: BTreeMap<_, _> = self
+            .mutexes
+            .extract_if(|&mutex_addr, mutex| mutex_addr == addr && mutex.reference_count() <= 2)
+            .collect();
+
+        Ok(())
     }
 
     fn get_pmio_mut(&mut self, port_number: u16) -> Result<&mut AnyIoPort, Error> {
