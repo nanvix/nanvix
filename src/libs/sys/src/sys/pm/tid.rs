@@ -32,15 +32,33 @@ impl From<usize> for ThreadIdentifier {
     }
 }
 
+impl From<u32> for ThreadIdentifier {
+    fn from(id: u32) -> ThreadIdentifier {
+        ThreadIdentifier(id as usize)
+    }
+}
+
 impl From<ThreadIdentifier> for usize {
     fn from(tid: ThreadIdentifier) -> usize {
         tid.0
     }
 }
 
-impl From<ThreadIdentifier> for i32 {
-    fn from(tid: ThreadIdentifier) -> i32 {
-        tid.0 as i32
+impl From<ThreadIdentifier> for u32 {
+    fn from(tid: ThreadIdentifier) -> u32 {
+        tid.0 as u32
+    }
+}
+
+impl TryFrom<ThreadIdentifier> for i32 {
+    type Error = Error;
+
+    fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
+        if tid.0 > i32::MAX as usize {
+            Err(Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+        } else {
+            Ok(tid.0 as i32)
+        }
     }
 }
 

@@ -20,7 +20,6 @@ use crate::pm::{
         },
         semaphore::Semaphore,
     },
-    ProcessManager,
     SleepError,
 };
 use ::core::fmt::Debug;
@@ -109,17 +108,50 @@ impl ScoreBoard {
         }
     }
 
-    pub fn dispatch(
+    ///
+    /// # Description
+    ///
+    /// Dispatches a kernel to be executed by the kernel thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `number`: Number of the kernel call.
+    /// - `pid`: Identifier of the process that is invoking the kernel call.
+    /// - `tid`: Identifier of the thread that is invoking the kernel call.
+    /// - `arg0`: First kernel call argument.
+    /// - `arg1`: Second kernel call argument.
+    /// - `arg2`: Third kernel call argument.
+    /// - `arg3`: Fourth kernel call argument.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the return value of the kernel call is returned. Otherwise, an
+    /// error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function panics if the kernel process tries to sleep.
+    ///
+    /// This function is unsafe because it blocks the calling thread until it is woken up by another
+    /// thread.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    /// - This function is invoked without holding any resources.
+    ///
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn dispatch(
         &mut self,
         number: u32,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         arg0: u32,
         arg1: u32,
         arg2: u32,
         arg3: u32,
     ) -> Result<i32, SleepError> {
         let _guard: MutexGuard = self.lock.lock()?;
-        let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
-        let tid: ThreadIdentifier = ProcessManager::get_tid().map_err(SleepError::Generic)?;
         self.args = KcallArgs {
             pid,
             tid,
@@ -141,7 +173,7 @@ impl ScoreBoard {
         Ok(&self.args)
     }
 
-    pub fn handled(&mut self, ret: i32) -> Result<(), Error> {
+    pub unsafe fn handled(&mut self, ret: i32) -> Result<(), Error> {
         self.ret = ret;
         self.handled.up()
     }

@@ -102,7 +102,19 @@ impl Mutex {
     ///
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
     ///
-    pub fn lock(&self) -> Result<MutexGuard, SleepError> {
+    /// # Safety
+    ///
+    /// This function panics if the kernel process tries to sleep.
+    ///
+    /// This function is unsafe because it blocks the calling thread until it is woken up by another
+    /// thread.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    /// - This function is invoked without holding any resources.
+    ///
+    pub unsafe fn lock(&self) -> Result<MutexGuard, SleepError> {
         while *self.0.locked.borrow() {
             self.0.sleeping.wait()?;
         }

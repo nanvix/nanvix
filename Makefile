@@ -213,7 +213,7 @@ ALL_GUEST_RUST_LIBS := bitmap config error type-safe proc raw-array slab sys
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd matmul
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd linux-app thread-rust-nostd
+ALL_GUEST_TESTS := testd linux-app thread-nowait-rust-nostd thread-rust-nostd
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
@@ -299,6 +299,7 @@ run-nanvixd-tests: | \
 	test-hello-js \
 	test-hello-wasm \
 	test-linux-app \
+	test-thread-nowait-rust-nostd \
 	test-thread-rust-nostd
 
 #===================================================================================================
@@ -342,12 +343,12 @@ endif
 
 define GUEST_STATICLIB_RULES
 all-guest-staticlib-$(1):
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=staticlib
+	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/lib$(1).a $(LIBRARIES_DIR)/lib$(1).a
 
 check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib
+	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 clean-guest-staticlib-$(1):
@@ -355,11 +356,11 @@ clean-guest-staticlib-$(1):
 	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
 
 clippy-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 test-guest-staticlib-$(1):
-	$(HOST_CARGO_TEST_CMD) -p $(1) --features=staticlib
+	$(HOST_CARGO_TEST_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 endef
 
 $(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))
@@ -609,6 +610,7 @@ $(eval $(call TEST_RULE,hello-c,'[]','Hello$(comma) world from C!'))
 $(eval $(call TEST_RULE,hello-cpp,'[]','Hello$(comma) world from C++!'))
 $(eval $(call TEST_RULE,linux-app,'[]','ok'))
 $(eval $(call TEST_RULE,thread-rust-nostd,'[]','ok'))
+$(eval $(call TEST_RULE,thread-nowait-rust-nostd,'[]','ok'))
 
 define WASM_TEST_RULE
 test-$(1): all
