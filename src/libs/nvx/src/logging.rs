@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use crate::{
+    mm::VirtualAddress,
+    sys::kcall::pm,
+};
 use ::core::{
     fmt,
     fmt::Write,
@@ -61,6 +65,12 @@ impl core::fmt::Debug for LogLevel {
 }
 
 //==================================================================================================
+// Global Variables
+//==================================================================================================
+
+static MUTEX: usize = 0;
+
+//==================================================================================================
 // Trait Implementations
 //==================================================================================================
 
@@ -73,8 +83,15 @@ impl fmt::Write for Logger {
 
 impl Logger {
     pub fn get(tag: &str, level: LogLevel) -> Self {
+        pm::lock_mutex(VirtualAddress::from_raw_value(&MUTEX as *const usize as usize)).unwrap();
         let mut ret: Self = Self;
         let _ = write!(&mut ret, "[{:?}][{}] ", level, tag);
         ret
+    }
+}
+
+impl Drop for Logger {
+    fn drop(&mut self) {
+        pm::unlock_mutex(VirtualAddress::from_raw_value(&MUTEX as *const usize as usize)).unwrap();
     }
 }
