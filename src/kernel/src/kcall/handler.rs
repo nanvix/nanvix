@@ -83,6 +83,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                         KcallNumber::ReadPmio => io::pmio_read(pm, args),
                         KcallNumber::WritePmio => io::pmio_write(pm, args),
                         KcallNumber::SchedulerYield => {
+                            trace!("sched_yield()");
                             // Nothing to do, as this operation already yielded the processor.
                             0
                         },
