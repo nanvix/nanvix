@@ -34,7 +34,6 @@ use crate::{
         process::{
             identity::ProcessIdentity,
             state::{
-                InterruptReason,
                 InterruptedProcess,
                 ProcessRef,
                 ProcessRefMut,
@@ -46,6 +45,7 @@ use crate::{
             },
         },
         thread::{
+            InterruptReason,
             ReadyThread,
             ThreadManager,
         },
@@ -77,6 +77,16 @@ use ::sys::{
         UserIdentifier,
     },
 };
+
+//==================================================================================================
+// Sleep Error
+//==================================================================================================
+
+#[derive(Debug)]
+pub enum SleepError {
+    Interrupted(InterruptReason),
+    Generic(Error),
+}
 
 //==================================================================================================
 // Process Manager Inner
@@ -119,13 +129,18 @@ impl ProcessManagerInner {
         tm: ThreadManager,
     ) -> Self {
         let kernel: RunnableProcess = RunnableProcess::new(
-            ProcessIdentifier::from(0),
+            ProcessIdentifier::KERNEL,
             ProcessIdentity::new(UserIdentifier::ROOT, GroupIdentifier::ROOT),
             kernel,
             root,
         );
 
-        let (kernel, _): (RunningProcess, *mut ContextInformation) = kernel.run();
+        let (kernel, reason, _): (
+            RunningProcess,
+            Option<InterruptReason>,
+            *mut ContextInformation,
+        ) = kernel.run();
+        debug_assert!(reason.is_none(), "kernel process should not be interrupted");
 
         Self {
             interrupt_capable,
@@ -149,6 +164,15 @@ impl ProcessManagerInner {
         kernel_stack: VirtualAddress,
         enable_interrupts: bool,
     ) -> Result<ContextInformation, Error> {
+        trace!(
+            "forge_user_context(): user_stack={:?}, user_func={:?}, kernel_func={:?}, \
+             kernel_stack={:?}, enable_interrupts={}",
+            user_stack,
+            user_func,
+            kernel_func,
+            kernel_stack,
+            enable_interrupts
+        );
         let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
         let esp: u32 = unsafe {
             hal::arch::forge_user_stack(
@@ -174,9 +198,7 @@ impl ProcessManagerInner {
     ///
     /// - `mm`: Memory manager to use.
     /// - `vmem`: Virtual memory to use.
-    /// - `user_stack_top_addr`: User stack top address.
     /// - `user_func`: User function.
-    /// - `kernel_func`: Kernel function.
     ///
     /// # Returns
     ///
@@ -189,14 +211,19 @@ impl ProcessManagerInner {
         vmem: &mut Vmem,
         user_stack_top_addr: VirtualAddress,
         user_func: VirtualAddress,
-        kernel_func: VirtualAddress,
     ) -> Result<ReadyThread, Error> {
         trace!(
-            "create_thread(): user_stack_top_addr={:?}, user_func={:?}, kernel_func={:?}",
+            "create_thread(): user_stack_top_addr={:?}, user_func={:?}",
             user_stack_top_addr,
-            user_func,
-            kernel_func
+            user_func
         );
+
+        extern "C" {
+            pub fn __leave_kernel_to_user_mode();
+        }
+
+        let kernel_func: VirtualAddress =
+            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
 
         let mut kpages: Vec<KernelPage> =
             mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / mem::PAGE_SIZE)?;
@@ -219,7 +246,20 @@ impl ProcessManagerInner {
             vmem.add_private_kernel_page(kpage);
         }
 
-        self.tm.create_thread(context)
+        let thread: ReadyThread = self.tm.create_thread(context)?;
+
+        // Alloc user stack.
+        let user_stack_base_addr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(
+            user_stack_top_addr.into_raw_value() - config::kernel::USTACK_SIZE,
+        )?;
+        mm.alloc_upages(
+            vmem,
+            user_stack_base_addr,
+            config::kernel::USTACK_SIZE / mem::PAGE_SIZE,
+            AccessPermission::RDWR,
+        )?;
+
+        Ok(thread)
     }
 
     ///
@@ -249,21 +289,8 @@ impl ProcessManagerInner {
         // Create a new thread.
         let user_stack_top_addr: VirtualAddress = mm::user_stack_top().into_inner();
         let user_func: VirtualAddress = ::sys::config::memory_layout::USER_BASE;
-        let kernel_func: VirtualAddress =
-            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
         let thread: ReadyThread =
-            self.create_thread(mm, &mut vmem, user_stack_top_addr, user_func, kernel_func)?;
-
-        // Alloc user stack.
-        let user_stack_base_addr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(
-            user_stack_top_addr.into_raw_value() - config::kernel::USTACK_SIZE,
-        )?;
-        mm.alloc_upages(
-            &mut vmem,
-            user_stack_base_addr,
-            config::kernel::USTACK_SIZE / mem::PAGE_SIZE,
-            AccessPermission::RDWR,
-        )?;
+            self.create_thread(mm, &mut vmem, user_stack_top_addr, user_func)?;
 
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
@@ -286,15 +313,23 @@ impl ProcessManagerInner {
 
         // Select next ready process to run.
         if let Some(next_process) = self.interrupted.pop_back() {
-            let (next_process, reason, next_context) = next_process.resume();
+            let (next_process, reason, next_context): (
+                RunningProcess,
+                InterruptReason,
+                *mut ContextInformation,
+            ) = next_process.resume();
             self.interrupt_reason = Some(reason);
             self.running = Some(next_process);
             (previous_context, next_context)
         } else {
             let next_process: RunnableProcess = self.take_ready();
-            let (next_process, next_context): (RunningProcess, *mut ContextInformation) =
-                next_process.run();
+            let (next_process, reason, next_context): (
+                RunningProcess,
+                Option<InterruptReason>,
+                *mut ContextInformation,
+            ) = next_process.run();
 
+            self.interrupt_reason = reason;
             self.running = Some(next_process);
             (previous_context, next_context)
         }
@@ -331,7 +366,7 @@ impl ProcessManagerInner {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn sleep(&mut self) -> (*mut ContextInformation, *mut ContextInformation) {
+    fn sleep(&mut self) -> (*mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to sleep.
@@ -341,14 +376,24 @@ impl ProcessManagerInner {
 
         match running_process.sleep() {
             Ok((runnable_process, previous_context)) => {
-                let (next_process, next_context) = runnable_process.run();
+                let (next_process, reason, next_context): (
+                    RunningProcess,
+                    Option<InterruptReason>,
+                    *mut ContextInformation,
+                ) = runnable_process.run();
+                self.interrupt_reason = reason;
                 self.running = Some(next_process);
                 (previous_context, next_context)
             },
             Err((suspended_process, previous_context)) => {
                 self.suspended.push_back(suspended_process);
                 let next_process: RunnableProcess = self.take_ready();
-                let (next_process, next_context) = next_process.run();
+                let (next_process, reason, next_context): (
+                    RunningProcess,
+                    Option<InterruptReason>,
+                    *mut ContextInformation,
+                ) = next_process.run();
+                self.interrupt_reason = reason;
                 self.running = Some(next_process);
                 (previous_context, next_context)
             },
@@ -367,31 +412,59 @@ impl ProcessManagerInner {
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
-    ///GroupIdentifier
+    ///
     pub fn wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
+        let runnable_process: RunnableProcess = match self.try_wakeup(tid) {
+            Some(runnable_process) => runnable_process,
+            None => {
+                let reason: &str = "thread not found";
+                error!("wake_up(): {}", reason);
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            },
+        };
+
+        self.ready.push_back(runnable_process);
+
+        Ok(())
+    }
+
+    fn try_wakeup(&mut self, tid: ThreadIdentifier) -> Option<RunnableProcess> {
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
         while let Some(process) = self.suspended.pop_front() {
-            match process.wakeup_sleeping_thread(tid) {
+            match process.wakeup(tid) {
                 Ok(runnable_process) => {
-                    self.ready.push_back(runnable_process);
                     while let Some(process) = suspended.pop_front() {
                         self.suspended.push_back(process);
                     }
-                    return Ok(());
+                    return Some(runnable_process);
                 },
                 Err(suspended_process) => suspended.push_back(suspended_process),
             }
         }
+        while let Some(process) = suspended.pop_front() {
+            self.suspended.push_back(process);
+        }
 
-        let reason: &str = "thread not found";
-        error!("wake_up(): {}", reason);
-        Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
+        while let Some(process) = self.ready.pop_front() {
+            match process.wakeup(tid) {
+                Ok(runnable_process) => {
+                    while let Some(process) = ready.pop_front() {
+                        self.ready.push_back(process);
+                    }
+                    return Some(runnable_process);
+                },
+                Err(ready_process) => ready.push_back(ready_process),
+            }
+        }
+        while let Some(process) = ready.pop_front() {
+            self.ready.push_back(process);
+        }
+
+        None
     }
 
-    pub fn exit(
-        &mut self,
-        status: i32,
-    ) -> Result<(*mut ContextInformation, *mut ContextInformation), Error> {
+    pub fn exit(&mut self, status: i32) -> (*mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to exit.
@@ -401,20 +474,22 @@ impl ProcessManagerInner {
 
         match running_process.exit(status) {
             Ok((runnable_process, previous_context)) => {
-                let (running_process, next_context) = runnable_process.run();
+                let (running_process, reason, next_context) = runnable_process.run();
+                self.interrupt_reason = reason;
                 self.running = Some(running_process);
-                Ok((previous_context, next_context))
+                (previous_context, next_context)
             },
             Err((zombie_process, previous_context)) => {
                 self.zombies.push_back(zombie_process);
 
                 match self.ready.pop_front() {
                     Some(runnable_process) => {
-                        let (running_process, next_context) = runnable_process.run();
+                        let (running_process, reason, next_context) = runnable_process.run();
+                        self.interrupt_reason = reason;
                         self.running = Some(running_process);
-                        Ok((previous_context, next_context))
+                        (previous_context, next_context)
                     },
-                    None => unreachable!("there should be a process ready to run"),
+                    None => unreachable!("the kernel process is always ready to run"),
                 }
             },
         }
@@ -438,9 +513,16 @@ impl ProcessManagerInner {
         // Check if target process is ready.
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
             let process: RunnableProcess = self.ready.remove(process);
-            let process: ZombieProcess = process.terminate();
-            self.zombies.push_back(process);
-            return Ok(());
+            match process.terminate() {
+                Ok(runnable_process) => {
+                    self.ready.push_back(runnable_process);
+                    return Ok(());
+                },
+                Err(zombie_process) => {
+                    self.zombies.push_back(zombie_process);
+                    return Ok(());
+                },
+            }
         }
 
         // Check if target process is suspended.
@@ -506,7 +588,7 @@ impl ProcessManagerInner {
     }
 
     pub fn harvest_zombies(&mut self) -> Option<(ProcessIdentifier, i32)> {
-        if let Some(mut zombie) = self.zombies.pop_front() {
+        if let Some(zombie) = self.zombies.pop_front() {
             let (_thread, state, status) = zombie.bury();
             Some((state.pid(), status))
         } else {
@@ -555,7 +637,7 @@ impl ProcessManagerInner {
     }
 
     fn find_process_mut(&mut self, pid: ProcessIdentifier) -> Result<ProcessRefMut, Error> {
-        if self.get_running_mut().state_mut().pid() == pid {
+        if self.get_running_mut().state().pid() == pid {
             Ok(ProcessRefMut::Running(self.get_running_mut()))
         } else if let Some(process) = self.ready.iter_mut().find(|p| p.state().pid() == pid) {
             Ok(ProcessRefMut::Runnable(process))
@@ -660,15 +742,31 @@ impl ProcessManager {
             .has_capability(capability))
     }
 
-    pub fn exit(status: i32) -> Result<!, Error> {
-        trace!("exit({:?})", status);
+    ///
+    /// # Description
+    ///
+    /// Exits the calling process.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function does not return. Otherwise, an error code is
+    /// returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it may cause the calling process to exit.
+    ///
+    /// This function is safe to use if an only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    ///
+    pub unsafe fn exit(status: i32) -> Result<!, Error> {
+        trace!("exit(): status={:?}", status);
         let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            Self::get_mut()?.try_borrow_mut()?.exit(status)?;
+            Self::get_mut()?.try_borrow_mut()?.exit(status);
 
-        unsafe {
-            ContextInformation::switch(from, to);
-            core::hint::unreachable_unchecked()
-        }
+        ContextInformation::switch(from, to);
+        core::hint::unreachable_unchecked()
     }
 
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
@@ -853,19 +951,33 @@ impl ProcessManager {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn sleep() -> Result<(), Error> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            Self::get_mut()?.try_borrow_mut()?.sleep();
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a context switch, causing the current thread to
+    /// block until it is woken up by another thread.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process is not the kernel process.
+    ///
+    pub unsafe fn sleep() -> Result<(), SleepError> {
+        let (from, to): (*mut ContextInformation, *mut ContextInformation) = Self::get_mut()
+            .map_err(SleepError::Generic)?
+            .try_borrow_mut()
+            .map_err(SleepError::Generic)?
+            .sleep();
 
-        unsafe { ContextInformation::switch(from, to) }
+        ContextInformation::switch(from, to);
 
-        let interrupt_reason: Option<InterruptReason> =
-            Self::get_mut()?.try_borrow_mut()?.interrupt_reason();
+        let interrupt_reason: Option<InterruptReason> = Self::get_mut()
+            .map_err(SleepError::Generic)?
+            .try_borrow_mut()
+            .map_err(SleepError::Generic)?
+            .interrupt_reason();
 
-        if interrupt_reason.is_some() {
-            let reason: &str = "interrupted";
-            error!("sleep(): {}", reason);
-            return Err(Error::new(ErrorCode::Interrupted, reason));
+        if let Some(reason) = interrupt_reason {
+            error!("sleep(): interrupted (reason={:?})", reason);
+            return Err(SleepError::Interrupted(reason));
         }
 
         Ok(())
@@ -888,11 +1000,25 @@ impl ProcessManager {
         Self::get_mut()?.try_borrow_mut()?.wakeup(tid)
     }
 
-    pub fn switch() -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Switches the context of the calling thread with the next ready thread.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a context switch, causing the current thread to
+    /// block until it is woken up by another thread.
+    ///
+    pub unsafe fn switch() -> Result<(), Error> {
         let (from, to): (*mut ContextInformation, *mut ContextInformation) =
             { Self::get_mut()?.try_borrow_mut()?.schedule() };
 
-        unsafe { ContextInformation::switch(from, to) }
+        ContextInformation::switch(from, to);
 
         Ok(())
     }

@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::pm::sync::condvar::Condvar;
+use crate::pm::{
+    process::SleepError,
+    sync::condvar::Condvar,
+};
 use ::alloc::sync::Arc;
 use ::core::cell::RefCell;
 use ::sys::error::Error;
@@ -99,7 +102,7 @@ impl Mutex {
     ///
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
     ///
-    pub fn lock(&self) -> Result<MutexGuard, Error> {
+    pub fn lock(&self) -> Result<MutexGuard, SleepError> {
         while *self.0.locked.borrow() {
             self.0.sleeping.wait()?;
         }

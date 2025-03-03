@@ -11,6 +11,7 @@ use crate::{
     pm::{
         self,
         ProcessManager,
+        SleepError,
     },
 };
 use ::sys::{
@@ -84,26 +85,20 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
     }
 }
 
-fn do_recv(pid: ProcessIdentifier) -> Result<Message, Error> {
+fn do_recv(pid: ProcessIdentifier) -> Result<Message, SleepError> {
     trace!("do_recv(): pid={:?}", pid);
 
     // Wait message.
     EventManager::wait(pid)
 }
 
-pub fn recv(msg: usize) -> i32 {
-    let pid: ProcessIdentifier = match ProcessManager::get_pid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+pub fn recv(msg: usize) -> Result<(), SleepError> {
+    let pid: ProcessIdentifier = ProcessManager::get_pid().map_err(SleepError::Generic)?;
 
     match do_recv(pid) {
         Ok(message) => {
-            if let Err(e) = pm::copy_to_user(pid, msg as *mut Message, &message) {
-                return e.code.into_errno();
-            }
-            0
+            pm::copy_to_user(pid, msg as *mut Message, &message).map_err(SleepError::Generic)
         },
-        Err(e) => e.code.into_errno(),
+        Err(sleep_error) => Err(sleep_error),
     }
 }

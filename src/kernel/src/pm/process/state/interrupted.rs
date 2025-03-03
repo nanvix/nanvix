@@ -12,34 +12,38 @@ use crate::{
             ProcessState,
             RunningProcess,
         },
-        thread::InterruptedThread,
+        thread::{
+            InterruptReason,
+            InterruptedThread,
+            SleepingThread,
+        },
     },
 };
+use ::alloc::collections::vec_deque::VecDeque;
+use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub enum InterruptReason {
-    /// Process was killed.
-    Killed,
-}
+///
+/// # Description
+///
+/// A type that represents a process that was interrupted.
+///
 pub struct InterruptedProcess {
     state: ProcessState,
-    reason: InterruptReason,
-    thread: Option<InterruptedThread>,
+    interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
 }
 
 impl InterruptedProcess {
-    pub fn from_state(
+    pub(super) fn new(
         process: ProcessState,
-        reason: InterruptReason,
-        thread: InterruptedThread,
+        interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
     ) -> Self {
         Self {
             state: process,
-            reason,
-            thread: Some(thread),
+            interrupted_threads,
         }
     }
 
@@ -47,13 +51,29 @@ impl InterruptedProcess {
         &self.state
     }
 
-    pub fn state_mut(&mut self) -> &mut ProcessState {
+    pub(super) fn state_mut(&mut self) -> &mut ProcessState {
         &mut self.state
     }
 
-    pub fn resume(mut self) -> (RunningProcess, InterruptReason, *mut ContextInformation) {
-        let thread = self.thread.take().unwrap();
-        let (thread, ctx) = thread.resume();
-        (RunningProcess::from_state(self.state, thread), self.reason, ctx)
+    pub fn resume(self) -> (RunningProcess, InterruptReason, *mut ContextInformation) {
+        let (interrupted_threads, next_thread): (VecDeque<InterruptedThread>, InterruptedThread) =
+            self.interrupted_threads.pop_front();
+        let (thread, reason, ctx) = next_thread.resume();
+        (
+            RunningProcess::new(
+                self.state,
+                thread,
+                None,
+                NonEmptyVecDeque::from(interrupted_threads),
+                None,
+                None,
+            ),
+            reason,
+            ctx,
+        )
     }
+}
+
+pub(super) fn interrupt(thread: SleepingThread) -> InterruptedThread {
+    thread.interrupt(InterruptReason::Killed)
 }
