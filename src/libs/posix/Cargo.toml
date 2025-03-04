@@ -17,6 +17,7 @@ crate-type = ["lib", "staticlib"]
 nvx = { workspace = true }
 cfg-if = { workspace = true }
 num_enum = { workspace = true }
+spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 
 [features]
 default = ["syscall", "allocator", "staticlib"]
