@@ -3,15 +3,16 @@
  * Licensed under the MIT License.
  */
 
+#include <pthread.h>
 #include <sched.h>
 #include <stdint.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
 
-/*================================================================================================*
- * Macros                                                                                         *
- *================================================================================================*/
+//==================================================================================================
+// Macros
+//==================================================================================================
 
 /**
  * @brief Performs a static assertion.
@@ -43,9 +44,9 @@
  */
 #define STATIC_ASSERT_ALIGNMENT(a, b) STATIC_ASSERT(_Alignof(a), b)
 
-/*================================================================================================*
- * Main Function                                                                                  *
- *================================================================================================*/
+//==================================================================================================
+// Main Function
+//==================================================================================================
 
 /**
  * @brief Performs static assertions on C bindings.
@@ -122,6 +123,26 @@ int main(int argc, const char *argv[])
                            sizeof(struct timespec) + // st_ctim
                            sizeof(blksize_t) +       // st_blksize
                            sizeof(blkcnt_t)          // st_blocks
+    );
+
+    // Assert types in <pthread.h>.
+    STATIC_ASSERT_SIZE(pthread_t, sizeof(uint32_t));
+    STATIC_ASSERT_SIZE(pthread_attr_t,
+                       sizeof(int) +                    // is_initialized
+                           sizeof(void *) +             // stackaddr
+                           sizeof(size_t) +             // stacksize
+                           sizeof(int) +                // contentionscope
+                           sizeof(int) +                // inheritsched
+                           sizeof(int) +                // schedpolicy
+                           sizeof(struct sched_param) + // schedparam
+                           sizeof(int)                  // detachstate
+
+    );
+    STATIC_ASSERT_SIZE(pthread_mutex_t, sizeof(uint32_t));
+    STATIC_ASSERT_SIZE(pthread_mutexattr_t,
+                       sizeof(int) +     // is_initialized
+                           sizeof(int) + // type
+                           sizeof(int)   // recursive
     );
 
     // Assert types in <sched.h>.A

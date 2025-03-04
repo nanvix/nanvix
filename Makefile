@@ -299,7 +299,10 @@ run-nanvixd-tests: | \
 	test-hello-js \
 	test-hello-wasm \
 	test-linux-app \
+	test-thread-c \
+	test-thread-mutex-c \
 	test-thread-mutex-rust-nostd \
+	test-thread-nowait-c \
 	test-thread-nowait-rust-nostd \
 	test-thread-rust-nostd
 
@@ -611,6 +614,9 @@ $(eval $(call TEST_RULE,linux-app,'[]','ok'))
 $(eval $(call TEST_RULE,thread-rust-nostd,'[]','ok'))
 $(eval $(call TEST_RULE,thread-nowait-rust-nostd,'[]','ok'))
 $(eval $(call TEST_RULE,thread-mutex-rust-nostd,'[]','ok'))
+$(eval $(call TEST_RULE,thread-c,'[]','ok'))
+$(eval $(call TEST_RULE,thread-nowait-c,'[]','ok'))
+$(eval $(call TEST_RULE,thread-mutex-c,'[]','ok'))
 
 define WASM_TEST_RULE
 test-$(1): all
