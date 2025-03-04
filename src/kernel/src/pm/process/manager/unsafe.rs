@@ -32,7 +32,13 @@ use crate::{
             },
             state::RunningProcess,
         },
-        sync::condvar::Condvar,
+        sync::{
+            condvar::Condvar,
+            mutex::{
+                Mutex,
+                MutexGuard,
+            },
+        },
         thread::{
             InterruptReason,
             ReadyThread,
@@ -381,6 +387,58 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Returns a mutex that is associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// On success, the mutex that is associated with the given address is returned.  If no mutex is
+    /// associated with the given address, a new mutex is created and returned. On failure, an
+    /// error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn get_mutex(addr: VirtualAddress) -> Result<Mutex, Error> {
+        Self::get_mut().try_borrow_mut()?.get_mutex(addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Stores a mutex guard in the calling thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the mutex.
+    /// - `guard`: Mutex guard to store.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn put_mutex_guard(addr: VirtualAddress, guard: MutexGuard) -> Result<(), Error> {
+        Self::get_mut()
+            .try_borrow_mut()?
+            .put_mutex_guard(addr, guard);
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Attempts to receive a message.
     ///
     /// # Returns
@@ -397,7 +455,6 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn try_recv() -> Result<Option<Message>, Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
         let mut pm: RefMut<ProcessManagerInner> = unsafe { Self::get_mut() }.try_borrow_mut()?;
         let running: &mut RunningProcess = pm.get_running_mut();
         match running.state_mut().receive_message() {

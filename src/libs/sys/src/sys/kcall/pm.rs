@@ -14,6 +14,10 @@ use crate::{
     kcall1,
     kcall2,
     kcall3,
+    mm::{
+        Address,
+        VirtualAddress,
+    },
     number::KcallNumber,
     pm::{
         Capability,
@@ -258,5 +262,33 @@ pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i32, Err
         Err(Error::new(ErrorCode::try_from(result)?, "failed to join thread"))
     } else {
         Ok(result)
+    }
+}
+
+//==================================================================================================
+// Lock Mutex
+//==================================================================================================
+
+pub fn lock_mutex(mutex_addr: VirtualAddress) -> Result<(), Error> {
+    let result: i32 = kcall1!(KcallNumber::MutexLock.into(), mutex_addr.into_raw_value() as u32);
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to lock mutex"))
+    }
+}
+
+//==================================================================================================
+// Unlock Mutex
+//==================================================================================================
+
+pub fn unlock_mutex(mutex_addr: VirtualAddress) -> Result<(), Error> {
+    let result: i32 = kcall1!(KcallNumber::MutexUnlock.into(), mutex_addr.into_raw_value() as u32);
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to unlock mutex"))
     }
 }
