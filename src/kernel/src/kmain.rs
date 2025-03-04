@@ -19,6 +19,7 @@
 #![feature(stmt_expr_attributes)] // stdio uses this.
 #![feature(likely_unlikely)] // performance hints.
 #![feature(cold_path)] // performance hints.
+#![feature(btree_extract_if)] // pm uses this.
 #![no_std]
 #![no_main]
 

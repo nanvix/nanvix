@@ -49,10 +49,17 @@ use crate::{
                 ZombieProcess,
             },
         },
-        sync::condvar::Condvar,
+        sync::{
+            condvar::Condvar,
+            mutex::{
+                Mutex,
+                MutexGuard,
+            },
+        },
         thread::{
             InterruptReason,
             ReadyThread,
+            SleepingThread,
             ThreadManager,
             ZombieThread,
         },
@@ -918,6 +925,152 @@ impl ProcessManagerInner {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns a mutex that is associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// On success, the mutex that is associated with the given address is returned.  If no mutex is
+    /// associated with the given address, a new mutex is created and returned. On failure, an
+    /// error is returned instead.
+    ///
+    fn get_mutex(&mut self, addr: VirtualAddress) -> Result<Mutex, Error> {
+        self.get_running_mut().state_mut().get_mutex(addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Stores a mutex guard in the calling thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the mutex.
+    /// - `guard`: Mutex guard to store.
+    ///
+    fn put_mutex_guard(&mut self, addr: VirtualAddress, guard: MutexGuard) {
+        self.get_running_mut()
+            .running_mut()
+            .put_mutex_guard(addr, guard);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes a mutex guard from a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
+    /// - `addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the mutex guard is returned. Otherwise, an error is returned
+    /// instead.
+    ///
+    fn take_mutex_guard(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        addr: VirtualAddress,
+    ) -> Result<MutexGuard, Error> {
+        match self.find_process_mut(pid)? {
+            ProcessRefMut::Running(process) => {
+                let mutex_guard: MutexGuard = {
+                    let sleeping_thread: &mut SleepingThread =
+                        match process.get_sleeping_thread_mut(tid) {
+                            Some(sleeping_thread) => sleeping_thread,
+                            None => {
+                                let reason: &str = "thread not found";
+                                error!("unlock_mutex(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+                            },
+                        };
+                    match sleeping_thread.take_mutex_guard(addr) {
+                        Some(mutex_guard) => mutex_guard,
+                        None => {
+                            let reason: &str = "thread does not own mutex";
+                            error!("unlock_mutex(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                        },
+                    }
+                };
+
+                process.state_mut().put_mutex(addr)?;
+
+                Ok(mutex_guard)
+            },
+            ProcessRefMut::Runnable(process) => {
+                let mutex_guard: MutexGuard = {
+                    let sleeping_thread: &mut SleepingThread =
+                        match process.get_sleeping_thread_mut(tid) {
+                            Some(sleeping_thread) => sleeping_thread,
+                            None => {
+                                let reason: &str = "thread not found";
+                                error!("unlock_mutex(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+                            },
+                        };
+                    match sleeping_thread.take_mutex_guard(addr) {
+                        Some(mutex_guard) => mutex_guard,
+                        None => {
+                            let reason: &str = "thread does not own mutex";
+                            error!("unlock_mutex(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                        },
+                    }
+                };
+
+                process.state_mut().put_mutex(addr)?;
+
+                Ok(mutex_guard)
+            },
+            ProcessRefMut::Sleeping(process) => {
+                let mutex_guard: MutexGuard = {
+                    let sleeping_thread: &mut SleepingThread =
+                        match process.get_sleeping_thread_mut(tid) {
+                            Some(sleeping_thread) => sleeping_thread,
+                            None => {
+                                let reason: &str = "thread not found";
+                                error!("unlock_mutex(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+                            },
+                        };
+                    match sleeping_thread.take_mutex_guard(addr) {
+                        Some(mutex_guard) => mutex_guard,
+                        None => {
+                            let reason: &str = "thread does not own mutex";
+                            error!("unlock_mutex(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+                        },
+                    }
+                };
+
+                process.state_mut().put_mutex(addr)?;
+
+                Ok(mutex_guard)
+            },
+            ProcessRefMut::Interrupted(_) => {
+                let reason: &str = "process is interrupted";
+                error!("unlock_mutex(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
+            },
+            ProcessRefMut::Zombie(_) => {
+                let reason: &str = "process is a zombie";
+                error!("unlock_mutex(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
+            },
+        }
+    }
+
     fn take_ready(&mut self) -> RunnableProcess {
         // NOTE: it is safe to call unwrap because there is always a process ready to run.
         self.ready
@@ -1296,6 +1449,30 @@ impl ProcessManager {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Takes a mutex guard from a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
+    /// - `addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the mutex guard is returned. Otherwise, an error is returned
+    /// instead.
+    ///
+    pub fn take_mutex_guard(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        addr: VirtualAddress,
+    ) -> Result<MutexGuard, Error> {
+        self.try_borrow_mut()?.take_mutex_guard(pid, tid, addr)
+    }
     ///
     /// # Description
     ///

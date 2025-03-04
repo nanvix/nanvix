@@ -10,8 +10,11 @@ use crate::pm::{
     sync::condvar::Condvar,
 };
 use ::alloc::sync::Arc;
-use ::core::cell::RefCell;
 use ::sys::error::Error;
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
 
 //==================================================================================================
 // Structures
@@ -24,7 +27,7 @@ use ::sys::error::Error;
 ///
 pub struct MutexInner {
     /// Locked?
-    locked: RefCell<bool>,
+    locked: AtomicBool,
     /// Threads that are sleeping on the mutex.
     sleeping: Condvar,
 }
@@ -67,7 +70,7 @@ impl MutexInner {
     /// - The lock is held by the caller.
     ///
     unsafe fn unlock_unchecked(&self) -> Result<(), Error> {
-        *self.locked.borrow_mut() = false;
+        self.locked.store(false, Ordering::Relaxed);
         self.sleeping.notify_first()
     }
 }
@@ -88,9 +91,52 @@ impl Mutex {
     ///
     pub fn new() -> Self {
         Self(Arc::new(MutexInner {
-            locked: RefCell::new(false),
+            locked: AtomicBool::new(false),
             sleeping: Condvar::new(),
         }))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the reference count of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// The reference count of the mutex.
+    ///
+    /// # Safety
+    ///
+    /// This method by itself is safe, but using it correctly requires extra care. Another thread
+    /// can change the strong count at any time, including potentially between calling this method
+    /// and acting on the result.
+    ///
+    pub fn reference_count(&self) -> usize {
+        Arc::strong_count(&self.0)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to lock the target mutex.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a guard is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn try_lock(&self) -> Result<MutexGuard, ()> {
+        if self
+            .0
+            .locked
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            Err(())
+        } else {
+            Ok(MutexGuard {
+                mutex: self.0.clone(),
+            })
+        }
     }
 
     ///
@@ -113,17 +159,15 @@ impl Mutex {
     ///
     /// - The calling process is not the kernel process.
     /// - This function is invoked without holding any resources.
+    /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn lock(&self) -> Result<MutexGuard, SleepError> {
-        while *self.0.locked.borrow() {
-            self.0.sleeping.wait()?;
+        loop {
+            match self.try_lock() {
+                Ok(guard) => break Ok(guard),
+                Err(_) => self.0.sleeping.wait()?,
+            }
         }
-
-        *self.0.locked.borrow_mut() = true;
-
-        Ok(MutexGuard {
-            mutex: self.0.clone(),
-        })
     }
 }
 

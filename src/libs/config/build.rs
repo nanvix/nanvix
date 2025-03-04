@@ -64,6 +64,12 @@ fn main() {
     {
         constants.push_str(&format!("pub const IPC_MESSAGE_SIZE: usize = {};\n", ipc_message_size));
     }
+    if let Some(max_mutexes) = kernel_config
+        .get("mutex_open_max")
+        .and_then(|v| v.as_integer())
+    {
+        constants.push_str(&format!("pub const MUTEX_OPEN_MAX: usize = {};\n", max_mutexes));
+    }
     constants.push_str("}\n");
 
     // Write the generated file

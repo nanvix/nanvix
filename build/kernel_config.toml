@@ -33,3 +33,8 @@ max_ikc_messages = 128
 # - The value of this function has direct impact on IPC performance.
 # - The default value is set to match the size of a cache line in x86 processors.
 ipc_message_size = 64
+
+# Maximum number of mutexes a process may hold at the same time.
+# Notes:
+# - This number was arbitrarily chosen.
+mutex_open_max = 32
