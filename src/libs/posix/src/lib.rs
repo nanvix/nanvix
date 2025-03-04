@@ -7,6 +7,7 @@
 
 #![deny(clippy::all)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(never_type)] // pthread requires this.
 
 //==================================================================================================
 // Modules
@@ -37,6 +38,9 @@ pub mod message;
 
 /// Internet protocols for network stack.
 pub mod netinet;
+
+/// Posix threads.
+pub mod pthread;
 
 /// Standard symbolic constants and types.
 pub mod unistd;
