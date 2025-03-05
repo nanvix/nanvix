@@ -54,11 +54,11 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
 
-    let retcode: c_int = crate::fcntl::open(pathname, flags, mode);
+    let fd: c_int = crate::fcntl::open(pathname, flags, mode);
 
     // Check if the system call failed.
-    if retcode < 0 {
-        errno = match ErrorCode::try_from(retcode) {
+    if fd < 0 {
+        errno = match ErrorCode::try_from(fd) {
             Ok(e) => e.into_errno(),
             Err(_) => {
                 ::nvx::error!("open(): invalid error code");
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
         return -1;
     }
 
-    0
+    fd
 }
 
 ///
