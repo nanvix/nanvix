@@ -41,6 +41,7 @@ use ::posix::{
         PartialReadResponse,
         PartialWriteRequest,
         PartialWriteResponse,
+        PipeResponse,
         ReadRequest,
         ReadResponse,
         SeekRequest,
@@ -345,6 +346,31 @@ pub fn do_fchown(pid: ProcessIdentifier, request: FileChownRequest) -> Message {
             )
         },
         ret => unreachable!("libc::fchown() returned an invalid value ({:?})", ret),
+    }
+}
+
+//==================================================================================================
+// do_pipe
+//==================================================================================================
+
+pub fn do_pipe(pid: ProcessIdentifier) -> Message {
+    trace!("pipe(): pid={:?}", pid);
+
+    let mut fds: [i32; 2] = [0; 2];
+
+    debug!("libc::pipe(): fds={:?}", fds);
+    match unsafe { libc::pipe(fds.as_mut_ptr()) } {
+        0 => {
+            let read_fd: i32 = fds[0];
+            let write_fd: i32 = fds[1];
+
+            debug!("pipe(): read_fd={:?}, write_fd={:?}", read_fd, write_fd);
+            PipeResponse::build(pid, read_fd, write_fd)
+        },
+        ret => crate::build_error(
+            pid,
+            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+        ),
     }
 }
 

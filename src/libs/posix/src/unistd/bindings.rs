@@ -354,6 +354,40 @@ pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
 }
 
 ///
+/// # Description
+///
+/// Creates a pipe.
+///
+/// # Parameters
+///
+/// - `fds`: Array to store the file descriptors of the pipe.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+#[no_mangle]
+pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
+    ::nvx::trace!("pipe(): fds = {:?}", fds);
+
+    match crate::unistd::pipe() {
+        Ok([read_fd, write_fd]) => {
+            fds[0] = read_fd;
+            fds[1] = write_fd;
+            0
+        },
+        Err(error) => {
+            ::nvx::error!("pipe(): failed (error={:?})", error);
+            unsafe {
+                errno = error.code.into_errno();
+            }
+            -1
+        },
+    }
+}
+
+///
 /// # Safety
 ///
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.

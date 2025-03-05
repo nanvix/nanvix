@@ -161,6 +161,8 @@ pub enum LinuxDaemonMessageHeader {
     GetPeerNameResponse,
     GetSockNameRequest,
     GetSockNameResponse,
+    PipeRequest,
+    PipeResponse,
 }
 
 #[repr(C, packed)]

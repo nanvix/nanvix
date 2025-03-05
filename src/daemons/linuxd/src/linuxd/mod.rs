@@ -92,6 +92,7 @@ use ::posix::{
         LinkAtRequest,
         PartialReadRequest,
         PartialWriteRequest,
+        PipeRequest,
         ReadRequest,
         ReadResponse,
         SeekRequest,
@@ -228,6 +229,7 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::ShutdownSocketRequest
                                 | LinuxDaemonMessageHeader::TimesRequest
                                 | LinuxDaemonMessageHeader::UnlinkAtRequest
+                                | LinuxDaemonMessageHeader::PipeRequest
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                                     self.handle_short_request_messages(source, message)
                                 },
@@ -452,6 +454,10 @@ impl<'a> LinuxDaemon<'a> {
                 let request: UpdateFileAccessTimeRequest =
                     UpdateFileAccessTimeRequest::from_bytes(message.payload);
                 fcntl::do_futimens(source, request)
+            },
+            LinuxDaemonMessageHeader::PipeRequest => {
+                let _request = PipeRequest::from_bytes(message.payload);
+                unistd::do_pipe(source)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
