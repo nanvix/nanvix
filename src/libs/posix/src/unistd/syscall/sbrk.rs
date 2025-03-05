@@ -28,7 +28,8 @@ use ::nvx::{
 /// The `sbrk()` increments the location of the program break by `size` bytes. The program break
 /// defines the end of the process's data segment and is the address of the first location after the
 /// end of the uninitialized data segment. Increasing the program break has the effect of allocating
-/// memory to the process; decreasing the break deallocates memory.
+/// memory to the process; decreasing the break deallocates memory. Calling `sbrk()` with a zero
+/// size increment can be used to find the current location of the program break.
 ///
 /// # Parameters
 ///
@@ -42,6 +43,11 @@ use ::nvx::{
 pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
     ::nvx::trace!("sbrk(): size = {}", size);
     static mut END: *mut u8 = mm::BREAK_BASE_RAW as *mut u8;
+
+    // Check if querying the current program break.
+    if size == 0 {
+        return Ok(unsafe { END });
+    }
 
     let old_end: *mut u8 = unsafe {
         let old_end: *mut u8 = END;
