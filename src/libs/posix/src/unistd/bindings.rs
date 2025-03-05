@@ -10,6 +10,8 @@ use crate::{
     ffi::{
         c_char,
         c_int,
+        c_long,
+        c_uint,
         c_void,
     },
     sys::types::{
@@ -32,6 +34,27 @@ use ::nvx::sys::error::ErrorCode;
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn access(_path: *const c_char, _mode: c_int) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/355
+    ::nvx::error!("access(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
+#[no_mangle]
+pub extern "C" fn chdir(_path: *const c_char) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/358
+    ::nvx::error!("chdir(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
 
 ///
 /// # Description
@@ -117,9 +140,43 @@ pub extern "C" fn close(fd: c_int) -> c_int {
 }
 
 #[no_mangle]
+pub extern "C" fn dup2(_oldfd: c_int, _newfd: c_int) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/354
+    ::nvx::error!("dup2(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
+#[no_mangle]
+pub extern "C" fn execve(
+    _path: *const c_char,
+    _argv: *const *const c_char,
+    _envp: *const *const c_char,
+) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/320
+    ::nvx::error!("execve(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
+#[no_mangle]
 pub extern "C" fn _exit(status: c_int) -> ! {
     let Err(e) = nvx::sys::kcall::pm::exit(status);
     panic!("failed to terminate process (error={:?})", e);
+}
+
+#[no_mangle]
+pub extern "C" fn fork() -> pid_t {
+    // TODO: https://github.com/nanvix/nanvix/issues/321
+    ::nvx::error!("fork(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
 }
 
 ///
@@ -183,6 +240,17 @@ pub extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
             -1
         },
     }
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn getcwd(_buf: *mut c_char, _size: size_t) -> *mut c_char {
+    // TODO: https://github.com/nanvix/nanvix/issues/359
+    ::nvx::error!("getcwd(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    core::ptr::null_mut()
 }
 
 ///
@@ -432,6 +500,16 @@ pub extern "C" fn sbrk(size: isize) -> *mut u8 {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
+    // TODO: https://github.com/nanvix/nanvix/issues/453
+    ::nvx::error!("sleep(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    0
+}
+
 ///
 /// # Description
 ///
@@ -480,6 +558,16 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     }
 
     0
+}
+
+#[no_mangle]
+pub extern "C" fn sysconf(_name: c_int) -> c_long {
+    // TODO: https://github.com/nanvix/nanvix/issues/342
+    ::nvx::error!("sysconf(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
 }
 
 ///

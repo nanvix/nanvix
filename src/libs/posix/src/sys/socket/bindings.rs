@@ -9,14 +9,23 @@ use core::slice;
 
 use crate::{
     errno::errno,
-    ffi::c_int,
-    sys::socket::{
-        sockaddr,
-        socklen_t,
-        AddressFamily,
-        Protocol,
-        SocketAddr,
-        SocketType,
+    ffi::{
+        c_int,
+        c_void,
+    },
+    sys::{
+        socket::{
+            sockaddr,
+            socklen_t,
+            AddressFamily,
+            Protocol,
+            SocketAddr,
+            SocketType,
+        },
+        types::{
+            size_t,
+            ssize_t,
+        },
     },
 };
 use ::nvx::sys::error::ErrorCode;
@@ -178,6 +187,34 @@ pub unsafe extern "C" fn getsockname(
             -1
         },
     }
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn recv(
+    _sockfd: c_int,
+    _buf: *mut c_void,
+    _len: size_t,
+    _flags: c_int,
+) -> ssize_t {
+    // TODO: Implement this system call.
+    ::nvx::error!("recv(): not implemented");
+    unsafe { errno = ErrorCode::InvalidSysCall.into_errno() };
+    -1
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn send(
+    _sockfd: c_int,
+    _buf: *const c_void,
+    _len: size_t,
+    _flags: c_int,
+) -> ssize_t {
+    // TODO: Implement this system call.
+    ::nvx::error!("send(): not implemented");
+    unsafe { errno = ErrorCode::InvalidSysCall.into_errno() };
+    -1
 }
 
 ///
