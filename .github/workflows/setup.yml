@@ -48,6 +48,7 @@ jobs:
             cd github/nanvix-dev-${RELEASE_TYPE}
             git fetch origin
             git reset --hard origin/${TARGET_BRANCH}
+            rm -rf Cargo.lock
           else
             if [ ! -d "github/nanvix-${TARGET_BRANCH}-${RELEASE_TYPE}" ]; then
               git clone https://github.com/nanvix/nanvix.git --branch ${TARGET_BRANCH} github/nanvix-${TARGET_BRANCH}-${RELEASE_TYPE}
@@ -55,5 +56,6 @@ jobs:
               cd github/nanvix-${TARGET_BRANCH}-${RELEASE_TYPE}
               git fetch origin
               git reset --hard origin/${TARGET_BRANCH}
+              rm -rf Cargo.lock
             fi
           fi
