@@ -21,6 +21,10 @@ use crate::{
         ssize_t,
         uid_t,
     },
+    unistd::{
+        STDERR_FILENO,
+        STDOUT_FILENO,
+    },
 };
 use ::core::ffi;
 use ::nvx::sys::error::ErrorCode;
@@ -496,6 +500,9 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) -> ssize_t {
-    ::nvx::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
+    // Skip logging for stdout and stderr to avoid spamming the output.
+    if fd != STDOUT_FILENO && fd != STDERR_FILENO {
+        ::nvx::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
+    }
     crate::unistd::write(fd, buffer as *const u8, count)
 }
