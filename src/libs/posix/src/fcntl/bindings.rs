@@ -116,6 +116,28 @@ pub unsafe extern "C" fn fchmodat(
     }
 }
 
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn fchmod(_fd: c_int, _mode: mode_t) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/360
+    ::nvx::error!("fchmod(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/280
+    ::nvx::error!("fcntl(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
 ///
 /// # Description
 ///
