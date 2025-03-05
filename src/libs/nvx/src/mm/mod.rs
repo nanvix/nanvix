@@ -65,6 +65,10 @@ cfg_if::cfg_if! {
 /// Initializes memory management runtime.
 #[cfg(target_os = "none")]
 pub fn init() -> Result<(), Error> {
+    // Acquire memory management capability.
+    #[cfg(any(feature = "allocator", feature = "staticlib"))]
+    ::sys::kcall::pm::capctl(::sys::pm::Capability::MemoryManagement, true)?;
+
     #[cfg(feature = "allocator")]
     {
         use crate::mm::allocator;
@@ -74,16 +78,10 @@ pub fn init() -> Result<(), Error> {
             kcall::{
                 self,
             },
-            pm::{
-                Capability,
-                ProcessIdentifier,
-            },
+            pm::ProcessIdentifier,
         };
 
         let pid: ProcessIdentifier = kcall::pm::getpid()?;
-
-        // Acquire memory management capability.
-        kcall::pm::capctl(Capability::MemoryManagement, true)?;
 
         // Initialize the heap.
         unsafe {
@@ -97,17 +95,8 @@ pub fn init() -> Result<(), Error> {
 /// Cleanups the memory management runtime.
 #[cfg(target_os = "none")]
 pub fn cleanup() -> Result<(), Error> {
-    #[cfg(feature = "allocator")]
-    {
-        use ::sys::{
-            kcall::{
-                self,
-            },
-            pm::Capability,
-        };
-
-        // Release memory management capability.
-        kcall::pm::capctl(Capability::MemoryManagement, false)?;
-    }
+    // Release memory management capability.
+    #[cfg(any(feature = "allocator", feature = "staticlib"))]
+    ::sys::kcall::pm::capctl(::sys::pm::Capability::MemoryManagement, false)?;
     Ok(())
 }
