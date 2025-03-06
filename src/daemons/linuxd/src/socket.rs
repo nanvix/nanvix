@@ -249,7 +249,8 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
         },
         _ => {
             let sockaddr: sockaddr = sockaddr {
-                sa_family: address.sa_family as u16,
+                sa_len: address_len as u8,
+                sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
             let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {
@@ -283,7 +284,8 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
         },
         _ => {
             let sockaddr: sockaddr = sockaddr {
-                sa_family: address.sa_family as u16,
+                sa_len: address_len as u8,
+                sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
             let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {
@@ -317,7 +319,8 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
         },
         sockfd => {
             let sockaddr: sockaddr = sockaddr {
-                sa_family: address.sa_family as u16,
+                sa_len: address_len as u8,
+                sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
             let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {

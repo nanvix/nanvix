@@ -29,6 +29,8 @@ pub struct in_addr {
 /// Describes an internet socket address.
 #[repr(C, packed)]
 pub struct sockaddr_in {
+    /// Socket address length.
+    pub sin_len: u8,
     /// Address family.
     pub sin_family: sa_family_t,
     /// Port number.
