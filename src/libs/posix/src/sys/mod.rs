@@ -19,3 +19,6 @@ pub mod types;
 
 /// Definitions for vector I/O operations.
 pub mod uio;
+
+/// Definitions for UNIX domain sockets.
+pub mod un;
