@@ -19,6 +19,7 @@ use crate::{
             socklen_t,
             AddressFamily,
             Protocol,
+            Shutdown,
             SocketAddr,
             SocketType,
         },
@@ -407,6 +408,30 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
         Err(error) => {
             ::nvx::error!("socket(): failed to create socket (error={:?})", error);
             unsafe { errno = error.code.into_errno() }
+            -1
+        },
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
+    ::nvx::trace!("shutdown(): sockfd={:?}, how={:?}", sockfd, how);
+
+    // Attempt to convert shutdown mode.
+    let how: Shutdown = match Shutdown::try_from(how) {
+        Ok(how) => how,
+        Err(_error) => {
+            ::nvx::error!("shutdown(): invalid shutdown mode (how={:?})", how);
+            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            return -1;
+        },
+    };
+
+    match crate::sys::socket::shutdown(sockfd, how) {
+        Ok(_) => 0,
+        Err(e) => {
+            ::nvx::error!("shutdown(): failed to shutdown socket {:?}", e);
+            unsafe { errno = e.code.into_errno() }
             -1
         },
     }
