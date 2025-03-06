@@ -300,15 +300,43 @@ pub unsafe extern "C" fn recv(
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn send(
-    _sockfd: c_int,
-    _buf: *const c_void,
-    _len: size_t,
-    _flags: c_int,
+    sockfd: c_int,
+    buf: *const c_void,
+    len: size_t,
+    flags: c_int,
 ) -> ssize_t {
-    // TODO: Implement this system call.
-    ::nvx::error!("send(): not implemented");
-    unsafe { errno = ErrorCode::InvalidSysCall.into_errno() };
-    -1
+    // Check if `buf` is valid.
+    if buf.is_null() {
+        ::nvx::error!("send(): invalid buffer");
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Check if `len` is valid.
+    if len == 0 {
+        ::nvx::error!("send(): invalid buffer length");
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Check if `flags` is valid.
+    if flags != 0 {
+        ::nvx::error!("send(): unsupported flags (flags={:?})", flags);
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Attempt to convert buffer.
+    let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len as usize) };
+
+    match crate::sys::socket::send(sockfd, buf, flags) {
+        Ok(bytes_sent) => bytes_sent as ssize_t,
+        Err(e) => {
+            ::nvx::error!("send(): failed to send data through socket {:?}", e);
+            unsafe { errno = e.code.into_errno() }
+            -1
+        },
+    }
 }
 
 #[allow(clippy::missing_safety_doc)]
