@@ -61,10 +61,10 @@ pub mod sched;
 #[cfg(target_os = "none")]
 macro_rules! trace{
     ( $($arg:tt)* ) => ({
-		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Trace {
+		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Trace {
             use core::fmt::Write;
             let _ = writeln!(
-                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Trace),
+                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Trace),
                 $($arg)*
             );
         }
@@ -75,10 +75,10 @@ macro_rules! trace{
 #[cfg(target_os = "none")]
 macro_rules! debug{
     ( $($arg:tt)* ) => ({
-		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Debug{
+		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Debug{
             use core::fmt::Write;
             let _ = writeln!(
-                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Debug),
+                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Debug),
                 $($arg)*
             );
         }
@@ -89,10 +89,10 @@ macro_rules! debug{
 #[cfg(target_os = "none")]
 macro_rules! info{
     ( $($arg:tt)* ) => ({
-		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Info {
+		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Info {
             use core::fmt::Write;
             let _ = writeln!(
-                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Info),
+                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Info),
                 $($arg)*
             );
         }
@@ -103,10 +103,10 @@ macro_rules! info{
 #[cfg(target_os = "none")]
 macro_rules! warn{
     ( $($arg:tt)* ) => ({
-		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Warn{
+		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Warn{
             use core::fmt::Write;
             let _ = writeln!(
-                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Warn),
+                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Warn),
                 $($arg)*
             );
         }
@@ -117,10 +117,10 @@ macro_rules! warn{
 #[cfg(target_os = "none")]
 macro_rules! error{
     ( $($arg:tt)* ) => ({
-		if nvx::logging::MAX_LEVEL >= nvx::logging::LogLevel::Error{
+		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Error{
             use core::fmt::Write;
             let _ = writeln!(
-                &mut nvx::logging::Logger::get(module_path!(), nvx::logging::LogLevel::Error),
+                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Error),
                 $($arg)*
             );
         }
@@ -134,6 +134,8 @@ macro_rules! error{
 #[no_mangle]
 #[cfg(target_os = "none")]
 pub extern "C" fn _start() -> ! {
+    crate::trace!("_start()");
+
     // Initializes the system runtime.
     init();
 
