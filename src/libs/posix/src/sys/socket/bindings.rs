@@ -76,6 +76,39 @@ pub unsafe extern "C" fn accept(
     }
 }
 
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: socklen_t) -> c_int {
+    ::nvx::trace!("bind(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+
+    // Check if sock address is valid.
+    if sockaddr.is_null() {
+        ::nvx::error!("bind(): invalid socket address");
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    ::nvx::trace!("bind(): sockaddr={:?}", unsafe { &*sockaddr });
+
+    // Attempt to convert socket address.
+    let sockaddr: SocketAddr = match SocketAddr::try_from(unsafe { &*sockaddr }) {
+        Ok(sockaddr) => sockaddr,
+        Err(e) => {
+            ::nvx::error!("bind(): failed to convert socket address {:?}", e);
+            unsafe { errno = e.code.into_errno() };
+            return -1;
+        },
+    };
+
+    match crate::sys::socket::bind(sockfd, &sockaddr) {
+        Ok(_) => 0,
+        Err(e) => {
+            unsafe { errno = e.code.into_errno() }
+            -1
+        },
+    }
+}
+
 ///
 /// # Description
 ///
