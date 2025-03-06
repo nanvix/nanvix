@@ -252,7 +252,10 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let sockaddr: SocketAddr = sockaddr.into();
+            let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {
+                Ok(sockaddr) => sockaddr,
+                Err(e) => return crate::build_error(pid, e.code),
+            };
             GetPeerNameResponse::build(pid, sockaddr)
         },
     }
@@ -283,7 +286,10 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let sockaddr: SocketAddr = sockaddr.into();
+            let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {
+                Ok(sockaddr) => sockaddr,
+                Err(e) => return crate::build_error(pid, e.code),
+            };
             GetSockNameResponse::build(pid, sockaddr)
         },
     }
@@ -314,7 +320,10 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
                 sa_family: address.sa_family as u16,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let sockaddr: SocketAddr = sockaddr.into();
+            let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {
+                Ok(sockaddr) => sockaddr,
+                Err(e) => return crate::build_error(pid, e.code),
+            };
             AcceptSocketResponse::build(pid, sockfd, sockaddr)
         },
     }
@@ -504,7 +513,7 @@ impl TryFrom<SocketAddr> for LibcSocketAddress {
     type Error = Error;
 
     fn try_from(sockaddr: SocketAddr) -> Result<Self, Self::Error> {
-        let sockaddr: sockaddr = sockaddr.try_into()?;
+        let sockaddr: sockaddr = sockaddr::try_from(&sockaddr)?;
         LibcSocketAddress::try_from(sockaddr)
     }
 }
