@@ -100,6 +100,12 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             Ok(()) => 0,
             Err(sleep_error) => handle_sleep_error(sleep_error).unwrap(),
         },
+        // SAFETY: The calling thread does not hold any resources.
+        KcallNumber::SchedulerYield => match unsafe { ProcessManager::switch() } {
+            Ok(()) => 0,
+            Err(e) => e.code.into_errno(),
+        },
+
         // Dispatch kernel call for remote execution.
         _ => match ScoreBoard::get_mut() {
             // SAFETY: The calling thread is not the kernel and no resources are held.
