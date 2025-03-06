@@ -82,6 +82,7 @@ pub fn do_socket(pid: ProcessIdentifier, request: CreateSocketRequest) -> Messag
     match unsafe { libc::socket(domain.inner() as i32, typ.inner(), protocol.inner()) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::socket(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -122,6 +123,7 @@ pub fn do_socketpair(pid: ProcessIdentifier, request: CreateSocketPairRequest) -
     } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::socketpair(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -198,6 +200,7 @@ pub fn do_connect(pid: ProcessIdentifier, request: ConnectSocketRequest) -> Mess
     } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::connect(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -220,6 +223,7 @@ pub fn do_listen(pid: ProcessIdentifier, request: ListenSocketRequest) -> Messag
     match unsafe { libc::listen(sockfd, backlog) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::listen(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -244,6 +248,7 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
     match unsafe { libc::getpeername(sockfd, &mut address, &mut address_len) } {
         -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
+            error!("libc::getpeername(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -279,6 +284,7 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
     match unsafe { libc::getsockname(sockfd, &mut address, &mut address_len) } {
         -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
+            error!("libc::getsockname(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             error!("libc::getsockname(): {:?}", error);
@@ -315,6 +321,7 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
     match unsafe { libc::accept(sockfd, &mut address, &mut address_len) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::accept(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -362,6 +369,7 @@ pub fn do_recv(pid: ProcessIdentifier, request: ReceiveSocketRequest) -> Message
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::recv(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -385,6 +393,7 @@ pub fn do_shutdown(pid: ProcessIdentifier, request: ShutdownSocketRequest) -> Me
         0 => ShutdownSocketResponse::build(pid),
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::shutdown(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -424,6 +433,7 @@ pub fn do_send(pid: ProcessIdentifier, request: SendSocketRequest) -> Message {
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::send(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
