@@ -23,7 +23,7 @@ config = { workspace = true }
 default = []
 allocator = []
 std = []
-staticlib = []
+staticlib = ["allocator"]
 
 # Logging Features
 trace = ["debug"]
