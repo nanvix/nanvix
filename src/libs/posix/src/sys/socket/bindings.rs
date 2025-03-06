@@ -286,15 +286,43 @@ pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn recv(
-    _sockfd: c_int,
-    _buf: *mut c_void,
-    _len: size_t,
-    _flags: c_int,
+    sockfd: c_int,
+    buf: *mut c_void,
+    len: size_t,
+    flags: c_int,
 ) -> ssize_t {
-    // TODO: Implement this system call.
-    ::nvx::error!("recv(): not implemented");
-    unsafe { errno = ErrorCode::InvalidSysCall.into_errno() };
-    -1
+    // Check if `buf` is valid.
+    if buf.is_null() {
+        ::nvx::error!("recv(): invalid buffer");
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Check if `len` is valid.
+    if len == 0 {
+        ::nvx::error!("recv(): invalid buffer length");
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Check if `flags` is valid.
+    if flags != 0 {
+        ::nvx::error!("recv(): unsupported flags (flags={:?})", flags);
+        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        return -1;
+    }
+
+    // Attempt to convert buffer.
+    let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len as usize) };
+
+    match crate::sys::socket::recv(sockfd, buf, flags) {
+        Ok(bytes_received) => bytes_received as ssize_t,
+        Err(e) => {
+            ::nvx::error!("recv(): failed to receive data through socket {:?}", e);
+            unsafe { errno = e.code.into_errno() }
+            -1
+        },
+    }
 }
 
 #[allow(clippy::missing_safety_doc)]
