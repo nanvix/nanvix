@@ -111,15 +111,20 @@ pub unsafe extern "C" fn getpeername(
 
     match crate::sys::socket::getpeername(sockfd, &mut sockaddr_) {
         Ok(_) => {
-            let (sockaddr_, len_): (sockaddr, socklen_t) = match sockaddr_.try_into() {
-                Ok((sockaddr_, len_)) => (sockaddr_, len_),
-                Err(e) => {
-                    unsafe { errno = e.code.into_errno() };
+            match sockaddr_.try_into() {
+                Ok((sockaddr_, len_)) => {
+                    *sockaddr = sockaddr_;
+                    *len = len_;
+                },
+                Err(error) => {
+                    ::nvx::error!(
+                        "getpeername(): failed to convert socket address (error={:?})",
+                        error
+                    );
+                    errno = error.code.into_errno();
                     return -1;
                 },
             };
-            unsafe { *sockaddr = sockaddr_ };
-            unsafe { *len = len_ };
             0
         },
         Err(e) => {

@@ -385,7 +385,10 @@ pub fn test_network() -> Result<(), Error> {
         sin_zero: [0; 8],
     };
 
-    let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
+    let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr_in) {
+        Ok(sockaddr) => sockaddr,
+        Err(e) => panic!("{:?}", e),
+    };
 
     test_create_socket(domain, typ, protocol)?;
     test_bind_socket(domain, typ, protocol, &sockaddr)?;
