@@ -11,9 +11,12 @@
 // Imports
 //==================================================================================================
 
-use crate::netinet::in_::{
-    in_addr,
-    sockaddr_in,
+use crate::{
+    ffi::c_uchar,
+    netinet::in_::{
+        in_addr,
+        sockaddr_in,
+    },
 };
 use ::alloc::vec::Vec;
 use ::core::{
@@ -107,12 +110,14 @@ pub const MSG_NOSIGNAL: i32 = 0x4000;
 pub type socklen_t = u32;
 
 /// Used for socket address family.
-pub type sa_family_t = u16;
+pub type sa_family_t = u8;
 
 /// Describes the address of a socket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct sockaddr {
+    // Total length.
+    pub sa_len: c_uchar,
     /// Address family.
     pub sa_family: sa_family_t,
     /// Address data.
@@ -228,6 +233,7 @@ impl TryFrom<&SocketAddrV4> for sockaddr_in {
 
     fn try_from(addr: &SocketAddrV4) -> Result<Self, Self::Error> {
         Ok(Self {
+            sin_len: mem::size_of::<sockaddr_in>() as u8,
             sin_family: AF_INET.try_into().map_err(|_| {
                 Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
             })?,
@@ -259,6 +265,7 @@ impl TryFrom<&SocketAddrV4> for sockaddr {
         sa_data[0..2].copy_from_slice(&addr.port.to_be_bytes());
         sa_data[2..6].copy_from_slice(&addr.addr.octets);
         Ok(Self {
+            sa_len: mem::size_of::<sockaddr_in>() as c_uchar,
             sa_family: AF_INET.try_into().map_err(|_| {
                 Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
             })?,
@@ -350,6 +357,7 @@ impl TryFrom<&SocketAddr> for sockaddr {
             SocketAddr::V4(addr) => addr.try_into(),
             SocketAddr::V6(_) => unimplemented!(),
             SocketAddr::Unix(_) => Ok(sockaddr {
+                sa_len: 0,
                 sa_family: AF_INET.try_into().map_err(|_| {
                     Error::new(
                         ErrorCode::ValueOutOfRange,
@@ -398,6 +406,7 @@ mod test {
     #[test]
     fn test_ipv4_sockaddr_conversion() {
         let test_addr: sockaddr_in = sockaddr_in {
+            sin_len: mem::size_of::<sockaddr_in>() as u8,
             sin_family: AF_INET
                 .try_into()
                 .expect("converting address family should succeed"),
@@ -434,6 +443,7 @@ mod test {
     #[test]
     fn test_ipv4_sockaddr_into_socket_addr() {
         let test_addr: sockaddr = sockaddr {
+            sa_len: mem::size_of::<sockaddr_in>() as u8,
             sa_family: AF_INET
                 .try_into()
                 .expect("converting address family should succeed"),
