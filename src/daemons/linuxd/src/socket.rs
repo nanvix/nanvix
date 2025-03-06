@@ -157,6 +157,7 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
     match unsafe { libc::bind(sockfd, &sockaddr.inner() as *const libc::sockaddr, socklen) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("libc::bind(): failed with errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             crate::build_error(pid, error)
@@ -280,6 +281,7 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
+            error!("libc::getsockname(): {:?}", error);
             crate::build_error(pid, error)
         },
         _ => {
