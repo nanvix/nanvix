@@ -16,6 +16,9 @@
 
 extern crate alloc;
 
+// Address and routing parameter area.
+pub mod arpa;
+
 /// Dynamic linking.
 pub mod dlfcn;
 
