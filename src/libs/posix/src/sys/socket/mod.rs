@@ -176,6 +176,22 @@ pub enum Shutdown {
     ReadWrite,
 }
 
+impl TryFrom<i32> for Shutdown {
+    type Error = Error;
+
+    fn try_from(how: i32) -> Result<Self, Self::Error> {
+        match how {
+            SHUT_RD => Ok(Shutdown::Read),
+            SHUT_WR => Ok(Shutdown::Write),
+            SHUT_RDWR => Ok(Shutdown::ReadWrite),
+            _unsupported_how => {
+                let reason: &str = "unsupported shutdown operation";
+                Err(Error::new(ErrorCode::OperationNotSupported, reason))
+            },
+        }
+    }
+}
+
 /// Represents an IPv4 address.
 #[repr(C, packed)]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
