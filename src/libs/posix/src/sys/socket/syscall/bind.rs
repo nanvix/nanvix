@@ -9,6 +9,7 @@ use crate::{
     ffi::c_int,
     sys::socket::{
         message::BindSocketRequest,
+        sockaddr,
         SocketAddr,
     },
     LinuxDaemonMessage,
@@ -30,8 +31,10 @@ use ::nvx::{
 pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
+    let sockaddr: sockaddr = sockaddr::try_from(sockaddr)?;
+
     // Build request and send it.
-    let request: Message = BindSocketRequest::build(pid, sockfd, *sockaddr);
+    let request: Message = BindSocketRequest::build(pid, sockfd, &sockaddr);
     ::nvx::ipc::send(&request)?;
 
     // Receive response.
