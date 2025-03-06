@@ -33,7 +33,6 @@ use crate::{
 pub fn unlock_mutex(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
     // Unpack kernel call arguments.
     let addr: VirtualAddress = VirtualAddress::from_raw_value(args.arg0 as usize);
-    trace!("unlock_mutex(): pid={:?}, tid={:?}, addr={:#x?}", args.pid, args.tid, addr);
 
     match pm.take_mutex_guard(args.pid, args.tid, addr) {
         Ok(_mutex_guard) => {

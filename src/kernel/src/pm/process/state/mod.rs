@@ -336,8 +336,6 @@ impl ProcessState {
     /// error is returned instead.
     ///
     pub fn get_mutex(&mut self, addr: VirtualAddress) -> Result<Mutex, Error> {
-        trace!("get_mutex(): addr={:#x?}", addr);
-
         // Check if maximum number of mutexes has been reached.
         if self.mutexes.len() >= MUTEX_OPEN_MAX {
             let reason: &'static str = "maximum number of mutexes reached";
@@ -362,8 +360,6 @@ impl ProcessState {
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
     ///
     pub fn put_mutex(&mut self, addr: VirtualAddress) -> Result<(), Error> {
-        trace!("put_mutex(): addr={:#x?}", addr);
-
         // Check if mutex exists.
         if !self.mutexes.contains_key(&addr) {
             let reason: &'static str = "mutex not found";

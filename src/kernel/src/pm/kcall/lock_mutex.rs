@@ -50,7 +50,6 @@ use crate::{
 pub unsafe fn lock_mutex(raw_addr: usize) -> Result<(), SleepError> {
     // Unpack kernel call arguments.
     let addr: VirtualAddress = VirtualAddress::from_raw_value(raw_addr);
-    trace!("lock_mutex(): addr={:#x?}", raw_addr);
 
     let mutex: Mutex = ProcessManager::get_mutex(addr).map_err(SleepError::Generic)?;
     let guard: MutexGuard = mutex.lock()?;
