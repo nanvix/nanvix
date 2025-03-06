@@ -271,6 +271,20 @@ pub unsafe extern "C" fn getsockname(
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
+pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
+    ::nvx::trace!("listen(): sockfd={:?}, backlog={:?}", sockfd, backlog);
+    match crate::sys::socket::listen(sockfd, backlog) {
+        Ok(_) => 0,
+        Err(e) => {
+            ::nvx::error!("listen(): failed to listen on socket {:?}", e);
+            unsafe { errno = e.code.into_errno() }
+            -1
+        },
+    }
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
 pub unsafe extern "C" fn recv(
     _sockfd: c_int,
     _buf: *mut c_void,
