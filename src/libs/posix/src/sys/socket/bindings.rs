@@ -34,6 +34,48 @@ use ::nvx::sys::error::ErrorCode;
 // Standalone Functions
 //==================================================================================================
 
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn accept(
+    sockfd: c_int,
+    sockaddr: *mut sockaddr,
+    len: *mut socklen_t,
+) -> c_int {
+    nvx::trace!("accept(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+
+    let mut sockaddr_: SocketAddr = SocketAddr::V4(Default::default());
+
+    match crate::sys::socket::accept(sockfd, Some(&mut sockaddr_)) {
+        Ok(sockfd) => {
+            // Store socket address, if requested.
+            match sockaddr_.try_into() {
+                // Succeeded to convert socket address.
+                Ok((sockaddr_, len_)) => {
+                    if !sockaddr.is_null() {
+                        *sockaddr = sockaddr_;
+                    }
+
+                    if !len.is_null() {
+                        *len = len_;
+                    }
+                },
+                // Failed to convert socket address.
+                Err(error) => {
+                    // Warn and continue, as the socket descriptor was successfully created.
+                    ::nvx::warn!("accept(): failed to convert socket address (error={:?})", error);
+                },
+            };
+
+            sockfd
+        },
+        Err(error) => {
+            ::nvx::error!("accept(): failed to accept connection (error={:?})", error);
+            unsafe { errno = error.code.into_errno() }
+            -1
+        },
+    }
+}
+
 ///
 /// # Description
 ///
