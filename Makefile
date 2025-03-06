@@ -594,11 +594,9 @@ ifeq ($(MACHINE),hyperlight)
 	@if [ `stat -c%s "bin/$(1).elf"` -gt 33554432 ]; then \
 		echo "\033[31mWarning: bin/$(1).elf exceeds 32 MB, skipping test.\033[0m"; \
 	else \
-		sudo -v; \
 		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3); \
 	fi
 else
-	sudo -v; \
 	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3)
 endif
 endif
@@ -623,11 +621,9 @@ ifeq ($(MACHINE),hyperlight)
 	@if [ `stat -c%s "bin/wasmd.elf"` -gt 33554432 ]; then \
 		echo "\033[31mWarning: bin/wasmd.elf exceeds 32 MB, skipping test!\033[0m"; \
 	else \
-		sudo -v; \
 		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3); \
 	fi
 else
-	sudo -v; \
 	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3)
 endif
 endif
