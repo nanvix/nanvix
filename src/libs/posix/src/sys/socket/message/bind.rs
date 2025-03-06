@@ -7,7 +7,7 @@
 
 use crate::{
     ffi::c_int,
-    sys::socket::SocketAddr,
+    sys::socket::sockaddr,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -30,19 +30,19 @@ use ::nvx::{
 #[repr(C, packed)]
 pub struct BindSocketRequest {
     pub sockfd: c_int,
-    pub sockaddr: SocketAddr,
+    pub sockaddr: sockaddr,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(BindSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl BindSocketRequest {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<SocketAddr>();
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<sockaddr>();
 
-    pub fn new(sockfd: c_int, sockaddr: SocketAddr) -> Self {
+    pub fn new(sockfd: c_int, sockaddr: &sockaddr) -> Self {
         Self {
             sockfd,
-            sockaddr,
+            sockaddr: sockaddr.clone(),
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -55,7 +55,7 @@ impl BindSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: c_int, sockaddr: SocketAddr) -> Message {
+    pub fn build(pid: ProcessIdentifier, sockfd: c_int, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockfd, sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::BindSocketRequest,
@@ -70,9 +70,12 @@ impl BindSocketRequest {
 
 impl Debug for BindSocketRequest {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "BindSocketRequest {{ sockfd: {}, sockaddr: {:?} }}", { self.sockfd }, {
-            self.sockaddr
-        },)
+        write!(
+            f,
+            "BindSocketRequest {{ sockfd: {}, sockaddr: {:?} }}",
+            { self.sockfd },
+            &self.sockaddr
+        )
     }
 }
 

@@ -259,11 +259,7 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {
-                Ok(sockaddr) => sockaddr,
-                Err(e) => return crate::build_error(pid, e.code),
-            };
-            GetPeerNameResponse::build(pid, sockaddr)
+            GetPeerNameResponse::build(pid, &sockaddr)
         },
     }
 }
@@ -296,11 +292,7 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {
-                Ok(sockaddr) => sockaddr,
-                Err(e) => return crate::build_error(pid, e.code),
-            };
-            GetSockNameResponse::build(pid, sockaddr)
+            GetSockNameResponse::build(pid, &sockaddr)
         },
     }
 }
@@ -332,11 +324,7 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr) {
-                Ok(sockaddr) => sockaddr,
-                Err(e) => return crate::build_error(pid, e.code),
-            };
-            AcceptSocketResponse::build(pid, sockfd, sockaddr)
+            AcceptSocketResponse::build(pid, sockfd, &sockaddr)
         },
     }
 }
