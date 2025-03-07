@@ -35,6 +35,8 @@ use ::nvx::sys::error::{
     ErrorCode,
 };
 
+use super::un::bindings::SUNPATHLEN;
+
 //==================================================================================================
 // Modules
 //==================================================================================================
@@ -234,7 +236,7 @@ impl TryFrom<&SocketAddrUnix> for sockaddr_un {
     type Error = Error;
 
     fn try_from(addr: &SocketAddrUnix) -> Result<Self, Self::Error> {
-        let mut sun_path: [u8; 104] = [0u8; 104];
+        let mut sun_path: [u8; SUNPATHLEN] = [0u8; SUNPATHLEN];
         let path: &str = addr.path();
         let path: &[u8] = path.as_bytes();
         if path.len() > sun_path.len() {
@@ -436,7 +438,7 @@ mod test {
                 .try_into()
                 .expect("converting address family should succeed"),
             sun_path: {
-                let mut path = [0; 104];
+                let mut path: [u8; SUNPATHLEN] = [0; SUNPATHLEN];
                 let bytes = "/tmp/socket".as_bytes();
                 path[..bytes.len()].copy_from_slice(bytes);
                 path
