@@ -255,28 +255,6 @@ impl From<&sockaddr> for SocketAddrV4 {
     }
 }
 
-/// Represents an IPv6 address.
-#[repr(C, packed)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ipv6Addr {
-    /// Address.
-    octets: [u8; 16],
-}
-::nvx::sys::static_assert_size!(Ipv6Addr, 16);
-
-/// Represents an IPv6 socket address.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SocketAddrV6 {
-    /// IPv6 address.
-    addr: Ipv6Addr,
-    /// Port number.
-    port: u16,
-    /// Flow information.
-    flowinfo: u32,
-    /// Scope ID.
-    scope_id: u32,
-}
-
 impl TryFrom<&SocketAddrUnix> for sockaddr_un {
     type Error = Error;
 
@@ -352,8 +330,6 @@ impl TryFrom<&sockaddr> for SocketAddrUnix {
 pub enum SocketAddr {
     /// IPv4 socket address.
     V4(SocketAddrV4),
-    /// IPv6 socket address.
-    V6(SocketAddrV6),
     /// Unix socket address.
     Unix(SocketAddrUnix),
 }
@@ -387,7 +363,6 @@ impl TryFrom<&SocketAddr> for sockaddr {
     fn try_from(addr: &SocketAddr) -> Result<Self, Self::Error> {
         match addr {
             SocketAddr::V4(addr) => addr.try_into(),
-            SocketAddr::V6(_) => unimplemented!(),
             SocketAddr::Unix(addr) => addr.try_into(),
         }
     }
@@ -399,7 +374,6 @@ impl TryFrom<SocketAddr> for (sockaddr, socklen_t) {
     fn try_from(addr: SocketAddr) -> Result<(sockaddr, socklen_t), Self::Error> {
         let len: socklen_t = match addr {
             SocketAddr::V4(_) => mem::size_of::<sockaddr>() as socklen_t,
-            SocketAddr::V6(_) => unimplemented!(),
             SocketAddr::Unix(_) => mem::size_of::<sockaddr>() as socklen_t,
         };
         Ok((sockaddr::try_from(&addr)?, len))
