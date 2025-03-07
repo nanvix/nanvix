@@ -637,4 +637,67 @@ pub fn test() {
             panic!("failed to remove directory foo: {:?}", errno);
         },
     }
+
+    test_pipe();
+}
+
+fn test_pipe() {
+    let [read_fd, write_fd]: [i32; 2] = match unistd::pipe() {
+        Ok(fds) => {
+            ::nvx::info!("created pipe with fds ({}, {})", fds[0], fds[1]);
+            fds
+        },
+        Err(e) => {
+            panic!("failed to create pipe: {:?}", e);
+        },
+    };
+
+    // Write to pipe.
+    let write_buffer: [u8; 128] = [1; 128];
+    match unistd::write(write_fd, write_buffer.as_ptr(), write_buffer.len() as size_t) {
+        128 => {
+            ::nvx::info!("wrote 128 bytes to pipe");
+        },
+        errno => {
+            panic!("failed to write 128 bytes to pipe: {:?}", errno);
+        },
+    }
+
+    // Read from pipe.
+    let mut read_buffer: [u8; 128] = [0; 128];
+    match unistd::read(read_fd, read_buffer.as_mut_ptr(), read_buffer.len() as size_t) {
+        128 => {
+            ::nvx::info!("read 128 bytes from pipe");
+        },
+        errno => {
+            panic!("failed to read 128 bytes from pipe: {:?}", errno);
+        },
+    }
+
+    // Check if contents of read buffer matches write buffer.
+    (0..128).for_each(|i| {
+        if read_buffer[i] != write_buffer[i] {
+            panic!("read buffer does not match write buffer");
+        }
+    });
+
+    // Close read end of pipe.
+    match unistd::close(read_fd) {
+        0 => {
+            ::nvx::info!("closed read end of pipe");
+        },
+        errno => {
+            panic!("failed to close read end of pipe: {:?}", errno);
+        },
+    }
+
+    // Close write end of pipe.
+    match unistd::close(write_fd) {
+        0 => {
+            ::nvx::info!("closed write end of pipe");
+        },
+        errno => {
+            panic!("failed to close write end of pipe: {:?}", errno);
+        },
+    }
 }

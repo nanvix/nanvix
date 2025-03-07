@@ -8,40 +8,34 @@
 #![allow(non_camel_case_types)]
 
 //==================================================================================================
-// Modules
-//==================================================================================================
-
-#[cfg(all(feature = "syscall", feature = "staticlib"))]
-pub mod bindings;
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::sys::types::size_t;
+use crate::sys::socket::sa_family_t;
+use ::core::mem;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
 
-///
-/// # Description
-///
-/// This structure represents an I/O vector.
-///
-pub struct iovec {
-    /// Base address of a memory region for input or output.
-    pub iov_base: *mut u8,
-    /// The size of the memory pointer to by `iov_base`.
-    pub iov_len: size_t,
+/// Size of the `sun_path` field in [`sockaddr_un`].
+pub const SUNPATHLEN: usize = 104;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+/// Describes a UNIX domain socket address.
+#[repr(C, packed)]
+pub struct sockaddr_un {
+    /// Address family.
+    pub sun_family: sa_family_t,
+    /// Path.
+    pub sun_path: [u8; SUNPATHLEN],
 }
+::nvx::sys::static_assert_size!(sockaddr_un, sockaddr_un::SIZE);
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "syscall")] {
-        mod syscall;
-        pub use self::syscall::{
-            writev,
-            readv,
-            pwritev,
-            preadv,
-        };
-    }
+impl sockaddr_un {
+    /// Size of the structure.
+    pub const SIZE: usize = mem::size_of::<sa_family_t>() + SUNPATHLEN;
 }

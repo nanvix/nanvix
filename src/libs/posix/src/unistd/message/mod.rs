@@ -13,6 +13,7 @@ mod fsync;
 mod ftruncate;
 mod linkat;
 mod lseek;
+mod pipe;
 mod pread;
 mod pwrite;
 mod read;
@@ -54,6 +55,10 @@ pub use self::{
     lseek::{
         SeekRequest,
         SeekResponse,
+    },
+    pipe::{
+        PipeRequest,
+        PipeResponse,
     },
     pread::{
         PartialReadRequest,

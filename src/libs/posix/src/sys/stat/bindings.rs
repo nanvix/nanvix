@@ -5,17 +5,16 @@
 // Imports
 //==================================================================================================
 
-use core::ffi;
-
-use nvx::sys::error::ErrorCode;
-
 use crate::{
+    errno::errno,
     ffi::{
         c_char,
         c_int,
     },
     sys::stat,
 };
+use ::core::ffi;
+use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
 // Standalone Functions
@@ -102,4 +101,26 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
     let statbuf: &mut stat::stat = &mut *statbuf;
 
     crate::sys::stat::stat(pathname, statbuf)
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn mkdir(_pathname: *const c_char, _mode: u32) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/347
+    ::nvx::error!("mkdir(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/454
+    ::nvx::error!("truncate(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
 }

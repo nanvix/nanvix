@@ -5,20 +5,5 @@
 // Modules
 //==================================================================================================
 
-/// Sockets.
-pub mod socket;
-
-/// File status.
-pub mod stat;
-
-/// File access and modification times structure.
-pub mod times;
-
-/// Types.
-pub mod types;
-
-/// Definitions for vector I/O operations.
-pub mod uio;
-
-/// Definitions for UNIX domain sockets.
-pub mod un;
+#[cfg(all(feature = "syscall", feature = "staticlib"))]
+pub mod bindings;

@@ -19,6 +19,7 @@ mod lchown;
 mod link;
 mod linkat;
 mod lseek;
+mod pipe;
 mod pread;
 mod pwrite;
 mod read;
@@ -46,6 +47,7 @@ pub use self::{
     link::link,
     linkat::linkat,
     lseek::lseek,
+    pipe::pipe,
     pread::pread,
     pwrite::pwrite,
     read::read,
