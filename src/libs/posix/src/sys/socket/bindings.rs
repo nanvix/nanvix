@@ -13,12 +13,12 @@ use crate::{
         c_int,
         c_void,
     },
+    netinet::in_::Protocol,
     sys::{
         socket::{
             sockaddr,
             socklen_t,
             AddressFamily,
-            Protocol,
             Shutdown,
             SocketAddr,
             SocketType,

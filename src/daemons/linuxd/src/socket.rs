@@ -46,7 +46,6 @@ use ::posix::sys::{
         sockaddr,
         socklen_t,
         AddressFamily,
-        Protocol,
         Shutdown,
         SocketAddr,
         SocketType,
@@ -56,6 +55,7 @@ use ::posix::sys::{
         ssize_t,
     },
 };
+use posix::netinet::in_::Protocol;
 
 //==================================================================================================
 // do_socket
