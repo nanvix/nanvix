@@ -90,6 +90,7 @@ int main(int argc, const char *argv[])
     test_pthread_self();
     test_pthread_create_join();
     test_pthread_mutex_static_init();
+    test_pthread_mutex_dynamic_init();
 
     // Must be last test.
     test_pthread_nowait();
