@@ -10,9 +10,9 @@ use crate::pal::{
     RawFd,
 };
 use ::posix::{
+    netinet::in_::Protocol,
     sys::socket::{
         AddressFamily,
-        Protocol,
         Shutdown,
         SocketAddr,
         SocketType,
@@ -32,8 +32,7 @@ pub struct Socket(RawFd);
 
 impl Socket {
     pub fn new() -> Result<Self, Error> {
-        match posix::sys::socket::socket(AddressFamily::Inet, SocketType::Stream, Protocol::Unspec)
-        {
+        match posix::sys::socket::socket(AddressFamily::Inet, SocketType::Stream, Protocol::Ip) {
             Ok(sockfd) => {
                 ::nvx::info!("created socket with fd {}", sockfd);
                 Ok(Self(sockfd))

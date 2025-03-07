@@ -39,9 +39,9 @@ use ::alloc::{
 };
 use ::core::str::FromStr;
 use ::nvx::sys::error::Error;
-use ::posix::sys::socket::{
-    SocketAddr,
-    SocketAddrV4,
+use ::posix::{
+    netinet::in_::SocketAddrV4,
+    sys::socket::SocketAddr,
 };
 
 #[no_mangle]

@@ -46,7 +46,6 @@ use ::posix::sys::{
         sockaddr,
         socklen_t,
         AddressFamily,
-        Protocol,
         Shutdown,
         SocketAddr,
         SocketType,
@@ -56,6 +55,7 @@ use ::posix::sys::{
         ssize_t,
     },
 };
+use posix::netinet::in_::Protocol;
 
 //==================================================================================================
 // do_socket
@@ -476,7 +476,7 @@ impl LibcSocketProtocol {
 
     fn from(protocol: Protocol) -> Self {
         match protocol {
-            Protocol::Unspec => Self(libc::IPPROTO_IP),
+            Protocol::Ip => Self(libc::IPPROTO_IP),
             Protocol::Tcp => Self(libc::IPPROTO_TCP),
             Protocol::Udp => Self(libc::IPPROTO_UDP),
         }
