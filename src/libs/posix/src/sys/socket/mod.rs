@@ -21,7 +21,10 @@ use crate::{
         Ipv4Addr,
         SocketAddrV4,
     },
-    sys::un::sockaddr_un,
+    sys::un::{
+        bindings::sockaddr_un,
+        SocketAddrUnix,
+    },
 };
 use ::alloc::string::{
     String,
@@ -274,28 +277,12 @@ pub struct SocketAddrV6 {
     scope_id: u32,
 }
 
-/// Represents a Unix socket address.
-#[repr(C)]
-#[derive(Default, Debug, PartialEq, Eq)]
-pub struct SocketAddrUnix {
-    /// Path.
-    path: String,
-}
-
-impl Clone for SocketAddrUnix {
-    fn clone(&self) -> Self {
-        Self {
-            path: { self.path.clone() },
-        }
-    }
-}
-
 impl TryFrom<&SocketAddrUnix> for sockaddr_un {
     type Error = Error;
 
     fn try_from(addr: &SocketAddrUnix) -> Result<Self, Self::Error> {
         let mut sun_path: [u8; 104] = [0u8; 104];
-        let path: &str = &addr.path;
+        let path: &str = addr.path();
         let path: &[u8] = path.as_bytes();
         if path.len() > sun_path.len() {
             return Err(Error::new(ErrorCode::NameTooLong, "path is too long"));
@@ -315,7 +302,7 @@ impl TryFrom<&SocketAddrUnix> for sockaddr {
 
     fn try_from(addr: &SocketAddrUnix) -> Result<Self, Self::Error> {
         let mut sa_data: [u8; 14] = [0u8; 14];
-        let path: &str = &addr.path;
+        let path: &str = addr.path();
         let path: &[u8] = path.as_bytes();
         if path.len() > sa_data.len() {
             return Err(Error::new(ErrorCode::NameTooLong, "path is too long"));
@@ -341,7 +328,7 @@ impl TryFrom<&sockaddr_un> for SocketAddrUnix {
             })?
             .trim_end_matches('\0')
             .to_string();
-        Ok(Self { path })
+        Ok(SocketAddrUnix::new(&path))
     }
 }
 
@@ -355,7 +342,7 @@ impl TryFrom<&sockaddr> for SocketAddrUnix {
             })?
             .trim_end_matches('\0')
             .to_string();
-        Ok(Self { path })
+        Ok(SocketAddrUnix::new(&path))
     }
 }
 
@@ -486,9 +473,7 @@ mod test {
     /// Tests conversion for `SockAddrUnix` to `sockaddr_un`.
     #[test]
     fn test_unix_socket_addr_conversion() {
-        let expected_addr = SocketAddrUnix {
-            path: "/tmp/socket".to_string(),
-        };
+        let expected_addr: SocketAddrUnix = SocketAddrUnix::new("/tmp/socket");
         let test_addr: sockaddr_un = sockaddr_un::try_from(&expected_addr)
             .expect("conversion from socket address should succeed");
         assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
@@ -508,18 +493,14 @@ mod test {
                 path
             },
         };
-        let expected_addr = SocketAddrUnix {
-            path: "/tmp/socket".to_string(),
-        };
+        let expected_addr: SocketAddrUnix = SocketAddrUnix::new("/tmp/socket");
         assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
     }
 
     /// Tests conversion from `SocketAddrUnix` to `sockaddr`.
     #[test]
     fn test_unix_socket_addr_into_sockaddr() {
-        let expected_addr = SocketAddrUnix {
-            path: "/tmp/socket".to_string(),
-        };
+        let expected_addr: SocketAddrUnix = SocketAddrUnix::new("/tmp/socket");
         let test_addr: sockaddr =
             sockaddr::try_from(&expected_addr).expect("socket address conversion should succeed");
         assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
@@ -538,9 +519,7 @@ mod test {
                 data
             },
         };
-        let expected_addr = SocketAddrUnix {
-            path: "/tmp/socket".to_string(),
-        };
+        let expected_addr: SocketAddrUnix = SocketAddrUnix::new("/tmp/socket");
         assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
     }
 }
