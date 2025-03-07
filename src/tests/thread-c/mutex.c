@@ -3,32 +3,23 @@
  * Licensed under the MIT License.
  */
 
+//==================================================================================================
+// Imports
+//==================================================================================================
+
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>
-
-//!
-//! This C program tests if mutexes can be used to synchronize access to global variables. It
-//! creates a worker thread that writes a magic string to the standard output and then exits. The
-//! main thread waits for the worker thread to signal that it is initialized and then waits for the
-//! worker thread to exit.
-//!
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
-// Expected identifier of the master thread.
-const pthread_t EXPECTED_MASTER_TID = 1;
-
-// Expected identifier of the worker thread.
-const pthread_t EXPECTED_WORKER_TID = 2;
-
 // Expected argument passed to the worker thread.
-const size_t EXPECTED_WORKER_ARG = 0xbadcafe;
+static const size_t EXPECTED_WORKER_ARG = 0xbadcafe;
 
 // Expected exit status of the worker thread.
-const size_t EXPECTED_EXIT_STATUS = 0xdeadbeef;
+static const size_t EXPECTED_EXIT_STATUS = 0xdeadbeef;
 
 //==================================================================================================
 // Global Variables
@@ -45,14 +36,10 @@ static volatile int initialized = 0;
 //==================================================================================================
 
 // Worker thread.
-void *worker(void *arg)
+static void *worker_thread(void *arg)
 {
     // Check if worker argument matches the expected value.
     assert((size_t)arg == EXPECTED_WORKER_ARG);
-
-    // Get the worker thread identifier and check if it matches the expected value.
-    pthread_t worker_tid = pthread_self();
-    assert(worker_tid == EXPECTED_WORKER_TID);
 
     // Signal that the worker thread is initialized.
     pthread_mutex_lock(&mutex);
@@ -63,28 +50,14 @@ void *worker(void *arg)
     return ((void *)EXPECTED_EXIT_STATUS);
 }
 
-/**
- * @brief Tests if mutexes can be used to synchronize access to global variables.
- *
- * @param argc Number of command-line arguments (unused).
- * @param argv List of command-line arguments (unused).
- *
- * @returns Always returns zero. If a test fails, the program will abort.
- */
-int main(int argc, const char *argv[])
+// Main thread.
+static void main_thread(void)
 {
-    (void)argc;
-    (void)argv;
-
-    // Get the master thread identifier and check if it matches the expected value.
-    pthread_t master_tid = pthread_self();
-    assert(master_tid == EXPECTED_MASTER_TID);
-
     // Create a worker thread and check if its identifier matches the expected value.
-    pthread_t worker_tid = 0;
-    int ret = pthread_create(&worker_tid, NULL, worker, (void *)EXPECTED_WORKER_ARG);
+    pthread_t worker_tid = PTHREAD_NULL;
+    int ret = pthread_create(&worker_tid, NULL, worker_thread, (void *)EXPECTED_WORKER_ARG);
     assert(ret == 0);
-    assert(worker_tid == EXPECTED_WORKER_TID);
+    assert(worker_tid != PTHREAD_NULL);
 
     // Wait for the worker thread to complete.
     while (1) {
@@ -105,12 +78,10 @@ int main(int argc, const char *argv[])
     ret = pthread_join(worker_tid, &retval);
     assert(ret == 0);
     assert(retval == (void *)EXPECTED_EXIT_STATUS);
+}
 
-    // Write magic string to signal that the test passed.
-    {
-        const char *magic_string = "ok";
-        write(STDOUT_FILENO, magic_string, 3);
-    }
-
-    return (0);
+// Tests if mutexes can be used for synchronization.
+void test_pthread_mutex(void)
+{
+    main_thread();
 }
