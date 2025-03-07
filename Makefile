@@ -301,6 +301,7 @@ run-nanvixd-tests: | \
 	test-linux-app \
 	test-thread-c \
 	test-thread-mutex-c \
+	test-network-c \
 	test-thread-mutex-rust-nostd \
 	test-thread-nowait-c \
 	test-thread-nowait-rust-nostd \
@@ -617,6 +618,7 @@ $(eval $(call TEST_RULE,thread-mutex-rust-nostd,'[]','ok'))
 $(eval $(call TEST_RULE,thread-c,'[]','ok'))
 $(eval $(call TEST_RULE,thread-nowait-c,'[]','ok'))
 $(eval $(call TEST_RULE,thread-mutex-c,'[]','ok'))
+$(eval $(call TEST_RULE,network-c,'[]','ok'))
 
 define WASM_TEST_RULE
 test-$(1): all

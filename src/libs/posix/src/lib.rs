@@ -8,12 +8,19 @@
 #![deny(clippy::all)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(never_type)] // pthread requires this.
+#![feature(c_variadic)] // fcntl requires this.
 
 //==================================================================================================
 // Modules
 //==================================================================================================
 
 extern crate alloc;
+
+// Address and routing parameter area.
+pub mod arpa;
+
+/// Dynamic linking.
+pub mod dlfcn;
 
 /// System error numbers.
 pub mod errno;
@@ -161,6 +168,8 @@ pub enum LinuxDaemonMessageHeader {
     GetPeerNameResponse,
     GetSockNameRequest,
     GetSockNameResponse,
+    PipeRequest,
+    PipeResponse,
 }
 
 #[repr(C, packed)]

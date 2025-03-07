@@ -4,6 +4,7 @@
 // Imports
 //==================================================================================================
 
+use ::core::mem;
 use ::nvx::sys::error::{
     Error,
     ErrorCode,
@@ -374,6 +375,7 @@ pub fn test_network() -> Result<(), Error> {
     let protocol: Protocol = Protocol::Tcp;
 
     let sockaddr_in: sockaddr_in = sockaddr_in {
+        sin_len: mem::size_of::<sockaddr_in>() as u8,
         sin_family: match sys::socket::AF_INET.try_into() {
             Ok(family) => family,
             Err(e) => panic!("{:?}", e),
@@ -385,7 +387,10 @@ pub fn test_network() -> Result<(), Error> {
         sin_zero: [0; 8],
     };
 
-    let sockaddr: SocketAddr = SocketAddr::V4(sockaddr_in.into());
+    let sockaddr: SocketAddr = match SocketAddr::try_from(&sockaddr_in) {
+        Ok(sockaddr) => sockaddr,
+        Err(e) => panic!("{:?}", e),
+    };
 
     test_create_socket(domain, typ, protocol)?;
     test_bind_socket(domain, typ, protocol, &sockaddr)?;

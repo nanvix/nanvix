@@ -58,6 +58,7 @@ cfg_if::cfg_if! {
             symlink,
             unlink,
             write,
+            pipe,
         };
     }
 }
