@@ -5,7 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::sys::socket::sa_family_t;
+use crate::{
+    ffi::c_uchar,
+    sys::socket::{
+        sa_family_t,
+        sockaddr_storage,
+    },
+};
 use ::alloc::string::{
     String,
     ToString,
@@ -28,16 +34,21 @@ pub mod bindings {
     /// Describes a UNIX domain socket address.
     #[repr(C, packed)]
     pub struct sockaddr_un {
+        /// Total length.
+        pub sun_len: c_uchar,
         /// Address family.
         pub sun_family: sa_family_t,
         /// Path.
         pub sun_path: [u8; SUNPATHLEN],
     }
     ::nvx::sys::static_assert_size!(sockaddr_un, sockaddr_un::SIZE);
+    ::nvx::sys::static_assert_size!(sockaddr_un, mem::size_of::<sockaddr_storage>());
 
     impl sockaddr_un {
-        /// Size of the structure.
-        pub const SIZE: usize = mem::size_of::<sa_family_t>() + SUNPATHLEN;
+        /// Size of this structure, used for static assertions.
+        pub const SIZE: usize = mem::size_of::<c_uchar>() + // sun_len
+            mem::size_of::<sa_family_t>() + // sun_family
+            SUNPATHLEN; // sun_path
     }
 }
 

@@ -7,18 +7,21 @@
 
 use crate::{
     arpa::inet::bindings::in_addr,
-    sys::socket::sa_family_t,
+    sys::socket::{
+        sa_family_t,
+        sockaddr_storage,
+    },
 };
 use ::alloc::vec::Vec;
 use ::core::{
     mem,
     str::FromStr,
 };
+use ::num_enum::TryFromPrimitive;
 use ::nvx::sys::error::{
     Error,
     ErrorCode,
 };
-use num_enum::TryFromPrimitive;
 
 //==================================================================================================
 // C Interface
@@ -59,6 +62,7 @@ pub mod bindings {
         pub sin_zero: [u8; 8],
     }
     ::nvx::sys::static_assert_size!(sockaddr_in, sockaddr_in::_SIZE);
+    ::nvx::sys::static_assert_size!(sockaddr_in, mem::size_of::<sockaddr_storage>());
 
     impl sockaddr_in {
         /// Size of this structure, used for static assertions.

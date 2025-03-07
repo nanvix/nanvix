@@ -93,19 +93,20 @@ int main(int argc, const char *argv[])
     // Sanity check size of `in_addr_t` type.
     STATIC_ASSERT_SIZE(in_addr_t, sizeof(uint32_t));
 
-    // Sanity check size of `sockaddr` structure.
-    STATIC_ASSERT_SIZE(struct sockaddr,
-                       sizeof(unsigned char) +   // sa_len
-                           sizeof(sa_family_t) + // sa_family
-                           14 * sizeof(char)     // sa_data
-    );
-
     // Sanity check size of `sockaddr_storage` structure.
     STATIC_ASSERT_SIZE(struct sockaddr_storage,
                        sizeof(unsigned char) +        // ss_len
                            sizeof(sa_family_t) +      // ss_family
                            _SS_PADSIZE * sizeof(char) // __ss_pad1
     );
+
+    // Sanity check size of `sockaddr` structure.
+    STATIC_ASSERT_SIZE(struct sockaddr,
+                       sizeof(unsigned char) +   // sa_len
+                           sizeof(sa_family_t) + // sa_family
+                           14 * sizeof(char)     // sa_data
+    );
+    STATIC_ASSERT_SIZE(struct sockaddr, sizeof(struct sockaddr_storage));
 
     // Sanity check size of `in_addr` structure.
     STATIC_ASSERT_SIZE(struct in_addr, sizeof(in_addr_t));
@@ -118,6 +119,7 @@ int main(int argc, const char *argv[])
                            sizeof(struct in_addr) + // sin_addr
                            8 * sizeof(char)         // sin_zero
     );
+    STATIC_ASSERT_SIZE(struct sockaddr_in, sizeof(struct sockaddr_storage));
 
     // Sanity check size of `sockaddr_un` structure.
     STATIC_ASSERT_SIZE(struct sockaddr_un,
@@ -125,6 +127,7 @@ int main(int argc, const char *argv[])
                            sizeof(sa_family_t) +     // sun_family
                            SUNPATHLEN * sizeof(char) // sun_path
     );
+    STATIC_ASSERT_SIZE(struct sockaddr_un, sizeof(struct sockaddr_storage));
 
     srand(SEED);
 

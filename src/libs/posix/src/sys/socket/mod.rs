@@ -20,7 +20,10 @@ use crate::{
         SocketAddrV4,
     },
     sys::un::{
-        bindings::sockaddr_un,
+        bindings::{
+            sockaddr_un,
+            SUNPATHLEN,
+        },
         SocketAddrUnix,
     },
 };
@@ -34,8 +37,6 @@ use ::nvx::sys::error::{
     Error,
     ErrorCode,
 };
-
-use super::un::bindings::SUNPATHLEN;
 
 //==================================================================================================
 // Modules
@@ -116,14 +117,42 @@ pub type sa_family_t = u8;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct sockaddr {
-    // Total length.
+    /// Total length.
     pub sa_len: c_uchar,
     /// Address family.
     pub sa_family: sa_family_t,
     /// Address data.
     pub sa_data: [u8; 14],
 }
-::nvx::sys::static_assert_size!(sockaddr, 16);
+::nvx::sys::static_assert_size!(sockaddr, sockaddr::_SIZE);
+::nvx::sys::static_assert_size!(sockaddr, mem::size_of::<sockaddr_storage>());
+
+impl sockaddr {
+    /// Size of this structure, used in static assertions.
+    const _SIZE: usize = mem::size_of::<c_uchar>() + // sa_len
+        mem::size_of::<sa_family_t>() + // sa_family
+        mem::size_of::<[u8; 14]>(); // sa_data
+}
+
+/// A structure large enough to hold any socket address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct sockaddr_storage {
+    /// Total length.
+    pub ss_len: c_uchar,
+    /// Address family.
+    pub ss_family: sa_family_t,
+    /// Address data.
+    pub ss_data: [u8; 14],
+}
+::nvx::sys::static_assert_size!(sockaddr_storage, sockaddr_storage::_SIZE);
+
+impl sockaddr_storage {
+    /// Size of this structure, used in static assertions.
+    const _SIZE: usize = mem::size_of::<c_uchar>() + // ss_len
+        mem::size_of::<sa_family_t>() + // ss_family
+        mem::size_of::<[u8; 14]>(); // ss_data
+}
 
 /// Describes protocol family of a socket.
 #[repr(i32)]
@@ -244,6 +273,7 @@ impl TryFrom<&SocketAddrUnix> for sockaddr_un {
         }
         sun_path[0..path.len()].copy_from_slice(path);
         Ok(Self {
+            sun_len: mem::size_of::<sockaddr_un>() as u8,
             sun_family: family::AF_UNIX.try_into().map_err(|_| {
                 Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
             })?,
@@ -402,7 +432,7 @@ mod test {
     #[test]
     fn test_ipv4_sockaddr_into_socket_addr() {
         let test_addr: sockaddr = sockaddr {
-            sa_len: mem::size_of::<sockaddr_in>() as u8,
+            sa_len: mem::size_of::<sockaddr>() as u8,
             sa_family: family::AF_INET
                 .try_into()
                 .expect("converting address family should succeed"),
@@ -433,7 +463,8 @@ mod test {
     /// Tests conversion from `sockaddr_un` to `SocketAddrUnix`.
     #[test]
     fn test_unix_sockaddr_conversion() {
-        let test_addr = sockaddr_un {
+        let test_addr: sockaddr_un = sockaddr_un {
+            sun_len: mem::size_of::<sockaddr_un>() as u8,
             sun_family: family::AF_UNIX
                 .try_into()
                 .expect("converting address family should succeed"),
@@ -460,8 +491,8 @@ mod test {
     /// Tests conversion from `sockaddr` to `SocketAddrUnix`.
     #[test]
     fn test_unix_sockaddr_into_socket_addr() {
-        let test_addr = sockaddr {
-            sa_len: mem::size_of::<sockaddr_un>() as u8,
+        let test_addr: sockaddr = sockaddr {
+            sa_len: mem::size_of::<sockaddr>() as u8,
             sa_family: family::AF_UNIX as u8,
             sa_data: {
                 let mut data = [0; 14];
