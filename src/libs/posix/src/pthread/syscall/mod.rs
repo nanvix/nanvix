@@ -103,7 +103,25 @@ pub fn pthread_mutex_init(
         .lock()
         .insert(mutex as *const pthread_mutex_t as usize, *attr);
 
-    ::nvx::warn!("pthread_mutex_init(): custom attributes not supported, ignoring");
+    Ok(())
+}
+
+pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
+    ::nvx::trace!("pthread_mutex_destroy(): mutex={:?}", mutex);
+
+    // Check if mutex is not initialized.
+    if !MUTEXES
+        .lock()
+        .contains_key(&(mutex as *const pthread_mutex_t as usize))
+    {
+        let reason: &str = "mutex is not initialized";
+        ::nvx::error!("pthread_mutex_destroy(): {}", reason);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    MUTEXES
+        .lock()
+        .remove(&(mutex as *const pthread_mutex_t as usize));
 
     Ok(())
 }

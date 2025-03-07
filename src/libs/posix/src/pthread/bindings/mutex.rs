@@ -50,7 +50,9 @@ pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c
         return ErrorCode::InvalidArgument.into_errno();
     }
 
-    // TODO: clean associated mutex attributed.
+    if let Err(error) = syscall::pthread_mutex_destroy(&mut *mutex) {
+        return error.code.into_errno();
+    }
 
     0
 }
