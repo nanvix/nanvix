@@ -115,10 +115,14 @@ export LDFLAGS := -z noexecstack -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
 ifeq ($(RELEASE), yes)
 export CFLAGS += -O3
 export CXXFLAGS += -O3
+export CFLAGS += -D__RELEASE
+export CXXFLAGS += -D__RELEASE
 else
 export CFLAGS += -O0
 export CFLAGS += -g
 export CXXFLAGS += -O0
+export CFLAGS += -D__DEBUG
+export CXXFLAGS += -D__DEBUG
 endif
 
 #===================================================================================================

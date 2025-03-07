@@ -59,7 +59,7 @@ pub fn accept(sockfd: c_int, sockaddr: Option<&mut SocketAddr>) -> Result<c_int,
 
                     // Save socket address, if requested.
                     if let Some(sockaddr) = sockaddr {
-                        *sockaddr = response.sockaddr;
+                        *sockaddr = SocketAddr::try_from(&response.sockaddr)?;
                     }
                     Ok(response.sockfd)
                 },
