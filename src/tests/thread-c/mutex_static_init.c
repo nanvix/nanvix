@@ -42,9 +42,9 @@ static void *worker_thread(void *arg)
     assert((size_t)arg == EXPECTED_WORKER_ARG);
 
     // Signal that the worker thread is initialized.
-    pthread_mutex_lock(&mutex);
+    assert(pthread_mutex_lock(&mutex) == 0);
     initialized = 1;
-    pthread_mutex_unlock(&mutex);
+    assert(pthread_mutex_unlock(&mutex) == 0);
 
     // Exit the worker thread and make sure it returns the expected value.
     return ((void *)EXPECTED_EXIT_STATUS);
@@ -62,9 +62,9 @@ static void main_thread(void)
     // Wait for the worker thread to complete.
     while (1) {
         // Obtain a cached copy of the initialized variable.
-        pthread_mutex_lock(&mutex);
+        assert(pthread_mutex_lock(&mutex) == 0);
         int initialized_copy = initialized;
-        pthread_mutex_unlock(&mutex);
+        assert(pthread_mutex_unlock(&mutex) == 0);
 
         if (initialized_copy) {
             break;
