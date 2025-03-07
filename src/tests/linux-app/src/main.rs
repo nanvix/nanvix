@@ -11,7 +11,6 @@
 mod clock;
 mod file_system;
 mod identity;
-mod network;
 
 //==================================================================================================
 // Imports
@@ -33,9 +32,6 @@ pub fn main() -> Result<(), Error> {
     clock::test();
     identity::test();
     file_system::test();
-    if let Err(error) = network::test_network() {
-        ::nvx::error!("network test failed: {:?}", error);
-    }
 
     // Magic string.
     {
