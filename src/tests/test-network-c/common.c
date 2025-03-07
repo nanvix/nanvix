@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 //==================================================================================================
@@ -79,6 +80,11 @@ void test_bind_socket(int domain,
 
     int ret = close(sockfd);
     assert(ret == 0);
+
+    if (addr->sa_family == AF_UNIX) {
+        ret = unlink(((struct sockaddr_un *)addr)->sun_path);
+        assert(ret == 0);
+    }
 }
 
 // Tests if we succeed to create a listening socket.
@@ -92,6 +98,11 @@ void test_listen_socket(int domain,
 
     int ret = close(sockfd);
     assert(ret == 0);
+
+    if (addr->sa_family == AF_UNIX) {
+        ret = unlink(((struct sockaddr_un *)addr)->sun_path);
+        assert(ret == 0);
+    }
 }
 
 // Tests if we succeed to get the name of a bound socket.
@@ -116,6 +127,11 @@ void test_getsockname_bound_socket(int domain,
 
     ret = close(sockfd);
     assert(ret == 0);
+
+    if (addr->sa_family == AF_UNIX) {
+        ret = unlink(((struct sockaddr_un *)addr)->sun_path);
+        assert(ret == 0);
+    }
 }
 
 // Tests if we succeed to get the name of a listening socket.
@@ -140,6 +156,11 @@ void test_getsockname_listening_socket(int domain,
 
     ret = close(sockfd);
     assert(ret == 0);
+
+    if (addr->sa_family == AF_UNIX) {
+        ret = unlink(((struct sockaddr_un *)addr)->sun_path);
+        assert(ret == 0);
+    }
 }
 
 // Tests if we succeed to get the name of a socket.

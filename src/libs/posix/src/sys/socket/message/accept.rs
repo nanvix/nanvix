@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    sys::socket::SocketAddr,
+    sys::socket::sockaddr,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -72,19 +72,19 @@ impl AcceptSocketRequest {
 #[repr(C, packed)]
 pub struct AcceptSocketResponse {
     pub sockfd: i32,
-    pub sockaddr: SocketAddr,
+    pub sockaddr: sockaddr,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::nvx::sys::static_assert_size!(AcceptSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl AcceptSocketResponse {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<SocketAddr>();
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<sockaddr>();
 
-    pub fn new(sockfd: i32, sockaddr: SocketAddr) -> Self {
+    pub fn new(sockfd: i32, sockaddr: &sockaddr) -> Self {
         Self {
             sockfd,
-            sockaddr,
+            sockaddr: sockaddr.clone(),
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -97,7 +97,7 @@ impl AcceptSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32, sockaddr: SocketAddr) -> Message {
+    pub fn build(pid: ProcessIdentifier, sockfd: i32, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockfd, sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::AcceptSocketResponse,
@@ -112,8 +112,11 @@ impl AcceptSocketResponse {
 
 impl Debug for AcceptSocketResponse {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "AcceptSocketResponse {{ sockfd: {}, sockaddr: {:?} }}", { self.sockfd }, {
-            self.sockaddr
-        })
+        write!(
+            f,
+            "AcceptSocketResponse {{ sockfd: {}, sockaddr: {:?} }}",
+            { self.sockfd },
+            &self.sockaddr
+        )
     }
 }

@@ -72,7 +72,7 @@ pub fn getsockname(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error
                     GetSockNameResponse::from_bytes(message.payload);
 
                 // Copy address.
-                *sockaddr = response.sockaddr;
+                *sockaddr = SocketAddr::try_from(&response.sockaddr)?;
 
                 Ok(())
             },

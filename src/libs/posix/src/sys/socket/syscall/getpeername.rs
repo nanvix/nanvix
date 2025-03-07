@@ -72,7 +72,7 @@ pub fn getpeername(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error
                     GetPeerNameResponse::from_bytes(message.payload);
 
                 // Copy address and size.
-                *sockaddr = response.sockaddr;
+                *sockaddr = SocketAddr::try_from(&response.sockaddr)?;
 
                 Ok(())
             },
