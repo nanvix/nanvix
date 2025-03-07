@@ -6,9 +6,9 @@
 //==================================================================================================
 
 use crate::{
+    netinet::in_::Protocol,
     sys::socket::{
         AddressFamily,
-        Protocol,
         SocketType,
     },
     LinuxDaemonMessage,

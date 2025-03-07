@@ -21,6 +21,7 @@ use ::nvx::sys::error::{
     Error,
     ErrorCode,
 };
+use num_enum::TryFromPrimitive;
 
 //==================================================================================================
 // C Interface
@@ -35,6 +36,16 @@ pub mod bindings {
 
     /// Used for internet addresses.
     pub type in_addr_t = u32;
+
+    /// IP Protocol Numbers (https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml).
+    pub mod ipproto {
+        /// Unspecified IP protocol.
+        pub const IPPROTO_IP: i32 = 0;
+        /// Transmission Control Protocol.
+        pub const IPPROTO_TCP: i32 = 6;
+        /// User Datagram Protocol.
+        pub const IPPROTO_UDP: i32 = 17;
+    }
 
     /// Describes an internet address.
     #[repr(C, packed)]
@@ -77,6 +88,18 @@ pub mod bindings {
 //==================================================================================================
 // Rust Interface
 //==================================================================================================
+
+/// Describes communication protocol of a socket.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+pub enum Protocol {
+    /// Internet Protocol.
+    Ip = bindings::ipproto::IPPROTO_IP,
+    /// Transmission Control Protocol.
+    Tcp = bindings::ipproto::IPPROTO_TCP,
+    /// User Datagram Protocol.
+    Udp = bindings::ipproto::IPPROTO_UDP,
+}
 
 /// Represents an IPv4 address.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]

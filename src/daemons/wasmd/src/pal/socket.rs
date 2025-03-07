@@ -10,9 +10,9 @@ use crate::pal::{
     RawFd,
 };
 use ::posix::{
+    netinet::in_::Protocol,
     sys::socket::{
         AddressFamily,
-        Protocol,
         Shutdown,
         SocketAddr,
         SocketType,
