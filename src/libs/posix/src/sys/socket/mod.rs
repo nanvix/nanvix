@@ -14,22 +14,20 @@
 use crate::{
     ffi::c_uchar,
     netinet::in_::{
-        in_addr,
-        sockaddr_in,
+        bindings::{
+            in_addr,
+            sockaddr_in,
+        },
+        Ipv4Addr,
+        SocketAddrV4,
     },
     sys::un::sockaddr_un,
 };
-use ::alloc::{
-    string::{
-        String,
-        ToString,
-    },
-    vec::Vec,
+use ::alloc::string::{
+    String,
+    ToString,
 };
-use ::core::{
-    mem,
-    str::FromStr,
-};
+use ::core::mem;
 use ::num_enum::TryFromPrimitive;
 use ::nvx::sys::error::{
     Error,
@@ -201,58 +199,6 @@ impl TryFrom<i32> for Shutdown {
     }
 }
 
-/// Represents an IPv4 address.
-#[repr(C, packed)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ipv4Addr {
-    /// Address.
-    octets: [u8; 4],
-}
-::nvx::sys::static_assert_size!(Ipv4Addr, 4);
-
-/// Represents an IPv4 socket address.
-#[repr(C, packed)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SocketAddrV4 {
-    /// IPv4 address.
-    addr: Ipv4Addr,
-    /// Port number.
-    port: u16,
-}
-::nvx::sys::static_assert_size!(SocketAddrV4, 6);
-
-impl FromStr for SocketAddrV4 {
-    type Err = Error;
-
-    fn from_str(sockaddr: &str) -> Result<Self, Self::Err> {
-        let mut parts = sockaddr.split(':');
-        let addr: &str = match parts.next() {
-            Some(addr) => addr,
-            None => return Err(Error::new(ErrorCode::InvalidArgument, "invalid socket address")),
-        };
-        let port: &str = match parts.next() {
-            Some(port) => port,
-            None => return Err(Error::new(ErrorCode::InvalidArgument, "invalid socket address")),
-        };
-        let port: u16 = match port.parse::<u16>() {
-            Ok(port) => port,
-            Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid port number")),
-        };
-        let octets: Vec<u8> = match addr.split('.').map(|octet| octet.parse::<u8>()).collect() {
-            Ok(octets) => octets,
-            Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid ipv4 address")),
-        };
-        let octets: [u8; 4] = match octets.try_into() {
-            Ok(octets) => octets,
-            Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid ipv4 address")),
-        };
-        Ok(SocketAddrV4 {
-            addr: Ipv4Addr { octets },
-            port,
-        })
-    }
-}
-
 impl TryFrom<&SocketAddrV4> for sockaddr_in {
     type Error = Error;
 
@@ -262,9 +208,9 @@ impl TryFrom<&SocketAddrV4> for sockaddr_in {
             sin_family: family::AF_INET.try_into().map_err(|_| {
                 Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
             })?,
-            sin_port: addr.port.to_be(),
+            sin_port: addr.port().to_be(),
             sin_addr: in_addr {
-                s_addr: u32::from_be_bytes(addr.addr.octets).to_be(),
+                s_addr: u32::from_be_bytes(addr.addr().octets()).to_be(),
             },
             sin_zero: [0; 8],
         })
@@ -273,12 +219,10 @@ impl TryFrom<&SocketAddrV4> for sockaddr_in {
 
 impl From<&sockaddr_in> for SocketAddrV4 {
     fn from(addr: &sockaddr_in) -> Self {
-        Self {
-            addr: Ipv4Addr {
-                octets: u32::from_be(addr.sin_addr.s_addr).to_be_bytes(),
-            },
-            port: u16::from_be(addr.sin_port),
-        }
+        SocketAddrV4::new(
+            Ipv4Addr::new(u32::from_be(addr.sin_addr.s_addr).to_be_bytes()),
+            u16::from_be(addr.sin_port),
+        )
     }
 }
 
@@ -287,8 +231,8 @@ impl TryFrom<&SocketAddrV4> for sockaddr {
 
     fn try_from(addr: &SocketAddrV4) -> Result<Self, Self::Error> {
         let mut sa_data: [u8; 14] = [0u8; 14];
-        sa_data[0..2].copy_from_slice(&addr.port.to_be_bytes());
-        sa_data[2..6].copy_from_slice(&addr.addr.octets);
+        sa_data[0..2].copy_from_slice(&addr.port().to_be_bytes());
+        sa_data[2..6].copy_from_slice(&addr.addr().octets());
         Ok(Self {
             sa_len: mem::size_of::<sockaddr_in>() as c_uchar,
             sa_family: family::AF_INET.try_into().map_err(|_| {
@@ -301,12 +245,10 @@ impl TryFrom<&SocketAddrV4> for sockaddr {
 
 impl From<&sockaddr> for SocketAddrV4 {
     fn from(addr: &sockaddr) -> Self {
-        let port: u16 = u16::from_be_bytes([addr.sa_data[0], addr.sa_data[1]]);
-        let octets: [u8; 4] = addr.sa_data[2..6].try_into().unwrap();
-        Self {
-            addr: Ipv4Addr { octets },
-            port,
-        }
+        SocketAddrV4::new(
+            Ipv4Addr::new(addr.sa_data[2..6].try_into().unwrap()),
+            u16::from_be_bytes([addr.sa_data[0], addr.sa_data[1]]),
+        )
     }
 }
 
@@ -485,12 +427,7 @@ mod test {
     /// Tests conversion from `SocketAddrV4` to `sockaddr_in`.
     #[test]
     fn test_ipv4_socket_addr_conversion() {
-        let expected_addr: SocketAddrV4 = SocketAddrV4 {
-            addr: Ipv4Addr {
-                octets: [192, 168, 1, 1],
-            },
-            port: 80,
-        };
+        let expected_addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new([192, 168, 1, 1]), 80);
         let test_addr: sockaddr_in = sockaddr_in::try_from(&expected_addr)
             .expect("conversion from socket addrress should succeed");
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
@@ -510,24 +447,14 @@ mod test {
             },
             sin_zero: [0; 8],
         };
-        let expected_addr: SocketAddrV4 = SocketAddrV4 {
-            addr: Ipv4Addr {
-                octets: [192, 168, 1, 1],
-            },
-            port: 80,
-        };
+        let expected_addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new([192, 168, 1, 1]), 80);
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
     }
 
     /// Tests conversion from `SocketAddrV4` to `sockaddr`.
     #[test]
     fn test_ipv4_socket_addr_into_sockaddr() {
-        let expected_addr: SocketAddrV4 = SocketAddrV4 {
-            addr: Ipv4Addr {
-                octets: [192, 168, 1, 1],
-            },
-            port: 80,
-        };
+        let expected_addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new([192, 168, 1, 1]), 80);
         let test_addr: sockaddr =
             sockaddr::try_from(&expected_addr).expect("socket address conversion should succeed");
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
@@ -543,24 +470,14 @@ mod test {
                 .expect("converting address family should succeed"),
             sa_data: [0, 80, 192, 168, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
         };
-        let expected_addr: SocketAddrV4 = SocketAddrV4 {
-            addr: Ipv4Addr {
-                octets: [192, 168, 1, 1],
-            },
-            port: 80,
-        };
+        let expected_addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new([192, 168, 1, 1]), 80);
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
     }
 
     /// Tests conversion from `SocketAddr` to `sockaddr`.
     #[test]
     fn test_socket_addr_into_sockaddr() {
-        let expected_addr: SocketAddrV4 = SocketAddrV4 {
-            addr: Ipv4Addr {
-                octets: [192, 168, 1, 1],
-            },
-            port: 80,
-        };
+        let expected_addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new([192, 168, 1, 1]), 80);
         let test_addr: sockaddr =
             sockaddr::try_from(&SocketAddr::V4(expected_addr)).expect("conversion should succeed");
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
