@@ -25,7 +25,7 @@ static const size_t EXPECTED_EXIT_STATUS = 0xdeadbeef;
 // Global Variables
 //==================================================================================================
 
-// Global mutex used to synchronize access to global variables.
+// Global mutex used to synchronize access to the `initialized` variable.
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Global variable used to signal that the worker thread is initialized.
@@ -80,8 +80,8 @@ static void main_thread(void)
     assert(retval == (void *)EXPECTED_EXIT_STATUS);
 }
 
-// Tests if mutexes can be used for synchronization.
-void test_pthread_mutex(void)
+// Tests if statically initialized mutexes can be used for synchronization.
+void test_pthread_mutex_static_init(void)
 {
     main_thread();
 }
