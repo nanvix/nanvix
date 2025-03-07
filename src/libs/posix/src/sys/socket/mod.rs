@@ -17,8 +17,15 @@ use crate::{
         in_addr,
         sockaddr_in,
     },
+    sys::un::sockaddr_un,
 };
-use ::alloc::vec::Vec;
+use ::alloc::{
+    string::{
+        String,
+        ToString,
+    },
+    vec::Vec,
+};
 use ::core::{
     mem,
     str::FromStr,
@@ -324,14 +331,93 @@ pub struct SocketAddrV6 {
 }
 
 /// Represents a Unix socket address.
-#[repr(C, packed)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SocketAddrUnix;
-::nvx::sys::static_assert_size!(SocketAddrUnix, 0);
+#[repr(C)]
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct SocketAddrUnix {
+    /// Path.
+    path: String,
+}
+
+impl Clone for SocketAddrUnix {
+    fn clone(&self) -> Self {
+        Self {
+            path: { self.path.clone() },
+        }
+    }
+}
+
+impl TryFrom<&SocketAddrUnix> for sockaddr_un {
+    type Error = Error;
+
+    fn try_from(addr: &SocketAddrUnix) -> Result<Self, Self::Error> {
+        let mut sun_path: [u8; 104] = [0u8; 104];
+        let path: &str = &addr.path;
+        let path: &[u8] = path.as_bytes();
+        if path.len() > sun_path.len() {
+            return Err(Error::new(ErrorCode::NameTooLong, "path is too long"));
+        }
+        sun_path[0..path.len()].copy_from_slice(path);
+        Ok(Self {
+            sun_family: AF_UNIX.try_into().map_err(|_| {
+                Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
+            })?,
+            sun_path,
+        })
+    }
+}
+
+impl TryFrom<&SocketAddrUnix> for sockaddr {
+    type Error = Error;
+
+    fn try_from(addr: &SocketAddrUnix) -> Result<Self, Self::Error> {
+        let mut sa_data: [u8; 14] = [0u8; 14];
+        let path: &str = &addr.path;
+        let path: &[u8] = path.as_bytes();
+        if path.len() > sa_data.len() {
+            return Err(Error::new(ErrorCode::NameTooLong, "path is too long"));
+        }
+        sa_data[0..path.len()].copy_from_slice(path);
+        Ok(Self {
+            sa_len: mem::size_of::<sockaddr>() as c_uchar,
+            sa_family: AF_UNIX.try_into().map_err(|_| {
+                Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
+            })?,
+            sa_data,
+        })
+    }
+}
+
+impl TryFrom<&sockaddr_un> for SocketAddrUnix {
+    type Error = Error;
+
+    fn try_from(addr: &sockaddr_un) -> Result<Self, Self::Error> {
+        let path: String = String::from_utf8(addr.sun_path.to_vec())
+            .map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, "failed to convert socket address path")
+            })?
+            .trim_end_matches('\0')
+            .to_string();
+        Ok(Self { path })
+    }
+}
+
+impl TryFrom<&sockaddr> for SocketAddrUnix {
+    type Error = Error;
+
+    fn try_from(addr: &sockaddr) -> Result<Self, Self::Error> {
+        let path: String = String::from_utf8(addr.sa_data.to_vec())
+            .map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, "failed to convert socket address path")
+            })?
+            .trim_end_matches('\0')
+            .to_string();
+        Ok(Self { path })
+    }
+}
 
 /// Represents a socket address.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SocketAddr {
     /// IPv4 socket address.
     V4(SocketAddrV4),
@@ -340,7 +426,6 @@ pub enum SocketAddr {
     /// Unix socket address.
     Unix(SocketAddrUnix),
 }
-::nvx::sys::static_assert_size!(SocketAddr, 32);
 
 impl TryFrom<&sockaddr_in> for SocketAddr {
     type Error = Error;
@@ -356,7 +441,7 @@ impl TryFrom<&sockaddr> for SocketAddr {
     fn try_from(addr: &sockaddr) -> Result<Self, Self::Error> {
         match addr.sa_family as i32 {
             AF_INET => Ok(SocketAddr::V4(SocketAddrV4::from(addr))),
-            AF_UNIX => Ok(SocketAddr::Unix(SocketAddrUnix)),
+            AF_UNIX => Ok(SocketAddr::Unix(SocketAddrUnix::try_from(addr)?)),
             _unsupported_domain => {
                 let reason: &str = "unsupported socket address family";
                 Err(Error::new(ErrorCode::AddressFamilyNotSupported, reason))
@@ -372,16 +457,7 @@ impl TryFrom<&SocketAddr> for sockaddr {
         match addr {
             SocketAddr::V4(addr) => addr.try_into(),
             SocketAddr::V6(_) => unimplemented!(),
-            SocketAddr::Unix(_) => Ok(sockaddr {
-                sa_len: 0,
-                sa_family: AF_INET.try_into().map_err(|_| {
-                    Error::new(
-                        ErrorCode::ValueOutOfRange,
-                        "failed to convert socket address family",
-                    )
-                })?,
-                sa_data: [0; 14],
-            }),
+            SocketAddr::Unix(addr) => addr.try_into(),
         }
     }
 }
@@ -391,9 +467,9 @@ impl TryFrom<SocketAddr> for (sockaddr, socklen_t) {
 
     fn try_from(addr: SocketAddr) -> Result<(sockaddr, socklen_t), Self::Error> {
         let len: socklen_t = match addr {
-            SocketAddr::V4(_) => mem::size_of::<sockaddr_in>() as socklen_t,
+            SocketAddr::V4(_) => mem::size_of::<sockaddr>() as socklen_t,
             SocketAddr::V6(_) => unimplemented!(),
-            SocketAddr::Unix(_) => 0,
+            SocketAddr::Unix(_) => mem::size_of::<sockaddr>() as socklen_t,
         };
         Ok((sockaddr::try_from(&addr)?, len))
     }
