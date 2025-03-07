@@ -399,7 +399,7 @@ pub fn test_network() -> Result<(), Error> {
 
     let domain: AddressFamily = AddressFamily::Unix;
     let typ: SocketType = SocketType::Stream;
-    let protocol: Protocol = Protocol::Unspec;
+    let protocol: Protocol = Protocol::Ip;
 
     test_create_socket_pair(domain, typ, protocol)?;
     test_getpeername(domain, typ, protocol)?;
