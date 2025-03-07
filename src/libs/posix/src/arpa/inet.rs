@@ -1,53 +1,31 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use core::mem;
+
 //==================================================================================================
-// Standalone Functions
+// C Interface
 //==================================================================================================
 
-/// Converts a 32-bit integer from host byte order to network byte order.
-pub fn htonl(hostlong: u32) -> u32 {
-    hostlong.to_be()
-}
-
-/// Converts a 16-bit integer from host byte order to network byte order.
-pub fn htons(hostshort: u16) -> u16 {
-    hostshort.to_be()
-}
-
-/// Converts a 32-bit integer from network byte order to host byte order.
-pub fn ntohl(netlong: u32) -> u32 {
-    u32::from_be(netlong)
-}
-
-/// Converts a 16-bit integer from network byte order to host byte order.
-pub fn ntohs(netshort: u16) -> u16 {
-    u16::from_be(netshort)
-}
-
+/// C Bindings for `arpa/inet.h`.
 pub mod bindings {
 
-    /// Converts a 32-bit integer from host byte order to network byte order.
-    #[no_mangle]
-    pub extern "C" fn htonl(hostlong: u32) -> u32 {
-        super::htonl(hostlong)
-    }
+    #![allow(non_camel_case_types)]
 
-    /// Converts a 16-bit integer from host byte order to network byte order.
-    #[no_mangle]
-    pub extern "C" fn htons(hostshort: u16) -> u16 {
-        super::htons(hostshort)
-    }
+    use super::*;
 
-    /// Converts a 32-bit integer from network byte order to host byte order.
-    #[no_mangle]
-    pub extern "C" fn ntohl(netlong: u32) -> u32 {
-        super::ntohl(netlong)
-    }
+    /// Used for internet addresses.
+    pub type in_addr_t = u32;
 
-    /// Converts a 16-bit integer from network byte order to host byte order.
-    #[no_mangle]
-    pub extern "C" fn ntohs(netshort: u16) -> u16 {
-        super::ntohs(netshort)
+    /// Describes an internet address.
+    #[repr(C, packed)]
+    pub struct in_addr {
+        pub s_addr: in_addr_t,
+    }
+    ::nvx::sys::static_assert_size!(in_addr, in_addr::_SIZE);
+
+    impl in_addr {
+        /// Size of this structure, used for static assertions.
+        const _SIZE: usize = mem::size_of::<in_addr_t>(); // s_addr
     }
 }
