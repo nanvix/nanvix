@@ -93,14 +93,13 @@ pub const SHUT_RDWR: i32 = 2;
 
 /// IP Protocol Numbers (https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml).
 mod ipproto {
-    /// Unspecified IP protocol ()
+    /// Unspecified IP protocol.
     pub const IPPROTO_IP: i32 = 0;
     /// Transmission Control Protocol.
     pub const IPPROTO_TCP: i32 = 6;
     /// User Datagram Protocol.
     pub const IPPROTO_UDP: i32 = 17;
 }
-pub use ipproto::*;
 
 /// Peeks at an incoming message.
 pub const MSG_PEEK: i32 = 0x2;
@@ -150,12 +149,12 @@ pub enum AddressFamily {
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
 pub enum Protocol {
-    /// Unspecified.
-    Unspec = IPPROTO_IP,
+    /// Internet Protocol.
+    Ip = ipproto::IPPROTO_IP,
     /// Transmission Control Protocol.
-    Tcp = IPPROTO_TCP,
+    Tcp = ipproto::IPPROTO_TCP,
     /// User Datagram Protocol.
-    Udp = IPPROTO_UDP,
+    Udp = ipproto::IPPROTO_UDP,
 }
 
 /// Describes communication semantics of a socket.
