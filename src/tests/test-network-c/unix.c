@@ -106,18 +106,17 @@ void test_unix_sockets(char sun_path[])
     int protocol = IPPROTO_IP;
 
     struct sockaddr_un sockaddr = {
+        .sun_len = sizeof(struct sockaddr),
         .sun_family = domain,
     };
-    strncat(sockaddr.sun_path, sun_path, sizeof(sockaddr.sun_path) - 1);
+    strncpy(sockaddr.sun_path, sun_path, sizeof(sockaddr.sun_path) - 1);
+    sockaddr.sun_path[sizeof(sockaddr.sun_path) - 1] = '\0';
 
-#if 0
-    // TODO: enable the following tests.
     test_create_socket(domain, type, protocol);
     test_bind_socket(domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
     test_listen_socket(
         domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
     test_get_sockname(domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
-#endif
 
     test_create_socket_pair(domain, type, protocol);
     test_getpeername(domain, type, protocol);

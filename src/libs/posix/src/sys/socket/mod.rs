@@ -563,4 +563,65 @@ mod test {
             sockaddr::try_from(&SocketAddr::V4(expected_addr)).expect("conversion should succeed");
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
     }
+
+    /// Tests conversion for `SockAddrUnix` to `sockaddr_un`.
+    #[test]
+    fn test_unix_socket_addr_conversion() {
+        let expected_addr = SocketAddrUnix {
+            path: "/tmp/socket".to_string(),
+        };
+        let test_addr: sockaddr_un = sockaddr_un::try_from(&expected_addr)
+            .expect("conversion from socket address should succeed");
+        assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
+    }
+
+    /// Tests conversion from `sockaddr_un` to `SocketAddrUnix`.
+    #[test]
+    fn test_unix_sockaddr_conversion() {
+        let test_addr = sockaddr_un {
+            sun_family: AF_UNIX
+                .try_into()
+                .expect("converting address family should succeed"),
+            sun_path: {
+                let mut path = [0; 104];
+                let bytes = "/tmp/socket".as_bytes();
+                path[..bytes.len()].copy_from_slice(bytes);
+                path
+            },
+        };
+        let expected_addr = SocketAddrUnix {
+            path: "/tmp/socket".to_string(),
+        };
+        assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
+    }
+
+    /// Tests conversion from `SocketAddrUnix` to `sockaddr`.
+    #[test]
+    fn test_unix_socket_addr_into_sockaddr() {
+        let expected_addr = SocketAddrUnix {
+            path: "/tmp/socket".to_string(),
+        };
+        let test_addr: sockaddr =
+            sockaddr::try_from(&expected_addr).expect("socket address conversion should succeed");
+        assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
+    }
+
+    /// Tests conversion from `sockaddr` to `SocketAddrUnix`.
+    #[test]
+    fn test_unix_sockaddr_into_socket_addr() {
+        let test_addr = sockaddr {
+            sa_len: mem::size_of::<sockaddr_un>() as u8,
+            sa_family: AF_UNIX as u8,
+            sa_data: {
+                let mut data = [0; 14];
+                let bytes = "/tmp/socket".as_bytes();
+                data[..bytes.len()].copy_from_slice(bytes);
+                data
+            },
+        };
+        let expected_addr = SocketAddrUnix {
+            path: "/tmp/socket".to_string(),
+        };
+        assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
+    }
 }
