@@ -23,7 +23,7 @@ pub mod bindings {
     use super::*;
 
     /// Size of the `sun_path` field in [`sockaddr_un`].
-    pub const SUNPATHLEN: usize = 104;
+    pub const SUNPATHLEN: usize = 14;
 
     /// Describes a UNIX domain socket address.
     #[repr(C, packed)]
