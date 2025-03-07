@@ -7,9 +7,9 @@
 
 use crate::{
     ffi::c_int,
+    netinet::in_::Protocol,
     sys::socket::{
         AddressFamily,
-        Protocol,
         SocketType,
     },
     LinuxDaemonMessage,
