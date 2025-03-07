@@ -18,6 +18,7 @@ cfg_if::cfg_if! {
         pub use syscall::pthread_exit;
         pub use syscall::pthread_join;
         pub use syscall::pthread_self;
+        pub use syscall::pthread_mutex_destroy;
         pub use syscall::pthread_mutex_init;
         pub use syscall::pthread_mutex_lock;
         pub use syscall::pthread_mutex_unlock;
