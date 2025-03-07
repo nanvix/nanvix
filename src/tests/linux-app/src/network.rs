@@ -376,7 +376,7 @@ pub fn test_network() -> Result<(), Error> {
 
     let sockaddr_in: sockaddr_in = sockaddr_in {
         sin_len: mem::size_of::<sockaddr_in>() as u8,
-        sin_family: match sys::socket::AF_INET.try_into() {
+        sin_family: match sys::socket::family::AF_INET.try_into() {
             Ok(family) => family,
             Err(e) => panic!("{:?}", e),
         },
