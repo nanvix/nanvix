@@ -11,7 +11,7 @@ use ::nvx::sys::error::{
 };
 use ::posix::{
     ffi::c_int,
-    netinet::in_::{
+    netinet::in_::bindings::{
         in_addr,
         sockaddr_in,
     },
@@ -22,13 +22,13 @@ use ::posix::{
             Protocol,
             Shutdown,
             SocketAddr,
-            SocketAddrV4,
             SocketType,
         },
         types::ssize_t,
     },
     unistd,
 };
+use posix::netinet::in_::SocketAddrV4;
 
 //==================================================================================================
 // Unbound Socket
