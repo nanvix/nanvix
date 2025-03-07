@@ -12,12 +12,10 @@
 //==================================================================================================
 
 use crate::{
+    arpa::inet::bindings::in_addr,
     ffi::c_uchar,
     netinet::in_::{
-        bindings::{
-            in_addr,
-            sockaddr_in,
-        },
+        bindings::sockaddr_in,
         Ipv4Addr,
         SocketAddrV4,
     },

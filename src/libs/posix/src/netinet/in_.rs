@@ -2,16 +2,13 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-#![allow(non_camel_case_types)]
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::sys::socket::sa_family_t;
+use crate::{
+    arpa::inet::bindings::in_addr,
+    sys::socket::sa_family_t,
+};
 use ::alloc::vec::Vec;
 use ::core::{
     mem,
@@ -29,13 +26,13 @@ use num_enum::TryFromPrimitive;
 
 /// C Bindings for `netinet/in.h`.
 pub mod bindings {
+
+    #![allow(non_camel_case_types)]
+
     use super::*;
 
     /// Used for internet ports.
     pub type in_port_t = u16;
-
-    /// Used for internet addresses.
-    pub type in_addr_t = u32;
 
     /// IP Protocol Numbers (https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml).
     pub mod ipproto {
@@ -45,18 +42,6 @@ pub mod bindings {
         pub const IPPROTO_TCP: i32 = 6;
         /// User Datagram Protocol.
         pub const IPPROTO_UDP: i32 = 17;
-    }
-
-    /// Describes an internet address.
-    #[repr(C, packed)]
-    pub struct in_addr {
-        pub s_addr: in_addr_t,
-    }
-    ::nvx::sys::static_assert_size!(in_addr, in_addr::_SIZE);
-
-    impl in_addr {
-        /// Size of this structure, used for static assertions.
-        const _SIZE: usize = mem::size_of::<in_addr_t>(); // s_addr
     }
 
     /// Describes an internet socket address.
