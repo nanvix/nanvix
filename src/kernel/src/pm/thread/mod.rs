@@ -17,7 +17,6 @@ use ::alloc::{
     boxed::Box,
     collections::btree_map::BTreeMap,
     fmt,
-    sync::Arc,
 };
 use ::core::{
     fmt::Debug,
@@ -39,7 +38,7 @@ pub struct Thread {
     /// User stack.
     user_stack: Option<UserStack>,
     /// Condition variable for join.
-    join_cond: Arc<Condvar>,
+    join_cond: Condvar,
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
     /// Lookup table of locked mutexes.
@@ -56,7 +55,7 @@ impl Thread {
             id,
             context: Box::pin(context),
             user_stack,
-            join_cond: Arc::new(Condvar::new()),
+            join_cond: Condvar::new(),
             locked_mutexes: BTreeMap::new(),
         }
     }
@@ -111,7 +110,7 @@ impl RunningThread {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn join_cond(&self) -> Arc<Condvar> {
+    pub fn join_cond(&self) -> Condvar {
         // NOTE: we must wake up all, otherwise some threads can be left waiting forever.
         self.0.join_cond.clone()
     }
@@ -173,7 +172,7 @@ impl ReadyThread {
         }
     }
 
-    pub fn join_cond(&self) -> Arc<Condvar> {
+    pub fn join_cond(&self) -> Condvar {
         self.0.join_cond.clone()
     }
 }
@@ -200,7 +199,7 @@ impl SleepingThread {
         self.0.id
     }
 
-    pub fn join_cond(&self) -> Arc<Condvar> {
+    pub fn join_cond(&self) -> Condvar {
         self.0.join_cond.clone()
     }
 
@@ -246,7 +245,7 @@ impl InterruptedThread {
         (RunningThread(self.thread), self.reason, ctx)
     }
 
-    pub fn join_cond(&self) -> Arc<Condvar> {
+    pub fn join_cond(&self) -> Condvar {
         self.thread.join_cond.clone()
     }
 }

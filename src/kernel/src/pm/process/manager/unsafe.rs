@@ -48,10 +48,7 @@ use crate::{
         SleepError,
     },
 };
-use ::alloc::{
-    rc::Rc,
-    sync::Arc,
-};
+use ::alloc::rc::Rc;
 use ::core::{
     cell::{
         RefCell,
@@ -213,11 +210,8 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn exit_thread(status: usize) -> Result<!, Error> {
-        let (join_cond, from, to): (
-            Arc<Condvar>,
-            *mut ContextInformation,
-            *mut ContextInformation,
-        ) = Self::get_mut().try_borrow_mut()?.exit_thread(status);
+        let (join_cond, from, to): (Condvar, *mut ContextInformation, *mut ContextInformation) =
+            Self::get_mut().try_borrow_mut()?.exit_thread(status);
 
         join_cond.notify_all()?;
 
@@ -263,7 +257,7 @@ impl ProcessManager {
         trace!("join_thread(): pid={:?}, tid={:?}", pid, tid);
 
         loop {
-            let result: Result<ZombieThread, Result<Arc<Condvar>, Error>> = Self::get_mut()
+            let result: Result<ZombieThread, Result<Condvar, Error>> = Self::get_mut()
                 .try_borrow_mut()
                 .map_err(SleepError::Generic)?
                 .try_join_thread(pid, tid);
