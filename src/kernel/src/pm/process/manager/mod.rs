@@ -72,7 +72,6 @@ use ::alloc::{
         LinkedList,
     },
     rc::Rc,
-    sync::Arc,
     vec::Vec,
 };
 use ::core::cell::{
@@ -705,7 +704,7 @@ impl ProcessManagerInner {
     pub(super) unsafe fn exit_thread(
         &mut self,
         status: usize,
-    ) -> (Arc<Condvar>, *mut ContextInformation, *mut ContextInformation) {
+    ) -> (Condvar, *mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
         trace!("exit_thread(): status={:#x?}, tid={:?}", status, running_process.get_tid());
@@ -899,7 +898,7 @@ impl ProcessManagerInner {
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
-    ) -> Result<ZombieThread, Result<Arc<Condvar>, Error>> {
+    ) -> Result<ZombieThread, Result<Condvar, Error>> {
         match self.find_process_mut(pid).map_err(Err)? {
             ProcessRefMut::Running(process) => process.try_join_thread(tid),
             ProcessRefMut::Runnable(_) => {
