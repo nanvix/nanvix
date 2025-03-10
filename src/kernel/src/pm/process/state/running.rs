@@ -401,17 +401,4 @@ impl RunningProcess {
         error!("join_thread(): {:?} (state={:?})", reason, self.state());
         Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
     }
-
-    pub fn get_sleeping_thread_mut(
-        &mut self,
-        tid: ThreadIdentifier,
-    ) -> Option<&mut SleepingThread> {
-        if let Some(sleeping_threads) = self.sleeping_threads.as_mut() {
-            sleeping_threads
-                .iter_mut()
-                .find(|thread| thread.id() == tid)
-        } else {
-            None
-        }
-    }
 }

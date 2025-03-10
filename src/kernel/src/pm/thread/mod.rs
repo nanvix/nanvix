@@ -133,11 +133,28 @@ impl RunningThread {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     /// - `guard`: Mutex guard.
     ///
-    pub fn put_mutex_guard(&mut self, addr: VirtualAddress, guard: MutexGuard) {
-        self.0.locked_mutexes.insert(addr, guard);
+    pub fn put_mutex_guard(&mut self, mutex_addr: VirtualAddress, guard: MutexGuard) {
+        self.0.locked_mutexes.insert(mutex_addr, guard);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the mutex guard associated with the target thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `mutex_addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// If the mutex guard is found, it is returned. Otherwise, `None` is returned instead.
+    ///
+    pub fn take_mutex_guard(&mut self, mutex_addr: VirtualAddress) -> Option<MutexGuard> {
+        self.0.locked_mutexes.remove(&mutex_addr)
     }
 }
 
@@ -201,23 +218,6 @@ impl SleepingThread {
 
     pub fn join_cond(&self) -> Condvar {
         self.0.join_cond.clone()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the mutex guard associated with the target thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `addr`: Address of the mutex.
-    ///
-    /// # Returns
-    ///
-    /// If the mutex guard is found, it is returned. Otherwise, `None` is returned instead.
-    ///
-    pub fn take_mutex_guard(&mut self, addr: VirtualAddress) -> Option<MutexGuard> {
-        self.0.locked_mutexes.remove(&addr)
     }
 }
 

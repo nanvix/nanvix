@@ -107,13 +107,4 @@ impl SleepingProcess {
             self.zombie_threads.take(),
         )
     }
-
-    pub fn get_sleeping_thread_mut(
-        &mut self,
-        tid: ThreadIdentifier,
-    ) -> Option<&mut SleepingThread> {
-        self.sleeping_threads
-            .iter_mut()
-            .find(|thread| thread.id() == tid)
-    }
 }

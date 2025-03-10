@@ -481,4 +481,38 @@ impl ProcessManager {
     pub unsafe fn wakeup(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
         Self::get_mut().try_borrow_mut()?.wakeup(pid, tid)
     }
+
+    ///
+    /// # Description
+    ///
+    /// Takes a mutex guard from a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
+    /// - `mutex_addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the mutex guard is returned. Otherwise, an error is returned
+    /// instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn take_mutex_guard(
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        mutex_addr: VirtualAddress,
+    ) -> Result<MutexGuard, Error> {
+        Self::get_mut()
+            .try_borrow_mut()?
+            .take_mutex_guard(pid, tid, mutex_addr)
+    }
 }
