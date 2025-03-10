@@ -179,7 +179,3 @@ impl Drop for MutexGuard {
         }
     }
 }
-
-unsafe impl Send for MutexInner {}
-
-unsafe impl Sync for MutexInner {}
