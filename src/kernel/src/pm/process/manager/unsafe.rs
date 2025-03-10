@@ -433,6 +433,58 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Returns a condition variable that is associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `cond_addr`: Address of the condition variable.
+    ///
+    /// # Returns
+    ///
+    /// On success, the condition variable that is associated with the given address is returned. If
+    /// no condition variable is associated with the given address, a new condition variable is
+    /// created and returned. On failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn get_cond(cond_addr: VirtualAddress) -> Result<Condvar, Error> {
+        Self::get_mut().try_borrow_mut()?.get_cond(cond_addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Releases a condition variable associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `cond_addr`: Address of the condition variable.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn put_cond(cond_addr: VirtualAddress) -> Result<(), Error> {
+        Self::get_mut().try_borrow_mut()?.put_cond(cond_addr)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Attempts to receive a message.
     ///
     /// # Returns
