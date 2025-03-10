@@ -70,6 +70,12 @@ fn main() {
     {
         constants.push_str(&format!("pub const MUTEX_OPEN_MAX: usize = {};\n", max_mutexes));
     }
+    if let Some(max_conditions) = kernel_config
+        .get("cond_open_max")
+        .and_then(|v| v.as_integer())
+    {
+        constants.push_str(&format!("pub const COND_OPEN_MAX: usize = {};\n", max_conditions));
+    }
     constants.push_str("}\n");
 
     // Write the generated file

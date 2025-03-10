@@ -52,7 +52,7 @@ pub unsafe fn unlock_mutex(
 ) -> Result<(), Error> {
     trace!("unlock_mutex(): pid={:?}, tid={:?}, arg0={:#X}", pid, tid, arg0);
     // Unpack kernel call arguments.
-    let addr: VirtualAddress = VirtualAddress::from_raw_value(arg0 as usize);
+    let addr: VirtualAddress = VirtualAddress::from_raw_value(arg0);
 
     ProcessManager::take_mutex_guard(pid, tid, addr).unwrap();
     // The mutex guard is dropped, causing threads to be notified.

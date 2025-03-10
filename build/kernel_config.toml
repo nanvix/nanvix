@@ -38,3 +38,8 @@ ipc_message_size = 64
 # Notes:
 # - This number was arbitrarily chosen.
 mutex_open_max = 32
+
+# Maximum number of condition variables a process may hold at the same time.
+# Notes:
+# - This number was arbitrarily chosen.
+cond_open_max = 32

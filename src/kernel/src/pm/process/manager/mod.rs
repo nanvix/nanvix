@@ -59,7 +59,6 @@ use crate::{
         thread::{
             InterruptReason,
             ReadyThread,
-            SleepingThread,
             ThreadManager,
             ZombieThread,
         },
@@ -931,16 +930,52 @@ impl ProcessManagerInner {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     ///
     /// # Returns
     ///
-    /// On success, the mutex that is associated with the given address is returned.  If no mutex is
-    /// associated with the given address, a new mutex is created and returned. On failure, an
-    /// error is returned instead.
+    /// On success, the mutex that is associated with the given address is returned. If no mutex is
+    /// associated with the given address, a new mutex is created and returned. On failure, an error
+    /// is returned instead.
     ///
-    fn get_mutex(&mut self, addr: VirtualAddress) -> Result<Mutex, Error> {
-        self.get_running_mut().state_mut().get_mutex(addr)
+    fn get_mutex(&mut self, mutex_addr: VirtualAddress) -> Result<Mutex, Error> {
+        self.get_running_mut().state_mut().get_mutex(mutex_addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a condition variable that is associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `cond_addr`: Address of the condition variable.
+    ///
+    /// # Returns
+    ///
+    /// On success, the condition variable that is associated with the given address is returned. If
+    /// no condition variable is associated with the given address, a new condition variable is
+    /// created and returned. On failure, an error is returned instead.
+    ///
+    fn get_cond(&mut self, cond_addr: VirtualAddress) -> Result<Condvar, Error> {
+        self.get_running_mut().state_mut().get_cond(cond_addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Releases a condition variable previously acquired by the calling thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `cond_addr`: Address of the condition variable.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    fn put_cond(&mut self, cond_addr: VirtualAddress) -> Result<(), Error> {
+        self.get_running_mut().state_mut().put_cond(cond_addr)
     }
 
     ///
