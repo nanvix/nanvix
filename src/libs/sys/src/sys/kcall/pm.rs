@@ -292,3 +292,39 @@ pub fn unlock_mutex(mutex_addr: VirtualAddress) -> Result<(), Error> {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to unlock mutex"))
     }
 }
+
+//==================================================================================================
+// Signal Condition Variable
+//==================================================================================================
+
+pub fn signal_cond(cond_addr: VirtualAddress, broadcast: bool) -> Result<(), Error> {
+    let result: i32 = kcall2!(
+        KcallNumber::CondSignal.into(),
+        cond_addr.into_raw_value() as u32,
+        broadcast as u32
+    );
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to signal condition variable"))
+    }
+}
+
+//==================================================================================================
+// Wait Condition Variable
+//==================================================================================================
+
+pub fn wait_cond(cond_addr: VirtualAddress, mutex_addr: VirtualAddress) -> Result<(), Error> {
+    let result: i32 = kcall2!(
+        KcallNumber::CondWait.into(),
+        cond_addr.into_raw_value() as u32,
+        mutex_addr.into_raw_value() as u32
+    );
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to wait condition variable"))
+    }
+}

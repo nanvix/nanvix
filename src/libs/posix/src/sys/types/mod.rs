@@ -25,6 +25,7 @@ use crate::{
         sched_param,
     },
 };
+use ::core::mem;
 
 //==================================================================================================
 // Types
@@ -65,6 +66,9 @@ pub type pid_t = c_int;
 
 /// Used to identify a thread.
 pub type pthread_t = u32;
+
+/// Used for condition variables.
+pub type pthread_cond_t = u32;
 
 /// Used for mutexes.
 pub type pthread_mutex_t = u32;
@@ -168,11 +172,11 @@ pub struct pthread_mutexattr_t {
 
 impl pthread_mutexattr_t {
     /// Size of the `is_initialized` field.
-    const SIZE_OF_IS_INITIALIZED: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_IS_INITIALIZED: usize = mem::size_of::<c_int>();
     /// Size of the `type_` field.
-    const SIZE_OF_TYPE: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_TYPE: usize = mem::size_of::<c_int>();
     /// Size of the `recursive` field.
-    const SIZE_OF_RECURSIVE: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_RECURSIVE: usize = mem::size_of::<c_int>();
 
     /// Size of `pthread_mutexattr_t` structure.
     pub const SIZE: usize =
@@ -185,6 +189,40 @@ impl Default for pthread_mutexattr_t {
             is_initialized: 1,
             type_: pthread_mutex_type::PTHREAD_MUTEX_NORMAL,
             recursive: 0,
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Condition variable attributes.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct pthread_condattr_t {
+    /// Whether the condition variable attributes are initialized.
+    is_initialized: c_int,
+    /// Clock used for timeouts.
+    clock: clock_t,
+}
+::nvx::sys::static_assert_size!(pthread_condattr_t, pthread_condattr_t::SIZE);
+
+impl pthread_condattr_t {
+    // Size of the `is_initialized` field.
+    const SIZE_OF_IS_INITIALIZED: usize = mem::size_of::<c_int>();
+    // Size of the `clock` field.
+    const SIZE_OF_CLOCK: usize = mem::size_of::<clock_t>();
+
+    /// Size of `pthread_condattr_t` structure.
+    pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_CLOCK;
+}
+
+impl Default for pthread_condattr_t {
+    fn default() -> Self {
+        Self {
+            is_initialized: 1,
+            clock: 0,
         }
     }
 }
