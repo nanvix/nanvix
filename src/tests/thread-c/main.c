@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include <pthread.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 //==================================================================================================
@@ -78,6 +79,15 @@ int main(int argc, const char *argv[])
 
     );
 
+    // Sanity check size of `pthread_cond_t` type.
+    STATIC_ASSERT_SIZE(pthread_cond_t, sizeof(uint32_t));
+
+    // Sanity check size of `pthread_condattr_t` type.
+    STATIC_ASSERT_SIZE(pthread_condattr_t,
+                       sizeof(int) +       // is_initialized
+                           sizeof(clock_t) // clock
+    );
+
     // Sanity check size of `pthread_mutex_t` type.
     STATIC_ASSERT_SIZE(pthread_mutex_t, sizeof(uint32_t));
 
@@ -92,6 +102,7 @@ int main(int argc, const char *argv[])
     test_pthread_create_join();
     test_pthread_mutex_static_init();
     test_pthread_mutex_dynamic_init();
+    test_pthread_cond_static_init();
 
     // Must be last test.
     test_pthread_nowait();
