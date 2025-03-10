@@ -11,7 +11,10 @@
 // Imports
 //==================================================================================================
 
-use crate::ffi::c_int;
+use crate::{
+    ffi::c_int,
+    sys::types::pthread_cond_t,
+};
 
 //==================================================================================================
 // Modules
@@ -28,6 +31,11 @@ cfg_if::cfg_if! {
         pub use syscall::pthread_mutex_init;
         pub use syscall::pthread_mutex_lock;
         pub use syscall::pthread_mutex_unlock;
+        pub use syscall::pthread_cond_broadcast;
+        pub use syscall::pthread_cond_destroy;
+        pub use syscall::pthread_cond_init;
+        pub use syscall::pthread_cond_signal;
+        pub use syscall::pthread_cond_wait;
     }
 }
 
@@ -51,6 +59,9 @@ pub use crate::sys::types::{
 
 /// Used to identify the null thread.
 pub const PTHREAD_NULL: pthread_t = 0;
+
+/// Used to initialize a condition variable statically
+pub const PTHREAD_COND_INITIALIZER: pthread_cond_t = 0xffffffff;
 
 /// Used to initialize a mutex statically.
 pub const PTHREAD_MUTEX_INITIALIZER: pthread_mutex_t = 0xffffffff;
