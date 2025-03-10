@@ -101,7 +101,7 @@ pub unsafe extern "C" fn pthread_mutex_init(
         ::nvx::warn!("pthread_mutex_init(): custom attributes not supported, ignoring");
     }
 
-    // TODO: once we support custom attributed, dereference that pointer.
+    // TODO: once we support custom attributes, dereference that pointer.
     let attr: pthread_mutexattr_t = pthread_mutexattr_t::default();
 
     if let Err(error) = syscall::pthread_mutex_init(&mut *mutex, &attr) {

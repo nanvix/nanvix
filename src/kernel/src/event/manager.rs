@@ -21,10 +21,7 @@ use crate::{
         SleepError,
     },
 };
-use ::alloc::{
-    collections::LinkedList,
-    rc::Rc,
-};
+use ::alloc::collections::LinkedList;
 use ::core::{
     cell::{
         RefCell,
@@ -121,12 +118,12 @@ impl Drop for EventOwnership {
 struct EventManagerInner {
     interrupt_capable: bool,
     nevents: usize,
-    wait: Option<Rc<Condvar>>,
+    wait: Option<Condvar>,
     interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
     pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize],
     exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
-    pending_exceptions: [LinkedList<(EventDescriptor, ExceptionEventInformation, Rc<Condvar>)>;
-        usize::BITS as usize],
+    pending_exceptions:
+        [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>; usize::BITS as usize],
     scheduling_ownership: [Option<ProcessIdentifier>; SchedulingEvent::NUMBER_EVENTS],
     pending_scheduling:
         [LinkedList<(EventDescriptor, ProcessTerminationInfo)>; SchedulingEvent::NUMBER_EVENTS],
@@ -560,13 +557,13 @@ impl EventManagerInner {
         exceptions: usize,
         pid: ProcessIdentifier,
         info: &ExceptionInformation,
-    ) -> Result<Rc<Condvar>, Error> {
+    ) -> Result<Condvar, Error> {
         trace!("wakeup_exception(): exceptions={:#x}, pid={:?}, info={:?}", exceptions, pid, info);
         self.nevents += 1;
         let idx: usize = exceptions.trailing_zeros() as usize;
         let ev: Event = Event::from(ExceptionEvent::try_from(idx)?);
         let eventid: EventDescriptor = EventDescriptor::new(self.nevents, ev);
-        let resume: Rc<Condvar> = Rc::new(Condvar::new());
+        let resume: Condvar = Condvar::new();
         self.pending_exceptions[idx].push_back((
             eventid,
             ExceptionEventInformation {
@@ -657,7 +654,7 @@ impl EventManagerInner {
         Ok(())
     }
 
-    fn get_wait(&self) -> &Rc<Condvar> {
+    fn get_wait(&self) -> &Condvar {
         // NOTE: it is safe to unwrap because the wait field is always Some.
         self.wait.as_ref().unwrap()
     }
@@ -773,7 +770,7 @@ impl EventManager {
             }
         }
 
-        let wait: Rc<Condvar> = EventManager::get()
+        let wait: Condvar = EventManager::get()
             .map_err(SleepError::Generic)?
             .try_borrow_mut()
             .map_err(SleepError::Generic)?
@@ -956,7 +953,7 @@ fn do_exception_handler(
     }
 
     // SAFETY: the calling process does hold a mutable reference to the inner state of the process manager.
-    let resume: Rc<Condvar> = unsafe {
+    let resume: Condvar = unsafe {
         EventManager::get()
             .map_err(SleepError::Generic)?
             .try_borrow_mut()
@@ -1001,11 +998,8 @@ pub fn init(hal: &mut Hal) -> Result<(), Error> {
         *entry = None;
     }
 
-    let mut pending_exceptions: [LinkedList<(
-        EventDescriptor,
-        ExceptionEventInformation,
-        Rc<Condvar>,
-    )>; usize::BITS as usize] = unsafe { mem::zeroed() };
+    let mut pending_exceptions: [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>;
+        usize::BITS as usize] = unsafe { mem::zeroed() };
     for list in pending_exceptions.iter_mut() {
         *list = LinkedList::default();
     }
@@ -1063,7 +1057,7 @@ pub fn init(hal: &mut Hal) -> Result<(), Error> {
         exception_ownership,
         pending_scheduling,
         scheduling_ownership,
-        wait: Some(Rc::new(Condvar::new())),
+        wait: Some(Condvar::new()),
     });
 
     let manager: EventManager = EventManager(em);

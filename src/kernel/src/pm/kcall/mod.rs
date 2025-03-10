@@ -21,8 +21,10 @@ mod setegid;
 mod seteuid;
 mod setgid;
 mod setuid;
+mod signal_cond;
 mod terminate;
 mod unlock_mutex;
+mod wait_cond;
 
 //==================================================================================================
 // Exports
@@ -44,5 +46,7 @@ pub use setegid::setegid;
 pub use seteuid::seteuid;
 pub use setgid::setgid;
 pub use setuid::setuid;
+pub use signal_cond::signal_cond;
 pub use terminate::terminate;
 pub use unlock_mutex::unlock_mutex;
+pub use wait_cond::wait_cond;

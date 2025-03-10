@@ -48,10 +48,7 @@ use crate::{
         SleepError,
     },
 };
-use ::alloc::{
-    rc::Rc,
-    sync::Arc,
-};
+use ::alloc::rc::Rc;
 use ::core::{
     cell::{
         RefCell,
@@ -67,6 +64,8 @@ use ::sys::{
     error::Error,
     ipc::Message,
     pm::{
+        ConditionAddress,
+        MutexAddress,
         ProcessIdentifier,
         ThreadIdentifier,
     },
@@ -213,11 +212,8 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn exit_thread(status: usize) -> Result<!, Error> {
-        let (join_cond, from, to): (
-            Arc<Condvar>,
-            *mut ContextInformation,
-            *mut ContextInformation,
-        ) = Self::get_mut().try_borrow_mut()?.exit_thread(status);
+        let (join_cond, from, to): (Condvar, *mut ContextInformation, *mut ContextInformation) =
+            Self::get_mut().try_borrow_mut()?.exit_thread(status);
 
         join_cond.notify_all()?;
 
@@ -263,7 +259,7 @@ impl ProcessManager {
         trace!("join_thread(): pid={:?}, tid={:?}", pid, tid);
 
         loop {
-            let result: Result<ZombieThread, Result<Arc<Condvar>, Error>> = Self::get_mut()
+            let result: Result<ZombieThread, Result<Condvar, Error>> = Self::get_mut()
                 .try_borrow_mut()
                 .map_err(SleepError::Generic)?
                 .try_join_thread(pid, tid);
@@ -391,7 +387,7 @@ impl ProcessManager {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     ///
     /// # Returns
     ///
@@ -407,7 +403,7 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn get_mutex(addr: VirtualAddress) -> Result<Mutex, Error> {
+    pub unsafe fn get_mutex(addr: MutexAddress) -> Result<Mutex, Error> {
         Self::get_mut().try_borrow_mut()?.get_mutex(addr)
     }
 
@@ -418,7 +414,7 @@ impl ProcessManager {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     /// - `guard`: Mutex guard to store.
     ///
     /// # Safety
@@ -429,11 +425,66 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn put_mutex_guard(addr: VirtualAddress, guard: MutexGuard) -> Result<(), Error> {
+    pub unsafe fn put_mutex_guard(
+        mutex_addr: MutexAddress,
+        guard: MutexGuard,
+    ) -> Result<(), Error> {
         Self::get_mut()
             .try_borrow_mut()?
-            .put_mutex_guard(addr, guard);
+            .put_mutex_guard(mutex_addr, guard);
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a condition variable that is associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `cond_addr`: Address of the condition variable.
+    ///
+    /// # Returns
+    ///
+    /// On success, the condition variable that is associated with the given address is returned. If
+    /// no condition variable is associated with the given address, a new condition variable is
+    /// created and returned. On failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn get_cond(cond_addr: ConditionAddress) -> Result<Condvar, Error> {
+        Self::get_mut().try_borrow_mut()?.get_cond(cond_addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Releases a condition variable associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `cond_addr`: Address of the condition variable.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn put_cond(cond_addr: ConditionAddress) -> Result<(), Error> {
+        Self::get_mut().try_borrow_mut()?.put_cond(cond_addr)
     }
 
     ///
@@ -486,5 +537,39 @@ impl ProcessManager {
     ///
     pub unsafe fn wakeup(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
         Self::get_mut().try_borrow_mut()?.wakeup(pid, tid)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes a mutex guard from a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
+    /// - `mutex_addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the mutex guard is returned. Otherwise, an error is returned
+    /// instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn take_mutex_guard(
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        mutex_addr: MutexAddress,
+    ) -> Result<MutexGuard, Error> {
+        Self::get_mut()
+            .try_borrow_mut()?
+            .take_mutex_guard(pid, tid, mutex_addr)
     }
 }
