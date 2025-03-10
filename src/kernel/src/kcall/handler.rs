@@ -83,7 +83,6 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                         KcallNumber::ReadPmio => io::pmio_read(pm, args),
                         KcallNumber::WritePmio => io::pmio_write(pm, args),
                         KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
-                        KcallNumber::MutexUnlock => pm::unlock_mutex(pm, args),
                         _ => {
                             error!("invalid kernel call");
                             ErrorCode::InvalidSysCall.into_errno()
