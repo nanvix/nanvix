@@ -16,12 +16,11 @@ use crate::pm::{
     ProcessManager,
     SleepError,
 };
-use ::sys::{
-    mm::VirtualAddress,
-    pm::{
-        ProcessIdentifier,
-        ThreadIdentifier,
-    },
+use ::sys::pm::{
+    ConditionAddress,
+    MutexAddress,
+    ProcessIdentifier,
+    ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -64,15 +63,15 @@ pub unsafe fn wait_cond(
     mutex_addr: usize,
 ) -> Result<(), SleepError> {
     trace!(
-        "wait_cond(): pid={:?}, tid={:?}, cond_addr={:#X}, mutex_addr={:#X}",
+        "wait_cond(): pid={:?}, tid={:?}, cond_addr={:#x?}, mutex_addr={:#x?}",
         pid,
         tid,
         cond_addr,
         mutex_addr
     );
     // Unpack kernel call arguments.
-    let cond_addr: VirtualAddress = VirtualAddress::from_raw_value(cond_addr);
-    let mutex_addr: VirtualAddress = VirtualAddress::from_raw_value(mutex_addr);
+    let cond_addr: ConditionAddress = ConditionAddress::from(cond_addr);
+    let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);
 
     {
         ProcessManager::take_mutex_guard(pid, tid, mutex_addr).map_err(SleepError::Generic)?;

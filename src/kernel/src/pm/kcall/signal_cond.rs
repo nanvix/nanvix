@@ -5,14 +5,14 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    hal::mem::VirtualAddress,
-    pm::{
-        sync::condvar::Condvar,
-        ProcessManager,
-    },
+use crate::pm::{
+    sync::condvar::Condvar,
+    ProcessManager,
 };
-use ::sys::error::Error;
+use ::sys::{
+    error::Error,
+    pm::ConditionAddress,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -20,7 +20,7 @@ use ::sys::error::Error;
 
 pub unsafe fn signal_cond(cond_addr: usize, broadcast: bool) -> Result<(), Error> {
     // Unpack kernel call arguments.
-    let cond_addr: VirtualAddress = VirtualAddress::from_raw_value(cond_addr);
+    let cond_addr: ConditionAddress = ConditionAddress::from(cond_addr);
 
     {
         let cond: Condvar = ProcessManager::get_cond(cond_addr)?;

@@ -64,6 +64,8 @@ use ::sys::{
     error::Error,
     ipc::Message,
     pm::{
+        ConditionAddress,
+        MutexAddress,
         ProcessIdentifier,
         ThreadIdentifier,
     },
@@ -385,7 +387,7 @@ impl ProcessManager {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     ///
     /// # Returns
     ///
@@ -401,7 +403,7 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn get_mutex(addr: VirtualAddress) -> Result<Mutex, Error> {
+    pub unsafe fn get_mutex(addr: MutexAddress) -> Result<Mutex, Error> {
         Self::get_mut().try_borrow_mut()?.get_mutex(addr)
     }
 
@@ -412,7 +414,7 @@ impl ProcessManager {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     /// - `guard`: Mutex guard to store.
     ///
     /// # Safety
@@ -423,10 +425,13 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn put_mutex_guard(addr: VirtualAddress, guard: MutexGuard) -> Result<(), Error> {
+    pub unsafe fn put_mutex_guard(
+        mutex_addr: MutexAddress,
+        guard: MutexGuard,
+    ) -> Result<(), Error> {
         Self::get_mut()
             .try_borrow_mut()?
-            .put_mutex_guard(addr, guard);
+            .put_mutex_guard(mutex_addr, guard);
         Ok(())
     }
 
@@ -453,7 +458,7 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn get_cond(cond_addr: VirtualAddress) -> Result<Condvar, Error> {
+    pub unsafe fn get_cond(cond_addr: ConditionAddress) -> Result<Condvar, Error> {
         Self::get_mut().try_borrow_mut()?.get_cond(cond_addr)
     }
 
@@ -478,7 +483,7 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn put_cond(cond_addr: VirtualAddress) -> Result<(), Error> {
+    pub unsafe fn put_cond(cond_addr: ConditionAddress) -> Result<(), Error> {
         Self::get_mut().try_borrow_mut()?.put_cond(cond_addr)
     }
 
@@ -561,7 +566,7 @@ impl ProcessManager {
     pub unsafe fn take_mutex_guard(
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
-        mutex_addr: VirtualAddress,
+        mutex_addr: MutexAddress,
     ) -> Result<MutexGuard, Error> {
         Self::get_mut()
             .try_borrow_mut()?

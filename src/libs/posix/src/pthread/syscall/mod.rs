@@ -23,8 +23,11 @@ use ::alloc::collections::btree_map::{
     Entry,
 };
 use ::nvx::{
-    mm::VirtualAddress,
-    pm::ThreadIdentifier,
+    pm::{
+        ConditionAddress,
+        MutexAddress,
+        ThreadIdentifier,
+    },
     sys::{
         error::{
             Error,
@@ -162,7 +165,7 @@ pub fn pthread_mutex_lock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
         }
     }
 
-    lock_mutex(VirtualAddress::from_raw_value(mutex as *const pthread_mutex_t as usize))
+    lock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize))
 }
 
 pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
@@ -187,7 +190,7 @@ pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
         }
     }
 
-    unlock_mutex(VirtualAddress::from_raw_value(mutex as *const pthread_mutex_t as usize))
+    unlock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize))
 }
 
 pub fn pthread_cond_broadcast(cond: &pthread_cond_t) -> Result<(), Error> {
@@ -209,7 +212,7 @@ pub fn pthread_cond_broadcast(cond: &pthread_cond_t) -> Result<(), Error> {
         }
     }
 
-    signal_cond(VirtualAddress::from_raw_value(cond as *const pthread_cond_t as usize), true)
+    signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), true)
 }
 
 pub fn pthread_cond_init(
@@ -282,7 +285,7 @@ pub fn pthread_cond_signal(cond: &pthread_cond_t) -> Result<(), Error> {
         }
     }
 
-    signal_cond(VirtualAddress::from_raw_value(cond as *const pthread_cond_t as usize), false)
+    signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), false)
 }
 
 pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Result<(), Error> {
@@ -321,7 +324,7 @@ pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Resu
     }
 
     wait_cond(
-        VirtualAddress::from_raw_value(cond as *const pthread_cond_t as usize),
-        VirtualAddress::from_raw_value(mutex as *const pthread_mutex_t as usize),
+        ConditionAddress::from(cond as *const pthread_cond_t as usize),
+        MutexAddress::from(mutex as *const pthread_mutex_t as usize),
     )
 }
