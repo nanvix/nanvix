@@ -9,7 +9,10 @@ use crate::pm::{
     sync::condvar::Condvar,
     SleepError,
 };
-use ::core::cell::RefCell;
+use ::core::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -26,7 +29,7 @@ use ::sys::error::{
 ///
 pub struct Semaphore {
     /// Value.
-    value: RefCell<usize>,
+    value: AtomicUsize,
     /// Threads that are sleeping on the semaphore.
     sleeping: Condvar,
 }
@@ -50,7 +53,7 @@ impl Semaphore {
     /// A new semaphore.
     pub fn new(value: usize) -> Self {
         Self {
-            value: RefCell::new(value),
+            value: AtomicUsize::new(value),
             sleeping: Condvar::new(),
         }
     }
@@ -77,11 +80,15 @@ impl Semaphore {
     /// - This function is invoked without holding any resources.
     ///
     pub unsafe fn down(&self) -> Result<(), SleepError> {
-        while *self.value.borrow() == 0 {
+        let value: usize = loop {
+            let value = self.value.load(Ordering::SeqCst);
+            if value > 0 {
+                break value;
+            }
             self.sleeping.wait()?;
-        }
+        };
 
-        *self.value.borrow_mut() -= 1;
+        self.value.store(value - 1, Ordering::SeqCst);
 
         Ok(())
     }
@@ -98,11 +105,13 @@ impl Semaphore {
     /// occurs, an error is returned instead.
     ///
     pub fn try_down(&self) -> Result<(), Error> {
-        if *self.value.borrow() == 0 {
+        let value: usize = self.value.load(Ordering::SeqCst);
+
+        if value == 0 {
             return Err(Error::new(ErrorCode::OperationWouldBlock, "semaphore is busy"));
         }
 
-        *self.value.borrow_mut() -= 1;
+        self.value.store(value - 1, Ordering::SeqCst);
 
         Ok(())
     }
@@ -125,11 +134,7 @@ impl Semaphore {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn up(&self) -> Result<(), Error> {
-        *self.value.borrow_mut() += 1;
+        self.value.fetch_add(1, Ordering::SeqCst);
         self.sleeping.notify_first()
     }
 }
-
-unsafe impl Send for Semaphore {}
-
-unsafe impl Sync for Semaphore {}
