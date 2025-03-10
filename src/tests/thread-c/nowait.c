@@ -25,6 +25,12 @@ static const size_t EXPECTED_WORKER_ARG = 0xbadcafe;
 // Expected exit status of the worker thread.
 static const size_t EXPECTED_EXIT_STATUS = 0xdeadbeef;
 
+// Dead mutex locked by main thread.
+static pthread_mutex_t dead_mutex_main_thread = PTHREAD_MUTEX_INITIALIZER;
+
+// Dead mutex locked by worker thread.
+static pthread_mutex_t dead_mutex_worker_thread = PTHREAD_MUTEX_INITIALIZER;
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -35,11 +41,17 @@ static void *worker_thread(void *arg)
     // Check if worker argument matches the expected value.
     assert((size_t)arg == EXPECTED_WORKER_ARG);
 
+    // Lock some resources.
+    assert(pthread_mutex_lock(&dead_mutex_worker_thread) == 0);
+
+    // Block forever.
+    assert(pthread_mutex_lock(&dead_mutex_main_thread) == 0);
+
     while (true) {
         sched_yield();
     }
 
-    // NOTE: We never get here.
+    // NOTE: We never gets here.
 
     // Exit the worker thread and make sure it returns the expected value.
     return ((void *)EXPECTED_EXIT_STATUS);
@@ -51,6 +63,9 @@ static void main_thread(void)
     // Get the master thread identifier and check if it matches the expected value.
     pthread_t master_tid = pthread_self();
     assert(master_tid == EXPECTED_MASTER_TID);
+
+    // Lock some resources.
+    assert(pthread_mutex_lock(&dead_mutex_main_thread) == 0);
 
     // Create a worker thread and check if its identifier matches the expected value.
     pthread_t worker_tid = PTHREAD_NULL;
