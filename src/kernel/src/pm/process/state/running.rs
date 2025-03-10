@@ -25,10 +25,7 @@ use crate::{
         },
     },
 };
-use ::alloc::{
-    boxed::Box,
-    sync::Arc,
-};
+use ::alloc::boxed::Box;
 use ::sys::{
     error::{
         Error,
@@ -246,13 +243,13 @@ impl RunningProcess {
         mut self,
         status: usize,
     ) -> Result<
-        (Arc<Condvar>, RunnableProcess, *mut ContextInformation),
+        (Condvar, RunnableProcess, *mut ContextInformation),
         Result<
-            (Arc<Condvar>, SleepingProcess, *mut ContextInformation),
-            (Arc<Condvar>, ZombieProcess, *mut ContextInformation),
+            (Condvar, SleepingProcess, *mut ContextInformation),
+            (Condvar, ZombieProcess, *mut ContextInformation),
         >,
     > {
-        let join_cond: Arc<Condvar> = self.running.join_cond();
+        let join_cond: Condvar = self.running.join_cond();
 
         let (zombie_thread, ctx) = self.running.exit(status);
         let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
@@ -350,7 +347,7 @@ impl RunningProcess {
     pub fn try_join_thread(
         &mut self,
         tid: ThreadIdentifier,
-    ) -> Result<ZombieThread, Result<Arc<Condvar>, Error>> {
+    ) -> Result<ZombieThread, Result<Condvar, Error>> {
         // Check if the thread is the running thread.
         if self.running.id() == tid {
             let reason: &str = "thread is running";
@@ -374,7 +371,7 @@ impl RunningProcess {
         if let Some(ready_threads) = &mut self.ready {
             for ready_thread in ready_threads.iter() {
                 if ready_thread.tid() == tid {
-                    let join_cond: Arc<Condvar> = ready_thread.join_cond();
+                    let join_cond: Condvar = ready_thread.join_cond();
                     return Err(Ok(join_cond));
                 }
             }
@@ -384,7 +381,7 @@ impl RunningProcess {
         if let Some(sleeping_threads) = &mut self.sleeping_threads {
             for sleeping_thread in sleeping_threads.iter() {
                 if sleeping_thread.id() == tid {
-                    let join_cond: Arc<Condvar> = sleeping_thread.join_cond();
+                    let join_cond: Condvar = sleeping_thread.join_cond();
                     return Err(Ok(join_cond));
                 }
             }
@@ -394,7 +391,7 @@ impl RunningProcess {
         if let Some(interrupted_threads) = &mut self.interrupted_threads {
             for interrupted_thread in interrupted_threads.iter() {
                 if interrupted_thread.tid() == tid {
-                    let join_cond: Arc<Condvar> = interrupted_thread.join_cond();
+                    let join_cond: Condvar = interrupted_thread.join_cond();
                     return Err(Ok(join_cond));
                 }
             }
@@ -403,18 +400,5 @@ impl RunningProcess {
         let reason: &str = "thread not found";
         error!("join_thread(): {:?} (state={:?})", reason, self.state());
         Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
-    }
-
-    pub fn get_sleeping_thread_mut(
-        &mut self,
-        tid: ThreadIdentifier,
-    ) -> Option<&mut SleepingThread> {
-        if let Some(sleeping_threads) = self.sleeping_threads.as_mut() {
-            sleeping_threads
-                .iter_mut()
-                .find(|thread| thread.id() == tid)
-        } else {
-            None
-        }
     }
 }

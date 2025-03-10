@@ -45,14 +45,20 @@ use crate::{
             capability::Capabilities,
             identity::ProcessIdentity,
         },
-        sync::mutex::Mutex,
+        sync::{
+            condvar::Condvar,
+            mutex::Mutex,
+        },
     },
 };
 use ::alloc::collections::{
     btree_map::BTreeMap,
     LinkedList,
 };
-use ::config::kernel::MUTEX_OPEN_MAX;
+use ::config::kernel::{
+    COND_OPEN_MAX,
+    MUTEX_OPEN_MAX,
+};
 use ::sys::{
     error::{
         Error,
@@ -62,7 +68,9 @@ use ::sys::{
     ipc::Message,
     pm::{
         Capability,
+        ConditionAddress,
         GroupIdentifier,
+        MutexAddress,
         ProcessIdentifier,
         UserIdentifier,
     },
@@ -151,7 +159,9 @@ pub struct ProcessState {
     /// User stack allocator.
     user_stack_allocator: Option<UserStackAllocator>,
     /// Mutexes.
-    mutexes: BTreeMap<VirtualAddress, Mutex>,
+    mutexes: BTreeMap<MutexAddress, Mutex>,
+    /// Condition variables.
+    conditions: BTreeMap<ConditionAddress, Condvar>,
 }
 
 impl ProcessState {
@@ -172,6 +182,7 @@ impl ProcessState {
             pmio: LinkedList::new(),
             user_stack_allocator,
             mutexes: BTreeMap::new(),
+            conditions: BTreeMap::new(),
         }
     }
 
@@ -327,7 +338,7 @@ impl ProcessState {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     ///
     /// # Returns
     ///
@@ -335,15 +346,19 @@ impl ProcessState {
     /// associated with the given address, a new mutex is created and returned.  On failure, an
     /// error is returned instead.
     ///
-    pub fn get_mutex(&mut self, addr: VirtualAddress) -> Result<Mutex, Error> {
+    pub fn get_mutex(&mut self, mutex_addr: MutexAddress) -> Result<Mutex, Error> {
         // Check if maximum number of mutexes has been reached.
         if self.mutexes.len() >= MUTEX_OPEN_MAX {
             let reason: &'static str = "maximum number of mutexes reached";
-            error!("get_mutex(): {:?} (addr={:#x?})", reason, addr);
+            error!("get_mutex(): {:?} (addr={:#x?})", reason, mutex_addr);
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
-        Ok(self.mutexes.entry(addr).or_insert_with(Mutex::new).clone())
+        Ok(self
+            .mutexes
+            .entry(mutex_addr)
+            .or_insert_with(Mutex::new)
+            .clone())
     }
 
     ///
@@ -353,23 +368,83 @@ impl ProcessState {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mtuex_addr`: Address of the mutex.
     ///
     /// # Returns
     ///
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
     ///
-    pub fn put_mutex(&mut self, addr: VirtualAddress) -> Result<(), Error> {
+    pub fn put_mutex(&mut self, mutex_addr: MutexAddress) -> Result<(), Error> {
         // Check if mutex exists.
-        if !self.mutexes.contains_key(&addr) {
+        if !self.mutexes.contains_key(&mutex_addr) {
             let reason: &'static str = "mutex not found";
-            error!("put_mutex(): {:?} (addr={:#x?})", reason, addr);
+            error!("put_mutex(): {:?} (addr={:#x?})", reason, mutex_addr);
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
         let _: BTreeMap<_, _> = self
             .mutexes
-            .extract_if(|&mutex_addr, mutex| mutex_addr == addr && mutex.reference_count() <= 2)
+            .extract_if(|&addr, mutex| mutex_addr == addr && mutex.reference_count() <= 2)
+            .collect();
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a condition variable that is associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `cond_addr`: Address of the condition variable.
+    ///
+    /// # Returns
+    ///
+    /// On success, the condition variable that is associated with the given address is returned. If
+    /// no condition variable is associated with the given address, a new condition variable is
+    /// created and returned. On failure, an error is returned instead.
+    ///
+    pub fn get_cond(&mut self, cond_addr: ConditionAddress) -> Result<Condvar, Error> {
+        // Check if maximum number of condition variables has been reached.
+        if self.conditions.len() >= COND_OPEN_MAX {
+            let reason: &'static str = "maximum number of condition variables reached";
+            error!("get_condition(): {:?} (addr={:#x?})", reason, cond_addr);
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
+        Ok(self
+            .conditions
+            .entry(cond_addr)
+            .or_insert_with(Condvar::new)
+            .clone())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Releases a condition variable associated with the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `cond_addr`: Address of the condition variable.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty result is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn put_cond(&mut self, cond_addr: ConditionAddress) -> Result<(), Error> {
+        trace!("put_cond(): addr={:#x?}", cond_addr);
+        // Check if condition variable exists.
+        if !self.conditions.contains_key(&cond_addr) {
+            let reason: &'static str = "condition variable not found";
+            error!("put_condition(): {:?} (addr={:#x?})", reason, cond_addr);
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        }
+
+        let _: BTreeMap<_, _> = self
+            .conditions
+            .extract_if(|&addr, cond| cond_addr == addr && cond.reference_count() <= 1)
             .collect();
 
         Ok(())

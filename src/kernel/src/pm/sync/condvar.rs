@@ -9,7 +9,10 @@ use crate::pm::{
     process::SleepError,
     ProcessManager,
 };
-use ::alloc::collections::LinkedList;
+use ::alloc::{
+    collections::LinkedList,
+    sync::Arc,
+};
 use ::core::cell::RefCell;
 use ::sys::{
     error::Error,
@@ -26,11 +29,20 @@ use ::sys::{
 ///
 /// # Description
 ///
+/// Represents the inner state of a condition variable.
+///
+struct CondvarInner {
+    sleeping: RefCell<LinkedList<(ProcessIdentifier, ThreadIdentifier)>>,
+}
+
+///
+/// # Description
+///
 /// A type that represents a condition variable.
 ///
+#[derive(Clone)]
 pub struct Condvar {
-    /// Threads that are sleeping on the condition variable.
-    sleeping: RefCell<LinkedList<(ProcessIdentifier, ThreadIdentifier)>>,
+    inner: Arc<CondvarInner>,
 }
 
 //==================================================================================================
@@ -49,8 +61,29 @@ impl Condvar {
     ///
     pub fn new() -> Self {
         Self {
-            sleeping: RefCell::new(LinkedList::new()),
+            inner: Arc::new(CondvarInner {
+                sleeping: RefCell::new(LinkedList::new()),
+            }),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the reference count of the target condition variable.
+    ///
+    /// # Returns
+    ///
+    /// The reference count of the target condition variable.
+    ///
+    /// # Safety
+    ///
+    /// This method by itself is safe, but using it correctly requires extra care. Another thread
+    /// can change the strong count at any time, including potentially between calling this method
+    /// and acting on the result.
+    ///
+    pub fn reference_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
     }
 
     ///
@@ -71,7 +104,7 @@ impl Condvar {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn notify_first(&self) -> Result<(), Error> {
-        if let Some((pid, tid)) = self.sleeping.borrow_mut().pop_front() {
+        if let Some((pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(pid, tid)?;
         }
 
@@ -101,11 +134,16 @@ impl Condvar {
     ///
     pub unsafe fn notify_process(&self, pid: ProcessIdentifier) -> Result<(), Error> {
         // Find process.
-        let idx: Option<usize> = self.sleeping.borrow().iter().position(|&(p, _)| p == pid);
+        let idx: Option<usize> = self
+            .inner
+            .sleeping
+            .borrow()
+            .iter()
+            .position(|&(p, _)| p == pid);
 
         // Remove process from sleeping queue.
         if let Some(at) = idx {
-            let (pid, tid) = self.sleeping.borrow_mut().remove(at);
+            let (pid, tid) = self.inner.sleeping.borrow_mut().remove(at);
             ProcessManager::wakeup(pid, tid)?;
         }
 
@@ -130,7 +168,7 @@ impl Condvar {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn notify_all(&self) -> Result<(), Error> {
-        while let Some((pid, tid)) = self.sleeping.borrow_mut().pop_front() {
+        while let Some((pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(pid, tid)?;
         }
 
@@ -168,12 +206,12 @@ impl Condvar {
             .get_tid()
             .map_err(SleepError::Generic)?;
 
-        self.sleeping.borrow_mut().push_back((pid, tid));
+        self.inner.sleeping.borrow_mut().push_back((pid, tid));
 
         ProcessManager::sleep()
     }
 }
 
-unsafe impl Send for Condvar {}
+unsafe impl Send for CondvarInner {}
 
-unsafe impl Sync for Condvar {}
+unsafe impl Sync for CondvarInner {}

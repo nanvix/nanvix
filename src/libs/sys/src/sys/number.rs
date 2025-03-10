@@ -81,6 +81,10 @@ pub enum KcallNumber {
     MutexLock,
     /// Unlocks a mutex.
     MutexUnlock,
+    /// Signals a condition variable.
+    CondSignal,
+    /// Waits on a condition variable.
+    CondWait,
     // Invalid.
     Invalid,
 }
@@ -126,6 +130,8 @@ impl From<usize> for KcallNumber {
             31 => KcallNumber::JoinThread,
             32 => KcallNumber::MutexLock,
             33 => KcallNumber::MutexUnlock,
+            34 => KcallNumber::CondSignal,
+            35 => KcallNumber::CondWait,
             _ => KcallNumber::Invalid,
         }
     }

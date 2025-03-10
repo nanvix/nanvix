@@ -21,4 +21,7 @@ extern void test_pthread_mutex_dynamic_init(void);
 // Tests if calling exit() causes the program to exit even if there are other threads running.
 extern void test_pthread_nowait(void);
 
+// Tests if statically initialized condition variables can be used for synchronization.
+extern void test_pthread_cond_static_init(void);
+
 #endif

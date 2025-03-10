@@ -27,7 +27,11 @@ use ::nvx::sys::error::{
 // Modules
 //==================================================================================================
 
+/// Mutexes.
 pub mod mutex;
+
+/// Condition variables.
+pub mod cond;
 
 //==================================================================================================
 // pthread_attr_destroy()
@@ -491,10 +495,10 @@ pub unsafe extern "C" fn pthread_create(
     let thread: &mut pthread_t = &mut *thread;
 
     // Check if we should use default attributes.
-    if !attr.is_null() {
+    if attr.is_null() {
         // TODO: use default attributes.
     } else {
-        ::nvx::warn!("pthread_create(): not supported, ignoring");
+        ::nvx::warn!("pthread_create(): attributes are not supported, ignoring");
     }
 
     match syscall::pthread_create(start_routine, arg) {

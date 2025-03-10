@@ -5,9 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    mm::VirtualAddress,
-    sys::kcall::pm,
+use crate::sys::{
+    kcall::pm,
+    pm::MutexAddress,
 };
 use ::core::{
     fmt,
@@ -83,7 +83,7 @@ impl fmt::Write for Logger {
 
 impl Logger {
     pub fn get(tag: &str, level: LogLevel) -> Self {
-        pm::lock_mutex(VirtualAddress::from_raw_value(&MUTEX as *const usize as usize)).unwrap();
+        pm::lock_mutex(MutexAddress::from(&MUTEX as *const usize as usize)).unwrap();
         let mut ret: Self = Self;
         let _ = write!(&mut ret, "[{:?}][{}] ", level, tag);
         ret
@@ -92,6 +92,6 @@ impl Logger {
 
 impl Drop for Logger {
     fn drop(&mut self) {
-        pm::unlock_mutex(VirtualAddress::from_raw_value(&MUTEX as *const usize as usize)).unwrap();
+        pm::unlock_mutex(MutexAddress::from(&MUTEX as *const usize as usize)).unwrap();
     }
 }

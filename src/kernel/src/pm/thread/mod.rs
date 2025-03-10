@@ -17,7 +17,6 @@ use ::alloc::{
     boxed::Box,
     collections::btree_map::BTreeMap,
     fmt,
-    sync::Arc,
 };
 use ::core::{
     fmt::Debug,
@@ -25,8 +24,10 @@ use ::core::{
 };
 use ::sys::{
     error::ErrorCode,
-    mm::VirtualAddress,
-    pm::ThreadIdentifier,
+    pm::{
+        MutexAddress,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -39,11 +40,11 @@ pub struct Thread {
     /// User stack.
     user_stack: Option<UserStack>,
     /// Condition variable for join.
-    join_cond: Arc<Condvar>,
+    join_cond: Condvar,
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
     /// Lookup table of locked mutexes.
-    locked_mutexes: BTreeMap<VirtualAddress, MutexGuard>,
+    locked_mutexes: BTreeMap<MutexAddress, MutexGuard>,
 }
 
 impl Thread {
@@ -56,7 +57,7 @@ impl Thread {
             id,
             context: Box::pin(context),
             user_stack,
-            join_cond: Arc::new(Condvar::new()),
+            join_cond: Condvar::new(),
             locked_mutexes: BTreeMap::new(),
         }
     }
@@ -111,7 +112,7 @@ impl RunningThread {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn join_cond(&self) -> Arc<Condvar> {
+    pub fn join_cond(&self) -> Condvar {
         // NOTE: we must wake up all, otherwise some threads can be left waiting forever.
         self.0.join_cond.clone()
     }
@@ -134,11 +135,28 @@ impl RunningThread {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     /// - `guard`: Mutex guard.
     ///
-    pub fn put_mutex_guard(&mut self, addr: VirtualAddress, guard: MutexGuard) {
-        self.0.locked_mutexes.insert(addr, guard);
+    pub fn put_mutex_guard(&mut self, mutex_addr: MutexAddress, guard: MutexGuard) {
+        self.0.locked_mutexes.insert(mutex_addr, guard);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the mutex guard associated with the target thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `mutex_addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// If the mutex guard is found, it is returned. Otherwise, `None` is returned instead.
+    ///
+    pub fn take_mutex_guard(&mut self, mutex_addr: MutexAddress) -> Option<MutexGuard> {
+        self.0.locked_mutexes.remove(&mutex_addr)
     }
 }
 
@@ -173,7 +191,7 @@ impl ReadyThread {
         }
     }
 
-    pub fn join_cond(&self) -> Arc<Condvar> {
+    pub fn join_cond(&self) -> Condvar {
         self.0.join_cond.clone()
     }
 }
@@ -200,25 +218,8 @@ impl SleepingThread {
         self.0.id
     }
 
-    pub fn join_cond(&self) -> Arc<Condvar> {
+    pub fn join_cond(&self) -> Condvar {
         self.0.join_cond.clone()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the mutex guard associated with the target thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `addr`: Address of the mutex.
-    ///
-    /// # Returns
-    ///
-    /// If the mutex guard is found, it is returned. Otherwise, `None` is returned instead.
-    ///
-    pub fn take_mutex_guard(&mut self, addr: VirtualAddress) -> Option<MutexGuard> {
-        self.0.locked_mutexes.remove(&addr)
     }
 }
 
@@ -246,7 +247,7 @@ impl InterruptedThread {
         (RunningThread(self.thread), self.reason, ctx)
     }
 
-    pub fn join_cond(&self) -> Arc<Condvar> {
+    pub fn join_cond(&self) -> Condvar {
         self.thread.join_cond.clone()
     }
 }

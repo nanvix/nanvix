@@ -5,17 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    hal::mem::VirtualAddress,
-    pm::{
-        sync::mutex::{
-            Mutex,
-            MutexGuard,
-        },
-        ProcessManager,
-        SleepError,
+use crate::pm::{
+    sync::mutex::{
+        Mutex,
+        MutexGuard,
     },
+    ProcessManager,
+    SleepError,
 };
+use ::sys::pm::MutexAddress;
 
 //==================================================================================================
 // Standalone Functions
@@ -49,9 +47,9 @@ use crate::{
 ///
 pub unsafe fn lock_mutex(raw_addr: usize) -> Result<(), SleepError> {
     // Unpack kernel call arguments.
-    let addr: VirtualAddress = VirtualAddress::from_raw_value(raw_addr);
+    let mutex_addr: MutexAddress = MutexAddress::from(raw_addr);
 
-    let mutex: Mutex = ProcessManager::get_mutex(addr).map_err(SleepError::Generic)?;
+    let mutex: Mutex = ProcessManager::get_mutex(mutex_addr).map_err(SleepError::Generic)?;
     let guard: MutexGuard = mutex.lock()?;
-    ProcessManager::put_mutex_guard(addr, guard).map_err(SleepError::Generic)
+    ProcessManager::put_mutex_guard(mutex_addr, guard).map_err(SleepError::Generic)
 }

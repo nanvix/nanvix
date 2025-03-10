@@ -5,10 +5,14 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    hal::mem::VirtualAddress,
-    kcall::KcallArgs,
-    pm::ProcessManager,
+use crate::pm::ProcessManager;
+use ::sys::{
+    error::Error,
+    pm::{
+        MutexAddress,
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -22,23 +26,34 @@ use crate::{
 ///
 /// # Parameters
 ///
-/// - `pm`: Process manager.
-/// - `args`: Kernel call arguments.
+/// - `pid`: Process identifier.
+/// - `tid`: Thread identifier.
+/// - `arg0`: Address of the mutex to unlock.
 ///
 /// # Return
 ///
 /// Upon successful completion, zero is returned. Upon failure, a negative error code is returned
 /// instead.
 ///
-pub fn unlock_mutex(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+/// # Safety
+///
+/// This function is unsafe because it operates on global variables.
+///
+/// This function is safe to use if and only if the following conditions are met:
+///
+/// - The calling process does not hold a reference to the process manager.
+///
+pub unsafe fn unlock_mutex(
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    arg0: usize,
+) -> Result<(), Error> {
+    trace!("unlock_mutex(): pid={:?}, tid={:?}, arg0={:#X}", pid, tid, arg0);
     // Unpack kernel call arguments.
-    let addr: VirtualAddress = VirtualAddress::from_raw_value(args.arg0 as usize);
+    let mutex_addr: MutexAddress = MutexAddress::from(arg0);
 
-    match pm.take_mutex_guard(args.pid, args.tid, addr) {
-        Ok(_mutex_guard) => {
-            // The mutex guard is dropped, causing threads to be notified.
-            0
-        },
-        Err(e) => e.code.into_errno(),
-    }
+    ProcessManager::take_mutex_guard(pid, tid, mutex_addr).unwrap();
+    // The mutex guard is dropped, causing threads to be notified.
+
+    Ok(())
 }
