@@ -88,7 +88,9 @@ use ::sys::{
     ipc::Message,
     pm::{
         Capability,
+        ConditionAddress,
         GroupIdentifier,
+        MutexAddress,
         ProcessIdentifier,
         ThreadIdentifier,
         UserIdentifier,
@@ -938,7 +940,7 @@ impl ProcessManagerInner {
     /// associated with the given address, a new mutex is created and returned. On failure, an error
     /// is returned instead.
     ///
-    fn get_mutex(&mut self, mutex_addr: VirtualAddress) -> Result<Mutex, Error> {
+    fn get_mutex(&mut self, mutex_addr: MutexAddress) -> Result<Mutex, Error> {
         self.get_running_mut().state_mut().get_mutex(mutex_addr)
     }
 
@@ -957,7 +959,7 @@ impl ProcessManagerInner {
     /// no condition variable is associated with the given address, a new condition variable is
     /// created and returned. On failure, an error is returned instead.
     ///
-    fn get_cond(&mut self, cond_addr: VirtualAddress) -> Result<Condvar, Error> {
+    fn get_cond(&mut self, cond_addr: ConditionAddress) -> Result<Condvar, Error> {
         self.get_running_mut().state_mut().get_cond(cond_addr)
     }
 
@@ -974,7 +976,7 @@ impl ProcessManagerInner {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    fn put_cond(&mut self, cond_addr: VirtualAddress) -> Result<(), Error> {
+    fn put_cond(&mut self, cond_addr: ConditionAddress) -> Result<(), Error> {
         self.get_running_mut().state_mut().put_cond(cond_addr)
     }
 
@@ -985,13 +987,13 @@ impl ProcessManagerInner {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     /// - `guard`: Mutex guard to store.
     ///
-    fn put_mutex_guard(&mut self, addr: VirtualAddress, guard: MutexGuard) {
+    fn put_mutex_guard(&mut self, mutex_addr: MutexAddress, guard: MutexGuard) {
         self.get_running_mut()
             .running_mut()
-            .put_mutex_guard(addr, guard);
+            .put_mutex_guard(mutex_addr, guard);
     }
 
     ///
@@ -1014,7 +1016,7 @@ impl ProcessManagerInner {
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
-        mutex_addr: VirtualAddress,
+        mutex_addr: MutexAddress,
     ) -> Result<MutexGuard, Error> {
         let mutex_guard: MutexGuard = match self
             .get_running_mut()

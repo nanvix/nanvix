@@ -24,8 +24,10 @@ use ::core::{
 };
 use ::sys::{
     error::ErrorCode,
-    mm::VirtualAddress,
-    pm::ThreadIdentifier,
+    pm::{
+        MutexAddress,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -42,7 +44,7 @@ pub struct Thread {
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
     /// Lookup table of locked mutexes.
-    locked_mutexes: BTreeMap<VirtualAddress, MutexGuard>,
+    locked_mutexes: BTreeMap<MutexAddress, MutexGuard>,
 }
 
 impl Thread {
@@ -136,7 +138,7 @@ impl RunningThread {
     /// - `mutex_addr`: Address of the mutex.
     /// - `guard`: Mutex guard.
     ///
-    pub fn put_mutex_guard(&mut self, mutex_addr: VirtualAddress, guard: MutexGuard) {
+    pub fn put_mutex_guard(&mut self, mutex_addr: MutexAddress, guard: MutexGuard) {
         self.0.locked_mutexes.insert(mutex_addr, guard);
     }
 
@@ -153,7 +155,7 @@ impl RunningThread {
     ///
     /// If the mutex guard is found, it is returned. Otherwise, `None` is returned instead.
     ///
-    pub fn take_mutex_guard(&mut self, mutex_addr: VirtualAddress) -> Option<MutexGuard> {
+    pub fn take_mutex_guard(&mut self, mutex_addr: MutexAddress) -> Option<MutexGuard> {
         self.0.locked_mutexes.remove(&mutex_addr)
     }
 }

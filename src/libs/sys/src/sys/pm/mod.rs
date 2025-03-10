@@ -8,6 +8,7 @@
 mod capability;
 mod gid;
 mod pid;
+mod sync;
 mod tid;
 mod uid;
 
@@ -18,5 +19,9 @@ mod uid;
 pub use capability::Capability;
 pub use gid::GroupIdentifier;
 pub use pid::ProcessIdentifier;
+pub use sync::{
+    ConditionAddress,
+    MutexAddress,
+};
 pub use tid::ThreadIdentifier;
 pub use uid::UserIdentifier;

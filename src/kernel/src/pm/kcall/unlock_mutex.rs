@@ -5,13 +5,11 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    hal::mem::VirtualAddress,
-    pm::ProcessManager,
-};
-use sys::{
+use crate::pm::ProcessManager;
+use ::sys::{
     error::Error,
     pm::{
+        MutexAddress,
         ProcessIdentifier,
         ThreadIdentifier,
     },
@@ -52,9 +50,9 @@ pub unsafe fn unlock_mutex(
 ) -> Result<(), Error> {
     trace!("unlock_mutex(): pid={:?}, tid={:?}, arg0={:#X}", pid, tid, arg0);
     // Unpack kernel call arguments.
-    let addr: VirtualAddress = VirtualAddress::from_raw_value(arg0);
+    let mutex_addr: MutexAddress = MutexAddress::from(arg0);
 
-    ProcessManager::take_mutex_guard(pid, tid, addr).unwrap();
+    ProcessManager::take_mutex_guard(pid, tid, mutex_addr).unwrap();
     // The mutex guard is dropped, causing threads to be notified.
 
     Ok(())

@@ -68,7 +68,9 @@ use ::sys::{
     ipc::Message,
     pm::{
         Capability,
+        ConditionAddress,
         GroupIdentifier,
+        MutexAddress,
         ProcessIdentifier,
         UserIdentifier,
     },
@@ -157,9 +159,9 @@ pub struct ProcessState {
     /// User stack allocator.
     user_stack_allocator: Option<UserStackAllocator>,
     /// Mutexes.
-    mutexes: BTreeMap<VirtualAddress, Mutex>,
+    mutexes: BTreeMap<MutexAddress, Mutex>,
     /// Condition variables.
-    conditions: BTreeMap<VirtualAddress, Condvar>,
+    conditions: BTreeMap<ConditionAddress, Condvar>,
 }
 
 impl ProcessState {
@@ -336,7 +338,7 @@ impl ProcessState {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the mutex.
+    /// - `mutex_addr`: Address of the mutex.
     ///
     /// # Returns
     ///
@@ -344,15 +346,19 @@ impl ProcessState {
     /// associated with the given address, a new mutex is created and returned.  On failure, an
     /// error is returned instead.
     ///
-    pub fn get_mutex(&mut self, addr: VirtualAddress) -> Result<Mutex, Error> {
+    pub fn get_mutex(&mut self, mutex_addr: MutexAddress) -> Result<Mutex, Error> {
         // Check if maximum number of mutexes has been reached.
         if self.mutexes.len() >= MUTEX_OPEN_MAX {
             let reason: &'static str = "maximum number of mutexes reached";
-            error!("get_mutex(): {:?} (addr={:#x?})", reason, addr);
+            error!("get_mutex(): {:?} (addr={:#x?})", reason, mutex_addr);
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
-        Ok(self.mutexes.entry(addr).or_insert_with(Mutex::new).clone())
+        Ok(self
+            .mutexes
+            .entry(mutex_addr)
+            .or_insert_with(Mutex::new)
+            .clone())
     }
 
     ///
@@ -368,7 +374,7 @@ impl ProcessState {
     ///
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
     ///
-    pub fn put_mutex(&mut self, mutex_addr: VirtualAddress) -> Result<(), Error> {
+    pub fn put_mutex(&mut self, mutex_addr: MutexAddress) -> Result<(), Error> {
         // Check if mutex exists.
         if !self.mutexes.contains_key(&mutex_addr) {
             let reason: &'static str = "mutex not found";
@@ -399,7 +405,7 @@ impl ProcessState {
     /// no condition variable is associated with the given address, a new condition variable is
     /// created and returned. On failure, an error is returned instead.
     ///
-    pub fn get_cond(&mut self, cond_addr: VirtualAddress) -> Result<Condvar, Error> {
+    pub fn get_cond(&mut self, cond_addr: ConditionAddress) -> Result<Condvar, Error> {
         // Check if maximum number of condition variables has been reached.
         if self.conditions.len() >= COND_OPEN_MAX {
             let reason: &'static str = "maximum number of condition variables reached";
@@ -427,7 +433,7 @@ impl ProcessState {
     ///
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
     ///
-    pub fn put_cond(&mut self, cond_addr: VirtualAddress) -> Result<(), Error> {
+    pub fn put_cond(&mut self, cond_addr: ConditionAddress) -> Result<(), Error> {
         trace!("put_cond(): addr={:#x?}", cond_addr);
         // Check if condition variable exists.
         if !self.conditions.contains_key(&cond_addr) {
