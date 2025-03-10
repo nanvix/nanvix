@@ -19,47 +19,12 @@ use crate::{
         c_ulonglong,
         c_void,
     },
+    pthread::pthread_mutex_type,
     sched::{
         self,
         sched_param,
     },
 };
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-/// Type of mutex in [`crate::sys::types::pthread_mutexattr_t`].
-pub mod pthread_mutex_type {
-    use super::*;
-
-    /// A type of mutex that does not detect deadlock.  A thread attempting to re-lock this mutex
-    /// without first unlocking it shall deadlock. Attempting to unlock a mutex locked by a
-    /// different thread results in undefined behavior. Attempting to unlock an unlocked mutex
-    /// results in undefined behavior.
-    pub const PTHREAD_MUTEX_NORMAL: c_int = 0;
-
-    /// A type of mutex that allows recursive locking. A thread attempting to re-lock this mutex
-    /// without first unlocking it shall succeed in locking the mutex. The re-locking deadlock which
-    /// can occur with mutexes of type [`PTHREAD_MUTEX_NORMAL`] cannot occur with this type of mutex.
-    /// Multiple locks of this mutex shall require the same number of unlocks to release the mutex
-    /// before another thread can acquire the mutex. A thread attempting to unlock a mutex which
-    /// another thread has locked shall return with an error. A thread attempting to unlock an
-    /// unlocked mutex shall return with an error.
-    pub const PTHREAD_MUTEX_RECURSIVE: c_int = 1;
-
-    /// A type of mutex that provides error checking. A thread attempting to re-lock this mutex
-    /// without first unlocking it shall return with an error. A thread attempting to unlock a mutex
-    /// which another thread has locked shall return with an error. A thread attempting to unlock an
-    /// unlocked mutex shall return with an error.
-    pub const PTHREAD_MUTEX_ERRORCHECK: c_int = 2;
-
-    /// A type of mutex that provides no guarantees. Attempting to unlock a mutex of this type which
-    /// was not locked by the calling thread results in undefined behavior. Attempting to unlock a
-    /// mutex of this type which is not locked results in undefined behavior. An implementation may
-    /// map this mutex to one of the other mutex types.
-    pub const PTHREAD_MUTEX_DEFAULT: c_int = 3;
-}
 
 //==================================================================================================
 // Types
