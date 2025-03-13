@@ -133,6 +133,17 @@ pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) 
     }
 }
 
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub extern "C" fn chroot(_path: *const c_char) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/517
+    ::nvx::error!("chroot(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
 #[no_mangle]
 pub extern "C" fn close(fd: c_int) -> c_int {
     ::nvx::trace!("close(): fd = {}", fd);
@@ -167,6 +178,26 @@ pub extern "C" fn execve(
 pub extern "C" fn _exit(status: c_int) -> ! {
     let Err(e) = nvx::sys::kcall::pm::exit(status);
     panic!("failed to terminate process (error={:?})", e);
+}
+
+#[no_mangle]
+pub extern "C" fn fchdir(_fd: c_int) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/519
+    ::nvx::error!("fchdir(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
+#[no_mangle]
+pub extern "C" fn fdatasync(_fd: c_int) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/278
+    ::nvx::error!("fdatasync(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
 }
 
 #[no_mangle]
@@ -464,6 +495,28 @@ pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
 pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> ssize_t {
     ::nvx::trace!("read(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
     crate::unistd::read(fd, buffer as *mut u8, count)
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/348
+    ::nvx::error!("rmdir(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub extern "C" fn setgroups(_size: size_t, _list: *const gid_t) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/523
+    ::nvx::error!("setgroups(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
 }
 
 ///
