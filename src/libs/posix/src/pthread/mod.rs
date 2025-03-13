@@ -36,6 +36,10 @@ cfg_if::cfg_if! {
         pub use syscall::pthread_cond_init;
         pub use syscall::pthread_cond_signal;
         pub use syscall::pthread_cond_wait;
+        pub use syscall::pthread_key_create;
+        pub use syscall::pthread_key_delete;
+        pub use syscall::pthread_setspecific;
+        pub use syscall::pthread_getspecific;
     }
 }
 
