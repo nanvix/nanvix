@@ -15,6 +15,7 @@ use crate::{
         pthread_cond_t,
         pthread_condattr_t,
     },
+    time::timespec,
 };
 use ::nvx::sys::error::ErrorCode;
 
@@ -194,6 +195,22 @@ pub unsafe extern "C" fn pthread_cond_signal(cond: *const pthread_cond_t) -> c_i
         Ok(()) => 0,
         Err(error) => error.code.into_errno(),
     }
+}
+
+//==================================================================================================
+// pthread_cond_timedwait()
+//==================================================================================================
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_cond_timedwait(
+    _cond: *const pthread_cond_t,
+    _mutex: *mut pthread_mutex_t,
+    _abstime: *const timespec,
+) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/494
+    ::nvx::error!("pthread_cond_timedwait(): not implemented");
+    ErrorCode::InvalidSysCall.into_errno()
 }
 
 //==================================================================================================

@@ -153,6 +153,18 @@ pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_in
 }
 
 //==================================================================================================
+// pthread_mutex_trylock()
+//==================================================================================================
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_mutex_trylock(_mutex: *mut pthread_mutex_t) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/508
+    ::nvx::error!("pthread_mutex_trylock(): not implemented");
+    ErrorCode::InvalidSysCall.into_errno()
+}
+
+//==================================================================================================
 // pthread_mutex_unlock()
 //==================================================================================================
 
