@@ -19,7 +19,7 @@ use crate::error::{
 ///
 /// A type that represents a thread identifier.
 ///
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ThreadIdentifier(usize);
 
 //==================================================================================================
