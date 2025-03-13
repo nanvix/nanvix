@@ -19,6 +19,9 @@ extern crate alloc;
 // Address and routing parameter area.
 pub mod arpa;
 
+/// Format of directory entries
+pub mod dirrent;
+
 /// Dynamic linking.
 pub mod dlfcn;
 
@@ -51,6 +54,9 @@ pub mod pthread;
 
 /// Standard symbolic constants and types.
 pub mod unistd;
+
+/// File last access and modification times.
+pub mod utime;
 
 /// Execution scheduling.
 pub mod sched;

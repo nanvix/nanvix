@@ -5,11 +5,23 @@
 // Modules
 //==================================================================================================
 
+/// I/O operations.
+pub mod ioctl;
+
+/// Definitions for resource operations.
+pub mod resource;
+
+/// Synchronous I/O multiplexing.
+pub mod select;
+
 /// Sockets.
 pub mod socket;
 
 /// File status.
 pub mod stat;
+
+/// Time types.
+pub mod time;
 
 /// File access and modification times structure.
 pub mod times;
