@@ -10,10 +10,22 @@ use crate::{
     sys::types::clockid_t,
     time::timespec,
 };
+use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn clock_getres(_clock_id: clockid_t, _res: *mut timespec) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/274
+    ::nvx::error!("clock_getres(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.into_errno();
+    }
+    -1
+}
 
 ///
 /// # Description
