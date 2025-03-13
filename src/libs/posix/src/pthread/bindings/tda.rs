@@ -5,9 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::ffi::{
-    c_int,
-    c_void,
+use crate::{
+    ffi::{
+        c_int,
+        c_void,
+    },
+    pthread::syscall,
+    sys::types::pthread_key_t,
 };
 use ::nvx::sys::error::ErrorCode;
 
@@ -18,12 +22,34 @@ use ::nvx::sys::error::ErrorCode;
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn pthread_key_create(
-    _key: *mut c_int,
-    _destructor: Option<extern "C" fn(*mut c_void)>,
+    key_ptr: *mut pthread_key_t,
+    destructor: Option<extern "C" fn(*mut c_void)>,
 ) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/505
-    ::nvx::error!("pthread_key_create(): not implemented");
-    ErrorCode::OperationNotSupported.into_errno()
+    ::nvx::trace!("pthread_key_create(key_ptr={:p}, destructor={:?})", key_ptr, destructor);
+
+    // Check if storage location for the key is valid.
+    if key_ptr.is_null() {
+        ::nvx::error!("pthread_key_create(): invalid storage location for thread key");
+        return ErrorCode::InvalidArgument.into_errno();
+    }
+
+    // Check if destructor is not null.
+    if destructor.is_some() {
+        ::nvx::error!("pthread_key_create(): destructors are not supported");
+        return ErrorCode::OperationNotSupported.into_errno();
+    }
+
+    // Create key.
+    match syscall::pthread_key_create() {
+        Some(key) => {
+            *key_ptr = key;
+            0
+        },
+        None => {
+            ::nvx::error!("pthread_key_create(): failed to create key");
+            ErrorCode::OutOfMemory.into_errno()
+        },
+    }
 }
 
 //==================================================================================================
@@ -32,10 +58,13 @@ pub unsafe extern "C" fn pthread_key_create(
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn pthread_key_delete(_key: c_int) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/506
-    ::nvx::error!("pthread_key_delete(): not implemented");
-    ErrorCode::OperationNotSupported.into_errno()
+pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
+    ::nvx::trace!("pthread_key_delete(): key={}", key);
+
+    match syscall::pthread_key_delete(key) {
+        Ok(()) => 0,
+        Err(error) => error.code.into_errno(),
+    }
 }
 
 //==================================================================================================
@@ -44,10 +73,13 @@ pub unsafe extern "C" fn pthread_key_delete(_key: c_int) -> c_int {
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn pthread_getspecific(_key: c_int) -> *mut c_void {
-    // TODO: https://github.com/nanvix/nanvix/issues/504
-    ::nvx::error!("pthread_getspecific(): not implemented");
-    ::core::ptr::null_mut()
+pub unsafe extern "C" fn pthread_getspecific(key: pthread_key_t) -> *mut c_void {
+    ::nvx::trace!("pthread_getspecific(): key={}", key);
+
+    match syscall::pthread_getspecific(key) {
+        Ok(value) => value.into(),
+        Err(_error) => core::ptr::null_mut(),
+    }
 }
 
 //==================================================================================================
@@ -56,8 +88,11 @@ pub unsafe extern "C" fn pthread_getspecific(_key: c_int) -> *mut c_void {
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn pthread_setspecific(_key: c_int, _value: *const c_void) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/521
-    ::nvx::error!("pthread_setspecific(): not implemented");
-    ErrorCode::OperationNotSupported.into_errno()
+pub unsafe extern "C" fn pthread_setspecific(key: pthread_key_t, value: *const c_void) -> c_int {
+    ::nvx::trace!("pthread_setspecific(): key={}, value={:p}", key, value);
+
+    match syscall::pthread_setspecific(key, value.into()) {
+        Ok(()) => 0,
+        Err(error) => error.code.into_errno(),
+    }
 }
