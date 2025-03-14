@@ -24,4 +24,7 @@ extern void test_pthread_nowait(void);
 // Tests if statically initialized condition variables can be used for synchronization.
 extern void test_pthread_cond_static_init(void);
 
+// Tests if thread interface for operating on thread-specific data works.
+extern void test_pthread_tda(void);
+
 #endif

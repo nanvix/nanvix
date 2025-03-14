@@ -70,6 +70,9 @@ pub type pthread_t = u32;
 /// Used for condition variables.
 pub type pthread_cond_t = u32;
 
+/// Used for thread-specific data keys.
+pub type pthread_key_t = u32;
+
 /// Used for mutexes.
 pub type pthread_mutex_t = u32;
 
