@@ -238,7 +238,8 @@ impl<'a> LinuxDaemon<'a> {
                                 // single message, but their response data is too large to fit in a
                                 // single message. Thus, their response is split into multiple
                                 // messages.
-                                LinuxDaemonMessageHeader::FileStatRequest => {
+                                LinuxDaemonMessageHeader::FileStatRequest
+                                | LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
                                     self.handle_long_response_messages(source, message);
                                     continue;
                                 },
@@ -514,6 +515,9 @@ impl<'a> LinuxDaemon<'a> {
             LinuxDaemonMessageHeader::FileStatRequest => {
                 self.handle_fstat_request(source, message);
             },
+            LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
+                self.handle_getcwd_request(source);
+            },
             header => {
                 // The following statement is unreachable, because the matching logic in this
                 // function should match the one in the `Self::run()` function.
@@ -754,6 +758,15 @@ impl<'a> LinuxDaemon<'a> {
         let request: FileStatRequest = FileStatRequest::from_bytes(message.payload);
 
         let messages: Vec<Message> = fcntl::do_fstat(source, request);
+        for message in messages {
+            if let Err(e) = self.send(message) {
+                error!("failed to send message (error={:?})", e);
+            }
+        }
+    }
+
+    fn handle_getcwd_request(&mut self, source: ProcessIdentifier) {
+        let messages: Vec<Message> = unistd::do_getcwd(source);
         for message in messages {
             if let Err(e) = self.send(message) {
                 error!("failed to send message (error={:?})", e);
