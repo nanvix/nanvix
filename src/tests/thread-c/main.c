@@ -66,6 +66,9 @@ int main(int argc, const char *argv[])
     // Sanity check size of `pthread_t` type.
     STATIC_ASSERT_SIZE(pthread_t, sizeof(uint32_t));
 
+    // Sanity check size of `pthread_key_t` type.
+    STATIC_ASSERT_SIZE(pthread_key_t, sizeof(uint32_t));
+
     // Sanity check size of `pthread_attr_t` type.
     STATIC_ASSERT_SIZE(pthread_attr_t,
                        sizeof(int) +                    // is_initialized
@@ -103,6 +106,7 @@ int main(int argc, const char *argv[])
     test_pthread_mutex_static_init();
     test_pthread_mutex_dynamic_init();
     test_pthread_cond_static_init();
+    test_pthread_tda();
 
     // Must be last test.
     test_pthread_nowait();
