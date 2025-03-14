@@ -34,3 +34,6 @@ pub mod uio;
 
 /// Definitions for UNIX domain sockets.
 pub mod un;
+
+/// System name structure.
+pub mod utsname;

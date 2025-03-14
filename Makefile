@@ -74,11 +74,19 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 # Nanvix Variables
 #===================================================================================================
 
-
 # Socket address for the WASM Daemon
 ifneq ($(WASMD_SOCKADDR),)
 export NANVIX_WASMD_SOCKADDR := $(WASMD_SOCKADDR)
 endif
+
+# Name of the system.
+export NANVIX_SYSNAME := nanvix
+
+# Name of the node within the communications network.
+export NANVIX_NODENAME ?= localhost
+
+# Name of the machine on which the system is running.
+export NANVIX_MACHINE := $(MACHINE)
 
 #===================================================================================================
 # C Toolchain Configuration
@@ -304,6 +312,7 @@ run-nanvixd-tests: | \
 	test-hello-wasm \
 	test-linux-app \
 	test-thread-c \
+	test-misc-c \
 	test-network-c
 
 #===================================================================================================
@@ -613,6 +622,7 @@ $(eval $(call TEST_RULE,hello-cpp,'[]','Hello$(comma) world from C++!'))
 $(eval $(call TEST_RULE,linux-app,'[]','ok'))
 $(eval $(call TEST_RULE,thread-c,'[]','ok'))
 $(eval $(call TEST_RULE,network-c,'[]','ok'))
+$(eval $(call TEST_RULE,misc-c,'[]','ok'))
 
 define WASM_TEST_RULE
 test-$(1): all
