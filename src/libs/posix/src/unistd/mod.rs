@@ -59,6 +59,7 @@ cfg_if::cfg_if! {
             unlink,
             write,
             pipe,
+            getcwd,
         };
     }
 }

@@ -8,6 +8,8 @@
 // Modules
 //==================================================================================================
 
+extern crate alloc;
+
 mod clock;
 mod file_system;
 mod identity;
