@@ -20,7 +20,7 @@ extern crate alloc;
 pub mod arpa;
 
 /// Format of directory entries
-pub mod dirrent;
+pub mod dirent;
 
 /// Dynamic linking.
 pub mod dlfcn;
