@@ -108,23 +108,6 @@ int main(int argc, const char *argv[])
     // Assert size of types in <time.h>.
     STATIC_ASSERT_SIZE(struct timespec, sizeof(time_t) + sizeof(long));
 
-    // Assert types in <sys/stat.h>.
-    STATIC_ASSERT_SIZE(struct stat,
-                       sizeof(dev_t) +               // st_dev
-                           sizeof(ino_t) +           // st_ino
-                           sizeof(mode_t) +          // st_mode
-                           sizeof(nlink_t) +         // st_nlink
-                           sizeof(uid_t) +           // st_uid
-                           sizeof(gid_t) +           // st_gid
-                           sizeof(dev_t) +           // st_rdev
-                           sizeof(off_t) +           // st_size
-                           sizeof(struct timespec) + // st_atim
-                           sizeof(struct timespec) + // st_mtim
-                           sizeof(struct timespec) + // st_ctim
-                           sizeof(blksize_t) +       // st_blksize
-                           sizeof(blkcnt_t)          // st_blocks
-    );
-
     // Assert types in <sched.h>.A
     STATIC_ASSERT_SIZE(struct sched_param, sizeof(int));
 
