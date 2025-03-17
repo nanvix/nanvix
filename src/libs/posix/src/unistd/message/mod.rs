@@ -11,6 +11,7 @@ mod fchown;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
+mod getcwd;
 mod linkat;
 mod lseek;
 mod pipe;
@@ -47,6 +48,10 @@ pub use self::{
     ftruncate::{
         FileTruncateRequest,
         FileTruncateResponse,
+    },
+    getcwd::{
+        GetCurrentWorkingDirectoryRequest,
+        GetCurrentWorkingDirectoryResponse,
     },
     linkat::{
         LinkAtRequest,

@@ -24,11 +24,15 @@ use crate::{
         uid_t,
     },
     unistd::{
+        syscall,
         STDERR_FILENO,
         STDOUT_FILENO,
     },
 };
-use ::core::ffi;
+use ::core::{
+    ffi,
+    slice,
+};
 use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
@@ -275,13 +279,49 @@ pub extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn getcwd(_buf: *mut c_char, _size: size_t) -> *mut c_char {
-    // TODO: https://github.com/nanvix/nanvix/issues/359
-    ::nvx::error!("getcwd(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
+    ::nvx::trace!("getcwd(): buf = {:?}, size = {}", buf, size);
+
+    // Check if the buffer is valid.
+    if buf.is_null() {
+        unsafe {
+            errno = ErrorCode::InvalidArgument.into_errno();
+        }
+        return core::ptr::null_mut();
     }
-    core::ptr::null_mut()
+
+    // Get current working directory and check for errors.
+    match syscall::getcwd() {
+        // Success.
+        Ok(cwd) => {
+            // Check if the buffer is large enough.
+            if cwd.len() + 1 > size as usize {
+                ::nvx::error!("getcwd(): buffer is too small");
+                unsafe {
+                    errno = ErrorCode::ValueOutOfRange.into_errno();
+                }
+                return core::ptr::null_mut();
+            }
+
+            // Copy current working directory to the buffer.
+            let cwd: &[u8] = cwd.as_bytes();
+            let buf: &mut [u8] = slice::from_raw_parts_mut(buf as *mut u8, size as usize);
+            buf[..cwd.len()].copy_from_slice(cwd);
+
+            // Add null terminator.
+            buf[cwd.len()] = 0;
+
+            // Return the buffer.
+            buf.as_mut_ptr() as *mut c_char
+        },
+        // Failure.
+        Err(e) => {
+            unsafe {
+                errno = e.code.into_errno();
+            }
+            core::ptr::null_mut()
+        },
+    }
 }
 
 ///
