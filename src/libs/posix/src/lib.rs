@@ -179,6 +179,9 @@ pub enum LinuxDaemonMessageHeader {
     GetCurrentWorkingDirectoryRequest,
     GetCurrentWorkingDirectoryResponse,
     GetCurrentWorkingDirectoryResponsePart,
+    GetDirectoryEntriesRequest,
+    GetDirectoryEntriesResponse,
+    GetDirectoryEntriesResponsePart,
 }
 
 #[repr(C, packed)]
