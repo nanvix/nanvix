@@ -6,6 +6,9 @@
 //==================================================================================================
 
 use ::posix::{
+    dirent::{
+        self,
+    },
     fcntl,
     sys::{
         self,
@@ -710,4 +713,36 @@ fn test_pipe() {
             panic!("failed to get current working directory: {:?}", e);
         },
     };
+
+    // Open directory.
+    let dir_fd: i32 = match fcntl::openat(fcntl::AT_FDCWD, ".", fcntl::O_DIRECTORY, 0) {
+        fd if fd >= 0 => {
+            ::nvx::info!("opened directory with fd {}", fd);
+            fd
+        },
+        errno => {
+            panic!("failed to open directory: {:?}", errno);
+        },
+    };
+
+    match dirent::posix_getdents(dir_fd, 1) {
+        Ok(buffer) => {
+            for d in buffer.iter() {
+                ::nvx::info!("directory entry: {:?}", d);
+            }
+        },
+        Err(error) => {
+            panic!("failed to get directory entries: {:?}", error);
+        },
+    }
+
+    // Close directory.
+    match unistd::close(dir_fd) {
+        0 => {
+            ::nvx::info!("closed directory");
+        },
+        errno => {
+            panic!("failed to close directory: {:?}", errno);
+        },
+    }
 }

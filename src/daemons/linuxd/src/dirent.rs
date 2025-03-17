@@ -1,0 +1,200 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::alloc::vec::Vec;
+use ::core::{
+    cmp,
+    mem,
+    str,
+};
+use ::nvx::{
+    ipc::Message,
+    pm::ProcessIdentifier,
+    sys::error::ErrorCode,
+};
+use ::posix::{
+    dirent::{
+        message::{
+            GetDirectoryEntriesRequest,
+            GetDirectoryEntriesResponse,
+        },
+        posix_dent,
+        DT_BLK,
+        DT_CHR,
+        DT_DIR,
+        DT_LNK,
+        DT_REG,
+        DT_SOCK,
+        DT_UNKNOWN,
+    },
+    limits::{
+        NAME_MAX,
+        POSIX_NAME_MAX,
+    },
+    message::MessagePartitioner,
+    sys::types::reclen_t,
+};
+
+//==================================================================================================
+// linux_dirent
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A type representing a directory entry in Linux.
+///
+/// # Note
+///
+/// This type is not exposed to libc, so we need to provide them ourselves.
+/// See https://www.man7.org/linux/man-pages/man2/getdents.2.html.
+///
+#[allow(non_camel_case_types)]
+#[repr(C, packed)]
+pub struct linux_dirent {
+    /// File serial number.
+    pub d_ino: libc::c_ulong,
+    /// Filesystem-specific value with no specific meaning to user space.
+    pub d_off: libc::off_t,
+    /// Length of this entry.
+    pub d_reclen: libc::c_ushort,
+    // File name (including null terminator character).
+    // Length is actually (d_reclen - 2 - offsetof(struct linux_dirent, d_name))
+    pub d_name: [libc::c_char; 0],
+    // Zero padding byte.
+    // pub padding: libc::c_char,
+    // File type (only since Linux 2.6.4); offset is (d_reclen - 1)
+    // pub d_type: libc::c_uchar,
+}
+
+impl linux_dirent {
+    /// Minimum size of a `linux_dirent` structure in Linux x86_64.
+    /// NOTE: This value was empirically determined in Linux 5.15.
+    const LINUX_X86_64_DIRENT_MIN_SIZE: usize = 32;
+
+    /// Minimum size of a `linux_dirent` structure.
+    const MIN_SIZE: usize = {
+        let size: usize = mem::size_of::<libc::c_ulong>() +  // d_ino
+                   mem::size_of::<libc::off_t>() +  // d_off
+                   mem::size_of::<libc::c_ushort>() +  // d_reclen
+                   POSIX_NAME_MAX; // d_name
+        if size > Self::LINUX_X86_64_DIRENT_MIN_SIZE {
+            size
+        } else {
+            Self::LINUX_X86_64_DIRENT_MIN_SIZE
+        }
+    };
+
+    /// Size of `d_ino` field, used for static assertions.
+    const _SIZE_OF_D_INO: usize = mem::size_of::<libc::c_ulong>();
+    /// Size of `d_off` field, used for static assertions.
+    const _SIZE_OF_D_OFF: usize = mem::size_of::<libc::off_t>();
+    /// Size of `d_reclen` field, used for static assertions.
+    const _SIZE_OF_D_RECLEN: usize = mem::size_of::<libc::c_ushort>();
+
+    /// Offset of `d_ino` field, used for static assertions.
+    const _OFFSET_OF_D_INO: usize = 0;
+    /// Offset of `d_off` field, used for static assertions.
+    const _OFFSET_OF_D_OFF: usize = Self::_OFFSET_OF_D_INO + Self::_SIZE_OF_D_INO;
+    /// Offset of `d_reclen` field, used for static assertions.
+    const _OFFSET_OF_D_RECLEN: usize = Self::_OFFSET_OF_D_OFF + Self::_SIZE_OF_D_OFF;
+    /// Offset of `d_name` field, used for static assertions.
+    const _OFFSET_OF_D_NAME: usize = Self::_OFFSET_OF_D_RECLEN + Self::_SIZE_OF_D_RECLEN;
+}
+
+//==================================================================================================
+// do_getdents
+//==================================================================================================
+
+/// Handles a getdents() system call request.
+pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) -> Vec<Message> {
+    // Check if `request.count` is not valid.
+    if request.count == 0 {
+        error!("do_getdents(): invalid buffer count");
+        return vec![crate::build_error(pid, ErrorCode::InvalidArgument)];
+    } else if request.count as usize > GetDirectoryEntriesRequest::MAX_ENTRIES {
+        error!("do_getdents(): request is too large");
+        return vec![crate::build_error(pid, ErrorCode::TooBig)];
+    }
+
+    let bufsize: usize =
+        cmp::max((request.count as usize) * mem::size_of::<posix_dent>(), linux_dirent::MIN_SIZE);
+    let mut rawbuf: Vec<u8> = vec![0; { bufsize } as usize];
+    let mut buf: Vec<posix_dent> = Vec::new();
+
+    // Get directory entries and check for errors.
+    debug!("libc::getdents(): fd={}, buf={:#x?}, bufsize={}", { request.fd }, rawbuf.as_ptr(), {
+        bufsize
+    });
+    match unsafe { libc::syscall(libc::SYS_getdents, request.fd, rawbuf.as_mut_ptr(), bufsize) } {
+        // Failed.
+        -1 => {
+            let errno = unsafe { *libc::__errno_location() };
+            error!("libc::getdents(): errno={}", { errno });
+            let error: ErrorCode = ErrorCode::try_from(-errno)
+                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            return vec![crate::build_error(pid, error)];
+        },
+        // Success.
+        n => {
+            debug!("libc::getdents(): returned count={}", n);
+
+            let mut bpos: usize = 0;
+            while bpos < n as usize {
+                let dent: &linux_dirent =
+                    unsafe { &*(rawbuf.as_ptr().add(bpos) as *const linux_dirent) };
+                let d_reclen: usize = dent.d_reclen as usize;
+                let d_type: libc::c_uchar =
+                    unsafe { *rawbuf.get_unchecked(bpos + d_reclen - 1) as libc::c_uchar };
+                let d_name_ptr: *const u8 =
+                    unsafe { rawbuf.as_ptr().add(bpos + linux_dirent::_OFFSET_OF_D_NAME) };
+                let d_name_len: usize = d_reclen - 2 - linux_dirent::_OFFSET_OF_D_NAME;
+                let d_name: &str = unsafe { str::from_raw_parts(d_name_ptr, d_name_len) };
+                debug!(
+                    "libc::getdents(): d_ino={:#x}, d_off={:#x}, d_reclen={}, d_type={}, d_name={}",
+                    { dent.d_ino },
+                    { dent.d_off },
+                    d_reclen,
+                    d_type,
+                    &d_name,
+                );
+
+                let mut nanvix_dent: posix_dent = posix_dent {
+                    d_ino: dent.d_ino,
+                    d_reclen: mem::size_of::<posix_dent>() as reclen_t,
+                    d_type: match d_type {
+                        libc::DT_FIFO => DT_CHR,
+                        libc::DT_CHR => DT_CHR,
+                        libc::DT_DIR => DT_DIR,
+                        libc::DT_BLK => DT_BLK,
+                        libc::DT_REG => DT_REG,
+                        libc::DT_LNK => DT_LNK,
+                        libc::DT_SOCK => DT_SOCK,
+                        _ => DT_UNKNOWN,
+                    },
+                    ..Default::default()
+                };
+                let d_name_len: usize = d_name.len().min(NAME_MAX + 1);
+                let d_name: &[i8] = unsafe { mem::transmute::<&[u8], &[i8]>(d_name.as_bytes()) };
+                nanvix_dent.d_name[..d_name_len].copy_from_slice(&d_name[..d_name_len]);
+                buf.push(nanvix_dent);
+
+                bpos += d_reclen;
+            }
+        },
+    }
+
+    // Build response and check for errors.
+    let response: GetDirectoryEntriesResponse = GetDirectoryEntriesResponse::new(buf);
+    match response.into_parts(pid) {
+        Ok(messages) => messages,
+        Err(error) => {
+            warn!("do_getdents(): failed to build response (error={:?})", error);
+            vec![crate::build_error(pid, error.code)]
+        },
+    }
+}
