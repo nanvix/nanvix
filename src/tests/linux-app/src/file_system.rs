@@ -700,4 +700,14 @@ fn test_pipe() {
             panic!("failed to close write end of pipe: {:?}", errno);
         },
     }
+
+    // Get current working directory.
+    match unistd::getcwd() {
+        Ok(cwd) => {
+            ::nvx::info!("got current working directory: {}", cwd);
+        },
+        Err(e) => {
+            panic!("failed to get current working directory: {:?}", e);
+        },
+    };
 }

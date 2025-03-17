@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use ::alloc::ffi::CString;
-use ::core::ffi;
+use ::core::{
+    ffi,
+    ffi::CStr,
+};
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -16,6 +19,8 @@ use ::nvx::{
     },
 };
 use ::posix::{
+    limits,
+    message::MessagePartitioner,
     sys::types::{
         off_t,
         size_t,
@@ -35,6 +40,7 @@ use ::posix::{
         FileSyncResponse,
         FileTruncateRequest,
         FileTruncateResponse,
+        GetCurrentWorkingDirectoryResponse,
         LinkAtRequest,
         LinkAtResponse,
         PartialReadRequest,
@@ -83,6 +89,56 @@ pub fn do_fdatasync(pid: ProcessIdentifier, request: FileDataSyncRequest) -> Mes
             pid,
             ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
         ),
+    }
+}
+
+//==================================================================================================
+// do_getcwd
+//==================================================================================================
+
+pub fn do_getcwd(pid: ProcessIdentifier) -> Vec<Message> {
+    trace!("getcwd(): pid={:?}", pid);
+
+    let mut buf: Vec<u8> = Vec::with_capacity(limits::PATH_MAX as libc::size_t);
+
+    // Get current working directory and check for errors.
+    debug!("libc::getcwd(): buf={:p}, size={:?}", buf.as_mut_ptr(), buf.capacity());
+    if unsafe { !libc::getcwd(buf.as_mut_ptr() as *mut libc::c_char, buf.capacity()).is_null() } {
+        // Build response and check for errors.
+        let response: GetCurrentWorkingDirectoryResponse =
+            match unsafe { CStr::from_ptr(buf.as_ptr() as *const libc::c_char).to_str() } {
+                // Success.
+                Ok(cwd) => {
+                    debug!("libc::getcwd(): cwd={:?}", cwd);
+                    match GetCurrentWorkingDirectoryResponse::new(cwd) {
+                        Ok(response) => response,
+                        Err(error) => {
+                            warn!("do_getcwd(): {:?}", error);
+                            return vec![crate::build_error(pid, error.code)];
+                        },
+                    }
+                },
+                // Failure.
+                Err(error) => {
+                    error!("do_getcwd(): invalid path (error={:?})", error);
+                    return vec![crate::build_error(pid, ErrorCode::InvalidArgument)];
+                },
+            };
+
+        // Build response parts and check for errors.
+        match response.into_parts(pid) {
+            Ok(messages) => messages,
+            Err(error) => {
+                warn!("do_getcwd(): {:?}", error);
+                vec![crate::build_error(pid, error.code)]
+            },
+        }
+    } else {
+        let errno: i32 = unsafe { *libc::__errno_location() };
+        debug!("libc::getcwd(): errno={:?}", errno);
+        let error: ErrorCode =
+            ErrorCode::try_from(-errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+        vec![crate::build_error(pid, error)]
     }
 }
 

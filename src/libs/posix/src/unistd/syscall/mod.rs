@@ -13,6 +13,7 @@ mod fchown;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
+mod getcwd;
 mod getpid;
 mod lchmod;
 mod lchown;
@@ -41,6 +42,7 @@ pub use self::{
     fdatasync::fdatasync,
     fsync::fsync,
     ftruncate::ftruncate,
+    getcwd::getcwd,
     getpid::getpid,
     lchmod::lchmod,
     lchown::lchown,

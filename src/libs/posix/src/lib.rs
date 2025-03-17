@@ -176,6 +176,9 @@ pub enum LinuxDaemonMessageHeader {
     GetSockNameResponse,
     PipeRequest,
     PipeResponse,
+    GetCurrentWorkingDirectoryRequest,
+    GetCurrentWorkingDirectoryResponse,
+    GetCurrentWorkingDirectoryResponsePart,
 }
 
 #[repr(C, packed)]
