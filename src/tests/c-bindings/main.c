@@ -100,6 +100,7 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(nlink_t, sizeof(unsigned long long));
     STATIC_ASSERT_SIZE(off_t, sizeof(long long));
     STATIC_ASSERT_SIZE(pid_t, sizeof(int));
+    STATIC_ASSERT_SIZE(reclen_t, sizeof(unsigned short));
     STATIC_ASSERT_SIZE(size_t, sizeof(unsigned int));
     STATIC_ASSERT_SIZE(ssize_t, sizeof(int));
     STATIC_ASSERT_SIZE(time_t, sizeof(long long));
