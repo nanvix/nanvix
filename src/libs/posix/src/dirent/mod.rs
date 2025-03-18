@@ -27,8 +27,15 @@ use crate::{
     sys::types::{
         ino_t,
         reclen_t,
-        size_t,
     },
+};
+use ::alloc::{
+    fmt,
+    string::{
+        String,
+        ToString,
+    },
+    vec::Vec,
 };
 
 //==================================================================================================
@@ -39,6 +46,9 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod syscall;
         pub use self::syscall::posix_getdents;
+        pub use self::syscall::opendir;
+        pub use self::syscall::closedir;
+        pub use self::syscall::readdir;
     }
 }
 
@@ -80,13 +90,6 @@ mod file_type {
     /// Shared memory object.
     pub const DT_SHM: c_uchar = 15;
 }
-use alloc::{
-    fmt,
-    string::{
-        String,
-        ToString,
-    },
-};
 pub use file_type::*;
 
 //==================================================================================================
@@ -98,39 +101,39 @@ pub use file_type::*;
 ///
 /// A type that represents a directory stream.
 ///
-#[repr(C, packed)]
-pub struct DIR {
+pub struct DirectoryStream {
     /// File descriptor.
     fd: c_int,
-    /// Flags.
-    flags: c_int,
-    /// Number of valid entries left in the buffer.
-    valid: size_t,
-    /// Next valid entry in the buffer.
-    next: *mut dirent,
-    /// Buffer of directory entries.
-    buffer: *mut dirent,
+    /// Next entries in the directory.
+    next_entries: Vec<posix_dent>,
 }
-::nvx::sys::static_assert_size!(DIR, DIR::_SIZE_OF_DIR);
 
-impl DIR {
-    /// Size of `fd` field, used for static assertions.
-    const _SIZE_OF_FD: usize = core::mem::size_of::<c_int>();
-    /// Size of `flags` field, used for static assertions.
-    const _SIZE_OF_FLAGS: usize = core::mem::size_of::<c_int>();
-    /// Size of `valid` field, used for static assertions.
-    const _SIZE_OF_VALID: usize = core::mem::size_of::<size_t>();
-    /// Size of `next` field, used for static assertions.
-    const _SIZE_OF_NEXT: usize = core::mem::size_of::<*mut dirent>();
-    /// Size of `buffer` field, used for static assertions.
-    const _SIZE_OF_BUFFER: usize = core::mem::size_of::<*mut dirent>();
-    /// Size of `DIR` struct, used for static assertions.
-    const _SIZE_OF_DIR: usize = Self::_SIZE_OF_FD
-        + Self::_SIZE_OF_FLAGS
-        + Self::_SIZE_OF_VALID
-        + Self::_SIZE_OF_NEXT
-        + Self::_SIZE_OF_BUFFER;
+impl DirectoryStream {
+    /// Creates a new directory stream.
+    pub fn new(fd: c_int) -> Self {
+        Self {
+            fd,
+            next_entries: Vec::new(),
+        }
+    }
+
+    /// Gets the file descriptor of the directory stream.
+    pub fn fd(&self) -> c_int {
+        self.fd
+    }
+
+    /// Pushes an entry into the directory stream.
+    pub fn push(&mut self, posix_dent: posix_dent) {
+        self.next_entries.push(posix_dent);
+    }
+
+    /// Pops the next entry from the directory stream.
+    pub fn pop(&mut self) -> Option<posix_dent> {
+        self.next_entries.pop()
+    }
 }
+
+pub type DIR = DirectoryStream;
 
 //==================================================================================================
 // Directory Entry Structure
@@ -160,6 +163,15 @@ impl dirent {
     const _SIZE_OF_DIRENT: usize = Self::_SIZE_OF_D_INO + Self::_SIZE_OF_D_NAME;
 }
 
+impl From<posix_dent> for dirent {
+    fn from(posix_dent: posix_dent) -> Self {
+        Self {
+            d_ino: posix_dent.d_ino,
+            d_name: posix_dent.d_name,
+        }
+    }
+}
+
 //==================================================================================================
 // Posix Directory Entry Structure
 //==================================================================================================
@@ -179,6 +191,8 @@ pub struct posix_dent {
     pub d_type: c_uchar,
     /// File name (including null terminator character).
     pub d_name: [c_char; NAME_MAX + 1],
+    /// Padding.
+    pub _padding: [c_char; 1],
 }
 ::nvx::sys::static_assert_size!(posix_dent, posix_dent::_SIZE_OF_POSIX_DIRENT);
 
@@ -191,11 +205,14 @@ impl posix_dent {
     const _SIZE_OF_D_TYPE: usize = core::mem::size_of::<c_uchar>();
     /// Size of `d_name` field, used for static assertions.
     const _SIZE_OF_D_NAME: usize = core::mem::size_of::<[c_char; NAME_MAX + 1]>();
+    /// Size of `_padding` field, used for static assertions.
+    const _SIZE_OF_PADDING: usize = core::mem::size_of::<[c_char; 1]>();
     /// Size of `posix_dirent` struct, used for static assertions.
     const _SIZE_OF_POSIX_DIRENT: usize = Self::_SIZE_OF_D_INO
         + Self::_SIZE_OF_D_RECLEN
         + Self::_SIZE_OF_D_TYPE
-        + Self::_SIZE_OF_D_NAME;
+        + Self::_SIZE_OF_D_NAME
+        + Self::_SIZE_OF_PADDING;
 }
 
 impl Default for posix_dent {
@@ -205,6 +222,7 @@ impl Default for posix_dent {
             d_reclen: 0,
             d_type: 0,
             d_name: [0; NAME_MAX + 1],
+            _padding: [0],
         }
     }
 }

@@ -7,22 +7,23 @@
 
 use crate::{
     dirent::DirectoryStream,
-    errno::errno,
+    fcntl::{
+        self,
+        O_DIRECTORY,
+        O_RDONLY,
+    },
     ffi::c_int,
 };
-use ::nvx::sys::error::ErrorCode;
+use ::alloc::boxed::Box;
+use ::nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
-#[no_mangle]
-pub unsafe extern "C" fn closedir(_dirp: *mut DirectoryStream) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/518
-    ::nvx::error!("closedir(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
-    }
-    -1
+/// Opens a directory stream.
+pub fn opendir(dirname: &str) -> Result<Box<DirectoryStream>, Error> {
+    let fd: c_int = fcntl::open(dirname, O_RDONLY | O_DIRECTORY, 0)?;
+    let dir: DirectoryStream = DirectoryStream::new(fd);
+    Ok(Box::new(dir))
 }

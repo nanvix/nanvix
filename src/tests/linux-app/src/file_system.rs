@@ -5,9 +5,11 @@
 // Imports
 //==================================================================================================
 
+use ::alloc::boxed::Box;
 use ::posix::{
     dirent::{
         self,
+        DirectoryStream,
     },
     fcntl,
     sys::{
@@ -738,6 +740,42 @@ fn test_pipe() {
 
     // Close directory.
     match unistd::close(dir_fd) {
+        Ok(()) => {
+            ::nvx::info!("closed directory");
+        },
+        Err(error) => {
+            panic!("failed to close directory: {:?}", error);
+        },
+    }
+
+    // Open directory stream.
+    let mut dir: Box<DirectoryStream> = match dirent::opendir(".") {
+        Ok(dir) => {
+            ::nvx::info!("opened directory");
+            dir
+        },
+        Err(error) => {
+            panic!("failed to open directory: {:?}", error);
+        },
+    };
+
+    // Read directory stream.
+    loop {
+        match dirent::readdir(&mut dir) {
+            Ok(Some(dirent)) => {
+                ::nvx::info!("directory entry: {:?}", dirent);
+            },
+            Ok(None) => {
+                break;
+            },
+            Err(error) => {
+                panic!("failed to read directory: {:?}", error);
+            },
+        }
+    }
+
+    // Close directory stream.
+    match dirent::closedir(dir) {
         Ok(()) => {
             ::nvx::info!("closed directory");
         },

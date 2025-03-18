@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    dirent::DIR,
+    dirent::DirectoryStream,
     errno::errno,
 };
 use ::nvx::sys::error::ErrorCode;
@@ -17,7 +17,7 @@ use ::nvx::sys::error::ErrorCode;
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn opendir(_name: *const u8) -> *mut DIR {
+pub unsafe extern "C" fn opendir(_name: *const u8) -> *mut DirectoryStream {
     ::nvx::error!("opendir(): not implemented");
     unsafe {
         errno = ErrorCode::InvalidSysCall.into_errno();
