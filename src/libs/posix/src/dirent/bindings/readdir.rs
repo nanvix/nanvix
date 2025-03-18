@@ -8,7 +8,7 @@
 use crate::{
     dirent::{
         dirent,
-        DIR,
+        DirectoryStream,
     },
     errno::errno,
 };
@@ -20,7 +20,7 @@ use ::nvx::sys::error::ErrorCode;
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn readdir(_dirp: *mut DIR) -> *mut dirent {
+pub unsafe extern "C" fn readdir(_dirp: *mut DirectoryStream) -> *mut dirent {
     // TODO: https://github.com/nanvix/nanvix/issues/522
     ::nvx::error!("readdir(): not implemented");
     unsafe {
