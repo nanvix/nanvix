@@ -26,6 +26,7 @@ use crate::{
     unistd::{
         syscall,
         STDERR_FILENO,
+        STDIN_FILENO,
         STDOUT_FILENO,
     },
 };
@@ -382,11 +383,11 @@ pub extern "C" fn getpid() -> pid_t {
 
 #[no_mangle]
 pub extern "C" fn isatty(_fd: c_int) -> c_int {
-    // TODO: Implement this system call.
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+    if STDIN_FILENO == _fd || STDOUT_FILENO == _fd || STDERR_FILENO == _fd {
+        1
+    } else {
+        0
     }
-    -1
 }
 
 ///
