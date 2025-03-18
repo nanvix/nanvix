@@ -297,10 +297,10 @@ impl OpenOptions {
             None => fcntl::AT_FDCWD,
         };
         match fcntl::openat(dirfd, &path.name, flags.into(), mode) {
-            -1 => Err(Error {
-                errno: unsafe { errno::errno },
+            Ok(fd) => Ok(File { rawfd: Fd(fd) }),
+            Err(error) => Err(Error {
+                errno: error.code.into_errno(),
             }),
-            fd => Ok(File { rawfd: Fd(fd) }),
         }
     }
 
