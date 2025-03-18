@@ -6,8 +6,16 @@
 //==================================================================================================
 
 use crate::{
-    dirent::DirectoryStream,
+    dirent::{
+        self,
+        DirectoryStream,
+    },
     errno::errno,
+};
+use ::alloc::boxed::Box;
+use ::core::{
+    ffi,
+    ptr,
 };
 use ::nvx::sys::error::ErrorCode;
 
@@ -17,10 +25,27 @@ use ::nvx::sys::error::ErrorCode;
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn opendir(_name: *const u8) -> *mut DirectoryStream {
-    ::nvx::error!("opendir(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
-    }
-    core::ptr::null_mut()
+pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
+    // Convert C string to Rust string.
+    let dirname: &str = match ffi::CStr::from_ptr(dirname).to_str() {
+        Ok(dirname) => dirname,
+        Err(_) => {
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return ptr::null_mut();
+        },
+    };
+
+    ::nvx::trace!("opendir(): dirname={:?}", dirname);
+
+    // Open directory stream and check for errors.
+    let dirp: Box<DirectoryStream> = match dirent::opendir(dirname) {
+        Ok(dirp) => dirp,
+        Err(error) => {
+            ::nvx::error!("opendir(): failed to open directory stream: {:?}", error);
+            errno = error.code.into_errno();
+            return ptr::null_mut();
+        },
+    };
+
+    Box::into_raw(dirp)
 }

@@ -775,7 +775,7 @@ fn test_pipe() {
     }
 
     // Close directory stream.
-    match dirent::closedir(dir) {
+    match dirent::closedir(&mut dir) {
         Ok(()) => {
             ::nvx::info!("closed directory");
         },
