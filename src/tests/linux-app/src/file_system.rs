@@ -389,11 +389,11 @@ pub fn test() {
 
     // Close file.
     match unistd::close(fd) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("closed file foo.tmp");
         },
-        errno => {
-            panic!("failed to close file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to close file foo.tmp: {:?}", error);
         },
     }
 
@@ -686,21 +686,21 @@ fn test_pipe() {
 
     // Close read end of pipe.
     match unistd::close(read_fd) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("closed read end of pipe");
         },
-        errno => {
-            panic!("failed to close read end of pipe: {:?}", errno);
+        Err(error) => {
+            panic!("failed to close read end of pipe: {:?}", error);
         },
     }
 
     // Close write end of pipe.
     match unistd::close(write_fd) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("closed write end of pipe");
         },
-        errno => {
-            panic!("failed to close write end of pipe: {:?}", errno);
+        Err(error) => {
+            panic!("failed to close write end of pipe: {:?}", error);
         },
     }
 
@@ -738,11 +738,11 @@ fn test_pipe() {
 
     // Close directory.
     match unistd::close(dir_fd) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("closed directory");
         },
-        errno => {
-            panic!("failed to close directory: {:?}", errno);
+        Err(error) => {
+            panic!("failed to close directory: {:?}", error);
         },
     }
 }

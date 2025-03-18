@@ -207,20 +207,14 @@ impl Drop for File {
 
         match unistd::close(self.rawfd.0) {
             // Success.
-            0 => (),
+            Ok(()) => (),
             // Fail.
-            -1 => {
+            Err(error) => {
                 // Get `errno` and reset it.
-                let errno: c_int = unsafe {
-                    let errno: c_int = errno::errno;
-                    errno::errno = 0;
-                    errno
-                };
+                let errno: c_int = error.code.into_errno();
                 ::nvx::error!("failed to close file descriptor (errno={:?})", errno);
                 // NOTE: We ignore errors on close, as the standard library does.
             },
-            // Impossible.
-            ret => unreachable!("close() returned an impossible value ({:?})", ret),
         }
     }
 }
