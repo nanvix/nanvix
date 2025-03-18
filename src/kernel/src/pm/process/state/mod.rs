@@ -434,7 +434,6 @@ impl ProcessState {
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
     ///
     pub fn put_cond(&mut self, cond_addr: ConditionAddress) -> Result<(), Error> {
-        trace!("put_cond(): addr={:#x?}", cond_addr);
         // Check if condition variable exists.
         if !self.conditions.contains_key(&cond_addr) {
             let reason: &'static str = "condition variable not found";

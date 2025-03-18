@@ -19,6 +19,5 @@ use ::nvx::{
 /// `getpid()` returns the process ID (PID) of the calling process.
 ///
 pub fn getpid() -> Result<ProcessIdentifier, Error> {
-    ::nvx::trace!("getpid()");
     ::nvx::pm::getpid()
 }
