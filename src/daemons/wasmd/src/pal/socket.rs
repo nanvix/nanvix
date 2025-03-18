@@ -119,11 +119,11 @@ impl Socket {
 impl Drop for Socket {
     fn drop(&mut self) {
         match unistd::close(self.0) {
-            0 => {
+            Ok(()) => {
                 ::nvx::info!("closed socket with fd {}", self.0);
             },
-            errno => {
-                panic!("failed to close socket with fd {}: {:?}", self.0, errno);
+            Err(error) => {
+                panic!("failed to close socket with fd {}: {:?}", self.0, error);
             },
         }
     }

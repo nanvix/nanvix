@@ -85,8 +85,6 @@ pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
 }
 
 pub fn pthread_mutex_lock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
-    ::nvx::trace!("pthread_mutex_lock(): mutex={:p}", mutex as *mut pthread_mutex_t);
-
     if let Entry::Vacant(entry) = MUTEXES
         .lock()
         .entry(mutex as *const pthread_mutex_t as usize)
@@ -106,8 +104,6 @@ pub fn pthread_mutex_lock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
 }
 
 pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
-    ::nvx::trace!("pthread_mutex_unlock(): mutex={:p}", mutex as *mut pthread_mutex_t);
-
     // Check if mutex is not initialized.
     if *mutex != PTHREAD_MUTEX_INITIALIZER
         && !MUTEXES

@@ -9,6 +9,7 @@ use crate::{
     ffi::c_int,
     sys::types::mode_t,
 };
+use ::nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -27,10 +28,10 @@ use crate::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `open()` system call returns a non-negative integer representing
-/// the lowest numbered unused file descriptor. Otherwise, an error code is returned.
+/// Upon successful completion, the file descriptor of the file is returned. Otherwise, an error is
+/// returned instead.
 ///
-pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> c_int {
+pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
     ::nvx::trace!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
     fcntl::openat(fcntl::AT_FDCWD, pathname, flags, mode)
 }

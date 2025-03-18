@@ -17,6 +17,7 @@ use crate::{
         c_longlong,
         c_uint,
         c_ulonglong,
+        c_ushort,
         c_void,
     },
     pthread::pthread_mutex_type,
@@ -75,6 +76,9 @@ pub type pthread_key_t = u32;
 
 /// Used for mutexes.
 pub type pthread_mutex_t = u32;
+
+/// Used for directory entry lengths.
+pub type reclen_t = c_ushort;
 
 /// Used for object sizes.
 pub type size_t = c_uint;

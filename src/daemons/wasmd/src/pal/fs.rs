@@ -207,20 +207,14 @@ impl Drop for File {
 
         match unistd::close(self.rawfd.0) {
             // Success.
-            0 => (),
+            Ok(()) => (),
             // Fail.
-            -1 => {
+            Err(error) => {
                 // Get `errno` and reset it.
-                let errno: c_int = unsafe {
-                    let errno: c_int = errno::errno;
-                    errno::errno = 0;
-                    errno
-                };
+                let errno: c_int = error.code.into_errno();
                 ::nvx::error!("failed to close file descriptor (errno={:?})", errno);
                 // NOTE: We ignore errors on close, as the standard library does.
             },
-            // Impossible.
-            ret => unreachable!("close() returned an impossible value ({:?})", ret),
         }
     }
 }
@@ -297,10 +291,10 @@ impl OpenOptions {
             None => fcntl::AT_FDCWD,
         };
         match fcntl::openat(dirfd, &path.name, flags.into(), mode) {
-            -1 => Err(Error {
-                errno: unsafe { errno::errno },
+            Ok(fd) => Ok(File { rawfd: Fd(fd) }),
+            Err(error) => Err(Error {
+                errno: error.code.into_errno(),
             }),
-            fd => Ok(File { rawfd: Fd(fd) }),
         }
     }
 

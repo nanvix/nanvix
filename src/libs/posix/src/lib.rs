@@ -20,7 +20,7 @@ extern crate alloc;
 pub mod arpa;
 
 /// Format of directory entries
-pub mod dirrent;
+pub mod dirent;
 
 /// Dynamic linking.
 pub mod dlfcn;
@@ -179,6 +179,9 @@ pub enum LinuxDaemonMessageHeader {
     GetCurrentWorkingDirectoryRequest,
     GetCurrentWorkingDirectoryResponse,
     GetCurrentWorkingDirectoryResponsePart,
+    GetDirectoryEntriesRequest,
+    GetDirectoryEntriesResponse,
+    GetDirectoryEntriesResponsePart,
 }
 
 #[repr(C, packed)]

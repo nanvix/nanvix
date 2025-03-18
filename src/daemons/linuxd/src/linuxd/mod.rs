@@ -13,6 +13,7 @@ mod assemble;
 
 use crate::{
     build_error,
+    dirent,
     fcntl,
     message::{
         RequestAssembler,
@@ -40,6 +41,7 @@ use ::nvx::{
     },
 };
 use ::posix::{
+    dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
         FileAdvisoryInformationRequest,
         FileChmodAtRequest,
@@ -239,7 +241,8 @@ impl<'a> LinuxDaemon<'a> {
                                 // single message. Thus, their response is split into multiple
                                 // messages.
                                 LinuxDaemonMessageHeader::FileStatRequest
-                                | LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
+                                | LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest
+                                | LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
                                     self.handle_long_response_messages(source, message);
                                     continue;
                                 },
@@ -518,6 +521,9 @@ impl<'a> LinuxDaemon<'a> {
             LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
                 self.handle_getcwd_request(source);
             },
+            LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
+                self.handle_getdents_request(source, message);
+            },
             header => {
                 // The following statement is unreachable, because the matching logic in this
                 // function should match the one in the `Self::run()` function.
@@ -767,6 +773,18 @@ impl<'a> LinuxDaemon<'a> {
 
     fn handle_getcwd_request(&mut self, source: ProcessIdentifier) {
         let messages: Vec<Message> = unistd::do_getcwd(source);
+        for message in messages {
+            if let Err(e) = self.send(message) {
+                error!("failed to send message (error={:?})", e);
+            }
+        }
+    }
+
+    fn handle_getdents_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
+        let request: GetDirectoryEntriesRequest =
+            GetDirectoryEntriesRequest::from_bytes(message.payload);
+
+        let messages: Vec<Message> = dirent::do_getdents(source, request);
         for message in messages {
             if let Err(e) = self.send(message) {
                 error!("failed to send message (error={:?})", e);
