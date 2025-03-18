@@ -18,41 +18,32 @@ use crate::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
-    let request: Message = match OpenAtRequest::build(pid, dirfd, pathname, flags, mode) {
-        Ok(request) => request,
-        Err(e) => return e.code.into_errno(),
-    };
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    let request: Message = OpenAtRequest::build(pid, dirfd, pathname, flags, mode)?;
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
-        match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
-        }
+        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
+        ::nvx::error!("openat(): failed (error={})", error_code);
+        Err(Error::new(error_code, "openat() failed"))
     } else {
         // System call succeeded, parse response.
         match LinuxDaemonMessage::try_from_bytes(response.payload) {
@@ -63,12 +54,13 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> i32 {
                     let response: OpenAtResponse = OpenAtResponse::from_bytes(message.payload);
 
                     // Return file descriptor.
-                    response.ret
+                    Ok(response.ret)
                 },
-                _ => ErrorCode::InvalidMessage.into_errno(),
+                // Response was not successfully parsed.
+                _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },
-            // Failed to parse response.
-            Err(e) => e.code.into_errno(),
+            // Response was not successfully parsed.
+            _ => Err(Error::new(ErrorCode::InvalidMessage, "invalid message")),
         }
     }
 }

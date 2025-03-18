@@ -5,7 +5,12 @@
 // Imports
 //==================================================================================================
 
+use ::alloc::boxed::Box;
 use ::posix::{
+    dirent::{
+        self,
+        DirectoryStream,
+    },
     fcntl,
     sys::{
         self,
@@ -29,12 +34,12 @@ pub fn test() {
         fcntl::O_CREAT | fcntl::O_RDWR | fcntl::O_TRUNC,
         fcntl::S_IRUSR | fcntl::S_IWUSR,
     ) {
-        fd if fd >= 0 => {
+        Ok(fd) => {
             ::nvx::info!("opened file foo.tmp with fd {}", fd);
             fd
         },
-        errno => {
-            panic!("failed to open file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to open file foo.tmp: {:?}", error);
         },
     };
 
@@ -386,11 +391,11 @@ pub fn test() {
 
     // Close file.
     match unistd::close(fd) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("closed file foo.tmp");
         },
-        errno => {
-            panic!("failed to close file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to close file foo.tmp: {:?}", error);
         },
     }
 
@@ -683,21 +688,21 @@ fn test_pipe() {
 
     // Close read end of pipe.
     match unistd::close(read_fd) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("closed read end of pipe");
         },
-        errno => {
-            panic!("failed to close read end of pipe: {:?}", errno);
+        Err(error) => {
+            panic!("failed to close read end of pipe: {:?}", error);
         },
     }
 
     // Close write end of pipe.
     match unistd::close(write_fd) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("closed write end of pipe");
         },
-        errno => {
-            panic!("failed to close write end of pipe: {:?}", errno);
+        Err(error) => {
+            panic!("failed to close write end of pipe: {:?}", error);
         },
     }
 
@@ -710,4 +715,72 @@ fn test_pipe() {
             panic!("failed to get current working directory: {:?}", e);
         },
     };
+
+    // Open directory.
+    let dir_fd: i32 = match fcntl::openat(fcntl::AT_FDCWD, ".", fcntl::O_DIRECTORY, 0) {
+        Ok(fd) => {
+            ::nvx::info!("opened directory with fd {}", fd);
+            fd
+        },
+        Err(error) => {
+            panic!("failed to open directory: {:?}", error);
+        },
+    };
+
+    match dirent::posix_getdents(dir_fd, 1) {
+        Ok(buffer) => {
+            for d in buffer.iter() {
+                ::nvx::info!("directory entry: {:?}", d);
+            }
+        },
+        Err(error) => {
+            panic!("failed to get directory entries: {:?}", error);
+        },
+    }
+
+    // Close directory.
+    match unistd::close(dir_fd) {
+        Ok(()) => {
+            ::nvx::info!("closed directory");
+        },
+        Err(error) => {
+            panic!("failed to close directory: {:?}", error);
+        },
+    }
+
+    // Open directory stream.
+    let mut dir: Box<DirectoryStream> = match dirent::opendir(".") {
+        Ok(dir) => {
+            ::nvx::info!("opened directory");
+            dir
+        },
+        Err(error) => {
+            panic!("failed to open directory: {:?}", error);
+        },
+    };
+
+    // Read directory stream.
+    loop {
+        match dirent::readdir(&mut dir) {
+            Ok(Some(dirent)) => {
+                ::nvx::info!("directory entry: {:?}", dirent);
+            },
+            Ok(None) => {
+                break;
+            },
+            Err(error) => {
+                panic!("failed to read directory: {:?}", error);
+            },
+        }
+    }
+
+    // Close directory stream.
+    match dirent::closedir(&mut dir) {
+        Ok(()) => {
+            ::nvx::info!("closed directory");
+        },
+        Err(error) => {
+            panic!("failed to close directory: {:?}", error);
+        },
+    }
 }

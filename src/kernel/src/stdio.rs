@@ -36,13 +36,6 @@ use ::sys::{
 /// Upon success, empty is returned. Upon failure, an error is returned instead.
 ///
 pub fn write(message: Message) -> Result<(), Error> {
-    trace!(
-        "write(): message.type={:?}, message.source={:?}, message.destination={:?}",
-        { message.message_type },
-        { message.source },
-        { message.destination }
-    );
-
     // Checks if message type is not supported.
     if { message.message_type } != MessageType::Ikc {
         let reason: &str = "unsupported message type";
@@ -105,7 +98,6 @@ pub fn read() -> Result<Option<Message>, Error> {
                 Ok(None)
             } else {
                 // NOTE: trace command after reading the first byte, to avoid flooding the log.
-                trace!("read()");
                 Ok(Some(message))
             }
         },

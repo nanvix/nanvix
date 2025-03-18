@@ -88,6 +88,5 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
 }
 
 pub fn pthread_self() -> pthread_t {
-    ::nvx::trace!("pthread_self()");
     ::nvx::pm::gettid().unwrap().into()
 }

@@ -721,8 +721,6 @@ impl EventManager {
     /// - This function is invoked without holding any resources.
     ///
     pub unsafe fn wait(pid: ProcessIdentifier) -> Result<Message, SleepError> {
-        trace!("do_wait()");
-
         // Get the interrupts that the process owns.
         let mut interrupts: usize = 0;
         for i in 0..usize::BITS {

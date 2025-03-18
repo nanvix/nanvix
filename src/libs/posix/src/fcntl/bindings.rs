@@ -54,21 +54,14 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
         Err(_) => return ErrorCode::InvalidArgument.into_errno(),
     };
 
-    let fd: c_int = crate::fcntl::open(pathname, flags, mode);
-
-    // Check if the system call failed.
-    if fd < 0 {
-        errno = match ErrorCode::try_from(fd) {
-            Ok(e) => e.into_errno(),
-            Err(_) => {
-                ::nvx::error!("open(): invalid error code");
-                ErrorCode::ValueOutOfRange.into_errno()
-            },
-        };
-        return -1;
+    // Run system call and check for errors.
+    match crate::fcntl::open(pathname, flags, mode) {
+        Ok(fd) => fd,
+        Err(error) => {
+            errno = error.code.into_errno();
+            -1
+        },
     }
-
-    fd
 }
 
 ///

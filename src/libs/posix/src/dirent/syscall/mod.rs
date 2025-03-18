@@ -2,22 +2,19 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Imports
+// Modules
 //==================================================================================================
 
-use ::nvx::{
-    pm::ProcessIdentifier,
-    sys::error::Error,
-};
+mod closedir;
+mod getdents;
+mod opendir;
+mod readdir;
 
 //==================================================================================================
-// Standalone Functions
-//==================================================================================================///
+// Exports
+//==================================================================================================
 
-/// # Description
-///
-/// `getpid()` returns the process ID (PID) of the calling process.
-///
-pub fn getpid() -> Result<ProcessIdentifier, Error> {
-    ::nvx::pm::getpid()
-}
+pub use closedir::closedir;
+pub use getdents::posix_getdents;
+pub use opendir::opendir;
+pub use readdir::readdir;

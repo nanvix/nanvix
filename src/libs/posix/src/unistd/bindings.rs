@@ -151,7 +151,16 @@ pub extern "C" fn chroot(_path: *const c_char) -> c_int {
 #[no_mangle]
 pub extern "C" fn close(fd: c_int) -> c_int {
     ::nvx::trace!("close(): fd = {}", fd);
-    crate::unistd::close(fd)
+    match crate::unistd::close(fd) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("close(): failed ({:?})", error);
+            unsafe {
+                errno = error.code.into_errno();
+            }
+            -1
+        },
+    }
 }
 
 #[no_mangle]
