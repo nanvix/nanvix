@@ -17,9 +17,9 @@ use ::nvx::sys::error::Error;
 //==================================================================================================
 
 /// Closes a directory stream.
-pub fn closedir(mut dir: Box<DirectoryStream>) -> Result<(), Error> {
+pub fn closedir(dirp: &mut Box<DirectoryStream>) -> Result<(), Error> {
     // Drain all entries in the directory stream.
-    while let Some(_) = dir.pop() {}
+    while let Some(_posix_dirent) = dirp.pop() {}
 
-    unistd::close(dir.fd())
+    unistd::close(dirp.fd())
 }

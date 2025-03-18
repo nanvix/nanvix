@@ -26,10 +26,10 @@ const REFILL_COUNT: usize = 8;
 // Standalone Functions
 //==================================================================================================
 
-pub fn readdir(dir: &mut Box<DirectoryStream>) -> Result<Option<Box<dirent>>, Error> {
+pub fn readdir(dir: &mut Box<DirectoryStream>) -> Result<Option<dirent>, Error> {
     if let Some(posix_dirent) = dir.pop() {
         let dirent: dirent = posix_dirent.into();
-        return Ok(Some(Box::new(dirent)));
+        return Ok(Some(dirent));
     }
 
     // Refill buffer.
@@ -46,5 +46,5 @@ pub fn readdir(dir: &mut Box<DirectoryStream>) -> Result<Option<Box<dirent>>, Er
         dir.push(entry);
     }
 
-    Ok(Some(Box::new(dirent)))
+    Ok(Some(dirent))
 }

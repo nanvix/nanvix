@@ -7,6 +7,8 @@
 // Imports
 //==================================================================================================
 
+#include "common.h"
+#include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -78,6 +80,21 @@ int main(int argc, const char *argv[])
                            sizeof(blkcnt_t)          // st_blocks
     );
 
+    // Assert types in <dirent.h>.
+    STATIC_ASSERT_SIZE(struct dirent,
+                       sizeof(ino_t) +                     // d_ino
+                           (NAME_MAX + 1) * (sizeof(char)) // d_name
+    );
+    STATIC_ASSERT_SIZE(struct posix_dent,
+                       sizeof(ino_t) +                       // d_ino
+                           sizeof(reclen_t) +                // d_reclen
+                           sizeof(unsigned char) +           // d_type
+                           (NAME_MAX + 1) * (sizeof(char)) + // d_name
+                           1 * sizeof(char)                  // d_pad
+    );
+
+    // Run tests.
+    test_dirent();
 
     // Write magic string to signal that the test passed.
     {
