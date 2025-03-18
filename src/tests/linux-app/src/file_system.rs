@@ -32,12 +32,12 @@ pub fn test() {
         fcntl::O_CREAT | fcntl::O_RDWR | fcntl::O_TRUNC,
         fcntl::S_IRUSR | fcntl::S_IWUSR,
     ) {
-        fd if fd >= 0 => {
+        Ok(fd) => {
             ::nvx::info!("opened file foo.tmp with fd {}", fd);
             fd
         },
-        errno => {
-            panic!("failed to open file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to open file foo.tmp: {:?}", error);
         },
     };
 
@@ -716,12 +716,12 @@ fn test_pipe() {
 
     // Open directory.
     let dir_fd: i32 = match fcntl::openat(fcntl::AT_FDCWD, ".", fcntl::O_DIRECTORY, 0) {
-        fd if fd >= 0 => {
+        Ok(fd) => {
             ::nvx::info!("opened directory with fd {}", fd);
             fd
         },
-        errno => {
-            panic!("failed to open directory: {:?}", errno);
+        Err(error) => {
+            panic!("failed to open directory: {:?}", error);
         },
     };
 
