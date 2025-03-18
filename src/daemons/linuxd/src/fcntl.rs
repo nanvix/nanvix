@@ -71,26 +71,26 @@ use ::posix::{
 // do_openat
 //==================================================================================================
 
-pub fn do_open_at(pid: ProcessIdentifier, request: OpenAtRequest) -> Message {
+pub fn do_openat(pid: ProcessIdentifier, request: OpenAtRequest) -> Vec<Message> {
     trace!("openat(): pid={:?}, request={:?}", pid, request);
 
     let dirfd: i32 = request.dirfd;
     let flags: ffi::c_int = request.flags;
     let mode: mode_t = request.mode;
 
-    let pathname: &str = match str::from_utf8(&request.pathname) {
+    let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
-        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
 
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
     let flags: LibcFileFlags = match LibcFileFlags::try_from(flags) {
         Ok(flags) => flags,
-        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
     let mode: LibcFileMode = match LibcFileMode::try_from(mode) {
         Ok(mode) => mode,
-        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
 
     debug!(
@@ -100,24 +100,17 @@ pub fn do_open_at(pid: ProcessIdentifier, request: OpenAtRequest) -> Message {
         flags.inner(),
         mode.inner()
     );
-    match unsafe {
-        libc::openat(
-            dirfd.inner(),
-            pathname.as_bytes().as_ptr() as *const i8,
-            flags.inner(),
-            mode.inner(),
-        )
-    } {
+    match unsafe { libc::openat(dirfd.inner(), pathname.as_ptr(), flags.inner(), mode.inner()) } {
         fd if fd >= 0 => {
             debug!("libc::openat(): fd={:?}", fd);
-            OpenAtResponse::build(pid, fd)
+            vec![OpenAtResponse::build(pid, fd)]
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::openat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(-errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
-            crate::build_error(pid, error)
+            vec![crate::build_error(pid, error)]
         },
     }
 }
@@ -839,12 +832,13 @@ pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<M
 struct LibcFileFlags(libc::c_int);
 
 impl LibcFileFlags {
-    const FLAG_MAPPINGS: [(i32, ffi::c_int); 6] = [
+    const FLAG_MAPPINGS: [(i32, ffi::c_int); 7] = [
         (fcntl::O_APPEND, libc::O_APPEND),
         (fcntl::O_CREAT, libc::O_CREAT),
         (fcntl::O_EXCL, libc::O_EXCL),
         (fcntl::O_TRUNC, libc::O_TRUNC),
         (fcntl::AT_REMOVEDIR, libc::AT_REMOVEDIR),
+        (fcntl::O_DIRECTORY, libc::O_DIRECTORY),
         (fcntl::AT_SYMLINK_NOFOLLOW, libc::AT_SYMLINK_NOFOLLOW),
     ];
 
