@@ -32,7 +32,10 @@ use crate::{
 use ::alloc::vec::Vec;
 use ::nvx::{
     ipc::Message,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -53,38 +56,27 @@ pub use utimensat::utimensat;
 ///
 /// # Description
 ///
-/// This function waits for the response of the `fstat()` system call.
-///
-/// # Parameters
-///
-/// - `buf`: Buffer to store file information.
+/// This function waits for the response of the `fstatat()` system call.
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
+/// Upon successful completion, the file information is returned. Upon failure, an error is returned
 /// instead.
 ///
-fn fstatat_response(buf: &mut sys::stat::stat) -> i32 {
+fn fstatat_response() -> Result<sys::stat::stat, Error> {
     let capacity: usize = sys::stat::stat::SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
 
-    let mut assembler: LinuxDaemonLongMessage = match LinuxDaemonLongMessage::new(capacity) {
-        Ok(assembler) => assembler,
-        Err(e) => return e.code.into_errno(),
-    };
+    let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = match ::nvx::ipc::recv() {
-            Ok(response) => response,
-            Err(e) => break e.code.into_errno(),
-        };
+        let response: Message = ::nvx::ipc::recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
             // System call failed, parse error code and return it.
-            match ErrorCode::try_from(response.status) {
-                Ok(e) => break e.into_errno(),
-                Err(_) => break ErrorCode::InvalidMessage.into_errno(),
-            }
+            let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
+            ::nvx::error!("fstatat(): failed (error={:?})", error_code);
+            break Err(Error::new(error_code, "fstatat() failed"));
         } else {
             // System call succeeded, parse response.
             match LinuxDaemonMessage::try_from_bytes(response.payload) {
@@ -94,7 +86,8 @@ fn fstatat_response(buf: &mut sys::stat::stat) -> i32 {
                             LinuxDaemonMessagePart::from_bytes(message.payload);
 
                         if let Err(e) = assembler.add_part(part) {
-                            break e.code.into_errno();
+                            ::nvx::error!("fstatat(): failed to add part to assembler");
+                            break Err(e);
                         }
 
                         if !assembler.is_complete() {
@@ -103,17 +96,17 @@ fn fstatat_response(buf: &mut sys::stat::stat) -> i32 {
 
                         let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
 
-                        match FileStatAtResponse::from_parts(&parts) {
-                            Ok(response) => {
-                                *buf = response.stat;
-                                break 0;
-                            },
-                            Err(_) => break ErrorCode::InvalidMessage.into_errno(),
-                        }
+                        let response: FileStatAtResponse = FileStatAtResponse::from_parts(&parts)?;
+                        break Ok(response.stat);
                     },
-                    _ => break ErrorCode::InvalidMessage.into_errno(),
+                    _ => {
+                        break Err(Error::new(
+                            ErrorCode::InvalidMessage,
+                            "unexpected message header",
+                        ))
+                    },
                 },
-                Err(_) => break ErrorCode::InvalidMessage.into_errno(),
+                _ => break Err(Error::new(ErrorCode::InvalidMessage, "invalid message")),
             }
         }
     }

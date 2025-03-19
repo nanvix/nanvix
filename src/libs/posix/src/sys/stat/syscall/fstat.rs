@@ -12,6 +12,7 @@ use crate::sys::stat::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
+    sys::error::Error,
 };
 
 //==================================================================================================
@@ -30,18 +31,17 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
+/// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-pub fn fstat(fd: i32, buf: &mut stat::stat) -> i32 {
+pub fn fstat(fd: i32, buf: &mut stat::stat) -> Result<(), Error> {
     // Send request.
-    let status: i32 = fstat_request(fd);
-    if status != 0 {
-        return status;
-    }
+    fstat_request(fd)?;
 
     // Wait for response.
-    crate::sys::stat::syscall::fstatat_response(buf)
+    *buf = crate::sys::stat::syscall::fstatat_response()?;
+
+    Ok(())
 }
 
 ///
@@ -55,19 +55,13 @@ pub fn fstat(fd: i32, buf: &mut stat::stat) -> i32 {
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
+/// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-fn fstat_request(fd: i32) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+fn fstat_request(fd: i32) -> Result<(), Error> {
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     let message: Message = FileStatRequest::build(pid, fd);
 
-    match ::nvx::ipc::send(&message) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
-    }
+    ::nvx::ipc::send(&message)
 }
