@@ -10,6 +10,7 @@ use crate::{
     sys,
     sys::stat,
 };
+use ::nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -25,14 +26,14 @@ use crate::{
 /// # Parameters
 ///
 /// - `pathname`: Path to the file.
-/// - `statbuf`: Buffer to store file information.
+/// - `buf`: Buffer to store file information.
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
+/// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-pub fn lstat(pathname: &str, statbuf: &mut stat::stat) -> i32 {
-    ::nvx::trace!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, statbuf);
-    sys::stat::fstatat(fcntl::AT_FDCWD, pathname, statbuf, fcntl::AT_SYMLINK_NOFOLLOW)
+pub fn lstat(pathname: &str, buf: &mut stat::stat) -> Result<(), Error> {
+    ::nvx::trace!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, buf);
+    sys::stat::fstatat(fcntl::AT_FDCWD, pathname, buf, fcntl::AT_SYMLINK_NOFOLLOW)
 }
