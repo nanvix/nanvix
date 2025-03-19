@@ -59,7 +59,11 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("lstat(): invalid pathname");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     let statbuf: &mut stat::stat = &mut *statbuf;
@@ -95,7 +99,11 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("stat(): invalid pathname");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     let statbuf: &mut stat::stat = &mut *statbuf;
