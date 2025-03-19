@@ -57,7 +57,11 @@ pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent::dir
         },
         // Error.
         Err(error) => {
-            ::nvx::error!("readdir(): failed to read directory entry: {:?}", error);
+            ::nvx::error!(
+                "readdir(): failed to read directory entry (dirp={:?}, error={:?})",
+                dirp,
+                error
+            );
             errno = error.code.into_errno();
             ptr::null_mut()
         },
