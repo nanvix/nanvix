@@ -85,7 +85,13 @@ pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
     // Convert C string to Rust string.
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("chmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
+            unsafe {
+                errno = ErrorCode::InvalidArgument.into_errno();
+            }
+            return -1;
+        },
     };
 
     match crate::unistd::chmod(path, mode) {
@@ -124,7 +130,16 @@ pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) 
     // Convert C string to Rust string.
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!(
+                "chown(): invalid pathname (path={:?}, owner={:?}, group={:?})",
+                path,
+                owner,
+                group
+            );
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     match crate::unistd::chown(path, owner, group) {
@@ -392,7 +407,11 @@ pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
     // Convert C string to Rust string.
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("lchmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     match crate::unistd::lchmod(path, mode) {
@@ -431,7 +450,16 @@ pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t)
     // Convert C string to Rust string.
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!(
+                "lchown(): invalid pathname (path={:?}, owner={:?}, group={:?})",
+                path,
+                owner,
+                group
+            );
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     match crate::unistd::lchown(path, owner, group) {
@@ -471,11 +499,19 @@ pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) ->
     // Convert C strings to Rust strings.
     let oldpath: &str = match ffi::CStr::from_ptr(oldpath).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("link(): invalid oldpath");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
     let newpath: &str = match ffi::CStr::from_ptr(newpath).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("link(): invalid newpath");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     let retcode: c_int = crate::unistd::link(oldpath, newpath);
@@ -641,11 +677,19 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     // Convert C strings to Rust strings.
     let target: &str = match ffi::CStr::from_ptr(target).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("symlink(): invalid target");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
     let linkpath: &str = match ffi::CStr::from_ptr(linkpath).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("symlink(): invalid linkpath");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     let retcode: c_int = crate::unistd::symlink(target, linkpath);
@@ -700,7 +744,11 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
     // Convert C string to Rust string.
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("unlink(): invalid path");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     let retcode: c_int = crate::unistd::unlink(path);
