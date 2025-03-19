@@ -293,6 +293,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
 
     // Check if the buffer is valid.
     if buf.is_null() {
+        ::nvx::error!("getcwd(): invalid buffer");
         unsafe {
             errno = ErrorCode::InvalidArgument.into_errno();
         }
@@ -483,7 +484,10 @@ pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) ->
     if retcode < 0 {
         // System call failed. Set errno.
         errno = match ErrorCode::try_from(retcode) {
-            Ok(e) => e.into_errno(),
+            Ok(e) => {
+                ::nvx::error!("link(): failed ({:?})", e);
+                e.into_errno()
+            },
             Err(_) => {
                 ::nvx::error!("link(): invalid error code ({})", retcode);
                 ErrorCode::ValueOutOfRange.into_errno()

@@ -58,6 +58,13 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     match crate::fcntl::open(pathname, flags, mode) {
         Ok(fd) => fd,
         Err(error) => {
+            ::nvx::error!(
+                "open(): failed (path={:?}, flags={:?}, mode={:?}, error={:?})",
+                pathname,
+                flags,
+                mode,
+                error
+            );
             errno = error.code.into_errno();
             -1
         },

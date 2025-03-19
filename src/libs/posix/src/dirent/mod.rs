@@ -101,6 +101,7 @@ pub use file_type::*;
 ///
 /// A type that represents a directory stream.
 ///
+#[derive(Debug)]
 pub struct DirectoryStream {
     /// File descriptor.
     fd: c_int,
