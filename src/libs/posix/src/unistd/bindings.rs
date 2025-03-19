@@ -722,10 +722,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
 pub extern "C" fn sysconf(_name: c_int) -> c_long {
     // TODO: https://github.com/nanvix/nanvix/issues/342
     ::nvx::error!("sysconf(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
-    }
-    -1
+    0
 }
 
 ///
