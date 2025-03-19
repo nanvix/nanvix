@@ -534,8 +534,9 @@ impl<'a> LinuxDaemon<'a> {
 
     // Read a message from the TCP stream.
     fn recv(&mut self) -> Result<Option<Message>> {
-        let mut buf = [0u8; config::kernel::IPC_MESSAGE_SIZE];
-        let mut buf_reader = std::io::BufReader::new(&self.stream);
+        let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
+            [0u8; config::kernel::IPC_MESSAGE_SIZE];
+        let mut buf_reader: &UnixStream = &self.stream;
         if let Err(e) = buf_reader.read_exact(&mut buf) {
             match e.kind() {
                 ErrorKind::UnexpectedEof => return Ok(None),
