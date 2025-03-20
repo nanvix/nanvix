@@ -23,6 +23,7 @@ use ::std::{
         Mutex,
     },
 };
+use ::sys::arch::mem::PAGE_SIZE;
 
 //==================================================================================================
 // Structures
@@ -188,9 +189,17 @@ impl VirtualMemory {
             );
         }
 
-        self._initrd = Some((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd.size()));
+        // Ensure initrd size is aligned to page size.
+        let initrd_size: usize = if initrd.size() % PAGE_SIZE != 0 {
+            debug!("load_initrd(): aligning initrd size to page size");
+            initrd.size() + (PAGE_SIZE - (initrd.size() % PAGE_SIZE))
+        } else {
+            initrd.size()
+        };
 
-        Ok((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd.size()))
+        self._initrd = Some((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size));
+
+        Ok((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size))
     }
 
     ///
