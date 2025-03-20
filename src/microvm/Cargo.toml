@@ -20,7 +20,10 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 flexi_logger = { workspace = true }
-hyperlight_host = { workspace = true, optional = true, features = ["kvm"] }
+hyperlight_host = { workspace = true, optional = true, features = [
+    "kvm",
+    "remove-timeout",
+] }
 log = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 sys = { workspace = true }
