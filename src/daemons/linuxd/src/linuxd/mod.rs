@@ -257,7 +257,8 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart
                                 | LinuxDaemonMessageHeader::FileChownAtRequestPart
-                                | LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
+                                | LinuxDaemonMessageHeader::FileChmodAtRequestPart
+                                | LinuxDaemonMessageHeader::OpenAtRequestPart => {
                                     self.handle_long_request_messages(source, message);
                                     continue;
                                 },
@@ -412,10 +413,6 @@ impl<'a> LinuxDaemon<'a> {
                 let request: ListenSocketRequest = ListenSocketRequest::from_bytes(message.payload);
                 socket::do_listen(source, request)
             },
-            LinuxDaemonMessageHeader::OpenAtRequest => {
-                let request: OpenAtRequest = OpenAtRequest::from_bytes(message.payload);
-                fcntl::do_open_at(source, request)
-            },
             LinuxDaemonMessageHeader::PartialReadRequest => {
                 let request: PartialReadRequest = PartialReadRequest::from_bytes(message.payload);
                 unistd::do_pread(source, request)
@@ -500,6 +497,9 @@ impl<'a> LinuxDaemon<'a> {
             },
             LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
                 self.handle_long_request::<FileChmodAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::OpenAtRequestPart => {
+                self.handle_long_request::<OpenAtRequest>(source, &message);
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this

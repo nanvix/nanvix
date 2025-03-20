@@ -274,7 +274,7 @@ pub fn test() {
     // Get status of file.
     let mut st: stat = stat::default();
     match sys::stat::fstat(fd, &mut st) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("got status of file foo.tmp");
             ::nvx::info!("file statistics:");
             ::nvx::info!("  st_dev: {}", { st.st_dev });
@@ -291,8 +291,8 @@ pub fn test() {
             ::nvx::info!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
             ::nvx::info!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
         },
-        errno => {
-            panic!("failed to get status of file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to get status of file foo.tmp: {:?}", error);
         },
     }
 
@@ -359,7 +359,7 @@ pub fn test() {
     // Get status of file named `foo.tmp`.
     let mut st: stat = stat::default();
     match sys::stat::fstat(fd, &mut st) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("got status of file foo.tmp");
             ::nvx::info!("file statistics:");
             ::nvx::info!("  st_dev: {}", { st.st_dev });
@@ -376,8 +376,8 @@ pub fn test() {
             ::nvx::info!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
             ::nvx::info!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
         },
-        errno => {
-            panic!("failed to get status of file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to get status of file foo.tmp: {:?}", error);
         },
     }
 
@@ -423,7 +423,7 @@ pub fn test() {
     let path: &str = "foo.tmp";
     let mut foo_tmp: stat = stat::default();
     match sys::stat::stat(path, &mut foo_tmp) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("got status of file {}", path);
             ::nvx::info!("file statistics:");
             ::nvx::info!("  st_dev: {}", { foo_tmp.st_dev });
@@ -446,8 +446,8 @@ pub fn test() {
                 foo_tmp.st_ctim.tv_nsec
             });
         },
-        errno => {
-            panic!("failed to get status of file {:?}: {:?}", path, errno);
+        Err(error) => {
+            panic!("failed to get status of file {:?}: {:?}", path, error);
         },
     }
 
@@ -521,7 +521,7 @@ pub fn test() {
     // Get status of file named `bar.tmp`.
     let mut bar_tmp: stat = stat::default();
     match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut bar_tmp, 0) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("got status of file bar.tmp");
             ::nvx::info!("file statistics:");
             ::nvx::info!("  st_dev: {}", { bar_tmp.st_dev });
@@ -544,8 +544,8 @@ pub fn test() {
                 bar_tmp.st_ctim.tv_nsec
             });
         },
-        errno => {
-            panic!("failed to get status of file bar.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to get status of file bar.tmp: {:?}", error);
         },
     }
 
@@ -577,7 +577,7 @@ pub fn test() {
     // Get status of file named `bar.tmp`.
     let mut bar_tmp: stat = stat::default();
     match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut bar_tmp, 0) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("got status of file bar.tmp");
             ::nvx::info!("file statistics:");
             ::nvx::info!("  st_dev: {}", { bar_tmp.st_dev });
@@ -600,8 +600,8 @@ pub fn test() {
                 bar_tmp.st_ctim.tv_nsec
             });
         },
-        errno => {
-            panic!("failed to get status of file bar.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to get status of file bar.tmp: {:?}", error);
         },
     }
 
