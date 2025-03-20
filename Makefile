@@ -269,6 +269,7 @@ clean: \
 	image-clean
 
 distclean: clean
+	$(FORCE_RM_CMD) Cargo.lock
 	$(FORCE_RM_CMD) $(OBJECTS_DIR)
 	$(FORCE_RM_CMD) $(LIBRARIES_DIR)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
