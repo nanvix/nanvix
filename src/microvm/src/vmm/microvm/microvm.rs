@@ -29,6 +29,7 @@ use ::std::sync::{
     Arc,
     Mutex,
 };
+use ::sys::arch::mem::PAGE_SIZE;
 
 //==================================================================================================
 // Structures
@@ -188,13 +189,19 @@ impl MicroVm {
             }
         }
 
-        // Encode initrd location and size:
-        // - Lower bits encode the size in 4KB pages
-        // - Higher bits encode the base address
+        // Retrieve initrd information.
         let (initrd_base, initrd_size): (u64, u64) = match self.initrd {
             Some((base, size)) => (base, size as u64),
             None => (0, 0),
         };
+
+        // Ensure that the initrd base and size are aligned to page size boundaries.
+        assert_eq!(initrd_base as usize % PAGE_SIZE, 0, "initrd base is not aligned to page size");
+        assert_eq!(initrd_size as usize % PAGE_SIZE, 0, "initrd size is not aligned to page size");
+
+        // Encode initrd location and size:
+        // - Lower bits encode the size in 4KB pages
+        // - Higher bits encode the base address
         let rbx: u64 =
             (initrd_base & !((1 << nzeros) - 1)) | ((initrd_size >> 12) & ((1 << nzeros) - 1));
 
