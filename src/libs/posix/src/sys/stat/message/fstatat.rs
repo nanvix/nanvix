@@ -140,19 +140,20 @@ impl MessageDeserializer for FileStatAtRequest {
 
         // Deserialize directory file descriptor.
         let dirfd: i32 = i32::from_le_bytes(
-            bytes[Self::OFFSET_OF_DIRFD..Self::OFFSET_OF_FLAG]
+            bytes[Self::OFFSET_OF_DIRFD..(Self::OFFSET_OF_DIRFD + Self::SIZE_OF_DIRFD)]
                 .try_into()
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid dirfd"))?,
         );
         // Deserialize flags.
         let flag: i32 = i32::from_le_bytes(
-            bytes[Self::OFFSET_OF_FLAG..Self::OFFSET_OF_PATH_LENGTH]
+            bytes[Self::OFFSET_OF_FLAG..(Self::OFFSET_OF_FLAG + Self::SIZE_OF_FLAG)]
                 .try_into()
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid flag"))?,
         );
         // Deserialize path length.
         let path_len: usize = u32::from_le_bytes(
-            bytes[Self::OFFSET_OF_PATH_LENGTH..Self::OFFSET_OF_PATH]
+            bytes[Self::OFFSET_OF_PATH_LENGTH
+                ..(Self::OFFSET_OF_PATH_LENGTH + Self::SIZE_OF_PATH_LENGTH)]
                 .try_into()
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid path length"))?,
         ) as usize;

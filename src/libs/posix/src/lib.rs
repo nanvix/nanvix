@@ -97,6 +97,7 @@ pub enum LinuxDaemonMessageHeader {
     GetClockTimeRequest,
     GetClockTimeResponse,
     OpenAtRequest,
+    OpenAtRequestPart,
     OpenAtResponse,
     UnlinkAtRequest,
     UnlinkAtResponse,

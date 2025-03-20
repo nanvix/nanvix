@@ -28,7 +28,14 @@ use ::nvx::sys::error::ErrorCode;
 #[no_mangle]
 pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
     ::nvx::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
-    crate::sys::stat::fstat(fd, &mut *buf)
+    match crate::sys::stat::fstat(fd, &mut *buf) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::nvx::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
+            errno = error.code.into_errno();
+            -1
+        },
+    }
 }
 
 ///
@@ -59,12 +66,28 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("lstat(): invalid pathname");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     let statbuf: &mut stat::stat = &mut *statbuf;
 
-    crate::sys::stat::lstat(pathname, statbuf)
+    match crate::sys::stat::lstat(pathname, statbuf) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "lstat(): failed (pathname={}, statbuf={:p}, error={:?})",
+                pathname,
+                statbuf,
+                error
+            );
+            errno = error.code.into_errno();
+            -1
+        },
+    }
 }
 
 ///
@@ -95,12 +118,28 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!("stat(): invalid pathname");
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     let statbuf: &mut stat::stat = &mut *statbuf;
 
-    crate::sys::stat::stat(pathname, statbuf)
+    match crate::sys::stat::stat(pathname, statbuf) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "stat(): failed (pathname={}, statbuf={:p}, error={:?})",
+                pathname,
+                statbuf,
+                error
+            );
+            errno = error.code.into_errno();
+            -1
+        },
+    }
 }
 
 #[allow(clippy::missing_safety_doc)]

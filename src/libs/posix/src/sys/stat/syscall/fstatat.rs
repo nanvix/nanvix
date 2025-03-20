@@ -19,6 +19,7 @@ use ::alloc::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
+    sys::error::Error,
 };
 
 //==================================================================================================
@@ -38,18 +39,17 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
+/// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-pub fn fstatat(dirfd: i32, path: &str, buf: &mut stat, flag: i32) -> i32 {
+pub fn fstatat(dirfd: i32, path: &str, buf: &mut stat, flag: i32) -> Result<(), Error> {
     // Send request.
-    let status: i32 = fstatat_request(dirfd, path, flag);
-    if status != 0 {
-        return status;
-    }
+    fstatat_request(dirfd, path, flag)?;
 
     // Wait for response.
-    crate::sys::stat::syscall::fstatat_response(buf)
+    *buf = crate::sys::stat::syscall::fstatat_response()?;
+
+    Ok(())
 }
 
 ///
@@ -65,31 +65,19 @@ pub fn fstatat(dirfd: i32, path: &str, buf: &mut stat, flag: i32) -> i32 {
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
+/// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> Result<(), Error> {
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
-    let request: FileStatAtRequest = match FileStatAtRequest::new(dirfd, path.to_string(), flag) {
-        Ok(request) => request,
-        Err(e) => return e.code.into_errno(),
-    };
+    let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag)?;
 
-    let requests: Vec<Message> = match request.into_parts(pid) {
-        Ok(requests) => requests,
-        Err(e) => return e.code.into_errno(),
-    };
+    let requests: Vec<Message> = request.into_parts(pid)?;
 
     for request in requests {
-        match ::nvx::ipc::send(&request) {
-            Ok(_) => (),
-            Err(e) => return e.code.into_errno(),
-        }
+        ::nvx::ipc::send(&request)?;
     }
 
-    0
+    Ok(())
 }

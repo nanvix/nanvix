@@ -10,6 +10,7 @@ use crate::{
     sys,
     sys::stat,
 };
+use ::nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -27,10 +28,10 @@ use crate::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Upon failure, a negative error code is returned
+/// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-pub fn stat(pathname: &str, statbuf: &mut stat::stat) -> i32 {
-    ::nvx::trace!("stat(): pathname = {:?}, statbuf = {:?}", pathname, statbuf);
+pub fn stat(pathname: &str, statbuf: &mut stat::stat) -> Result<(), Error> {
+    ::nvx::trace!("stat(): pathname = {:?}", pathname);
     sys::stat::fstatat(fcntl::AT_FDCWD, pathname, statbuf, 0)
 }

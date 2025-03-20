@@ -51,13 +51,29 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!(
+                "open(): invalid pathname (path={:?}, flags={:?}, mode={:?})",
+                path,
+                flags,
+                mode
+            );
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     // Run system call and check for errors.
     match crate::fcntl::open(pathname, flags, mode) {
         Ok(fd) => fd,
         Err(error) => {
+            ::nvx::error!(
+                "open(): failed (path={:?}, flags={:?}, mode={:?}, error={:?})",
+                pathname,
+                flags,
+                mode,
+                error
+            );
             errno = error.code.into_errno();
             -1
         },
@@ -96,7 +112,16 @@ pub unsafe extern "C" fn fchmodat(
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!(
+                "fchmodat(): invalid pathname (dirfd={:?}, mode={:?}, flag={:?})",
+                dirfd,
+                mode,
+                flag
+            );
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     match crate::fcntl::fchmodat(dirfd, pathname, mode, flag) {
@@ -165,7 +190,17 @@ pub unsafe extern "C" fn fchownat(
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => return ErrorCode::InvalidArgument.into_errno(),
+        Err(_) => {
+            ::nvx::error!(
+                "fchownat(): invalid pathname (dirfd={:?}, owner={:?}, group={:?}, flag={:?})",
+                dirfd,
+                owner,
+                group,
+                flag
+            );
+            errno = ErrorCode::InvalidArgument.into_errno();
+            return -1;
+        },
     };
 
     match crate::fcntl::fchownat(dirfd, pathname, owner, group, flag) {

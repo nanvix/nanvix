@@ -11,10 +11,12 @@ use crate::{
         OpenAtResponse,
     },
     ffi::c_int,
+    message::MessagePartitioner,
     sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
+use ::alloc::vec::Vec;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -32,8 +34,11 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
-    let request: Message = OpenAtRequest::build(pid, dirfd, pathname, flags, mode)?;
-    ::nvx::ipc::send(&request)?;
+    let request: OpenAtRequest = OpenAtRequest::new(dirfd, pathname, flags, mode)?;
+    let requests: Vec<Message> = request.into_parts(pid)?;
+    for request in requests {
+        ::nvx::ipc::send(&request)?;
+    }
 
     // Receive response.
     let response: Message = ::nvx::ipc::recv()?;
@@ -42,7 +47,14 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::nvx::error!("openat(): failed (error={})", error_code);
+        ::nvx::error!(
+            "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, error={:?})",
+            dirfd,
+            pathname,
+            flags,
+            mode,
+            error_code
+        );
         Err(Error::new(error_code, "openat() failed"))
     } else {
         // System call succeeded, parse response.
