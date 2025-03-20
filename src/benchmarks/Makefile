@@ -3,7 +3,7 @@
 
 all: all-echo-c all-echo-cpp all-echo-wasm-js all-noop-c all-noop-cpp all-noop-wasm-js
 
-clean: clean-echo-c clean-echo-cpp all-echo-wasm-js clean-noop-c clean-noop-cpp clean-noop-wasm-js
+clean: clean-echo-c clean-echo-cpp clean-echo-wasm-js clean-noop-c clean-noop-cpp clean-noop-wasm-js
 
 all-echo-c:
 	$(MAKE) -C echo-c
