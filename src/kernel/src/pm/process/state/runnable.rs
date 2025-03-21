@@ -6,14 +6,9 @@
 //==================================================================================================
 
 use crate::{
-    hal::{
-        arch::ContextInformation,
-        mem::VirtualAddress,
-    },
+    hal::arch::ContextInformation,
     mm::{
-        elf::Elf32Fhdr,
         ustack::UserStackAllocator,
-        VirtMemoryManager,
         Vmem,
     },
     pm::{
@@ -36,10 +31,7 @@ use crate::{
     },
 };
 use ::alloc::boxed::Box;
-use ::sys::{
-    error::Error,
-    pm::ProcessIdentifier,
-};
+use ::sys::pm::ProcessIdentifier;
 use ::type_safe::NonEmptyVecDeque;
 use sys::{
     error::ErrorCode,
@@ -182,14 +174,6 @@ impl RunnableProcessWithReadyThread {
         } else {
             Err(self)
         }
-    }
-
-    fn exec(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        elf: &Elf32Fhdr,
-    ) -> Result<VirtualAddress, Error> {
-        mm.load_elf(self.state.vmem_mut(), elf)
     }
 
     fn add_thread(mut self, ready_thread: ReadyThread) -> Self {
@@ -587,21 +571,6 @@ impl RunnableProcess {
             RunnableProcess::ReadyAndInteruptThread(process) => match process.wakeup(tid) {
                 Ok(process) => Ok(RunnableProcess::ReadyAndInteruptThread(process)),
                 Err(process) => Err(RunnableProcess::ReadyAndInteruptThread(process)),
-            },
-        }
-    }
-
-    pub fn exec(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        elf: &Elf32Fhdr,
-    ) -> Result<VirtualAddress, Error> {
-        match self {
-            RunnableProcess::WithReadyThread(process) => process.exec(mm, elf),
-            _ => {
-                let reason: &str = "process is terminating";
-                error!("exec(): {:?} (state={:?})", reason, self.state());
-                Err(Error::new(ErrorCode::Interrupted, reason))
             },
         }
     }
