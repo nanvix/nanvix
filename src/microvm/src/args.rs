@@ -32,6 +32,8 @@ pub struct Args {
     kernel_filename: String,
     /// Initrd filename.
     initrd_filename: Option<String>,
+    /// Arguments to be passed to the initrd.
+    initrd_args: Option<String>,
     /// Memory size.
     memory_size: usize,
     /// Standard error.
@@ -59,6 +61,8 @@ impl Args {
     const OPT_STDERR: &'static str = "-stderr";
     /// Command-line option for gateway address.
     const OPT_GATEWAY: &'static str = "-gateway";
+    /// Command-line option for specifying arguments to be passed to the initrd.
+    const OPT_INITRD_ARGS: &'static str = "-initrd_args";
     /// Log to file.
     const OPT_LOGFILE: &'static str = "-log-to-file";
 
@@ -75,6 +79,7 @@ impl Args {
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut kernel_filename: String = String::new();
         let mut initrd_filename: Option<String> = None;
+        let mut initrd_args: Option<String> = None;
         let mut memory_size: usize = ::config::kernel::MEMORY_SIZE;
         let mut vm_stderr: Option<String> = None;
         let mut gateway_addr: Option<String> = None;
@@ -92,6 +97,11 @@ impl Args {
                 // Set initrd file.
                 Self::OPT_INITRD if i + 1 < args.len() => {
                     initrd_filename = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Set initrd arguments.
+                Self::OPT_INITRD_ARGS if i + 1 < args.len() => {
+                    initrd_args = Some(args[i + 1].clone());
                     i += 1;
                 },
                 // Set kernel file.
@@ -167,6 +177,7 @@ impl Args {
         Ok(Self {
             kernel_filename,
             initrd_filename,
+            initrd_args,
             memory_size,
             vm_stderr,
             gateway_addr,
@@ -181,15 +192,16 @@ impl Args {
     ///
     pub fn usage() {
         eprintln!(
-            "Usage: {} {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} <socket-address>]",
-            env::args()
-                .next()
-                .unwrap_or("microvm".to_string()),
+            "Usage: {} {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} <socket-address>] \
+             [{}] [{} <args>]",
+            env::args().next().unwrap_or("microvm".to_string()),
             Self::OPT_KERNEL,
             Self::OPT_MEMORY_SIZE,
             Self::OPT_INITRD,
             Self::OPT_STDERR,
-            Self::OPT_GATEWAY
+            Self::OPT_GATEWAY,
+            Self::OPT_LOGFILE,
+            Self::OPT_INITRD_ARGS,
         );
     }
 
@@ -205,6 +217,20 @@ impl Args {
     ///
     pub fn initrd_filename(&mut self) -> Option<String> {
         self.initrd_filename.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the initrd arguments that were passed as a command-line argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The initrd arguments that were passed as a command-line argument to the program. If no
+    /// initrd arguments were passed, this method returns `None`.
+    ///
+    pub fn initrd_args(&mut self) -> Option<String> {
+        self.initrd_args.take()
     }
 
     ///

@@ -50,6 +50,7 @@ fn main() -> Result<()> {
     let mut args: Args = args::Args::parse(env::args().collect())?;
     let kernel_filename: String = args.kernel_filename().to_string();
     let initrd_filename: Option<String> = args.initrd_filename();
+    let initrd_args: Option<String> = args.initrd_args();
     let memory_size: usize = args.memory_size();
     let stderr: Option<String> = args.take_vm_stderr();
     let gateway_addr: Option<String> = args.gateway_addr();
@@ -75,7 +76,8 @@ fn main() -> Result<()> {
         None => None,
     };
 
-    let mut vmm: Vmm = Vmm::new(memory_size, &kernel_filename, initrd_filename, stderr, gateway)?;
+    let mut vmm: Vmm =
+        Vmm::new(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)?;
 
     vmm.run()?;
 
