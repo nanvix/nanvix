@@ -161,6 +161,29 @@ impl MicroVm {
     ///
     /// # Description
     ///
+    /// Writes a command line to the virtual machine.
+    ///
+    /// # Parameters
+    ///
+    /// - `args`: Command line arguments to write.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn write_args(&mut self, args: &str) -> Result<()> {
+        trace!("write_args(): args={}", args);
+        crate::timer!("vm_write_args");
+        self.vmem
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .write_args(args)?;
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Resets the virtual machine.
     ///
     /// # Parameters

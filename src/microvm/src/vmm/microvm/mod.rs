@@ -101,6 +101,14 @@ impl Vmm {
         let rip: u64 = microvm.load_kernel(kernel_filename)?;
         if let Some(ref initrd_filename) = initrd_filename {
             microvm.load_initrd(initrd_filename)?;
+
+            // Write arguments to the virtual machine. For now, just pass the initrd filename.
+            microvm.write_args(
+                initrd_filename
+                    .split('/')
+                    .next_back()
+                    .unwrap_or(initrd_filename),
+            )?;
         }
 
         microvm.reset(rip)?;

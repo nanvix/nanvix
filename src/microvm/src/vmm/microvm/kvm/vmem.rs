@@ -15,6 +15,7 @@ use crate::{
 use ::anyhow::Result;
 use ::kvm_bindings::kvm_userspace_memory_region;
 use ::std::{
+    mem,
     ptr::{
         self,
     },
@@ -200,6 +201,62 @@ impl VirtualMemory {
         self._initrd = Some((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size));
 
         Ok((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes command line arguments into the virtual memory, right after the initrd file.
+    ///
+    /// # Parameters
+    ///
+    /// - `args`: Command line arguments to write.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn write_args(&mut self, args: &str) -> Result<()> {
+        trace!("write_args(): {}", args);
+        let args_bytes: &[u8] = args.as_bytes();
+
+        let initrd_end: usize = match self._initrd {
+            Some((initrd_base, initrd_size)) => initrd_base as usize + initrd_size,
+            None => {
+                let reason: String = "initrd not loaded".to_string();
+                error!("write_args(): {}", reason);
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+
+        // Check if there is enough space to write the arguments.
+        if initrd_end + mem::size_of::<u8>() + args_bytes.len() > self.size {
+            let reason: String = "not enough space to write command line arguments".to_string();
+            error!("write_args(): {}", reason);
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        // Write the command line arguments into the virtual memory.
+        unsafe {
+            // Write length of command line arguments.
+
+            trace!(
+                "write_args(): initrd_end={:#010x}, args_bytes_len={:?}, args_bytes={:?}",
+                initrd_end,
+                args_bytes.len(),
+                args_bytes
+            );
+
+            ptr::copy_nonoverlapping(&(args_bytes.len() as u8), self.ptr.add(initrd_end), 1);
+            // Write command line arguments.
+            ptr::copy_nonoverlapping(
+                args_bytes.as_ptr(),
+                self.ptr.add(initrd_end + mem::size_of::<u8>()),
+                args_bytes.len(),
+            );
+        }
+
+        Ok(())
     }
 
     ///
