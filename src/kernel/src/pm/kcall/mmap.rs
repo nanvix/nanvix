@@ -42,17 +42,6 @@ fn do_mmap(
 }
 
 pub fn mmap(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
-    // Check if the calling process has memory management capabilities.
-    match pm.has_capability(args.pid, Capability::MemoryManagement) {
-        Ok(true) => (),
-        Ok(false) => {
-            let reason: &str = "process does not have memory management capabilities";
-            error!("mmap(): {}", reason);
-            return ErrorCode::PermissionDenied.into_errno();
-        },
-        Err(e) => return e.code.into_errno(),
-    }
-
     // Unpack kernel call arguments.
     let pid: ProcessIdentifier = ProcessIdentifier::from(args.arg0);
     let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(args.arg1 as usize) {
@@ -63,6 +52,20 @@ pub fn mmap(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArg
         Ok(access) => access,
         Err(e) => return e.code.into_errno(),
     };
+
+    // Check if attempting to map memory into a different process.
+    if pid != args.pid {
+        // Check if the calling process has memory management capabilities.
+        match pm.has_capability(args.pid, Capability::MemoryManagement) {
+            Ok(true) => (),
+            Ok(false) => {
+                let reason: &str = "process does not have memory management capabilities";
+                error!("mmap(): {}", reason);
+                return ErrorCode::PermissionDenied.into_errno();
+            },
+            Err(e) => return e.code.into_errno(),
+        }
+    }
 
     match do_mmap(pm, mm, pid, vaddr, access) {
         Ok(_) => 0,
