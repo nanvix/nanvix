@@ -105,6 +105,7 @@ export CFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
 export CFLAGS += -Wvla -Wredundant-decls
 export CFLAGS += -pedantic-errors
 export CFLAGS += -Wstack-usage=4096
+export CFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
 
 # C++ Compiler Options
 export CXXFLAGS := -std=c++17
@@ -115,6 +116,7 @@ export CXXFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
 export CXXFLAGS += -Wvla -Wredundant-decls
 export CXXFLAGS += -pedantic-errors
 export CXXFLAGS += -Wstack-usage=4096
+export CXXFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
 
 # Linker Options
 export LDFLAGS := -z noexecstack -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
