@@ -390,9 +390,11 @@ impl VirtMemoryManager {
     }
 
     /// Load an ELF image into a virtual address space.
-    pub fn load_elf(&mut self, vmem: &mut Vmem, elf: &Elf32Fhdr) -> Result<VirtualAddress, Error> {
-        let entry: VirtualAddress = elf::elf32_load(self, vmem, elf)?;
-
-        Ok(entry)
+    pub fn load_elf(
+        &mut self,
+        vmem: &mut Vmem,
+        elf: &Elf32Fhdr,
+    ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
+        elf::elf32_load(self, vmem, elf)
     }
 }

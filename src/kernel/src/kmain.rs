@@ -180,7 +180,7 @@ fn spawn_servers(
     for kmod in kmods.iter() {
         let elf: &Elf32Fhdr = Elf32Fhdr::from_address(kmod.start().into_raw_value());
         let pid: ProcessIdentifier = {
-            match pm.create_process(mm, elf) {
+            match pm.create_process(mm, elf, kmod.cmdline()) {
                 Ok(pid) => {
                     count += 1;
                     pid
@@ -256,7 +256,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         let start: VirtualAddress = module.start().into_virtual_address();
         let size: usize = module.size();
         let typ: MemoryRegionType = MemoryRegionType::Reserved;
-        if let Ok(region) = MemoryRegion::new(&name, start, size, typ, AccessPermission::RDONLY) {
+        if let Ok(region) = MemoryRegion::new(name, start, size, typ, AccessPermission::RDONLY) {
             memory_regions.push_back(region);
         }
     }

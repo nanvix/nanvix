@@ -70,6 +70,7 @@ use ::alloc::{
         vec_deque::VecDeque,
         LinkedList,
     },
+    ffi::CString,
     rc::Rc,
     vec::Vec,
 };
@@ -181,18 +182,18 @@ impl ProcessManagerInner {
         mm: &mut VirtMemoryManager,
         vmem: &mut Vmem,
         user_stack: &UserStack,
-        user_wrapper_fn: VirtualAddress,
         user_fn: VirtualAddress,
-        user_fn_arg: usize,
+        arg0: usize,
+        arg1: usize,
         enable_interrupts: bool,
     ) -> Result<ContextInformation, Error> {
         trace!(
-            "forge_user_context(): user_stack={:?}, user_wrapper_fn={:#x?}, user_fn={:#x?}, \
-             user_fn_arg={:#x?}, enable_interrupts={:?}",
+            "forge_user_context(): user_stack={:?}, user_wrapper_fn={:#x?}, arg0={:#x?}, \
+             arg1={:#x?}, enable_interrupts={:?}",
             user_stack,
-            user_wrapper_fn,
             user_fn,
-            user_fn_arg,
+            arg0,
+            arg1,
             enable_interrupts
         );
 
@@ -201,11 +202,11 @@ impl ProcessManagerInner {
         }
 
         // Ensure that user wrapper function lies within the user address space.
-        if !Vmem::is_user_addr(user_wrapper_fn) {
+        if !Vmem::is_user_addr(user_fn) {
             let reason: &str = "user wrapper function is not within the user address space";
             error!(
                 "forge_context(): {} (user_stack={:?}, user_func={:?})",
-                reason, user_stack, user_fn
+                reason, user_stack, arg0
             );
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
@@ -229,9 +230,9 @@ impl ProcessManagerInner {
             hal::arch::forge_user_stack(
                 kernel_stack as *mut u8,
                 user_stack.top().into_raw_value(),
-                user_wrapper_fn.into_raw_value(),
                 user_fn.into_raw_value(),
-                user_fn_arg,
+                arg0,
+                arg1,
                 kernel_func.into_raw_value(),
                 enable_interrupts,
             )
@@ -334,7 +335,7 @@ impl ProcessManagerInner {
                 process.state_mut().vmem_mut(),
                 &user_stack,
                 user_wrapper_fn,
-                user_fn,
+                user_fn.into_raw_value(),
                 user_fn_arg,
                 enable_interrupts,
             )?;
@@ -421,33 +422,65 @@ impl ProcessManagerInner {
         &mut self,
         mm: &mut VirtMemoryManager,
         elf: &Elf32Fhdr,
+        cmdline: &str,
     ) -> Result<ProcessIdentifier, Error> {
         extern "C" {
             pub fn __leave_kernel_to_user_mode();
         }
 
-        trace!("create_process()");
+        trace!("create_process(): cmdline={:?}", cmdline);
+
+        // Convert command line to C-style string.
+        let cmdline: CString = match CString::new(cmdline) {
+            Ok(cmdline) => cmdline,
+            Err(error) => {
+                let reason: &str = "failed to convert command line string";
+                error!("create_process(): {} (error={:?})", reason, error);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
+        let cmdline: &[u8] = cmdline.as_bytes_with_nul();
 
         // Create a new memory address space for the process.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
 
-        let start: VirtualAddress = mm.load_elf(&mut vmem, elf)?;
+        // Load the ELF file into the new address space.
+        let (entry, args_vaddr): (VirtualAddress, PageAligned<VirtualAddress>) =
+            mm.load_elf(&mut vmem, elf)?;
+
+        // Allocate a user-space page, write command line arguments to it, and check for errors.
+        // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
+        if cmdline.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
+            let reason: &str = "command line is too long";
+            error!("create_process(): {} (cmdline.len={:?})", reason, cmdline.len());
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        mm.alloc_upage(&mut vmem, args_vaddr, AccessPermission::RDWR, true)?;
+        vmem.copy_to_user_unaligned(
+            args_vaddr.into_inner(),
+            VirtualAddress::new(cmdline.as_ptr() as usize),
+            cmdline.len(),
+        )?;
+        debug!(
+            "create_process(): command line written to user space (args_vaddr={:?}, cmdline={:?})",
+            args_vaddr, cmdline
+        );
 
         // Create a stack allocator.
         let user_stack_allocator: UserStackAllocator = UserStackAllocator::new()?;
 
         // Create a kernel context.
         let user_stack: UserStack = user_stack_allocator.alloc()?;
-        let user_wrapper_fn: VirtualAddress = start;
-        let user_fn: VirtualAddress = VirtualAddress::from_raw_value(0);
-        let user_fn_arg: usize = 0;
+        let user_fn: VirtualAddress = entry;
+        let argp: usize = args_vaddr.into_raw_value();
+        let envp: usize = 0;
         let context: ContextInformation = Self::forge_user_context(
             mm,
             &mut vmem,
             &user_stack,
-            user_wrapper_fn,
             user_fn,
-            user_fn_arg,
+            argp,
+            envp,
             self.interrupt_capable,
         )?;
 
@@ -1125,6 +1158,7 @@ impl ProcessManager {
     ///
     /// - `mm`: Memory manager to use.
     /// - `elf`: ELF header of the executable to load.
+    /// - `cmdline`: Command line arguments for the new process.
     ///
     /// # Returns
     ///
@@ -1135,8 +1169,9 @@ impl ProcessManager {
         &mut self,
         mm: &mut VirtMemoryManager,
         elf: &Elf32Fhdr,
+        cmdline: &str,
     ) -> Result<ProcessIdentifier, Error> {
-        self.try_borrow_mut()?.create_process(mm, elf)
+        self.try_borrow_mut()?.create_process(mm, elf, cmdline)
     }
 
     /// Creates a new thread.
