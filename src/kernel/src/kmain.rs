@@ -53,10 +53,7 @@ use crate::{
     },
     pm::ProcessManager,
 };
-use ::alloc::{
-    collections::LinkedList,
-    string::String,
-};
+use ::alloc::collections::LinkedList;
 use ::core::sync::atomic::{
     AtomicUsize,
     Ordering,
@@ -255,7 +252,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
     // Add kernel modules to list of memory regions.
     for module in kernel_modules.iter() {
-        let name: String = module.cmdline();
+        let name: &str = module.cmdline();
         let start: VirtualAddress = module.start().into_virtual_address();
         let size: usize = module.size();
         let typ: MemoryRegionType = MemoryRegionType::Reserved;
