@@ -27,6 +27,9 @@ mod panic;
 #[cfg(feature = "allocator")]
 extern crate alloc;
 
+#[cfg(all(target_os = "none", feature = "staticlib"))]
+use ::alloc::vec::Vec;
+
 //==================================================================================================
 // Exports
 //==================================================================================================
@@ -133,17 +136,17 @@ macro_rules! error{
 
 #[no_mangle]
 #[cfg(target_os = "none")]
-pub extern "C" fn _start() -> ! {
-    crate::trace!("_start()");
+pub extern "C" fn _start(argp: *mut i8, envp: *const i8) -> ! {
+    crate::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
 
     // Initializes the system runtime.
     init();
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "staticlib")] {
-            let status: i32 = c_trampoline();
+            let status: i32 = c_trampoline(argp);
         } else {
-            let status: i32 = rust_trampoline();
+            let status: i32 = rust_trampoline(argp);
         }
     }
 
@@ -156,10 +159,64 @@ pub extern "C" fn _start() -> ! {
 }
 
 ///
+/// # Description
+///
+/// Parses a null-terminated string into an vector of null-terminated strings.
+///
+/// # Parameters
+///
+/// - `argp`: A pointer to a null-terminated string.
+///
+/// # Returns
+///
+/// - A vector of pointers to null-terminated strings.
+///
+#[cfg(all(target_os = "none", feature = "staticlib"))]
+unsafe fn parse_argp(argp: *mut i8) -> ::alloc::vec::Vec<*const i8> {
+    use alloc::vec::Vec;
+    use core::ptr;
+
+    let mut argc = 0;
+    let mut current = argp;
+
+    // Traverse `current`, replacing spaces with null characters and counting arguments.
+    while *current != 0 {
+        if *current == b' ' as i8 {
+            *current = b'\0' as i8;
+            argc += 1;
+        }
+        current = current.add(1);
+    }
+    argc += 1; // Account for the null-terminator argument.
+
+    // Create an array of pointers to the arguments.
+    let mut argv: Vec<*const i8> = Vec::with_capacity(argc as usize);
+    current = argp;
+    for _ in 0..argc {
+        // Print the current argument.
+        crate::trace!(
+            "parse_argp(): argv[{}]: {:?}",
+            argv.len(),
+            // Convert to CStr for printing.
+            ::core::ffi::CStr::from_ptr(current)
+        );
+
+        argv.push(current);
+        while *current != 0 {
+            current = current.add(1);
+        }
+        current = current.add(1); // Skip the null terminator.
+    }
+    argv.push(ptr::null()); // Null-terminate the array.
+
+    argv
+}
+
+///
 /// Trampoline for Rust applications.
 ///
 #[cfg(all(target_os = "none", not(feature = "staticlib")))]
-fn rust_trampoline() -> i32 {
+fn rust_trampoline(_argp: *mut i8) -> i32 {
     extern "Rust" {
         fn main() -> Result<(), ::sys::error::Error>;
     }
@@ -175,16 +232,17 @@ fn rust_trampoline() -> i32 {
 /// Trampoline for C applications.
 ///
 #[cfg(all(target_os = "none", feature = "staticlib"))]
-fn c_trampoline() -> i32 {
+fn c_trampoline(argp: *mut i8) -> i32 {
     extern "C" {
         fn main(argc: i32, argv: *const *const u8) -> i32;
         fn _init();
         fn _fini();
     }
 
-    // TODO: set argc and argv.
-    let argc: i32 = 1;
-    let argv: *const *const u8 = core::ptr::null();
+    // Build arguments vector.
+    let argv: Vec<*const i8> = unsafe { parse_argp(argp) };
+    let argc: i32 = argv.len() as i32 - 1;
+    let argv: *const *const u8 = argv.as_ptr() as *const *const u8;
 
     unsafe {
         _init();
