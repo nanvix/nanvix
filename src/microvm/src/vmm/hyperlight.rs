@@ -72,6 +72,7 @@ impl Vmm {
         memory_size: usize,
         kernel_filename: &str,
         initrd_filename: Option<String>,
+        _initrd_args: Option<String>,
         stderr: Option<String>,
         gateway_conn: Option<Gateway>,
     ) -> Result<Self> {
