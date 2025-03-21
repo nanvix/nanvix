@@ -183,23 +183,17 @@ fn spawn_servers(
     for kmod in kmods.iter() {
         let elf: &Elf32Fhdr = Elf32Fhdr::from_address(kmod.start().into_raw_value());
         let pid: ProcessIdentifier = {
-            match pm.create_process(mm) {
-                Ok(pid) => pid,
+            match pm.create_process(mm, elf) {
+                Ok(pid) => {
+                    count += 1;
+                    pid
+                },
                 Err(err) => {
                     warn!("failed to create server process: {:?}", err);
                     continue;
                 },
             }
         };
-        match pm.exec(mm, pid, elf) {
-            Ok(_) => {
-                count += 1;
-            },
-            Err(err) => {
-                warn!("failed to load server image: {:?}", err);
-                unimplemented!("kill server process");
-            },
-        }
 
         info!("server {} spawned, pid={:?}", kmod.cmdline(), pid);
     }

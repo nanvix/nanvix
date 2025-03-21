@@ -410,13 +410,18 @@ impl ProcessManagerInner {
     /// # Parameters
     ///
     /// - `mm`: Memory manager to use.
+    /// - `elf`: ELF header of the executable file.
     ///
     /// # Returns
     ///
     /// Upon successful completion, the process identifier of the new process is returned.
     /// Otherwise, an error is returned instead.
     ///
-    fn create_process(&mut self, mm: &mut VirtMemoryManager) -> Result<ProcessIdentifier, Error> {
+    fn create_process(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        elf: &Elf32Fhdr,
+    ) -> Result<ProcessIdentifier, Error> {
         extern "C" {
             pub fn __leave_kernel_to_user_mode();
         }
@@ -426,12 +431,14 @@ impl ProcessManagerInner {
         // Create a new memory address space for the process.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
 
+        let start: VirtualAddress = mm.load_elf(&mut vmem, elf)?;
+
         // Create a stack allocator.
         let user_stack_allocator: UserStackAllocator = UserStackAllocator::new()?;
 
         // Create a kernel context.
         let user_stack: UserStack = user_stack_allocator.alloc()?;
-        let user_wrapper_fn: VirtualAddress = ::sys::config::memory_layout::USER_BASE; // TODO: improve this.
+        let user_wrapper_fn: VirtualAddress = start;
         let user_fn: VirtualAddress = VirtualAddress::from_raw_value(0);
         let user_fn_arg: usize = 0;
         let context: ContextInformation = Self::forge_user_context(
@@ -492,28 +499,6 @@ impl ProcessManagerInner {
             self.running = Some(next_process);
             (previous_context, next_context)
         }
-    }
-
-    pub fn exec(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        pid: ProcessIdentifier,
-        elf: &Elf32Fhdr,
-    ) -> Result<(), Error> {
-        // Find corresponding process.
-        let process: &mut RunnableProcess =
-            match self.ready.iter_mut().find(|p| p.state().pid() == pid) {
-                Some(p) => p,
-                None => {
-                    let reason: &str = "process not found";
-                    error!("exec(): {}", reason);
-                    return Err(Error::new(ErrorCode::NoSuchProcess, reason));
-                },
-            };
-
-        process.exec(mm, elf)?;
-
-        Ok(())
     }
 
     ///
@@ -1131,12 +1116,27 @@ impl ProcessManager {
         Ok(self.try_borrow()?.get_running().get_tid())
     }
 
+    ///
+    /// # Description
+    ///
     /// Creates a new process.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Memory manager to use.
+    /// - `elf`: ELF header of the executable to load.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the process identifier of the new process is returned.
+    /// Otherwise, an error is returned instead.
+    ///
     pub fn create_process(
         &mut self,
         mm: &mut VirtMemoryManager,
+        elf: &Elf32Fhdr,
     ) -> Result<ProcessIdentifier, Error> {
-        self.try_borrow_mut()?.create_process(mm)
+        self.try_borrow_mut()?.create_process(mm, elf)
     }
 
     /// Creates a new thread.
@@ -1162,15 +1162,6 @@ impl ProcessManager {
             .find_process(pid)?
             .state()
             .has_capability(capability))
-    }
-
-    pub fn exec(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        pid: ProcessIdentifier,
-        elf: &Elf32Fhdr,
-    ) -> Result<(), Error> {
-        self.try_borrow_mut()?.exec(mm, pid, elf)
     }
 
     pub fn getuid(&self, pid: ProcessIdentifier) -> Result<UserIdentifier, Error> {
