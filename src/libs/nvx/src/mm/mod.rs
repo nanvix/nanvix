@@ -65,10 +65,6 @@ cfg_if::cfg_if! {
 /// Initializes memory management runtime.
 #[cfg(target_os = "none")]
 pub fn init() -> Result<(), Error> {
-    // Acquire memory management capability.
-    #[cfg(any(feature = "allocator", feature = "staticlib"))]
-    ::sys::kcall::pm::capctl(::sys::pm::Capability::MemoryManagement, true)?;
-
     #[cfg(feature = "allocator")]
     {
         use crate::mm::allocator;
@@ -95,8 +91,5 @@ pub fn init() -> Result<(), Error> {
 /// Cleanups the memory management runtime.
 #[cfg(target_os = "none")]
 pub fn cleanup() -> Result<(), Error> {
-    // Release memory management capability.
-    #[cfg(any(feature = "allocator", feature = "staticlib"))]
-    ::sys::kcall::pm::capctl(::sys::pm::Capability::MemoryManagement, false)?;
     Ok(())
 }
