@@ -287,9 +287,6 @@ pub fn elf32_load(
     vmem: &mut Vmem,
     elf: &Elf32Fhdr,
 ) -> Result<VirtualAddress, Error> {
-    if do_elf32_load(mm, vmem, elf, true).is_err() {
-        return Ok(VirtualAddress::new(0));
-    }
-
+    do_elf32_load(mm, vmem, elf, true)?;
     do_elf32_load(mm, vmem, elf, false)
 }
