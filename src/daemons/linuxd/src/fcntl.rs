@@ -21,29 +21,33 @@ use ::nvx::{
 };
 use ::posix::{
     fcntl,
-    fcntl::message::{
-        FileAdvisoryInformationRequest,
-        FileAdvisoryInformationResponse,
-        FileChmodAtRequest,
-        FileChmodAtResponse,
-        FileChownAtRequest,
-        FileChownAtResponse,
-        FileControlRequest,
-        FileControlResponse,
-        FileSpaceControlRequest,
-        FileSpaceControlResponse,
-        MakeDirectoryAtRequest,
-        MakeDirectoryAtResponse,
-        OpenAtRequest,
-        OpenAtResponse,
-        ReadLinkAtRequest,
-        ReadLinkAtResponse,
-        RenameAtRequest,
-        RenameAtResponse,
-        SymbolicLinkAtRequest,
-        SymbolicLinkAtResponse,
-        UnlinkAtRequest,
-        UnlinkAtResponse,
+    fcntl::{
+        message::{
+            FileAdvisoryInformationRequest,
+            FileAdvisoryInformationResponse,
+            FileChmodAtRequest,
+            FileChmodAtResponse,
+            FileChownAtRequest,
+            FileChownAtResponse,
+            FileControlRequest,
+            FileControlResponse,
+            FileSpaceControlRequest,
+            FileSpaceControlResponse,
+            MakeDirectoryAtRequest,
+            MakeDirectoryAtResponse,
+            OpenAtRequest,
+            OpenAtResponse,
+            ReadLinkAtRequest,
+            ReadLinkAtResponse,
+            RenameAtRequest,
+            RenameAtResponse,
+            SymbolicLinkAtRequest,
+            SymbolicLinkAtResponse,
+            UnlinkAtRequest,
+            UnlinkAtResponse,
+        },
+        OpenFlags,
+        AT_REMOVEDIR,
     },
     message::MessagePartitioner,
     sys::{
@@ -131,20 +135,20 @@ pub fn do_unlink_at(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Message
     };
 
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
-    let flags: LibcFileFlags = match LibcFileFlags::try_from(flags) {
-        Ok(flags) => flags,
-        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+    let flags: libc::c_int = if flags == AT_REMOVEDIR {
+        libc::AT_REMOVEDIR
+    } else {
+        0
     };
 
     debug!(
         "libc::unlinkat(): dirfd={:?}, pathname={:?}, flags={:?}",
         dirfd.inner(),
         pathname,
-        flags.inner()
+        flags
     );
-    match unsafe {
-        libc::unlinkat(dirfd.inner(), pathname.as_bytes().as_ptr() as *const i8, flags.inner())
-    } {
+    match unsafe { libc::unlinkat(dirfd.inner(), pathname.as_bytes().as_ptr() as *const i8, flags) }
+    {
         ret if ret == 0 => {
             debug!("libc::unlinkat(): success");
             UnlinkAtResponse::build(pid, ret)
@@ -832,14 +836,12 @@ pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<M
 struct LibcFileFlags(libc::c_int);
 
 impl LibcFileFlags {
-    const FLAG_MAPPINGS: [(i32, ffi::c_int); 7] = [
-        (fcntl::O_APPEND, libc::O_APPEND),
-        (fcntl::O_CREAT, libc::O_CREAT),
-        (fcntl::O_EXCL, libc::O_EXCL),
-        (fcntl::O_TRUNC, libc::O_TRUNC),
-        (fcntl::AT_REMOVEDIR, libc::AT_REMOVEDIR),
-        (fcntl::O_DIRECTORY, libc::O_DIRECTORY),
-        (fcntl::AT_SYMLINK_NOFOLLOW, libc::AT_SYMLINK_NOFOLLOW),
+    const FLAG_MAPPINGS: [(OpenFlags, ffi::c_int); 5] = [
+        (fcntl::OpenFlags::O_APPEND, libc::O_APPEND),
+        (fcntl::OpenFlags::O_CREAT, libc::O_CREAT),
+        (fcntl::OpenFlags::O_EXCL, libc::O_EXCL),
+        (fcntl::OpenFlags::O_TRUNC, libc::O_TRUNC),
+        (fcntl::OpenFlags::O_DIRECTORY, libc::O_DIRECTORY),
     ];
 
     fn inner(&self) -> libc::c_int {
@@ -851,15 +853,16 @@ impl LibcFileFlags {
         let mut libc_flags: libc::c_int = 0;
 
         // Set access mode.
-        match flags & fcntl::O_ACCMODE {
-            fcntl::O_RDONLY => libc_flags |= libc::O_RDONLY,
-            fcntl::O_WRONLY => libc_flags |= libc::O_WRONLY,
-            fcntl::O_RDWR => libc_flags |= libc::O_RDWR,
-            _ => {},
+        if flags & fcntl::O_ACCMODE == fcntl::OpenFlags::O_RDONLY.into() {
+            libc_flags |= libc::O_RDONLY;
+        } else if flags & fcntl::O_ACCMODE == fcntl::OpenFlags::O_WRONLY.into() {
+            libc_flags |= libc::O_WRONLY;
+        } else if flags & fcntl::O_ACCMODE == fcntl::OpenFlags::O_RDWR.into() {
+            libc_flags |= libc::O_RDWR;
         }
 
         for (nanvix_flag, f) in Self::FLAG_MAPPINGS.iter() {
-            if (flags & nanvix_flag) == *nanvix_flag {
+            if (flags & nanvix_flag) == nanvix_flag.into() {
                 libc_flags |= *f;
             }
         }
@@ -872,9 +875,9 @@ impl LibcFileFlags {
 
         // Set access mode.
         match self.0 & libc::O_ACCMODE {
-            libc::O_RDONLY => flags |= fcntl::O_RDONLY,
-            libc::O_WRONLY => flags |= fcntl::O_WRONLY,
-            libc::O_RDWR => flags |= fcntl::O_RDWR,
+            libc::O_RDONLY => flags |= fcntl::OpenFlags::O_RDONLY,
+            libc::O_WRONLY => flags |= fcntl::OpenFlags::O_WRONLY,
+            libc::O_RDWR => flags |= fcntl::OpenFlags::O_RDWR,
             _ => {},
         }
 

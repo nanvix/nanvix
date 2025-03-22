@@ -12,6 +12,11 @@
 //==================================================================================================
 
 use crate::sys::types::mode_t;
+use ::core::ops::{
+    BitAnd,
+    BitOr,
+    BitOrAssign,
+};
 
 //==================================================================================================
 // Modules
@@ -43,38 +48,113 @@ cfg_if::cfg_if! {
 
 /// Mask for file access mode.
 pub const O_ACCMODE: i32 = 0x3;
-/// Set read-only access.
-pub const O_RDONLY: i32 = 0;
-/// Set write-only access.
-pub const O_WRONLY: i32 = 1;
-/// Set read-write access.
-pub const O_RDWR: i32 = 2;
-/// Set append mode.
-pub const O_APPEND: i32 = 1 << 5;
-/// Create file if it does not exist.
-pub const O_CREAT: i32 = 1 << 6;
-/// Fail if not a new file.
-pub const O_EXCL: i32 = 1 << 7;
-/// Truncate file to size zero.
-pub const O_TRUNC: i32 = 1 << 8;
 /// Remove directory instead of file.
 pub const AT_REMOVEDIR: i32 = 1 << 9;
 /// Do not follow symbolic links.
 pub const AT_SYMLINK_NOFOLLOW: i32 = 1 << 10;
-/// Fail if path resolves to a non-directory file.
-pub const O_DIRECTORY: i32 = 1 << 11;
-/// Write I/O operations on the file descriptor will complete as defined by synchronized I/O file integrity completion.
-pub const O_DSYNC: i32 = 1 << 12;
-/// Non-blocking mode.
-pub const O_NONBLOCK: i32 = 1 << 13;
-/// Read I/O operations on the file descriptor shall complete at the same level of integrity as specified by the O_DSYNC and O_SYNC flags
-pub const O_RSYNC: i32 = 1 << 14;
-/// Write I/O operations on the file descriptor will complete as defined by synchronized I/O data integrity completion.
-pub const O_SYNC: i32 = 1 << 15;
 /// Open for execute only.
 pub const O_EXEC: i32 = 1 << 16;
 /// Open for search only.
 pub const O_SEARCH: i32 = 1 << 17;
+
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OpenFlags {
+    /// Set read-only access.
+    O_RDONLY = 0,
+    /// Set write-only access.
+    O_WRONLY = 1,
+    /// Set read-write access.
+    O_RDWR = 2,
+    /// Set append mode.
+    O_APPEND = 0x0008,
+    /// Create file if it does not exist.
+    O_CREAT = 0x0200,
+    /// Truncate file to size zero.
+    O_TRUNC = 0x0400,
+    /// Fail if not a new file.
+    O_EXCL = 0x0800,
+    /// Write I/O operations on the file descriptor will complete as defined by synchronized I/O data integrity completion.
+    O_SYNC = 0x2000,
+    /// Non-blocking mode.
+    O_NONBLOCK = 0x4000,
+    /// Fail if path resolves to a non-directory file.
+    O_DIRECTORY = 0x200000,
+}
+
+impl BitOr for OpenFlags {
+    type Output = i32;
+
+    fn bitor(self, rhs: OpenFlags) -> Self::Output {
+        (self as i32) | (rhs as i32)
+    }
+}
+
+impl BitOr<i32> for OpenFlags {
+    type Output = i32;
+
+    fn bitor(self, rhs: i32) -> Self::Output {
+        (self as i32) | rhs
+    }
+}
+
+impl BitOr<OpenFlags> for i32 {
+    type Output = i32;
+
+    fn bitor(self, rhs: OpenFlags) -> Self::Output {
+        self | (rhs as i32)
+    }
+}
+
+impl BitOrAssign<OpenFlags> for i32 {
+    fn bitor_assign(&mut self, rhs: OpenFlags) {
+        *self |= rhs as i32;
+    }
+}
+
+impl BitAnd for OpenFlags {
+    type Output = i32;
+
+    fn bitand(self, rhs: OpenFlags) -> Self::Output {
+        (self as i32) & (rhs as i32)
+    }
+}
+
+impl BitAnd<i32> for OpenFlags {
+    type Output = i32;
+
+    fn bitand(self, rhs: i32) -> Self::Output {
+        (self as i32) & rhs
+    }
+}
+
+impl BitAnd<OpenFlags> for i32 {
+    type Output = i32;
+
+    fn bitand(self, rhs: OpenFlags) -> Self::Output {
+        self & (rhs as i32)
+    }
+}
+
+impl BitAnd<&OpenFlags> for i32 {
+    type Output = i32;
+
+    fn bitand(self, rhs: &OpenFlags) -> Self::Output {
+        self & (*rhs as i32)
+    }
+}
+
+impl From<OpenFlags> for i32 {
+    fn from(flag: OpenFlags) -> Self {
+        flag as i32
+    }
+}
+
+impl From<&OpenFlags> for i32 {
+    fn from(flag: &OpenFlags) -> Self {
+        *flag as i32
+    }
+}
 
 pub const S_IRWXU: mode_t = 0o700;
 pub const S_IRUSR: mode_t = 0o400;
