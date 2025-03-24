@@ -75,9 +75,9 @@ pub use number::InterruptNumber;
 ///
 /// - `kernel_stack_top`: Pointer to the top of the kernel stack.
 /// - `user_stack_top`: Top address of user stack.
-/// - `user_wrapper_fn`: User wrapper function.
 /// - `user_fn`: User function.
-/// - `user_fn_arg`: Argument passed in to `user_fn`
+/// - `arg0`: First argument passed in to `user_fn`.
+/// - `arg1`: Second argument passed in to `user_fn`.
 /// - `kernel_func`: Kernel function.
 /// - `enable_interrupts`: Enable interrupts?
 ///
@@ -94,9 +94,9 @@ pub use number::InterruptNumber;
 pub unsafe fn forge_user_stack(
     kernel_stack_top: *mut u8,
     user_stack_top: usize,
-    user_wrapper_fn: usize,
     user_fn: usize,
-    user_fn_arg: usize,
+    arg0: usize,
+    arg1: usize,
     kernel_func: usize,
     enable_interrupts: bool,
 ) -> *mut u8 {
@@ -105,7 +105,7 @@ pub unsafe fn forge_user_stack(
 
     // Push User Function on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = user_fn as u32;
+    *kstackp = arg0 as u32;
 
     // Push User DS on the kernel stack.
     kstackp = kstackp.offset(-1);
@@ -131,15 +131,15 @@ pub unsafe fn forge_user_stack(
 
     // Push User EIP on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = user_wrapper_fn as u32;
-
-    // Push User function on the kernel stack.
-    kstackp = kstackp.offset(-1);
     *kstackp = user_fn as u32;
 
-    // Push User Function Argument on the kernel stack.
+    // Push first argument to user function on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = user_fn_arg as u32;
+    *kstackp = arg0 as u32;
+
+    // Push second argument to user function on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = arg1 as u32;
 
     // Push Kernel EIP on the kernel stack.
     kstackp = kstackp.offset(-1);

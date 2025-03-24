@@ -53,10 +53,7 @@ use crate::{
     },
     pm::ProcessManager,
 };
-use ::alloc::{
-    collections::LinkedList,
-    string::String,
-};
+use ::alloc::collections::LinkedList;
 use ::core::sync::atomic::{
     AtomicUsize,
     Ordering,
@@ -183,23 +180,17 @@ fn spawn_servers(
     for kmod in kmods.iter() {
         let elf: &Elf32Fhdr = Elf32Fhdr::from_address(kmod.start().into_raw_value());
         let pid: ProcessIdentifier = {
-            match pm.create_process(mm) {
-                Ok(pid) => pid,
+            match pm.create_process(mm, elf, kmod.cmdline()) {
+                Ok(pid) => {
+                    count += 1;
+                    pid
+                },
                 Err(err) => {
                     warn!("failed to create server process: {:?}", err);
                     continue;
                 },
             }
         };
-        match pm.exec(mm, pid, elf) {
-            Ok(_) => {
-                count += 1;
-            },
-            Err(err) => {
-                warn!("failed to load server image: {:?}", err);
-                unimplemented!("kill server process");
-            },
-        }
 
         info!("server {} spawned, pid={:?}", kmod.cmdline(), pid);
     }
@@ -261,11 +252,11 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
     // Add kernel modules to list of memory regions.
     for module in kernel_modules.iter() {
-        let name: String = module.cmdline();
+        let name: &str = module.cmdline();
         let start: VirtualAddress = module.start().into_virtual_address();
         let size: usize = module.size();
         let typ: MemoryRegionType = MemoryRegionType::Reserved;
-        if let Ok(region) = MemoryRegion::new(&name, start, size, typ, AccessPermission::RDONLY) {
+        if let Ok(region) = MemoryRegion::new(name, start, size, typ, AccessPermission::RDONLY) {
             memory_regions.push_back(region);
         }
     }

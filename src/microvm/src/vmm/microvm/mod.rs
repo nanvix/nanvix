@@ -76,6 +76,7 @@ impl Vmm {
         memory_size: usize,
         kernel_filename: &str,
         initrd_filename: Option<String>,
+        initrd_args: Option<String>,
         stderr: Option<String>,
         gateway_conn: Option<Gateway>,
     ) -> Result<Self> {
@@ -103,12 +104,18 @@ impl Vmm {
             microvm.load_initrd(initrd_filename)?;
 
             // Write arguments to the virtual machine. For now, just pass the initrd filename.
-            microvm.write_args(
-                initrd_filename
-                    .split('/')
-                    .next_back()
-                    .unwrap_or(initrd_filename),
-            )?;
+            let mut args: String = initrd_filename
+                .split('/')
+                .next_back()
+                .unwrap_or(initrd_filename)
+                .to_string();
+
+            // Add initrd arguments if provided.
+            if let Some(ref initrd_args) = initrd_args {
+                args.push_str(&format!(" {}", initrd_args));
+            }
+
+            microvm.write_args(&args)?;
         }
 
         microvm.reset(rip)?;

@@ -170,16 +170,19 @@ impl Elf32Fhdr {
 ///
 /// # Returns
 ///
-/// Upon successful completion, the entry point of the ELF32 binary is returned. Otherwise, an error
-/// code is returned and the virtual memory space may be left in an inconsistent state.
+/// Upon successful completion, the entry point of the ELF32 binary and the address past the
+/// last loaded segment are returned. If an error occurs, an error code is returned and the
+/// virtual memory space may be left in an inconsistent state.
 ///
 fn do_elf32_load(
     mm: &mut VirtMemoryManager,
     vmem: &mut Vmem,
     elf: &Elf32Fhdr,
     dry_run: bool,
-) -> Result<VirtualAddress, Error> {
+) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
     trace!("do_el32_load(): dry_run={}", dry_run);
+
+    let mut last_address: usize = 0;
 
     if !elf.is_valid() {
         return Err(Error::new(ErrorCode::BadFile, "invalid elf file"));
@@ -276,20 +279,25 @@ fn do_elf32_load(
             }
 
             virt_addr += size;
+
+            // Update last address.
+            if virt_addr > last_address {
+                last_address = virt_addr;
+            }
         }
     }
 
-    Ok(entry)
+    Ok((
+        entry,
+        PageAligned::from_address(VirtualAddress::new(last_address).align_up(PAGE_ALIGNMENT))?,
+    ))
 }
 
 pub fn elf32_load(
     mm: &mut VirtMemoryManager,
     vmem: &mut Vmem,
     elf: &Elf32Fhdr,
-) -> Result<VirtualAddress, Error> {
-    if do_elf32_load(mm, vmem, elf, true).is_err() {
-        return Ok(VirtualAddress::new(0));
-    }
-
+) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
+    do_elf32_load(mm, vmem, elf, true)?;
     do_elf32_load(mm, vmem, elf, false)
 }
