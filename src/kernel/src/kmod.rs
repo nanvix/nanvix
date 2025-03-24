@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::hal::mem::PhysicalAddress;
-use ::alloc::string::{
-    String,
-    ToString,
-};
+use ::alloc::string::String;
 
 //==================================================================================================
 // Structures
@@ -45,8 +42,8 @@ impl KernelModule {
     }
 
     /// Gets the command line of the module.
-    pub fn cmdline(&self) -> String {
-        self.cmdline.to_string()
+    pub fn cmdline(&self) -> &str {
+        &self.cmdline
     }
 }
 

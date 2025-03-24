@@ -23,5 +23,7 @@
 
 _do_start:
     movl %esp, %ebp
+    pushl %ecx
+    pushl %edx
     call _start
 1:  jmp 1b
