@@ -94,6 +94,8 @@ int main(int argc, const char *argv[])
     );
 
     // Run tests.
+    test_open_close();
+    test_create_unlink();
     test_dirent();
 
     // Write magic string to signal that the test passed.

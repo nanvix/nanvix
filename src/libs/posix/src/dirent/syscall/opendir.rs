@@ -9,8 +9,7 @@ use crate::{
     dirent::DirectoryStream,
     fcntl::{
         self,
-        O_DIRECTORY,
-        O_RDONLY,
+        OpenFlags,
     },
     ffi::c_int,
 };
@@ -23,7 +22,7 @@ use ::nvx::sys::error::Error;
 
 /// Opens a directory stream.
 pub fn opendir(dirname: &str) -> Result<Box<DirectoryStream>, Error> {
-    let fd: c_int = fcntl::open(dirname, O_RDONLY | O_DIRECTORY, 0)?;
+    let fd: c_int = fcntl::open(dirname, OpenFlags::O_RDONLY | OpenFlags::O_DIRECTORY, 0)?;
     let dir: DirectoryStream = DirectoryStream::new(fd);
     Ok(Box::new(dir))
 }
