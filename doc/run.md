@@ -41,7 +41,7 @@ Open a terminal and run the Linux Daemon:
 Open a second terminal and run the MicroVM. Use the `-initrd` option to specify which application to run:
 
 ```bash
-sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf
+sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -gateway 127.0.0.1:1234
 ```
 
 ### Enabling Logging (Optional)
@@ -49,7 +49,10 @@ sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.el
 To enable logging, set the `RUST_LOG` environment variable to `trace` when running the Linux Daemon and/or the MicroVM:
 
 ```bash
+# Open a terminal and run the Linuxd Daemon.
 RUST_LOG=trace sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -gateway 127.0.0.1:1234
+
+# Open a scond terminal and run the MicroVM.
 RUST_LOG=trace ./bin/linuxd.elf -bind-addr 127.0.0.1:1234
 ```
 
