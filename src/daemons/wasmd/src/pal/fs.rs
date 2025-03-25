@@ -362,13 +362,13 @@ impl From<OpenFlags> for c_int {
         let mut flags: c_int = 0;
 
         match oflags.exclusive {
-            ExclusiveOpenFlags::ReadOnly => flags |= posix::fcntl::O_RDONLY,
-            ExclusiveOpenFlags::ReadWrite => flags |= posix::fcntl::O_RDWR,
-            ExclusiveOpenFlags::WriteOnly => flags |= posix::fcntl::O_WRONLY,
+            ExclusiveOpenFlags::ReadOnly => flags |= ::posix::fcntl::OpenFlags::O_RDONLY,
+            ExclusiveOpenFlags::ReadWrite => flags |= ::posix::fcntl::OpenFlags::O_RDWR,
+            ExclusiveOpenFlags::WriteOnly => flags |= ::posix::fcntl::OpenFlags::O_WRONLY,
         }
 
         if oflags.non_exclusive.append {
-            flags |= posix::fcntl::O_APPEND;
+            flags |= posix::fcntl::OpenFlags::O_APPEND;
         }
 
         if oflags.non_exclusive.close_on_exec {
@@ -380,19 +380,19 @@ impl From<OpenFlags> for c_int {
         }
 
         if oflags.non_exclusive.create {
-            flags |= posix::fcntl::O_CREAT;
+            flags |= posix::fcntl::OpenFlags::O_CREAT;
         }
 
         if oflags.non_exclusive.directory {
-            flags |= posix::fcntl::O_DIRECTORY;
+            flags |= posix::fcntl::OpenFlags::O_DIRECTORY;
         }
 
         if oflags.non_exclusive.dsync {
-            flags |= posix::fcntl::O_DSYNC;
+            flags |= posix::fcntl::OpenFlags::O_SYNC;
         }
 
         if oflags.non_exclusive.exclusive {
-            flags |= posix::fcntl::O_EXCL;
+            flags |= posix::fcntl::OpenFlags::O_EXCL;
         }
 
         if oflags.non_exclusive.no_controlling_terminal {
@@ -404,19 +404,19 @@ impl From<OpenFlags> for c_int {
         }
 
         if oflags.non_exclusive.non_block {
-            flags |= posix::fcntl::O_NONBLOCK;
+            flags |= posix::fcntl::OpenFlags::O_NONBLOCK;
         }
 
         if oflags.non_exclusive.rsync {
-            flags |= posix::fcntl::O_RSYNC;
+            flags |= posix::fcntl::OpenFlags::O_SYNC;
         }
 
         if oflags.non_exclusive.sync {
-            flags |= posix::fcntl::O_SYNC;
+            flags |= posix::fcntl::OpenFlags::O_SYNC;
         }
 
         if oflags.non_exclusive.truncate {
-            flags |= posix::fcntl::O_TRUNC;
+            flags |= posix::fcntl::OpenFlags::O_TRUNC;
         }
 
         if oflags.non_exclusive.initialize_tty {

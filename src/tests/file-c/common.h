@@ -9,4 +9,10 @@
 // Tests system calls on directory entries.
 extern void test_dirent(void);
 
+// Tests wether we can open and close a file.
+extern void test_open_close(void);
+
+// Tests wether we can create and unlink a file.
+extern void test_create_unlink(void);
+
 #endif

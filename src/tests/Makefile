@@ -30,7 +30,7 @@ clean-misc-c:
 	$(MAKE) -C misc-c clean
 
 all-network-c:
-	$(MAKE) -C test-network-c
+	$(MAKE) -C network-c
 
 clean-network-c:
-	$(MAKE) -C test-network-c clean
+	$(MAKE) -C network-c clean

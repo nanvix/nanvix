@@ -12,6 +12,7 @@ use ::posix::{
         DirectoryStream,
     },
     fcntl,
+    fcntl::OpenFlags,
     sys::{
         self,
         stat::stat,
@@ -31,7 +32,7 @@ pub fn test() {
     let fd: i32 = match fcntl::openat(
         fcntl::AT_FDCWD,
         "foo.tmp",
-        fcntl::O_CREAT | fcntl::O_RDWR | fcntl::O_TRUNC,
+        OpenFlags::O_CREAT | OpenFlags::O_RDWR | OpenFlags::O_TRUNC,
         fcntl::S_IRUSR | fcntl::S_IWUSR,
     ) {
         Ok(fd) => {
@@ -332,7 +333,7 @@ pub fn test() {
         },
     };
     // Check if file is open for reading and writing.
-    if (flags & fcntl::O_ACCMODE) != fcntl::O_RDWR {
+    if (flags & fcntl::O_ACCMODE) != OpenFlags::O_RDWR.into() {
         panic!("file is not open for reading and writing");
     }
 
@@ -717,7 +718,7 @@ fn test_pipe() {
     };
 
     // Open directory.
-    let dir_fd: i32 = match fcntl::openat(fcntl::AT_FDCWD, ".", fcntl::O_DIRECTORY, 0) {
+    let dir_fd: i32 = match fcntl::openat(fcntl::AT_FDCWD, ".", OpenFlags::O_DIRECTORY.into(), 0) {
         Ok(fd) => {
             ::nvx::info!("opened directory with fd {}", fd);
             fd
