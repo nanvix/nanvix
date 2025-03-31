@@ -40,6 +40,11 @@ pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
     let user_buffer: usize = args.arg0 as usize;
     let size: usize = args.arg1 as usize;
 
+    // skip zero-length messages
+    if size == 0 {
+        return 0;
+    }
+
     // Sanity check message size.
     if size > BUFFER_SIZE {
         let reason: &str = "message too large";
