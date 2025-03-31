@@ -38,6 +38,73 @@ use ::nvx::sys::error::{
 };
 
 //==================================================================================================
+// FileMode
+//==================================================================================================
+
+pub mod file_mode {
+    use crate::sys::types::mode_t;
+
+    /// FIFO
+    pub const S_IFIFO: mode_t = 0o0010000;
+    /// Character device
+    pub const S_IFCHR: mode_t = 0o0020000;
+    /// Directory
+    pub const S_IFDIR: mode_t = 0o0040000;
+    /// Block device
+    pub const S_IFBLK: mode_t = 0o0060000;
+    /// Regular file
+    pub const S_IFREG: mode_t = 0o0100000;
+    /// Symbolic link
+    pub const S_IFLNK: mode_t = 0o0120000;
+    /// Socket.
+    pub const S_IFSOCK: mode_t = 0o0140000;
+    /// Mask for the file type bit fields.
+    pub const S_IFMT: mode_t = 0o0170000;
+
+    /// Tests if the file type is a FIFO.
+    #[allow(non_snake_case)]
+    pub fn S_ISFIFO(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFIFO
+    }
+
+    /// Tests if the file type is a character device.
+    #[allow(non_snake_case)]
+    pub fn S_ISCHR(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFCHR
+    }
+
+    /// Tests if the file type is a directory.
+    #[allow(non_snake_case)]
+    pub fn S_ISDIR(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFDIR
+    }
+
+    /// Tests if the file type is a block device.
+    #[allow(non_snake_case)]
+    pub fn S_ISBLK(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFBLK
+    }
+
+    /// Tests if the file type is a regular file.
+    #[allow(non_snake_case)]
+    pub fn S_ISREG(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFREG
+    }
+
+    /// Tests if the file type is a symbolic link.
+    #[allow(non_snake_case)]
+    pub fn S_ISLNK(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFLNK
+    }
+
+    /// Tests if the file type is a socket.
+    #[allow(non_snake_case)]
+    pub fn S_ISSOCK(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFSOCK
+    }
+}
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
