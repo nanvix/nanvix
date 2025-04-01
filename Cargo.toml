@@ -53,7 +53,7 @@ config = { path = "src/libs/config", default-features = false }
 elf = { path = "src/libs/elf", default-features = false }
 error = { path = "src/libs/error", default-features = false }
 fastrand = { version = "2.3.0", default-features = false }
-flexi_logger = "0.29.8"
+flexi_logger = "0.30.0"
 goblin = { version = "0.9.3", default-features = false }
 http-body-util = "0.1.2"
 hyperlight_common = { git = "https://github.com/nanvix/hyperlight", default-features = false, package = "hyperlight-common" }
