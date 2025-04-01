@@ -8,18 +8,10 @@ This document guides you through building Nanvix. You can either use native tool
 
 ## Table of Contents
 
-- [Building Nanvix with Native Tools](#building-nanvix-with-native-tools)
 - [Building Nanvix with Docker](#building-nanvix-with-docker)
+- [Building Nanvix with Native Tools](#building-nanvix-with-native-tools)
 - [Default Build Parameters](#default-build-parameters)
 - [List of Optional Build Parameters](#list-of-optional-build-parameters)
-
-## Building Nanvix with Native Tools
-
-> ℹ️ This builds Nanvix with the default parameters.
-
-```bash
-make all
-```
 
 ## Building Nanvix with Docker
 
@@ -27,10 +19,18 @@ make all
 
 ```bash
 docker run \
-  --rm -v"$(pwd):/mnt" \
+  -it --rm -v"$(pwd):/mnt" \
   nanvix/toolchain \
   /bin/bash -l -c \
-  "cd /mnt ; git config --global --add safe.directory /mnt ; make TOOLCHAIN_DIR=/opt all"
+  "cd /mnt ; git config --global --add safe.directory /mnt ; make TOOLCHAIN_DIR=/opt all ; chown -R 1000:1000 ."
+```
+
+## Building Nanvix with Native Tools
+
+> ℹ️ This builds Nanvix with the default parameters.
+
+```bash
+make all
 ```
 
 ## Default Build Parameters
