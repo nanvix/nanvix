@@ -77,7 +77,7 @@ serde_json = { version = "1.0.140", default-features = false, features = [
 ] }
 signal-hook = "0.3.17"
 slab = { path = "src/libs/slab", default-features = false }
-spin = { version = "0.9.8", default-features = false }
+spin = { version = "0.10.0", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
 tokio = { version = "1.43.0", default-features = false }
