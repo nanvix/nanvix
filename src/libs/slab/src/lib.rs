@@ -5,7 +5,6 @@
 // Configuration
 //==================================================================================================
 
-#![feature(ptr_sub_ptr)] // Slab::deallocate() uses this.
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //==================================================================================================
@@ -205,8 +204,8 @@ impl Slab {
 
         // Compute the block index.
         // Safety: we have already checked that ptr is within the bounds of the slab.
-        let index: usize =
-            self.num_index_blocks + unsafe { ptr.sub_ptr(self.data_addr) } / self.block_size;
+        let index: usize = self.num_index_blocks
+            + unsafe { ptr.offset_from_unsigned(self.data_addr) } / self.block_size;
 
         // Check if the block is already free.
         if !self.index.test(index)? {
