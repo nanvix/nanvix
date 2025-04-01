@@ -9,6 +9,9 @@ ARG USER=root
 ARG HOME=/root
 USER $USER
 
+# Rust version.
+ARG RUST_VERSION=nightly-2025-01-30
+
 # Update the package list and install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -42,8 +45,8 @@ RUN apt-get update && \
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH=$HOME/.cargo/bin:$PATH
-RUN rustup toolchain install nightly-2024-11-28
-RUN rustup default nightly-2024-11-28
+RUN rustup toolchain install $RUST_VERSION
+RUN rustup default $RUST_VERSION
 RUN rustup component add rust-src
 RUN rustup target add wasm32-wasip1
 
