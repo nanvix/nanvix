@@ -1,0 +1,28 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "elf"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+goblin = { workspace = true, features = [
+    "elf32",
+    "elf64",
+    "endian_fd",
+    "mach32",
+    "mach64",
+] }
+num_enum = { workspace = true }
+sys = { workspace = true }
+
+[features]
+default = []
+std = []

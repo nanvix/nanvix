@@ -9,6 +9,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(never_type)] // pthread requires this.
 #![feature(c_variadic)] // fcntl requires this.
+#![feature(btree_extract_if)] // dlfcn requires this.
 
 //==================================================================================================
 // Modules
@@ -66,6 +67,10 @@ pub mod signal;
 
 /// System-specific headers.
 pub mod sys;
+
+// Safe wrappers.
+#[cfg(feature = "syscall")]
+mod safe;
 
 //==================================================================================================
 // Imports
