@@ -1,99 +1,114 @@
 # Setting Up Your Development Environment
 
-> ℹ️ Some instructions in this document assume that you have superuser privileges on the system.
+> ℹ️ **Note:** Some instructions in this document assume that you have superuser privileges on your system.
 
-This document guides you through setting up your development environment to
-build and run Nanvix. In summary, you will:
+This guide will help you set up your development environment to build and run Nanvix. Here's a quick overview of the steps:
 
 1. Clone the Nanvix repository.
-2. Install dependencies for building development tools.
-3. Install the Rust toolchain for building Nanvix kernel and system components.
-4. Get a C/C++ cross-compiler toolchain for building some user-space applications and libraries.
+2. Install dependencies for development tools.
+3. Set up development tools.
 
 ## Table of Contents
 
-- [Clone this Repository](#clone-this-repository)
-- [Getting Dependencies](#getting-dependencies)
-  - [Ubuntu 22.04](#ubuntu-2204)
-  - [Arch Linux](#arch-linux)
-- [Getting the Rust Toolchain](#getting-the-rust-toolchain)
-- [Getting a C/C++ Cross Compiler Toolchain](#getting-a-cc-cross-compiler-toolchain)
-  - [Building from the Sources (Recommended)](#building-from-the-sources-recommended)
-  - [Building a Docker Image from the Sources](#building-a-docker-image-from-the-sources)
-  - [Getting a Pre-Built Docker Image](#getting-a-pre-built-docker-image)
-- [Building JaveScript to WebAssembly Toolchain (Optional)](#building-javescript-to-webassembly-toolchain-optional)
-- [Building QEMU (Optional)](#building-qemu-optional)
+- [Clone the Repository](#clone-the-repository)
+- [Installing Dependencies for Development Tools](#installing-dependencies-for-development-tools)
+  - [For Ubuntu 22.04](#for-ubuntu-2204)
+  - [For Arch Linux](#for-arch-linux)
+- [Setting Up Development Tools](#setting-up-development-tools)
+  - [Option 1: Use a Pre-Built Docker Image (Recommended)](#option-1-use-a-pre-built-docker-image-recommended)
+  - [Option 2: Build a Docker Image](#option-2-build-a-docker-image)
+  - [Option 3: Build Development Tools Locally](#option-3-build-development-tools-locally)
 
-## Clone this Repository
+---
 
-```bash
-export WORKDIR=$HOME/nanvix                     # Set this to the directory where the source tree will be cloned.
-mkdir -p $WORKDIR && cd $WORKDIR                # Create workspace and switch to it.
-git clone https://github.com/nanvix/nanvix.git  # Clone repository.
-cd nanvix                                       # Switch to Nanvix source tree.
-```
+## Clone the Repository
 
-## Getting Dependencies
-
-### Ubuntu 22.04
+Start by cloning the Nanvix repository:
 
 ```bash
-# Assuming you are in the project's root directory.
-cat ./scripts/setup/ubuntu.sh                # Inspect what is going to be installed.
-sudo -E ./scripts/setup/ubuntu.sh --extra  # Install dependencies.
+export WORKDIR=$HOME/nanvix                     # Set the directory for the source tree.
+mkdir -p $WORKDIR && cd $WORKDIR                # Create the workspace and navigate to it.
+git clone https://github.com/nanvix/nanvix.git  # Clone the repository.
+cd nanvix                                       # Navigate to the Nanvix source tree.
 ```
 
-### Arch Linux
+---
+
+## Installing Dependencies for Development Tools
+
+### For Ubuntu 22.04
+
+To install dependencies on Ubuntu 22.04:
 
 ```bash
-# Assuming you are in the project's root directory.
-cat ./scripts/setup/arch.sh                # Inspect what is going to be installed.
-sudo -E ./scripts/setup/arch.sh --extra  # Install dependencies.
+# Ensure you are in the project's root directory.
+cat ./scripts/setup/ubuntu.sh              # Review the installation script.
+sudo -E ./scripts/setup/ubuntu.sh --extra  # Run the script to install dependencies.
 ```
 
-## Getting the Rust Toolchain
+### For Arch Linux
+
+To install dependencies on Arch Linux:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-exec $SHELL # Restart shell to update path.
-rustup component add rust-src
-rustup target add wasm32-wasip1
+# Ensure you are in the project's root directory.
+cat ./scripts/setup/arch.sh              # Review the installation script.
+sudo -E ./scripts/setup/arch.sh --extra  # Run the script to install dependencies.
 ```
 
-## Getting a C/C++ Cross Compiler Toolchain
+---
 
-You can follow any of the approaches below.
+## Setting Up Development Tools
 
-### Building from the Sources (Recommended)
+Choose one of the following methods to set up the development tools for Nanvix.
 
-> ⚠️ This step may take some time to complete.
+### Option 1: Use a Pre-Built Docker Image (Recommended)
 
-```bash
-# Assuming you are in the project's root directory.
-export TOOLCHAIN_DIR=$PWD                          # Set this to the directory where the toolchain will be installed.
-./scripts/setup/toolchain.sh $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
-```
-
-### Building a Docker Image from the Sources
-
-> ⚠️ This step may take some time to complete.
-
-```bash
-# Assuming you are in the project's root directory.
-docker build -t nanvix/toolchain ./scripts/setup/
-```
-
-### Getting a Pre-Built Docker Image
+This is the easiest and fastest way to get started:
 
 ```bash
 docker pull nanvix/toolchain
 ```
 
-## Building JaveScript to WebAssembly Toolchain (Optional)
+### Option 2: Build a Docker Image
 
-> ⚠️ This step may take some time to complete.
+> ⚠️ **Note:** This process may take some time to complete.
 
-Follow this step if you want to build the JavaScript to WebAssembly (Javy) toolchain for Nanvix.
+To build a Docker image with the required tools:
+
+```bash
+# Ensure you are in the project's root directory.
+docker build -t nanvix/toolchain ./scripts/setup/
+```
+
+### Option 3: Build Development Tools Locally
+
+If you prefer to build the tools directly on your system, follow these steps:
+
+#### Step 1: Install the Rust Toolchain
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+exec $SHELL # Restart the shell to update the PATH.
+rustup component add rust-src
+rustup target add wasm32-wasip1
+```
+
+#### Step 2: Build a C/C++ Cross Compiler Toolchain
+
+> ⚠️ **Note:** This process may take some time to complete.
+
+```bash
+# Ensure you are in the project's root directory.
+export TOOLCHAIN_DIR=$PWD                    # Set the directory for the toolchain.
+./scripts/setup/toolchain.sh $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
+```
+
+#### Step 3: Build the JavaScript to WebAssembly Toolchain (Optional)
+
+> ⚠️ **Note:** This step  may take some time to complete.
+
+If you need the JavaScript to WebAssembly (Javy) toolchain:
 
 ```bash
 git clone https://github.com/nanvix/javy
@@ -101,14 +116,14 @@ cargo build -p javy-plugin --target=wasm32-wasip1 -r
 cargo install --path crates/cli
 ```
 
-## Building QEMU (Optional)
+#### Step 4: Build QEMU (Optional)
 
-> ⚠️ This step may take some time to complete.
+> ⚠️ **Note:** This step may take some time to complete.
 
-Follow this step if you want to use a version of QEMU that is known to work with Nanvix.
+If you need a version of QEMU known to work with Nanvix:
 
 ```bash
-# Assuming you are in the project's root directory.
-export TARGET=x86                      # Select x86 as your target architecture.
+# Ensure you are in the project's root directory.
+export TARGET=x86                # Set the target architecture (e.g., x86).
 ./scripts/setup/qemu.sh $TARGET  # Build QEMU.
 ```
