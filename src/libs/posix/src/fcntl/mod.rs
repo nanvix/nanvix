@@ -26,7 +26,7 @@ pub mod message;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
-        mod syscall;
+        pub mod syscall;
         pub use self::syscall::{
             openat,
             unlinkat,
