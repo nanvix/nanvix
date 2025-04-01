@@ -62,8 +62,8 @@ mkdir -p build && cd build
     --enable-languages=c,c++  \
     --with-newlib
 
-make -j `nproc` all-gcc all-target-libgcc all-target-libstdc++-v3
-make install-gcc install-target-libgcc install-target-libstdc++-v3
+make -j `nproc` all-gcc all-target-libgcc
+make install-gcc install-target-libgcc
 
 #===================================================================================================
 # Build Newlib
@@ -85,10 +85,29 @@ make install
 export PATH=$OLD_PATH
 
 #===================================================================================================
-# Build Libstdc++ for Nanvix
+# Copy Headers
 #===================================================================================================
+
+mkdir -p $PREFIX/usr/include
+cp -r $PREFIX/$TARGET/include/* $PREFIX/usr/include/
+
+#===================================================================================================
+# Rebuild GCC for Nanvix
+#===================================================================================================
+
+# We must rebuild GCC so fix-includes are actually fixed.
+# Note this time we also enable libstdc++ compilation.
 
 cd $PREFIX/src/gcc/build
 
-make -j `nproc` all-target-libstdc++-v3
-make install-target-libstdc++-v3
+../configure \
+    --target=$TARGET \
+    --prefix=$PREFIX \
+    --with-sysroot=$SYSROOT \
+    --disable-multilib \
+    --disable-nls \
+    --enable-languages=c,c++  \
+    --with-newlib
+
+make -j `nproc` all-gcc all-target-libgcc all-target-libstdc++-v3
+make install-gcc install-target-libgcc install-target-libstdc++-v3
