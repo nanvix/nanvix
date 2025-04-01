@@ -314,6 +314,7 @@ run-nanvixd-tests: | \
 	test-hello-js \
 	test-hello-wasm \
 	test-linux-app \
+	test-dlfcn-c \
 	test-file-c \
 	test-thread-c \
 	test-misc-c \
@@ -624,6 +625,7 @@ $(eval $(call TEST_RULE,echo-rust-nostd,'["hello world!"]','hello world!'))
 $(eval $(call TEST_RULE,hello-c,'[]','Hello$(comma) world from C!'))
 $(eval $(call TEST_RULE,hello-cpp,'[]','Hello$(comma) world from C++!'))
 $(eval $(call TEST_RULE,linux-app,'[]','ok'))
+$(eval $(call TEST_RULE,dlfcn-c,'[]','ok'))
 $(eval $(call TEST_RULE,file-c,'[]','ok'))
 $(eval $(call TEST_RULE,thread-c,'[]','ok'))
 $(eval $(call TEST_RULE,network-c,'[]','ok'))
