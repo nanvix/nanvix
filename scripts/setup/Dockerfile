@@ -10,7 +10,7 @@ ARG HOME=/root
 USER $USER
 
 # Rust version.
-ARG RUST_VERSION=nightly-2025-01-30
+ARG RUST_VERSION=nightly-2025-03-18
 
 # Update the package list and install dependencies
 RUN apt-get update && \
