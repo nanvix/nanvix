@@ -365,7 +365,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     let cores_online: usize = unsafe { CORES_ONLINE.load(Ordering::Acquire) };
     info!("number of cores online: {}", cores_online);
 
-    if spawn_servers(&mut mm, &mut pm, &kernel_modules) > 0 {
+    let status: usize = if spawn_servers(&mut mm, &mut pm, &kernel_modules) > 0 {
         // Initialize kernel call dispatcher.
         kcall::init();
 
@@ -377,13 +377,15 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         }
 
         kcall::handler(&mut hal, &mut mm, &mut pm)
-    }
+    } else {
+        0
+    };
 
     #[cfg(feature = "smp")]
     startup::wait().expect("failed to synchronize application cores");
 
     trace!("the system will shutdown now!");
-    kernel_magic_string();
+    kernel_magic_string(status);
 }
 
 #[no_mangle]
@@ -429,11 +431,15 @@ pub extern "C" fn do_ap_start(_coreid: u32) {
 /// system expects this to be the last thing that the kernel, and thus leverages this behavior to
 /// assert for a successful execution.
 ///
+/// # Parameters
+///
+/// - `status`: The shutdown status code.
+///
 /// # Returns
 ///
 /// This function never returns.
 ///
-pub fn kernel_magic_string() -> ! {
+pub fn kernel_magic_string(status: usize) -> ! {
     debug!("hello, world!");
-    hal::platform::shutdown();
+    hal::platform::shutdown(status);
 }

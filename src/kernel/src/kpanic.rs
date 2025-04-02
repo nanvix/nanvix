@@ -19,6 +19,7 @@ use ::core::{
         PanicMessage,
     },
 };
+use ::sys::error::ErrorCode;
 
 //==================================================================================================
 // Standalone Functions
@@ -49,5 +50,5 @@ pub fn kpanic(info: &PanicInfo) -> ! {
         let _ = write!(klog, "file='{}', line={} :: {}", file, line, m);
     }
 
-    platform::shutdown();
+    platform::shutdown(ErrorCode::UnrecoverableState.into_errno() as usize);
 }

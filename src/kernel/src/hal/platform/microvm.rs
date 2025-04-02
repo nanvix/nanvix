@@ -138,15 +138,21 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 ///
 /// Shutdowns the machine.
 ///
+/// # Parameters
+///
+/// - `status`: The shutdown status code.
+///
 /// # Return
 ///
 /// This function never returns.
 ///
-pub fn shutdown() -> ! {
+pub fn shutdown(status: usize) -> ! {
     unsafe {
-        ::sys::arch::io::out16(
+        let status: u16 = (status & 0xffff) as u16;
+        let cmd: u16 = ::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD;
+        ::sys::arch::io::out32(
             ::config::microvm::DEFAULT_VMM_PORT,
-            ::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD,
+            ((cmd as u32) << 16) | (status as u32),
         )
     };
     loop {
