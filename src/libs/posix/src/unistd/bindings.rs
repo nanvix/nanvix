@@ -26,6 +26,7 @@ use crate::{
     unistd::{
         syscall,
         STDERR_FILENO,
+        STDIN_FILENO,
         STDOUT_FILENO,
     },
 };
@@ -357,7 +358,14 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
 #[no_mangle]
 pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_int {
     ::nvx::trace!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
-    -1
+
+    // Fill buffer with 1s.
+    let buffer: &mut [u8] = slice::from_raw_parts_mut(_buffer as *mut u8, _length as usize);
+    for byte in buffer.iter_mut() {
+        *byte = 1;
+    }
+
+    0
 }
 
 #[no_mangle]
@@ -375,11 +383,11 @@ pub extern "C" fn getpid() -> pid_t {
 
 #[no_mangle]
 pub extern "C" fn isatty(_fd: c_int) -> c_int {
-    // TODO: Implement this system call.
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+    if STDIN_FILENO == _fd || STDOUT_FILENO == _fd || STDERR_FILENO == _fd {
+        1
+    } else {
+        0
     }
-    -1
 }
 
 ///
@@ -714,10 +722,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
 pub extern "C" fn sysconf(_name: c_int) -> c_long {
     // TODO: https://github.com/nanvix/nanvix/issues/342
     ::nvx::error!("sysconf(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
-    }
-    -1
+    0
 }
 
 ///

@@ -13,20 +13,13 @@
 
 #[cfg(all(feature = "syscall", feature = "staticlib"))]
 mod bindings {
-    use crate::{
-        errno::errno,
-        ffi::c_int,
-    };
-    use ::nvx::sys::error::ErrorCode;
+    use crate::ffi::c_int;
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
     pub extern "C" fn ioctl(_fd: c_int, _request: c_int, _arg: *mut c_int) -> c_int {
         // TODO: https://github.com/nanvix/nanvix/issues/351
-        ::nvx::error!("ioctl(): not implemented");
-        unsafe {
-            errno = ErrorCode::InvalidSysCall.into_errno();
-        }
-        -1
+        ::nvx::error!("ioctl(): not implemented, ignoring");
+        0
     }
 }
