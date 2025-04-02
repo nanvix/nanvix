@@ -79,7 +79,12 @@ fn main() -> Result<()> {
     let mut vmm: Vmm =
         Vmm::new(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)?;
 
-    vmm.run()?;
-
-    Ok(())
+    // Run virtual machine and check exit status code.
+    match vmm.run()? {
+        exit_status if exit_status != 0 => {
+            error!("main(): virtual machine exited with status {}", (exit_status as i16));
+            Err(anyhow::anyhow!("virtual machine exited with status {}", exit_status))
+        },
+        _ => Ok(()),
+    }
 }

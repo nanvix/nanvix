@@ -238,9 +238,10 @@ impl MicroVm {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    /// Upon successful completion, this method returns the exit status of the virtual machine.
+    /// Otherwise, it returns an error.
     ///
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<u16> {
         trace!("run()");
         crate::timer!("vm_run");
 
@@ -253,14 +254,14 @@ impl MicroVm {
                 // The guest requested to access an I/O port.
                 VirtualProcessorExitReason::PmioAccess => {
                     crate::timer!("vm_run_pmio_access");
-                    if !(self.emulator.handle_pmio_access(exit_context)?) {
-                        self.vcpu.poweroff();
+                    if let Some(exit_status) = self.emulator.handle_pmio_access(exit_context)? {
+                        self.vcpu.poweroff(exit_status);
                     }
                 },
 
                 // The guest requested to halt the virtual processor.
                 VirtualProcessorExitReason::Halt => {
-                    self.vcpu.poweroff();
+                    self.vcpu.poweroff(0);
                 },
 
                 // Virtual machine exited due to an unknown reason.
@@ -270,7 +271,7 @@ impl MicroVm {
             }
         }
 
-        Ok(())
+        Ok(self.vcpu.exit_status())
     }
 
     ///

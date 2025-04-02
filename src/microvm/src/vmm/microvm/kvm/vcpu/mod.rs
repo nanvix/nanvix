@@ -56,6 +56,8 @@ pub struct VirtualProcessor {
     _timer: Timer,
     /// Processor state.
     online: bool,
+    /// Exit status code.
+    exit_status: u16,
 }
 
 impl VirtualProcessor {
@@ -80,6 +82,7 @@ impl VirtualProcessor {
             _irqchip: irqchip,
             _timer: timer,
             online: false,
+            exit_status: 0,
         })
     }
 
@@ -127,9 +130,27 @@ impl VirtualProcessor {
     ///
     /// Powers off the virtual processor.
     ///
-    pub fn poweroff(&mut self) {
-        trace!("poweroff()");
+    /// # Parameters
+    ///
+    /// - `exit_status`: Exit status code.
+    ///
+    pub fn poweroff(&mut self, exit_status: u16) {
+        trace!("poweroff(): exit_status={}", exit_status);
         self.online = false;
+        self.exit_status = exit_status;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the exit status code of the virtual processor.
+    ///
+    /// # Returns
+    ///
+    /// The exit status code of the virtual processor.
+    ///
+    pub fn exit_status(&self) -> u16 {
+        self.exit_status
     }
 
     ///
