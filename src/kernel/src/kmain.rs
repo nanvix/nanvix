@@ -22,6 +22,7 @@
 #![feature(btree_extract_if)] // pm uses this.
 #![no_std]
 #![no_main]
+#![allow(clippy::result_large_err)] // FIXME: introduced by thread manager.
 
 //==================================================================================================
 // Imports
