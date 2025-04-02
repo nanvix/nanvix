@@ -25,6 +25,9 @@ export PROFILER ?= no
 # Target Host CPU
 export HOST_CPU ?=
 
+# Build optional software?
+export BUILD_OPT ?= yes
+
 # Log Level
 export LOG_LEVEL ?= warn
 
@@ -251,7 +254,8 @@ all: \
 	all-kernel \
 	all-wasm-binaries \
 	all-host-binaries \
-	all-microvm
+	all-microvm \
+	all-opt
 
 # Performs local initialization.
 init:
@@ -268,9 +272,10 @@ clean: \
 	clean-wasm-binaries \
 	clean-host-binaries \
 	clean-microvm \
+	clean-opt \
 	image-clean
 
-distclean: clean
+distclean: clean distclean-opt
 	$(FORCE_RM_CMD) Cargo.lock
 	$(FORCE_RM_CMD) $(OBJECTS_DIR)
 	$(FORCE_RM_CMD) $(LIBRARIES_DIR)
@@ -319,6 +324,49 @@ run-nanvixd-tests: | \
 	test-thread-c \
 	test-misc-c \
 	test-network-c
+
+#===================================================================================================
+# Build Rules for Optional Software
+#===================================================================================================
+
+ifneq ($(strip $(filter yes,$(BUILD_OPT))),)
+
+all-opt: all-python
+
+clean-opt: clean-python
+
+distclean-opt: distclean-python
+
+else
+
+all-opt:
+	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
+clean-opt:
+	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
+distclean-opt:
+	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
+
+endif
+
+#===================================================================================================
+# Build Rules for Python
+#===================================================================================================
+
+all-python: all
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	echo "Building Python..."
+	bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(ROOT_DIR)
+endif
+
+clean-python:
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-python.sh clean $(TOOLCHAIN_DIR) $(ROOT_DIR)
+endif
+
+distclean-python:
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-python.sh distclean $(TOOLCHAIN_DIR) $(ROOT_DIR)
+endif
 
 #===================================================================================================
 # Build Rules for Running and Debugging
