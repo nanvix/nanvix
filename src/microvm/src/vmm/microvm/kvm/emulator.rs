@@ -83,14 +83,15 @@ impl Emulator {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, this method a boolean value that encodes wether the virtual
-    /// processor should be resumed (`true`) or not .(`false`). If an error is encountered, an error
-    /// is returned instead.
+    /// Upon successful completion, this method returns `Ok(None)` if the virtual machine should
+    /// resumed or `Ok(Some(status))` if the virtual machine should be stopped. The status is
+    /// returned in case the virtual machine should be stopped.  . If an error is encountered, an
+    /// error is returned instead.
     ///
     pub fn handle_pmio_access(
         &mut self,
         exit_context: VirtualProcessorExitContext,
-    ) -> Result<bool> {
+    ) -> Result<Option<u16>> {
         // Parse context.
         match exit_context {
             // Read from an I/O port.
@@ -112,8 +113,15 @@ impl Emulator {
                 },
                 // Write to the virtual machine monitor port.
                 ::config::microvm::DEFAULT_VMM_PORT => {
-                    // TODO: check if data matches an expected command.
-                    return Ok(false);
+                    // Extract parse command.
+                    match (data >> 16) as u16 {
+                        ::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD => {
+                            // Extract status code.
+                            let status: u16 = (data & 0xffff) as u16;
+                            return Ok(Some(status));
+                        },
+                        cmd => anyhow::bail!("unknown virtual machine command (cmd=:{:#06x})", cmd),
+                    }
                 },
                 // Write to an I/O port that is not supported.
                 _ => {
@@ -130,6 +138,6 @@ impl Emulator {
             },
         }
 
-        Ok(true)
+        Ok(None)
     }
 }

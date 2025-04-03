@@ -36,12 +36,12 @@ use ::sys::{
 ///
 /// Kernel call handler.
 ///
-pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut ProcessManager) {
+pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut ProcessManager) -> usize {
     if let Err(e) = event::init(hal) {
         panic!("failed to initialize event manager: {:?}", e);
     }
 
-    loop {
+    let status: usize = loop {
         // Read kernel call arguments from the scoreboard.
         match ScoreBoard::get_mut() {
             Ok(scoreboard) => match scoreboard.handle() {
@@ -94,7 +94,6 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                     }
                 },
                 Err(e) => match e.code {
-                    ErrorCode::Interrupted => break,
                     ErrorCode::OperationWouldBlock => {
                         // SAFETY: the kernel process does not hold any resources.
                         if let Err(e) = unsafe { ProcessManager::switch() } {
@@ -145,7 +144,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                 // Check if init daemon process terminated.
                 if pid == ProcessIdentifier::INITD {
                     // It was, so we should shutdown.
-                    break;
+                    break status;
                 }
                 // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
                 match unsafe {
@@ -164,9 +163,11 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                 error!("failed to harvest zombies: {:?}", e);
             },
         }
-    }
+    };
 
     while let Ok(Some((pid, status))) = pm.harvest_zombies(mm) {
         info!("harvested zombie process: pid={:?}, status={:?}", pid, status);
     }
+
+    status
 }
