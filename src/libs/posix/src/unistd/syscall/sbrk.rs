@@ -23,6 +23,7 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================///
 
+///
 /// # Description
 ///
 /// The `sbrk()` increments the location of the program break by `size` bytes. The program break
@@ -56,19 +57,40 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
         // Align the new end.
         let new_end: *mut u8 = mm::align_up(new_end as usize, PAGE_ALIGNMENT) as *mut u8;
 
-        // Check for overflow.
-        // TODO: remove this check and let the page fault handler run.
-        if new_end >= (mm::BREAK_BASE_RAW + mm::C_HEAP_SIZE) as *mut u8 {
-            return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
+        // Check wether we should allocate or free memory.
+        if size > 0 {
+            // Allocate memory.
+
+            // Check if we would exceed the heap size.
+            if new_end >= (mm::BREAK_BASE_RAW + mm::C_HEAP_SIZE) as *mut u8 {
+                return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
+            }
+
+            let pid: ProcessIdentifier = pm::getpid()?;
+
+            // Allocate memory.
+            nvx::mm::heap::map_range(
+                pid,
+                VirtualAddress::from_raw_value(old_end as usize),
+                VirtualAddress::from_raw_value(new_end as usize),
+            )?;
+        } else {
+            // Free memory.
+
+            // Check if we would free memory below the heap base address.
+            if new_end < mm::BREAK_BASE_RAW as *mut u8 {
+                return Err(Error::new(ErrorCode::InvalidArgument, "invalid size"));
+            }
+
+            let pid: ProcessIdentifier = pm::getpid()?;
+
+            // Free memory.
+            nvx::mm::heap::unmap_range(
+                pid,
+                VirtualAddress::from_raw_value(new_end as usize),
+                VirtualAddress::from_raw_value(old_end as usize),
+            )?;
         }
-
-        let pid: ProcessIdentifier = pm::getpid()?;
-
-        nvx::mm::heap::map_range(
-            pid,
-            VirtualAddress::from_raw_value(old_end as usize),
-            VirtualAddress::from_raw_value(new_end as usize),
-        )?;
 
         END = new_end;
         old_end
