@@ -54,12 +54,27 @@ build() {
 		--build=x86_64-pc-linux-gnu \
 		--with-build-python=/usr/bin/python3 \
 		--disable-test-modules \
+		--with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
+		--with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
 		ac_cv_file__dev_ptmx=no \
 		ac_cv_file__dev_ptc=no \
-		ac_cv_pthread_is_default=yes
+		ac_cv_pthread_is_default=yes \
+		ac_cv_pthread=yes \
+		ac_cv_kthread=no
 
 	# Build.
 	make all
+
+	# Warn about pyvenv.cfg
+	echo "=========================================================================="
+	echo " Reminder: Create a 'pyvenv.cfg' file with the following contents:"
+	echo ""
+	echo " python-home = $NANVIX_HOME"
+	echo " include-system-site-packages = false"
+	echo " version = $PYTHON_VERSION"
+	echo ""
+	echo " Place this file in the parent directory of $NANVIX_HOME."
+	echo "=========================================================================="
 }
 
 #===================================================================================================
