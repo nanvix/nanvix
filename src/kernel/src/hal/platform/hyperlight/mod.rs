@@ -144,11 +144,15 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 ///
 /// Shutdowns the machine.
 ///
+/// # Parameters
+///
+/// - `status`: The shutdown status code.
+///
 /// # Return
 ///
 /// This function never returns.
 ///
-pub fn shutdown() -> ! {
+pub fn shutdown(_status: usize) -> ! {
     unsafe {
         ::sys::arch::cpu::halt();
     };

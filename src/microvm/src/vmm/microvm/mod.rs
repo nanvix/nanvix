@@ -171,7 +171,13 @@ impl Vmm {
     /// # Parameters
     ///
     /// * `args` - Arguments for the virtual machine monitor.
-    pub fn run(&mut self) -> Result<()> {
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns the exit status of the virtual machine.
+    /// Otherwise, it returns an error.
+    ///
+    pub fn run(&mut self) -> Result<u16> {
         self.microvm
             .lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?

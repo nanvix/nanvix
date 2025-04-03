@@ -173,13 +173,20 @@ impl Vmm {
     /// # Parameters
     ///
     /// * `args` - Arguments for the virtual machine monitor.
-    pub fn run(&mut self) -> Result<()> {
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns the exit status of the virtual machine.
+    /// Otherwise, it returns an error.
+    ///
+    pub fn run(&mut self) -> Result<u16> {
         crate::timer!("vmm_run");
         if let Some(sandbox) = self.sandbox.take() {
             let _ = sandbox.evolve(Noop::<UninitializedSandbox, MultiUseSandbox>::default())?;
         }
 
-        Ok(())
+        // TODO: return the exit status code when supported.
+        Ok(0)
     }
 
     ///
