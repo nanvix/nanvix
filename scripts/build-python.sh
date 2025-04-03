@@ -85,12 +85,8 @@ if ! python3 --version | grep -q $PYTHON_VERSION; then
 	exit 0
 fi
 
-# Clone if needed and enter the cpython directory
-if [ ! -d $CPYTHON_HOME ];
-then
-	git clone https://github.com/nanvix/cpython --branch $BRANCH_NAME $CPYTHON_HOME
-fi
-cd $CPYTHON_HOME
+# Fetch submodule if needed and enter the cpython directory.
+git submodule update --init opt/cpython && cd $CPYTHON_HOME
 
 # Save current environment variables.
 OLD_LDFLAGS=$LDFLAGS

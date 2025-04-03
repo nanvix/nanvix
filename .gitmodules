@@ -1,0 +1,4 @@
+[submodule "opt/cpython"]
+	path = opt/cpython
+	url = https://github.com/nanvix/cpython
+	branch = dev
