@@ -8,15 +8,16 @@
 #===================================================================================================
 
 RULE=${1:-build}
-TOOLCHAIN_DIR=${2:-$PWD/toolchain}
-NANVIX_HOME=${3:-$PWD}
+NANVIX_HOME=${2:-$PWD}
+TOOLCHAIN_DIR=${3:-$PWD/toolchain}
+SYSROOT_DIR=${4:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
 PYTHON_VERSION=3.12.3
-OPT_DIR=$PWD/opt
+OPT_DIR=$NANVIX_HOME/opt
 CPYTHON_HOME=$OPT_DIR/cpython
 BRANCH_NAME=nanvix/cpython-$PYTHON_VERSION
 
@@ -42,12 +43,12 @@ distclean() {
 
 build() {
 	# Configure.
-	LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld" \
-	CFLAGS="-static" \
 	CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
 	CXX="$TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
 	LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
-	LIBS="-Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a -Wl,--end-group" \
+	LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld" \
+	CFLAGS="-static -I $SYSROOT_DIR/include" \
+	LIBS="-Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a -Wl,--end-group -L $SYSROOT_DIR/lib" \
 	./configure \
 		--disable-shared \
 		--host=i686-nanvix \
@@ -56,6 +57,7 @@ build() {
 		--disable-test-modules \
 		--with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
 		--with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
+		--prefix=$SYSROOT_DIR \
 		ac_cv_file__dev_ptmx=no \
 		ac_cv_file__dev_ptc=no \
 		ac_cv_pthread_is_default=yes \
@@ -64,6 +66,9 @@ build() {
 
 	# Build.
 	make all
+
+	# Install.
+	make install
 
 	# Warn about pyvenv.cfg
 	echo "=========================================================================="
@@ -89,10 +94,17 @@ fi
 git submodule update --init opt/cpython && cd $CPYTHON_HOME
 
 # Save current environment variables.
-OLD_LDFLAGS=$LDFLAGS
-OLD_CFLAGS=$CFLAGS
+OLD_AR=$AR
+OLD_AS=$AS
 OLD_CC=$CC
 OLD_CXX=$CXX
+OLD_CPP=$CPP
+OLD_LD=$LD
+OLD_CFLAGS=$CFLAGS
+OLD_CXXFLAGS=$CXXFLAGS
+OLD_LD_FLAGS=$LDFLAGS
+
+
 
 # Unset variables that might interfere with the build process.
 unset LDFLAGS
@@ -113,7 +125,12 @@ case $RULE in
 esac
 
 # Restore original environment variables.
-export LDFLAGS=$OLD_LDFLAGS
-export CFLAGS=$OLD_CFLAGS
+export AR=$OLD_AR
+export AS=$OLD_AS
 export CC=$OLD_CC
 export CXX=$OLD_CXX
+export CPP=$OLD_CPP
+export LD=$OLD_LD
+export CFLAGS=$OLD_CFLAGS
+export CXXFLAGS=$OLD_CXXFLAGS
+export LDFLAGS=$OLD_LD_FLAGS
