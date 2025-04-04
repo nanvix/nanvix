@@ -340,7 +340,7 @@ run-nanvixd-tests: | \
 
 ifneq ($(strip $(filter yes,$(BUILD_OPT))),)
 
-all-opt: all-python
+all-opt: init all-python
 
 clean-opt: clean-python
 
@@ -361,7 +361,7 @@ endif
 # Build Rules for Python
 #===================================================================================================
 
-all-python: all
+all-python: init all-guest-staticlibs
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Python..."
 	bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(ROOT_DIR)
@@ -417,7 +417,7 @@ endif
 #===================================================================================================
 
 define GUEST_STATICLIB_RULES
-all-guest-staticlib-$(1):
+all-guest-staticlib-$(1): init
 	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/lib$(1).a $(LIBRARIES_DIR)/lib$(1).a
 
@@ -480,7 +480,7 @@ test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(targ
 #===================================================================================================
 
 define GUEST_BINARY_RULES
-all-guest-binaries-$(1): all-guest-staticlibs
+all-guest-binaries-$(1): init all-guest-staticlibs
 	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=$(LOG_LEVEL)
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
 
@@ -539,7 +539,7 @@ clippy-wasmd:
 # Build Rules for Kernel Binary
 #===================================================================================================
 
-all-kernel:
+all-kernel: init
 	$(KERNEL_CARGO_BUILD_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-kernel/$(BUILD_MODE)/kernel.elf $(BINARIES_DIR)/kernel.elf
 
@@ -558,7 +558,7 @@ clippy-kernel:
 #===================================================================================================
 
 define WASM_BINARY_RULES
-all-wasm-binaries-$(1):
+all-wasm-binaries-$(1): init
 	$(WASM_CARGO_BUILD_CMD) -p $(1)
 	$(CP_CMD) $(OBJECTS_DIR)/wasm32-wasip1/$(WASM_BUILD_MODE)/$(1).wasm $(BINARIES_DIR)/$(1).wasm
 
@@ -611,7 +611,7 @@ test-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),test-host-rlib-$(target)
 #===================================================================================================
 
 define HOST_BINARY_RULES
-all-host-binaries-$(1):
+all-host-binaries-$(1): init
 	$(HOST_CARGO_BUILD_CMD) -p $(1)
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$(1) $(BINARIES_DIR)/$(1).elf
 
@@ -640,7 +640,7 @@ clippy-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),clippy-host-binaries
 # Build Rules for Microvm Binary
 #===================================================================================================
 
-all-microvm:
+all-microvm: init
 	$(HOST_CARGO_BUILD_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/microvm $(BINARIES_DIR)/microvm.elf
 
