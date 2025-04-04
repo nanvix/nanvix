@@ -6,6 +6,7 @@
 	"target-pointer-width": "32",
 	"target-c-int-width": "32",
 	"features": "-mmx,-avx,-sse,-sse2,+soft-float",
+	"rustc-abi": "x86-softfloat",
 	"os": "none",
 	"arch": "x86",
 	"linker-flavor": "ld",
