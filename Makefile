@@ -341,11 +341,11 @@ run-nanvixd-tests: | \
 
 ifneq ($(strip $(filter yes,$(BUILD_OPT))),)
 
-all-opt: init all-python
+all-opt: init all-python all-zlib
 
-clean-opt: clean-python
+clean-opt: clean-python clean-zlib
 
-distclean-opt: distclean-python
+distclean-opt: distclean-python distclean-zlib
 
 else
 
@@ -368,14 +368,34 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(ROOT_DIR)
 endif
 
-clean-python:
+clean-python: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh clean $(TOOLCHAIN_DIR) $(ROOT_DIR)
 endif
 
-distclean-python:
+distclean-python: distclean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh distclean $(TOOLCHAIN_DIR) $(ROOT_DIR)
+endif
+
+#===================================================================================================
+# Build Rules for Zlib
+#===================================================================================================
+
+all-zlib: init all-guest-staticlibs
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	echo "Building Zlib..."
+	bash $(SCRIPTS_DIR)/build-zlib.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+clean-zlib:
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+distclean-zlib:
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================
