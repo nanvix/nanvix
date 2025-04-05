@@ -10,7 +10,6 @@ toolchain
 # Build artifacts
 bin/
 target/
-/opt/
 /lib/
 *.a
 *.elf

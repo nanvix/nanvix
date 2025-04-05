@@ -54,12 +54,27 @@ build() {
 		--build=x86_64-pc-linux-gnu \
 		--with-build-python=/usr/bin/python3 \
 		--disable-test-modules \
+		--with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
+		--with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
 		ac_cv_file__dev_ptmx=no \
 		ac_cv_file__dev_ptc=no \
-		ac_cv_pthread_is_default=yes
+		ac_cv_pthread_is_default=yes \
+		ac_cv_pthread=yes \
+		ac_cv_kthread=no
 
 	# Build.
 	make all
+
+	# Warn about pyvenv.cfg
+	echo "=========================================================================="
+	echo " Reminder: Create a 'pyvenv.cfg' file with the following contents:"
+	echo ""
+	echo " python-home = $NANVIX_HOME"
+	echo " include-system-site-packages = false"
+	echo " version = $PYTHON_VERSION"
+	echo ""
+	echo " Place this file in the parent directory of $NANVIX_HOME."
+	echo "=========================================================================="
 }
 
 #===================================================================================================
@@ -70,12 +85,8 @@ if ! python3 --version | grep -q $PYTHON_VERSION; then
 	exit 0
 fi
 
-# Clone if needed and enter the cpython directory
-if [ ! -d $CPYTHON_HOME ];
-then
-	git clone https://github.com/nanvix/cpython --branch $BRANCH_NAME $CPYTHON_HOME
-fi
-cd $CPYTHON_HOME
+# Fetch submodule if needed and enter the cpython directory.
+git submodule update --init opt/cpython && cd $CPYTHON_HOME
 
 # Save current environment variables.
 OLD_LDFLAGS=$LDFLAGS
