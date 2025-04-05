@@ -322,6 +322,7 @@ run-nanvixd-tests: | \
 	test-dlfcn-c \
 	test-file-c \
 	test-thread-c \
+	test-memory-c \
 	test-misc-c \
 	test-network-c
 
@@ -678,6 +679,7 @@ $(eval $(call TEST_RULE,file-c,'[]','ok'))
 $(eval $(call TEST_RULE,thread-c,'[]','ok'))
 $(eval $(call TEST_RULE,network-c,'[]','ok'))
 $(eval $(call TEST_RULE,misc-c,'[]','ok'))
+$(eval $(call TEST_RULE,memory-c,'[]','ok'))
 
 define WASM_TEST_RULE
 test-$(1): all

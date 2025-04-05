@@ -1,9 +1,9 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-all: all-c-bindings all-dlfcn-c all-file-c all-misc-c all-network-c all-thread-c
+all: all-c-bindings all-dlfcn-c all-file-c all-memory all-misc-c all-network-c all-thread-c
 
-clean: clean-c-bindings clean-dlfcn-c clean-file-c clean-misc-c clean-network-c clean-thread-c
+clean: clean-c-bindings clean-dlfcn-c clean-file-c clean-memory clean-misc-c clean-network-c clean-thread-c
 
 all-c-bindings:
 	$(MAKE) -C c-bindings
@@ -28,6 +28,12 @@ all-thread-c:
 
 clean-thread-c:
 	$(MAKE) -C thread-c clean
+
+all-memory:
+	$(MAKE) -C memory-c
+
+clean-memory:
+	$(MAKE) -C memory-c clean
 
 all-misc-c:
 	$(MAKE) -C misc-c
