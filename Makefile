@@ -147,9 +147,12 @@ export CARGO := $(HOME)/.cargo/bin/cargo
 export RUSTC := $(HOME)/.cargo/bin/rustc
 
 # Rust flags for guest target.
-export GUEST_RUST_FLAGS :="-C relocation-model=static -C prefer-dynamic=no"
-export GUEST_CARGO_FLAGS :=-Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
-export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET).json
+export GUEST_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
+export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc
+export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-user.json
+export KERNEL_RUST_FLAGS := $(GUEST_RUST_FLAGS)
+export KERNEL_CARGO_FLAGS := -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
+export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
 export KERNEL_CARGO_FEATURES := --no-default-features --features $(MACHINE) --features $(LOG_LEVEL)
 export WASMD_CARGO_FEATURES :=
 
@@ -187,10 +190,15 @@ export JAVY_FLAGS := -J simd-json-builtins=n -C dynamic=no -C source-compression
 #===================================================================================================
 
 # Cargo commands for guest target.
-export GUEST_CARGO_BUILD_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) build $(GUEST_CARGO_FLAGS) $(CARGO_PROFILE) $(GUEST_CARGO_TARGET)
+export GUEST_CARGO_BUILD_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) build $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET) $(CARGO_PROFILE)
 export GUEST_CARGO_CLEAN_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) clean $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
 export GUEST_CARGO_CHECK_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) check $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET) --message-format=json
 export GUEST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) clippy $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
+
+export KERNEL_CARGO_BUILD_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) build $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET) $(CARGO_PROFILE)
+export KERNEL_CARGO_CLEAN_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) clean $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_CHECK_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) check $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET) --message-format=json
+export KERNEL_CARGO_CLIPPY_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) clippy $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 
 # Cargo commands for wasm target.
 export WASM_CARGO_BUILD_CMD := $(CARGO) build $(WASM_CARGO_PROFILE) --target wasm32-wasip1
@@ -411,7 +419,7 @@ endif
 define GUEST_STATICLIB_RULES
 all-guest-staticlib-$(1):
 	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/lib$(1).a $(LIBRARIES_DIR)/lib$(1).a
+	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/lib$(1).a $(LIBRARIES_DIR)/lib$(1).a
 
 check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
@@ -474,7 +482,7 @@ test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(targ
 define GUEST_BINARY_RULES
 all-guest-binaries-$(1): all-guest-staticlibs
 	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=$(LOG_LEVEL)
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
+	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
 
 check-guest-binaries-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=$(LOG_LEVEL)
@@ -515,7 +523,7 @@ endif
 	@echo "NANVIX_WASM_BINARY_BASENAME=$(NANVIX_WASM_BINARY_BASENAME)"
 	@echo "NANVIX_WASM_BINARY_ARGS=$(NANVIX_WASM_BINARY_ARGS)"
 	$(GUEST_CARGO_BUILD_CMD) $(WASMD_CARGO_FEATURES) -p wasmd
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/wasmd.elf $(BINARIES_DIR)/wasmd.elf
+	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/wasmd.elf $(BINARIES_DIR)/wasmd.elf
 
 check-wasmd:
 	$(GUEST_CARGO_CHECK_CMD) -p wasmd
@@ -532,18 +540,18 @@ clippy-wasmd:
 #===================================================================================================
 
 all-kernel:
-	$(GUEST_CARGO_BUILD_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)/$(BUILD_MODE)/kernel.elf $(BINARIES_DIR)/kernel.elf
+	$(KERNEL_CARGO_BUILD_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
+	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-kernel/$(BUILD_MODE)/kernel.elf $(BINARIES_DIR)/kernel.elf
 
 check-kernel:
-	$(GUEST_CARGO_CHECK_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
+	$(KERNEL_CARGO_CHECK_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
 
 clean-kernel:
-	$(GUEST_CARGO_CLEAN_CMD) -p kernel
+	$(KERNEL_CARGO_CLEAN_CMD) -p kernel
 	$(RM_CMD) $(BINARIES_DIR)/kernel.elf
 
 clippy-kernel:
-	$(GUEST_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
+	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
 
 #===================================================================================================
 # Build Rules for WASM Binaries
