@@ -34,7 +34,7 @@ pub extern "C" fn sched_yield() -> c_int {
         Ok(_) => 0,
         Err(e) => {
             // System call failed. Set errno.
-            unsafe { errno = e.code.into_errno() };
+            unsafe { errno = e.code.get() };
             -1
         },
     }

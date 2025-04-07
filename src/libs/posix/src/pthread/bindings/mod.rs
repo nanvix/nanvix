@@ -68,7 +68,7 @@ pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut pthread_attr_t) -> c_in
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_destroy(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     (*attr).is_initialized = 0;
@@ -113,13 +113,13 @@ pub unsafe extern "C" fn pthread_attr_getdetachstate(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_getdetachstate(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `detachstate` is not valid.
     if detachstate.is_null() {
         ::nvx::error!("pthread_attr_getdetachstate(): invalid detach state pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Store the detach state.
@@ -165,19 +165,19 @@ pub unsafe extern "C" fn pthread_attr_getguardsize(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_getguardsize(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `guardsize` is not valid.
     if guardsize.is_null() {
         ::nvx::error!("pthread_attr_getguardsize(): invalid guard size pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // TODO: implement this function.
     ::nvx::warn!("pthread_attr_getguardsize(): not supported, failing");
 
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
 
 //==================================================================================================
@@ -217,13 +217,13 @@ pub unsafe extern "C" fn pthread_attr_getschedparam(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_getschedparam(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `param` is not valid.
     if param.is_null() {
         ::nvx::error!("pthread_attr_getschedparam(): invalid sched param pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Store the scheduling parameter.
@@ -269,13 +269,13 @@ pub unsafe extern "C" fn pthread_attr_getstackaddr(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_getstackaddr(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `stackaddr` is not valid.
     if stackaddr.is_null() {
         ::nvx::error!("pthread_attr_getstackaddr(): invalid stack address pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Store the stack address.
@@ -321,13 +321,13 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_getstacksize(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `stacksize` is not valid.
     if stacksize.is_null() {
         ::nvx::error!("pthread_attr_getstacksize(): invalid stack size pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Store the stack size.
@@ -381,19 +381,19 @@ pub unsafe extern "C" fn pthread_attr_getstack(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_getstack(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `stackaddr` is not valid.
     if stackaddr.is_null() {
         ::nvx::error!("pthread_attr_getstack(): invalid stack address pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `stacksize` is not valid.
     if stacksize.is_null() {
         ::nvx::error!("pthread_attr_getstack(): invalid stack size pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Store the stack address and size.
@@ -435,7 +435,7 @@ pub unsafe extern "C" fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_init(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     *attr = pthread_attr_t::default();
@@ -491,7 +491,7 @@ pub unsafe extern "C" fn pthread_create(
     // Check if `thread` is not valid.
     if thread.is_null() {
         ::nvx::error!("pthread_create(): invalid thread pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Cast `thread` to a mutable reference.
@@ -509,7 +509,7 @@ pub unsafe extern "C" fn pthread_create(
             *thread = tid;
             0
         },
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }
 
@@ -522,7 +522,7 @@ pub unsafe extern "C" fn pthread_create(
 pub extern "C" fn pthread_detach(_thread: pthread_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/502
     ::nvx::error!("pthread_detach(): not implemented");
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
 
 //==================================================================================================
@@ -617,7 +617,7 @@ pub unsafe extern "C" fn pthread_join(thread: pthread_t, retval_ptr: *mut *mut c
             }
             0
         },
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }
 
@@ -675,12 +675,12 @@ pub unsafe extern "C" fn pthread_attr_setdetachstate(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_setdetachstate(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // TODO: implement this function.
     ::nvx::warn!("pthread_attr_setdetachstate(): not supported, failing");
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
 
 //==================================================================================================
@@ -719,12 +719,12 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_setguardsize(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // TODO: implement this function.
     ::nvx::warn!("pthread_attr_setguardsize(): not supported, failing");
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
 
 //==================================================================================================
@@ -770,12 +770,12 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
     // Check if `param` is not valid.
     if param.is_null() {
         ::nvx::error!("pthread_attr_setschedparam(): invalid sched param pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // TODO: implement this function.
     ::nvx::warn!("pthread_attr_setschedparam(): not supported, failing");
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
 
 //==================================================================================================
@@ -821,12 +821,12 @@ pub unsafe extern "C" fn pthread_attr_setstack(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_setstack(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // TODO: implement this function.
     ::nvx::warn!("pthread_attr_setstack(): not supported, failing");
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
 
 //==================================================================================================
@@ -865,12 +865,12 @@ pub unsafe extern "C" fn pthread_attr_setstackaddr(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_setstackaddr(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // TODO: implement this function.
     ::nvx::warn!("pthread_attr_setstackaddr(): not supported, failing");
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
 
 //==================================================================================================
@@ -909,12 +909,12 @@ pub unsafe extern "C" fn pthread_attr_setstacksize(
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::nvx::error!("pthread_attr_setstacksize(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // TODO: implement this function.
     ::nvx::warn!("pthread_attr_setstacksize(): not supported, failing");
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
 
 //==================================================================================================
@@ -950,7 +950,7 @@ pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_i
     // Check if `oldstate` is not valid.
     if !oldstate.is_null() {
         ::nvx::error!("pthread_setcancelstate(): invalid old state pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     ::nvx::warn!("pthread_setcancelstate(): not supported, ignoring");
@@ -991,10 +991,10 @@ pub unsafe extern "C" fn pthread_setcanceltype(type_: c_int, oldtype: *mut c_int
     // Check if `oldtype` is not valid.
     if !oldtype.is_null() {
         ::nvx::error!("pthread_setcanceltype(): invalid old type pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // TODO: implement this function.
     ::nvx::warn!("pthread_setcanceltype(): not supported, failing");
-    ErrorCode::OperationNotSupported.into_errno()
+    ErrorCode::OperationNotSupported.get()
 }
