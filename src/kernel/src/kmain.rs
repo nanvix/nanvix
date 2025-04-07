@@ -54,7 +54,10 @@ use crate::{
     },
     pm::ProcessManager,
 };
-use ::alloc::collections::LinkedList;
+use ::alloc::{
+    collections::LinkedList,
+    vec::Vec,
+};
 use ::core::sync::atomic::{
     AtomicUsize,
     Ordering,
@@ -181,7 +184,12 @@ fn spawn_servers(
     for kmod in kmods.iter() {
         let elf: &Elf32Fhdr = Elf32Fhdr::from_address(kmod.start().into_raw_value());
         let pid: ProcessIdentifier = {
-            match pm.create_process(mm, elf, kmod.cmdline()) {
+            // Split command line into arguments an environment variables using ";" as the delimiter.
+            let cmdline: Vec<&str> = kmod.cmdline().split(';').collect();
+            let args: &&str = cmdline.first().unwrap_or(&"");
+            let env: &&str = cmdline.get(1).unwrap_or(&"");
+
+            match pm.create_process(mm, elf, args, env) {
                 Ok(pid) => {
                     count += 1;
                     pid
