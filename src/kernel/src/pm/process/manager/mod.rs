@@ -433,6 +433,9 @@ impl ProcessManagerInner {
 
         trace!("create_process(): args={:?}, env={:?}", args, env);
 
+        // Strip leading and trailing spaces from arguments.
+        let args: &str = args.trim();
+
         // Convert args to C-style string.
         let args: CString = match CString::new(args) {
             Ok(cmdline) => cmdline,
@@ -443,6 +446,9 @@ impl ProcessManagerInner {
             },
         };
         let args: &[u8] = args.as_bytes_with_nul();
+
+        // Strip leading and trailing spaces from environment variables.
+        let env: &str = env.trim();
 
         // Convert env to C-style string.
         let env: CString = match CString::new(env) {
