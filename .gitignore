@@ -9,8 +9,9 @@ toolchain
 
 # Build artifacts
 bin/
-target/
 /lib/
+target/
+/sysroot/
 *.a
 *.elf
 *.exe
