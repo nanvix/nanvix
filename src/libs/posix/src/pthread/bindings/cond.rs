@@ -51,12 +51,12 @@ pub unsafe extern "C" fn pthread_cond_broadcast(cond: *const pthread_cond_t) -> 
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     match syscall::pthread_cond_broadcast(&*cond) {
         Ok(()) => 0,
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }
 
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn pthread_cond_init(
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if we should use custom attributes.
@@ -111,7 +111,7 @@ pub unsafe extern "C" fn pthread_cond_init(
 
     match syscall::pthread_cond_init(&mut *cond, &attr) {
         Ok(()) => 0,
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }
 
@@ -147,12 +147,12 @@ pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_in
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     match syscall::pthread_cond_destroy(&mut *cond) {
         Ok(()) => 0,
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }
 
@@ -188,12 +188,12 @@ pub unsafe extern "C" fn pthread_cond_signal(cond: *const pthread_cond_t) -> c_i
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     match syscall::pthread_cond_signal(&*cond) {
         Ok(()) => 0,
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }
 
@@ -210,7 +210,7 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
 ) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/494
     ::nvx::error!("pthread_cond_timedwait(): not implemented");
-    ErrorCode::InvalidSysCall.into_errno()
+    ErrorCode::InvalidSysCall.get()
 }
 
 //==================================================================================================
@@ -250,17 +250,17 @@ pub unsafe extern "C" fn pthread_cond_wait(
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid mutex pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     match syscall::pthread_cond_wait(&*cond, &*mutex) {
         Ok(()) => 0,
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }

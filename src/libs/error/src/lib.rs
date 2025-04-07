@@ -292,8 +292,18 @@ impl ErrorCode {
     ///
     /// Converts an [`ErrorCode`] into an `errno` value.
     ///
+    #[deprecated]
     pub fn into_errno(self) -> i32 {
         -(self as i32)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the error code as an `i32`.
+    ///
+    pub fn get(&self) -> i32 {
+        *self as i32
     }
 }
 

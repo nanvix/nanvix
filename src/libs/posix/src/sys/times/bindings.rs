@@ -46,7 +46,7 @@ pub unsafe extern "C" fn times(buffer: *mut tms) -> clock_t {
         Ok(clock) => clock,
         Err(e) => {
             // Set errno.
-            errno = e.code.into_errno();
+            errno = e.code.get();
             -1 as clock_t
         },
     }
