@@ -47,11 +47,11 @@ pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_mutex_destroy(): invalid mutex pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     if let Err(error) = syscall::pthread_mutex_destroy(&mut *mutex) {
-        return error.code.into_errno();
+        return error.code.get();
     }
 
     0
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn pthread_mutex_init(
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_mutex_init(): invalid mutex pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     // Check if we should use custom attributes.
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn pthread_mutex_init(
     let attr: pthread_mutexattr_t = pthread_mutexattr_t::default();
 
     if let Err(error) = syscall::pthread_mutex_init(&mut *mutex, &attr) {
-        return error.code.into_errno();
+        return error.code.get();
     }
 
     0
@@ -143,12 +143,12 @@ pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_in
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_mutex_lock(): invalid mutex pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     match syscall::pthread_mutex_lock(&mut *mutex) {
         Ok(_) => 0,
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }
 
@@ -195,11 +195,11 @@ pub unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut pthread_mutex_t) -> c_
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_mutex_unlock(): invalid mutex pointer");
-        return ErrorCode::InvalidArgument.into_errno();
+        return ErrorCode::InvalidArgument.get();
     }
 
     match syscall::pthread_mutex_unlock(&mut *mutex) {
         Ok(_) => 0,
-        Err(error) => error.code.into_errno(),
+        Err(error) => error.code.get(),
     }
 }

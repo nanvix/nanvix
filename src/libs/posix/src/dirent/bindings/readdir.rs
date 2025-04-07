@@ -37,7 +37,7 @@ pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent::dir
     // Check if directory stream is invalid.
     if dirp.is_null() {
         ::nvx::error!("closedir(): invalid directory stream");
-        errno = ErrorCode::InvalidArgument.into_errno();
+        errno = ErrorCode::InvalidArgument.get();
         return ptr::null_mut();
     }
 
@@ -62,7 +62,7 @@ pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent::dir
                 dirp,
                 error
             );
-            errno = error.code.into_errno();
+            errno = error.code.get();
             ptr::null_mut()
         },
     };

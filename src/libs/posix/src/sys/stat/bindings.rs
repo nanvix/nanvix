@@ -32,7 +32,7 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
         Ok(_) => 0,
         Err(error) => {
             ::nvx::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
-            errno = error.code.into_errno();
+            errno = error.code.get();
             -1
         },
     }
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("lstat(): invalid pathname");
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
                 statbuf,
                 error
             );
-            errno = error.code.into_errno();
+            errno = error.code.get();
             -1
         },
     }
@@ -120,7 +120,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("stat(): invalid pathname");
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -136,7 +136,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
                 statbuf,
                 error
             );
-            errno = error.code.into_errno();
+            errno = error.code.get();
             -1
         },
     }
@@ -148,7 +148,7 @@ pub unsafe extern "C" fn mkdir(_pathname: *const c_char, _mode: u32) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/347
     ::nvx::error!("mkdir(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -159,7 +159,7 @@ pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/454
     ::nvx::error!("truncate(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }

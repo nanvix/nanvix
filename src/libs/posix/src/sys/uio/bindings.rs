@@ -24,7 +24,7 @@ pub unsafe extern "C" fn writev(_fd: i32, _iov: *const iovec, _iovcnt: i32) -> s
     // TODO: https://github.com/nanvix/nanvix/issues/288
     ::nvx::error!("writev() not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
