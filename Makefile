@@ -363,7 +363,7 @@ endif
 # Build Rules for Python
 #===================================================================================================
 
-all-python: init all-guest-staticlibs
+all-python: init all-guest-staticlibs all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Python..."
 	bash $(SCRIPTS_DIR)/build-python.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
