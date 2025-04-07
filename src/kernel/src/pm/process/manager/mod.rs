@@ -412,6 +412,8 @@ impl ProcessManagerInner {
     ///
     /// - `mm`: Memory manager to use.
     /// - `elf`: ELF header of the executable file.
+    /// - `args`: Command line arguments.
+    /// - `env`: Environment variables.
     ///
     /// # Returns
     ///
@@ -422,16 +424,17 @@ impl ProcessManagerInner {
         &mut self,
         mm: &mut VirtMemoryManager,
         elf: &Elf32Fhdr,
-        cmdline: &str,
+        args: &str,
+        env: &str,
     ) -> Result<ProcessIdentifier, Error> {
         extern "C" {
             pub fn __leave_kernel_to_user_mode();
         }
 
-        trace!("create_process(): cmdline={:?}", cmdline);
+        trace!("create_process(): args={:?}, env={:?}", args, env);
 
-        // Convert command line to C-style string.
-        let cmdline: CString = match CString::new(cmdline) {
+        // Convert args to C-style string.
+        let args: CString = match CString::new(args) {
             Ok(cmdline) => cmdline,
             Err(error) => {
                 let reason: &str = "failed to convert command line string";
@@ -439,7 +442,18 @@ impl ProcessManagerInner {
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             },
         };
-        let cmdline: &[u8] = cmdline.as_bytes_with_nul();
+        let args: &[u8] = args.as_bytes_with_nul();
+
+        // Convert env to C-style string.
+        let env: CString = match CString::new(env) {
+            Ok(cmdline) => cmdline,
+            Err(error) => {
+                let reason: &str = "failed to convert environment string";
+                error!("create_process(): {} (error={:?})", reason, error);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
+        let env: &[u8] = env.as_bytes_with_nul();
 
         // Create a new memory address space for the process.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
@@ -450,20 +464,44 @@ impl ProcessManagerInner {
 
         // Allocate a user-space page, write command line arguments to it, and check for errors.
         // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
-        if cmdline.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
+        if args.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
             let reason: &str = "command line is too long";
-            error!("create_process(): {} (cmdline.len={:?})", reason, cmdline.len());
+            error!("create_process(): {} (cmdline.len={:?})", reason, args.len());
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         mm.alloc_upage(&mut vmem, args_vaddr, AccessPermission::RDWR, true)?;
         vmem.copy_to_user_unaligned(
             args_vaddr.into_inner(),
-            VirtualAddress::new(cmdline.as_ptr() as usize),
-            cmdline.len(),
+            VirtualAddress::new(args.as_ptr() as usize),
+            args.len(),
         )?;
         debug!(
-            "create_process(): command line written to user space (args_vaddr={:?}, cmdline={:?})",
-            args_vaddr, cmdline
+            "create_process(): arguments written to user space (args_vaddr={:?}, args={:?})",
+            args_vaddr, args
+        );
+
+        // Allocate another page for the environment variables and check for errors.
+        // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
+        if env.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
+            let reason: &str = "environment variables are too long";
+            error!("create_process(): {} (env.len={:?})", reason, env.len());
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        let envp_vaddr: PageAligned<VirtualAddress> = PageAligned::<VirtualAddress>::from_address(
+            VirtualAddress::new(args_vaddr.into_raw_value() + PAGE_SIZE),
+        )?;
+        mm.alloc_upage(&mut vmem, envp_vaddr, AccessPermission::RDWR, true)?;
+
+        // Populate the environment variable page.
+        vmem.copy_to_user_unaligned(
+            envp_vaddr.into_inner(),
+            VirtualAddress::new(env.as_ptr() as usize),
+            env.len(),
+        )?;
+        debug!(
+            "create_process(): environment variables written to user space (envp_vaddr={:?}, \
+             env={:?})",
+            envp_vaddr, env
         );
 
         // Create a stack allocator.
@@ -473,7 +511,7 @@ impl ProcessManagerInner {
         let user_stack: UserStack = user_stack_allocator.alloc()?;
         let user_fn: VirtualAddress = entry;
         let argp: usize = args_vaddr.into_raw_value();
-        let envp: usize = 0;
+        let envp: usize = envp_vaddr.into_raw_value();
         let context: ContextInformation = Self::forge_user_context(
             mm,
             &mut vmem,
@@ -1158,7 +1196,8 @@ impl ProcessManager {
     ///
     /// - `mm`: Memory manager to use.
     /// - `elf`: ELF header of the executable to load.
-    /// - `cmdline`: Command line arguments for the new process.
+    /// - `args`: Command line arguments.
+    /// - `env`: Environment variables.
     ///
     /// # Returns
     ///
@@ -1169,9 +1208,10 @@ impl ProcessManager {
         &mut self,
         mm: &mut VirtMemoryManager,
         elf: &Elf32Fhdr,
-        cmdline: &str,
+        args: &str,
+        env: &str,
     ) -> Result<ProcessIdentifier, Error> {
-        self.try_borrow_mut()?.create_process(mm, elf, cmdline)
+        self.try_borrow_mut()?.create_process(mm, elf, args, env)
     }
 
     /// Creates a new thread.
