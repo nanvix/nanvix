@@ -70,6 +70,7 @@ export EXEC_FORMAT := elf
 
 # Libraries
 export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
+export LIBM := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libm.a
 export LIBCXX := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libstdc++.a
 export LIBNVX := $(LIBRARIES_DIR)/libnvx.a
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
