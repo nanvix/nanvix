@@ -136,7 +136,7 @@ macro_rules! error{
 
 #[no_mangle]
 #[cfg(target_os = "none")]
-pub extern "C" fn _start(argp: *mut i8, envp: *const i8) -> ! {
+pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     crate::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
 
     // Initializes the system runtime.
@@ -144,7 +144,7 @@ pub extern "C" fn _start(argp: *mut i8, envp: *const i8) -> ! {
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "staticlib")] {
-            let status: i32 = c_trampoline(argp);
+            let status: i32 = c_trampoline(argp, envp);
         } else {
             let status: i32 = rust_trampoline(argp);
         }
@@ -161,55 +161,74 @@ pub extern "C" fn _start(argp: *mut i8, envp: *const i8) -> ! {
 ///
 /// # Description
 ///
-/// Parses a null-terminated string into an vector of null-terminated strings.
+/// Builds a string table from a a null-terminated string.
 ///
 /// # Parameters
 ///
-/// - `argp`: A pointer to a null-terminated string.
+/// - `string`: A pointer to a null-terminated string.
 ///
 /// # Returns
 ///
 /// - A vector of pointers to null-terminated strings.
 ///
 #[cfg(all(target_os = "none", feature = "staticlib"))]
-unsafe fn parse_argp(argp: *mut i8) -> ::alloc::vec::Vec<*const i8> {
+unsafe fn build_string_table(string: *mut i8) -> ::alloc::vec::Vec<*mut i8> {
     use alloc::vec::Vec;
     use core::ptr;
 
-    let mut argc = 0;
-    let mut current = argp;
+    let mut current = string;
+    let mut count = 0;
 
-    // Traverse `current`, replacing spaces with null characters and counting arguments.
+    // Traverse `current`, replacing spaces with null characters and counting entries.
     while *current != 0 {
         if *current == b' ' as i8 {
             *current = b'\0' as i8;
-            argc += 1;
+            count += 1;
         }
         current = current.add(1);
     }
-    argc += 1; // Account for the null-terminator argument.
+    count += 1; // Account for the null-terminator.
 
-    // Create an array of pointers to the arguments.
-    let mut argv: Vec<*const i8> = Vec::with_capacity(argc as usize);
-    current = argp;
-    for _ in 0..argc {
-        // Print the current argument.
+    // Create an array of pointers to the entries.
+    let mut result: Vec<*mut i8> = Vec::with_capacity(count as usize);
+    current = string;
+    for _ in 0..count {
+        // Print the current entry.
         crate::trace!(
-            "parse_argp(): argv[{}]: {:?}",
-            argv.len(),
+            "build_string_table(): entry[{}]: {:?}",
+            result.len(),
             // Convert to CStr for printing.
             ::core::ffi::CStr::from_ptr(current)
         );
 
-        argv.push(current);
+        result.push(current);
         while *current != 0 {
             current = current.add(1);
         }
         current = current.add(1); // Skip the null terminator.
     }
-    argv.push(ptr::null()); // Null-terminate the array.
+    result.push(ptr::null_mut()); // Null-terminate the array.
 
-    argv
+    result
+}
+
+///
+/// Wrapper for parsing `argp`.
+///
+#[cfg(all(target_os = "none", feature = "staticlib"))]
+unsafe fn parse_argp(argp: *mut i8) -> ::alloc::vec::Vec<*const i8> {
+    build_string_table(argp)
+        .into_iter()
+        .map(|ptr| ptr as *const i8)
+        .collect()
+}
+
+///
+/// Wrapper for parsing `envp`.
+///
+#[cfg(all(target_os = "none", feature = "staticlib"))]
+unsafe fn parse_envp(envp: *mut i8) -> ::alloc::vec::Vec<*mut i8> {
+    build_string_table(envp)
 }
 
 ///
@@ -232,17 +251,25 @@ fn rust_trampoline(_argp: *mut i8) -> i32 {
 /// Trampoline for C applications.
 ///
 #[cfg(all(target_os = "none", feature = "staticlib"))]
-fn c_trampoline(argp: *mut i8) -> i32 {
+fn c_trampoline(argp: *mut i8, envp: *mut i8) -> i32 {
     extern "C" {
         fn main(argc: i32, argv: *const *const u8) -> i32;
         fn _init();
         fn _fini();
     }
 
+    #[allow(non_upper_case_globals)]
+    #[no_mangle]
+    static mut environ: *mut *mut i8 = core::ptr::null_mut();
+
     // Build arguments vector.
     let argv: Vec<*const i8> = unsafe { parse_argp(argp) };
     let argc: i32 = argv.len() as i32 - 1;
     let argv: *const *const u8 = argv.as_ptr() as *const *const u8;
+    let mut env = unsafe { parse_envp(envp) };
+    unsafe {
+        environ = env.as_mut_ptr();
+    }
 
     unsafe {
         _init();
