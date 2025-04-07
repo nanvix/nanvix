@@ -46,7 +46,7 @@ pub unsafe extern "C" fn access(_path: *const c_char, _mode: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/355
     ::nvx::error!("access(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -56,7 +56,7 @@ pub extern "C" fn chdir(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/358
     ::nvx::error!("chdir(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -89,7 +89,7 @@ pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
         Err(_) => {
             ::nvx::error!("chmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
             unsafe {
-                errno = ErrorCode::InvalidArgument.into_errno();
+                errno = ErrorCode::InvalidArgument.get();
             }
             return -1;
         },
@@ -99,7 +99,7 @@ pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             ::nvx::error!("chmod(): failed ({:?})", e);
-            errno = e.code.into_errno();
+            errno = e.code.get();
             -1
         },
     }
@@ -138,7 +138,7 @@ pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) 
                 owner,
                 group
             );
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -147,7 +147,7 @@ pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) 
         Ok(_) => 0,
         Err(e) => {
             ::nvx::error!("chown(): failed ({:?})", e);
-            errno = e.code.into_errno();
+            errno = e.code.get();
             -1
         },
     }
@@ -159,7 +159,7 @@ pub extern "C" fn chroot(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/517
     ::nvx::error!("chroot(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -172,7 +172,7 @@ pub extern "C" fn close(fd: c_int) -> c_int {
         Err(error) => {
             ::nvx::error!("close(): failed ({:?})", error);
             unsafe {
-                errno = error.code.into_errno();
+                errno = error.code.get();
             }
             -1
         },
@@ -184,7 +184,7 @@ pub extern "C" fn dup2(_oldfd: c_int, _newfd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/354
     ::nvx::error!("dup2(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -198,7 +198,7 @@ pub extern "C" fn execve(
     // TODO: https://github.com/nanvix/nanvix/issues/320
     ::nvx::error!("execve(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -214,7 +214,7 @@ pub extern "C" fn fchdir(_fd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/519
     ::nvx::error!("fchdir(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -224,7 +224,7 @@ pub extern "C" fn fdatasync(_fd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/278
     ::nvx::error!("fdatasync(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -234,7 +234,7 @@ pub extern "C" fn fork() -> pid_t {
     // TODO: https://github.com/nanvix/nanvix/issues/321
     ::nvx::error!("fork(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -263,7 +263,7 @@ pub extern "C" fn fsync(fd: c_int) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                errno = e.code.into_errno();
+                errno = e.code.get();
             }
             -1
         },
@@ -295,7 +295,7 @@ pub extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                errno = e.code.into_errno();
+                errno = e.code.get();
             }
             -1
         },
@@ -311,7 +311,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
     if buf.is_null() {
         ::nvx::error!("getcwd(): invalid buffer");
         unsafe {
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
         }
         return core::ptr::null_mut();
     }
@@ -324,7 +324,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
             if cwd.len() + 1 > size as usize {
                 ::nvx::error!("getcwd(): buffer is too small");
                 unsafe {
-                    errno = ErrorCode::ValueOutOfRange.into_errno();
+                    errno = ErrorCode::ValueOutOfRange.get();
                 }
                 return core::ptr::null_mut();
             }
@@ -343,7 +343,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
         // Failure.
         Err(e) => {
             unsafe {
-                errno = e.code.into_errno();
+                errno = e.code.get();
             }
             core::ptr::null_mut()
         },
@@ -374,7 +374,7 @@ pub extern "C" fn getpid() -> pid_t {
         Ok(pid) => pid.into(),
         Err(e) => {
             unsafe {
-                errno = e.code.into_errno();
+                errno = e.code.get();
             }
             -1
         },
@@ -417,7 +417,7 @@ pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("lchmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -426,7 +426,7 @@ pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             ::nvx::error!("lchmod(): failed ({:?})", e);
-            errno = e.code.into_errno();
+            errno = e.code.get();
             -1
         },
     }
@@ -465,7 +465,7 @@ pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t)
                 owner,
                 group
             );
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -475,7 +475,7 @@ pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t)
         Err(e) => {
             unsafe {
                 ::nvx::error!("lchown(): failed ({:?})", e);
-                errno = e.code.into_errno();
+                errno = e.code.get();
             }
             -1
         },
@@ -509,7 +509,7 @@ pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) ->
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("link(): invalid oldpath");
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -517,7 +517,7 @@ pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) ->
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("link(): invalid newpath");
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -530,11 +530,11 @@ pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) ->
         errno = match ErrorCode::try_from(retcode) {
             Ok(e) => {
                 ::nvx::error!("link(): failed ({:?})", e);
-                e.into_errno()
+                e.get()
             },
             Err(_) => {
                 ::nvx::error!("link(): invalid error code ({})", retcode);
-                ErrorCode::ValueOutOfRange.into_errno()
+                ErrorCode::ValueOutOfRange.get()
             },
         };
         return -1;
@@ -576,7 +576,7 @@ pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
         Err(error) => {
             ::nvx::error!("pipe(): failed (error={:?})", error);
             unsafe {
-                errno = error.code.into_errno();
+                errno = error.code.get();
             }
             -1
         },
@@ -600,7 +600,7 @@ pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/348
     ::nvx::error!("rmdir(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -611,7 +611,7 @@ pub extern "C" fn setgroups(_size: size_t, _list: *const gid_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/523
     ::nvx::error!("setgroups(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -643,7 +643,7 @@ pub extern "C" fn sbrk(size: isize) -> *mut u8 {
         Err(e) => {
             // Set errno.
             unsafe {
-                errno = e.code.into_errno();
+                errno = e.code.get();
             }
             (-1_isize) as *mut u8
         },
@@ -655,7 +655,7 @@ pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
     // TODO: https://github.com/nanvix/nanvix/issues/453
     ::nvx::error!("sleep(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     0
 }
@@ -687,7 +687,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("symlink(): invalid target");
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -695,7 +695,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("symlink(): invalid linkpath");
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -706,10 +706,10 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     if retcode < 0 {
         // System call failed. Set errno.
         errno = match ErrorCode::try_from(retcode) {
-            Ok(e) => e.into_errno(),
+            Ok(e) => e.get(),
             Err(_) => {
                 ::nvx::error!("symlink(): invalid error code ({})", retcode);
-                ErrorCode::ValueOutOfRange.into_errno()
+                ErrorCode::ValueOutOfRange.get()
             },
         };
         return -1;
@@ -751,7 +751,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("unlink(): invalid path");
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -762,10 +762,10 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
     if retcode < 0 {
         // System call failed. Set errno.
         errno = match ErrorCode::try_from(retcode) {
-            Ok(e) => e.into_errno(),
+            Ok(e) => e.get(),
             Err(_) => {
                 ::nvx::error!("unlink(): invalid error code ({})", retcode);
-                ErrorCode::ValueOutOfRange.into_errno()
+                ErrorCode::ValueOutOfRange.get()
             },
         };
         return -1;

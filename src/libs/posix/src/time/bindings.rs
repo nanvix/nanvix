@@ -22,7 +22,7 @@ pub unsafe extern "C" fn clock_getres(_clock_id: clockid_t, _res: *mut timespec)
     // TODO: https://github.com/nanvix/nanvix/issues/274
     ::nvx::error!("clock_getres(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
         Ok(_) => 0,
         Err(e) => {
             // Set errno.
-            unsafe { errno = e.code.into_errno() };
+            unsafe { errno = e.code.get() };
             -1
         },
     }

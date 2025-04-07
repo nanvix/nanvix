@@ -71,7 +71,7 @@ pub unsafe extern "C" fn accept(
         },
         Err(error) => {
             ::nvx::error!("accept(): failed to accept connection (error={:?})", error);
-            unsafe { errno = error.code.into_errno() }
+            unsafe { errno = error.code.get() }
             -1
         },
     }
@@ -85,7 +85,7 @@ pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: soc
     // Check if sock address is valid.
     if sockaddr.is_null() {
         ::nvx::error!("bind(): invalid socket address");
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: soc
         Ok(sockaddr) => sockaddr,
         Err(e) => {
             ::nvx::error!("bind(): failed to convert socket address {:?}", e);
-            unsafe { errno = e.code.into_errno() };
+            unsafe { errno = e.code.get() };
             return -1;
         },
     };
@@ -104,7 +104,7 @@ pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: soc
     match crate::sys::socket::bind(sockfd, &sockaddr) {
         Ok(_) => 0,
         Err(e) => {
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }
@@ -139,7 +139,7 @@ pub unsafe extern "C" fn connect(
     match crate::sys::socket::connect(sockfd, unsafe { &*sockaddr }, len) {
         Ok(sockfd) => sockfd,
         Err(e) => {
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }
@@ -173,13 +173,13 @@ pub unsafe extern "C" fn getpeername(
 ) -> c_int {
     // Check if the address is valid.
     if sockaddr.is_null() {
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
     // Check if the length is valid.
     if len.is_null() {
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
@@ -197,14 +197,14 @@ pub unsafe extern "C" fn getpeername(
                         "getpeername(): failed to convert socket address (error={:?})",
                         error
                     );
-                    errno = error.code.into_errno();
+                    errno = error.code.get();
                     return -1;
                 },
             };
             0
         },
         Err(e) => {
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }
@@ -238,13 +238,13 @@ pub unsafe extern "C" fn getsockname(
 ) -> c_int {
     // Check if the address is valid.
     if sockaddr.is_null() {
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
     // Check if the length is valid.
     if len.is_null() {
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
@@ -255,7 +255,7 @@ pub unsafe extern "C" fn getsockname(
             let (sockaddr_, len_): (sockaddr, socklen_t) = match sockaddr_.try_into() {
                 Ok((sockaddr_, len_)) => (sockaddr_, len_),
                 Err(e) => {
-                    unsafe { errno = e.code.into_errno() };
+                    unsafe { errno = e.code.get() };
                     return -1;
                 },
             };
@@ -264,7 +264,7 @@ pub unsafe extern "C" fn getsockname(
             0
         },
         Err(e) => {
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }
@@ -278,7 +278,7 @@ pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             ::nvx::error!("listen(): failed to listen on socket {:?}", e);
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }
@@ -295,21 +295,21 @@ pub unsafe extern "C" fn recv(
     // Check if `buf` is valid.
     if buf.is_null() {
         ::nvx::error!("recv(): invalid buffer");
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
     // Check if `len` is valid.
     if len == 0 {
         ::nvx::error!("recv(): invalid buffer length");
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
     // Check if `flags` is valid.
     if flags != 0 {
         ::nvx::error!("recv(): unsupported flags (flags={:?})", flags);
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
@@ -320,7 +320,7 @@ pub unsafe extern "C" fn recv(
         Ok(bytes_received) => bytes_received as ssize_t,
         Err(e) => {
             ::nvx::error!("recv(): failed to receive data through socket {:?}", e);
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }
@@ -337,21 +337,21 @@ pub unsafe extern "C" fn send(
     // Check if `buf` is valid.
     if buf.is_null() {
         ::nvx::error!("send(): invalid buffer");
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
     // Check if `len` is valid.
     if len == 0 {
         ::nvx::error!("send(): invalid buffer length");
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
     // Check if `flags` is valid.
     if flags != 0 {
         ::nvx::error!("send(): unsupported flags (flags={:?})", flags);
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
@@ -362,7 +362,7 @@ pub unsafe extern "C" fn send(
         Ok(bytes_sent) => bytes_sent as ssize_t,
         Err(e) => {
             ::nvx::error!("send(): failed to send data through socket {:?}", e);
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }
@@ -377,7 +377,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
         Ok(domain) => domain,
         Err(_error) => {
             ::nvx::error!("socket(): invalid socket address family (domain={:?})", domain);
-            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            unsafe { errno = ErrorCode::InvalidArgument.get() };
             return -1;
         },
     };
@@ -387,7 +387,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
         Ok(typ) => typ,
         Err(_error) => {
             ::nvx::error!("socket(): invalid socket type (type={:?})", typ);
-            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            unsafe { errno = ErrorCode::InvalidArgument.get() };
             return -1;
         },
     };
@@ -397,7 +397,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
         Ok(protocol) => protocol,
         Err(_error) => {
             ::nvx::error!("socket(): invalid socket protocol (protocol={:?})", protocol);
-            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            unsafe { errno = ErrorCode::InvalidArgument.get() };
             return -1;
         },
     };
@@ -407,7 +407,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
         Ok(sockfd) => sockfd,
         Err(error) => {
             ::nvx::error!("socket(): failed to create socket (error={:?})", error);
-            unsafe { errno = error.code.into_errno() }
+            unsafe { errno = error.code.get() }
             -1
         },
     }
@@ -422,7 +422,7 @@ pub extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
         Ok(how) => how,
         Err(_error) => {
             ::nvx::error!("shutdown(): invalid shutdown mode (how={:?})", how);
-            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            unsafe { errno = ErrorCode::InvalidArgument.get() };
             return -1;
         },
     };
@@ -431,7 +431,7 @@ pub extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             ::nvx::error!("shutdown(): failed to shutdown socket {:?}", e);
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }
@@ -467,7 +467,7 @@ pub unsafe extern "C" fn socketpair(
 ) -> c_int {
     // Check if socket pair is valid.
     if socket_fds.is_null() {
-        unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+        unsafe { errno = ErrorCode::InvalidArgument.get() };
         return -1;
     }
 
@@ -478,7 +478,7 @@ pub unsafe extern "C" fn socketpair(
     let domain: AddressFamily = match domain.try_into() {
         Ok(domain) => domain,
         Err(_error) => {
-            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            unsafe { errno = ErrorCode::InvalidArgument.get() };
             return -1;
         },
     };
@@ -487,7 +487,7 @@ pub unsafe extern "C" fn socketpair(
     let typ: SocketType = match typ.try_into() {
         Ok(typ) => typ,
         Err(_error) => {
-            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            unsafe { errno = ErrorCode::InvalidArgument.get() };
             return -1;
         },
     };
@@ -496,7 +496,7 @@ pub unsafe extern "C" fn socketpair(
     let protocol: Protocol = match protocol.try_into() {
         Ok(protocol) => protocol,
         Err(_error) => {
-            unsafe { errno = ErrorCode::InvalidArgument.into_errno() };
+            unsafe { errno = ErrorCode::InvalidArgument.get() };
             return -1;
         },
     };
@@ -504,7 +504,7 @@ pub unsafe extern "C" fn socketpair(
     match crate::sys::socket::socketpair(domain, typ, protocol, socket_fds) {
         Ok(_) => 0,
         Err(e) => {
-            unsafe { errno = e.code.into_errno() }
+            unsafe { errno = e.code.get() }
             -1
         },
     }

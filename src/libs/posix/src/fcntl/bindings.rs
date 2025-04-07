@@ -58,7 +58,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
                 flags,
                 mode
             );
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
                 mode,
                 error
             );
-            errno = error.code.into_errno();
+            errno = error.code.get();
             -1
         },
     }
@@ -119,7 +119,7 @@ pub unsafe extern "C" fn fchmodat(
                 mode,
                 flag
             );
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -128,7 +128,7 @@ pub unsafe extern "C" fn fchmodat(
         Ok(_) => 0,
         Err(e) => {
             ::nvx::error!("fchmodat(): invalid error code");
-            errno = e.code.into_errno();
+            errno = e.code.get();
             -1
         },
     }
@@ -140,7 +140,7 @@ pub unsafe extern "C" fn fchmod(_fd: c_int, _mode: mode_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/360
     ::nvx::error!("fchmod(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.into_errno();
+        errno = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -195,7 +195,7 @@ pub unsafe extern "C" fn fchownat(
                 group,
                 flag
             );
-            errno = ErrorCode::InvalidArgument.into_errno();
+            errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn fchownat(
         Ok(_) => 0,
         Err(e) => {
             ::nvx::error!("fchownat(): invalid error code");
-            errno = e.code.into_errno();
+            errno = e.code.get();
             -1
         },
     }
