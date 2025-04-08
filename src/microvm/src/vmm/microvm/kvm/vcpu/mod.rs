@@ -13,6 +13,7 @@ mod timer;
 // Exports
 //==================================================================================================
 
+use ::kvm_bindings::kvm_fpu;
 pub use exit::*;
 
 //==================================================================================================
@@ -35,6 +36,17 @@ use ::std::sync::{
 };
 use irqchip::IrqChip;
 use timer::Timer;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+// Mask all fp-exception, set rounding to nearest, set precision to 64-bit
+const FP_CONTROL_WORD_DEFAULT: u16 = 0x37f;
+// Each 8 of x87 fpu registers is empty
+const FP_TAG_WORD_DEFAULT: u8 = 0xff;
+// Mask simd fp-exceptions, clear exception flags, set rounding to nearest, disable flush-to-zero mode, disable denormals-are-zero mode
+const MXCSR_DEFAULT: u32 = 0x1f80;
 
 //==================================================================================================
 // Structures
@@ -75,6 +87,15 @@ impl VirtualProcessor {
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
             .vm()
             .create_vcpu(id)?;
+
+        // Reset FPU state.
+        let fpu = kvm_fpu {
+            fcw: FP_CONTROL_WORD_DEFAULT,
+            ftwx: FP_TAG_WORD_DEFAULT,
+            mxcsr: MXCSR_DEFAULT,
+            ..Default::default() // zero out the rest
+        };
+        fd.set_fpu(&fpu)?;
 
         Ok(Self {
             _partition: partition,
