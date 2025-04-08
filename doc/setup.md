@@ -1,6 +1,7 @@
 # Setting Up Your Development Environment
 
 > ℹ️ **Note:** Some instructions in this document assume that you have superuser privileges on your system.
+> ℹ️ **Note:** Ensure that your system supports KVM (Kernel-based Virtual Machine), and that it is enabled.
 
 This guide will help you set up your development environment to build and run Nanvix. Here's a quick overview of the steps:
 
