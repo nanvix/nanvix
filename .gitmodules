@@ -9,3 +9,7 @@
 	path = contrib/binutils
 	url = https://github.com/nanvix/binutils.git
 	branch = nanvix/binutils-2.40
+[submodule "contrib/gcc"]
+	path = contrib/gcc
+	url = https://github.com/nanvix/gcc.git
+	branch = nanvix/gcc-12.4.0
