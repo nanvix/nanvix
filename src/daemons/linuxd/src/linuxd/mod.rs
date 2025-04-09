@@ -106,6 +106,7 @@ use ::posix::{
     LinuxDaemonMessageHeader,
 };
 use ::std::{
+    io,
     io::{
         ErrorKind,
         Read,
@@ -641,6 +642,7 @@ impl<'a> LinuxDaemon<'a> {
                 let buffer: &[u8] = &request.buffer[..count];
                 let string: String = String::from_utf8_lossy(buffer).to_string();
                 print!("{}", string);
+                let _ = io::stdout().lock().flush();
                 WriteResponse::build(source, count as ssize_t)
             }
         } else {
