@@ -149,7 +149,12 @@ pub unsafe extern "C" fn fchmod(_fd: c_int, _mode: mode_t) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/280
-    ::nvx::error!("fcntl(): not implemented, ignoring");
+    ::nvx::error!(
+        "fcntl(): not implemented, ignoring (fd={:?}, cmd={:?}, _op={:?})",
+        _fd,
+        _cmd,
+        _op
+    );
     0
 }
 
