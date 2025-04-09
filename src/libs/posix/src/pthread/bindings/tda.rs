@@ -25,8 +25,6 @@ pub unsafe extern "C" fn pthread_key_create(
     key_ptr: *mut pthread_key_t,
     destructor: Option<extern "C" fn(*mut c_void)>,
 ) -> c_int {
-    ::nvx::trace!("pthread_key_create(key_ptr={:p}, destructor={:?})", key_ptr, destructor);
-
     // Check if storage location for the key is valid.
     if key_ptr.is_null() {
         ::nvx::error!("pthread_key_create(): invalid storage location for thread key");
@@ -59,8 +57,6 @@ pub unsafe extern "C" fn pthread_key_create(
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
-    ::nvx::trace!("pthread_key_delete(): key={}", key);
-
     match syscall::pthread_key_delete(key) {
         Ok(()) => 0,
         Err(error) => error.code.get(),
@@ -74,8 +70,6 @@ pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn pthread_getspecific(key: pthread_key_t) -> *mut c_void {
-    ::nvx::trace!("pthread_getspecific(): key={}", key);
-
     match syscall::pthread_getspecific(key) {
         Ok(value) => value.into(),
         Err(_error) => core::ptr::null_mut(),
@@ -89,8 +83,6 @@ pub unsafe extern "C" fn pthread_getspecific(key: pthread_key_t) -> *mut c_void 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn pthread_setspecific(key: pthread_key_t, value: *const c_void) -> c_int {
-    ::nvx::trace!("pthread_setspecific(): key={}, value={:p}", key, value);
-
     match syscall::pthread_setspecific(key, value.into()) {
         Ok(()) => 0,
         Err(error) => error.code.get(),

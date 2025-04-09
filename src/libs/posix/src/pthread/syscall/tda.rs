@@ -92,8 +92,6 @@ pub struct ThreadData {
 /// If successful, the newly created key is returned. Otherwise, `None` is returned instead.
 ///
 pub fn pthread_key_create() -> Option<pthread_key_t> {
-    ::nvx::trace!("pthread_key_create()");
-
     THREAD_DATA
         .lock()
         .iter_mut()
@@ -122,8 +120,6 @@ pub fn pthread_key_create() -> Option<pthread_key_t> {
 /// If successful, `Ok(())` is returned. Otherwise, an error is returned instead.
 ///
 pub fn pthread_key_delete(key: pthread_key_t) -> Result<(), Error> {
-    ::nvx::trace!("pthread_key_delete(): key={}", key);
-
     match THREAD_DATA.lock().get_mut(key as usize) {
         Some(Some(tda)) => {
             for (tid, ptr) in tda.value.iter() {
@@ -160,8 +156,6 @@ pub fn pthread_key_delete(key: pthread_key_t) -> Result<(), Error> {
 /// instead.
 ///
 pub fn pthread_getspecific(key: pthread_key_t) -> Result<Pointer, Error> {
-    ::nvx::trace!("pthread_getspecific(): key={}", key);
-
     // Lookup thread identifier before locking up the table of thread data keys.
     let tid: ThreadIdentifier = ::nvx::pm::gettid().unwrap();
 
@@ -170,10 +164,7 @@ pub fn pthread_getspecific(key: pthread_key_t) -> Result<Pointer, Error> {
         // Key found and it has data associated to it.
         Some(Some(tda)) => match tda.value.get(&tid) {
             // The calling thread associated data to the key.
-            Some(ptr) => {
-                ::nvx::trace!("pthread_getspecific(): {:?}", ptr);
-                Ok(ptr.clone())
-            },
+            Some(ptr) => Ok(ptr.clone()),
             // The calling thread did not associate data to the key.
             None => Ok(Pointer::null()),
         },
@@ -201,8 +192,6 @@ pub fn pthread_getspecific(key: pthread_key_t) -> Result<Pointer, Error> {
 /// If successful, `Ok(())` is returned. Otherwise, an error is returned instead.
 ///
 pub fn pthread_setspecific(key: pthread_key_t, value: Pointer) -> Result<(), Error> {
-    ::nvx::trace!("pthread_setspecific(): key={}, value={:?}", key, value);
-
     // Lookup thread identifier before locking up the table of thread data keys.
     let tid: ThreadIdentifier = ::nvx::pm::gettid().unwrap();
 
@@ -210,14 +199,7 @@ pub fn pthread_setspecific(key: pthread_key_t, value: Pointer) -> Result<(), Err
     match THREAD_DATA.lock().get_mut(key as usize) {
         // Key found.
         Some(Some(tda)) => {
-            if let Some(pointer) = tda.value.insert(tid, value) {
-                // Warn if we are leaking data.
-                ::nvx::debug!(
-                    "pthread_setspecific(): leaking thread data (tid={:?}, ptr={:#x?})",
-                    tid,
-                    pointer
-                );
-            }
+            tda.value.insert(tid, value);
             Ok(())
         },
         // Key not found.
