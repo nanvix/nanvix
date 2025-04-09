@@ -13,3 +13,7 @@
 	path = contrib/gcc
 	url = https://github.com/nanvix/gcc.git
 	branch = nanvix/gcc-12.4.0
+[submodule "contrib/newlib"]
+	path = contrib/newlib
+	url = https://github.com/nanvix/newlib.git
+	branch = nanvix/newlib-4.4.0
