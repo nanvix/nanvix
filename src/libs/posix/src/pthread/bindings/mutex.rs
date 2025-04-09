@@ -42,8 +42,6 @@ use ::nvx::sys::error::ErrorCode;
 ///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int {
-    ::nvx::trace!("pthread_mutex_destroy(): mutex={:?}", mutex);
-
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_mutex_destroy(): invalid mutex pointer");
@@ -88,8 +86,6 @@ pub unsafe extern "C" fn pthread_mutex_init(
     mutex: *mut pthread_mutex_t,
     attr: *const pthread_mutexattr_t,
 ) -> c_int {
-    ::nvx::trace!("pthread_mutex_init(): mutex={:?}, attr={:?}", mutex, attr);
-
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_mutex_init(): invalid mutex pointer");
@@ -138,8 +134,6 @@ pub unsafe extern "C" fn pthread_mutex_init(
 ///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_int {
-    ::nvx::trace!("pthread_mutex_lock(): mutex={:?}", mutex);
-
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_mutex_lock(): invalid mutex pointer");
@@ -190,8 +184,6 @@ pub unsafe extern "C" fn pthread_mutex_trylock(_mutex: *mut pthread_mutex_t) -> 
 ///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut pthread_mutex_t) -> c_int {
-    ::nvx::trace!("pthread_mutex_unlock(): mutex={:?}", mutex);
-
     // Check if `mutex` is not valid.
     if mutex.is_null() {
         ::nvx::error!("pthread_mutex_unlock(): invalid mutex pointer");
