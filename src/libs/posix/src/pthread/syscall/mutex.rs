@@ -38,8 +38,6 @@ pub fn pthread_mutex_init(
     mutex: &mut pthread_mutex_t,
     attr: &pthread_mutexattr_t,
 ) -> Result<(), Error> {
-    ::nvx::trace!("pthread_mutex_init(): mutex={:?}, attr={:?}", mutex, attr);
-
     // Check if mutex is already initialized.
     if MUTEXES
         .lock()
@@ -58,8 +56,6 @@ pub fn pthread_mutex_init(
 }
 
 pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
-    ::nvx::trace!("pthread_mutex_destroy(): mutex={:?}", mutex);
-
     // Check if mutex is not initialized.
     if !MUTEXES
         .lock()

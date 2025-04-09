@@ -46,8 +46,6 @@ use ::nvx::sys::error::ErrorCode;
 ///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_cond_broadcast(cond: *const pthread_cond_t) -> c_int {
-    ::nvx::trace!("pthread_cond_broadcast(): cond={:?}", cond);
-
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
@@ -91,8 +89,6 @@ pub unsafe extern "C" fn pthread_cond_init(
     cond: *mut pthread_cond_t,
     attr: *const pthread_condattr_t,
 ) -> c_int {
-    ::nvx::trace!("pthread_cond_init(): cond={:?}, attr={:?}", cond, attr);
-
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
@@ -142,8 +138,6 @@ pub unsafe extern "C" fn pthread_cond_init(
 ///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_int {
-    ::nvx::trace!("pthread_cond_destroy(): cond={:?}", cond);
-
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
@@ -183,8 +177,6 @@ pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_in
 ///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_cond_signal(cond: *const pthread_cond_t) -> c_int {
-    ::nvx::trace!("pthread_cond_signal(): cond={:?}", cond);
-
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
@@ -245,8 +237,6 @@ pub unsafe extern "C" fn pthread_cond_wait(
     cond: *const pthread_cond_t,
     mutex: *mut pthread_mutex_t,
 ) -> c_int {
-    ::nvx::trace!("pthread_cond_wait(): cond={:?}, mutex={:?}", cond, mutex);
-
     // Check if `cond` is not valid.
     if cond.is_null() {
         ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
