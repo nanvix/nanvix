@@ -945,7 +945,6 @@ pub unsafe extern "C" fn pthread_attr_setstacksize(
 ///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_int) -> c_int {
-    ::nvx::trace!("pthread_setcancelstate(): state={}, oldstate={:?}", state, oldstate);
 
     // Check if `oldstate` is not valid.
     if !oldstate.is_null() {
@@ -953,8 +952,8 @@ pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_i
         return ErrorCode::InvalidArgument.get();
     }
 
-    ::nvx::warn!("pthread_setcancelstate(): not supported, ignoring");
     // TODO: implement this function.
+    ::nvx::warn!("pthread_setcancelstate(): not supported, ignoring");
     0
 }
 
@@ -986,7 +985,6 @@ pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_i
 ///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_setcanceltype(type_: c_int, oldtype: *mut c_int) -> c_int {
-    ::nvx::trace!("pthread_setcanceltype(): type={}, oldtype={:?}", type_, oldtype);
 
     // Check if `oldtype` is not valid.
     if !oldtype.is_null() {

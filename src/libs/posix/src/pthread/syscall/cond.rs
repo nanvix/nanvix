@@ -55,8 +55,6 @@ static CONDITIONS: Lazy<Mutex<BTreeMap<usize, pthread_condattr_t>>> =
 //==================================================================================================
 
 pub fn pthread_cond_broadcast(cond: &pthread_cond_t) -> Result<(), Error> {
-    ::nvx::trace!("pthread_cond_broadcast(): cond={:p}", cond);
-
     // Check if condition variable is not initialized.
     if let Entry::Vacant(entry) = CONDITIONS
         .lock()
@@ -80,8 +78,6 @@ pub fn pthread_cond_init(
     cond: &mut pthread_cond_t,
     attr: &pthread_condattr_t,
 ) -> Result<(), Error> {
-    ::nvx::trace!("pthread_cond_init(): cond={:p}, attr={:p}", cond, attr);
-
     // Check if condition variable is already initialized.
     if CONDITIONS
         .lock()
@@ -100,8 +96,6 @@ pub fn pthread_cond_init(
 }
 
 pub fn pthread_cond_destroy(cond: &mut pthread_cond_t) -> Result<(), Error> {
-    ::nvx::trace!("pthread_cond_destroy(): cond={:p}", cond);
-
     // Check if condition variable is not initialized.
     if !CONDITIONS
         .lock()
@@ -126,8 +120,6 @@ pub fn pthread_cond_destroy(cond: &mut pthread_cond_t) -> Result<(), Error> {
 }
 
 pub fn pthread_cond_signal(cond: &pthread_cond_t) -> Result<(), Error> {
-    ::nvx::trace!("pthread_cond_signal(): cond={:p}", cond);
-
     // Check if condition variable is not initialized.
     if let Entry::Vacant(_) = CONDITIONS
         .lock()
@@ -150,8 +142,6 @@ pub fn pthread_cond_signal(cond: &pthread_cond_t) -> Result<(), Error> {
 }
 
 pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Result<(), Error> {
-    ::nvx::trace!("pthread_wait_cond(): cond={:p}, mutex={:p}", cond, mutex);
-
     // Check if condition variable is not initialized.
     if let Entry::Vacant(entry) = CONDITIONS
         .lock()
