@@ -944,10 +944,9 @@ pub unsafe extern "C" fn pthread_attr_setstacksize(
 /// - `oldstate` points to a valid `c_int` variable.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_int) -> c_int {
-
+pub unsafe extern "C" fn pthread_setcancelstate(_state: c_int, oldstate: *mut c_int) -> c_int {
     // Check if `oldstate` is not valid.
-    if !oldstate.is_null() {
+    if oldstate.is_null() {
         ::nvx::error!("pthread_setcancelstate(): invalid old state pointer");
         return ErrorCode::InvalidArgument.get();
     }
@@ -984,10 +983,9 @@ pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_i
 /// - `oldtype` points to a valid `c_int` variable.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn pthread_setcanceltype(type_: c_int, oldtype: *mut c_int) -> c_int {
-
+pub unsafe extern "C" fn pthread_setcanceltype(_type_: c_int, oldtype: *mut c_int) -> c_int {
     // Check if `oldtype` is not valid.
-    if !oldtype.is_null() {
+    if oldtype.is_null() {
         ::nvx::error!("pthread_setcanceltype(): invalid old type pointer");
         return ErrorCode::InvalidArgument.get();
     }
