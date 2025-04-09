@@ -86,7 +86,10 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
 }
 
 pub unsafe fn recv(pid: ProcessIdentifier, msg: usize) -> Result<(), SleepError> {
-    trace!("do_recv(): pid={:?}", pid);
+    if pid != ProcessIdentifier::INITD {
+        trace!("do_recv(): pid={:?}", pid);
+    }
+
     match EventManager::wait(pid) {
         Ok(message) => {
             pm::copy_to_user(ProcessManager::get_mut(), pid, msg as *mut Message, &message)
