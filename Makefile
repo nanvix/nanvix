@@ -57,7 +57,7 @@ export IMAGE_DIR     := $(BUILD_DIR)/iso
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
-export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot
+export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
 
@@ -268,7 +268,9 @@ all: \
 	all-opt
 
 # Performs local initialization.
-init:
+init: init-repo init-opt
+
+init-repo:
 	$(MKDIR_CMD) $(BINARIES_DIR)
 	$(MKDIR_CMD) $(LIBRARIES_DIR)
 	git config --local core.hooksPath .githooks
@@ -348,6 +350,8 @@ clean-opt: clean-python clean-zlib
 
 distclean-opt: distclean-python distclean-zlib
 
+init-opt: init-python init-zlib
+
 else
 
 all-opt:
@@ -355,6 +359,8 @@ all-opt:
 clean-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
 distclean-opt:
+	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
+init-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
 
 endif
@@ -366,17 +372,22 @@ endif
 all-python: init all-guest-staticlibs all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Python..."
-	bash $(SCRIPTS_DIR)/build-python.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 clean-python: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-python.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-python.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 distclean-python: distclean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-python.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-python.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+init-python: init-repo
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-python.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================
@@ -386,17 +397,22 @@ endif
 all-zlib: init all-guest-staticlibs
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Zlib..."
-	bash $(SCRIPTS_DIR)/build-zlib.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 clean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 distclean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+init-zlib: init-repo
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-zlib.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================
