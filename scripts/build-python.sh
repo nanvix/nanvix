@@ -8,24 +8,23 @@
 #===================================================================================================
 
 RULE=${1:-build}
-NANVIX_HOME=${2:-$PWD}
-TOOLCHAIN_DIR=${3:-$PWD/toolchain}
-SYSROOT_DIR=${4:-$PWD/sysroot}
+TOOLCHAIN_DIR=${2:-$PWD/toolchain}
+SYSROOT_DIR=${3:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
-PYTHON_VERSION=3.12.3
-OPT_DIR=$NANVIX_HOME/opt
-CPYTHON_HOME=$OPT_DIR/cpython
-BRANCH_NAME=nanvix/cpython-$PYTHON_VERSION
+NANVIX_HOME=`git rev-parse --show-toplevel`
+OPT_DIR=${NANVIX_HOME}/opt
+CROSS_DIR=${SYSROOT_DIR}/cross
+CPYTHON_HOME=${OPT_DIR}/cpython
 
 #===================================================================================================
 # Clean
 #===================================================================================================
 
-clean() {
+make_clean() {
 	make clean
 }
 
@@ -38,38 +37,10 @@ distclean() {
 }
 
 #===================================================================================================
-# Build
+# Configure
 #===================================================================================================
 
-build_cross() {
-	git clean -fdx
-
-	# Configure.
-	./configure \
-		--disable-shared \
-		--disable-test-modules \
-		--prefix=$SYSROOT_DIR/cross \
-		--exec-prefix=$SYSROOT_DIR/cross \
-		--with-ensurepip=no \
-		--with-pkg-config=no \
-		--disable-ipv6 \
-		ac_cv_file__dev_ptmx=no \
-		ac_cv_file__dev_ptc=no
-
-	# Build.
-	make -j `nproc` all
-
-	# Install.
-	make install
-}
-
-build() {
-
-	build_cross
-
-	git clean -fdx
-
-	# Configure.
+configure() {
 	CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
 	CXX="$TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
 	LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
@@ -82,7 +53,7 @@ build() {
 		--disable-shared \
 		--build=x86_64-pc-linux-gnux32 \
 		--host=i686-nanvix \
-		--with-build-python=$SYSROOT_DIR/cross/bin/python3 \
+		--with-build-python=${CROSS_DIR}/bin/python3 \
 		--disable-test-modules \
 		--with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
 		--with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
@@ -96,24 +67,84 @@ build() {
 		ac_cv_pthread_is_default=yes \
 		ac_cv_pthread=yes \
 		ac_cv_kthread=no
+}
 
-	# Build.
+#===================================================================================================
+# Configure Cross
+#====================================================================================================
+
+configure_cross() {
+	./configure \
+		--disable-shared \
+		--disable-test-modules \
+		--prefix=${CROSS_DIR} \
+		--exec-prefix=${CROSS_DIR} \
+		--with-ensurepip=no \
+		--with-pkg-config=no \
+		--disable-ipv6 \
+		ac_cv_file__dev_ptmx=no \
+		ac_cv_file__dev_ptc=no
+}
+
+#===================================================================================================
+# Make
+#===================================================================================================
+
+make_all() {
 	make -j `nproc` all
+}
 
-	# Install.
+#===================================================================================================
+# Install
+#===================================================================================================
+
+install() {
 	make install
 }
 
 #===================================================================================================
+# Build
+#===================================================================================================
 
-# Check if host system has the required python version
-if ! python3 --version | grep -q $PYTHON_VERSION; then
-	echo "Python $PYTHON_VERSION is required to build CPython."
-	exit 0
-fi
+build_cross() {
+	configure_cross
 
-# Fetch submodule if needed and enter the cpython directory.
-git submodule update --init opt/cpython && cd $CPYTHON_HOME
+	make_all
+
+	install
+
+	distclean
+}
+
+build() {
+	# Check if we need to configure or not.
+	if [ -f "${CPYTHON_HOME}/Makefile" ]; then
+		make_clean
+	else
+		configure
+	fi
+
+	make_all
+
+	install
+}
+
+#===================================================================================================
+# Init
+#===================================================================================================
+
+init() {
+	# Nothing to do here.
+	return
+}
+
+#===================================================================================================
+
+# Fetch submodule if needed.
+git submodule update --init $CPYTHON_HOME
+
+# Switch to submodule directory.
+cd ${CPYTHON_HOME}
 
 # Save current environment variables.
 OLD_AR=$AR
@@ -141,15 +172,24 @@ unset LDFLAGS
 unset LIBC
 unset LIBM
 
+# Check if cross-platform toolchain exists and build it if does not.
+# TODO: improve detection
+if [ ! -f "${CROSS_DIR}/bin/python3" ]; then
+	build_cross
+fi
+
 case $RULE in
 	build)
 		build
 		;;
 	clean)
-		clean
+		make_clean
 		;;
 	distclean)
 		distclean
+		;;
+	init)
+		init
 		;;
 esac
 

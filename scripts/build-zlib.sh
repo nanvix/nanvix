@@ -8,24 +8,22 @@
 #===================================================================================================
 
 RULE=${1:-build}
-NANVIX_HOME=${2:-$PWD}
-TOOLCHAIN_DIR=${3:-$PWD/toolchain}
-SYSROOT_DIR=${4:-$PWD/sysroot}
+TOOLCHAIN_DIR=${2:-$PWD/toolchain}
+SYSROOT_DIR=${3:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
-ZLIB_VERSION=1.3.1
-OPT_DIR=$NANVIX_HOME/opt
-ZLIB_HOME=$OPT_DIR/zlib
-BRANCH_NAME=nanvix/zlib-$ZLIB_VERSION
+NANVIX_HOME=`git rev-parse --show-toplevel`
+OPT_DIR=${NANVIX_HOME}/opt
+ZLIB_HOME=${OPT_DIR}/zlib
 
 #===================================================================================================
 # Clean
 #===================================================================================================
 
-clean() {
+make_clean() {
     make clean
 }
 
@@ -38,11 +36,10 @@ distclean() {
 }
 
 #===================================================================================================
-# Build
+# Configure
 #===================================================================================================
 
-build() {
-    # Configure.
+configure() {
     AR="$TOOLCHAIN_DIR/bin/i686-nanvix-ar" \
     AS="$TOOLCHAIN_DIR/bin/i686-nanvix-as" \
     CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
@@ -55,18 +52,52 @@ build() {
     ./configure \
         --static \
         --prefix=$SYSROOT_DIR
+}
 
-    # Build.
+#====================================================================================================
+# Make
+#===================================================================================================
+
+make_all() {
     make all
+}
 
-    # Install.
+#===================================================================================================
+# Make Install
+#===================================================================================================
+
+make_install() {
     make install
 }
 
 #===================================================================================================
+# Build
+#===================================================================================================
 
-# Fetch submodule if needed and enter source directory.
-git submodule update --init $ZLIB_HOME && cd $ZLIB_HOME
+build() {
+    configure
+
+    make_all
+
+    make_install
+}
+
+#===================================================================================================
+# Init
+#===================================================================================================
+
+init() {
+	# Nothing to do here.
+	return
+}
+
+#===================================================================================================
+
+# Fetch submodule if needed.
+git submodule update --init ${ZLIB_HOME}
+
+# Switch to submodule directory.
+cd ${ZLIB_HOME}
 
 # Save current environment variables.
 OLD_AR=$AR
@@ -95,12 +126,15 @@ case $RULE in
         build
         ;;
     clean)
-        clean
+        make_clean
         ;;
     distclean)
         distclean
         ;;
-esac
+    init)
+        init
+        ;;
+ esac
 
 # Restore original environment variables.
 export AR=$OLD_AR
