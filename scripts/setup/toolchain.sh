@@ -15,22 +15,25 @@ export PREFIX=${1:-$PWD/toolchain}
 
 export TARGET=i686-nanvix
 export SYSROOT=$PREFIX
+export NANVIX_HOME=`git rev-parse --show-toplevel`
+export CONTRIB_DIR=${NANVIX_HOME}/contrib
+export NEWLIB_HOME=${CONTRIB_DIR}/newlib
+export BINUTILS_HOME=${CONTRIB_DIR}/binutils
+export GCC_HOME=${CONTRIB_DIR}/gcc
 
 #===================================================================================================
 # Get Sources
 #===================================================================================================
 
-mkdir -p $PREFIX/src && cd $PREFIX/src
-
-git clone https://github.com/nanvix/binutils.git --branch nanvix/binutils-2.40 binutils
-git clone https://github.com/nanvix/gcc.git --branch nanvix/gcc-12.4.0 gcc
-git clone https://github.com/nanvix/newlib.git --branch nanvix/newlib-4.4.0 newlib
+git submodule update --init ${NEWLIB_HOME}
+git submodule update --init ${BINUTILS_HOME}
+git submodule update --init ${GCC_HOME}
 
 #===================================================================================================
 # Build Binutils for Nanvix
 #===================================================================================================
 
-cd $PREFIX/src/binutils
+cd ${BINUTILS_HOME}
 
 ./configure \
     --target=$TARGET \
@@ -47,7 +50,7 @@ make install
 # Build GCC for Nanvix
 #===================================================================================================
 
-cd $PREFIX/src/gcc
+cd ${GCC_HOME}
 
 ./contrib/download_prerequisites
 
@@ -72,7 +75,7 @@ make install-gcc install-target-libgcc
 export OLD_PATH=$PATH
 export PATH=$PREFIX/bin:$PATH
 
-cd $PREFIX/src/newlib
+cd ${NEWLIB_HOME}
 
 ./configure \
     --target=$TARGET \
@@ -98,7 +101,7 @@ cp -r $PREFIX/$TARGET/include/* $PREFIX/usr/include/
 # We must rebuild GCC so fix-includes are actually fixed.
 # Note this time we also enable libstdc++ compilation.
 
-cd $PREFIX/src/gcc/build
+cd ${GCC_HOME}/build
 
 ../configure \
     --target=$TARGET \

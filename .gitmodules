@@ -5,3 +5,15 @@
 [submodule "opt/zlib"]
 	path = opt/zlib
 	url = https://github.com/nanvix/zlib.git
+[submodule "contrib/binutils"]
+	path = contrib/binutils
+	url = https://github.com/nanvix/binutils.git
+	branch = nanvix/binutils-2.40
+[submodule "contrib/gcc"]
+	path = contrib/gcc
+	url = https://github.com/nanvix/gcc.git
+	branch = nanvix/gcc-12.4.0
+[submodule "contrib/newlib"]
+	path = contrib/newlib
+	url = https://github.com/nanvix/newlib.git
+	branch = nanvix/newlib-4.4.0
