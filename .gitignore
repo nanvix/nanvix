@@ -11,7 +11,8 @@ toolchain
 bin/
 /lib/
 target/
-/sysroot/
+/sysroot-debug/
+/sysroot-release/
 *.a
 *.elf
 *.exe
