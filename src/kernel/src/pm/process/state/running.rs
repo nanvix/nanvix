@@ -32,6 +32,7 @@ use ::sys::{
         ErrorCode,
     },
     pm::ThreadIdentifier,
+    ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
 
@@ -177,10 +178,10 @@ impl RunningProcess {
 
     pub fn exit(
         mut self,
-        status: i32,
+        status: ExitStatus,
     ) -> Result<(RunnableProcess, *mut ContextInformation), (ZombieProcess, *mut ContextInformation)>
     {
-        let (zombie_thread, ctx) = self.running.exit(status as usize);
+        let (zombie_thread, ctx) = self.running.exit(status);
         let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(zombie_threads) => zombie_threads,
             None => NonEmptyVecDeque::new(zombie_thread),
@@ -217,7 +218,7 @@ impl RunningProcess {
                 ctx,
             ))
         } else {
-            Err((ZombieProcess::new(self.state, zombie_threads, status as usize), ctx))
+            Err((ZombieProcess::new(self.state, zombie_threads, status), ctx))
         }
     }
 
@@ -241,7 +242,7 @@ impl RunningProcess {
     #[allow(clippy::type_complexity)]
     pub fn exit_thread(
         mut self,
-        status: usize,
+        status: ExitStatus,
     ) -> Result<
         (Condvar, RunnableProcess, *mut ContextInformation),
         Result<

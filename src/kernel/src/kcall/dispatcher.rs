@@ -16,7 +16,6 @@ use crate::{
         SleepError,
     },
 };
-use ::core::hint::cold_path;
 use ::sys::{
     error::{
         Error,
@@ -27,6 +26,7 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    ExitStatus,
 };
 
 //==================================================================================================
@@ -72,7 +72,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
         KcallNumber::Exit => {
             // SAFETY: the calling process is not the kernel.
-            let e: Error = unsafe { ProcessManager::exit(arg0 as i32).unwrap_err() };
+            let e: Error = unsafe { ProcessManager::exit(ExitStatus::from(arg0)).unwrap_err() };
             e.code.into_errno()
         },
         // SAFETY: The calling thread is not the kernel and no resources are held. Furthermore,
@@ -143,9 +143,8 @@ fn handle_sleep_error(sleep_error: SleepError) -> Result<i32, !> {
         SleepError::Interrupted(reason) => match reason {
             InterruptReason::Killed => {
                 // SAFETY: the calling process is not the kernel.
-                let error: Error = unsafe {
-                    ProcessManager::exit(ErrorCode::Interrupted.into_errno()).unwrap_err()
-                };
+                let error: Error =
+                    unsafe { ProcessManager::exit(ErrorCode::Interrupted.into()).unwrap_err() };
                 panic!("failled to exit() (error={:?})", error);
             },
         },

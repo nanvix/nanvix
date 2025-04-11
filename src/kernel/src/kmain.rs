@@ -62,7 +62,10 @@ use ::core::sync::atomic::{
     AtomicUsize,
     Ordering,
 };
-use ::sys::pm::ProcessIdentifier;
+use ::sys::{
+    pm::ProcessIdentifier,
+    ExitStatus,
+};
 
 #[cfg(feature = "smp")]
 use crate::mm::kredzone;
@@ -373,7 +376,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     let cores_online: usize = unsafe { CORES_ONLINE.load(Ordering::Acquire) };
     info!("number of cores online: {}", cores_online);
 
-    let status: usize = if spawn_servers(&mut mm, &mut pm, &kernel_modules) > 0 {
+    let status: ExitStatus = if spawn_servers(&mut mm, &mut pm, &kernel_modules) > 0 {
         // Initialize kernel call dispatcher.
         kcall::init();
 
@@ -386,7 +389,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
         kcall::handler(&mut hal, &mut mm, &mut pm)
     } else {
-        0
+        ExitStatus::ok()
     };
 
     #[cfg(feature = "smp")]
@@ -447,7 +450,7 @@ pub extern "C" fn do_ap_start(_coreid: u32) {
 ///
 /// This function never returns.
 ///
-pub fn kernel_magic_string(status: usize) -> ! {
+pub fn kernel_magic_string(status: ExitStatus) -> ! {
     debug!("hello, world!");
-    hal::platform::shutdown(status);
+    hal::platform::shutdown(status.into());
 }

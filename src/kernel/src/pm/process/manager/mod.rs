@@ -96,6 +96,7 @@ use ::sys::{
         ThreadIdentifier,
         UserIdentifier,
     },
+    ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
 
@@ -711,7 +712,10 @@ impl ProcessManagerInner {
         None
     }
 
-    pub fn exit(&mut self, status: i32) -> (*mut ContextInformation, *mut ContextInformation) {
+    pub fn exit(
+        &mut self,
+        status: ExitStatus,
+    ) -> (*mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to exit.
@@ -766,7 +770,7 @@ impl ProcessManagerInner {
     ///
     pub(super) unsafe fn exit_thread(
         &mut self,
-        status: usize,
+        status: ExitStatus,
     ) -> (Condvar, *mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
@@ -908,12 +912,12 @@ impl ProcessManagerInner {
     pub fn harvest_zombies(
         &mut self,
         mm: &mut VirtMemoryManager,
-    ) -> Option<(ProcessIdentifier, usize)> {
+    ) -> Option<(ProcessIdentifier, ExitStatus)> {
         if let Some(zombie) = self.zombies.pop_front() {
             let (zombie_threads, mut state, status): (
                 NonEmptyVecDeque<ZombieThread>,
                 Box<ProcessState>,
-                usize,
+                ExitStatus,
             ) = zombie.bury();
             let (mut more_zombie_threads, zombie_thread): (VecDeque<ZombieThread>, ZombieThread) =
                 zombie_threads.pop_front();
@@ -1331,7 +1335,7 @@ impl ProcessManager {
     pub fn harvest_zombies(
         &mut self,
         mm: &mut VirtMemoryManager,
-    ) -> Result<Option<(ProcessIdentifier, usize)>, Error> {
+    ) -> Result<Option<(ProcessIdentifier, ExitStatus)>, Error> {
         Ok(self.try_borrow_mut()?.harvest_zombies(mm))
     }
 

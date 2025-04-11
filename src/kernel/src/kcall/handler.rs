@@ -26,22 +26,28 @@ use ::sys::{
     event::ProcessTerminationInfo,
     number::KcallNumber,
     pm::ProcessIdentifier,
+    ExitStatus,
 };
 
 //==================================================================================================
 //  Standalone Functions
 //==================================================================================================
+
 ///
 /// # Description
 ///
 /// Kernel call handler.
 ///
-pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut ProcessManager) -> usize {
+pub fn kcall_handler(
+    hal: &mut Hal,
+    mm: &mut VirtMemoryManager,
+    pm: &mut ProcessManager,
+) -> ExitStatus {
     if let Err(e) = event::init(hal) {
         panic!("failed to initialize event manager: {:?}", e);
     }
 
-    let status: usize = loop {
+    let status: ExitStatus = loop {
         // Read kernel call arguments from the scoreboard.
         match ScoreBoard::get_mut() {
             Ok(scoreboard) => match scoreboard.handle() {
@@ -149,8 +155,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                 // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
                 match unsafe {
                     EventManager::notify_process_termination(ProcessTerminationInfo::new(
-                        pid,
-                        status as i32,
+                        pid, status,
                     ))
                 } {
                     Ok(()) => {},
