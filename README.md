@@ -14,6 +14,24 @@ Nanvix is a microkernel-based research operating system.
 - [doc/run.md](doc/run.md) - Instructions for running Nanvix.
 - [doc/dev.md](doc/test.md) - Instructions for testing Nanvix.
 
+## Software Ecosystem
+
+### Runtimes
+
+- [x] `Python v3.12.3`
+- [x] `Libstdc++ v3`
+- [x] `Newlib v4.4.0`
+
+### Libraries
+
+- [x] `Zlib v1.3.1`
+
+### Development Tools
+
+- [x] `GCC v12.4.0`
+- [x] `Binutils v2.40`
+- [x] `Rustc v1.87.0`
+
 ## Usage Statement
 
 This project is a prototype. As such, we provide no guarantees that it will work and you are assuming any risks with using the code. We welcome comments and feedback. Please send any questions or comments to any of the following maintainers of the project:
