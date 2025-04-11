@@ -1,4 +1,4 @@
-# Developing Nanvix
+# Testing Nanvix
 
 > ℹ️ The instructions in this document assume that you already know how to built
 Nanvix. For more information on how to build Nanvix, please refer to the
@@ -8,7 +8,7 @@ This document guides you through testing Nanvix.
 
 ## Table of Contents
 
-- [Table of Contents](#table-of-contents)
+- [Running Full CI Pipeline](#running-full-ci-pipeline)
 - [Running Unit Tests](#running-unit-tests)
 - [Running System-Level Tests (MicroVM and Hyperlight Machines Only)](#running-system-level-tests-microvm-and-hyperlight-machines-only)
 
