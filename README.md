@@ -1,15 +1,36 @@
 # Nanvix
 
 [![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/nanvix/shared_invite/zt-1yu30bs28-nsNmw8IwCyh6MBBV~B~X7w)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/m/nanvix/nanvix)
+![GitHub last commit](https://img.shields.io/github/last-commit/nanvix/nanvix)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/nanvix/nanvix/x86.yml?branch=dev&label=CI)
 
-This repository hosts the source code of Nanvix, a research operating system.
+Nanvix is a microkernel-based research operating system.
 
 ## Documentation
 
-- For instructions on development environment setup, see [doc/setup.md](doc/setup.md).
-- For instructions on building, see [doc/build.md](doc/build.md).
-- For instructions on running, see [doc/run.md](doc/run.md).
-- For dev instructions (e.g., testing), see [doc/dev.md](doc/dev.md).
+- [doc/setup.md](doc/setup.md) - Instructions for setting up your development environment.
+- [doc/build.md](doc/build.md) - Instructions for building Nanvix.
+- [doc/run.md](doc/run.md) - Instructions for running Nanvix.
+- [doc/dev.md](doc/test.md) - Instructions for testing Nanvix.
+
+## Software Ecosystem
+
+### Runtimes
+
+- [x] `Python v3.12.3`
+- [x] `Libstdc++ v3`
+- [x] `Newlib v4.4.0`
+
+### Libraries
+
+- [x] `Zlib v1.3.1`
+
+### Development Tools
+
+- [x] `GCC v12.4.0`
+- [x] `Binutils v2.40`
+- [x] `Rustc v1.87.0`
 
 ## Usage Statement
 
