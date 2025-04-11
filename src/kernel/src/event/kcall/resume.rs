@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::event::manager::EventManager;
+use crate::{
+    event::manager::EventManager,
+    kcall::KcallResult,
+};
 use ::sys::event::EventDescriptor;
 
 //==================================================================================================
@@ -33,14 +36,14 @@ use ::sys::event::EventDescriptor;
 ///
 /// - The calling process does not hold a reference to the process manager.
 ///
-pub unsafe fn resume(evdesc: usize) -> i32 {
+pub unsafe fn resume(evdesc: usize) -> KcallResult {
     let eventinfo: EventDescriptor = match EventDescriptor::try_from(evdesc) {
         Ok(eventinfo) => eventinfo,
-        Err(e) => return e.code.into_errno(),
+        Err(e) => return KcallResult::Error(e.code.into()),
     };
 
     match EventManager::resume(eventinfo) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(_) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

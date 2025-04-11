@@ -7,7 +7,10 @@
 
 use crate::{
     event::EventManager,
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::{
         self,
         ProcessManager,
@@ -39,20 +42,20 @@ fn do_send(pm: &mut ProcessManager, src: ProcessIdentifier, message: Message) ->
     EventManager::post_message(pm, message.destination, message)
 }
 
-pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     let src: ProcessIdentifier = args.pid;
 
     // Copy message to kernel space.
     let mut message: Message = Message::default();
     if let Err(e) = pm::copy_from_user(pm, src, &mut message, args.arg0 as *const Message) {
-        return e.code.into_errno();
+        return KcallResult::Error(e.code.into());
     }
 
     // Sanity check message source.
     if { message.source } != src {
         let reason: &str = "invalid message source";
         error!("do_send(): {}", reason);
-        return ErrorCode::InvalidArgument.into_errno();
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
     // Route message based on its type.
@@ -64,13 +67,13 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
                 if #[cfg(feature = "stdio")] {
                     // It is, so write message to standard output.
                     match crate::stdio::write(message) {
-                        Ok(_) => 0,
-                        Err(e) => e.code.into_errno(),
+                        Ok(_) => KcallResult::ok(),
+                        Err(e) => KcallResult::Error(e.code.into()),
                     }
                 } else {
                     // Standard input/output is not available.
                     error!("send(): stdio is not available");
-                    ErrorCode::ProtocolNotSupported.into_errno()
+                    KcallResult::Error(ErrorCode::ProtocolNotSupported.into())
                 }
             }
         },
@@ -78,8 +81,8 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
         _ => {
             // Post message.
             match do_send(pm, src, message) {
-                Ok(_) => 0,
-                Err(e) => e.code.into_errno(),
+                Ok(_) => KcallResult::ok(),
+                Err(e) => KcallResult::Error(e.code.into()),
             }
         },
     }

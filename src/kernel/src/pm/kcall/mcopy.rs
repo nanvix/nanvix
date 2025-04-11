@@ -11,7 +11,10 @@ use crate::{
         PageAligned,
         VirtualAddress,
     },
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     mm::{
         KernelPage,
         VirtMemoryManager,
@@ -64,16 +67,16 @@ fn do_mcopy(
     Ok(())
 }
 
-pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
+pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> KcallResult {
     // Check if the calling process has memory management capabilities.
     match pm.has_capability(args.pid, Capability::MemoryManagement) {
         Ok(true) => (),
         Ok(false) => {
             let reason: &str = "process does not have memory management capabilities";
             error!("mmap(): {}", reason);
-            return ErrorCode::PermissionDenied.into_errno();
+            return KcallResult::Error(ErrorCode::PermissionDenied.into());
         },
-        Err(e) => return e.code.into_errno(),
+        Err(e) => return KcallResult::Error(e.code.into()),
     }
 
     // Unpack kernel call arguments.
@@ -81,17 +84,17 @@ pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
     let src_vaddr: PageAligned<VirtualAddress> =
         match PageAligned::from_raw_value(args.arg1 as usize) {
             Ok(vaddr) => vaddr,
-            Err(e) => return e.code.into_errno(),
+            Err(e) => return KcallResult::Error(e.code.into()),
         };
     let dst_pid: ProcessIdentifier = ProcessIdentifier::from(args.arg2);
     let dst_vaddr: PageAligned<VirtualAddress> =
         match PageAligned::from_raw_value(args.arg3 as usize) {
             Ok(vaddr) => vaddr,
-            Err(e) => return e.code.into_errno(),
+            Err(e) => return KcallResult::Error(e.code.into()),
         };
 
     match do_mcopy(pm, mm, src_pid, src_vaddr, dst_pid, dst_vaddr) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(_) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

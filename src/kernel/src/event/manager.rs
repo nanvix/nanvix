@@ -968,14 +968,14 @@ fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
     if let Err(sleep_error) = do_exception_handler(info, ctx) {
         error!("exception_handler(): {:?}", sleep_error);
 
-        let status: i32 = match sleep_error {
-            SleepError::Generic(generic_error) => generic_error.code.into_errno(),
-            SleepError::Interrupted(InterruptReason::Killed) => ErrorCode::Interrupted.into_errno(),
+        let status: ErrorCode = match sleep_error {
+            SleepError::Generic(generic_error) => generic_error.code,
+            SleepError::Interrupted(InterruptReason::Killed) => ErrorCode::Interrupted,
         };
 
         // SAFETY: the calling process is not the kernel.
         unsafe {
-            let error: Error = ProcessManager::exit(status).unwrap_err();
+            let error: Error = ProcessManager::exit(status.into()).unwrap_err();
             error!("{:?}", info);
             error!("{:?}", ctx);
             panic!("failed to exit() (error={:?})", error);

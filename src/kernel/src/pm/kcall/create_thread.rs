@@ -6,14 +6,16 @@
 //==================================================================================================
 
 use crate::{
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     mm::{
         VirtMemoryManager,
         Vmem,
     },
     pm::ProcessManager,
 };
-use ::core::hint::cold_path;
 use ::sys::{
     error::Error,
     mm::VirtualAddress,
@@ -39,7 +41,11 @@ fn do_create_thread(
     pm.create_thread(mm, pid, user_wrapper_fn, user_fn, user_fn_arg)
 }
 
-pub fn create_thread(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
+pub fn create_thread(
+    pm: &mut ProcessManager,
+    mm: &mut VirtMemoryManager,
+    args: &KcallArgs,
+) -> KcallResult {
     // Unpack kernel call arguments.
     let user_wrapper_fn: VirtualAddress = VirtualAddress::from_raw_value(args.arg0 as usize);
     let user_fn: VirtualAddress = VirtualAddress::from_raw_value(args.arg1 as usize);
@@ -49,18 +55,11 @@ pub fn create_thread(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: 
     if !Vmem::is_user_addr(user_fn) {
         let reason: &str = "user function is not within the user address space";
         error!("create_thread(): {} (user_func={:?})", reason, user_fn);
-        return ErrorCode::InvalidArgument.into_errno();
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
     match do_create_thread(pm, mm, args.pid, user_wrapper_fn, user_fn, user_fn_arg) {
-        Ok(tid) => match tid.try_into() {
-            Ok(tid) => tid,
-            Err(error) => {
-                cold_path();
-                warn!("do_kcall(): failed to convert tid to i32 (error={:?})", error);
-                error.code.into_errno()
-            },
-        },
-        Err(e) => e.code.into_errno(),
+        Ok(tid) => KcallResult::Success(Into::<usize>::into(tid).into()),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

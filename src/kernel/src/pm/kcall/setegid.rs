@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::process::ProcessManager,
 };
 use ::sys::{
@@ -29,9 +32,9 @@ fn do_setegid(
     pm.setegid(pid, gid)
 }
 
-pub fn setegid(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn setegid(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     match do_setegid(pm, args.pid, GroupIdentifier::from(args.arg0)) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(()) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }
