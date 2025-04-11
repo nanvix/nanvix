@@ -17,6 +17,7 @@
 /// The values in this enumeration intentionally match the error codes defined in the Linux kernel.
 ///
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[repr(u32)]
 pub enum ErrorCode {
     /// Operation not permitted (EPERM).
     OperationNotPermitted = 1,
@@ -328,6 +329,12 @@ impl core::error::Error for ErrorCode {}
 impl core::fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "error={:?}", self)
+    }
+}
+
+impl From<ErrorCode> for u32 {
+    fn from(errno: ErrorCode) -> Self {
+        errno as u32
     }
 }
 
