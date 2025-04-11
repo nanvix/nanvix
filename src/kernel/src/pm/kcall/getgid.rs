@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::process::ProcessManager,
 };
 use ::sys::{
@@ -25,9 +28,9 @@ fn do_getgid(pm: &ProcessManager, pid: ProcessIdentifier) -> Result<GroupIdentif
     pm.getgid(pid)
 }
 
-pub fn getgid(pm: &ProcessManager, args: &KcallArgs) -> i32 {
+pub fn getgid(pm: &ProcessManager, args: &KcallArgs) -> KcallResult {
     match do_getgid(pm, args.pid) {
-        Ok(gid) => gid.into(),
-        Err(e) => e.code.into_errno(),
+        Ok(gid) => KcallResult::Success(Into::<usize>::into(gid).into()),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

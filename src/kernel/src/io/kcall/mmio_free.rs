@@ -11,7 +11,10 @@ use crate::{
         PageAligned,
         VirtualAddress,
     },
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::ProcessManager,
 };
 use ::sys::{
@@ -49,15 +52,15 @@ fn do_mmio_free(
     Ok(())
 }
 
-pub fn mmio_free(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn mmio_free(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     // Parse arguments.
     let addr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(args.arg0 as usize) {
         Ok(base) => base,
-        Err(e) => return e.code.into_errno(),
+        Err(e) => return KcallResult::Error(e.code.into()),
     };
 
     match do_mmio_free(pm, args.pid, addr) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(_) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

@@ -7,7 +7,10 @@
 
 use crate::{
     hal::io::AnyIoPort,
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::ProcessManager,
 };
 use ::sys::{
@@ -44,14 +47,14 @@ fn do_pmio_free(
     Ok(())
 }
 
-pub fn pmio_free(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn pmio_free(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     // Unpack arguments.
     let pid: ProcessIdentifier = args.pid;
     let port_number: u16 = args.arg0 as u16;
 
     // Execute kernel call.
     match do_pmio_free(pm, pid, port_number) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(_) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

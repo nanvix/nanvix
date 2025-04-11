@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::ProcessManager,
 };
 use ::sys::{
@@ -43,16 +46,16 @@ fn do_capctl(
     pm.capctl(pid, capability, value)
 }
 
-pub fn capctl(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn capctl(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     // Unpack arguments.
     let capability: Capability = match Capability::try_from(args.arg0) {
         Ok(capability) => capability,
-        Err(e) => return e.code.into_errno(),
+        Err(e) => return KcallResult::Error(e.code.into()),
     };
     let value: bool = args.arg1 != 0;
 
     match do_capctl(pm, args.pid, capability, value) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(()) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

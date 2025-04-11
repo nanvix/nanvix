@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::process::ProcessManager,
 };
 use ::sys::{
@@ -29,9 +32,9 @@ fn do_setuid(
     pm.setuid(pid, uid)
 }
 
-pub fn setuid(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn setuid(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     match do_setuid(pm, args.pid, UserIdentifier::from(args.arg0)) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(()) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

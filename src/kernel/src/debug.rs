@@ -7,7 +7,10 @@
 
 use crate::{
     hal::mem::VirtualAddress,
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::ProcessManager,
 };
 use ::sys::error::{
@@ -33,7 +36,7 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     // Buffer size in bytes.
     // NOTE: This value was chosen to be smaller than a page, but big enough for along messages.
     const BUFFER_SIZE: usize = 256;
@@ -42,14 +45,14 @@ pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
 
     // skip zero-length messages
     if size == 0 {
-        return 0;
+        return KcallResult::ok();
     }
 
     // Sanity check message size.
     if size > BUFFER_SIZE {
         let reason: &str = "message too large";
         error!("debug() {}", reason);
-        return ErrorCode::InvalidArgument.into_errno();
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
     let mut kernel_buffer: [u8; BUFFER_SIZE + 1] = [0; BUFFER_SIZE + 1];
@@ -58,13 +61,13 @@ pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
     let dst: VirtualAddress = VirtualAddress::new(kernel_buffer.as_mut_ptr() as usize);
 
     if let Err(e) = pm.vmcopy_from_user(args.pid, dst, src, size) {
-        return e.code.into_errno();
+        return KcallResult::Error(e.code.into());
     }
 
     let buf: &[u8] = unsafe { core::slice::from_raw_parts(kernel_buffer.as_ptr(), size) };
 
     match do_debug(buf) {
-        Ok(()) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(()) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }
