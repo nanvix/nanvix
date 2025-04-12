@@ -2,28 +2,35 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Configuration
+// Imports
 //==================================================================================================
 
-#![deny(clippy::all)]
-#![forbid(clippy::large_stack_frames)]
-#![forbid(clippy::large_stack_arrays)]
-#![feature(never_type)] // exit() uses this.
-#![cfg_attr(not(feature = "std"), no_std)]
+use ::sys::error::ErrorCode;
 
 //==================================================================================================
-// Modules
+// Structures
 //==================================================================================================
 
-// Exit status.
-mod exit_status;
-
-/// System configuration constants.
-mod sys;
+///
+/// # Description
+///
+/// A structure that stores the result of a failed kernel call.
+///
+#[derive(Default, Debug, Clone, Copy)]
+pub struct KcallError(i32);
 
 //==================================================================================================
-// Exports
+// Implementations
 //==================================================================================================
 
-pub use exit_status::*;
-pub use sys::*;
+impl From<ErrorCode> for KcallError {
+    fn from(code: ErrorCode) -> Self {
+        KcallError(-code.get())
+    }
+}
+
+impl From<KcallError> for i32 {
+    fn from(result: KcallError) -> Self {
+        result.0
+    }
+}

@@ -10,9 +10,12 @@ use crate::pm::{
     ProcessManager,
     SleepError,
 };
-use ::sys::pm::{
-    ProcessIdentifier,
-    ThreadIdentifier,
+use ::sys::{
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
+    ExitStatus,
 };
 
 //==================================================================================================
@@ -55,15 +58,15 @@ pub unsafe fn join_thread(
     pid: ProcessIdentifier,
     arg0: u32,
     arg1: u32,
-) -> Result<usize, SleepError> {
+) -> Result<ExitStatus, SleepError> {
     // Unpack kernel call arguments.
     let tid: ThreadIdentifier = ThreadIdentifier::from(arg0 as usize);
-    let retval: *mut usize = arg1 as *mut usize;
+    let retval: *mut ExitStatus = arg1 as *mut ExitStatus;
 
-    let status: usize = ProcessManager::join_thread(pid, tid)?;
+    let status: ExitStatus = ProcessManager::join_thread(pid, tid)?;
 
-    pm::copy_to_user::<usize>(ProcessManager::get_mut(), pid, retval, &status)
+    pm::copy_to_user::<ExitStatus>(ProcessManager::get_mut(), pid, retval, &status)
         .map_err(SleepError::Generic)?;
 
-    Ok(0)
+    Ok(ExitStatus::ok())
 }

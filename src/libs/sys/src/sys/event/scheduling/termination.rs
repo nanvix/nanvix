@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::pm::ProcessIdentifier;
+use crate::{
+    pm::ProcessIdentifier,
+    ExitStatus,
+};
 use ::core::fmt::Debug;
 
 //==================================================================================================
@@ -22,7 +25,7 @@ pub struct ProcessTerminationInfo {
     /// Identifier of the process that terminated.
     pub pid: ProcessIdentifier,
     /// Exit status of the process that terminated.
-    pub status: i32,
+    pub status: ExitStatus,
 }
 
 //==================================================================================================
@@ -44,7 +47,7 @@ impl ProcessTerminationInfo {
     ///
     /// The new [`ProcessTerminationInfo`].
     ///
-    pub fn new(pid: ProcessIdentifier, status: i32) -> Self {
+    pub fn new(pid: ProcessIdentifier, status: ExitStatus) -> Self {
         Self { pid, status }
     }
 
@@ -68,7 +71,7 @@ impl ProcessTerminationInfo {
             .copy_from_slice(&self.pid.to_ne_bytes());
         offset += core::mem::size_of::<ProcessIdentifier>();
 
-        bytes[offset..offset + core::mem::size_of::<i32>()]
+        bytes[offset..offset + core::mem::size_of::<ExitStatus>()]
             .copy_from_slice(&self.status.to_ne_bytes());
 
         bytes
@@ -97,7 +100,7 @@ impl ProcessTerminationInfo {
         ]);
         offset += core::mem::size_of::<ProcessIdentifier>();
 
-        let status: i32 = i32::from_ne_bytes([
+        let status: ExitStatus = ExitStatus::from_ne_bytes(&[
             bytes[offset],
             bytes[offset + 1],
             bytes[offset + 2],

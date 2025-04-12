@@ -13,7 +13,10 @@ use crate::{
         },
         Hal,
     },
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::ProcessManager,
 };
 use ::sys::{
@@ -65,18 +68,18 @@ fn do_pmio_alloc(
     pm.attach_pmio(pid, port)
 }
 
-pub fn pmio_alloc(hal: &mut Hal, pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn pmio_alloc(hal: &mut Hal, pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     // Unpack arguments.
     let pid: ProcessIdentifier = args.pid;
     let port_number: u16 = args.arg0 as u16;
     let port_type: IoPortType = match IoPortType::try_from(args.arg1) {
         Ok(port_type) => port_type,
-        Err(e) => return e.code.into_errno(),
+        Err(e) => return KcallResult::Error(e.code.into()),
     };
 
     // Execute kernel call.
     match do_pmio_alloc(hal, pm, pid, port_type, port_number) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(_) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }
