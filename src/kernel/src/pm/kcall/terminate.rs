@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     pm::ProcessManager,
 };
 use ::sys::pm::ProcessIdentifier;
@@ -15,9 +18,9 @@ use ::sys::pm::ProcessIdentifier;
 // Standalone Functions
 //==================================================================================================
 
-pub fn terminate(pm: &mut ProcessManager, args: &KcallArgs) -> i32 {
+pub fn terminate(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     match pm.terminate(ProcessIdentifier::from(args.arg0)) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(()) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

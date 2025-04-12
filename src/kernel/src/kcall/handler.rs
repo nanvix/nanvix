@@ -14,7 +14,10 @@ use crate::{
     hal::Hal,
     io,
     ipc,
-    kcall::ScoreBoard,
+    kcall::{
+        KcallResult,
+        ScoreBoard,
+    },
     mm::VirtMemoryManager,
     pm::{
         self,
@@ -26,39 +29,45 @@ use ::sys::{
     event::ProcessTerminationInfo,
     number::KcallNumber,
     pm::ProcessIdentifier,
+    ExitStatus,
 };
 
 //==================================================================================================
 //  Standalone Functions
 //==================================================================================================
+
 ///
 /// # Description
 ///
 /// Kernel call handler.
 ///
-pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut ProcessManager) -> usize {
+pub fn kcall_handler(
+    hal: &mut Hal,
+    mm: &mut VirtMemoryManager,
+    pm: &mut ProcessManager,
+) -> ExitStatus {
     if let Err(e) = event::init(hal) {
         panic!("failed to initialize event manager: {:?}", e);
     }
 
-    let status: usize = loop {
+    let status: ExitStatus = loop {
         // Read kernel call arguments from the scoreboard.
         match ScoreBoard::get_mut() {
             Ok(scoreboard) => match scoreboard.handle() {
                 Ok(args) => {
-                    let ret: i32 = match KcallNumber::from(args.number) {
+                    let ret: KcallResult = match KcallNumber::from(args.number) {
                         KcallNumber::Debug => debug::debug(pm, args),
                         KcallNumber::GetPid => {
                             // NOTE: this should be handled by the dispatcher.
                             // However we emit an invalid system call, just in case.
                             error!("cannot handle getpid()");
-                            ErrorCode::InvalidSysCall.into_errno()
+                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
                         },
                         KcallNumber::GetTid => {
                             // NOTE: this should be handled by the dispatcher.
                             // However we emit an invalid system call, just in case.
                             error!("cannot handle gettid()");
-                            ErrorCode::InvalidSysCall.into_errno()
+                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
                         },
                         KcallNumber::GetUid => pm::getuid(pm, args),
                         KcallNumber::GetGid => pm::getgid(pm, args),
@@ -85,7 +94,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                         KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
                         _ => {
                             error!("invalid kernel call");
-                            ErrorCode::InvalidSysCall.into_errno()
+                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
                         },
                     };
                     // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
@@ -149,8 +158,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager, pm: &mut Process
                 // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
                 match unsafe {
                     EventManager::notify_process_termination(ProcessTerminationInfo::new(
-                        pid,
-                        status as i32,
+                        pid, status,
                     ))
                 } {
                     Ok(()) => {},

@@ -28,6 +28,7 @@ use ::sys::{
         MutexAddress,
         ThreadIdentifier,
     },
+    ExitStatus,
 };
 
 //==================================================================================================
@@ -117,7 +118,7 @@ impl RunningThread {
         self.0.join_cond.clone()
     }
 
-    pub fn exit(mut self, status: usize) -> (ZombieThread, *mut ContextInformation) {
+    pub fn exit(mut self, status: ExitStatus) -> (ZombieThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.0.context_mut();
         (
             ZombieThread {
@@ -187,7 +188,7 @@ impl ReadyThread {
     pub fn terminate(self) -> ZombieThread {
         ZombieThread {
             state: self.0,
-            status: ErrorCode::Interrupted.into_errno() as usize,
+            status: ErrorCode::Interrupted.into(),
         }
     }
 
@@ -258,7 +259,7 @@ impl InterruptedThread {
 
 #[allow(unused)]
 pub struct ZombieThread {
-    status: usize,
+    status: ExitStatus,
     state: Thread,
 }
 
@@ -271,7 +272,7 @@ impl ZombieThread {
         self.state.user_stack.take()
     }
 
-    pub fn status(&self) -> usize {
+    pub fn status(&self) -> ExitStatus {
         self.status
     }
 }

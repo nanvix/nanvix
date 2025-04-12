@@ -69,6 +69,7 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    ExitStatus,
 };
 
 //==================================================================================================
@@ -178,7 +179,7 @@ impl ProcessManager {
     ///
     /// - The calling process is not the kernel process.
     ///
-    pub unsafe fn exit(status: i32) -> Result<!, Error> {
+    pub unsafe fn exit(status: ExitStatus) -> Result<!, Error> {
         trace!("exit(): status={:?}", status);
         // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
         let (from, to): (*mut ContextInformation, *mut ContextInformation) =
@@ -211,7 +212,7 @@ impl ProcessManager {
     /// - The calling process is not the kernel process.
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn exit_thread(status: usize) -> Result<!, Error> {
+    pub unsafe fn exit_thread(status: ExitStatus) -> Result<!, Error> {
         let (join_cond, from, to): (Condvar, *mut ContextInformation, *mut ContextInformation) =
             Self::get_mut().try_borrow_mut()?.exit_thread(status);
 
@@ -255,7 +256,7 @@ impl ProcessManager {
     pub unsafe fn join_thread(
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
-    ) -> Result<usize, SleepError> {
+    ) -> Result<ExitStatus, SleepError> {
         trace!("join_thread(): pid={:?}, tid={:?}", pid, tid);
 
         loop {
@@ -266,7 +267,7 @@ impl ProcessManager {
 
             match result {
                 Ok(zombie_thread) => {
-                    let status: usize = zombie_thread.status();
+                    let status: ExitStatus = zombie_thread.status();
 
                     // Harvest zombie thread.
                     if let Some(user_stack) = zombie_thread.harvest() {

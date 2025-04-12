@@ -7,6 +7,9 @@
 
 mod dispatcher;
 mod handler;
+mod kcall_error;
+mod kcall_result;
+mod kcall_success;
 
 //==================================================================================================
 // Imports
@@ -39,9 +42,12 @@ use ::sys::{
 //==================================================================================================
 
 pub use handler::kcall_handler as handler;
+pub use kcall_error::KcallError;
+pub use kcall_result::KcallResult;
+pub use kcall_success::KcallSuccess;
 
 //==================================================================================================
-// Error Code
+// Scoreboard
 //==================================================================================================
 
 static mut SCOREBOARD: Option<ScoreBoard> = None;
@@ -72,7 +78,7 @@ struct ScoreBoard {
     dispatched: Semaphore,
     handled: Semaphore,
     args: KcallArgs,
-    ret: i32,
+    ret: KcallResult,
 }
 
 impl ScoreBoard {
@@ -91,7 +97,7 @@ impl ScoreBoard {
                     arg3: 0,
                     number: 0,
                 },
-                ret: 0,
+                ret: KcallResult::ok(),
             });
         }
     }
@@ -150,7 +156,7 @@ impl ScoreBoard {
         arg1: u32,
         arg2: u32,
         arg3: u32,
-    ) -> Result<i32, SleepError> {
+    ) -> Result<KcallResult, SleepError> {
         let _guard: MutexGuard = self.lock.lock()?;
         self.args = KcallArgs {
             pid,
@@ -173,7 +179,7 @@ impl ScoreBoard {
         Ok(&self.args)
     }
 
-    pub unsafe fn handled(&mut self, ret: i32) -> Result<(), Error> {
+    pub unsafe fn handled(&mut self, ret: KcallResult) -> Result<(), Error> {
         self.ret = ret;
         self.handled.up()
     }

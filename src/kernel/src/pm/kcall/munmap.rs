@@ -11,7 +11,10 @@ use crate::{
         PageAligned,
         VirtualAddress,
     },
-    kcall::KcallArgs,
+    kcall::{
+        KcallArgs,
+        KcallResult,
+    },
     mm::VirtMemoryManager,
     pm::ProcessManager,
 };
@@ -39,12 +42,16 @@ fn do_munmap(
     pm.munmap(mm, pid, vaddr)
 }
 
-pub fn munmap(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> i32 {
+pub fn munmap(
+    pm: &mut ProcessManager,
+    mm: &mut VirtMemoryManager,
+    args: &KcallArgs,
+) -> KcallResult {
     // Unpack kernel call arguments.
     let pid: ProcessIdentifier = ProcessIdentifier::from(args.arg0);
     let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(args.arg1 as usize) {
         Ok(vaddr) => vaddr,
-        Err(e) => return e.code.into_errno(),
+        Err(e) => return KcallResult::Error(e.code.into()),
     };
 
     // Check if attempting to unmap memory from  a different process.
@@ -55,14 +62,14 @@ pub fn munmap(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallA
             Ok(false) => {
                 let reason: &str = "process does not have memory management capabilities";
                 error!("mmap(): {}", reason);
-                return ErrorCode::PermissionDenied.into_errno();
+                return KcallResult::Error(ErrorCode::PermissionDenied.into());
             },
-            Err(e) => return e.code.into_errno(),
+            Err(e) => return KcallResult::Error(e.code.into()),
         }
     }
 
     match do_munmap(pm, mm, pid, vaddr) {
-        Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Ok(_) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
     }
 }

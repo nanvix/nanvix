@@ -144,11 +144,7 @@ impl RunnableProcessWithReadyThread {
                 Some(zombie_threads),
             ))
         } else {
-            Err(ZombieProcess::new(
-                self.state,
-                zombie_threads,
-                ErrorCode::Interrupted.into_errno() as usize,
-            ))
+            Err(ZombieProcess::new(self.state, zombie_threads, ErrorCode::Interrupted.into()))
         }
     }
 
