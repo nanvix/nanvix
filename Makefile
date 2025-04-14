@@ -359,13 +359,13 @@ run-linuxd-tests: | \
 
 ifneq ($(strip $(filter yes,$(BUILD_OPT))),)
 
-all-opt: init all-python all-zlib
+all-opt: init all-openblas all-python all-zlib
 
-clean-opt: clean-python clean-zlib
+clean-opt: clean-openblas clean-python clean-zlib
 
-distclean-opt: distclean-python distclean-zlib
+distclean-opt: distclean-openblas distclean-python distclean-zlib
 
-init-opt: init-python init-zlib
+init-opt: init-openblas init-python init-zlib
 
 else
 
@@ -378,6 +378,31 @@ distclean-opt:
 init-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
 
+endif
+
+#===================================================================================================
+# Build Rules for OpenBLAS
+#===================================================================================================
+
+all-openblas: init all-guest-staticlibs
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	echo "Building OpenBLAS..."
+	bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+clean-openblas: clean-zlib
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-openblas.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+distclean-openblas: distclean-zlib
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-openblas.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+init-openblas: init-repo
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-openblas.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================

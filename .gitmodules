@@ -17,3 +17,6 @@
 	path = contrib/newlib
 	url = https://github.com/nanvix/newlib.git
 	branch = nanvix/newlib-4.4.0
+[submodule "opt/openblas"]
+	path = opt/openblas
+	url = https://github.com/nanvix/OpenBLAS
