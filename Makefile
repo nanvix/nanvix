@@ -364,6 +364,7 @@ all-opt: init all-openblas all-python all-zlib
 clean-opt: clean-openblas clean-python clean-zlib
 
 distclean-opt: distclean-openblas distclean-python distclean-zlib
+	$(FORCE_RM_CMD) $(SYSROOT_DIR)
 
 init-opt: init-openblas init-python init-zlib
 
