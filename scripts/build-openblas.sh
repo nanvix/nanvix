@@ -72,8 +72,6 @@ make_install() {
 
 
 build() {
-	make_clean
-
 	make_all
 
 	make_install
