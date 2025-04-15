@@ -118,9 +118,7 @@ build_cross() {
 
 build() {
 	# Check if we need to configure or not.
-	if [ -f "${CPYTHON_HOME}/Makefile" ]; then
-		make_clean
-	else
+	if [ ! -f "${CPYTHON_HOME}/Makefile" ]; then
 		configure
 	fi
 
