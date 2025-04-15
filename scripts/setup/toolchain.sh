@@ -35,6 +35,8 @@ git submodule update --init ${GCC_HOME}
 
 cd ${BINUTILS_HOME}
 
+git clean -fdx
+
 ./configure \
     --target=$TARGET \
     --prefix=$PREFIX \
@@ -51,6 +53,8 @@ make install
 #===================================================================================================
 
 cd ${GCC_HOME}
+
+git clean -fdx
 
 ./contrib/download_prerequisites
 
@@ -76,6 +80,8 @@ export OLD_PATH=$PATH
 export PATH=$PREFIX/bin:$PATH
 
 cd ${NEWLIB_HOME}
+
+git clean -fdx
 
 ./configure \
     --target=$TARGET \
