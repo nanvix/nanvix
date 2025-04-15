@@ -263,7 +263,7 @@ def main() -> None:
              args.log_level, args.verbose)
 
     # Build source code.
-    if args.build or args.test:
+    if args.build:
         build(args.target_machine, args.target_arch, args.release or not args.debug,
               args.toolchain_dir, args.log_level, args.verbose)
 
