@@ -73,7 +73,7 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
     return return_code
 
 
-def make(target: str, machine: str, arch: str, release: bool, toolchain_dir: str = None, log_level: str = None, verbose: bool = False, timeout: int = None) -> None:
+def make(target: str, machine: str, arch: str, release: bool, toolchain_dir: str = None, log_level: str = None, verbose: bool = False, timeout: int = None, build_opt=True) -> None:
     """
     Runs make command.
 
@@ -104,6 +104,8 @@ def make(target: str, machine: str, arch: str, release: bool, toolchain_dir: str
 
     if timeout:
         command.append(f"TIMEOUT={timeout}")
+
+    command.append("BUILD_OPT=yes" if build_opt else "BUILD_OPT=no")
 
     return_code = run_command(
         command, f"{target}-stdout.log", f"{target}-stderr.log")
@@ -160,10 +162,10 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
     """
 
     make("run-unit-tests", machine, arch, release,
-         toolchain_dir, log_level, verbose, timeout)
+         toolchain_dir, log_level, verbose, timeout, build_opt=False)
 
     make("run", machine, arch, release,
-         toolchain_dir, log_level, verbose, timeout)
+         toolchain_dir, log_level, verbose, timeout, build_opt=False)
 
     # Check if last line of "test-stdout.log" contains the magic string.
     with open("run-stdout.log", "r") as file:
@@ -181,7 +183,7 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
         return
 
     make("run-nanvixd-tests", machine, arch, release,
-            toolchain_dir, log_level, verbose, timeout)
+         toolchain_dir, log_level, verbose, timeout, build_opt=False)
 
 
 def has_nanvixd_tests(machine: str) -> bool:
@@ -227,7 +229,8 @@ def parse_args() -> argparse.Namespace:
                         help=f"Set log level {LOG_LEVELS}", default="trace")
     parser.add_argument("--verbose", action="store_true",
                         help="Enable verbose build", default=True)
-    parser.add_argument("--timeout", type=int, help="Set test timeout", default=90)
+    parser.add_argument("--timeout", type=int,
+                        help="Set test timeout", default=90)
     parser.add_argument("--lint", action="store_true",
                         help="Lint Nanvix source code", default=False)
     parser.add_argument("--build", action="store_true",
