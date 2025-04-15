@@ -101,7 +101,7 @@ rustup target add wasm32-wasip1
 
 ```bash
 # Ensure you are in the project's root directory.
-export TOOLCHAIN_DIR=$PWD                    # Set the directory for the toolchain.
+export TOOLCHAIN_DIR=$PWD/toolchain          # Set the directory for the toolchain.
 ./scripts/setup/toolchain.sh $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
 ```
 
