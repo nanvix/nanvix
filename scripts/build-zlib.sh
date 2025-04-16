@@ -8,14 +8,14 @@
 #===================================================================================================
 
 RULE=${1:-build}
-TOOLCHAIN_DIR=${2:-$PWD/toolchain}
-SYSROOT_DIR=${3:-$PWD/sysroot}
+NANVIX_HOME=${2:-`git rev-parse --show-toplevel`}
+TOOLCHAIN_DIR=${3:-$PWD/toolchain}
+SYSROOT_DIR=${4:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
-NANVIX_HOME=`git rev-parse --show-toplevel`
 OPT_DIR=${NANVIX_HOME}/opt
 ZLIB_HOME=${OPT_DIR}/zlib
 

@@ -22,7 +22,7 @@ docker run \
   -it --rm -v"$(pwd):/mnt" \
   nanvix/toolchain \
   /bin/bash -l -c \
-  "cd /mnt ; git config --global --add safe.directory /mnt ; make TOOLCHAIN_DIR=/opt all ; chown -R 1000:1000 ."
+  "cd /mnt ; git config --global --add safe.directory '*' ; make TOOLCHAIN_DIR=/opt all ; chown -R 1000:1000 ."
 ```
 
 ## Building Nanvix with Native Tools
