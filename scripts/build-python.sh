@@ -124,6 +124,10 @@ build() {
 	# Check if we need to configure or not.
 	if [ ! -f "${CPYTHON_HOME}/Makefile" ]; then
 		configure
+	else
+		# Remove the existing binary to ensure it links with the updated system libraries.
+		# Note: Running 'make clean' would remove all object files, which is unnecessary here.
+		rm -f python
 	fi
 
 	make_all
