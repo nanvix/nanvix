@@ -74,7 +74,11 @@ configure() {
 #====================================================================================================
 
 configure_cross() {
+	LDFLAGS='-m32' \
+	CFLAGS="-m32" \
 	./configure \
+	 	-build=x86_64-pc-linux-gnux32 \
+		--host=x86_64-pc-linux-gnux32 \
 		--disable-shared \
 		--disable-test-modules \
 		--prefix=${CROSS_DIR} \
