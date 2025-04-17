@@ -19,7 +19,8 @@ SYSROOT_DIR=${4:-$PWD/sysroot}
 OPT_DIR=${NANVIX_HOME}/opt
 OPENBLAS_HOME=${OPT_DIR}/openblas
 OPENBLAS_MAKE_OPTIONS="\
-    CC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gcc
+    CC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gcc \
+    FC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gfortran \
     PREFIX=${SYSROOT_DIR} \
     HOSTCC=gcc \
     TARGET=P2 \
@@ -29,9 +30,6 @@ OPENBLAS_MAKE_OPTIONS="\
     USE_OPENMP=0 \
     USE_THREAD=0 \
     USE_LOCKING=1 \
-    NO_LAPACK=1 \
-    NO_LAPACKE=1 \
-    ONLY_CBLAS=1 \
     USE_TLS=0"
 
 #===================================================================================================
