@@ -29,8 +29,10 @@ Nanvix is a microkernel-based research operating system.
 
 ### Development Tools
 
-- [x] `GCC v12.4.0`
 - [x] `Binutils v2.40`
+- [x] `G++ v12.4.0`
+- [x] `GCC v12.4.0`
+- [x] `GFortran v12.4.0`
 - [x] `Rustc v1.87.0`
 
 ## Usage Statement
