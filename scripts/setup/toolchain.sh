@@ -35,6 +35,8 @@ git submodule update --init ${GCC_HOME}
 
 cd ${BINUTILS_HOME}
 
+git clean -fdx
+
 ./configure \
     --target=$TARGET \
     --prefix=$PREFIX \
@@ -52,6 +54,8 @@ make install
 
 cd ${GCC_HOME}
 
+git clean -fdx
+
 ./contrib/download_prerequisites
 
 mkdir -p build && cd build
@@ -62,11 +66,13 @@ mkdir -p build && cd build
     --with-sysroot=$SYSROOT \
     --disable-multilib \
     --disable-nls \
-    --enable-languages=c,c++  \
+    --enable-languages=c,c++,fortran  \
+    --disable-libquadmath \
+    --disable-libquadmath-support \
     --with-newlib
 
-make -j `nproc` all-gcc all-target-libgcc
-make install-gcc install-target-libgcc
+make -j `nproc` all-gcc all-target-libgcc all-target-libgfortran
+make install-gcc install-target-libgcc install-target-libgfortran
 
 #===================================================================================================
 # Build Newlib
@@ -76,6 +82,8 @@ export OLD_PATH=$PATH
 export PATH=$PREFIX/bin:$PATH
 
 cd ${NEWLIB_HOME}
+
+git clean -fdx
 
 ./configure \
     --target=$TARGET \
@@ -109,8 +117,10 @@ cd ${GCC_HOME}/build
     --with-sysroot=$SYSROOT \
     --disable-multilib \
     --disable-nls \
-    --enable-languages=c,c++  \
+    --enable-languages=c,c++,fortran  \
+    --disable-libquadmath \
+    --disable-libquadmath-support \
     --with-newlib
 
-make -j `nproc` all-gcc all-target-libgcc all-target-libstdc++-v3
-make install-gcc install-target-libgcc install-target-libstdc++-v3
+make -j `nproc` all-gcc all-target-libgcc all-target-libgfortran all-target-libstdc++-v3
+make install-gcc install-target-libgcc install-target-libgfortran install-target-libstdc++-v3

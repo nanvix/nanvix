@@ -10,7 +10,7 @@ export PROGRAM_NAME := echo-cpp
 #===============================================================================
 
 # Libraries
-export LIBRARIES := -Wl,--start-group $(LIBC) $(LIBCXX) $(LIBPOSIX) -Wl,--end-group
+export LIBRARIES := -Wl,--start-group $(LIBPOSIX) $(LIBC) $(LIBCXX) -Wl,--end-group
 
 # Source Files
 export SOURCES := $(wildcard *.cpp)

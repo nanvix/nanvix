@@ -10,7 +10,7 @@ export PROGRAM_NAME := test-c-bindings
 #===============================================================================
 
 # Libraries
-export LIBRARIES := -Wl,--start-group $(LIBC) $(LIBPOSIX) -Wl,--end-group
+export LIBRARIES := -Wl,--start-group $(LIBPOSIX) $(LIBC) -Wl,--end-group
 
 # Source Files
 export SOURCES := $(wildcard *.c)

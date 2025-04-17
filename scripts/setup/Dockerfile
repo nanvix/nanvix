@@ -12,6 +12,9 @@ USER $USER
 # Rust version.
 ARG RUST_VERSION=nightly-2025-03-18
 
+# Nanvix version.
+ARG NANVIX_VERSION=b7d8b4accafd30d8ed15a99f51cc5b77ea32a4ba
+
 # Update the package list and install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -21,6 +24,8 @@ RUN apt-get update && \
     curl \
     doxygen \
     flex \
+    gcc-multilib \
+    g++-multilib \
     git \
     graphviz \
     grub2 \
@@ -50,8 +55,8 @@ RUN rustup default $RUST_VERSION
 RUN rustup component add rust-src
 RUN rustup target add wasm32-wasip1
 
-# Build C/C++ toolchain.
-RUN mkdir -p /opt/src
-COPY toolchain.sh /opt/src/toolchain.sh
-RUN /opt/src/toolchain.sh /opt
-RUN rm -rf /opt/src
+# Build toolchain.
+RUN git clone https://github.com/nanvix/nanvix /opt/src/nanvix
+RUN cd /opt/src/nanvix && git checkout -f $NANVIX_VERSION
+RUN cd /opt/src/nanvix && scripts/setup/toolchain.sh /opt
+RUN rm -rf /opt/nanvix/src
