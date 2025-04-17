@@ -79,7 +79,7 @@ To build a Docker image with the required tools:
 
 ```bash
 # Ensure you are in the project's root directory.
-docker build -t nanvix/toolchain ./scripts/setup/
+docker build --no-cache -t nanvix/toolchain ./scripts/setup/
 ```
 
 ### Option 3: Build Development Tools Locally
