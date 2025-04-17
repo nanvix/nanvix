@@ -17,6 +17,8 @@ if [[ "$1" == "--extra" ]]; then
         clang-format     \
         doxygen          \
         flex             \
+        gcc-multilib     \
+        g++-multilib     \
         graphviz         \
         grub2            \
         libglib2.0-dev   \
