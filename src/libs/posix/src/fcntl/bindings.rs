@@ -136,13 +136,15 @@ pub unsafe extern "C" fn fchmodat(
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn fchmod(_fd: c_int, _mode: mode_t) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/360
-    ::nvx::error!("fchmod(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
+    match crate::unistd::fchmod(fd, mode) {
+        Ok(_) => return 0,
+        Err(e) => {
+            ::nvx::error!("fchmod(): invalid error code");
+            errno = e.code.get();
+            -1
+        },
     }
-    -1
 }
 
 #[allow(clippy::missing_safety_doc)]
