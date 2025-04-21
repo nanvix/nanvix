@@ -10,13 +10,17 @@ use crate::{
         size_t,
         ssize_t,
     },
-    unistd::message::{
-        ReadRequest,
-        ReadResponse,
+    unistd::{
+        self,
+        message::{
+            ReadRequest,
+            ReadResponse,
+        },
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
+use ::config::constants::KILOBYTE;
 use ::core::cmp;
 use ::nvx::{
     ipc::Message,
@@ -82,6 +86,18 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
                     LinuxDaemonMessageHeader::ReadResponse => {
                         // Parse response.
                         let response: ReadResponse = ReadResponse::from_bytes(message.payload);
+
+                        // Display progress if not STDIN.
+                        if fd != unistd::STDIN_FILENO && total_read % KILOBYTE as i32 == 0 {
+                            let percentage = (total_read as f64 / buffer.len() as f64) * 100.0;
+                            ::nvx::trace!(
+                                "read(): {:?}/{:?} bytes read from fd={} ({:.2}%)",
+                                total_read,
+                                buffer.len(),
+                                fd,
+                                percentage
+                            );
+                        }
 
                         // Check if any data was read.
                         if response.count == 0 {

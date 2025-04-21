@@ -10,6 +10,7 @@
 #![feature(never_type)] // pthread requires this.
 #![feature(c_variadic)] // fcntl requires this.
 #![feature(btree_extract_if)] // dlfcn requires this.
+#![feature(strict_overflow_ops)]
 
 //==================================================================================================
 // Modules

@@ -20,10 +20,7 @@ use ::alloc::{
     vec,
     vec::Vec,
 };
-use ::nvx::{
-    mm::Address,
-    sys::error::Error,
-};
+use ::nvx::sys::error::Error;
 use ::spin::{
     Mutex,
     MutexGuard,
@@ -143,16 +140,12 @@ fn resolve_all_symbols(
     dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
     filename: &str,
 ) -> Result<(), Error> {
+    ::nvx::trace!("resolve_all_symbols(): filename={}", filename);
     let mut unresolved_libraries = vec![filename.to_string()];
 
     while let Some(lib_name) = unresolved_libraries.pop() {
         if let Some(dlfile) = dlfiles.values().find(|f| f.lock().name() == lib_name) {
-            let mut dlfile = dlfile.lock();
-            for symbol in dlfile.unresolved() {
-                if let Some(addr) = dlfile.lookup(&symbol, true) {
-                    dlfile.resolve(&symbol, addr.into_raw_value())?;
-                }
-            }
+            dlfile.lock().resolve_all()?;
         }
     }
 

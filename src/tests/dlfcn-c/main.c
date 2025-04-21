@@ -84,10 +84,34 @@ void test_dlsym(const char *path)
 {
     void *handle = open_library(path);
 
-    int (*sum)(int, int) = NULL;
-    *(void **)(&sum) = resolve_symbol(handle, "sum");
-    assert(sum != NULL);
-    assert(sum(1, 2) == 3);
+    int (*add)(int, int) = NULL;
+    *(void **)(&add) = resolve_symbol(handle, "add");
+    assert(add != NULL);
+    assert(add(1, 2) == 3);
+
+    int (*fast_mul)(int, int) = NULL;
+    *(void **)(&fast_mul) = resolve_symbol(handle, "fast_mul");
+    assert(fast_mul != NULL);
+    assert(fast_mul(7, 2) == 14);
+
+    int (*slow_mul)(int, int) = NULL;
+    *(void **)(&slow_mul) = resolve_symbol(handle, "slow_mul");
+    assert(slow_mul != NULL);
+    assert(slow_mul(3, 4) == 12);
+
+    int (*multiply)(int, int) = NULL;
+    *(void **)(&multiply) = resolve_symbol(handle, "multiply");
+    assert(multiply != NULL);
+    assert(multiply(7, 6) == 42);
+
+    const char **version = resolve_symbol(handle, "VERSION");
+    assert(version != NULL);
+    assert(!strcmp(*version, "0.0.1"));
+
+    const char *(*get_version)(void) = NULL;
+    *(void **)(&get_version) = resolve_symbol(handle, "get_version");
+    assert(get_version != NULL);
+    assert(!strcmp(get_version(), "0.0.1"));
 
     close_library(handle);
 }
@@ -97,18 +121,18 @@ void test_dladdr(const char *path)
 {
     void *handle = open_library(path);
 
-    int (*sum)(int, int) = NULL;
-    *(void **)(&sum) = resolve_symbol(handle, "sum");
-    assert(sum != NULL);
+    int (*add)(int, int) = NULL;
+    *(void **)(&add) = resolve_symbol(handle, "add");
+    assert(add != NULL);
 
-    void *sum_addr = *(void **)(&sum);
+    void *add_addr = *(void **)(&add);
 
     Dl_info_t info;
-    assert(dladdr(sum_addr, &info) == 0);
+    assert(dladdr(add_addr, &info) == 0);
     assert(!strcmp(info.dli_fname, path));
     assert(info.dli_fbase != NULL);
-    assert(!strcmp(info.dli_sname, "sum"));
-    assert(info.dli_saddr == sum_addr);
+    assert(!strcmp(info.dli_sname, "add"));
+    assert(info.dli_saddr == add_addr);
 
     close_library(handle);
 }
@@ -134,9 +158,9 @@ int main(int argc, const char *argv[])
                            + sizeof(void *)       // dli_saddr
     );
 
-    test_dlopen_dlclose("lib/libadd.so");
-    test_dlsym("lib/libadd.so");
-    test_dladdr("lib/libadd.so");
+    test_dlopen_dlclose("lib/libmul.so");
+    test_dlsym("lib/libmul.so");
+    test_dladdr("lib/libmul.so");
 
     // Write magic string to signal that the test passed.
     {
