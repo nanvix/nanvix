@@ -86,6 +86,7 @@ use ::posix::{
     unistd::message::{
         CloseRequest,
         CloseResponse,
+        FileChdirRequest,
         FileChmodRequest,
         FileChownRequest,
         FileDataSyncRequest,
@@ -210,6 +211,7 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::CreateSocketPairRequest
                                 | LinuxDaemonMessageHeader::CreateSocketRequest
                                 | LinuxDaemonMessageHeader::FileAdvisoryInformationRequest
+                                | LinuxDaemonMessageHeader::FileChdirRequest
                                 | LinuxDaemonMessageHeader::FileChmodRequest
                                 | LinuxDaemonMessageHeader::FileChownRequest
                                 | LinuxDaemonMessageHeader::FileControlRequest
@@ -363,6 +365,10 @@ impl<'a> LinuxDaemon<'a> {
                 let request: FileAdvisoryInformationRequest =
                     FileAdvisoryInformationRequest::from_bytes(message.payload);
                 fcntl::do_posix_fadvise(source, request)
+            },
+            LinuxDaemonMessageHeader::FileChdirRequest => {
+                let request: FileChdirRequest = FileChdirRequest::from_bytes(message.payload);
+                unistd::do_fchdir(source, request)
             },
             LinuxDaemonMessageHeader::FileChmodRequest => {
                 let request: FileChmodRequest = FileChmodRequest::from_bytes(message.payload);
