@@ -18,8 +18,49 @@ use ::core::{
 use ::goblin::{
     elf::{
         reloc::{
+            R_386_16,
+            R_386_32,
+            R_386_32PLT,
+            R_386_8,
+            R_386_COPY,
             R_386_GLOB_DAT,
+            R_386_GOT32,
+            R_386_GOT32X,
+            R_386_GOTOFF,
+            R_386_GOTPC,
+            R_386_IRELATIVE,
             R_386_JMP_SLOT,
+            R_386_NONE,
+            R_386_NUM,
+            R_386_PC16,
+            R_386_PC32,
+            R_386_PC8,
+            R_386_PLT32,
+            R_386_RELATIVE,
+            R_386_SIZE32,
+            R_386_TLS_DESC,
+            R_386_TLS_DESC_CALL,
+            R_386_TLS_DTPMOD32,
+            R_386_TLS_DTPOFF32,
+            R_386_TLS_GD,
+            R_386_TLS_GD_32,
+            R_386_TLS_GD_CALL,
+            R_386_TLS_GD_POP,
+            R_386_TLS_GD_PUSH,
+            R_386_TLS_GOTDESC,
+            R_386_TLS_GOTIE,
+            R_386_TLS_IE,
+            R_386_TLS_IE_32,
+            R_386_TLS_LDM,
+            R_386_TLS_LDM_32,
+            R_386_TLS_LDM_CALL,
+            R_386_TLS_LDM_POP,
+            R_386_TLS_LDM_PUSH,
+            R_386_TLS_LDO_32,
+            R_386_TLS_LE,
+            R_386_TLS_LE_32,
+            R_386_TLS_TPOFF,
+            R_386_TLS_TPOFF32,
         },
         section_header::SHN_UNDEF,
         sym::{
@@ -37,7 +78,10 @@ use ::goblin::{
         sym::Sym,
     },
 };
-use ::num_enum::FromPrimitive;
+use ::num_enum::{
+    FromPrimitive,
+    TryFromPrimitive,
+};
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -397,6 +441,102 @@ impl Symbol {
     pub fn resolve(&mut self, value: u32) {
         self.0.st_value = value;
     }
+}
+
+//==================================================================================================
+// Relocation Types
+//==================================================================================================
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum RelocationType {
+    /// 8-bit relocation.
+    R_386_8 = R_386_8 as u8,
+    /// 16-bit relocation.
+    R_386_16 = R_386_16 as u8,
+    /// 32-bit relocation.
+    R_386_32 = R_386_32 as u8,
+    /// Direct 32-bit for PLT.
+    R_386_32PLT = R_386_32PLT as u8,
+    /// Copy symbol at runtime.
+    R_386_COPY = R_386_COPY as u8,
+    /// Create GOT entry.
+    R_386_GLOB_DAT = R_386_GLOB_DAT as u8,
+    /// 32-bit GOT entry.
+    R_386_GOT32 = R_386_GOT32 as u8,
+    /// Load from 32-bit GOT entry, relaxable.
+    R_386_GOT32X = R_386_GOT32X as u8,
+    /// 32-bit offset to GOT.
+    R_386_GOTOFF = R_386_GOTOFF as u8,
+    /// 32-bit PC relative offset to GOT.
+    R_386_GOTPC = R_386_GOTPC as u8,
+    /// Adjust indirectly by program base.
+    R_386_IRELATIVE = R_386_IRELATIVE as u8,
+    /// Create PLT entry.
+    R_386_JMP_SLOT = R_386_JMP_SLOT as u8,
+    /// No relocation.
+    R_386_NONE = R_386_NONE as u8,
+    /// Keep this the last entry.
+    R_386_NUM = R_386_NUM as u8,
+    /// PC relative 8-bit.
+    R_386_PC8 = R_386_PC8 as u8,
+    /// PC relative 16-bit.
+    R_386_PC16 = R_386_PC16 as u8,
+    /// PC relative 32-bit.
+    R_386_PC32 = R_386_PC32 as u8,
+    /// 32-bit PLT address.
+    R_386_PLT32 = R_386_PLT32 as u8,
+    /// Adjust by program base.
+    R_386_RELATIVE = R_386_RELATIVE as u8,
+    /// 32-bit symbol size.
+    R_386_SIZE32 = R_386_SIZE32 as u8,
+    /// TLS descriptor containing pointer to code and argument.
+    R_386_TLS_DESC = R_386_TLS_DESC as u8,
+    /// Marker of call through TLS descriptor for relaxation.
+    R_386_TLS_DESC_CALL = R_386_TLS_DESC_CALL as u8,
+    /// ID of module containing symbol.
+    R_386_TLS_DTPMOD32 = R_386_TLS_DTPMOD32 as u8,
+    /// Offset in TLS block.
+    R_386_TLS_DTPOFF32 = R_386_TLS_DTPOFF32 as u8,
+    /// Direct 32-bit for GNU version of general dynamic thread local data.
+    R_386_TLS_GD = R_386_TLS_GD as u8,
+    /// Direct 32-bit for general dynamic thread local data.
+    R_386_TLS_GD_32 = R_386_TLS_GD_32 as u8,
+    /// Relocation for call to __tls_get_addr().
+    R_386_TLS_GD_CALL = R_386_TLS_GD_CALL as u8,
+    /// Tag for popl in GD TLS code.
+    R_386_TLS_GD_POP = R_386_TLS_GD_POP as u8,
+    /// Tag for pushl in GD TLS code.
+    R_386_TLS_GD_PUSH = R_386_TLS_GD_PUSH as u8,
+    /// GOT offset for TLS descriptor.
+    R_386_TLS_GOTDESC = R_386_TLS_GOTDESC as u8,
+    /// GOT entry for static TLS block offset.
+    R_386_TLS_GOTIE = R_386_TLS_GOTIE as u8,
+    /// Address of GOT entry for static TLS block offset.
+    R_386_TLS_IE = R_386_TLS_IE as u8,
+    /// GOT entry for negated static TLS block offset.
+    R_386_TLS_IE_32 = R_386_TLS_IE_32 as u8,
+    /// Direct 32-bit for GNU version of local dynamic thread local data in LE code.
+    R_386_TLS_LDM = R_386_TLS_LDM as u8,
+    /// Direct 32-bit for local dynamic thread local data in LE code.
+    R_386_TLS_LDM_32 = R_386_TLS_LDM_32 as u8,
+    /// Relocation for call to __tls_get_addr() in LDM code.
+    R_386_TLS_LDM_CALL = R_386_TLS_LDM_CALL as u8,
+    /// Tag for popl in LDM TLS code.
+    R_386_TLS_LDM_POP = R_386_TLS_LDM_POP as u8,
+    /// Tag for pushl in LDM TLS code.
+    R_386_TLS_LDM_PUSH = R_386_TLS_LDM_PUSH as u8,
+    /// Offset relative to TLS block.
+    R_386_TLS_LDO_32 = R_386_TLS_LDO_32 as u8,
+    /// Offset relative to static TLS block.
+    R_386_TLS_LE = R_386_TLS_LE as u8,
+    /// Negated offset relative to static TLS block.
+    R_386_TLS_LE_32 = R_386_TLS_LE_32 as u8,
+    /// Offset in static TLS block.
+    R_386_TLS_TPOFF = R_386_TLS_TPOFF as u8,
+    /// Negated offset in static TLS block.
+    R_386_TLS_TPOFF32 = R_386_TLS_TPOFF32 as u8,
 }
 
 //==================================================================================================
