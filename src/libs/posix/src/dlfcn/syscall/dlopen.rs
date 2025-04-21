@@ -143,6 +143,7 @@ fn resolve_all_symbols(
     dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
     filename: &str,
 ) -> Result<(), Error> {
+    ::nvx::trace!("resolve_all_symbols(): filename={}", filename);
     let mut unresolved_libraries = vec![filename.to_string()];
 
     while let Some(lib_name) = unresolved_libraries.pop() {
