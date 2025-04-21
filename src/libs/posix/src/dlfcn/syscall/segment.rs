@@ -92,7 +92,7 @@ impl MemorySegment {
             bytes.len()
         );
         // Check if bytes exceed capacity.
-        if bytes.len() > self.capacity {
+        if offset + bytes.len() > self.capacity {
             let reason: &str = "bytes exceed capacity";
             ::nvx::error!("load(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
@@ -108,7 +108,7 @@ impl MemorySegment {
         unsafe {
             let base_addr: usize = bytes.as_ptr() as usize;
             let src: usize = base_addr;
-            let dst: usize = self.base.into_raw_value();
+            let dst: usize = offset + self.base.into_raw_value();
             let count: usize = bytes.len();
             ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
         }
