@@ -49,7 +49,7 @@ pub struct MemorySegment {
 impl MemorySegment {
     /// Creates a new memory segment.
     pub fn new(base: VirtualAddress, capacity: usize) -> Result<Self, Error> {
-        ::nvx::trace!("new(): base={:?}, capacity={:?}", base.into_raw_value(), capacity);
+        ::nvx::trace!("new(): base={:#x?}, capacity={:?}", base.into_raw_value(), capacity);
 
         // Check if base address is not page-aligned.
         if !base.is_aligned(PAGE_ALIGNMENT) {
@@ -84,7 +84,13 @@ impl MemorySegment {
     }
 
     /// Loads data into the target memory segment.
-    pub fn load(&mut self, bytes: &[u8]) -> Result<(), Error> {
+    pub fn load(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error> {
+        ::nvx::trace!(
+            "load(): base={:#x?}, offset={:#x?}, bytes.len={:?}",
+            self.base.into_raw_value(),
+            offset,
+            bytes.len()
+        );
         // Check if bytes exceed capacity.
         if bytes.len() > self.capacity {
             let reason: &str = "bytes exceed capacity";
