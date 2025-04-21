@@ -424,7 +424,7 @@ impl Symbol {
     /// True if the symbol is undefined, false otherwise.
     ///
     pub fn is_undefined(&self) -> bool {
-        self.0.st_shndx as u32 == SHN_UNDEF && self.0.st_value == 0
+        self.0.st_shndx as u32 == SHN_UNDEF
     }
 
     ///
@@ -566,8 +566,13 @@ impl RelocationEntry {
     /// The type of the relocation entry.
     ///
     ///
-    pub fn typ(&self) -> u32 {
-        r_type(self.0.r_info)
+    pub fn typ(&self) -> Result<RelocationType, Error> {
+        // NOTE: Per the ELF spec, r_type() is guaranteed to be a u8.
+        let typ: u8 = r_type(self.0.r_info) as u8;
+        typ.try_into().map_err(|_error| {
+            let reason: &str = "invalid relocation type";
+            Error::new(ErrorCode::ValueOutOfRange, reason)
+        })
     }
 
     ///
@@ -594,40 +599,5 @@ impl RelocationEntry {
     ///
     pub fn offset(&self) -> u32 {
         self.0.r_offset
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Binds the relocation entry to a value.
-    ///
-    /// # Parameters
-    ///
-    /// - `base`: The base address of the shared object.
-    /// - `value`: The value to bind to the relocation entry.
-    ///
-    /// # Returns
-    ///
-    /// If successful, returns `Ok(())`. Otherwise, returns an error.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it dereferences a raw pointer.
-    ///
-    /// It is safe to use this function if all the following conditions are met:
-    /// - The `base` address points to a valid location.
-    ///
-    pub unsafe fn bind(&mut self, base: u32, value: u32) -> Result<(), Error> {
-        match self.typ() {
-            R_386_JMP_SLOT | R_386_GLOB_DAT => {
-                let ptr: *mut u32 = (base + self.offset()) as *mut u32;
-                *ptr = value;
-                Ok(())
-            },
-            _ => {
-                let reason: &str = "unsupported relocation type";
-                Err(Error::new(ErrorCode::OperationNotSupported, reason))
-            },
-        }
     }
 }
