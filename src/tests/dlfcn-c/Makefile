@@ -21,6 +21,9 @@ export OBJECTS = $(SOURCES:.c=.o)
 # Binary
 export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
 
+# Specify the required relocation types
+REQUIRED_TYPES = R_386_RELATIVE R_386_PC32 R_386_GLOB_DAT R_386_32 R_386_JUMP_SLOT
+
 #===============================================================================
 # Build Rules
 #===============================================================================
@@ -33,12 +36,16 @@ clean: libs-clean
 	rm -rf $(BINARIES_DIR)/$(BINARY)
 
 libs-all:
-	$(CC) libs/sum.c -s -shared -fPIC -o $(LIBRARIES_DIR)/libsum.so -Wl,-soname=$(notdir $(LIBRARIES_DIR))/libsum.so
-	$(CC) libs/add.c -s -shared -fPIC -o $(LIBRARIES_DIR)/libadd.so $(LIBRARIES_DIR)/libsum.so
+	$(CC) libs/mul.c -shared -fPIC -o $(LIBRARIES_DIR)/libmul.so
+	@for TYPE in $(REQUIRED_TYPES); do \
+	if ! readelf -r $(LIBRARIES_DIR)/libmul.so | grep -q $$TYPE; then \
+	echo "Error: Relocation type $$TYPE not found in $(LIBRARIES_DIR)/libmul.so"; \
+	exit 1; \
+	fi \
+	done
 
 libs-clean:
-	rm -rf $(LIBRARIES_DIR)/libsum.so
-	rm -rf $(LIBRARIES_DIR)/libadd.so
+	rm -rf $(LIBRARIES_DIR)/libmul.so
 
 # Builds C source files.
 %.$(TARGET).o: %.c
