@@ -15,6 +15,9 @@ extern void test_open_close(void);
 // Tests wether we can create and unlink a file.
 extern void test_create_unlink(void);
 
+// Tests whether we can get the current working directory.
+extern void test_getcwd(void);
+
 // Tests whether we can change access permissions of a file.
 extern void test_fchmod(void);
 
