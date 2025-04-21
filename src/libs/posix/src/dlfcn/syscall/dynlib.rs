@@ -189,18 +189,31 @@ impl DynamicLibrary {
                             phdr.p_memsz
                         );
 
-                        let (base, capacity): (VirtualAddress, usize) = {
-                            let base: VirtualAddress = end_address;
+                        let (base, offset, capacity): (VirtualAddress, usize, usize) = {
+                            let unaligned_base: usize =
+                                load_address.into_raw_value() + phdr.p_vaddr as usize;
+                            let base: usize = mm::align_down(unaligned_base, PAGE_ALIGNMENT);
+
+                            // Check if program headers overlap.
+                            if base < end_address.into_raw_value() {
+                                let reason: &str = "program headers overlap";
+                                ::nvx::error!("load(): {} (phdr={:#x?}", reason, phdr);
+                                return Err(Error::new(ErrorCode::BadFile, reason));
+                            }
+
+                            let base: VirtualAddress = VirtualAddress::from_raw_value(base);
                             let capacity: usize =
                                 mm::align_up(phdr.p_memsz as usize, PAGE_ALIGNMENT);
                             end_address =
                                 VirtualAddress::from_raw_value(base.into_raw_value() + capacity);
-                            (base, capacity)
+                            let offset: usize = unaligned_base - base.into_raw_value();
+                            (base, offset, capacity)
                         };
 
                         // Create memory segment.
                         let mut segment: MemorySegment = MemorySegment::new(base, capacity)?;
                         segment.load(
+                            offset,
                             &bytes
                                 [phdr.p_offset as usize..(phdr.p_offset + phdr.p_filesz) as usize],
                         )?;
