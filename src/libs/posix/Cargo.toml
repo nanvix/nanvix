@@ -15,6 +15,7 @@ crate-type = ["lib", "staticlib"]
 
 [dependencies]
 nvx = { workspace = true }
+config = { workspace = true }
 cfg-if = { workspace = true }
 elf = { workspace = true }
 goblin = { workspace = true, features = [
