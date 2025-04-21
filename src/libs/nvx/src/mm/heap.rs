@@ -106,7 +106,12 @@ impl Heap {
 
         // Check if increment would exceed capacity.
         if self.size + increment > self.capacity {
-            crate::error!("grow(): exceeds capacity");
+            crate::error!(
+                "grow(): exceeds capacity (self.size={:X?}, increment={:X?}, self.capacity={:X?})",
+                self.size,
+                increment,
+                self.capacity
+            );
             return Err(Error::new(ErrorCode::BadAddress, "exceeds capacity"));
         }
 

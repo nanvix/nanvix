@@ -11,10 +11,7 @@ use crate::dlfcn::syscall::{
     DYNAMIC_LIBRARY_REGISTRY,
 };
 use ::nvx::{
-    mm::{
-        Address,
-        VirtualAddress,
-    },
+    mm::VirtualAddress,
     sys::error::{
         Error,
         ErrorCode,
@@ -34,8 +31,8 @@ pub fn dlsym(handle: &DlHandle, symbol: &str) -> Result<VirtualAddress, Error> {
         Some(dlfile) => {
             let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
 
-            match dlfile.lookup(symbol, false) {
-                Some(addr) => Ok(VirtualAddress::from_raw_value(addr.into_raw_value())),
+            match dlfile.lookup(symbol)? {
+                Some((base, offset)) => Ok(VirtualAddress::from_raw_value(base + offset)),
                 None => {
                     let reason: &str = "symbol not found";
                     ::nvx::error!("dlsym(): {}", reason);
