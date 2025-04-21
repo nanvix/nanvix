@@ -30,6 +30,8 @@ use ::posix::{
     unistd::message::{
         CloseRequest,
         CloseResponse,
+        FileChdirRequest,
+        FileChdirResponse,
         FileChmodRequest,
         FileChmodResponse,
         FileChownRequest,
@@ -351,6 +353,31 @@ pub fn do_linkat(pid: ProcessIdentifier, request: LinkAtRequest) -> Vec<Message>
             pid,
             ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
         )],
+    }
+}
+
+//==================================================================================================
+// do_fchdir
+//==================================================================================================
+
+/// Changes the current working directory.
+pub fn do_fchdir(pid: ProcessIdentifier, request: FileChdirRequest) -> Message {
+    trace!("fchdir(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+
+    debug!("libc::fchdir(): fd={:?}", fd);
+    match unsafe { libc::fchdir(fd) } {
+        0 => FileChdirResponse::build(pid),
+        ret if ret == -1 => {
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
+        ret => unreachable!("libc::fchdir() returned an invalid value ({:?})", ret),
     }
 }
 

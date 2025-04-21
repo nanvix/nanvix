@@ -1,0 +1,104 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::{
+    ffi::c_int,
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
+};
+use ::core::{
+    fmt::Debug,
+    mem,
+};
+use ::nvx::{
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::ProcessIdentifier,
+};
+
+//==================================================================================================
+// File Change Directory Request
+//==================================================================================================
+
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct FileChdirRequest {
+    /// File descriptor.
+    pub fd: c_int,
+    /// Padding.
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::nvx::sys::static_assert_size!(FileChdirRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+
+impl FileChdirRequest {
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>();
+
+    fn new(fd: c_int) -> Self {
+        Self {
+            fd,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    pub fn build(pid: ProcessIdentifier, fd: c_int) -> Message {
+        let message: FileChdirRequest = FileChdirRequest::new(fd);
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
+            LinuxDaemonMessageHeader::FileChdirRequest,
+            message.into_bytes(),
+        );
+        Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes())
+    }
+}
+
+//==================================================================================================
+// File Change Directory Response
+//==================================================================================================
+
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct FileChdirResponse {
+    /// Padding.
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::nvx::sys::static_assert_size!(FileChdirResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+
+impl FileChdirResponse {
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+
+    fn new() -> Self {
+        Self {
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    pub fn build(pid: ProcessIdentifier) -> Message {
+        let message: FileChdirResponse = FileChdirResponse::new();
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
+            LinuxDaemonMessageHeader::FileChdirResponse,
+            message.into_bytes(),
+        );
+        Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes())
+    }
+}
