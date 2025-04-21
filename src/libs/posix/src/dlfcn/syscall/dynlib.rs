@@ -4,6 +4,7 @@
 //==================================================================================================
 // Imports
 //===================================================================================================
+
 use crate::{
     dlfcn::syscall::segment::MemorySegment,
     fcntl::OpenFlags,
@@ -33,10 +34,10 @@ use ::core::mem;
 use ::elf::{
     RelocationEntry,
     RelocationTable,
+    RelocationType,
     StringTable,
     Symbol,
     SymbolTable,
-    SymbolType,
 };
 use ::goblin::elf::{
     Elf,
@@ -62,8 +63,9 @@ use ::spin::{
     Mutex,
     MutexGuard,
 };
+use ::type_safe::UnalignedPointer;
 
-//===================================================================================================
+//==================================================================================================
 // DlHandle
 //==================================================================================================
 
@@ -390,32 +392,64 @@ impl DynamicLibrary {
     }
 
     /// Looks up a symbol in the dynamic library.
-    pub fn lookup(&self, symbol_name: &str, search_dependencies: bool) -> Option<VirtualAddress> {
-        ::nvx::trace!("lookup(): symbol={} in dlname={:?}", symbol_name, self.filename);
+    pub fn lookup(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
+        ::nvx::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
         if let Some(symbol) = self.find(symbol_name) {
-            if symbol.value() != 0 {
-                return Some(VirtualAddress::from_raw_value(symbol.value() as usize));
-            }
-        }
+            // Check if symbol is defined in the library or in a dependency.
+            if symbol.is_undefined() {
+                // Symbol is defined in a dependency, search dependencies.
+                for (_dlname, dlfile) in self.dependencies.iter() {
+                    if let Some(dlfile) = dlfile {
+                        // Check if dependency is locked.
+                        if dlfile.is_locked() {
+                            let reason: &str = "circular dependency detected";
+                            ::nvx::error!("lookup(): {:?} (symbol_name={:?})", reason, symbol_name);
+                            return Err(Error::new(ErrorCode::BadFile, reason));
+                        }
 
-        if search_dependencies {
-            for (_dlname, dlfile) in self.dependencies.iter() {
-                if let Some(dlfile) = dlfile {
-                    let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+                        let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
 
-                    if let Some(symbol) = dlfile.find(symbol_name) {
-                        if !symbol.is_undefined() {
-                            return Some(VirtualAddress::from_raw_value(
-                                dlfile.load_address.into_raw_value() + symbol.value() as usize,
-                            ));
+                        if let Some((base, symbol_value)) = dlfile.lookup(symbol_name)? {
+                            return Ok(Some((base, symbol_value)));
                         }
                     }
                 }
+            } else {
+                return Ok(Some((self.load_address.into_raw_value(), symbol.value() as usize)));
             }
         }
 
-        None
+        Ok(None)
+    }
+
+    fn get_symbol(&self, rel: &RelocationEntry) -> Result<&Symbol, Error> {
+        if let Some(sym) = self.dynsym.get(rel.symbol_index() as usize) {
+            Ok(sym)
+        } else {
+            let reason: &str = "invalid symbol index";
+            ::nvx::error!("get_symbol(): {} (rel={:?})", reason, rel);
+            Err(Error::new(ErrorCode::BadFile, reason))
+        }
+    }
+
+    fn get_symbol_value(&self, sym: &Symbol) -> Result<usize, Error> {
+        let symbol_name: &str = self.dynstr.get_name(sym.name_offset())?;
+        let symbol_value: usize = match self.lookup(symbol_name)? {
+            Some((base, symbol_value)) => base + symbol_value,
+            None => {
+                let reason: &str = "symbol not found";
+                ::nvx::error!(
+                    "get_symbol_value(): {} (symbol_name={:?}, symbol={:?})",
+                    reason,
+                    symbol_name,
+                    sym
+                );
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            },
+        };
+
+        Ok(symbol_value)
     }
 
     /// Queries for the nearest symbol lower than the given address in the dynamic library.
@@ -429,8 +463,8 @@ impl DynamicLibrary {
             None;
 
         for sym in self.dynsym.iter() {
-            if !sym.is_undefined() {
-                let sym_addr = VirtualAddress::from_raw_value(sym.value() as usize);
+            if let Ok(symbol_value) = self.get_symbol_value(sym) {
+                let sym_addr: VirtualAddress = VirtualAddress::from_raw_value(symbol_value);
                 if sym_addr <= symbol_addr {
                     if let Some(name) = self.dynstr.get_name_bytes(sym.name_offset()) {
                         if let Some((_, _, _, nearest_addr)) = &nearest_symbol {
@@ -459,70 +493,210 @@ impl DynamicLibrary {
     }
 
     /// Resolves a symbol in the dynamic library.
-    pub fn resolve(&mut self, symbol_name: &str, value: usize) -> Result<(), Error> {
-        ::nvx::trace!("resolve(): symbol={}, value={:#X}", symbol_name, value);
+    pub fn resolve_all(&self) -> Result<(), Error> {
+        ::nvx::trace!("resolve()");
 
-        for (index, sym) in self.dynsym.iter_mut().enumerate() {
-            if self
-                .dynstr
-                .get_name(sym.name_offset())
-                .ok()
-                .filter(|name| *name == symbol_name)
-                .is_some()
-                && sym.is_undefined()
-            {
-                let relocation_table: &mut RelocationTable = match sym.typ() {
-                    SymbolType::Function => match self.dynplt.as_mut() {
-                        Some(plt) => plt,
-                        None => {
-                            let reason = "missing relocation table for global functions";
-                            ::nvx::error!("resolve(): {} (symbol_type={:?})", reason, sym.typ());
-                            return Err(Error::new(ErrorCode::BadFile, reason));
-                        },
-                    },
-                    SymbolType::Object => match self.dynrel.as_mut() {
-                        Some(rel) => rel,
-                        None => {
-                            let reason = "missing relocation table for global variables";
-                            ::nvx::error!("resolve(): {} (symbol_type={:?})", reason, sym.typ());
-                            return Err(Error::new(ErrorCode::BadFile, reason));
-                        },
-                    },
-                    _ => {
-                        let reason = "unsupported symbol type";
-                        ::nvx::error!("resolve(): {} (symbol_type={:?})", reason, sym.typ());
-                        return Err(Error::new(ErrorCode::BadFile, reason));
-                    },
-                };
-
-                if let Some(rel) = relocation_table
-                    .iter_mut()
-                    .find(|rel| rel.symbol_index() as usize == index)
-                {
-                    unsafe {
-                        rel.bind(self.load_address.into_raw_value() as u32, sym.value())?;
-                    }
-                    sym.resolve(value as u32);
-                    return Ok(());
-                }
+        if let Some(rel) = self.dynplt.as_ref() {
+            for rel in rel.iter() {
+                self.resolve(rel)?;
+            }
+        }
+        if let Some(rel) = self.dynrel.as_ref() {
+            for rel in rel.iter() {
+                self.resolve(rel)?;
             }
         }
 
-        let reason = "symbol not found";
-        ::nvx::error!("resolve(): {}", reason);
-        Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        Ok(())
     }
 
-    pub fn unresolved(&self) -> Vec<String> {
-        let mut unresolved: Vec<String> = Vec::new();
-        for sym in self.dynsym.iter() {
-            if let Ok(name) = self.dynstr.get_name(sym.name_offset()) {
-                if !name.is_empty() && sym.is_undefined() {
-                    unresolved.push(name.to_string());
+    fn resolve(&self, rel: &RelocationEntry) -> Result<(), Error> {
+        let storage_unit: UnalignedPointer<u32> = UnalignedPointer::new(
+            (self.load_address.into_raw_value() as u32 + rel.offset()) as *mut u32,
+        );
+
+        match rel.typ()? {
+            RelocationType::R_386_RELATIVE => {
+                // R_386_RELATIVE relocation must have a zero symbol index.
+                if rel.symbol_index() != 0 {
+                    let reason: &str = "invalid R_386_RELATIVE relocation";
+                    ::nvx::error!("resolve(): {} (rel={:?})", reason, rel);
+                    return Err(Error::new(ErrorCode::BadFile, reason));
                 }
-            }
+
+                unsafe {
+                    Self::resolve_r_386_relative(
+                        storage_unit,
+                        self.load_address.into_raw_value() as u32,
+                    );
+                }
+            },
+
+            RelocationType::R_386_32 => {
+                let sym: &Symbol = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                unsafe {
+                    Self::resolve_r_386_32(storage_unit, symbol_value as u32);
+                }
+            },
+
+            RelocationType::R_386_PC32 => {
+                let sym: &Symbol = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+
+                unsafe {
+                    Self::resolve_r_386_pc32(storage_unit, symbol_value as u32);
+                }
+            },
+            RelocationType::R_386_JMP_SLOT => {
+                let sym: &Symbol = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+
+                unsafe {
+                    Self::resolve_r_386_jmp_slot(storage_unit, symbol_value as u32);
+                }
+            },
+            RelocationType::R_386_GLOB_DAT => {
+                let sym: &Symbol = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+
+                unsafe {
+                    Self::resolve_r_386_glob_dat(storage_unit, symbol_value as u32);
+                }
+            },
+
+            relocation_entry_type => {
+                let reason: &str = "unsupported relocation type";
+                ::nvx::error!(
+                    "resolve(): {} (relocation_type={:?}, rel={:?})",
+                    reason,
+                    relocation_entry_type,
+                    rel
+                );
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            },
         }
-        unresolved
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_386_RELATIVE relocation.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage_unit` - A pointer to the storage unit being relocated.
+    /// - `base_address` - The base address at which the shared object has ben loaded into memory.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs pointer arithmetic and dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage_unit` points to the storage unit of a valid R_386_RELATIVE relocation entry.
+    ///
+    unsafe fn resolve_r_386_relative(mut storage_unit: UnalignedPointer<u32>, base_address: u32) {
+        let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
+        let relocation_value: u32 = base_address.strict_add_signed(symbol_addend);
+        storage_unit.write_unaligned(relocation_value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_386_32 relocation.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage_unit` - A pointer to the storage unit being relocated.
+    /// - `symbol_value` - The value of the symbol being relocated.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs pointer arithmetic and dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage_unit` points to the storage unit of a valid R_386_32 relocation entry.
+    ///
+    unsafe fn resolve_r_386_32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
+        let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
+        let final_value: u32 = symbol_value.strict_add_signed(symbol_addend);
+        storage_unit.write_unaligned(final_value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_386_JMP_SLOT relocation.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage_unit` - A pointer to the storage unit being relocated.
+    /// - `symbol_value` - The value of the symbol being relocated.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs pointer arithmetic and dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage_unit` points to the storage unit of a valid R_386_JMP_SLOT relocation entry.
+    ///
+    unsafe fn resolve_r_386_jmp_slot(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
+        storage_unit.write_unaligned(symbol_value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_386_GLOB_DAT relocation.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage_unit` - A pointer to the storage unit being relocated.
+    /// - `symbol_value` - The value of the symbol being relocated.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs pointer arithmetic and dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage_unit` points to the storage unit of a valid R_386_GLOB_DAT relocation entry.
+    ///
+    unsafe fn resolve_r_386_glob_dat(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
+        storage_unit.write_unaligned(symbol_value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_386_PC32 relocation.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage_unit` - A pointer to the storage unit being relocated.
+    /// - `symbol_value` - The value of the symbol being relocated.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs pointer arithmetic and dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage_unit` points to the storage unit of a valid R_386_PC32 relocation entry.
+    ///
+    unsafe fn resolve_r_386_pc32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
+        let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
+        let relocation_offset: u32 = storage_unit.as_ptr() as u32;
+        let tmp: u32 = symbol_value.strict_add_signed(symbol_addend);
+
+        let final_value: i32 = if tmp > relocation_offset {
+            (tmp - relocation_offset) as i32
+        } else {
+            -((relocation_offset - tmp) as i32)
+        };
+
+        storage_unit.write_unaligned(final_value as u32);
     }
 
     /// Returns the file descriptor of the dynamic library.

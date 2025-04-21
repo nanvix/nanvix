@@ -27,6 +27,7 @@ goblin = { workspace = true, features = [
 ] }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
+type-safe = { workspace = true }
 
 [features]
 default = ["syscall", "allocator", "staticlib"]
