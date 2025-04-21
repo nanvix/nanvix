@@ -138,7 +138,7 @@ pub unsafe extern "C" fn fchmodat(
 #[no_mangle]
 pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
     match crate::unistd::fchmod(fd, mode) {
-        Ok(_) => return 0,
+        Ok(_) => 0,
         Err(e) => {
             ::nvx::error!("fchmod(): invalid error code");
             errno = e.code.get();
