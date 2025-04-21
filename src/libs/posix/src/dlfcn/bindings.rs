@@ -140,6 +140,8 @@ static DL_LAST_ERROR: Mutex<DlError> = Mutex::new(DlError::new());
 ///
 #[no_mangle]
 pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
+    ::nvx::trace!("dladdr(): addr = {:?}, dlip = {:?}", addr, dlip);
+
     // Check if `addr` is not valid.
     if addr.is_null() {
         let reason: &str = "addr is null";
@@ -196,6 +198,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
+    ::nvx::trace!("dlclose(): handle = {:?}", handle);
     // Check if handle is not valid.
     if handle.is_null() {
         let reason: &str = "handle is null";
@@ -269,6 +272,8 @@ pub unsafe extern "C" fn dlerror() -> *mut c_char {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_void {
+    ::nvx::trace!("dlopen(): filename = {:?}, mode = {}", filename, mode);
+
     // Check if filename is not valid.
     if filename.is_null() {
         let reason: &str = "filename is null";
@@ -346,6 +351,8 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
 ///
 #[no_mangle]
 pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void {
+    ::nvx::trace!("dlsym(): handle = {:?}, symbol = {:?}", handle, symbol);
+
     // Check if handle is not valid.
     if handle.is_null() {
         let reason: &str = "handle is null";
