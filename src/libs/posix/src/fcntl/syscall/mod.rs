@@ -17,6 +17,7 @@ mod readlinkat;
 mod renameat;
 mod symlinkat;
 mod unlinkat;
+mod utimensat;
 
 //==================================================================================================
 // Exports
@@ -35,4 +36,5 @@ pub use self::{
     renameat::renameat,
     symlinkat::symlinkat,
     unlinkat::unlinkat,
+    utimensat::utimensat,
 };
