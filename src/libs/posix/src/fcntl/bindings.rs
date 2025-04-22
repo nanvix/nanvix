@@ -297,3 +297,53 @@ pub unsafe extern "C" fn renameat(
         },
     }
 }
+
+///
+/// # Description
+///
+/// Unlinks a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `pathname`: Pathname of the file.
+/// - `flags`: Flags.
+///
+/// # Returns
+///
+/// Upon successful completion, `unlinkat()` returns zero. Otherwise, it returns -1 and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `pathname` points to a valid null-terminated C string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
+    ::nvx::trace!("unlinkat(): dirfd={:?}, pathname={:?}, flags={:?}", dirfd, pathname, flags);
+
+    // Attempt to convert `pathname` to a Rust string.
+    let path: &str = match ffi::CStr::from_ptr(pathname).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("unlinkat(): invalid pathname (dirfd={:?}, flags={:?})", dirfd, flags);
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Execute system call and check the result.
+    match crate::fcntl::unlinkat(dirfd, path, flags) {
+        // System call succeeded.
+        Ok(()) => 0,
+        // System call failed.
+        Err(error) => {
+            errno = error.code.get();
+            -1
+        },
+    }
+}
