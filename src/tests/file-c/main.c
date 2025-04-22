@@ -97,6 +97,8 @@ int main(int argc, const char *argv[])
     test_open_close();
     test_create_unlink();
     test_dirent();
+    test_getcwd();
+    test_fchdir();
     test_fchmod();
 
     // Write magic string to signal that the test passed.

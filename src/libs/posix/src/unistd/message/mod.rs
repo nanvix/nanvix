@@ -6,6 +6,7 @@
 //==================================================================================================
 
 mod close;
+mod fchdir;
 mod fchmod;
 mod fchown;
 mod fdatasync;
@@ -28,6 +29,10 @@ pub use self::{
     close::{
         CloseRequest,
         CloseResponse,
+    },
+    fchdir::{
+        FileChdirRequest,
+        FileChdirResponse,
     },
     fchmod::{
         FileChmodRequest,

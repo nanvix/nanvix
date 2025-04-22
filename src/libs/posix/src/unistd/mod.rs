@@ -60,6 +60,7 @@ cfg_if::cfg_if! {
             write,
             pipe,
             getcwd,
+            fchdir,
         };
     }
 }
