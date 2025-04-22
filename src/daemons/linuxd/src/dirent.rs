@@ -112,6 +112,8 @@ impl linux_dirent {
 
 /// Handles a getdents() system call request.
 pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) -> Vec<Message> {
+    trace!("do_getdents(): pid={:?}, request,count={:#x?}", pid, { request.count });
+
     // Check if `request.count` is not valid.
     if request.count == 0 {
         error!("do_getdents(): invalid buffer count");
