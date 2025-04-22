@@ -139,6 +139,12 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
                 let dent: &linux_dirent =
                     unsafe { &*(rawbuf.as_ptr().add(bpos) as *const linux_dirent) };
                 let d_reclen: usize = dent.d_reclen as usize;
+                if bpos + d_reclen > n as usize {
+                    // FIXME: should we rewind the file?
+                    unimplemented!(
+                        "do_getdents(): d_reclen exceeds buffer size, stopping iteration"
+                    );
+                }
                 let d_type: libc::c_uchar =
                     unsafe { *rawbuf.get_unchecked(bpos + d_reclen - 1) as libc::c_uchar };
                 let d_name_ptr: *const u8 =
