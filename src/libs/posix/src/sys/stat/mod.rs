@@ -390,7 +390,6 @@ cfg_if::cfg_if! {
             stat,
             fstat,
             lstat,
-            utimensat,
             futimens,
         };
     }

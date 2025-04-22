@@ -10,7 +10,6 @@ mod fstatat;
 mod futimens;
 mod lstat;
 mod stat;
-mod utimensat;
 
 //==================================================================================================
 // Imports
@@ -47,7 +46,6 @@ pub use fstatat::fstatat;
 pub use futimens::futimens;
 pub use lstat::lstat;
 pub use stat::stat;
-pub use utimensat::utimensat;
 
 //==================================================================================================
 // Standalone Functions
