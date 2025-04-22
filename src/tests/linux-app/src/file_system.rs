@@ -454,11 +454,11 @@ pub fn test() {
 
     // Rename `foo.tmp` to `bar.tmp`.
     match fcntl::renameat(fcntl::AT_FDCWD, "foo.tmp", fcntl::AT_FDCWD, "bar.tmp") {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("renamed file foo.tmp to bar.tmp");
         },
-        errno => {
-            panic!("failed to rename file foo.tmp to bar.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to rename file foo.tmp to bar.tmp (error={:?})", error);
         },
     }
 
