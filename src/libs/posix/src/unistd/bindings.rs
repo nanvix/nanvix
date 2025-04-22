@@ -209,14 +209,35 @@ pub extern "C" fn _exit(status: c_int) -> ! {
     panic!("failed to terminate process (error={:?})", e);
 }
 
+///
+/// # Description
+///
+/// Changes the current working directory.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
 #[no_mangle]
-pub extern "C" fn fchdir(_fd: c_int) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/519
-    ::nvx::error!("fchdir(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+pub extern "C" fn fchdir(fd: c_int) -> c_int {
+    ::nvx::trace!("fchdir(): fd = {}", fd);
+
+    // Process system call and check for errors.
+    match crate::unistd::fchdir(fd) {
+        Ok(()) => 0,
+        Err(e) => {
+            ::nvx::error!("fchdir(): failed ({:?})", e);
+            unsafe {
+                errno = e.code.get();
+            }
+            -1
+        },
     }
-    -1
 }
 
 #[no_mangle]
