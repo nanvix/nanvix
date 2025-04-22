@@ -30,6 +30,7 @@ use ::posix::{
         OpenAtRequest,
         ReadLinkAtRequest,
         SymbolicLinkAtRequest,
+        UnlinkAtRequest,
     },
     message::{
         LinuxDaemonLongMessage,
@@ -386,5 +387,42 @@ impl RequestAssemblerTrait for OpenAtRequest {
 
     fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_openat(source, request)
+    }
+}
+
+impl RequestAssemblerTrait for UnlinkAtRequest {
+    fn new_assembler() -> RequestAssemblerType {
+        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        RequestAssemblerType::UnlinkAtRequest(
+            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+        )
+    }
+
+    fn add_part(
+        assembler: &mut RequestAssemblerType,
+        part: LinuxDaemonMessagePart,
+    ) -> Result<(), Error> {
+        match assembler {
+            RequestAssemblerType::UnlinkAtRequest(assembler) => assembler.add_part(part),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
+        match assembler {
+            RequestAssemblerType::UnlinkAtRequest(assembler) => Ok(assembler.is_complete()),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+        match assembler {
+            RequestAssemblerType::UnlinkAtRequest(assembler) => assembler.take_parts(),
+            _ => unreachable!("invalid assembler type"),
+        }
+    }
+
+    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+        fcntl::do_unlinkat(source, request)
     }
 }

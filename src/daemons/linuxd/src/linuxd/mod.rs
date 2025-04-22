@@ -233,7 +233,6 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::SendSocketRequest
                                 | LinuxDaemonMessageHeader::ShutdownSocketRequest
                                 | LinuxDaemonMessageHeader::TimesRequest
-                                | LinuxDaemonMessageHeader::UnlinkAtRequest
                                 | LinuxDaemonMessageHeader::PipeRequest
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                                     self.handle_short_request_messages(source, message)
@@ -261,7 +260,8 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart
                                 | LinuxDaemonMessageHeader::FileChownAtRequestPart
                                 | LinuxDaemonMessageHeader::FileChmodAtRequestPart
-                                | LinuxDaemonMessageHeader::OpenAtRequestPart => {
+                                | LinuxDaemonMessageHeader::OpenAtRequestPart
+                                | LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
                                     self.handle_long_request_messages(source, message);
                                     continue;
                                 },
@@ -454,10 +454,6 @@ impl<'a> LinuxDaemon<'a> {
                 let request: TimesRequest = TimesRequest::from_bytes(message.payload);
                 times::do_times(source, request)
             },
-            LinuxDaemonMessageHeader::UnlinkAtRequest => {
-                let request: UnlinkAtRequest = UnlinkAtRequest::from_bytes(message.payload);
-                fcntl::do_unlink_at(source, request)
-            },
             LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                 let request: UpdateFileAccessTimeRequest =
                     UpdateFileAccessTimeRequest::from_bytes(message.payload);
@@ -507,6 +503,9 @@ impl<'a> LinuxDaemon<'a> {
             },
             LinuxDaemonMessageHeader::OpenAtRequestPart => {
                 self.handle_long_request::<OpenAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
+                self.handle_long_request::<UnlinkAtRequest>(source, &message);
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this

@@ -105,7 +105,7 @@ pub enum LinuxDaemonMessageHeader {
     OpenAtRequest,
     OpenAtRequestPart,
     OpenAtResponse,
-    UnlinkAtRequest,
+    UnlinkAtRequestPart,
     UnlinkAtResponse,
     CloseRequest,
     CloseResponse,

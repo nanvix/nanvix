@@ -8,10 +8,12 @@
 use crate::{
     fcntl::message::UnlinkAtRequest,
     ffi::c_int,
+    message::MessagePartitioner,
     safe::RawFileDescriptor,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
+use ::alloc::vec::Vec;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -47,8 +49,11 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
-    let request: Message = UnlinkAtRequest::build(pid, dirfd, pathname, flags)?;
-    ::nvx::ipc::send(&request)?;
+    let request: UnlinkAtRequest = UnlinkAtRequest::new(dirfd, pathname, flags)?;
+    let requests: Vec<Message> = request.into_parts(pid)?;
+    for request in requests {
+        ::nvx::ipc::send(&request)?;
+    }
 
     // Receive response.
     let response: Message = ::nvx::ipc::recv()?;

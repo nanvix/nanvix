@@ -49,6 +49,7 @@ use ::posix::{
         OpenFlags,
         AT_REMOVEDIR,
     },
+    ffi::c_int,
     message::MessagePartitioner,
     sys::{
         stat::{
@@ -123,15 +124,15 @@ pub fn do_openat(pid: ProcessIdentifier, request: OpenAtRequest) -> Vec<Message>
 // do_unlink_at
 //==================================================================================================
 
-pub fn do_unlink_at(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Message {
+pub fn do_unlinkat(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Vec<Message> {
     trace!("unlinkat(): pid={:?}, request={:?}", pid, request);
 
     let dirfd: i32 = request.dirfd;
-    let flags: ffi::c_int = request.flags;
+    let flags: c_int = request.flags;
 
-    let pathname: &str = match str::from_utf8(&request.pathname) {
+    let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
-        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
 
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
@@ -151,12 +152,12 @@ pub fn do_unlink_at(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Message
     {
         ret if ret == 0 => {
             debug!("libc::unlinkat(): success");
-            UnlinkAtResponse::build(pid, ret)
+            vec![UnlinkAtResponse::build(pid, ret)]
         },
         errno => {
             debug!("libc::unlinkat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
-            crate::build_error(pid, error)
+            vec![crate::build_error(pid, error)]
         },
     }
 }
