@@ -25,6 +25,8 @@ use ::nvx::{
 //==================================================================================================
 
 pub fn unlinkat(dirfd: i32, pathname: &str, flags: ffi::c_int) -> i32 {
+    ::nvx::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
+
     let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => return e.code.into_errno(),
