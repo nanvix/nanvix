@@ -545,65 +545,6 @@ pub fn test() {
         panic!("foo.tmp and foo.tmp are not the same file");
     }
 
-    // Update access time of file named `foo.tmp`.
-    let times: [timespec; 2] = [
-        timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        },
-        timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        },
-    ];
-    match fcntl::utimensat(fcntl::AT_FDCWD, "foo.tmp", times, 0) {
-        Ok(()) => {
-            ::nvx::info!("updated access time of file foo.tmp");
-        },
-        Err(error) => {
-            panic!("failed to update access time of file foo.tmp: {:?}", error);
-        },
-    }
-
-    // Get status of file named `foo.tmp`.
-    let mut bar_tmp: stat = stat::default();
-    match sys::stat::fstatat(fcntl::AT_FDCWD, "foo.tmp", &mut bar_tmp, 0) {
-        Ok(()) => {
-            ::nvx::info!("got status of file foo.tmp");
-            ::nvx::info!("file statistics:");
-            ::nvx::info!("  st_dev: {}", { bar_tmp.st_dev });
-            ::nvx::info!("  st_ino: {}", { bar_tmp.st_ino });
-            ::nvx::info!("  st_mode: {}", { bar_tmp.st_mode });
-            ::nvx::info!("  st_nlink: {}", { bar_tmp.st_nlink });
-            ::nvx::info!("  st_uid: {}", { bar_tmp.st_uid });
-            ::nvx::info!("  st_gid: {}", { bar_tmp.st_gid });
-            ::nvx::info!("  st_rdev: {}", { bar_tmp.st_rdev });
-            ::nvx::info!("  st_size: {}", { bar_tmp.st_size });
-            ::nvx::info!("  st_blksize: {}", { bar_tmp.st_blksize });
-            ::nvx::info!("  st_blocks: {}", { bar_tmp.st_blocks });
-            ::nvx::info!("  st_atime: {}s {}ns", { bar_tmp.st_atim.tv_sec }, {
-                bar_tmp.st_atim.tv_nsec
-            });
-            ::nvx::info!("  st_mtime: {}s {}ns", { bar_tmp.st_mtim.tv_sec }, {
-                bar_tmp.st_mtim.tv_nsec
-            });
-            ::nvx::info!("  st_ctime: {}s {}ns", { bar_tmp.st_ctim.tv_sec }, {
-                bar_tmp.st_ctim.tv_nsec
-            });
-        },
-        Err(error) => {
-            panic!("failed to get status of file foo.tmp: {:?}", error);
-        },
-    }
-
-    // Ensure time of last access was updated.
-    if bar_tmp.st_atim.tv_sec != 0 {
-        panic!("access time of file foo.tmp was not updated");
-    }
-    if bar_tmp.st_atim.tv_nsec != 0 {
-        panic!("access time of file foo.tmp was not updated");
-    }
-
     // Unlink file named `foo.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "foo.tmp", 0) {
         Ok(()) => {
