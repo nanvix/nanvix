@@ -14,6 +14,9 @@ pub const NAME_MAX: usize = 15;
 // Maximum number of bytes in a filename (not including the terminating null of a filename string).
 pub const POSIX_NAME_MAX: usize = 14;
 
+// Maximum number of bytes in a filename (not including the terminating null of a filename string).
+pub const XOPEN_NAME_MAX: usize = 255;
+
 /// Minimum number the implementation shall accept as the maximum number of bytes in a pathname,
 /// including the terminating null character.
 pub const POSIX_PATH_MAX: usize = 256;
