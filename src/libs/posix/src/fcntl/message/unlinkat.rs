@@ -6,15 +6,25 @@
 //==================================================================================================
 
 use crate::{
+    ffi::c_int,
     limits,
+    message::{
+        LinuxDaemonMessagePart,
+        MessageDeserializer,
+        MessagePartitioner,
+        MessageSerializer,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::core::{
-    ffi,
-    fmt,
-    mem,
+use ::alloc::{
+    string::{
+        String,
+        ToString,
+    },
+    vec::Vec,
 };
+use ::core::mem;
 use ::nvx::{
     ipc::{
         Message,
@@ -31,77 +41,180 @@ use ::nvx::{
 // UnlinkAtRequest
 //==================================================================================================
 
-#[repr(C, packed)]
+///
+/// # Description
+///
+/// This structure represents the request message of the `unlinkat()` system call.
+///
+#[derive(Debug)]
 pub struct UnlinkAtRequest {
     pub dirfd: i32,
-    pub pathname: [u8; limits::NAME_MAX],
-    pub flags: ffi::c_int,
-    _padding: [u8; Self::PADDING_SIZE],
+    pub flags: c_int,
+    pub pathname: String,
 }
-::nvx::sys::static_assert_size!(UnlinkAtRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl UnlinkAtRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
-        - mem::size_of::<i32>()
-        - limits::NAME_MAX
-        - mem::size_of::<ffi::c_int>();
+    /// Size of `dirfd` field.
+    pub const SIZE_OF_DIRFD: usize = mem::size_of::<i32>();
+    /// Size of `flags` field.
+    pub const SIZE_OF_FLAGS: usize = mem::size_of::<c_int>();
+    /// Size of `pathname.len()` field.
+    pub const SIZE_OF_PATHNAME_LEN: usize = mem::size_of::<u32>();
+    /// Offset of `dirfd` field.
+    pub const OFFSET_OF_DIRFD: usize = 0;
+    /// Offset of `flags` field.
+    pub const OFFSET_OF_FLAGS: usize = Self::OFFSET_OF_DIRFD + Self::SIZE_OF_DIRFD;
+    /// Offset of `pathname.len()` field.
+    pub const OFFSET_OF_PATHNAME_LEN: usize = Self::OFFSET_OF_FLAGS + Self::SIZE_OF_FLAGS;
+    /// Offset of `pathname` field.
+    pub const OFFSET_OF_PATHNAME: usize = Self::OFFSET_OF_PATHNAME_LEN + Self::SIZE_OF_PATHNAME_LEN;
 
-    fn new(dirfd: i32, pathname: [u8; limits::NAME_MAX], flags: ffi::c_int) -> Self {
-        Self {
-            dirfd,
-            pathname,
-            flags,
-            _padding: [0; Self::PADDING_SIZE],
-        }
-    }
+    /// Maximum size of the message.
+    pub const MAX_SIZE: usize =
+        Self::SIZE_OF_DIRFD + Self::SIZE_OF_FLAGS + Self::SIZE_OF_PATHNAME_LEN + limits::NAME_MAX;
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
-        unsafe { mem::transmute(bytes) }
-    }
-
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
-        unsafe { mem::transmute(self) }
-    }
-
-    pub fn build(
-        pid: ProcessIdentifier,
-        dirfd: i32,
-        pathname: &str,
-        flags: ffi::c_int,
-    ) -> Result<Message, Error> {
+    ///
+    /// # Description
+    ///
+    /// Creates a new request message for the `unlinkat()` system call.
+    ///
+    /// # Parameters
+    ///
+    /// * `dirfd` - Directory file descriptor.
+    /// * `pathname` - Pathname of the file to be unlinked.
+    /// * `flags` - Flags for the unlink operation.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the function returns the request message. Otherwise, it returns
+    /// an error.
+    ///
+    pub fn new(dirfd: i32, pathname: &str, flags: c_int) -> Result<Self, Error> {
         // Check if pathname is too long.
-        if pathname.len() >= limits::NAME_MAX {
+        if pathname.len() > limits::NAME_MAX {
             #[cfg(target_os = "none")]
             ::nvx::error!(
-                "build(): pathname is too long (pid={:?}, pathname={:?}, flags={:?})",
-                pid,
+                "new(): pathname is too long (dirfd={:?}, pathname={:?}, flags={:?})",
+                dirfd,
                 pathname,
                 flags
             );
             return Err(Error::new(ErrorCode::InvalidArgument, "pathname is too long"));
         }
 
-        let mut pathname_bytes: [u8; limits::NAME_MAX] = [0u8; limits::NAME_MAX];
-        pathname_bytes[..pathname.len()].copy_from_slice(pathname.as_bytes());
-
-        let message: UnlinkAtRequest = UnlinkAtRequest::new(dirfd, pathname_bytes, flags);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::UnlinkAtRequest,
-            message.into_bytes(),
-        );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
-
-        Ok(message)
+        Ok(Self {
+            dirfd,
+            flags,
+            pathname: pathname.to_string(),
+        })
     }
 }
 
-impl fmt::Debug for UnlinkAtRequest {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let dirfd: i32 = self.dirfd;
-        let pathname: &str = unsafe { core::str::from_utf8_unchecked(&self.pathname) };
-        let flags: ffi::c_int = self.flags;
-        write!(f, "{{ dirfd: {}, pathname: {}, flags: {} }}", dirfd, pathname, flags)
+impl MessageSerializer for UnlinkAtRequest {
+    /// Serializes a request message for the `unlinkat()` system call.
+    fn to_bytes(&self) -> Vec<u8> {
+        // Allocate buffer.
+        let mut buffer: Vec<u8> = Vec::new();
+
+        // Serialize `dirfd` field.
+        buffer.extend_from_slice(&self.dirfd.to_le_bytes());
+        // Serialize `flags` field.
+        buffer.extend_from_slice(&self.flags.to_le_bytes());
+        // Serialize `pathname.len()` field.
+        buffer.extend_from_slice(&(self.pathname.len() as u32).to_le_bytes());
+        // Serialize `pathname` field.
+        buffer.extend_from_slice(self.pathname.as_bytes());
+
+        buffer
+    }
+}
+
+impl MessageDeserializer for UnlinkAtRequest {
+    /// Deserializes a request messages for the `unlinkat()` system call.
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        // Check if the message is too short.
+        if bytes.len() < Self::OFFSET_OF_PATHNAME {
+            #[cfg(target_os = "none")]
+            ::nvx::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
+        }
+
+        // Check if the message is too long.
+        if bytes.len() > Self::MAX_SIZE {
+            #[cfg(target_os = "none")]
+            ::nvx::error!("try_from_bytes(): message is too long (len={:?})", bytes.len());
+            return Err(Error::new(ErrorCode::InvalidArgument, "message is too long"));
+        }
+
+        // Deserialize `dirfd` field.
+        let dirfd: i32 = i32::from_le_bytes(
+            bytes[Self::OFFSET_OF_DIRFD..Self::OFFSET_OF_DIRFD + Self::SIZE_OF_DIRFD]
+                .try_into()
+                .map_err(|_| {
+                    Error::new(ErrorCode::InvalidArgument, "failed to deserialize dirfd")
+                })?,
+        );
+        // Deserialize `flags` field.
+        let flags: i32 = c_int::from_le_bytes(
+            bytes[Self::OFFSET_OF_FLAGS..Self::OFFSET_OF_FLAGS + Self::SIZE_OF_FLAGS]
+                .try_into()
+                .map_err(|_| {
+                    Error::new(ErrorCode::InvalidArgument, "failed to deserialize flags")
+                })?,
+        );
+        // Deserialize `pathname.len()` field.
+        let pathname_len: usize = u32::from_le_bytes(
+            bytes[Self::OFFSET_OF_PATHNAME_LEN
+                ..Self::OFFSET_OF_PATHNAME_LEN + Self::SIZE_OF_PATHNAME_LEN]
+                .try_into()
+                .map_err(|_| {
+                    Error::new(ErrorCode::InvalidArgument, "failed to deserialize pathname length")
+                })?,
+        ) as usize;
+
+        // Check if the message is too short.
+        if bytes.len() < Self::OFFSET_OF_PATHNAME + pathname_len {
+            #[cfg(target_os = "none")]
+            ::nvx::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
+        }
+
+        // Check if `pathname` is too long.
+        if pathname_len > limits::NAME_MAX {
+            #[cfg(target_os = "none")]
+            ::nvx::error!("try_from_bytes(): pathname is too long (len={:?})", pathname_len);
+            return Err(Error::new(ErrorCode::InvalidArgument, "pathname is too long"));
+        }
+
+        // Deserialize `pathname` field.
+        let pathname: String = String::from_utf8(
+            bytes[Self::OFFSET_OF_PATHNAME..Self::OFFSET_OF_PATHNAME + pathname_len].to_vec(),
+        )
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to deserialize pathname"))?;
+
+        Ok(Self {
+            dirfd,
+            flags,
+            pathname,
+        })
+    }
+}
+
+impl MessagePartitioner for UnlinkAtRequest {
+    /// Creates a new message part for the `unlinkat()` system call.
+    fn new_part(
+        pid: ProcessIdentifier,
+        part_number: u32,
+        payload_size: u8,
+        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+    ) -> Result<Message, Error> {
+        LinuxDaemonMessagePart::build_request(
+            pid,
+            LinuxDaemonMessageHeader::UnlinkAtRequestPart,
+            part_number,
+            payload_size,
+            payload,
+        )
     }
 }
 
