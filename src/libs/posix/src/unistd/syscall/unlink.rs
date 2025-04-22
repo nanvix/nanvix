@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::fcntl;
+use ::nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -31,9 +32,9 @@ use crate::fcntl;
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Otherwise, an error code is returned instead.
+/// Upon successful completion, `unlink()` returns empty. Otherwise, it returns an error.
 ///
-pub fn unlink(path: &str) -> i32 {
+pub fn unlink(path: &str) -> Result<(), Error> {
     ::nvx::trace!("unlink(): path = {:?}", path);
     fcntl::unlinkat(crate::fcntl::AT_FDCWD, path, 0)
 }
