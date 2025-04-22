@@ -178,12 +178,29 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
             print("Test failed.")
             exit(1)
 
-    # Check if nanvixd tests are supported.
-    if not has_nanvixd_tests(machine):
-        return
+    # Check if linuxd tests are supported.
+    if has_linuxd_tests(machine):
+        make("run-linuxd-tests", machine, arch, release,
+             toolchain_dir, log_level, verbose, timeout, build_opt=False)
 
-    make("run-nanvixd-tests", machine, arch, release,
-         toolchain_dir, log_level, verbose, timeout, build_opt=False)
+    # Check if nanvixd tests are supported.
+    if has_nanvixd_tests(machine):
+        make("run-nanvixd-tests", machine, arch, release,
+             toolchain_dir, log_level, verbose, timeout, build_opt=False)
+
+
+def has_linuxd_tests(machine: str) -> bool:
+    """
+    Checks if Machine supports tests with linuxd.
+
+    Args:
+        machine (str): Target machine.
+    """
+
+    if machine in ["microvm", "hyperlight"]:
+        return True
+    else:
+        return False
 
 
 def has_nanvixd_tests(machine: str) -> bool:
