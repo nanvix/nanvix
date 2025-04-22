@@ -7,10 +7,7 @@
 
 use crate::{
     message::MessagePartitioner,
-    sys::stat::message::{
-        UpdateFileAccessTimeAtRequest,
-        UpdateFileAccessTimeAtResponse,
-    },
+    sys::stat::message::UpdateFileAccessTimeAtRequest,
     time::timespec,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -22,85 +19,113 @@ use ::alloc::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn utimensat(dirfd: i32, pathname: &str, times: [timespec; 2], flags: i32) -> i32 {
-    // Send request.
-    let status: i32 = utimensat_request(dirfd, pathname, times, flags);
-    if status != 0 {
-        return status;
-    }
+///
+/// # Description
+///
+/// Sets file access and modification times.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `pathname`: Pathname of the file.
+/// - `times`: Access and modification times.
+/// - `flags`: Flags.
+///
+/// # Returns
+///
+/// Upon successful completion, the `utimensat()` system call returns empty. Otherwise, it returns
+/// an error.
+///
+pub fn utimensat(
+    dirfd: i32,
+    pathname: &str,
+    times: [timespec; 2],
+    flags: i32,
+) -> Result<(), Error> {
+    ::nvx::trace!(
+        "utimensat(): dirfd={:?}, pathname={:?}, times={:?}, flags={:?}",
+        dirfd,
+        pathname,
+        times,
+        flags
+    );
 
-    // Wait for response.
-    utimensat_response()
-}
-
-fn utimensat_request(dirfd: i32, pathname: &str, times: [timespec; 2], flags: i32) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     let request: UpdateFileAccessTimeAtRequest =
-        match UpdateFileAccessTimeAtRequest::new(dirfd, pathname.to_string(), flags, times) {
-            Ok(request) => request,
-            Err(e) => return e.code.into_errno(),
-        };
+        UpdateFileAccessTimeAtRequest::new(dirfd, pathname.to_string(), flags, times)?;
 
-    let requests: Vec<Message> = match request.into_parts(pid) {
-        Ok(requests) => requests,
-        Err(e) => return e.code.into_errno(),
-    };
+    let requests: Vec<Message> = request.into_parts(pid)?;
 
     // Send request.
     for request in requests {
-        match ::nvx::ipc::send(&request) {
-            Ok(_) => (),
-            Err(e) => return e.code.into_errno(),
-        }
+        nvx::ipc::send(&request)?;
     }
 
-    0
-}
-
-fn utimensat_response() -> i32 {
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
+        ::nvx::error!(
+            "utimensat(): failed (dirfd={:?}, pathname={:?}, times={:?}, flags={:?}, \
+             error_code={:?})",
+            dirfd,
+            pathname,
+            times,
+            flags,
+            { response.status }
+        );
+        // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Succeeded to parse error code.
+            Ok(error_code) => Err(Error::new(error_code, "utimensat() failed")),
+            // Failed to parse error code, return generic error.
+            Err(error) => {
+                ::nvx::error!(
+                    "utimensat(): failed to convert error code (dirfd={:?}, pathname={:?}, \
+                     times={:?}, flags={:?}, error={:?})",
+                    dirfd,
+                    pathname,
+                    times,
+                    flags,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "utimensat() failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::UpdateFileAccessTimeAtResponse => {
-                    // Parse response.
-                    let response: UpdateFileAccessTimeAtResponse =
-                        UpdateFileAccessTimeAtResponse::from_bytes(message.payload);
-
-                    // Return result.
-                    response.ret
-                },
-                // Response was not successfully parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
-            },
+            LinuxDaemonMessageHeader::UpdateFileAccessTimeAtResponse => Ok(()),
             // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            _ => {
+                let reason: &str = "unexpected message header";
+                ::nvx::error!(
+                    "utimensat(): failed (dirfd={:?}, pathname={:?}, times={:?}, flags={:?}, \
+                     reason={:?})",
+                    dirfd,
+                    pathname,
+                    times,
+                    flags,
+                    reason
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, reason))
+            },
         }
     }
 }
