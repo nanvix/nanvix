@@ -97,6 +97,7 @@ int main(int argc, const char *argv[])
     test_open_close();
     test_create_unlink();
     test_stat();
+    test_renameat(); // requires open(), close() and unlink().
     test_dirent();
     test_getcwd();
     test_fchdir();
