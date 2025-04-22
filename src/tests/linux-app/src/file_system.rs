@@ -452,23 +452,13 @@ pub fn test() {
         },
     }
 
-    // Rename `foo.tmp` to `bar.tmp`.
-    match fcntl::renameat(fcntl::AT_FDCWD, "foo.tmp", fcntl::AT_FDCWD, "bar.tmp") {
-        Ok(()) => {
-            ::nvx::info!("renamed file foo.tmp to bar.tmp");
-        },
-        Err(error) => {
-            panic!("failed to rename file foo.tmp to bar.tmp (error={:?})", error);
-        },
-    }
-
-    // Create a symbolic link to `bar.tmp`.
-    match fcntl::symlinkat("bar.tmp", fcntl::AT_FDCWD, "baz.tmp") {
+    // Create a symbolic link to `foo.tmp`.
+    match fcntl::symlinkat("foo.tmp", fcntl::AT_FDCWD, "baz.tmp") {
         0 => {
-            ::nvx::info!("created symbolic link baz.tmp to bar.tmp");
+            ::nvx::info!("created symbolic link baz.tmp to foo.tmp");
         },
         errno => {
-            panic!("failed to create symbolic link baz.tmp to bar.tmp: {:?}", errno);
+            panic!("failed to create symbolic link baz.tmp to foo.tmp: {:?}", errno);
         },
     }
 
@@ -499,13 +489,13 @@ pub fn test() {
         },
     }
 
-    // Create a hard link to `bar.tmp`.
-    match unistd::linkat(fcntl::AT_FDCWD, "bar.tmp", fcntl::AT_FDCWD, "baz.tmp", 0) {
+    // Create a hard link to `foo.tmp`.
+    match unistd::linkat(fcntl::AT_FDCWD, "foo.tmp", fcntl::AT_FDCWD, "baz.tmp", 0) {
         0 => {
-            ::nvx::info!("created hard link baz.tmp to bar.tmp");
+            ::nvx::info!("created hard link baz.tmp to foo.tmp");
         },
         errno => {
-            panic!("failed to create hard link baz.tmp to bar.tmp: {:?}", errno);
+            panic!("failed to create hard link baz.tmp to foo.tmp: {:?}", errno);
         },
     }
 
@@ -519,11 +509,11 @@ pub fn test() {
         },
     }
 
-    // Get status of file named `bar.tmp`.
+    // Get status of file named `foo.tmp`.
     let mut bar_tmp: stat = stat::default();
-    match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut bar_tmp, 0) {
+    match sys::stat::fstatat(fcntl::AT_FDCWD, "foo.tmp", &mut bar_tmp, 0) {
         Ok(()) => {
-            ::nvx::info!("got status of file bar.tmp");
+            ::nvx::info!("got status of file foo.tmp");
             ::nvx::info!("file statistics:");
             ::nvx::info!("  st_dev: {}", { bar_tmp.st_dev });
             ::nvx::info!("  st_ino: {}", { bar_tmp.st_ino });
@@ -546,16 +536,16 @@ pub fn test() {
             });
         },
         Err(error) => {
-            panic!("failed to get status of file bar.tmp: {:?}", error);
+            panic!("failed to get status of file foo.tmp: {:?}", error);
         },
     }
 
-    // Ensure that foo.tmp and bar.tmp are the same file.
+    // Ensure that foo.tmp and foo.tmp are the same file.
     if foo_tmp.st_ino != bar_tmp.st_ino {
-        panic!("foo.tmp and bar.tmp are not the same file");
+        panic!("foo.tmp and foo.tmp are not the same file");
     }
 
-    // Update access time of file named `bar.tmp`.
+    // Update access time of file named `foo.tmp`.
     let times: [timespec; 2] = [
         timespec {
             tv_sec: 0,
@@ -566,20 +556,20 @@ pub fn test() {
             tv_nsec: 0,
         },
     ];
-    match sys::stat::utimensat(fcntl::AT_FDCWD, "bar.tmp", times, 0) {
+    match sys::stat::utimensat(fcntl::AT_FDCWD, "foo.tmp", times, 0) {
         0 => {
-            ::nvx::info!("updated access time of file bar.tmp");
+            ::nvx::info!("updated access time of file foo.tmp");
         },
         errno => {
-            panic!("failed to update access time of file bar.tmp: {:?}", errno);
+            panic!("failed to update access time of file foo.tmp: {:?}", errno);
         },
     }
 
-    // Get status of file named `bar.tmp`.
+    // Get status of file named `foo.tmp`.
     let mut bar_tmp: stat = stat::default();
-    match sys::stat::fstatat(fcntl::AT_FDCWD, "bar.tmp", &mut bar_tmp, 0) {
+    match sys::stat::fstatat(fcntl::AT_FDCWD, "foo.tmp", &mut bar_tmp, 0) {
         Ok(()) => {
-            ::nvx::info!("got status of file bar.tmp");
+            ::nvx::info!("got status of file foo.tmp");
             ::nvx::info!("file statistics:");
             ::nvx::info!("  st_dev: {}", { bar_tmp.st_dev });
             ::nvx::info!("  st_ino: {}", { bar_tmp.st_ino });
@@ -602,20 +592,20 @@ pub fn test() {
             });
         },
         Err(error) => {
-            panic!("failed to get status of file bar.tmp: {:?}", error);
+            panic!("failed to get status of file foo.tmp: {:?}", error);
         },
     }
 
     // Ensure time of last access was updated.
     if bar_tmp.st_atim.tv_sec != 0 {
-        panic!("access time of file bar.tmp was not updated");
+        panic!("access time of file foo.tmp was not updated");
     }
     if bar_tmp.st_atim.tv_nsec != 0 {
-        panic!("access time of file bar.tmp was not updated");
+        panic!("access time of file foo.tmp was not updated");
     }
 
     // Unlink file named `foo.tmp`.
-    match fcntl::unlinkat(fcntl::AT_FDCWD, "bar.tmp", 0) {
+    match fcntl::unlinkat(fcntl::AT_FDCWD, "foo.tmp", 0) {
         0 => {
             ::nvx::info!("unlinked file foo.tmp");
         },
