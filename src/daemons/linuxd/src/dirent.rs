@@ -33,7 +33,7 @@ use ::posix::{
     },
     limits::{
         NAME_MAX,
-        POSIX_NAME_MAX,
+        XOPEN_NAME_MAX,
     },
     message::MessagePartitioner,
     sys::types::reclen_t,
@@ -72,22 +72,11 @@ pub struct linux_dirent {
 }
 
 impl linux_dirent {
-    /// Minimum size of a `linux_dirent` structure in Linux x86_64.
-    /// NOTE: This value was empirically determined in Linux 5.15.
-    const LINUX_X86_64_DIRENT_MIN_SIZE: usize = 32;
-
     /// Minimum size of a `linux_dirent` structure.
-    const MIN_SIZE: usize = {
-        let size: usize = mem::size_of::<libc::c_ulong>() +  // d_ino
+    const MIN_SIZE: usize = mem::size_of::<libc::c_ulong>() +  // d_ino
                    mem::size_of::<libc::off_t>() +  // d_off
                    mem::size_of::<libc::c_ushort>() +  // d_reclen
-                   POSIX_NAME_MAX; // d_name
-        if size > Self::LINUX_X86_64_DIRENT_MIN_SIZE {
-            size
-        } else {
-            Self::LINUX_X86_64_DIRENT_MIN_SIZE
-        }
-    };
+                   XOPEN_NAME_MAX+1; // d_name
 
     /// Size of `d_ino` field, used for static assertions.
     const _SIZE_OF_D_INO: usize = mem::size_of::<libc::c_ulong>();
@@ -112,6 +101,8 @@ impl linux_dirent {
 
 /// Handles a getdents() system call request.
 pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) -> Vec<Message> {
+    trace!("do_getdents(): pid={:?}, request,count={:#x?}", pid, { request.count });
+
     // Check if `request.count` is not valid.
     if request.count == 0 {
         error!("do_getdents(): invalid buffer count");
@@ -122,7 +113,7 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
     }
 
     let bufsize: usize =
-        cmp::max((request.count as usize) * mem::size_of::<posix_dent>(), linux_dirent::MIN_SIZE);
+        (request.count as usize) * cmp::max(mem::size_of::<posix_dent>(), linux_dirent::MIN_SIZE);
     let mut rawbuf: Vec<u8> = vec![0; { bufsize } as usize];
     let mut buf: Vec<posix_dent> = Vec::new();
 
@@ -148,6 +139,12 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
                 let dent: &linux_dirent =
                     unsafe { &*(rawbuf.as_ptr().add(bpos) as *const linux_dirent) };
                 let d_reclen: usize = dent.d_reclen as usize;
+                if bpos + d_reclen > n as usize {
+                    // FIXME: should we rewind the file?
+                    unimplemented!(
+                        "do_getdents(): d_reclen exceeds buffer size, stopping iteration"
+                    );
+                }
                 let d_type: libc::c_uchar =
                     unsafe { *rawbuf.get_unchecked(bpos + d_reclen - 1) as libc::c_uchar };
                 let d_name_ptr: *const u8 =
