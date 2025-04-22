@@ -38,7 +38,7 @@ impl Socket {
                 Ok(Self(sockfd))
             },
             Err(e) => Err(Error {
-                errno: e.code.into_errno(),
+                errno: e.code.get(),
             }),
         }
     }
@@ -50,7 +50,7 @@ impl Socket {
                 Ok(())
             },
             Err(e) => Err(Error {
-                errno: e.code.into_errno(),
+                errno: e.code.get(),
             }),
         }
     }
@@ -62,7 +62,7 @@ impl Socket {
                 Ok(())
             },
             Err(e) => Err(Error {
-                errno: e.code.into_errno(),
+                errno: e.code.get(),
             }),
         }
     }
@@ -74,7 +74,7 @@ impl Socket {
                 Ok(Self(connfd))
             },
             Err(e) => Err(Error {
-                errno: e.code.into_errno(),
+                errno: e.code.get(),
             }),
         }
     }
@@ -86,7 +86,7 @@ impl Socket {
                 Ok(len as usize)
             },
             Err(e) => Err(Error {
-                errno: e.code.into_errno(),
+                errno: e.code.get(),
             }),
         }
     }
@@ -98,7 +98,7 @@ impl Socket {
                 Ok(len as usize)
             },
             Err(e) => Err(Error {
-                errno: e.code.into_errno(),
+                errno: e.code.get(),
             }),
         }
     }
@@ -110,7 +110,7 @@ impl Socket {
                 Ok(())
             },
             Err(e) => Err(Error {
-                errno: e.code.into_errno(),
+                errno: e.code.get(),
             }),
         }
     }
