@@ -71,6 +71,13 @@ impl UnlinkAtRequest {
     ) -> Result<Message, Error> {
         // Check if pathname is too long.
         if pathname.len() >= limits::NAME_MAX {
+            #[cfg(target_os = "none")]
+            ::nvx::error!(
+                "build(): pathname is too long (pid={:?}, pathname={:?}, flags={:?})",
+                pid,
+                pathname,
+                flags
+            );
             return Err(Error::new(ErrorCode::InvalidArgument, "pathname is too long"));
         }
 
