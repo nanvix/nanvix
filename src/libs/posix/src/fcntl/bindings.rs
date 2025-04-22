@@ -216,3 +216,84 @@ pub unsafe extern "C" fn fchownat(
         },
     }
 }
+
+///
+/// # Description
+///
+/// Renames a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `olddirfd`: Directory file descriptor of the old file.
+/// - `oldpath`:  Pathname of the old file.
+/// - `newdirfd`: Directory file descriptor of the new file.
+/// - `newpath`:  Pathname of the new file.
+///
+/// # Returns
+///
+/// Upon successful completion, the `renameat()` system call returns `0`. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `oldpath` points to a valid null-terminated C string.
+/// - `newpath` points to a valid null-terminated C string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn renameat(
+    olddirfd: c_int,
+    oldpath: *const c_char,
+    newdirfd: c_int,
+    newpath: *const c_char,
+) -> c_int {
+    ::nvx::trace!(
+        "renameat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}",
+        olddirfd,
+        oldpath,
+        newdirfd,
+        newpath
+    );
+
+    // Attempt to convert `oldpath` to a Rust string.
+    let old_pathname: &str = match ffi::CStr::from_ptr(oldpath).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!(
+                "renameat(): invalid old pathname (olddirfd={:?}, newdirfd={:?})",
+                olddirfd,
+                newdirfd
+            );
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to convert `newpath` to a Rust string.
+    let new_pathname: &str = match ffi::CStr::from_ptr(newpath).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!(
+                "renameat(): invalid new pathname (olddirfd={:?}, newdirfd={:?})",
+                olddirfd,
+                newdirfd
+            );
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Execute system call and check the result.
+    match crate::fcntl::syscall::renameat(olddirfd, old_pathname, newdirfd, new_pathname) {
+        // System call succeeded.
+        Ok(()) => 0,
+        // System call failed.
+        Err(error) => {
+            errno = error.code.get();
+            -1
+        },
+    }
+}
