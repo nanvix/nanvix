@@ -3,4 +3,7 @@
 
 mod fd;
 
-pub use fd::FileDescriptor;
+pub use fd::{
+    FileDescriptor,
+    RawFileDescriptor,
+};
