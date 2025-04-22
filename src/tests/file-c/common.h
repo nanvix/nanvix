@@ -30,4 +30,7 @@ extern void test_renameat(void);
 // Tests whether we can get file status information.
 extern void test_stat(void);
 
+// Tests whether we can remove a file.
+extern void test_unlinkat(void);
+
 #endif
