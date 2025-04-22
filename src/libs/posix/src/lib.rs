@@ -109,7 +109,7 @@ pub enum LinuxDaemonMessageHeader {
     UnlinkAtResponse,
     CloseRequest,
     CloseResponse,
-    RenameAtRequest,
+    RenameAtRequestPart,
     RenameAtResponse,
     FileStatAtRequestPart,
     FileStatAtResponsePart,

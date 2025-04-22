@@ -104,6 +104,7 @@ pub enum RequestAssemblerType {
     FileChownAtRequest(LinuxDaemonLongMessage),
     FileChmodAtRequest(LinuxDaemonLongMessage),
     OpenAtRequest(LinuxDaemonLongMessage),
+    RenameAtRequest(LinuxDaemonLongMessage),
     UnlinkAtRequest(LinuxDaemonLongMessage),
 }
 

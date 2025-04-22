@@ -7,10 +7,7 @@
 
 use crate::time::LibcTimeSpec;
 use ::alloc::ffi::CString;
-use ::core::{
-    ffi,
-    str,
-};
+use ::core::ffi;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -166,20 +163,20 @@ pub fn do_unlinkat(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Vec<Mess
 // do_rename_at
 //==================================================================================================
 
-pub fn do_rename_at(pid: ProcessIdentifier, request: RenameAtRequest) -> Message {
+pub fn do_renameat(pid: ProcessIdentifier, request: RenameAtRequest) -> Vec<Message> {
     trace!("renameat(): pid={:?}, request={:?}", pid, request);
 
     let olddirfd: i32 = request.olddirfd;
     let newdirfd: i32 = request.newdirfd;
 
-    let oldpath: &str = match str::from_utf8(&request.oldpath) {
+    let oldpath: CString = match CString::new(request.oldpath.as_str()) {
         Ok(oldpath) => oldpath,
-        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
 
-    let newpath: &str = match str::from_utf8(&request.newpath) {
+    let newpath: CString = match CString::new(request.newpath.as_str()) {
         Ok(newpath) => newpath,
-        Err(_) => return crate::build_error(pid, ErrorCode::InvalidMessage),
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
 
     let olddirfd: LibcAtFlags = LibcAtFlags::from(olddirfd);
@@ -202,12 +199,12 @@ pub fn do_rename_at(pid: ProcessIdentifier, request: RenameAtRequest) -> Message
     } {
         ret if ret == 0 => {
             debug!("libc::renameat(): success");
-            RenameAtResponse::build(pid, ret)
+            vec![RenameAtResponse::build(pid, ret)]
         },
         errno => {
             debug!("libc::renameat(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
-            crate::build_error(pid, error)
+            vec![crate::build_error(pid, error)]
         },
     }
 }

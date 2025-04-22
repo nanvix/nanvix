@@ -7,10 +7,12 @@
 
 use crate::{
     fcntl::message::RenameAtRequest,
+    message::MessagePartitioner,
     safe::RawFileDescriptor,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
+use ::alloc::vec::Vec;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -58,8 +60,11 @@ pub fn renameat(
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
-    let request: Message = RenameAtRequest::build(pid, olddirfd, oldpath, newdirfd, newpath)?;
-    ::nvx::ipc::send(&request)?;
+    let request: RenameAtRequest = RenameAtRequest::new(olddirfd, oldpath, newdirfd, newpath)?;
+    let requests: Vec<Message> = request.into_parts(pid)?;
+    for request in requests {
+        ::nvx::ipc::send(&request)?;
+    }
 
     // Receive response.
     let response: Message = ::nvx::ipc::recv()?;
