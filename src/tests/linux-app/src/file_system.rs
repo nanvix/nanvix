@@ -557,11 +557,11 @@ pub fn test() {
         },
     ];
     match sys::stat::utimensat(fcntl::AT_FDCWD, "foo.tmp", times, 0) {
-        0 => {
-            ::nvx::info!("updated access time of file foo.tmp");
+        Ok(()) => {
+            ::nvx::info!("updated access time of file bar.tmp");
         },
-        errno => {
-            panic!("failed to update access time of file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to update access time of file bar.tmp: {:?}", error);
         },
     }
 
