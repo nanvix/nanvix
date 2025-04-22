@@ -79,11 +79,23 @@ impl RenameAtRequest {
     ) -> Result<Message, Error> {
         // Check if oldpath is too long.
         if oldpath.len() >= limits::NAME_MAX {
+            #[cfg(target_os = "none")]
+            ::nvx::error!(
+                "renameat(): oldpath is too long (olddirfd={:?}, newdirfd={:?})",
+                olddirfd,
+                newdirfd
+            );
             return Err(Error::new(ErrorCode::InvalidArgument, "oldpath is too long"));
         }
 
         // Check if newpath is too long.
         if newpath.len() >= limits::NAME_MAX {
+            #[cfg(target_os = "none")]
+            ::nvx::error!(
+                "renameat(): newpath is too long (olddirfd={:?}, newdirfd={:?})",
+                olddirfd,
+                newdirfd
+            );
             return Err(Error::new(ErrorCode::InvalidArgument, "newpath is too long"));
         }
 
