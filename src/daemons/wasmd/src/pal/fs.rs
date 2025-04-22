@@ -211,7 +211,7 @@ impl Drop for File {
             // Fail.
             Err(error) => {
                 // Get `errno` and reset it.
-                let errno: c_int = error.code.into_errno();
+                let errno: c_int = error.code.get();
                 ::nvx::error!("failed to close file descriptor (errno={:?})", errno);
                 // NOTE: We ignore errors on close, as the standard library does.
             },
@@ -281,7 +281,7 @@ impl OpenOptions {
         } else {
             ::nvx::error!("openat(): invalid file mode");
             return Err(Error {
-                errno: ErrorCode::InvalidArgument.into_errno(),
+                errno: ErrorCode::InvalidArgument.get(),
             });
         }
 
@@ -293,7 +293,7 @@ impl OpenOptions {
         match fcntl::openat(dirfd, &path.name, flags.into(), mode) {
             Ok(fd) => Ok(File { rawfd: Fd(fd) }),
             Err(error) => Err(Error {
-                errno: error.code.into_errno(),
+                errno: error.code.get(),
             }),
         }
     }
