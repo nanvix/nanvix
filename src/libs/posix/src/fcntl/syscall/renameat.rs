@@ -6,65 +6,115 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        RenameAtRequest,
-        RenameAtResponse,
-    },
+    fcntl::message::RenameAtRequest,
+    safe::RawFileDescriptor,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn renameat(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+///
+/// # Description
+///
+/// Renames a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `olddirfd`: Directory file descriptor of the old file.
+/// - `oldpath`:  Pathname of the old file.
+/// - `newdirfd`: Directory file descriptor of the new file.
+/// - `newpath`:  Pathname of the new file.
+///
+/// # Returns
+///
+/// Upon successful completion, the `renameat()` system call returns empty. Otherwise, it returns an
+/// error.
+///
+pub fn renameat(
+    olddirfd: RawFileDescriptor,
+    oldpath: &str,
+    newdirfd: RawFileDescriptor,
+    newpath: &str,
+) -> Result<(), Error> {
+    ::nvx::trace!(
+        "renameat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}",
+        olddirfd,
+        oldpath,
+        newdirfd,
+        newpath
+    );
+
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
-    let request: Message = match RenameAtRequest::build(pid, olddirfd, oldpath, newdirfd, newpath) {
-        Ok(request) => request,
-        Err(e) => return e.code.into_errno(),
-    };
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    let request: Message = RenameAtRequest::build(pid, olddirfd, oldpath, newdirfd, newpath)?;
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
+        ::nvx::error!(
+            "renameat(): failed (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, \
+             error_code={:?})",
+            olddirfd,
+            oldpath,
+            newdirfd,
+            newpath,
+            { response.status }
+        );
+        // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Succeeded to parse error code.
+            Ok(error_code) => {
+                // Return error.
+                Err(Error::new(error_code, "renameat() failed"))
+            },
+            // Failed to parse error code, return generic error.
+            Err(error) => {
+                ::nvx::error!(
+                    "renameat(): failed to parse error code (olddirfd={:?}, oldpath={:?}, \
+                     newdirfd={:?}, newpath={:?}, error={:?})",
+                    olddirfd,
+                    oldpath,
+                    newdirfd,
+                    newpath,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "renameat(): failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
-            Ok(message) => match message.header {
-                LinuxDaemonMessageHeader::RenameAtResponse => {
-                    // Parse response.
-                    let response: RenameAtResponse = RenameAtResponse::from_bytes(message.payload);
-
-                    // Return result.
-                    response.ret
-                },
-                _ => ErrorCode::InvalidMessage.into_errno(),
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        match message.header {
+            LinuxDaemonMessageHeader::RenameAtResponse => Ok(()),
+            header => {
+                let reason: &str = "unexpected message header";
+                ::nvx::error!(
+                    "renameat(): {:?} (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, \
+                     header={:?})",
+                    reason,
+                    olddirfd,
+                    oldpath,
+                    newdirfd,
+                    newpath,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, reason))
             },
-            _ => ErrorCode::InvalidMessage.into_errno(),
         }
     }
 }
