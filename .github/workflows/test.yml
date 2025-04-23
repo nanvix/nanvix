@@ -99,6 +99,7 @@ jobs:
         key: ${{ secrets.sshkey }}
         port: ${{ secrets.portnum }}
         envs: TARGET_BRANCH, RELEASE_TYPE, LOG_LEVEL
+        command_timeout: 30m
         script: |
           cd github/nanvix-${TARGET_BRANCH}-${RELEASE_TYPE}
           python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${LOG_LEVEL} --target-machine=microvm --${RELEASE_TYPE} --test
