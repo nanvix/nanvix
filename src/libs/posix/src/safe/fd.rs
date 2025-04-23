@@ -35,7 +35,7 @@ use ::nvx::sys::error::{
 ///
 /// A type alias for a raw file descriptor.
 ///
-type RawFileDescriptor = c_int;
+pub type RawFileDescriptor = c_int;
 
 //==================================================================================================
 // File Descriptor

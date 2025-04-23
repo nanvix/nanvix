@@ -24,4 +24,10 @@ extern void test_fchdir(void);
 // Tests whether we can change access permissions of a file.
 extern void test_fchmod(void);
 
+// Tests whether we can rename a file.
+extern void test_renameat(void);
+
+// Tests whether we can get file status information.
+extern void test_stat(void);
+
 #endif
