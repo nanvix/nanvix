@@ -20,18 +20,33 @@ pub mod bindings;
 // Imports
 //==================================================================================================
 
-use crate::{
-    ffi::c_long,
-    sys::types::{
-        clockid_t,
-        time_t,
-    },
-};
+use crate::ffi::c_long;
 use ::core::mem;
 use ::nvx::sys::error::{
     Error,
     ErrorCode,
 };
+
+//===================================================================================================
+// Re-Exports
+//===================================================================================================
+
+pub use crate::sys::types::{
+    clock_t,
+    size_t,
+    time_t,
+};
+
+// TODO: gate the following re-export behind the CX extension.
+pub use crate::sys::types::clockid_t;
+// TODO: import `timer_t` type from `sys::types`.
+
+// TODO: import `locale_t` type from `locale`.
+
+// TODO: gate the following re-export behind the CPT extension.
+pub use crate::sys::types::pid_t;
+
+// TODO: import `sigevent` structure from `signal`, gate it behind the CX extension.
 
 //==================================================================================================
 // Types
@@ -41,11 +56,14 @@ use ::nvx::sys::error::{
 pub const CLOCK_REALTIME: clockid_t = 0;
 
 /// The identifier for the system-wide monotonic clock.
+// TODO: gate this behind the CX extension.
 pub const CLOCK_MONOTONIC: clockid_t = 1;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+// TODO: define tms structure here.
 
 /// Time spec structure.
 #[derive(Default, Debug, Clone, Copy)]
@@ -109,6 +127,8 @@ impl timespec {
         Ok(Self { tv_sec, tv_nsec })
     }
 }
+
+// TODO: define `itimerspec` structure here.
 
 //==================================================================================================
 // Standalone Functions
