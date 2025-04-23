@@ -240,6 +240,18 @@ pub extern "C" fn fchdir(fd: c_int) -> c_int {
     }
 }
 
+/// Dummy implementation of `fchown`.
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn fchown(_fd: i32, _owner: u32, _group: u32) -> isize {
+    // TODO:https://github.com/nanvix/nanvix/issues/361
+    ::nvx::error!("fchown(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.get();
+    }
+    -1
+}
+
 #[no_mangle]
 pub extern "C" fn fdatasync(_fd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/278
@@ -389,6 +401,14 @@ pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_
     0
 }
 
+/// Dummy implementation of `geteuid`.
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn geteuid() -> u32 {
+    ::nvx::trace!("geteuid(): not implemented, returning 0");
+    0
+}
+
 #[no_mangle]
 pub extern "C" fn getpid() -> pid_t {
     match crate::unistd::getpid() {
@@ -400,6 +420,14 @@ pub extern "C" fn getpid() -> pid_t {
             -1
         },
     }
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn getuid() -> u32 {
+    // TODO: https://github.com/nanvix/nanvix/issues/532
+    ::nvx::trace!("getuid(): not implemented, returning 0");
+    0
 }
 
 #[no_mangle]
@@ -620,6 +648,17 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> 
 pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/348
     ::nvx::error!("rmdir(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.get();
+    }
+    -1
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn readlink(_path: *const u8, _buf: *mut u8, _bufsize: usize) -> isize {
+    // TODO: https://github.com/nanvix/nanvix/issues/531
+    ::nvx::error!("readlink(): not implemented");
     unsafe {
         errno = ErrorCode::InvalidSysCall.get();
     }
