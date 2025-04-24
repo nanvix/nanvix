@@ -228,12 +228,10 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::PartialReadRequest
                                 | LinuxDaemonMessageHeader::PartialWriteRequest
                                 | LinuxDaemonMessageHeader::ReceiveSocketRequest
-                                | LinuxDaemonMessageHeader::RenameAtRequest
                                 | LinuxDaemonMessageHeader::SeekRequest
                                 | LinuxDaemonMessageHeader::SendSocketRequest
                                 | LinuxDaemonMessageHeader::ShutdownSocketRequest
                                 | LinuxDaemonMessageHeader::TimesRequest
-                                | LinuxDaemonMessageHeader::UnlinkAtRequest
                                 | LinuxDaemonMessageHeader::PipeRequest
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                                     self.handle_short_request_messages(source, message)
@@ -261,7 +259,9 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart
                                 | LinuxDaemonMessageHeader::FileChownAtRequestPart
                                 | LinuxDaemonMessageHeader::FileChmodAtRequestPart
-                                | LinuxDaemonMessageHeader::OpenAtRequestPart => {
+                                | LinuxDaemonMessageHeader::OpenAtRequestPart
+                                | LinuxDaemonMessageHeader::RenameAtRequestPart
+                                | LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
                                     self.handle_long_request_messages(source, message);
                                     continue;
                                 },
@@ -433,10 +433,6 @@ impl<'a> LinuxDaemon<'a> {
                     ReceiveSocketRequest::from_bytes(message.payload);
                 socket::do_recv(source, request)
             },
-            LinuxDaemonMessageHeader::RenameAtRequest => {
-                let request: RenameAtRequest = RenameAtRequest::from_bytes(message.payload);
-                fcntl::do_rename_at(source, request)
-            },
             LinuxDaemonMessageHeader::SeekRequest => {
                 let request: SeekRequest = SeekRequest::from_bytes(message.payload);
                 unistd::do_lseek(source, request)
@@ -453,10 +449,6 @@ impl<'a> LinuxDaemon<'a> {
             LinuxDaemonMessageHeader::TimesRequest => {
                 let request: TimesRequest = TimesRequest::from_bytes(message.payload);
                 times::do_times(source, request)
-            },
-            LinuxDaemonMessageHeader::UnlinkAtRequest => {
-                let request: UnlinkAtRequest = UnlinkAtRequest::from_bytes(message.payload);
-                fcntl::do_unlink_at(source, request)
             },
             LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                 let request: UpdateFileAccessTimeRequest =
@@ -507,6 +499,12 @@ impl<'a> LinuxDaemon<'a> {
             },
             LinuxDaemonMessageHeader::OpenAtRequestPart => {
                 self.handle_long_request::<OpenAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::RenameAtRequestPart => {
+                self.handle_long_request::<RenameAtRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
+                self.handle_long_request::<UnlinkAtRequest>(source, &message);
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this

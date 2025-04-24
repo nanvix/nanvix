@@ -39,6 +39,7 @@ cfg_if::cfg_if! {
             fcntl,
             open,
             fchownat,
+            utimensat,
             fchmodat
         };
     }

@@ -6,14 +6,16 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::UnlinkAtRequest,
-    ffi::c_int,
     message::MessagePartitioner,
-    safe::RawFileDescriptor,
+    sys::stat::message::UpdateFileAccessTimeAtRequest,
+    time::timespec,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::alloc::vec::Vec;
+use ::alloc::{
+    string::ToString,
+    vec::Vec,
+};
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
@@ -30,29 +32,44 @@ use ::nvx::{
 ///
 /// # Description
 ///
-/// Unlinks a file relative to a directory file descriptor.
+/// Sets file access and modification times.
 ///
 /// # Parameters
 ///
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Pathname of the file.
+/// - `times`: Access and modification times.
 /// - `flags`: Flags.
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `unlinkat()` system call returns empty. Otherwise, it returns an
-/// error.
+/// Upon successful completion, the `utimensat()` system call returns empty. Otherwise, it returns
+/// an error.
 ///
-pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
-    ::nvx::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
+pub fn utimensat(
+    dirfd: i32,
+    pathname: &str,
+    times: [timespec; 2],
+    flags: i32,
+) -> Result<(), Error> {
+    ::nvx::trace!(
+        "utimensat(): dirfd={:?}, pathname={:?}, times={:?}, flags={:?}",
+        dirfd,
+        pathname,
+        times,
+        flags
+    );
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
-    // Build request and send it.
-    let request: UnlinkAtRequest = UnlinkAtRequest::new(dirfd, pathname, flags)?;
+    let request: UpdateFileAccessTimeAtRequest =
+        UpdateFileAccessTimeAtRequest::new(dirfd, pathname.to_string(), flags, times)?;
+
     let requests: Vec<Message> = request.into_parts(pid)?;
+
+    // Send request.
     for request in requests {
-        ::nvx::ipc::send(&request)?;
+        nvx::ipc::send(&request)?;
     }
 
     // Receive response.
@@ -60,47 +77,54 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
+        // System call failed, parse error code and return it.
         ::nvx::error!(
-            "unlinkat(): failed (dirfd={}, pathname={}, flags={}, error_code={})",
+            "utimensat(): failed (dirfd={:?}, pathname={:?}, times={:?}, flags={:?}, \
+             error_code={:?})",
             dirfd,
             pathname,
+            times,
             flags,
             { response.status }
         );
         // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
             // Succeeded to parse error code.
-            Ok(error_code) => Err(Error::new(error_code, "unlinkat() failed")),
+            Ok(error_code) => Err(Error::new(error_code, "utimensat() failed")),
             // Failed to parse error code, return generic error.
             Err(error) => {
                 ::nvx::error!(
-                    "unlinkat(): failed to parse error code (dirfd={:?}, pathname={:?}, \
-                     flags={:?}, error={:?})",
+                    "utimensat(): failed to convert error code (dirfd={:?}, pathname={:?}, \
+                     times={:?}, flags={:?}, error={:?})",
                     dirfd,
                     pathname,
+                    times,
                     flags,
                     error
                 );
-                Err(Error::new(ErrorCode::TryAgain, "unlinkat(): failed"))
+                Err(Error::new(ErrorCode::TryAgain, "utimensat() failed"))
             },
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::UnlinkAtResponse => Ok(()),
-            // Response was not parsed.
-            header => {
+            LinuxDaemonMessageHeader::UpdateFileAccessTimeAtResponse => Ok(()),
+            // Response was not successfully parsed.
+            _ => {
+                let reason: &str = "unexpected message header";
                 ::nvx::error!(
-                    "unlinkat(): failed to parse response (dirfd={:?}, pathname={:?}, flags={:?}, \
-                     header={:?})",
+                    "utimensat(): failed (dirfd={:?}, pathname={:?}, times={:?}, flags={:?}, \
+                     reason={:?})",
                     dirfd,
                     pathname,
+                    times,
                     flags,
-                    header
+                    reason
                 );
-                Err(Error::new(ErrorCode::TryAgain, "unlinkat(): failed"))
+                Err(Error::new(ErrorCode::InvalidMessage, reason))
             },
         }
     }
