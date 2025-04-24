@@ -62,3 +62,13 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
         },
     }
 }
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn nanosleep(_req: *const u8, _rem: *mut u8) -> c_int {
+    ::nvx::trace!("nanosleep(): not implemented");
+    unsafe {
+        errno = ErrorCode::InvalidSysCall.get();
+    }
+    -1
+}

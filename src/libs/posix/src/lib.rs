@@ -54,6 +54,9 @@ pub mod netinet;
 /// Posix threads.
 pub mod pthread;
 
+/// Password structure.
+pub mod pwd;
+
 /// Standard symbolic constants and types.
 pub mod unistd;
 
