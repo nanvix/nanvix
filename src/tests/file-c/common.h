@@ -24,6 +24,9 @@ extern void test_fchdir(void);
 // Tests whether we can change access permissions of a file.
 extern void test_fchmod(void);
 
+// Tests whether we can create a hard link to a file.
+extern void test_linkat(void);
+
 // Tests whether we can create a directory.
 extern void test_mkdirat(void);
 

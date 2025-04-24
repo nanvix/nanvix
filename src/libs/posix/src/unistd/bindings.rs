@@ -623,7 +623,7 @@ pub unsafe extern "C" fn linkat(
     newpath: *const c_char,
     flags: c_int,
 ) -> c_int {
-    ::nvx::error!(
+    ::nvx::trace!(
         "linkat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, flags={:?}",
         olddirfd,
         oldpath,
