@@ -100,6 +100,7 @@ int main(int argc, const char *argv[])
     test_renameat(); // requires open(), close() and unlink().
     test_unlinkat(); // requires open() and close().
     test_dirent();
+    test_utimensat();
     test_getcwd();
     test_fchdir();
     test_fchmod();
