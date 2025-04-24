@@ -561,11 +561,11 @@ pub fn test() {
         "foo",
         fcntl::S_IRUSR | fcntl::S_IWUSR | fcntl::S_IXUSR,
     ) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("created directory foo");
         },
-        errno => {
-            panic!("failed to create directory foo: {:?}", errno);
+        Err(error) => {
+            panic!("failed to create directory foo: (error={:?})", error);
         },
     }
 

@@ -7,11 +7,9 @@
 
 use crate::{
     message::MessagePartitioner,
+    safe::RawFileDescriptor,
     sys::{
-        stat::message::{
-            MakeDirectoryAtRequest,
-            MakeDirectoryAtResponse,
-        },
+        stat::message::MakeDirectoryAtRequest,
         types::mode_t,
     },
     LinuxDaemonMessage,
@@ -24,85 +22,97 @@ use ::alloc::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn mkdirat(dirfd: i32, pathname: &str, mode: mode_t) -> i32 {
-    // Send request.
-    let status: i32 = mkdirat_request(dirfd, pathname, mode);
-    if status != 0 {
-        return status;
-    }
+///
+/// # Description
+///
+/// Creates a new directory relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `pathname`: Pathname of the new directory.
+/// - `mode`: Mode of the new directory.
+///
+/// # Returns
+///
+/// Upon successful completion, the `mkdirat()` system call returns empty. Otherwise, it returns an
+/// error.
+///
+pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result<(), Error> {
+    ::nvx::trace!("mkdirat(): dirfd={:?}, pathname={:?}, mode={:?}", dirfd, pathname, mode);
 
-    // Wait for response.
-    mkdirat_response()
-}
-
-fn mkdirat_request(dirfd: i32, pathname: &str, mode: mode_t) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     let request: MakeDirectoryAtRequest =
-        match MakeDirectoryAtRequest::new(dirfd, pathname.to_string(), mode) {
-            Ok(request) => request,
-            Err(e) => return e.code.into_errno(),
-        };
+        MakeDirectoryAtRequest::new(dirfd, pathname.to_string(), mode)?;
 
-    let requests: Vec<Message> = match request.into_parts(pid) {
-        Ok(requests) => requests,
-        Err(e) => return e.code.into_errno(),
-    };
+    let requests: Vec<Message> = request.into_parts(pid)?;
 
     // Send request.
     for request in requests {
-        match ::nvx::ipc::send(&request) {
-            Ok(_) => (),
-            Err(e) => return e.code.into_errno(),
-        }
+        ::nvx::ipc::send(&request)?;
     }
 
-    0
-}
-
-fn mkdirat_response() -> i32 {
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
+        ::nvx::error!(
+            "mkdirat(): failed (dirfd={:?}, pathname={:?}, mode={:?}, error_code={:?})",
+            dirfd,
+            pathname,
+            mode,
+            { response.status }
+        );
+        // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Succeeded to parse error code.
+            Ok(error_code) => {
+                // Return error.
+                Err(Error::new(error_code, "mkdirat() failed"))
+            },
+            // Failed to parse error code, return generic error.
+            Err(error) => {
+                ::nvx::error!(
+                    "mkdirat(): failed to parse error code (dirfd={:?}, pathname={:?}, mode={:?}, \
+                     error={:?})",
+                    dirfd,
+                    pathname,
+                    mode,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "mkdirat(): failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
-            // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::MakeDirectoryAtResponse => {
-                    // Parse response.
-                    let response: MakeDirectoryAtResponse =
-                        MakeDirectoryAtResponse::from_bytes(message.payload);
-
-                    // Return result.
-                    response.ret
-                },
-                // Response was not successfully parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
+            LinuxDaemonMessageHeader::MakeDirectoryAtResponse => Ok(()),
+            header => {
+                let reason: &str = "unexpected message header";
+                ::nvx::error!(
+                    "mkdirat(): {:?} (dirfd={:?}, pathname={:?}, mode={:?}, header={:?})",
+                    reason,
+                    dirfd,
+                    pathname,
+                    mode,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, reason))
             },
-            // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
         }
     }
 }
