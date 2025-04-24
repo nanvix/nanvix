@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        SymbolicLinkAtRequest,
-        SymbolicLinkAtResponse,
-    },
+    fcntl::message::SymbolicLinkAtRequest,
     message::MessagePartitioner,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -21,85 +18,96 @@ use ::alloc::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> i32 {
-    // Send request.
-    let status: i32 = symlinkat_request(target, dirfd, linkpath);
-    if status != 0 {
-        return status;
-    }
+///
+/// # Description
+///
+/// Creates a symbolic link relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `target`: Path to the file to be linked.
+/// - `dirfd`: Directory file descriptor.
+/// - `linkpath`: Path to the new file.
+///
+/// # Returns
+///
+/// Upon successful completion, `symlinkat()` returns empty. Otherwise, it returns an error.
+///
+pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> {
+    ::nvx::trace!("symlinkat(): target={:?}, dirfd={:?}, linkpath={:?}", target, dirfd, linkpath);
 
-    // Wait for response.
-    symlinkat_response()
-}
-
-fn symlinkat_request(target: &str, dirfd: i32, linkpath: &str) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     let request: SymbolicLinkAtRequest =
-        match SymbolicLinkAtRequest::new(target.to_string(), dirfd, linkpath.to_string()) {
-            Ok(request) => request,
-            Err(e) => return e.code.into_errno(),
-        };
+        SymbolicLinkAtRequest::new(target.to_string(), dirfd, linkpath.to_string())?;
 
-    let requests: Vec<Message> = match request.into_parts(pid) {
-        Ok(requests) => requests,
-        Err(e) => return e.code.into_errno(),
-    };
+    let requests: Vec<Message> = request.into_parts(pid)?;
 
     // Send request.
     for request in requests {
-        match ::nvx::ipc::send(&request) {
-            Ok(_) => (),
-            Err(e) => return e.code.into_errno(),
-        }
+        ::nvx::ipc::send(&request)?;
     }
 
-    0
-}
-
-fn symlinkat_response() -> i32 {
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
+        ::nvx::error!(
+            "symlinkat(): failed (target={:?}, dirfd={:?}, linkpath={:?}, error_code={:?})",
+            target,
+            dirfd,
+            linkpath,
+            { response.status },
+        );
+        // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Succeeded to parse error code.
+            Ok(error_code) => {
+                // Return error.
+                Err(Error::new(error_code, "symlinkat() failed"))
+            },
+            // Failed to parse error code, return generic error.
+            Err(error) => {
+                ::nvx::error!(
+                    "symlinkat(): failed to parse error code (target={:?}, dirfd={:?}, \
+                     linkpath={:?}, error={:?})",
+                    target,
+                    dirfd,
+                    linkpath,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "symlinkat(): failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::SymbolicLinkAtResponse => {
-                    // Parse response.
-                    let response: SymbolicLinkAtResponse =
-                        SymbolicLinkAtResponse::from_bytes(message.payload);
-
-                    // Return result.
-                    response.ret
-                },
-                // Response was not successfully parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
-            },
+            LinuxDaemonMessageHeader::SymbolicLinkAtResponse => Ok(()),
             // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            header => {
+                ::nvx::error!(
+                    "symlinkat(): failed to parse response (target={:?}, dirfd={:?}, \
+                     linkpath={:?}, header={:?})",
+                    target,
+                    dirfd,
+                    linkpath,
+                    header
+                );
+                Err(Error::new(ErrorCode::TryAgain, "symlinkat(): failed"))
+            },
         }
     }
 }
