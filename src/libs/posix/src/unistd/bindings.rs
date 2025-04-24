@@ -571,25 +571,22 @@ pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) ->
         },
     };
 
-    let retcode: c_int = crate::unistd::link(oldpath, newpath);
-
     // Check if the system call failed.
-    if retcode < 0 {
-        // System call failed. Set errno.
-        errno = match ErrorCode::try_from(retcode) {
-            Ok(e) => {
-                ::nvx::error!("link(): failed ({:?})", e);
-                e.get()
-            },
-            Err(_) => {
-                ::nvx::error!("link(): invalid error code ({})", retcode);
-                ErrorCode::ValueOutOfRange.get()
-            },
-        };
-        return -1;
+    match crate::unistd::link(oldpath, newpath) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "link(): failed (oldpath={}, newpath={}, error={:?})",
+                oldpath,
+                newpath,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
     }
-
-    0
 }
 
 #[no_mangle]

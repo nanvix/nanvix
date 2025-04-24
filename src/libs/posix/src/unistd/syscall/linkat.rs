@@ -6,11 +6,10 @@
 //==================================================================================================
 
 use crate::{
+    ffi::c_int,
     message::MessagePartitioner,
-    unistd::message::{
-        LinkAtRequest,
-        LinkAtResponse,
-    },
+    safe::RawFileDescriptor,
+    unistd::message::LinkAtRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -21,95 +20,121 @@ use ::alloc::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn linkat(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str, flags: i32) -> i32 {
-    // Send request.
-    let status: i32 = linkat_request(olddirfd, oldpath, newdirfd, newpath, flags);
-    if status != 0 {
-        return status;
-    }
-
-    // Wait for response.
-    linkat_response()
-}
-
-fn linkat_request(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str, flags: i32) -> i32 {
-    let pid: ProcessIdentifier = match crate::unistd::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
-
-    let request: LinkAtRequest = match LinkAtRequest::new(
+///
+/// # Description
+///
+/// Creates a new hard link to an existing file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `olddirfd`: Directory file descriptor of the existing file.
+/// - `oldpath`: Path to the existing file.
+/// - `newdirfd`: Directory file descriptor of the new file.
+/// - `newpath`: Path to the new file.
+/// - `flags`: Flags to control the behavior of the system call.
+///
+/// # Returns
+///
+/// Upon successful completion, `linkat()` returns empty. Otherwise, it returns an error.
+///
+pub fn linkat(
+    olddirfd: RawFileDescriptor,
+    oldpath: &str,
+    newdirfd: RawFileDescriptor,
+    newpath: &str,
+    flags: c_int,
+) -> Result<(), Error> {
+    ::nvx::trace!(
+        "linkat(): olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}",
         olddirfd,
-        oldpath.to_string(),
+        oldpath,
         newdirfd,
-        newpath.to_string(),
-        flags,
-    ) {
-        Ok(request) => request,
-        Err(e) => {
-            ::nvx::error!("failed to create message: {:?}", e);
-            return e.code.into_errno();
-        },
-    };
+        newpath,
+        flags
+    );
 
-    let requests: Vec<Message> = match request.into_parts(pid) {
-        Ok(requests) => requests,
-        Err(e) => {
-            ::nvx::error!("failed to partition message: {:?}", e);
-            return e.code.into_errno();
-        },
-    };
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+
+    let request: LinkAtRequest =
+        LinkAtRequest::new(olddirfd, oldpath.to_string(), newdirfd, newpath.to_string(), flags)?;
+
+    let requests: Vec<Message> = request.into_parts(pid)?;
 
     // Send request.
     for request in requests {
-        match ::nvx::ipc::send(&request) {
-            Ok(_) => (),
-            Err(e) => return e.code.into_errno(),
-        }
+        ::nvx::ipc::send(&request)?;
     }
 
-    0
-}
-
-fn linkat_response() -> i32 {
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
+        ::nvx::error!(
+            "linkat(): failed (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
+             error={})",
+            olddirfd,
+            oldpath,
+            newdirfd,
+            newpath,
+            flags,
+            { response.status },
+        );
+        // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Error code was successfully parsed.
+            Ok(error_code) => {
+                // Return error.
+                Err(Error::new(error_code, "linkat() failed"))
+            },
+            // Error code was not successfully parsed.
+            Err(error) => {
+                ::nvx::error!(
+                    "linkat(): failed to parse error code (olddirfd={}, oldpath={}, newdirfd={}, \
+                     newpath={}, flags={}, error={:?})",
+                    olddirfd,
+                    oldpath,
+                    newdirfd,
+                    newpath,
+                    flags,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "linkat(): failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::LinkAtResponse => {
-                    // Parse response.
-                    let response: LinkAtResponse = LinkAtResponse::from_bytes(message.payload);
-
-                    // Return result.
-                    response.ret
-                },
-                // Response was not successfully parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
-            },
+            LinuxDaemonMessageHeader::LinkAtResponse => Ok(()),
             // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            header => {
+                let reason: &str = "unexpected message header";
+                ::nvx::error!(
+                    "linkat(): {:?} (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
+                     header={:?})",
+                    reason,
+                    olddirfd,
+                    oldpath,
+                    newdirfd,
+                    newpath,
+                    flags,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, reason))
+            },
         }
     }
 }
