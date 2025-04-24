@@ -30,10 +30,10 @@ mod bindings {
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
     pub unsafe extern "C" fn utime(_filename: *const c_int, _times: *const utimbuf) -> c_int {
-        // TODO: https://github.com/nanvix/nanvix/issues/524
+        // TODO: https://github.com/nanvix/nanvix/issues/530
         ::nvx::error!("utime(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.into_errno();
+            errno = ErrorCode::InvalidSysCall.get();
         }
         -1
     }
