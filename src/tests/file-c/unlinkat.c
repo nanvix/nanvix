@@ -4,6 +4,13 @@
  */
 
 //==================================================================================================
+// Configuration
+//==================================================================================================
+
+/* Must come first. */
+#define _POSIX_C_SOURCE 200809 // AT_FDCWD
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -18,21 +25,21 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests wether we can create and unlink a file.
-void test_create_unlink(void)
+// Tests whether we can remove a file.
+void test_unlinkat(void)
 {
-    printf("testing create()/unlink() ... ");
+    printf("testing unlinkat() ... ");
 
-    const char *filename = "testfile.txt";
+    const char *filename = "test.txt";
     assert(strlen(filename) <= NAME_MAX);
 
     // Create a test file.
-    int fd = open(filename, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     assert(fd != -1);
     assert(close(fd) == 0);
 
     // Remove test file.
-    assert(unlink(filename) == 0);
+    assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
     printf("ok\n");
 }

@@ -481,11 +481,11 @@ pub fn test() {
 
     // Unlink file named `baz.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "baz.tmp", 0) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("unlinked file baz.tmp");
         },
-        errno => {
-            panic!("failed to unlink file baz.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to unlink file baz.tmp (error={:?})", error);
         },
     }
 
@@ -501,11 +501,11 @@ pub fn test() {
 
     // Unlink file named `baz.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "baz.tmp", 0) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("unlinked file baz.tmp");
         },
-        errno => {
-            panic!("failed to unlink file baz.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to unlink file baz.tmp (error={:?})", error);
         },
     }
 
@@ -606,11 +606,11 @@ pub fn test() {
 
     // Unlink file named `foo.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "foo.tmp", 0) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("unlinked file foo.tmp");
         },
-        errno => {
-            panic!("failed to unlink file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to unlink file foo.tmp (error={:?})", error);
         },
     }
 
@@ -626,11 +626,11 @@ pub fn test() {
 
     // Remove directory named `foo`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "foo", fcntl::AT_REMOVEDIR) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("removed directory foo");
         },
-        errno => {
-            panic!("failed to remove directory foo: {:?}", errno);
+        Err(error) => {
+            panic!("failed to remove directory foo (error={:?})", error);
         },
     }
 
