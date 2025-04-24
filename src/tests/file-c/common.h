@@ -25,6 +25,9 @@ extern void test_fchdir(void);
 extern void test_fchmod(void);
 
 // Tests whether we can create a hard link to a file.
+extern void test_link(void);
+
+// Tests whether we can create a hard link to a file.
 extern void test_linkat(void);
 
 // Tests whether we can create a directory.
