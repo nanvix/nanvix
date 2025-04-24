@@ -7,6 +7,10 @@
 
 use crate::{
     errno::errno,
+    fcntl::{
+        self,
+        fcntl,
+    },
     ffi::{
         c_char,
         c_int,
@@ -543,50 +547,21 @@ pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t)
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// Upon successful completion, `link()` returns zero. Otherwise, it returns -1 and sets `errno` to
 /// indicate the error.
 ///
-/// # See Also
+/// # Safety
 ///
-/// - [`crate::unistd::link()`]
+/// The function is unsafe becase it may dereference pointers.
 ///
-#[allow(clippy::missing_safety_doc)]
+/// It is safe to use this function if the following conditions are met:
+/// - `oldpath` points to a valid null-terminated string.
+/// - `newpath` points to a valid null-terminated string.
+///
 #[no_mangle]
 pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
-    // Convert C strings to Rust strings.
-    let oldpath: &str = match ffi::CStr::from_ptr(oldpath).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!("link(): invalid oldpath");
-            errno = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-    let newpath: &str = match ffi::CStr::from_ptr(newpath).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!("link(): invalid newpath");
-            errno = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Check if the system call failed.
-    match crate::unistd::link(oldpath, newpath) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::nvx::error!(
-                "link(): failed (oldpath={}, newpath={}, error={:?})",
-                oldpath,
-                newpath,
-                error
-            );
-            unsafe {
-                errno = error.code.get();
-            }
-            -1
-        },
-    }
+    ::nvx::trace!("link(): oldpath={:?}, newpath={:?}", oldpath, newpath);
+    linkat(fcntl::AT_FDCWD, oldpath, fcntl::AT_FDCWD, newpath, 0)
 }
 
 ///
