@@ -49,7 +49,7 @@ cfg_if::cfg_if! {
 /// Mask for file access mode.
 pub const O_ACCMODE: i32 = 0x3;
 /// Remove directory instead of file.
-pub const AT_REMOVEDIR: i32 = 1 << 9;
+pub const AT_REMOVEDIR: i32 = 8;
 /// Do not follow symbolic links.
 pub const AT_SYMLINK_NOFOLLOW: i32 = 1 << 10;
 /// Open for execute only.
