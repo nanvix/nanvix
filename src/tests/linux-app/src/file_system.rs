@@ -491,11 +491,11 @@ pub fn test() {
 
     // Create a hard link to `foo.tmp`.
     match unistd::linkat(fcntl::AT_FDCWD, "foo.tmp", fcntl::AT_FDCWD, "baz.tmp", 0) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("created hard link baz.tmp to foo.tmp");
         },
-        errno => {
-            panic!("failed to create hard link baz.tmp to foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to create hard link baz.tmp to foo.tmp (error={:?})", error);
         },
     }
 
