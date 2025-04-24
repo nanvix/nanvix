@@ -827,6 +827,75 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     }
 }
 
+///
+/// # Description
+///
+/// Creates a symbolic link relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `target`: Path to the file to be linked.
+/// - `dirfd`: Directory file descriptor.
+/// - `linkpath`: Path to the new file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `target` points to a valid null-terminated string.
+/// - `linkpath` points to a valid null-terminated string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn symlinkat(
+    target: *const c_char,
+    dirfd: c_int,
+    linkpath: *const c_char,
+) -> c_int {
+    ::nvx::error!("symlinkat(): target={:?}, dirfd={}, linkpath={:?}", target, dirfd, linkpath);
+
+    // Attempt to convert `target`.
+    let target: &str = match ffi::CStr::from_ptr(target).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("symlinkat(): invalid target");
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to convert `linkpath`.
+    let linkpath: &str = match ffi::CStr::from_ptr(linkpath).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("symlinkat(): invalid linkpath");
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Create symbolic link and parse the result.
+    match crate::unistd::symlinkat(target, dirfd, linkpath) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "symlinkat(): failed (target={}, dirfd={}, linkpath={}, error={:?})",
+                target,
+                dirfd,
+                linkpath,
+                error
+            );
+            errno = error.code.get();
+            -1
+        },
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn sysconf(_name: c_int) -> c_long {
     // TODO: https://github.com/nanvix/nanvix/issues/342
