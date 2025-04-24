@@ -10,7 +10,6 @@ mod fallocate;
 mod fchmodat;
 mod fchownat;
 mod fcntl;
-mod mkdirat;
 mod openat;
 mod readlinkat;
 mod renameat;
@@ -41,10 +40,6 @@ pub use self::{
     fcntl::{
         FileControlRequest,
         FileControlResponse,
-    },
-    mkdirat::{
-        MakeDirectoryAtRequest,
-        MakeDirectoryAtResponse,
     },
     openat::{
         OpenAtRequest,

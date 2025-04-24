@@ -9,6 +9,7 @@ mod fstat;
 mod fstatat;
 mod futimens;
 mod lstat;
+mod mkdirat;
 mod stat;
 
 //==================================================================================================
@@ -45,6 +46,7 @@ pub use fstat::fstat;
 pub use fstatat::fstatat;
 pub use futimens::futimens;
 pub use lstat::lstat;
+pub use mkdirat::mkdirat;
 pub use stat::stat;
 
 //==================================================================================================
