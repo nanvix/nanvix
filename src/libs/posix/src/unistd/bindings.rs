@@ -9,7 +9,6 @@ use crate::{
     errno::errno,
     fcntl::{
         self,
-        fcntl,
     },
     ffi::{
         c_char,
@@ -817,22 +816,15 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
         },
     };
 
-    let retcode: c_int = crate::unistd::symlink(target, linkpath);
-
     // Check if the system call failed.
-    if retcode < 0 {
-        // System call failed. Set errno.
-        errno = match ErrorCode::try_from(retcode) {
-            Ok(e) => e.get(),
-            Err(_) => {
-                ::nvx::error!("symlink(): invalid error code ({})", retcode);
-                ErrorCode::ValueOutOfRange.get()
-            },
-        };
-        return -1;
+    match crate::unistd::symlink(target, linkpath) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("symlink(): failed (error={:?})", error);
+            errno = error.code.get();
+            -1
+        },
     }
-
-    0
 }
 
 #[no_mangle]

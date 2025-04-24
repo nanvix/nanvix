@@ -5,6 +5,8 @@
 // Modules
 //==================================================================================================
 
+use nvx::sys::error::Error;
+
 use crate::fcntl;
 
 //==================================================================================================
@@ -39,7 +41,7 @@ use crate::fcntl;
 ///
 /// Upon successful completion, `0` is returned. Otherwise, an error code is returned instead.
 ///
-pub fn symlink(target: &str, linkpath: &str) -> i32 {
+pub fn symlink(target: &str, linkpath: &str) -> Result<(), Error> {
     ::nvx::trace!("symlink(): target = {:?}, linkpath = {:?}", target, linkpath);
     fcntl::symlinkat(target, crate::fcntl::AT_FDCWD, linkpath)
 }
