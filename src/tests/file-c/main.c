@@ -97,6 +97,7 @@ int main(int argc, const char *argv[])
     test_open_close();
     test_create_unlink(); // tests open() and unlink().
     test_stat();
+    test_linkat();   // requires open(), stat() and unlinkat().
     test_renameat(); // requires open(), close() and unlink().
     test_unlinkat(); // requires open() and close().
     test_mkdirat();  // requires stat() and unlinkat().

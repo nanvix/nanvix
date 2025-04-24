@@ -489,26 +489,6 @@ pub fn test() {
         },
     }
 
-    // Create a hard link to `foo.tmp`.
-    match unistd::linkat(fcntl::AT_FDCWD, "foo.tmp", fcntl::AT_FDCWD, "baz.tmp", 0) {
-        Ok(()) => {
-            ::nvx::info!("created hard link baz.tmp to foo.tmp");
-        },
-        Err(error) => {
-            panic!("failed to create hard link baz.tmp to foo.tmp (error={:?})", error);
-        },
-    }
-
-    // Unlink file named `baz.tmp`.
-    match fcntl::unlinkat(fcntl::AT_FDCWD, "baz.tmp", 0) {
-        Ok(()) => {
-            ::nvx::info!("unlinked file baz.tmp");
-        },
-        Err(error) => {
-            panic!("failed to unlink file baz.tmp (error={:?})", error);
-        },
-    }
-
     // Get status of file named `foo.tmp`.
     let mut bar_tmp: stat = stat::default();
     match sys::stat::fstatat(fcntl::AT_FDCWD, "foo.tmp", &mut bar_tmp, 0) {
