@@ -7,6 +7,7 @@
 
 use crate::{
     errno::errno,
+    fcntl,
     ffi::{
         c_char,
         c_int,
@@ -145,15 +146,32 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
     }
 }
 
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Creates a new directory.
+///
+/// # Parameters
+///
+/// - `pathname`: Pathname of the new directory.
+/// - `mode`: Mode of the new directory.
+///
+/// # Returns
+///
+/// Upon successful completion, `mkdir()` returns zero. Otherwise, it returns -1 and sets `errno`
+/// to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `pathname` points to a valid null-terminated C string.
+///
 #[no_mangle]
-pub unsafe extern "C" fn mkdir(_pathname: *const c_char, _mode: u32) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/347
-    ::nvx::error!("mkdir(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
-    }
-    -1
+pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
+    ::nvx::trace!("mkdir(): pathname={:?}, mode={}", pathname, mode);
+    mkdirat(fcntl::AT_FDCWD, pathname, mode)
 }
 
 ///
