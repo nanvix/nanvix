@@ -364,6 +364,13 @@ pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: 
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
+            ::nvx::error!(
+                "unlinkat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, error={:?})",
+                dirfd,
+                path,
+                flags,
+                error
+            );
             errno = error.code.get();
             -1
         },
