@@ -777,22 +777,15 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
         },
     };
 
-    let retcode: c_int = crate::unistd::unlink(path);
-
-    // Check if the system call failed.
-    if retcode < 0 {
-        // System call failed. Set errno.
-        errno = match ErrorCode::try_from(retcode) {
-            Ok(e) => e.get(),
-            Err(_) => {
-                ::nvx::error!("unlink(): invalid error code ({})", retcode);
-                ErrorCode::ValueOutOfRange.get()
-            },
-        };
-        return -1;
+    // Process system call and parse result.
+    match crate::unistd::unlink(path) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("unlink(): failed (error={:?})", error);
+            errno = error.code.get();
+            -1
+        },
     }
-
-    0
 }
 
 ///

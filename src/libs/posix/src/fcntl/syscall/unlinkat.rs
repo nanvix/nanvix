@@ -6,70 +6,97 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        UnlinkAtRequest,
-        UnlinkAtResponse,
-    },
+    fcntl::message::UnlinkAtRequest,
+    ffi::c_int,
+    safe::RawFileDescriptor,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::core::ffi;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn unlinkat(dirfd: i32, pathname: &str, flags: ffi::c_int) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+///
+/// # Description
+///
+/// Unlinks a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `pathname`: Pathname of the file.
+/// - `flags`: Flags.
+///
+/// # Returns
+///
+/// Upon successful completion, the `unlinkat()` system call returns empty. Otherwise, it returns an
+/// error.
+///
+pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
+    ::nvx::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
+
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
-    let request: Message = match UnlinkAtRequest::build(pid, dirfd, pathname, flags) {
-        Ok(request) => request,
-        Err(e) => return e.code.into_errno(),
-    };
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    let request: Message = UnlinkAtRequest::build(pid, dirfd, pathname, flags)?;
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
+        ::nvx::error!(
+            "unlinkat(): failed (dirfd={}, pathname={}, flags={}, error_code={})",
+            dirfd,
+            pathname,
+            flags,
+            { response.status }
+        );
+        // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Succeeded to parse error code.
+            Ok(error_code) => Err(Error::new(error_code, "unlinkat() failed")),
+            // Failed to parse error code, return generic error.
+            Err(error) => {
+                ::nvx::error!(
+                    "unlinkat(): failed to parse error code (dirfd={:?}, pathname={:?}, \
+                     flags={:?}, error={:?})",
+                    dirfd,
+                    pathname,
+                    flags,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "unlinkat(): failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::UnlinkAtResponse => {
-                    // Parse response.
-                    let response: UnlinkAtResponse = UnlinkAtResponse::from_bytes(message.payload);
-
-                    // Return result.
-                    response.ret
-                },
-                // Response was not parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
-            },
+            LinuxDaemonMessageHeader::UnlinkAtResponse => Ok(()),
             // Response was not parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            header => {
+                ::nvx::error!(
+                    "unlinkat(): failed to parse response (dirfd={:?}, pathname={:?}, flags={:?}, \
+                     header={:?})",
+                    dirfd,
+                    pathname,
+                    flags,
+                    header
+                );
+                Err(Error::new(ErrorCode::TryAgain, "unlinkat(): failed"))
+            },
         }
     }
 }
