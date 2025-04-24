@@ -29,7 +29,6 @@ use ::posix::{
         OpenAtRequest,
         ReadLinkAtRequest,
         RenameAtRequest,
-        SymbolicLinkAtRequest,
         UnlinkAtRequest,
     },
     message::{
@@ -41,7 +40,10 @@ use ::posix::{
         MakeDirectoryAtRequest,
         UpdateFileAccessTimeAtRequest,
     },
-    unistd::message::LinkAtRequest,
+    unistd::message::{
+        LinkAtRequest,
+        SymbolicLinkAtRequest,
+    },
 };
 
 //==================================================================================================

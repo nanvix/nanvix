@@ -453,7 +453,7 @@ pub fn test() {
     }
 
     // Create a symbolic link to `foo.tmp`.
-    match fcntl::symlinkat("foo.tmp", fcntl::AT_FDCWD, "baz.tmp") {
+    match unistd::symlinkat("foo.tmp", fcntl::AT_FDCWD, "baz.tmp") {
         Ok(()) => {
             ::nvx::info!("created symbolic link baz.tmp to foo.tmp");
         },
