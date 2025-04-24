@@ -10,7 +10,6 @@ mod fallocate;
 mod fchmodat;
 mod fchownat;
 mod fcntl;
-mod mkdirat;
 mod open;
 mod openat;
 mod readlinkat;
@@ -29,7 +28,6 @@ pub use self::{
     fchmodat::fchmodat,
     fchownat::fchownat,
     fcntl::fcntl,
-    mkdirat::mkdirat,
     open::open,
     openat::openat,
     readlinkat::readlinkat,

@@ -6,12 +6,14 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        MakeDirectoryAtRequest,
-        MakeDirectoryAtResponse,
-    },
     message::MessagePartitioner,
-    sys::types::mode_t,
+    sys::{
+        stat::message::{
+            MakeDirectoryAtRequest,
+            MakeDirectoryAtResponse,
+        },
+        types::mode_t,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
