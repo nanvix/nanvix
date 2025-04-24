@@ -8,6 +8,7 @@
 mod fstat;
 mod fstatat;
 mod futimens;
+mod mkdirat;
 mod utimensat;
 
 //==================================================================================================
@@ -23,6 +24,10 @@ pub use self::{
     futimens::{
         UpdateFileAccessTimeRequest,
         UpdateFileAccessTimeResponse,
+    },
+    mkdirat::{
+        MakeDirectoryAtRequest,
+        MakeDirectoryAtResponse,
     },
     utimensat::{
         UpdateFileAccessTimeAtRequest,

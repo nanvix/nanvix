@@ -26,7 +26,6 @@ use ::posix::{
     fcntl::message::{
         FileChmodAtRequest,
         FileChownAtRequest,
-        MakeDirectoryAtRequest,
         OpenAtRequest,
         ReadLinkAtRequest,
         RenameAtRequest,
@@ -39,6 +38,7 @@ use ::posix::{
     },
     sys::stat::message::{
         FileStatAtRequest,
+        MakeDirectoryAtRequest,
         UpdateFileAccessTimeAtRequest,
     },
     unistd::message::LinkAtRequest,

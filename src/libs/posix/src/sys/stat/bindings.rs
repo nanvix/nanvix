@@ -11,7 +11,10 @@ use crate::{
         c_char,
         c_int,
     },
-    sys::stat,
+    sys::{
+        stat,
+        types::mode_t,
+    },
 };
 use ::core::ffi;
 use ::nvx::sys::error::ErrorCode;
@@ -151,6 +154,60 @@ pub unsafe extern "C" fn mkdir(_pathname: *const c_char, _mode: u32) -> c_int {
         errno = ErrorCode::InvalidSysCall.get();
     }
     -1
+}
+
+///
+/// # Description
+///
+/// Creates a new directory relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `pathname`: Pathname of the new directory.
+/// - `mode`: Mode of the new directory.
+///
+/// # Returns
+///
+/// Upon successful completion, `mkdirat()` returns zero. Otherwise, it returns -1 and sets `errno`
+/// to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `pathname` points to a valid null-terminated C string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int {
+    ::nvx::trace!("mkdirat(): dirfd={}, pathname={:?}, mode={}", dirfd, pathname, mode);
+
+    // Attempt to convert `pathname`.
+    let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("mkdirat(): invalid pathname");
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to create the directory and parse the result.
+    match crate::sys::stat::mkdirat(dirfd, pathname, mode) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "mkdirat(): failed (dirfd={}, pathname={:?}, mode={}, error={:?})",
+                dirfd,
+                pathname,
+                mode,
+                error
+            );
+            errno = error.code.get();
+            -1
+        },
+    }
 }
 
 #[allow(clippy::missing_safety_doc)]

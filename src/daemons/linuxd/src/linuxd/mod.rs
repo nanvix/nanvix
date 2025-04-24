@@ -48,7 +48,6 @@ use ::posix::{
         FileChownAtRequest,
         FileControlRequest,
         FileSpaceControlRequest,
-        MakeDirectoryAtRequest,
         OpenAtRequest,
         ReadLinkAtRequest,
         RenameAtRequest,
@@ -73,6 +72,7 @@ use ::posix::{
         stat::message::{
             FileStatAtRequest,
             FileStatRequest,
+            MakeDirectoryAtRequest,
             UpdateFileAccessTimeAtRequest,
             UpdateFileAccessTimeRequest,
         },
