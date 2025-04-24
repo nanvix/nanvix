@@ -33,7 +33,6 @@ cfg_if::cfg_if! {
             renameat,
             posix_fallocate,
             posix_fadvise,
-            symlinkat,
             readlinkat,
             fcntl,
             open,

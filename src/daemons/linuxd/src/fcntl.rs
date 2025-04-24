@@ -36,8 +36,6 @@ use ::posix::{
             ReadLinkAtResponse,
             RenameAtRequest,
             RenameAtResponse,
-            SymbolicLinkAtRequest,
-            SymbolicLinkAtResponse,
             UnlinkAtRequest,
             UnlinkAtResponse,
         },
@@ -67,6 +65,10 @@ use ::posix::{
         },
     },
     time::timespec,
+    unistd::message::{
+        SymbolicLinkAtRequest,
+        SymbolicLinkAtResponse,
+    },
 };
 
 //==================================================================================================

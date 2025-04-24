@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::SymbolicLinkAtRequest,
     message::MessagePartitioner,
+    unistd::message::SymbolicLinkAtRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
