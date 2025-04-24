@@ -555,30 +555,6 @@ pub fn test() {
         },
     }
 
-    // Create directory named `foo`.
-    match sys::stat::mkdirat(
-        fcntl::AT_FDCWD,
-        "foo",
-        fcntl::S_IRUSR | fcntl::S_IWUSR | fcntl::S_IXUSR,
-    ) {
-        Ok(()) => {
-            ::nvx::info!("created directory foo");
-        },
-        Err(error) => {
-            panic!("failed to create directory foo: (error={:?})", error);
-        },
-    }
-
-    // Remove directory named `foo`.
-    match fcntl::unlinkat(fcntl::AT_FDCWD, "foo", fcntl::AT_REMOVEDIR) {
-        Ok(()) => {
-            ::nvx::info!("removed directory foo");
-        },
-        Err(error) => {
-            panic!("failed to remove directory foo (error={:?})", error);
-        },
-    }
-
     test_pipe();
 }
 
