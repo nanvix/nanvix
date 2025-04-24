@@ -35,7 +35,6 @@ cfg_if::cfg_if! {
             posix_fadvise,
             symlinkat,
             readlinkat,
-            mkdirat,
             fcntl,
             open,
             fchownat,
