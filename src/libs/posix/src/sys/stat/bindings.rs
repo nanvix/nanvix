@@ -36,36 +36,14 @@ use ::nvx::sys::error::ErrorCode;
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
-/// the error.
-///
-/// # See Also
-///
-/// - [`crate::unistd::chmod()`]
+/// Upon successful completion, `chmod()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
 ///
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
-    // Convert C string to Rust string.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!("chmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
-            unsafe {
-                errno = ErrorCode::InvalidArgument.get();
-            }
-            return -1;
-        },
-    };
-
-    match crate::sys::stat::chmod(path, mode) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("chmod(): failed ({:?})", e);
-            errno = e.code.get();
-            -1
-        },
-    }
+    ::nvx::trace!("chmod(): path={:?}, mode={}", path, mode);
+    fchmodat(fcntl::AT_FDCWD, path, mode, 0)
 }
 
 #[allow(clippy::missing_safety_doc)]
