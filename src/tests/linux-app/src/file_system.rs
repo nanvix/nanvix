@@ -452,43 +452,6 @@ pub fn test() {
         },
     }
 
-    // Create a symbolic link to `foo.tmp`.
-    match unistd::symlinkat("foo.tmp", fcntl::AT_FDCWD, "baz.tmp") {
-        Ok(()) => {
-            ::nvx::info!("created symbolic link baz.tmp to foo.tmp");
-        },
-        Err(error) => {
-            panic!("failed to create symbolic link baz.tmp to foo.tmp: (error={:?})", error);
-        },
-    }
-
-    // Readlink file named `baz.tmp`.
-    let mut buffer: [u8; 512] = [0; 512];
-    match fcntl::readlinkat(fcntl::AT_FDCWD, "baz.tmp", &mut buffer) {
-        len if len >= 0 => {
-            ::nvx::info!("read link baz.tmp");
-            // Print.
-            let mut i: usize = 0;
-            while buffer[i] != 0 {
-                ::nvx::info!("{}", buffer[i] as char);
-                i += 1;
-            }
-        },
-        errno => {
-            panic!("failed to read link baz.tmp: {:?}", errno);
-        },
-    }
-
-    // Unlink file named `baz.tmp`.
-    match fcntl::unlinkat(fcntl::AT_FDCWD, "baz.tmp", 0) {
-        Ok(()) => {
-            ::nvx::info!("unlinked file baz.tmp");
-        },
-        Err(error) => {
-            panic!("failed to unlink file baz.tmp (error={:?})", error);
-        },
-    }
-
     // Get status of file named `foo.tmp`.
     let mut bar_tmp: stat = stat::default();
     match sys::stat::fstatat(fcntl::AT_FDCWD, "foo.tmp", &mut bar_tmp, 0) {

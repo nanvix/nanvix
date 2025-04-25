@@ -12,7 +12,6 @@ mod fchownat;
 mod fcntl;
 mod open;
 mod openat;
-mod readlinkat;
 mod renameat;
 mod unlinkat;
 mod utimensat;
@@ -29,7 +28,6 @@ pub use self::{
     fcntl::fcntl,
     open::open,
     openat::openat,
-    readlinkat::readlinkat,
     renameat::renameat,
     unlinkat::unlinkat,
     utimensat::utimensat,

@@ -32,8 +32,6 @@ use ::posix::{
             FileSpaceControlResponse,
             OpenAtRequest,
             OpenAtResponse,
-            ReadLinkAtRequest,
-            ReadLinkAtResponse,
             RenameAtRequest,
             RenameAtResponse,
             UnlinkAtRequest,
@@ -43,6 +41,7 @@ use ::posix::{
         AT_REMOVEDIR,
     },
     ffi::c_int,
+    limits::PATH_MAX,
     message::MessagePartitioner,
     sys::{
         stat::{
@@ -66,6 +65,8 @@ use ::posix::{
     },
     time::timespec,
     unistd::message::{
+        ReadLinkAtRequest,
+        ReadLinkAtResponse,
         SymbolicLinkAtRequest,
         SymbolicLinkAtResponse,
     },
@@ -492,7 +493,7 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
     };
 
     // TODO: Have a system-wide constant for this.
-    let mut buf: Vec<u8> = vec![0u8; ReadLinkAtResponse::BUFFER_SIZE_MAX];
+    let mut buf: Vec<u8> = vec![0u8; PATH_MAX];
 
     debug!(
         "libc::readlinkat(): dirfd={:?}, path={:?}, capacity={:?}",
@@ -504,7 +505,7 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
         libc::readlinkat(dirfd.inner(), path.as_ptr(), buf.as_mut_ptr() as *mut i8, buf.capacity())
     } {
         len if len >= 0 => {
-            debug!("libc::readlinkat(): success");
+            debug!("libc::readlinkat(): (len={:?})", len);
 
             buf.truncate(len as usize);
 
