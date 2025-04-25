@@ -27,6 +27,7 @@ mod pwrite;
 mod read;
 mod sbrk;
 mod symlink;
+mod symlinkat;
 mod unlink;
 mod write;
 
@@ -57,6 +58,7 @@ pub use self::{
     read::read,
     sbrk::sbrk,
     symlink::symlink,
+    symlinkat::symlinkat,
     unlink::unlink,
     write::write,
 };

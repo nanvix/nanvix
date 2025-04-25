@@ -51,6 +51,7 @@ cfg_if::cfg_if! {
             link,
             linkat,
             lseek,
+            symlinkat,
             pread,
             pwrite,
             read,
