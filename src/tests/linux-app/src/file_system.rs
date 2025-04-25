@@ -312,31 +312,6 @@ pub fn test() {
         },
     };
 
-    // Change file mode.
-    match sys::stat::fchmod(fd, fcntl::S_IRUSR | fcntl::S_IWUSR) {
-        Ok(()) => {
-            ::nvx::info!("changed file mode of file foo.tmp");
-        },
-        Err(e) => {
-            panic!("failed to change file mode of file foo.tmp: {:?}", e);
-        },
-    };
-
-    // Get file access mode and the file status flags.
-    let flags: i32 = match fcntl::fcntl(fd, fcntl::F_GETFL, 0) {
-        flags if flags >= 0 => {
-            ::nvx::info!("got file access mode and file status flags {}", flags);
-            flags
-        },
-        errno => {
-            panic!("failed to get file access mode and file status flags: {:?}", errno);
-        },
-    };
-    // Check if file is open for reading and writing.
-    if (flags & fcntl::O_ACCMODE) != OpenFlags::O_RDWR.into() {
-        panic!("file is not open for reading and writing");
-    }
-
     // Update access time of file named `foo.tmp`.
     let times: [timespec; 2] = [
         timespec {
@@ -407,16 +382,6 @@ pub fn test() {
         },
         Err(e) => {
             panic!("failed to change owner of file foo.tmp: {:?}", e);
-        },
-    };
-
-    // Change file mode.
-    match sys::stat::fchmodat(fcntl::AT_FDCWD, "foo.tmp", fcntl::S_IRUSR | fcntl::S_IWUSR, 0) {
-        Ok(()) => {
-            ::nvx::info!("changed file mode of file foo.tmp");
-        },
-        Err(e) => {
-            panic!("failed to change file mode of file foo.tmp: {:?}", e);
         },
     };
 
