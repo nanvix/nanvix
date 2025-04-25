@@ -37,9 +37,11 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty is returned. Otherwise, an error is returned.
+/// Upon successful completion, `ftruncate()` returns empty. Otherwise, it returns an error.
 ///
 pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
+    ::nvx::debug!("ftruncate(): fd={}, length={}", fd, length);
+
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
     // Build request and send it.
@@ -51,10 +53,20 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
-        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::nvx::error!("ftruncate(): failed ({:?})", error_code);
-        Err(Error::new(error_code, "ftruncate() failed"))
+        ::nvx::error!(
+            "ftruncate(): system call failed: fd={}, length={}, status={}",
+            fd,
+            length,
+            { response.status }
+        );
+
+        // System call failed, parse error.
+        match ErrorCode::try_from(response.status) {
+            // System call failed, return error.
+            Ok(error_code) => Err(Error::new(error_code, "system call failed")),
+            // Invalid error code.
+            Err(_) => Err(Error::new(ErrorCode::InvalidMessage, "invalid error code")),
+        }
     } else {
         // System call succeeded, parse response.
         let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
@@ -63,7 +75,15 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
             // Response was successfully parsed.
             LinuxDaemonMessageHeader::FileTruncateResponse => Ok(()),
             // Invalid response.
-            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
+            header => {
+                ::nvx::error!(
+                    "ftruncate(): invalid response: fd={}, length={}, header={:?}",
+                    fd,
+                    length,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
+            },
         }
     }
 }
