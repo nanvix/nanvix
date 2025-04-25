@@ -504,7 +504,7 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
         libc::readlinkat(dirfd.inner(), path.as_ptr(), buf.as_mut_ptr() as *mut i8, buf.capacity())
     } {
         len if len >= 0 => {
-            debug!("libc::readlinkat(): success");
+            debug!("libc::readlinkat(): (len={:?})", len);
 
             buf.truncate(len as usize);
 
