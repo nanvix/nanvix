@@ -11,7 +11,6 @@ mod fchmodat;
 mod fchownat;
 mod fcntl;
 mod openat;
-mod readlinkat;
 mod renameat;
 mod unlinkat;
 
@@ -43,10 +42,6 @@ pub use self::{
     openat::{
         OpenAtRequest,
         OpenAtResponse,
-    },
-    readlinkat::{
-        ReadLinkAtRequest,
-        ReadLinkAtResponse,
     },
     renameat::{
         RenameAtRequest,

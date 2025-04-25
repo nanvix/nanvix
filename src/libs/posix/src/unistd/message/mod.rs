@@ -19,6 +19,7 @@ mod pipe;
 mod pread;
 mod pwrite;
 mod read;
+mod readlinkat;
 mod symlinkat;
 mod write;
 
@@ -82,6 +83,10 @@ pub use self::{
     read::{
         ReadRequest,
         ReadResponse,
+    },
+    readlinkat::{
+        ReadLinkAtRequest,
+        ReadLinkAtResponse,
     },
     symlinkat::{
         SymbolicLinkAtRequest,
