@@ -95,14 +95,17 @@ pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `fchmodat()` system call returns `0`. Otherwise, it returns
-/// `-1` and sets `errno` to indicate the error.
+/// Upon successful completion, `fchmodat()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
 ///
-/// # See Also
+/// # Safety
 ///
-/// - [`crate::fcntl::fchmodat()`]
+/// This function is unsafe because it may dereference a raw pointer.
 ///
-#[allow(clippy::missing_safety_doc)]
+/// It is safe to call this function if the following conditions are met:
+/// - `path` points to a valid null-terminated C string.
+///
+///
 #[no_mangle]
 pub unsafe extern "C" fn fchmodat(
     dirfd: c_int,
@@ -110,30 +113,48 @@ pub unsafe extern "C" fn fchmodat(
     mode: mode_t,
     flag: c_int,
 ) -> c_int {
-    // Convert C string to Rust string.
+    ::nvx::trace!(
+        "fchmodat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
+        dirfd,
+        path,
+        mode,
+        flag
+    );
+
+    // Attempt to convert `path`.
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => {
+        Err(error) => {
             ::nvx::error!(
-                "fchmodat(): invalid pathname (dirfd={:?}, mode={:?}, flag={:?})",
+                "fchmodat(): invalid pathname (dirfd={:?}, mode={:?}, flag={:?}, error={:?})",
                 dirfd,
                 mode,
-                flag
+                flag,
+                error
             );
             errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
 
+    // Attempt to change the mode and parse the result.
     match crate::sys::stat::fchmodat(dirfd, pathname, mode, flag) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("fchmodat(): invalid error code");
-            errno = e.code.get();
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "fchmodat(): failed (dirfd={}, pathname={:?}, mode={}, flag={}, error={:?})",
+                dirfd,
+                pathname,
+                mode,
+                flag,
+                error
+            );
+            errno = error.code.get();
             -1
         },
     }
 }
+
 ///
 /// # Safety
 ///
