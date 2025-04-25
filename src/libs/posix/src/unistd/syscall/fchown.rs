@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
+    safe::RawFileDescriptor,
     sys::types::{
         gid_t,
         uid_t,
@@ -41,10 +41,9 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `fchown()` system call returns empty. Otherwise, it returns an
-/// error.
+/// Upon successful completion, `fchown()` returns empty. Otherwise, it returns an error.
 ///
-pub fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> Result<(), Error> {
+pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::nvx::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
@@ -58,9 +57,20 @@ pub fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
-        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        Err(Error::new(error_code, "fchown() failed"))
+        ::nvx::error!(
+            "fchown(): failed (fd={:?}, owner={:?}, group={:?}, status={:?})",
+            fd,
+            owner,
+            group,
+            { response.status }
+        );
+
+        match ErrorCode::try_from(response.status) {
+            // System call failed, return error.
+            Ok(error_code) => Err(Error::new(error_code, "system call failed")),
+            // Invalid error code.
+            Err(_) => Err(Error::new(ErrorCode::InvalidMessage, "invalid error code received")),
+        }
     } else {
         // System call succeeded, parse response.
         let message = LinuxDaemonMessage::try_from_bytes(response.payload)?;
@@ -68,7 +78,16 @@ pub fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> Result<(), Error> {
             // Response was successfully parsed.
             LinuxDaemonMessageHeader::FileChownResponse => Ok(()),
             // Invalid response.
-            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
+            header => {
+                ::nvx::error!(
+                    "fchown(): invalid response (fd={:?}, owner={:?}, group={:?}, header={:?})",
+                    fd,
+                    owner,
+                    group,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
+            },
         }
     }
 }

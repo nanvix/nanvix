@@ -180,16 +180,48 @@ pub extern "C" fn fchdir(fd: c_int) -> c_int {
     }
 }
 
-/// Dummy implementation of `fchown`.
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Changes the owner and group of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `owner`: Owner of the file.
+/// - `group`: Group of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `fchown()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
 #[no_mangle]
-pub unsafe extern "C" fn fchown(_fd: i32, _owner: u32, _group: u32) -> isize {
-    // TODO:https://github.com/nanvix/nanvix/issues/361
-    ::nvx::error!("fchown(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int {
+    ::nvx::trace!("fchown(): fd={}, owner={}, group={}", fd, owner, group);
+
+    // Attempt to change file ownership and check the result.
+    match crate::unistd::fchown(fd, owner, group) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "fchown(): failed (fd={}, owner={}, group={}, error={:?})",
+                fd,
+                owner,
+                group,
+                error
+            );
+            errno = error.code.get();
+            -1
+        },
     }
-    -1
 }
 
 ///
