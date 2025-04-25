@@ -77,15 +77,40 @@ pub fn fchownat(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        Err(Error::new(error_code, "fchownat() failed"))
+        ::nvx::error!(
+            "fchownat(): failed (dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}, \
+             error_code={:?})",
+            dirfd,
+            path,
+            owner,
+            group,
+            flag,
+            { response.status },
+        );
+
+        match ErrorCode::try_from(response.status) {
+            Ok(error_code) => Err(Error::new(error_code, "failed")),
+            Err(_) => Err(Error::new(ErrorCode::InvalidMessage, "failed to parse error code")),
+        }
     } else {
         // System call succeeded, parse response.
         let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
 
         match message.header {
             LinuxDaemonMessageHeader::FileChownAtResponse => Ok(()),
-            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
+            header => {
+                ::nvx::error!(
+                    "fchownat(): failed to parse response (dirfd={:?}, path={:?}, owner={:?}, \
+                     group={:?}, flag={:?}, header={:?})",
+                    dirfd,
+                    path,
+                    owner,
+                    group,
+                    flag,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "failed to parse response"))
+            },
         }
     }
 }
