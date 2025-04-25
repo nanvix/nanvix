@@ -25,6 +25,7 @@ mod pipe;
 mod pread;
 mod pwrite;
 mod read;
+mod readlinkat;
 mod sbrk;
 mod symlink;
 mod symlinkat;
@@ -56,6 +57,7 @@ pub use self::{
     pread::pread,
     pwrite::pwrite,
     read::read,
+    readlinkat::readlinkat,
     sbrk::sbrk,
     symlink::symlink,
     symlinkat::symlinkat,

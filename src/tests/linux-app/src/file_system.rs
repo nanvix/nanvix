@@ -464,7 +464,7 @@ pub fn test() {
 
     // Readlink file named `baz.tmp`.
     let mut buffer: [u8; 512] = [0; 512];
-    match fcntl::readlinkat(fcntl::AT_FDCWD, "baz.tmp", &mut buffer) {
+    match unistd::readlinkat(fcntl::AT_FDCWD, "baz.tmp", &mut buffer) {
         len if len >= 0 => {
             ::nvx::info!("read link baz.tmp");
             // Print.

@@ -27,7 +27,6 @@ use ::posix::{
         FileChmodAtRequest,
         FileChownAtRequest,
         OpenAtRequest,
-        ReadLinkAtRequest,
         RenameAtRequest,
         UnlinkAtRequest,
     },
@@ -42,6 +41,7 @@ use ::posix::{
     },
     unistd::message::{
         LinkAtRequest,
+        ReadLinkAtRequest,
         SymbolicLinkAtRequest,
     },
 };

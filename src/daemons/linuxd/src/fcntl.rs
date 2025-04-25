@@ -32,8 +32,6 @@ use ::posix::{
             FileSpaceControlResponse,
             OpenAtRequest,
             OpenAtResponse,
-            ReadLinkAtRequest,
-            ReadLinkAtResponse,
             RenameAtRequest,
             RenameAtResponse,
             UnlinkAtRequest,
@@ -66,6 +64,8 @@ use ::posix::{
     },
     time::timespec,
     unistd::message::{
+        ReadLinkAtRequest,
+        ReadLinkAtResponse,
         SymbolicLinkAtRequest,
         SymbolicLinkAtResponse,
     },
