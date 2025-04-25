@@ -116,6 +116,7 @@ int main(int argc, const char *argv[])
     test_lchmod();   // requires open(), close(), stat(), link() and unlinkat().
     test_fchownat(); // requires open(), close() and unlinkat().
     test_chown();    // requires open(), close(), and unlinkat().
+    test_fchown();   // requires open(), close() and unlink().
     test_lchown();   // requires open(), close() and unlinkat().
 
     // Write magic string to signal that the test passed.
