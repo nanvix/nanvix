@@ -24,6 +24,9 @@ extern void test_fchdir(void);
 // Tests whether we can change access permissions of a file.
 extern void test_chmod(void);
 
+// Tests whether we can change the ownership of a file.
+extern void test_chown(void);
+
 // Tests whether we can change access permissions of a file.
 extern void test_fchmod(void);
 
