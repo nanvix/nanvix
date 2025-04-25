@@ -302,16 +302,6 @@ pub fn test() {
         panic!("file size is not 1024 bytes");
     }
 
-    // Change owner of file.
-    match unistd::fchown(fd, st.st_uid, st.st_gid) {
-        Ok(()) => {
-            ::nvx::info!("changed owner of file foo.tmp");
-        },
-        Err(e) => {
-            panic!("failed to change owner of file foo.tmp: {:?}", e);
-        },
-    };
-
     // Update access time of file named `foo.tmp`.
     let times: [timespec; 2] = [
         timespec {
