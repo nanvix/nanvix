@@ -44,7 +44,6 @@ use ::posix::{
     dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
         FileAdvisoryInformationRequest,
-        FileChownAtRequest,
         FileControlRequest,
         FileSpaceControlRequest,
         OpenAtRequest,
@@ -86,6 +85,7 @@ use ::posix::{
         CloseRequest,
         CloseResponse,
         FileChdirRequest,
+        FileChownAtRequest,
         FileChownRequest,
         FileDataSyncRequest,
         FileSyncRequest,

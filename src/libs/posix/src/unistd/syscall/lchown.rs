@@ -35,5 +35,5 @@ use ::nvx::sys::error::Error;
 ///
 pub fn lchown(path: &str, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::nvx::trace!("lchown(): path = {:?}, owner = {:?}, group = {:?}", path, owner, group);
-    crate::fcntl::fchownat(crate::fcntl::AT_FDCWD, path, owner, group, fcntl::AT_SYMLINK_NOFOLLOW)
+    crate::unistd::fchownat(crate::fcntl::AT_FDCWD, path, owner, group, fcntl::AT_SYMLINK_NOFOLLOW)
 }

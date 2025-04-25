@@ -41,6 +41,7 @@ cfg_if::cfg_if! {
             close,
             fdatasync,
             fchown,
+            fchownat,
             ftruncate,
             fsync,
             getpid,

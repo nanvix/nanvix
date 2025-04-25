@@ -211,6 +211,85 @@ pub unsafe extern "C" fn fchown(_fd: i32, _owner: u32, _group: u32) -> isize {
     -1
 }
 
+///
+/// # Description
+///
+/// Changes the owner and group of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `owner`: Owner of the file.
+/// - `group`: Group of the file.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, the `fchownat()` system call returns `0`. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn fchownat(
+    dirfd: c_int,
+    path: *const c_char,
+    owner: uid_t,
+    group: gid_t,
+    flag: c_int,
+) -> c_int {
+    ::nvx::trace!(
+        "fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
+        dirfd,
+        path,
+        owner,
+        group,
+        flag
+    );
+
+    // Attempt to convert `pathname`.
+    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(error) => {
+            ::nvx::error!(
+                "fchownat(): invalid pathname (dirfd={:?}, owner={:?}, group={:?}, flag={:?}, \
+                 error={:?})",
+                dirfd,
+                owner,
+                group,
+                flag,
+                error
+            );
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Change file ownership and check the result.
+    match crate::unistd::fchownat(dirfd, pathname, owner, group, flag) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "fchownat(): failed (dirfd={:?}, pathname={:?}, owner={:?}, group={:?}, \
+                 flag={:?}, error={:?})",
+                dirfd,
+                pathname,
+                owner,
+                group,
+                flag,
+                error
+            );
+            errno = error.code.get();
+            -1
+        },
+    }
+}
 #[no_mangle]
 pub extern "C" fn fdatasync(_fd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/278
