@@ -5,6 +5,8 @@
 // Modules
 //==================================================================================================
 
+mod fchmod;
+mod fchmodat;
 mod fstat;
 mod fstatat;
 mod futimens;
@@ -16,6 +18,14 @@ mod utimensat;
 //==================================================================================================
 
 pub use self::{
+    fchmod::{
+        FileChmodRequest,
+        FileChmodResponse,
+    },
+    fchmodat::{
+        FileChmodAtRequest,
+        FileChmodAtResponse,
+    },
     fstat::FileStatRequest,
     fstatat::{
         FileStatAtRequest,

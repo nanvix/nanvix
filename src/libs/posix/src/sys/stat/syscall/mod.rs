@@ -5,9 +5,13 @@
 // Modules
 //==================================================================================================
 
+mod chmod;
+mod fchmod;
+mod fchmodat;
 mod fstat;
 mod fstatat;
 mod futimens;
+mod lchmod;
 mod lstat;
 mod mkdirat;
 mod stat;
@@ -42,9 +46,13 @@ use ::nvx::{
 // Exports
 //==================================================================================================
 
+pub use chmod::chmod;
+pub use fchmod::fchmod;
+pub use fchmodat::fchmodat;
 pub use fstat::fstat;
 pub use fstatat::fstatat;
 pub use futimens::futimens;
+pub use lchmod::lchmod;
 pub use lstat::lstat;
 pub use mkdirat::mkdirat;
 pub use stat::stat;

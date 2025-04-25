@@ -20,7 +20,6 @@ use crate::{
     limits::PATH_MAX,
     sys::types::{
         gid_t,
-        mode_t,
         off_t,
         pid_t,
         size_t,
@@ -63,50 +62,6 @@ pub extern "C" fn chdir(_path: *const c_char) -> c_int {
         errno = ErrorCode::InvalidSysCall.get();
     }
     -1
-}
-
-///
-/// # Description
-///
-/// Changes the mode of a file.
-///
-/// # Parameters
-///
-/// - `path`: Path to the file.
-/// - `mode`: Mode of the file.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
-/// the error.
-///
-/// # See Also
-///
-/// - [`crate::unistd::chmod()`]
-///
-#[allow(clippy::missing_safety_doc)]
-#[no_mangle]
-pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
-    // Convert C string to Rust string.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!("chmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
-            unsafe {
-                errno = ErrorCode::InvalidArgument.get();
-            }
-            return -1;
-        },
-    };
-
-    match crate::unistd::chmod(path, mode) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("chmod(): failed ({:?})", e);
-            errno = e.code.get();
-            -1
-        },
-    }
 }
 
 ///
@@ -442,49 +397,6 @@ pub extern "C" fn isatty(_fd: c_int) -> c_int {
         0
     }
 }
-
-///
-/// # Description
-///
-/// Changes the mode of a symbolic link.
-///
-/// # Parameters
-///
-/// - `path`: Path to the file.
-/// - `mode`: Mode of the file.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
-/// the error.
-///
-/// # See Also
-///
-/// - [`crate::unistd::lchmod()`]
-///
-#[allow(clippy::missing_safety_doc)]
-#[no_mangle]
-pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
-    // Convert C string to Rust string.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!("lchmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
-            errno = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    match crate::unistd::lchmod(path, mode) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("lchmod(): failed ({:?})", e);
-            errno = e.code.get();
-            -1
-        },
-    }
-}
-
 ///
 /// # Description
 ///

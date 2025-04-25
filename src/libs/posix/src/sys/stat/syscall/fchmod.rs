@@ -7,8 +7,10 @@
 
 use crate::{
     safe::RawFileDescriptor,
-    sys::types::mode_t,
-    unistd::message::FileChmodRequest,
+    sys::{
+        stat::message::FileChmodRequest,
+        types::mode_t,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
