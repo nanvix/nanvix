@@ -14,7 +14,6 @@ mod open;
 mod openat;
 mod readlinkat;
 mod renameat;
-mod symlinkat;
 mod unlinkat;
 mod utimensat;
 
@@ -32,7 +31,6 @@ pub use self::{
     openat::openat,
     readlinkat::readlinkat,
     renameat::renameat,
-    symlinkat::symlinkat,
     unlinkat::unlinkat,
     utimensat::utimensat,
 };

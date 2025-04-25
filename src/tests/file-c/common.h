@@ -42,6 +42,9 @@ extern void test_renameat(void);
 // Tests whether we can get file status information.
 extern void test_stat(void);
 
+// Tests whether we can create a symbolic link to a file.
+extern void test_symlinkat(void);
+
 // Tests whether we can remove a file.
 extern void test_unlinkat(void);
 

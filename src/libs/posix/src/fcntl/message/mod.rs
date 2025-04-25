@@ -13,7 +13,6 @@ mod fcntl;
 mod openat;
 mod readlinkat;
 mod renameat;
-mod symlinkat;
 mod unlinkat;
 
 //==================================================================================================
@@ -52,10 +51,6 @@ pub use self::{
     renameat::{
         RenameAtRequest,
         RenameAtResponse,
-    },
-    symlinkat::{
-        SymbolicLinkAtRequest,
-        SymbolicLinkAtResponse,
     },
     unlinkat::{
         UnlinkAtRequest,
