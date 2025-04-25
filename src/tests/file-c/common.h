@@ -36,6 +36,9 @@ extern void test_mkdirat(void);
 // Tests whether we can create a directory.
 extern void test_mkdir(void);
 
+// Tests whether we can read a symbolic link.
+extern void test_readlinkat(void);
+
 // Tests whether we can rename a file.
 extern void test_renameat(void);
 
