@@ -37,7 +37,6 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
        pub  mod syscall;
         pub use self::syscall::{
-            chown,
             close,
             fdatasync,
             fchown,
