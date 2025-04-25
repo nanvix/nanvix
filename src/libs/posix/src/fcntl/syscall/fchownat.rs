@@ -45,8 +45,7 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `fchownat()` system call returns empty. Otherwise, it returns an
-/// error code.
+/// Upon successful completion, `fchownat()` returns empty. Otherwise, it returns an error code.
 ///
 pub fn fchownat(
     dirfd: c_int,
@@ -55,20 +54,15 @@ pub fn fchownat(
     group: gid_t,
     flag: c_int,
 ) -> Result<(), Error> {
-    // Send request.
-    chownat_request(dirfd, path, owner, group, flag)?;
+    ::nvx::trace!(
+        "fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
+        dirfd,
+        path,
+        owner,
+        group,
+        flag
+    );
 
-    // Wait for response.
-    chownat_response()
-}
-
-fn chownat_request(
-    dirfd: c_int,
-    path: &str,
-    owner: uid_t,
-    group: gid_t,
-    flag: c_int,
-) -> Result<(), Error> {
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, path)?;
@@ -79,10 +73,6 @@ fn chownat_request(
         ::nvx::ipc::send(&request)?;
     }
 
-    Ok(())
-}
-
-fn chownat_response() -> Result<(), Error> {
     let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.

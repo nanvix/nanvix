@@ -116,7 +116,6 @@ pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
 ///
 /// - [`crate::fcntl::fchownat()`]
 ///
-#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn fchownat(
     dirfd: c_int,
@@ -125,27 +124,48 @@ pub unsafe extern "C" fn fchownat(
     group: gid_t,
     flag: c_int,
 ) -> c_int {
-    // Convert C string to Rust string.
+    ::nvx::trace!(
+        "fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
+        dirfd,
+        path,
+        owner,
+        group,
+        flag
+    );
+
+    // Attempt to convert `pathname`.
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
-        Err(_) => {
+        Err(error) => {
             ::nvx::error!(
-                "fchownat(): invalid pathname (dirfd={:?}, owner={:?}, group={:?}, flag={:?})",
+                "fchownat(): invalid pathname (dirfd={:?}, owner={:?}, group={:?}, flag={:?}, \
+                 error={:?})",
                 dirfd,
                 owner,
                 group,
-                flag
+                flag,
+                error
             );
             errno = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
 
+    // Change file ownership and check the result.
     match crate::fcntl::fchownat(dirfd, pathname, owner, group, flag) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("fchownat(): invalid error code");
-            errno = e.code.get();
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "fchownat(): failed (dirfd={:?}, pathname={:?}, owner={:?}, group={:?}, \
+                 flag={:?}, error={:?})",
+                dirfd,
+                pathname,
+                owner,
+                group,
+                flag,
+                error
+            );
+            errno = error.code.get();
             -1
         },
     }
