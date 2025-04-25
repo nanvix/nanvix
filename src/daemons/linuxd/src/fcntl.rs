@@ -771,7 +771,7 @@ pub fn do_fchownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<M
 
     let owner: u32 = request.owner;
     let group: u32 = request.group;
-    let flag: LibcFileFlags = LibcFileFlags(request.flag);
+    let flag: LibcAtFlags = LibcAtFlags::from(request.flag);
 
     debug!(
         "libc::fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
