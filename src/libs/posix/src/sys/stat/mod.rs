@@ -391,7 +391,6 @@ cfg_if::cfg_if! {
             fstatat,
             stat,
             fstat,
-            lchmod,
             lstat,
             futimens,
             mkdirat,
