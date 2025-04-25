@@ -803,15 +803,38 @@ pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
     -1
 }
 
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Reads the value of a symbolic link.
+///
+/// # Parameters
+///
+/// - `path`: Path to the symbolic link.
+/// - `buf`: Buffer to store the value of the symbolic link.
+/// - `bufsize`: Size of the buffer.
+///
+/// # Returns
+///
+/// Upon successful completion, `readlink()` returns the number of bytes read. Otherwise, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+/// - `buf` points to a valid memory location of `bufsize` bytes.
+///
 #[no_mangle]
-pub unsafe extern "C" fn readlink(_path: *const u8, _buf: *mut u8, _bufsize: usize) -> isize {
-    // TODO: https://github.com/nanvix/nanvix/issues/531
-    ::nvx::error!("readlink(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
-    }
-    -1
+pub unsafe extern "C" fn readlink(
+    path: *const c_char,
+    buf: *mut c_char,
+    bufsize: size_t,
+) -> ssize_t {
+    ::nvx::trace!("readlink(): path={:?}, buf={:?}, bufsize={:?}", path, buf, bufsize);
+    readlinkat(fcntl::AT_FDCWD, path, buf, bufsize)
 }
 
 #[allow(clippy::missing_safety_doc)]
