@@ -110,7 +110,7 @@ int main(int argc, const char *argv[])
     test_utimensat();
     test_getcwd();
     test_fchdir();
-    test_fchmod();
+    test_fchmod(); // requires open(), close(), fstat() and unlink().
 
     // Write magic string to signal that the test passed.
     {
