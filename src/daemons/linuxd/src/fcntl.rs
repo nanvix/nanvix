@@ -41,6 +41,7 @@ use ::posix::{
         AT_REMOVEDIR,
     },
     ffi::c_int,
+    limits::PATH_MAX,
     message::MessagePartitioner,
     sys::{
         stat::{
@@ -492,7 +493,7 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
     };
 
     // TODO: Have a system-wide constant for this.
-    let mut buf: Vec<u8> = vec![0u8; ReadLinkAtResponse::BUFFER_SIZE_MAX];
+    let mut buf: Vec<u8> = vec![0u8; PATH_MAX];
 
     debug!(
         "libc::readlinkat(): dirfd={:?}, path={:?}, capacity={:?}",
