@@ -218,27 +218,6 @@ pub unsafe extern "C" fn fchownat(
     }
 }
 
-#[allow(clippy::missing_safety_doc)]
-#[no_mangle]
-pub unsafe extern "C" fn readlinkat(
-    dirfd: c_int,
-    pathname: *const c_char,
-    buf: *mut c_char,
-    bufsiz: usize,
-) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/294
-    ::nvx::error!(
-        "readlinkat(): not implemented, ignoring (dirfd={:?}, pathname={:?}, buf={:?}, \
-         bufsiz={:?})",
-        dirfd,
-        pathname,
-        buf,
-        bufsiz
-    );
-    errno = ErrorCode::InvalidSysCall.get();
-    -1
-}
-
 ///
 /// # Description
 ///
