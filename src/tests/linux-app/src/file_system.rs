@@ -465,17 +465,15 @@ pub fn test() {
     // Readlink file named `baz.tmp`.
     let mut buffer: [u8; 512] = [0; 512];
     match unistd::readlinkat(fcntl::AT_FDCWD, "baz.tmp", &mut buffer) {
-        len if len >= 0 => {
+        Ok(len) => {
             ::nvx::info!("read link baz.tmp");
             // Print.
-            let mut i: usize = 0;
-            while buffer[i] != 0 {
-                ::nvx::info!("{}", buffer[i] as char);
-                i += 1;
+            for b in &buffer[0..len as usize] {
+                ::nvx::info!("{}", *b as char);
             }
         },
-        errno => {
-            panic!("failed to read link baz.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to read link baz.tmp: (error={:?})", error);
         },
     }
 
