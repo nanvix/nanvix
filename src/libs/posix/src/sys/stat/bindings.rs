@@ -25,6 +25,116 @@ use ::nvx::sys::error::ErrorCode;
 //==================================================================================================
 
 ///
+/// # Description
+///
+/// Changes the mode of a file.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
+/// the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::chmod()`]
+///
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
+    // Convert C string to Rust string.
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("chmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
+            unsafe {
+                errno = ErrorCode::InvalidArgument.get();
+            }
+            return -1;
+        },
+    };
+
+    match crate::sys::stat::chmod(path, mode) {
+        Ok(_) => 0,
+        Err(e) => {
+            ::nvx::error!("chmod(): failed ({:?})", e);
+            errno = e.code.get();
+            -1
+        },
+    }
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
+    match crate::sys::stat::fchmod(fd, mode) {
+        Ok(_) => 0,
+        Err(e) => {
+            ::nvx::error!("fchmod(): invalid error code");
+            errno = e.code.get();
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Changes the mode of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `mode`:  Mode.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, the `fchmodat()` system call returns `0`. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::fcntl::fchmodat()`]
+///
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn fchmodat(
+    dirfd: c_int,
+    path: *const c_char,
+    mode: mode_t,
+    flag: c_int,
+) -> c_int {
+    // Convert C string to Rust string.
+    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!(
+                "fchmodat(): invalid pathname (dirfd={:?}, mode={:?}, flag={:?})",
+                dirfd,
+                mode,
+                flag
+            );
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    match crate::sys::stat::fchmodat(dirfd, pathname, mode, flag) {
+        Ok(_) => 0,
+        Err(e) => {
+            ::nvx::error!("fchmodat(): invalid error code");
+            errno = e.code.get();
+            -1
+        },
+    }
+}
+///
 /// # Safety
 ///
 /// This function has undefined behavior if buf points to an invalid memory location.
@@ -37,6 +147,48 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
         Err(error) => {
             ::nvx::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
             errno = error.code.get();
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Changes the mode of a symbolic link.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
+/// the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::lchmod()`]
+///
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
+    // Convert C string to Rust string.
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("lchmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    match crate::sys::stat::lchmod(path, mode) {
+        Ok(_) => 0,
+        Err(e) => {
+            ::nvx::error!("lchmod(): failed ({:?})", e);
+            errno = e.code.get();
             -1
         },
     }

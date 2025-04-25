@@ -31,5 +31,5 @@ use ::nvx::sys::error::Error;
 ///
 pub fn lchmod(path: &str, mode: mode_t) -> Result<(), Error> {
     ::nvx::trace!("lchmod(): path = {:?}, mode = {:?}", path, mode);
-    crate::fcntl::fchmodat(crate::fcntl::AT_FDCWD, path, mode, fcntl::AT_SYMLINK_NOFOLLOW)
+    crate::sys::stat::fchmodat(crate::fcntl::AT_FDCWD, path, mode, fcntl::AT_SYMLINK_NOFOLLOW)
 }

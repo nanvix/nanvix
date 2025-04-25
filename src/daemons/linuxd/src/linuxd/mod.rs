@@ -44,7 +44,6 @@ use ::posix::{
     dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
         FileAdvisoryInformationRequest,
-        FileChmodAtRequest,
         FileChownAtRequest,
         FileControlRequest,
         FileSpaceControlRequest,
@@ -68,6 +67,8 @@ use ::posix::{
             ShutdownSocketRequest,
         },
         stat::message::{
+            FileChmodAtRequest,
+            FileChmodRequest,
             FileStatAtRequest,
             FileStatRequest,
             MakeDirectoryAtRequest,
@@ -85,7 +86,6 @@ use ::posix::{
         CloseRequest,
         CloseResponse,
         FileChdirRequest,
-        FileChmodRequest,
         FileChownRequest,
         FileDataSyncRequest,
         FileSyncRequest,
@@ -372,7 +372,7 @@ impl<'a> LinuxDaemon<'a> {
             },
             LinuxDaemonMessageHeader::FileChmodRequest => {
                 let request: FileChmodRequest = FileChmodRequest::from_bytes(message.payload);
-                unistd::do_fchmod(source, request)
+                fcntl::do_fchmod(source, request)
             },
             LinuxDaemonMessageHeader::FileChownRequest => {
                 let request: FileChownRequest = FileChownRequest::from_bytes(message.payload);

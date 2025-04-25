@@ -28,5 +28,5 @@ use ::nvx::sys::error::Error;
 ///
 pub fn chmod(path: &str, mode: mode_t) -> Result<(), Error> {
     ::nvx::trace!("chmod(): path = {:?}, mode = {:?}", path, mode);
-    crate::fcntl::fchmodat(crate::fcntl::AT_FDCWD, path, mode, 0)
+    crate::sys::stat::fchmodat(crate::fcntl::AT_FDCWD, path, mode, 0)
 }

@@ -313,7 +313,7 @@ pub fn test() {
     };
 
     // Change file mode.
-    match unistd::fchmod(fd, fcntl::S_IRUSR | fcntl::S_IWUSR) {
+    match sys::stat::fchmod(fd, fcntl::S_IRUSR | fcntl::S_IWUSR) {
         Ok(()) => {
             ::nvx::info!("changed file mode of file foo.tmp");
         },
@@ -411,7 +411,7 @@ pub fn test() {
     };
 
     // Change file mode.
-    match fcntl::fchmodat(fcntl::AT_FDCWD, "foo.tmp", fcntl::S_IRUSR | fcntl::S_IWUSR, 0) {
+    match sys::stat::fchmodat(fcntl::AT_FDCWD, "foo.tmp", fcntl::S_IRUSR | fcntl::S_IWUSR, 0) {
         Ok(()) => {
             ::nvx::info!("changed file mode of file foo.tmp");
         },
