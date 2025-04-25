@@ -699,6 +699,96 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> 
     crate::unistd::read(fd, buffer as *mut u8, count)
 }
 
+///
+/// # Description
+///
+/// Reads the value of a symbolic link relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`: Path to the symbolic link.
+/// - `buf`: Buffer to store the value of the symbolic link.
+/// - `bufsize`: Size of the buffer.
+///
+/// # Returns
+///
+/// Upon successful completion, `readlinkat()` returns the number of bytes read. Otherwise, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+/// - `buf` points to a valid memory location of `bufsize` bytes.
+///
+#[no_mangle]
+pub unsafe extern "C" fn readlinkat(
+    dirfd: c_int,
+    path: *const c_char,
+    buf: *mut c_char,
+    bufsize: size_t,
+) -> ssize_t {
+    ::nvx::trace!(
+        "readlinkat(): dirfd={:?}, path={:?}, buf={:?}, bufsize={:?}",
+        dirfd,
+        path,
+        buf,
+        bufsize
+    );
+
+    // Check if `bufsize` is valid.
+    if bufsize == 0 {
+        ::nvx::error!(
+            "readlinkat(): invalid buffer size (dirfd={:?}, path={:?}, bufsize={:?})",
+            dirfd,
+            path,
+            bufsize
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Attempt to convert `path`.
+    let buf: &mut [u8] = slice::from_raw_parts_mut(buf as *mut u8, bufsize as usize);
+
+    // Attempt to convert `path`.
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(error) => {
+            ::nvx::error!(
+                "readlinkat(): invalid path (dirfd={:?}, path={:?}, bufsize={:?}, error={:?})",
+                dirfd,
+                path,
+                bufsize,
+                error
+            );
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Read symbolic link and parse the result.
+    match crate::unistd::readlinkat(dirfd, path, buf) {
+        Ok(bytes_read) => bytes_read,
+        Err(error) => {
+            ::nvx::error!(
+                "readlinkat(): failed (dirfd={:?}, path={:?}, bufsize={:?}, error={:?})",
+                dirfd,
+                path,
+                bufsize,
+                error
+            );
+            errno = error.code.get();
+            -1
+        },
+    }
+}
+
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
