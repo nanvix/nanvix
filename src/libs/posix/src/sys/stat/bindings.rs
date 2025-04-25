@@ -39,21 +39,51 @@ use ::nvx::sys::error::ErrorCode;
 /// Upon successful completion, `chmod()` returns `0`. Otherwise, it returns `-1` and sets
 /// `errno` to indicate the error.
 ///
-#[allow(clippy::missing_safety_doc)]
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `path` points to a valid null-terminated C string.
+///
 #[no_mangle]
 pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
     ::nvx::trace!("chmod(): path={:?}, mode={}", path, mode);
     fchmodat(fcntl::AT_FDCWD, path, mode, 0)
 }
 
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Changes the mode of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `fchmod()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global state.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - No other thread calls this function at the same time.
+///
 #[no_mangle]
 pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
+    ::nvx::trace!("fchmod(): fd={}, mode={}", fd, mode);
+
+    // Attempt to change the mode and parse the result.
     match crate::sys::stat::fchmod(fd, mode) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("fchmod(): invalid error code");
-            errno = e.code.get();
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("fchmod(): {:?} (fd={}, mode={})", error, fd, mode);
+            errno = error.code.get();
             -1
         },
     }
@@ -82,7 +112,6 @@ pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
 ///
 /// It is safe to call this function if the following conditions are met:
 /// - `path` points to a valid null-terminated C string.
-///
 ///
 #[no_mangle]
 pub unsafe extern "C" fn fchmodat(
