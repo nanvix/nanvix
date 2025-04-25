@@ -470,41 +470,20 @@ pub extern "C" fn isatty(_fd: c_int) -> c_int {
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
-/// the error.
+/// Upon successful completion, `lchown()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
 ///
-/// # See Also
+/// # Safety
 ///
-/// - [`crate::unistd::lchown()`]
+/// The function is unsafe because it may dereference pointers.
 ///
-#[allow(clippy::missing_safety_doc)]
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+///
 #[no_mangle]
 pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
-    // Convert C string to Rust string.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!(
-                "lchown(): invalid pathname (path={:?}, owner={:?}, group={:?})",
-                path,
-                owner,
-                group
-            );
-            errno = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    match crate::unistd::lchown(path, owner, group) {
-        Ok(_) => 0,
-        Err(e) => {
-            unsafe {
-                ::nvx::error!("lchown(): failed ({:?})", e);
-                errno = e.code.get();
-            }
-            -1
-        },
-    }
+    ::nvx::trace!("lchown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
+    fchownat(fcntl::AT_FDCWD, path, owner, group, fcntl::AT_SYMLINK_NOFOLLOW)
 }
 
 ///
