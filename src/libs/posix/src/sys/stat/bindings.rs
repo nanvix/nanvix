@@ -202,24 +202,8 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
-    // Convert C string to Rust string.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!("lchmod(): invalid pathname (path={:?}, mode={:?})", path, mode);
-            errno = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    match crate::sys::stat::lchmod(path, mode) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("lchmod(): failed ({:?})", e);
-            errno = e.code.get();
-            -1
-        },
-    }
+    ::nvx::trace!("lchmod(): path={:?}, mode={}", path, mode);
+    fchmodat(fcntl::AT_FDCWD, path, mode, fcntl::AT_SYMLINK_NOFOLLOW)
 }
 
 ///
