@@ -7,9 +7,9 @@
 
 use crate::{
     fcntl,
-    ffi::c_int,
     unistd,
 };
+use ::nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -18,9 +18,7 @@ use crate::{
 ///
 /// # Description
 ///
-/// The `link()` system call creates a new hard link to an existing file. If `newpath` exists, it
-/// will not be overwritten. This new name may be used exactly as the old one for any operation;
-/// both names refer to the same file and it is impossible to tell which name was the "original".
+/// Creates a new hard link to an existing file.
 ///
 /// # Parameters
 ///
@@ -29,9 +27,9 @@ use crate::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Otherwise, an error code is returned instead.
+/// Upon successful completion, `link()` returns empty. Otherwise, it returns an error.
 ///
-pub fn link(oldpath: &str, newpath: &str) -> c_int {
+pub fn link(oldpath: &str, newpath: &str) -> Result<(), Error> {
     ::nvx::trace!("link(): oldpath = {:?}, newpath = {:?}", oldpath, newpath);
     unistd::linkat(fcntl::AT_FDCWD, oldpath, fcntl::AT_FDCWD, newpath, 0)
 }
