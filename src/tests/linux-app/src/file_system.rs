@@ -375,16 +375,6 @@ pub fn test() {
         },
     }
 
-    // Change owner of file.
-    match unistd::fchownat(fcntl::AT_FDCWD, "foo.tmp", st.st_uid, st.st_gid, 0) {
-        Ok(()) => {
-            ::nvx::info!("changed owner of file foo.tmp");
-        },
-        Err(e) => {
-            panic!("failed to change owner of file foo.tmp: {:?}", e);
-        },
-    };
-
     // Get status of file.
     let path: &str = "foo.tmp";
     let mut foo_tmp: stat = stat::default();

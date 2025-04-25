@@ -30,6 +30,9 @@ extern void test_fchmod(void);
 // Tests whether we can change access permissions of a file.
 extern void test_fchmodat(void);
 
+// Tests whether we can change the ownership of a file.
+extern void test_fchownat(void);
+
 // Tests whether we can change access permissions of a file.
 extern void test_lchmod(void);
 
