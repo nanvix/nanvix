@@ -841,9 +841,15 @@ pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<M
         Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
 
-    let flag = LibcFileFlags(request.flag);
+    let flag: LibcAtFlags = LibcAtFlags::from(request.flag);
 
-    debug!("libc::fchmodat(): dirfd={:?}, path={:?}, mode={:?}", dirfd.inner(), path, mode.inner());
+    debug!(
+        "libc::fchmodat(): dirfd={:?}, path={:?}, mode={:?}, flags={:?}",
+        dirfd.inner(),
+        path,
+        mode.inner(),
+        flag.inner()
+    );
     match unsafe { libc::fchmodat(dirfd.inner(), path.as_ptr(), mode.inner(), flag.inner()) } {
         0 => {
             debug!("libc::fchmodat(): success");
@@ -965,7 +971,8 @@ impl LibcAtFlags {
     fn from(flags: ffi::c_int) -> LibcAtFlags {
         let libc_flags: libc::c_int = match flags {
             fcntl::AT_FDCWD => libc::AT_FDCWD,
-            fd => fd,
+            fcntl::AT_SYMLINK_NOFOLLOW => libc::AT_SYMLINK_NOFOLLOW,
+            flags => flags,
         };
 
         LibcAtFlags(libc_flags)
