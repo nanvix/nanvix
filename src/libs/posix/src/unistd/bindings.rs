@@ -17,6 +17,7 @@ use crate::{
         c_uint,
         c_void,
     },
+    limits::PATH_MAX,
     sys::types::{
         gid_t,
         mode_t,
@@ -740,7 +741,7 @@ pub unsafe extern "C" fn readlinkat(
     );
 
     // Check if `bufsize` is valid.
-    if bufsize == 0 {
+    let bufsize: usize = if (bufsize == 0) || (bufsize as usize > PATH_MAX) {
         ::nvx::error!(
             "readlinkat(): invalid buffer size (dirfd={:?}, path={:?}, bufsize={:?})",
             dirfd,
@@ -751,10 +752,12 @@ pub unsafe extern "C" fn readlinkat(
             errno = ErrorCode::InvalidArgument.get();
         }
         return -1;
-    }
+    } else {
+        bufsize as usize
+    };
 
     // Attempt to convert `path`.
-    let buf: &mut [u8] = slice::from_raw_parts_mut(buf as *mut u8, bufsize as usize);
+    let buf: &mut [u8] = slice::from_raw_parts_mut(buf as *mut u8, bufsize);
 
     // Attempt to convert `path`.
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
