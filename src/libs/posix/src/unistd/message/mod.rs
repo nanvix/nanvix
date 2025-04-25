@@ -8,6 +8,7 @@
 mod close;
 mod fchdir;
 mod fchown;
+mod fchownat;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
@@ -38,6 +39,10 @@ pub use self::{
     fchown::{
         FileChownRequest,
         FileChownResponse,
+    },
+    fchownat::{
+        FileChownAtRequest,
+        FileChownAtResponse,
     },
     fdatasync::{
         FileDataSyncRequest,

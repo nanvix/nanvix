@@ -22,8 +22,6 @@ use ::posix::{
         message::{
             FileAdvisoryInformationRequest,
             FileAdvisoryInformationResponse,
-            FileChownAtRequest,
-            FileChownAtResponse,
             FileControlRequest,
             FileControlResponse,
             FileSpaceControlRequest,
@@ -67,6 +65,8 @@ use ::posix::{
     },
     time::timespec,
     unistd::message::{
+        FileChownAtRequest,
+        FileChownAtResponse,
         ReadLinkAtRequest,
         ReadLinkAtResponse,
         SymbolicLinkAtRequest,

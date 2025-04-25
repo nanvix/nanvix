@@ -376,7 +376,7 @@ pub fn test() {
     }
 
     // Change owner of file.
-    match fcntl::fchownat(fcntl::AT_FDCWD, "foo.tmp", st.st_uid, st.st_gid, 0) {
+    match unistd::fchownat(fcntl::AT_FDCWD, "foo.tmp", st.st_uid, st.st_gid, 0) {
         Ok(()) => {
             ::nvx::info!("changed owner of file foo.tmp");
         },

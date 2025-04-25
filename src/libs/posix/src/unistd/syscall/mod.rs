@@ -9,6 +9,7 @@ mod chown;
 mod close;
 mod fchdir;
 mod fchown;
+mod fchownat;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
@@ -38,6 +39,7 @@ pub use self::{
     close::close,
     fchdir::fchdir,
     fchown::fchown,
+    fchownat::fchownat,
     fdatasync::fdatasync,
     fsync::fsync,
     ftruncate::ftruncate,
