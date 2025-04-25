@@ -14,7 +14,6 @@ mod fsync;
 mod ftruncate;
 mod getcwd;
 mod getpid;
-mod lchown;
 mod link;
 mod linkat;
 mod lseek;
@@ -43,7 +42,6 @@ pub use self::{
     ftruncate::ftruncate,
     getcwd::getcwd,
     getpid::getpid,
-    lchown::lchown,
     link::link,
     linkat::linkat,
     lseek::lseek,

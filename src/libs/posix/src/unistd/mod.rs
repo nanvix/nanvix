@@ -44,7 +44,6 @@ cfg_if::cfg_if! {
             ftruncate,
             fsync,
             getpid,
-            lchown,
             link,
             linkat,
             lseek,
