@@ -571,25 +571,107 @@ pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) ->
         },
     };
 
-    let retcode: c_int = crate::unistd::link(oldpath, newpath);
-
     // Check if the system call failed.
-    if retcode < 0 {
-        // System call failed. Set errno.
-        errno = match ErrorCode::try_from(retcode) {
-            Ok(e) => {
-                ::nvx::error!("link(): failed ({:?})", e);
-                e.get()
-            },
-            Err(_) => {
-                ::nvx::error!("link(): invalid error code ({})", retcode);
-                ErrorCode::ValueOutOfRange.get()
-            },
-        };
-        return -1;
+    match crate::unistd::link(oldpath, newpath) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "link(): failed (oldpath={}, newpath={}, error={:?})",
+                oldpath,
+                newpath,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
     }
+}
 
-    0
+///
+/// # Description
+///
+/// Creates a new hard link to an existing file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `olddirfd`: Directory file descriptor of the existing file.
+/// - `oldpath`: Path to the existing file.
+/// - `newdirfd`: Directory file descriptor of the new file.
+/// - `newpath`: Path to the new file.
+/// - `flags`: Flags to control the behavior of the system call.
+///
+/// # Returns
+///
+/// Upon successful completion, `linkat()` returns zero. Otherwise, it returns -1 and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe becase it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `oldpath` points to a valid null-terminated string.
+/// - `newpath` points to a valid null-terminated string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn linkat(
+    olddirfd: c_int,
+    oldpath: *const c_char,
+    newdirfd: c_int,
+    newpath: *const c_char,
+    flags: c_int,
+) -> c_int {
+    ::nvx::trace!(
+        "linkat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, flags={:?}",
+        olddirfd,
+        oldpath,
+        newdirfd,
+        newpath,
+        flags
+    );
+
+    // Attempt to convert `oldpath`.
+    let oldpath: &str = match ffi::CStr::from_ptr(oldpath).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("linkat(): invalid oldpath");
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to convert `newpath`.
+    let newpath: &str = match ffi::CStr::from_ptr(newpath).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("linkat(): invalid newpath");
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Create hard link and parse the result.
+    match crate::unistd::linkat(olddirfd, oldpath, newdirfd, newpath, flags) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "linkat(): failed (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
+                 error={:?})",
+                olddirfd,
+                oldpath,
+                newdirfd,
+                newpath,
+                flags,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
 }
 
 #[no_mangle]
