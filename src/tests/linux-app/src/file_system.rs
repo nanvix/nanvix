@@ -17,7 +17,6 @@ use ::posix::{
         self,
         stat::stat,
         types::size_t,
-        uio,
     },
     time::timespec,
     unistd,
@@ -70,30 +69,12 @@ pub fn test() {
 
     // Fill bytes [128, 192] with ones using partial write.
     let buffer: [u8; 64] = [1; 64];
-    match unistd::pwrite(fd, buffer.as_ptr(), buffer.len() as size_t, 128) {
-        64 => {
+    match unistd::pwrite(fd, &buffer, 128) {
+        Ok(64) => {
             ::nvx::info!("wrote 64 bytes to file foo.tmp");
         },
-        errno => {
-            panic!("failed to write 64 bytes to file foo.tmp: {:?}", errno);
-        },
-    }
-
-    // Fill bytes [192..256] with ones using offset partial write.
-    let buffer: [u8; 64] = [1; 64];
-    let iov: [uio::iovec; 2] = [
-        uio::iovec {
-            iov_base: buffer.as_ptr() as *mut u8,
-            iov_len: 32,
-        },
-        uio::iovec {
-            iov_base: unsafe { buffer.as_ptr().add(32) } as *mut u8,
-            iov_len: 32,
-        },
-    ];
-    match uio::pwritev(fd, iov.as_ptr(), iov.len() as i32, 192) {
-        64 => {
-            ::nvx::info!("wrote 64 bytes to file foo.tmp");
+        Ok(n) => {
+            panic!("failed to write 64 bytes to file foo.tmp: (n={:?})", n);
         },
         errno => {
             panic!("failed to write 64 bytes to file foo.tmp: {:?}", errno);
@@ -152,35 +133,9 @@ pub fn test() {
         },
     }
 
-    // Check if bytes [128..256] are filled with ones using vectored i/o operations.
-    let mut buffer: [u8; 128] = [0; 128];
-    let iov: [uio::iovec; 2] = [
-        uio::iovec {
-            iov_base: buffer.as_mut_ptr(),
-            iov_len: 64,
-        },
-        uio::iovec {
-            iov_base: unsafe { buffer.as_mut_ptr().add(64) },
-            iov_len: 64,
-        },
-    ];
-    match uio::readv(fd, iov.as_ptr(), iov.len() as i32) {
-        128 => {
-            ::nvx::info!("read 128 bytes from file foo.tmp");
-            (0..128).for_each(|i| {
-                if buffer[i] != 1 {
-                    panic!("file foo.tmp is not filled with ones");
-                }
-            });
-        },
-        errno => {
-            panic!("failed to read 128 bytes from file foo.tmp: {:?}", errno);
-        },
-    }
-
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
-    match unistd::lseek(fd, 256, unistd::SEEK_END) {
-        512 => {
+    match unistd::lseek(fd, 64, unistd::SEEK_END) {
+        256 => {
             ::nvx::info!("seek file foo.tmp to 1024 bytes");
         },
         offset => {

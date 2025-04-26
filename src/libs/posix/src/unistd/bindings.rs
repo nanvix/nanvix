@@ -829,6 +829,101 @@ pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
 }
 
 ///
+/// # Description
+///
+/// Writes data to a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to write.
+/// - `count`: Number of bytes to write.
+/// - `offset`: Offset to write to.
+///
+/// # Returns
+///
+/// Upon successful completion, `pwrite()` returns the number of bytes written. Otherwise, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `buffer` points to a valid memory location.
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn pwrite(
+    fd: c_int,
+    buffer: *const c_void,
+    count: size_t,
+    offset: off_t,
+) -> ssize_t {
+    ::nvx::trace!(
+        "pwrite(): fd={}, buffer={:?}, count={:?}, offset={:?}",
+        fd,
+        buffer,
+        count,
+        offset
+    );
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        ::nvx::error!(
+            "pwrite(): invalid buffer (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
+            fd,
+            buffer,
+            count,
+            offset
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // CHeck if count is invalid.
+    if count == 0 {
+        ::nvx::error!(
+            "pwrite(): invalid count (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
+            fd,
+            buffer,
+            count,
+            offset
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Attempt to convert `buffer`.
+    let buffer: &[u8] = slice::from_raw_parts(buffer as *const u8, count as usize);
+
+    // Attempt to write to the file descriptor and check for errors.
+    match crate::unistd::pwrite(fd, buffer, offset) {
+        Ok(bytes_written) => bytes_written as ssize_t,
+        Err(error) => {
+            ::nvx::error!(
+                "pwrite(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
+                fd,
+                buffer,
+                count,
+                offset,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
+}
+
+///
 /// # Safety
 ///
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.

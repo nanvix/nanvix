@@ -72,6 +72,12 @@ extern void test_mkdirat(void);
 // Tests whether we can create a directory.
 extern void test_mkdir(void);
 
+// Tests whether we can write to a file using pwrite.
+extern void test_pwrite(void);
+
+// Tests whether we can write to a file using pwritev.
+extern void test_pwritev(void);
+
 // Tests whether we can read a symbolic link.
 extern void test_readlink(void);
 
