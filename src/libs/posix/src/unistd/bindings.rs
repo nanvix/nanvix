@@ -1211,5 +1211,37 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) 
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {
         ::nvx::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
     }
-    crate::unistd::write(fd, buffer as *const u8, count)
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        ::nvx::error!("write(): invalid buffer");
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Check if count is invalid.
+    if count == 0 {
+        ::nvx::error!("write(): invalid write count");
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Construct buffer from raw parts.
+    let buffer: &[u8] = slice::from_raw_parts(buffer as *const u8, count as usize);
+
+    // Attempt to write to file descriptor and check for errors.
+    match crate::unistd::write(fd, buffer) {
+        Ok(bytes_written) => bytes_written as ssize_t,
+        Err(error) => {
+            ::nvx::error!("write(): failed (error={:?})", error);
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
 }

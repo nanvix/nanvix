@@ -8,7 +8,6 @@
 mod preadv;
 mod pwritev;
 mod readv;
-mod writev;
 
 //==================================================================================================
 // Exports
@@ -17,4 +16,3 @@ mod writev;
 pub use preadv::preadv;
 pub use pwritev::pwritev;
 pub use readv::readv;
-pub use writev::writev;
