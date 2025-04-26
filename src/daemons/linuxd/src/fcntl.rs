@@ -961,17 +961,18 @@ impl LibcFileMode {
     }
 }
 
-struct LibcAtFlags(libc::c_int);
+pub struct LibcAtFlags(libc::c_int);
 
 impl LibcAtFlags {
-    fn inner(&self) -> libc::c_int {
+    pub fn inner(&self) -> libc::c_int {
         self.0
     }
 
-    fn from(flags: ffi::c_int) -> LibcAtFlags {
+    pub fn from(flags: ffi::c_int) -> LibcAtFlags {
         let libc_flags: libc::c_int = match flags {
             fcntl::AT_FDCWD => libc::AT_FDCWD,
             fcntl::AT_SYMLINK_NOFOLLOW => libc::AT_SYMLINK_NOFOLLOW,
+            fcntl::AT_EACCESS => libc::AT_EACCESS,
             flags => flags,
         };
 

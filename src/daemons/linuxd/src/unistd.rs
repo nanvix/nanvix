@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::fcntl::LibcAtFlags;
 use ::alloc::ffi::CString;
 use ::core::{
     ffi,
@@ -19,6 +20,7 @@ use ::nvx::{
     },
 };
 use ::posix::{
+    ffi::c_int,
     limits,
     message::MessagePartitioner,
     sys::types::{
@@ -32,6 +34,8 @@ use ::posix::{
         ChangeDirectoryResponse,
         CloseRequest,
         CloseResponse,
+        FileAccessAtRequest,
+        FileAccessAtResponse,
         FileChdirRequest,
         FileChdirResponse,
         FileChownRequest,
@@ -105,6 +109,38 @@ pub fn do_close(pid: ProcessIdentifier, request: CloseRequest) -> Message {
     match unsafe { libc::close(fd) } {
         ret if ret == 0 => CloseResponse::build(pid, ret),
         _ => crate::build_error(pid, ErrorCode::InvalidArgument),
+    }
+}
+
+//==================================================================================================
+// do_faccessat
+//==================================================================================================
+
+pub fn do_faccessat(pid: ProcessIdentifier, request: FileAccessAtRequest) -> Vec<Message> {
+    trace!("faccessat(): pid={:?}, request={:?}", pid, request);
+
+    let dirfd: c_int = request.dirfd;
+    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let path: CString = match CString::new(request.path.as_str()) {
+        Ok(path) => path,
+        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidArgument)],
+    };
+    let amode: i32 = request.mode;
+    let flag: LibcAtFlags = LibcAtFlags::from(request.flag);
+
+    debug!(
+        "libc::faccessat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
+        dirfd.inner(),
+        path,
+        amode,
+        flag.inner()
+    );
+    match unsafe { libc::faccessat(dirfd.inner(), path.as_ptr(), amode, flag.inner()) } {
+        0 => vec![FileAccessAtResponse::build(pid)],
+        ret => vec![crate::build_error(
+            pid,
+            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+        )],
     }
 }
 

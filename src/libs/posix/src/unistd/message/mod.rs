@@ -7,6 +7,7 @@
 
 mod chdir;
 mod close;
+mod faccessat;
 mod fchdir;
 mod fchown;
 mod fchownat;
@@ -36,6 +37,10 @@ pub use self::{
     close::{
         CloseRequest,
         CloseResponse,
+    },
+    faccessat::{
+        FileAccessAtRequest,
+        FileAccessAtResponse,
     },
     fchdir::{
         FileChdirRequest,
