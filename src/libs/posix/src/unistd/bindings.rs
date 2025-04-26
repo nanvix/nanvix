@@ -788,10 +788,50 @@ pub unsafe extern "C" fn linkat(
     }
 }
 
+///
+/// # Description
+///
+/// Sets the file offset of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `offset`: Offset to set.
+/// - `whence`: Reference point for the offset.
+///
+/// # Returns
+///
+/// Upon successful completion, `lseek()` returns the resulting offset. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
 #[no_mangle]
 pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
-    ::nvx::trace!("lseek(): fd = {}, offset = {}, whence = {}", fd, offset, whence);
-    crate::unistd::lseek(fd, offset, whence)
+    ::nvx::trace!("lseek(): fd={:?}, offset={:?}, whence={:?}", fd, offset, whence);
+
+    // Attempt to seek the file descriptor and check for errors.
+    match crate::unistd::lseek(fd, offset, whence) {
+        Ok(offset) => offset,
+        Err(error) => {
+            ::nvx::error!(
+                "lseek(): failed (fd={:?}, offset={:?}, whence={:?}, error={:?})",
+                fd,
+                offset,
+                whence,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
 }
 
 ///

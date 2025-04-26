@@ -66,6 +66,9 @@ extern void test_link(void);
 // Tests whether we can create a hard link to a file.
 extern void test_linkat(void);
 
+// Tests whether we can manipulate file offsets using lseek.
+extern void test_lseek(void);
+
 // Tests whether we can create a directory.
 extern void test_mkdirat(void);
 
