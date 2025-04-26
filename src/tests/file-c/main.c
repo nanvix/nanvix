@@ -101,6 +101,7 @@ int main(int argc, const char *argv[])
     test_link();       // requires open(), stat() and unlinkat().
     test_symlinkat();  // requires open(), stat() and unlinkat().
     test_readlinkat(); // requires symlinkat() and unlinkat().
+    test_readlink();   // requires symlinkat() and unlink().
     test_renameat();   // requires open(), close() and unlink().
     test_unlinkat();   // requires open() and close().
     test_mkdirat();    // requires stat() and unlinkat().
