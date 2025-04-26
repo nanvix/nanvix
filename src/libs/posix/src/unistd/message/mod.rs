@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod chdir;
 mod close;
 mod fchdir;
 mod fchown;
@@ -28,6 +29,10 @@ mod write;
 //==================================================================================================
 
 pub use self::{
+    chdir::{
+        ChangeDirectoryRequest,
+        ChangeDirectoryResponse,
+    },
     close::{
         CloseRequest,
         CloseResponse,

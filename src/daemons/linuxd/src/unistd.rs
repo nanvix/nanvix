@@ -28,6 +28,8 @@ use ::posix::{
     },
     unistd,
     unistd::message::{
+        ChangeDirectoryRequest,
+        ChangeDirectoryResponse,
         CloseRequest,
         CloseResponse,
         FileChdirRequest,
@@ -56,6 +58,39 @@ use ::posix::{
         WriteResponse,
     },
 };
+
+//==================================================================================================
+// do_chdir
+//==================================================================================================
+
+pub fn do_chdir(pid: ProcessIdentifier, request: ChangeDirectoryRequest) -> Vec<Message> {
+    trace!("do_chdir(): pid={:?}, request={:?}", pid, request);
+
+    let path: CString = match CString::new(request.path.as_str()) {
+        Ok(path) => path,
+        Err(error) => {
+            error!("do_chdir(): invalid path (error={:?})", error);
+            return vec![crate::build_error(pid, ErrorCode::InvalidArgument)];
+        },
+    };
+
+    debug!("libc::chdir(): path={:?}", path);
+    match unsafe { libc::chdir(path.as_ptr()) } {
+        0 => {
+            debug!("do_chdir(): chdir() succeeded");
+            vec![ChangeDirectoryResponse::build(pid)]
+        },
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::chdir(): errno={:?}", errno);
+            vec![crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )]
+        },
+    }
+}
 
 //==================================================================================================
 // do_close

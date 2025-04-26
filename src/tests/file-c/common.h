@@ -6,6 +6,9 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+// Tests whether we can change the current working directory.
+extern void test_chdir(void);
+
 // Tests system calls on directory entries.
 extern void test_dirent(void);
 

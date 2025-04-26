@@ -106,6 +106,7 @@ pub enum RequestAssemblerType {
     OpenAtRequest(LinuxDaemonLongMessage),
     RenameAtRequest(LinuxDaemonLongMessage),
     UnlinkAtRequest(LinuxDaemonLongMessage),
+    ChangeDirectoryRequest(LinuxDaemonLongMessage),
 }
 
 pub trait RequestAssemblerTrait
