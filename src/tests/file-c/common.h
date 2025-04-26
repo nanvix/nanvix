@@ -6,6 +6,9 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+// Tests whether we can check access permissions of a file using access().
+extern void test_access(void);
+
 // Tests whether we can change the current working directory.
 extern void test_chdir(void);
 
@@ -20,6 +23,9 @@ extern void test_create_unlink(void);
 
 // Tests whether we can get the current working directory.
 extern void test_getcwd(void);
+
+// Tests whether we can check access permissions of a file.
+extern void test_faccessat(void);
 
 // Tests whether we can change the current working directory.
 extern void test_fchdir(void);

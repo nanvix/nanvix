@@ -43,15 +43,34 @@ use ::nvx::sys::error::ErrorCode;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Checks user's permissions for a file.
+///
+/// # Parameters
+///
+/// - `path`: Pathname of the file.
+/// - `mode`: Access mode to check.
+///
+/// # Returns
+///
+/// Upon successful completion, the `access()` system call returns `0`. Otherwise, it returns `-1`
+/// and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+/// - This function is not called from multiple threads at the same time.
 #[no_mangle]
-pub unsafe extern "C" fn access(_path: *const c_char, _mode: c_int) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/355
-    ::nvx::error!("access(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
-    }
-    -1
+pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
+    ::nvx::trace!("access(): path={:?}, mode={:?}", path, mode);
+    faccessat(fcntl::AT_FDCWD, path, mode, 0)
 }
 
 ///
@@ -190,6 +209,69 @@ pub extern "C" fn execve(
 pub extern "C" fn _exit(status: c_int) -> ! {
     let Err(e) = nvx::sys::kcall::pm::exit(status);
     panic!("failed to terminate process (error={:?})", e);
+}
+
+///
+/// # Description
+///
+/// Checks the accessibility of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `mode`:  Accessibility check mode.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, `faccessat()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn faccessat(
+    dirfd: c_int,
+    path: *const c_char,
+    mode: c_int,
+    flag: c_int,
+) -> c_int {
+    ::nvx::trace!(
+        "faccessat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
+        dirfd,
+        path,
+        mode,
+        flag
+    );
+
+    // Attempt to convert `path`.
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("faccessat(): invalid path");
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to check access permissions and check for errors.
+    match crate::unistd::faccessat(dirfd, path, mode, flag) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("faccessat(): failed (error={:?})", error);
+            errno = error.code.get();
+            -1
+        },
+    }
 }
 
 ///

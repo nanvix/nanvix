@@ -116,7 +116,10 @@ use ::std::{
     mem,
     os::unix::net::UnixStream,
 };
-use posix::unistd::message::ChangeDirectoryRequest;
+use posix::unistd::message::{
+    ChangeDirectoryRequest,
+    FileAccessAtRequest,
+};
 
 //==================================================================================================
 // Structures
@@ -254,6 +257,7 @@ impl<'a> LinuxDaemon<'a> {
                                 // messages.
                                 LinuxDaemonMessageHeader::ChangeDirectoryRequestPart
                                 | LinuxDaemonMessageHeader::FileStatAtRequestPart
+                                | LinuxDaemonMessageHeader::FileAccessAtRequestPart
                                 | LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart
                                 | LinuxDaemonMessageHeader::LinkAtRequestPart
                                 | LinuxDaemonMessageHeader::ReadLinkAtRequestPart
@@ -477,6 +481,9 @@ impl<'a> LinuxDaemon<'a> {
         match message.header {
             LinuxDaemonMessageHeader::ChangeDirectoryRequestPart => {
                 self.handle_long_request::<ChangeDirectoryRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::FileAccessAtRequestPart => {
+                self.handle_long_request::<FileAccessAtRequest>(source, &message);
             },
             LinuxDaemonMessageHeader::FileStatAtRequestPart => {
                 self.handle_long_request::<FileStatAtRequest>(source, &message);

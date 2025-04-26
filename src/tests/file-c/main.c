@@ -113,14 +113,16 @@ int main(int argc, const char *argv[])
     test_getcwd();
     test_chdir(); // requires getcwd().
     test_fchdir();
-    test_chmod();    // requires open(), close(), stat() and unlinkat().
-    test_fchmodat(); // requires open(), close(), stat() and unlinkat().
-    test_fchmod();   // requires open(), close(), fstat() and unlink().
-    test_lchmod();   // requires open(), close(), stat(), link() and unlinkat().
-    test_fchownat(); // requires open(), close() and unlinkat().
-    test_chown();    // requires open(), close(), and unlinkat().
-    test_fchown();   // requires open(), close() and unlink().
-    test_lchown();   // requires open(), close() and unlinkat().
+    test_chmod();     // requires open(), close(), stat() and unlinkat().
+    test_fchmodat();  // requires open(), close(), stat() and unlinkat().
+    test_fchmod();    // requires open(), close(), fstat() and unlink().
+    test_lchmod();    // requires open(), close(), stat(), link() and unlinkat().
+    test_fchownat();  // requires open(), close() and unlinkat().
+    test_faccessat(); // requires open(), close(), chmodat() and unlinkat().
+    test_access();    // requires open(), close(), chmodat() and unlinkat().
+    test_chown();     // requires open(), close(), and unlinkat().
+    test_fchown();    // requires open(), close() and unlink().
+    test_lchown();    // requires open(), close() and unlinkat().
 
     // Write magic string to signal that the test passed.
     {
