@@ -77,39 +77,20 @@ pub extern "C" fn chdir(_path: *const c_char) -> c_int {
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
-/// the error.
+/// Upon successful completion, `chown()` returns `0`. Otherwise, it returns `-1` and sets `errno`
+/// to indicate the error.
 ///
-/// # See Also
+/// # Safety
 ///
-/// - [`crate::unistd::chown()`]
+/// The function is unsafe because it may dereference pointers.
 ///
-#[allow(clippy::missing_safety_doc)]
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+///
 #[no_mangle]
 pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
-    // Convert C string to Rust string.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!(
-                "chown(): invalid pathname (path={:?}, owner={:?}, group={:?})",
-                path,
-                owner,
-                group
-            );
-            errno = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    match crate::unistd::chown(path, owner, group) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("chown(): failed ({:?})", e);
-            errno = e.code.get();
-            -1
-        },
-    }
+    ::nvx::trace!("chown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
+    fchownat(fcntl::AT_FDCWD, path, owner, group, 0)
 }
 
 #[allow(clippy::missing_safety_doc)]
@@ -199,18 +180,129 @@ pub extern "C" fn fchdir(fd: c_int) -> c_int {
     }
 }
 
-/// Dummy implementation of `fchown`.
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Changes the owner and group of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `owner`: Owner of the file.
+/// - `group`: Group of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `fchown()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
 #[no_mangle]
-pub unsafe extern "C" fn fchown(_fd: i32, _owner: u32, _group: u32) -> isize {
-    // TODO:https://github.com/nanvix/nanvix/issues/361
-    ::nvx::error!("fchown(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int {
+    ::nvx::trace!("fchown(): fd={}, owner={}, group={}", fd, owner, group);
+
+    // Attempt to change file ownership and check the result.
+    match crate::unistd::fchown(fd, owner, group) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "fchown(): failed (fd={}, owner={}, group={}, error={:?})",
+                fd,
+                owner,
+                group,
+                error
+            );
+            errno = error.code.get();
+            -1
+        },
     }
-    -1
 }
 
+///
+/// # Description
+///
+/// Changes the owner and group of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `owner`: Owner of the file.
+/// - `group`: Group of the file.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, the `fchownat()` system call returns `0`. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn fchownat(
+    dirfd: c_int,
+    path: *const c_char,
+    owner: uid_t,
+    group: gid_t,
+    flag: c_int,
+) -> c_int {
+    ::nvx::trace!(
+        "fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
+        dirfd,
+        path,
+        owner,
+        group,
+        flag
+    );
+
+    // Attempt to convert `pathname`.
+    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(error) => {
+            ::nvx::error!(
+                "fchownat(): invalid pathname (dirfd={:?}, owner={:?}, group={:?}, flag={:?}, \
+                 error={:?})",
+                dirfd,
+                owner,
+                group,
+                flag,
+                error
+            );
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Change file ownership and check the result.
+    match crate::unistd::fchownat(dirfd, pathname, owner, group, flag) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "fchownat(): failed (dirfd={:?}, pathname={:?}, owner={:?}, group={:?}, \
+                 flag={:?}, error={:?})",
+                dirfd,
+                pathname,
+                owner,
+                group,
+                flag,
+                error
+            );
+            errno = error.code.get();
+            -1
+        },
+    }
+}
 #[no_mangle]
 pub extern "C" fn fdatasync(_fd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/278
@@ -410,41 +502,20 @@ pub extern "C" fn isatty(_fd: c_int) -> c_int {
 ///
 /// # Returns
 ///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
-/// the error.
+/// Upon successful completion, `lchown()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
 ///
-/// # See Also
+/// # Safety
 ///
-/// - [`crate::unistd::lchown()`]
+/// The function is unsafe because it may dereference pointers.
 ///
-#[allow(clippy::missing_safety_doc)]
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+///
 #[no_mangle]
 pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
-    // Convert C string to Rust string.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!(
-                "lchown(): invalid pathname (path={:?}, owner={:?}, group={:?})",
-                path,
-                owner,
-                group
-            );
-            errno = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    match crate::unistd::lchown(path, owner, group) {
-        Ok(_) => 0,
-        Err(e) => {
-            unsafe {
-                ::nvx::error!("lchown(): failed ({:?})", e);
-                errno = e.code.get();
-            }
-            -1
-        },
-    }
+    ::nvx::trace!("lchown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
+    fchownat(fcntl::AT_FDCWD, path, owner, group, fcntl::AT_SYMLINK_NOFOLLOW)
 }
 
 ///

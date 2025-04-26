@@ -7,7 +7,6 @@
 
 mod fadvise;
 mod fallocate;
-mod fchownat;
 mod fcntl;
 mod open;
 mod openat;
@@ -22,7 +21,6 @@ mod utimensat;
 pub use self::{
     fadvise::posix_fadvise,
     fallocate::posix_fallocate,
-    fchownat::fchownat,
     fcntl::fcntl,
     open::open,
     openat::openat,

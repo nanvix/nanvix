@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::FileChownAtRequest,
     ffi::c_int,
     message::MessagePartitioner,
     sys::types::{
         gid_t,
         uid_t,
     },
+    unistd::message::FileChownAtRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -45,8 +45,7 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `fchownat()` system call returns empty. Otherwise, it returns an
-/// error code.
+/// Upon successful completion, `fchownat()` returns empty. Otherwise, it returns an error code.
 ///
 pub fn fchownat(
     dirfd: c_int,
@@ -55,20 +54,15 @@ pub fn fchownat(
     group: gid_t,
     flag: c_int,
 ) -> Result<(), Error> {
-    // Send request.
-    chownat_request(dirfd, path, owner, group, flag)?;
+    ::nvx::trace!(
+        "fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
+        dirfd,
+        path,
+        owner,
+        group,
+        flag
+    );
 
-    // Wait for response.
-    chownat_response()
-}
-
-fn chownat_request(
-    dirfd: c_int,
-    path: &str,
-    owner: uid_t,
-    group: gid_t,
-    flag: c_int,
-) -> Result<(), Error> {
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, path)?;
@@ -79,23 +73,44 @@ fn chownat_request(
         ::nvx::ipc::send(&request)?;
     }
 
-    Ok(())
-}
-
-fn chownat_response() -> Result<(), Error> {
     let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        Err(Error::new(error_code, "fchownat() failed"))
+        ::nvx::error!(
+            "fchownat(): failed (dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}, \
+             error_code={:?})",
+            dirfd,
+            path,
+            owner,
+            group,
+            flag,
+            { response.status },
+        );
+
+        match ErrorCode::try_from(response.status) {
+            Ok(error_code) => Err(Error::new(error_code, "failed")),
+            Err(_) => Err(Error::new(ErrorCode::InvalidMessage, "failed to parse error code")),
+        }
     } else {
         // System call succeeded, parse response.
         let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
 
         match message.header {
             LinuxDaemonMessageHeader::FileChownAtResponse => Ok(()),
-            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
+            header => {
+                ::nvx::error!(
+                    "fchownat(): failed to parse response (dirfd={:?}, path={:?}, owner={:?}, \
+                     group={:?}, flag={:?}, header={:?})",
+                    dirfd,
+                    path,
+                    owner,
+                    group,
+                    flag,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "failed to parse response"))
+            },
         }
     }
 }
