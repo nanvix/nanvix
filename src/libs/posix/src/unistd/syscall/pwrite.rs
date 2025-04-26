@@ -6,10 +6,10 @@
 //==================================================================================================
 
 use crate::{
+    safe::RawFileDescriptor,
     sys::types::{
         off_t,
         size_t,
-        ssize_t,
     },
     unistd::message::{
         PartialWriteRequest,
@@ -22,40 +22,39 @@ use ::core::cmp;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
-pub fn pwrite(fd: i32, buffer: *const u8, count: size_t, offset: off_t) -> ssize_t {
-    let pid: ProcessIdentifier = match crate::unistd::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+///
+/// # Description
+///
+/// Writes data to a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to write.
+/// - `offset`: Offset to write to.
+///
+/// # Returns
+///
+/// Upon successful completion, `pwrite()` returns the number of bytes written. Otherwise, it
+/// returns an error.
+///
+pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<size_t, Error> {
+    ::nvx::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // Check if buffer is invalid.
-    if buffer.is_null() {
-        return ErrorCode::InvalidArgument.into_errno();
-    }
-
-    // Check if count is invalid.
-    if count == 0 {
-        return ErrorCode::InvalidArgument.into_errno();
-    }
-
-    // Check if offset is valid.
-    if offset < 0 {
-        return ErrorCode::InvalidArgument.into_errno();
-    }
-
-    // Construct buffer from raw parts.
-    let buffer: &[u8] = unsafe { ::core::slice::from_raw_parts(buffer, count as usize) };
-
-    let mut total_written: ssize_t = 0;
+    let mut total_written: size_t = 0;
     let mut buffer_offset: usize = 0;
+
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
     while buffer_offset < buffer.len() {
         let chunk_size: usize =
@@ -72,46 +71,57 @@ pub fn pwrite(fd: i32, buffer: *const u8, count: size_t, offset: off_t) -> ssize
             offset + buffer_offset as off_t,
             chunk,
         );
-        if let Err(e) = ::nvx::ipc::send(&request) {
-            return e.code.into_errno();
-        }
+        ::nvx::ipc::send(&request)?;
 
         // Receive response.
-        let response: Message = match ::nvx::ipc::recv() {
-            Ok(response) => response,
-            Err(e) => return e.code.into_errno(),
-        };
+        let response: Message = ::nvx::ipc::recv()?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {
-            // System call failed, parse error code and return it.
+            ::nvx::error!(
+                "pwrite(): failed (fd={}, buffer.len={}, error_code={})",
+                fd,
+                buffer.len(),
+                { response.status }
+            );
+
             match ErrorCode::try_from(response.status) {
-                Ok(e) => return e.into_errno(),
-                Err(_) => return ErrorCode::InvalidMessage.into_errno(),
+                // Error code was successfully parsed.
+                Ok(error_code) => return Err(Error::new(error_code, "pwritev() failed")),
+                // Error code was not parsed.
+                Err(error) => {
+                    ::nvx::error!("pwrite(): failed to convert error code (error={:?})", error);
+                    return Err(Error::new(ErrorCode::TryAgain, "pwritev() failed"));
+                },
             }
         } else {
             // System call succeeded, parse response.
-            match LinuxDaemonMessage::try_from_bytes(response.payload) {
+            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            // Response was successfully parsed.
+            match message.header {
                 // Response was successfully parsed.
-                Ok(message) => match message.header {
-                    // Response was successfully parsed.
-                    LinuxDaemonMessageHeader::PartialWriteResponse => {
-                        // Parse response.
-                        let message: PartialWriteResponse =
-                            PartialWriteResponse::from_bytes(message.payload);
+                LinuxDaemonMessageHeader::PartialWriteResponse => {
+                    // Parse response.
+                    let message: PartialWriteResponse =
+                        PartialWriteResponse::from_bytes(message.payload);
 
-                        // Update total written count.
-                        total_written += message.count as ssize_t;
-                        buffer_offset += message.count as usize;
-                    },
-                    // Response was not expected.
-                    _ => return ErrorCode::InvalidMessage.into_errno(),
+                    // Update total written count.
+                    total_written += message.count as size_t;
+                    buffer_offset += message.count as usize;
                 },
-                // Response was not parsed.
-                Err(_) => return ErrorCode::InvalidMessage.into_errno(),
+                // Response was not expected.
+                header => {
+                    ::nvx::error!(
+                        "pwrite(): failed to parse response (fd={}, buffer.len={}, header={:?})",
+                        fd,
+                        buffer.len(),
+                        header
+                    );
+                    return Err(Error::new(ErrorCode::InvalidMessage, "failed to parse response"));
+                },
             }
         }
     }
 
-    total_written
+    Ok(total_written)
 }
