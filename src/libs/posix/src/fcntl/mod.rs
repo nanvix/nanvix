@@ -35,7 +35,6 @@ cfg_if::cfg_if! {
             posix_fadvise,
             fcntl,
             open,
-            fchownat,
             utimensat,
         };
     }

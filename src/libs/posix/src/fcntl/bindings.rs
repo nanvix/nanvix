@@ -97,63 +97,6 @@ pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
 ///
 /// # Description
 ///
-/// Changes the owner and group of a file relative to a directory file descriptor.
-///
-/// # Parameters
-///
-/// - `dirfd`: Directory file descriptor.
-/// - `path`:  Pathname of the file.
-/// - `owner`: Owner of the file.
-/// - `group`: Group of the file.
-/// - `flag`:  Flag.
-///
-/// # Returns
-///
-/// Upon successful completion, the `fchownat()` system call returns `0`. Otherwise, it returns
-/// `-1` and sets `errno` to indicate the error.
-///
-/// # See Also
-///
-/// - [`crate::fcntl::fchownat()`]
-///
-#[allow(clippy::missing_safety_doc)]
-#[no_mangle]
-pub unsafe extern "C" fn fchownat(
-    dirfd: c_int,
-    path: *const c_char,
-    owner: uid_t,
-    group: gid_t,
-    flag: c_int,
-) -> c_int {
-    // Convert C string to Rust string.
-    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!(
-                "fchownat(): invalid pathname (dirfd={:?}, owner={:?}, group={:?}, flag={:?})",
-                dirfd,
-                owner,
-                group,
-                flag
-            );
-            errno = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    match crate::fcntl::fchownat(dirfd, pathname, owner, group, flag) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::nvx::error!("fchownat(): invalid error code");
-            errno = e.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Renames a file relative to a directory file descriptor.
 ///
 /// # Parameters

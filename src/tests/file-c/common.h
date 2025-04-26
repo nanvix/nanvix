@@ -24,14 +24,26 @@ extern void test_fchdir(void);
 // Tests whether we can change access permissions of a file.
 extern void test_chmod(void);
 
+// Tests whether we can change the ownership of a file.
+extern void test_chown(void);
+
 // Tests whether we can change access permissions of a file.
 extern void test_fchmod(void);
 
 // Tests whether we can change access permissions of a file.
 extern void test_fchmodat(void);
 
+// Tests whether we can change the ownership of a file descriptor.
+extern void test_fchown(void);
+
+// Tests whether we can change the ownership of a file.
+extern void test_fchownat(void);
+
 // Tests whether we can change access permissions of a file.
 extern void test_lchmod(void);
+
+// Tests whether we can change the ownership of a file.
+extern void test_lchown(void);
 
 // Tests whether we can create a hard link to a file.
 extern void test_link(void);

@@ -302,16 +302,6 @@ pub fn test() {
         panic!("file size is not 1024 bytes");
     }
 
-    // Change owner of file.
-    match unistd::fchown(fd, st.st_uid, st.st_gid) {
-        Ok(()) => {
-            ::nvx::info!("changed owner of file foo.tmp");
-        },
-        Err(e) => {
-            panic!("failed to change owner of file foo.tmp: {:?}", e);
-        },
-    };
-
     // Update access time of file named `foo.tmp`.
     let times: [timespec; 2] = [
         timespec {
@@ -374,16 +364,6 @@ pub fn test() {
             panic!("failed to close file foo.tmp: {:?}", error);
         },
     }
-
-    // Change owner of file.
-    match fcntl::fchownat(fcntl::AT_FDCWD, "foo.tmp", st.st_uid, st.st_gid, 0) {
-        Ok(()) => {
-            ::nvx::info!("changed owner of file foo.tmp");
-        },
-        Err(e) => {
-            panic!("failed to change owner of file foo.tmp: {:?}", e);
-        },
-    };
 
     // Get status of file.
     let path: &str = "foo.tmp";
