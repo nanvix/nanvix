@@ -6,17 +6,18 @@
 //==================================================================================================
 
 use crate::{
-    unistd::message::{
-        FileDataSyncRequest,
-        FileDataSyncResponse,
-    },
+    safe::RawFileDescriptor,
+    unistd::message::FileDataSyncRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
@@ -26,59 +27,61 @@ use ::nvx::{
 ///
 /// # Description
 ///
-/// Synchronizes the data of a file.
+/// Synchronizes the data of a file descriptor to disk.
 ///
 /// # Parameters
 ///
-/// - `fd: i32`: File descriptor.
+/// - `fd`: File descriptor.
 ///
 /// # Returns
 ///
-/// Upon successful completion, zero is returned. Otherwise, a negative error code is returned.
+/// Upon successful completion, `fdatasync()` returns empty. Otherwise, it returns an error.
 ///
-pub fn fdatasync(fd: i32) -> i32 {
-    let pid: ProcessIdentifier = match crate::unistd::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
+    ::nvx::trace!("fdatasync(): fd={:?}", fd);
+
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
     // Build request and send it.
     let request: Message = FileDataSyncRequest::build(pid, fd);
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
+        ::nvx::error!("fdatasync(): fd={:?}, status={:?}", fd, { response.status });
+
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(e) => e.code.into_errno(),
+            // Error code was successfully parsed.
+            Ok(error_code) => {
+                // Return error code.
+                Err(Error::new(error_code, "fdatasync failed"))
+            },
+            // Error code was not parsed.
+            Err(_) => {
+                // Return error code.
+                Err(Error::new(ErrorCode::InvalidMessage, "fdatasync failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::FileDataSyncResponse => {
-                    // Parse response.
-                    let response: FileDataSyncResponse =
-                        FileDataSyncResponse::from_bytes(message.payload);
-                    // Return result.
-                    response.ret
-                },
-                // Invalid response.
-                _ => ErrorCode::InvalidMessage.into_errno(),
+            LinuxDaemonMessageHeader::FileDataSyncResponse => Ok(()),
+            // Invalid response.
+            header => {
+                ::nvx::error!(
+                    "fdatasync(): fd={:?}, status={:?}, header={:?}",
+                    fd,
+                    { response.status },
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "fdatasync failed to parse response"))
             },
-            // Response was not parsed.
-            Err(e) => e.code.into_errno(),
         }
     }
 }
