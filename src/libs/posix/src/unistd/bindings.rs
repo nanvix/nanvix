@@ -303,14 +303,41 @@ pub unsafe extern "C" fn fchownat(
         },
     }
 }
+
+///
+/// # Description
+///
+/// Synchronizes the data of a file descriptor to disk.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+///
+/// # Returns
+///
+/// Upon successful completion, `fdatasync()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
 #[no_mangle]
-pub extern "C" fn fdatasync(_fd: c_int) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/278
-    ::nvx::error!("fdatasync(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
+    ::nvx::trace!("fdatasync(): fd={}", fd);
+
+    // Attempt to synchronize the file and check the result.
+    match crate::unistd::fdatasync(fd) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("fdatasync(): failed (fd={}, error={:?})", fd, error);
+            errno = error.code.get();
+            -1
+        },
     }
-    -1
 }
 
 #[no_mangle]
