@@ -54,14 +54,57 @@ pub unsafe extern "C" fn access(_path: *const c_char, _mode: c_int) -> c_int {
     -1
 }
 
+///
+/// # Description
+///
+/// Changes the current working directory.
+///
+/// # Parameters
+///
+/// - `path`: Pathname of the new working directory.
+///
+/// # Returns
+///
+/// Upon successful completion, the `chdir()` system call returns `0`. Otherwise, it returns `-1`
+/// and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+/// - This function is not called from multiple threads at the same time.
+///
 #[no_mangle]
-pub extern "C" fn chdir(_path: *const c_char) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/358
-    ::nvx::error!("chdir(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
+    ::nvx::error!("chdir(): path={:?}", path);
+
+    // Attempt to convert `path`.
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("chdir(): invalid path");
+            unsafe {
+                errno = ErrorCode::InvalidArgument.get();
+            }
+            return -1;
+        },
+    };
+
+    // Attempt to change the current working directory and check for errors.
+    match crate::unistd::chdir(path) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("chdir(): failed (error={:?})", error);
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
     }
-    -1
 }
 
 ///

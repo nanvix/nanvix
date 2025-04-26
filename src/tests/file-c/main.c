@@ -111,6 +111,7 @@ int main(int argc, const char *argv[])
     test_dirent();
     test_utimensat();
     test_getcwd();
+    test_chdir(); // requires getcwd().
     test_fchdir();
     test_chmod();    // requires open(), close(), stat() and unlinkat().
     test_fchmodat(); // requires open(), close(), stat() and unlinkat().
