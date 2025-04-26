@@ -7,7 +7,6 @@
 
 mod fadvise;
 mod fallocate;
-mod fchmodat;
 mod fchownat;
 mod fcntl;
 mod openat;
@@ -26,10 +25,6 @@ pub use self::{
     fallocate::{
         FileSpaceControlRequest,
         FileSpaceControlResponse,
-    },
-    fchmodat::{
-        FileChmodAtRequest,
-        FileChmodAtResponse,
     },
     fchownat::{
         FileChownAtRequest,

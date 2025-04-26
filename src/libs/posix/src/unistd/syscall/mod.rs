@@ -5,18 +5,15 @@
 // Modules
 //==================================================================================================
 
-mod chmod;
 mod chown;
 mod close;
 mod fchdir;
-mod fchmod;
 mod fchown;
 mod fdatasync;
 mod fsync;
 mod ftruncate;
 mod getcwd;
 mod getpid;
-mod lchmod;
 mod lchown;
 mod link;
 mod linkat;
@@ -37,18 +34,15 @@ mod write;
 //==================================================================================================
 
 pub use self::{
-    chmod::chmod,
     chown::chown,
     close::close,
     fchdir::fchdir,
-    fchmod::fchmod,
     fchown::fchown,
     fdatasync::fdatasync,
     fsync::fsync,
     ftruncate::ftruncate,
     getcwd::getcwd,
     getpid::getpid,
-    lchmod::lchmod,
     lchown::lchown,
     link::link,
     linkat::linkat,
