@@ -83,8 +83,11 @@ pub fn test() {
 
     // Move seek offset start of file.
     match unistd::lseek(fd, 0, unistd::SEEK_SET) {
-        0 => {
+        Ok(0) => {
             ::nvx::info!("seek file foo.tmp to 1024 bytes");
+        },
+        Ok(offset) => {
+            panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
         },
         offset => {
             panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
@@ -125,8 +128,11 @@ pub fn test() {
 
     // Advance seek offset as partial reads do not change it.
     match unistd::lseek(fd, 128, unistd::SEEK_SET) {
-        128 => {
+        Ok(128) => {
             ::nvx::info!("seek file foo.tmp to 128 bytes");
+        },
+        Ok(offset) => {
+            panic!("failed to seek file foo.tmp to 128 bytes: {:?}", offset);
         },
         offset => {
             panic!("failed to seek file foo.tmp to 128 bytes: {:?}", offset);
@@ -135,8 +141,11 @@ pub fn test() {
 
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
     match unistd::lseek(fd, 64, unistd::SEEK_END) {
-        256 => {
+        Ok(256) => {
             ::nvx::info!("seek file foo.tmp to 1024 bytes");
+        },
+        Ok(offset) => {
+            panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
         },
         offset => {
             panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);

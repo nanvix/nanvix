@@ -6,6 +6,9 @@
 //==================================================================================================
 
 use crate::{
+    ffi::c_int,
+    safe::RawFileDescriptor,
+    sys::types::off_t,
     unistd::message::{
         SeekRequest,
         SeekResponse,
@@ -18,53 +21,76 @@ use ::nvx::{
     pm::ProcessIdentifier,
     sys::error::ErrorCode,
 };
+use nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn lseek(fd: i32, offset: i64, whence: i32) -> i64 {
-    let pid: ProcessIdentifier = match crate::unistd::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno() as i64,
-    };
+pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_t, Error> {
+    ::nvx::trace!("lseek(): fd={:?}, offset={}, whence={}", fd, offset, whence);
+
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
     // Build request and send it.
     let request: Message = SeekRequest::build(pid, fd, offset, whence);
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno() as i64;
-    }
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno() as i64,
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
+        ::nvx::error!(
+            "lseek(): failed (fd={}, offset={}, whence={}, error={})",
+            fd,
+            offset,
+            whence,
+            { response.status },
+        );
+
+        // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno() as i64,
-            Err(_) => ErrorCode::InvalidMessage.into_errno() as i64,
+            // Error code was successfully parsed.
+            Ok(error_code) => {
+                // Return error.
+                Err(Error::new(error_code, "lseek() failed"))
+            },
+            // Error code was not successfully parsed.
+            Err(error) => {
+                ::nvx::error!(
+                    "lseek(): failed to parse error code (fd={}, offset={}, whence={}, error={:?})",
+                    fd,
+                    offset,
+                    whence,
+                    error
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "failed to parse error code"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::SeekResponse => {
-                    // Parse response.
-                    let response: SeekResponse = SeekResponse::from_bytes(message.payload);
+            LinuxDaemonMessageHeader::SeekResponse => {
+                // Parse response.
+                let response: SeekResponse = SeekResponse::from_bytes(message.payload);
 
-                    response.offset
-                },
-                // Response was not successfully parsed.
-                _ => ErrorCode::InvalidMessage.into_errno() as i64,
+                Ok(response.offset)
             },
             // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno() as i64,
+            header => {
+                ::nvx::error!(
+                    "lseek(): failed to parse response (fd={}, offset={}, whence={}, header={:?})",
+                    fd,
+                    offset,
+                    whence,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "failed to parse response"))
+            },
         }
     }
 }
