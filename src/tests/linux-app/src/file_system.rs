@@ -242,16 +242,6 @@ pub fn test() {
         },
     }
 
-    // Synchronize data changes to file.
-    match unistd::fdatasync(fd) {
-        Ok(()) => {
-            ::nvx::info!("synchronized file foo.tmp with storage device");
-        },
-        Err(error) => {
-            panic!("failed to synchronize file foo.tmp with storage device: (error={:?})", error);
-        },
-    }
-
     // Synchronize changes to a file.
     match unistd::fsync(fd) {
         Ok(()) => {
