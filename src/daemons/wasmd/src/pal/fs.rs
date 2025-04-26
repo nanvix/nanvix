@@ -179,18 +179,14 @@ impl File {
 
     /// Writes a buffer to a file.
     pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        match unistd::write(self.rawfd.0, buf.as_ptr(), buf.len() as u32) {
-            -1 => {
-                // Get `errno` and reset it.
-                let errno: c_int = unsafe {
-                    let errno: c_int = errno::errno;
-                    errno::errno = 0;
-                    errno
-                };
-                ::nvx::error!("write(): failed to write to file descriptor (errno={:?})", errno);
-                Err(Error { errno })
+        match unistd::write(self.rawfd.0, buf) {
+            Err(error) => {
+                ::nvx::error!("write(): failed to write to file descriptor (error={:?})", error);
+                Err(Error {
+                    errno: error.code.get(),
+                })
             },
-            ret => Ok(ret as usize),
+            Ok(ret) => Ok(ret as usize),
         }
     }
 }

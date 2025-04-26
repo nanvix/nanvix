@@ -96,4 +96,7 @@ extern void test_utimensat(void);
 // Tests wether we can write and read to/from a file.
 extern void test_write_read(void);
 
+// Tests whether we can write to a file using vectorized I/O.
+extern void test_writev(void);
+
 #endif

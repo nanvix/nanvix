@@ -48,7 +48,7 @@ pub fn main() -> Result<(), Error> {
     }
 
     if n > 0 {
-        unistd::write(stdout, buffer.as_ptr(), n as size_t);
+        unistd::write(stdout, &buffer[..n])?;
     }
 
     Ok(())
