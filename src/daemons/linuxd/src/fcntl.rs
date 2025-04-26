@@ -22,8 +22,6 @@ use ::posix::{
         message::{
             FileAdvisoryInformationRequest,
             FileAdvisoryInformationResponse,
-            FileChmodAtRequest,
-            FileChmodAtResponse,
             FileChownAtRequest,
             FileChownAtResponse,
             FileControlRequest,
@@ -46,6 +44,10 @@ use ::posix::{
     sys::{
         stat::{
             message::{
+                FileChmodAtRequest,
+                FileChmodAtResponse,
+                FileChmodRequest,
+                FileChmodResponse,
                 FileStatAtRequest,
                 FileStatAtResponse,
                 FileStatRequest,
@@ -795,6 +797,31 @@ pub fn do_fchownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<M
 }
 
 //==================================================================================================
+// do_fchmod
+//==================================================================================================
+
+pub fn do_fchmod(pid: ProcessIdentifier, request: FileChmodRequest) -> Message {
+    trace!("fchmod(): pid={:?}, request={:?}", pid, request);
+
+    let fd: i32 = request.fd;
+    let mode: u32 = request.mode;
+
+    debug!("libc::fchmod(): fd={:?}, mode={:?}", fd, mode);
+    match unsafe { libc::fchmod(fd, mode) } {
+        0 => FileChmodResponse::build(pid),
+        ret if ret == -1 => {
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
+        ret => unreachable!("libc::fchmod() returned an invalid value ({:?})", ret),
+    }
+}
+
+//==================================================================================================
 // do_fchmodat()
 //==================================================================================================
 
@@ -814,9 +841,15 @@ pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<M
         Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
 
-    let flag = LibcFileFlags(request.flag);
+    let flag: LibcAtFlags = LibcAtFlags::from(request.flag);
 
-    debug!("libc::fchmodat(): dirfd={:?}, path={:?}, mode={:?}", dirfd.inner(), path, mode.inner());
+    debug!(
+        "libc::fchmodat(): dirfd={:?}, path={:?}, mode={:?}, flags={:?}",
+        dirfd.inner(),
+        path,
+        mode.inner(),
+        flag.inner()
+    );
     match unsafe { libc::fchmodat(dirfd.inner(), path.as_ptr(), mode.inner(), flag.inner()) } {
         0 => {
             debug!("libc::fchmodat(): success");
@@ -938,7 +971,8 @@ impl LibcAtFlags {
     fn from(flags: ffi::c_int) -> LibcAtFlags {
         let libc_flags: libc::c_int = match flags {
             fcntl::AT_FDCWD => libc::AT_FDCWD,
-            fd => fd,
+            fcntl::AT_SYMLINK_NOFOLLOW => libc::AT_SYMLINK_NOFOLLOW,
+            flags => flags,
         };
 
         LibcAtFlags(libc_flags)

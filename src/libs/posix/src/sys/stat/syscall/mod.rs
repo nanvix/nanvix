@@ -5,6 +5,8 @@
 // Modules
 //==================================================================================================
 
+mod fchmod;
+mod fchmodat;
 mod fstat;
 mod fstatat;
 mod futimens;
@@ -42,6 +44,8 @@ use ::nvx::{
 // Exports
 //==================================================================================================
 
+pub use fchmod::fchmod;
+pub use fchmodat::fchmodat;
 pub use fstat::fstat;
 pub use fstatat::fstatat;
 pub use futimens::futimens;

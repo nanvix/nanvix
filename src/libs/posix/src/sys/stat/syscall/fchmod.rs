@@ -6,9 +6,11 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    sys::types::mode_t,
-    unistd::message::FileChmodRequest,
+    safe::RawFileDescriptor,
+    sys::{
+        stat::message::FileChmodRequest,
+        types::mode_t,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -37,10 +39,9 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `fchmod()` system call returns empty. Otherwise, it returns an
-/// error.
+/// Upon successful completion, `fchmod()` returns empty. Otherwise, it returns an error.
 ///
-pub fn fchmod(fd: c_int, mode: mode_t) -> Result<(), Error> {
+pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::nvx::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
@@ -54,17 +55,46 @@ pub fn fchmod(fd: c_int, mode: mode_t) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
+        ::nvx::error!("fchmod(): syscall failed (fd={:?}, mode={:o}, status={:?})", fd, mode, {
+            response.status
+        });
         // System call failed, parse error code and return it.
-        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        Err(Error::new(error_code, "fchmod() failed"))
+        match ErrorCode::try_from(response.status) {
+            Ok(error_code) => {
+                ::nvx::error!(
+                    "fchmod(): syscall failed (fd={:?}, mode={:o}, error_code={:?})",
+                    fd,
+                    mode,
+                    error_code
+                );
+                Err(Error::new(error_code, "system call failed"))
+            },
+            Err(error) => {
+                ::nvx::error!(
+                    "fchmod(): syscall failed (fd={:?}, mode={:o}, error={:?})",
+                    fd,
+                    mode,
+                    error
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "system call failed"))
+            },
+        }
     } else {
         // System call succeeded, parse response.
-        let message = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
             LinuxDaemonMessageHeader::FileChmodResponse => Ok(()),
             // Invalid response.
-            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
+            header => {
+                ::nvx::error!(
+                    "fchmod(): invalid response (fd={:?}, mode={:o}, header={:?})",
+                    fd,
+                    mode,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
+            },
         }
     }
 }

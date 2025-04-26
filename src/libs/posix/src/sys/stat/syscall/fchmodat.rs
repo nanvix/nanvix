@@ -6,10 +6,12 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::FileChmodAtRequest,
     ffi::c_int,
     message::MessagePartitioner,
-    sys::types::mode_t,
+    sys::{
+        stat::message::FileChmodAtRequest,
+        types::mode_t,
+    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };

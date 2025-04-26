@@ -4,6 +4,13 @@
  */
 
 //==================================================================================================
+// Configuration
+//==================================================================================================
+
+/* Must come first. */
+#define _POSIX_C_SOURCE 200809 // AT_FDCWD
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -20,39 +27,44 @@
 //==================================================================================================
 
 // Tests whether we can change access permissions of a file.
-void test_fchmod(void)
+void test_lchmod(void)
 {
-    printf("testing fchmod() ... ");
-
-    struct stat st = {0};
+    printf("testing lchmod() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
+    const char *linkname = "testfile.link";
 
-    // Create and open a test file.
+    struct stat st = {0};
+
+    // Create a test file.
     int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     assert(fd != -1);
+    assert(close(fd) == 0);
 
     // Save current access permissions.
-    assert(fstat(fd, &st) == 0);
+    assert(stat(filename, &st) == 0);
     mode_t original_mode = st.st_mode;
 
+    // Create a link to the test file.
+    assert(link(filename, linkname) == 0);
+
     // Change access permissions and assert result.
-    assert(fchmod(fd, st.st_mode & ~(S_IRGRP | S_IROTH)) == 0);
-    assert(fstat(fd, &st) == 0);
+    assert(lchmod(linkname, st.st_mode & ~(S_IRGRP | S_IROTH)) == 0);
+    assert(stat(linkname, &st) == 0);
     assert((st.st_mode & S_IRGRP) == 0);
     assert((st.st_mode & S_IROTH) == 0);
 
     // Restore the original access permissions.
-    assert(fchmod(fd, original_mode) == 0);
-    assert(fstat(fd, &st) == 0);
+    assert(lchmod(linkname, original_mode) == 0);
+    assert(stat(linkname, &st) == 0);
     assert(st.st_mode == original_mode);
 
-    // Close the file.
-    assert(close(fd) == 0);
+    // Remove the link.
+    assert(unlinkat(AT_FDCWD, linkname, 0) == 0);
 
     // Remove the test file.
-    assert(unlink(filename) == 0);
+    assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
     printf("ok\n");
 }

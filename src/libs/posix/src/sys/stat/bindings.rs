@@ -25,6 +25,144 @@ use ::nvx::sys::error::ErrorCode;
 //==================================================================================================
 
 ///
+/// # Description
+///
+/// Changes the mode of a file.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `chmod()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `path` points to a valid null-terminated C string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
+    ::nvx::trace!("chmod(): path={:?}, mode={}", path, mode);
+    fchmodat(fcntl::AT_FDCWD, path, mode, 0)
+}
+
+///
+/// # Description
+///
+/// Changes the mode of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `fchmod()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global state.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - No other thread calls this function at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
+    ::nvx::trace!("fchmod(): fd={}, mode={}", fd, mode);
+
+    // Attempt to change the mode and parse the result.
+    match crate::sys::stat::fchmod(fd, mode) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("fchmod(): {:?} (fd={}, mode={})", error, fd, mode);
+            errno = error.code.get();
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Changes the mode of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `mode`:  Mode.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, `fchmodat()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `path` points to a valid null-terminated C string.
+///
+#[no_mangle]
+pub unsafe extern "C" fn fchmodat(
+    dirfd: c_int,
+    path: *const c_char,
+    mode: mode_t,
+    flag: c_int,
+) -> c_int {
+    ::nvx::trace!(
+        "fchmodat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
+        dirfd,
+        path,
+        mode,
+        flag
+    );
+
+    // Attempt to convert `path`.
+    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(error) => {
+            ::nvx::error!(
+                "fchmodat(): invalid pathname (dirfd={:?}, mode={:?}, flag={:?}, error={:?})",
+                dirfd,
+                mode,
+                flag,
+                error
+            );
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to change the mode and parse the result.
+    match crate::sys::stat::fchmodat(dirfd, pathname, mode, flag) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "fchmodat(): failed (dirfd={}, pathname={:?}, mode={}, flag={}, error={:?})",
+                dirfd,
+                pathname,
+                mode,
+                flag,
+                error
+            );
+            errno = error.code.get();
+            -1
+        },
+    }
+}
+
+///
 /// # Safety
 ///
 /// This function has undefined behavior if buf points to an invalid memory location.
@@ -40,6 +178,32 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
             -1
         },
     }
+}
+
+///
+/// # Description
+///
+/// Changes the mode of a symbolic link.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
+/// the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::lchmod()`]
+///
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
+    ::nvx::trace!("lchmod(): path={:?}, mode={}", path, mode);
+    fchmodat(fcntl::AT_FDCWD, path, mode, fcntl::AT_SYMLINK_NOFOLLOW)
 }
 
 ///

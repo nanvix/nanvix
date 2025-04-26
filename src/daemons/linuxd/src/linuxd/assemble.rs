@@ -24,7 +24,6 @@ use ::nvx::{
 };
 use ::posix::{
     fcntl::message::{
-        FileChmodAtRequest,
         FileChownAtRequest,
         OpenAtRequest,
         RenameAtRequest,
@@ -35,6 +34,7 @@ use ::posix::{
         LinuxDaemonMessagePart,
     },
     sys::stat::message::{
+        FileChmodAtRequest,
         FileStatAtRequest,
         MakeDirectoryAtRequest,
         UpdateFileAccessTimeAtRequest,

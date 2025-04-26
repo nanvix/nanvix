@@ -22,7 +22,16 @@ extern void test_getcwd(void);
 extern void test_fchdir(void);
 
 // Tests whether we can change access permissions of a file.
+extern void test_chmod(void);
+
+// Tests whether we can change access permissions of a file.
 extern void test_fchmod(void);
+
+// Tests whether we can change access permissions of a file.
+extern void test_fchmodat(void);
+
+// Tests whether we can change access permissions of a file.
+extern void test_lchmod(void);
 
 // Tests whether we can create a hard link to a file.
 extern void test_link(void);
