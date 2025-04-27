@@ -29,7 +29,7 @@
 // Tests whether we can read from a file using vectorized I/O.
 void test_readv(void)
 {
-    printf("testing readv() ... ");
+    fprintf(stderr, "testing readv() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -81,5 +81,5 @@ void test_readv(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

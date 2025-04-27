@@ -29,7 +29,7 @@
 // Tests whether we can check access permissions of a file using access().
 void test_access(void)
 {
-    printf("testing access() ... ");
+    fprintf(stderr, "testing access() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -53,5 +53,5 @@ void test_access(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

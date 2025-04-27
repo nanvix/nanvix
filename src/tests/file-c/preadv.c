@@ -28,7 +28,7 @@ extern ssize_t preadv(int, const struct iovec *, int, off_t);
 // Tests whether we can read from a file using preadv.
 void test_preadv(void)
 {
-    printf("testing preadv() ... ");
+    fprintf(stderr, "testing preadv() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -85,5 +85,5 @@ void test_preadv(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

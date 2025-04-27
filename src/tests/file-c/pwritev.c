@@ -39,7 +39,7 @@ extern ssize_t pwritev(int, const struct iovec *, int, off_t);
 // Tests whether we can write to a file using pwritev.
 void test_pwritev(void)
 {
-    printf("testing pwritev() ... ");
+    fprintf(stderr, "testing pwritev() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -95,5 +95,5 @@ void test_pwritev(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

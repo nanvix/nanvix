@@ -19,7 +19,7 @@
 // Tests whether we can manipulate file offsets using lseek.
 void test_lseek(void)
 {
-    printf("testing lseek() ... ");
+    fprintf(stderr, "testing lseek() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -67,5 +67,5 @@ void test_lseek(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }
