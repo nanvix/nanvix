@@ -6,65 +6,83 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        FileControlRequest,
-        FileControlResponse,
-    },
+    fcntl::message::FileControlRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> Result<(), Error> {
+    ::nvx::error!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
+
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
     let request: Message = FileControlRequest::build(pid, fd, cmd, arg);
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status == -1 {
+        ::nvx::error!(
+            "fcntl(): failed (fd={:?}, cmd={:?}, arg={:?}, status={:?})",
+            fd,
+            cmd,
+            arg,
+            { response.status }
+        );
+
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Error code was successfully parsed.
+            Ok(error_code) => {
+                // Return error code.
+                Err(Error::new(error_code, "fcntl() failed"))
+            },
+            // Error code was not successfully parsed.
+            Err(error) => {
+                ::nvx::error!(
+                    "fcntl(): failed to parse error code (fd={:?}, cmd={:?}, arg={:?}, error={:?})",
+                    fd,
+                    cmd,
+                    arg,
+                    error
+                );
+                // Return error code.
+              Err(Error::new(ErrorCode::TryAgain, "fcntl() failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::FileControlResponse => {
-                    // Parse response.
-                    let response: FileControlResponse =
-                        FileControlResponse::from_bytes(message.payload);
-                    response.ret
-                },
-                // Response was not successfully parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
-            },
+            LinuxDaemonMessageHeader::FileControlResponse => Ok(()),
             // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            header => {
+                ::nvx::error!(
+                    "fcntl(): invalid response (fd={:?}, cmd={:?}, arg={:?}, header={:?})",
+                    fd,
+                    cmd,
+                    arg,
+                    header
+                );
+                Err(Error::new(ErrorCode::TryAgain, "fcntl() failed"))
+            },
         }
     }
 }
