@@ -8,7 +8,7 @@
 //==================================================================================================
 
 /* Must come first. */
-#define _POSIX_C_SOURCE 200809 // pwrite()
+#define _BSD_SOURCE // pwrivev()
 
 //==================================================================================================
 // Imports
@@ -21,9 +21,6 @@
 #include <string.h>
 #include <sys/uio.h>
 #include <unistd.h>
-
-// TODO: Remove this when the Newlib supports pwritev.
-extern ssize_t pwritev(int, const struct iovec *, int, off_t);
 
 //==================================================================================================
 // Constants
