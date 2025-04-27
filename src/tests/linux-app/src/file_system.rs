@@ -209,11 +209,11 @@ pub fn test() {
         },
     ];
     match sys::stat::futimens(fd, times) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("updated access time of file foo.tmp");
         },
-        errno => {
-            panic!("failed to update access time of file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to update access time of file foo.tmp: {:?}", error);
         },
     }
 
