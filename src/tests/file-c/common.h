@@ -75,6 +75,9 @@ extern void test_mkdirat(void);
 // Tests whether we can create a directory.
 extern void test_mkdir(void);
 
+// Tests whether we can use posix_fadvise on a file.
+extern void test_posix_fadvise(void);
+
 // Tests whether we can read from a file using pread.
 extern void test_pread(void);
 
