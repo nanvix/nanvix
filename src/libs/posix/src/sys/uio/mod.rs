@@ -38,7 +38,6 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod syscall;
         pub use self::syscall::{
-            readv,
             preadv,
         };
     }
