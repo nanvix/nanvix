@@ -29,7 +29,7 @@
 // Tests whether we can truncate a file descriptor.
 void test_ftruncate(void)
 {
-    printf("testing ftruncate() ... ");
+    fprintf(stderr, "testing ftruncate() ... ");
 
     const size_t SIZE = 1024;
 
@@ -51,5 +51,5 @@ void test_ftruncate(void)
     assert(close(fd) == 0);
     assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

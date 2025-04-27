@@ -11,11 +11,7 @@ use crate::{
         c_char,
         c_int,
     },
-    sys::types::{
-        gid_t,
-        mode_t,
-        uid_t,
-    },
+    sys::types::mode_t,
     time::timespec,
 };
 use ::core::ffi;

@@ -29,7 +29,7 @@
 // Tests whether we can change the ownership of a file descriptor.
 void test_fchown(void)
 {
-    printf("testing fchownat() ... ");
+    fprintf(stderr, "testing fchownat() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -45,5 +45,5 @@ void test_fchown(void)
     assert(close(fd) == 0);
     assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

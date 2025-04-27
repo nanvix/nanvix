@@ -28,6 +28,7 @@
 // Tests whether we can change the current working directory.
 void test_fchdir(void)
 {
+    fprintf(stderr, "testing fchdir() ... ");
     const char *TARGET_DIRECTORY = "src/";
 
     char initial_working_directory[PATH_MAX] = {0};
@@ -42,8 +43,6 @@ void test_fchdir(void)
     assert(initial_cwd == initial_working_directory);
     size_t initial_cwd_length = strnlen(initial_cwd, PATH_MAX);
     assert((initial_cwd_length > 0) && (initial_cwd_length < PATH_MAX));
-
-    fprintf(stderr, "%s(): Initial working directory: %s\n", __func__, initial_cwd);
 
     // Open target directory.
     int target_directory_fd = open(TARGET_DIRECTORY, O_RDONLY);
@@ -62,8 +61,6 @@ void test_fchdir(void)
     assert((target_cwd_length > 0) && (target_cwd_length < PATH_MAX));
     assert(strcmp(target_cwd, initial_cwd) != 0);
 
-    fprintf(stderr, "%s(): Target working directory: %s\n", __func__, target_cwd);
-
     // Move back to initial working directory.
     ret = fchdir(initial_directory_fd);
     assert(ret == 0);
@@ -76,7 +73,6 @@ void test_fchdir(void)
     size_t restored_cwd_length = strnlen(restored_cwd, PATH_MAX);
     assert((restored_cwd_length > 0) && (restored_cwd_length < PATH_MAX));
     assert(strcmp(restored_cwd, initial_cwd) == 0);
-    fprintf(stderr, "%s(): Restored working directory: %s\n", __func__, restored_cwd);
 
     // Close target directory.
     ret = close(target_directory_fd);
@@ -85,4 +81,6 @@ void test_fchdir(void)
     // Close initial directory.
     ret = close(initial_directory_fd);
     assert(ret == 0);
+
+    fprintf(stderr, "passed\n");
 }

@@ -29,7 +29,7 @@
 // Tests whether we can create a hard link to a file.
 void test_link(void)
 {
-    printf("testing link() ... ");
+    fprintf(stderr, "testing link() ... ");
 
     const char *filename = "README.md";
     const char *linkname = "README.link";
@@ -62,5 +62,5 @@ void test_link(void)
     // Remove the hard link.
     assert(unlinkat(AT_FDCWD, linkname, 0) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }
