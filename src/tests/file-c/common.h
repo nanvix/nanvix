@@ -87,6 +87,9 @@ extern void test_readlink(void);
 // Tests whether we can read a symbolic link.
 extern void test_readlinkat(void);
 
+// Tests whether we can read from a file using vectorized I/O.
+extern void test_readv(void);
+
 // Tests whether we can rename a file.
 extern void test_renameat(void);
 
