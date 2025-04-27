@@ -190,15 +190,11 @@ impl ProcessDaemon {
                     self.processes.insert(pid, s);
                     message::signup_response(destination, pid, 0)
                 },
-                Err(_) => message::signup_response(
-                    destination,
-                    pid,
-                    ErrorCode::InvalidArgument.into_errno(),
-                ),
+                Err(_) => {
+                    message::signup_response(destination, pid, ErrorCode::InvalidArgument.get())
+                },
             },
-            Err(_) => {
-                message::signup_response(destination, pid, ErrorCode::InvalidArgument.into_errno())
-            },
+            Err(_) => message::signup_response(destination, pid, ErrorCode::InvalidArgument.get()),
         }
     }
 
@@ -215,7 +211,7 @@ impl ProcessDaemon {
                     let message: Message = message::lookup_response(
                         destination,
                         ProcessIdentifier::from(u32::MAX),
-                        ErrorCode::InvalidArgument.into_errno(),
+                        ErrorCode::InvalidArgument.get(),
                     )?;
                     return Ok(message);
                 },
@@ -224,7 +220,7 @@ impl ProcessDaemon {
                 let message: Message = message::lookup_response(
                     destination,
                     ProcessIdentifier::from(u32::MAX),
-                    ErrorCode::InvalidArgument.into_errno(),
+                    ErrorCode::InvalidArgument.get(),
                 )?;
                 return Ok(message);
             },
@@ -242,7 +238,7 @@ impl ProcessDaemon {
         let message: Message = message::lookup_response(
             destination,
             ProcessIdentifier::from(u32::MAX),
-            ErrorCode::NoSuchEntry.into_errno(),
+            ErrorCode::NoSuchEntry.get(),
         )?;
 
         Ok(message)
