@@ -4,6 +4,13 @@
  */
 
 //==================================================================================================
+// Configuration
+//==================================================================================================
+
+/* Must come first. */
+#define _POSIX_C_SOURCE 200112L // posix_fadvise()
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -12,21 +19,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-
-// TODO: Remove the following import when it is exported by Newlib.
-extern int posix_fadvise(int fd, off_t offset, off_t len, int advice);
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-// TODO: Remove the following constants when they are exported by Newlib.
-#define POSIX_FADV_NORMAL 0
-#define POSIX_FADV_SEQUENTIAL 1
-#define POSIX_FADV_RANDOM 2
-#define POSIX_FADV_WILLNEED 3
-#define POSIX_FADV_DONTNEED 4
-#define POSIX_FADV_NOREUSE 5
 
 //==================================================================================================
 // Standalone Functions
