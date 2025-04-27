@@ -8,6 +8,7 @@
 use crate::{
     errno::errno,
     ffi::c_int,
+    limits,
     sys::{
         types::{
             off_t,
@@ -154,6 +155,118 @@ pub unsafe extern "C" fn pwritev(
         // Dry-mode run failed because some other error.
         Err(error) => {
             ::nvx::error!("pwritev(): dry-run failed (errno={:?})", error);
+            errno = error.code.get();
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Reads a vector of data from a file.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `iov`: Pointer to an array of `iovec` structures.
+/// - `iovcnt`: Number of elements in the array.
+///
+/// # Returns
+///
+/// Upon successful completion, `readv()` returns the number of bytes read. Otherwise, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - It may dereference raw pointers.
+/// - It may access global variables.
+///
+/// It is safe to call this function if and only if the following conditions are met:
+/// - The `iov` pointer is valid and points to an array of `iovec` structures.
+/// - This function is called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize_t {
+    ::nvx::trace!("readv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
+
+    // Check if number of elements in the vector is valid.
+    if (iovcnt < 0) || (iovcnt > limits::IOV_MAX as i32) {
+        ::nvx::error!("readv(): invalid iovcnt {iovcnt}");
+        errno = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Check if vector base is invalid.
+    if iov.is_null() {
+        ::nvx::error!("readv(): invalid iov {iov:?}");
+        errno = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Check for zero-length vector.
+    if iovcnt == 0 {
+        return 0;
+    }
+
+    let do_readv = |dry_run: bool| -> Result<size_t, Error> {
+        let mut total: size_t = 0;
+
+        // Traverse i/o vector.
+        for i in 0..iovcnt {
+            let iov: *const iovec = unsafe { iov.offset(i as isize) };
+
+            // Check if base address is invalid.
+            if iov.is_null() {
+                ::nvx::error!("readv(): invalid iov {iov:?}");
+                return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov"));
+            }
+
+            let iov_base: *mut u8 = unsafe { (*iov).iov_base };
+            let iov_len: size_t = unsafe { (*iov).iov_len };
+
+            // Check if base address is invalid.
+            if iov_base.is_null() {
+                ::nvx::error!("readv(): invalid iov_base {iov_base:?}");
+                return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov_base"));
+            }
+
+            total += if !dry_run {
+                let buffer: &mut [u8] =
+                    unsafe { slice::from_raw_parts_mut(iov_base, iov_len as usize) };
+
+                // Read data and check if read failed.
+                match unistd::read(fd, buffer) {
+                    Ok(count) => count,
+                    Err(error) => {
+                        return Err(error);
+                    },
+                }
+            } else {
+                iov_len as size_t
+            }
+        }
+
+        Ok(total)
+    };
+
+    // Perform a dry-run first.
+    match do_readv(true) {
+        Ok(_count) => {
+            // Perform the actual read.
+            match do_readv(false) {
+                Ok(count) => count as ssize_t,
+                Err(error) => {
+                    ::nvx::error!("readv(): read failed (errno={:?})", error);
+                    errno = error.code.get();
+                    -1
+                },
+            }
+        },
+        // Dry-run failed because some other error.
+        Err(error) => {
+            ::nvx::error!("readv(): dry-run failed (errno={:?})", error);
             errno = error.code.get();
             -1
         },
