@@ -137,10 +137,15 @@ pub fn do_faccessat(pid: ProcessIdentifier, request: FileAccessAtRequest) -> Vec
     );
     match unsafe { libc::faccessat(dirfd.inner(), path.as_ptr(), amode, flag.inner()) } {
         0 => vec![FileAccessAtResponse::build(pid)],
-        ret => vec![crate::build_error(
-            pid,
-            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        )],
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::faccessat(): errno={:?}", errno);
+            vec![crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )]
+        },
     }
 }
 
@@ -156,10 +161,15 @@ pub fn do_fdatasync(pid: ProcessIdentifier, request: FileDataSyncRequest) -> Mes
     debug!("libc::fdatasync(): fd={:?}", fd);
     match unsafe { libc::fdatasync(fd) } {
         ret if ret == 0 => FileDataSyncResponse::build(pid, ret),
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::fdatasync(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 
@@ -208,7 +218,7 @@ pub fn do_getcwd(pid: ProcessIdentifier) -> Vec<Message> {
         let errno: i32 = unsafe { *libc::__errno_location() };
         debug!("libc::getcwd(): errno={:?}", errno);
         let error: ErrorCode =
-            ErrorCode::try_from(-errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
         vec![crate::build_error(pid, error)]
     }
 }
@@ -225,10 +235,15 @@ pub fn do_fsync(pid: ProcessIdentifier, request: FileSyncRequest) -> Message {
     debug!("libc::fsync(): fd={:?}", fd);
     match unsafe { libc::fsync(fd) } {
         ret if ret == 0 => FileSyncResponse::build(pid, ret),
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::fsync(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 
@@ -249,11 +264,15 @@ pub fn do_lseek(pid: ProcessIdentifier, request: SeekRequest) -> Message {
     debug!("libc::lseek(): fd={:?}, offset={:?}, whence={:?}", fd, offset, whence.inner());
     match unsafe { libc::lseek(fd, offset, whence.inner()) } {
         ret if ret >= 0 => SeekResponse::build(pid, ret),
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret as i32)
-                .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::lseek(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 
@@ -270,10 +289,15 @@ pub fn do_ftruncate(pid: ProcessIdentifier, request: FileTruncateRequest) -> Mes
     debug!("libc::ftruncate(): fd={:?}, length={:?}", fd, length);
     match unsafe { libc::ftruncate(fd, length) } {
         ret if ret == 0 => FileTruncateResponse::build(pid, ret),
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::ftruncate(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 
@@ -296,11 +320,15 @@ pub fn do_write(pid: ProcessIdentifier, request: WriteRequest) -> Message {
     debug!("libc::write(): fd={:?}, buffer={:?}", fd, buffer);
     match unsafe { libc::write(fd, buffer.as_ptr() as *const _, count) } {
         ret if ret >= 0 => WriteResponse::build(pid, ret as i32),
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret as i32)
-                .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::write(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 
@@ -323,11 +351,15 @@ pub fn do_read(pid: ProcessIdentifier, request: ReadRequest) -> Message {
     debug!("libc::read(): fd={:?}, buffer={:?}", fd, buffer);
     match unsafe { libc::read(fd, buffer.as_mut_ptr() as *mut _, count) } {
         ret if ret >= 0 => ReadResponse::build(pid, ret as i32, buffer),
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret as i32)
-                .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::read(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 
@@ -354,11 +386,15 @@ pub fn do_pwrite(pid: ProcessIdentifier, request: PartialWriteRequest) -> Messag
     );
     match unsafe { libc::pwrite(fd, buffer.as_ptr() as *const _, count, offset) } {
         ret if ret >= 0 => PartialWriteResponse::build(pid, ret as ssize_t),
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret as i32)
-                .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::pwrite(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 
@@ -385,11 +421,15 @@ pub fn do_pread(pid: ProcessIdentifier, request: PartialReadRequest) -> Message 
     );
     match unsafe { libc::pread(fd, buffer.as_mut_ptr() as *mut _, count, offset) } {
         ret if ret >= 0 => PartialReadResponse::build(pid, ret as ssize_t, buffer),
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret as i32)
-                .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::pread(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 
@@ -418,10 +458,15 @@ pub fn do_linkat(pid: ProcessIdentifier, request: LinkAtRequest) -> Vec<Message>
     );
     match unsafe { libc::linkat(olddirfd, oldpath.as_ptr(), newdirfd, newpath.as_ptr(), flags) } {
         ret if ret == 0 => vec![LinkAtResponse::build(pid, ret)],
-        ret => vec![crate::build_error(
-            pid,
-            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        )],
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::linkat(): errno={:?}", errno);
+            vec![crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )]
+        },
     }
 }
 
@@ -494,10 +539,15 @@ pub fn do_pipe(pid: ProcessIdentifier) -> Message {
             debug!("pipe(): read_fd={:?}, write_fd={:?}", read_fd, write_fd);
             PipeResponse::build(pid, read_fd, write_fd)
         },
-        ret => crate::build_error(
-            pid,
-            ErrorCode::try_from(ret).unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
-        ),
+        ret => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            debug!("libc::pipe(): errno={:?}", errno);
+            crate::build_error(
+                pid,
+                ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("invalid error code: {:?}", ret)),
+            )
+        },
     }
 }
 

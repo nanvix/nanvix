@@ -46,16 +46,34 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
-        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
         ::nvx::error!(
             "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, error={:?})",
             dirfd,
             pathname,
             flags,
             mode,
-            error_code
+            { response.status }
         );
-        Err(Error::new(error_code, "openat() failed"))
+        match ErrorCode::try_from(response.status) {
+            // Succeeded to parse error code.
+            Ok(error_code) => {
+                // Return error.
+                Err(Error::new(error_code, "openat() failed"))
+            },
+            // Failed to parse error code, return generic error.
+            Err(error) => {
+                ::nvx::error!(
+                    "openat(): failed to parse error code (dirfd={:?}, pathname={:?}, flags={:?}, \
+                     mode={:?}, error={:?})",
+                    dirfd,
+                    pathname,
+                    flags,
+                    mode,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "openat(): failed"))
+            },
+        }
     } else {
         // System call succeeded, parse response.
         match LinuxDaemonMessage::try_from_bytes(response.payload) {
