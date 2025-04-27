@@ -29,7 +29,6 @@ kill_children() {
 
 # Run nanvixd.
 timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
-    sudo -E \
     ./bin/nanvixd.elf \
         -http-addr ${NANVIXD_SOCKADDR} \
         -linuxd-addr ${LINUXD_SOCKADDR} \

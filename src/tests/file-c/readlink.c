@@ -29,7 +29,7 @@
 // Tests whether we can read a symbolic link.
 void test_readlink(void)
 {
-    printf("testing readlink() ... ");
+    fprintf(stderr, "testing readlink() ... ");
 
     const char *filename = "README.md";
     const char *linkname = "README.link";
@@ -52,5 +52,5 @@ void test_readlink(void)
     // Remove the hard link.
     assert(unlinkat(AT_FDCWD, linkname, 0) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

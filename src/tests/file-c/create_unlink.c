@@ -21,7 +21,7 @@
 // Tests wether we can create and unlink a file.
 void test_create_unlink(void)
 {
-    printf("testing create()/unlink() ... ");
+    fprintf(stderr, "testing create()/unlink() ... ");
 
     const char *filename = "testfile.txt";
     assert(strlen(filename) <= NAME_MAX);
@@ -34,5 +34,5 @@ void test_create_unlink(void)
     // Remove test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

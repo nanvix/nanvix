@@ -31,7 +31,7 @@ extern int fdatasync(int fd);
 // Tests whether we can synchronize file data to disk.
 void test_fdatasync(void)
 {
-    printf("testing fdatasync() ... ");
+    fprintf(stderr, "testing fdatasync() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -73,5 +73,5 @@ void test_fdatasync(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

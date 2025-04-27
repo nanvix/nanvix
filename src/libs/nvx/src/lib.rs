@@ -243,7 +243,7 @@ fn rust_trampoline(_argp: *mut i8) -> i32 {
     // Runs the main function.
     match unsafe { main() } {
         Ok(_) => 0,
-        Err(e) => e.code.into_errno(),
+        Err(e) => e.code.get(),
     }
 }
 

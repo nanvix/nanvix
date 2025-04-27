@@ -29,7 +29,7 @@
 // Tests whether we can create a directory.
 void test_mkdir(void)
 {
-    printf("testing mkdir() ... ");
+    fprintf(stderr, "testing mkdir() ... ");
 
     const char *dirname = "testdir";
     assert(strlen(dirname) <= NAME_MAX);
@@ -57,5 +57,5 @@ void test_mkdir(void)
     // Remove test directory.
     assert(unlinkat(AT_FDCWD, dirname, AT_REMOVEDIR) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }
