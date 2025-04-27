@@ -27,6 +27,8 @@
 // Tests whether we can get the current working directory.
 void test_getcwd(void)
 {
+    printf("testing getcwd() ... ");
+
     char pathbuf[PATH_MAX] = {0};
 
     // Get current working directory and assert result.
@@ -36,5 +38,5 @@ void test_getcwd(void)
     size_t len = strnlen(cwd, PATH_MAX);
     assert((len > 0) && (len < PATH_MAX));
 
-    fprintf(stderr, "%s(): Current working directory: %s\n", __func__, cwd);
+    printf("ok\n");
 }

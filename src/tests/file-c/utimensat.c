@@ -26,7 +26,7 @@
 // Tests whether we can change file access and modification times.
 void test_utimensat(void)
 {
-    fprintf(stderr, "testing %s()...\n", __func__);
+    printf("testing utimensat() ... ");
 
     const char *filename = "README.md";
 
@@ -50,4 +50,6 @@ void test_utimensat(void)
     assert(saved_stat.st_atim.tv_sec == saved_times[0].tv_sec);
     assert(saved_stat.st_mtim.tv_nsec == saved_times[1].tv_nsec);
     assert(saved_stat.st_atim.tv_nsec == saved_times[0].tv_nsec);
+
+    printf("ok\n");
 }
