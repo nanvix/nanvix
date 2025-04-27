@@ -232,16 +232,6 @@ pub fn test() {
         },
     }
 
-    // Truncate file to 512 bytes.
-    match unistd::ftruncate(fd, 512) {
-        Ok(()) => {
-            ::nvx::info!("truncated file foo.tmp to 512 bytes");
-        },
-        Err(e) => {
-            panic!("failed to truncate file foo.tmp to 512 bytes ({:?})", e);
-        },
-    }
-
     // Attempt to allocate space.
     match fcntl::posix_fallocate(fd, 512, 512) {
         0 => {

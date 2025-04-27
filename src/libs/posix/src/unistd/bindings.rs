@@ -369,18 +369,22 @@ pub extern "C" fn fsync(fd: c_int) -> c_int {
 /// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
 /// indicate the error.
 ///
-/// # See Also
+/// # Safety
 ///
-/// - [`crate::unistd::ftruncate()`]
+/// The function is unsafe because it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
 ///
 #[no_mangle]
-pub extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
+pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
+    ::nvx::trace!("ftruncate(): fd={}, length={}", fd, length);
+
+    // Attempt to truncate the file and check the result.
     match crate::unistd::ftruncate(fd, length) {
-        Ok(_) => 0,
+        Ok(()) => 0,
         Err(e) => {
-            unsafe {
-                errno = e.code.get();
-            }
+            errno = e.code.get();
             -1
         },
     }
