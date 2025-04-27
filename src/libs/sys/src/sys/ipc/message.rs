@@ -84,7 +84,7 @@ impl Message {
             source,
             destination,
             status: if let Some(status) = status {
-                status.into_errno()
+                status.get()
             } else {
                 0
             },
