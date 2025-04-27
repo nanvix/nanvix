@@ -39,6 +39,9 @@ extern void test_fchown(void);
 // Tests whether we can change the ownership of a file.
 extern void test_fchownat(void);
 
+// Tests whether we can truncate a file descriptor.
+extern void test_ftruncate(void);
+
 // Tests whether we can change access permissions of a file.
 extern void test_lchmod(void);
 
