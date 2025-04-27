@@ -58,7 +58,8 @@ pub fn do_clock_getres(pid: ProcessIdentifier, request: ClockResolutionRequest) 
             });
             ClockGetResolutionResponse::build(pid, res)
         },
-        errno => {
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::clock_getres(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
             crate::build_error(pid, error)
@@ -97,7 +98,8 @@ pub fn do_clock_gettime(pid: ProcessIdentifier, request: GetClockTimeRequest) ->
             });
             GetClockTimeResponse::build(pid, tp)
         },
-        errno => {
+        _ => {
+            let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::clock_gettime(): errno={:?}", errno);
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
             crate::build_error(pid, error)

@@ -115,7 +115,7 @@ pub fn do_openat(pid: ProcessIdentifier, request: OpenAtRequest) -> Vec<Message>
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::openat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
+            let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {:?}", errno));
             vec![crate::build_error(pid, error)]
         },
@@ -291,8 +291,8 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fstatat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
@@ -317,8 +317,8 @@ pub fn do_posix_fallocate(pid: ProcessIdentifier, request: FileSpaceControlReque
         },
         errno => {
             debug!("libc::posix_fallocate(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             crate::build_error(pid, error)
         },
     }
@@ -356,8 +356,8 @@ pub fn do_posix_fadvise(
         },
         errno => {
             debug!("libc::posix_fadvise(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             crate::build_error(pid, error)
         },
     }
@@ -431,8 +431,8 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fstatat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
@@ -472,8 +472,8 @@ pub fn do_symlinkat(pid: ProcessIdentifier, request: SymbolicLinkAtRequest) -> V
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::symlinkat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
@@ -524,8 +524,8 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::readlinkat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
@@ -565,8 +565,8 @@ pub fn do_mkdirat(pid: ProcessIdentifier, request: MakeDirectoryAtRequest) -> Ve
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::mkdirat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
@@ -620,8 +620,8 @@ pub fn do_utimensat(
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::utimensat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
@@ -660,8 +660,8 @@ pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest)
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::futimens(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             crate::build_error(pid, error)
         },
     }
@@ -693,7 +693,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
             } else if ret == -1 {
                 let errno: i32 = unsafe { *libc::__errno_location() };
                 debug!("libc::fcntl(): errno={:?}", errno);
-                let error: ErrorCode = ErrorCode::try_from(-errno)
+                let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
                 crate::build_error(pid, error)
             } else {
@@ -711,7 +711,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
             } else if ret == -1 {
                 let errno: i32 = unsafe { *libc::__errno_location() };
                 debug!("libc::fcntl(): errno={:?}", errno);
-                let error: ErrorCode = ErrorCode::try_from(-errno)
+                let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
                 crate::build_error(pid, error)
             } else {
@@ -733,7 +733,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
             } else if ret == -1 {
                 let errno: i32 = unsafe { *libc::__errno_location() };
                 debug!("libc::fcntl(): errno={:?}", errno);
-                let error: ErrorCode = ErrorCode::try_from(-errno)
+                let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
                 crate::build_error(pid, error)
             } else {
@@ -789,8 +789,8 @@ pub fn do_fchownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<M
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fchownat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
@@ -858,8 +858,8 @@ pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<M
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fchmodat(): errno={:?}", errno);
-            let error: ErrorCode = ErrorCode::try_from(-errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             vec![crate::build_error(pid, error)]
         },
     }
