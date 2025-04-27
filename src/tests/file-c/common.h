@@ -75,6 +75,12 @@ extern void test_mkdirat(void);
 // Tests whether we can create a directory.
 extern void test_mkdir(void);
 
+// Tests whether we can read from a file using pread.
+extern void test_pread(void);
+
+// Tests whether we can read from a file using preadv.
+extern void test_preadv(void);
+
 // Tests whether we can write to a file using pwrite.
 extern void test_pwrite(void);
 
