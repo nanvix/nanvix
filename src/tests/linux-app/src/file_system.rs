@@ -373,9 +373,12 @@ fn test_pipe() {
 
     // Read from pipe.
     let mut read_buffer: [u8; 128] = [0; 128];
-    match unistd::read(read_fd, read_buffer.as_mut_ptr(), read_buffer.len() as size_t) {
-        128 => {
+    match unistd::read(read_fd, &mut read_buffer) {
+        Ok(128) => {
             ::nvx::info!("read 128 bytes from pipe");
+        },
+        Ok(n) => {
+            panic!("failed to read 128 bytes from pipe: (n={:?})", n);
         },
         errno => {
             panic!("failed to read 128 bytes from pipe: {:?}", errno);

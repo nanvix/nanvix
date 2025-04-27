@@ -6,16 +6,15 @@
 //==================================================================================================
 
 use crate::{
-    sys::types::{
-        size_t,
-        ssize_t,
-    },
+    safe::RawFileDescriptor,
+    sys::types::size_t,
     unistd::{
         self,
         message::{
             ReadRequest,
             ReadResponse,
         },
+        STDIN_FILENO,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -25,34 +24,40 @@ use ::core::cmp;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
-pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
-    let pid: ProcessIdentifier = match crate::unistd::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
-
-    // Check if buffer is invalid.
-    if buffer.is_null() {
-        return ErrorCode::InvalidArgument.into_errno();
+///
+/// # Description
+///
+/// Reads data from a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to read into.
+///
+/// # Returns
+///
+/// Upon successful completion, `read()` returns the number of bytes read. Otherwise, it returns an
+/// error.
+///
+pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
+    // Skip logging for stdin to avoid spamming the output.
+    if fd != STDIN_FILENO {
+        ::nvx::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // Check if count is invalid.
-    if count == 0 {
-        return ErrorCode::InvalidArgument.into_errno();
-    }
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
-    // Construct buffer from raw parts.
-    let buffer: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buffer, count as usize) };
-
-    let mut total_read: ssize_t = 0;
+    let mut total_read: size_t = 0;
     let mut offset: usize = 0;
 
     while offset < buffer.len() {
@@ -60,68 +65,84 @@ pub fn read(fd: i32, buffer: *mut u8, count: size_t) -> ssize_t {
 
         // Build request and send it.
         let request: Message = ReadRequest::build(pid, fd, chunk_size as size_t);
-        if let Err(e) = ::nvx::ipc::send(&request) {
-            return e.code.into_errno();
-        }
+        ::nvx::ipc::send(&request)?;
 
         // Receive response.
-        let response: Message = match ::nvx::ipc::recv() {
-            Ok(response) => response,
-            Err(e) => return e.code.into_errno(),
-        };
+        let response: Message = ::nvx::ipc::recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            // System call failed, parse error code and return it.
+            ::nvx::error!(
+                "read(): failed (fd={:?}, buffer.len={:?}, error_code={:?})",
+                fd,
+                buffer.len(),
+                { response.status }
+            );
+
             match ErrorCode::try_from(response.status) {
-                Ok(e) => return e.into_errno(),
-                Err(_) => return ErrorCode::InvalidMessage.into_errno(),
+                // Error code was successfully parsed.
+                Ok(error_code) => return Err(Error::new(error_code, "read() failed")),
+                // Error code was not successfully parsed.
+                Err(error) => {
+                    ::nvx::error!(
+                        "read(): failed (fd={:?}, buffer.len={:?}, error_code={:?})",
+                        fd,
+                        buffer.len(),
+                        error
+                    );
+                    return Err(Error::new(ErrorCode::TryAgain, "read() failed"));
+                },
             }
         } else {
             // System call succeeded, parse response.
-            match LinuxDaemonMessage::try_from_bytes(response.payload) {
+            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            // Response was successfully parsed.
+            match message.header {
                 // Response was successfully parsed.
-                Ok(message) => match message.header {
-                    // Response was successfully parsed.
-                    LinuxDaemonMessageHeader::ReadResponse => {
-                        // Parse response.
-                        let response: ReadResponse = ReadResponse::from_bytes(message.payload);
+                LinuxDaemonMessageHeader::ReadResponse => {
+                    // Parse response.
+                    let response: ReadResponse = ReadResponse::from_bytes(message.payload);
 
-                        // Display progress if not STDIN.
-                        if fd != unistd::STDIN_FILENO && total_read % KILOBYTE as i32 == 0 {
-                            let percentage = (total_read as f64 / buffer.len() as f64) * 100.0;
-                            ::nvx::trace!(
-                                "read(): {:?}/{:?} bytes read from fd={} ({:.2}%)",
-                                total_read,
-                                buffer.len(),
-                                fd,
-                                percentage
-                            );
-                        }
+                    // Display progress if not STDIN.
+                    if fd != unistd::STDIN_FILENO && total_read % KILOBYTE as size_t == 0 {
+                        let percentage = (total_read as f64 / buffer.len() as f64) * 100.0;
+                        ::nvx::trace!(
+                            "read(): {:?}/{:?} bytes read from fd={} ({:.2}%)",
+                            total_read,
+                            buffer.len(),
+                            fd,
+                            percentage
+                        );
+                    }
 
-                        // Check if any data was read.
-                        if response.count == 0 {
-                            break;
-                        }
+                    // Check if any data was read.
+                    if response.count == 0 {
+                        break;
+                    }
 
-                        // Copy response buffer to user buffer.
-                        buffer[offset..offset + chunk_size]
-                            .copy_from_slice(&response.buffer[..chunk_size]);
-                        total_read += response.count;
-                        offset += chunk_size;
+                    // Copy response buffer to user buffer.
+                    buffer[offset..offset + chunk_size]
+                        .copy_from_slice(&response.buffer[..chunk_size]);
+                    total_read += response.count as size_t;
+                    offset += chunk_size;
 
-                        // Check for partial read.
-                        if (response.count as usize) < chunk_size {
-                            break;
-                        }
-                    },
-                    _ => return ErrorCode::InvalidMessage.into_errno(),
+                    // Check for partial read.
+                    if (response.count as usize) < chunk_size {
+                        break;
+                    }
                 },
-                // Response was not successfully parsed.
-                Err(_) => return ErrorCode::InvalidMessage.into_errno(),
+                header => {
+                    ::nvx::error!(
+                        "read(): failed to parse response (fd={:?}, buffer.len={:?}, header={:?})",
+                        fd,
+                        buffer.len(),
+                        header
+                    );
+                    return Err(Error::new(ErrorCode::InvalidMessage, "read() failed"));
+                },
             }
         }
     }
 
-    total_read
+    Ok(total_read)
 }

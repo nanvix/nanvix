@@ -10,10 +10,7 @@
 
 use ::nvx::sys::error::Error;
 use ::posix::{
-    sys::types::{
-        size_t,
-        ssize_t,
-    },
+    sys::types::ssize_t,
     unistd,
 };
 
@@ -35,15 +32,14 @@ pub fn main() -> Result<(), Error> {
     let mut n: usize = 0;
 
     loop {
-        let nread: ssize_t =
-            match unistd::read(stdin, buffer[n..].as_mut_ptr(), (MAX_REQUEST_SIZE - n) as size_t) {
-                // Error encountered.
-                n if n < 0 => break,
-                // End of file reached.
-                0 => break,
-                // Read some bytes.
-                n => n,
-            };
+        let nread: ssize_t = match unistd::read(stdin, &mut buffer[n..]) {
+            // Error encountered.
+            Err(_error) => break,
+            // End of file reached.
+            Ok(0) => break,
+            // Read some bytes.
+            Ok(n) => n as ssize_t,
+        };
         n += nread as usize;
     }
 

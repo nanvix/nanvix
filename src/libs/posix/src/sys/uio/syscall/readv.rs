@@ -16,6 +16,7 @@ use crate::{
     },
     unistd,
 };
+use ::core::slice;
 use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
@@ -62,15 +63,15 @@ pub fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize_t {
             return (-ErrorCode::InvalidArgument.into_errno()) as ssize_t;
         }
 
-        // Read data.
-        let count: ssize_t = unistd::read(fd, iov_base, iov_len);
+        let buffer: &mut [u8] = unsafe { slice::from_raw_parts_mut(iov_base, iov_len as usize) };
 
-        // Check if read failed.
-        if count < 0 {
-            return count;
+        // Read data and check if read failed.
+        match unistd::read(fd, buffer) {
+            Ok(count) => total += count as ssize_t,
+            Err(error) => {
+                return error.code.into_errno() as ssize_t;
+            },
         }
-
-        total += count;
     }
 
     total

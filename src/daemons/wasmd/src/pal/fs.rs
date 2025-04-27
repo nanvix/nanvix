@@ -15,7 +15,6 @@ use ::alloc::string::{
 };
 use ::nvx::sys::error::ErrorCode;
 use ::posix::{
-    errno,
     fcntl,
     ffi::c_int,
     sys::types::{
@@ -128,18 +127,14 @@ impl File {
 
     /// Reads from a file into a buffer.
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        match unistd::read(self.rawfd.0, buf.as_mut_ptr(), buf.len() as u32) {
-            -1 => {
-                // Get `errno` and reset it.
-                let errno: c_int = unsafe {
-                    let errno: c_int = errno::errno;
-                    errno::errno = 0;
-                    errno
-                };
-                ::nvx::error!("read(): failed to read from file descriptor (errno={:?})", errno);
-                Err(Error { errno })
+        match unistd::read(self.rawfd.0, buf) {
+            Err(error) => {
+                ::nvx::error!("read(): failed to read from file descriptor (error={:?})", error);
+                Err(Error {
+                    errno: error.code.get(),
+                })
             },
-            ret => Ok(ret as usize),
+            Ok(ret) => Ok(ret as usize),
         }
     }
 
