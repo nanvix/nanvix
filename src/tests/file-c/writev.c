@@ -29,7 +29,7 @@
 // Tests whether we can write to a file using vectorized I/O.
 void test_writev(void)
 {
-    printf("testing writev() ... ");
+    fprintf(stderr, "testing writev() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -78,5 +78,5 @@ void test_writev(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

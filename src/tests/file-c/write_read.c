@@ -28,7 +28,7 @@
 // Tests wether we can write and read to/from a file.
 void test_write_read(void)
 {
-    printf("testing write()/read() ... ");
+    fprintf(stderr, "testing write()/read() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -67,5 +67,5 @@ void test_write_read(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

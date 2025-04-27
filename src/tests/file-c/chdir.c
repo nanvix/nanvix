@@ -20,7 +20,7 @@
 // Tests whether we can change the current working directory.
 void test_chdir(void)
 {
-    printf("testing chdir() ... ");
+    fprintf(stderr, "testing chdir() ... ");
 
     const char *dirname = "/";
     assert(strlen(dirname) <= NAME_MAX);
@@ -45,5 +45,5 @@ void test_chdir(void)
     assert(getcwd(new_cwd, sizeof(new_cwd)) != NULL);
     assert(strcmp(new_cwd, original_cwd) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

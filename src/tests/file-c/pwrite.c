@@ -35,7 +35,7 @@
 // Tests whether we can write to a file using pwrite.
 void test_pwrite(void)
 {
-    printf("testing pwrite() ... ");
+    fprintf(stderr, "testing pwrite() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -88,5 +88,5 @@ void test_pwrite(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

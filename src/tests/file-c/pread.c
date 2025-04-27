@@ -35,7 +35,7 @@
 // Tests whether we can read from a file using pread.
 void test_pread(void)
 {
-    printf("testing pread() ... ");
+    fprintf(stderr, "testing pread() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -79,5 +79,5 @@ void test_pread(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }
