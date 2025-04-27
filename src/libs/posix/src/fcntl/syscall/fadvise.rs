@@ -6,10 +6,9 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        FileAdvisoryInformationRequest,
-        FileAdvisoryInformationResponse,
-    },
+    fcntl::message::FileAdvisoryInformationRequest,
+    ffi::c_int,
+    safe::RawFileDescriptor,
     sys::types::off_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -17,54 +16,96 @@ use crate::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn posix_fadvise(fd: i32, offset: off_t, len: off_t, advice: i32) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+///
+/// # Description
+///
+/// Provides advice about the use of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `offset`: Offset in bytes.
+/// - `len`: Length in bytes.
+/// - `advice`: Advice to provide.
+///
+/// # Returns
+///
+/// Upon success, `posix_fadvise()` empty. Otherwise, it returns an error.
+///
+pub fn posix_fadvise(
+    fd: RawFileDescriptor,
+    offset: off_t,
+    len: off_t,
+    advice: c_int,
+) -> Result<(), Error> {
+    ::nvx::error!(
+        "posix_fadvise(): fd={:?}, offset={:?}, len={:?}, advice={:?}",
+        fd,
+        offset,
+        len,
+        advice
+    );
+
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
     let request: Message = FileAdvisoryInformationRequest::build(pid, fd, offset, len, advice);
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
+        ::nvx::error!(
+            "posix_fadvise(): failed (fd={:?}, offset={:?}, len={:?}, advice={:?}, status={:?})",
+            fd,
+            offset,
+            len,
+            advice,
+            { response.status }
+        );
+
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Error code was successfully parsed.
+            Ok(error_code) => Err(Error::new(error_code, "posix_fadvise() failed")),
+            // Error code was not successfully parsed.
+            Err(error) => {
+                ::nvx::error!("posix_fadvise(): invalid error code (error={:?})", error);
+                Err(Error::new(ErrorCode::TryAgain, "posix_fadvise(): failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::FileAdvisoryInformationResponse => {
-                    let response = FileAdvisoryInformationResponse::from_bytes(message.payload);
-
-                    // Return system call result.
-                    response.ret
-                },
-                _ => ErrorCode::InvalidMessage.into_errno(),
+            LinuxDaemonMessageHeader::FileAdvisoryInformationResponse => Ok(()),
+            header => {
+                // Response was not successfully parsed.
+                ::nvx::error!(
+                    "posix_fadvise(): unexpected message header (fd={:?}, offset={:?}, len={:?}, \
+                     advice={:?}, header={:?})",
+                    fd,
+                    offset,
+                    len,
+                    advice,
+                    header
+                );
+                Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header"))
             },
-            // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
         }
     }
 }
