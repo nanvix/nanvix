@@ -31,6 +31,8 @@ static void test_opendir_closedir(const char *dirname)
 // Tests if we can read a directory stream.
 static void test_readdir(const char *dirname)
 {
+    printf("testing readdir() ... ");
+
     DIR *dirp = NULL;
     struct dirent *entry = NULL;
 
@@ -39,13 +41,14 @@ static void test_readdir(const char *dirname)
 
     assert(errno == 0);
     while ((entry = readdir(dirp)) != NULL) {
-        fprintf(stderr, "entry->d_name: %s\n", entry->d_name);
         assert(strlen(entry->d_name) > 0);
         assert(entry->d_ino != 0);
     }
     assert(errno == 0);
 
     assert(closedir(dirp) == 0);
+
+    printf("ok\n");
 }
 
 // Tests system calls on directory entries.
