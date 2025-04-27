@@ -964,14 +964,78 @@ pub unsafe extern "C" fn pwrite(
 }
 
 ///
+/// # Description
+///
+/// Reads data from a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to read into.
+/// - `count`: Number of bytes to read.
+///
+/// # Returns
+///
+/// Upon successful completion, `read()` returns the number of bytes read. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
 /// # Safety
 ///
-/// The function has undefined behavior if the `buffer` points to an invalid memory location.
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `buffer` points to a buffer of `count` bytes.
+/// - This function is not called from multiple threads at the same time.
 ///
 #[no_mangle]
 pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> ssize_t {
-    ::nvx::trace!("read(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
-    crate::unistd::read(fd, buffer as *mut u8, count)
+    // Skip logging for stdin to avoid spamming the output.
+    if fd != STDIN_FILENO {
+        ::nvx::trace!("read(): fd={:?}, buffer={:?}, count={:?}", fd, buffer, count);
+    }
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        ::nvx::error!(
+            "read(): invalid buffer (fd={:?}, buffer={:?}, count={:?})",
+            fd,
+            buffer,
+            count
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Check if count is invalid.
+    if count == 0 {
+        return 0;
+    }
+
+    // Construct buffer from raw parts.
+    let buffer: &mut [u8] =
+        unsafe { ::core::slice::from_raw_parts_mut(buffer as *mut u8, count as usize) };
+
+    // Attempt to read from the file descriptor and check for errors.
+    match crate::unistd::read(fd, buffer) {
+        Ok(bytes_read) => bytes_read as ssize_t,
+        Err(error) => {
+            ::nvx::error!(
+                "read(): failed (fd={}, buffer={:?}, count={:?}, error={:?})",
+                fd,
+                buffer,
+                count,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
 }
 
 ///

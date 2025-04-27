@@ -14,17 +14,11 @@ use crate::{
         stat::{
             self,
         },
-        types::{
-            mode_t,
-            size_t,
-        },
+        types::mode_t,
     },
     unistd,
 };
-use ::nvx::sys::error::{
-    Error,
-    ErrorCode,
-};
+use ::nvx::sys::error::Error;
 
 //===================================================================================================
 // Raw File Descriptor
@@ -62,13 +56,9 @@ impl FileDescriptor {
 
     /// Reads data from the file descriptor.
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        match unistd::syscall::read(self.0, buf.as_mut_ptr(), buf.len() as size_t) {
-            n if n >= 0 => Ok(n as usize),
-            _ => {
-                let reason: &str = "failed to read dynamic library file";
-                ::nvx::error!("load(): {}", reason);
-                Err(Error::new(ErrorCode::IoErr, reason))
-            },
+        match unistd::syscall::read(self.0, buf) {
+            Ok(n) => Ok(n as usize),
+            Err(error) => Err(error),
         }
     }
 
