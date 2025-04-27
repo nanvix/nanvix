@@ -149,11 +149,11 @@ pub fn test() {
 
     // Attempt to allocate space.
     match fcntl::posix_fallocate(fd, 512, 512) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("allocated space for file foo.tmp");
         },
-        errno => {
-            panic!("failed to allocate space for file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to allocate space for file foo.tmp: {:?}", error);
         },
     }
 
