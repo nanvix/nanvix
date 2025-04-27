@@ -42,16 +42,6 @@ pub fn test() {
         },
     };
 
-    // Advice normal access.
-    match fcntl::posix_fadvise(fd, 0, 0, fcntl::POSIX_FADV_NORMAL) {
-        Ok(()) => {
-            ::nvx::info!("advised normal access for file foo.tmp");
-        },
-        Err(error) => {
-            panic!("failed to advise normal access for file foo.tmp: (error={:?})", error);
-        },
-    }
-
     // Fill first 128 bytes of file with ones.
     let buffer: [u8; 128] = [1; 128];
     match unistd::write(fd, &buffer) {
