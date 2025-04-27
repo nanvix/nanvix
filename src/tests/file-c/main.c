@@ -99,6 +99,8 @@ int main(int argc, const char *argv[])
     test_write_read();    // tests open(), close() and unlink.
     test_lseek();         // requires open(), close(), read(), write() and unlink().
     test_readv();         // requires open(), close(), write() and unlink().
+    test_pread();         // requires open(), close(), read() and unlink().
+    test_preadv();        // requires open(), close(), read() and unlink().
     test_writev();        // requires open(), close(), read() and unlink().
     test_pwrite();        // requires open(), close(), read(), lseek() and unlink().
     test_pwritev();       // requires open(), close(), read(), lseek() and unlink().
