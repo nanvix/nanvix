@@ -28,7 +28,7 @@
 // Tests whether we can change the current working directory.
 void test_fchdir(void)
 {
-    printf("testing fchdir() ... ");
+    fprintf(stderr, "testing fchdir() ... ");
     const char *TARGET_DIRECTORY = "src/";
 
     char initial_working_directory[PATH_MAX] = {0};
@@ -82,5 +82,5 @@ void test_fchdir(void)
     ret = close(initial_directory_fd);
     assert(ret == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

@@ -29,7 +29,7 @@
 // Tests whether we can change the ownership of a file.
 void test_lchown(void)
 {
-    printf("testing lchown() ... ");
+    fprintf(stderr, "testing lchown() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -45,5 +45,5 @@ void test_lchown(void)
     // Close and remove the test file.
     assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

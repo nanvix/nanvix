@@ -29,7 +29,7 @@
 // Tests whether we can create a symbolic link to a file.
 void test_symlinkat(void)
 {
-    printf("testing symlinkat() ... ");
+    fprintf(stderr, "testing symlinkat() ... ");
 
     const char *filename = "README.md";
     const char *linkname = "README.link";
@@ -62,5 +62,5 @@ void test_symlinkat(void)
     // Remove the hard link.
     assert(unlinkat(AT_FDCWD, linkname, 0) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

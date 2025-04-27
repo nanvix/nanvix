@@ -19,7 +19,7 @@
 // Tests whether we can get file status information.
 void test_stat(void)
 {
-    printf("testing stat() ... ");
+    fprintf(stderr, "testing stat() ... ");
 
     const char *filename = "README.md";
 
@@ -42,5 +42,5 @@ void test_stat(void)
     assert(st.st_ino != 0);
     assert(st.st_nlink > 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }
