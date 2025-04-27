@@ -29,7 +29,7 @@
 // Tests whether we can change access permissions of a file.
 void test_lchmod(void)
 {
-    printf("testing lchmod() ... ");
+    fprintf(stderr, "testing lchmod() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -66,5 +66,5 @@ void test_lchmod(void)
     // Remove the test file.
     assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

@@ -28,7 +28,7 @@
 // Tests whether we can remove a file.
 void test_unlinkat(void)
 {
-    printf("testing unlinkat() ... ");
+    fprintf(stderr, "testing unlinkat() ... ");
 
     const char *filename = "test.txt";
     assert(strlen(filename) <= NAME_MAX);
@@ -41,5 +41,5 @@ void test_unlinkat(void)
     // Remove test file.
     assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

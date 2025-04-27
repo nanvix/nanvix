@@ -22,7 +22,7 @@
 // Tests whether we can change access permissions of a file.
 void test_fchmod(void)
 {
-    printf("testing fchmod() ... ");
+    fprintf(stderr, "testing fchmod() ... ");
 
     struct stat st = {0};
 
@@ -54,5 +54,5 @@ void test_fchmod(void)
     // Remove the test file.
     assert(unlink(filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }

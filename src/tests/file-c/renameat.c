@@ -27,7 +27,7 @@
 // Tests whether we can rename a file.
 void test_renameat(void)
 {
-    printf("testing renameat() ... ");
+    fprintf(stderr, "testing renameat() ... ");
 
     const char *filename = "test.txt";
     assert(sizeof(filename) < PATH_MAX);
@@ -46,5 +46,5 @@ void test_renameat(void)
     // Remove renamed test file.
     assert(unlink(renamed_filename) == 0);
 
-    printf("ok\n");
+    fprintf(stderr, "passed\n");
 }
