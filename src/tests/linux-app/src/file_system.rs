@@ -44,11 +44,11 @@ pub fn test() {
 
     // Advice normal access.
     match fcntl::posix_fadvise(fd, 0, 0, fcntl::POSIX_FADV_NORMAL) {
-        0 => {
+        Ok(()) => {
             ::nvx::info!("advised normal access for file foo.tmp");
         },
-        errno => {
-            panic!("failed to advise normal access for file foo.tmp: {:?}", errno);
+        Err(error) => {
+            panic!("failed to advise normal access for file foo.tmp: (error={:?})", error);
         },
     }
 
