@@ -33,12 +33,3 @@ pub struct iovec {
     /// The size of the memory pointer to by `iov_base`.
     pub iov_len: size_t,
 }
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "syscall")] {
-        mod syscall;
-        pub use self::syscall::{
-            preadv,
-        };
-    }
-}

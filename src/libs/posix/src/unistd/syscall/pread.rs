@@ -6,10 +6,10 @@
 //==================================================================================================
 
 use crate::{
+    safe::RawFileDescriptor,
     sys::types::{
         off_t,
         size_t,
-        ssize_t,
     },
     unistd::message::{
         PartialReadRequest,
@@ -22,39 +22,38 @@ use ::core::cmp;
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)] // TODO: Wrap this in a safe function.
-pub fn pread(fd: i32, buffer: *mut u8, count: size_t, offset: off_t) -> ssize_t {
-    let pid: ProcessIdentifier = match crate::unistd::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+///
+/// # Description
+///
+/// Reads data from a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to read.
+/// - `offset`: Offset to read from.
+///
+/// # Returns
+///
+/// Upon successful completion, `pread()` returns the number of bytes read. Otherwise, it
+/// returns an error.
+///
+pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<size_t, Error> {
+    ::nvx::trace!("pread(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // Check if buffer is invalid.
-    if buffer.is_null() {
-        return ErrorCode::InvalidArgument.into_errno();
-    }
+    let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
-    // Check if count is invalid.
-    if count == 0 {
-        return ErrorCode::InvalidArgument.into_errno();
-    }
-
-    // Check if offset is invalid.
-    if offset < 0 {
-        return ErrorCode::InvalidArgument.into_errno();
-    }
-
-    // Construct buffer from raw parts.
-    let buffer: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buffer, count as usize) };
-
-    let mut total_read: ssize_t = 0;
+    let mut total_read: size_t = 0;
     let mut buffer_offset: usize = 0;
 
     while buffer_offset < buffer.len() {
@@ -68,57 +67,71 @@ pub fn pread(fd: i32, buffer: *mut u8, count: size_t, offset: off_t) -> ssize_t 
             chunk_size as size_t,
             offset + buffer_offset as off_t,
         );
-        if let Err(e) = ::nvx::ipc::send(&request) {
-            return e.code.into_errno();
-        }
+        ::nvx::ipc::send(&request)?;
 
         // Receive response.
-        let response: Message = match ::nvx::ipc::recv() {
-            Ok(response) => response,
-            Err(e) => return e.code.into_errno(),
-        };
+        let response: Message = ::nvx::ipc::recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            // System call failed, parse error code and return it.
+            ::nvx::error!(
+                "pread(): failed (fd={}, buffer.len={}, offset={}, error_code={})",
+                fd,
+                buffer.len(),
+                offset,
+                { response.status }
+            );
+
             match ErrorCode::try_from(response.status) {
-                Ok(e) => return e.into_errno(),
-                Err(_) => return ErrorCode::InvalidMessage.into_errno(),
+                // System call failed, return error.
+                Ok(error_code) => return Err(Error::new(error_code, "pread() failed")),
+                // System call failed, return unknown error.
+                Err(error) => {
+                    ::nvx::error!("pread(): failed to convert error code (error={:?})", error);
+                    return Err(Error::new(ErrorCode::TryAgain, "pread() failed"));
+                },
             }
         } else {
             // System call succeeded, parse response.
-            match LinuxDaemonMessage::try_from_bytes(response.payload) {
+            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            // Response was successfully parsed.
+            match message.header {
                 // Response was successfully parsed.
-                Ok(message) => match message.header {
-                    // Response was successfully parsed.
-                    LinuxDaemonMessageHeader::PartialReadResponse => {
-                        // Parse response.
-                        let response: PartialReadResponse =
-                            PartialReadResponse::from_bytes(message.payload);
+                LinuxDaemonMessageHeader::PartialReadResponse => {
+                    // Parse response.
+                    let response: PartialReadResponse =
+                        PartialReadResponse::from_bytes(message.payload);
 
-                        // Check if any data was read.
-                        if response.count == 0 {
-                            break;
-                        }
+                    // Check if any data was read.
+                    if response.count == 0 {
+                        break;
+                    }
 
-                        // Copy response buffer to user buffer.
-                        buffer[buffer_offset..buffer_offset + chunk_size]
-                            .copy_from_slice(&response.buffer[..chunk_size]);
-                        total_read += response.count;
-                        buffer_offset += chunk_size;
+                    // Copy response buffer to user buffer.
+                    buffer[buffer_offset..buffer_offset + chunk_size]
+                        .copy_from_slice(&response.buffer[..chunk_size]);
+                    total_read += response.count as size_t;
+                    buffer_offset += chunk_size;
 
-                        // Check for partial read.
-                        if (response.count as usize) < chunk_size {
-                            break;
-                        }
-                    },
-                    _ => return ErrorCode::InvalidMessage.into_errno(),
+                    // Check for partial read.
+                    if (response.count as usize) < chunk_size {
+                        break;
+                    }
                 },
-                // Response was not successfully parsed.
-                Err(_) => return ErrorCode::InvalidMessage.into_errno(),
+                header => {
+                    ::nvx::error!(
+                        "pread(): failed to parse response (fd={}, buffer.len={}, offset={}, \
+                         header={:?})",
+                        fd,
+                        buffer.len(),
+                        offset,
+                        header
+                    );
+                    return Err(Error::new(ErrorCode::TryAgain, "pread() failed"));
+                },
             }
         }
     }
 
-    total_read
+    Ok(total_read)
 }

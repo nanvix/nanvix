@@ -16,7 +16,6 @@ use ::posix::{
     sys::{
         self,
         stat::stat,
-        types::size_t,
     },
     time::timespec,
     unistd,
@@ -96,14 +95,17 @@ pub fn test() {
 
     // Check if first 64 bytes are filled with ones using partial reads.
     let mut buffer: [u8; 64] = [0; 64];
-    match unistd::pread(fd, buffer.as_mut_ptr(), buffer.len() as size_t, 0) {
-        64 => {
+    match unistd::pread(fd, &mut buffer, 0) {
+        Ok(64) => {
             ::nvx::info!("read 64 bytes from file foo.tmp");
             (0..64).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
                 }
             });
+        },
+        Ok(n) => {
+            panic!("failed to read 64 bytes from file foo.tmp: (n={:?})", n);
         },
         errno => {
             panic!("failed to read 64 bytes from file foo.tmp: {:?}", errno);
@@ -112,14 +114,17 @@ pub fn test() {
 
     // Check if bytes [64..128] are filled with ones using offset partial reads.
     let mut buffer: [u8; 64] = [0; 64];
-    match unistd::pread(fd, buffer.as_mut_ptr(), buffer.len() as size_t, 64) {
-        64 => {
+    match unistd::pread(fd, &mut buffer, 64) {
+        Ok(64) => {
             ::nvx::info!("read 64 bytes from file foo.tmp");
             (0..64).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
                 }
             });
+        },
+        Ok(n) => {
+            panic!("failed to read 64 bytes from file foo.tmp: (n={:?})", n);
         },
         errno => {
             panic!("failed to read 64 bytes from file foo.tmp: {:?}", errno);

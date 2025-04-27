@@ -871,6 +871,91 @@ pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
 ///
 /// # Description
 ///
+/// Reads data from a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to read into.
+/// - `count`: Number of bytes to read.
+/// - `offset`: Offset to read from.
+///
+/// # Returns
+///
+/// Upon successful completion, `pread()` returns the number of bytes read. Otherwise, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `buffer` points to a buffer of `count` bytes.
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn pread(
+    fd: c_int,
+    buffer: *mut c_void,
+    count: size_t,
+    offset: off_t,
+) -> ssize_t {
+    ::nvx::trace!(
+        "pread(): fd={}, buffer={:?}, count={:?}, offset={:?}",
+        fd,
+        buffer,
+        count,
+        offset
+    );
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        ::nvx::error!(
+            "pread(): invalid buffer (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
+            fd,
+            buffer,
+            count,
+            offset
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Check if count is invalid.
+    if count == 0 {
+        return 0;
+    }
+
+    // Attempt to convert `buffer`.
+    let buffer: &mut [u8] = slice::from_raw_parts_mut(buffer as *mut u8, count as usize);
+
+    // Attempt to read from the file descriptor and check for errors.
+    match crate::unistd::pread(fd, buffer, offset) {
+        Ok(bytes_read) => bytes_read as ssize_t,
+        Err(error) => {
+            ::nvx::error!(
+                "pread(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
+                fd,
+                buffer,
+                count,
+                offset,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
 /// Writes data to a file descriptor.
 ///
 /// # Parameters
