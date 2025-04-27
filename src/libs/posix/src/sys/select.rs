@@ -31,7 +31,7 @@ mod bindings {
         // TODO: https://github.com/nanvix/nanvix/issues/468
         ::nvx::error!("select(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.into_errno();
+            errno = ErrorCode::InvalidSysCall.get();
         }
         -1
     }
