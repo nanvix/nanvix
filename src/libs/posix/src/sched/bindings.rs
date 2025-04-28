@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     ffi::c_int,
 };
 
@@ -34,7 +34,7 @@ pub extern "C" fn sched_yield() -> c_int {
         Ok(_) => 0,
         Err(e) => {
             // System call failed. Set errno.
-            unsafe { errno = e.code.get() };
+            unsafe { *__errno_location() = e.code.get() };
             -1
         },
     }

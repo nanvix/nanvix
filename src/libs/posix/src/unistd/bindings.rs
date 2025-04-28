@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     fcntl::{
         self,
     },
@@ -106,9 +106,7 @@ pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("chdir(): invalid path");
-            unsafe {
-                errno = ErrorCode::InvalidArgument.get();
-            }
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -118,9 +116,7 @@ pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
         Ok(()) => 0,
         Err(error) => {
             ::nvx::error!("chdir(): failed (error={:?})", error);
-            unsafe {
-                errno = error.code.get();
-            }
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -161,7 +157,7 @@ pub extern "C" fn chroot(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/517
     ::nvx::error!("chroot(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -174,7 +170,7 @@ pub extern "C" fn close(fd: c_int) -> c_int {
         Err(error) => {
             ::nvx::error!("close(): failed ({:?})", error);
             unsafe {
-                errno = error.code.get();
+                *__errno_location() = error.code.get();
             }
             -1
         },
@@ -186,7 +182,7 @@ pub extern "C" fn dup2(_oldfd: c_int, _newfd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/354
     ::nvx::error!("dup2(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -200,7 +196,7 @@ pub extern "C" fn execve(
     // TODO: https://github.com/nanvix/nanvix/issues/320
     ::nvx::error!("execve(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -258,7 +254,7 @@ pub unsafe extern "C" fn faccessat(
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("faccessat(): invalid path");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -268,7 +264,7 @@ pub unsafe extern "C" fn faccessat(
         Ok(()) => 0,
         Err(error) => {
             ::nvx::error!("faccessat(): failed (error={:?})", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -298,7 +294,7 @@ pub extern "C" fn fchdir(fd: c_int) -> c_int {
         Err(e) => {
             ::nvx::error!("fchdir(): failed ({:?})", e);
             unsafe {
-                errno = e.code.get();
+                *__errno_location() = e.code.get();
             }
             -1
         },
@@ -343,7 +339,7 @@ pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int 
                 group,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -404,7 +400,7 @@ pub unsafe extern "C" fn fchownat(
                 flag,
                 error
             );
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -423,7 +419,7 @@ pub unsafe extern "C" fn fchownat(
                 flag,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -459,7 +455,7 @@ pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
         Ok(()) => 0,
         Err(error) => {
             ::nvx::error!("fdatasync(): failed (fd={}, error={:?})", fd, error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -470,7 +466,7 @@ pub extern "C" fn fork() -> pid_t {
     // TODO: https://github.com/nanvix/nanvix/issues/321
     ::nvx::error!("fork(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -499,7 +495,7 @@ pub extern "C" fn fsync(fd: c_int) -> c_int {
         Ok(_) => 0,
         Err(e) => {
             unsafe {
-                errno = e.code.get();
+                *__errno_location() = e.code.get();
             }
             -1
         },
@@ -536,7 +532,7 @@ pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
     match crate::unistd::ftruncate(fd, length) {
         Ok(()) => 0,
         Err(e) => {
-            errno = e.code.get();
+            *__errno_location() = e.code.get();
             -1
         },
     }
@@ -550,9 +546,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
     // Check if the buffer is valid.
     if buf.is_null() {
         ::nvx::error!("getcwd(): invalid buffer");
-        unsafe {
-            errno = ErrorCode::InvalidArgument.get();
-        }
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return core::ptr::null_mut();
     }
 
@@ -563,9 +557,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
             // Check if the buffer is large enough.
             if cwd.len() + 1 > size as usize {
                 ::nvx::error!("getcwd(): buffer is too small");
-                unsafe {
-                    errno = ErrorCode::ValueOutOfRange.get();
-                }
+                *__errno_location() = ErrorCode::ValueOutOfRange.get();
                 return core::ptr::null_mut();
             }
 
@@ -582,9 +574,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
         },
         // Failure.
         Err(e) => {
-            unsafe {
-                errno = e.code.get();
-            }
+            *__errno_location() = e.code.get();
             core::ptr::null_mut()
         },
     }
@@ -622,7 +612,7 @@ pub extern "C" fn getpid() -> pid_t {
         Ok(pid) => pid.into(),
         Err(e) => {
             unsafe {
-                errno = e.code.get();
+                *__errno_location() = e.code.get();
             }
             -1
         },
@@ -751,7 +741,7 @@ pub unsafe extern "C" fn linkat(
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("linkat(): invalid oldpath");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -761,7 +751,7 @@ pub unsafe extern "C" fn linkat(
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("linkat(): invalid newpath");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -780,9 +770,7 @@ pub unsafe extern "C" fn linkat(
                 flags,
                 error
             );
-            unsafe {
-                errno = error.code.get();
-            }
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -827,7 +815,7 @@ pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
                 error
             );
             unsafe {
-                errno = error.code.get();
+                *__errno_location() = error.code.get();
             }
             -1
         },
@@ -861,7 +849,7 @@ pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
         Err(error) => {
             ::nvx::error!("pipe(): failed (error={:?})", error);
             unsafe {
-                errno = error.code.get();
+                *__errno_location() = error.code.get();
             }
             -1
         },
@@ -919,9 +907,7 @@ pub unsafe extern "C" fn pread(
             count,
             offset
         );
-        unsafe {
-            errno = ErrorCode::InvalidArgument.get();
-        }
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -945,9 +931,7 @@ pub unsafe extern "C" fn pread(
                 offset,
                 error
             );
-            unsafe {
-                errno = error.code.get();
-            }
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -1004,9 +988,7 @@ pub unsafe extern "C" fn pwrite(
             count,
             offset
         );
-        unsafe {
-            errno = ErrorCode::InvalidArgument.get();
-        }
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -1019,9 +1001,7 @@ pub unsafe extern "C" fn pwrite(
             count,
             offset
         );
-        unsafe {
-            errno = ErrorCode::InvalidArgument.get();
-        }
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -1040,9 +1020,7 @@ pub unsafe extern "C" fn pwrite(
                 offset,
                 error
             );
-            unsafe {
-                errno = error.code.get();
-            }
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -1089,9 +1067,7 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> 
             buffer,
             count
         );
-        unsafe {
-            errno = ErrorCode::InvalidArgument.get();
-        }
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -1115,9 +1091,7 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> 
                 count,
                 error
             );
-            unsafe {
-                errno = error.code.get();
-            }
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -1171,9 +1145,7 @@ pub unsafe extern "C" fn readlinkat(
             path,
             bufsize
         );
-        unsafe {
-            errno = ErrorCode::InvalidArgument.get();
-        }
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     } else {
         bufsize as usize
@@ -1193,7 +1165,7 @@ pub unsafe extern "C" fn readlinkat(
                 bufsize,
                 error
             );
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -1209,7 +1181,7 @@ pub unsafe extern "C" fn readlinkat(
                 bufsize,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -1220,9 +1192,7 @@ pub unsafe extern "C" fn readlinkat(
 pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/348
     ::nvx::error!("rmdir(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
-    }
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
 
@@ -1266,7 +1236,7 @@ pub extern "C" fn setgroups(_size: size_t, _list: *const gid_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/523
     ::nvx::error!("setgroups(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -1298,7 +1268,7 @@ pub extern "C" fn sbrk(size: isize) -> *mut u8 {
         Err(e) => {
             // Set errno.
             unsafe {
-                errno = e.code.get();
+                *__errno_location() = e.code.get();
             }
             (-1_isize) as *mut u8
         },
@@ -1310,7 +1280,7 @@ pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
     // TODO: https://github.com/nanvix/nanvix/issues/453
     ::nvx::error!("sleep(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     0
 }
@@ -1342,7 +1312,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("symlink(): invalid target");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -1350,7 +1320,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("symlink(): invalid linkpath");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -1360,7 +1330,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
         Ok(()) => 0,
         Err(error) => {
             ::nvx::error!("symlink(): failed (error={:?})", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -1403,7 +1373,7 @@ pub unsafe extern "C" fn symlinkat(
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("symlinkat(): invalid target");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -1413,7 +1383,7 @@ pub unsafe extern "C" fn symlinkat(
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("symlinkat(): invalid linkpath");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -1429,7 +1399,7 @@ pub unsafe extern "C" fn symlinkat(
                 linkpath,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -1468,7 +1438,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("unlink(): invalid path");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -1478,7 +1448,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
         Ok(()) => 0,
         Err(error) => {
             ::nvx::error!("unlink(): failed (error={:?})", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -1499,18 +1469,14 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) 
     // Check if buffer is invalid.
     if buffer.is_null() {
         ::nvx::error!("write(): invalid buffer");
-        unsafe {
-            errno = ErrorCode::InvalidArgument.get();
-        }
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if count is invalid.
     if count == 0 {
         ::nvx::error!("write(): invalid write count");
-        unsafe {
-            errno = ErrorCode::InvalidArgument.get();
-        }
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -1522,9 +1488,7 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) 
         Ok(bytes_written) => bytes_written as ssize_t,
         Err(error) => {
             ::nvx::error!("write(): failed (error={:?})", error);
-            unsafe {
-                errno = error.code.get();
-            }
+            *__errno_location() = error.code.get();
             -1
         },
     }

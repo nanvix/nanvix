@@ -22,7 +22,7 @@ pub type utimbuf = ();
 mod bindings {
     use super::*;
     use crate::{
-        errno::errno,
+        errno::__errno_location,
         ffi::c_int,
     };
     use ::nvx::sys::error::ErrorCode;
@@ -32,9 +32,7 @@ mod bindings {
     pub unsafe extern "C" fn utime(_filename: *const c_int, _times: *const utimbuf) -> c_int {
         // TODO: https://github.com/nanvix/nanvix/issues/530
         ::nvx::error!("utime(): not implemented");
-        unsafe {
-            errno = ErrorCode::InvalidSysCall.get();
-        }
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
         -1
     }
 }

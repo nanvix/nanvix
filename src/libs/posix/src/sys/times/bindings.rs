@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     sys::{
         times::tms,
         types::clock_t,
@@ -46,7 +46,7 @@ pub unsafe extern "C" fn times(buffer: *mut tms) -> clock_t {
         Ok(clock) => clock,
         Err(e) => {
             // Set errno.
-            errno = e.code.get();
+            *__errno_location() = e.code.get();
             -1 as clock_t
         },
     }
