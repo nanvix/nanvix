@@ -35,7 +35,7 @@ pub fn main() -> Result<(), Error> {
     // Magic string.
     {
         let magic_string: &[u8] = "ok".as_bytes();
-        unistd::write(unistd::STDOUT_FILENO, &magic_string)?;
+        unistd::write(unistd::STDOUT_FILENO, magic_string)?;
     }
 
     Ok(())

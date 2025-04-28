@@ -35,7 +35,7 @@ pub fn test_clock_getres() {
         tv_nsec: 0,
     };
 
-    match time::clock_getres(CLOCK_MONOTONIC, Some(&mut res)) {
+    match time::clock_getres(CLOCK_MONOTONIC, &mut Some(&mut res)) {
         Ok(()) => {
             ::nvx::info!("clock resolution: {}s {}ns", { res.tv_sec }, { res.tv_nsec });
         },
