@@ -56,6 +56,13 @@ pub use crate::sys::types::pid_t;
 // TODO: gate this behind the CX extension.
 pub const CLOCK_REALTIME: clockid_t = 1;
 
+/// The identifier of the CPU-time clock associated with the process.
+// TODO: gate this behind the CPT extension.
+pub const CLOCK_PROCESS_CPUTIME_ID: clockid_t = 2;
+
+/// The identifier of the CPU-time clock associated with the thread.
+/// TODO: gate this behind the TCT extension.
+pub const CLOCK_THREAD_CPUTIME_ID: clockid_t = 3;
 
 /// The identifier for the system-wide monotonic clock.
 // TODO: gate this behind the CX extension.
