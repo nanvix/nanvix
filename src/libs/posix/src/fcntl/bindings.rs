@@ -12,7 +12,6 @@ use crate::{
         c_int,
     },
     sys::types::mode_t,
-    time::timespec,
 };
 use ::core::ffi;
 use ::nvx::sys::error::ErrorCode;
@@ -314,75 +313,6 @@ pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: 
                 "unlinkat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, error={:?})",
                 dirfd,
                 path,
-                flags,
-                error
-            );
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
-/// Sets file access and modification times.
-///
-/// # Parameters
-///
-/// - `dirfd`: Directory file descriptor.
-/// - `pathname`: Pathname of the file.
-/// - `times`: Access and modification times.
-/// - `flags`: Flags.
-///
-/// # Returns
-///
-/// Upon successful completion, zero is returned. Otherwise, it returns -1 and sets `errno` to
-/// indicate the error.
-///
-/// # Safety
-///
-/// This function is unsafe because it dereferences raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-/// - `filename` points to a valid null-terminated C string.
-/// - `times` points to a valid array of length 2 of `timespec` structures.
-///
-#[no_mangle]
-pub unsafe extern "C" fn utimensat(
-    dirfd: c_int,
-    filename: *const c_char,
-    times: *const timespec,
-    flags: c_int,
-) -> c_int {
-    ::nvx::trace!(
-        "utimensat(): dirfd={}, filename={:?}, times={:?}, flags={}",
-        dirfd,
-        filename,
-        times,
-        flags
-    );
-
-    // Convert C string to Rust string.
-    let pathname: &str = match ffi::CStr::from_ptr(filename).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::nvx::error!("utimensat(): invalid pathname");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    let times: &[timespec; 2] = unsafe { &*(times as *const [timespec; 2]) };
-
-    match crate::fcntl::syscall::utimensat(dirfd, pathname, *times, flags) {
-        Ok(_) => 0,
-        Err(error) => {
-            ::nvx::error!(
-                "utimensat(): failed (dirfd={}, pathname={}, times={:?}, flags={}, error={:?})",
-                dirfd,
-                pathname,
-                times,
                 flags,
                 error
             );

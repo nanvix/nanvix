@@ -12,7 +12,6 @@ mod open;
 mod openat;
 mod renameat;
 mod unlinkat;
-mod utimensat;
 
 //==================================================================================================
 // Exports
@@ -26,5 +25,4 @@ pub use self::{
     openat::openat,
     renameat::renameat,
     unlinkat::unlinkat,
-    utimensat::utimensat,
 };
