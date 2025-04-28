@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     ffi::c_int,
     sys::utsname::{
         syscall,
@@ -46,7 +46,7 @@ pub unsafe extern "C" fn uname(name: *mut utsname) -> c_int {
     // Check if name is not valid.
     if name.is_null() {
         ::nvx::error!("uname(): name is null");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn uname(name: *mut utsname) -> c_int {
         },
         // Error, set errno.
         Err(error) => {
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }

@@ -14,7 +14,7 @@
 #[cfg(all(feature = "syscall", feature = "staticlib"))]
 mod bindings {
     use crate::{
-        errno::errno,
+        errno::__errno_location,
         ffi::c_int,
     };
     use ::nvx::sys::error::ErrorCode;
@@ -31,7 +31,7 @@ mod bindings {
         // TODO: https://github.com/nanvix/nanvix/issues/468
         ::nvx::error!("select(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.get();
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
         }
         -1
     }

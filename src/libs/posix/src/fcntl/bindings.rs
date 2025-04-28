@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     ffi::{
         c_char,
         c_int,
@@ -55,7 +55,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
                 flags,
                 mode
             );
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -71,7 +71,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
                 mode,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -127,7 +127,7 @@ pub unsafe extern "C" fn posix_fallocate(fd: c_int, offset: i64, len: i64) -> c_
                 len,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -179,7 +179,7 @@ pub unsafe extern "C" fn posix_fadvise(fd: c_int, offset: i64, len: i64, advice:
                 advice,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -235,7 +235,7 @@ pub unsafe extern "C" fn renameat(
                 olddirfd,
                 newdirfd
             );
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -249,7 +249,7 @@ pub unsafe extern "C" fn renameat(
                 olddirfd,
                 newdirfd
             );
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -260,7 +260,7 @@ pub unsafe extern "C" fn renameat(
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -299,7 +299,7 @@ pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: 
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("unlinkat(): invalid pathname (dirfd={:?}, flags={:?})", dirfd, flags);
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -317,7 +317,7 @@ pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: 
                 flags,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -368,7 +368,7 @@ pub unsafe extern "C" fn utimensat(
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("utimensat(): invalid pathname");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -386,7 +386,7 @@ pub unsafe extern "C" fn utimensat(
                 flags,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }

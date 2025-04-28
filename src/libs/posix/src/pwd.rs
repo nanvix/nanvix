@@ -22,7 +22,7 @@ pub type passwd = ();
 mod bindings {
     use super::*;
     use crate::{
-        errno::errno,
+        errno::__errno_location,
         ffi::c_int,
     };
     use ::nvx::sys::error::ErrorCode;
@@ -32,7 +32,7 @@ mod bindings {
     pub unsafe extern "C" fn getpwuid(_uid: c_int) -> *mut passwd {
         ::nvx::error!("getpwuid(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.get();
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
         }
         core::ptr::null_mut()
     }

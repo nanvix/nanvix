@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     ffi::c_int,
     limits,
     sys::{
@@ -68,14 +68,14 @@ pub unsafe extern "C" fn pwritev(
     // Check if number of elements in the vector is valid.
     if iovcnt < 0 {
         ::nvx::error!("pwritev(): invalid iovcnt {iovcnt}");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if vector base is invalid.
     if iov.is_null() {
         ::nvx::error!("pwritev(): invalid iov {iov:?}");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -125,7 +125,7 @@ pub unsafe extern "C" fn pwritev(
                     },
                     Err(error) => {
                         ::nvx::error!("pwritev(): write failed (errno={:?})", error);
-                        errno = error.code.get();
+                        *__errno_location() = error.code.get();
                         return Err(error);
                     },
                 }
@@ -147,7 +147,7 @@ pub unsafe extern "C" fn pwritev(
                 // Real write failed.
                 Err(error) => {
                     ::nvx::error!("pwritev(): write failed (errno={:?})", error);
-                    errno = error.code.get();
+                    *__errno_location() = error.code.get();
                     -1
                 },
             }
@@ -155,7 +155,7 @@ pub unsafe extern "C" fn pwritev(
         // Dry-mode run failed because some other error.
         Err(error) => {
             ::nvx::error!("pwritev(): dry-run failed (errno={:?})", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -195,14 +195,14 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
     // Check if number of elements in the vector is valid.
     if (iovcnt < 0) || (iovcnt > limits::IOV_MAX as i32) {
         ::nvx::error!("preadv(): invalid iovcnt {iovcnt}");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if vector base is invalid.
     if iov.is_null() {
         ::nvx::error!("preadv(): invalid iov {iov:?}");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -246,7 +246,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
                     },
                     Err(error) => {
                         ::nvx::error!("preadv(): read failed (errno={:?})", error);
-                        errno = error.code.get();
+                        *__errno_location() = error.code.get();
                         return Err(error);
                     },
                 }
@@ -266,7 +266,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
                 Ok(count) => count as ssize_t,
                 Err(error) => {
                     ::nvx::error!("preadv(): read failed (errno={:?})", error);
-                    errno = error.code.get();
+                    *__errno_location() = error.code.get();
                     -1
                 },
             }
@@ -274,7 +274,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
         // Dry-run failed because some other error.
         Err(error) => {
             ::nvx::error!("preadv(): dry-run failed (errno={:?})", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -313,14 +313,14 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
     // Check if number of elements in the vector is valid.
     if (iovcnt < 0) || (iovcnt > limits::IOV_MAX as i32) {
         ::nvx::error!("readv(): invalid iovcnt {iovcnt}");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if vector base is invalid.
     if iov.is_null() {
         ::nvx::error!("readv(): invalid iov {iov:?}");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -378,7 +378,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
                 Ok(count) => count as ssize_t,
                 Err(error) => {
                     ::nvx::error!("readv(): read failed (errno={:?})", error);
-                    errno = error.code.get();
+                    *__errno_location() = error.code.get();
                     -1
                 },
             }
@@ -386,7 +386,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
         // Dry-run failed because some other error.
         Err(error) => {
             ::nvx::error!("readv(): dry-run failed (errno={:?})", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -425,14 +425,14 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
     // Check if number of elements in the vector is valid.
     if iovcnt < 0 {
         ::nvx::error!("writev(): invalid iovcnt {iovcnt}");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if vector base is invalid.
     if iov.is_null() {
         ::nvx::error!("writev(): invalid iov {iov:?}");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -478,7 +478,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
                     Ok(count) => count,
                     Err(error) => {
                         ::nvx::error!("writev(): write failed (errno={:?})", error);
-                        errno = error.code.get();
+                        *__errno_location() = error.code.get();
                         return Err(error);
                     },
                 }
@@ -500,7 +500,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
                 // Real write failed.
                 Err(error) => {
                     ::nvx::error!("writev(): write failed (errno={:?})", error);
-                    errno = error.code.get();
+                    *__errno_location() = error.code.get();
                     -1
                 },
             }
@@ -508,7 +508,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
         // Dry-mode run failed because some other error.
         Err(error) => {
             ::nvx::error!("writev(): dry-run failed (errno={:?})", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
