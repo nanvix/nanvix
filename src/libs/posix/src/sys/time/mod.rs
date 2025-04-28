@@ -8,11 +8,10 @@
 #![allow(non_camel_case_types)]
 
 //==================================================================================================
-// Structures
+// Re-Exports
 //==================================================================================================
 
-// TODO: fix this to reflect the actual implementation.
-pub type timeval = ();
+pub use crate::sys::select::*;
 
 //==================================================================================================
 // Re-Exports
@@ -22,7 +21,7 @@ pub type timeval = ();
 
 pub use crate::sys::types::time_t;
 
-// TODO: import `suseconds_t ` type from `sys::types`.
+pub use crate::sys::types::suseconds_t;
 
 // TODO: import  `FD_CLR()`, `FD_ISSET()`, `FD_SET()`, `FD_ZERO()`, functions and  FD_SETSIZE constant from `sys::select`.
 
