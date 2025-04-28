@@ -116,6 +116,10 @@ use ::std::{
     mem,
     os::unix::net::UnixStream,
 };
+use posix::unistd::message::{
+    ChangeDirectoryRequest,
+    FileAccessAtRequest,
+};
 
 //==================================================================================================
 // Structures
@@ -251,7 +255,9 @@ impl<'a> LinuxDaemon<'a> {
                                 // The following system calls have request data that is too large to
                                 // fit in a single message. Thus, their request is split into multiple
                                 // messages.
-                                LinuxDaemonMessageHeader::FileStatAtRequestPart
+                                LinuxDaemonMessageHeader::ChangeDirectoryRequestPart
+                                | LinuxDaemonMessageHeader::FileStatAtRequestPart
+                                | LinuxDaemonMessageHeader::FileAccessAtRequestPart
                                 | LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart
                                 | LinuxDaemonMessageHeader::LinkAtRequestPart
                                 | LinuxDaemonMessageHeader::ReadLinkAtRequestPart
@@ -473,6 +479,12 @@ impl<'a> LinuxDaemon<'a> {
         message: LinuxDaemonMessage,
     ) {
         match message.header {
+            LinuxDaemonMessageHeader::ChangeDirectoryRequestPart => {
+                self.handle_long_request::<ChangeDirectoryRequest>(source, &message);
+            },
+            LinuxDaemonMessageHeader::FileAccessAtRequestPart => {
+                self.handle_long_request::<FileAccessAtRequest>(source, &message);
+            },
             LinuxDaemonMessageHeader::FileStatAtRequestPart => {
                 self.handle_long_request::<FileStatAtRequest>(source, &message);
             },

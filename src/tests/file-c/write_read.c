@@ -4,13 +4,6 @@
  */
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-/* Must come first. */
-#define _POSIX_C_SOURCE 199309 // fdatasync()
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -32,10 +25,10 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests whether we can synchronize file data to disk.
-void test_fdatasync(void)
+// Tests wether we can write and read to/from a file.
+void test_write_read(void)
 {
-    fprintf(stderr, "testing fdatasync() ... ");
+    fprintf(stderr, "testing write()/read() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
@@ -52,9 +45,6 @@ void test_fdatasync(void)
     // Write some data to the file.
     ssize_t bytes_written = write(fd, data, strlen(data));
     assert(bytes_written == (ssize_t)strlen(data));
-
-    // Synchronize file data to disk.
-    assert(fdatasync(fd) == 0);
 
     // Close the file.
     assert(close(fd) == 0);

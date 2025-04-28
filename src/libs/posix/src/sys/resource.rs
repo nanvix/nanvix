@@ -33,7 +33,7 @@ mod bindings {
         // TODO: https://github.com/nanvix/nanvix/issues/459
         ::nvx::error!("getrlimit(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.into_errno();
+            errno = ErrorCode::InvalidSysCall.get();
         }
         -1
     }
@@ -44,7 +44,7 @@ mod bindings {
         // TODO: https://github.com/nanvix/nanvix/issues/469
         ::nvx::error!("setrlimit(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.into_errno();
+            errno = ErrorCode::InvalidSysCall.get();
         }
         -1
     }

@@ -6,10 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::{
-        FileSpaceControlRequest,
-        FileSpaceControlResponse,
-    },
+    fcntl::message::FileSpaceControlRequest,
+    safe::RawFileDescriptor,
     sys::types::off_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -17,60 +15,88 @@ use crate::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn posix_fallocate(fd: i32, offset: off_t, len: off_t) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+///
+/// # Description
+///
+/// Ensures that the file space is allocated for a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `offset`: Offset in bytes.
+/// - `len`: Length in bytes.
+///
+/// # Returns
+///
+/// Upon success, `posix_fallocate()` empty. Otherwise, it returns an error.
+///
+pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
+    ::nvx::error!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
+
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
-    let request: Message = match FileSpaceControlRequest::build(pid, fd, offset, len) {
-        Ok(request) => request,
-        Err(e) => return e.code.into_errno(),
-    };
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    let request: Message = FileSpaceControlRequest::build(pid, fd, offset, len)?;
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
+        ::nvx::error!(
+            "posix_fallocate(): failed (fd={:?}, offset={:?}, len={:?}, status={:?})",
+            fd,
+            offset,
+            len,
+            { response.status }
+        );
+
+        // System call failed, return error.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Error was successfully parsed.
+            Ok(error_code) => Err(Error::new(error_code, "posix_fallocate() failed")),
+            // Error was not parsed.
+            Err(error) => {
+                ::nvx::error!(
+                    "posix_fallocate(): failed (fd={:?}, offset={:?}, len={:?}, error={:?})",
+                    fd,
+                    offset,
+                    len,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "posix_fallocate() failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::FileSpaceControlResponse => {
-                    // Parse response.
-                    let response: FileSpaceControlResponse =
-                        FileSpaceControlResponse::from_bytes(message.payload);
-
-                    // Return system call result.
-                    response.ret
-                },
-                // Response was not parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
-            },
+            LinuxDaemonMessageHeader::FileSpaceControlResponse => Ok(()),
             // Response was not parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            header => {
+                ::nvx::error!(
+                    "posix_fallocate(): invalid response (fd={:?}, offset={:?}, len={:?}, \
+                     header={:?})",
+                    fd,
+                    offset,
+                    len,
+                    header
+                );
+                Err(Error::new(ErrorCode::TryAgain, "posix_fallocate() failed"))
+            },
         }
     }
 }

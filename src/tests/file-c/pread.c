@@ -8,7 +8,7 @@
 //==================================================================================================
 
 /* Must come first. */
-#define _POSIX_C_SOURCE 199309 // fdatasync()
+#define _POSIX_C_SOURCE 200809 // pread()
 
 //==================================================================================================
 // Imports
@@ -32,29 +32,31 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests whether we can synchronize file data to disk.
-void test_fdatasync(void)
+// Tests whether we can read from a file using pread.
+void test_pread(void)
 {
-    fprintf(stderr, "testing fdatasync() ... ");
+    fprintf(stderr, "testing pread() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
 
+    // Data to write to the file.
     const char *data = "Hello Nanvix!";
     size_t data_len = strlen(data);
     assert(data_len <= DATA_LEN_MAX);
+
     char buffer[DATA_LEN_MAX + 1];
+
+    // Define a constant for the read offset.
+    const off_t DATA_OFFSET = 0;
 
     // Create and open a test file.
     int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     assert(fd != -1);
 
-    // Write some data to the file.
-    ssize_t bytes_written = write(fd, data, strlen(data));
-    assert(bytes_written == (ssize_t)strlen(data));
-
-    // Synchronize file data to disk.
-    assert(fdatasync(fd) == 0);
+    // Write data to the file.
+    ssize_t bytes_written = write(fd, data, data_len);
+    assert(bytes_written == (ssize_t)data_len);
 
     // Close the file.
     assert(close(fd) == 0);
@@ -63,9 +65,9 @@ void test_fdatasync(void)
     fd = open(filename, O_RDONLY);
     assert(fd != -1);
 
-    // Read the data back.
-    ssize_t bytes_read = read(fd, buffer, bytes_written);
-    assert(bytes_read == bytes_written);
+    // Read data using pread.
+    ssize_t bytes_read = pread(fd, buffer, data_len, DATA_OFFSET);
+    assert(bytes_read == (ssize_t)data_len);
 
     // Null-terminate the buffer and assert contents.
     buffer[bytes_read] = '\0';

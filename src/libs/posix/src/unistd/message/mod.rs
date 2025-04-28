@@ -5,7 +5,9 @@
 // Modules
 //==================================================================================================
 
+mod chdir;
 mod close;
+mod faccessat;
 mod fchdir;
 mod fchown;
 mod fchownat;
@@ -28,9 +30,17 @@ mod write;
 //==================================================================================================
 
 pub use self::{
+    chdir::{
+        ChangeDirectoryRequest,
+        ChangeDirectoryResponse,
+    },
     close::{
         CloseRequest,
         CloseResponse,
+    },
+    faccessat::{
+        FileAccessAtRequest,
+        FileAccessAtResponse,
     },
     fchdir::{
         FileChdirRequest,

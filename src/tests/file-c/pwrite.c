@@ -8,7 +8,7 @@
 //==================================================================================================
 
 /* Must come first. */
-#define _POSIX_C_SOURCE 199309 // fdatasync()
+#define _POSIX_C_SOURCE 200809 // pwrite()
 
 //==================================================================================================
 // Imports
@@ -32,29 +32,37 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests whether we can synchronize file data to disk.
-void test_fdatasync(void)
+// Tests whether we can write to a file using pwrite.
+void test_pwrite(void)
 {
-    fprintf(stderr, "testing fdatasync() ... ");
+    fprintf(stderr, "testing pwrite() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
 
-    const char *data = "Hello Nanvix!";
-    size_t data_len = strlen(data);
-    assert(data_len <= DATA_LEN_MAX);
+    // Data to write using pwrite.
+    const char *data1 = "Hello ";
+    const char *data2 = "Nanvix!";
+    size_t data1_len = strlen(data1);
+    size_t data2_len = strlen(data2);
+    assert(data1_len + data2_len <= DATA_LEN_MAX);
+
     char buffer[DATA_LEN_MAX + 1];
+
+    // Define a constant for the read offset.
+    const off_t DATA_OFFSET = 0;
 
     // Create and open a test file.
     int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     assert(fd != -1);
 
-    // Write some data to the file.
-    ssize_t bytes_written = write(fd, data, strlen(data));
-    assert(bytes_written == (ssize_t)strlen(data));
+    // Write data1 at an offset of 10 using pwrite.
+    ssize_t bytes_written = pwrite(fd, data1, data1_len, DATA_OFFSET);
+    assert(bytes_written == (ssize_t)data1_len);
 
-    // Synchronize file data to disk.
-    assert(fdatasync(fd) == 0);
+    // Write data2 at the end of data1 using pwrite.
+    bytes_written = pwrite(fd, data2, data2_len, DATA_OFFSET + data1_len);
+    assert(bytes_written == (ssize_t)data2_len);
 
     // Close the file.
     assert(close(fd) == 0);
@@ -63,13 +71,16 @@ void test_fdatasync(void)
     fd = open(filename, O_RDONLY);
     assert(fd != -1);
 
+    // Use lseek to set the read offset.
+    assert(lseek(fd, DATA_OFFSET, SEEK_SET) == DATA_OFFSET);
+
     // Read the data back.
-    ssize_t bytes_read = read(fd, buffer, bytes_written);
-    assert(bytes_read == bytes_written);
+    ssize_t bytes_read = read(fd, buffer, data1_len + data2_len);
+    assert(bytes_read == (ssize_t)(data1_len + data2_len));
 
     // Null-terminate the buffer and assert contents.
     buffer[bytes_read] = '\0';
-    assert(strcmp(buffer, data) == 0);
+    assert(strcmp(buffer, "Hello Nanvix!") == 0);
 
     // Close the file.
     assert(close(fd) == 0);
