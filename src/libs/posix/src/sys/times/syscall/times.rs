@@ -43,10 +43,10 @@ use ::nvx::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, the `times()` system call returns the elapsed time since an
-/// arbitrary point in the past. Otherwise, an error code is returned.
+/// Upon successful completion, `times()` returns the elapsed time since an arbitrary point in the
+/// past. Otherwise, an error code is returned.
 ///
-pub fn times(buffer: Option<&mut tms>) -> Result<clock_t, Error> {
+pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
     ::nvx::trace!("times(): {:?}", buffer);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
@@ -60,8 +60,15 @@ pub fn times(buffer: Option<&mut tms>) -> Result<clock_t, Error> {
 
     // Check wether system call succeeded or not.
     if response.status != 0 {
-        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        Err(Error::new(error_code, "times() failed"))
+        ::nvx::error!("times(): failed (buffer={:?}, status={:?})", buffer, { response.status });
+        // System call failed, parse error code and return it.
+        match ErrorCode::try_from(response.status) {
+            Ok(error_code) => Err(Error::new(error_code, "times() failed")),
+            Err(error) => {
+                ::nvx::error!("times(): failed to parse error code (error={:?})", error);
+                Err(Error::new(ErrorCode::TryAgain, "times() failed"))
+            },
+        }
     } else {
         // System call succeeded, parse response.
         let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
@@ -82,7 +89,10 @@ pub fn times(buffer: Option<&mut tms>) -> Result<clock_t, Error> {
 
                 Ok(elapsed)
             },
-            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
+            header => {
+                ::nvx::error!("times(): failed (buffer={:?}, header={:?})", buffer, header);
+                Err(Error::new(ErrorCode::InvalidMessage, "times() failed"))
+            },
         }
     }
 }
