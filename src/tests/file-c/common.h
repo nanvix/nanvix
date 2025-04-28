@@ -69,6 +69,9 @@ extern void test_linkat(void);
 // Tests whether we can manipulate file offsets using lseek.
 extern void test_lseek(void);
 
+// Tests whether we can update file timestamps with `futimens()`.
+extern void test_futimens(void);
+
 // Tests whether we can create a directory.
 extern void test_mkdirat(void);
 
