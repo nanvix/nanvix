@@ -120,6 +120,7 @@ int main(int argc, const char *argv[])
     test_mkdir();      // requires stat() and unlinkat().
     test_dirent();
     test_utimensat();
+    test_utimes(); // requires open(), close(), stat() and unlinkat().
     test_getcwd();
     test_chdir(); // requires getcwd().
     test_fchdir();
