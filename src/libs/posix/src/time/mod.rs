@@ -53,11 +53,13 @@ pub use crate::sys::types::pid_t;
 //==================================================================================================
 
 /// The identifier of the system-wide clock measuring real time.
-pub const CLOCK_REALTIME: clockid_t = 0;
+// TODO: gate this behind the CX extension.
+pub const CLOCK_REALTIME: clockid_t = 1;
+
 
 /// The identifier for the system-wide monotonic clock.
 // TODO: gate this behind the CX extension.
-pub const CLOCK_MONOTONIC: clockid_t = 1;
+pub const CLOCK_MONOTONIC: clockid_t = 4;
 
 //==================================================================================================
 // Structures
