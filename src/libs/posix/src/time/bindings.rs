@@ -16,15 +16,54 @@ use ::nvx::sys::error::ErrorCode;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Gets the resolution of the specified clock.
+///
+/// # Parameters
+///
+/// - `clock_id`: The clock ID.
+/// - `res`: The structure where the resolution is stored.
+///
+/// # Returns
+///
+/// Upon successful completion, `clock_getres()` returns zero. Otherwise, it returns `-1`` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - It may dereference raw pointers.
+/// - It may access global variables.
+///
+/// It is safe to call this function if and only if the following conditions are met:
+/// - `res` points to a valid `timespec` structure.
+/// - This function is not called by multiple threads at the same time.
+///
 #[no_mangle]
-pub unsafe extern "C" fn clock_getres(_clock_id: clockid_t, _res: *mut timespec) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/274
-    ::nvx::error!("clock_getres(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
+pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -> c_int {
+    ::nvx::trace!("clock_getres(): clock_id={:?}, res={:?}", clock_id, res);
+
+    // Convert `res` pointer to a reference.
+    let mut res: Option<&mut timespec> = if res.is_null() { None } else { Some(&mut *res) };
+
+    // Get clock resolution and parse the result.
+    match crate::time::clock_getres(clock_id, &mut res) {
+        // Systemc all succeeded.
+        Ok(()) => 0,
+        // System call failed.
+        Err(error) => {
+            ::nvx::error!(
+                "clock_getres(): failed (clock_id={:?}, res={:?}, error={:?})",
+                clock_id,
+                res,
+                error
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
     }
-    -1
 }
 
 ///
