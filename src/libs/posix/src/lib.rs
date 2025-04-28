@@ -194,6 +194,10 @@ pub enum LinuxDaemonMessageHeader {
     GetDirectoryEntriesResponsePart,
     FileChdirRequest,
     FileChdirResponse,
+    ChangeDirectoryRequestPart,
+    ChangeDirectoryResponse,
+    FileAccessAtRequestPart,
+    FileAccessAtResponse,
 }
 
 #[repr(C, packed)]

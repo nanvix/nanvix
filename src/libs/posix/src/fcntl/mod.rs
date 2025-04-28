@@ -44,10 +44,12 @@ cfg_if::cfg_if! {
 
 /// Mask for file access mode.
 pub const O_ACCMODE: i32 = 0x3;
+/// Check access using effective user and group IDs.
+pub const AT_EACCESS: i32 = 1;
 /// Remove directory instead of file.
 pub const AT_REMOVEDIR: i32 = 8;
 /// Do not follow symbolic links.
-pub const AT_SYMLINK_NOFOLLOW: i32 = 1 << 10;
+pub const AT_SYMLINK_NOFOLLOW: i32 = 2;
 /// Open for execute only.
 pub const O_EXEC: i32 = 1 << 16;
 /// Open for search only.

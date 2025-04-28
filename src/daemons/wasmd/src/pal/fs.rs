@@ -15,7 +15,6 @@ use ::alloc::string::{
 };
 use ::nvx::sys::error::ErrorCode;
 use ::posix::{
-    errno,
     fcntl,
     ffi::c_int,
     sys::types::{
@@ -128,69 +127,53 @@ impl File {
 
     /// Reads from a file into a buffer.
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        match unistd::read(self.rawfd.0, buf.as_mut_ptr(), buf.len() as u32) {
-            -1 => {
-                // Get `errno` and reset it.
-                let errno: c_int = unsafe {
-                    let errno: c_int = errno::errno;
-                    errno::errno = 0;
-                    errno
-                };
-                ::nvx::error!("read(): failed to read from file descriptor (errno={:?})", errno);
-                Err(Error { errno })
+        match unistd::read(self.rawfd.0, buf) {
+            Err(error) => {
+                ::nvx::error!("read(): failed to read from file descriptor (error={:?})", error);
+                Err(Error {
+                    errno: error.code.get(),
+                })
             },
-            ret => Ok(ret as usize),
+            Ok(ret) => Ok(ret as usize),
         }
     }
 
     /// Moves the offset of a file descriptor.
     pub fn seek(&mut self, offset: FileOffset, whence: FileWhence) -> Result<off_t, Error> {
         match unistd::lseek(self.rawfd.0, offset.value(), whence as c_int) {
-            -1 => {
-                // Get `errno` and reset it.
-                let errno: c_int = unsafe {
-                    let errno: c_int = errno::errno;
-                    errno::errno = 0;
-                    errno
-                };
-                ::nvx::error!("seek(): failed to move file offset (errno={:?})", errno);
-                Err(Error { errno })
+            Err(error) => {
+                ::nvx::error!("seek(): failed to move file offset (error={:?})", error);
+                Err(Error {
+                    errno: error.code.get(),
+                })
             },
-            newoffset => Ok(newoffset),
+            Ok(newoffset) => Ok(newoffset),
         }
     }
 
     /// Returns the current offset of a file descriptor.
     pub fn tell(&self) -> Result<off_t, Error> {
         match unistd::lseek(self.rawfd.0, 0, unistd::SEEK_CUR) {
-            -1 => {
-                // Get `errno` and reset it.
-                let errno: c_int = unsafe {
-                    let errno: c_int = errno::errno;
-                    errno::errno = 0;
-                    errno
-                };
-                ::nvx::error!("tell(): failed to get file offset (errno={:?})", errno);
-                Err(Error { errno })
+            Err(error) => {
+                ::nvx::error!("tell(): failed to get file offset (error={:?})", error);
+                Err(Error {
+                    errno: error.code.get(),
+                })
             },
-            offset => Ok(offset),
+            Ok(offset) => Ok(offset),
         }
     }
 
     /// Writes a buffer to a file.
     pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        match unistd::write(self.rawfd.0, buf.as_ptr(), buf.len() as u32) {
-            -1 => {
-                // Get `errno` and reset it.
-                let errno: c_int = unsafe {
-                    let errno: c_int = errno::errno;
-                    errno::errno = 0;
-                    errno
-                };
-                ::nvx::error!("write(): failed to write to file descriptor (errno={:?})", errno);
-                Err(Error { errno })
+        match unistd::write(self.rawfd.0, buf) {
+            Err(error) => {
+                ::nvx::error!("write(): failed to write to file descriptor (error={:?})", error);
+                Err(Error {
+                    errno: error.code.get(),
+                })
             },
-            ret => Ok(ret as usize),
+            Ok(ret) => Ok(ret as usize),
         }
     }
 }

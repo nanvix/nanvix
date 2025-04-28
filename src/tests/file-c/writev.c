@@ -4,13 +4,6 @@
  */
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-/* Must come first. */
-#define _POSIX_C_SOURCE 199309 // fdatasync()
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -19,6 +12,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 //==================================================================================================
@@ -32,29 +26,36 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests whether we can synchronize file data to disk.
-void test_fdatasync(void)
+// Tests whether we can write to a file using vectorized I/O.
+void test_writev(void)
 {
-    fprintf(stderr, "testing fdatasync() ... ");
+    fprintf(stderr, "testing writev() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
 
-    const char *data = "Hello Nanvix!";
-    size_t data_len = strlen(data);
-    assert(data_len <= DATA_LEN_MAX);
+    // Data to write using writev.
+    const char *data1 = "Hello ";
+    const char *data2 = "Nanvix!";
+    size_t data1_len = strlen(data1);
+    size_t data2_len = strlen(data2);
+    assert(data1_len + data2_len <= DATA_LEN_MAX);
+
+    struct iovec iov[2];
+    iov[0].iov_base = (void *)data1;
+    iov[0].iov_len = data1_len;
+    iov[1].iov_base = (void *)data2;
+    iov[1].iov_len = data2_len;
+
     char buffer[DATA_LEN_MAX + 1];
 
     // Create and open a test file.
     int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     assert(fd != -1);
 
-    // Write some data to the file.
-    ssize_t bytes_written = write(fd, data, strlen(data));
-    assert(bytes_written == (ssize_t)strlen(data));
-
-    // Synchronize file data to disk.
-    assert(fdatasync(fd) == 0);
+    // Write data to the file using writev.
+    ssize_t bytes_written = writev(fd, iov, 2);
+    assert(bytes_written == (ssize_t)(data1_len + data2_len));
 
     // Close the file.
     assert(close(fd) == 0);
@@ -69,7 +70,7 @@ void test_fdatasync(void)
 
     // Null-terminate the buffer and assert contents.
     buffer[bytes_read] = '\0';
-    assert(strcmp(buffer, data) == 0);
+    assert(strcmp(buffer, "Hello Nanvix!") == 0);
 
     // Close the file.
     assert(close(fd) == 0);

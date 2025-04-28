@@ -342,7 +342,7 @@ impl TryFrom<i32> for ErrorCode {
     type Error = Error;
 
     fn try_from(errno: i32) -> Result<Self, Self::Error> {
-        match -errno {
+        match errno {
             1 => Ok(ErrorCode::OperationNotPermitted),
             2 => Ok(ErrorCode::NoSuchEntry),
             3 => Ok(ErrorCode::NoSuchProcess),

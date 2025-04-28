@@ -8,7 +8,7 @@
 //==================================================================================================
 
 /* Must come first. */
-#define _POSIX_C_SOURCE 199309 // fdatasync()
+#define _BSD_SOURCE // preadv()
 
 //==================================================================================================
 // Imports
@@ -19,6 +19,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 //==================================================================================================
@@ -32,29 +33,31 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests whether we can synchronize file data to disk.
-void test_fdatasync(void)
+// Tests whether we can read from a file using preadv.
+void test_preadv(void)
 {
-    fprintf(stderr, "testing fdatasync() ... ");
+    fprintf(stderr, "testing preadv() ... ");
 
     const char *filename = "testfile.tmp";
     assert(strlen(filename) <= NAME_MAX);
 
+    // Data to write to the file.
     const char *data = "Hello Nanvix!";
     size_t data_len = strlen(data);
     assert(data_len <= DATA_LEN_MAX);
-    char buffer[DATA_LEN_MAX + 1];
+
+    // Define a constant for the write offset.
+    const off_t DATA_OFFSET = 10;
 
     // Create and open a test file.
     int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     assert(fd != -1);
 
-    // Write some data to the file.
-    ssize_t bytes_written = write(fd, data, strlen(data));
-    assert(bytes_written == (ssize_t)strlen(data));
+    // Move the file offset to the specified position.
+    assert(lseek(fd, DATA_OFFSET, SEEK_SET) == DATA_OFFSET);
 
-    // Synchronize file data to disk.
-    assert(fdatasync(fd) == 0);
+    // Write data to the file at the current offset.
+    assert(write(fd, data, data_len) == (ssize_t)data_len);
 
     // Close the file.
     assert(close(fd) == 0);
@@ -63,13 +66,26 @@ void test_fdatasync(void)
     fd = open(filename, O_RDONLY);
     assert(fd != -1);
 
-    // Read the data back.
-    ssize_t bytes_read = read(fd, buffer, bytes_written);
-    assert(bytes_read == bytes_written);
+    // Prepare buffers for preadv.
+    char buffer1[7]; // "Hello "
+    char buffer2[8]; // "Nanvix!"
+    struct iovec iov[2];
+    iov[0].iov_base = buffer1;
+    iov[0].iov_len = 6; // Length of "Hello "
+    iov[1].iov_base = buffer2;
+    iov[1].iov_len = 7; // Length of "Nanvix!"
 
-    // Null-terminate the buffer and assert contents.
-    buffer[bytes_read] = '\0';
-    assert(strcmp(buffer, data) == 0);
+    // Read data using preadv at the specified offset.
+    ssize_t bytes_read = preadv(fd, iov, 2, DATA_OFFSET);
+    assert(bytes_read == (ssize_t)data_len);
+
+    // Null-terminate the buffers.
+    buffer1[6] = '\0';
+    buffer2[7] = '\0';
+
+    // Assert contents.
+    assert(strcmp(buffer1, "Hello ") == 0);
+    assert(strcmp(buffer2, "Nanvix!") == 0);
 
     // Close the file.
     assert(close(fd) == 0);

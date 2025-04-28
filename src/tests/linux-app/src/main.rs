@@ -19,10 +19,7 @@ mod identity;
 //==================================================================================================
 
 use ::nvx::sys::error::Error;
-use ::posix::{
-    sys::types::size_t,
-    unistd,
-};
+use ::posix::unistd;
 
 //==================================================================================================
 // Standalone Functions
@@ -38,7 +35,7 @@ pub fn main() -> Result<(), Error> {
     // Magic string.
     {
         let magic_string: &[u8] = "ok".as_bytes();
-        unistd::write(unistd::STDOUT_FILENO, magic_string.as_ptr(), magic_string.len() as size_t);
+        unistd::write(unistd::STDOUT_FILENO, &magic_string)?;
     }
 
     Ok(())

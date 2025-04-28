@@ -43,25 +43,87 @@ use ::nvx::sys::error::ErrorCode;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Checks user's permissions for a file.
+///
+/// # Parameters
+///
+/// - `path`: Pathname of the file.
+/// - `mode`: Access mode to check.
+///
+/// # Returns
+///
+/// Upon successful completion, the `access()` system call returns `0`. Otherwise, it returns `-1`
+/// and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+/// - This function is not called from multiple threads at the same time.
 #[no_mangle]
-pub unsafe extern "C" fn access(_path: *const c_char, _mode: c_int) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/355
-    ::nvx::error!("access(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
-    }
-    -1
+pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
+    ::nvx::trace!("access(): path={:?}, mode={:?}", path, mode);
+    faccessat(fcntl::AT_FDCWD, path, mode, 0)
 }
 
+///
+/// # Description
+///
+/// Changes the current working directory.
+///
+/// # Parameters
+///
+/// - `path`: Pathname of the new working directory.
+///
+/// # Returns
+///
+/// Upon successful completion, the `chdir()` system call returns `0`. Otherwise, it returns `-1`
+/// and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+/// - This function is not called from multiple threads at the same time.
+///
 #[no_mangle]
-pub extern "C" fn chdir(_path: *const c_char) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/358
-    ::nvx::error!("chdir(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
+    ::nvx::error!("chdir(): path={:?}", path);
+
+    // Attempt to convert `path`.
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("chdir(): invalid path");
+            unsafe {
+                errno = ErrorCode::InvalidArgument.get();
+            }
+            return -1;
+        },
+    };
+
+    // Attempt to change the current working directory and check for errors.
+    match crate::unistd::chdir(path) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("chdir(): failed (error={:?})", error);
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
     }
-    -1
 }
 
 ///
@@ -147,6 +209,69 @@ pub extern "C" fn execve(
 pub extern "C" fn _exit(status: c_int) -> ! {
     let Err(e) = nvx::sys::kcall::pm::exit(status);
     panic!("failed to terminate process (error={:?})", e);
+}
+
+///
+/// # Description
+///
+/// Checks the accessibility of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `mode`:  Accessibility check mode.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, `faccessat()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `path` points to a valid null-terminated string.
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn faccessat(
+    dirfd: c_int,
+    path: *const c_char,
+    mode: c_int,
+    flag: c_int,
+) -> c_int {
+    ::nvx::trace!(
+        "faccessat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
+        dirfd,
+        path,
+        mode,
+        flag
+    );
+
+    // Attempt to convert `path`.
+    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!("faccessat(): invalid path");
+            errno = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to check access permissions and check for errors.
+    match crate::unistd::faccessat(dirfd, path, mode, flag) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("faccessat(): failed (error={:?})", error);
+            errno = error.code.get();
+            -1
+        },
+    }
 }
 
 ///
@@ -663,10 +788,50 @@ pub unsafe extern "C" fn linkat(
     }
 }
 
+///
+/// # Description
+///
+/// Sets the file offset of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `offset`: Offset to set.
+/// - `whence`: Reference point for the offset.
+///
+/// # Returns
+///
+/// Upon successful completion, `lseek()` returns the resulting offset. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
 #[no_mangle]
 pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
-    ::nvx::trace!("lseek(): fd = {}, offset = {}, whence = {}", fd, offset, whence);
-    crate::unistd::lseek(fd, offset, whence)
+    ::nvx::trace!("lseek(): fd={:?}, offset={:?}, whence={:?}", fd, offset, whence);
+
+    // Attempt to seek the file descriptor and check for errors.
+    match crate::unistd::lseek(fd, offset, whence) {
+        Ok(offset) => offset,
+        Err(error) => {
+            ::nvx::error!(
+                "lseek(): failed (fd={:?}, offset={:?}, whence={:?}, error={:?})",
+                fd,
+                offset,
+                whence,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
 }
 
 ///
@@ -704,14 +869,258 @@ pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
 }
 
 ///
+/// # Description
+///
+/// Reads data from a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to read into.
+/// - `count`: Number of bytes to read.
+/// - `offset`: Offset to read from.
+///
+/// # Returns
+///
+/// Upon successful completion, `pread()` returns the number of bytes read. Otherwise, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
 /// # Safety
 ///
-/// The function has undefined behavior if the `buffer` points to an invalid memory location.
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `buffer` points to a buffer of `count` bytes.
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn pread(
+    fd: c_int,
+    buffer: *mut c_void,
+    count: size_t,
+    offset: off_t,
+) -> ssize_t {
+    ::nvx::trace!(
+        "pread(): fd={}, buffer={:?}, count={:?}, offset={:?}",
+        fd,
+        buffer,
+        count,
+        offset
+    );
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        ::nvx::error!(
+            "pread(): invalid buffer (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
+            fd,
+            buffer,
+            count,
+            offset
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Check if count is invalid.
+    if count == 0 {
+        return 0;
+    }
+
+    // Attempt to convert `buffer`.
+    let buffer: &mut [u8] = slice::from_raw_parts_mut(buffer as *mut u8, count as usize);
+
+    // Attempt to read from the file descriptor and check for errors.
+    match crate::unistd::pread(fd, buffer, offset) {
+        Ok(bytes_read) => bytes_read as ssize_t,
+        Err(error) => {
+            ::nvx::error!(
+                "pread(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
+                fd,
+                buffer,
+                count,
+                offset,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Writes data to a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to write.
+/// - `count`: Number of bytes to write.
+/// - `offset`: Offset to write to.
+///
+/// # Returns
+///
+/// Upon successful completion, `pwrite()` returns the number of bytes written. Otherwise, it
+/// returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `buffer` points to a valid memory location.
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn pwrite(
+    fd: c_int,
+    buffer: *const c_void,
+    count: size_t,
+    offset: off_t,
+) -> ssize_t {
+    ::nvx::trace!(
+        "pwrite(): fd={}, buffer={:?}, count={:?}, offset={:?}",
+        fd,
+        buffer,
+        count,
+        offset
+    );
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        ::nvx::error!(
+            "pwrite(): invalid buffer (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
+            fd,
+            buffer,
+            count,
+            offset
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // CHeck if count is invalid.
+    if count == 0 {
+        ::nvx::error!(
+            "pwrite(): invalid count (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
+            fd,
+            buffer,
+            count,
+            offset
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Attempt to convert `buffer`.
+    let buffer: &[u8] = slice::from_raw_parts(buffer as *const u8, count as usize);
+
+    // Attempt to write to the file descriptor and check for errors.
+    match crate::unistd::pwrite(fd, buffer, offset) {
+        Ok(bytes_written) => bytes_written as ssize_t,
+        Err(error) => {
+            ::nvx::error!(
+                "pwrite(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
+                fd,
+                buffer,
+                count,
+                offset,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Reads data from a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `buffer`: Buffer to read into.
+/// - `count`: Number of bytes to read.
+///
+/// # Returns
+///
+/// Upon successful completion, `read()` returns the number of bytes read. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because:
+/// - It may dereference pointers.
+/// - It may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `buffer` points to a buffer of `count` bytes.
+/// - This function is not called from multiple threads at the same time.
 ///
 #[no_mangle]
 pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> ssize_t {
-    ::nvx::trace!("read(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
-    crate::unistd::read(fd, buffer as *mut u8, count)
+    // Skip logging for stdin to avoid spamming the output.
+    if fd != STDIN_FILENO {
+        ::nvx::trace!("read(): fd={:?}, buffer={:?}, count={:?}", fd, buffer, count);
+    }
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        ::nvx::error!(
+            "read(): invalid buffer (fd={:?}, buffer={:?}, count={:?})",
+            fd,
+            buffer,
+            count
+        );
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Check if count is invalid.
+    if count == 0 {
+        return 0;
+    }
+
+    // Construct buffer from raw parts.
+    let buffer: &mut [u8] =
+        unsafe { ::core::slice::from_raw_parts_mut(buffer as *mut u8, count as usize) };
+
+    // Attempt to read from the file descriptor and check for errors.
+    match crate::unistd::read(fd, buffer) {
+        Ok(bytes_read) => bytes_read as ssize_t,
+        Err(error) => {
+            ::nvx::error!(
+                "read(): failed (fd={}, buffer={:?}, count={:?}, error={:?})",
+                fd,
+                buffer,
+                count,
+                error
+            );
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
 }
 
 ///
@@ -1086,5 +1495,37 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) 
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {
         ::nvx::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
     }
-    crate::unistd::write(fd, buffer as *const u8, count)
+
+    // Check if buffer is invalid.
+    if buffer.is_null() {
+        ::nvx::error!("write(): invalid buffer");
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Check if count is invalid.
+    if count == 0 {
+        ::nvx::error!("write(): invalid write count");
+        unsafe {
+            errno = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Construct buffer from raw parts.
+    let buffer: &[u8] = slice::from_raw_parts(buffer as *const u8, count as usize);
+
+    // Attempt to write to file descriptor and check for errors.
+    match crate::unistd::write(fd, buffer) {
+        Ok(bytes_written) => bytes_written as ssize_t,
+        Err(error) => {
+            ::nvx::error!("write(): failed (error={:?})", error);
+            unsafe {
+                errno = error.code.get();
+            }
+            -1
+        },
+    }
 }

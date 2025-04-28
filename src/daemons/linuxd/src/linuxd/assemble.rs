@@ -39,6 +39,8 @@ use ::posix::{
         UpdateFileAccessTimeAtRequest,
     },
     unistd::message::{
+        ChangeDirectoryRequest,
+        FileAccessAtRequest,
         FileChownAtRequest,
         LinkAtRequest,
         ReadLinkAtRequest,
@@ -464,5 +466,79 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
 
     fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_unlinkat(source, request)
+    }
+}
+
+impl RequestAssemblerTrait for ChangeDirectoryRequest {
+    fn new_assembler() -> RequestAssemblerType {
+        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        RequestAssemblerType::ChangeDirectoryRequest(
+            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+        )
+    }
+
+    fn add_part(
+        assembler: &mut RequestAssemblerType,
+        part: LinuxDaemonMessagePart,
+    ) -> Result<(), Error> {
+        match assembler {
+            RequestAssemblerType::ChangeDirectoryRequest(assembler) => assembler.add_part(part),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
+        match assembler {
+            RequestAssemblerType::ChangeDirectoryRequest(assembler) => Ok(assembler.is_complete()),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+        match assembler {
+            RequestAssemblerType::ChangeDirectoryRequest(assembler) => assembler.take_parts(),
+            _ => unreachable!("invalid assembler type"),
+        }
+    }
+
+    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+        unistd::do_chdir(source, request)
+    }
+}
+
+impl RequestAssemblerTrait for FileAccessAtRequest {
+    fn new_assembler() -> RequestAssemblerType {
+        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        RequestAssemblerType::FileAccessAtRequest(
+            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+        )
+    }
+
+    fn add_part(
+        assembler: &mut RequestAssemblerType,
+        part: LinuxDaemonMessagePart,
+    ) -> Result<(), Error> {
+        match assembler {
+            RequestAssemblerType::FileAccessAtRequest(assembler) => assembler.add_part(part),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
+        match assembler {
+            RequestAssemblerType::FileAccessAtRequest(assembler) => Ok(assembler.is_complete()),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+        match assembler {
+            RequestAssemblerType::FileAccessAtRequest(assembler) => assembler.take_parts(),
+            _ => unreachable!("invalid assembler type"),
+        }
+    }
+
+    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+        unistd::do_faccessat(source, request)
     }
 }

@@ -5,7 +5,9 @@
 // Modules
 //==================================================================================================
 
+mod chdir;
 mod close;
+mod faccessat;
 mod fchdir;
 mod fchown;
 mod fchownat;
@@ -33,7 +35,9 @@ mod write;
 //==================================================================================================
 
 pub use self::{
+    chdir::chdir,
     close::close,
+    faccessat::faccessat,
     fchdir::fchdir,
     fchown::fchown,
     fchownat::fchownat,

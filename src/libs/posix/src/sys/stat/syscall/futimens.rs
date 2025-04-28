@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    sys::stat::message::{
-        UpdateFileAccessTimeRequest,
-        UpdateFileAccessTimeResponse,
-    },
+    sys::stat::message::UpdateFileAccessTimeRequest,
     time::timespec,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -17,57 +14,69 @@ use crate::{
 use ::nvx::{
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
+    sys::error::{
+        Error,
+        ErrorCode,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn futimens(fd: i32, times: [timespec; 2]) -> i32 {
-    let pid: ProcessIdentifier = match ::nvx::pm::getpid() {
-        Ok(pid) => pid,
-        Err(e) => return e.code.into_errno(),
-    };
+pub fn futimens(fd: i32, times: [timespec; 2]) -> Result<(), Error> {
+    ::nvx::error!("futimens(): fd={:?}, times={:?}", fd, times);
+
+    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
     let request: Message = UpdateFileAccessTimeRequest::build(pid, fd, times);
-    if let Err(e) = ::nvx::ipc::send(&request) {
-        return e.code.into_errno();
-    }
+    ::nvx::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = match ::nvx::ipc::recv() {
-        Ok(response) => response,
-        Err(e) => return e.code.into_errno(),
-    };
+    let response: Message = ::nvx::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
+        ::nvx::error!("futimens(): failed (fd={:?}, times={:?}, status={:?})", fd, times, {
+            response.status
+        });
+
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
-            Ok(e) => e.into_errno(),
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            // Error code was successfully parsed.
+            Ok(error_code) => {
+                // Return error code.
+                Err(Error::new(error_code, "futimens() failed"))
+            },
+            // Error code was not successfully parsed.
+            Err(error) => {
+                ::nvx::error!(
+                    "futimens(): failed to parse error code (fd={:?}, times={:?}, error={:?})",
+                    fd,
+                    times,
+                    error
+                );
+                Err(Error::new(ErrorCode::TryAgain, "futimens() failed"))
+            },
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        // Response was successfully parsed.
+        match message.header {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::UpdateFileAccessTimeResponse => {
-                    // Parse response.
-                    let response: UpdateFileAccessTimeResponse =
-                        UpdateFileAccessTimeResponse::from_bytes(message.payload);
-
-                    // Return result.
-                    response.ret
-                },
-                // Response was not successfully parsed.
-                _ => ErrorCode::InvalidMessage.into_errno(),
-            },
+            LinuxDaemonMessageHeader::UpdateFileAccessTimeResponse => Ok(()),
             // Response was not successfully parsed.
-            Err(_) => ErrorCode::InvalidMessage.into_errno(),
+            header => {
+                ::nvx::error!(
+                    "futimens(): invalid response (fd={:?}, times={:?}, header={:?})",
+                    fd,
+                    times,
+                    header
+                );
+                Err(Error::new(ErrorCode::TryAgain, "futimens() failed"))
+            },
         }
     }
 }
