@@ -208,7 +208,7 @@ pub enum ErrorCode {
     /// Socket type not supported (ESOCKTNOSUPPORT).
     SocketTypeNotSupported = 94,
     /// Operation not supported on transport endpoint (EOPNOTSUPP).
-    OperationNotSupported = 95,
+    OperationNotSupportedOnSocket = 95,
     /// Protocol family not supported (EPFNOSUPPORT).
     ProtocolFamilyNotSupported = 96,
     /// Address family not supported by protocol (EAFNOSUPPORT).
@@ -285,6 +285,8 @@ pub enum ErrorCode {
     RfKillSwitch = 132,
     /// Memory page has hardware error (EHWPOISON).
     HardwarePoison = 133,
+    /// Operation not supported (ENOTSUP).
+    OperationNotSupported = 134,
 }
 
 impl ErrorCode {
@@ -437,7 +439,7 @@ impl TryFrom<i32> for ErrorCode {
             92 => Ok(ErrorCode::ProtocolOptionNotAvailable),
             93 => Ok(ErrorCode::ProtocolNotSupported),
             94 => Ok(ErrorCode::SocketTypeNotSupported),
-            95 => Ok(ErrorCode::OperationNotSupported),
+            95 => Ok(ErrorCode::OperationNotSupportedOnSocket),
             96 => Ok(ErrorCode::ProtocolFamilyNotSupported),
             97 => Ok(ErrorCode::AddressFamilyNotSupported),
             98 => Ok(ErrorCode::AddressInUse),
@@ -476,6 +478,7 @@ impl TryFrom<i32> for ErrorCode {
             131 => Ok(ErrorCode::UnrecoverableState),
             132 => Ok(ErrorCode::RfKillSwitch),
             133 => Ok(ErrorCode::HardwarePoison),
+            134 => Ok(ErrorCode::OperationNotSupported),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid error code")),
         }
     }
