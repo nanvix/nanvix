@@ -44,10 +44,10 @@ impl UpdateFileAccessTimeRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32, times: [timespec; 2]) -> Message {
+    pub fn build(pid: ProcessIdentifier, fd: i32, times: &[timespec; 2]) -> Message {
         let message: UpdateFileAccessTimeRequest = UpdateFileAccessTimeRequest {
             fd,
-            times,
+            times: *times,
             _padding: [0; Self::PADDING_SIZE],
         };
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(

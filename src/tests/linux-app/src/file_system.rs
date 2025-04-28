@@ -208,7 +208,7 @@ pub fn test() {
             tv_nsec: 1,
         },
     ];
-    match sys::stat::futimens(fd, times) {
+    match sys::stat::futimens(fd, &times) {
         Ok(()) => {
             ::nvx::info!("updated access time of file foo.tmp");
         },
