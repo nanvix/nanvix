@@ -10,7 +10,6 @@
 
 extern crate alloc;
 
-mod clock;
 mod file_system;
 mod identity;
 
@@ -28,7 +27,6 @@ use ::posix::unistd;
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
     // Run tests.
-    clock::test();
     identity::test();
     file_system::test();
 
