@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     fcntl,
     ffi::{
         c_char,
@@ -83,7 +83,7 @@ pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
         Ok(()) => 0,
         Err(error) => {
             ::nvx::error!("fchmod(): {:?} (fd={}, mode={})", error, fd, mode);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -139,7 +139,7 @@ pub unsafe extern "C" fn fchmodat(
                 flag,
                 error
             );
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn fchmodat(
                 flag,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -174,7 +174,7 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
         Ok(_) => 0,
         Err(error) => {
             ::nvx::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -236,7 +236,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("lstat(): invalid pathname");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
                 statbuf,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -288,7 +288,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("stat(): invalid pathname");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -304,7 +304,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
                 statbuf,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -370,7 +370,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
         Ok(pathname) => pathname,
         Err(_) => {
             ::nvx::error!("mkdirat(): invalid pathname");
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
@@ -386,7 +386,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
                 mode,
                 error
             );
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }
@@ -397,8 +397,6 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
 pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/454
     ::nvx::error!("truncate(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
-    }
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

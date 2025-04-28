@@ -5,7 +5,7 @@
 // Imports
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     ffi::c_int,
     sys::types::clockid_t,
     time::timespec,
@@ -22,7 +22,7 @@ pub unsafe extern "C" fn clock_getres(_clock_id: clockid_t, _res: *mut timespec)
     // TODO: https://github.com/nanvix/nanvix/issues/274
     ::nvx::error!("clock_getres(): not implemented");
     unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
 }
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
         Ok(_) => 0,
         Err(e) => {
             // Set errno.
-            unsafe { errno = e.code.get() };
+            *__errno_location() = e.code.get();
             -1
         },
     }
@@ -67,8 +67,6 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn nanosleep(_req: *const u8, _rem: *mut u8) -> c_int {
     ::nvx::trace!("nanosleep(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
-    }
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

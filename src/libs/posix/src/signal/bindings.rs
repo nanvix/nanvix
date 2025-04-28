@@ -8,7 +8,7 @@
 use nvx::sys::error::ErrorCode;
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     ffi::c_int,
     sys::types::pid_t,
 };
@@ -22,7 +22,7 @@ pub extern "C" fn kill(_pid: pid_t, _signal: c_int) -> c_int {
     ::nvx::trace!("kill(): pid = {}, signal = {}", _pid, _signal);
     // TODO: Implement this system call.
     unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
 }

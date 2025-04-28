@@ -10,7 +10,7 @@ use crate::{
         self,
         DirectoryStream,
     },
-    errno::errno,
+    errno::__errno_location,
     ffi::c_int,
 };
 use ::alloc::boxed::Box;
@@ -26,7 +26,7 @@ pub unsafe extern "C" fn closedir(dirp: *mut DirectoryStream) -> c_int {
     // Check if directory stream is invalid.
     if dirp.is_null() {
         ::nvx::error!("closedir(): invalid directory stream");
-        errno = ErrorCode::InvalidArgument.get();
+        *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
@@ -39,7 +39,7 @@ pub unsafe extern "C" fn closedir(dirp: *mut DirectoryStream) -> c_int {
         Ok(()) => 0,
         Err(error) => {
             ::nvx::error!("closedir(): failed to close directory stream: {:?}", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }

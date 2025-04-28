@@ -13,7 +13,7 @@
 
 #[cfg(all(feature = "syscall", feature = "staticlib"))]
 mod bindings {
-    use crate::errno::errno;
+    use crate::errno::__errno_location;
     use ::nvx::sys::error::ErrorCode;
 
     #[no_mangle]
@@ -27,7 +27,7 @@ mod bindings {
     ) -> *mut u8 {
         ::nvx::error!("mmap(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.get();
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
         }
         core::ptr::null_mut()
     }
@@ -37,7 +37,7 @@ mod bindings {
     pub unsafe extern "C" fn munmap(_addr: *mut u8, _length: usize) -> isize {
         ::nvx::error!("munmap(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.get();
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
         }
         -1
     }

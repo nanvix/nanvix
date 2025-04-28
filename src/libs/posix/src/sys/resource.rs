@@ -22,7 +22,7 @@ pub type rlimit = ();
 mod bindings {
     use super::*;
     use crate::{
-        errno::errno,
+        errno::__errno_location,
         ffi::c_int,
     };
     use ::nvx::sys::error::ErrorCode;
@@ -33,7 +33,7 @@ mod bindings {
         // TODO: https://github.com/nanvix/nanvix/issues/459
         ::nvx::error!("getrlimit(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.get();
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
         }
         -1
     }
@@ -44,7 +44,7 @@ mod bindings {
         // TODO: https://github.com/nanvix/nanvix/issues/469
         ::nvx::error!("setrlimit(): not implemented");
         unsafe {
-            errno = ErrorCode::InvalidSysCall.get();
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
         }
         -1
     }
