@@ -14,6 +14,7 @@
 use crate::{
     ffi::{
         c_int,
+        c_long,
         c_longlong,
         c_uint,
         c_ulonglong,
@@ -85,6 +86,9 @@ pub type size_t = c_uint;
 
 /// Used for a count of bytes or an error indication.
 pub type ssize_t = c_int;
+
+/// Used for time in microseconds.
+pub type suseconds_t = c_long;
 
 /// Used for time in seconds.
 pub type time_t = c_longlong;
