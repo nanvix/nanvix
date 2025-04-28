@@ -19,7 +19,7 @@ use ::posix::{
 //==================================================================================================
 
 pub fn test_times() {
-    match times::times(None) {
+    match times::times(&mut None) {
         Ok(clock) => {
             ::nvx::info!("times() returned {}", clock);
         },
