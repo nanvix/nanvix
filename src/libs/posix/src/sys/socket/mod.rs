@@ -202,7 +202,7 @@ impl TryFrom<i32> for Shutdown {
             SHUT_RDWR => Ok(Shutdown::ReadWrite),
             _unsupported_how => {
                 let reason: &str = "unsupported shutdown operation";
-                Err(Error::new(ErrorCode::OperationNotSupported, reason))
+                Err(Error::new(ErrorCode::OperationNotSupportedOnSocket, reason))
             },
         }
     }
