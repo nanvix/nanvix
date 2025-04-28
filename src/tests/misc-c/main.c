@@ -36,6 +36,7 @@ int main(int argc, const char *argv[])
     assert(argv[1] == NULL);
     // TODO: assert that argv[0] is the name of the executable.
 
+    test_clock_getres();
     test_uname();
 
     // Write magic string to signal that the test passed.
