@@ -10,7 +10,7 @@ use crate::{
         self,
         DirectoryStream,
     },
-    errno::errno,
+    errno::__errno_location,
 };
 use ::alloc::boxed::Box;
 use ::core::{
@@ -30,7 +30,7 @@ pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
     let dirname: &str = match ffi::CStr::from_ptr(dirname).to_str() {
         Ok(dirname) => dirname,
         Err(_) => {
-            errno = ErrorCode::InvalidArgument.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
             return ptr::null_mut();
         },
     };
@@ -42,7 +42,7 @@ pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
         Ok(dirp) => dirp,
         Err(error) => {
             ::nvx::error!("opendir(): failed to open directory stream: {:?}", error);
-            errno = error.code.get();
+            *__errno_location() = error.code.get();
             return ptr::null_mut();
         },
     };

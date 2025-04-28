@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    errno::errno,
+    errno::__errno_location,
     ffi::{
         c_char,
         c_int,
@@ -24,8 +24,6 @@ use ::nvx::sys::error::ErrorCode;
 pub unsafe extern "C" fn utimes(_filename: *const c_char, _times: *const timeval) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/524
     ::nvx::error!("utime(): not implemented");
-    unsafe {
-        errno = ErrorCode::InvalidSysCall.get();
-    }
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
