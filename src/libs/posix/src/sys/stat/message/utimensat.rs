@@ -101,7 +101,7 @@ impl UpdateFileAccessTimeAtRequest {
     ///
     /// Upon success, the function returns the new request message. Upon failure, it returns an error.
     ///
-    pub fn new(dirfd: i32, path: String, flag: i32, times: [timespec; 2]) -> Result<Self, Error> {
+    pub fn new(dirfd: i32, path: String, flag: i32, times: &[timespec; 2]) -> Result<Self, Error> {
         // Check if path is too long.
         if path.len() > limits::PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "path too long"));
@@ -111,7 +111,7 @@ impl UpdateFileAccessTimeAtRequest {
             dirfd,
             flag,
             path,
-            times,
+            times: *times,
         })
     }
 }
