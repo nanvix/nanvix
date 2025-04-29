@@ -53,6 +53,9 @@
 // Tests wether we can get the resolution of a clock with `clock_getres()`.
 extern void test_clock_getres(void);
 
+// Tests whether we can retrieve process times with `times()`.
+extern void test_times(void);
+
 // Tests wether we can get system information with `uname()`.
 extern void test_uname(void);
 
