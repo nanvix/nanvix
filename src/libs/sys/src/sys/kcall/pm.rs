@@ -295,12 +295,12 @@ pub fn unlock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
 // Signal Condition Variable
 //==================================================================================================
 
-pub fn signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<(), Error> {
+pub fn signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<usize, Error> {
     let result: i32 =
         kcall2!(KcallNumber::CondSignal.into(), usize::from(cond_addr) as u32, broadcast as u32);
 
-    if result == 0 {
-        Ok(())
+    if result >= 0 {
+        Ok(result as usize)
     } else {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to signal condition variable"))
     }
