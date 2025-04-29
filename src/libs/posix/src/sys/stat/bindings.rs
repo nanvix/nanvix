@@ -17,7 +17,10 @@ use crate::{
         types::mode_t,
     },
 };
-use ::core::ffi;
+use ::core::{
+    ffi,
+    slice,
+};
 use ::nvx::sys::error::ErrorCode;
 
 //==================================================================================================
@@ -174,6 +177,63 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
         Ok(_) => 0,
         Err(error) => {
             ::nvx::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
+            *__errno_location() = error.code.get();
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Sets the access and modification times of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `times`: Access and modification times.
+///
+/// # Returns
+///
+/// Upon successful completion, `futimens()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - It may dereference a raw pointer.
+/// - It may modify global state.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `times` points to an array of `timespec` structures with a length of 2.
+/// - This function is not called by multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn futimens(fd: c_int, times: *const stat::timespec) -> c_int {
+    ::nvx::trace!("futimens(): fd={}, times={:p}", fd, times);
+
+    // Check if `times` is invalid.
+    if times.is_null() {
+        ::nvx::error!("futimens(): fd={}, times={:p}", fd, times);
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Attempt to convert `times` to a reference to an array of two elements.
+    let times: &[stat::timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
+        Ok(array) => array,
+        Err(_) => {
+            ::nvx::error!("futimens(): invalid times array");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to set the access and modification times and parse the result.
+    match crate::sys::stat::futimens(fd, times) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!("futimens(): failed (fd={}, times={:?}, error={:?})", fd, times, error);
             *__errno_location() = error.code.get();
             -1
         },

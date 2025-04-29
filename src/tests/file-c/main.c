@@ -133,6 +133,7 @@ int main(int argc, const char *argv[])
     test_chown();     // requires open(), close(), and unlinkat().
     test_fchown();    // requires open(), close() and unlink().
     test_lchown();    // requires open(), close() and unlinkat().
+    test_futimens();  // Requires open(), fstat(), close() and unlink().
 
     // Write magic string to signal that the test passed.
     {
