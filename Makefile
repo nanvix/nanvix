@@ -28,6 +28,9 @@ export HOST_CPU ?=
 # Build optional software?
 export BUILD_OPT ?= yes
 
+# Build litebox?
+export BUILD_LITEBOX ?= no
+
 # Log Level
 export LOG_LEVEL ?= warn
 
@@ -266,6 +269,7 @@ all: \
 	all-guest-binaries \
 	all-wasmd \
 	all-kernel \
+	all-litebox \
 	all-wasm-binaries \
 	all-host-binaries \
 	all-microvm \
@@ -285,6 +289,7 @@ clean: \
 	clean-guest-binaries \
 	clean-wasmd \
 	clean-kernel \
+	clean-litebox \
 	clean-wasm-binaries \
 	clean-host-binaries \
 	clean-microvm \
@@ -300,6 +305,7 @@ distclean: clean distclean-opt
 # Runs clippy.
 clippy: \
 	clippy-kernel \
+	clippy-litebox \
 	clippy-guest-binaries \
 	clippy-guest-rlibs \
 	clippy-guest-staticlibs \
@@ -311,6 +317,7 @@ clippy: \
 
 check: \
 	check-kernel \
+	check-litebox \
 	check-guest-binaries \
 	check-guest-rlibs \
 	check-guest-staticlibs \
@@ -483,6 +490,38 @@ endif
 init-zlib: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-zlib.sh init $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+#===================================================================================================
+# Build Rules for Litebox
+#===================================================================================================
+
+all-litebox: init
+ifeq ($(BUILD_LITEBOX),yes)
+	$(GUEST_CARGO_BUILD_CMD) -p litebox-nanvix
+else
+	@echo "\033[31mLitebox not built. Set BUILD_LITEBOX=yes to build litebox.\033[0m"
+endif
+
+clean-litebox:
+ifeq ($(BUILD_LITEBOX),yes)
+	$(GUEST_CARGO_CLEAN_CMD) -p litebox-nanvix
+else
+	@echo "\033[31mLitebox not built. Set BUILD_LITEBOX=yes to build litebox.\033[0m"
+endif
+
+check-litebox:
+ifeq ($(BUILD_LITEBOX),yes)
+	$(GUEST_CARGO_CHECK_CMD) -p litebox-nanvix
+else
+	@echo "\033[31mLitebox not built. Set BUILD_LITEBOX=yes to build litebox.\033[0m"
+endif
+
+clippy-litebox:
+ifeq ($(BUILD_LITEBOX),yes)
+	$(GUEST_CARGO_CLIPPY_CMD) -p litebox-nanvix
+else
+	@echo "\033[31mLitebox not built. Set BUILD_LITEBOX=yes to build litebox.\033[0m"
 endif
 
 #===================================================================================================

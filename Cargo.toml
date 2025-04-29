@@ -19,6 +19,7 @@ members = [
         "src/libs/config",
         "src/libs/elf",
         "src/libs/error",
+        "src/libs/litebox-nanvix",
         "src/libs/nvx",
         "src/libs/posix",
         "src/libs/proc",
