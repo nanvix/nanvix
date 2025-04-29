@@ -110,7 +110,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
         // SAFETY: The calling thread is not the kernel, no resources are held, and the calling process does not hold a reference to the process manager.
         KcallNumber::CondSignal => match unsafe { pm::signal_cond(arg0 as usize, arg1 != 0) } {
-            Ok(()) => KcallResult::ok(),
+            Ok(awakened) => KcallResult::Success(awakened.into()),
             Err(e) => KcallResult::Error(e.code.into()),
         },
         // SAFETY: The calling thread does not hold any resources.
