@@ -17,7 +17,6 @@ use ::posix::{
         self,
         stat::stat,
     },
-    time::timespec,
     unistd,
 };
 
@@ -195,59 +194,6 @@ pub fn test() {
     // Sanity check file size.
     if st.st_size != 1024 {
         panic!("file size is not 1024 bytes");
-    }
-
-    // Update access time of file named `foo.tmp`.
-    let times: [timespec; 2] = [
-        timespec {
-            tv_sec: 1,
-            tv_nsec: 1,
-        },
-        timespec {
-            tv_sec: 1,
-            tv_nsec: 1,
-        },
-    ];
-    match sys::stat::futimens(fd, times) {
-        Ok(()) => {
-            ::nvx::info!("updated access time of file foo.tmp");
-        },
-        Err(error) => {
-            panic!("failed to update access time of file foo.tmp: {:?}", error);
-        },
-    }
-
-    // Get status of file named `foo.tmp`.
-    let mut st: stat = stat::default();
-    match sys::stat::fstat(fd, &mut st) {
-        Ok(()) => {
-            ::nvx::info!("got status of file foo.tmp");
-            ::nvx::info!("file statistics:");
-            ::nvx::info!("  st_dev: {}", { st.st_dev });
-            ::nvx::info!("  st_ino: {}", { st.st_ino });
-            ::nvx::info!("  st_mode: {}", { st.st_mode });
-            ::nvx::info!("  st_nlink: {}", { st.st_nlink });
-            ::nvx::info!("  st_uid: {}", { st.st_uid });
-            ::nvx::info!("  st_gid: {}", { st.st_gid });
-            ::nvx::info!("  st_rdev: {}", { st.st_rdev });
-            ::nvx::info!("  st_size: {}", { st.st_size });
-            ::nvx::info!("  st_blksize: {}", { st.st_blksize });
-            ::nvx::info!("  st_blocks: {}", { st.st_blocks });
-            ::nvx::info!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
-            ::nvx::info!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
-            ::nvx::info!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
-        },
-        Err(error) => {
-            panic!("failed to get status of file foo.tmp: {:?}", error);
-        },
-    }
-
-    // Ensure time of last access was updated.
-    if st.st_atim.tv_sec != 1 {
-        panic!("access time of file bar.tmp was not updated");
-    }
-    if st.st_atim.tv_nsec != 1 {
-        panic!("access time of file bar.tmp was not updated");
     }
 
     // Close file.

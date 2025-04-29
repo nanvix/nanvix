@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    safe::RawFileDescriptor,
     sys::stat::message::UpdateFileAccessTimeRequest,
     time::timespec,
     LinuxDaemonMessage,
@@ -24,7 +25,21 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn futimens(fd: i32, times: [timespec; 2]) -> Result<(), Error> {
+///
+/// # Description
+///
+/// Sets access and modification times of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `times`: Access and modification times.
+///
+/// # Returns
+///
+/// Upon successful completion, `futimens()` returns empty. Otherwise, it returns an error.
+///
+pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     ::nvx::error!("futimens(): fd={:?}, times={:?}", fd, times);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
