@@ -257,6 +257,11 @@ fn do_elf32_load(
         let phys_addr_end: usize = phys_addr_base + phdr.p_filesz as usize;
 
         // Load segment page by page.
+        debug!(
+            "do_elf32_load(): loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, \
+             phys_addr_base={:#x}, phys_addr_end={:#x}, access={:?})",
+            virt_addr, virt_addr_end, phys_addr_base, phys_addr_end, access
+        );
         for phys_addr in (phys_addr_base..phys_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(virt_addr);
 

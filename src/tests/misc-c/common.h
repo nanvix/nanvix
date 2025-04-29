@@ -1,0 +1,59 @@
+/*
+ * Copyright(c) The Maintainers of Nanvix.
+ * Licensed under the MIT License.
+ */
+
+#ifndef _COMMON_H_
+#define _COMMON_H_
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+#include <assert.h>
+
+//==================================================================================================
+// Macros
+//==================================================================================================
+
+/**
+ * @brief Performs a static assertion.
+ *
+ * @param a Expression to assert.
+ * @param b Expected value.
+ *
+ * @returns Nothing. If the assertion fails, compilation will fail.
+ */
+#define STATIC_ASSERT(a, b) ((void)sizeof(char[(((a) == (b)) ? 1 : -1)]))
+
+/**
+ * @brief Performs a static assertion on the size of a type.
+ *
+ * @param a Type to assert.
+ * @param b Expected size.
+ *
+ * @returns Nothing. If the assertion fails, compilation will fail.
+ */
+#define STATIC_ASSERT_SIZE(a, b) STATIC_ASSERT(sizeof(a), b)
+
+/**
+ * @brief Performs a static assertion on the alignment of a type.
+ *
+ * @param a Type to assert.
+ * @param b Expected alignment.
+ *
+ * @returns Nothing. If the assertion fails, compilation will fail.
+ */
+#define STATIC_ASSERT_ALIGNMENT(a, b) STATIC_ASSERT(_Alignof(a), b)
+
+//==================================================================================================
+// Functions
+//==================================================================================================
+
+// Tests wether we can get the resolution of a clock with `clock_getres()`.
+extern void test_clock_getres(void);
+
+// Tests wether we can get system information with `uname()`.
+extern void test_uname(void);
+
+#endif
