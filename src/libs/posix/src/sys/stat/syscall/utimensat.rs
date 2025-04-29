@@ -49,7 +49,7 @@ use ::nvx::{
 pub fn utimensat(
     dirfd: i32,
     pathname: &str,
-    times: [timespec; 2],
+    times: &[timespec; 2],
     flags: i32,
 ) -> Result<(), Error> {
     ::nvx::trace!(

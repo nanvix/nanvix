@@ -16,6 +16,7 @@ use crate::{
         stat,
         types::mode_t,
     },
+    time::timespec,
 };
 use ::core::{
     ffi,
@@ -209,7 +210,7 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
 /// - This function is not called by multiple threads at the same time.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn futimens(fd: c_int, times: *const stat::timespec) -> c_int {
+pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
     ::nvx::trace!("futimens(): fd={}, times={:p}", fd, times);
 
     // Check if `times` is invalid.
@@ -220,7 +221,7 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const stat::timespec) -> c_
     }
 
     // Attempt to convert `times` to a reference to an array of two elements.
-    let times: &[stat::timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
+    let times: &[timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
         Ok(array) => array,
         Err(_) => {
             ::nvx::error!("futimens(): invalid times array");
@@ -459,4 +460,105 @@ pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
     ::nvx::error!("truncate(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
+}
+
+///
+/// # Description
+///
+/// Sets file access and modification times.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `pathname`: Pathname of the file.
+/// - `times`: Access and modification times.
+/// - `flags`: Flags.
+///
+/// # Returns
+///
+/// Upon successful completion, zero is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `filename` points to a valid null-terminated C string.
+/// - `times` points to a valid array of length 2 of `timespec` structures.
+///
+#[no_mangle]
+pub unsafe extern "C" fn utimensat(
+    dirfd: c_int,
+    filename: *const c_char,
+    times: *const timespec,
+    flags: c_int,
+) -> c_int {
+    ::nvx::trace!(
+        "utimensat(): dirfd={}, filename={:?}, times={:?}, flags={}",
+        dirfd,
+        filename,
+        times,
+        flags
+    );
+
+    // Convert C string to Rust string.
+    let pathname: &str = match ffi::CStr::from_ptr(filename).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::nvx::error!(
+                "utimensat(): invalid pathname (dirfd={}, times={:p}, flags={})",
+                dirfd,
+                times,
+                flags
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Check if `times` is invalid.
+    if times.is_null() {
+        ::nvx::error!(
+            "utimensat(): invalid times (dirfd={}, pathname={:?}, times={:p}, flags={})",
+            dirfd,
+            pathname,
+            times,
+            flags
+        );
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Attempt to convert `times` to a reference to an array of two elements.
+    let times: &[stat::timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
+        Ok(array) => array,
+        Err(_) => {
+            ::nvx::error!(
+                "futimens(): invalid times array (dirfd={}, pathname={:?}, times={:p}, flags={})",
+                dirfd,
+                pathname,
+                times,
+                flags
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    match crate::sys::stat::utimensat(dirfd, pathname, times, flags) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "utimensat(): failed (dirfd={}, pathname={}, times={:?}, flags={}, error={:?})",
+                dirfd,
+                pathname,
+                times,
+                flags,
+                error
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
+    }
 }
