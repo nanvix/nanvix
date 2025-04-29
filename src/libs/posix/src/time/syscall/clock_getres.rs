@@ -30,9 +30,21 @@ use ::nvx::{
 // Standalone Functions
 //==================================================================================================
 
-/// Get clock resolution.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn clock_getres(clock_id: clockid_t, res: Option<&mut timespec>) -> Result<(), Error> {
+///
+/// # Description
+///
+/// Gets the resolution of the specified clock.
+///
+/// # Parameters
+///
+/// - `clock_id`: The clock ID.
+/// - `res`: The structure where the resolution is stored.
+///
+/// # Returns
+///
+/// Upon successful completion, `clock_getres()` returns empty. Otherwise, it returns an error.
+///
+pub fn clock_getres(clock_id: clockid_t, res: &mut Option<&mut timespec>) -> Result<(), Error> {
     ::nvx::error!("clock_getres(): clock_id={:?}, res={:?}", clock_id, res);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;

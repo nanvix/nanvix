@@ -121,11 +121,25 @@ impl From<LibcClockId> for libc::clockid_t {
 }
 
 impl LibcClockId {
-    fn try_from(clk_id: clockid_t) -> Result<Self, ::nvx::sys::error::Error> {
-        match clk_id {
-            time::CLOCK_REALTIME => Ok(LibcClockId(libc::CLOCK_REALTIME)),
+    fn try_from(clock_id: clockid_t) -> Result<Self, ::nvx::sys::error::Error> {
+        match clock_id {
             time::CLOCK_MONOTONIC => Ok(LibcClockId(libc::CLOCK_MONOTONIC)),
-            _ => Err(Error::new(ErrorCode::OperationNotSupported, "unsupported clock_id")),
+            time::CLOCK_PROCESS_CPUTIME_ID => {
+                let reason: &str = "CLOCK_PROCESS_CPUTIME_ID is not supported";
+                error!("try_from(): {}", reason);
+                Err(Error::new(ErrorCode::OperationNotSupported, reason))
+            },
+            time::CLOCK_THREAD_CPUTIME_ID => {
+                let reason: &str = "CLOCK_THREAD_CPUTIME_ID is not supported";
+                error!("try_from(): {}", reason);
+                Err(Error::new(ErrorCode::OperationNotSupported, reason))
+            },
+            time::CLOCK_REALTIME => Ok(LibcClockId(libc::CLOCK_REALTIME)),
+            clock_id => {
+                let reason: &str = "invalid clock_id";
+                error!("try_from(): {} (clock_id={:?})", reason, clock_id);
+                Err(Error::new(ErrorCode::InvalidArgument, reason))
+            },
         }
     }
 }
