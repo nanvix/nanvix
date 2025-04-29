@@ -43,7 +43,7 @@ use ::nvx::sys::error::ErrorCode;
 ///
 /// It is safe to call this function if the following conditions are met:
 /// - `filename` points to a valid null-terminated C string.
-/// - `times` points to a valid array of length 2 of `timespec` structures.
+/// - `times` points to a valid array of length 2 of `timeval` structures.
 ///
 #[no_mangle]
 pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) -> c_int {

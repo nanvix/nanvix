@@ -8,11 +8,23 @@
 #![allow(non_camel_case_types)]
 
 //==================================================================================================
-// Types
+// Imports
 //==================================================================================================
 
-// TODO: fix this to reflect the actual implementation.
-pub type utimbuf = ();
+use crate::time::time_t;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+#[derive(Default, Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct utimbuf {
+    /// Access time.
+    pub actime: time_t,
+    /// Modification time.
+    pub modtime: time_t,
+}
 
 //==================================================================================================
 // Standalone Functions
@@ -23,16 +35,61 @@ mod bindings {
     use super::*;
     use crate::{
         errno::__errno_location,
-        ffi::c_int,
+        fcntl::AT_FDCWD,
+        ffi::{
+            c_char,
+            c_int,
+        },
+        time::timespec,
     };
     use ::nvx::sys::error::ErrorCode;
 
-    #[allow(clippy::missing_safety_doc)]
+    ///
+    /// # Description
+    ///
+    /// Sets file access and modification times.
+    ///
+    /// # Parameters
+    ///
+    /// - `pathname`: Pathname of the file.
+    /// - `times`: Access and modification times.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, zero is returned. Otherwise, it returns -1 and sets `errno` to
+    /// indicate the error.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers.
+    ///
+    /// It is safe to call this function if the following conditions are met:
+    /// - `filename` points to a valid null-terminated C string.
+    /// - `times` points to a valid `utimbuf` structures.
+    ///
     #[no_mangle]
-    pub unsafe extern "C" fn utime(_filename: *const c_int, _times: *const utimbuf) -> c_int {
-        // TODO: https://github.com/nanvix/nanvix/issues/530
-        ::nvx::error!("utime(): not implemented");
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-        -1
+    pub unsafe extern "C" fn utime(filename: *const c_char, times: *const utimbuf) -> c_int {
+        ::nvx::trace!("utime(): filename={:?}, times={:?}", filename, times);
+
+        // Check if `times` is invalid.
+        if times.is_null() {
+            ::nvx::error!("utime(): invalid times (filename={:?}, times={:?})", filename, times);
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        }
+
+        // Attempt to convert `times`.
+        let times: [timespec; 2] = [
+            timespec {
+                tv_sec: (*times).actime as time_t,
+                tv_nsec: 0,
+            },
+            timespec {
+                tv_sec: (*times).modtime as time_t,
+                tv_nsec: 0,
+            },
+        ];
+
+        crate::sys::stat::bindings::utimensat(AT_FDCWD, filename, times.as_ptr(), 0)
     }
 }
