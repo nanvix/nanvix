@@ -61,6 +61,7 @@ cfg_if::cfg_if! {
             pipe,
             getcwd,
             fchdir,
+            isatty,
         };
     }
 }

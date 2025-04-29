@@ -627,14 +627,46 @@ pub unsafe extern "C" fn getuid() -> u32 {
     0
 }
 
+///
+/// # Description
+///
+/// Checks if a file descriptor refers to a terminal.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+///
+/// # Returns
+///
+/// Upon successful completion, `isatty()` returns `1` if the file descriptor refers to a terminal.
+/// Otherwise, it returns `0` and may set `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may access global variables.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
 #[no_mangle]
-pub extern "C" fn isatty(_fd: c_int) -> c_int {
-    if STDIN_FILENO == _fd || STDOUT_FILENO == _fd || STDERR_FILENO == _fd {
-        1
-    } else {
-        0
+pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
+    ::nvx::trace!("isatty(): fd={}", fd);
+
+    match crate::unistd::isatty(fd) {
+        Ok(true) => 1,
+        Ok(false) => {
+            ::nvx::warn!("isatty(): file descriptor is not a terminal (fd={})", fd);
+            *__errno_location() = ErrorCode::InvalidTerminalOperation.get();
+            0
+        },
+        Err(error) => {
+            ::nvx::error!("isatty(): failed (fd={}, error={:?})", fd, error);
+            *__errno_location() = error.code.get();
+            0
+        },
     }
 }
+
 ///
 /// # Description
 ///
