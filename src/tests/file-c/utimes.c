@@ -4,13 +4,6 @@
  */
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-/* Must come first. */
-#define _POSIX_C_SOURCE 200809 // utimensat()
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -20,39 +13,47 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/times.h>
 #include <time.h>
 #include <unistd.h>
+
+// TODO: Remove this when `utimes()` is exposed by Newlib.
+extern int utimes(const char *path, const struct timeval times[2]);
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-// Tests whether we can update file timestamps with `utimensat()`.
-void test_utimensat(void)
+// Tests whether we can update file timestamps with `utimes()`.
+void test_utimes(void)
 {
-    fprintf(stderr, "testing utimensat() ... ");
+    fprintf(stderr, "testing utimes() ... ");
 
+    struct stat st = {0};
     const char *filename = "testfile.tmp";
 
     // Create a temporary file.
     int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     assert(fd >= 0);
-
-    struct stat st = {0};
-    struct timespec times[2] = {0};
+    assert(close(fd) == 0);
 
     // Get the current file timestamps.
-    assert(fstat(fd, &st) == 0);
+    assert(stat(filename, &st) == 0);
 
     // Set new timestamps.
-    times[0].tv_sec = st.st_atime + 10; // Access time.
-    times[0].tv_nsec = 0;
-    times[1].tv_sec = st.st_mtime + 20; // Modification time.
-    times[1].tv_nsec = 0;
+    struct timeval times[2] = {{
+                                   .tv_sec = st.st_atime + 10, // Access time.
+                                   .tv_usec = 0,
+                               },
+                               {
+                                   .tv_sec = st.st_mtime + 20, // Modification time.
+                                   .tv_usec = 0,
+                               }};
 
-    // Update the file timestamps using utimensat and check the result.
-    assert(utimensat(AT_FDCWD, filename, times, 0) == 0);
+    // Update the file timestamps using futimes and check the result.
+    assert(utimes(filename, times) == 0);
 
     // Verify the updated timestamps.
     assert(stat(filename, &st) == 0);
@@ -60,7 +61,6 @@ void test_utimensat(void)
     assert(st.st_mtime == times[1].tv_sec);
 
     // Clean up.
-    assert(close(fd) == 0);
     assert(unlink(filename) == 0);
 
     fprintf(stderr, "passed\n");

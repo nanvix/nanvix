@@ -120,6 +120,12 @@ extern void test_unlinkat(void);
 // Tests whether we can change file access and modification times.
 extern void test_utimensat(void);
 
+// Tests whether we can update file timestamps with `utimes()`.
+extern void test_utimes(void);
+
+// Tests whether we can update file timestamps with `utime()`.
+extern void test_utime(void);
+
 // Tests wether we can write and read to/from a file.
 extern void test_write_read(void);
 

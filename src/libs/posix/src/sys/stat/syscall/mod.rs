@@ -13,6 +13,7 @@ mod futimens;
 mod lstat;
 mod mkdirat;
 mod stat;
+mod utimensat;
 
 //==================================================================================================
 // Imports
@@ -52,6 +53,7 @@ pub use futimens::futimens;
 pub use lstat::lstat;
 pub use mkdirat::mkdirat;
 pub use stat::stat;
+pub use utimensat::utimensat;
 
 //==================================================================================================
 // Standalone Functions
