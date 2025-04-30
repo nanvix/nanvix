@@ -56,7 +56,7 @@ impl Pit {
         pit.ctrl
             .write8(pit::PIT_SEL0 | pit::PIT_ACC_LOHI | pit::PIT_MODE_WAVE | pit::PIT_BINARY);
 
-        let freq_divisor: u32 = pit::PIT_FREQUENCY / freq;
+        let freq_divisor: u32 = pit::PIT_MAX_FREQUENCY / freq;
 
         // Send data byte: divisor low and high bytes.
         pit.data.write8((freq_divisor & 0xff) as u8);
