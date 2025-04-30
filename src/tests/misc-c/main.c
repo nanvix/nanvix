@@ -36,6 +36,10 @@ int main(int argc, const char *argv[])
     assert(argv[1] == NULL);
     // TODO: assert that argv[0] is the name of the executable.
 
+    test_getuid();
+    test_getgid();
+    test_geteuid();
+    test_getegid();
     test_clock_getres();
     test_times();
     test_uname();

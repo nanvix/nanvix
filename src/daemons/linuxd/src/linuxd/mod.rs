@@ -82,14 +82,17 @@ use ::posix::{
         GetClockTimeRequest,
     },
     unistd::message::{
+        ChangeDirectoryRequest,
         CloseRequest,
         CloseResponse,
+        FileAccessAtRequest,
         FileChdirRequest,
         FileChownAtRequest,
         FileChownRequest,
         FileDataSyncRequest,
         FileSyncRequest,
         FileTruncateRequest,
+        GetIdsRequest,
         LinkAtRequest,
         PartialReadRequest,
         PartialWriteRequest,
@@ -115,10 +118,6 @@ use ::std::{
     },
     mem,
     os::unix::net::UnixStream,
-};
-use posix::unistd::message::{
-    ChangeDirectoryRequest,
-    FileAccessAtRequest,
 };
 
 //==================================================================================================
@@ -225,6 +224,7 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::FileTruncateRequest
                                 | LinuxDaemonMessageHeader::GetClockResolutionRequest
                                 | LinuxDaemonMessageHeader::GetClockTimeRequest
+                                | LinuxDaemonMessageHeader::GetIdsRequest
                                 | LinuxDaemonMessageHeader::GetPeerNameRequest
                                 | LinuxDaemonMessageHeader::GetSockNameRequest
                                 | LinuxDaemonMessageHeader::ListenSocketRequest
@@ -413,6 +413,10 @@ impl<'a> LinuxDaemon<'a> {
             LinuxDaemonMessageHeader::GetClockTimeRequest => {
                 let request: GetClockTimeRequest = GetClockTimeRequest::from_bytes(message.payload);
                 time::do_clock_gettime(source, request)
+            },
+            LinuxDaemonMessageHeader::GetIdsRequest => {
+                let request: GetIdsRequest = GetIdsRequest::from_bytes(message.payload);
+                unistd::do_getids(source, request)
             },
             LinuxDaemonMessageHeader::GetPeerNameRequest => {
                 let request: GetPeerNameRequest = GetPeerNameRequest::from_bytes(message.payload);
