@@ -15,7 +15,11 @@ mod fdatasync;
 mod fsync;
 mod ftruncate;
 mod getcwd;
+mod getegid;
+mod geteuid;
+mod getgid;
 mod getpid;
+mod getuid;
 mod isatty;
 mod link;
 mod linkat;
@@ -46,7 +50,11 @@ pub use self::{
     fsync::fsync,
     ftruncate::ftruncate,
     getcwd::getcwd,
+    getegid::getegid,
+    geteuid::geteuid,
+    getgid::getgid,
     getpid::getpid,
+    getuid::getuid,
     isatty::isatty,
     link::link,
     linkat::linkat,

@@ -15,6 +15,7 @@ mod fdatasync;
 mod fsync;
 mod ftruncate;
 mod getcwd;
+mod getids;
 mod linkat;
 mod lseek;
 mod pipe;
@@ -69,6 +70,10 @@ pub use self::{
     getcwd::{
         GetCurrentWorkingDirectoryRequest,
         GetCurrentWorkingDirectoryResponse,
+    },
+    getids::{
+        GetIdsRequest,
+        GetIdsResponse,
     },
     linkat::{
         LinkAtRequest,

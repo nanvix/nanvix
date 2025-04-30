@@ -581,6 +581,108 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
 }
 
 ///
+/// # Description
+///
+/// Returns the effective group ID of the calling process.
+///
+/// # Returns
+///
+/// Upon successful completion, `getegid()` returns the effective group ID of the calling process.
+/// Otherwise, it returns `-1` casted to `gid_t` to indicate the error.
+///
+/// # Safety
+///
+/// This function panics if it fails.
+///
+#[no_mangle]
+pub unsafe extern "C" fn getegid() -> gid_t {
+    ::nvx::trace!("getegid()");
+
+    // Get the effective group ID of the calling process and check for errors.
+    match crate::unistd::getegid() {
+        // Success.
+        Ok(egid) => egid,
+        // Failure.
+        Err(error) => {
+            // POSIX does not allow us to modify `errno`. So we just emit a warning.
+            ::nvx::warn!("getegid(): failed (error={:?})", error);
+            // POSIX does not reserve specific values for errors. We workaround it and return `-1`
+            // (aka `gid::MAX`) to indicate an error. Hopefully this value does not conflict with a
+            // valid group ID.
+            gid_t::MAX
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Returns the effective user ID of the calling process.
+///
+/// # Returns
+///
+/// Upon successful completion, `geteuid()` returns the effective user ID of the calling process.
+/// Otherwise, it returns `-1` casted to `uid_t` to indicate the error.
+///
+/// # Safety
+///
+/// This function does not panic but returns a fallback value on failure.
+///
+#[no_mangle]
+pub unsafe extern "C" fn geteuid() -> uid_t {
+    ::nvx::trace!("geteuid()");
+
+    // Get the effective user ID of the calling process and check for errors.
+    match crate::unistd::geteuid() {
+        // Success.
+        Ok(euid) => euid,
+        // Failure.
+        Err(error) => {
+            // POSIX does not allow us to modify `errno`. So we just emit a warning.
+            ::nvx::warn!("geteuid(): failed (error={:?})", error);
+            // POSIX does not reserve specific values for errors. We workaround it and return `-1`
+            // (aka `uid::MAX`) to indicate an error. Hopefully this value does not conflict with a
+            // valid user ID.
+            uid_t::MAX
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Returns the real group ID of the calling process.
+///
+/// # Returns
+///
+/// Upon successful completion, `getgid()` returns the real group ID of the calling process.
+/// Otherwise, it returns `-1` casted to `gid_t` to indicate the error.
+///
+/// # Safety
+///
+/// This function does not panic but returns a fallback value on failure.
+///
+#[no_mangle]
+pub unsafe extern "C" fn getgid() -> gid_t {
+    ::nvx::trace!("getgid()");
+
+    // Get the real group ID of the calling process and check for errors.
+    match crate::unistd::getgid() {
+        // Success.
+        Ok(gid) => gid,
+        // Failure.
+        Err(error) => {
+            // POSIX does not allow us to modify `errno`. So we just emit a warning.
+            ::nvx::warn!("getgid(): failed (error={:?})", error);
+            // POSIX does not reserve specific values for errors. We workaround it and return `-1`
+            // (aka `gid::MAX`) to indicate an error. Hopefully this value does not conflict with a
+            // valid group ID.
+            gid_t::MAX
+        },
+    }
+}
+
+///
 /// # Safety
 ///
 /// The function has undefined behavior if the `path` points to an invalid memory location.
@@ -598,14 +700,6 @@ pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_
     0
 }
 
-/// Dummy implementation of `geteuid`.
-#[no_mangle]
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn geteuid() -> u32 {
-    ::nvx::trace!("geteuid(): not implemented, returning 0");
-    0
-}
-
 #[no_mangle]
 pub extern "C" fn getpid() -> pid_t {
     match crate::unistd::getpid() {
@@ -619,12 +713,38 @@ pub extern "C" fn getpid() -> pid_t {
     }
 }
 
+///
+/// # Description
+///
+/// Returns the user ID of the calling process.
+///
+/// # Returns
+///
+/// Upon successful completion, `getuid()` returns the user ID of the calling process.
+/// Otherwise, it returns `-1` casted to `uid_t` to indicate the error.
+///
+/// # Safety
+///
+/// This function does not panic but returns a fallback value on failure.
+///
 #[no_mangle]
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn getuid() -> u32 {
-    // TODO: https://github.com/nanvix/nanvix/issues/532
-    ::nvx::trace!("getuid(): not implemented, returning 0");
-    0
+pub unsafe extern "C" fn getuid() -> uid_t {
+    ::nvx::trace!("getuid()");
+
+    // Get the user ID of the calling process and check for errors.
+    match crate::unistd::getuid() {
+        // Success.
+        Ok(uid) => uid,
+        // Failure.
+        Err(error) => {
+            // POSIX does not allow us to modify `errno`. So we just emit a warning.
+            ::nvx::warn!("getuid(): failed (error={:?})", error);
+            // POSIX does not reserve specific values for errors. We workaround it and return `-1`
+            // (aka `uid::MAX`) to indicate an error. Hopefully this value does not conflict with a
+            // valid user ID.
+            uid_t::MAX
+        },
+    }
 }
 
 ///
