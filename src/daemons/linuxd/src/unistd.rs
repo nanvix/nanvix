@@ -47,6 +47,8 @@ use ::posix::{
         FileTruncateRequest,
         FileTruncateResponse,
         GetCurrentWorkingDirectoryResponse,
+        GetIdsRequest,
+        GetIdsResponse,
         LinkAtRequest,
         LinkAtResponse,
         PartialReadRequest,
@@ -171,6 +173,33 @@ pub fn do_fdatasync(pid: ProcessIdentifier, request: FileDataSyncRequest) -> Mes
             )
         },
     }
+}
+
+//==================================================================================================
+// do_getids
+//==================================================================================================
+
+pub fn do_getids(pid: ProcessIdentifier, _request: GetIdsRequest) -> Message {
+    trace!("getids(): pid={:?}", pid);
+
+    // Get user ID.
+    let uid: libc::uid_t = unsafe { libc::getuid() };
+    debug!("libc::getuid(): uid={:?}", uid);
+
+    // Get effective user ID.
+    let euid: libc::uid_t = unsafe { libc::geteuid() };
+    debug!("libc::geteuid(): euid={:?}", euid);
+
+    // Get group ID.
+    let gid: libc::gid_t = unsafe { libc::getgid() };
+    debug!("libc::getgid(): gid={:?}", gid);
+
+    // Get effective group ID.
+    let egid: libc::gid_t = unsafe { libc::getegid() };
+    debug!("libc::getegid(): egid={:?}", egid);
+
+    // Build response.
+    GetIdsResponse::build(pid, uid, gid, euid, egid)
 }
 
 //==================================================================================================

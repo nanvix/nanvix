@@ -53,6 +53,18 @@
 // Tests wether we can get the resolution of a clock with `clock_getres()`.
 extern void test_clock_getres(void);
 
+// Tests whether we can get the effective group ID of the calling process with `getegid()`.
+extern void test_getegid(void);
+
+// Tests whether we can get the effective user ID of the calling process with `geteuid()`.
+extern void test_geteuid(void);
+
+// Tests whether we can get the group ID of the calling process with `getgid()`.
+extern void test_getgid(void);
+
+// Tests whether we can the user ID of the calling process with `getuid()`.
+extern void test_getuid(void);
+
 // Tests whether we can retrieve process times with `times()`.
 extern void test_times(void);
 
