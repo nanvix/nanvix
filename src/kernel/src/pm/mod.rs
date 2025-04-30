@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod clock;
 mod kcall;
 mod process;
 pub mod sync;
@@ -14,6 +15,7 @@ pub mod thread;
 // Imports
 //==================================================================================================
 
+use self::clock::timer_handler;
 use crate::{
     hal::{
         arch::InterruptNumber,
@@ -70,18 +72,6 @@ pub fn copy_to_user<T>(
     let size: usize = core::mem::size_of::<T>();
 
     pm.vmcopy_to_user(pid, dst, src, size)
-}
-
-pub unsafe fn timer_handler(_intnum: InterruptNumber) {
-    static mut TIMER_TICKS: usize = 0;
-
-    TIMER_TICKS = TIMER_TICKS.wrapping_add(1);
-
-    if TIMER_TICKS % config::kernel::SCHEDULER_FREQ == 0 {
-        if let Err(e) = ProcessManager::switch() {
-            error!("context switch failed: {:?}", e);
-        }
-    }
 }
 
 ///
