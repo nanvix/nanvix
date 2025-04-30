@@ -26,6 +26,7 @@ members = [
         "src/libs/raw-array",
         "src/libs/slab",
         "src/libs/sys",
+        "src/libs/time",
         "src/libs/type-safe",
         "src/microvm",
         "src/tests/linux-app",
