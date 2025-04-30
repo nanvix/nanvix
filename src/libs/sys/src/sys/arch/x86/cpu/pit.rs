@@ -12,8 +12,11 @@
 // Constants
 //==================================================================================================
 
-// Constants for PIT (Programmable Interval Timer) configuration
-pub const PIT_FREQUENCY: u32 = 1193182;
+/// Minimum valid frequency of the PIT device (in Hz).
+pub const PIT_MIN_FREQUENCY: u32 = 18;
+
+/// Maximum valid frequency of the PIT device (in Hz).
+pub const PIT_MAX_FREQUENCY: u32 = 1193181;
 
 // Registers
 pub const PIT_CTRL: u16 = 0x43; // Control
