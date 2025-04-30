@@ -71,7 +71,10 @@ pub fn pthread_cond_broadcast(cond: &pthread_cond_t) -> Result<(), Error> {
         }
     }
 
-    signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), true)
+    let _awakened: usize =
+        signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), true)?;
+
+    Ok(())
 }
 
 pub fn pthread_cond_init(
@@ -138,7 +141,10 @@ pub fn pthread_cond_signal(cond: &pthread_cond_t) -> Result<(), Error> {
         }
     }
 
-    signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), false)
+    let _awakened: usize =
+        signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), false)?;
+
+    Ok(())
 }
 
 pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Result<(), Error> {
