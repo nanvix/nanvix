@@ -51,7 +51,7 @@ pub unsafe fn unlock_mutex(
     // Unpack kernel call arguments.
     let mutex_addr: MutexAddress = MutexAddress::from(arg0);
 
-    ProcessManager::take_mutex_guard(pid, tid, mutex_addr).unwrap();
+    ProcessManager::take_mutex_guard(pid, tid, mutex_addr)?;
     // The mutex guard is dropped, causing threads to be notified.
 
     Ok(())
