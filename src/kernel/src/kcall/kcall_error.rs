@@ -25,7 +25,7 @@ pub struct KcallError(i32);
 
 impl From<ErrorCode> for KcallError {
     fn from(code: ErrorCode) -> Self {
-        KcallError(-code.get())
+        KcallError(code.get())
     }
 }
 
