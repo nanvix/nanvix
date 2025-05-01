@@ -32,10 +32,10 @@ use ::sys::{
 };
 
 //==================================================================================================
-// Thread
+// Thread State
 //==================================================================================================
 
-pub struct Thread {
+struct ThreadState {
     /// Thread identifier.
     id: ThreadIdentifier,
     /// User stack.
@@ -48,8 +48,8 @@ pub struct Thread {
     locked_mutexes: BTreeMap<MutexAddress, MutexGuard>,
 }
 
-impl Thread {
-    pub fn new(
+impl ThreadState {
+    fn new(
         id: ThreadIdentifier,
         user_stack: Option<UserStack>,
         context: ContextInformation,
@@ -68,7 +68,7 @@ impl Thread {
     }
 }
 
-impl fmt::Debug for Thread {
+impl fmt::Debug for ThreadState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Thread {{ id: {:?} }}", self.id)
     }
@@ -78,7 +78,7 @@ impl fmt::Debug for Thread {
 // Running Thread
 //==================================================================================================
 
-pub struct RunningThread(Thread);
+pub struct RunningThread(ThreadState);
 
 impl RunningThread {
     pub fn sleep(mut self) -> (SleepingThread, *mut ContextInformation) {
@@ -165,7 +165,7 @@ impl RunningThread {
 // Ready Thread
 //==================================================================================================
 
-pub struct ReadyThread(Thread);
+pub struct ReadyThread(ThreadState);
 
 impl ReadyThread {
     pub fn new(
@@ -173,7 +173,7 @@ impl ReadyThread {
         user_stack: Option<UserStack>,
         context: ContextInformation,
     ) -> Self {
-        Self(Thread::new(id, user_stack, context))
+        Self(ThreadState::new(id, user_stack, context))
     }
 
     pub fn tid(&self) -> ThreadIdentifier {
@@ -201,7 +201,7 @@ impl ReadyThread {
 // Sleeping Thread
 //==================================================================================================
 
-pub struct SleepingThread(Thread);
+pub struct SleepingThread(ThreadState);
 
 impl SleepingThread {
     pub fn wakeup(self) -> ReadyThread {
@@ -234,7 +234,7 @@ pub enum InterruptReason {
     Killed,
 }
 pub struct InterruptedThread {
-    thread: Thread,
+    thread: ThreadState,
     reason: InterruptReason,
 }
 
@@ -260,7 +260,7 @@ impl InterruptedThread {
 #[allow(unused)]
 pub struct ZombieThread {
     status: ExitStatus,
-    state: Thread,
+    state: ThreadState,
 }
 
 impl ZombieThread {
@@ -305,7 +305,7 @@ impl ThreadManager {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(Into::<usize>::into(self.next_id) + 1);
 
-        ReadyThread(Thread::new(id, user_stack, context))
+        ReadyThread(ThreadState::new(id, user_stack, context))
     }
 }
 
