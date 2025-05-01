@@ -85,6 +85,8 @@ pub enum KcallNumber {
     CondSignal,
     /// Waits on a condition variable.
     CondWait,
+    /// Gets the current system time.
+    GetTime,
     // Invalid.
     Invalid,
 }
@@ -132,6 +134,7 @@ impl From<usize> for KcallNumber {
             33 => KcallNumber::MutexUnlock,
             34 => KcallNumber::CondSignal,
             35 => KcallNumber::CondWait,
+            36 => KcallNumber::GetTime,
             _ => KcallNumber::Invalid,
         }
     }
