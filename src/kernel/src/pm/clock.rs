@@ -13,6 +13,7 @@ use ::core::sync::atomic::{
     AtomicU32,
     Ordering,
 };
+use ::time::SystemTime;
 
 //==================================================================================================
 // Global Variables
@@ -41,6 +42,13 @@ impl TimerTicks {
             minor: AtomicU32::new(0),
             major: AtomicU32::new(0),
         }
+    }
+
+    /// Returns the number of ticks since the system started.
+    fn get(&self) -> u64 {
+        let minor: u32 = self.minor.load(Ordering::SeqCst);
+        let major: u32 = self.major.load(Ordering::SeqCst);
+        minor as u64 + ((major as u64) << 32)
     }
 
     /// Increments the number of ticks and returns the minor tick.
@@ -89,5 +97,32 @@ pub unsafe fn timer_handler(_intnum: InterruptNumber) {
         if let Err(error) = ProcessManager::switch() {
             error!("context switch failed: {:?}", error);
         }
+    }
+}
+
+///
+/// # Description
+///
+/// Returns the number of timer ticks since the system started.
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - It reads global variables.
+///
+pub fn now() -> SystemTime {
+    let ticks: u64 = TIMER_TICKS.get();
+
+    #[cfg(feature = "pit")]
+    let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
+    #[cfg(not(feature = "pit"))]
+    let timer_freq: u32 = 1;
+
+    match SystemTime::new(ticks / timer_freq as u64, (ticks % timer_freq as u64) as u32) {
+        Some(time) => time,
+        None => {
+            // SAFETY: This should not happen because `ticks` should be always in a valid range of `SystemTime`.
+            unreachable!("now(): failed to get system time");
+        },
     }
 }

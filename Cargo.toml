@@ -81,6 +81,7 @@ slab = { path = "src/libs/slab", default-features = false }
 spin = { version = "0.10.0", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
+time = { path = "src/libs/time", default-features = false }
 tokio = { version = "1.44.1", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 wasmi = { version = "0.44.0", default-features = false }
