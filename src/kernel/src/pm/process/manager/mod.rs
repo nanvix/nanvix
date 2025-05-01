@@ -774,7 +774,12 @@ impl ProcessManagerInner {
     ) -> (Condvar, *mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
-        trace!("exit_thread(): status={:#x?}, tid={:?}", status, running_process.get_tid());
+        trace!(
+            "exit_thread(): pid={:?}, tid={:?}, status={:?}",
+            running_process.state().pid(),
+            running_process.get_tid(),
+            status
+        );
 
         // Check if kernel is trying to exit.
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
@@ -909,12 +914,11 @@ impl ProcessManagerInner {
         self.interrupt_reason.take()
     }
 
-    pub fn harvest_zombies(
+    fn harvest_zombies(
         &mut self,
-        mm: &mut VirtMemoryManager,
-    ) -> Option<(ProcessIdentifier, ExitStatus)> {
+    ) -> Option<(VecDeque<ZombieThread>, Box<ProcessState>, ExitStatus)> {
         if let Some(zombie) = self.zombies.pop_front() {
-            let (zombie_threads, mut state, status): (
+            let (zombie_threads, state, status): (
                 NonEmptyVecDeque<ZombieThread>,
                 Box<ProcessState>,
                 ExitStatus,
@@ -923,38 +927,7 @@ impl ProcessManagerInner {
                 zombie_threads.pop_front();
             more_zombie_threads.push_front(zombie_thread);
 
-            // Traverse the list of zombie threads.
-            while let Some(zombie_thread) = more_zombie_threads.pop_front() {
-                // Harvest zombie thread.
-                if let Some(user_stack) = zombie_thread.harvest() {
-                    // Traverse pages belonging to user stack.
-                    let base: usize = user_stack.base().into_raw_value();
-                    let top: usize = user_stack.top().into_raw_value();
-                    // TODO: Use an iterator for this.
-                    for raw_addr in (base..top).step_by(PAGE_SIZE) {
-                        let vaddr: PageAligned<VirtualAddress> =
-                            match PageAligned::from_raw_value(raw_addr) {
-                                Ok(vaddr) => vaddr,
-                                Err(_) => {
-                                    // SAFETY: the following condition is unreachable, because
-                                    // pages in the user stack are always page-aligned.
-                                    unreachable!("address conversion should succeed")
-                                },
-                            };
-                        // Attempt to unmap page
-                        if let Err(error) = mm.unmap_upage(state.vmem_mut(), vaddr) {
-                            // We failed, but this is not too bad, as we will free all pages
-                            // when wiping out the address space anyways.
-                            warn!(
-                                "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
-                                vaddr, error
-                            );
-                        }
-                    }
-                }
-            }
-
-            Some((state.pid(), status))
+            Some((more_zombie_threads, state, status))
         } else {
             None
         }
@@ -1336,7 +1309,47 @@ impl ProcessManager {
         &mut self,
         mm: &mut VirtMemoryManager,
     ) -> Result<Option<(ProcessIdentifier, ExitStatus)>, Error> {
-        Ok(self.try_borrow_mut()?.harvest_zombies(mm))
+        let (mut zombie_threads, mut state, status): (
+            VecDeque<ZombieThread>,
+            Box<ProcessState>,
+            ExitStatus,
+        ) = match self.try_borrow_mut()?.harvest_zombies() {
+            Some((zombie_threads, state, status)) => (zombie_threads, state, status),
+            None => return Ok(None),
+        };
+
+        // Traverse the list of zombie threads.
+        while let Some(zombie_thread) = zombie_threads.pop_front() {
+            // Harvest zombie thread.
+            if let Some(user_stack) = zombie_thread.harvest() {
+                // Traverse pages belonging to user stack.
+                let base: usize = user_stack.base().into_raw_value();
+                let top: usize = user_stack.top().into_raw_value();
+                // TODO: Use an iterator for this.
+                for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                    let vaddr: PageAligned<VirtualAddress> =
+                        match PageAligned::from_raw_value(raw_addr) {
+                            Ok(vaddr) => vaddr,
+                            Err(_) => {
+                                // SAFETY: the following condition is unreachable, because
+                                // pages in the user stack are always page-aligned.
+                                unreachable!("address conversion should succeed")
+                            },
+                        };
+                    // Attempt to unmap page
+                    if let Err(error) = mm.unmap_upage(state.vmem_mut(), vaddr) {
+                        // We failed, but this is not too bad, as we will free all pages
+                        // when wiping out the address space anyways.
+                        warn!(
+                            "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
+                            vaddr, error
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(Some((state.pid(), status)))
     }
 
     pub fn mmap(

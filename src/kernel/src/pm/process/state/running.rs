@@ -183,7 +183,10 @@ impl RunningProcess {
     {
         let (zombie_thread, ctx) = self.running.exit(status);
         let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
-            Some(zombie_threads) => zombie_threads,
+            Some(mut zombie_threads) => {
+                zombie_threads.push_back(zombie_thread);
+                zombie_threads
+            },
             None => NonEmptyVecDeque::new(zombie_thread),
         };
 
@@ -254,7 +257,10 @@ impl RunningProcess {
 
         let (zombie_thread, ctx) = self.running.exit(status);
         let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
-            Some(zombie_threads) => zombie_threads,
+            Some(mut zombie_threads) => {
+                zombie_threads.push_back(zombie_thread);
+                zombie_threads
+            },
             None => NonEmptyVecDeque::new(zombie_thread),
         };
 
