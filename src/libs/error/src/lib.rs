@@ -4,6 +4,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::num_enum::TryFromPrimitive;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -16,8 +22,9 @@
 ///
 /// The values in this enumeration intentionally match the error codes defined in the Linux kernel.
 ///
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, TryFromPrimitive)]
+#[num_enum(error_type(name = Error, constructor = invalid_error_code))]
+#[repr(i32)]
 pub enum ErrorCode {
     /// Operation not permitted (EPERM).
     OperationNotPermitted = 1,
@@ -33,7 +40,7 @@ pub enum ErrorCode {
     NoSuchDeviceOrAddress = 6,
     /// Argument list too long (E2BIG).
     TooBig = 7,
-    /// Executable format error (ENOEXE).
+    /// Executable format error (ENOEXEC).
     InvalidExecutableFormat = 8,
     /// Bad file number (EBADF).
     BadFile = 9,
@@ -87,56 +94,46 @@ pub enum ErrorCode {
     MathArgDomainErr = 33,
     /// Math result not representable (ERANGE).
     ValueOutOfRange = 34,
-    /// Resource deadlock would occur (EDEADLK).
-    Deadlock = 35,
-    /// File name too long (ENAMETOOLONG).
-    NameTooLong = 36,
-    /// No record locks available (ENOLCK).
-    LockNotAvailable = 37,
-    /// Invalid system call number (ENOSYS).
-    InvalidSysCall = 38,
-    /// Directory not empty (ENOTEMPTY).
-    DirectoryNotEmpty = 39,
-    /// Too many symbolic links encountered (ELOOP).
-    SymbolicLinkLoop = 40,
-    /// Operation would block (EWOULDBLOCK).
-    OperationWouldBlock = 41,
     /// No message of desired type (ENOMSG).
-    NoMessageAvailable = 42,
+    NoMessageAvailable = 35,
     /// Identifier removed (EIDRM).
-    IdentifierRemoved = 43,
+    IdentifierRemoved = 36,
     /// Channel number out of range (ECHRNG).
-    OutOfRangeChannel = 44,
+    OutOfRangeChannel = 37,
     /// Level 2 not synchronized (EL2NSYNC).
-    Level2NotSynchronized = 45,
+    Level2NotSynchronized = 38,
     /// Level 3 halted (EL3HLT).
-    Level3Halted = 46,
+    Level3Halted = 39,
     /// Level 3 reset (EL3RST).
-    Level3Reset = 47,
+    Level3Reset = 40,
     /// Link number out of range (ELNRNG).
-    InvalidLinkNumber = 48,
+    InvalidLinkNumber = 41,
     /// Protocol driver not attached (EUNATCH).
-    InvalidProtocolDriver = 49,
+    InvalidProtocolDriver = 42,
     /// No CSI structure available (ENOCSI).
-    NoStructAvailable = 50,
+    NoStructAvailable = 43,
     /// Level 2 halted (EL2HLT).
-    Level2Halted = 51,
+    Level2Halted = 44,
+    /// Resource deadlock would occur (EDEADLK).
+    Deadlock = 45,
+    /// No record locks available (ENOLCK).
+    LockNotAvailable = 46,
     /// Invalid exchange (EBADE).
-    InvalidExchange = 52,
+    InvalidExchange = 50,
     /// Invalid request descriptor (EBADR).
-    InvalidRequestDescriptor = 53,
+    InvalidRequestDescriptor = 51,
     /// Exchange full (EXFULL).
-    ExchangeFull = 54,
+    ExchangeFull = 52,
     /// No anode (ENOANO).
-    InvalidAnode = 55,
+    InvalidAnode = 53,
     /// Invalid request code (EBADRQC).
-    InvalidRequestCode = 56,
+    InvalidRequestCode = 54,
     /// Invalid slot (EBADSLT).
-    InvalidSlot = 57,
+    InvalidSlot = 55,
     /// Resource deadlock would occur (EDEADLOCK).
-    DeadlockWouldOccur = 58,
-    /// Bad font file format (ENOSTR).
-    BadFontFormat = 59,
+    DeadlockWouldOccur = 56,
+    /// Bad font file format (EBFONT).
+    BadFontFormat = 57,
     /// Device not a stream (ENOSTR).
     NoStreamDeviceAvailable = 60,
     /// No data available (ENODATA).
@@ -162,134 +159,123 @@ pub enum ErrorCode {
     /// Protocol error (EPROTO).
     ProtocolErr = 71,
     /// Multi-hop attempted (EMULTIHOP).
-    MultipleHopAttemped = 72,
+    MultipleHopAttemped = 74,
+    /// Inode is remote (ELBIN)
+    InodeRemote = 75,
     /// RFS specific error (EDOTDOT).
-    RfsErr = 73,
+    RfsErr = 76,
     /// Not a data message (EBADMSG).
-    InvalidMessage = 74,
-    /// Value too large for defined data type (EOVERFLOW).
-    ValueOverflow = 75,
+    InvalidMessage = 77,
+    /// Innapropriate file type or format (EFTYPE).
+    InvalidFileType = 79,
     /// Name not unique on network (ENOTUNIQ).
-    NonUniqueName = 76,
+    NonUniqueName = 80,
     /// File descriptor in bad state (EBADFD).
-    InvalidFileDescriptor = 77,
+    InvalidFileDescriptor = 81,
     /// Remote address changed (EREMCHG).
-    RemoteAddressChanged = 78,
+    RemoteAddressChanged = 82,
     /// Can not access a needed shared library (ELIBACC).
-    LibraryAccessErr = 79,
+    LibraryAccessErr = 83,
     /// Accessing a corrupted shared library (ELIBBAD).
-    InvalidLibraryAccess = 80,
+    InvalidLibraryAccess = 84,
     /// .lib section in a.out corrupted (ELIBSCN).
-    CorruptedLibSection = 81,
+    CorruptedLibSection = 85,
     /// Attempting to link in too many shared libraries (ELIBMAX).
-    ExcessiveLibraryLinkCount = 82,
+    ExcessiveLibraryLinkCount = 86,
     /// Cannot exec a shared library directly (ELIBEXEC).
-    InvalidExecSharedLibrary = 83,
-    /// Illegal byte sequence (EILSEQ).
-    IllegalByteSequence = 84,
-    /// Interrupted system call should be restarted (ERESTART).
-    RestartRequired = 85,
-    /// Streams pipe error (ESTRPIPE).
-    StreamPipeErr = 86,
-    /// Too many users (EUSERS).
-    TooManyUsers = 87,
-    /// Socket operation on non-socket (ENOTSOCK).
-    NotSocketFile = 88,
-    /// Destination address required (EDESTADDRREQ).
-    DestinationAddressRequired = 89,
-    /// Message too long (EMSGSIZE).
-    MessageTooLong = 90,
-    /// Protocol wrong type for socket (EPROTOTYPE).
-    BadProtocolType = 91,
-    /// Protocol not available (ENOPROTOOPT).
-    ProtocolOptionNotAvailable = 92,
-    /// Protocol not supported (EPROTONOSUPPORT).
-    ProtocolNotSupported = 93,
-    /// Socket type not supported (ESOCKTNOSUPPORT).
-    SocketTypeNotSupported = 94,
+    InvalidExecSharedLibrary = 87,
+    /// Invalid system call number (ENOSYS).
+    InvalidSysCall = 88,
+    /// Directory not empty (ENOTEMPTY).
+    DirectoryNotEmpty = 90,
+    /// File name too long (ENAMETOOLONG).
+    NameTooLong = 91,
+    /// Too many symbolic links encountered (ELOOP).
+    SymbolicLinkLoop = 92,
     /// Operation not supported on transport endpoint (EOPNOTSUPP).
     OperationNotSupportedOnSocket = 95,
     /// Protocol family not supported (EPFNOSUPPORT).
     ProtocolFamilyNotSupported = 96,
-    /// Address family not supported by protocol (EAFNOSUPPORT).
-    AddressFamilyNotSupported = 97,
-    /// Address already in use (EADDRINUSE).
-    AddressInUse = 98,
-    /// Cannot assign requested address (EADDRNOTAVAIL).
-    AddressNotAvailable = 99,
-    /// Network is down (ENETDOWN).
-    NetworkDown = 100,
-    /// Network is unreachable (ENETUNREACH).
-    NetworkUnreachable = 101,
-    /// Network dropped connection because of reset (ENETRESET).
-    NetworkReset = 102,
-    /// Software caused connection abort (ECONNABORTED).
-    ConnectionAborted = 103,
     /// Connection reset by peer (ECONNRESET).
     ConnectionReset = 104,
     /// No buffer space available (ENOBUFS).
     NoBufferSpace = 105,
-    /// Transport endpoint is already connected (EISCONN).
-    TransportEndpointConnected = 106,
-    /// Transport endpoint is not connected (ENOTCONN).
-    TransportEndpointNotConnected = 107,
+    /// Address family not supported by protocol (EAFNOSUPPORT).
+    AddressFamilyNotSupported = 106,
+    /// Protocol wrong type for socket (EPROTOTYPE).
+    BadProtocolType = 107,
+    /// Socket operation on non-socket (ENOTSOCK).
+    NotSocketFile = 108,
+    /// Protocol not available (ENOPROTOOPT).
+    ProtocolOptionNotAvailable = 109,
     /// Cannot send after transport endpoint shutdown (ESHUTDOWN).
-    TransportEndpointShutdown = 108,
-    /// Too many references: cannot splice (ETOOMANYREFS).
-    TooManyReferences = 109,
-    /// Connection timed out (ETIMEDOUT).
-    ConnectionTimeout = 110,
+    TransportEndpointShutdown = 110,
     /// Connection refused (ECONNREFUSED).
     ConnectionRefused = 111,
+    /// Address already in use (EADDRINUSE).
+    AddressInUse = 112,
+    /// Software caused connection abort (ECONNABORTED).
+    ConnectionAborted = 113,
+    /// Network is unreachable (ENETUNREACH).
+    NetworkUnreachable = 114,
+    /// Network is down (ENETDOWN).
+    NetworkDown = 115,
+    /// Connection timed out (ETIMEDOUT).
+    OperationTimedOut = 116,
     /// Host is down (EHOSTDOWN).
-    HostDown = 112,
+    HostDown = 117,
     /// No route to host (EHOSTUNREACH).
-    HostUnreachable = 113,
-    /// Operation already in progress (EALREADY).
-    OperationAlreadyInProgress = 114,
+    HostUnreachable = 118,
     /// Operation now in progress (EINPROGRESS).
-    OperationInProgress = 115,
-    /// Stale file handle (ESTALE).
-    StaleHandle = 116,
-    /// Structure needs cleaning (EUCLEAN).
-    UncleanStructure = 117,
-    /// Not a XENIX named type file (ENOTNAM).
-    NoXenixtNamedTypeFile = 118,
-    /// No XENIX semaphores available (ENAVAIL).
-    NoXenixSemaphoresAvailable = 119,
-    /// Is a named type file (EISNAM).
-    IsNamedTypeFile = 120,
-    /// Remote I/O error (EREMOTEIO).
-    RemoteIOErr = 121,
+    OperationInProgress = 119,
+    /// Operation already in progress (EALREADY).
+    OperationAlreadyInProgress = 120,
+    /// Destination address required (EDESTADDRREQ).
+    DestinationAddressRequired = 121,
+    /// Message too long (EMSGSIZE).
+    MessageTooLong = 122,
+    /// Protocol not supported (EPROTONOSUPPORT).
+    ProtocolNotSupported = 123,
+    /// Socket type not supported (ESOCKTNOSUPPORT).
+    SocketTypeNotSupported = 124,
+    /// Cannot assign requested address (EADDRNOTAVAIL).
+    AddressNotAvailable = 125,
+    /// Network dropped connection because of reset (ENETRESET).
+    NetworkReset = 126,
+    /// Transport endpoint is already connected (EISCONN).
+    TransportEndpointConnected = 127,
+    /// Transport endpoint is not connected (ENOTCONN).
+    TransportEndpointNotConnected = 128,
+    /// Too many references: cannot splice (ETOOMANYREFS).
+    TooManyReferences = 129,
+    /// Too many users (EUSERS).
+    TooManyUsers = 131,
     /// Quota exceeded (EDQUOT).
-    QuotaExceeded = 122,
-    /// No medium found (ENOMEDIUM).
-    MediumNotFound = 123,
-    /// Wrong medium type (EMEDIUMTYPE).
-    InvalidMediumType = 124,
-    /// Operation Canceled (ECANCELED).
-    OperationCanceled = 125,
-    /// Required key not available (ENOKEY).
-    MissingKey = 126,
-    /// Key has expired (EKEYEXPIRED).
-    ExpiredKey = 127,
-    /// Key has been revoked (EKEYREVOKED).
-    KeyRevoked = 128,
-    /// Key was rejected by service (EKEYREJECTED).
-    KeyRejected = 129,
-    /// Owner died (EOWNERDEAD).
-    DeadOwner = 130,
-    /// State not recoverable (ENOTRECOVERABLE).
-    UnrecoverableState = 131,
-    /// Operation not possible due to RF-kill (ERFKILL).
-    RfKillSwitch = 132,
-    /// Memory page has hardware error (EHWPOISON).
-    HardwarePoison = 133,
+    QuotaExceeded = 132,
+    /// Stale file handle (ESTALE).
+    StaleHandle = 133,
     /// Operation not supported (ENOTSUP).
     OperationNotSupported = 134,
+    /// No medium found (ENOMEDIUM).
+    MediumNotFound = 135,
+    /// Illegal byte sequence (EILSEQ).
+    IllegalByteSequence = 138,
+    /// Value too large for defined data type (EOVERFLOW).
+    ValueOverflow = 139,
+    /// Operation Canceled (ECANCELED).
+    OperationCanceled = 140,
+    /// State not recoverable (ENOTRECOVERABLE).
+    UnrecoverableState = 141,
+    /// Owner died (EOWNERDEAD).
+    DeadOwner = 142,
+    /// Streams pipe error (ESTRPIPE).
+    StreamPipeErr = 143,
 }
 
 impl ErrorCode {
+    #[allow(non_upper_case_globals)]
+    pub const OperationWouldBlock: ErrorCode = ErrorCode::TryAgain;
+
     ///
     /// # Description
     ///
@@ -297,6 +283,26 @@ impl ErrorCode {
     ///
     pub fn get(&self) -> i32 {
         *self as i32
+    }
+}
+
+///
+/// # Description
+///
+/// Constructs a default error.
+///
+/// # Parameters
+///
+/// - `value`: Error code (unused).
+///
+/// # Returns
+///
+/// Default error.
+///
+fn invalid_error_code(_value: i32) -> Error {
+    Error {
+        code: ErrorCode::InvalidArgument,
+        reason: "invalid error code",
     }
 }
 
@@ -327,149 +333,5 @@ impl core::fmt::Display for ErrorCode {
 impl From<ErrorCode> for u32 {
     fn from(errno: ErrorCode) -> Self {
         errno as u32
-    }
-}
-
-impl TryFrom<i32> for ErrorCode {
-    type Error = Error;
-
-    fn try_from(errno: i32) -> Result<Self, Self::Error> {
-        match errno {
-            1 => Ok(ErrorCode::OperationNotPermitted),
-            2 => Ok(ErrorCode::NoSuchEntry),
-            3 => Ok(ErrorCode::NoSuchProcess),
-            4 => Ok(ErrorCode::Interrupted),
-            5 => Ok(ErrorCode::IoErr),
-            6 => Ok(ErrorCode::NoSuchDeviceOrAddress),
-            7 => Ok(ErrorCode::TooBig),
-            8 => Ok(ErrorCode::InvalidExecutableFormat),
-            9 => Ok(ErrorCode::BadFile),
-            10 => Ok(ErrorCode::NoChildProcess),
-            11 => Ok(ErrorCode::TryAgain),
-            12 => Ok(ErrorCode::OutOfMemory),
-            13 => Ok(ErrorCode::PermissionDenied),
-            14 => Ok(ErrorCode::BadAddress),
-            15 => Ok(ErrorCode::NotBlockDevice),
-            16 => Ok(ErrorCode::ResourceBusy),
-            17 => Ok(ErrorCode::EntryExists),
-            18 => Ok(ErrorCode::CrossDeviceLink),
-            19 => Ok(ErrorCode::NoSuchDevice),
-            20 => Ok(ErrorCode::InvalidDirectory),
-            21 => Ok(ErrorCode::IsDirectory),
-            22 => Ok(ErrorCode::InvalidArgument),
-            23 => Ok(ErrorCode::FileTableOVerflow),
-            24 => Ok(ErrorCode::TooManyOpenFiles),
-            25 => Ok(ErrorCode::InvalidTerminalOperation),
-            26 => Ok(ErrorCode::TextFileBusy),
-            27 => Ok(ErrorCode::FileTooLarge),
-            28 => Ok(ErrorCode::NoSpaceOnDevice),
-            29 => Ok(ErrorCode::IllegalSeek),
-            30 => Ok(ErrorCode::ReadOnlyFileSystem),
-            31 => Ok(ErrorCode::TooManyLinks),
-            32 => Ok(ErrorCode::BrokenPipe),
-            33 => Ok(ErrorCode::MathArgDomainErr),
-            34 => Ok(ErrorCode::ValueOutOfRange),
-            35 => Ok(ErrorCode::Deadlock),
-            36 => Ok(ErrorCode::NameTooLong),
-            37 => Ok(ErrorCode::LockNotAvailable),
-            38 => Ok(ErrorCode::InvalidSysCall),
-            39 => Ok(ErrorCode::DirectoryNotEmpty),
-            40 => Ok(ErrorCode::SymbolicLinkLoop),
-            41 => Ok(ErrorCode::OperationWouldBlock),
-            42 => Ok(ErrorCode::NoMessageAvailable),
-            43 => Ok(ErrorCode::IdentifierRemoved),
-            44 => Ok(ErrorCode::OutOfRangeChannel),
-            45 => Ok(ErrorCode::Level2NotSynchronized),
-            46 => Ok(ErrorCode::Level3Halted),
-            47 => Ok(ErrorCode::Level3Reset),
-            48 => Ok(ErrorCode::InvalidLinkNumber),
-            49 => Ok(ErrorCode::InvalidProtocolDriver),
-            50 => Ok(ErrorCode::NoStructAvailable),
-            51 => Ok(ErrorCode::Level2Halted),
-            52 => Ok(ErrorCode::InvalidExchange),
-            53 => Ok(ErrorCode::InvalidRequestDescriptor),
-            54 => Ok(ErrorCode::ExchangeFull),
-            55 => Ok(ErrorCode::InvalidAnode),
-            56 => Ok(ErrorCode::InvalidRequestCode),
-            57 => Ok(ErrorCode::InvalidSlot),
-            58 => Ok(ErrorCode::DeadlockWouldOccur),
-            59 => Ok(ErrorCode::BadFontFormat),
-            60 => Ok(ErrorCode::NoStreamDeviceAvailable),
-            61 => Ok(ErrorCode::NoDataAvailable),
-            62 => Ok(ErrorCode::TimerExpired),
-            63 => Ok(ErrorCode::NoStreamResources),
-            64 => Ok(ErrorCode::NoNetwork),
-            65 => Ok(ErrorCode::MissingPackage),
-            66 => Ok(ErrorCode::RemoteObject),
-            67 => Ok(ErrorCode::NoLink),
-            68 => Ok(ErrorCode::AdvertiseErr),
-            69 => Ok(ErrorCode::MountErr),
-            70 => Ok(ErrorCode::CommunicationErr),
-            71 => Ok(ErrorCode::ProtocolErr),
-            72 => Ok(ErrorCode::MultipleHopAttemped),
-            73 => Ok(ErrorCode::RfsErr),
-            74 => Ok(ErrorCode::InvalidMessage),
-            75 => Ok(ErrorCode::ValueOverflow),
-            76 => Ok(ErrorCode::NonUniqueName),
-            77 => Ok(ErrorCode::InvalidFileDescriptor),
-            78 => Ok(ErrorCode::RemoteAddressChanged),
-            79 => Ok(ErrorCode::LibraryAccessErr),
-            80 => Ok(ErrorCode::InvalidLibraryAccess),
-            81 => Ok(ErrorCode::CorruptedLibSection),
-            82 => Ok(ErrorCode::ExcessiveLibraryLinkCount),
-            83 => Ok(ErrorCode::InvalidExecSharedLibrary),
-            84 => Ok(ErrorCode::IllegalByteSequence),
-            85 => Ok(ErrorCode::RestartRequired),
-            86 => Ok(ErrorCode::StreamPipeErr),
-            87 => Ok(ErrorCode::TooManyUsers),
-            88 => Ok(ErrorCode::NotSocketFile),
-            89 => Ok(ErrorCode::DestinationAddressRequired),
-            90 => Ok(ErrorCode::MessageTooLong),
-            91 => Ok(ErrorCode::BadProtocolType),
-            92 => Ok(ErrorCode::ProtocolOptionNotAvailable),
-            93 => Ok(ErrorCode::ProtocolNotSupported),
-            94 => Ok(ErrorCode::SocketTypeNotSupported),
-            95 => Ok(ErrorCode::OperationNotSupportedOnSocket),
-            96 => Ok(ErrorCode::ProtocolFamilyNotSupported),
-            97 => Ok(ErrorCode::AddressFamilyNotSupported),
-            98 => Ok(ErrorCode::AddressInUse),
-            99 => Ok(ErrorCode::AddressNotAvailable),
-            100 => Ok(ErrorCode::NetworkDown),
-            101 => Ok(ErrorCode::NetworkUnreachable),
-            102 => Ok(ErrorCode::NetworkReset),
-            103 => Ok(ErrorCode::ConnectionAborted),
-            104 => Ok(ErrorCode::ConnectionReset),
-            105 => Ok(ErrorCode::NoBufferSpace),
-            106 => Ok(ErrorCode::TransportEndpointConnected),
-            107 => Ok(ErrorCode::TransportEndpointNotConnected),
-            108 => Ok(ErrorCode::TransportEndpointShutdown),
-            109 => Ok(ErrorCode::TooManyReferences),
-            110 => Ok(ErrorCode::ConnectionTimeout),
-            111 => Ok(ErrorCode::ConnectionRefused),
-            112 => Ok(ErrorCode::HostDown),
-            113 => Ok(ErrorCode::HostUnreachable),
-            114 => Ok(ErrorCode::OperationAlreadyInProgress),
-            115 => Ok(ErrorCode::OperationInProgress),
-            116 => Ok(ErrorCode::StaleHandle),
-            117 => Ok(ErrorCode::UncleanStructure),
-            118 => Ok(ErrorCode::NoXenixtNamedTypeFile),
-            119 => Ok(ErrorCode::NoXenixSemaphoresAvailable),
-            120 => Ok(ErrorCode::IsNamedTypeFile),
-            121 => Ok(ErrorCode::RemoteIOErr),
-            122 => Ok(ErrorCode::QuotaExceeded),
-            123 => Ok(ErrorCode::MediumNotFound),
-            124 => Ok(ErrorCode::InvalidMediumType),
-            125 => Ok(ErrorCode::OperationCanceled),
-            126 => Ok(ErrorCode::MissingKey),
-            127 => Ok(ErrorCode::ExpiredKey),
-            128 => Ok(ErrorCode::KeyRevoked),
-            129 => Ok(ErrorCode::KeyRejected),
-            130 => Ok(ErrorCode::DeadOwner),
-            131 => Ok(ErrorCode::UnrecoverableState),
-            132 => Ok(ErrorCode::RfKillSwitch),
-            133 => Ok(ErrorCode::HardwarePoison),
-            134 => Ok(ErrorCode::OperationNotSupported),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid error code")),
-        }
     }
 }
