@@ -157,7 +157,7 @@ impl ScoreBoard {
         arg2: u32,
         arg3: u32,
     ) -> Result<KcallResult, SleepError> {
-        let _guard: MutexGuard = self.lock.lock()?;
+        let _guard: MutexGuard = self.lock.lock(None)?;
         self.args = KcallArgs {
             pid,
             tid,

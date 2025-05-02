@@ -14,6 +14,7 @@ use crate::{
     kcall1,
     kcall2,
     kcall3,
+    kcall4,
     number::KcallNumber,
     pm::{
         Capability,
@@ -269,7 +270,8 @@ pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i32, Err
 //==================================================================================================
 
 pub fn lock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
-    let result: i32 = kcall1!(KcallNumber::MutexLock.into(), usize::from(mutex_addr) as u32);
+    let result: i32 =
+        kcall3!(KcallNumber::MutexLock.into(), usize::from(mutex_addr) as u32, u32::MAX, u32::MAX);
 
     if result == 0 {
         Ok(())
@@ -297,8 +299,13 @@ pub fn unlock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
 //==================================================================================================
 
 pub fn signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<usize, Error> {
-    let result: i32 =
-        kcall2!(KcallNumber::CondSignal.into(), usize::from(cond_addr) as u32, broadcast as u32);
+    let result: i32 = kcall4!(
+        KcallNumber::CondSignal.into(),
+        usize::from(cond_addr) as u32,
+        broadcast as u32,
+        u32::MAX,
+        u32::MAX
+    );
 
     if result >= 0 {
         Ok(result as usize)
