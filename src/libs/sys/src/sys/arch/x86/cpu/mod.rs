@@ -69,6 +69,18 @@ pub unsafe fn cli() {
     core::arch::asm!("cli");
 }
 
+///
+/// # Description
+///
+/// Issues the `sti` instruction.
+///
+/// # Safety
+///
+/// This function is unsafe because `sti` is a privileged instruction.
+///
+pub unsafe fn sti() {
+    core::arch::asm!("sti");
+}
 
 ///
 /// # Description
