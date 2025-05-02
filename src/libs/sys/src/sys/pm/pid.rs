@@ -29,8 +29,11 @@ crate::static_assert_size!(ProcessIdentifier, 4);
 //==================================================================================================
 
 impl ProcessIdentifier {
+    // Raw identifier for the kernel process.
+    pub const KERNEL_RAW: u32 = 0;
+
     /// Identifier of the kernel process.
-    pub const KERNEL: ProcessIdentifier = ProcessIdentifier(0);
+    pub const KERNEL: ProcessIdentifier = ProcessIdentifier(Self::KERNEL_RAW);
 
     /// Identifier of the init daemon process.
     pub const INITD: ProcessIdentifier = ProcessIdentifier(1);
