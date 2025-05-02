@@ -83,7 +83,9 @@ impl TimerTicks {
 pub unsafe fn timer_handler(_intnum: InterruptNumber) {
     let timer_ticks: usize = TIMER_TICKS.increment() as usize;
 
-    if timer_ticks % config::kernel::SCHEDULER_FREQ == 0 {
+    // Determine if a context switch is required. The kernel's running state is checked first to
+    // prevent reentrant calls to the scheduler, which could lead to undefined behavior.
+    if !ProcessManager::is_kernel_running() && timer_ticks % config::kernel::SCHEDULER_FREQ == 0 {
         if let Err(error) = ProcessManager::switch() {
             error!("context switch failed: {:?}", error);
         }
