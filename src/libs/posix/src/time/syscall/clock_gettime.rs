@@ -6,25 +6,22 @@
 //==================================================================================================
 
 use crate::{
+    ffi::c_long,
     time::{
         clockid_t,
-        message::{
-            GetClockTimeRequest,
-            GetClockTimeResponse,
-        },
+        time_t,
         timespec,
-    },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
-        Error,
-        ErrorCode,
+        CLOCK_MONOTONIC,
+        CLOCK_PROCESS_CPUTIME_ID,
+        CLOCK_REALTIME,
+        CLOCK_THREAD_CPUTIME_ID,
     },
 };
+use ::nvx::sys::error::{
+    Error,
+    ErrorCode,
+};
+use ::time::SystemTime;
 
 //==================================================================================================
 // Standalone Functions
@@ -45,39 +42,31 @@ use ::nvx::{
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
 pub fn clock_gettime(clock_id: clockid_t, tp: Option<&mut timespec>) -> Result<(), Error> {
-    ::nvx::trace!("clock_gettime():clock_id={:?}, tp={:?}", clock_id, tp);
+    ::nvx::trace!("clock_gettime(): clock_id={:?}, tp={:?}", clock_id, tp);
 
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    match clock_id {
+        CLOCK_MONOTONIC | CLOCK_REALTIME => {
+            // Get system time and store it in the provided timespec structure.
+            let mut now: SystemTime = SystemTime::default();
+            ::nvx::pm::gettime(&mut now)?;
+            nvx::debug!("clock_gettime(): now={:?}", now);
+            if let Some(tp) = tp {
+                tp.tv_sec = now.seconds() as time_t;
+                tp.tv_nsec = now.nanoseconds() as c_long;
+            }
 
-    // Build request and send it.
-    let request: Message = GetClockTimeRequest::build(pid, clock_id);
-    ::nvx::ipc::send(&request)?;
+            Ok(())
+        },
+        CLOCK_PROCESS_CPUTIME_ID | CLOCK_THREAD_CPUTIME_ID => {
+            let reason: &str = "unsupported clock id";
+            ::nvx::error!("clock_gettime(): {} (clock_id={:?}, tp={:x?})", reason, clock_id, tp);
+            Err(Error::new(ErrorCode::OperationNotSupported, reason))
+        },
 
-    // Receive response.
-    let response: Message = ::nvx::ipc::recv()?;
-
-    // Check whether system call succeeded or not.
-    if response.status != 0 {
-        let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        Err(Error::new(error_code, "clock_gettime() failed"))
-    } else {
-        // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
-        // Response was successfully parsed.
-        match message.header {
-            LinuxDaemonMessageHeader::GetClockTimeResponse => {
-                let response: GetClockTimeResponse =
-                    GetClockTimeResponse::from_bytes(message.payload);
-
-                // Copy time if requested.
-                if let Some(tp) = tp {
-                    tp.tv_sec = response.tp.tv_sec;
-                    tp.tv_nsec = response.tp.tv_nsec;
-                }
-                Ok(())
-            },
-            // Unexpected response message.
-            _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected response message")),
-        }
+        clock_id => {
+            let reason: &str = "invalid clock id";
+            ::nvx::error!("clock_gettime(): {} (clock_id={:?}, tp={:x?})", reason, clock_id, tp);
+            Err(Error::new(ErrorCode::InvalidArgument, reason))
+        },
     }
 }
