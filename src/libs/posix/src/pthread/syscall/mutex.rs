@@ -96,7 +96,7 @@ pub fn pthread_mutex_lock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
         }
     }
 
-    lock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize))
+    lock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize), None)
 }
 
 pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {

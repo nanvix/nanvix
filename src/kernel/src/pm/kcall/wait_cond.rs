@@ -89,22 +89,28 @@ pub unsafe fn wait_cond(
     } else {
         match SystemTime::new(timeout_s as u64, timeout_ns as u32) {
             Some(timeout) => {
-                trace!(
-                    "wait_cond(): cond_addr={:x?}, mutex_addr={:x?}, timeout_s={:?}, \
-                     timeout_ns={:?}",
-                    cond_addr,
-                    mutex_addr,
-                    timeout_s,
-                    timeout_ns
-                );
+                // Check if operation is supported.
+                #[cfg(feature = "hyperlight")]
+                if timeout_s != 0 || timeout_ns != 0 {
+                    let reason: &str = "timeout not supported";
+                    error!(
+                        "wait_cond(): {} (pid={:?}, tid={:?}, cond_addr={:x?}, mutex_addr={:x?}, \
+                         timeout_s={:?}, timeout_ns={:?})",
+                        reason, pid, tid, cond_addr, mutex_addr, timeout_s, timeout_ns
+                    );
+                    return Err(SleepError::Generic(Error::new(
+                        ErrorCode::OperationNotSupported,
+                        reason,
+                    )));
+                }
                 Some(timeout)
             },
             None => {
                 let reason: &str = "invalid timeout";
                 error!(
-                    "wait_cond(): {} (cond_addr={:x?}, mutex_addr={:x?}, timeout_s={:?}, \
-                     timeout_ns={:?})",
-                    reason, cond_addr, mutex_addr, timeout_s, timeout_ns
+                    "wait_cond(): {} (pid={:?}, tid={:?}, cond_addr={:#x?}, mutex_addr={:#x?}, \
+                     timeout_s={:?}, timeout_ns={:?})",
+                    reason, pid, tid, cond_addr, mutex_addr, timeout_s, timeout_ns
                 );
                 return Err(SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason)));
             },

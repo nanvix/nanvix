@@ -66,12 +66,19 @@ pub unsafe fn lock_mutex(
     } else {
         match SystemTime::new(timeout_s as u64, timeout_ns as u32) {
             Some(timeout) => {
-                trace!(
-                    "lock_mutex(): raw_addr={:x?}, timeout_s={:?}, timeout_ns={:?}",
-                    raw_addr,
-                    timeout_s,
-                    timeout_ns
-                );
+                // Check if operation is supported.
+                #[cfg(feature = "hyperlight")]
+                if timeout_s != 0 || timeout_ns != 0 {
+                    let reason: &str = "timeout not supported";
+                    error!(
+                        "lock_mutex(): {} (raw_addr={:x?}, timeout_s={:?}, timeout_ns={:?})",
+                        reason, raw_addr, timeout_s, timeout_ns
+                    );
+                    return Err(SleepError::Generic(Error::new(
+                        ErrorCode::OperationNotSupported,
+                        reason,
+                    )));
+                }
                 Some(timeout)
             },
             None => {
