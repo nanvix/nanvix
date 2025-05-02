@@ -12,6 +12,7 @@ use crate::{
         pthread_mutex_t,
         pthread_mutexattr_t,
     },
+    time::timespec,
 };
 use ::nvx::sys::error::ErrorCode;
 use ::time::SystemTime;
@@ -143,7 +144,76 @@ pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_in
 
     match syscall::pthread_mutex_lock(&mut *mutex) {
         Ok(_) => 0,
-        Err(error) => error.code.get(),
+        Err(error) => {
+            ::nvx::error!("pthread_mutex_lock(): failed to lock mutex (error={:?})", error);
+            error.code.get()
+        },
+    }
+}
+
+//==================================================================================================
+// pthread_mutex_timedlock()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Locks a mutex with a timeout.
+///
+/// # Parameters
+///
+/// - `mutex`: Mutex object.
+///
+/// # Returns
+///
+/// If successful, zero is returned. Otherwise, an error code is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `mutex` points to a valid `pthread_mutex_t` structure.
+/// - `abstime` points to a valid `timespec` structure.
+///
+#[no_mangle]
+pub unsafe extern "C" fn pthread_mutex_timedlock(
+    mutex: *mut pthread_mutex_t,
+    abstime: *const timespec,
+) -> c_int {
+    // Check if `mutex` is not valid.
+    if mutex.is_null() {
+        ::nvx::error!("pthread_mutex_timedlock(): invalid mutex pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `abstime` is not valid.
+    if abstime.is_null() {
+        ::nvx::error!("pthread_mutex_timedlock(): invalid abstime pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Try to convert the `abstime`.
+    let timeout: SystemTime =
+        match SystemTime::new((*abstime).tv_sec as u64, (*abstime).tv_nsec as u32) {
+            Some(timeout) => timeout,
+            None => {
+                ::nvx::error!("pthread_mutex_timedlock(): invalid timeout (abstime={:?})", abstime);
+                return ErrorCode::InvalidArgument.get();
+            },
+        };
+
+    match syscall::pthread_mutex_timedlock(&mut *mutex, Some(timeout)) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "pthread_mutex_timedlock(): failed to lock mutex (abstime={:?}, error={:?})",
+                abstime,
+                error
+            );
+            error.code.get()
+        },
     }
 }
 

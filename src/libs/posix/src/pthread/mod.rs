@@ -30,6 +30,7 @@ cfg_if::cfg_if! {
         pub use syscall::pthread_mutex_destroy;
         pub use syscall::pthread_mutex_init;
         pub use syscall::pthread_mutex_lock;
+        pub use syscall::pthread_mutex_timedlock;
         pub use syscall::pthread_mutex_trylock;
         pub use syscall::pthread_mutex_unlock;
         pub use syscall::pthread_cond_broadcast;
