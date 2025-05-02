@@ -59,6 +59,20 @@ pub unsafe fn halt() {
 ///
 /// # Description
 ///
+/// Issues the `cli` instruction.
+///
+/// # Safety
+///
+/// This function is unsafe because `cli` is a privileged instruction.
+///
+pub unsafe fn cli() {
+    core::arch::asm!("cli");
+}
+
+
+///
+/// # Description
+///
 /// Issues the `rdtsc` instruction.
 ///
 /// # Returns
