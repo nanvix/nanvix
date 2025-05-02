@@ -92,9 +92,11 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         // SAFETY: The calling thread does not hold a reference to the process manager.
         KcallNumber::Resume => unsafe { event::resume(arg0 as usize) },
         // SAFETY: The calling thread is not the kernel, no resources are held, and the calling process does not hold a reference to the process manager.
-        KcallNumber::MutexLock => match unsafe { pm::lock_mutex(arg0 as usize) } {
-            Ok(()) => KcallResult::ok(),
-            Err(sleep_error) => handle_sleep_error(sleep_error),
+        KcallNumber::MutexLock => {
+            match unsafe { pm::lock_mutex(arg0 as usize, arg1 as usize, arg2 as usize) } {
+                Ok(()) => KcallResult::ok(),
+                Err(sleep_error) => handle_sleep_error(sleep_error),
+            }
         },
         // SAFETY: The calling thread does not hold a reference to the process manager.
         KcallNumber::MutexUnlock => match unsafe { pm::unlock_mutex(pid, tid, arg0 as usize) } {
@@ -103,7 +105,9 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
         // SAFETY: The calling thread is not the kernel, no resources are held, and the calling process does not hold a reference to the process manager.
         KcallNumber::CondWait => {
-            match unsafe { pm::wait_cond(pid, tid, arg0 as usize, arg1 as usize) } {
+            match unsafe {
+                pm::wait_cond(pid, tid, arg0 as usize, arg1 as usize, arg2 as usize, arg3 as usize)
+            } {
                 Ok(()) => KcallResult::ok(),
                 Err(sleep_error) => handle_sleep_error(sleep_error),
             }
@@ -136,13 +140,20 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
 
 fn handle_sleep_error(sleep_error: SleepError) -> KcallResult {
     match sleep_error {
-        SleepError::Generic(generic_error) => KcallResult::Error(generic_error.code.into()),
+        SleepError::Generic(generic_error) => {
+            error!("failed to sleep: {:?}", generic_error);
+            KcallResult::Error(generic_error.code.into())
+        },
         SleepError::Interrupted(reason) => match reason {
             InterruptReason::Killed => {
                 // SAFETY: the calling process is not the kernel.
                 let error: Error =
                     unsafe { ProcessManager::exit(ErrorCode::Interrupted.into()).unwrap_err() };
                 panic!("failled to exit() (error={:?})", error);
+            },
+            InterruptReason::TimedOut => {
+                error!("failed to sleep: operation timed out");
+                KcallResult::Error(ErrorCode::OperationTimedOut.into())
             },
         },
     }

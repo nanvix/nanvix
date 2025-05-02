@@ -30,6 +30,7 @@ use ::sys::{
     },
     ExitStatus,
 };
+use ::time::SystemTime;
 
 //==================================================================================================
 // Thread State
@@ -81,9 +82,15 @@ impl fmt::Debug for ThreadState {
 pub struct RunningThread(ThreadState);
 
 impl RunningThread {
-    pub fn sleep(mut self) -> (SleepingThread, *mut ContextInformation) {
+    pub fn sleep(mut self, alarm: Option<SystemTime>) -> (SleepingThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.0.context_mut();
-        (SleepingThread(self.0), ctx)
+        (
+            SleepingThread {
+                thread: self.0,
+                alarm,
+            },
+            ctx,
+        )
     }
 
     pub fn schedule(mut self) -> (ReadyThread, *mut ContextInformation) {
@@ -201,26 +208,33 @@ impl ReadyThread {
 // Sleeping Thread
 //==================================================================================================
 
-pub struct SleepingThread(ThreadState);
+pub struct SleepingThread {
+    thread: ThreadState,
+    alarm: Option<SystemTime>,
+}
 
 impl SleepingThread {
     pub fn wakeup(self) -> ReadyThread {
-        ReadyThread(self.0)
+        ReadyThread(self.thread)
     }
 
     pub fn interrupt(self, reason: InterruptReason) -> InterruptedThread {
         InterruptedThread {
-            thread: self.0,
+            thread: self.thread,
             reason,
         }
     }
 
     pub fn id(&self) -> ThreadIdentifier {
-        self.0.id
+        self.thread.id
     }
 
     pub fn join_cond(&self) -> Condvar {
-        self.0.join_cond.clone()
+        self.thread.join_cond.clone()
+    }
+
+    pub fn alarm(&self) -> Option<SystemTime> {
+        self.alarm.clone()
     }
 }
 
@@ -232,6 +246,8 @@ impl SleepingThread {
 pub enum InterruptReason {
     /// Process was killed.
     Killed,
+    /// Timer expired.
+    TimedOut,
 }
 pub struct InterruptedThread {
     thread: ThreadState,

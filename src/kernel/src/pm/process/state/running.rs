@@ -34,6 +34,7 @@ use ::sys::{
     pm::ThreadIdentifier,
     ExitStatus,
 };
+use ::time::SystemTime;
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -130,11 +131,12 @@ impl RunningProcess {
 
     pub fn sleep(
         mut self,
+        alarm: Option<SystemTime>,
     ) -> Result<
         (RunnableProcess, *mut ContextInformation),
         (SleepingProcess, *mut ContextInformation),
     > {
-        let (sleeping_thread, ctx) = self.running.sleep();
+        let (sleeping_thread, ctx) = self.running.sleep(alarm);
 
         // Push sleeping thread.
         let sleeping_threads = match self.sleeping_threads.take() {
