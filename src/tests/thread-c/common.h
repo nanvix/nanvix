@@ -27,4 +27,7 @@ extern void test_pthread_cond_static_init(void);
 // Tests if thread interface for operating on thread-specific data works.
 extern void test_pthread_tda(void);
 
+// Tests if calling `pthread_mutex_trylock() works.
+extern void test_pthread_mutex_trylock(void);
+
 #endif
