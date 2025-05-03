@@ -19,6 +19,7 @@ use crate::{
             PageAligned,
             VirtualAddress,
         },
+        platform::Interrupts,
     },
     mm::{
         VirtMemoryManager,
@@ -58,6 +59,10 @@ use ::core::{
         cold_path,
         unlikely,
     },
+    sync::atomic::{
+        AtomicU32,
+        Ordering,
+    },
 };
 use ::sys::{
     arch::mem::PAGE_SIZE,
@@ -71,6 +76,13 @@ use ::sys::{
     },
     ExitStatus,
 };
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// PID of the current process.
+static CURRENT_PID: AtomicU32 = AtomicU32::new(ProcessIdentifier::KERNEL_RAW);
 
 //==================================================================================================
 // Implementations
@@ -373,10 +385,28 @@ impl ProcessManager {
     /// block until it is woken up by another thread.
     ///
     pub unsafe fn switch() -> Result<(), Error> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
+        // Schedule the next thread within a limited scope to ensure the process manager is
+        // properly released before performing the context switch.
+        let result: Option<(ProcessIdentifier, *mut ContextInformation, *mut ContextInformation)> =
             { Self::get_mut().try_borrow_mut()?.schedule() };
 
-        ContextInformation::switch(from, to);
+        match result {
+            Some((next_pid, from, to)) => {
+                // SAFETY: `from` and `to` point to valid context information structures. The
+                // processor is running with interrupts disabled.
+                CURRENT_PID.store(next_pid.into(), Ordering::SeqCst);
+                ContextInformation::switch(from, to);
+            },
+            None => {
+                // SAFETY: Enabling interrupts in this scope will not cause unwanted side effects.
+                let interrupts: Interrupts = Interrupts::enable();
+
+                // SAFETY: Waiting for interrupts will not cause unwanted side effects.
+                interrupts.wait();
+
+                // Interrupts are automatically disabled when we leave this scope.
+            },
+        }
 
         Ok(())
     }
@@ -572,5 +602,22 @@ impl ProcessManager {
         Self::get_mut()
             .try_borrow_mut()?
             .take_mutex_guard(pid, tid, mutex_addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the kernel is running.
+    ///
+    /// # Returns
+    ///
+    /// Returns true if the kernel is running, false otherwise.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it access global variables.
+    ///
+    pub unsafe fn is_kernel_running() -> bool {
+        CURRENT_PID.load(Ordering::SeqCst) == ProcessIdentifier::KERNEL_RAW
     }
 }

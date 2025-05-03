@@ -106,6 +106,53 @@ pub struct Platform {
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Disables all interrupts on the calling core.
+///
+/// # Safety
+///
+/// This function is unsafe because it modifies the CPU state.
+///
+/// It is safe to call this function only when the CPU is in a state where interrupts can be
+/// disabled.
+///
+pub(super) unsafe fn disable_interrupts() {
+    ::sys::arch::cpu::cli();
+}
+
+///
+/// # Description
+///
+/// Enables all interrupts on the calling core.
+///
+/// # Safety
+///
+/// This function is unsafe because it modifies the CPU state.
+///
+/// It is safe to call this function only when the CPU is in a state where interrupts can be
+/// enabled.
+///
+pub(super) unsafe fn enable_interrupts() {
+    ::sys::arch::cpu::sti();
+}
+
+///
+/// # Description
+///
+/// Waits for an interrupt to happen.
+///
+/// # Safety
+///
+/// This function is unsafe because it modifies the CPU state.
+///
+/// It is safe to call this function only when the CPU is able to receive interrupts.
+///
+pub(super) unsafe fn wait_for_interrupt() {
+    ::sys::arch::cpu::halt();
+}
+
 #[cfg(feature = "bios")]
 fn register_bios_data_area(
     memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,

@@ -549,9 +549,14 @@ impl ProcessManagerInner {
     }
 
     /// Schedule a process to run.
-    pub fn schedule(&mut self) -> (*mut ContextInformation, *mut ContextInformation) {
+    fn schedule(
+        &mut self,
+    ) -> Option<(ProcessIdentifier, *mut ContextInformation, *mut ContextInformation)> {
         // Reschedule running process.
         let previous_process: RunningProcess = self.take_running();
+
+        let previous_pid: ProcessIdentifier = previous_process.state().pid();
+
         let (previous_process, previous_context) = previous_process.schedule();
         self.ready.push_back(previous_process);
 
@@ -562,9 +567,11 @@ impl ProcessManagerInner {
                 InterruptReason,
                 *mut ContextInformation,
             ) = next_process.resume();
+
+            let next_pid: ProcessIdentifier = next_process.state().pid();
             self.interrupt_reason = Some(reason);
             self.running = Some(next_process);
-            (previous_context, next_context)
+            Some((next_pid, previous_context, next_context))
         } else {
             let next_process: RunnableProcess = self.take_ready();
             let (next_process, reason, next_context): (
@@ -574,8 +581,14 @@ impl ProcessManagerInner {
             ) = next_process.run();
 
             self.interrupt_reason = reason;
+            let next_pid: ProcessIdentifier = next_process.state().pid();
             self.running = Some(next_process);
-            (previous_context, next_context)
+
+            if previous_pid == next_pid {
+                return None;
+            }
+
+            Some((next_pid, previous_context, next_context))
         }
     }
 
