@@ -74,6 +74,57 @@ pub struct Platform {
 ///
 /// # Description
 ///
+/// Disables all interrupts on the calling core.
+///
+/// # Safety
+///
+/// This function is unsafe because it modifies the CPU state.
+///
+/// It is safe to call this function only when the CPU is in a state where interrupts can be
+/// disabled.
+///
+pub(super) unsafe fn disable_interrupts() {
+    ::sys::arch::cpu::cli();
+}
+
+///
+/// # Description
+///
+/// Enables all interrupts on the calling core.
+///
+/// # Safety
+///
+/// This function is unsafe because it modifies the CPU state.
+///
+/// It is safe to call this function only when the CPU is in a state where interrupts can be
+/// enabled.
+///
+pub(super) unsafe fn enable_interrupts() {
+    // Hyperlight does not have an interrupt chip. Enabling interrupts in this context
+    // could lead to undefined behavior or other unintended side effects. Therefore, this
+    // function is intentionally left as a no-op.
+}
+
+///
+/// # Description
+///
+/// Waits for an interrupt to happen.
+///
+/// # Safety
+///
+/// This function is unsafe because it modifies the CPU state.
+///
+/// It is safe to call this function only when the CPU is able to receive interrupts.
+///
+pub(super) unsafe fn wait_for_interrupt() {
+    // Hyperlight does not have an interrupt chip. Waiting for interrupts (halt) in this context
+    // could lead to undefined behavior or other unintended side effects. Therefore, this function
+    // is intentionally left as a no-op.
+}
+
+///
+/// # Description
+///
 /// Writes the string `s` to the platform's standard debug device.
 ///
 /// # Parameters

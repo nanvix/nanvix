@@ -51,7 +51,8 @@ pub fn kcall_handler(
     }
 
     let status: ExitStatus = loop {
-        // Read kernel call arguments from the scoreboard.
+        // Attempt to handle a kernel call.
+        let mut kcall_handled: bool = false;
         match ScoreBoard::get_mut() {
             Ok(scoreboard) => match scoreboard.handle() {
                 Ok(args) => {
@@ -101,29 +102,32 @@ pub fn kcall_handler(
                     if let Err(e) = unsafe { scoreboard.handled(ret) } {
                         warn!("failed to signal kernel call handled: {:?}", e)
                     }
+
+                    kcall_handled = true;
                 },
-                Err(e) => match e.code {
-                    ErrorCode::OperationWouldBlock => {
-                        // SAFETY: the kernel process does not hold any resources.
-                        if let Err(e) = unsafe { ProcessManager::switch() } {
-                            error!("context switch failed: {:?}", e);
-                        }
-                    },
+                Err(error) => match error.code {
+                    ErrorCode::OperationWouldBlock => {},
                     _ => {
-                        error!("failed to handle kernel call: {:?}", e);
+                        // This condition should never happen because the only error that should
+                        // happen for `ScoreBoard::handle()` is `OperationWouldBlock`.
+                        unreachable!("failed to handle kernel call (error={:?})", error);
                     },
                 },
             },
-            Err(e) => {
-                warn!("failed to get scoreboard: {:?}", e)
+            Err(error) => {
+                // This condition should never occur because the scoreboard is accessed exclusively,
+                // and no process should block while holding a reference to it.
+                unreachable!("failed to get scoreboard (error={:?})", error);
             },
         };
 
+        // Check if inter-kernel communication messages are available.
         cfg_if::cfg_if! {
             if #[cfg(feature = "stdio")] {
-                // Check if the number of buffered messages in the kernel is not to high. We don't
+                let mut message_received: bool = false;
+                // Check if the number of buffered messages in the kernel is not too high. We don't
                 // want to keep pushing messages to the kernel and then run out of memory.
-                if let Ok(number_buffered_messages) = pm.number_buffered_messages()  {
+                if let Ok(number_buffered_messages) = pm.number_buffered_messages() {
                     if number_buffered_messages < config::kernel::MAX_IKC_MESSAGES {
                         // The number of messages that are buffered in the kernel is not too high,
                         // So attempt to read an inter-kernel communication message from the
@@ -136,6 +140,7 @@ pub fn kcall_handler(
                                 if let Err(e) = EventManager::post_message(pm, message.destination, message) {
                                     warn!("failed to post message (error={:?})", e);
                                 }
+                                message_received = true;
                             }
                             // Failed to read message.
                             Err(e) => {
@@ -144,9 +149,14 @@ pub fn kcall_handler(
                         }
                     }
                 }
+            } else {
+                // No inter-kernel communication messages are available.
+                let message_received: bool = false;
             }
         }
 
+        // Attempt to harvest zombie processes.
+        let mut harvested_process: bool = false;
         match pm.harvest_zombies(mm) {
             Ok(None) => {},
             Ok(Some((pid, status))) => {
@@ -161,7 +171,7 @@ pub fn kcall_handler(
                         pid, status,
                     ))
                 } {
-                    Ok(()) => {},
+                    Ok(()) => harvested_process = true,
                     Err(e) => {
                         error!("failed to notify process termination: {:?}", e);
                     },
@@ -170,6 +180,14 @@ pub fn kcall_handler(
             Err(e) => {
                 error!("failed to harvest zombies: {:?}", e);
             },
+        }
+
+        // No work to do, so yield the CPU.
+        if !kcall_handled && !message_received && !harvested_process {
+            // SAFETY: the kernel process does not hold any resources.
+            if let Err(error) = unsafe { ProcessManager::switch() } {
+                error!("context switch failed (error={:?})", error);
+            }
         }
     };
 
