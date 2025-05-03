@@ -25,6 +25,7 @@ use crate::{
         UserIdentifier,
     },
 };
+use ::time::SystemTime;
 
 //==================================================================================================
 // Get Process Identifier
@@ -321,5 +322,34 @@ pub fn wait_cond(cond_addr: ConditionAddress, mutex_addr: MutexAddress) -> Resul
         Ok(())
     } else {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to wait condition variable"))
+    }
+}
+
+//==================================================================================================
+// Get Time
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Gets the current system time.
+///
+/// # Parameters
+///
+/// - `buffer`: A mutable reference to a buffer where the system time will be stored.
+///
+/// # Returns
+///
+/// Upon successful completion, `gettime()` returns empty. Upon failure, it returns an `Error` to
+/// indicate the error.
+///
+pub fn gettime(buffer: &mut SystemTime) -> Result<(), Error> {
+    let result: i32 =
+        kcall1!(KcallNumber::GetTime.into(), buffer as *mut SystemTime as usize as u32);
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to get time"))
     }
 }

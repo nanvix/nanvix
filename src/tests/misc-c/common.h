@@ -65,6 +65,9 @@ extern void test_getgid(void);
 // Tests whether we can the user ID of the calling process with `getuid()`.
 extern void test_getuid(void);
 
+// Tests whether we can get the current time of a clock with `clock_gettime()`.
+extern void test_clock_gettime(void);
+
 // Tests whether we can retrieve process times with `times()`.
 extern void test_times(void);
 

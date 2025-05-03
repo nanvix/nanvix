@@ -23,6 +23,7 @@ raw-array = { workspace = true }
 slab = { workspace = true }
 sys = { workspace = true }
 hyperlight_common = { workspace = true, optional = true }
+time = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

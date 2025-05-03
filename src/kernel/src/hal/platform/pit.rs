@@ -106,3 +106,16 @@ impl Pit {
         Ok(pit)
     }
 }
+
+///
+/// # Description
+///
+/// Returns the frequency of the timer.
+///
+/// # Returns
+///
+/// The frequency of the timer in Hz.
+///
+pub fn get_timer_frequency() -> u32 {
+    TIMER_FREQUENCY.load(Ordering::SeqCst)
+}

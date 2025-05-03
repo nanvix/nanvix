@@ -92,6 +92,7 @@ pub fn kcall_handler(
                         KcallNumber::FreePmio => io::pmio_free(pm, args),
                         KcallNumber::ReadPmio => io::pmio_read(pm, args),
                         KcallNumber::WritePmio => io::pmio_write(pm, args),
+                        KcallNumber::GetTime => pm::gettime(pm, args),
                         KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
                         _ => {
                             error!("invalid kernel call");

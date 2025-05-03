@@ -14,6 +14,7 @@ pub use ::sys::kcall::pm::{
     getgid,
     getpid,
     gettid,
+    gettime,
     getuid,
     terminate,
 };
