@@ -11,8 +11,6 @@
 // Modules
 //==================================================================================================
 
-pub mod message;
-
 #[cfg(all(feature = "syscall", feature = "staticlib"))]
 pub mod bindings;
 

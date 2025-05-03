@@ -20,7 +20,6 @@ use crate::{
         RequestAssemblerTrait,
     },
     socket,
-    time,
     times,
     unistd,
     venv::{
@@ -76,10 +75,6 @@ use ::posix::{
         },
         times::message::TimesRequest,
         types::ssize_t,
-    },
-    time::message::{
-        ClockResolutionRequest,
-        GetClockTimeRequest,
     },
     unistd::message::{
         ChangeDirectoryRequest,
@@ -222,8 +217,6 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::FileSpaceControlRequest
                                 | LinuxDaemonMessageHeader::FileSyncRequest
                                 | LinuxDaemonMessageHeader::FileTruncateRequest
-                                | LinuxDaemonMessageHeader::GetClockResolutionRequest
-                                | LinuxDaemonMessageHeader::GetClockTimeRequest
                                 | LinuxDaemonMessageHeader::GetIdsRequest
                                 | LinuxDaemonMessageHeader::GetPeerNameRequest
                                 | LinuxDaemonMessageHeader::GetSockNameRequest
@@ -404,15 +397,6 @@ impl<'a> LinuxDaemon<'a> {
             LinuxDaemonMessageHeader::FileTruncateRequest => {
                 let request: FileTruncateRequest = FileTruncateRequest::from_bytes(message.payload);
                 unistd::do_ftruncate(source, request)
-            },
-            LinuxDaemonMessageHeader::GetClockResolutionRequest => {
-                let request: ClockResolutionRequest =
-                    ClockResolutionRequest::from_bytes(message.payload);
-                time::do_clock_getres(source, request)
-            },
-            LinuxDaemonMessageHeader::GetClockTimeRequest => {
-                let request: GetClockTimeRequest = GetClockTimeRequest::from_bytes(message.payload);
-                time::do_clock_gettime(source, request)
             },
             LinuxDaemonMessageHeader::GetIdsRequest => {
                 let request: GetIdsRequest = GetIdsRequest::from_bytes(message.payload);

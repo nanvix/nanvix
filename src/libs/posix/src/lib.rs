@@ -101,10 +101,6 @@ use ::nvx::{
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive)]
 #[repr(u16)]
 pub enum LinuxDaemonMessageHeader {
-    GetClockResolutionRequest,
-    GetClockResolutionResponse,
-    GetClockTimeRequest,
-    GetClockTimeResponse,
     OpenAtRequest,
     OpenAtRequestPart,
     OpenAtResponse,
