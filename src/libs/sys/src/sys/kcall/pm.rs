@@ -334,13 +334,29 @@ pub fn signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<usize
 // Wait Condition Variable
 //==================================================================================================
 
-pub fn wait_cond(cond_addr: ConditionAddress, mutex_addr: MutexAddress) -> Result<(), Error> {
+pub fn wait_cond(
+    cond_addr: ConditionAddress,
+    mutex_addr: MutexAddress,
+    timeout: Option<SystemTime>,
+) -> Result<(), Error> {
+    // Attempt to convert the timeout.
+    let (seconds, nanoseconds): (u32, u32) = match timeout {
+        Some(timeout) => {
+            let seconds: u32 = timeout.seconds().try_into().map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, "timeout value is too large")
+            })?;
+            let nanoseconds: u32 = timeout.nanoseconds();
+            (seconds, nanoseconds)
+        },
+        None => (u32::MAX, u32::MAX),
+    };
+
     let result: i32 = kcall4!(
         KcallNumber::CondWait.into(),
         usize::from(cond_addr) as u32,
         usize::from(mutex_addr) as u32,
-        u32::MAX,
-        u32::MAX
+        seconds,
+        nanoseconds
     );
 
     if result == 0 {

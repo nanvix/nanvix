@@ -110,6 +110,9 @@ int main(int argc, const char *argv[])
     test_pthread_mutex_timedlock();
 #endif
     test_pthread_cond_static_init();
+#ifndef __hyperlight__
+    test_pthread_cond_timedwait();
+#endif
     test_pthread_tda();
 
     // Must be last test.
