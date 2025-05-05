@@ -9,6 +9,9 @@
 // Tests if threads can get their own identifiers.
 extern void test_pthread_self(void);
 
+// Tests if `pthread_mutex_cond_timedwait()` can be used for synchronization.
+extern void test_pthread_cond_timedwait(void);
+
 // Tests if threads can be created and joined.
 extern void test_pthread_create_join(void);
 

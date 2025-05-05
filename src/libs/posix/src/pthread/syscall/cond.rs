@@ -42,6 +42,7 @@ use ::spin::{
     Lazy,
     Mutex,
 };
+use ::time::SystemTime;
 
 //==================================================================================================
 // Globals
@@ -147,6 +148,50 @@ pub fn pthread_cond_signal(cond: &pthread_cond_t) -> Result<(), Error> {
     Ok(())
 }
 
+pub fn pthread_cond_timedwait(
+    cond: &pthread_cond_t,
+    mutex: &pthread_mutex_t,
+    timeout: Option<SystemTime>,
+) -> Result<(), Error> {
+    // Check if condition variable is not initialized.
+    if let Entry::Vacant(entry) = CONDITIONS
+        .lock()
+        .entry(cond as *const pthread_cond_t as usize)
+    {
+        // Check if condition variable was statically initialized.
+        if *cond == PTHREAD_COND_INITIALIZER {
+            // Lazily register condition variable.
+            entry.insert(pthread_condattr_t::default());
+        } else {
+            let reason: &str = "condition variable is not initialized";
+            ::nvx::error!("pthread_wait_cond(): {}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+    }
+
+    // Check if mutex is not initialized.
+    if let Entry::Vacant(entry) = MUTEXES
+        .lock()
+        .entry(mutex as *const pthread_mutex_t as usize)
+    {
+        // Check if mutex was statically initialized.
+        if *mutex == PTHREAD_MUTEX_INITIALIZER {
+            // Lazily register mutex.
+            entry.insert(pthread_mutexattr_t::default());
+        } else {
+            let reason: &str = "mutex is not initialized";
+            ::nvx::error!("pthread_wait_cond(): {}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+    }
+
+    wait_cond(
+        ConditionAddress::from(cond as *const pthread_cond_t as usize),
+        MutexAddress::from(mutex as *const pthread_mutex_t as usize),
+        timeout,
+    )
+}
+
 pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Result<(), Error> {
     // Check if condition variable is not initialized.
     if let Entry::Vacant(entry) = CONDITIONS
@@ -183,5 +228,6 @@ pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Resu
     wait_cond(
         ConditionAddress::from(cond as *const pthread_cond_t as usize),
         MutexAddress::from(mutex as *const pthread_mutex_t as usize),
+        None,
     )
 }
