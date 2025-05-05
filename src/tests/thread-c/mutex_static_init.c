@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdio.h>
 
 //==================================================================================================
 // Constants
@@ -83,5 +84,9 @@ static void main_thread(void)
 // Tests if statically initialized mutexes can be used for synchronization.
 void test_pthread_mutex_static_init(void)
 {
+    fprintf(stderr, "testing pthread_mutex_static_init() ... ");
+
     main_thread();
+
+    fprintf(stderr, "passed\n");
 }
