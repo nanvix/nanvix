@@ -16,7 +16,7 @@ export LIBRARIES := -Wl,--start-group $(LIBPOSIX) $(LIBC) -Wl,--end-group
 export SOURCES := $(wildcard *.c)
 
 # Object Files
-export OBJECTS = $(SOURCES:.c=.o)
+export OBJECTS = $(SOURCES:.c=.$(TARGET).$(MACHINE).o)
 
 # Binary
 export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
@@ -33,5 +33,5 @@ clean:
 	rm -rf $(BINARIES_DIR)/$(BINARY)
 
 # Builds C source files.
-%.$(TARGET).o: %.c
+%.$(TARGET).$(MACHINE).o: %.c
 	$(CC) $(CFLAGS) $< -c -o $@
