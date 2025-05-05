@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdio.h>
 
 //==================================================================================================
 // Constants
@@ -89,7 +90,11 @@ static void main_thread(void)
 // Tests if dynamically initialized mutexes can be used for synchronization.
 void test_pthread_mutex_dynamic_init(void)
 {
+    fprintf(stderr, "testing pthread_mutex_dynamic_init() ... ");
+
     for (int i = 0; i < 2; i++) {
         main_thread();
     }
+
+    fprintf(stderr, "passed\n");
 }

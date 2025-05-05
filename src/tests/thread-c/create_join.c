@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdio.h>
 
 //==================================================================================================
 // Constants
@@ -54,5 +55,9 @@ static void main_thread(void)
 // Tests if threads can be created and joined.
 void test_pthread_create_join(void)
 {
+    fprintf(stderr, "testing pthread_create() and pthread_join() ... ");
+
     main_thread();
+
+    fprintf(stderr, "passed\n");
 }

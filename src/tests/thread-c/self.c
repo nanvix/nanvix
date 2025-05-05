@@ -9,6 +9,7 @@
 
 #include <assert.h>
 #include <pthread.h>
+#include <stdio.h>
 
 //==================================================================================================
 // Constants
@@ -32,5 +33,9 @@ static void main_thread(void)
 // Tests if threads can get their own identifiers.
 void test_pthread_self()
 {
+    fprintf(stderr, "testing pthread_self() ... ");
+
     main_thread();
+
+    fprintf(stderr, "passed\n");
 }
