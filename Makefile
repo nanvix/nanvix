@@ -110,6 +110,8 @@ export CFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
 export CFLAGS += -Wvla -Wredundant-decls
 export CFLAGS += -pedantic-errors
 export CFLAGS += -Wstack-usage=4096
+export CFLAGS += -D__NANVIX_SYSNAME__="\"$(NANVIX_SYSNAME)\""
+export CFLAGS += -D__NANVIX_NODENAME__="\"$(NANVIX_NODENAME)\""
 export CFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
 
 # C++ Compiler Options
@@ -121,6 +123,8 @@ export CXXFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
 export CXXFLAGS += -Wvla -Wredundant-decls
 export CXXFLAGS += -pedantic-errors
 export CXXFLAGS += -Wstack-usage=4096
+export CXXFLAGS += -D__NANVIX_SYSNAME__="\"$(NANVIX_SYSNAME)\""
+export CXXFLAGS += -D__NANVIX_NODENAME__="\"$(NANVIX_NODENAME)\""
 export CXXFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
 
 # Linker Options
