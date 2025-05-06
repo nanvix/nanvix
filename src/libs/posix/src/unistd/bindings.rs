@@ -17,7 +17,10 @@ use crate::{
         c_uint,
         c_void,
     },
-    limits::PATH_MAX,
+    limits::{
+        HOST_NAME_MAX,
+        PATH_MAX,
+    },
     sys::types::{
         gid_t,
         off_t,
@@ -32,6 +35,10 @@ use crate::{
         STDIN_FILENO,
         STDOUT_FILENO,
     },
+};
+use ::alloc::{
+    ffi::CString,
+    string::String,
 };
 use ::core::{
     ffi,
@@ -745,6 +752,94 @@ pub unsafe extern "C" fn getuid() -> uid_t {
             uid_t::MAX
         },
     }
+}
+
+///
+/// # Description
+///
+/// Gets the name of the current host.
+///
+/// # Parameters
+///
+/// - `name`: Storage location for the host name.
+/// - `namelen:  The size of the array pointed to by `name`.
+///
+/// # Returns
+///
+/// Upon successful completion, `gethostname()` returns `0`. Otherwise, it returns `-1`.
+///
+/// # Safety
+///
+/// This function is unsafe becase it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `name` points to a valid null-terminated string.
+/// - `namelen` is a valid size.
+///
+#[no_mangle]
+pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_int {
+    ::nvx::trace!("gethostname(): name={:?}, namelen={}", name, namelen);
+
+    // Check if the buffer is valid.
+    if name.is_null() {
+        ::nvx::error!("gethostname(): invalid buffer (name={:?}, namelen={:?})", name, namelen);
+        return -1;
+    }
+
+    // Check if `namelen` is invalid.
+    if namelen == 0 {
+        ::nvx::error!(
+            "gethostname(): invalid buffer size (name={:?}, namelen={:?})",
+            name,
+            namelen
+        );
+        return -1;
+    }
+
+    // Get the host name.
+    let hostname: String = syscall::gethostname();
+
+    // Attempt to convert Rust string to C string and check for errors.
+    let c_string: CString = match CString::new(hostname) {
+        // Success.
+        Ok(s) => s,
+        // Failure.
+        Err(error) => {
+            ::nvx::error!(
+                "gethostname(): failed to convert string (name={:?}, namelen={:?}, error={:?})",
+                name,
+                namelen,
+                error
+            );
+            return -1;
+        },
+    };
+
+    // Check if the buffer is large enough.
+    if c_string.as_bytes_with_nul().len() > namelen as usize {
+        ::nvx::error!(
+            "gethostname(): buffer is too small (name={:?}, namelen={:?})",
+            name,
+            namelen
+        );
+        return -1;
+    }
+    // Truncate the host name to HOST_NAME_MAX if necessary.
+    let mut bytes: &[u8] = c_string.as_bytes_with_nul();
+    if bytes.len() > HOST_NAME_MAX {
+        ::nvx::warn!(
+            "gethostname(): hostname is too long, truncating (name={:?}, namelen={:?})",
+            name,
+            namelen
+        );
+        bytes = &bytes[..HOST_NAME_MAX];
+    }
+
+    // Copy the host name to the buffer.
+    let buf: &mut [u8] = slice::from_raw_parts_mut(name as *mut u8, namelen as usize);
+    buf[..bytes.len()].copy_from_slice(bytes);
+
+    0
 }
 
 ///
