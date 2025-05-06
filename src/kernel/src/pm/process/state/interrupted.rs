@@ -37,6 +37,7 @@ use ::type_safe::NonEmptyVecDeque;
 ///
 pub struct InterruptedProcess {
     state: Box<ProcessState>,
+    sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
     interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
     zombie_threads: Option<NonEmptyVecDeque<ZombieThread>>,
 }
@@ -49,6 +50,21 @@ impl InterruptedProcess {
     ) -> Self {
         Self {
             state: process,
+            sleeping_threads: None,
+            interrupted_threads,
+            zombie_threads,
+        }
+    }
+
+    pub(super) fn from_sleeping(
+        process: Box<ProcessState>,
+        sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
+        interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
+        zombie_threads: Option<NonEmptyVecDeque<ZombieThread>>,
+    ) -> Self {
+        Self {
+            state: process,
+            sleeping_threads,
             interrupted_threads,
             zombie_threads,
         }
@@ -72,7 +88,7 @@ impl InterruptedProcess {
                 thread,
                 None,
                 NonEmptyVecDeque::from(interrupted_threads),
-                None,
+                self.sleeping_threads.take(),
                 self.zombie_threads.take(),
             ),
             reason,

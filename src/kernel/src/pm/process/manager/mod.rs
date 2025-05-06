@@ -36,6 +36,7 @@ use crate::{
         Vmem,
     },
     pm::{
+        clock,
         process::{
             identity::ProcessIdentity,
             state::{
@@ -98,6 +99,7 @@ use ::sys::{
     },
     ExitStatus,
 };
+use ::time::SystemTime;
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -560,6 +562,8 @@ impl ProcessManagerInner {
         let (previous_process, previous_context) = previous_process.schedule();
         self.ready.push_back(previous_process);
 
+        self.check_alarm();
+
         // Select next ready process to run.
         if let Some(next_process) = self.interrupted.pop_front() {
             let (next_process, reason, next_context): (
@@ -592,16 +596,45 @@ impl ProcessManagerInner {
         }
     }
 
+    // Traverses list of sleeping processes checking for alarms.
+    fn check_alarm(&mut self) {
+        let now: SystemTime = clock::now();
+
+        // Create a temporary list to store processes that are still sleeping.
+        let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
+
+        // Filter out processes that are still sleeping.
+        while let Some(process) = self.suspended.pop_front() {
+            // Attempt to wake up process.
+            match process.wakeup_alarm(now.clone()) {
+                Ok(interrupted_process) => {
+                    self.interrupted.push_back(interrupted_process);
+                },
+                Err(suspended_process) => suspended.push_back(suspended_process),
+            }
+        }
+
+        // Set the list of sleeping processes.
+        self.suspended = suspended;
+    }
+
     ///
     /// # Description
     ///
     /// Puts the calling thread to sleep.
     ///
+    /// # Parameters
+    ///
+    /// - `alarm`: Optional alarm time.
+    ///
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    fn sleep(&mut self) -> (*mut ContextInformation, *mut ContextInformation) {
+    fn sleep(
+        &mut self,
+        alarm: Option<SystemTime>,
+    ) -> (*mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to sleep.
@@ -609,7 +642,7 @@ impl ProcessManagerInner {
             panic!("kernel process cannot sleep");
         }
 
-        match running_process.sleep() {
+        match running_process.sleep(alarm) {
             Ok((runnable_process, previous_context)) => {
                 let (next_process, reason, next_context): (
                     RunningProcess,

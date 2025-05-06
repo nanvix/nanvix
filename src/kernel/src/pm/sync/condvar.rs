@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::pm::{
+    clock,
     process::SleepError,
     ProcessManager,
 };
@@ -15,12 +16,16 @@ use ::alloc::{
 };
 use ::core::cell::RefCell;
 use ::sys::{
-    error::Error,
+    error::{
+        Error,
+        ErrorCode,
+    },
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
 };
+use ::time::SystemTime;
 
 //==================================================================================================
 // Structures
@@ -184,6 +189,10 @@ impl Condvar {
     ///
     /// Waits on the condition variable.
     ///
+    /// # Parameters
+    ///
+    /// - `alarm`: Optional alarm time.
+    ///
     /// # Safety
     ///
     /// This function panics if the kernel process tries to sleep.
@@ -196,7 +205,7 @@ impl Condvar {
     /// - The calling process is not the kernel process.
     /// - This function is invoked without holding any resources.
     ///
-    pub unsafe fn wait(&self) -> Result<(), SleepError> {
+    pub unsafe fn wait(&self, alarm: Option<SystemTime>) -> Result<(), SleepError> {
         let pid: ProcessIdentifier = unsafe { ProcessManager::get() }
             .get_pid()
             .map_err(SleepError::Generic)?;
@@ -210,9 +219,24 @@ impl Condvar {
             .get_tid()
             .map_err(SleepError::Generic)?;
 
+        // Check if alarm has already expired.
+        if let Some(alarm) = alarm.clone() {
+            let now: SystemTime = clock::now();
+            if now >= alarm {
+                error!(
+                    "wait(): alarm has already expired (pid={:?}, tid={:?}, now={:?}, alarm={:?})",
+                    pid, tid, now, alarm
+                );
+                return Err(SleepError::Generic(Error::new(
+                    ErrorCode::OperationTimedOut,
+                    "alarm has already expired",
+                )));
+            }
+        }
+
         self.inner.sleeping.borrow_mut().push_back((pid, tid));
 
-        ProcessManager::sleep()
+        ProcessManager::sleep(alarm)
     }
 }
 

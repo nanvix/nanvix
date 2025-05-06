@@ -87,16 +87,23 @@ pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -
 ///
 #[no_mangle]
 pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -> c_int {
-    let tp: Option<&mut timespec> = if tp.is_null() {
+    nvx::trace!("clock_gettime(): clock_id={:?}, tp={:?}", clock_id, tp);
+    let mut tp: Option<&mut timespec> = if tp.is_null() {
         None
     } else {
         Some(unsafe { &mut *tp })
     };
-    match crate::time::clock_gettime(clock_id, tp) {
+    match crate::time::clock_gettime(clock_id, &mut tp) {
         Ok(_) => 0,
-        Err(e) => {
+        Err(error) => {
+            ::nvx::error!(
+                "clock_gettime(): failed (clock_id={:?}, tp={:?}, error={:?})",
+                clock_id,
+                tp,
+                error
+            );
             // Set errno.
-            *__errno_location() = e.code.get();
+            *__errno_location() = error.code.get();
             -1
         },
     }

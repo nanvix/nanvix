@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdio.h>
 
 //==================================================================================================
 // Constants
@@ -98,5 +99,9 @@ static void main_thread(void)
 // Tests if thread interface for operating on thread-specific data works.
 void test_pthread_tda(void)
 {
+    fprintf(stderr, "testing pthread_tda() ... ");
+
     main_thread();
+
+    fprintf(stderr, "passed\n");
 }

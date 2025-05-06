@@ -85,7 +85,7 @@ impl Semaphore {
             if value > 0 {
                 break value;
             }
-            self.sleeping.wait()?;
+            self.sleeping.wait(None)?;
         };
 
         self.value.store(value - 1, Ordering::SeqCst);

@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdio.h>
 
 //==================================================================================================
 // Constants
@@ -42,8 +43,7 @@ static void *worker_thread(void *arg)
 
     // Wait for the main thread to signal the condition variable.
     assert(pthread_mutex_lock(&mutex) == 0);
-    while (!initialized)
-    {
+    while (!initialized) {
         assert(pthread_cond_wait(&cond, &mutex) == 0);
     }
     assert(pthread_mutex_unlock(&mutex) == 0);
@@ -76,5 +76,9 @@ static void main_thread(void)
 // Tests if statically initialized condition variables can be used for synchronization.
 void test_pthread_cond_static_init(void)
 {
+    fprintf(stderr, "testing pthread_cond_static_init() ... ");
+
     main_thread();
+
+    fprintf(stderr, "passed\n");
 }

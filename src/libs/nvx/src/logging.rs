@@ -83,7 +83,7 @@ impl fmt::Write for Logger {
 
 impl Logger {
     pub fn get(tag: &str, level: LogLevel) -> Self {
-        pm::lock_mutex(MutexAddress::from(&MUTEX as *const usize as usize)).unwrap();
+        pm::lock_mutex(MutexAddress::from(&MUTEX as *const usize as usize), None).unwrap();
         let mut ret: Self = Self;
         let _ = write!(&mut ret, "[{:?}][{}] ", level, tag);
         ret

@@ -13,7 +13,14 @@ use crate::pm::{
     ProcessManager,
     SleepError,
 };
-use ::sys::pm::MutexAddress;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::MutexAddress,
+};
+use ::time::SystemTime;
 
 //==================================================================================================
 // Standalone Functions
@@ -27,6 +34,8 @@ use ::sys::pm::MutexAddress;
 /// # Parameters
 ///
 /// - `raw_addr`: Address of the mutex to lock.
+/// - `timeout_s`: Timeout in seconds.
+/// - `timeout_ns`: Timeout in nanoseconds.
 ///
 /// # Return
 ///
@@ -45,11 +54,45 @@ use ::sys::pm::MutexAddress;
 /// - This function is invoked without holding any resources.
 /// - The calling process does not hold a reference to the process manager.
 ///
-pub unsafe fn lock_mutex(raw_addr: usize) -> Result<(), SleepError> {
+pub unsafe fn lock_mutex(
+    raw_addr: usize,
+    timeout_s: usize,
+    timeout_ns: usize,
+) -> Result<(), SleepError> {
     // Unpack kernel call arguments.
     let mutex_addr: MutexAddress = MutexAddress::from(raw_addr);
+    let timeout: Option<SystemTime> = if timeout_s == usize::MAX && timeout_ns == usize::MAX {
+        None
+    } else {
+        match SystemTime::new(timeout_s as u64, timeout_ns as u32) {
+            Some(timeout) => {
+                // Check if operation is supported.
+                #[cfg(feature = "hyperlight")]
+                if timeout_s != 0 || timeout_ns != 0 {
+                    let reason: &str = "timeout not supported";
+                    error!(
+                        "lock_mutex(): {} (raw_addr={:x?}, timeout_s={:?}, timeout_ns={:?})",
+                        reason, raw_addr, timeout_s, timeout_ns
+                    );
+                    return Err(SleepError::Generic(Error::new(
+                        ErrorCode::OperationNotSupported,
+                        reason,
+                    )));
+                }
+                Some(timeout)
+            },
+            None => {
+                let reason: &str = "invalid timeout";
+                error!(
+                    "lock_mutex(): {} (raw_addr={:x?}, timeout_s={:?}, timeout_ns={:?})",
+                    reason, raw_addr, timeout_s, timeout_ns
+                );
+                return Err(SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason)));
+            },
+        }
+    };
 
     let mutex: Mutex = ProcessManager::get_mutex(mutex_addr).map_err(SleepError::Generic)?;
-    let guard: MutexGuard = mutex.lock()?;
+    let guard: MutexGuard = mutex.lock(timeout)?;
     ProcessManager::put_mutex_guard(mutex_addr, guard).map_err(SleepError::Generic)
 }
