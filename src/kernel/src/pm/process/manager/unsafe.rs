@@ -76,6 +76,7 @@ use ::sys::{
     },
     ExitStatus,
 };
+use ::time::SystemTime;
 
 //==================================================================================================
 // Global Variables
@@ -323,7 +324,7 @@ impl ProcessManager {
                 },
 
                 Err(Ok(join_cond)) => {
-                    join_cond.wait()?;
+                    join_cond.wait(None)?;
                 },
 
                 Err(Err(error)) => break Err(SleepError::Generic(error)),
@@ -335,6 +336,10 @@ impl ProcessManager {
     /// # Description
     ///
     /// Puts the calling thread to sleep.
+    ///
+    /// # Parameters
+    ///
+    /// - `alarm`: Optional alarm time.
     ///
     /// # Returns
     ///
@@ -349,11 +354,11 @@ impl ProcessManager {
     ///
     /// - The calling process is not the kernel process.
     ///
-    pub unsafe fn sleep() -> Result<(), SleepError> {
+    pub unsafe fn sleep(alarm: Option<SystemTime>) -> Result<(), SleepError> {
         let (from, to): (*mut ContextInformation, *mut ContextInformation) = Self::get_mut()
             .try_borrow_mut()
             .map_err(SleepError::Generic)?
-            .sleep();
+            .sleep(alarm);
 
         ContextInformation::switch(from, to);
 

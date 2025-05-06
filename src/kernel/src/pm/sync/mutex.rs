@@ -10,11 +10,12 @@ use crate::pm::{
     sync::condvar::Condvar,
 };
 use ::alloc::sync::Arc;
-use ::sys::error::Error;
-use core::sync::atomic::{
+use ::core::sync::atomic::{
     AtomicBool,
     Ordering,
 };
+use ::sys::error::Error;
+use ::time::SystemTime;
 
 //==================================================================================================
 // Structures
@@ -144,6 +145,10 @@ impl Mutex {
     ///
     /// Acquires the mutex.
     ///
+    /// # Parameters
+    ///
+    /// - `timeout`: Timeout for the mutex.
+    ///
     /// # Returns
     ///
     /// Upon success, empty result is returned. Upon failure, an error is returned instead.
@@ -161,11 +166,16 @@ impl Mutex {
     /// - This function is invoked without holding any resources.
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn lock(&self) -> Result<MutexGuard, SleepError> {
+    pub unsafe fn lock(&self, timeout: Option<SystemTime>) -> Result<MutexGuard, SleepError> {
         loop {
+            // Attempt to acquire the mutex.
             match self.try_lock() {
+                // Success.
                 Ok(guard) => break Ok(guard),
-                Err(_) => self.0.sleeping.wait()?,
+                // Failed to acquire the mutex.
+                Err(()) => {
+                    self.0.sleeping.wait(timeout.clone())?;
+                },
             }
         }
     }

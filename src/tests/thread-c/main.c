@@ -105,6 +105,10 @@ int main(int argc, const char *argv[])
     test_pthread_create_join();
     test_pthread_mutex_static_init();
     test_pthread_mutex_dynamic_init();
+    test_pthread_mutex_trylock();
+#ifndef __hyperlight__
+    test_pthread_mutex_timedlock();
+#endif
     test_pthread_cond_static_init();
     test_pthread_tda();
 

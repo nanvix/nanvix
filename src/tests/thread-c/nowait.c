@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 //==================================================================================================
 // Constants
@@ -79,5 +80,9 @@ static void main_thread(void)
 // Tests if calling exit() causes the program to exit even if there are other threads running.
 void test_pthread_nowait(void)
 {
+    fprintf(stderr, "testing pthread_exit() ... ");
+
     main_thread();
+
+    fprintf(stderr, "passed\n");
 }

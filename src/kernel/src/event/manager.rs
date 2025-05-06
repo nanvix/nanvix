@@ -788,7 +788,7 @@ impl EventManager {
             }
 
             // Wait for an event to be delivered.
-            wait.wait()?;
+            wait.wait(None)?;
         }
     }
 
@@ -961,7 +961,7 @@ fn do_exception_handler(
     };
 
     // SAFETY: The calling thread is not the kernel and no resources are held.
-    unsafe { resume.wait() }
+    unsafe { resume.wait(None) }
 }
 
 fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
@@ -971,6 +971,7 @@ fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
         let status: ErrorCode = match sleep_error {
             SleepError::Generic(generic_error) => generic_error.code,
             SleepError::Interrupted(InterruptReason::Killed) => ErrorCode::Interrupted,
+            SleepError::Interrupted(InterruptReason::TimedOut) => ErrorCode::OperationTimedOut,
         };
 
         // SAFETY: the calling process is not the kernel.
