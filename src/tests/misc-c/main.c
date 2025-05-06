@@ -44,6 +44,7 @@ int main(int argc, const char *argv[])
     test_clock_gettime();
     test_times();
     test_uname();
+    test_gethostname();
 
     // Write magic string to signal that the test passed.
     {
