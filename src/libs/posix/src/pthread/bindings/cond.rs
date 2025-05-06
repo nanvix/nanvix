@@ -18,6 +18,7 @@ use crate::{
     time::timespec,
 };
 use ::nvx::sys::error::ErrorCode;
+use ::time::SystemTime;
 
 //==================================================================================================
 // pthread_cond_broadcast()
@@ -193,16 +194,84 @@ pub unsafe extern "C" fn pthread_cond_signal(cond: *const pthread_cond_t) -> c_i
 // pthread_cond_timedwait()
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Waits on a condition variable with a timeout.
+///
+/// # Parameters
+///
+/// - `cond`: Condition variable.
+/// - `mutex`: Mutex object.
+/// - `abstime`: Absolute time to wait until.
+///
+/// # Returns
+///
+/// If successful, zero is returned. Otherwise, an error code is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `cond` points to a valid `pthread_cond_t` structure.
+/// - `mutex` points to a valid `pthread_mutex_t` structure.
+/// - `abstime` points to a valid `timespec` structure.
+///
 #[no_mangle]
 pub unsafe extern "C" fn pthread_cond_timedwait(
-    _cond: *const pthread_cond_t,
-    _mutex: *mut pthread_mutex_t,
-    _abstime: *const timespec,
+    cond: *const pthread_cond_t,
+    mutex: *mut pthread_mutex_t,
+    abstime: *const timespec,
 ) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/494
-    ::nvx::error!("pthread_cond_timedwait(): not implemented");
-    ErrorCode::InvalidSysCall.get()
+    // Check if `cond` is not valid.
+    if cond.is_null() {
+        ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `mutex` is not valid.
+    if mutex.is_null() {
+        ::nvx::error!("pthread_cond_broadcast(): invalid mutex pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `abstime` is not valid.
+    if abstime.is_null() {
+        ::nvx::error!("pthread_cond_broadcast(): invalid absolute time pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Try to convert `abstime`.
+    let timeout: SystemTime =
+        match SystemTime::new((*abstime).tv_sec as u64, (*abstime).tv_nsec as u32) {
+            Some(timeout) => timeout,
+            None => {
+                ::nvx::error!(
+                    "pthread_cond_timedwait(): invalid timeout (cond={:?}, mutex={:?}, \
+                     abstime={:?})",
+                    cond,
+                    mutex,
+                    abstime
+                );
+                return ErrorCode::InvalidArgument.get();
+            },
+        };
+
+    match syscall::pthread_cond_timedwait(&*cond, &*mutex, Some(timeout)) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::nvx::error!(
+                "pthread_cond_timedwait(): failed to wait on condition variable (cond={:?}, \
+                 mutex={:?}, abstime={:?}, error={:?})",
+                cond,
+                mutex,
+                abstime,
+                error
+            );
+            error.code.get()
+        },
+    }
 }
 
 //==================================================================================================
