@@ -145,7 +145,7 @@ pub type DIR = DirectoryStream;
 ///
 /// A type representing a directory entry.
 ///
-#[derive(Debug, Default)]
+#[derive(Debug)]
 #[repr(C, packed)]
 pub struct dirent {
     /// File serial number.
