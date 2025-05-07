@@ -62,6 +62,9 @@ extern void test_geteuid(void);
 // Tests whether we can get the group ID of the calling process with `getgid()`.
 extern void test_getgid(void);
 
+// Tests whether `gethostname()` works.
+extern void test_gethostname(void);
+
 // Tests whether we can the user ID of the calling process with `getuid()`.
 extern void test_getuid(void);
 

@@ -8,6 +8,12 @@ pub const _POSIX_THREAD_KEYS_MAX: usize = 128;
 /// [`crate::sys::uio::writev`] or [`crate::sys::uio::readv`].
 pub const IOV_MAX: usize = 16;
 
+// Maximum length of a host name (not including the terminating null byte).
+pub const HOST_NAME_MAX: usize = 255;
+
+/// Maximum number of bytes in a pathname (not including the terminating null byte).
+pub const POSIX_HOST_NAME_MAX: usize = 255;
+
 /// Maximum number of bytes in a filename (not including the terminating null byte).
 pub const NAME_MAX: usize = 15;
 
