@@ -20,3 +20,6 @@
 [submodule "opt/openblas"]
 	path = opt/openblas
 	url = https://github.com/nanvix/OpenBLAS
+[submodule "opt/difc"]
+	path = opt/difc
+	url = https://github.com/lpcox/difc-autogen.git
