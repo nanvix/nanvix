@@ -14,11 +14,6 @@
 #include <string.h>
 #include <time.h>
 
-// TODO: Remove the this once it is exposed by Newlib.
-#define CLOCK_PROCESS_CPUTIME_ID 2
-// TODO: Remove the this once it is exposed by Newlib.
-#define CLOCK_THREAD_CPUTIME_ID 3
-
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================

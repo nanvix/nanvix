@@ -15,12 +15,9 @@
 #include <string.h>
 #include <sys/select.h>
 #include <sys/stat.h>
-#include <sys/times.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
-
-// TODO: Remove this when `utimes()` is exposed by Newlib.
-extern int utimes(const char *path, const struct timeval times[2]);
 
 //==================================================================================================
 // Standalone Functions

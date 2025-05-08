@@ -115,6 +115,7 @@ pub struct pthread_attr_t {
     pub inheritsched: c_int,
     pub schedpolicy: c_int,
     pub schedparam: sched_param,
+    pub cputime_clock_allowed: c_int,
     pub detachstate: c_int,
 }
 ::nvx::sys::static_assert_size!(pthread_attr_t, pthread_attr_t::SIZE);
@@ -134,6 +135,8 @@ impl pthread_attr_t {
     const SIZE_OF_SCHEDPOLICY: usize = core::mem::size_of::<c_int>();
     /// Size of the `schedparam` field.
     const SIZE_OF_SCHEDPARAM: usize = core::mem::size_of::<sched_param>();
+    /// Size of the `cputime_clock_allowed` field.
+    const SIZE_OF_CPUTIME_CLOCK_ALLOWED: usize = core::mem::size_of::<c_int>();
     /// Size of the `detachstate` field.
     const SIZE_OF_DETACHSTATE: usize = core::mem::size_of::<c_int>();
 
@@ -145,6 +148,7 @@ impl pthread_attr_t {
         + Self::SIZE_OF_INHERITSCHED
         + Self::SIZE_OF_SCHEDPOLICY
         + Self::SIZE_OF_SCHEDPARAM
+        + Self::SIZE_OF_CPUTIME_CLOCK_ALLOWED
         + Self::SIZE_OF_DETACHSTATE;
 }
 
@@ -159,6 +163,7 @@ impl Default for pthread_attr_t {
             inheritsched: 0,
             schedpolicy: sched::sched_policy::SCHED_OTHER,
             schedparam: sched_param::default(),
+            cputime_clock_allowed: 0,
             detachstate: 0,
         }
     }
