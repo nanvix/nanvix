@@ -13,8 +13,6 @@ import requests
 import os
 import signal
 import argparse
-import argparse
-import signal
 from datetime import timedelta
 
 # ======================================================================================================================
@@ -44,32 +42,58 @@ def parse_args() -> argparse.Namespace:
     """
 
     parser = argparse.ArgumentParser(
-        description="CLI for benchmarking Nanvix.", allow_abbrev=False)
+        description="CLI for benchmarking Nanvix.", allow_abbrev=False
+    )
 
     # Required arguments.
-    parser.add_argument("--nanvixd-sockaddr", type=str,
-                        help="Set socket address for nanvixd", required=True)
-    parser.add_argument("--linuxd-sockaddr", type=str,
-                        help="Set socket address for linuxd", required=True)
-    parser.add_argument("--sandbox-sockaddr", type=str,
-                        help="Set socket address for sandbox", required=True)
-    parser.add_argument("--program-name", type=str,
-                        help="Set program name", required=True)
-    parser.add_argument("--program-args", type=str,
-                        help="Set program args", required=True)
+    parser.add_argument(
+        "--nanvixd-sockaddr",
+        type=str,
+        help="Set socket address for nanvixd",
+        required=True,
+    )
+    parser.add_argument(
+        "--linuxd-sockaddr",
+        type=str,
+        help="Set socket address for linuxd",
+        required=True,
+    )
+    parser.add_argument(
+        "--sandbox-sockaddr",
+        type=str,
+        help="Set socket address for sandbox",
+        required=True,
+    )
+    parser.add_argument(
+        "--program-name", type=str, help="Set program name", required=True
+    )
+    parser.add_argument(
+        "--program-args", type=str, help="Set program args", required=True
+    )
 
     # Optional arguments.
-    parser.add_argument("--timeout", type=int,
-                        help="Set test request timeout", default=TIMEOUT)
-    parser.add_argument("--nrequests", type=int,
-                        help="Set number of requests to send", default=NREQUESTS)
-    parser.add_argument("--core-affinity", type=str,
-                        help="Set core affinity for nanvixd", default=CORE_AFFINITY)
+    parser.add_argument(
+        "--timeout", type=int, help="Set test request timeout", default=TIMEOUT
+    )
+    parser.add_argument(
+        "--nrequests",
+        type=int,
+        help="Set number of requests to send",
+        default=NREQUESTS,
+    )
+    parser.add_argument(
+        "--core-affinity",
+        type=str,
+        help="Set core affinity for nanvixd",
+        default=CORE_AFFINITY,
+    )
 
     return parser.parse_args()
 
 
-def cleanup_socket_files(nanvixd_sockaddr: str, linuxd_sockaddr: str, sandbox_sockaddr: str) -> None:
+def cleanup_socket_files(
+    nanvixd_sockaddr: str, linuxd_sockaddr: str, sandbox_sockaddr: str
+) -> None:
     """
     Removes socket files.
 
@@ -93,12 +117,13 @@ def kill_nanvixd(nanvixd_process: subprocess.Popen) -> None:
     """
 
     print(f"Killing nanvixd (pid={nanvixd_process.pid})")
-    subprocess.run(["sudo", "/usr/bin/kill", "-s",
-                   "SIGINT", f"{nanvixd_process.pid}"])
+    subprocess.run(["sudo", "/usr/bin/kill", "-s", "SIGINT", f"{nanvixd_process.pid}"])
     print(f"Killed nanvixd (pid={nanvixd_process.pid})")
 
 
-def print_progress_bar(iteration: int, total: int, prefix: str = "", length: int = 50, fill: str = "#") -> None:
+def print_progress_bar(
+    iteration: int, total: int, prefix: str = "", length: int = 50, fill: str = "#"
+) -> None:
     """
     Prints a progress bar to the console.
 
@@ -118,7 +143,12 @@ def print_progress_bar(iteration: int, total: int, prefix: str = "", length: int
         print()
 
 
-def abort_execution(nanvixd_process: subprocess.Popen = None, nanvixd_sockaddr: str = "", linuxd_sockaddr: str = "", sandbox_sockaddr: str = "") -> None:
+def abort_execution(
+    nanvixd_process: subprocess.Popen = None,
+    nanvixd_sockaddr: str = "",
+    linuxd_sockaddr: str = "",
+    sandbox_sockaddr: str = "",
+) -> None:
     """
     Aborts execution.
 
@@ -131,8 +161,7 @@ def abort_execution(nanvixd_process: subprocess.Popen = None, nanvixd_sockaddr: 
     if nanvixd_process:
         kill_nanvixd(nanvixd_process)
     if nanvixd_sockaddr or linuxd_sockaddr or sandbox_sockaddr:
-        cleanup_socket_files(
-            nanvixd_sockaddr, linuxd_sockaddr, sandbox_sockaddr)
+        cleanup_socket_files(nanvixd_sockaddr, linuxd_sockaddr, sandbox_sockaddr)
     sys.exit(1)
 
 
@@ -174,8 +203,9 @@ def main() -> None:
     # Install signal handler for cleaning up state.
     def signal_handler(sig, frame):
         print(f"Caught signal {sig}")
-        abort_execution(nanvixd_process, nanvixd_sockaddr,
-                        linuxd_sockaddr, sandbox_sockaddr)
+        abort_execution(
+            nanvixd_process, nanvixd_sockaddr, linuxd_sockaddr, sandbox_sockaddr
+        )
 
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -185,14 +215,24 @@ def main() -> None:
         abort_execution()
 
     command = [
-        "sudo", "-E",
-        "nice", "-n", "-20",
-        "taskset", "-a", "-c", core_affinity,
+        "sudo",
+        "-E",
+        "nice",
+        "-n",
+        "-20",
+        "taskset",
+        "-a",
+        "-c",
+        core_affinity,
         nanvixd_path,
-        "-http-addr", nanvixd_sockaddr,
-        "-linuxd-addr", linuxd_sockaddr,
-        "-sandbox-addr", sandbox_sockaddr,
-        "-keep-alive", "0"
+        "-http-addr",
+        nanvixd_sockaddr,
+        "-linuxd-addr",
+        linuxd_sockaddr,
+        "-sandbox-addr",
+        sandbox_sockaddr,
+        "-keep-alive",
+        "0",
     ]
 
     # Run nanvixd. Note we set process group to be able to kill all processes
@@ -218,20 +258,25 @@ def main() -> None:
             response = requests.post(
                 f"http://localhost:{nanvixd_port_number}",
                 headers={"Content-Type": "application/json"},
-                json={"clientid": 1, "program": program_name,
-                      "args": program_args.split()},
-                timeout=timeout
+                json={
+                    "clientid": 1,
+                    "program": program_name,
+                    "args": program_args.split(),
+                },
+                timeout=timeout,
             )
         except requests.Timeout:
             print("Request timed out, aborting execution.")
-            abort_execution(nanvixd_process, nanvixd_sockaddr,
-                            linuxd_sockaddr, sandbox_sockaddr)
+            abort_execution(
+                nanvixd_process, nanvixd_sockaddr, linuxd_sockaddr, sandbox_sockaddr
+            )
 
         # Check if response is successful.
         if not response.ok:
             print(f"Request failed with status code {response.status_code}")
-            abort_execution(nanvixd_process, nanvixd_sockaddr,
-                            linuxd_sockaddr, sandbox_sockaddr)
+            abort_execution(
+                nanvixd_process, nanvixd_sockaddr, linuxd_sockaddr, sandbox_sockaddr
+            )
         else:
             elapsed_times.append(response.elapsed / timedelta(microseconds=1))
 
@@ -252,8 +297,7 @@ def main() -> None:
     print(f"p99 elapsed time: {p99} us")
 
     kill_nanvixd(nanvixd_process)
-    cleanup_socket_files(
-        nanvixd_sockaddr, linuxd_sockaddr, sandbox_sockaddr)
+    cleanup_socket_files(nanvixd_sockaddr, linuxd_sockaddr, sandbox_sockaddr)
 
 
 if __name__ == "__main__":
