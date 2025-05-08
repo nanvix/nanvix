@@ -22,4 +22,4 @@
 	url = https://github.com/nanvix/OpenBLAS
 [submodule "opt/difc"]
 	path = opt/difc
-	url = https://github.com/lpcox/difc-autogen.git
+	url = ssh://github.com/lpcox/difc-autogen.git
