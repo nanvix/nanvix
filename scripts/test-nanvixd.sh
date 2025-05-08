@@ -6,8 +6,7 @@ SANDBOX_SOCKADDR=$3
 PROGRAM_NAME=$4
 PROGRAM_ARGS=$5
 PROGRAM_EXPECTED_OUTPUT=$6
-
-TIMEOUT=10
+TIMEOUT=${7:-90}
 
 kill_children() {
     local parent_pid=$1
