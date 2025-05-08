@@ -748,13 +748,13 @@ test-$(1): all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@echo "Running test $(1)..."
 ifeq ($(MACHINE),hyperlight)
-	@if [ `stat -c%s "bin/$(1).elf"` -gt 16777216 ]; then \
+	if [ `stat -c%s "bin/$(1).elf"` -gt 16777216 ]; then \
 		echo "\033[31mWarning: bin/$(1).elf exceeds 16 MB, skipping test.\033[0m"; \
 	else \
-		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3); \
+		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3) $(TIMEOUT); \
 	fi
 else
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3)
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3) $(TIMEOUT)
 endif
 endif
 endef
@@ -778,13 +778,13 @@ ifeq ($(shell basename $(WASM_BINARY)),$(1).wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@echo "Running test $(1)..."
 ifeq ($(MACHINE),hyperlight)
-	@if [ `stat -c%s "bin/wasmd.elf"` -gt 16777216 ]; then \
+	if [ `stat -c%s "bin/wasmd.elf"` -gt 16777216 ]; then \
 		echo "\033[31mWarning: bin/wasmd.elf exceeds 16 MB, skipping test!\033[0m"; \
 	else \
-		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3); \
+		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3) $(TIMEOUT); \
 	fi
 else
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3)
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3) $(TIMEOUT)
 endif
 endif
 endif
