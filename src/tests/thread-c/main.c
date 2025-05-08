@@ -78,6 +78,7 @@ int main(int argc, const char *argv[])
                            sizeof(int) +                // inheritsched
                            sizeof(int) +                // schedpolicy
                            sizeof(struct sched_param) + // schedparam
+                           sizeof(int) +                // cputime_clock_allowed
                            sizeof(int)                  // detachstate
 
     );
