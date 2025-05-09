@@ -2,23 +2,28 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Imports
 //==================================================================================================
 
-mod getegid;
-mod geteuid;
-mod getgid;
-mod getuid;
-mod lookup;
-mod signup;
+use ::nvx::{
+    pm::GroupIdentifier,
+    sys::error::Error,
+};
 
 //==================================================================================================
-// Exports
+// Standalone Functions
 //==================================================================================================
 
-pub use getegid::getegid;
-pub use geteuid::geteuid;
-pub use getgid::getgid;
-pub use getuid::getuid;
-pub use lookup::lookup;
-pub use signup::signup;
+///
+/// # Description
+///
+/// Returns the effective group ID of the calling process.
+///
+/// # Returns
+///
+/// Upon successful completion, `getegid()` returns the effective group ID of the calling process.
+/// Otherwise, it returns an error.
+///
+pub fn getegid() -> Result<GroupIdentifier, Error> {
+    unimplemented!("getegid()");
+}

@@ -37,18 +37,15 @@ use crate::{
     },
     pm::{
         clock,
-        process::{
-            identity::ProcessIdentity,
-            state::{
-                InterruptedProcess,
-                ProcessRef,
-                ProcessRefMut,
-                ProcessState,
-                RunnableProcess,
-                RunningProcess,
-                SleepingProcess,
-                ZombieProcess,
-            },
+        process::state::{
+            InterruptedProcess,
+            ProcessRef,
+            ProcessRefMut,
+            ProcessState,
+            RunnableProcess,
+            RunningProcess,
+            SleepingProcess,
+            ZombieProcess,
         },
         sync::{
             condvar::Condvar,
@@ -91,11 +88,9 @@ use ::sys::{
     pm::{
         Capability,
         ConditionAddress,
-        GroupIdentifier,
         MutexAddress,
         ProcessIdentifier,
         ThreadIdentifier,
-        UserIdentifier,
     },
     ExitStatus,
 };
@@ -152,13 +147,8 @@ impl ProcessManagerInner {
         root: Vmem,
         tm: ThreadManager,
     ) -> Self {
-        let kernel: RunnableProcess = RunnableProcess::new(
-            ProcessIdentifier::KERNEL,
-            ProcessIdentity::new(UserIdentifier::ROOT, GroupIdentifier::ROOT),
-            kernel,
-            root,
-            None,
-        );
+        let kernel: RunnableProcess =
+            RunnableProcess::new(ProcessIdentifier::KERNEL, kernel, root, None);
 
         let (kernel, reason, _): (
             RunningProcess,
@@ -540,9 +530,8 @@ impl ProcessManagerInner {
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
         self.next_pid = ProcessIdentifier::from(Into::<u32>::into(pid) + 1);
-        let identity: ProcessIdentity = self.get_running().state().identity().clone();
         let process: RunnableProcess =
-            RunnableProcess::new(pid, identity, thread, vmem, Some(user_stack_allocator));
+            RunnableProcess::new(pid, thread, vmem, Some(user_stack_allocator));
 
         // Add process to the queue of ready processes.
         self.ready.push_back(process);
@@ -1266,50 +1255,6 @@ impl ProcessManager {
             .find_process(pid)?
             .state()
             .has_capability(capability))
-    }
-
-    pub fn getuid(&self, pid: ProcessIdentifier) -> Result<UserIdentifier, Error> {
-        Ok(self.try_borrow()?.find_process(pid)?.state().get_uid())
-    }
-
-    pub fn setuid(&mut self, pid: ProcessIdentifier, uid: UserIdentifier) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .find_process_mut(pid)?
-            .state_mut()
-            .set_uid(uid)
-    }
-
-    pub fn geteuid(&self, pid: ProcessIdentifier) -> Result<UserIdentifier, Error> {
-        Ok(self.try_borrow()?.find_process(pid)?.state().get_euid())
-    }
-
-    pub fn seteuid(&mut self, pid: ProcessIdentifier, euid: UserIdentifier) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .find_process_mut(pid)?
-            .state_mut()
-            .set_euid(euid)
-    }
-
-    pub fn getgid(&self, pid: ProcessIdentifier) -> Result<GroupIdentifier, Error> {
-        Ok(self.try_borrow()?.find_process(pid)?.state().get_gid())
-    }
-
-    pub fn setgid(&mut self, pid: ProcessIdentifier, gid: GroupIdentifier) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .find_process_mut(pid)?
-            .state_mut()
-            .set_gid(gid)
-    }
-
-    pub fn getegid(&self, pid: ProcessIdentifier) -> Result<GroupIdentifier, Error> {
-        Ok(self.try_borrow()?.find_process(pid)?.state().get_egid())
-    }
-
-    pub fn setegid(&mut self, pid: ProcessIdentifier, egid: GroupIdentifier) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .find_process_mut(pid)?
-            .state_mut()
-            .set_egid(egid)
     }
 
     pub fn capctl(

@@ -9,13 +9,9 @@
 pub use ::sys::kcall::pm::{
     capctl,
     exit,
-    getegid,
-    geteuid,
-    getgid,
     getpid,
     gettid,
     gettime,
-    getuid,
     terminate,
 };
 

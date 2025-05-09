@@ -28,22 +28,6 @@ pub enum KcallNumber {
     GetPid,
     /// Get thread identifier.
     GetTid,
-    /// Get user identifier.
-    GetUid,
-    /// Get group identifier.
-    GetGid,
-    /// Get effective user identifier.
-    GetEuid,
-    /// Get effective group identifier.
-    GetEgid,
-    /// Set user identifier.
-    SetUid,
-    /// Set group identifier.
-    SetGid,
-    /// Set effective user identifier.
-    SetEuid,
-    /// Set effective group identifier.
-    SetEgid,
     /// Terminate the calling process.
     Exit,
     /// Control capabilities.
