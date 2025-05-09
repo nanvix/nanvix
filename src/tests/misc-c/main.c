@@ -40,6 +40,7 @@ int main(int argc, const char *argv[])
     test_getgid();
     test_geteuid();
     test_getegid();
+    test_setuid();
     test_seteuid();
     test_setgid();
     test_setegid();
