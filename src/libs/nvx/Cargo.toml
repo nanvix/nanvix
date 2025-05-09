@@ -24,6 +24,7 @@ default = []
 allocator = []
 std = []
 staticlib = ["allocator"]
+kcall = ["sys/kcall"]
 
 # Logging Features
 trace = ["debug"]

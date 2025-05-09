@@ -36,6 +36,7 @@ allocator = ["nvx/allocator"]
 syscall = []
 std = ["nvx/std"]
 staticlib = ["nvx/staticlib"]
+kcall = ["nvx/kcall"]
 
 # Logging
 trace = ["nvx/trace"]
