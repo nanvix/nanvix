@@ -151,6 +151,7 @@ def lint(
     """
 
     make("clippy", machine, arch, release, toolchain_dir, log_level, verbose)
+    make("python-lint", machine, arch, release, None, log_level, verbose)
 
 
 def build(
