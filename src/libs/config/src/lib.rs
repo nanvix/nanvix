@@ -22,6 +22,21 @@ include!(concat!(env!("OUT_DIR"), "/kernel_config.rs"));
 //==================================================================================================
 
 pub mod memory_layout {
+
+    ///
+    /// # Description
+    ///
+    /// Provides the raw value for [`KERNEL_BASE`], which can be used in constant-value expressions.
+    ///
+    pub const KERNEL_BASE_RAW: usize = 0x0000_0000;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the raw value for [`KPOOL_END`], which can be used in constant-value expressions.
+    ///
+    pub const KERNEL_END_RAW: usize = 0x4000_0000;
+
     ///
     /// # Description
     ///
@@ -34,7 +49,7 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`KPOOL_END`], which can be used in constant-value expressions.
     ///
-    pub const USER_BASE_RAW: usize = 0x40000000;
+    pub const USER_BASE_RAW: usize = KERNEL_END_RAW;
 
     ///
     /// # Description
