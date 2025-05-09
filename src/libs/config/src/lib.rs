@@ -109,9 +109,20 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
+    /// End address for shared libraries.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    ///
+    pub const USER_LIBS_END_RAW: usize = 0xb0000000;
+
+    ///
+    /// # Description
+    ///
     /// Provides the raw value for [`USER_HEAP_BASE`], which can be used in constant-value expressions.
     ///
-    pub const USER_HEAP_BASE_RAW: usize = 0xb0000000;
+    pub const USER_HEAP_BASE_RAW: usize = USER_LIBS_END_RAW;
 
     ///
     /// # Description
