@@ -41,6 +41,7 @@ int main(int argc, const char *argv[])
     test_geteuid();
     test_getegid();
     test_setgid();
+    test_setegid();
     test_clock_getres();
     test_clock_gettime();
     test_times();
