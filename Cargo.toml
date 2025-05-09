@@ -20,6 +20,7 @@ members = [
         "src/libs/elf",
         "src/libs/error",
         "src/libs/litebox-nanvix",
+        "src/libs/litebox-platform-multiplex",
         "src/libs/nvx",
         "src/libs/posix",
         "src/libs/proc",
@@ -123,3 +124,9 @@ lto = true
 
 [workspace.lints.rust]
 warnings = "deny"
+
+# Temporarily patch `litebox_platform_multiplex` to our
+# `litebox-platform-multiplex`, until the upstream multiplexer is aware of the
+# Nanvix platform for LiteBox.
+[patch."git+ssh://git@github.com/MSRSSP/litebox.git"]
+litebox_platform_multiplex = { path = "src/libs/litebox-platform-multiplex" }

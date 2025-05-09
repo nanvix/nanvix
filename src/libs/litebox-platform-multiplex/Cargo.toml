@@ -1,0 +1,19 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "litebox_platform_multiplex"
+version = "0.1.0+nanvix-override"
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Litebox Platform Multiplex Replacement Layer"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+litebox = { git = "ssh://git@github.com/MSRSSP/litebox.git", rev = "a98afaf3c3eacf69152bf4066f9c99230c9de010", default-features = false }
+litebox-nanvix = { path = "../litebox-nanvix" }
+once_cell = { version = "1.20.2", default-features = false, features = ["alloc", "race"] }
