@@ -363,11 +363,11 @@ run-linuxd-tests: | \
 
 ifneq ($(strip $(filter yes,$(BUILD_OPT))),)
 
-all-opt: init all-openblas all-python all-zlib
+all-opt: init all-openblas all-python all-sqlite all-zlib
 
-clean-opt: clean-openblas clean-python clean-zlib
+clean-opt: clean-openblas clean-python clean-sqlite clean-zlib
 
-distclean-opt: distclean-openblas distclean-python distclean-zlib
+distclean-opt: distclean-openblas distclean-python distclean-sqlite distclean-zlib
 	$(FORCE_RM_CMD) $(SYSROOT_DIR)
 
 init-opt: init-openblas init-python init-zlib
@@ -433,6 +433,31 @@ endif
 init-python: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh init $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+#===================================================================================================
+# Build Rules for Sqlite
+#===================================================================================================
+
+all-sqlite: init all-guest-staticlibs all-zlib
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	echo "Building sqlite..."
+	bash $(SCRIPTS_DIR)/build-sqlite.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+clean-sqlite: clean-zlib
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+distclean-sqlite: distclean-zlib
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+init-sqlite: init-repo
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh init $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================
