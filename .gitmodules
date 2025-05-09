@@ -20,3 +20,6 @@
 [submodule "opt/openblas"]
 	path = opt/openblas
 	url = https://github.com/nanvix/OpenBLAS
+[submodule "opt/sqlite"]
+	path = opt/sqlite
+	url = https://github.com/nanvix/sqlite.git
