@@ -17,6 +17,7 @@ use ::config::memory_layout::{
     USER_END_RAW,
     USER_STACK_BASE_RAW,
     USER_STACK_SIZE,
+    USER_STACK_TOP_RAW,
 };
 use ::core::cell::RefCell;
 use ::sys::{
@@ -203,16 +204,11 @@ impl UserStackAllocator {
     /// On success, the newly initialized user stack allocator. Otherwise, an error.
     ///
     pub fn new() -> Result<Self, Error> {
-        const USER_STACK_TOP_RAW: usize =
-            USER_STACK_BASE_RAW - USER_STACK_SIZE * NUM_USER_STACK_ENTRIES;
-
-        ::sys::static_assert!(
-            ::config::memory_layout::NUM_USER_STACK_ENTRIES % u8::BITS as usize == 0
-        );
+        ::sys::static_assert!(NUM_USER_STACK_ENTRIES % u8::BITS as usize == 0);
         ::sys::static_assert!(USER_STACK_BASE_RAW <= USER_END_RAW);
         ::sys::static_assert!(USER_STACK_TOP_RAW >= USER_BASE_RAW);
 
-        let len: usize = ::config::memory_layout::NUM_USER_STACK_ENTRIES / u8::BITS as usize;
+        let len: usize = NUM_USER_STACK_ENTRIES / u8::BITS as usize;
         let bitmap: Bitmap = Bitmap::new(len)?;
 
         Ok(Self {
