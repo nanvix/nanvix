@@ -95,7 +95,7 @@ pub fn kcall_handler(
                         KcallNumber::GetTime => pm::gettime(pm, args),
                         KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
                         _ => {
-                            error!("invalid kernel call");
+                            error!("invalid kernel call args: {:?}", args);
                             KcallResult::Error(ErrorCode::InvalidSysCall.into())
                         },
                     };
