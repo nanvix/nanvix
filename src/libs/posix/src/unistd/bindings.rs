@@ -30,6 +30,7 @@ use crate::{
         uid_t,
     },
     unistd::{
+        self,
         syscall,
         STDERR_FILENO,
         STDIN_FILENO,
@@ -1530,6 +1531,46 @@ pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     0
+}
+
+///
+/// # Description
+///
+/// Sets the real group ID of the calling process.
+///
+/// # Parameters
+///
+/// - `gid`: New group ID.
+///
+/// # Returns
+///
+/// Upon successful completion, `setgid()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global variables.
+///
+/// This function is safe to use if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
+    ::nvx::error!("setgid(): gid={:?})", gid);
+
+    // Check wether `gid` equals to the real group ID of the calling process.
+    match unistd::getgid() {
+        Ok(rgid) if gid == rgid => 0,
+        Ok(rgid) => {
+            ::nvx::error!("setgid(): operation not permitted (gid={:?}, rgid={:?})", gid, rgid);
+            *__errno_location() = ErrorCode::OperationNotPermitted.get();
+            -1
+        },
+        Err(error) => {
+            ::nvx::error!("setgid(): failed (gid={:?}, error={:?})", gid, error);
+            -1
+        },
+    }
 }
 
 ///
