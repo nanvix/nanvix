@@ -1616,6 +1616,46 @@ pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
 ///
 /// # Description
 ///
+/// Sets the effective user ID of the calling process.
+///
+/// # Parameters
+///
+/// - `uid`: New user ID.
+///
+/// # Returns
+///
+/// Upon successful completion, `seteuid()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global variables.
+///
+/// This function is safe to use if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
+    ::nvx::error!("seteuid(): uid={:?}", uid);
+
+    // Check wether `uid` equals to the effective user ID of the calling process.
+    match unistd::geteuid() {
+        Ok(euid) if uid == euid => 0,
+        Ok(euid) => {
+            ::nvx::error!("seteuid(): operation not permitted (uid={:?}, euid={:?})", uid, euid);
+            *__errno_location() = ErrorCode::OperationNotPermitted.get();
+            -1
+        },
+        Err(error) => {
+            ::nvx::error!("seteuid(): failed (uid={:?}, error={:?})", uid, error);
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
 /// Creates a symbolic link named `linkpath` which contains the string `target`.
 ///
 /// # Parameters
