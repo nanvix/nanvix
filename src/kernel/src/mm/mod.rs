@@ -60,8 +60,36 @@ use ::core::panic;
 use ::sys::{
     arch::mem,
     error::Error,
-    mm,
 };
+
+//==================================================================================================
+// Static Assertions
+//==================================================================================================
+
+// Ensure that the kernel pool size is multiple of a page size.
+sys::static_assert!(config::kernel::KPOOL_SIZE % PAGE_ALIGNMENT as usize == 0);
+// Ensure that the kernel pool size fits in a single page table.
+sys::static_assert!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
+// Ensure that the kernel stack size is multiple of a page size.
+sys::static_assert!(config::kernel::KSTACK_SIZE % PAGE_ALIGNMENT as usize == 0);
+// Ensure that the kernel stack size fits in a single page table.
+sys::static_assert!(config::kernel::KSTACK_SIZE <= mem::PGTAB_SIZE);
+// Ensure that the user base address is aligned to a page boundary.
+sys::static_assert!(config::memory_layout::USER_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+// Ensure that the user base address is aligned to a page table boundary.
+sys::static_assert!(config::memory_layout::USER_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+// Ensure that the user end address is aligned to a page boundary.
+sys::static_assert!(config::memory_layout::USER_END_RAW % PAGE_ALIGNMENT as usize == 0);
+// Ensure that the user end address is aligned to a page table boundary.
+sys::static_assert!(config::memory_layout::USER_END_RAW % PGTAB_ALIGNMENT as usize == 0);
+// Ensure that the user stack base address is aligned to a page boundary.
+sys::static_assert!(config::memory_layout::USER_STACK_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+// Ensure that the user stack base address is aligned to a page table boundary.
+sys::static_assert!(config::memory_layout::USER_STACK_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+// Ensure that the user heap base address is aligned to a page boundary.
+sys::static_assert!(config::memory_layout::USER_HEAP_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+// Ensure that the user heap base address is aligned to a page table boundary.
+sys::static_assert!(config::memory_layout::USER_HEAP_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
 
 //==================================================================================================
 // Standalone Functions
@@ -112,72 +140,6 @@ fn parse_memory_regions(
     Ok((other_virtual_memory_regions, virtual_memory_regions, physical_memory_regions))
 }
 
-///
-/// # Description
-///
-/// Checks if the memory configuration is correct.
-///
-/// # Notes
-///
-/// If the memory configuration is not correct this function panics the kernel.
-///
-pub fn check_config() {
-    // Ensure that the kernel pool size is multiple of a page size.
-    if !mm::is_aligned(config::kernel::KPOOL_SIZE, PAGE_ALIGNMENT) {
-        panic!("kernel pool size is not multiple of a page size and it should");
-    }
-    // Ensure that the kernel pool size fits in a single page table.
-    if config::kernel::KPOOL_SIZE > mem::PGTAB_SIZE {
-        panic!("kernel pool size does not fit in a single page table and it should");
-    }
-    // Ensure that the kernel stack size is multiple of a page size.
-    if !mm::is_aligned(config::kernel::KSTACK_SIZE, PAGE_ALIGNMENT) {
-        panic!("kernel stack size is not multiple of a page size and it should");
-    }
-    // Ensure that the kernel stack size fits in a single page table.
-    if config::kernel::KSTACK_SIZE > mem::PGTAB_SIZE {
-        panic!("kernel stack size does not fit in a single page table and it should");
-    }
-    // Ensure that the user base address is aligned to a page boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_BASE.into_raw_value(), PAGE_ALIGNMENT) {
-        panic!("user base address is not aligned to a page boundary and it should");
-    }
-    // Ensure that the user base address is aligned to a page table boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_BASE.into_raw_value(), PGTAB_ALIGNMENT) {
-        panic!("user base address is not aligned to a page table boundary and it should");
-    }
-    // Ensure that the user end address is aligned to a page boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_END.into_raw_value(), PAGE_ALIGNMENT) {
-        panic!("user end address is not aligned to a page boundary and it should");
-    }
-    // Ensure that the user end address is aligned to a page table boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_END.into_raw_value(), PGTAB_ALIGNMENT) {
-        panic!("user end address is not aligned to a page table boundary and it should");
-    }
-    // Ensure that the user stack base address is aligned to a page boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_STACK_BASE.into_raw_value(), PAGE_ALIGNMENT)
-    {
-        panic!("user stack base address is not aligned to a page boundary and it should");
-    }
-    // Ensure that the user stack base address is aligned to a page table boundary.
-    if !mm::is_aligned(
-        sys::config::memory_layout::USER_STACK_BASE.into_raw_value(),
-        PGTAB_ALIGNMENT,
-    ) {
-        panic!("user stack base address is not aligned to a page table boundary and it should");
-    }
-    // Ensure that the user heap base address is aligned to a page boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_HEAP_BASE.into_raw_value(), PAGE_ALIGNMENT)
-    {
-        panic!("user heap base address is not aligned to a page boundary and it should");
-    }
-    // Ensure that the user heap base address is aligned to a page table boundary.
-    if !mm::is_aligned(sys::config::memory_layout::USER_HEAP_BASE.into_raw_value(), PGTAB_ALIGNMENT)
-    {
-        panic!("user heap base address is not aligned to a page table boundary and it should");
-    }
-}
-
 /// Initializes the memory manager.
 pub fn init(
     kimage: &KernelImage,
@@ -185,8 +147,6 @@ pub fn init(
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<(Vmem, VirtMemoryManager), Error> {
     info!("initializing the memory manager ...");
-
-    check_config();
 
     type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
     type PhysMemRegions = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;
