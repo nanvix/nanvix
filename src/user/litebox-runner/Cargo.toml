@@ -1,0 +1,34 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "litebox-runner"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Runner for LiteBox"
+homepage.workspace = true
+
+[[bin]]
+name = "litebox-runner"
+
+[dependencies]
+posix = { workspace = true, features = ["syscall", "allocator", "kcall"] }
+litebox = { git = "ssh://git@github.com/MSRSSP/litebox.git", rev = "a98afaf3c3eacf69152bf4066f9c99230c9de010", default-features = false }
+litebox_shim_linux = { git = "ssh://git@github.com/MSRSSP/litebox.git", rev = "a98afaf3c3eacf69152bf4066f9c99230c9de010", default-features = false }
+litebox_platform_multiplex = { path = "../../libs/litebox-platform-multiplex", default-features = false }
+litebox-nanvix = { path = "../../libs/litebox-nanvix", default-features = false }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["posix/trace"]
+debug = ["posix/debug"]
+info = ["posix/info"]
+warn = ["posix/warn"]
+error = ["posix/error"]
+panic = ["posix/panic"]

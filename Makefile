@@ -246,7 +246,7 @@ ALL_GUEST_RUST_LIBS := bitmap config elf error type-safe proc raw-array slab sys
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd matmul
-ALL_GUEST_APPLICATIONS := hello-rust-nostd
+ALL_GUEST_APPLICATIONS := hello-rust-nostd litebox-runner
 ALL_GUEST_TESTS := testd linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
