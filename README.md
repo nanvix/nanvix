@@ -25,6 +25,7 @@ Nanvix is a microkernel-based research operating system.
 ### Libraries
 
 - [x] `OpenBlas v0.3.29`
+- [x] `SQLite v3.49.0`
 - [x] `Zlib v1.3.1`
 
 ### Development Tools
