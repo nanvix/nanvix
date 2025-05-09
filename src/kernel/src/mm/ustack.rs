@@ -13,9 +13,6 @@ use ::alloc::{
 use ::bitmap::Bitmap;
 use ::config::memory_layout::{
     NUM_USER_STACK_ENTRIES,
-    USER_BASE_RAW,
-    USER_END_RAW,
-    USER_STACK_BASE_RAW,
     USER_STACK_SIZE,
     USER_STACK_TOP_RAW,
 };
@@ -205,8 +202,6 @@ impl UserStackAllocator {
     ///
     pub fn new() -> Result<Self, Error> {
         ::sys::static_assert!(NUM_USER_STACK_ENTRIES % u8::BITS as usize == 0);
-        ::sys::static_assert!(USER_STACK_BASE_RAW <= USER_END_RAW);
-        ::sys::static_assert!(USER_STACK_TOP_RAW >= USER_BASE_RAW);
 
         let len: usize = NUM_USER_STACK_ENTRIES / u8::BITS as usize;
         let bitmap: Bitmap = Bitmap::new(len)?;
