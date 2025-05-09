@@ -34,7 +34,7 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`KPOOL_END`], which can be used in constant-value expressions.
     ///
-    pub const USER_BASE_RAW: usize = 0x40000000;
+    pub const USER_BASE_RAW: usize = 0x0800_0000;
 
     ///
     /// # Description
