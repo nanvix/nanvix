@@ -77,6 +77,9 @@ extern void test_setegid(void);
 // Tests whether `setgid()` can be used to set the real group ID of the calling process.
 extern void test_setgid(void);
 
+// Tests whether `seteuid()` can be used to set the effective user ID of the calling process.
+extern void test_seteuid(void);
+
 // Tests whether we can retrieve process times with `times()`.
 extern void test_times(void);
 
