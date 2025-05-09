@@ -17,7 +17,7 @@ pub mod memory_layout {
     /// - This should be aligned page table boundaries.
     /// - When changing this, required
     ///
-    pub const KPOOL_BASE: VirtualAddress = VirtualAddress::new(KPOLL_BASE_RAW);
+    pub const KPOOL_BASE: VirtualAddress = VirtualAddress::new(KPOOL_BASE_RAW);
 
     ///
     /// # Description
