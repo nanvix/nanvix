@@ -97,8 +97,8 @@ impl ProcessDaemon {
                         MessageType::Empty => unreachable!("should not receive empty messages"),
                         MessageType::Interrupt => unreachable!("should not receive interrupts"),
                         MessageType::Ikc => unreachable!("should not receive IKC messages"),
-                        MessageType::SchedulingEvent => {
-                            match self.handle_scheduling_event(message) {
+                        MessageType::ProcessTerminationEvent => {
+                            match self.handle_process_termination_event(message) {
                                 Ok(true) => break,
                                 Ok(false) => continue,
                                 Err(e) => {
@@ -116,7 +116,7 @@ impl ProcessDaemon {
         }
     }
 
-    fn handle_scheduling_event(&mut self, message: Message) -> Result<bool, Error> {
+    fn handle_process_termination_event(&mut self, message: Message) -> Result<bool, Error> {
         // Deserialize process identifier.
         let pid: ProcessIdentifier =
             ProcessIdentifier::from(u32::from_le_bytes(message.payload[0..4].try_into().unwrap()));
@@ -260,7 +260,7 @@ impl ProcessDaemon {
         while !self.processes.is_empty() {
             match ::nvx::ipc::recv() {
                 Ok(message) => {
-                    if message.message_type == MessageType::SchedulingEvent {
+                    if message.message_type == MessageType::ProcessTerminationEvent {
                         // Deserialize process identifier.
                         let pid: ProcessIdentifier = ProcessIdentifier::from(u32::from_le_bytes(
                             message.payload[0..4].try_into().unwrap(),

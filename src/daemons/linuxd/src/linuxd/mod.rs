@@ -185,8 +185,8 @@ impl<'a> LinuxDaemon<'a> {
                 nvx::ipc::MessageType::Interrupt => panic!("received interrupt message"),
                 nvx::ipc::MessageType::Exception => panic!("received exception message"),
                 nvx::ipc::MessageType::Ipc => panic!("received IPC message"),
-                nvx::ipc::MessageType::SchedulingEvent => {
-                    panic!("received scheduling event message")
+                nvx::ipc::MessageType::ProcessTerminationEvent => {
+                    panic!("received process termination event message")
                 },
                 nvx::ipc::MessageType::Ikc => {
                     match LinuxDaemonMessage::try_from_bytes(message.payload) {
