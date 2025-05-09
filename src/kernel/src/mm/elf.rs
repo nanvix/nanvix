@@ -191,7 +191,7 @@ fn do_elf32_load(
     let entry: VirtualAddress = VirtualAddress::new(elf.e_entry as usize);
 
     // Check if entry point does not match what we expect.
-    if entry != config::memory_layout::USER_BASE {
+    if entry < config::memory_layout::USER_BASE {
         let reason: &str = "invalid binary entry point";
         error!("do_elf32_load: {} (entry={:?})", reason, entry);
         return Err(Error::new(ErrorCode::BadFile, "invalid entry point"));
