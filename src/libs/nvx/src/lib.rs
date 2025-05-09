@@ -348,3 +348,15 @@ pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, num: usize) -> *
         dest
     }
 }
+
+// write an implementation of strlen
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+pub unsafe extern "C" fn strlen(s: *const u8) -> usize {
+    let mut i: usize = 0;
+    while *s.add(i) != 0 {
+        i += 1;
+    }
+    i
+}
