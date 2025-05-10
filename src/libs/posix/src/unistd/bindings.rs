@@ -30,6 +30,7 @@ use crate::{
         uid_t,
     },
     unistd::{
+        self,
         syscall,
         STDERR_FILENO,
         STDIN_FILENO,
@@ -1530,6 +1531,166 @@ pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     0
+}
+
+///
+/// # Description
+///
+/// Sets the effective group ID of the calling process.
+///
+/// # Parameters
+///
+/// - `gid`: New group ID.
+///
+/// # Returns
+///
+/// Upon successful completion, `setegid()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global variables.
+///
+/// This function is safe to use if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn setegid(gid: gid_t) -> c_int {
+    ::nvx::error!("setegid(): gid={:?}", gid);
+
+    // Check wether `gid` equals to the effective group ID of the calling process.
+    match unistd::getegid() {
+        Ok(egid) if gid == egid => 0,
+        Ok(egid) => {
+            ::nvx::error!("setegid(): operation not permitted (gid={:?}, egid={:?})", gid, egid);
+            *__errno_location() = ErrorCode::OperationNotPermitted.get();
+            -1
+        },
+        Err(error) => {
+            ::nvx::error!("setegid(): failed (gid={:?}, error={:?})", gid, error);
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Sets the real group ID of the calling process.
+///
+/// # Parameters
+///
+/// - `gid`: New group ID.
+///
+/// # Returns
+///
+/// Upon successful completion, `setgid()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global variables.
+///
+/// This function is safe to use if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
+    ::nvx::error!("setgid(): gid={:?})", gid);
+
+    // Check wether `gid` equals to the real group ID of the calling process.
+    match unistd::getgid() {
+        Ok(rgid) if gid == rgid => 0,
+        Ok(rgid) => {
+            ::nvx::error!("setgid(): operation not permitted (gid={:?}, rgid={:?})", gid, rgid);
+            *__errno_location() = ErrorCode::OperationNotPermitted.get();
+            -1
+        },
+        Err(error) => {
+            ::nvx::error!("setgid(): failed (gid={:?}, error={:?})", gid, error);
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Sets the effective user ID of the calling process.
+///
+/// # Parameters
+///
+/// - `uid`: New user ID.
+///
+/// # Returns
+///
+/// Upon successful completion, `seteuid()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global variables.
+///
+/// This function is safe to use if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
+    ::nvx::error!("seteuid(): uid={:?}", uid);
+
+    // Check wether `uid` equals to the effective user ID of the calling process.
+    match unistd::geteuid() {
+        Ok(euid) if uid == euid => 0,
+        Ok(euid) => {
+            ::nvx::error!("seteuid(): operation not permitted (uid={:?}, euid={:?})", uid, euid);
+            *__errno_location() = ErrorCode::OperationNotPermitted.get();
+            -1
+        },
+        Err(error) => {
+            ::nvx::error!("seteuid(): failed (uid={:?}, error={:?})", uid, error);
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Sets the real user ID of the calling process.
+///
+/// # Parameters
+///
+/// - `uid`: New user ID.
+///
+/// # Returns
+///
+/// Upon successful completion, `setuid()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global variables.
+///
+/// This function is safe to use if the following conditions are met:
+/// - This function is not called from multiple threads at the same time.
+///
+#[no_mangle]
+pub unsafe extern "C" fn setuid(uid: uid_t) -> c_int {
+    ::nvx::error!("setuid(): uid={:?}", uid);
+
+    // Check wether `uid` equals to the real user ID of the calling process.
+    match unistd::getuid() {
+        Ok(ruid) if uid == ruid => 0,
+        Ok(ruid) => {
+            ::nvx::error!("setuid(): operation not permitted (uid={:?}, ruid={:?})", uid, ruid);
+            *__errno_location() = ErrorCode::OperationNotPermitted.get();
+            -1
+        },
+        Err(error) => {
+            ::nvx::error!("setuid(): failed (uid={:?}, error={:?})", uid, error);
+            -1
+        },
+    }
 }
 
 ///
