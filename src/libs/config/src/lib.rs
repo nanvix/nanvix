@@ -22,6 +22,21 @@ include!(concat!(env!("OUT_DIR"), "/kernel_config.rs"));
 //==================================================================================================
 
 pub mod memory_layout {
+
+    ///
+    /// # Description
+    ///
+    /// Provides the raw value for [`KERNEL_BASE`], which can be used in constant-value expressions.
+    ///
+    pub const KERNEL_BASE_RAW: usize = 0x0000_0000;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the raw value for [`KPOOL_END`], which can be used in constant-value expressions.
+    ///
+    pub const KERNEL_END_RAW: usize = 0x4000_0000;
+
     ///
     /// # Description
     ///
@@ -34,7 +49,7 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`KPOOL_END`], which can be used in constant-value expressions.
     ///
-    pub const USER_BASE_RAW: usize = 0x40000000;
+    pub const USER_BASE_RAW: usize = KERNEL_END_RAW;
 
     ///
     /// # Description
@@ -57,20 +72,10 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// Base address for shared libraries.
+    /// End address of the user stack
     ///
-    /// # Notes
-    ///
-    /// - This should be aligned to page and page table boundaries.
-    ///
-    pub const USER_LIBS_BASE_RAW: usize = 0xa0000000;
-
-    ///
-    /// # Description
-    ///
-    /// Provides the raw value for [`USER_HEAP_BASE`], which can be used in constant-value expressions.
-    ///
-    pub const USER_HEAP_BASE_RAW: usize = 0xb0000000;
+    pub const USER_STACK_TOP_RAW: usize =
+        USER_STACK_BASE_RAW - USER_STACK_SIZE * NUM_USER_STACK_ENTRIES;
 
     ///
     /// # Description
@@ -89,6 +94,42 @@ pub mod memory_layout {
     /// Number of entries in the user stack. This should be a multiple of 8.
     ///
     pub const NUM_USER_STACK_ENTRIES: usize = 8;
+
+    ///
+    /// # Description
+    ///
+    /// Base address for shared libraries.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    ///
+    pub const USER_LIBS_BASE_RAW: usize = 0xa0000000;
+
+    ///
+    /// # Description
+    ///
+    /// End address for shared libraries.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    ///
+    pub const USER_LIBS_END_RAW: usize = 0xb0000000;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the raw value for [`USER_HEAP_BASE`], which can be used in constant-value expressions.
+    ///
+    pub const USER_HEAP_BASE_RAW: usize = USER_LIBS_END_RAW;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the raw value for [`USER_HEAP_END`], which can be used in constant-value expressions.
+    ///
+    pub const USER_HEAP_END_RAW: usize = USER_HEAP_BASE_RAW + USER_HEAP_SIZE;
 
     ///
     /// # Description
