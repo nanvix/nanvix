@@ -288,44 +288,8 @@ pub fn init(
     )?;
     memory_regions.push_back(peb);
 
-    // Register host function definitions.
-    let host_functions_base: usize = peb_base + PEB_SIZE;
-    const HOST_FUNCTIONS_SIZE: usize = mem::PAGE_SIZE;
-    let host_functions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "host functions",
-        VirtualAddress::from_raw_value(host_functions_base),
-        HOST_FUNCTIONS_SIZE,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDWR,
-    )?;
-    memory_regions.push_back(host_functions);
-
-    // Register host exception handlers.
-    let host_exceptions_base: usize = host_functions_base + HOST_FUNCTIONS_SIZE;
-    const HOST_EXCEPTIONS_SIZE: usize = 4 * mem::PAGE_SIZE;
-    let host_exceptions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "host exceptions",
-        VirtualAddress::from_raw_value(host_exceptions_base),
-        HOST_EXCEPTIONS_SIZE,
-        MemoryRegionType::Mmio,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(host_exceptions);
-
-    // Register guest error log.
-    let guest_error_log_base: usize = host_exceptions_base + HOST_EXCEPTIONS_SIZE;
-    const GUEST_ERROR_LOG_SIZE: usize = mem::PAGE_SIZE;
-    let guest_error_log: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "guest error log",
-        VirtualAddress::from_raw_value(guest_error_log_base),
-        GUEST_ERROR_LOG_SIZE,
-        MemoryRegionType::Mmio,
-        AccessPermission::RDWR,
-    )?;
-    memory_regions.push_back(guest_error_log);
-
     // Register input data buffer.
-    let input_data_base: usize = guest_error_log_base + GUEST_ERROR_LOG_SIZE;
+    let input_data_base: usize = peb_base + PEB_SIZE;
     const INPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
     let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "input data buffer",
@@ -348,20 +312,8 @@ pub fn init(
     )?;
     memory_regions.push_back(output_data_buffer);
 
-    // Register guest panic context.
-    let guest_panic_context_base: usize = output_data_base + OUTPUT_DATA_BUFFER_SIZE;
-    const GUEST_PANIC_CONTEXT_SIZE: usize = mem::PAGE_SIZE;
-    let guest_panic_context: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "guest panic context",
-        VirtualAddress::from_raw_value(guest_panic_context_base),
-        GUEST_PANIC_CONTEXT_SIZE,
-        MemoryRegionType::Mmio,
-        AccessPermission::RDWR,
-    )?;
-    memory_regions.push_back(guest_panic_context);
-
     // Register reserved area for heap padding.
-    let heap_padding_base: usize = guest_panic_context_base + GUEST_PANIC_CONTEXT_SIZE;
+    let heap_padding_base: usize = output_data_base + OUTPUT_DATA_BUFFER_SIZE;
     debug!("heap_padding_base={:#010x}", heap_padding_base);
     let heap_padding_size: usize = memory_layout::KPOOL_BASE.into_raw_value() - heap_padding_base;
     let heap_padding: MemoryRegion<VirtualAddress> = MemoryRegion::new(
@@ -397,55 +349,6 @@ pub fn init(
         AccessPermission::RDONLY,
     )?;
     memory_regions.push_back(guest_user_stack);
-
-    // Register hyperlight guest user stack guard.
-    let guest_user_stack_guard_base: usize = guest_user_stack_base + guest_user_stack_size;
-    let guest_user_stack_guard_size: usize = mem::PAGE_SIZE;
-    let guest_user_stack_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "guest user stack guard",
-        VirtualAddress::from_raw_value(guest_user_stack_guard_base),
-        guest_user_stack_guard_size,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(guest_user_stack_guard);
-
-    // Register hyperlight kernel stack.
-    let guest_kernel_stack_base: usize = guest_user_stack_guard_base + guest_user_stack_guard_size;
-    let guest_kernel_stack_size: usize = mem::PAGE_SIZE;
-    let guest_kernel_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "guest kernel stack",
-        VirtualAddress::from_raw_value(guest_kernel_stack_base),
-        guest_kernel_stack_size,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(guest_kernel_stack);
-
-    // Register hyperlight kernel stack guard.
-    let guest_kernel_stack_guard_base: usize = guest_kernel_stack_base + guest_kernel_stack_size;
-    let guest_kernel_stack_guard_size: usize = mem::PAGE_SIZE;
-    let guest_kernel_stack_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "guest kernel stack guard",
-        VirtualAddress::from_raw_value(guest_kernel_stack_guard_base),
-        guest_kernel_stack_guard_size,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(guest_kernel_stack_guard);
-
-    // Register hyperlight boot stack.
-    let guest_boot_stack_base: usize =
-        guest_kernel_stack_guard_base + guest_kernel_stack_guard_size;
-    let guest_boot_stack_size: usize = mem::PAGE_SIZE;
-    let guest_boot_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "guest boot stack",
-        VirtualAddress::from_raw_value(guest_boot_stack_base),
-        guest_boot_stack_size,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(guest_boot_stack);
 
     unsafe {
         ProcessEnvironmentBlock::init(peb_base as *mut HyperlightPEB)?;
