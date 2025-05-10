@@ -122,6 +122,11 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             Ok(()) => KcallResult::ok(),
             Err(e) => KcallResult::Error(e.code.into()),
         },
+        // SAFETY: The calling thread does not hold any resources.
+        KcallNumber::Sleep => match unsafe { pm::sleep(arg0 as usize, arg1 as usize) } {
+            Ok(()) => KcallResult::ok(),
+            Err(sleep_error) => handle_sleep_error(sleep_error),
+        },
 
         // Dispatch kernel call for remote execution.
         _ => match ScoreBoard::get_mut() {
