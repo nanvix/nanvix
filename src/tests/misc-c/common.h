@@ -71,6 +71,18 @@ extern void test_getuid(void);
 // Tests whether we can get the current time of a clock with `clock_gettime()`.
 extern void test_clock_gettime(void);
 
+// Tests whether `setegid()` can be used to set the effective group ID of the calling process.
+extern void test_setegid(void);
+
+// Tests whether `setgid()` can be used to set the real group ID of the calling process.
+extern void test_setgid(void);
+
+// Tests whether `seteuid()` can be used to set the effective user ID of the calling process.
+extern void test_seteuid(void);
+
+// Tests whether `setuid()` can be used to set the real user ID of the calling process.
+extern void test_setuid(void);
+
 // Tests whether we can retrieve process times with `times()`.
 extern void test_times(void);
 
