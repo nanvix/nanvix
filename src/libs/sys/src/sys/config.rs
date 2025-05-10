@@ -7,6 +7,31 @@
 pub mod memory_layout {
     use crate::mm::VirtualAddress;
     use config::memory_layout::*;
+
+    ///
+    /// # Description
+    ///
+    /// Base address of the kernel.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    /// - When changing this, linked scripts should also be updated.
+    ///
+    pub const KERNEL_BASE: VirtualAddress = VirtualAddress::new(KERNEL_BASE_RAW);
+
+    ///
+    /// # Description
+    ///
+    /// End address of the kernel.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    /// - When changing this, linked scripts should also be updated.
+    ///
+    pub const KERNEL_END: VirtualAddress = VirtualAddress::new(KERNEL_END_RAW);
+
     ///
     /// # Description
     ///
