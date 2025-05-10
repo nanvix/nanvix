@@ -12,6 +12,7 @@ pub use ::sys::kcall::pm::{
     getpid,
     gettid,
     gettime,
+    sleep,
     terminate,
 };
 

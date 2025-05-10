@@ -7,6 +7,7 @@
 
 mod clock_getres;
 mod clock_gettime;
+mod nanosleep;
 
 //==================================================================================================
 // Exports
@@ -15,4 +16,5 @@ mod clock_gettime;
 pub use self::{
     clock_getres::clock_getres,
     clock_gettime::clock_gettime,
+    nanosleep::nanosleep,
 };
