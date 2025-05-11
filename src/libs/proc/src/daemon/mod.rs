@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    identity::ProcessIdentity,
     message,
     LookupMessage,
     ProcessManagementMessage,
@@ -50,7 +51,8 @@ use ::nvx::{
 //==================================================================================================
 
 pub struct ProcessDaemon {
-    processes: BTreeMap<ProcessIdentifier, String>,
+    // FIXME: auto-signup process on process creation.
+    processes: BTreeMap<ProcessIdentifier, (String, Option<ProcessIdentity>)>,
 }
 
 impl ProcessDaemon {
@@ -95,8 +97,8 @@ impl ProcessDaemon {
                         MessageType::Empty => unreachable!("should not receive empty messages"),
                         MessageType::Interrupt => unreachable!("should not receive interrupts"),
                         MessageType::Ikc => unreachable!("should not receive IKC messages"),
-                        MessageType::SchedulingEvent => {
-                            match self.handle_scheduling_event(message) {
+                        MessageType::ProcessTerminationEvent => {
+                            match self.handle_process_termination_event(message) {
                                 Ok(true) => break,
                                 Ok(false) => continue,
                                 Err(e) => {
@@ -114,7 +116,7 @@ impl ProcessDaemon {
         }
     }
 
-    fn handle_scheduling_event(&mut self, message: Message) -> Result<bool, Error> {
+    fn handle_process_termination_event(&mut self, message: Message) -> Result<bool, Error> {
         // Deserialize process identifier.
         let pid: ProcessIdentifier =
             ProcessIdentifier::from(u32::from_le_bytes(message.payload[0..4].try_into().unwrap()));
@@ -126,8 +128,8 @@ impl ProcessDaemon {
         ::nvx::info!("process terminated (pid={:?}, status={:?})", pid, status);
 
         // De-register process.
-        if let Some(name) = self.processes.remove(&pid) {
-            ::nvx::info!("deregistering process (pid={:?}, name={:?})", pid, name);
+        if let Some((name, _identity)) = self.processes.remove(&pid) {
+            ::nvx::info!("deregistering process (pid={:?}, name={:?}", pid, name,);
 
             if name == Self::INITD_NAME {
                 return Ok(true);
@@ -187,7 +189,7 @@ impl ProcessDaemon {
                     }
 
                     ::nvx::info!("signing up process (pid={:?}, name={:?})", pid, s.as_bytes());
-                    self.processes.insert(pid, s);
+                    self.processes.insert(pid, (s, None));
                     message::signup_response(destination, pid, 0)
                 },
                 Err(_) => {
@@ -227,7 +229,7 @@ impl ProcessDaemon {
         };
 
         // Check if process is the memory daemon.
-        for (pid, pname) in self.processes.iter() {
+        for (pid, (pname, _identity)) in self.processes.iter() {
             ::nvx::info!("looking up process (name={:?}, pname={:?})", name, pname);
 
             if pname == name {
@@ -247,7 +249,7 @@ impl ProcessDaemon {
     pub fn shutdown(&mut self) {
         ::nvx::info!("shutting down process manager daemon...");
 
-        for (pid, pname) in self.processes.iter() {
+        for (pid, (pname, _identity)) in self.processes.iter() {
             ::nvx::info!("shutting down process (pid={:?}, name={:?})", pid, pname);
             let message: Message =
                 message::shutdown_request(*pid, 0).expect("failed to broadcast shutdown message");
@@ -258,7 +260,7 @@ impl ProcessDaemon {
         while !self.processes.is_empty() {
             match ::nvx::ipc::recv() {
                 Ok(message) => {
-                    if message.message_type == MessageType::SchedulingEvent {
+                    if message.message_type == MessageType::ProcessTerminationEvent {
                         // Deserialize process identifier.
                         let pid: ProcessIdentifier = ProcessIdentifier::from(u32::from_le_bytes(
                             message.payload[0..4].try_into().unwrap(),
@@ -269,7 +271,7 @@ impl ProcessDaemon {
                             i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
 
                         // De-register process.
-                        if let Some(name) = self.processes.remove(&pid) {
+                        if let Some((name, _identity)) = self.processes.remove(&pid) {
                             ::nvx::info!(
                                 "process terminated (name={:?}, pid={:?}, status={:?})",
                                 name,
