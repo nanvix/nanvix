@@ -34,8 +34,8 @@ pub enum MessageType {
     Exception,
     /// The message carries information sent by a process to another.
     Ipc,
-    /// The message encodes information about a scheduling event.
-    SchedulingEvent,
+    /// The message encodes information about a process termination event.
+    ProcessTerminationEvent,
     /// The message carries information sent from one kernel to another.
     Ikc,
 }
@@ -64,7 +64,7 @@ impl MessageType {
             MessageType::Interrupt => [1],
             MessageType::Exception => [2],
             MessageType::Ipc => [3],
-            MessageType::SchedulingEvent => [4],
+            MessageType::ProcessTerminationEvent => [4],
             MessageType::Ikc => [5],
         }
     }
@@ -89,7 +89,7 @@ impl MessageType {
             [1] => Ok(MessageType::Interrupt),
             [2] => Ok(MessageType::Exception),
             [3] => Ok(MessageType::Ipc),
-            [4] => Ok(MessageType::SchedulingEvent),
+            [4] => Ok(MessageType::ProcessTerminationEvent),
             [5] => Ok(MessageType::Ikc),
             _ => Err(Error::new(ErrorCode::InvalidMessage, "invalid message type")),
         }
@@ -103,7 +103,7 @@ impl fmt::Debug for MessageType {
             MessageType::Interrupt => write!(f, "interrupt"),
             MessageType::Exception => write!(f, "exception"),
             MessageType::Ipc => write!(f, "inter-process communication"),
-            MessageType::SchedulingEvent => write!(f, "scheduling event"),
+            MessageType::ProcessTerminationEvent => write!(f, "process termination event"),
             MessageType::Ikc => write!(f, "inter-kernel communication"),
         }
     }

@@ -13,14 +13,10 @@ use crate::{
     pm::ProcessManager,
 };
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+    error::Error,
     pm::{
         Capability,
         ProcessIdentifier,
-        UserIdentifier,
     },
 };
 
@@ -36,12 +32,7 @@ fn do_capctl(
 ) -> Result<(), Error> {
     trace!("do_capctl(): pid={:?}, capability={:?}, value={:?}", pid, capability, value);
 
-    // Checks if the process has enough privileges.
-    if pm.geteuid(pid)? != UserIdentifier::ROOT {
-        let reason: &str = "permission denied";
-        error!("do_capctl: {}", reason);
-        return Err(Error::new(ErrorCode::PermissionDenied, reason));
-    }
+    //FIXME: check if process has enough privileges to change capabilities.
 
     pm.capctl(pid, capability, value)
 }

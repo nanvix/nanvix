@@ -127,8 +127,8 @@ pub fn main() {
                 MessageType::Empty => unreachable!("should not receive empty messages"),
                 MessageType::Interrupt => unreachable!("should not receive interrupts"),
                 MessageType::Ikc => unreachable!("should not receive ikc messages"),
-                MessageType::SchedulingEvent => {
-                    unreachable!("should not receive scheduling events")
+                MessageType::ProcessTerminationEvent => {
+                    unreachable!("should not receive process termination events")
                 },
             },
             Err(e) => ::nvx::error!("failed to receive exception message (error={:?})", e),

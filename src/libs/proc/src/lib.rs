@@ -17,6 +17,8 @@ mod message;
 #[cfg(feature = "syscall")]
 mod syscall;
 
+pub mod identity;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -49,6 +51,10 @@ pub use message::{
 use nvx::pm::ProcessIdentifier;
 #[cfg(feature = "syscall")]
 pub use syscall::{
+    getegid,
+    geteuid,
+    getgid,
+    getuid,
     lookup,
     signup,
 };

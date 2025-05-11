@@ -19,11 +19,9 @@ use crate::{
     pm::{
         Capability,
         ConditionAddress,
-        GroupIdentifier,
         MutexAddress,
         ProcessIdentifier,
         ThreadIdentifier,
-        UserIdentifier,
     },
 };
 use ::time::SystemTime;
@@ -66,82 +64,6 @@ pub fn gettid() -> Result<ThreadIdentifier, Error> {
     let result: i32 = kcall0!(KcallNumber::GetTid.into());
 
     ThreadIdentifier::try_from(result)
-}
-
-//==================================================================================================
-// Get User Identifier
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Gets the user identifier of the calling process.
-///
-/// # Return Values
-///
-/// Upon successful completion, the user identifier of the calling process is returned. Upon
-/// failure, an error is returned instead.
-///
-pub fn getuid() -> Result<UserIdentifier, Error> {
-    let result: i32 = kcall0!(KcallNumber::GetUid.into());
-    UserIdentifier::try_from(result)
-}
-
-//==================================================================================================
-// Get Effective User Identifier
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Gets the effective user identifier of the calling process.
-///
-/// # Return Values
-///
-/// Upon successful completion, the effective user identifier of the calling process is returned.
-/// Upon failure, an error is returned instead.
-///
-pub fn geteuid() -> Result<UserIdentifier, Error> {
-    let result: i32 = kcall0!(KcallNumber::GetEuid.into());
-    UserIdentifier::try_from(result)
-}
-
-//==================================================================================================
-// Get Group Identifier
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Gets the group identifier of the calling process.
-///
-/// # Return Values
-///
-/// Upon successful completion, the group identifier of the calling process is returned. Upon
-/// failure, an error is returned instead.
-///
-pub fn getgid() -> Result<GroupIdentifier, Error> {
-    let result: i32 = kcall0!(KcallNumber::GetGid.into());
-    GroupIdentifier::try_from(result)
-}
-
-//==================================================================================================
-// Get Effective Group Identifier
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Gets the effective group identifier of the calling process.
-///
-/// # Return Values
-///
-/// Upon successful completion, the effective group identifier of the calling process is returned.
-/// Upon failure, an error is returned instead.
-///
-pub fn getegid() -> Result<GroupIdentifier, Error> {
-    let result: i32 = kcall0!(KcallNumber::GetEgid.into());
-    GroupIdentifier::try_from(result)
 }
 
 //==================================================================================================

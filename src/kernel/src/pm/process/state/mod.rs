@@ -41,10 +41,7 @@ use crate::{
         Vmem,
     },
     pm::{
-        process::{
-            capability::Capabilities,
-            identity::ProcessIdentity,
-        },
+        process::capability::Capabilities,
         sync::{
             condvar::Condvar,
             mutex::Mutex,
@@ -69,10 +66,8 @@ use ::sys::{
     pm::{
         Capability,
         ConditionAddress,
-        GroupIdentifier,
         MutexAddress,
         ProcessIdentifier,
-        UserIdentifier,
     },
 };
 
@@ -142,8 +137,6 @@ impl ProcessRef<'_> {
 pub struct ProcessState {
     /// Process identifier.
     pid: ProcessIdentifier,
-    /// Process identity.
-    identity: ProcessIdentity,
     /// Capabilities.
     capabilities: Capabilities,
     /// Memory address space.
@@ -167,13 +160,11 @@ pub struct ProcessState {
 impl ProcessState {
     pub fn new(
         pid: ProcessIdentifier,
-        identity: ProcessIdentity,
         vmem: Vmem,
         user_stack_allocator: Option<UserStackAllocator>,
     ) -> Self {
         Self {
             pid,
-            identity,
             capabilities: Capabilities::default(),
             vmem,
             events: LinkedList::new(),
@@ -188,42 +179,6 @@ impl ProcessState {
 
     pub fn pid(&self) -> ProcessIdentifier {
         self.pid
-    }
-
-    pub fn identity(&self) -> &ProcessIdentity {
-        &self.identity
-    }
-
-    pub fn get_uid(&self) -> UserIdentifier {
-        self.identity.get_uid()
-    }
-
-    pub fn set_uid(&mut self, uid: UserIdentifier) -> Result<(), Error> {
-        self.identity.set_uid(uid)
-    }
-
-    pub fn get_euid(&self) -> UserIdentifier {
-        self.identity.get_euid()
-    }
-
-    pub fn set_euid(&mut self, euid: UserIdentifier) -> Result<(), Error> {
-        self.identity.set_euid(euid)
-    }
-
-    pub fn get_gid(&self) -> GroupIdentifier {
-        self.identity.get_gid()
-    }
-
-    pub fn set_gid(&mut self, gid: GroupIdentifier) -> Result<(), Error> {
-        self.identity.set_gid(gid)
-    }
-
-    pub fn get_egid(&self) -> GroupIdentifier {
-        self.identity.get_egid()
-    }
-
-    pub fn set_egid(&mut self, egid: GroupIdentifier) -> Result<(), Error> {
-        self.identity.set_egid(egid)
     }
 
     pub fn set_capability(&mut self, capability: Capability) {

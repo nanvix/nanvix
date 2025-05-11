@@ -12,14 +12,11 @@ use crate::{
         Vmem,
     },
     pm::{
-        process::{
-            identity::ProcessIdentity,
-            state::{
-                interrupted::interrupt,
-                ProcessState,
-                RunningProcess,
-                ZombieProcess,
-            },
+        process::state::{
+            interrupted::interrupt,
+            ProcessState,
+            RunningProcess,
+            ZombieProcess,
         },
         thread::{
             InterruptReason,
@@ -53,13 +50,12 @@ pub struct RunnableProcessWithReadyThread {
 impl RunnableProcessWithReadyThread {
     fn new(
         pid: ProcessIdentifier,
-        identity: ProcessIdentity,
         ready_thread: ReadyThread,
         vmem: Vmem,
         user_stack_allocator: Option<UserStackAllocator>,
     ) -> Self {
         Self {
-            state: Box::new(ProcessState::new(pid, identity, vmem, user_stack_allocator)),
+            state: Box::new(ProcessState::new(pid, vmem, user_stack_allocator)),
             ready_threads: NonEmptyVecDeque::new(ready_thread),
             interrupted_threads: None,
             sleeping_threads: None,
@@ -451,14 +447,12 @@ pub enum RunnableProcess {
 impl RunnableProcess {
     pub fn new(
         pid: ProcessIdentifier,
-        identity: ProcessIdentity,
         ready_thread: ReadyThread,
         vmem: Vmem,
         user_stack_allocator: Option<UserStackAllocator>,
     ) -> Self {
         RunnableProcess::WithReadyThread(RunnableProcessWithReadyThread::new(
             pid,
-            identity,
             ready_thread,
             vmem,
             user_stack_allocator,
