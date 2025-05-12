@@ -7,15 +7,20 @@
 
 import subprocess
 import argparse
-from typing import List, Tuple
+from typing import List
 
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
 
 # List of supported target machines.
-TARGET_MACHINES: List[str] = ["qemu-isapc",
-                              "qemu-pc", "qemu-baremetal", "microvm", "hyperlight"]
+TARGET_MACHINES: List[str] = [
+    "qemu-isapc",
+    "qemu-pc",
+    "qemu-baremetal",
+    "microvm",
+    "hyperlight",
+]
 
 # List of supported target architectures.
 TARGET_ARCHS: List[str] = ["x86"]
@@ -48,15 +53,16 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
     # Echo command.
     print(f"Running command: {' '.join(command)}")
 
-    with open(stdout_log_file, 'w') as stdout_file, open(stderr_log_file, 'w') as stderr_file:
+    with open(stdout_log_file, "w") as stdout_file, open(stderr_log_file, "w"):
         process = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        )
 
         # Poll stdout and stderr
         while True:
             stdout = process.stdout.readline()
 
-            if process.poll() is not None and stdout == '':
+            if process.poll() is not None and stdout == "":
                 break
 
             if stdout:
@@ -73,7 +79,17 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
     return return_code
 
 
-def make(target: str, machine: str, arch: str, release: bool, toolchain_dir: str = None, log_level: str = None, verbose: bool = False, timeout: int = None, build_opt=True) -> None:
+def make(
+    target: str,
+    machine: str,
+    arch: str,
+    release: bool,
+    toolchain_dir: str = None,
+    log_level: str = None,
+    verbose: bool = False,
+    timeout: int = None,
+    build_opt=True,
+) -> None:
     """
     Runs make command.
 
@@ -107,15 +123,21 @@ def make(target: str, machine: str, arch: str, release: bool, toolchain_dir: str
 
     command.append("BUILD_OPT=yes" if build_opt else "BUILD_OPT=no")
 
-    return_code = run_command(
-        command, f"{target}-stdout.log", f"{target}-stderr.log")
+    return_code = run_command(command, f"{target}-stdout.log", f"{target}-stderr.log")
 
     if return_code:
         print(f"Make failed with code={return_code}.")
         exit(1)
 
 
-def lint(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_level: str = None, verbose: bool = False) -> None:
+def lint(
+    machine: str,
+    arch: str,
+    release: bool,
+    toolchain_dir: str = None,
+    log_level: str = None,
+    verbose: bool = False,
+) -> None:
     """
     Lints Nanvix source code.
 
@@ -129,9 +151,17 @@ def lint(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
     """
 
     make("clippy", machine, arch, release, toolchain_dir, log_level, verbose)
+    make("python-lint", machine, arch, release, None, log_level, verbose)
 
 
-def build(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_level: str = None, verbose: bool = False) -> None:
+def build(
+    machine: str,
+    arch: str,
+    release: bool,
+    toolchain_dir: str = None,
+    log_level: str = None,
+    verbose: bool = False,
+) -> None:
     """
     Builds Nanvix for a target machine and architecture.
 
@@ -147,7 +177,15 @@ def build(machine: str, arch: str, release: bool, toolchain_dir: str = None, log
     make("all", machine, arch, release, toolchain_dir, log_level, verbose)
 
 
-def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_level: str = None, verbose: bool = False, timeout: int = None) -> None:
+def test(
+    machine: str,
+    arch: str,
+    release: bool,
+    toolchain_dir: str = None,
+    log_level: str = None,
+    verbose: bool = False,
+    timeout: int = None,
+) -> None:
     """
     Tests Nanvix for a target machine and architecture.
 
@@ -161,11 +199,29 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
         timeout (int, optional): Timeout. Defaults to None.
     """
 
-    make("run-unit-tests", machine, arch, release,
-         toolchain_dir, log_level, verbose, timeout, build_opt=False)
+    make(
+        "run-unit-tests",
+        machine,
+        arch,
+        release,
+        toolchain_dir,
+        log_level,
+        verbose,
+        timeout,
+        build_opt=False,
+    )
 
-    make("run", machine, arch, release,
-         toolchain_dir, log_level, verbose, timeout, build_opt=False)
+    make(
+        "run",
+        machine,
+        arch,
+        release,
+        toolchain_dir,
+        log_level,
+        verbose,
+        timeout,
+        build_opt=False,
+    )
 
     # Check if last line of "test-stdout.log" contains the magic string.
     with open("run-stdout.log", "r") as file:
@@ -180,13 +236,31 @@ def test(machine: str, arch: str, release: bool, toolchain_dir: str = None, log_
 
     # Check if linuxd tests are supported.
     if has_linuxd_tests(machine):
-        make("run-linuxd-tests", machine, arch, release,
-             toolchain_dir, log_level, verbose, timeout, build_opt=False)
+        make(
+            "run-linuxd-tests",
+            machine,
+            arch,
+            release,
+            toolchain_dir,
+            log_level,
+            verbose,
+            timeout,
+            build_opt=False,
+        )
 
     # Check if nanvixd tests are supported.
     if has_nanvixd_tests(machine):
-        make("run-nanvixd-tests", machine, arch, release,
-             toolchain_dir, log_level, verbose, timeout, build_opt=False)
+        make(
+            "run-nanvixd-tests",
+            machine,
+            arch,
+            release,
+            toolchain_dir,
+            log_level,
+            verbose,
+            timeout,
+            build_opt=False,
+        )
 
 
 def has_linuxd_tests(machine: str) -> bool:
@@ -226,34 +300,51 @@ def parse_args() -> argparse.Namespace:
     """
 
     parser = argparse.ArgumentParser(
-        description="A simple CLI program.", allow_abbrev=False)
+        description="A simple CLI program.", allow_abbrev=False
+    )
 
     # Required arguments.
-    parser.add_argument("--target-machine", type=str,
-                        help=f"Set target machine {TARGET_MACHINES}", required=True)
-    parser.add_argument("--target-arch", type=str,
-                        help=f"Set target architecture {TARGET_ARCHS}", required=True)
+    parser.add_argument(
+        "--target-machine",
+        type=str,
+        help=f"Set target machine {TARGET_MACHINES}",
+        required=True,
+    )
+    parser.add_argument(
+        "--target-arch",
+        type=str,
+        help=f"Set target architecture {TARGET_ARCHS}",
+        required=True,
+    )
 
     # Optional arguments.
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--release", action="store_true",
-                       help="Build in release mode", default=False)
-    group.add_argument("--debug", action="store_true",
-                       help="Build in debug mode", default=True)
-    parser.add_argument("--toolchain-dir", type=str,
-                        help="Set toolchain directory")
-    parser.add_argument("--log-level", type=str,
-                        help=f"Set log level {LOG_LEVELS}", default="trace")
-    parser.add_argument("--verbose", action="store_true",
-                        help="Enable verbose build", default=True)
-    parser.add_argument("--timeout", type=int,
-                        help="Set test timeout", default=90)
-    parser.add_argument("--lint", action="store_true",
-                        help="Lint Nanvix source code", default=False)
-    parser.add_argument("--build", action="store_true",
-                        help="Build Nanvix", default=False)
-    parser.add_argument("--test", action="store_true",
-                        help="Test Nanvix (implies --build)", default=False)
+    group.add_argument(
+        "--release", action="store_true", help="Build in release mode", default=False
+    )
+    group.add_argument(
+        "--debug", action="store_true", help="Build in debug mode", default=True
+    )
+    parser.add_argument("--toolchain-dir", type=str, help="Set toolchain directory")
+    parser.add_argument(
+        "--log-level", type=str, help=f"Set log level {LOG_LEVELS}", default="trace"
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Enable verbose build", default=True
+    )
+    parser.add_argument("--timeout", type=int, help="Set test timeout", default=90)
+    parser.add_argument(
+        "--lint", action="store_true", help="Lint Nanvix source code", default=False
+    )
+    parser.add_argument(
+        "--build", action="store_true", help="Build Nanvix", default=False
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Test Nanvix (implies --build)",
+        default=False,
+    )
 
     return parser.parse_args()
 
@@ -276,18 +367,37 @@ def main() -> None:
 
     # Lint source code.
     if args.lint:
-        lint(args.target_machine, args.target_arch, args.release or not args.debug, args.toolchain_dir,
-             args.log_level, args.verbose)
+        lint(
+            args.target_machine,
+            args.target_arch,
+            args.release or not args.debug,
+            args.toolchain_dir,
+            args.log_level,
+            args.verbose,
+        )
 
     # Build source code.
     if args.build:
-        build(args.target_machine, args.target_arch, args.release or not args.debug,
-              args.toolchain_dir, args.log_level, args.verbose)
+        build(
+            args.target_machine,
+            args.target_arch,
+            args.release or not args.debug,
+            args.toolchain_dir,
+            args.log_level,
+            args.verbose,
+        )
 
     # Test Nanvix.
     if args.test:
-        test(args.target_machine, args.target_arch, args.release or not args.debug,
-             args.toolchain_dir, args.log_level, args.verbose, args.timeout)
+        test(
+            args.target_machine,
+            args.target_arch,
+            args.release or not args.debug,
+            args.toolchain_dir,
+            args.log_level,
+            args.verbose,
+            args.timeout,
+        )
 
 
 if __name__ == "__main__":
