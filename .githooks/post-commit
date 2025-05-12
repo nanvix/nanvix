@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+set -euo pipefail
+
+make python-lint > /dev/null
+
+if ! git diff --quiet; then
+  echo "Post-commit: python formatting introduced changes, consider ammending your commit"
+fi
