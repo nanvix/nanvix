@@ -13,7 +13,7 @@ TOOLCHAIN_DIR=${1:-$(pwd)/toolchain}
 TTY=${2:-/dev/null}
 
 # Timeout for each step.
-TIMEOUT=90
+TIMEOUT=300
 
 # Padding to force aligned formatting.
 PADDING=40
