@@ -25,6 +25,7 @@ members = [
         "src/libs/profiler",
         "src/libs/raw-array",
         "src/libs/slab",
+        "src/libs/static_assert",
         "src/libs/sys",
         "src/libs/time",
         "src/libs/type-safe",
@@ -79,6 +80,7 @@ serde_json = { version = "1.0.140", default-features = false, features = [
 signal-hook = "0.3.17"
 slab = { path = "src/libs/slab", default-features = false }
 spin = { version = "0.10.0", default-features = false }
+static_assert = { path = "src/libs/static_assert", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
 time = { path = "src/libs/time", default-features = false }
