@@ -35,6 +35,6 @@ use ::nvx::sys::error::Error;
 /// Upon successful completion, `unlink()` returns empty. Otherwise, it returns an error.
 ///
 pub fn unlink(path: &str) -> Result<(), Error> {
-    ::nvx::trace!("unlink(): path = {:?}", path);
+    ::syslog::trace!("unlink(): path = {:?}", path);
     fcntl::unlinkat(crate::fcntl::AT_FDCWD, path, 0)
 }

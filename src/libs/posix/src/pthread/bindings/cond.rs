@@ -49,7 +49,7 @@ use ::time::SystemTime;
 pub unsafe extern "C" fn pthread_cond_broadcast(cond: *const pthread_cond_t) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -92,13 +92,13 @@ pub unsafe extern "C" fn pthread_cond_init(
 ) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if we should use custom attributes.
     if !attr.is_null() {
-        ::nvx::error!(
+        ::syslog::error!(
             "pthread_cond_broadcast(): condition variable attributes are not supported, ignoring"
         );
     }
@@ -141,7 +141,7 @@ pub unsafe extern "C" fn pthread_cond_init(
 pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -180,7 +180,7 @@ pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_in
 pub unsafe extern "C" fn pthread_cond_signal(cond: *const pthread_cond_t) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -226,19 +226,19 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
 ) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid mutex pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `abstime` is not valid.
     if abstime.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid absolute time pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid absolute time pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -247,7 +247,7 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
         match SystemTime::new((*abstime).tv_sec as u64, (*abstime).tv_nsec as u32) {
             Some(timeout) => timeout,
             None => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "pthread_cond_timedwait(): invalid timeout (cond={:?}, mutex={:?}, \
                      abstime={:?})",
                     cond,
@@ -261,7 +261,7 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
     match syscall::pthread_cond_timedwait(&*cond, &*mutex, Some(timeout)) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "pthread_cond_timedwait(): failed to wait on condition variable (cond={:?}, \
                  mutex={:?}, abstime={:?}, error={:?})",
                 cond,
@@ -308,13 +308,13 @@ pub unsafe extern "C" fn pthread_cond_wait(
 ) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid condition variable pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::nvx::error!("pthread_cond_broadcast(): invalid mutex pointer");
+        ::syslog::error!("pthread_cond_broadcast(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

@@ -54,7 +54,7 @@ pub fn linkat(
     newpath: &str,
     flags: c_int,
 ) -> Result<(), Error> {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "linkat(): olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}",
         olddirfd,
         oldpath,
@@ -80,7 +80,7 @@ pub fn linkat(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "linkat(): failed (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
              error={})",
             olddirfd,
@@ -99,7 +99,7 @@ pub fn linkat(
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "linkat(): failed to parse error code (olddirfd={}, oldpath={}, newdirfd={}, \
                      newpath={}, flags={}, error={:?})",
                     olddirfd,
@@ -122,7 +122,7 @@ pub fn linkat(
             // Response was not successfully parsed.
             header => {
                 let reason: &str = "unexpected message header";
-                ::nvx::error!(
+                ::syslog::error!(
                     "linkat(): {:?} (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
                      header={:?})",
                     reason,

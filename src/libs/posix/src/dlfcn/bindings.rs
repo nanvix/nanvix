@@ -140,13 +140,13 @@ static DL_LAST_ERROR: Mutex<DlError> = Mutex::new(DlError::new());
 ///
 #[no_mangle]
 pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
-    ::nvx::trace!("dladdr(): addr = {:?}, dlip = {:?}", addr, dlip);
+    ::syslog::trace!("dladdr(): addr = {:?}, dlip = {:?}", addr, dlip);
 
     // Check if `addr` is not valid.
     if addr.is_null() {
         let reason: &str = "addr is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::nvx::error!("dladdr(): {}", reason);
+        ::syslog::error!("dladdr(): {}", reason);
         return -1;
     }
 
@@ -154,7 +154,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
     if dlip.is_null() {
         let reason: &str = "info is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::nvx::error!("dladdr(): {}", reason);
+        ::syslog::error!("dladdr(): {}", reason);
         return -1;
     }
 
@@ -166,7 +166,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
         Ok(()) => 0,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::nvx::error!("dladdr(): {:?}", error);
+            ::syslog::error!("dladdr(): {:?}", error);
             -1
         },
     }
@@ -198,12 +198,12 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
-    ::nvx::trace!("dlclose(): handle = {:?}", handle);
+    ::syslog::trace!("dlclose(): handle = {:?}", handle);
     // Check if handle is not valid.
     if handle.is_null() {
         let reason: &str = "handle is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::nvx::error!("dlclose(): {}", reason);
+        ::syslog::error!("dlclose(): {}", reason);
         return -1;
     }
 
@@ -212,7 +212,7 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
         Ok(()) => 0,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::nvx::error!("dlclose(): {:?}", error);
+            ::syslog::error!("dlclose(): {:?}", error);
             -1
         },
     }
@@ -272,13 +272,13 @@ pub unsafe extern "C" fn dlerror() -> *mut c_char {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_void {
-    ::nvx::trace!("dlopen(): filename = {:?}, mode = {}", filename, mode);
+    ::syslog::trace!("dlopen(): filename = {:?}, mode = {}", filename, mode);
 
     // Check if filename is not valid.
     if filename.is_null() {
         let reason: &str = "filename is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::nvx::error!("dlopen(): {}", reason);
+        ::syslog::error!("dlopen(): {}", reason);
         return ptr::null_mut();
     }
 
@@ -287,7 +287,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
         Ok(pathname) => pathname,
         Err(error) => {
             let reason: String = alloc::format!("invalid filename (error={:?})", error);
-            ::nvx::error!("dlopen(): {}", reason);
+            ::syslog::error!("dlopen(): {}", reason);
             DL_LAST_ERROR.lock().set(&reason);
             return ptr::null_mut();
         },
@@ -299,7 +299,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
         Err(error) => {
             let reason: String = alloc::format!("invalid mode (error={:?})", error);
             DL_LAST_ERROR.lock().set(&reason);
-            ::nvx::error!("dlopen(): {}", reason);
+            ::syslog::error!("dlopen(): {}", reason);
             return ptr::null_mut();
         },
     };
@@ -308,7 +308,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
     if mode == DlOpenMode::Local {
         let reason: &str = "local mode is not supported";
         DL_LAST_ERROR.lock().set(reason);
-        ::nvx::error!("dlopen(): {}", reason);
+        ::syslog::error!("dlopen(): {}", reason);
         return ptr::null_mut();
     }
 
@@ -317,7 +317,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
         Ok(handle) => handle.as_mut_ptr(),
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::nvx::error!("dlopen(): {:?}", error);
+            ::syslog::error!("dlopen(): {:?}", error);
             ptr::null_mut()
         },
     }
@@ -351,13 +351,13 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
 ///
 #[no_mangle]
 pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void {
-    ::nvx::trace!("dlsym(): handle = {:?}, symbol = {:?}", handle, symbol);
+    ::syslog::trace!("dlsym(): handle = {:?}, symbol = {:?}", handle, symbol);
 
     // Check if handle is not valid.
     if handle.is_null() {
         let reason: &str = "handle is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::nvx::error!("dlsym(): {}", reason);
+        ::syslog::error!("dlsym(): {}", reason);
         return ptr::null_mut();
     }
 
@@ -365,7 +365,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
     if symbol.is_null() {
         let reason: &str = "symbol is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::nvx::error!("dlsym(): {}", reason);
+        ::syslog::error!("dlsym(): {}", reason);
         return ptr::null_mut();
     }
 
@@ -374,7 +374,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
         Ok(symbol) => symbol,
         Err(error) => {
             let reason: String = alloc::format!("invalid symbol (error={:?})", error);
-            ::nvx::error!("dlsym(): {}", reason);
+            ::syslog::error!("dlsym(): {}", reason);
             DL_LAST_ERROR.lock().set(&reason);
             return ptr::null_mut();
         },
@@ -385,7 +385,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
         Ok(symbol) => symbol.into_raw_value() as *mut c_void,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::nvx::error!("dlsym(): {:?}", error);
+            ::syslog::error!("dlsym(): {:?}", error);
             ptr::null_mut()
         },
     }

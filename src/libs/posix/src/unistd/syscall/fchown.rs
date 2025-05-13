@@ -44,7 +44,7 @@ use ::nvx::{
 /// Upon successful completion, `fchown()` returns empty. Otherwise, it returns an error.
 ///
 pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
-    ::nvx::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
+    ::syslog::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
@@ -57,7 +57,7 @@ pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), E
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "fchown(): failed (fd={:?}, owner={:?}, group={:?}, status={:?})",
             fd,
             owner,
@@ -79,7 +79,7 @@ pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), E
             LinuxDaemonMessageHeader::FileChownResponse => Ok(()),
             // Invalid response.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "fchown(): invalid response (fd={:?}, owner={:?}, group={:?}, header={:?})",
                     fd,
                     owner,

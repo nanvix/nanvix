@@ -63,18 +63,18 @@ pub unsafe extern "C" fn pwritev(
     iovcnt: c_int,
     offset: off_t,
 ) -> ssize_t {
-    ::nvx::trace!("pwritev(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
+    ::syslog::trace!("pwritev(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
 
     // Check if number of elements in the vector is valid.
     if iovcnt < 0 {
-        ::nvx::error!("pwritev(): invalid iovcnt {iovcnt}");
+        ::syslog::error!("pwritev(): invalid iovcnt {iovcnt}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if vector base is invalid.
     if iov.is_null() {
-        ::nvx::error!("pwritev(): invalid iov {iov:?}");
+        ::syslog::error!("pwritev(): invalid iov {iov:?}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -94,7 +94,7 @@ pub unsafe extern "C" fn pwritev(
 
             // Check if iov is invalid.
             if iov.is_null() {
-                ::nvx::error!("pwritev(): invalid iov {iov:?}");
+                ::syslog::error!("pwritev(): invalid iov {iov:?}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov"));
             }
 
@@ -103,13 +103,13 @@ pub unsafe extern "C" fn pwritev(
 
             // Check if `iov_base` is invalid.
             if iov_base.is_null() {
-                ::nvx::error!("pwritev(): invalid iov_base {iov_base:?}");
+                ::syslog::error!("pwritev(): invalid iov_base {iov_base:?}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov_base"));
             }
 
             // Check if `iov_len` is invalid.
             if iov_len == 0 {
-                ::nvx::error!("pwritev(): invalid iov_len {iov_len}");
+                ::syslog::error!("pwritev(): invalid iov_len {iov_len}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov_len"));
             }
 
@@ -124,7 +124,7 @@ pub unsafe extern "C" fn pwritev(
                         count
                     },
                     Err(error) => {
-                        ::nvx::error!("pwritev(): write failed (errno={:?})", error);
+                        ::syslog::error!("pwritev(): write failed (errno={:?})", error);
                         *__errno_location() = error.code.get();
                         return Err(error);
                     },
@@ -146,7 +146,7 @@ pub unsafe extern "C" fn pwritev(
                 Ok(count) => count as ssize_t,
                 // Real write failed.
                 Err(error) => {
-                    ::nvx::error!("pwritev(): write failed (errno={:?})", error);
+                    ::syslog::error!("pwritev(): write failed (errno={:?})", error);
                     *__errno_location() = error.code.get();
                     -1
                 },
@@ -154,7 +154,7 @@ pub unsafe extern "C" fn pwritev(
         },
         // Dry-mode run failed because some other error.
         Err(error) => {
-            ::nvx::error!("pwritev(): dry-run failed (errno={:?})", error);
+            ::syslog::error!("pwritev(): dry-run failed (errno={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -190,18 +190,18 @@ pub unsafe extern "C" fn pwritev(
 ///
 #[no_mangle]
 pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset: off_t) -> ssize_t {
-    ::nvx::trace!("preadv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
+    ::syslog::trace!("preadv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
 
     // Check if number of elements in the vector is valid.
     if (iovcnt < 0) || (iovcnt > limits::IOV_MAX as i32) {
-        ::nvx::error!("preadv(): invalid iovcnt {iovcnt}");
+        ::syslog::error!("preadv(): invalid iovcnt {iovcnt}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if vector base is invalid.
     if iov.is_null() {
-        ::nvx::error!("preadv(): invalid iov {iov:?}");
+        ::syslog::error!("preadv(): invalid iov {iov:?}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -221,7 +221,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
 
             // Check if base address is invalid.
             if iov.is_null() {
-                ::nvx::error!("preadv(): invalid iov {iov:?}");
+                ::syslog::error!("preadv(): invalid iov {iov:?}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov"));
             }
 
@@ -230,7 +230,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
 
             // Check if base address is invalid.
             if iov_base.is_null() {
-                ::nvx::error!("preadv(): invalid iov_base {iov_base:?}");
+                ::syslog::error!("preadv(): invalid iov_base {iov_base:?}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov_base"));
             }
 
@@ -245,7 +245,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
                         count as size_t
                     },
                     Err(error) => {
-                        ::nvx::error!("preadv(): read failed (errno={:?})", error);
+                        ::syslog::error!("preadv(): read failed (errno={:?})", error);
                         *__errno_location() = error.code.get();
                         return Err(error);
                     },
@@ -265,7 +265,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
             match do_preadv(false) {
                 Ok(count) => count as ssize_t,
                 Err(error) => {
-                    ::nvx::error!("preadv(): read failed (errno={:?})", error);
+                    ::syslog::error!("preadv(): read failed (errno={:?})", error);
                     *__errno_location() = error.code.get();
                     -1
                 },
@@ -273,7 +273,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
         },
         // Dry-run failed because some other error.
         Err(error) => {
-            ::nvx::error!("preadv(): dry-run failed (errno={:?})", error);
+            ::syslog::error!("preadv(): dry-run failed (errno={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -308,18 +308,18 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
 ///
 #[no_mangle]
 pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize_t {
-    ::nvx::trace!("readv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
+    ::syslog::trace!("readv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
 
     // Check if number of elements in the vector is valid.
     if (iovcnt < 0) || (iovcnt > limits::IOV_MAX as i32) {
-        ::nvx::error!("readv(): invalid iovcnt {iovcnt}");
+        ::syslog::error!("readv(): invalid iovcnt {iovcnt}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if vector base is invalid.
     if iov.is_null() {
-        ::nvx::error!("readv(): invalid iov {iov:?}");
+        ::syslog::error!("readv(): invalid iov {iov:?}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -338,7 +338,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
 
             // Check if base address is invalid.
             if iov.is_null() {
-                ::nvx::error!("readv(): invalid iov {iov:?}");
+                ::syslog::error!("readv(): invalid iov {iov:?}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov"));
             }
 
@@ -347,7 +347,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
 
             // Check if base address is invalid.
             if iov_base.is_null() {
-                ::nvx::error!("readv(): invalid iov_base {iov_base:?}");
+                ::syslog::error!("readv(): invalid iov_base {iov_base:?}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov_base"));
             }
 
@@ -377,7 +377,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
             match do_readv(false) {
                 Ok(count) => count as ssize_t,
                 Err(error) => {
-                    ::nvx::error!("readv(): read failed (errno={:?})", error);
+                    ::syslog::error!("readv(): read failed (errno={:?})", error);
                     *__errno_location() = error.code.get();
                     -1
                 },
@@ -385,7 +385,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
         },
         // Dry-run failed because some other error.
         Err(error) => {
-            ::nvx::error!("readv(): dry-run failed (errno={:?})", error);
+            ::syslog::error!("readv(): dry-run failed (errno={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -420,18 +420,18 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
 ///
 #[no_mangle]
 pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t {
-    ::nvx::trace!("writev(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
+    ::syslog::trace!("writev(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
 
     // Check if number of elements in the vector is valid.
     if iovcnt < 0 {
-        ::nvx::error!("writev(): invalid iovcnt {iovcnt}");
+        ::syslog::error!("writev(): invalid iovcnt {iovcnt}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if vector base is invalid.
     if iov.is_null() {
-        ::nvx::error!("writev(): invalid iov {iov:?}");
+        ::syslog::error!("writev(): invalid iov {iov:?}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -450,7 +450,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
 
             // Check if iov is invalid.
             if iov.is_null() {
-                ::nvx::error!("writev(): invalid iov {iov:?}");
+                ::syslog::error!("writev(): invalid iov {iov:?}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov"));
             }
 
@@ -459,13 +459,13 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
 
             // Check if `iov_base` is invalid.
             if iov_base.is_null() {
-                ::nvx::error!("writev(): invalid iov_base {iov_base:?}");
+                ::syslog::error!("writev(): invalid iov_base {iov_base:?}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov_base"));
             }
 
             // Check if `iov_len` is invalid.
             if iov_len == 0 {
-                ::nvx::error!("writev(): invalid iov_len {iov_len}");
+                ::syslog::error!("writev(): invalid iov_len {iov_len}");
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid iov_len"));
             }
 
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
                 match unistd::syscall::write(fd, buffer) {
                     Ok(count) => count,
                     Err(error) => {
-                        ::nvx::error!("writev(): write failed (errno={:?})", error);
+                        ::syslog::error!("writev(): write failed (errno={:?})", error);
                         *__errno_location() = error.code.get();
                         return Err(error);
                     },
@@ -499,7 +499,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
                 Ok(count) => count as ssize_t,
                 // Real write failed.
                 Err(error) => {
-                    ::nvx::error!("writev(): write failed (errno={:?})", error);
+                    ::syslog::error!("writev(): write failed (errno={:?})", error);
                     *__errno_location() = error.code.get();
                     -1
                 },
@@ -507,7 +507,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
         },
         // Dry-mode run failed because some other error.
         Err(error) => {
-            ::nvx::error!("writev(): dry-run failed (errno={:?})", error);
+            ::syslog::error!("writev(): dry-run failed (errno={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },

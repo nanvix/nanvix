@@ -111,7 +111,7 @@ impl ProcessIdentity {
             Ok(())
         } else {
             let reason: &str = "user is change another user's identity";
-            // ::nvx::error!("set_uid(): {}", reason);
+            // ::syslog::error!("set_uid(): {}", reason);
             Err(Error::new(ErrorCode::PermissionDenied, reason))
         }
     }
@@ -154,7 +154,7 @@ impl ProcessIdentity {
             Ok(())
         } else {
             let reason: &str = "user is changing another user's identity";
-            // ::nvx::error!("set_euid(): {}", reason);
+            // ::syslog::error!("set_euid(): {}", reason);
             Err(Error::new(ErrorCode::PermissionDenied, reason))
         }
     }
@@ -199,7 +199,7 @@ impl ProcessIdentity {
             Ok(())
         } else {
             let reason: &str = "user is changing another user's identity";
-            // ::nvx::error!("set_gid(): {}", reason);
+            // ::syslog::error!("set_gid(): {}", reason);
             Err(Error::new(ErrorCode::PermissionDenied, reason))
         }
     }
@@ -242,7 +242,7 @@ impl ProcessIdentity {
             Ok(())
         } else {
             let reason: &str = "user is changing another user's identity";
-            // ::nvx::error!("set_egid(): {}", reason);
+            // ::syslog::error!("set_egid(): {}", reason);
             Err(Error::new(ErrorCode::PermissionDenied, reason))
         }
     }

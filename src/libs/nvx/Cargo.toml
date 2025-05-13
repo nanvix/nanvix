@@ -15,16 +15,17 @@ crate-type = ["lib", "staticlib"]
 
 [dependencies]
 arch = { workspace = true }
-sys = { workspace = true, features = ["kcall"] }
 talc = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
+syslog = { workspace = true, default-features = true }
+sys = { workspace = true, features = ["kcall"] }
 static_assert = { workspace = true }
 
 [features]
 default = []
 allocator = []
-std = []
+std = ["syslog/std"]
 staticlib = ["allocator"]
 
 # Logging Features

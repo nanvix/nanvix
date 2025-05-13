@@ -62,7 +62,7 @@ pub fn pthread_create(
     start_routine: extern "C" fn(usize) -> usize,
     arg: usize,
 ) -> Result<pthread_t, Error> {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "pthread_create(): _start_routine={:?}, arg={:?}",
         ::core::ptr::addr_of!(start_routine),
         arg
@@ -71,7 +71,7 @@ pub fn pthread_create(
 }
 
 pub fn pthread_join(thread: pthread_t) -> Result<isize, Error> {
-    ::nvx::trace!("pthread_join(): _thread={:?}", thread);
+    ::syslog::trace!("pthread_join(): _thread={:?}", thread);
 
     let mut retval: usize = 0;
     let thread: ThreadIdentifier = thread.into();
@@ -83,7 +83,7 @@ pub fn pthread_join(thread: pthread_t) -> Result<isize, Error> {
 }
 
 pub fn pthread_exit(retval: usize) -> Result<!, Error> {
-    ::nvx::trace!("pthread_exit(): retval={:?}", retval);
+    ::syslog::trace!("pthread_exit(): retval={:?}", retval);
     exit_thread(retval)
 }
 

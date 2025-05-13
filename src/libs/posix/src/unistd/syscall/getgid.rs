@@ -38,7 +38,7 @@ use ::nvx::{
 /// returns an error.
 ///
 pub fn getgid() -> Result<gid_t, Error> {
-    ::nvx::trace!("getgid()");
+    ::syslog::trace!("getgid()");
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
@@ -51,7 +51,7 @@ pub fn getgid() -> Result<gid_t, Error> {
 
     // Check whether system call succeeded or not
     if response.status != 0 {
-        ::nvx::error!("getgid(): failed (pid={:?}, status={:?})", pid, { response.status });
+        ::syslog::error!("getgid(): failed (pid={:?}, status={:?})", pid, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // System call failed, return error
@@ -70,7 +70,7 @@ pub fn getgid() -> Result<gid_t, Error> {
             },
             // Invalid response
             header => {
-                ::nvx::error!("getgid(): invalid response (pid={:?}, header={:?})", pid, header);
+                ::syslog::error!("getgid(): invalid response (pid={:?}, header={:?})", pid, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
             },
         }

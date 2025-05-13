@@ -49,7 +49,7 @@ impl WasmEngine {
         let fd_advise: Func = Func::wrap(
             store,
             |_caller: Caller<'_, u32>, fd: i32, offset: i64, len: i64, advice: i32| -> i32 {
-                ::nvx::trace!("fd_advise: {fd}, {offset}, {len}, {advice}");
+                ::syslog::trace!("fd_advise: {fd}, {offset}, {len}, {advice}");
                 Errno::Nosys.into()
             },
         );
@@ -61,7 +61,7 @@ impl WasmEngine {
     pub(super) fn define_fd_allocate(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
         let fd_allocate: Func =
             Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32, offset: i64, len: i64| -> i32 {
-                ::nvx::trace!("fd_allocate: {fd}, {offset}, {len}");
+                ::syslog::trace!("fd_allocate: {fd}, {offset}, {len}");
                 Errno::Nosys.into()
             });
         linker
@@ -75,7 +75,7 @@ impl WasmEngine {
         store: &mut Store<HostState>,
     ) {
         let fd_close: Func = Func::wrap(store, move |_caller: Caller<'_, u32>, fd: i32| -> i32 {
-            ::nvx::trace!("fd_close(): {:?}", fd);
+            ::syslog::trace!("fd_close(): {:?}", fd);
 
             // Convert file descriptor.
             let fd: Fd = fd;
@@ -92,7 +92,7 @@ impl WasmEngine {
 
     pub(super) fn define_fd_datasync(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
         let fd_datasync: Func = Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32| -> i32 {
-            ::nvx::trace!("fd_datasync: {fd}");
+            ::syslog::trace!("fd_datasync: {fd}");
             Errno::Nosys.into()
         });
         linker
@@ -106,7 +106,7 @@ impl WasmEngine {
     ) {
         let fd_fdstat_get: Func =
             Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32, buf: i32| -> i32 {
-                ::nvx::trace!("fd_fdstat_get: {fd}, {buf}");
+                ::syslog::trace!("fd_fdstat_get: {fd}, {buf}");
                 Errno::Nosys.into()
             });
         linker
@@ -120,7 +120,7 @@ impl WasmEngine {
     ) {
         let fd_fdstat_set_flags: Func =
             Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32, flags: i32| -> i32 {
-                ::nvx::trace!("fd_fdstat_set_flags: {fd}, {flags}");
+                ::syslog::trace!("fd_fdstat_set_flags: {fd}, {flags}");
                 Errno::Nosys.into()
             });
         linker
@@ -139,7 +139,7 @@ impl WasmEngine {
              fs_rights_base: i64,
              fs_rights_inheriting: i64|
              -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "fd_fdstat_set_rights: {fd}, {fs_rights_base}, {fs_rights_inheriting}"
                 );
                 Errno::Nosys.into()
@@ -156,7 +156,7 @@ impl WasmEngine {
     ) {
         let fd_filestat_get: Func =
             Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32, buf: i32| -> i32 {
-                ::nvx::trace!("fd_filestat_get: {fd}, {buf}");
+                ::syslog::trace!("fd_filestat_get: {fd}, {buf}");
                 Errno::Nosys.into()
             });
         linker
@@ -170,7 +170,7 @@ impl WasmEngine {
     ) {
         let fd_filestat_set_size: Func =
             Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32, size: i64| -> i32 {
-                ::nvx::trace!("fd_filestat_set_size: {fd}, {size}");
+                ::syslog::trace!("fd_filestat_set_size: {fd}, {size}");
                 Errno::Nosys.into()
             });
         linker
@@ -185,7 +185,7 @@ impl WasmEngine {
         let fd_filestat_set_times: Func = Func::wrap(
             store,
             |_caller: Caller<'_, u32>, fd: i32, atim: i64, mtim: i64, fst_flags: i32| -> i32 {
-                ::nvx::trace!("fd_filestat_set_times: {fd}, {atim}, {mtim}, {fst_flags}");
+                ::syslog::trace!("fd_filestat_set_times: {fd}, {atim}, {mtim}, {fst_flags}");
                 Errno::Nosys.into()
             },
         );
@@ -204,7 +204,7 @@ impl WasmEngine {
              offset: i64,
              nread_ptr: i32|
              -> i32 {
-                ::nvx::trace!("fd_pread: {fd}, {iovs_ptr}, {iovs_len}, {offset} {nread_ptr}");
+                ::syslog::trace!("fd_pread: {fd}, {iovs_ptr}, {iovs_len}, {offset} {nread_ptr}");
                 Errno::Nosys.into()
             },
         );
@@ -226,7 +226,7 @@ impl WasmEngine {
                   path_buf_offset: i32,
                   path_len: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "fd_prestat_dir_name(): fd={:?}, path_buf_offset={:?}, path_len={:?}",
                     fd,
                     path_buf_offset,
@@ -242,7 +242,7 @@ impl WasmEngine {
                 let path_buf_offset: usize = match path_buf_offset.try_into() {
                     Ok(path_buf_offset) => path_buf_offset,
                     _ => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "fd_prestat_dir_name(): invalid path_buf_offset {:#010x}",
                             path_buf_offset
                         );
@@ -256,7 +256,7 @@ impl WasmEngine {
 
                         // Check if memory is large enough to store the directory name.
                         if memory.len() < path_buf_offset + dirname_bytes.len() {
-                            ::nvx::error!(
+                            ::syslog::error!(
                                 "fd_prestat_dir_name(): buffer too small (size={:?}, \
                                  required={:?})",
                                 memory.len(),
@@ -287,7 +287,7 @@ impl WasmEngine {
         let fd_prestat_get: Func = Func::wrap(
             store,
             move |mut caller: Caller<'_, HostState>, fd: i32, prestat_offset: i32| -> i32 {
-                ::nvx::trace!("fd_prestat_get(): fd={:?}, prestat_offset={:?}", fd, prestat_offset);
+                ::syslog::trace!("fd_prestat_get(): fd={:?}, prestat_offset={:?}", fd, prestat_offset);
 
                 let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
 
@@ -302,7 +302,7 @@ impl WasmEngine {
 
                 // Check if memory is large enough to store pre-stat.
                 if memory.len() < prestat_offset + mem::size_of::<Prestat>() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "fd_prestat_get(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         prestat_offset + mem::size_of::<Prestat>()
@@ -334,7 +334,7 @@ impl WasmEngine {
              offset: i64,
              nwritten_ptr: i32|
              -> i32 {
-                ::nvx::trace!("fd_pwrite: {fd}, {iovs_ptr}, {iovs_len}, {offset}, {nwritten_ptr}");
+                ::syslog::trace!("fd_pwrite: {fd}, {iovs_ptr}, {iovs_len}, {offset}, {nwritten_ptr}");
                 Errno::Nosys.into()
             },
         );
@@ -356,7 +356,7 @@ impl WasmEngine {
                   iovs_len: i32,
                   nread_ptr: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "fd_read(): fd={:?}, iovs_buf={:?}, iovs_len={:?}, nread_ptr={:?}",
                     fd,
                     iovs_buf,
@@ -374,7 +374,7 @@ impl WasmEngine {
                     match Pointer::<IoVec>::new(Address::new(iovs_buf as u32)) {
                         Ok(iov_buf) => iov_buf,
                         Err(_) => {
-                            ::nvx::error!("fd_read(): invalid iov_buf {:#010x}", iovs_buf);
+                            ::syslog::error!("fd_read(): invalid iov_buf {:#010x}", iovs_buf);
                             return Errno::Inval.into();
                         },
                     };
@@ -383,7 +383,7 @@ impl WasmEngine {
                 let iovs_len: Size = match iovs_len.try_into() {
                     Ok(iovs_len) => iovs_len,
                     Err(_) => {
-                        ::nvx::error!("fd_read(): invalid iovs_len {:#010x}", iovs_len);
+                        ::syslog::error!("fd_read(): invalid iovs_len {:#010x}", iovs_len);
                         return Errno::Inval.into();
                     },
                 };
@@ -394,7 +394,7 @@ impl WasmEngine {
                     match iovecs.as_ref() {
                         Ok(iovecs) => iovecs.to_vec(),
                         Err(_) => {
-                            ::nvx::error!("fd_read(): failed to get slice from memory");
+                            ::syslog::error!("fd_read(): failed to get slice from memory");
                             return Errno::Inval.into();
                         },
                     }
@@ -404,14 +404,14 @@ impl WasmEngine {
                 let nread_ptr: usize = match nread_ptr.try_into() {
                     Ok(nread_ptr) => nread_ptr,
                     Err(_) => {
-                        ::nvx::error!("fd_read(): invalid nread_ptr {:#010x}", nread_ptr);
+                        ::syslog::error!("fd_read(): invalid nread_ptr {:#010x}", nread_ptr);
                         return Errno::Inval.into();
                     },
                 };
 
                 // Check if memory is large enough to store the number of bytes read.
                 if memory.len() < nread_ptr + mem::size_of::<Size>() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "fd_read(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         nread_ptr + mem::size_of::<Size>()
@@ -444,7 +444,7 @@ impl WasmEngine {
              cookie: i64,
              buf_used: i32|
              -> i32 {
-                ::nvx::trace!("fd_readdir: {fd}, {buf}, {buf_len}, {cookie}, {buf_used}");
+                ::syslog::trace!("fd_readdir: {fd}, {buf}, {buf_len}, {cookie}, {buf_used}");
                 Errno::Nosys.into()
             },
         );
@@ -456,7 +456,7 @@ impl WasmEngine {
     pub(super) fn define_fd_renumber(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
         let renumber: Func =
             Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32, to: i32| -> i32 {
-                ::nvx::trace!("fd_renumber: {fd}, {to}");
+                ::syslog::trace!("fd_renumber: {fd}, {to}");
                 Errno::Nosys.into()
             });
         linker
@@ -477,7 +477,7 @@ impl WasmEngine {
                   whence: i32,
                   newoffset_offset: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "fd_seek(): fd={:?}, offset={:?}, whence={:?}, newoffset_offset={:?}",
                     fd,
                     offset,
@@ -497,7 +497,7 @@ impl WasmEngine {
                 let whence: Whence = match whence.try_into() {
                     Ok(whence) => whence,
                     Err(_) => {
-                        ::nvx::error!("fd_seek(): invalid whence {:#010x}", whence);
+                        ::syslog::error!("fd_seek(): invalid whence {:#010x}", whence);
                         return Errno::Inval.into();
                     },
                 };
@@ -506,7 +506,7 @@ impl WasmEngine {
                 let newoffset_offset: usize = match newoffset_offset.try_into() {
                     Ok(newoffset_offset) => newoffset_offset,
                     Err(_) => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "fd_seek(): invalid newoffset offset {:#010x}",
                             newoffset_offset
                         );
@@ -516,7 +516,7 @@ impl WasmEngine {
 
                 // Check if memory is large enough to store the new offset.
                 if memory.len() < newoffset_offset + mem::size_of::<FileSize>() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "fd_seek(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         newoffset_offset + mem::size_of::<FileSize>()
@@ -540,7 +540,7 @@ impl WasmEngine {
 
     pub(super) fn define_fd_sync(linker: &mut Linker<HostState>, store: &mut Store<HostState>) {
         let fd_sync: Func = Func::wrap(store, |_caller: Caller<'_, u32>, fd: i32| -> i32 {
-            ::nvx::trace!("fd_sync: {fd}");
+            ::syslog::trace!("fd_sync: {fd}");
             Errno::Nosys.into()
         });
         linker
@@ -555,7 +555,7 @@ impl WasmEngine {
     ) {
         let fd_tell: Func =
             Func::wrap(store, move |mut caller: Caller<'_, u32>, fd: i32, newoffset: i32| -> i32 {
-                ::nvx::trace!("fd_tell(): fd={:?}, newoffset={:?}", fd, newoffset);
+                ::syslog::trace!("fd_tell(): fd={:?}, newoffset={:?}", fd, newoffset);
 
                 let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
 
@@ -570,7 +570,7 @@ impl WasmEngine {
 
                 // Check if memory is large enough to store the new offset.
                 if memory.len() < newoffset + mem::size_of::<FileSize>() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "fd_tell(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         newoffset + mem::size_of::<FileSize>()
@@ -607,7 +607,7 @@ impl WasmEngine {
                   iovs_len: i32,
                   nwritten_ptr: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "fd_write(): fd={:?}, iovs_ptr={:?}, iovs_len={:?}, nwritten_ptr={:?}",
                     fd,
                     iovs_ptr,
@@ -625,7 +625,7 @@ impl WasmEngine {
                     match Pointer::<IoVec>::new(Address::new(iovs_ptr as u32)) {
                         Ok(iovs_ptr) => iovs_ptr,
                         Err(_) => {
-                            ::nvx::error!("fd_write(): invalid iovs_ptr {:#010x}", iovs_ptr);
+                            ::syslog::error!("fd_write(): invalid iovs_ptr {:#010x}", iovs_ptr);
                             return Errno::Inval.into();
                         },
                     };
@@ -634,7 +634,7 @@ impl WasmEngine {
                 let iovs_len: Size = match iovs_len.try_into() {
                     Ok(iovs_len) => iovs_len,
                     Err(_) => {
-                        ::nvx::error!("fd_write(): invalid iovs_len {:#010x}", iovs_len);
+                        ::syslog::error!("fd_write(): invalid iovs_len {:#010x}", iovs_len);
                         return Errno::Inval.into();
                     },
                 };
@@ -644,7 +644,7 @@ impl WasmEngine {
                 let iovecs = match iovecs.as_ref() {
                     Ok(iovecs) => iovecs,
                     Err(_) => {
-                        ::nvx::error!("fd_write(): failed to get slice from memory");
+                        ::syslog::error!("fd_write(): failed to get slice from memory");
                         return Errno::Inval.into();
                     },
                 };
@@ -653,14 +653,14 @@ impl WasmEngine {
                 let nwritten_ptr: usize = match nwritten_ptr.try_into() {
                     Ok(nwritten_ptr) => nwritten_ptr,
                     Err(_) => {
-                        ::nvx::error!("fd_write(): invalid nwritten_ptr {:#010x}", nwritten_ptr);
+                        ::syslog::error!("fd_write(): invalid nwritten_ptr {:#010x}", nwritten_ptr);
                         return Errno::Inval.into();
                     },
                 };
 
                 // Check if memory is large enough to store the number of bytes written.
                 if memory.len() < nwritten_ptr + mem::size_of::<Size>() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "fd_write(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         nwritten_ptr + mem::size_of::<Size>()
@@ -692,7 +692,7 @@ impl WasmEngine {
              nsubscriptions: i32,
              nevents: i32|
              -> i32 {
-                ::nvx::trace!("poll_oneoff: {in_}, {out}, {nsubscriptions}, {nevents}");
+                ::syslog::trace!("poll_oneoff: {in_}, {out}, {nsubscriptions}, {nevents}");
                 Errno::Nosys.into()
             },
         );

@@ -72,7 +72,7 @@ impl Drop for FileDescriptor {
         // Attempt to close underlying file descriptor.
         #[cfg(feature = "syscall")]
         if let Err(error) = unistd::syscall::close(self.0) {
-            ::nvx::warn!("drop() failed to close file (error={:?})", error);
+            ::syslog::warn!("drop() failed to close file (error={:?})", error);
         }
     }
 }

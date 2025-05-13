@@ -30,6 +30,6 @@ use ::nvx::sys::error::Error;
 /// Upon successful completion, `link()` returns empty. Otherwise, it returns an error.
 ///
 pub fn link(oldpath: &str, newpath: &str) -> Result<(), Error> {
-    ::nvx::trace!("link(): oldpath = {:?}, newpath = {:?}", oldpath, newpath);
+    ::syslog::trace!("link(): oldpath = {:?}, newpath = {:?}", oldpath, newpath);
     unistd::linkat(fcntl::AT_FDCWD, oldpath, fcntl::AT_FDCWD, newpath, 0)
 }

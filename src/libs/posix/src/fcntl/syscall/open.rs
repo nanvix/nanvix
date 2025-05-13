@@ -32,6 +32,6 @@ use ::nvx::sys::error::Error;
 /// returned instead.
 ///
 pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
-    ::nvx::trace!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
+    ::syslog::trace!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
     fcntl::openat(fcntl::AT_FDCWD, pathname, flags, mode)
 }

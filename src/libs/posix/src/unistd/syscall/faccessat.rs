@@ -43,7 +43,7 @@ use ::nvx::{
 /// Upon successful completion, `faccessat()` returns empty. Otherwise, it returns an error code.
 ///
 pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(), Error> {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "faccessat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
         dirfd,
         path,
@@ -65,7 +65,7 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, error_code={:?})",
             dirfd,
             path,
@@ -85,7 +85,7 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
         match message.header {
             LinuxDaemonMessageHeader::FileAccessAtResponse => Ok(()),
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "faccessat(): failed to parse response (dirfd={:?}, path={:?}, mode={:?}, \
                      flag={:?}, header={:?})",
                     dirfd,

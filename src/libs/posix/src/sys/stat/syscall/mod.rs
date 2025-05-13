@@ -81,7 +81,7 @@ fn fstatat_response() -> Result<sys::stat::stat, Error> {
         if response.status != 0 {
             // System call failed, parse error code and return it.
             let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-            ::nvx::error!("fstatat(): failed (error={:?})", error_code);
+            ::syslog::error!("fstatat(): failed (error={:?})", error_code);
             break Err(Error::new(error_code, "fstatat() failed"));
         } else {
             // System call succeeded, parse response.
@@ -92,7 +92,7 @@ fn fstatat_response() -> Result<sys::stat::stat, Error> {
                             LinuxDaemonMessagePart::from_bytes(message.payload);
 
                         if let Err(e) = assembler.add_part(part) {
-                            ::nvx::error!("fstatat(): failed to add part to assembler");
+                            ::syslog::error!("fstatat(): failed to add part to assembler");
                             break Err(e);
                         }
 

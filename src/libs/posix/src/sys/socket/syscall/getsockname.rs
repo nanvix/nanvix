@@ -45,7 +45,7 @@ use ::nvx::{
 /// Upon successful completion, empty is returned. Otherwise, an error number is returned.
 ///
 pub fn getsockname(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error> {
-    ::nvx::trace!("getsockname(): sockfd={:?}, sockaddr={:?}", sockfd, sockaddr);
+    ::syslog::trace!("getsockname(): sockfd={:?}, sockaddr={:?}", sockfd, sockaddr);
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
     // Build request and send it.
@@ -59,7 +59,7 @@ pub fn getsockname(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::nvx::error!("getsockname(): failed ({:?})", error_code);
+        ::syslog::error!("getsockname(): failed ({:?})", error_code);
         Err(Error::new(error_code, "getsockname() failed"))
     } else {
         // System call succeeded, parse response.

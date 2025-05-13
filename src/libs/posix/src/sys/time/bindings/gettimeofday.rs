@@ -23,7 +23,7 @@ use ::nvx::sys::error::ErrorCode;
 #[no_mangle]
 pub unsafe extern "C" fn gettimeofday(_tp: *mut timeval, _tzp: *mut c_void) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/317
-    ::nvx::error!("gettimeofday(): not implemented");
+    ::syslog::error!("gettimeofday(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

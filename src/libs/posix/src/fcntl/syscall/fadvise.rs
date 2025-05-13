@@ -48,7 +48,7 @@ pub fn posix_fadvise(
     len: off_t,
     advice: c_int,
 ) -> Result<(), Error> {
-    ::nvx::error!(
+    ::syslog::error!(
         "posix_fadvise(): fd={:?}, offset={:?}, len={:?}, advice={:?}",
         fd,
         offset,
@@ -67,7 +67,7 @@ pub fn posix_fadvise(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "posix_fadvise(): failed (fd={:?}, offset={:?}, len={:?}, advice={:?}, status={:?})",
             fd,
             offset,
@@ -82,7 +82,7 @@ pub fn posix_fadvise(
             Ok(error_code) => Err(Error::new(error_code, "posix_fadvise() failed")),
             // Error code was not successfully parsed.
             Err(error) => {
-                ::nvx::error!("posix_fadvise(): invalid error code (error={:?})", error);
+                ::syslog::error!("posix_fadvise(): invalid error code (error={:?})", error);
                 Err(Error::new(ErrorCode::TryAgain, "posix_fadvise(): failed"))
             },
         }
@@ -95,7 +95,7 @@ pub fn posix_fadvise(
             LinuxDaemonMessageHeader::FileAdvisoryInformationResponse => Ok(()),
             header => {
                 // Response was not successfully parsed.
-                ::nvx::error!(
+                ::syslog::error!(
                     "posix_fadvise(): unexpected message header (fd={:?}, offset={:?}, len={:?}, \
                      advice={:?}, header={:?})",
                     fd,

@@ -2,17 +2,88 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Configuration
+//==================================================================================================
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::sys::{
-    kcall::pm,
-    pm::MutexAddress,
-};
 use ::core::{
     fmt,
     fmt::Write,
 };
+
+//==================================================================================================
+// Macros
+//==================================================================================================
+
+#[macro_export]
+macro_rules! trace{
+    ( $($arg:tt)* ) => ({
+		if $crate::MAX_LEVEL >= $crate::LogLevel::Trace {
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut $crate::Logger::get(module_path!(), $crate::LogLevel::Trace),
+                $($arg)*
+            );
+        }
+    })
+}
+
+#[macro_export]
+macro_rules! debug{
+    ( $($arg:tt)* ) => ({
+		if $crate::MAX_LEVEL >= $crate::LogLevel::Debug{
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut $crate::Logger::get(module_path!(), $crate::LogLevel::Debug),
+                $($arg)*
+            );
+        }
+    })
+}
+
+#[macro_export]
+macro_rules! info{
+    ( $($arg:tt)* ) => ({
+		if $crate::MAX_LEVEL >= $crate::LogLevel::Info {
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut $crate::Logger::get(module_path!(), $crate::LogLevel::Info),
+                $($arg)*
+            );
+        }
+    })
+}
+
+#[macro_export]
+macro_rules! warn{
+    ( $($arg:tt)* ) => ({
+		if $crate::MAX_LEVEL >= $crate::LogLevel::Warn{
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut $crate::Logger::get(module_path!(), $crate::LogLevel::Warn),
+                $($arg)*
+            );
+        }
+    })
+}
+
+#[macro_export]
+macro_rules! error{
+    ( $($arg:tt)* ) => ({
+		if $crate::MAX_LEVEL >= $crate::LogLevel::Error{
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut $crate::Logger::get(module_path!(), $crate::LogLevel::Error),
+                $($arg)*
+            );
+        }
+    })
+}
 
 //==================================================================================================
 // Constants
@@ -65,17 +136,14 @@ impl core::fmt::Debug for LogLevel {
 }
 
 //==================================================================================================
-// Global Variables
-//==================================================================================================
-
-static MUTEX: usize = 0;
-
-//==================================================================================================
 // Trait Implementations
 //==================================================================================================
 
 impl fmt::Write for Logger {
     fn write_str(&mut self, s: &str) -> fmt::Result {
+        #[cfg(feature = "std")]
+        println!("{s}");
+        #[cfg(not(feature = "std"))]
         let _ = ::sys::kcall::debug::debug(s.as_ptr(), s.len());
         Ok(())
     }
@@ -83,15 +151,8 @@ impl fmt::Write for Logger {
 
 impl Logger {
     pub fn get(tag: &str, level: LogLevel) -> Self {
-        pm::lock_mutex(MutexAddress::from(&MUTEX as *const usize as usize), None).unwrap();
         let mut ret: Self = Self;
         let _ = write!(&mut ret, "[{:?}][{}] ", level, tag);
         ret
-    }
-}
-
-impl Drop for Logger {
-    fn drop(&mut self) {
-        pm::unlock_mutex(MutexAddress::from(&MUTEX as *const usize as usize)).unwrap();
     }
 }

@@ -38,7 +38,7 @@ use ::nvx::{
 /// Upon successful completion, `fdatasync()` returns empty. Otherwise, it returns an error.
 ///
 pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
-    ::nvx::trace!("fdatasync(): fd={:?}", fd);
+    ::syslog::trace!("fdatasync(): fd={:?}", fd);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
@@ -51,7 +51,7 @@ pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!("fdatasync(): fd={:?}, status={:?}", fd, { response.status });
+        ::syslog::error!("fdatasync(): fd={:?}, status={:?}", fd, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // Error code was successfully parsed.
@@ -74,7 +74,7 @@ pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
             LinuxDaemonMessageHeader::FileDataSyncResponse => Ok(()),
             // Invalid response.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "fdatasync(): fd={:?}, status={:?}, header={:?}",
                     fd,
                     { response.status },

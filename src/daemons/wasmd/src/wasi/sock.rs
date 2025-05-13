@@ -39,7 +39,7 @@ impl WasiCtxInner {
             Some(socket) => {
                 // Ensure that we have the right to invoke this operation.
                 if !socket.rights_base().sock_accept {
-                    ::nvx::error!("sock_accept(): operation not permitted");
+                    ::syslog::error!("sock_accept(): operation not permitted");
                     return Err(Errno::Acces);
                 }
 
@@ -57,7 +57,7 @@ impl WasiCtxInner {
                 Ok(self.insert_socket(os_connfd, &base_rights, &inherited_rights))
             },
             None => {
-                ::nvx::error!("sock_accept(): invalid file descriptor");
+                ::syslog::error!("sock_accept(): invalid file descriptor");
                 Err(Errno::Badf)
             },
         }
@@ -75,7 +75,7 @@ impl WasiCtxInner {
             Some(socket) => {
                 // Ensure that we have the right to invoke this operation (using alias to fd_read).
                 if !socket.rights_base().fd_read {
-                    ::nvx::error!("sock_recv(): operation not permitted");
+                    ::syslog::error!("sock_recv(): operation not permitted");
                     return Err(Errno::Acces);
                 }
 
@@ -89,7 +89,7 @@ impl WasiCtxInner {
                     let buffer: &mut [u8] = match buf.as_mut() {
                         Ok(slice) => slice,
                         Err(_) => {
-                            ::nvx::error!("sock_accept(): failed to get slice from memory");
+                            ::syslog::error!("sock_accept(): failed to get slice from memory");
                             return Err(Errno::Inval);
                         },
                     };
@@ -97,7 +97,7 @@ impl WasiCtxInner {
                     let nrecv = match socket.socket().recv(buffer) {
                         Ok(nrecv) => nrecv,
                         Err(errno) => {
-                            ::nvx::error!(
+                            ::syslog::error!(
                                 "sock_recv(): failed to receive data on socket: {:?}",
                                 errno
                             );
@@ -115,7 +115,7 @@ impl WasiCtxInner {
                 Ok((total_read.into(), roflags))
             },
             None => {
-                ::nvx::error!("sock_recv(): invalid file descriptor");
+                ::syslog::error!("sock_recv(): invalid file descriptor");
                 Err(Errno::Badf)
             },
         }
@@ -133,7 +133,7 @@ impl WasiCtxInner {
             Some(socket) => {
                 // Ensure that we have the right to invoke this operation (using alias to fd_write).
                 if !socket.rights_base().fd_write {
-                    ::nvx::error!("sock_send(): operation not permitted");
+                    ::syslog::error!("sock_send(): operation not permitted");
                     return Err(Errno::Acces);
                 }
 
@@ -146,7 +146,7 @@ impl WasiCtxInner {
                     let buffer: &[u8] = match buf.as_ref() {
                         Ok(slice) => slice,
                         Err(_) => {
-                            ::nvx::error!("sock_send(): failed to get slice from memory");
+                            ::syslog::error!("sock_send(): failed to get slice from memory");
                             return Err(Errno::Inval);
                         },
                     };
@@ -154,7 +154,7 @@ impl WasiCtxInner {
                     let nsent = match socket.socket().send(buffer) {
                         Ok(nsent) => nsent,
                         Err(errno) => {
-                            ::nvx::error!(
+                            ::syslog::error!(
                                 "sock_send(): failed to send data on socket: {:?}",
                                 errno
                             );
@@ -168,7 +168,7 @@ impl WasiCtxInner {
                 Ok(total_sent.into())
             },
             None => {
-                ::nvx::error!("sock_send(): invalid file descriptor");
+                ::syslog::error!("sock_send(): invalid file descriptor");
                 Err(Errno::Badf)
             },
         }
@@ -183,20 +183,20 @@ impl WasiCtxInner {
             Some(socket) => {
                 // Ensure that we have the right to invoke this operation.
                 if !socket.rights_base().sock_shutdown {
-                    ::nvx::error!("sock_shutdown(): operation not permitted");
+                    ::syslog::error!("sock_shutdown(): operation not permitted");
                     return Err(Errno::Acces);
                 }
 
                 match socket.socket().shutdown(how) {
                     Ok(_) => Ok(()),
                     Err(errno) => {
-                        ::nvx::error!("sock_shutdown(): failed to shutdown socket: {:?}", errno);
+                        ::syslog::error!("sock_shutdown(): failed to shutdown socket: {:?}", errno);
                         Err(errno.value().into())
                     },
                 }
             },
             None => {
-                ::nvx::error!("sock_shutdown(): invalid file descriptor");
+                ::syslog::error!("sock_shutdown(): invalid file descriptor");
                 Err(Errno::Badf)
             },
         }
