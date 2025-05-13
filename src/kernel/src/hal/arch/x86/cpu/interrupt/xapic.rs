@@ -9,12 +9,10 @@ use crate::hal::{
     io::IoMemoryRegion,
     mem::Address,
 };
-use ::sys::{
-    arch::cpu::xapic,
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::arch::cpu::xapic;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 #[cfg(feature = "smp")]
@@ -364,7 +362,7 @@ impl Xapic {
                 return Ok(());
             }
 
-            ::sys::arch::cpu::pause();
+            ::arch::cpu::pause();
         }
 
         let reason: &str = "maximum number of retries exceeded";

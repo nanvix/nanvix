@@ -23,75 +23,7 @@ cc = { workspace = true }
 cfg-if = { workspace = true }
 
 [features]
-default = ["microvm"]
 std = []
-
-# Machine Types
-hyperlight = [
-    "putb",
-    "puts",
-    "stdio",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
-    "xapic",
-]
-microvm = [
-    "putb",
-    "stdio",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
-    "pit",
-    "xapic",
-]
-pc = [
-    "putb",
-    "bios",
-    "cmos",
-    "mboot",
-    "pit",
-    "warn",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
-    "xapic",
-]
-qemu-pc = ["pc"]
-qemu-pc-smp = ["qemu-pc", "smp"]
-qemu-baremetal = ["pc"]
-qemu-baremetal-smp = ["qemu-baremetal", "smp"]
-qemu-isapc = ["pc"]
-
-# Architecture Features
-acpi = []
-cpuid = []
-ioapic = []
-madt = []
-msr = []
-pic = []
-xapic = []
-
-# Platform Features
-smp = []
-bios = []
-cmos = []
-mboot = []
-pit = []
-putb = []
-puts = []
-stdio = []
-
-# Interface Features
 kcall = []
 
 # Logging Features

@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::arch::{
+use crate::{
     mem,
     x86::mem::paging::{
         flags::{
@@ -22,16 +22,16 @@ use crate::arch::{
 };
 
 //==================================================================================================
-// Page Directory Entry Flags
+// Page Table Entry Flags
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// A type that represents flags of a page directory entry.
+/// A type that represents flags of a page table entry.
 ///
 #[derive(Debug)]
-pub struct PageDirectoryEntryFlags {
+pub struct PageTableEntryFlags {
     /// Present flag.
     present: PresentFlag,
     /// Read/write flag.
@@ -48,11 +48,11 @@ pub struct PageDirectoryEntryFlags {
     dirty: DirtyFlag,
 }
 
-impl PageDirectoryEntryFlags {
+impl PageTableEntryFlags {
     ///
     /// # Description
     ///
-    /// Constructs a [`PageDirectoryEntryFlags`] with the given flags.
+    /// Constructs a [`PageTableEntryFlags`] with the given flags.
     ///
     /// # Parameters
     ///
@@ -66,7 +66,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// # Returns
     ///
-    /// A [`PageDirectoryEntryFlags`].
+    /// A new [`PageTableEntryFlags`] with the given flags.
     ///
     pub fn new(
         present: PresentFlag,
@@ -91,7 +91,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// # Description
     ///
-    /// Constructs a [`PageDirectoryEntryFlags`] from a raw value.
+    /// Constructs a [`PageTableEntryFlags`] from a raw value.
     ///
     /// # Parameters
     ///
@@ -99,7 +99,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// # Returns
     ///
-    /// A [`PageDirectoryEntryFlags`].
+    /// A [`PageTableEntryFlags`].
     ///
     fn from_raw_value(value: u32) -> Self {
         Self {
@@ -116,7 +116,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// # Description
     ///
-    /// Converts a [`PageDirectoryEntryFlags`] into a raw value.
+    /// Converts a [`PageTableEntryFlags`] into a raw value.
     ///
     /// # Returns
     ///
@@ -138,27 +138,27 @@ impl PageDirectoryEntryFlags {
 }
 
 //==================================================================================================
-// Page Directory Entry
+// Page Table Entry
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// A type that represents a page directory entry.
+/// A type that represents a page table entry.
 ///
 #[derive(Debug)]
-pub struct PageDirectoryEntry {
+pub struct PageTableEntry {
     /// Flags.
-    flags: PageDirectoryEntryFlags,
-    /// Physical address of the page table.
+    flags: PageTableEntryFlags,
+    /// Physical address of the page frame.
     frame: FrameNumber,
 }
 
-impl PageDirectoryEntry {
+impl PageTableEntry {
     ///
     /// # Description
     ///
-    /// Constructs a [`PageDirectoryEntry`] with the given flags and frame number.
+    /// Constructs a [`PageTableEntry`] with the given flags and frame.
     ///
     /// # Parameters
     ///
@@ -167,16 +167,16 @@ impl PageDirectoryEntry {
     ///
     /// # Returns
     ///
-    /// A [`PageDirectoryEntry`].
+    /// A [`PageTableEntry`].
     ///
-    pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+    pub fn new(flags: PageTableEntryFlags, frame: FrameNumber) -> Self {
         Self { flags, frame }
     }
 
     ///
     /// # Description
     ///
-    /// Constructs a [`PageDirectoryEntry`] from a raw value.
+    /// Constructs a [`PageTableEntry`] from a raw value.
     ///
     /// # Parameters
     ///
@@ -184,12 +184,12 @@ impl PageDirectoryEntry {
     ///
     /// # Returns
     ///
-    /// - `Some(`[`PageDirectoryEntry`]`)`: If the raw value is valid.
+    /// - `Some(`[`PageTableEntry`]`)`: If the raw value is valid.
     /// - `None`: Otherwise.
     ///
     pub fn from_raw_value(value: u32) -> Option<Self> {
         Some(Self {
-            flags: PageDirectoryEntryFlags::from_raw_value(value),
+            flags: PageTableEntryFlags::from_raw_value(value),
             frame: FrameNumber::from_raw_value(value as usize >> mem::FRAME_SHIFT)?,
         })
     }
@@ -197,7 +197,7 @@ impl PageDirectoryEntry {
     ///
     /// # Description
     ///
-    /// Converts a [`PageDirectoryEntry`] into a raw value.
+    /// Converts a [`PageTableEntry`] into a raw value.
     ///
     /// # Returns
     ///
@@ -215,11 +215,24 @@ impl PageDirectoryEntry {
     ///
     /// # Description
     ///
-    /// Checks if the target page directory entry is marked as present.
+    /// Returns the frame number associated with the target page table entry.
     ///
     /// # Returns
     ///
-    /// `true`: If the target page directory entry is marked as present.
+    /// The frame number associated with the target page table entry.
+    ///
+    pub fn frame_number(&self) -> FrameNumber {
+        self.frame
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the target page table entry is marked as present.
+    ///
+    /// # Returns
+    ///
+    /// `true`: If the target page table entry is marked as present.
     /// `false`: Otherwise.
     ///
     pub fn is_present(&self) -> bool {
@@ -232,13 +245,26 @@ impl PageDirectoryEntry {
     ///
     /// # Description
     ///
-    /// Returns the frame number of the target page directory entry.
+    /// Sets read/write flag in the target page.
     ///
-    /// # Returns
+    /// # Parameters
     ///
-    /// The frame address.
+    /// - `read_write`: The read/write flag.
     ///
-    pub fn frame(&self) -> FrameNumber {
-        self.frame
+    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
+        self.flags.read_write = read_write;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets user/supervisor flag in the target page.
+    ///
+    /// # Parameters
+    ///
+    /// - `user_supervisor`: The user/supervisor flag.
+    ///
+    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
+        self.flags.user_supervisor = user_supervisor;
     }
 }

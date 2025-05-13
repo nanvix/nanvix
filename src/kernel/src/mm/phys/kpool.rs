@@ -19,6 +19,7 @@ use ::alloc::{
     rc::Rc,
     vec::Vec,
 };
+use ::arch::mem;
 use ::core::{
     cell::RefCell,
     ops::{
@@ -26,10 +27,7 @@ use ::core::{
         DerefMut,
     },
 };
-use ::sys::{
-    arch::mem,
-    error::Error,
-};
+use ::sys::error::Error;
 
 //==================================================================================================
 // Kernel Page Pool Inner

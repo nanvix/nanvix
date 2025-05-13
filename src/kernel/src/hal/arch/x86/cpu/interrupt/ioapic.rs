@@ -9,12 +9,10 @@ use crate::hal::{
     io::IoMemoryRegion,
     mem::Address,
 };
-use ::sys::{
-    arch::cpu::ioapic,
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::arch::cpu::ioapic;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

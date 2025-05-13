@@ -38,11 +38,11 @@ use ::alloc::{
     collections::linked_list::LinkedList,
     string::ToString,
 };
+use ::arch::{
+    mem,
+    mem::PAGE_ALIGNMENT,
+};
 use ::sys::{
-    arch::{
-        mem,
-        mem::PAGE_ALIGNMENT,
-    },
     config::memory_layout,
     error::{
         Error,
@@ -84,7 +84,7 @@ pub struct Platform {
 /// disabled.
 ///
 pub(super) unsafe fn disable_interrupts() {
-    ::sys::arch::cpu::cli();
+    ::arch::cpu::cli();
 }
 
 ///
@@ -205,7 +205,7 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 ///
 pub fn shutdown(_status: usize) -> ! {
     unsafe {
-        ::sys::arch::cpu::halt();
+        ::arch::cpu::halt();
     };
     loop {
         core::hint::spin_loop();

@@ -14,30 +14,28 @@ use crate::hal::mem::{
     PhysicalAddress,
 };
 use ::alloc::boxed::Box;
+use ::arch::mem::{
+    self,
+    paging::{
+        AccessedFlag,
+        DirtyFlag,
+        FrameNumber,
+        PageCacheDisableFlag,
+        PageDirectoryEntry,
+        PageDirectoryEntryFlags,
+        PageWriteThroughFlag,
+        PresentFlag,
+        ReadWriteFlag,
+        UserSupervisorFlag,
+    },
+};
 use ::core::ops::{
     Deref,
     DerefMut,
 };
-use ::sys::{
-    arch::mem::{
-        self,
-        paging::{
-            AccessedFlag,
-            DirtyFlag,
-            FrameNumber,
-            PageCacheDisableFlag,
-            PageDirectoryEntry,
-            PageDirectoryEntryFlags,
-            PageWriteThroughFlag,
-            PresentFlag,
-            ReadWriteFlag,
-            UserSupervisorFlag,
-        },
-    },
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

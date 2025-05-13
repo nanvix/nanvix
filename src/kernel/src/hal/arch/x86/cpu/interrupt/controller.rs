@@ -21,15 +21,13 @@ use crate::hal::arch::x86::cpu::interrupt::{
     },
     InterruptNumber,
 };
-use ::sys::{
-    arch::{
-        self,
-        cpu::msr,
-    },
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::arch::{
+    self,
+    cpu::msr,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 #[cfg(feature = "smp")]

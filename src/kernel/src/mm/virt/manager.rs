@@ -38,6 +38,7 @@ use ::alloc::{
     rc::Rc,
     vec::Vec,
 };
+use ::arch::mem;
 use ::core::{
     cell::RefCell,
     hint::{
@@ -45,12 +46,9 @@ use ::core::{
         unlikely,
     },
 };
-use ::sys::{
-    arch::mem,
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

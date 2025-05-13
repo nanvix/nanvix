@@ -21,10 +21,9 @@ use ::sys::error::Error;
 // Exports
 //==================================================================================================
 
-pub use ::sys::{
-    arch::mem::*,
-    mm::*,
-};
+pub use ::arch::mem::*;
+
+pub use ::sys::mm::*;
 
 #[cfg(target_os = "none")]
 pub use ::sys::kcall::mm::{
@@ -68,8 +67,8 @@ pub fn init() -> Result<(), Error> {
     #[cfg(feature = "allocator")]
     {
         use crate::mm::allocator;
+        use ::arch::mem;
         use ::sys::{
-            arch::mem,
             config::memory_layout,
             kcall::{
                 self,

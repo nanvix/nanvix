@@ -9,16 +9,14 @@ use crate::hal::io::{
     IoPortAllocator,
     ReadWriteIoPort,
 };
+use ::arch::cpu::pit;
 use ::core::sync::atomic::{
     AtomicU32,
     Ordering,
 };
-use ::sys::{
-    arch::cpu::pit,
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

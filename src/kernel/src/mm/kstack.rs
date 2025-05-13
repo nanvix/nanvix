@@ -13,8 +13,8 @@ use crate::{
     },
 };
 use ::alloc::vec::Vec;
+use ::arch::mem::PAGE_ALIGNMENT;
 use ::sys::{
-    arch::mem::PAGE_ALIGNMENT,
     error::Error,
     mm::{
         Address,
@@ -56,7 +56,7 @@ impl KernelStack {
     #[allow(dead_code)] // TODO: Remove this attribute once the function is used.
     pub fn new(mm: &mut VirtMemoryManager) -> Result<Self, Error> {
         let kpages: Vec<KernelPage> =
-            mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / ::sys::arch::mem::PAGE_SIZE)?;
+            mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE)?;
 
         Ok(Self { kpages })
     }

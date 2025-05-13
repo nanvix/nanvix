@@ -13,24 +13,22 @@ use crate::hal::mem::{
     PageAligned,
     PhysicalAddress,
 };
+use ::arch::mem::paging::{
+    AccessedFlag,
+    DirtyFlag,
+    FrameNumber,
+    PageCacheDisableFlag,
+    PageTableEntry,
+    PageTableEntryFlags,
+    PageWriteThroughFlag,
+    PresentFlag,
+    ReadWriteFlag,
+    UserSupervisorFlag,
+};
 use ::core::ops::DerefMut;
-use ::sys::{
-    arch::mem::paging::{
-        AccessedFlag,
-        DirtyFlag,
-        FrameNumber,
-        PageCacheDisableFlag,
-        PageTableEntry,
-        PageTableEntryFlags,
-        PageWriteThroughFlag,
-        PresentFlag,
-        ReadWriteFlag,
-        UserSupervisorFlag,
-    },
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

@@ -63,7 +63,7 @@ impl Spinlock {
                 .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             {
                 Ok(false) => break,
-                _ => ::sys::arch::cpu::pause(),
+                _ => ::arch::cpu::pause(),
             }
         }
 
