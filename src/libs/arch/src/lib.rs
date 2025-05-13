@@ -1,6 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+#![no_std]
 #![allow(clippy::all)]
 
 mod x86;

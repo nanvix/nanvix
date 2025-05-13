@@ -6,9 +6,9 @@
 //==================================================================================================
 
 use crate::hal::mem::Address;
+use ::arch::mem::PGTAB_ALIGNMENT;
 use ::core::ops::Deref;
 use ::sys::{
-    arch::mem::PGTAB_ALIGNMENT,
     error::{
         Error,
         ErrorCode,

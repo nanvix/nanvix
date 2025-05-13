@@ -25,15 +25,15 @@ use crate::{
         Vmem,
     },
 };
+use ::arch::{
+    mem,
+    mem::PAGE_ALIGNMENT,
+};
 use ::core::cmp::{
     max,
     min,
 };
 use ::sys::{
-    arch::{
-        mem,
-        mem::PAGE_ALIGNMENT,
-    },
     config,
     error::{
         Error,

@@ -50,6 +50,7 @@ use crate::{
     },
 };
 use ::alloc::rc::Rc;
+use ::arch::mem::PAGE_SIZE;
 use ::core::{
     cell::{
         RefCell,
@@ -65,7 +66,6 @@ use ::core::{
     },
 };
 use ::sys::{
-    arch::mem::PAGE_SIZE,
     error::Error,
     ipc::Message,
     pm::{

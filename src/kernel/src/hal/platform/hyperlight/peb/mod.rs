@@ -204,7 +204,7 @@ impl ProcessEnvironmentBlock {
     fn print_with_magic_port(&mut self, message: &str) -> Result<(), Error> {
         for byte in message.bytes() {
             unsafe {
-                ::sys::arch::io::out8(OutBAction::Magic as u16, byte);
+                ::arch::io::out8(OutBAction::Magic as u16, byte);
             }
         }
 
@@ -287,7 +287,7 @@ impl ProcessEnvironmentBlock {
         self.push_shared_output_data(host_function_call_buffer)?;
 
         unsafe {
-            ::sys::arch::io::out8(OutBAction::CallFunction as u16, 0);
+            ::arch::io::out8(OutBAction::CallFunction as u16, 0);
         }
 
         Ok(())

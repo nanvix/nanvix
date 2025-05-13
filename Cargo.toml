@@ -15,6 +15,7 @@ members = [
         "src/daemons/procd",
         "src/daemons/wasmd",
         "src/kernel",
+        "src/libs/arch",
         "src/libs/bitmap",
         "src/libs/config",
         "src/libs/elf",
@@ -47,6 +48,7 @@ edition = "2021"
 homepage = "https://github.com/nanvix"
 
 [workspace.dependencies]
+arch = { path = "src/libs/arch", default-features = false }
 anyhow = "1.0.97"
 bitmap = { path = "src/libs/bitmap", default-features = false }
 cc = "1.2.17"

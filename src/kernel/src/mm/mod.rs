@@ -21,7 +21,7 @@ mod virt;
 
 pub mod kheap;
 use ::alloc::boxed::Box;
-use ::sys::arch::mem::{
+use ::arch::mem::{
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
 };
@@ -62,11 +62,9 @@ use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
+use ::arch::mem;
 use ::core::panic;
-use ::sys::{
-    arch::mem,
-    error::Error,
-};
+use ::sys::error::Error;
 
 //==================================================================================================
 // Static Assertions

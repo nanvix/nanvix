@@ -41,14 +41,14 @@ use ::alloc::{
     collections::LinkedList,
     rc::Rc,
 };
+use ::arch::mem::{
+    self,
+    paging::PageDirectoryEntry,
+    PAGE_ALIGNMENT,
+    PGTAB_ALIGNMENT,
+};
 use ::core::cell::RefCell;
 use ::sys::{
-    arch::mem::{
-        self,
-        paging::PageDirectoryEntry,
-        PAGE_ALIGNMENT,
-        PGTAB_ALIGNMENT,
-    },
     config,
     error::{
         Error,

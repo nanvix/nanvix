@@ -31,10 +31,8 @@ use crate::hal::{
         IoPortAllocator,
     },
 };
-use ::sys::{
-    arch::cpu::cpuid,
-    error::Error,
-};
+use ::arch::cpu::cpuid;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Exports
@@ -67,7 +65,7 @@ pub fn init(
     }
 
     // Check if the CPU has the cpuid instruction.
-    if ::sys::arch::cpu::cpuid::has_cpuid() {
+    if ::arch::cpu::cpuid::has_cpuid() {
         info!("CPU features:");
         info!("- has fpu:   {}", cpuid::has_fpu());
         info!("- has vme:   {}", cpuid::has_vme());

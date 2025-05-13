@@ -5,9 +5,6 @@
 // Modules
 //==================================================================================================
 
-/// Architecture-specific definitions.
-pub mod arch;
-
 /// Configuration constants.
 pub mod config;
 

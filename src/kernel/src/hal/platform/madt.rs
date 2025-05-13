@@ -12,24 +12,22 @@
 //==================================================================================================
 
 use ::alloc::collections::LinkedList;
-use ::sys::{
-    arch::cpu::{
-        acpi::AcpiSdtHeader,
-        madt::{
-            Madt,
-            MadtEntryHeader,
-            MadtEntryIoApic,
-            MadtEntryIoApicNmi,
-            MadtEntryIoApicSourceOverride,
-            MadtEntryLocalApic,
-            MadtEntryLocalApicNmi,
-            MadtEntryLocalX2Apic,
-            MadtEntryType,
-            MadtLocalApicAddressOverride,
-        },
+use ::arch::cpu::{
+    acpi::AcpiSdtHeader,
+    madt::{
+        Madt,
+        MadtEntryHeader,
+        MadtEntryIoApic,
+        MadtEntryIoApicNmi,
+        MadtEntryIoApicSourceOverride,
+        MadtEntryLocalApic,
+        MadtEntryLocalApicNmi,
+        MadtEntryLocalX2Apic,
+        MadtEntryType,
+        MadtLocalApicAddressOverride,
     },
-    error::Error,
 };
+use ::sys::error::Error;
 
 //==================================================================================================
 // Structures

@@ -34,6 +34,10 @@ use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
+use ::arch::{
+    mem,
+    mem::PGTAB_ALIGNMENT,
+};
 use ::core::{
     cmp::Ordering,
     ops::{
@@ -41,15 +45,9 @@ use ::core::{
         DerefMut,
     },
 };
-use ::sys::{
-    arch::{
-        mem,
-        mem::PGTAB_ALIGNMENT,
-    },
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

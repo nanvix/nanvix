@@ -54,7 +54,7 @@ impl Fence {
     ///
     pub fn wait(&self) {
         while self.count.load(Ordering::Acquire) < self.total {
-            ::sys::arch::cpu::pause();
+            ::arch::cpu::pause();
         }
     }
 

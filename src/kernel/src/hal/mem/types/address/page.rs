@@ -7,7 +7,7 @@ use crate::hal::mem::types::address::{
     PageTableAligned,
     VirtualAddress,
 };
-use ::sys::arch::mem;
+use ::arch::mem;
 
 #[derive(Debug, Clone, Copy)]
 pub struct PageAddress(PageAligned<VirtualAddress>);

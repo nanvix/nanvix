@@ -29,7 +29,7 @@ use ::std::sync::{
     Arc,
     Mutex,
 };
-use ::sys::arch::mem::PAGE_SIZE;
+use ::arch::mem::PAGE_SIZE;
 
 //==================================================================================================
 // Structures
