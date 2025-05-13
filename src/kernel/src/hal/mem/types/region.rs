@@ -18,12 +18,10 @@ use ::alloc::string::{
     String,
     ToString,
 };
-use ::sys::{
-    arch::mem::PAGE_ALIGNMENT,
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::arch::mem::PAGE_ALIGNMENT;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

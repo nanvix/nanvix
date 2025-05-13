@@ -2,29 +2,21 @@
 # Licensed under the MIT License.
 
 [package]
-name = "kernel"
+name = "arch"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Nanvix Kernel"
+description = "Architecture-Specific Library"
 homepage.workspace = true
 
-[[bin]]
-name = "kernel"
-path = "src/kmain.rs"
-
 [dependencies]
-arch = { workspace = true }
-bitmap = { workspace = true }
 cfg-if = { workspace = true }
-config = { workspace = true, optional = true }
-type-safe = { workspace = true }
-raw-array = { workspace = true }
-slab = { workspace = true }
-sys = { workspace = true }
-hyperlight_common = { workspace = true, optional = true }
+config = { workspace = true }
+error = { workspace = true }
+num_enum = { workspace = true }
 static_assert = { workspace = true }
+sys = { workspace = true }
 time = { workspace = true }
 
 [build-dependencies]
@@ -33,10 +25,10 @@ cfg-if = { workspace = true }
 
 [features]
 default = ["microvm"]
+std = []
 
 # Machine Types
 hyperlight = [
-    "arch/hyperlight",
     "putb",
     "puts",
     "stdio",
@@ -47,12 +39,8 @@ hyperlight = [
     "msr",
     "pic",
     "xapic",
-    "dep:hyperlight_common",
-    "dep:config",
-    "config/hyperlight",
 ]
 microvm = [
-    "arch/microvm",
     "putb",
     "stdio",
     "acpi",
@@ -63,17 +51,13 @@ microvm = [
     "pic",
     "pit",
     "xapic",
-    "dep:config",
-    "config/microvm",
 ]
 pc = [
-    "arch/pc",
     "putb",
     "bios",
     "cmos",
     "mboot",
     "pit",
-    "warn",
     "acpi",
     "cpuid",
     "ioapic",
@@ -81,14 +65,12 @@ pc = [
     "msr",
     "pic",
     "xapic",
-    "dep:config",
-    "config/pc",
 ]
-qemu-pc = ["arch/qemu-pc", "pc"]
-qemu-pc-smp = ["arch/qemu-pc-smp", "qemu-pc", "smp"]
-qemu-baremetal = ["arch/qemu-baremetal", "pc"]
-qemu-baremetal-smp = ["arch/qemu-baremetal-smp", "qemu-baremetal", "smp"]
-qemu-isapc = ["arch/qemu-isapc", "pc"]
+qemu-pc = ["pc"]
+qemu-pc-smp = ["qemu-pc", "smp"]
+qemu-baremetal = ["pc"]
+qemu-baremetal-smp = ["qemu-baremetal", "smp"]
+qemu-isapc = ["pc"]
 
 # Architecture Features
 acpi = []
@@ -108,14 +90,3 @@ pit = []
 putb = []
 puts = []
 stdio = []
-
-# Interface Features
-kcall = []
-
-# Logging Features
-trace = ["debug"]
-debug = ["info"]
-info = ["warn"]
-warn = ["error"]
-error = ["panic"]
-panic = []

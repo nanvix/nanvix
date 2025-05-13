@@ -17,17 +17,15 @@ use crate::{
         TruncatedMemoryRegion,
     },
 };
-use ::sys::{
-    arch::mem::{
-        self,
-        paging::FrameNumber,
-    },
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::arch::mem::{
+    self,
+    paging::FrameNumber,
 };
 use ::config::constants;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Structures

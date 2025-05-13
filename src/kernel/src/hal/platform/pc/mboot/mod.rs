@@ -49,22 +49,20 @@ use ::alloc::{
         ToString,
     },
 };
-use ::core::mem;
-use ::sys::{
-    arch::{
-        cpu::{
-            acpi::{
-                AcpiSdtHeader,
-                Rsdp,
-            },
-            madt::Madt,
+use ::arch::{
+    cpu::{
+        acpi::{
+            AcpiSdtHeader,
+            Rsdp,
         },
-        mem::PAGE_ALIGNMENT,
+        madt::Madt,
     },
-    error::{
-        Error,
-        ErrorCode,
-    },
+    mem::PAGE_ALIGNMENT,
+};
+use ::core::mem;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================
@@ -291,8 +289,8 @@ fn parse_mmap(
         };
         let size: usize = match entry.len().try_into() {
             Ok(len) => {
-                if len < ::sys::arch::mem::PAGE_SIZE {
-                    ::sys::arch::mem::PAGE_SIZE
+                if len < ::arch::mem::PAGE_SIZE {
+                    ::arch::mem::PAGE_SIZE
                 } else {
                     len
                 }
@@ -367,7 +365,7 @@ fn parse_acpiold(
                 let region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
                     "ioapic",
                     addr,
-                    ::sys::arch::mem::PAGE_SIZE,
+                    ::arch::mem::PAGE_SIZE,
                     MemoryRegionType::Mmio,
                     AccessPermission::RDWR,
                 )?;
@@ -381,7 +379,7 @@ fn parse_acpiold(
                 let region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
                     "local_apic",
                     addr,
-                    ::sys::arch::mem::PAGE_SIZE,
+                    ::arch::mem::PAGE_SIZE,
                     MemoryRegionType::Mmio,
                     AccessPermission::RDWR,
                 )?;

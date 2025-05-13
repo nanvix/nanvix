@@ -38,19 +38,17 @@ use crate::hal::{
     platform::madt::MadtInfo,
 };
 use ::alloc::collections::LinkedList;
-use ::sys::{
-    arch::cpu::{
-        eflags::{
-            self,
-            EflagsRegister,
-        },
-        madt::{
-            MadtEntryIoApicSourceOverride,
-            MadtEntryLocalApic,
-        },
+use ::arch::cpu::{
+    eflags::{
+        self,
+        EflagsRegister,
     },
-    error::Error,
+    madt::{
+        MadtEntryIoApicSourceOverride,
+        MadtEntryLocalApic,
+    },
 };
+use ::sys::error::Error;
 
 //==================================================================================================
 // Exports

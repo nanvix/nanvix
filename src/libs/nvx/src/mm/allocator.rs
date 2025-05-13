@@ -19,9 +19,9 @@ use ::alloc::alloc::{
     GlobalAlloc,
     Layout,
 };
+use ::arch::mem::PAGE_ALIGNMENT;
 use ::core::ptr;
 use ::sys::{
-    arch::mem::PAGE_ALIGNMENT,
     error::{
         Error,
         ErrorCode,

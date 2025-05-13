@@ -72,13 +72,13 @@ use ::alloc::{
     rc::Rc,
     vec::Vec,
 };
+use ::arch::mem::PAGE_SIZE;
 use ::core::cell::{
     Ref,
     RefCell,
     RefMut,
 };
 use ::sys::{
-    arch::mem::PAGE_SIZE,
     error::{
         Error,
         ErrorCode,

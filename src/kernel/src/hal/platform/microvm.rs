@@ -32,11 +32,11 @@ use ::alloc::{
     collections::linked_list::LinkedList,
     string::ToString,
 };
+use ::arch::{
+    cpu::pic,
+    mem,
+};
 use ::sys::{
-    arch::{
-        cpu::pic,
-        mem,
-    },
     error::{
         Error,
         ErrorCode,
@@ -78,7 +78,7 @@ pub struct Platform {
 /// disabled.
 ///
 pub(super) unsafe fn disable_interrupts() {
-    ::sys::arch::cpu::cli();
+    ::arch::cpu::cli();
 }
 
 ///
@@ -94,7 +94,7 @@ pub(super) unsafe fn disable_interrupts() {
 /// enabled.
 ///
 pub(super) unsafe fn enable_interrupts() {
-    ::sys::arch::cpu::sti();
+    ::arch::cpu::sti();
 }
 
 ///
@@ -109,7 +109,7 @@ pub(super) unsafe fn enable_interrupts() {
 /// It is safe to call this function only when the CPU is able to receive interrupts.
 ///
 pub(super) unsafe fn wait_for_interrupt() {
-    ::sys::arch::cpu::halt();
+    ::arch::cpu::halt();
 }
 
 ///
@@ -129,7 +129,7 @@ pub(super) unsafe fn wait_for_interrupt() {
 /// - It does not prevent concurrent access to the standard output device.
 ///
 pub unsafe fn putb(b: u8) {
-    ::sys::arch::io::out8(::config::microvm::DEFAULT_STDOUT_PORT, b);
+    ::arch::io::out8(::config::microvm::DEFAULT_STDOUT_PORT, b);
 }
 
 ///
@@ -153,7 +153,7 @@ pub unsafe fn vmbus_write(addr: *const u8) {
     use core::hint;
 
     #[allow(clippy::unit_arg)]
-    hint::black_box(::sys::arch::io::out32(::config::microvm::DEFAULT_STDOUT_PORT, addr as u32));
+    hint::black_box(::arch::io::out32(::config::microvm::DEFAULT_STDOUT_PORT, addr as u32));
 }
 
 ///
@@ -177,7 +177,7 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
     use core::hint;
 
     #[allow(clippy::unit_arg)]
-    hint::black_box(::sys::arch::io::out32(::config::microvm::DEFAULT_STDIN_PORT, addr as u32))
+    hint::black_box(::arch::io::out32(::config::microvm::DEFAULT_STDIN_PORT, addr as u32))
 }
 
 ///
@@ -197,7 +197,7 @@ pub fn shutdown(status: usize) -> ! {
     unsafe {
         let status: u16 = (status & 0xffff) as u16;
         let cmd: u16 = ::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD;
-        ::sys::arch::io::out32(
+        ::arch::io::out32(
             ::config::microvm::DEFAULT_VMM_PORT,
             ((cmd as u32) << 16) | (status as u32),
         )
@@ -292,8 +292,8 @@ fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
 fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     // Register ports for the PIT.
 
-    ioports.register_read_write(::sys::arch::cpu::pit::PIT_CTRL)?;
-    ioports.register_read_write(::sys::arch::cpu::pit::PIT_DATA)?;
+    ioports.register_read_write(::arch::cpu::pit::PIT_CTRL)?;
+    ioports.register_read_write(::arch::cpu::pit::PIT_DATA)?;
 
     Pit::new(ioports, ::config::kernel::TIMER_FREQ)
 }

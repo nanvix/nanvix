@@ -51,10 +51,10 @@ pub unsafe fn putb(b: u8) {
     const UART_LSR_THRE: u8 = 0x20;
 
     // Wait for the transmit buffer to be empty.
-    while (::sys::arch::io::in8(UART_LSR) & UART_LSR_THRE) == 0 {
+    while (::arch::io::in8(UART_LSR) & UART_LSR_THRE) == 0 {
         // Do nothing
     }
 
     // Write the byte to the transmit buffer.
-    ::sys::arch::io::out8(UART_THR, b);
+    ::arch::io::out8(UART_THR, b);
 }

@@ -5,11 +5,11 @@
 // Imports
 //==================================================================================================
 
+use ::arch::{
+    mem,
+    mem::PAGE_ALIGNMENT,
+};
 use ::sys::{
-    arch::{
-        mem,
-        mem::PAGE_ALIGNMENT,
-    },
     error::{
         Error,
         ErrorCode,

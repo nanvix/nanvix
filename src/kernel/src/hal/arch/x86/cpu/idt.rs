@@ -6,8 +6,7 @@
 //==================================================================================================
 
 use crate::hal::arch::x86::mem::gdt::SegmentSelector;
-use ::core::mem;
-use ::sys::arch::cpu::{
+use ::arch::cpu::{
     idt::{
         DescriptorPrivilegeLevel,
         Flags,
@@ -17,6 +16,7 @@ use ::sys::arch::cpu::{
     },
     idtr::Idtr,
 };
+use ::core::mem;
 
 extern "C" {
     /// Division-by-Zero Error.

@@ -11,14 +11,12 @@ use ::alloc::alloc::{
     GlobalAlloc,
     Layout,
 };
+use ::arch::mem;
 use ::config::constants;
 use ::core::ptr;
-use ::sys::{
-    arch::mem,
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

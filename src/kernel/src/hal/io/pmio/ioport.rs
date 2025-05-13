@@ -9,7 +9,7 @@ use crate::hal::io::{
     pmio::info::IoPortInfo,
     IoPortType,
 };
-use ::sys::arch::io;
+use ::arch::io;
 
 //==================================================================================================
 // Structures

@@ -239,7 +239,7 @@ export SANDBOX_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:6161,127.0.0.
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := nvx posix
-ALL_GUEST_RUST_LIBS := bitmap config elf error type-safe proc raw-array slab static_assert sys time
+ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe proc raw-array slab static_assert sys time
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd matmul
