@@ -32,4 +32,4 @@ pub struct Tss {
     pub iomap: u32,  // IO map.
 }
 // `Tss` must be 104 bytes long. This must match the hardware specification.
-crate::static_assert_size!(Tss, 104);
+::static_assert::assert_eq_size!(Tss, 104);

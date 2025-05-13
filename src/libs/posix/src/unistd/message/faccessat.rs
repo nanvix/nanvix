@@ -250,7 +250,7 @@ impl MessagePartitioner for FileAccessAtRequest {
 pub struct FileAccessAtResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileAccessAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileAccessAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileAccessAtResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;

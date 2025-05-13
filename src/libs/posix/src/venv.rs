@@ -16,7 +16,7 @@ use ::core::fmt::Debug;
 pub struct VirtualEnvironmentIdentifier {
     id: u32,
 }
-::nvx::sys::static_assert_size!(VirtualEnvironmentIdentifier, 4);
+::static_assert::assert_eq_size!(VirtualEnvironmentIdentifier, 4);
 
 //==================================================================================================
 // Implementations

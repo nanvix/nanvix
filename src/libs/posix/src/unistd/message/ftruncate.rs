@@ -30,7 +30,7 @@ pub struct FileTruncateRequest {
     pub length: off_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileTruncateRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileTruncateRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileTruncateRequest {
     pub const PADDING_SIZE: usize =

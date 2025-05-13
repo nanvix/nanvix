@@ -30,7 +30,7 @@ pub struct CloseRequest {
     pub fd: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(CloseRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(CloseRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl CloseRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
@@ -77,7 +77,7 @@ pub struct CloseResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(CloseResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(CloseResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl CloseResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

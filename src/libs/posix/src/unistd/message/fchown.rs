@@ -42,7 +42,7 @@ pub struct FileChownRequest {
     /// Padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChownRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChownRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileChownRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
@@ -90,7 +90,7 @@ pub struct FileChownResponse {
     /// Padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChownResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChownResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileChownResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;

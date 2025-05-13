@@ -37,7 +37,7 @@ pub struct FileChmodRequest {
     /// Padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChmodRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChmodRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileChmodRequest {
     pub const PADDING_SIZE: usize =
@@ -81,7 +81,7 @@ impl FileChmodRequest {
 pub struct FileChmodResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChmodResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChmodResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileChmodResponse {
     /// Size of padding.

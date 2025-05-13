@@ -74,7 +74,7 @@ pub struct SystemMessage {
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
 
-::sys::static_assert_size!(SystemMessage, Message::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SystemMessage, Message::PAYLOAD_SIZE);
 
 impl SystemMessage {
     /// Size of payload.

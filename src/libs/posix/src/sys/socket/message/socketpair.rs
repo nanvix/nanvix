@@ -39,7 +39,7 @@ pub struct CreateSocketPairRequest {
     pub protocol: Protocol,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(CreateSocketPairRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(CreateSocketPairRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl CreateSocketPairRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
@@ -93,7 +93,7 @@ pub struct CreateSocketPairResponse {
     pub sockfd_1: c_int,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(CreateSocketPairResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(CreateSocketPairResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl CreateSocketPairResponse {
     pub const PADDING_SIZE: usize =

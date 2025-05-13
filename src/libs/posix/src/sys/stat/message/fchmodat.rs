@@ -251,7 +251,7 @@ impl MessagePartitioner for FileChmodAtRequest {
 pub struct FileChmodAtResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChmodAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChmodAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileChmodAtResponse {
     /// Size of padding.

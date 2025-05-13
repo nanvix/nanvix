@@ -35,7 +35,7 @@ pub struct FileStatRequest {
     /// Padding.
     pub padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileStatRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileStatRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileStatRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

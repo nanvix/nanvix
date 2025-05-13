@@ -139,7 +139,7 @@ pub struct stat {
     /// Number of blocks allocated.
     pub st_blocks: blkcnt_t,
 }
-::nvx::sys::static_assert_size!(stat, stat::SIZE);
+::static_assert::assert_eq_size!(stat, stat::SIZE);
 
 impl stat {
     /// Size of the device ID field.

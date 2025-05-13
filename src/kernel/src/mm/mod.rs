@@ -73,83 +73,107 @@ use ::sys::{
 //==================================================================================================
 
 // Ensure that the kernel pool size is multiple of a page size.
-sys::static_assert!(config::kernel::KPOOL_SIZE % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::kernel::KPOOL_SIZE % PAGE_ALIGNMENT as usize == 0);
 // Ensure that the kernel pool size fits in a single page table.
-sys::static_assert!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
+::static_assert::assert_eq!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel stack size is multiple of a page size.
-sys::static_assert!(config::kernel::KSTACK_SIZE % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::kernel::KSTACK_SIZE % PAGE_ALIGNMENT as usize == 0);
 // Ensure that the kernel stack size fits in a single page table.
-sys::static_assert!(config::kernel::KSTACK_SIZE <= mem::PGTAB_SIZE);
+::static_assert::assert_eq!(config::kernel::KSTACK_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel base address is aligned to a page boundary.
-sys::static_assert!(config::memory_layout::KERNEL_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::memory_layout::KERNEL_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
 // Ensure that the kernel base address is aligned to a page table boundary.
-sys::static_assert!(config::memory_layout::KERNEL_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::memory_layout::KERNEL_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
 // Ensure that the kernel end address is aligned to a page boundary.
-sys::static_assert!(config::memory_layout::KERNEL_END_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::memory_layout::KERNEL_END_RAW % PAGE_ALIGNMENT as usize == 0);
 // Ensure that the kernel end address is aligned to a page table boundary.
-sys::static_assert!(config::memory_layout::KERNEL_END_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::memory_layout::KERNEL_END_RAW % PGTAB_ALIGNMENT as usize == 0);
 // Ensure that the user base address is aligned to a page boundary.
-sys::static_assert!(config::memory_layout::USER_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::memory_layout::USER_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
 // Ensure that the user base address is aligned to a page table boundary.
-sys::static_assert!(config::memory_layout::USER_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::memory_layout::USER_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
 // Ensure that the user end address is aligned to a page boundary.
-sys::static_assert!(config::memory_layout::USER_END_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::memory_layout::USER_END_RAW % PAGE_ALIGNMENT as usize == 0);
 // Ensure that the user end address is aligned to a page table boundary.
-sys::static_assert!(config::memory_layout::USER_END_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::memory_layout::USER_END_RAW % PGTAB_ALIGNMENT as usize == 0);
 // Ensure that the user stack base address is aligned to a page boundary.
-sys::static_assert!(config::memory_layout::USER_STACK_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_STACK_BASE_RAW % PAGE_ALIGNMENT as usize == 0
+);
 // Ensure that the user stack base address is aligned to a page table boundary.
-sys::static_assert!(config::memory_layout::USER_STACK_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_STACK_BASE_RAW % PGTAB_ALIGNMENT as usize == 0
+);
 // Ensure that the user heap base address is aligned to a page boundary.
-sys::static_assert!(config::memory_layout::USER_HEAP_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_HEAP_BASE_RAW % PAGE_ALIGNMENT as usize == 0
+);
 // Ensure that the user heap base address is aligned to a page table boundary.
-sys::static_assert!(config::memory_layout::USER_HEAP_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_HEAP_BASE_RAW % PGTAB_ALIGNMENT as usize == 0
+);
 //Ensure that the user libraries base address is aligned to a page boundary.
-sys::static_assert!(config::memory_layout::USER_LIBS_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_LIBS_BASE_RAW % PAGE_ALIGNMENT as usize == 0
+);
 // Ensure that the user libraries base address is aligned to a page table boundary.
-sys::static_assert!(config::memory_layout::USER_LIBS_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_LIBS_BASE_RAW % PGTAB_ALIGNMENT as usize == 0
+);
 // Ensure that the user libraries end address is aligned to a page boundary.
-sys::static_assert!(config::memory_layout::USER_LIBS_END_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_LIBS_END_RAW % PAGE_ALIGNMENT as usize == 0
+);
 // Ensure that the user libraries end address is aligned to a page table boundary.
-sys::static_assert!(config::memory_layout::USER_LIBS_END_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_LIBS_END_RAW % PGTAB_ALIGNMENT as usize == 0
+);
 // Ensure that the user and kernel address spaces do not overlap.
-sys::static_assert!(config::memory_layout::USER_BASE_RAW < config::memory_layout::USER_END_RAW);
-sys::static_assert!(config::memory_layout::KERNEL_BASE_RAW < config::memory_layout::KERNEL_END_RAW);
-sys::static_assert!(config::memory_layout::USER_BASE_RAW >= config::memory_layout::KERNEL_END_RAW);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_BASE_RAW < config::memory_layout::USER_END_RAW
+);
+::static_assert::assert_eq!(
+    config::memory_layout::KERNEL_BASE_RAW < config::memory_layout::KERNEL_END_RAW
+);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_BASE_RAW >= config::memory_layout::KERNEL_END_RAW
+);
 // Ensure that the kernel pool lies within the kernel base and end addresses.
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::KPOOL_BASE_RAW >= config::memory_layout::KERNEL_BASE_RAW
 );
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::KPOOL_BASE_RAW + config::kernel::KPOOL_SIZE
         < config::memory_layout::KERNEL_END_RAW
 );
 // Ensure that the user heap lies within the user base and end addresses.
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::USER_HEAP_BASE_RAW >= config::memory_layout::USER_BASE_RAW
 );
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::USER_HEAP_BASE_RAW + config::memory_layout::USER_HEAP_SIZE
         < config::memory_layout::USER_END_RAW
 );
 // Ensure that the user stack lies within the user base and end addresses.
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::USER_STACK_BASE_RAW <= config::memory_layout::USER_END_RAW
 );
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::USER_STACK_TOP_RAW >= config::memory_layout::USER_BASE_RAW
 );
 // Ensure that the user libraries base address lies within the user base and end addresses.
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::USER_LIBS_BASE_RAW >= config::memory_layout::USER_BASE_RAW
 );
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::USER_LIBS_BASE_RAW < config::memory_layout::USER_END_RAW
 );
-sys::static_assert!(
+::static_assert::assert_eq!(
     config::memory_layout::USER_LIBS_END_RAW > config::memory_layout::USER_LIBS_BASE_RAW
 );
-sys::static_assert!(config::memory_layout::USER_LIBS_END_RAW < config::memory_layout::USER_END_RAW);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_LIBS_END_RAW < config::memory_layout::USER_END_RAW
+);
 
 //==================================================================================================
 // Standalone Functions

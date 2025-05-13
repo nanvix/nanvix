@@ -21,6 +21,7 @@ goblin = { workspace = true, features = [
     "mach64",
 ] }
 num_enum = { workspace = true }
+static_assert = { workspace = true }
 sys = { workspace = true }
 
 [features]

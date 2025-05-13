@@ -30,7 +30,7 @@ pub struct UpdateFileAccessTimeRequest {
     pub times: [timespec; 2],
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(UpdateFileAccessTimeRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(UpdateFileAccessTimeRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl UpdateFileAccessTimeRequest {
     pub const PADDING_SIZE: usize =
@@ -70,7 +70,7 @@ pub struct UpdateFileAccessTimeResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(UpdateFileAccessTimeResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(UpdateFileAccessTimeResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl UpdateFileAccessTimeResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

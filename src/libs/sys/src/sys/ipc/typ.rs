@@ -39,7 +39,7 @@ pub enum MessageType {
     /// The message carries information sent from one kernel to another.
     Ikc,
 }
-crate::static_assert_size!(MessageType, 1);
+::static_assert::assert_eq_size!(MessageType, 1);
 
 //==================================================================================================
 //  Structures

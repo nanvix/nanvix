@@ -24,9 +24,6 @@ pub mod ipc;
 #[cfg(all(target_os = "none", feature = "kcall"))]
 pub mod kcall;
 
-/// Helper macros.
-pub mod macros;
-
 /// Memory management.
 pub mod mm;
 

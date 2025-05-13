@@ -26,10 +26,10 @@ pub struct KernelArguments {
 }
 
 // `KernelArguments` must be 8 bytes long. This must match low-level startup code.
-sys::static_assert_size!(KernelArguments, 8);
+::static_assert::assert_eq_size!(KernelArguments, 8);
 
 // `KernelArguments` must be aligned to 4 bytes. This must match low-level startup code.
-sys::static_assert_alignment!(KernelArguments, 4);
+::static_assert::assert_eq_align!(KernelArguments, 4);
 
 //==================================================================================================
 // Implementations

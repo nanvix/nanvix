@@ -153,7 +153,7 @@ pub struct dirent {
     /// File name (including null terminator character).
     pub d_name: [c_char; NAME_MAX + 1],
 }
-::nvx::sys::static_assert_size!(dirent, dirent::_SIZE_OF_DIRENT);
+::static_assert::assert_eq_size!(dirent, dirent::_SIZE_OF_DIRENT);
 
 impl dirent {
     /// Size of `d_ino` field, used for static assertions.
@@ -195,7 +195,7 @@ pub struct posix_dent {
     /// Padding.
     pub _padding: [c_char; 1],
 }
-::nvx::sys::static_assert_size!(posix_dent, posix_dent::_SIZE_OF_POSIX_DIRENT);
+::static_assert::assert_eq_size!(posix_dent, posix_dent::_SIZE_OF_POSIX_DIRENT);
 
 impl posix_dent {
     /// Size of `d_ino` field, used for static assertions.

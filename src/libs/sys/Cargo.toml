@@ -15,6 +15,7 @@ cfg-if = { workspace = true }
 config = { workspace = true }
 error = { workspace = true }
 num_enum = { workspace = true }
+static_assert = { workspace = true }
 time = { workspace = true }
 
 [build-dependencies]
