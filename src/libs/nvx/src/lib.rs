@@ -62,6 +62,24 @@ pub mod sched;
 // Standalone Functions
 //==================================================================================================
 
+#[cfg(all(not(feature = "std"), target_os = "none", not(feature = "staticlib")))]
+core::arch::global_asm!(
+    r#"
+    .extern _start
+
+    .globl _do_start
+
+    .section .crt0, "ax"
+
+    _do_start:
+        mov ebp, esp
+        push ecx
+        push edx
+        call _start
+    1:  jmp 1b
+    "#
+);
+
 #[no_mangle]
 #[cfg(target_os = "none")]
 pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
