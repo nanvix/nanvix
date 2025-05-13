@@ -31,7 +31,7 @@ use ::nvx::{
 pub struct TimesRequest {
     pub _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(TimesRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(TimesRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl TimesRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
@@ -71,7 +71,7 @@ pub struct TimesResponse {
     pub buffer: tms,
     pub _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(TimesResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(TimesResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl TimesResponse {
     pub const PADDING_SIZE: usize =

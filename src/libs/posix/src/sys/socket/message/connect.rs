@@ -37,7 +37,7 @@ pub struct ConnectSocketRequest {
     pub socklen: socklen_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ConnectSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ConnectSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ConnectSocketRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
@@ -101,7 +101,7 @@ pub struct ConnectSocketResponse {
     pub sockfd: c_int,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ConnectSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ConnectSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ConnectSocketResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>();

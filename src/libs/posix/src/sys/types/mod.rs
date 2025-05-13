@@ -118,7 +118,7 @@ pub struct pthread_attr_t {
     pub cputime_clock_allowed: c_int,
     pub detachstate: c_int,
 }
-::nvx::sys::static_assert_size!(pthread_attr_t, pthread_attr_t::SIZE);
+::static_assert::assert_eq_size!(pthread_attr_t, pthread_attr_t::SIZE);
 
 impl pthread_attr_t {
     /// Size of the `is_initialized` field.
@@ -184,7 +184,7 @@ pub struct pthread_mutexattr_t {
     /// Whether the mutex is recursive.
     recursive: c_int,
 }
-::nvx::sys::static_assert_size!(pthread_mutexattr_t, pthread_mutexattr_t::SIZE);
+::static_assert::assert_eq_size!(pthread_mutexattr_t, pthread_mutexattr_t::SIZE);
 
 impl pthread_mutexattr_t {
     /// Size of the `is_initialized` field.
@@ -222,7 +222,7 @@ pub struct pthread_condattr_t {
     /// Clock used for timeouts.
     clock: clock_t,
 }
-::nvx::sys::static_assert_size!(pthread_condattr_t, pthread_condattr_t::SIZE);
+::static_assert::assert_eq_size!(pthread_condattr_t, pthread_condattr_t::SIZE);
 
 impl pthread_condattr_t {
     // Size of the `is_initialized` field.

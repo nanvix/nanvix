@@ -41,8 +41,8 @@ pub mod bindings {
         /// Path.
         pub sun_path: [u8; SUNPATHLEN],
     }
-    ::nvx::sys::static_assert_size!(sockaddr_un, sockaddr_un::SIZE);
-    ::nvx::sys::static_assert_size!(sockaddr_un, mem::size_of::<sockaddr_storage>());
+    ::static_assert::assert_eq_size!(sockaddr_un, sockaddr_un::SIZE);
+    ::static_assert::assert_eq_size!(sockaddr_un, mem::size_of::<sockaddr_storage>());
 
     impl sockaddr_un {
         /// Size of this structure, used for static assertions.

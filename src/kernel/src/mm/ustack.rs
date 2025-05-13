@@ -201,7 +201,7 @@ impl UserStackAllocator {
     /// On success, the newly initialized user stack allocator. Otherwise, an error.
     ///
     pub fn new() -> Result<Self, Error> {
-        ::sys::static_assert!(NUM_USER_STACK_ENTRIES % u8::BITS as usize == 0);
+        ::static_assert::assert_eq!(NUM_USER_STACK_ENTRIES % u8::BITS as usize == 0);
 
         let len: usize = NUM_USER_STACK_ENTRIES / u8::BITS as usize;
         let bitmap: Bitmap = Bitmap::new(len)?;

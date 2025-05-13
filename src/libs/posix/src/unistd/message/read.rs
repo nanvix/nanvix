@@ -30,7 +30,7 @@ pub struct ReadRequest {
     pub count: size_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ReadRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ReadRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ReadRequest {
     pub const PADDING_SIZE: usize =
@@ -72,7 +72,7 @@ pub struct ReadResponse {
     pub count: i32,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
-::nvx::sys::static_assert_size!(ReadResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ReadResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ReadResponse {
     pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

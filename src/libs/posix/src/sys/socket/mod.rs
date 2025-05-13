@@ -124,8 +124,8 @@ pub struct sockaddr {
     /// Address data.
     pub sa_data: [u8; 14],
 }
-::nvx::sys::static_assert_size!(sockaddr, sockaddr::_SIZE);
-::nvx::sys::static_assert_size!(sockaddr, mem::size_of::<sockaddr_storage>());
+::static_assert::assert_eq_size!(sockaddr, sockaddr::_SIZE);
+::static_assert::assert_eq_size!(sockaddr, mem::size_of::<sockaddr_storage>());
 
 impl sockaddr {
     /// Size of this structure, used in static assertions.
@@ -145,7 +145,7 @@ pub struct sockaddr_storage {
     /// Address data.
     pub ss_data: [u8; 14],
 }
-::nvx::sys::static_assert_size!(sockaddr_storage, sockaddr_storage::_SIZE);
+::static_assert::assert_eq_size!(sockaddr_storage, sockaddr_storage::_SIZE);
 
 impl sockaddr_storage {
     /// Size of this structure, used in static assertions.

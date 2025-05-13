@@ -33,8 +33,8 @@ pub struct Pointer<T> {
     /// Marker for the type `T``.
     _marker: PhantomData<T>,
 }
-::nvx::sys::static_assert_alignment!(Pointer<u8>, 4);
-::nvx::sys::static_assert_size!(Pointer<u8>, 4);
+::static_assert::assert_eq_align!(Pointer<u8>, 4);
+::static_assert::assert_eq_size!(Pointer<u8>, 4);
 
 pub struct UnalignedPointerError;
 

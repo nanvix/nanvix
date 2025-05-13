@@ -42,7 +42,7 @@ pub struct Message {
     /// Payload of the message.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
-crate::static_assert_size!(Message, config::kernel::IPC_MESSAGE_SIZE);
+::static_assert::assert_eq_size!(Message, config::kernel::IPC_MESSAGE_SIZE);
 
 //==================================================================================================
 //  Implementations

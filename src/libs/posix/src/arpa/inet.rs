@@ -22,7 +22,7 @@ pub mod bindings {
     pub struct in_addr {
         pub s_addr: in_addr_t,
     }
-    ::nvx::sys::static_assert_size!(in_addr, in_addr::_SIZE);
+    ::static_assert::assert_eq_size!(in_addr, in_addr::_SIZE);
 
     impl in_addr {
         /// Size of this structure, used for static assertions.

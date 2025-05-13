@@ -28,7 +28,7 @@ pub struct FileSyncRequest {
     pub fd: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileSyncRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileSyncRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileSyncRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
@@ -75,7 +75,7 @@ pub struct FileSyncResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileSyncResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileSyncResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileSyncResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

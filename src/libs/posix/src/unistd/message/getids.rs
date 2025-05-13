@@ -30,7 +30,7 @@ use ::nvx::{
 pub struct GetIdsRequest {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(GetIdsRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(GetIdsRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl GetIdsRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
@@ -69,7 +69,7 @@ pub struct GetIdsResponse {
     pub egid: gid_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(GetIdsResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(GetIdsResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl GetIdsResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE

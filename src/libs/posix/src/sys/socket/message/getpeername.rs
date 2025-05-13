@@ -33,7 +33,7 @@ pub struct GetPeerNameRequest {
     pub sockfd: c_int,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(GetPeerNameRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(GetPeerNameRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl GetPeerNameRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>();
@@ -74,7 +74,7 @@ pub struct GetPeerNameResponse {
     pub sockaddr: sockaddr,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(GetPeerNameResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(GetPeerNameResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl GetPeerNameResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<sockaddr>();

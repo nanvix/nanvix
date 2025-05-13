@@ -49,7 +49,7 @@ pub struct SignupMessage {
 }
 
 // NOTE: The size of a signup message must match the size of a process management message payload.
-::nvx::sys::static_assert_size!(SignupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SignupMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 ///
 /// # Description
@@ -66,7 +66,7 @@ pub struct SignupResponseMessage {
 }
 
 // NOTE: The size of a signup response message must match the size of a process management message payload.
-::nvx::sys::static_assert_size!(SignupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SignupResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
@@ -256,13 +256,8 @@ pub fn signup_request(pid: ProcessIdentifier, name: &str) -> Result<Message, Err
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     // Construct an IPC  message.
-    let ipc_message: Message = Message::new(
-        pid,
-        crate::PROCD,
-        MessageType::Ipc,
-        None,
-        system_message.into_bytes(),
-    );
+    let ipc_message: Message =
+        Message::new(pid, crate::PROCD, MessageType::Ipc, None, system_message.into_bytes());
 
     Ok(ipc_message)
 }

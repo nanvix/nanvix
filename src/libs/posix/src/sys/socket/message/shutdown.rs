@@ -33,7 +33,7 @@ pub struct ShutdownSocketRequest {
     pub how: Shutdown,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ShutdownSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ShutdownSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ShutdownSocketRequest {
     pub const PADDING_SIZE: usize =
@@ -78,7 +78,7 @@ impl ShutdownSocketRequest {
 pub struct ShutdownSocketResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ShutdownSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ShutdownSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ShutdownSocketResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;

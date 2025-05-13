@@ -42,7 +42,7 @@ pub struct ContextInformation {
 }
 
 // `Context` must be 72 bytes long. This must match low-level assembly dispatcher code.
-sys::static_assert_size!(ContextInformation, 76);
+::static_assert::assert_eq_size!(ContextInformation, 76);
 
 //==================================================================================================
 // Implementations

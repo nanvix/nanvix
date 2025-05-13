@@ -37,7 +37,7 @@ pub struct ShutdownMessage {
 }
 
 // NOTE: the size of a shutdown message must match the size of a process management message payload.
-::nvx::sys::static_assert_size!(ShutdownMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ShutdownMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations

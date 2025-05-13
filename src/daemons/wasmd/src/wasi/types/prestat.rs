@@ -24,8 +24,8 @@ pub struct Prestat {
     padding: [u8; Self::SIZE_OF_PADDING],
     dir: PrestatDir,
 }
-::nvx::sys::static_assert_alignment!(Prestat, Prestat::_ALIGNMENT_OF_PRESTAT);
-::nvx::sys::static_assert_size!(Prestat, Prestat::_SIZE_OF_PRESTAT);
+::static_assert::assert_eq_align!(Prestat, Prestat::_ALIGNMENT_OF_PRESTAT);
+::static_assert::assert_eq_size!(Prestat, Prestat::_SIZE_OF_PRESTAT);
 
 //==================================================================================================
 // Implementations

@@ -29,10 +29,10 @@ pub struct MbootBasicMeminfoTag {
 }
 
 // `MbootBasicMeminfoTag` must be 16 bytes long. This must match the multiboot specification.
-sys::static_assert_size!(MbootBasicMeminfoTag, 8);
+::static_assert::assert_eq_size!(MbootBasicMeminfoTag, 8);
 
 // `MbootBasicMeminfoTag` must be 8-byte aligned. This must match the multiboot specification.
-sys::static_assert_alignment!(MbootBasicMeminfoTag, 8);
+::static_assert::assert_eq_align!(MbootBasicMeminfoTag, 8);
 
 impl core::fmt::Debug for MbootBasicMeminfoTag {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {

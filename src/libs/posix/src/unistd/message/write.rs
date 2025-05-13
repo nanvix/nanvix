@@ -33,7 +33,7 @@ pub struct WriteRequest {
     pub count: size_t,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
-::nvx::sys::static_assert_size!(WriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(WriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl WriteRequest {
     pub const BUFFER_SIZE: usize =
@@ -77,7 +77,7 @@ pub struct WriteResponse {
     pub count: ssize_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(WriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(WriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl WriteResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<ssize_t>();

@@ -43,7 +43,7 @@ pub struct LinuxDaemonMessagePart {
     /// Payload.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
-::nvx::sys::static_assert_size!(LinuxDaemonMessagePart, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(LinuxDaemonMessagePart, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl LinuxDaemonMessagePart {
     /// Maximum size of the payload.

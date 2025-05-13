@@ -23,8 +23,8 @@ pub enum Whence {
     /// The offset is set to the end of the file plus `offset`.
     End = 2,
 }
-::nvx::sys::static_assert_alignment!(Whence, 1);
-::nvx::sys::static_assert_size!(Whence, 1);
+::static_assert::assert_eq_align!(Whence, 1);
+::static_assert::assert_eq_size!(Whence, 1);
 
 //==================================================================================================
 // Implementations

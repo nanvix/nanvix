@@ -22,7 +22,7 @@ use crate::error::{
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(C)]
 pub struct ProcessIdentifier(u32);
-crate::static_assert_size!(ProcessIdentifier, 4);
+::static_assert::assert_eq_size!(ProcessIdentifier, 4);
 
 //==================================================================================================
 // Implementations
