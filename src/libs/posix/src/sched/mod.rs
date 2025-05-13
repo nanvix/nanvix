@@ -56,7 +56,7 @@ pub struct sched_param {
     /// Process or thread scheduling priority.
     pub sched_priority: c_int,
 }
-::nvx::sys::static_assert_size!(sched_param, sched_param::SIZE);
+::static_assert::assert_eq_size!(sched_param, sched_param::SIZE);
 
 impl sched_param {
     /// Size of the `sched_priority` field.

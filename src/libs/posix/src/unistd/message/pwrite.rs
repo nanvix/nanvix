@@ -35,7 +35,7 @@ pub struct PartialWriteRequest {
     pub offset: off_t,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
-::nvx::sys::static_assert_size!(PartialWriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(PartialWriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl PartialWriteRequest {
     pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
@@ -88,7 +88,7 @@ pub struct PartialWriteResponse {
     pub count: ssize_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(PartialWriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(PartialWriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl PartialWriteResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<ssize_t>();

@@ -1,0 +1,15 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "static_assert"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Static Assertions"
+homepage.workspace = true
+
+[features]
+default = []
+std = []

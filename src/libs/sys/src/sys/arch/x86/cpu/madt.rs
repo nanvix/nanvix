@@ -27,7 +27,7 @@ pub struct Madt {
     /// Start of the MADT entries
     pub entries: [u32; 0], // This is a zero-length array used for variable-sized struct
 }
-crate::static_assert_size!(Madt, Madt::_SIZE);
+::static_assert::assert_eq_size!(Madt, Madt::_SIZE);
 
 impl Madt {
     /// Size of the MADT table.
@@ -100,7 +100,7 @@ impl MadtEntryHeader {
         }
     }
 }
-crate::static_assert_size!(MadtEntryHeader, MadtEntryHeader::_SIZE);
+::static_assert::assert_eq_size!(MadtEntryHeader, MadtEntryHeader::_SIZE);
 
 //==================================================================================================
 // MADT Local APIC Entry
@@ -152,7 +152,7 @@ impl MadtEntryLocalApic {
         }
     }
 }
-crate::static_assert_size!(MadtEntryLocalApic, MadtEntryLocalApic::_SIZE);
+::static_assert::assert_eq_size!(MadtEntryLocalApic, MadtEntryLocalApic::_SIZE);
 
 //==================================================================================================
 // MADT IO APIC Entry
@@ -186,7 +186,7 @@ impl MadtEntryIoApic {
         }
     }
 }
-crate::static_assert_size!(MadtEntryIoApic, MadtEntryIoApic::_SIZE);
+::static_assert::assert_eq_size!(MadtEntryIoApic, MadtEntryIoApic::_SIZE);
 
 //==================================================================================================
 // MADT Source Override Entry
@@ -220,7 +220,10 @@ impl MadtEntryIoApicSourceOverride {
         }
     }
 }
-crate::static_assert_size!(MadtEntryIoApicSourceOverride, MadtEntryIoApicSourceOverride::_SIZE);
+::static_assert::assert_eq_size!(
+    MadtEntryIoApicSourceOverride,
+    MadtEntryIoApicSourceOverride::_SIZE
+);
 
 //==================================================================================================
 // MADT NMI Entry
@@ -254,7 +257,7 @@ impl MadtEntryIoApicNmi {
         }
     }
 }
-crate::static_assert_size!(MadtEntryIoApicNmi, MadtEntryIoApicNmi::_SIZE);
+::static_assert::assert_eq_size!(MadtEntryIoApicNmi, MadtEntryIoApicNmi::_SIZE);
 
 //==================================================================================================
 // MADT Local APIC NMI Entry
@@ -286,7 +289,7 @@ impl MadtEntryLocalApicNmi {
         }
     }
 }
-crate::static_assert_size!(MadtEntryLocalApicNmi, MadtEntryLocalApicNmi::_SIZE);
+::static_assert::assert_eq_size!(MadtEntryLocalApicNmi, MadtEntryLocalApicNmi::_SIZE);
 
 //==================================================================================================
 // MADT Local X2APIC Entry
@@ -316,7 +319,7 @@ impl MadtLocalApicAddressOverride {
         }
     }
 }
-crate::static_assert_size!(MadtLocalApicAddressOverride, MadtLocalApicAddressOverride::_SIZE);
+::static_assert::assert_eq_size!(MadtLocalApicAddressOverride, MadtLocalApicAddressOverride::_SIZE);
 
 //==================================================================================================
 // MADT Local X2APIC Entry
@@ -350,4 +353,4 @@ impl MadtEntryLocalX2Apic {
         }
     }
 }
-crate::static_assert_size!(MadtEntryLocalX2Apic, MadtEntryLocalX2Apic::_SIZE);
+::static_assert::assert_eq_size!(MadtEntryLocalX2Apic, MadtEntryLocalX2Apic::_SIZE);

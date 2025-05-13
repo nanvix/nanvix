@@ -33,7 +33,7 @@ pub struct BindSocketRequest {
     pub sockaddr: sockaddr,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(BindSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(BindSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl BindSocketRequest {
     pub const PADDING_SIZE: usize =
@@ -88,7 +88,7 @@ impl Debug for BindSocketRequest {
 pub struct BindSocketResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(BindSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(BindSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl BindSocketResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;

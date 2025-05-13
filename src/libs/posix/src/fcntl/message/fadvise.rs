@@ -35,7 +35,7 @@ pub struct FileAdvisoryInformationRequest {
     pub advice: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileAdvisoryInformationRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileAdvisoryInformationRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileAdvisoryInformationRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
@@ -92,7 +92,7 @@ pub struct FileAdvisoryInformationResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileAdvisoryInformationResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileAdvisoryInformationResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileAdvisoryInformationResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

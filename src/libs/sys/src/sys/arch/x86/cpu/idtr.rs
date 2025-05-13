@@ -17,7 +17,7 @@ pub struct Idtr {
     pub size: u16, // IDT size.
     pub ptr: u32,  // IDT virtual address.
 }
-crate::static_assert_size!(Idtr, 6);
+::static_assert::assert_eq_size!(Idtr, 6);
 
 impl Idtr {
     /// Initializes an IDT register.

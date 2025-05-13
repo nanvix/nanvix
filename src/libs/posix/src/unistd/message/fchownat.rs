@@ -278,7 +278,7 @@ impl MessagePartitioner for FileChownAtRequest {
 pub struct FileChownAtResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChownAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChownAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileChownAtResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;

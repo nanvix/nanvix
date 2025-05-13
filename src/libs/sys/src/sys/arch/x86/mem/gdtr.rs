@@ -14,7 +14,7 @@ pub struct Gdtr {
 }
 
 // `Gdtptr` must be 6 bytes long. This must match the hardware specification.
-crate::static_assert_size!(Gdtr, 6);
+::static_assert::assert_eq_size!(Gdtr, 6);
 
 impl Gdtr {
     pub fn new(base: u32, size: u16) -> Self {

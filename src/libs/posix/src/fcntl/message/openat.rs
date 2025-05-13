@@ -224,7 +224,7 @@ pub struct OpenAtResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(OpenAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(OpenAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl OpenAtResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

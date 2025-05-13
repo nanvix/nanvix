@@ -194,7 +194,7 @@ impl MessagePartitioner for ChangeDirectoryRequest {
 pub struct ChangeDirectoryResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ChangeDirectoryResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ChangeDirectoryResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ChangeDirectoryResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;

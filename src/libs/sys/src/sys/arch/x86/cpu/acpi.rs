@@ -74,7 +74,7 @@ impl AcpiSdtHeader {
         Some(sdt)
     }
 }
-crate::static_assert_size!(AcpiSdtHeader, AcpiSdtHeader::_SIZE);
+::static_assert::assert_eq_size!(AcpiSdtHeader, AcpiSdtHeader::_SIZE);
 
 #[derive(Debug)]
 #[repr(C, packed)]
@@ -136,7 +136,7 @@ impl Rsdp {
         Some(rsdp)
     }
 }
-crate::static_assert_size!(Rsdp, Rsdp::_SIZE);
+::static_assert::assert_eq_size!(Rsdp, Rsdp::_SIZE);
 
 /// Checks if the checksum of a given ACPI table is valid.
 ///

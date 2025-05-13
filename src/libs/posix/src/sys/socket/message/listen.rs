@@ -32,7 +32,7 @@ pub struct ListenSocketRequest {
     pub backlog: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ListenSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ListenSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ListenSocketRequest {
     pub const PADDING_SIZE: usize =
@@ -76,7 +76,7 @@ impl ListenSocketRequest {
 pub struct ListenSocketResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ListenSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ListenSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ListenSocketResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;

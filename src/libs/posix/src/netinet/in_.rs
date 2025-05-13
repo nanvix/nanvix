@@ -61,8 +61,8 @@ pub mod bindings {
         /// Padding.
         pub sin_zero: [u8; 8],
     }
-    ::nvx::sys::static_assert_size!(sockaddr_in, sockaddr_in::_SIZE);
-    ::nvx::sys::static_assert_size!(sockaddr_in, mem::size_of::<sockaddr_storage>());
+    ::static_assert::assert_eq_size!(sockaddr_in, sockaddr_in::_SIZE);
+    ::static_assert::assert_eq_size!(sockaddr_in, mem::size_of::<sockaddr_storage>());
 
     impl sockaddr_in {
         /// Size of this structure, used for static assertions.

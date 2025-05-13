@@ -59,7 +59,7 @@ pub struct GetDirectoryEntriesRequest {
     pub count: size_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(GetDirectoryEntriesRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(GetDirectoryEntriesRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl GetDirectoryEntriesRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE

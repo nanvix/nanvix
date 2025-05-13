@@ -30,8 +30,8 @@ pub struct IoVec {
     /// Length of the buffer.
     buf_len: Size,
 }
-::nvx::sys::static_assert_alignment!(IoVec, 4);
-::nvx::sys::static_assert_size!(IoVec, 8);
+::static_assert::assert_eq_align!(IoVec, 4);
+::static_assert::assert_eq_size!(IoVec, 8);
 
 impl IoVec {
     /// Creates a new region of memory for scatter/gather writes.
