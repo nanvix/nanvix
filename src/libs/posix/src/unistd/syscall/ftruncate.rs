@@ -40,7 +40,7 @@ use ::nvx::{
 /// Upon successful completion, `ftruncate()` returns empty. Otherwise, it returns an error.
 ///
 pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
-    ::nvx::debug!("ftruncate(): fd={}, length={}", fd, length);
+    ::syslog::debug!("ftruncate(): fd={}, length={}", fd, length);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
@@ -53,7 +53,7 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "ftruncate(): system call failed: fd={}, length={}, status={}",
             fd,
             length,
@@ -76,7 +76,7 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
             LinuxDaemonMessageHeader::FileTruncateResponse => Ok(()),
             // Invalid response.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "ftruncate(): invalid response: fd={}, length={}, header={:?}",
                     fd,
                     length,

@@ -51,7 +51,7 @@ pub fn fsync(fd: c_int) -> Result<(), Error> {
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::nvx::error!("fsync(): failed ({:?})", error_code);
+        ::syslog::error!("fsync(): failed ({:?})", error_code);
         Err(Error::new(error_code, "fsync() failed"))
     } else {
         // System call succeeded, parse response.

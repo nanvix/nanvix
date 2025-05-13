@@ -36,12 +36,12 @@ static mut DIRENT: dirent::dirent = dirent::dirent {
 pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent::dirent {
     // Check if directory stream is invalid.
     if dirp.is_null() {
-        ::nvx::error!("closedir(): invalid directory stream");
+        ::syslog::error!("closedir(): invalid directory stream");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return ptr::null_mut();
     }
 
-    ::nvx::trace!("readdir(): dirp={:?}", dirp);
+    ::syslog::trace!("readdir(): dirp={:?}", dirp);
 
     let mut dirp: Box<DirectoryStream> = Box::from_raw(dirp);
 
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent::dir
         },
         // Error.
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "readdir(): failed to read directory entry (dirp={:?}, error={:?})",
                 dirp,
                 error

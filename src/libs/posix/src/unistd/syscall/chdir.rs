@@ -40,7 +40,7 @@ use ::nvx::{
 /// error.
 ///
 pub fn chdir(path: &str) -> Result<(), Error> {
-    ::nvx::trace!("chdir(): path={:?}", path);
+    ::syslog::trace!("chdir(): path={:?}", path);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -56,7 +56,7 @@ pub fn chdir(path: &str) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!("chdir(): failed (path={:?}, error_code={:?})", path, { response.status });
+        ::syslog::error!("chdir(): failed (path={:?}, error_code={:?})", path, { response.status });
         // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
             // Succeeded to parse error code.
@@ -66,7 +66,7 @@ pub fn chdir(path: &str) -> Result<(), Error> {
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "chdir(): failed to parse error code (path={:?}, error={:?})",
                     path,
                     error
@@ -81,7 +81,7 @@ pub fn chdir(path: &str) -> Result<(), Error> {
             LinuxDaemonMessageHeader::ChangeDirectoryResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
-                ::nvx::error!("chdir(): {:?} (path={:?}, header={:?})", reason, path, header);
+                ::syslog::error!("chdir(): {:?} (path={:?}, header={:?})", reason, path, header);
                 Err(Error::new(ErrorCode::InvalidMessage, reason))
             },
         }

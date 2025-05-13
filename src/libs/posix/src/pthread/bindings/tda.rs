@@ -27,13 +27,13 @@ pub unsafe extern "C" fn pthread_key_create(
 ) -> c_int {
     // Check if storage location for the key is valid.
     if key_ptr.is_null() {
-        ::nvx::error!("pthread_key_create(): invalid storage location for thread key");
+        ::syslog::error!("pthread_key_create(): invalid storage location for thread key");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if destructor is not null.
     if destructor.is_some() {
-        ::nvx::error!("pthread_key_create(): destructors are not supported");
+        ::syslog::error!("pthread_key_create(): destructors are not supported");
         return ErrorCode::OperationNotSupported.get();
     }
 
@@ -44,7 +44,7 @@ pub unsafe extern "C" fn pthread_key_create(
             0
         },
         None => {
-            ::nvx::error!("pthread_key_create(): failed to create key");
+            ::syslog::error!("pthread_key_create(): failed to create key");
             ErrorCode::OutOfMemory.get()
         },
     }

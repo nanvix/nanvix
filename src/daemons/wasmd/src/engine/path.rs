@@ -44,7 +44,7 @@ impl WasmEngine {
         let path_create_directory: Func = Func::wrap(
             store,
             move |_caller: Caller<'_, u32>, fd: i32, path_offset: i32, path_len: i32| -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "path_create_directory(): fd={:?}, path_offset={:?}, path_len={:?}",
                     fd,
                     path_offset,
@@ -71,7 +71,7 @@ impl WasmEngine {
              len: i32,
              offset0: i32|
              -> i32 {
-                ::nvx::trace!("path_filestat_get: {fd}, {flags}, {buf} {len} {offset0}");
+                ::syslog::trace!("path_filestat_get: {fd}, {flags}, {buf} {len} {offset0}");
                 Errno::Nosys.into()
             },
         );
@@ -95,7 +95,7 @@ impl WasmEngine {
              mtim: i64,
              fst_flags: i32|
              -> i32 {
-                ::nvx::error!(
+                ::syslog::error!(
                     "path_filestat_set_times: {fd}, {flags}, {buf} {len} {atim} {mtim} {fst_flags}"
                 );
                 Errno::Nosys.into()
@@ -118,7 +118,7 @@ impl WasmEngine {
              new_path_offset: i32,
              new_path_len: i32|
              -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "path_link: {old_fd}, {old_flags}, {old_path_offset}, {old_path_len}, \
                      {new_fd}, {new_path_offset}, {new_path_len}"
                 );
@@ -148,7 +148,7 @@ impl WasmEngine {
                   fs_rights_inheriting: i32,
                   fd_offset: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "path_open(): fd={:?}, dirflags={:?}, path_offset={:?}, path_length={:?}, \
                      oflags={:?}, fs_rights_base={:?}, fdflags={:?}, fs_rights_inheriting={:?}, \
                      fd_offset={:?}",
@@ -169,7 +169,7 @@ impl WasmEngine {
                 let path_offset: usize = match path_offset.try_into() {
                     Ok(path_offset) => path_offset,
                     _ => {
-                        ::nvx::error!("path_open(): invalid path offset {:#010x}", path_offset);
+                        ::syslog::error!("path_open(): invalid path offset {:#010x}", path_offset);
                         return Errno::Inval.into();
                     },
                 };
@@ -178,7 +178,7 @@ impl WasmEngine {
                 let path_length: usize = match path_length.try_into() {
                     Ok(path_length) => path_length,
                     _ => {
-                        ::nvx::error!("path_open(): invalid path length {:#010x}", path_length);
+                        ::syslog::error!("path_open(): invalid path length {:#010x}", path_length);
                         return Errno::Inval.into();
                     },
                 };
@@ -187,7 +187,7 @@ impl WasmEngine {
                 let fd_offset: usize = match fd_offset.try_into() {
                     Ok(fd_offset) => fd_offset,
                     _ => {
-                        ::nvx::error!("path_open(): invalid fd offset {:#010x}", fd_offset);
+                        ::syslog::error!("path_open(): invalid fd offset {:#010x}", fd_offset);
                         return Errno::Inval.into();
                     },
                 };
@@ -220,14 +220,14 @@ impl WasmEngine {
                     match core::str::from_utf8(&memory[path_offset..path_offset + path_length]) {
                         Ok(path) => path,
                         _ => {
-                            ::nvx::error!("path_open(): invalid path");
+                            ::syslog::error!("path_open(): invalid path");
                             return Errno::Inval.into();
                         },
                     };
 
                 // Check if memory is large enough to store the file descriptor.
                 if memory.len() < fd_offset + mem::size_of::<Fd>() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "path_open(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         fd_offset + mem::size_of::<Fd>()
@@ -274,7 +274,7 @@ impl WasmEngine {
              buf_len: i32,
              offset: i32|
              -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "path_readlink: {fd}, {path_offset}, {path_len}, {buf}, {buf_len} {offset}"
                 );
                 Errno::Nosys.into()
@@ -293,7 +293,7 @@ impl WasmEngine {
         let path_remove_directory: Func = Func::wrap(
             store,
             move |_caller: Caller<'_, u32>, fd: i32, path_offset: i32, path_len: i32| -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "path_remove_directory(): fd={:?}, path_offset={:?}, path_len={:?}",
                     fd,
                     path_offset,
@@ -318,7 +318,7 @@ impl WasmEngine {
              new_path_offset: i32,
              new_path_len: i32|
              -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "path_rename: {old_fd}, {old_path_offset}, {old_path_len}, {new_fd}, \
                      {new_path_offset}, {new_path_len}"
                 );
@@ -343,7 +343,7 @@ impl WasmEngine {
              new_path_offset: i32,
              new_path_len: i32|
              -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "path_symlink: {old_path_offset}, {old_path_len}, {fd}, {new_path_offset}, \
                      {new_path_len}"
                 );
@@ -363,7 +363,7 @@ impl WasmEngine {
         let path_unlink_file: Func = Func::wrap(
             store,
             move |_caller: Caller<'_, u32>, fd: i32, path_offset: i32, path_len: i32| -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "path_unlink_file(): fd={:?}, path_offset={:?}, path_len={:?}",
                     fd,
                     path_offset,

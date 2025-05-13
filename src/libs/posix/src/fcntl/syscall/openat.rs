@@ -46,7 +46,7 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
-        ::nvx::error!(
+        ::syslog::error!(
             "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, error={:?})",
             dirfd,
             pathname,
@@ -62,7 +62,7 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "openat(): failed to parse error code (dirfd={:?}, pathname={:?}, flags={:?}, \
                      mode={:?}, error={:?})",
                     dirfd,

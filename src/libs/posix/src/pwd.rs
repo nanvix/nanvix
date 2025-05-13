@@ -30,7 +30,7 @@ mod bindings {
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
     pub unsafe extern "C" fn getpwuid(_uid: c_int) -> *mut passwd {
-        ::nvx::error!("getpwuid(): not implemented");
+        ::syslog::error!("getpwuid(): not implemented");
         unsafe {
             *__errno_location() = ErrorCode::InvalidSysCall.get();
         }

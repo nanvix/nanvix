@@ -44,7 +44,7 @@ use ::nvx::{
 /// error.
 ///
 pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
-    ::nvx::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
+    ::syslog::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -60,7 +60,7 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "unlinkat(): failed (dirfd={}, pathname={}, flags={}, error_code={})",
             dirfd,
             pathname,
@@ -73,7 +73,7 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
             Ok(error_code) => Err(Error::new(error_code, "unlinkat() failed")),
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "unlinkat(): failed to parse error code (dirfd={:?}, pathname={:?}, \
                      flags={:?}, error={:?})",
                     dirfd,
@@ -92,7 +92,7 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
             LinuxDaemonMessageHeader::UnlinkAtResponse => Ok(()),
             // Response was not parsed.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "unlinkat(): failed to parse response (dirfd={:?}, pathname={:?}, flags={:?}, \
                      header={:?})",
                     dirfd,

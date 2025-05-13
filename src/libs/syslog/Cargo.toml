@@ -1,0 +1,27 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "syslog"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "System Logging Library"
+homepage.workspace = true
+
+[dependencies]
+cfg-if = { workspace = true }
+sys = { workspace = true, optional = true, features = ["kcall"] }
+
+[features]
+default = ["dep:sys"]
+std = []
+
+# Logging Features
+trace = ["debug"]
+debug = ["info"]
+info = ["warn"]
+warn = ["error"]
+error = ["panic"]
+panic = []

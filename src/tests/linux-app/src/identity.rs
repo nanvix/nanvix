@@ -15,7 +15,7 @@ pub fn test_getpid() {
     // Try to get PID
     match unistd::getpid() {
         Ok(pid) => {
-            ::nvx::info!("got PID {:#?}", pid);
+            ::syslog::info!("got PID {:#?}", pid);
         },
         Err(err) => {
             panic!("failed to get PID: {:?}", err);

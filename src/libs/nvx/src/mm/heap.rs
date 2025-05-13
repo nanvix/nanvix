@@ -42,29 +42,29 @@ impl Heap {
         size: usize,
         capacity: usize,
     ) -> Result<Self, Error> {
-        crate::trace!("new(): base={:X?}, size={:X?}, capacity={:X?}", base, size, capacity);
+        ::syslog::trace!("new(): base={:X?}, size={:X?}, capacity={:X?}", base, size, capacity);
 
         // Check if base address is page-aligned.
         if !base.is_aligned(PAGE_ALIGNMENT) {
-            crate::error!("new(): unaligned base address {:X?}", base);
+            ::syslog::error!("new(): unaligned base address {:X?}", base);
             return Err(Error::new(ErrorCode::BadAddress, "unaligned base address"));
         }
 
         // Check if size is zero.
         if size == 0 {
-            crate::error!("new(): zero size");
+            ::syslog::error!("new(): zero size");
             return Err(Error::new(ErrorCode::BadAddress, "zero size"));
         }
 
         // Check if capacity is zero.
         if capacity == 0 {
-            crate::error!("new(): zero capacity");
+            ::syslog::error!("new(): zero capacity");
             return Err(Error::new(ErrorCode::BadAddress, "zero capacity"));
         }
 
         // Check if capacity is smaller than size.
         if capacity < size {
-            crate::error!("new(): capacity is too small");
+            ::syslog::error!("new(): capacity is too small");
             return Err(Error::new(ErrorCode::BadAddress, "capacity is too small"));
         }
 
@@ -90,23 +90,23 @@ impl Heap {
     }
 
     pub fn grow(&mut self, increment: usize) -> Result<(), Error> {
-        crate::trace!("grow(): increment={:X?}", increment);
+        ::syslog::trace!("grow(): increment={:X?}", increment);
 
         // Check if increment is page-aligned.
         if !mm::is_aligned(increment, PAGE_ALIGNMENT) {
-            crate::error!("grow(): unaligned increment");
+            ::syslog::error!("grow(): unaligned increment");
             return Err(Error::new(ErrorCode::BadAddress, "unaligned increment"));
         }
 
         // Check if increment is zero.
         if increment == 0 {
-            crate::error!("grow(): zero increment");
+            ::syslog::error!("grow(): zero increment");
             return Err(Error::new(ErrorCode::BadAddress, "zero increment"));
         }
 
         // Check if increment would exceed capacity.
         if self.size + increment > self.capacity {
-            crate::error!(
+            ::syslog::error!(
                 "grow(): exceeds capacity (self.size={:X?}, increment={:X?}, self.capacity={:X?})",
                 self.size,
                 increment,
@@ -133,7 +133,7 @@ pub fn map_range(
     start: VirtualAddress,
     end: VirtualAddress,
 ) -> Result<(), Error> {
-    crate::trace!("map_range(): start={:X?}, end={:X?}", start, end);
+    ::syslog::trace!("map_range(): start={:X?}, end={:X?}", start, end);
 
     debug_assert!(start.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
@@ -150,7 +150,7 @@ pub fn map_range(
         if let Err(error) = kcall::mm::mmap(pid, vaddr, AccessPermission::RDWR) {
             // Failed to map page, attempt to rollback.
 
-            crate::error!(
+            ::syslog::error!(
                 "map_range(): failed to map page at {:X?}, rolling back (error={:?})",
                 vaddr,
                 error
@@ -159,7 +159,7 @@ pub fn map_range(
             // Attempt to unmap pages.
             if let Err(_error) = unmap_range(pid, VirtualAddress::new(start), vaddr) {
                 // Failed to unmap range, warn.
-                crate::warn!(
+                ::syslog::warn!(
                     "map_range(): failed to unmap pages at {:X?}..{:X?} (error={:?})",
                     start,
                     vaddr,
@@ -182,7 +182,7 @@ pub fn unmap_range(
     start: VirtualAddress,
     end: VirtualAddress,
 ) -> Result<(), Error> {
-    crate::trace!("unmap_range(): start={:X?}, end={:X?}", start, end);
+    ::syslog::trace!("unmap_range(): start={:X?}, end={:X?}", start, end);
 
     debug_assert!(start.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
@@ -197,7 +197,7 @@ pub fn unmap_range(
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         if let Err(error) = kcall::mm::munmap(pid, vaddr) {
-            crate::error!(
+            ::syslog::error!(
                 "unmap_range(): failed to unmap page at {:X?}, skipping (error={:?})",
                 vaddr,
                 error
@@ -212,7 +212,7 @@ pub fn unmap_range(
 }
 impl Drop for Heap {
     fn drop(&mut self) {
-        crate::trace!(
+        ::syslog::trace!(
             "drop(): base={:X?}, size={:X?}, capacity={:X?}",
             self.base,
             self.size,
@@ -225,7 +225,7 @@ impl Drop for Heap {
             self.base,
             VirtualAddress::from_raw_value(self.base.into_raw_value() + self.size),
         ) {
-            crate::warn!("drop(): failed to unmap pages (error={:?})", _error);
+            ::syslog::warn!("drop(): failed to unmap pages (error={:?})", _error);
         }
     }
 }

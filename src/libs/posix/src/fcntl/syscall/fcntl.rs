@@ -24,7 +24,7 @@ use ::nvx::{
 //==================================================================================================
 
 pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> Result<(), Error> {
-    ::nvx::error!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
+    ::syslog::error!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -37,7 +37,7 @@ pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status == -1 {
-        ::nvx::error!(
+        ::syslog::error!(
             "fcntl(): failed (fd={:?}, cmd={:?}, arg={:?}, status={:?})",
             fd,
             cmd,
@@ -54,7 +54,7 @@ pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> Result<(), Error> {
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "fcntl(): failed to parse error code (fd={:?}, cmd={:?}, arg={:?}, error={:?})",
                     fd,
                     cmd,
@@ -74,7 +74,7 @@ pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> Result<(), Error> {
             LinuxDaemonMessageHeader::FileControlResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "fcntl(): invalid response (fd={:?}, cmd={:?}, arg={:?}, header={:?})",
                     fd,
                     cmd,

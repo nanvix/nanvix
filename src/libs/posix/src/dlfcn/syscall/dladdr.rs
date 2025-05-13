@@ -41,7 +41,7 @@ use nvx::mm::Address;
 
 /// Returns information about the symbol at the given address.
 pub fn dladdr(addr: VirtualAddress, dlinfo: &mut DlInfo) -> Result<(), Error> {
-    ::nvx::trace!("dladdr(): addr={:#x?}", addr);
+    ::syslog::trace!("dladdr(): addr={:#x?}", addr);
     let registry: MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>> =
         DYNAMIC_LIBRARY_REGISTRY.lock();
 

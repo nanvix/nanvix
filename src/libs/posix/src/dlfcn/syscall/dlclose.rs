@@ -30,7 +30,7 @@ use ::spin::{
 
 /// Closes a dynamic library file.
 pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
-    ::nvx::trace!("dlclose(): handle={:?}", handle);
+    ::syslog::trace!("dlclose(): handle={:?}", handle);
 
     let mut registry: MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>> =
         DYNAMIC_LIBRARY_REGISTRY.lock();
@@ -38,7 +38,7 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
     // Check if dynamic library file is opened.
     if !registry.contains_key(handle) {
         let reason: &str = "dynamic library file not open";
-        ::nvx::error!("dlclose(): {}", reason);
+        ::syslog::error!("dlclose(): {}", reason);
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
@@ -112,7 +112,7 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
                 .for_each(|(_dlname, dlfile)| {
                     dep_dlfiles.push(dlfile.clone());
                 });
-            ::nvx::debug!(
+            ::syslog::debug!(
                 "dlclose(): closing dependency (name={:?}, registry.len={:?})",
                 dep_dlfile.name(),
                 registry.len()

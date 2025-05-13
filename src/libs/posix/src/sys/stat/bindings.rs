@@ -52,7 +52,7 @@ use ::nvx::sys::error::ErrorCode;
 ///
 #[no_mangle]
 pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
-    ::nvx::trace!("chmod(): path={:?}, mode={}", path, mode);
+    ::syslog::trace!("chmod(): path={:?}, mode={}", path, mode);
     fchmodat(fcntl::AT_FDCWD, path, mode, 0)
 }
 
@@ -80,13 +80,13 @@ pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
-    ::nvx::trace!("fchmod(): fd={}, mode={}", fd, mode);
+    ::syslog::trace!("fchmod(): fd={}, mode={}", fd, mode);
 
     // Attempt to change the mode and parse the result.
     match crate::sys::stat::fchmod(fd, mode) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("fchmod(): {:?} (fd={}, mode={})", error, fd, mode);
+            ::syslog::error!("fchmod(): {:?} (fd={}, mode={})", error, fd, mode);
             *__errno_location() = error.code.get();
             -1
         },
@@ -124,7 +124,7 @@ pub unsafe extern "C" fn fchmodat(
     mode: mode_t,
     flag: c_int,
 ) -> c_int {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "fchmodat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
         dirfd,
         path,
@@ -136,7 +136,7 @@ pub unsafe extern "C" fn fchmodat(
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "fchmodat(): invalid pathname (dirfd={:?}, mode={:?}, flag={:?}, error={:?})",
                 dirfd,
                 mode,
@@ -152,7 +152,7 @@ pub unsafe extern "C" fn fchmodat(
     match crate::sys::stat::fchmodat(dirfd, pathname, mode, flag) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "fchmodat(): failed (dirfd={}, pathname={:?}, mode={}, flag={}, error={:?})",
                 dirfd,
                 pathname,
@@ -173,11 +173,11 @@ pub unsafe extern "C" fn fchmodat(
 ///
 #[no_mangle]
 pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
-    ::nvx::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
+    ::syslog::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
     match crate::sys::stat::fstat(fd, &mut *buf) {
         Ok(_) => 0,
         Err(error) => {
-            ::nvx::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
+            ::syslog::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -211,11 +211,11 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
-    ::nvx::trace!("futimens(): fd={}, times={:p}", fd, times);
+    ::syslog::trace!("futimens(): fd={}, times={:p}", fd, times);
 
     // Check if `times` is invalid.
     if times.is_null() {
-        ::nvx::error!("futimens(): fd={}, times={:p}", fd, times);
+        ::syslog::error!("futimens(): fd={}, times={:p}", fd, times);
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -224,7 +224,7 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
     let times: &[timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
         Ok(array) => array,
         Err(_) => {
-            ::nvx::error!("futimens(): invalid times array");
+            ::syslog::error!("futimens(): invalid times array");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
     match crate::sys::stat::futimens(fd, times) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("futimens(): failed (fd={}, times={:?}, error={:?})", fd, times, error);
+            ::syslog::error!("futimens(): failed (fd={}, times={:?}, error={:?})", fd, times, error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -263,7 +263,7 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
-    ::nvx::trace!("lchmod(): path={:?}, mode={}", path, mode);
+    ::syslog::trace!("lchmod(): path={:?}, mode={}", path, mode);
     fchmodat(fcntl::AT_FDCWD, path, mode, fcntl::AT_SYMLINK_NOFOLLOW)
 }
 
@@ -296,7 +296,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("lstat(): invalid pathname");
+            ::syslog::error!("lstat(): invalid pathname");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -307,7 +307,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
     match crate::sys::stat::lstat(pathname, statbuf) {
         Ok(_) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "lstat(): failed (pathname={}, statbuf={:p}, error={:?})",
                 pathname,
                 statbuf,
@@ -348,7 +348,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("stat(): invalid pathname");
+            ::syslog::error!("stat(): invalid pathname");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -359,7 +359,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
     match crate::sys::stat::stat(pathname, statbuf) {
         Ok(_) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "stat(): failed (pathname={}, statbuf={:p}, error={:?})",
                 pathname,
                 statbuf,
@@ -395,7 +395,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
 ///
 #[no_mangle]
 pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
-    ::nvx::trace!("mkdir(): pathname={:?}, mode={}", pathname, mode);
+    ::syslog::trace!("mkdir(): pathname={:?}, mode={}", pathname, mode);
     mkdirat(fcntl::AT_FDCWD, pathname, mode)
 }
 
@@ -424,13 +424,13 @@ pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int {
-    ::nvx::trace!("mkdirat(): dirfd={}, pathname={:?}, mode={}", dirfd, pathname, mode);
+    ::syslog::trace!("mkdirat(): dirfd={}, pathname={:?}, mode={}", dirfd, pathname, mode);
 
     // Attempt to convert `pathname`.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("mkdirat(): invalid pathname");
+            ::syslog::error!("mkdirat(): invalid pathname");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -440,7 +440,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
     match crate::sys::stat::mkdirat(dirfd, pathname, mode) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "mkdirat(): failed (dirfd={}, pathname={:?}, mode={}, error={:?})",
                 dirfd,
                 pathname,
@@ -457,7 +457,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
 #[no_mangle]
 pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/454
-    ::nvx::error!("truncate(): not implemented");
+    ::syslog::error!("truncate(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
@@ -494,7 +494,7 @@ pub unsafe extern "C" fn utimensat(
     times: *const timespec,
     flags: c_int,
 ) -> c_int {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "utimensat(): dirfd={}, filename={:?}, times={:?}, flags={}",
         dirfd,
         filename,
@@ -506,7 +506,7 @@ pub unsafe extern "C" fn utimensat(
     let pathname: &str = match ffi::CStr::from_ptr(filename).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "utimensat(): invalid pathname (dirfd={}, times={:p}, flags={})",
                 dirfd,
                 times,
@@ -519,7 +519,7 @@ pub unsafe extern "C" fn utimensat(
 
     // Check if `times` is invalid.
     if times.is_null() {
-        ::nvx::error!(
+        ::syslog::error!(
             "utimensat(): invalid times (dirfd={}, pathname={:?}, times={:p}, flags={})",
             dirfd,
             pathname,
@@ -534,7 +534,7 @@ pub unsafe extern "C" fn utimensat(
     let times: &[stat::timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
         Ok(array) => array,
         Err(_) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "futimens(): invalid times array (dirfd={}, pathname={:?}, times={:p}, flags={})",
                 dirfd,
                 pathname,
@@ -549,7 +549,7 @@ pub unsafe extern "C" fn utimensat(
     match crate::sys::stat::utimensat(dirfd, pathname, times, flags) {
         Ok(_) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "utimensat(): failed (dirfd={}, pathname={}, times={:?}, flags={}, error={:?})",
                 dirfd,
                 pathname,

@@ -40,7 +40,7 @@ pub fn close(fd: i32) -> Result<(), Error> {
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::nvx::error!("close(): failed (error={})", error_code);
+        ::syslog::error!("close(): failed (error={})", error_code);
         Err(Error::new(error_code, "close() failed"))
     } else {
         // System call succeeded, parse response.

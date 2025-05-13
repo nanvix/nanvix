@@ -45,7 +45,7 @@ pub fn pthread_mutex_init(
         .contains_key(&(mutex as *const pthread_mutex_t as usize))
     {
         let reason: &str = "mutex is already initialized";
-        ::nvx::error!("pthread_mutex_init(): {}", reason);
+        ::syslog::error!("pthread_mutex_init(): {}", reason);
         return Err(Error::new(ErrorCode::ResourceBusy, reason));
     }
 
@@ -69,7 +69,7 @@ pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
         } else {
             // Check if mutex was statically initialized.
             let reason: &str = "mutex is not initialized";
-            ::nvx::error!("pthread_mutex_destroy(): {}", reason);
+            ::syslog::error!("pthread_mutex_destroy(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -92,7 +92,7 @@ pub fn pthread_mutex_lock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::nvx::error!("pthread_mutex_lock(): {}", reason);
+            ::syslog::error!("pthread_mutex_lock(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -114,7 +114,7 @@ pub fn pthread_mutex_timedlock(
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::nvx::error!("pthread_mutex_timedlock(): {}", reason);
+            ::syslog::error!("pthread_mutex_timedlock(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -133,7 +133,7 @@ pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::nvx::error!("pthread_mutex_trylock(): {}", reason);
+            ::syslog::error!("pthread_mutex_trylock(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -149,11 +149,11 @@ pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
         Err(error) => {
             // Check if we have to interpose the error.
             if error.code == ErrorCode::OperationTimedOut {
-                ::nvx::error!("pthread_mutex_trylock(): mutex is already locked");
+                ::syslog::error!("pthread_mutex_trylock(): mutex is already locked");
                 // Mutex is already locked.
                 Err(Error::new(ErrorCode::ResourceBusy, "mutex is already locked"))
             } else {
-                ::nvx::error!("pthread_mutex_trylock(): failed to lock mutex (error={:?})", error);
+                ::syslog::error!("pthread_mutex_trylock(): failed to lock mutex (error={:?})", error);
                 // Some other error occurred.
                 Err(error)
             }
@@ -176,7 +176,7 @@ pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
                 .insert(mutex as *const pthread_mutex_t as usize, pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::nvx::error!("pthread_mutex_unlock(): {}", reason);
+            ::syslog::error!("pthread_mutex_unlock(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }

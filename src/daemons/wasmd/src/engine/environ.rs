@@ -43,7 +43,7 @@ impl WasmEngine {
         let args_get: Func = Func::wrap(
             store,
             move |mut caller: Caller<'_, u32>, argv_offset: i32, argv_buf_offset: i32| -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "args_get(): argv_offset={:?}, argv_buf_offset={:?}",
                     argv_offset,
                     argv_buf_offset
@@ -55,7 +55,7 @@ impl WasmEngine {
                 let argv_offset: u32 = match argv_offset.try_into() {
                     Ok(argv_offset) => argv_offset,
                     _ => {
-                        ::nvx::error!("args_get(): invalid argv_offset {:#010x}", argv_offset);
+                        ::syslog::error!("args_get(): invalid argv_offset {:#010x}", argv_offset);
                         return Errno::Inval.into();
                     },
                 };
@@ -64,7 +64,7 @@ impl WasmEngine {
                 let argv_buf_offset: u32 = match argv_buf_offset.try_into() {
                     Ok(argv_buf_offset) => argv_buf_offset,
                     _ => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "args_get(): invalid argv_buf_offset {:#010x}",
                             argv_buf_offset
                         );
@@ -76,7 +76,7 @@ impl WasmEngine {
                 let args: Vec<String> = match ctx.args_get() {
                     Ok(args) => args,
                     Err(err) => {
-                        ::nvx::error!("args_get(): {:?}", err);
+                        ::syslog::error!("args_get(): {:?}", err);
                         return err.into();
                     },
                 };
@@ -87,12 +87,14 @@ impl WasmEngine {
                                   dry_run: bool|
                  -> Result<(), Errno> {
                     for arg in &args {
-                        ::nvx::trace!("args_get(): arg={:?}", arg);
+                        ::syslog::trace!("args_get(): arg={:?}", arg);
 
                         let arg_cstr: CString = match CString::new(arg.as_str()) {
                             Ok(arg_cstr) => arg_cstr,
                             Err(_) => {
-                                ::nvx::error!("args_get(): skipping invalid command-line argument");
+                                ::syslog::error!(
+                                    "args_get(): skipping invalid command-line argument"
+                                );
                                 continue;
                             },
                         };
@@ -101,7 +103,7 @@ impl WasmEngine {
 
                         // Check if memory is too small to store the command-line argument pointer.
                         if memory.len() < argv_offset as usize + mem::size_of_val(&argv_offset) {
-                            ::nvx::error!(
+                            ::syslog::error!(
                                 "args_get(): buffer too small (size={:?}, required={:?})",
                                 memory.len(),
                                 argv_offset as usize + mem::size_of_val(&argv_offset)
@@ -111,7 +113,7 @@ impl WasmEngine {
 
                         // Check if memory is too small to store the command-line argument data.
                         if memory.len() < argv_buf_offset as usize + arg_cstr_bytes.len() {
-                            ::nvx::error!(
+                            ::syslog::error!(
                                 "args_get(): buffer too small (size={:?}, required={:?})",
                                 memory.len(),
                                 argv_buf_offset as usize + arg_cstr_bytes.len()
@@ -163,7 +165,7 @@ impl WasmEngine {
                   args_count_offset: i32,
                   args_data_size_offset: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "args_sizes_get(): args_count_offset={:?}, args_data_size_offset={:?}",
                     args_count_offset,
                     args_data_size_offset
@@ -175,7 +177,7 @@ impl WasmEngine {
                 let args_count_offset: usize = match args_count_offset.try_into() {
                     Ok(args_count_offset) => args_count_offset,
                     _ => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "args_sizes_get(): invalid args_count_offset {:#010x}",
                             args_count_offset
                         );
@@ -187,7 +189,7 @@ impl WasmEngine {
                 let args_data_size_offset: usize = match args_data_size_offset.try_into() {
                     Ok(args_data_size_offset) => args_data_size_offset,
                     _ => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "args_sizes_get(): invalid args_data_size_offset {:#010x}",
                             args_data_size_offset
                         );
@@ -198,14 +200,14 @@ impl WasmEngine {
                 let (args_count, args_data_size): (u32, u32) = match ctx.args_sizes_get() {
                     Ok((args_count, args_data_size)) => (args_count.into(), args_data_size.into()),
                     Err(err) => {
-                        ::nvx::error!("args_sizes_get(): {:?}", err);
+                        ::syslog::error!("args_sizes_get(): {:?}", err);
                         return err.into();
                     },
                 };
 
                 // Ensure that data buffer is large enough to store the command-line arguments.
                 if memory.len() < args_count_offset + mem::size_of_val(&args_count) {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "args_sizes_get(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         args_count_offset + mem::size_of_val(&args_count)
@@ -215,7 +217,7 @@ impl WasmEngine {
 
                 // Ensure that data buffer is large enough to store the command-line data size.
                 if memory.len() < args_data_size_offset + mem::size_of_val(&args_data_size) {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "args_sizes_get(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         args_data_size_offset + mem::size_of_val(&args_data_size)
@@ -251,7 +253,7 @@ impl WasmEngine {
                   environ_ptrs_offset: i32,
                   environ_buf_offset: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "environ_get(): environ_ptrs_offset={:?}, environ_buf_offset={:?}",
                     environ_ptrs_offset,
                     environ_buf_offset
@@ -263,7 +265,7 @@ impl WasmEngine {
                 let environ_ptrs_offset: u32 = match environ_ptrs_offset.try_into() {
                     Ok(environ_ptrs_offset) => environ_ptrs_offset,
                     _ => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "environ_get(): invalid environ_ptrs_offset {:#010x}",
                             environ_ptrs_offset
                         );
@@ -275,7 +277,7 @@ impl WasmEngine {
                 let env_buf_offset: u32 = match environ_buf_offset.try_into() {
                     Ok(environ_buf_offset) => environ_buf_offset,
                     _ => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "environ_get(): invalid environ_buf_offset {:#010x}",
                             environ_buf_offset
                         );
@@ -287,7 +289,7 @@ impl WasmEngine {
                 let envs: Vec<String> = match ctx.environ_get() {
                     Ok(envs) => envs,
                     Err(err) => {
-                        ::nvx::error!("environ_get(): {:?}", err);
+                        ::syslog::error!("environ_get(): {:?}", err);
                         return err.into();
                     },
                 };
@@ -298,12 +300,12 @@ impl WasmEngine {
                                   dry_run: bool|
                  -> Result<(), Errno> {
                     for env in &envs {
-                        ::nvx::trace!("environ_get(): env={:?}", env);
+                        ::syslog::trace!("environ_get(): env={:?}", env);
 
                         let env_cstr: CString = match CString::new(env.as_str()) {
                             Ok(env_cstr) => env_cstr,
                             Err(_) => {
-                                ::nvx::error!(
+                                ::syslog::error!(
                                     "environ_get(): skipping invalid environment variable"
                                 );
                                 continue;
@@ -316,7 +318,7 @@ impl WasmEngine {
                         if memory.len()
                             < environ_ptrs_offset as usize + mem::size_of_val(&environ_ptrs_offset)
                         {
-                            ::nvx::error!(
+                            ::syslog::error!(
                                 "environ_get(): buffer too small (size={:?}, required={:?})",
                                 memory.len(),
                                 environ_ptrs_offset as usize
@@ -327,7 +329,7 @@ impl WasmEngine {
 
                         // Check if memory is too small to store the environment data.
                         if memory.len() < env_buf_offset as usize + env_cstr_bytes.len() {
-                            ::nvx::error!(
+                            ::syslog::error!(
                                 "environ_get(): buffer too small (size={:?}, required={:?})",
                                 memory.len(),
                                 env_buf_offset as usize + env_cstr_bytes.len()
@@ -381,7 +383,7 @@ impl WasmEngine {
                   environ_count_offset: i32,
                   environ_data_size_offset: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "environ_sizes_get(): environ_count_offset={:?}, environ_data_size_offset={:?}",
                     environ_count_offset,
                     environ_data_size_offset
@@ -393,7 +395,7 @@ impl WasmEngine {
                 let environ_count_offset: usize = match environ_count_offset.try_into() {
                     Ok(environ_count_offset) => environ_count_offset,
                     _ => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "environ_sizes_get(): invalid environ_count_offset {:#010x}",
                             environ_count_offset
                         );
@@ -405,7 +407,7 @@ impl WasmEngine {
                 let environ_data_size_offset: usize = match environ_data_size_offset.try_into() {
                     Ok(environ_data_size_offset) => environ_data_size_offset,
                     _ => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "environ_sizes_get(): invalid environ_data_size_offset {:#010x}",
                             environ_data_size_offset
                         );
@@ -418,14 +420,14 @@ impl WasmEngine {
                         (environ_count.into(), environ_data_size.into())
                     },
                     Err(err) => {
-                        ::nvx::error!("environ_sizes_get(): {:?}", err);
+                        ::syslog::error!("environ_sizes_get(): {:?}", err);
                         return err.into();
                     },
                 };
 
                 // Ensure that data buffer is large enough to store the environment data.
                 if memory.len() < environ_count_offset + mem::size_of_val(&environ_count) {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "environ_sizes_get(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         environ_count_offset + mem::size_of_val(&environ_count)
@@ -435,7 +437,7 @@ impl WasmEngine {
 
                 // Ensure that data buffer is large enough to store the environment data size.
                 if memory.len() < environ_data_size_offset + mem::size_of_val(&environ_data_size) {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "environ_sizes_get(): buffer too small (size={:?}, required={:?})",
                         memory.len(),
                         environ_data_size_offset + mem::size_of_val(&environ_data_size)

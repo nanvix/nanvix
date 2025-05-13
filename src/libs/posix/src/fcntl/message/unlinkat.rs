@@ -93,7 +93,7 @@ impl UnlinkAtRequest {
         // Check if pathname is too long.
         if pathname.len() > limits::NAME_MAX {
             #[cfg(target_os = "none")]
-            ::nvx::error!(
+            ::syslog::error!(
                 "new(): pathname is too long (dirfd={:?}, pathname={:?}, flags={:?})",
                 dirfd,
                 pathname,
@@ -135,14 +135,14 @@ impl MessageDeserializer for UnlinkAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OF_PATHNAME {
             #[cfg(target_os = "none")]
-            ::nvx::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if the message is too long.
         if bytes.len() > Self::MAX_SIZE {
             #[cfg(target_os = "none")]
-            ::nvx::error!("try_from_bytes(): message is too long (len={:?})", bytes.len());
+            ::syslog::error!("try_from_bytes(): message is too long (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too long"));
         }
 
@@ -175,14 +175,14 @@ impl MessageDeserializer for UnlinkAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OF_PATHNAME + pathname_len {
             #[cfg(target_os = "none")]
-            ::nvx::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if `pathname` is too long.
         if pathname_len > limits::NAME_MAX {
             #[cfg(target_os = "none")]
-            ::nvx::error!("try_from_bytes(): pathname is too long (len={:?})", pathname_len);
+            ::syslog::error!("try_from_bytes(): pathname is too long (len={:?})", pathname_len);
             return Err(Error::new(ErrorCode::InvalidArgument, "pathname is too long"));
         }
 

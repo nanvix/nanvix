@@ -41,7 +41,7 @@ use ::nvx::{
 /// Upon success, `posix_fallocate()` empty. Otherwise, it returns an error.
 ///
 pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
-    ::nvx::error!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
+    ::syslog::error!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -54,7 +54,7 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "posix_fallocate(): failed (fd={:?}, offset={:?}, len={:?}, status={:?})",
             fd,
             offset,
@@ -68,7 +68,7 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
             Ok(error_code) => Err(Error::new(error_code, "posix_fallocate() failed")),
             // Error was not parsed.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "posix_fallocate(): failed (fd={:?}, offset={:?}, len={:?}, error={:?})",
                     fd,
                     offset,
@@ -87,7 +87,7 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
             LinuxDaemonMessageHeader::FileSpaceControlResponse => Ok(()),
             // Response was not parsed.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "posix_fallocate(): invalid response (fd={:?}, offset={:?}, len={:?}, \
                      header={:?})",
                     fd,

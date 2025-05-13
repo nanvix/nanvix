@@ -43,7 +43,7 @@ use ::nvx::sys::error::ErrorCode;
 ///
 #[no_mangle]
 pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -> c_int {
-    ::nvx::trace!("clock_getres(): clock_id={:?}, res={:?}", clock_id, res);
+    ::syslog::trace!("clock_getres(): clock_id={:?}, res={:?}", clock_id, res);
 
     // Convert `res` pointer to a reference.
     let mut res: Option<&mut timespec> = if res.is_null() { None } else { Some(&mut *res) };
@@ -54,7 +54,7 @@ pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "clock_getres(): failed (clock_id={:?}, res={:?}, error={:?})",
                 clock_id,
                 res,
@@ -87,7 +87,7 @@ pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -
 ///
 #[no_mangle]
 pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -> c_int {
-    nvx::trace!("clock_gettime(): clock_id={:?}, tp={:?}", clock_id, tp);
+    ::syslog::trace!("clock_gettime(): clock_id={:?}, tp={:?}", clock_id, tp);
     let mut tp: Option<&mut timespec> = if tp.is_null() {
         None
     } else {
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
     match crate::time::clock_gettime(clock_id, &mut tp) {
         Ok(_) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "clock_gettime(): failed (clock_id={:?}, tp={:?}, error={:?})",
                 clock_id,
                 tp,
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn nanosleep(_req: *const u8, _rem: *mut u8) -> c_int {
-    ::nvx::trace!("nanosleep(): not implemented");
+    ::syslog::trace!("nanosleep(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

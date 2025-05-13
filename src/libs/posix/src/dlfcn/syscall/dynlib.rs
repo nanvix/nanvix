@@ -129,7 +129,7 @@ pub struct DynamicLibrary {
 impl DynamicLibrary {
     /// Opens a dynamic library file.
     pub fn open(filename: &str) -> Result<Self, Error> {
-        ::nvx::trace!("open(): filename={}", filename);
+        ::syslog::trace!("open(): filename={}", filename);
         // Attempt to open file.
         let fd: FileDescriptor = FileDescriptor::open(filename, OpenFlags::O_RDONLY.into(), 0)?;
 
@@ -138,7 +138,7 @@ impl DynamicLibrary {
             Ok(cstr) => cstr,
             Err(_) => {
                 let reason: &str = "failed to convert filename to C string";
-                ::nvx::error!("open(): {}", reason);
+                ::syslog::error!("open(): {}", reason);
                 return Err(Error::new(ErrorCode::BadFile, reason));
             },
         };
@@ -150,7 +150,7 @@ impl DynamicLibrary {
         // Check if file is not a regular file.
         if !file_mode::S_ISREG(buf.st_mode) {
             let reason: &str = "file is not a regular file";
-            ::nvx::error!("open(): {}", reason);
+            ::syslog::error!("open(): {}", reason);
             return Err(Error::new(ErrorCode::BadFile, reason));
         }
 
@@ -169,7 +169,7 @@ impl DynamicLibrary {
                 // Check if ELF file is not a dynamic library.
                 if !elf.is_lib {
                     let reason: &str = "file is not a dynamic library";
-                    ::nvx::error!("load(): {}", reason);
+                    ::syslog::error!("load(): {}", reason);
                     return Err(Error::new(ErrorCode::BadFile, reason));
                 }
 
@@ -182,7 +182,7 @@ impl DynamicLibrary {
                 for phdr in elf.program_headers.iter() {
                     // Check if program header is loadable.
                     if phdr.p_type == goblin::elf::program_header::PT_LOAD {
-                        ::nvx::debug!(
+                        ::syslog::debug!(
                             "load(): loadable program header (vaddr={:#x}, paddr={:#x}, \
                              filesz={}, memsz={})",
                             phdr.p_vaddr,
@@ -199,7 +199,7 @@ impl DynamicLibrary {
                             // Check if program headers overlap.
                             if base < end_address.into_raw_value() {
                                 let reason: &str = "program headers overlap";
-                                ::nvx::error!("load(): {} (phdr={:#x?}", reason, phdr);
+                                ::syslog::error!("load(): {} (phdr={:#x?}", reason, phdr);
                                 return Err(Error::new(ErrorCode::BadFile, reason));
                             }
 
@@ -228,7 +228,7 @@ impl DynamicLibrary {
                 let mut dependencies: BTreeMap<String, Option<Arc<Mutex<Self>>>> = BTreeMap::new();
                 if !elf.libraries.is_empty() {
                     for library in elf.libraries.iter() {
-                        ::nvx::debug!("load(): depends on library '{}'", library);
+                        ::syslog::debug!("load(): depends on library '{}'", library);
                         dependencies.insert(library.to_string(), None);
                     }
                 }
@@ -236,13 +236,13 @@ impl DynamicLibrary {
                 // Collect section headers.
                 let mut section_headers: BTreeMap<String, SectionHeader> = BTreeMap::new();
                 for section in elf.section_headers.iter() {
-                    ::nvx::debug!("load(): {:?}", section);
+                    ::syslog::debug!("load(): {:?}", section);
                     let section_name = elf.shdr_strtab.get_at(section.sh_name).unwrap_or("");
                     if let Some(_section) =
                         section_headers.insert(section_name.to_string(), section.clone())
                     {
                         let reason: &str = "duplicate section header";
-                        ::nvx::error!("load(): {} (section.name={:?})", reason, section_name);
+                        ::syslog::error!("load(): {} (section.name={:?})", reason, section_name);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     }
                 }
@@ -252,7 +252,7 @@ impl DynamicLibrary {
                     Some(dynsym) => dynsym,
                     None => {
                         let reason: &str = "missing dynamic symbol table";
-                        ::nvx::error!("load(): {}", reason);
+                        ::syslog::error!("load(): {}", reason);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     },
                 };
@@ -260,7 +260,7 @@ impl DynamicLibrary {
                     Some(dynstr) => dynstr,
                     None => {
                         let reason: &str = "missing dynamic string table";
-                        ::nvx::error!("load(): {}", reason);
+                        ::syslog::error!("load(): {}", reason);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     },
                 };
@@ -289,7 +289,7 @@ impl DynamicLibrary {
             },
             Err(error) => {
                 let reason: &str = "failed to parse ELF file";
-                ::nvx::error!("load(): {} (error={:?})", reason, error);
+                ::syslog::error!("load(): {} (error={:?})", reason, error);
                 Err(Error::new(ErrorCode::IoErr, reason))
             },
         }
@@ -378,7 +378,7 @@ impl DynamicLibrary {
 
     /// Finds a symbol in the dynamic library.
     fn find(&self, symbol_name: &str) -> Option<&Symbol> {
-        ::nvx::trace!("find(): symbol={} in dlname={:?}", symbol_name, self.filename);
+        ::syslog::trace!("find(): symbol={} in dlname={:?}", symbol_name, self.filename);
 
         for sym in self.dynsym.iter() {
             if let Ok(lookup_symbol_name) = self.dynstr.get_name(sym.name_offset()) {
@@ -393,7 +393,7 @@ impl DynamicLibrary {
 
     /// Looks up a symbol in the dynamic library.
     pub fn lookup(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
-        ::nvx::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
+        ::syslog::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
         if let Some(symbol) = self.find(symbol_name) {
             // Check if symbol is defined in the library or in a dependency.
@@ -404,7 +404,11 @@ impl DynamicLibrary {
                         // Check if dependency is locked.
                         if dlfile.is_locked() {
                             let reason: &str = "circular dependency detected";
-                            ::nvx::error!("lookup(): {:?} (symbol_name={:?})", reason, symbol_name);
+                            ::syslog::error!(
+                                "lookup(): {:?} (symbol_name={:?})",
+                                reason,
+                                symbol_name
+                            );
                             return Err(Error::new(ErrorCode::BadFile, reason));
                         }
 
@@ -428,7 +432,7 @@ impl DynamicLibrary {
             Ok(sym)
         } else {
             let reason: &str = "invalid symbol index";
-            ::nvx::error!("get_symbol(): {} (rel={:?})", reason, rel);
+            ::syslog::error!("get_symbol(): {} (rel={:?})", reason, rel);
             Err(Error::new(ErrorCode::BadFile, reason))
         }
     }
@@ -439,7 +443,7 @@ impl DynamicLibrary {
             Some((base, symbol_value)) => base + symbol_value,
             None => {
                 let reason: &str = "symbol not found";
-                ::nvx::error!(
+                ::syslog::error!(
                     "get_symbol_value(): {} (symbol_name={:?}, symbol={:?})",
                     reason,
                     symbol_name,
@@ -457,7 +461,7 @@ impl DynamicLibrary {
         &self,
         symbol_addr: VirtualAddress,
     ) -> Option<(*const i8, VirtualAddress, *const i8, VirtualAddress)> {
-        ::nvx::trace!("query(): symbol_addr={:#X?} in dlname={:?}", symbol_addr, self.filename);
+        ::syslog::trace!("query(): symbol_addr={:#X?} in dlname={:?}", symbol_addr, self.filename);
 
         let mut nearest_symbol: Option<(*const i8, VirtualAddress, *const i8, VirtualAddress)> =
             None;
@@ -494,7 +498,7 @@ impl DynamicLibrary {
 
     /// Resolves a symbol in the dynamic library.
     pub fn resolve_all(&self) -> Result<(), Error> {
-        ::nvx::trace!("resolve()");
+        ::syslog::trace!("resolve()");
 
         if let Some(rel) = self.dynplt.as_ref() {
             for rel in rel.iter() {
@@ -520,7 +524,7 @@ impl DynamicLibrary {
                 // R_386_RELATIVE relocation must have a zero symbol index.
                 if rel.symbol_index() != 0 {
                     let reason: &str = "invalid R_386_RELATIVE relocation";
-                    ::nvx::error!("resolve(): {} (rel={:?})", reason, rel);
+                    ::syslog::error!("resolve(): {} (rel={:?})", reason, rel);
                     return Err(Error::new(ErrorCode::BadFile, reason));
                 }
 
@@ -567,7 +571,7 @@ impl DynamicLibrary {
 
             relocation_entry_type => {
                 let reason: &str = "unsupported relocation type";
-                ::nvx::error!(
+                ::syslog::error!(
                     "resolve(): {} (relocation_type={:?}, rel={:?})",
                     reason,
                     relocation_entry_type,
@@ -717,12 +721,12 @@ impl DynamicLibrary {
             },
             Some(Some(_)) => {
                 let reason: &str = "dependency already loaded";
-                ::nvx::error!("load_dependency(): {}", reason);
+                ::syslog::error!("load_dependency(): {}", reason);
                 Err(Error::new(ErrorCode::BadFile, reason))
             },
             None => {
                 let reason: &str = "dependency not listed";
-                ::nvx::error!("load_dependency(): {}", reason);
+                ::syslog::error!("load_dependency(): {}", reason);
                 Err(Error::new(ErrorCode::BadFile, reason))
             },
         }

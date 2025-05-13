@@ -24,6 +24,6 @@ use ::alloc::string::{
 /// The name of the current host.
 ///
 pub fn gethostname() -> String {
-    ::nvx::trace!("gethostname()");
+    ::syslog::trace!("gethostname()");
     env!("NANVIX_NODENAME").to_string()
 }

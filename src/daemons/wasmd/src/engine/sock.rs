@@ -54,7 +54,7 @@ impl WasmEngine {
                   fdflags: i32,
                   sockfd_offset: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "sock_accept(): sockfd={:?}, fdflags={:?}, sockfd_offset={:?}",
                     sockfd,
                     fdflags,
@@ -71,23 +71,23 @@ impl WasmEngine {
 
                 // Check for invalid/unsupported file descriptor flags.
                 if fdflags.append {
-                    ::nvx::error!("sock_accept(): append to a file is invalid");
+                    ::syslog::error!("sock_accept(): append to a file is invalid");
                     return Errno::Inval.into();
                 };
                 if fdflags.sync {
-                    ::nvx::error!("sock_accept(): sync to a file is invalid");
+                    ::syslog::error!("sock_accept(): sync to a file is invalid");
                     return Errno::Inval.into();
                 };
                 if fdflags.dsync {
-                    ::nvx::error!("sock_accept(): dsync to a file is invalid");
+                    ::syslog::error!("sock_accept(): dsync to a file is invalid");
                     return Errno::Inval.into();
                 };
                 if fdflags.rsync {
-                    ::nvx::error!("sock_accept(): rsync to a file is invalid");
+                    ::syslog::error!("sock_accept(): rsync to a file is invalid");
                     return Errno::Inval.into();
                 };
                 if fdflags.nonblock {
-                    ::nvx::error!("sock_accept(): nonblock to a file is not supported");
+                    ::syslog::error!("sock_accept(): nonblock to a file is not supported");
                     return Errno::Notsup.into();
                 };
 
@@ -95,7 +95,7 @@ impl WasmEngine {
                 let sockfd_offset: usize = match sockfd_offset.try_into() {
                     Ok(offset) => offset,
                     Err(_) => {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "sock_accept(): invalid socket file descriptor offset ({:?})",
                             sockfd_offset
                         );
@@ -105,7 +105,7 @@ impl WasmEngine {
 
                 // Check if memory is too small to store the socket file descriptor.
                 if sockfd_offset + ::core::mem::size_of::<Fd>() > memory.len() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "sock_accept(): memory is too small to store the socket file descriptor"
                     );
                     return Errno::Inval.into();
@@ -142,7 +142,7 @@ impl WasmEngine {
                   nrecv_ptr: i32,
                   roflags_ptr: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "sock_recv(): connfd={:?}, iov_buf={:?}, iov_buf_len={:?}, riflags={:?}, \
                      nrecv_ptr={:?}, roflags_ptr={:?}",
                     connfd,
@@ -162,18 +162,18 @@ impl WasmEngine {
                 let riflags: RiFlags = match riflags.try_into() {
                     Ok(riflags) => riflags,
                     Err(_) => {
-                        ::nvx::error!("sock_recv(): invalid riflags {:#010x}", riflags);
+                        ::syslog::error!("sock_recv(): invalid riflags {:#010x}", riflags);
                         return Errno::Inval.into();
                     },
                 };
 
                 // Check for unsupported receive flags.
                 if riflags.peek {
-                    ::nvx::error!("sock_recv(): peek is not supported");
+                    ::syslog::error!("sock_recv(): peek is not supported");
                     return Errno::Notsup.into();
                 }
                 if riflags.oob {
-                    ::nvx::error!("sock_recv(): oob is not supported");
+                    ::syslog::error!("sock_recv(): oob is not supported");
                     return Errno::Notsup.into();
                 }
 
@@ -182,7 +182,7 @@ impl WasmEngine {
                     match Pointer::<IoVec>::new(Address::new(iov_buf as u32)) {
                         Ok(iov_buf) => iov_buf,
                         Err(_) => {
-                            ::nvx::error!("sock_recv(): invalid iov_buf {:#010x}", iov_buf);
+                            ::syslog::error!("sock_recv(): invalid iov_buf {:#010x}", iov_buf);
                             return Errno::Inval.into();
                         },
                     };
@@ -191,7 +191,7 @@ impl WasmEngine {
                 let iovs_len: Size = match iov_buf_len.try_into() {
                     Ok(iovs_len) => iovs_len,
                     Err(_) => {
-                        ::nvx::error!("sock_recv(): invalid iovs_len {:#010x}", iov_buf_len);
+                        ::syslog::error!("sock_recv(): invalid iovs_len {:#010x}", iov_buf_len);
                         return Errno::Inval.into();
                     },
                 };
@@ -202,7 +202,7 @@ impl WasmEngine {
                     match iovecs.as_ref() {
                         Ok(iovecs) => iovecs.to_vec(),
                         Err(_) => {
-                            ::nvx::error!("sock_recv(): failed to get slice from memory");
+                            ::syslog::error!("sock_recv(): failed to get slice from memory");
                             return Errno::Inval.into();
                         },
                     }
@@ -212,14 +212,14 @@ impl WasmEngine {
                 let nrecv_ptr: usize = match nrecv_ptr.try_into() {
                     Ok(nrecv_ptr) => nrecv_ptr,
                     Err(_) => {
-                        ::nvx::error!("sock_recv(): invalid nrecv_ptr {:#010x}", nrecv_ptr);
+                        ::syslog::error!("sock_recv(): invalid nrecv_ptr {:#010x}", nrecv_ptr);
                         return Errno::Inval.into();
                     },
                 };
 
                 // Check if memory is too small to store the number of bytes received.
                 if nrecv_ptr + size_of::<Size>() > memory.len() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "sock_recv(): memory is too small to store the number of bytes received"
                     );
                     return Errno::Inval.into();
@@ -229,14 +229,14 @@ impl WasmEngine {
                 let roflags_ptr: usize = match roflags_ptr.try_into() {
                     Ok(roflags_ptr) => roflags_ptr,
                     Err(_) => {
-                        ::nvx::error!("sock_recv(): invalid roflags_ptr {:#010x}", roflags_ptr);
+                        ::syslog::error!("sock_recv(): invalid roflags_ptr {:#010x}", roflags_ptr);
                         return Errno::Inval.into();
                     },
                 };
 
                 // Check if memory is too small to store the receive flags.
                 if roflags_ptr + size_of::<Size>() > memory.len() {
-                    ::nvx::error!("sock_recv(): memory is too small to store the receive flags");
+                    ::syslog::error!("sock_recv(): memory is too small to store the receive flags");
                     return Errno::Inval.into();
                 }
 
@@ -269,7 +269,7 @@ impl WasmEngine {
                   siflags: i32,
                   nsent_ptr: i32|
                   -> i32 {
-                ::nvx::trace!(
+                ::syslog::trace!(
                     "sock_send(): sockfd={:?}, iov_buf={:?}, iov_buf_len={:?}, siflags={:?}, \
                      nsent_ptr={:?}",
                     sockfd,
@@ -289,7 +289,7 @@ impl WasmEngine {
                     match Pointer::<IoVec>::new(Address::new(iov_buf as u32)) {
                         Ok(iov_buf) => iov_buf,
                         Err(_) => {
-                            ::nvx::error!("sock_send(): invalid iov_buf {:#010x}", iov_buf);
+                            ::syslog::error!("sock_send(): invalid iov_buf {:#010x}", iov_buf);
                             return Errno::Inval.into();
                         },
                     };
@@ -298,7 +298,7 @@ impl WasmEngine {
                 let iovs_len: Size = match iov_buf_len.try_into() {
                     Ok(iovs_len) => iovs_len,
                     Err(_) => {
-                        ::nvx::error!("sock_send(): invalid iovs_len {:#010x}", iov_buf_len);
+                        ::syslog::error!("sock_send(): invalid iovs_len {:#010x}", iov_buf_len);
                         return Errno::Inval.into();
                     },
                 };
@@ -309,7 +309,7 @@ impl WasmEngine {
                     match iovecs.as_ref() {
                         Ok(iovecs) => iovecs.to_vec(),
                         Err(_) => {
-                            ::nvx::error!("sock_send(): failed to get slice from memory");
+                            ::syslog::error!("sock_send(): failed to get slice from memory");
                             return Errno::Inval.into();
                         },
                     }
@@ -319,14 +319,14 @@ impl WasmEngine {
                 let siflags: SiFlags = match siflags.try_into() {
                     Ok(siflags) => siflags,
                     Err(_) => {
-                        ::nvx::error!("sock_send(): invalid siflags {:#010x}", siflags);
+                        ::syslog::error!("sock_send(): invalid siflags {:#010x}", siflags);
                         return Errno::Inval.into();
                     },
                 };
 
                 // Check for unsupported send flags.
                 if siflags.zero {
-                    ::nvx::error!("sock_send(): siflags must be zero");
+                    ::syslog::error!("sock_send(): siflags must be zero");
                     return Errno::Notsup.into();
                 }
 
@@ -334,14 +334,14 @@ impl WasmEngine {
                 let nsent_ptr: usize = match nsent_ptr.try_into() {
                     Ok(nsent_ptr) => nsent_ptr,
                     Err(_) => {
-                        ::nvx::error!("sock_send(): invalid nsent_ptr {:#010x}", nsent_ptr);
+                        ::syslog::error!("sock_send(): invalid nsent_ptr {:#010x}", nsent_ptr);
                         return Errno::Inval.into();
                     },
                 };
 
                 // Check if memory is too small to store the number of bytes sent.
                 if nsent_ptr + size_of::<Size>() > memory.len() {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "sock_send(): memory is too small to store the number of bytes sent"
                     );
                     return Errno::Inval.into();
@@ -368,7 +368,7 @@ impl WasmEngine {
     ) {
         let sock_shutdown: Func =
             Func::wrap(store, move |_caller: Caller<'_, u32>, sockfd: i32, how: i32| -> i32 {
-                ::nvx::trace!("sock_shutdown(): sockfd={:?}, how={:?}", sockfd, how);
+                ::syslog::trace!("sock_shutdown(): sockfd={:?}, how={:?}", sockfd, how);
 
                 // Convert socket file descriptor.
                 let sockfd: Fd = sockfd as Fd;
@@ -377,7 +377,7 @@ impl WasmEngine {
                 let how: SdFlags = match how.try_into() {
                     Ok(how) => how,
                     Err(_) => {
-                        ::nvx::error!("sock_shutdown(): invalid how {:#010x}", how);
+                        ::syslog::error!("sock_shutdown(): invalid how {:#010x}", how);
                         return Errno::Inval.into();
                     },
                 };

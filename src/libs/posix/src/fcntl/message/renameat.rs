@@ -102,7 +102,7 @@ impl RenameAtRequest {
         // Check if `oldpath` is too long.
         if oldpath.len() > limits::NAME_MAX {
             #[cfg(target_os = "none")]
-            ::nvx::error!(
+            ::syslog::error!(
                 "renameat(): oldpath is too long (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, \
                  newpath={:?})",
                 olddirfd,
@@ -116,7 +116,7 @@ impl RenameAtRequest {
         // Check if `newpath` is too long.
         if newpath.len() > limits::NAME_MAX {
             #[cfg(target_os = "none")]
-            ::nvx::error!(
+            ::syslog::error!(
                 "renameat(): newpath is too long (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, \
                  newpath={:?})",
                 olddirfd,
@@ -165,14 +165,14 @@ impl MessageDeserializer for RenameAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OLDPATH {
             #[cfg(target_os = "none")]
-            ::nvx::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if the message is too long.
         if bytes.len() > Self::MAX_SIZE {
             #[cfg(target_os = "none")]
-            ::nvx::error!("try_from_bytes(): message is too long (len={:?})", bytes.len());
+            ::syslog::error!("try_from_bytes(): message is too long (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too long"));
         }
 
@@ -212,14 +212,14 @@ impl MessageDeserializer for RenameAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OLDPATH + oldpath_len as usize {
             #[cfg(target_os = "none")]
-            ::nvx::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if `oldpath` is too long.
         if oldpath_len as usize > limits::NAME_MAX {
             #[cfg(target_os = "none")]
-            ::nvx::error!(
+            ::syslog::error!(
                 "try_from_bytes(): oldpath is too long (olddirfd={:?}, oldpath={:?}, \
                  newdirfd={:?}, newpath={:?})",
                 olddirfd,
@@ -239,14 +239,14 @@ impl MessageDeserializer for RenameAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OLDPATH + oldpath_len as usize + newpath_len as usize {
             #[cfg(target_os = "none")]
-            ::nvx::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if `newpath` is too long.
         if newpath_len as usize > limits::NAME_MAX {
             #[cfg(target_os = "none")]
-            ::nvx::error!(
+            ::syslog::error!(
                 "try_from_bytes(): newpath is too long (olddirfd={:?}, oldpath={:?}, \
                  newdirfd={:?}, newpath={:?})",
                 olddirfd,

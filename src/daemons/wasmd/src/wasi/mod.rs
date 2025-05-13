@@ -91,7 +91,7 @@ impl WasiCtxInner {
     fn remove_file(&mut self, fd: Fd) -> Result<(), Errno> {
         // Check if we are removing stdin, stdout, or stderr.
         if fd == Self::STDIN || fd == Self::STDOUT || fd == Self::STDERR {
-            ::nvx::error!("remove_file(): cannot remove stdin, stdout, nor stderr");
+            ::syslog::error!("remove_file(): cannot remove stdin, stdout, nor stderr");
             return Err(Errno::Badf);
         }
 
