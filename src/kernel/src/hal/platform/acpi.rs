@@ -11,13 +11,11 @@
 // Imports
 //==================================================================================================
 
+use ::arch::cpu::acpi::AcpiSdtHeader;
 use ::core::ffi::CStr;
-use ::sys::{
-    arch::cpu::acpi::AcpiSdtHeader,
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

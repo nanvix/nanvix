@@ -7,33 +7,31 @@
 
 use crate::hal::arch::x86::cpu::tss::TssRef;
 use ::alloc::boxed::Box;
+use ::arch::mem::gdt::{
+    AccessAccessed,
+    AccessConforming,
+    AccessDescriptorType,
+    AccessDirection,
+    AccessDirectionConforming,
+    AccessExecutable,
+    AccessPresent,
+    AccessReadWrite,
+    AccessReadable,
+    AccessWritable,
+    DescriptorPrivilegeLegel,
+    Gdte,
+    GdteAccessByte,
+    GdteFlags,
+    GdteGranularity,
+    GdteLongMode,
+    GdteProtectedMode,
+};
 use ::core::{
     arch,
     mem,
     pin::Pin,
 };
-use ::sys::{
-    arch::mem::gdt::{
-        AccessAccessed,
-        AccessConforming,
-        AccessDescriptorType,
-        AccessDirection,
-        AccessDirectionConforming,
-        AccessExecutable,
-        AccessPresent,
-        AccessReadWrite,
-        AccessReadable,
-        AccessWritable,
-        DescriptorPrivilegeLegel,
-        Gdte,
-        GdteAccessByte,
-        GdteFlags,
-        GdteGranularity,
-        GdteLongMode,
-        GdteProtectedMode,
-    },
-    error::Error,
-};
+use ::sys::error::Error;
 
 //==================================================================================================
 // Structures
@@ -41,7 +39,7 @@ use ::sys::{
 
 pub struct Gdt(Pin<Box<[Gdte; 6]>>);
 
-pub struct GdtPtr(Pin<Box<::sys::arch::mem::gdtr::Gdtr>>);
+pub struct GdtPtr(Pin<Box<::arch::mem::gdtr::Gdtr>>);
 
 /// Global descriptor table entries.
 #[derive(Debug)]
@@ -72,7 +70,7 @@ pub enum SegmentSelector {
 
 impl Gdt {
     #[inline(never)]
-    pub unsafe fn load(ptr: *const ::sys::arch::mem::gdtr::Gdtr) {
+    pub unsafe fn load(ptr: *const ::arch::mem::gdtr::Gdtr) {
         // No data is pushed the stack, or write to the stack red-zone
         arch::asm!(
             "movl {ptr}, %eax",
@@ -217,13 +215,13 @@ impl Gdt {
         ])));
 
         // Set the GDTPTR.
-        let gdtr = GdtPtr(Pin::new(Box::new(::sys::arch::mem::gdtr::Gdtr::new(
+        let gdtr = GdtPtr(Pin::new(Box::new(::arch::mem::gdtr::Gdtr::new(
             gdt.0.as_ptr() as u32,
             (mem::size_of_val(&*gdt.0)) as u16,
         ))));
 
         info!("loading the GDT...");
-        Self::load(gdtr.0.as_ref().get_ref() as *const ::sys::arch::mem::gdtr::Gdtr);
+        Self::load(gdtr.0.as_ref().get_ref() as *const ::arch::mem::gdtr::Gdtr);
 
         // Load the TSS.
         tss.load(SegmentSelector::Tss as u16);

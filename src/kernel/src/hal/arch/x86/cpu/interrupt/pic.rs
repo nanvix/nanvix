@@ -16,15 +16,13 @@ use crate::hal::io::{
     IoPortAllocator,
     ReadWriteIoPort,
 };
-use ::sys::{
-    arch::{
-        cpu::pic,
-        io,
-    },
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::arch::{
+    cpu::pic,
+    io,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

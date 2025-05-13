@@ -303,8 +303,8 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             hal::platform::madt::MadtEntry,
             mm::kstack::KernelStack,
         };
+        use ::arch::cpu::madt::MadtEntryLocalApic;
         use ::core::mem;
-        use ::sys::arch::cpu::madt::MadtEntryLocalApic;
 
         // Report number of application cores.
         let ncores: usize = madt.cores_count() - 1;
@@ -362,7 +362,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
                 // Wait for application core to come online.
                 info!("waiting for core {} to come online...", coreid);
                 while unsafe { CORES_ONLINE.load(Ordering::Acquire) } == cores_online {
-                    ::sys::arch::cpu::pause();
+                    ::arch::cpu::pause();
                 }
 
                 // Prevent the kernel stack from being deallocated.

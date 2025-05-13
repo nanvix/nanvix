@@ -21,8 +21,8 @@ use crate::{
     },
     pm::ProcessManager,
 };
+use ::arch::mem;
 use ::sys::{
-    arch::mem,
     error::{
         Error,
         ErrorCode,

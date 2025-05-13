@@ -28,7 +28,7 @@ use crate::hal::{
     },
 };
 use ::alloc::collections::linked_list::LinkedList;
-use ::sys::arch::{
+use ::arch::{
     cpu::pic,
     mem,
 };
@@ -119,7 +119,7 @@ pub struct Platform {
 /// disabled.
 ///
 pub(super) unsafe fn disable_interrupts() {
-    ::sys::arch::cpu::cli();
+    ::arch::cpu::cli();
 }
 
 ///
@@ -135,7 +135,7 @@ pub(super) unsafe fn disable_interrupts() {
 /// enabled.
 ///
 pub(super) unsafe fn enable_interrupts() {
-    ::sys::arch::cpu::sti();
+    ::arch::cpu::sti();
 }
 
 ///
@@ -150,7 +150,7 @@ pub(super) unsafe fn enable_interrupts() {
 /// It is safe to call this function only when the CPU is able to receive interrupts.
 ///
 pub(super) unsafe fn wait_for_interrupt() {
-    ::sys::arch::cpu::halt();
+    ::arch::cpu::halt();
 }
 
 #[cfg(feature = "bios")]
@@ -170,7 +170,7 @@ fn register_bios_data_area(
     let bios_data_area: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "bios data area",
         VirtualAddress::from_raw_value(bios::BiosDataArea::BASE)
-            .align_down(::sys::arch::mem::PAGE_ALIGNMENT),
+            .align_down(::arch::mem::PAGE_ALIGNMENT),
         mem::PAGE_SIZE,
         MemoryRegionType::Reserved,
         AccessPermission::RDWR,
@@ -203,8 +203,8 @@ fn register_cmos(ioports: &mut IoPortAllocator) -> Result<cmos::Cmos, Error> {
 #[cfg(feature = "pit")]
 fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     // Register ports for the PIT.
-    ioports.register_read_write(::sys::arch::cpu::pit::PIT_CTRL)?;
-    ioports.register_read_write(::sys::arch::cpu::pit::PIT_DATA)?;
+    ioports.register_read_write(::arch::cpu::pit::PIT_CTRL)?;
+    ioports.register_read_write(::arch::cpu::pit::PIT_DATA)?;
 
     Pit::new(ioports, ::config::kernel::TIMER_FREQ)
 }

@@ -10,14 +10,11 @@ use ::nvx::{
         AccessPermission,
         Address,
         VirtualAddress,
+        PAGE_SIZE,
     },
     pm::{
         Capability,
         ProcessIdentifier,
-    },
-    sys::arch::{
-        mem,
-        mem::PAGE_SIZE,
     },
 };
 
@@ -150,7 +147,7 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
+    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / PAGE_SIZE;
 
     for _ in 0..ntimes {
         let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
@@ -198,10 +195,9 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / mem::PAGE_SIZE;
+    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / PAGE_SIZE;
 
-    for vaddr in (0..ntimes).map(|i| config::memory_layout::USER_HEAP_BASE_RAW + i * mem::PAGE_SIZE)
-    {
+    for vaddr in (0..ntimes).map(|i| config::memory_layout::USER_HEAP_BASE_RAW + i * PAGE_SIZE) {
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         // Map a page.

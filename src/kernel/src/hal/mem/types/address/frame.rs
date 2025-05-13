@@ -11,10 +11,8 @@ use crate::hal::mem::types::address::{
     PageAligned,
     PhysicalAddress,
 };
-use ::sys::{
-    arch::mem::paging::FrameNumber,
-    error::Error,
-};
+use ::arch::mem::paging::FrameNumber;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Structures

@@ -10,11 +10,11 @@ use crate::hal::mem::types::address::{
     FrameAddress,
     VirtualAddress,
 };
+use ::arch::mem::{
+    self,
+    paging::FrameNumber,
+};
 use ::sys::{
-    arch::mem::{
-        self,
-        paging::FrameNumber,
-    },
     error::{
         Error,
         ErrorCode,

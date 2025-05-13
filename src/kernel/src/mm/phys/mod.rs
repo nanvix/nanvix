@@ -29,12 +29,10 @@ use crate::{
     },
 };
 use ::alloc::collections::LinkedList;
-use ::sys::{
-    arch::mem,
-    error::{
-        Error,
-        ErrorCode,
-    },
+use ::arch::mem;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

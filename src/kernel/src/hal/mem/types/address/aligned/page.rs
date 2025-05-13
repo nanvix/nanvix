@@ -12,9 +12,9 @@ use crate::hal::mem::{
     },
     Address,
 };
+use ::arch::mem::PAGE_ALIGNMENT;
 use ::core::ops::Deref;
 use ::sys::{
-    arch::mem::PAGE_ALIGNMENT,
     error::{
         Error,
         ErrorCode,
