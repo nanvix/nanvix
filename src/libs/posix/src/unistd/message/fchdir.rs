@@ -34,7 +34,7 @@ pub struct FileChdirRequest {
     /// Padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChdirRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChdirRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileChdirRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>();
@@ -74,7 +74,7 @@ pub struct FileChdirResponse {
     /// Padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileChdirResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChdirResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileChdirResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;

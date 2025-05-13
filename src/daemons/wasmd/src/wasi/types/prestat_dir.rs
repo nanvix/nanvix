@@ -20,8 +20,8 @@ use crate::{
 pub struct PrestatDir {
     pr_name_len: Size,
 }
-::nvx::sys::static_assert_alignment!(PrestatDir, 4);
-::nvx::sys::static_assert_size!(PrestatDir, 4);
+::static_assert::assert_eq_align!(PrestatDir, 4);
+::static_assert::assert_eq_size!(PrestatDir, 4);
 
 //==================================================================================================
 // Implementations

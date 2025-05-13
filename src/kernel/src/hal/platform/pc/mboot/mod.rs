@@ -94,10 +94,10 @@ struct MbootTag {
 }
 
 // `MbootTag` must be 8 bytes long. This must match the multiboot specification.
-sys::static_assert_size!(MbootTag, 8);
+::static_assert::assert_eq_size!(MbootTag, 8);
 
 // `MbootTag` must be 8-byte aligned. This must match the multiboot specification.
-sys::static_assert_alignment!(MbootTag, 8);
+::static_assert::assert_eq_align!(MbootTag, 8);
 
 //==================================================================================================
 // Implementations

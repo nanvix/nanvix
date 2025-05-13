@@ -79,7 +79,7 @@ pub struct Idte {
 }
 
 // `Idte` must be 8 bytes long. This must match the hardware specification.
-crate::static_assert_size!(Idte, 8);
+::static_assert::assert_eq_size!(Idte, 8);
 
 impl Idte {
     /// Creates a new IDT entry.

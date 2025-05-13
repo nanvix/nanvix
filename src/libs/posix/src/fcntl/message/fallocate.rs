@@ -35,7 +35,7 @@ pub struct FileSpaceControlRequest {
     pub len: off_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileSpaceControlRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileSpaceControlRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileSpaceControlRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
@@ -87,7 +87,7 @@ pub struct FileSpaceControlResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(FileSpaceControlResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileSpaceControlResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl FileSpaceControlResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

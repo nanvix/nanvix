@@ -48,7 +48,7 @@ pub struct DlInfo {
     pub dli_saddr: *const c_void,
 }
 
-::nvx::sys::static_assert_size!(DlInfo, DlInfo::_SIZE);
+::static_assert::assert_eq_size!(DlInfo, DlInfo::_SIZE);
 
 impl DlInfo {
     /// Size of the `DlInfo` structure, used for static assertions.

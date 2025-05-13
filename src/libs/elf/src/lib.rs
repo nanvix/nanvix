@@ -358,8 +358,8 @@ pub enum SymbolType {
 #[derive(Debug)]
 pub struct Symbol(Sym);
 
-::sys::static_assert_size!(Symbol, mem::size_of::<Sym>());
-::sys::static_assert_alignment!(Symbol, mem::align_of::<Sym>());
+::static_assert::assert_eq_size!(Symbol, mem::size_of::<Sym>());
+::static_assert::assert_eq_align!(Symbol, mem::align_of::<Sym>());
 
 impl Symbol {
     ///
@@ -552,8 +552,8 @@ pub enum RelocationType {
 #[derive(Debug)]
 pub struct RelocationEntry(Rel);
 
-::sys::static_assert_size!(RelocationEntry, mem::size_of::<Rel>());
-::sys::static_assert_alignment!(RelocationEntry, mem::align_of::<Rel>());
+::static_assert::assert_eq_size!(RelocationEntry, mem::size_of::<Rel>());
+::static_assert::assert_eq_align!(RelocationEntry, mem::align_of::<Rel>());
 
 impl RelocationEntry {
     ///

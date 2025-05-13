@@ -81,7 +81,7 @@ pub struct timespec {
     /// Nano-seconds.
     pub tv_nsec: c_long,
 }
-::nvx::sys::static_assert_size!(timespec, timespec::SIZE);
+::static_assert::assert_eq_size!(timespec, timespec::SIZE);
 
 impl timespec {
     /// Size of the seconds field.

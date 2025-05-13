@@ -24,10 +24,10 @@ pub struct Gdte {
 }
 
 // `Gdte` must be 8 bytes long. This must match the hardware specification.
-crate::static_assert_size!(Gdte, 8);
+::static_assert::assert_eq_size!(Gdte, 8);
 
 // `Gdte` must be aligned to 8 bytes. This must match the hardware specification.
-crate::static_assert_alignment!(Gdte, 8);
+::static_assert::assert_eq_align!(Gdte, 8);
 
 impl Gdte {
     /// Creates a new GDT entry.

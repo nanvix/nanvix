@@ -50,7 +50,7 @@ pub struct utsname {
     /// Name of the hardware type on which the system is running.
     pub machine: [c_char; UTSNAME_LENGTH],
 }
-::nvx::sys::static_assert_size!(utsname, utsname::_SIZE);
+::static_assert::assert_eq_size!(utsname, utsname::_SIZE);
 
 impl utsname {
     // Size of `sysname` field, used for static size assertions.

@@ -15,6 +15,7 @@ crate-type = ["lib"]
 
 [dependencies]
 nvx = { workspace = true }
+static_assert = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

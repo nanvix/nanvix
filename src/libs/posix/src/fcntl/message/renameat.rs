@@ -301,7 +301,7 @@ pub struct RenameAtResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(RenameAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(RenameAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl RenameAtResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();

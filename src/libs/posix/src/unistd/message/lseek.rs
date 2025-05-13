@@ -30,7 +30,7 @@ pub struct SeekRequest {
     pub whence: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(SeekRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SeekRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl SeekRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
@@ -75,7 +75,7 @@ pub struct SeekResponse {
     pub offset: i64,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(SeekResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SeekResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl SeekResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i64>();

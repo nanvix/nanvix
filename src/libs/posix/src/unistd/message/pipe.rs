@@ -26,7 +26,7 @@ use ::nvx::{
 pub struct PipeRequest {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(PipeRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(PipeRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl PipeRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
@@ -66,7 +66,7 @@ pub struct PipeResponse {
     pub write_fd: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(PipeResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(PipeResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl PipeResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - 2 * mem::size_of::<i32>();

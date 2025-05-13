@@ -31,7 +31,7 @@ pub struct ReceiveSocketRequest {
     pub flags: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::nvx::sys::static_assert_size!(ReceiveSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ReceiveSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ReceiveSocketRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
@@ -78,7 +78,7 @@ pub struct ReceiveSocketResponse {
     pub count: size_t,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
-::nvx::sys::static_assert_size!(ReceiveSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ReceiveSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ReceiveSocketResponse {
     pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<size_t>();

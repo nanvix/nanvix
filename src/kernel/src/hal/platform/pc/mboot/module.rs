@@ -37,10 +37,10 @@ pub struct MbootModuleTag {
 }
 
 // `MbootModuleTag` must be 16 bytes long. This must match the multiboot specification.
-sys::static_assert_size!(MbootModuleTag, 16);
+::static_assert::assert_eq_size!(MbootModuleTag, 16);
 
 // `MbootModuleTag` must be 8-byte aligned. This must match the multiboot specification.
-sys::static_assert_alignment!(MbootModuleTag, 8);
+::static_assert::assert_eq_align!(MbootModuleTag, 8);
 
 impl core::fmt::Debug for MbootModuleTag {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {

@@ -205,7 +205,7 @@ pub struct LinuxDaemonMessage {
     /// Message payload.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
-::nvx::sys::static_assert_size!(LinuxDaemonMessage, Message::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(LinuxDaemonMessage, Message::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Constants
