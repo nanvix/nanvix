@@ -115,6 +115,7 @@ pub fn main() -> Result<()> {
             None => None,
         };
 
+        info!("Listening on: {:?}", sockaddr);
         let stream: UnixStream = match listener.accept() {
             Ok((stream, sockaddr)) => {
                 info!("Connected to: {:?}", sockaddr);
