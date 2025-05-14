@@ -1,0 +1,15 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "syscomm"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "System Communication Library"
+homepage.workspace = true
+
+[dependencies]
+config = { workspace = true }
+anyhow = { workspace = true }
