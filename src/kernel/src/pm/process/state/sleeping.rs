@@ -23,8 +23,10 @@ use ::alloc::{
     boxed::Box,
     collections::vec_deque::VecDeque,
 };
-use ::sys::pm::ThreadIdentifier;
-use ::time::SystemTime;
+use ::sys::{
+    pm::ThreadIdentifier,
+    time::SystemTime,
+};
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================

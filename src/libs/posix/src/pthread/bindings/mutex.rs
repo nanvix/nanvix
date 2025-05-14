@@ -14,8 +14,10 @@ use crate::{
     },
     time::timespec,
 };
-use ::nvx::sys::error::ErrorCode;
-use ::time::SystemTime;
+use ::nvx::sys::{
+    error::ErrorCode,
+    time::SystemTime,
+};
 
 //==================================================================================================
 // pthread_mutex_destroy()
@@ -199,7 +201,10 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
         match SystemTime::new((*abstime).tv_sec as u64, (*abstime).tv_nsec as u32) {
             Some(timeout) => timeout,
             None => {
-                ::syslog::error!("pthread_mutex_timedlock(): invalid timeout (abstime={:?})", abstime);
+                ::syslog::error!(
+                    "pthread_mutex_timedlock(): invalid timeout (abstime={:?})",
+                    abstime
+                );
                 return ErrorCode::InvalidArgument.get();
             },
         };

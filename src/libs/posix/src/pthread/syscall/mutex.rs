@@ -27,9 +27,9 @@ use ::nvx::{
             lock_mutex,
             unlock_mutex,
         },
+        time::SystemTime,
     },
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Standalone Functions
@@ -153,7 +153,10 @@ pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
                 // Mutex is already locked.
                 Err(Error::new(ErrorCode::ResourceBusy, "mutex is already locked"))
             } else {
-                ::syslog::error!("pthread_mutex_trylock(): failed to lock mutex (error={:?})", error);
+                ::syslog::error!(
+                    "pthread_mutex_trylock(): failed to lock mutex (error={:?})",
+                    error
+                );
                 // Some other error occurred.
                 Err(error)
             }

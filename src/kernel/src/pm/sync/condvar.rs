@@ -24,8 +24,8 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    time::SystemTime,
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Structures

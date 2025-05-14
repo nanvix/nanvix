@@ -36,13 +36,13 @@ use ::nvx::{
             signal_cond,
             wait_cond,
         },
+        time::SystemTime,
     },
 };
 use ::spin::{
     Lazy,
     Mutex,
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Globals
