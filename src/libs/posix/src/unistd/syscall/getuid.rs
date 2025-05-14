@@ -38,7 +38,7 @@ use ::nvx::{
 /// returns an error.
 ///
 pub fn getuid() -> Result<uid_t, Error> {
-    ::nvx::trace!("getuid()");
+    ::syslog::trace!("getuid()");
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
@@ -51,7 +51,7 @@ pub fn getuid() -> Result<uid_t, Error> {
 
     // Check whether system call succeeded or not
     if response.status != 0 {
-        ::nvx::error!("getuid(): failed (pid={:?}, status={:?})", pid, { response.status });
+        ::syslog::error!("getuid(): failed (pid={:?}, status={:?})", pid, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // System call failed, return error
@@ -70,7 +70,7 @@ pub fn getuid() -> Result<uid_t, Error> {
             },
             // Invalid response
             header => {
-                ::nvx::error!("getuid(): invalid response (pid={:?}, header={:?})", pid, header);
+                ::syslog::error!("getuid(): invalid response (pid={:?}, header={:?})", pid, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
             },
         }

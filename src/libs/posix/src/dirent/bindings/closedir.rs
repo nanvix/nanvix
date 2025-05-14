@@ -25,12 +25,12 @@ use nvx::sys::error::ErrorCode;
 pub unsafe extern "C" fn closedir(dirp: *mut DirectoryStream) -> c_int {
     // Check if directory stream is invalid.
     if dirp.is_null() {
-        ::nvx::error!("closedir(): invalid directory stream");
+        ::syslog::error!("closedir(): invalid directory stream");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
-    ::nvx::trace!("closedir(): dirp={:?}", dirp);
+    ::syslog::trace!("closedir(): dirp={:?}", dirp);
 
     let mut dirp: Box<DirectoryStream> = Box::from_raw(dirp);
 
@@ -38,7 +38,7 @@ pub unsafe extern "C" fn closedir(dirp: *mut DirectoryStream) -> c_int {
     match dirent::closedir(&mut dirp) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("closedir(): failed to close directory stream: {:?}", error);
+            ::syslog::error!("closedir(): failed to close directory stream: {:?}", error);
             *__errno_location() = error.code.get();
             -1
         },

@@ -49,26 +49,26 @@ pub struct MemorySegment {
 impl MemorySegment {
     /// Creates a new memory segment.
     pub fn new(base: VirtualAddress, capacity: usize) -> Result<Self, Error> {
-        ::nvx::trace!("new(): base={:#x?}, capacity={:?}", base.into_raw_value(), capacity);
+        ::syslog::trace!("new(): base={:#x?}, capacity={:?}", base.into_raw_value(), capacity);
 
         // Check if base address is not page-aligned.
         if !base.is_aligned(PAGE_ALIGNMENT) {
             let reason: &str = "unaligned base address";
-            ::nvx::error!("new(): {}", reason);
+            ::syslog::error!("new(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
         // Check if capacity is zero.
         if capacity == 0 {
             let reason: &str = "zero capacity";
-            ::nvx::error!("new(): {}", reason);
+            ::syslog::error!("new(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
         // Check if capacity is page-aligned.
         if capacity % PAGE_SIZE != 0 {
             let reason: &str = "unaligned capacity";
-            ::nvx::error!("new(): {}", reason);
+            ::syslog::error!("new(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -85,7 +85,7 @@ impl MemorySegment {
 
     /// Loads data into the target memory segment.
     pub fn load(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error> {
-        ::nvx::trace!(
+        ::syslog::trace!(
             "load(): base={:#x?}, offset={:#x?}, bytes.len={:?}",
             self.base.into_raw_value(),
             offset,
@@ -94,7 +94,7 @@ impl MemorySegment {
         // Check if bytes exceed capacity.
         if offset + bytes.len() > self.capacity {
             let reason: &str = "bytes exceed capacity";
-            ::nvx::error!("load(): {}", reason);
+            ::syslog::error!("load(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -119,7 +119,7 @@ impl MemorySegment {
 
 impl Drop for MemorySegment {
     fn drop(&mut self) {
-        nvx::trace!("drop(): base={:X?}, capacity={:X?}", self.base, self.capacity);
+        ::syslog::trace!("drop(): base={:X?}, capacity={:X?}", self.base, self.capacity);
 
         // Unmap pages.
         if let Err(_error) = unmap_range(
@@ -127,7 +127,7 @@ impl Drop for MemorySegment {
             self.base,
             VirtualAddress::from_raw_value(self.base.into_raw_value() + self.capacity),
         ) {
-            nvx::warn!("drop(): failed to unmap pages (error={:?})", _error);
+            ::syslog::warn!("drop(): failed to unmap pages (error={:?})", _error);
         }
     }
 }
@@ -138,7 +138,7 @@ fn map_range(
     start: VirtualAddress,
     end: VirtualAddress,
 ) -> Result<(), Error> {
-    ::nvx::trace!("map_range(): start={:X?}, end={:X?}", start, end);
+    ::syslog::trace!("map_range(): start={:X?}, end={:X?}", start, end);
 
     debug_assert!(start.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
@@ -155,7 +155,7 @@ fn map_range(
         if let Err(error) = mm::mmap(pid, vaddr, AccessPermission::RDWR) {
             // Failed to map page, attempt to rollback.
 
-            ::nvx::error!(
+            ::syslog::error!(
                 "map_range(): failed to map page at {:X?}, rolling back (error={:?})",
                 vaddr,
                 error
@@ -164,7 +164,7 @@ fn map_range(
             // Attempt to unmap pages.
             if let Err(_error) = unmap_range(pid, VirtualAddress::new(start), vaddr) {
                 // Failed to unmap range, warn.
-                ::nvx::warn!(
+                ::syslog::warn!(
                     "map_range(): failed to unmap pages at {:X?}..{:X?} (error={:?})",
                     start,
                     vaddr,
@@ -187,7 +187,7 @@ fn unmap_range(
     start: VirtualAddress,
     end: VirtualAddress,
 ) -> Result<(), Error> {
-    nvx::trace!("unmap_range(): start={:X?}, end={:X?}", start, end);
+    ::syslog::trace!("unmap_range(): start={:X?}, end={:X?}", start, end);
 
     debug_assert!(start.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
@@ -202,7 +202,7 @@ fn unmap_range(
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         if let Err(error) = mm::munmap(pid, vaddr) {
-            ::nvx::error!(
+            ::syslog::error!(
                 "unmap_range(): failed to unmap page at {:X?}, skipping (error={:?})",
                 vaddr,
                 error

@@ -69,11 +69,11 @@ mod bindings {
     ///
     #[no_mangle]
     pub unsafe extern "C" fn utime(filename: *const c_char, times: *const utimbuf) -> c_int {
-        ::nvx::trace!("utime(): filename={:?}, times={:?}", filename, times);
+        ::syslog::trace!("utime(): filename={:?}, times={:?}", filename, times);
 
         // Check if `times` is invalid.
         if times.is_null() {
-            ::nvx::error!("utime(): invalid times (filename={:?}, times={:?})", filename, times);
+            ::syslog::error!("utime(): invalid times (filename={:?}, times={:?})", filename, times);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         }

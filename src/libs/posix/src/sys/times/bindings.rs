@@ -43,7 +43,7 @@ use crate::{
 ///
 #[no_mangle]
 pub unsafe extern "C" fn times(buffer: *mut tms) -> clock_t {
-    ::nvx::trace!("times(): {:?}", buffer);
+    ::syslog::trace!("times(): {:?}", buffer);
 
     // Convert `buffer` pointer to a reference.
     // NOTE: We provide same semantics of Linux: `buffer` can be a null pointer.
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn times(buffer: *mut tms) -> clock_t {
         Ok(clock) => clock,
         // System call failed.
         Err(error) => {
-            ::nvx::error!("times(): failed (buffer={:?}, error={:?})", buffer, error);
+            ::syslog::error!("times(): failed (buffer={:?}, error={:?})", buffer, error);
             *__errno_location() = error.code.get();
             -1 as clock_t
         },

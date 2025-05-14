@@ -49,7 +49,7 @@ pub fn renameat(
     newdirfd: RawFileDescriptor,
     newpath: &str,
 ) -> Result<(), Error> {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "renameat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}",
         olddirfd,
         oldpath,
@@ -71,7 +71,7 @@ pub fn renameat(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "renameat(): failed (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, \
              error_code={:?})",
             olddirfd,
@@ -89,7 +89,7 @@ pub fn renameat(
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "renameat(): failed to parse error code (olddirfd={:?}, oldpath={:?}, \
                      newdirfd={:?}, newpath={:?}, error={:?})",
                     olddirfd,
@@ -108,7 +108,7 @@ pub fn renameat(
             LinuxDaemonMessageHeader::RenameAtResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
-                ::nvx::error!(
+                ::syslog::error!(
                     "renameat(): {:?} (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, \
                      header={:?})",
                     reason,

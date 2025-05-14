@@ -163,13 +163,13 @@ impl WasmBinary {
                 panic!("failed to receive payload size: {:?}", error);
             },
         };
-        ::nvx::info!("received payload size: {}", payload_size);
+        ::syslog::info!("received payload size: {}", payload_size);
 
         // Read payload.
         let mut wasm_bytes: Vec<u8> = alloc::vec![0; payload_size as usize];
         match socket.recv(&mut wasm_bytes) {
             Ok(n) if n == payload_size as usize => {
-                ::nvx::info!("received payload");
+                ::syslog::info!("received payload");
             },
             errno => {
                 panic!("failed to receive payload: {:?}", errno);
@@ -177,7 +177,7 @@ impl WasmBinary {
         }
 
         wasm_bytes.shrink_to_fit();
-        ::nvx::info!("loading wasm file ({} bytes)", wasm_bytes.len());
+        ::syslog::info!("loading wasm file ({} bytes)", wasm_bytes.len());
 
         // TODO: receive name and args from remote.
         // TODO: skip allocation of bytes and use static array instead.
@@ -205,17 +205,17 @@ impl WasmBinary {
 
 #[no_mangle]
 fn main() -> Result<(), Error> {
-    ::nvx::info!("initializing wasm daemon...");
+    ::syslog::info!("initializing wasm daemon...");
 
     let wasm_binary = WasmBinary::new();
 
-    ::nvx::info!("wasm file loaded {:?}", wasm_binary);
+    ::syslog::info!("wasm file loaded {:?}", wasm_binary);
 
     let sockaddr: Option<SocketAddr> = match WASMD_SOCKET_ADDR {
         Some(sockaddr) => match SocketAddrV4::from_str(sockaddr) {
             Ok(sockaddr) => Some(SocketAddr::V4(sockaddr)),
             Err(error) => {
-                ::nvx::error!("{:?}", error);
+                ::syslog::error!("{:?}", error);
                 None
             },
         },
@@ -226,7 +226,7 @@ fn main() -> Result<(), Error> {
 
     engine.run();
 
-    ::nvx::info!("shutting down wasm daemon...");
+    ::syslog::info!("shutting down wasm daemon...");
 
     Ok(())
 }

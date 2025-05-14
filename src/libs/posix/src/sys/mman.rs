@@ -25,7 +25,7 @@ mod bindings {
         _fd: i32,
         _offset: isize,
     ) -> *mut u8 {
-        ::nvx::error!("mmap(): not implemented");
+        ::syslog::error!("mmap(): not implemented");
         unsafe {
             *__errno_location() = ErrorCode::InvalidSysCall.get();
         }
@@ -35,7 +35,7 @@ mod bindings {
     /// Dummy implementation of `munmap`.
     #[no_mangle]
     pub unsafe extern "C" fn munmap(_addr: *mut u8, _length: usize) -> isize {
-        ::nvx::error!("munmap(): not implemented");
+        ::syslog::error!("munmap(): not implemented");
         unsafe {
             *__errno_location() = ErrorCode::InvalidSysCall.get();
         }

@@ -16,6 +16,7 @@ name = "memd"
 [dependencies]
 nvx = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }
+syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
 cc = { workspace = true }

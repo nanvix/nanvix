@@ -49,7 +49,7 @@ use ::nvx::{
 /// returns an error.
 ///
 pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<size_t, Error> {
-    ::nvx::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
+    ::syslog::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
     let mut total_written: size_t = 0;
     let mut buffer_offset: usize = 0;
@@ -78,7 +78,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<siz
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {
-            ::nvx::error!(
+            ::syslog::error!(
                 "pwrite(): failed (fd={}, buffer.len={}, error_code={})",
                 fd,
                 buffer.len(),
@@ -90,7 +90,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<siz
                 Ok(error_code) => return Err(Error::new(error_code, "pwritev() failed")),
                 // Error code was not parsed.
                 Err(error) => {
-                    ::nvx::error!("pwrite(): failed to convert error code (error={:?})", error);
+                    ::syslog::error!("pwrite(): failed to convert error code (error={:?})", error);
                     return Err(Error::new(ErrorCode::TryAgain, "pwritev() failed"));
                 },
             }
@@ -111,7 +111,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<siz
                 },
                 // Response was not expected.
                 header => {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "pwrite(): failed to parse response (fd={}, buffer.len={}, header={:?})",
                         fd,
                         buffer.len(),

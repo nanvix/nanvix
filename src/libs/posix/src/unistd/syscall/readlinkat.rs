@@ -53,7 +53,7 @@ use ::nvx::{
 /// returns an error.
 ///
 pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Error> {
-    ::nvx::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
+    ::syslog::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -75,7 +75,7 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Err
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            ::nvx::error!(
+            ::syslog::error!(
                 "readlinkat(): system call failed (dirfd={:?}, path={:?}, error_code={:?})",
                 dirfd,
                 path,
@@ -85,7 +85,7 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Err
             match ErrorCode::try_from(response.status) {
                 Ok(error_code) => break Err(Error::new(error_code, "system call failed")),
                 Err(error) => {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "readlinkat(): failed to parse error code (dirfd={:?}, path={:?}, \
                          error_code={:?})",
                         dirfd,
@@ -104,7 +104,7 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Err
                         LinuxDaemonMessagePart::from_bytes(message.payload);
 
                     if let Err(error) = assembler.add_part(part) {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "readlinkat(): failed to add part (dirfd={:?}, path={:?}, \
                              error_code={:?})",
                             dirfd,
@@ -130,7 +130,7 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Err
                             break Ok(response.buffer.len() as i32);
                         },
                         Err(error) => {
-                            ::nvx::error!(
+                            ::syslog::error!(
                                 "readlinkat(): failed to assemble response (dirfd={:?}, \
                                  path={:?}, error_code={:?})",
                                 dirfd,
@@ -146,7 +146,7 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Err
                 },
                 header => {
                     break {
-                        ::nvx::error!(
+                        ::syslog::error!(
                             "readlinkat(): failed to parse response (dirfd={:?}, path={:?}, \
                              header={:?})",
                             dirfd,

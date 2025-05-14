@@ -34,6 +34,6 @@ use ::nvx::sys::error::Error;
 /// instead.
 ///
 pub fn lstat(pathname: &str, buf: &mut stat::stat) -> Result<(), Error> {
-    ::nvx::trace!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, buf);
+    ::syslog::trace!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, buf);
     sys::stat::fstatat(fcntl::AT_FDCWD, pathname, buf, fcntl::AT_SYMLINK_NOFOLLOW)
 }

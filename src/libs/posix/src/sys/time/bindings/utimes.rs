@@ -47,11 +47,11 @@ use ::nvx::sys::error::ErrorCode;
 ///
 #[no_mangle]
 pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) -> c_int {
-    ::nvx::trace!("utimes(): filename={:?}, times={:?}", filename, times);
+    ::syslog::trace!("utimes(): filename={:?}, times={:?}", filename, times);
 
     // Check if `times` is invalid.
     if times.is_null() {
-        ::nvx::error!("utimens(): invalid times (filename={:?}, times={:?})", filename, times);
+        ::syslog::error!("utimens(): invalid times (filename={:?}, times={:?})", filename, times);
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -60,7 +60,7 @@ pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) 
     let times: &[timeval; 2] = match slice::from_raw_parts(times, 2).try_into() {
         Ok(times) => times,
         Err(_) => {
-            ::nvx::error!("utimens(): invalid times (filename={:?}, times={:?})", filename, times);
+            ::syslog::error!("utimens(): invalid times (filename={:?}, times={:?})", filename, times);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },

@@ -24,7 +24,7 @@ use ::spin::MutexGuard;
 //==================================================================================================
 
 pub fn dlsym(handle: &DlHandle, symbol: &str) -> Result<VirtualAddress, Error> {
-    ::nvx::trace!("dlsym(): handle={:?}, symbol={}", handle, symbol);
+    ::syslog::trace!("dlsym(): handle={:?}, symbol={}", handle, symbol);
 
     // Get dynamic file.
     match DYNAMIC_LIBRARY_REGISTRY.lock().get_mut(handle) {
@@ -35,14 +35,14 @@ pub fn dlsym(handle: &DlHandle, symbol: &str) -> Result<VirtualAddress, Error> {
                 Some((base, offset)) => Ok(VirtualAddress::from_raw_value(base + offset)),
                 None => {
                     let reason: &str = "symbol not found";
-                    ::nvx::error!("dlsym(): {}", reason);
+                    ::syslog::error!("dlsym(): {}", reason);
                     Err(Error::new(ErrorCode::NoSuchEntry, reason))
                 },
             }
         },
         None => {
             let reason: &str = "dynamic library file not open";
-            ::nvx::error!("dlinfo(): {}", reason);
+            ::syslog::error!("dlinfo(): {}", reason);
             Err(Error::new(ErrorCode::BadFile, reason))
         },
     }

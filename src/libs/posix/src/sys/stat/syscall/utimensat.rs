@@ -52,7 +52,7 @@ pub fn utimensat(
     times: &[timespec; 2],
     flags: i32,
 ) -> Result<(), Error> {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "utimensat(): dirfd={:?}, pathname={:?}, times={:?}, flags={:?}",
         dirfd,
         pathname,
@@ -78,7 +78,7 @@ pub fn utimensat(
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
-        ::nvx::error!(
+        ::syslog::error!(
             "utimensat(): failed (dirfd={:?}, pathname={:?}, times={:?}, flags={:?}, \
              error_code={:?})",
             dirfd,
@@ -93,7 +93,7 @@ pub fn utimensat(
             Ok(error_code) => Err(Error::new(error_code, "utimensat() failed")),
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "utimensat(): failed to convert error code (dirfd={:?}, pathname={:?}, \
                      times={:?}, flags={:?}, error={:?})",
                     dirfd,
@@ -115,7 +115,7 @@ pub fn utimensat(
             // Response was not successfully parsed.
             _ => {
                 let reason: &str = "unexpected message header";
-                ::nvx::error!(
+                ::syslog::error!(
                     "utimensat(): failed (dirfd={:?}, pathname={:?}, times={:?}, flags={:?}, \
                      reason={:?})",
                     dirfd,

@@ -49,7 +49,7 @@ use ::nvx::{
 /// error.
 ///
 pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result<(), Error> {
-    ::nvx::trace!("mkdirat(): dirfd={:?}, pathname={:?}, mode={:?}", dirfd, pathname, mode);
+    ::syslog::trace!("mkdirat(): dirfd={:?}, pathname={:?}, mode={:?}", dirfd, pathname, mode);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -68,7 +68,7 @@ pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "mkdirat(): failed (dirfd={:?}, pathname={:?}, mode={:?}, error_code={:?})",
             dirfd,
             pathname,
@@ -84,7 +84,7 @@ pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "mkdirat(): failed to parse error code (dirfd={:?}, pathname={:?}, mode={:?}, \
                      error={:?})",
                     dirfd,
@@ -103,7 +103,7 @@ pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result
             LinuxDaemonMessageHeader::MakeDirectoryAtResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
-                ::nvx::error!(
+                ::syslog::error!(
                     "mkdirat(): {:?} (dirfd={:?}, pathname={:?}, mode={:?}, header={:?})",
                     reason,
                     dirfd,

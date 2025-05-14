@@ -77,7 +77,7 @@ use ::nvx::sys::error::ErrorCode;
 /// - This function is not called from multiple threads at the same time.
 #[no_mangle]
 pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
-    ::nvx::trace!("access(): path={:?}, mode={:?}", path, mode);
+    ::syslog::trace!("access(): path={:?}, mode={:?}", path, mode);
     faccessat(fcntl::AT_FDCWD, path, mode, 0)
 }
 
@@ -107,13 +107,13 @@ pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
-    ::nvx::error!("chdir(): path={:?}", path);
+    ::syslog::error!("chdir(): path={:?}", path);
 
     // Attempt to convert `path`.
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("chdir(): invalid path");
+            ::syslog::error!("chdir(): invalid path");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -123,7 +123,7 @@ pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
     match crate::unistd::chdir(path) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("chdir(): failed (error={:?})", error);
+            ::syslog::error!("chdir(): failed (error={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -155,7 +155,7 @@ pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
-    ::nvx::trace!("chown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
+    ::syslog::trace!("chown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
     fchownat(fcntl::AT_FDCWD, path, owner, group, 0)
 }
 
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) 
 #[no_mangle]
 pub extern "C" fn chroot(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/517
-    ::nvx::error!("chroot(): not implemented");
+    ::syslog::error!("chroot(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
@@ -172,11 +172,11 @@ pub extern "C" fn chroot(_path: *const c_char) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn close(fd: c_int) -> c_int {
-    ::nvx::trace!("close(): fd = {}", fd);
+    ::syslog::trace!("close(): fd = {}", fd);
     match crate::unistd::close(fd) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("close(): failed ({:?})", error);
+            ::syslog::error!("close(): failed ({:?})", error);
             unsafe {
                 *__errno_location() = error.code.get();
             }
@@ -188,7 +188,7 @@ pub extern "C" fn close(fd: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn dup2(_oldfd: c_int, _newfd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/354
-    ::nvx::error!("dup2(): not implemented");
+    ::syslog::error!("dup2(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
@@ -202,7 +202,7 @@ pub extern "C" fn execve(
     _envp: *const *const c_char,
 ) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/320
-    ::nvx::error!("execve(): not implemented");
+    ::syslog::error!("execve(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
@@ -249,7 +249,7 @@ pub unsafe extern "C" fn faccessat(
     mode: c_int,
     flag: c_int,
 ) -> c_int {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "faccessat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
         dirfd,
         path,
@@ -261,7 +261,7 @@ pub unsafe extern "C" fn faccessat(
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("faccessat(): invalid path");
+            ::syslog::error!("faccessat(): invalid path");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -271,7 +271,7 @@ pub unsafe extern "C" fn faccessat(
     match crate::unistd::faccessat(dirfd, path, mode, flag) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("faccessat(): failed (error={:?})", error);
+            ::syslog::error!("faccessat(): failed (error={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -294,13 +294,13 @@ pub unsafe extern "C" fn faccessat(
 ///
 #[no_mangle]
 pub extern "C" fn fchdir(fd: c_int) -> c_int {
-    ::nvx::trace!("fchdir(): fd = {}", fd);
+    ::syslog::trace!("fchdir(): fd = {}", fd);
 
     // Process system call and check for errors.
     match crate::unistd::fchdir(fd) {
         Ok(()) => 0,
         Err(e) => {
-            ::nvx::error!("fchdir(): failed ({:?})", e);
+            ::syslog::error!("fchdir(): failed ({:?})", e);
             unsafe {
                 *__errno_location() = e.code.get();
             }
@@ -334,13 +334,13 @@ pub extern "C" fn fchdir(fd: c_int) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int {
-    ::nvx::trace!("fchown(): fd={}, owner={}, group={}", fd, owner, group);
+    ::syslog::trace!("fchown(): fd={}, owner={}, group={}", fd, owner, group);
 
     // Attempt to change file ownership and check the result.
     match crate::unistd::fchown(fd, owner, group) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "fchown(): failed (fd={}, owner={}, group={}, error={:?})",
                 fd,
                 owner,
@@ -386,7 +386,7 @@ pub unsafe extern "C" fn fchownat(
     group: gid_t,
     flag: c_int,
 ) -> c_int {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
         dirfd,
         path,
@@ -399,7 +399,7 @@ pub unsafe extern "C" fn fchownat(
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "fchownat(): invalid pathname (dirfd={:?}, owner={:?}, group={:?}, flag={:?}, \
                  error={:?})",
                 dirfd,
@@ -417,7 +417,7 @@ pub unsafe extern "C" fn fchownat(
     match crate::unistd::fchownat(dirfd, pathname, owner, group, flag) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "fchownat(): failed (dirfd={:?}, pathname={:?}, owner={:?}, group={:?}, \
                  flag={:?}, error={:?})",
                 dirfd,
@@ -456,13 +456,13 @@ pub unsafe extern "C" fn fchownat(
 ///
 #[no_mangle]
 pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
-    ::nvx::trace!("fdatasync(): fd={}", fd);
+    ::syslog::trace!("fdatasync(): fd={}", fd);
 
     // Attempt to synchronize the file and check the result.
     match crate::unistd::fdatasync(fd) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("fdatasync(): failed (fd={}, error={:?})", fd, error);
+            ::syslog::error!("fdatasync(): failed (fd={}, error={:?})", fd, error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -472,7 +472,7 @@ pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn fork() -> pid_t {
     // TODO: https://github.com/nanvix/nanvix/issues/321
-    ::nvx::error!("fork(): not implemented");
+    ::syslog::error!("fork(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
@@ -534,7 +534,7 @@ pub extern "C" fn fsync(fd: c_int) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
-    ::nvx::trace!("ftruncate(): fd={}, length={}", fd, length);
+    ::syslog::trace!("ftruncate(): fd={}, length={}", fd, length);
 
     // Attempt to truncate the file and check the result.
     match crate::unistd::ftruncate(fd, length) {
@@ -549,11 +549,11 @@ pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
-    ::nvx::trace!("getcwd(): buf = {:?}, size = {}", buf, size);
+    ::syslog::trace!("getcwd(): buf = {:?}, size = {}", buf, size);
 
     // Check if the buffer is valid.
     if buf.is_null() {
-        ::nvx::error!("getcwd(): invalid buffer");
+        ::syslog::error!("getcwd(): invalid buffer");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return core::ptr::null_mut();
     }
@@ -564,7 +564,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
         Ok(cwd) => {
             // Check if the buffer is large enough.
             if cwd.len() + 1 > size as usize {
-                ::nvx::error!("getcwd(): buffer is too small");
+                ::syslog::error!("getcwd(): buffer is too small");
                 *__errno_location() = ErrorCode::ValueOutOfRange.get();
                 return core::ptr::null_mut();
             }
@@ -604,7 +604,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn getegid() -> gid_t {
-    ::nvx::trace!("getegid()");
+    ::syslog::trace!("getegid()");
 
     // Get the effective group ID of the calling process and check for errors.
     match crate::unistd::getegid() {
@@ -613,7 +613,7 @@ pub unsafe extern "C" fn getegid() -> gid_t {
         // Failure.
         Err(error) => {
             // POSIX does not allow us to modify `errno`. So we just emit a warning.
-            ::nvx::warn!("getegid(): failed (error={:?})", error);
+            ::syslog::warn!("getegid(): failed (error={:?})", error);
             // POSIX does not reserve specific values for errors. We workaround it and return `-1`
             // (aka `gid::MAX`) to indicate an error. Hopefully this value does not conflict with a
             // valid group ID.
@@ -638,7 +638,7 @@ pub unsafe extern "C" fn getegid() -> gid_t {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn geteuid() -> uid_t {
-    ::nvx::trace!("geteuid()");
+    ::syslog::trace!("geteuid()");
 
     // Get the effective user ID of the calling process and check for errors.
     match crate::unistd::geteuid() {
@@ -647,7 +647,7 @@ pub unsafe extern "C" fn geteuid() -> uid_t {
         // Failure.
         Err(error) => {
             // POSIX does not allow us to modify `errno`. So we just emit a warning.
-            ::nvx::warn!("geteuid(): failed (error={:?})", error);
+            ::syslog::warn!("geteuid(): failed (error={:?})", error);
             // POSIX does not reserve specific values for errors. We workaround it and return `-1`
             // (aka `uid::MAX`) to indicate an error. Hopefully this value does not conflict with a
             // valid user ID.
@@ -672,7 +672,7 @@ pub unsafe extern "C" fn geteuid() -> uid_t {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn getgid() -> gid_t {
-    ::nvx::trace!("getgid()");
+    ::syslog::trace!("getgid()");
 
     // Get the real group ID of the calling process and check for errors.
     match crate::unistd::getgid() {
@@ -681,7 +681,7 @@ pub unsafe extern "C" fn getgid() -> gid_t {
         // Failure.
         Err(error) => {
             // POSIX does not allow us to modify `errno`. So we just emit a warning.
-            ::nvx::warn!("getgid(): failed (error={:?})", error);
+            ::syslog::warn!("getgid(): failed (error={:?})", error);
             // POSIX does not reserve specific values for errors. We workaround it and return `-1`
             // (aka `gid::MAX`) to indicate an error. Hopefully this value does not conflict with a
             // valid group ID.
@@ -697,7 +697,7 @@ pub unsafe extern "C" fn getgid() -> gid_t {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_int {
-    ::nvx::trace!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
+    ::syslog::trace!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
 
     // Fill buffer with 1s.
     let buffer: &mut [u8] = slice::from_raw_parts_mut(_buffer as *mut u8, _length as usize);
@@ -737,7 +737,7 @@ pub extern "C" fn getpid() -> pid_t {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn getuid() -> uid_t {
-    ::nvx::trace!("getuid()");
+    ::syslog::trace!("getuid()");
 
     // Get the user ID of the calling process and check for errors.
     match crate::unistd::getuid() {
@@ -746,7 +746,7 @@ pub unsafe extern "C" fn getuid() -> uid_t {
         // Failure.
         Err(error) => {
             // POSIX does not allow us to modify `errno`. So we just emit a warning.
-            ::nvx::warn!("getuid(): failed (error={:?})", error);
+            ::syslog::warn!("getuid(): failed (error={:?})", error);
             // POSIX does not reserve specific values for errors. We workaround it and return `-1`
             // (aka `uid::MAX`) to indicate an error. Hopefully this value does not conflict with a
             // valid user ID.
@@ -779,17 +779,17 @@ pub unsafe extern "C" fn getuid() -> uid_t {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_int {
-    ::nvx::trace!("gethostname(): name={:?}, namelen={}", name, namelen);
+    ::syslog::trace!("gethostname(): name={:?}, namelen={}", name, namelen);
 
     // Check if the buffer is valid.
     if name.is_null() {
-        ::nvx::error!("gethostname(): invalid buffer (name={:?}, namelen={:?})", name, namelen);
+        ::syslog::error!("gethostname(): invalid buffer (name={:?}, namelen={:?})", name, namelen);
         return -1;
     }
 
     // Check if `namelen` is invalid.
     if namelen == 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "gethostname(): invalid buffer size (name={:?}, namelen={:?})",
             name,
             namelen
@@ -806,7 +806,7 @@ pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_in
         Ok(s) => s,
         // Failure.
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "gethostname(): failed to convert string (name={:?}, namelen={:?}, error={:?})",
                 name,
                 namelen,
@@ -818,7 +818,7 @@ pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_in
 
     // Check if the buffer is large enough.
     if c_string.as_bytes_with_nul().len() > namelen as usize {
-        ::nvx::error!(
+        ::syslog::error!(
             "gethostname(): buffer is too small (name={:?}, namelen={:?})",
             name,
             namelen
@@ -828,7 +828,7 @@ pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_in
     // Truncate the host name to HOST_NAME_MAX if necessary.
     let mut bytes: &[u8] = c_string.as_bytes_with_nul();
     if bytes.len() > HOST_NAME_MAX {
-        ::nvx::warn!(
+        ::syslog::warn!(
             "gethostname(): hostname is too long, truncating (name={:?}, namelen={:?})",
             name,
             namelen
@@ -866,17 +866,17 @@ pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_in
 ///
 #[no_mangle]
 pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
-    ::nvx::trace!("isatty(): fd={}", fd);
+    ::syslog::trace!("isatty(): fd={}", fd);
 
     match crate::unistd::isatty(fd) {
         Ok(true) => 1,
         Ok(false) => {
-            ::nvx::warn!("isatty(): file descriptor is not a terminal (fd={})", fd);
+            ::syslog::warn!("isatty(): file descriptor is not a terminal (fd={})", fd);
             *__errno_location() = ErrorCode::InvalidTerminalOperation.get();
             0
         },
         Err(error) => {
-            ::nvx::error!("isatty(): failed (fd={}, error={:?})", fd, error);
+            ::syslog::error!("isatty(): failed (fd={}, error={:?})", fd, error);
             *__errno_location() = error.code.get();
             0
         },
@@ -908,7 +908,7 @@ pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
-    ::nvx::trace!("lchown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
+    ::syslog::trace!("lchown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
     fchownat(fcntl::AT_FDCWD, path, owner, group, fcntl::AT_SYMLINK_NOFOLLOW)
 }
 
@@ -937,7 +937,7 @@ pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t)
 ///
 #[no_mangle]
 pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
-    ::nvx::trace!("link(): oldpath={:?}, newpath={:?}", oldpath, newpath);
+    ::syslog::trace!("link(): oldpath={:?}, newpath={:?}", oldpath, newpath);
     linkat(fcntl::AT_FDCWD, oldpath, fcntl::AT_FDCWD, newpath, 0)
 }
 
@@ -975,7 +975,7 @@ pub unsafe extern "C" fn linkat(
     newpath: *const c_char,
     flags: c_int,
 ) -> c_int {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "linkat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, flags={:?}",
         olddirfd,
         oldpath,
@@ -988,7 +988,7 @@ pub unsafe extern "C" fn linkat(
     let oldpath: &str = match ffi::CStr::from_ptr(oldpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("linkat(): invalid oldpath");
+            ::syslog::error!("linkat(): invalid oldpath");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -998,7 +998,7 @@ pub unsafe extern "C" fn linkat(
     let newpath: &str = match ffi::CStr::from_ptr(newpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("linkat(): invalid newpath");
+            ::syslog::error!("linkat(): invalid newpath");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -1008,7 +1008,7 @@ pub unsafe extern "C" fn linkat(
     match crate::unistd::linkat(olddirfd, oldpath, newdirfd, newpath, flags) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "linkat(): failed (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
                  error={:?})",
                 olddirfd,
@@ -1049,13 +1049,13 @@ pub unsafe extern "C" fn linkat(
 ///
 #[no_mangle]
 pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
-    ::nvx::trace!("lseek(): fd={:?}, offset={:?}, whence={:?}", fd, offset, whence);
+    ::syslog::trace!("lseek(): fd={:?}, offset={:?}, whence={:?}", fd, offset, whence);
 
     // Attempt to seek the file descriptor and check for errors.
     match crate::unistd::lseek(fd, offset, whence) {
         Ok(offset) => offset,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "lseek(): failed (fd={:?}, offset={:?}, whence={:?}, error={:?})",
                 fd,
                 offset,
@@ -1086,7 +1086,7 @@ pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
 ///
 #[no_mangle]
 pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
-    ::nvx::trace!("pipe(): fds = {:?}", fds);
+    ::syslog::trace!("pipe(): fds = {:?}", fds);
 
     match crate::unistd::pipe() {
         Ok([read_fd, write_fd]) => {
@@ -1095,7 +1095,7 @@ pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
             0
         },
         Err(error) => {
-            ::nvx::error!("pipe(): failed (error={:?})", error);
+            ::syslog::error!("pipe(): failed (error={:?})", error);
             unsafe {
                 *__errno_location() = error.code.get();
             }
@@ -1138,7 +1138,7 @@ pub unsafe extern "C" fn pread(
     count: size_t,
     offset: off_t,
 ) -> ssize_t {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "pread(): fd={}, buffer={:?}, count={:?}, offset={:?}",
         fd,
         buffer,
@@ -1148,7 +1148,7 @@ pub unsafe extern "C" fn pread(
 
     // Check if buffer is invalid.
     if buffer.is_null() {
-        ::nvx::error!(
+        ::syslog::error!(
             "pread(): invalid buffer (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
             fd,
             buffer,
@@ -1171,7 +1171,7 @@ pub unsafe extern "C" fn pread(
     match crate::unistd::pread(fd, buffer, offset) {
         Ok(bytes_read) => bytes_read as ssize_t,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "pread(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
                 fd,
                 buffer,
@@ -1219,7 +1219,7 @@ pub unsafe extern "C" fn pwrite(
     count: size_t,
     offset: off_t,
 ) -> ssize_t {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "pwrite(): fd={}, buffer={:?}, count={:?}, offset={:?}",
         fd,
         buffer,
@@ -1229,7 +1229,7 @@ pub unsafe extern "C" fn pwrite(
 
     // Check if buffer is invalid.
     if buffer.is_null() {
-        ::nvx::error!(
+        ::syslog::error!(
             "pwrite(): invalid buffer (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
             fd,
             buffer,
@@ -1242,7 +1242,7 @@ pub unsafe extern "C" fn pwrite(
 
     // CHeck if count is invalid.
     if count == 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "pwrite(): invalid count (fd={:?}, buffer={:?}, count={:?}, offset={:?})",
             fd,
             buffer,
@@ -1260,7 +1260,7 @@ pub unsafe extern "C" fn pwrite(
     match crate::unistd::pwrite(fd, buffer, offset) {
         Ok(bytes_written) => bytes_written as ssize_t,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "pwrite(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
                 fd,
                 buffer,
@@ -1304,12 +1304,12 @@ pub unsafe extern "C" fn pwrite(
 pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> ssize_t {
     // Skip logging for stdin to avoid spamming the output.
     if fd != STDIN_FILENO {
-        ::nvx::trace!("read(): fd={:?}, buffer={:?}, count={:?}", fd, buffer, count);
+        ::syslog::trace!("read(): fd={:?}, buffer={:?}, count={:?}", fd, buffer, count);
     }
 
     // Check if buffer is invalid.
     if buffer.is_null() {
-        ::nvx::error!(
+        ::syslog::error!(
             "read(): invalid buffer (fd={:?}, buffer={:?}, count={:?})",
             fd,
             buffer,
@@ -1332,7 +1332,7 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> 
     match crate::unistd::read(fd, buffer) {
         Ok(bytes_read) => bytes_read as ssize_t,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "read(): failed (fd={}, buffer={:?}, count={:?}, error={:?})",
                 fd,
                 buffer,
@@ -1377,7 +1377,7 @@ pub unsafe extern "C" fn readlinkat(
     buf: *mut c_char,
     bufsize: size_t,
 ) -> ssize_t {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "readlinkat(): dirfd={:?}, path={:?}, buf={:?}, bufsize={:?}",
         dirfd,
         path,
@@ -1387,7 +1387,7 @@ pub unsafe extern "C" fn readlinkat(
 
     // Check if `bufsize` is valid.
     let bufsize: usize = if (bufsize == 0) || (bufsize as usize > PATH_MAX) {
-        ::nvx::error!(
+        ::syslog::error!(
             "readlinkat(): invalid buffer size (dirfd={:?}, path={:?}, bufsize={:?})",
             dirfd,
             path,
@@ -1406,7 +1406,7 @@ pub unsafe extern "C" fn readlinkat(
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "readlinkat(): invalid path (dirfd={:?}, path={:?}, bufsize={:?}, error={:?})",
                 dirfd,
                 path,
@@ -1422,7 +1422,7 @@ pub unsafe extern "C" fn readlinkat(
     match crate::unistd::readlinkat(dirfd, path, buf) {
         Ok(bytes_read) => bytes_read,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "readlinkat(): failed (dirfd={:?}, path={:?}, bufsize={:?}, error={:?})",
                 dirfd,
                 path,
@@ -1439,7 +1439,7 @@ pub unsafe extern "C" fn readlinkat(
 #[no_mangle]
 pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/348
-    ::nvx::error!("rmdir(): not implemented");
+    ::syslog::error!("rmdir(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
@@ -1474,7 +1474,7 @@ pub unsafe extern "C" fn readlink(
     buf: *mut c_char,
     bufsize: size_t,
 ) -> ssize_t {
-    ::nvx::trace!("readlink(): path={:?}, buf={:?}, bufsize={:?}", path, buf, bufsize);
+    ::syslog::trace!("readlink(): path={:?}, buf={:?}, bufsize={:?}", path, buf, bufsize);
     readlinkat(fcntl::AT_FDCWD, path, buf, bufsize)
 }
 
@@ -1482,7 +1482,7 @@ pub unsafe extern "C" fn readlink(
 #[no_mangle]
 pub extern "C" fn setgroups(_size: size_t, _list: *const gid_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/523
-    ::nvx::error!("setgroups(): not implemented");
+    ::syslog::error!("setgroups(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
@@ -1526,7 +1526,7 @@ pub extern "C" fn sbrk(size: isize) -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
     // TODO: https://github.com/nanvix/nanvix/issues/453
-    ::nvx::error!("sleep(): not implemented");
+    ::syslog::error!("sleep(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
@@ -1556,18 +1556,18 @@ pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn setegid(gid: gid_t) -> c_int {
-    ::nvx::error!("setegid(): gid={:?}", gid);
+    ::syslog::error!("setegid(): gid={:?}", gid);
 
     // Check wether `gid` equals to the effective group ID of the calling process.
     match unistd::getegid() {
         Ok(egid) if gid == egid => 0,
         Ok(egid) => {
-            ::nvx::error!("setegid(): operation not permitted (gid={:?}, egid={:?})", gid, egid);
+            ::syslog::error!("setegid(): operation not permitted (gid={:?}, egid={:?})", gid, egid);
             *__errno_location() = ErrorCode::OperationNotPermitted.get();
             -1
         },
         Err(error) => {
-            ::nvx::error!("setegid(): failed (gid={:?}, error={:?})", gid, error);
+            ::syslog::error!("setegid(): failed (gid={:?}, error={:?})", gid, error);
             -1
         },
     }
@@ -1596,18 +1596,18 @@ pub unsafe extern "C" fn setegid(gid: gid_t) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
-    ::nvx::error!("setgid(): gid={:?})", gid);
+    ::syslog::error!("setgid(): gid={:?})", gid);
 
     // Check wether `gid` equals to the real group ID of the calling process.
     match unistd::getgid() {
         Ok(rgid) if gid == rgid => 0,
         Ok(rgid) => {
-            ::nvx::error!("setgid(): operation not permitted (gid={:?}, rgid={:?})", gid, rgid);
+            ::syslog::error!("setgid(): operation not permitted (gid={:?}, rgid={:?})", gid, rgid);
             *__errno_location() = ErrorCode::OperationNotPermitted.get();
             -1
         },
         Err(error) => {
-            ::nvx::error!("setgid(): failed (gid={:?}, error={:?})", gid, error);
+            ::syslog::error!("setgid(): failed (gid={:?}, error={:?})", gid, error);
             -1
         },
     }
@@ -1636,18 +1636,18 @@ pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
-    ::nvx::error!("seteuid(): uid={:?}", uid);
+    ::syslog::error!("seteuid(): uid={:?}", uid);
 
     // Check wether `uid` equals to the effective user ID of the calling process.
     match unistd::geteuid() {
         Ok(euid) if uid == euid => 0,
         Ok(euid) => {
-            ::nvx::error!("seteuid(): operation not permitted (uid={:?}, euid={:?})", uid, euid);
+            ::syslog::error!("seteuid(): operation not permitted (uid={:?}, euid={:?})", uid, euid);
             *__errno_location() = ErrorCode::OperationNotPermitted.get();
             -1
         },
         Err(error) => {
-            ::nvx::error!("seteuid(): failed (uid={:?}, error={:?})", uid, error);
+            ::syslog::error!("seteuid(): failed (uid={:?}, error={:?})", uid, error);
             -1
         },
     }
@@ -1676,18 +1676,18 @@ pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn setuid(uid: uid_t) -> c_int {
-    ::nvx::error!("setuid(): uid={:?}", uid);
+    ::syslog::error!("setuid(): uid={:?}", uid);
 
     // Check wether `uid` equals to the real user ID of the calling process.
     match unistd::getuid() {
         Ok(ruid) if uid == ruid => 0,
         Ok(ruid) => {
-            ::nvx::error!("setuid(): operation not permitted (uid={:?}, ruid={:?})", uid, ruid);
+            ::syslog::error!("setuid(): operation not permitted (uid={:?}, ruid={:?})", uid, ruid);
             *__errno_location() = ErrorCode::OperationNotPermitted.get();
             -1
         },
         Err(error) => {
-            ::nvx::error!("setuid(): failed (uid={:?}, error={:?})", uid, error);
+            ::syslog::error!("setuid(): failed (uid={:?}, error={:?})", uid, error);
             -1
         },
     }
@@ -1719,7 +1719,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     let target: &str = match ffi::CStr::from_ptr(target).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("symlink(): invalid target");
+            ::syslog::error!("symlink(): invalid target");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -1727,7 +1727,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     let linkpath: &str = match ffi::CStr::from_ptr(linkpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("symlink(): invalid linkpath");
+            ::syslog::error!("symlink(): invalid linkpath");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -1737,7 +1737,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     match crate::unistd::symlink(target, linkpath) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("symlink(): failed (error={:?})", error);
+            ::syslog::error!("symlink(): failed (error={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -1774,13 +1774,13 @@ pub unsafe extern "C" fn symlinkat(
     dirfd: c_int,
     linkpath: *const c_char,
 ) -> c_int {
-    ::nvx::error!("symlinkat(): target={:?}, dirfd={}, linkpath={:?}", target, dirfd, linkpath);
+    ::syslog::error!("symlinkat(): target={:?}, dirfd={}, linkpath={:?}", target, dirfd, linkpath);
 
     // Attempt to convert `target`.
     let target: &str = match ffi::CStr::from_ptr(target).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("symlinkat(): invalid target");
+            ::syslog::error!("symlinkat(): invalid target");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -1790,7 +1790,7 @@ pub unsafe extern "C" fn symlinkat(
     let linkpath: &str = match ffi::CStr::from_ptr(linkpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("symlinkat(): invalid linkpath");
+            ::syslog::error!("symlinkat(): invalid linkpath");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -1800,7 +1800,7 @@ pub unsafe extern "C" fn symlinkat(
     match crate::unistd::symlinkat(target, dirfd, linkpath) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "symlinkat(): failed (target={}, dirfd={}, linkpath={}, error={:?})",
                 target,
                 dirfd,
@@ -1816,7 +1816,7 @@ pub unsafe extern "C" fn symlinkat(
 #[no_mangle]
 pub extern "C" fn sysconf(_name: c_int) -> c_long {
     // TODO: https://github.com/nanvix/nanvix/issues/342
-    ::nvx::error!("sysconf(): not implemented");
+    ::syslog::error!("sysconf(): not implemented");
     0
 }
 
@@ -1845,7 +1845,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("unlink(): invalid path");
+            ::syslog::error!("unlink(): invalid path");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -1855,7 +1855,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
     match crate::unistd::unlink(path) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("unlink(): failed (error={:?})", error);
+            ::syslog::error!("unlink(): failed (error={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -1871,19 +1871,19 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
 pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) -> ssize_t {
     // Skip logging for stdout and stderr to avoid spamming the output.
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {
-        ::nvx::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
+        ::syslog::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
     }
 
     // Check if buffer is invalid.
     if buffer.is_null() {
-        ::nvx::error!("write(): invalid buffer");
+        ::syslog::error!("write(): invalid buffer");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if count is invalid.
     if count == 0 {
-        ::nvx::error!("write(): invalid write count");
+        ::syslog::error!("write(): invalid write count");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -1895,7 +1895,7 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) 
     match crate::unistd::write(fd, buffer) {
         Ok(bytes_written) => bytes_written as ssize_t,
         Err(error) => {
-            ::nvx::error!("write(): failed (error={:?})", error);
+            ::syslog::error!("write(): failed (error={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },

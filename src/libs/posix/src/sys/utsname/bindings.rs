@@ -45,7 +45,7 @@ use nvx::sys::error::ErrorCode;
 pub unsafe extern "C" fn uname(name: *mut utsname) -> c_int {
     // Check if name is not valid.
     if name.is_null() {
-        ::nvx::error!("uname(): name is null");
+        ::syslog::error!("uname(): name is null");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }

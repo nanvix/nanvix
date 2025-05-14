@@ -16,6 +16,7 @@ crate-type = ["lib"]
 [dependencies]
 nvx = { workspace = true }
 static_assert = { workspace = true }
+syslog = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }
@@ -23,6 +24,6 @@ cfg-if = { workspace = true }
 
 [features]
 default = []
-std = ["nvx/std"]
+std = ["nvx/std", "syslog/std"]
 syscall = []
 daemon = ["nvx/allocator"]

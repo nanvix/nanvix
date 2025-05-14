@@ -52,7 +52,7 @@ use ::nvx::{
 /// returned. On failure, an error code is returned instead.
 ///
 pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
-    ::nvx::trace!("posix_getdents(): fd={}, count={:?}", fd, count);
+    ::syslog::trace!("posix_getdents(): fd={}, count={:?}", fd, count);
     posix_getdents_request(fd, count)?;
     posix_getdents_response()
 }
@@ -107,7 +107,10 @@ fn posix_getdents_response() -> Result<Vec<posix_dent>, Error> {
                     match GetDirectoryEntriesResponse::from_parts(&parts) {
                         Ok(response) => break Ok(response.entries),
                         Err(error) => {
-                            ::nvx::warn!("posix_getdents(): invalid message (error={:?})", error);
+                            ::syslog::warn!(
+                                "posix_getdents(): invalid message (error={:?})",
+                                error
+                            );
                             break Err(error);
                         },
                     }

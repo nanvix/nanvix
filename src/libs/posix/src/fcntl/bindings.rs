@@ -48,7 +48,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "open(): invalid pathname (path={:?}, flags={:?}, mode={:?})",
                 path,
                 flags,
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     match crate::fcntl::open(pathname, flags, mode) {
         Ok(fd) => fd,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "open(): failed (path={:?}, flags={:?}, mode={:?}, error={:?})",
                 pathname,
                 flags,
@@ -80,7 +80,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
 #[no_mangle]
 pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/280
-    ::nvx::error!(
+    ::syslog::error!(
         "fcntl(): not implemented, ignoring (fd={:?}, cmd={:?}, _op={:?})",
         _fd,
         _cmd,
@@ -113,13 +113,13 @@ pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn posix_fallocate(fd: c_int, offset: i64, len: i64) -> c_int {
-    ::nvx::trace!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
+    ::syslog::trace!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
 
     // Run system call and check for errors.
     match crate::fcntl::syscall::posix_fallocate(fd, offset, len) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "posix_fallocate(): failed (fd={:?}, offset={:?}, len={:?}, error={:?})",
                 fd,
                 offset,
@@ -158,7 +158,7 @@ pub unsafe extern "C" fn posix_fallocate(fd: c_int, offset: i64, len: i64) -> c_
 ///
 #[no_mangle]
 pub unsafe extern "C" fn posix_fadvise(fd: c_int, offset: i64, len: i64, advice: c_int) -> c_int {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "posix_fadvise(): fd={:?}, offset={:?}, len={:?}, advice={:?}",
         fd,
         offset,
@@ -170,7 +170,7 @@ pub unsafe extern "C" fn posix_fadvise(fd: c_int, offset: i64, len: i64, advice:
     match crate::fcntl::syscall::posix_fadvise(fd, offset, len, advice) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "posix_fadvise(): failed (fd={:?}, offset={:?}, len={:?}, advice={:?}, error={:?})",
                 fd,
                 offset,
@@ -217,7 +217,7 @@ pub unsafe extern "C" fn renameat(
     newdirfd: c_int,
     newpath: *const c_char,
 ) -> c_int {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "renameat(): olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}",
         olddirfd,
         oldpath,
@@ -229,7 +229,7 @@ pub unsafe extern "C" fn renameat(
     let old_pathname: &str = match ffi::CStr::from_ptr(oldpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "renameat(): invalid old pathname (olddirfd={:?}, newdirfd={:?})",
                 olddirfd,
                 newdirfd
@@ -243,7 +243,7 @@ pub unsafe extern "C" fn renameat(
     let new_pathname: &str = match ffi::CStr::from_ptr(newpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "renameat(): invalid new pathname (olddirfd={:?}, newdirfd={:?})",
                 olddirfd,
                 newdirfd
@@ -291,13 +291,13 @@ pub unsafe extern "C" fn renameat(
 ///
 #[no_mangle]
 pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
-    ::nvx::trace!("unlinkat(): dirfd={:?}, pathname={:?}, flags={:?}", dirfd, pathname, flags);
+    ::syslog::trace!("unlinkat(): dirfd={:?}, pathname={:?}, flags={:?}", dirfd, pathname, flags);
 
     // Attempt to convert `pathname` to a Rust string.
     let path: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::nvx::error!("unlinkat(): invalid pathname (dirfd={:?}, flags={:?})", dirfd, flags);
+            ::syslog::error!("unlinkat(): invalid pathname (dirfd={:?}, flags={:?})", dirfd, flags);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -309,7 +309,7 @@ pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: 
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "unlinkat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, error={:?})",
                 dirfd,
                 path,

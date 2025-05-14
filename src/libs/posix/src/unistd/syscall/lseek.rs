@@ -28,7 +28,7 @@ use nvx::sys::error::Error;
 //==================================================================================================
 
 pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_t, Error> {
-    ::nvx::trace!("lseek(): fd={:?}, offset={}, whence={}", fd, offset, whence);
+    ::syslog::trace!("lseek(): fd={:?}, offset={}, whence={}", fd, offset, whence);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
@@ -41,7 +41,7 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "lseek(): failed (fd={}, offset={}, whence={}, error={})",
             fd,
             offset,
@@ -58,7 +58,7 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "lseek(): failed to parse error code (fd={}, offset={}, whence={}, error={:?})",
                     fd,
                     offset,
@@ -82,7 +82,7 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
             },
             // Response was not successfully parsed.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "lseek(): failed to parse response (fd={}, offset={}, whence={}, header={:?})",
                     fd,
                     offset,

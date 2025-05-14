@@ -13,6 +13,7 @@ homepage.workspace = true
 [dependencies]
 proc = { workspace = true, features = ["daemon"] }
 nvx = { workspace = true }
+syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
 cc = { workspace = true }

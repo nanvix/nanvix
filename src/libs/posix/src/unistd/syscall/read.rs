@@ -52,7 +52,7 @@ use ::nvx::{
 pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
     // Skip logging for stdin to avoid spamming the output.
     if fd != STDIN_FILENO {
-        ::nvx::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
+        ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
@@ -72,7 +72,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            ::nvx::error!(
+            ::syslog::error!(
                 "read(): failed (fd={:?}, buffer.len={:?}, error_code={:?})",
                 fd,
                 buffer.len(),
@@ -84,7 +84,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
                 Ok(error_code) => return Err(Error::new(error_code, "read() failed")),
                 // Error code was not successfully parsed.
                 Err(error) => {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "read(): failed (fd={:?}, buffer.len={:?}, error_code={:?})",
                         fd,
                         buffer.len(),
@@ -106,7 +106,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
                     // Display progress if not STDIN.
                     if fd != unistd::STDIN_FILENO && total_read % KILOBYTE as size_t == 0 {
                         let percentage = (total_read as f64 / buffer.len() as f64) * 100.0;
-                        ::nvx::trace!(
+                        ::syslog::trace!(
                             "read(): {:?}/{:?} bytes read from fd={} ({:.2}%)",
                             total_read,
                             buffer.len(),
@@ -132,7 +132,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
                     }
                 },
                 header => {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "read(): failed to parse response (fd={:?}, buffer.len={:?}, header={:?})",
                         fd,
                         buffer.len(),

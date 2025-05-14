@@ -54,7 +54,7 @@ pub fn fchownat(
     group: gid_t,
     flag: c_int,
 ) -> Result<(), Error> {
-    ::nvx::trace!(
+    ::syslog::trace!(
         "fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
         dirfd,
         path,
@@ -77,7 +77,7 @@ pub fn fchownat(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "fchownat(): failed (dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}, \
              error_code={:?})",
             dirfd,
@@ -99,7 +99,7 @@ pub fn fchownat(
         match message.header {
             LinuxDaemonMessageHeader::FileChownAtResponse => Ok(()),
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "fchownat(): failed to parse response (dirfd={:?}, path={:?}, owner={:?}, \
                      group={:?}, flag={:?}, header={:?})",
                     dirfd,

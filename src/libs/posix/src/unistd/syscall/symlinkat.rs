@@ -44,7 +44,12 @@ use ::nvx::{
 /// Upon successful completion, `symlinkat()` returns empty. Otherwise, it returns an error.
 ///
 pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> {
-    ::nvx::trace!("symlinkat(): target={:?}, dirfd={:?}, linkpath={:?}", target, dirfd, linkpath);
+    ::syslog::trace!(
+        "symlinkat(): target={:?}, dirfd={:?}, linkpath={:?}",
+        target,
+        dirfd,
+        linkpath
+    );
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -63,7 +68,7 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!(
+        ::syslog::error!(
             "symlinkat(): failed (target={:?}, dirfd={:?}, linkpath={:?}, error_code={:?})",
             target,
             dirfd,
@@ -79,7 +84,7 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "symlinkat(): failed to parse error code (target={:?}, dirfd={:?}, \
                      linkpath={:?}, error={:?})",
                     target,
@@ -98,7 +103,7 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
             LinuxDaemonMessageHeader::SymbolicLinkAtResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "symlinkat(): failed to parse response (target={:?}, dirfd={:?}, \
                      linkpath={:?}, header={:?})",
                     target,

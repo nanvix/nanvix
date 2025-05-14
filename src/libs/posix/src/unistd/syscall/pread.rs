@@ -49,7 +49,7 @@ use ::nvx::{
 /// returns an error.
 ///
 pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<size_t, Error> {
-    ::nvx::trace!("pread(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
+    ::syslog::trace!("pread(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
@@ -74,7 +74,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            ::nvx::error!(
+            ::syslog::error!(
                 "pread(): failed (fd={}, buffer.len={}, offset={}, error_code={})",
                 fd,
                 buffer.len(),
@@ -87,7 +87,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
                 Ok(error_code) => return Err(Error::new(error_code, "pread() failed")),
                 // System call failed, return unknown error.
                 Err(error) => {
-                    ::nvx::error!("pread(): failed to convert error code (error={:?})", error);
+                    ::syslog::error!("pread(): failed to convert error code (error={:?})", error);
                     return Err(Error::new(ErrorCode::TryAgain, "pread() failed"));
                 },
             }
@@ -119,7 +119,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
                     }
                 },
                 header => {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "pread(): failed to parse response (fd={}, buffer.len={}, offset={}, \
                          header={:?})",
                         fd,
