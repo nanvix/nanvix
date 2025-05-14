@@ -92,9 +92,9 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    time::SystemTime,
     ExitStatus,
 };
-use ::time::SystemTime;
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================

@@ -17,8 +17,10 @@ use crate::{
     },
     time::timespec,
 };
-use ::nvx::sys::error::ErrorCode;
-use ::time::SystemTime;
+use ::nvx::sys::{
+    error::ErrorCode,
+    time::SystemTime,
+};
 
 //==================================================================================================
 // pthread_cond_broadcast()

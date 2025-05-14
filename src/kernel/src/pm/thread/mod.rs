@@ -28,9 +28,9 @@ use ::sys::{
         MutexAddress,
         ThreadIdentifier,
     },
+    time::SystemTime,
     ExitStatus,
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Thread State

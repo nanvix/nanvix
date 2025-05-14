@@ -31,7 +31,6 @@ members = [
         "src/libs/syscomm",
         "src/libs/syslog",
         "src/libs/sys",
-        "src/libs/time",
         "src/libs/type-safe",
         "src/microvm",
         "src/tests/linux-app",
@@ -89,7 +88,6 @@ static_assert = { path = "src/libs/static_assert", default-features = false }
 sysalloc = { path = "src/libs/sysalloc", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
-time = { path = "src/libs/time", default-features = false }
 tokio = { version = "1.44.1", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 syscomm = { path = "src/libs/syscomm", default-features = false }

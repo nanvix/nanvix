@@ -17,7 +17,6 @@ error = { workspace = true }
 num_enum = { workspace = true }
 static_assert = { workspace = true }
 sys = { workspace = true }
-time = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }
