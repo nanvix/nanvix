@@ -46,7 +46,7 @@ use ::time::SystemTime;
 pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::nvx::error!("pthread_mutex_destroy(): invalid mutex pointer");
+        ::syslog::error!("pthread_mutex_destroy(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -90,13 +90,13 @@ pub unsafe extern "C" fn pthread_mutex_init(
 ) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::nvx::error!("pthread_mutex_init(): invalid mutex pointer");
+        ::syslog::error!("pthread_mutex_init(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if we should use custom attributes.
     if !attr.is_null() {
-        ::nvx::warn!("pthread_mutex_init(): custom attributes not supported, ignoring");
+        ::syslog::warn!("pthread_mutex_init(): custom attributes not supported, ignoring");
     }
 
     // TODO: once we support custom attributes, dereference that pointer.
@@ -138,14 +138,14 @@ pub unsafe extern "C" fn pthread_mutex_init(
 pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::nvx::error!("pthread_mutex_lock(): invalid mutex pointer");
+        ::syslog::error!("pthread_mutex_lock(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     match syscall::pthread_mutex_lock(&mut *mutex) {
         Ok(_) => 0,
         Err(error) => {
-            ::nvx::error!("pthread_mutex_lock(): failed to lock mutex (error={:?})", error);
+            ::syslog::error!("pthread_mutex_lock(): failed to lock mutex (error={:?})", error);
             error.code.get()
         },
     }
@@ -184,13 +184,13 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
 ) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::nvx::error!("pthread_mutex_timedlock(): invalid mutex pointer");
+        ::syslog::error!("pthread_mutex_timedlock(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `abstime` is not valid.
     if abstime.is_null() {
-        ::nvx::error!("pthread_mutex_timedlock(): invalid abstime pointer");
+        ::syslog::error!("pthread_mutex_timedlock(): invalid abstime pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -199,7 +199,7 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
         match SystemTime::new((*abstime).tv_sec as u64, (*abstime).tv_nsec as u32) {
             Some(timeout) => timeout,
             None => {
-                ::nvx::error!("pthread_mutex_timedlock(): invalid timeout (abstime={:?})", abstime);
+                ::syslog::error!("pthread_mutex_timedlock(): invalid timeout (abstime={:?})", abstime);
                 return ErrorCode::InvalidArgument.get();
             },
         };
@@ -207,7 +207,7 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
     match syscall::pthread_mutex_timedlock(&mut *mutex, Some(timeout)) {
         Ok(_) => 0,
         Err(error) => {
-            ::nvx::error!(
+            ::syslog::error!(
                 "pthread_mutex_timedlock(): failed to lock mutex (abstime={:?}, error={:?})",
                 abstime,
                 error
@@ -246,14 +246,14 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
 pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::nvx::error!("pthread_mutex_trylock(): invalid mutex pointer");
+        ::syslog::error!("pthread_mutex_trylock(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     match syscall::pthread_mutex_trylock(&mut *mutex) {
         Ok(()) => 0,
         Err(error) => {
-            ::nvx::error!("pthread_mutex_trylock(): failed to lock mutex (error={:?})", error);
+            ::syslog::error!("pthread_mutex_trylock(): failed to lock mutex (error={:?})", error);
             error.code.get()
         },
     }
@@ -288,7 +288,7 @@ pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c
 pub unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::nvx::error!("pthread_mutex_unlock(): invalid mutex pointer");
+        ::syslog::error!("pthread_mutex_unlock(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

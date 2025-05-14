@@ -32,7 +32,7 @@ use ::spin::{
 
 /// Opens a dynamic library file.
 pub fn dlopen(filename: &str) -> Result<DlHandle, Error> {
-    ::nvx::trace!("dlopen(): filename={}", filename);
+    ::syslog::trace!("dlopen(): filename={}", filename);
 
     // TODO: Normalize filename.
 
@@ -64,7 +64,7 @@ fn load_all_dependencies(
     dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
     new_dlfile: Arc<Mutex<DynamicLibrary>>,
 ) -> Result<(), Error> {
-    ::nvx::trace!("load_all_dependencies(): new_dlfile={:?}", new_dlfile.lock().name());
+    ::syslog::trace!("load_all_dependencies(): new_dlfile={:?}", new_dlfile.lock().name());
 
     fn load_all_dependencies_recursive(
         dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
@@ -87,7 +87,7 @@ fn load_all_dependencies(
                 }
 
                 if dlfile.lock().name() == dependency.as_str() {
-                    ::nvx::debug!(
+                    ::syslog::debug!(
                         "load_all_dependencies_recursive(): already loaded dependency '{}' \
                          (handle={:?})",
                         dependency,
@@ -140,7 +140,7 @@ fn resolve_all_symbols(
     dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
     filename: &str,
 ) -> Result<(), Error> {
-    ::nvx::trace!("resolve_all_symbols(): filename={}", filename);
+    ::syslog::trace!("resolve_all_symbols(): filename={}", filename);
     let mut unresolved_libraries = vec![filename.to_string()];
 
     while let Some(lib_name) = unresolved_libraries.pop() {

@@ -40,7 +40,7 @@ use ::nvx::{
 /// Upon successful completion, `futimens()` returns empty. Otherwise, it returns an error.
 ///
 pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
-    ::nvx::error!("futimens(): fd={:?}, times={:?}", fd, times);
+    ::syslog::error!("futimens(): fd={:?}, times={:?}", fd, times);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -53,7 +53,7 @@ pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Erro
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!("futimens(): failed (fd={:?}, times={:?}, status={:?})", fd, times, {
+        ::syslog::error!("futimens(): failed (fd={:?}, times={:?}, status={:?})", fd, times, {
             response.status
         });
 
@@ -66,7 +66,7 @@ pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Erro
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "futimens(): failed to parse error code (fd={:?}, times={:?}, error={:?})",
                     fd,
                     times,
@@ -84,7 +84,7 @@ pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Erro
             LinuxDaemonMessageHeader::UpdateFileAccessTimeResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "futimens(): invalid response (fd={:?}, times={:?}, header={:?})",
                     fd,
                     times,

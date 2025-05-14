@@ -51,7 +51,7 @@ use ::nvx::{
 pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<size_t, Error> {
     // Skip logging for stdout and stderr to avoid spamming the output.
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {
-        ::nvx::trace!("write(): fd={:?}, buffer.len={:?}", fd, buffer.len());
+        ::syslog::trace!("write(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
@@ -73,7 +73,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<size_t, Error> {
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            ::nvx::error!(
+            ::syslog::error!(
                 "write(): failed (fd={:?}, buffer.len={:?}, error_code={:?})",
                 fd,
                 buffer.len(),
@@ -85,7 +85,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<size_t, Error> {
                 Ok(error_code) => return Err(Error::new(error_code, "write() failed")),
                 // Failed to parse error code, return generic error.
                 Err(error) => {
-                    ::nvx::error!("write(): failed to convert error code (error={:?})", error);
+                    ::syslog::error!("write(): failed to convert error code (error={:?})", error);
                     return Err(Error::new(ErrorCode::TryAgain, "write() failed"));
                 },
             }
@@ -104,7 +104,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<size_t, Error> {
                     offset += chunk_size;
                 },
                 header => {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "write(): failed to parse response (fd={:?}, buffer.len={:?}, header={:?})",
                         fd,
                         buffer.len(),

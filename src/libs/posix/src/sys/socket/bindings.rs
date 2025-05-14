@@ -42,7 +42,7 @@ pub unsafe extern "C" fn accept(
     sockaddr: *mut sockaddr,
     len: *mut socklen_t,
 ) -> c_int {
-    nvx::trace!("accept(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+    ::syslog::trace!("accept(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
 
     let mut sockaddr_: SocketAddr = SocketAddr::V4(Default::default());
 
@@ -63,14 +63,17 @@ pub unsafe extern "C" fn accept(
                 // Failed to convert socket address.
                 Err(error) => {
                     // Warn and continue, as the socket descriptor was successfully created.
-                    ::nvx::warn!("accept(): failed to convert socket address (error={:?})", error);
+                    ::syslog::warn!(
+                        "accept(): failed to convert socket address (error={:?})",
+                        error
+                    );
                 },
             };
 
             sockfd
         },
         Err(error) => {
-            ::nvx::error!("accept(): failed to accept connection (error={:?})", error);
+            ::syslog::error!("accept(): failed to accept connection (error={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -80,22 +83,22 @@ pub unsafe extern "C" fn accept(
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: socklen_t) -> c_int {
-    ::nvx::trace!("bind(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+    ::syslog::trace!("bind(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
 
     // Check if sock address is valid.
     if sockaddr.is_null() {
-        ::nvx::error!("bind(): invalid socket address");
+        ::syslog::error!("bind(): invalid socket address");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
-    ::nvx::trace!("bind(): sockaddr={:?}", unsafe { &*sockaddr });
+    ::syslog::trace!("bind(): sockaddr={:?}", unsafe { &*sockaddr });
 
     // Attempt to convert socket address.
     let sockaddr: SocketAddr = match SocketAddr::try_from(unsafe { &*sockaddr }) {
         Ok(sockaddr) => sockaddr,
         Err(e) => {
-            ::nvx::error!("bind(): failed to convert socket address {:?}", e);
+            ::syslog::error!("bind(): failed to convert socket address {:?}", e);
             *__errno_location() = e.code.get();
             return -1;
         },
@@ -193,7 +196,7 @@ pub unsafe extern "C" fn getpeername(
                     *len = len_;
                 },
                 Err(error) => {
-                    ::nvx::error!(
+                    ::syslog::error!(
                         "getpeername(): failed to convert socket address (error={:?})",
                         error
                     );
@@ -273,11 +276,11 @@ pub unsafe extern "C" fn getsockname(
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
-    ::nvx::trace!("listen(): sockfd={:?}, backlog={:?}", sockfd, backlog);
+    ::syslog::trace!("listen(): sockfd={:?}, backlog={:?}", sockfd, backlog);
     match crate::sys::socket::listen(sockfd, backlog) {
         Ok(_) => 0,
         Err(e) => {
-            ::nvx::error!("listen(): failed to listen on socket {:?}", e);
+            ::syslog::error!("listen(): failed to listen on socket {:?}", e);
             *__errno_location() = e.code.get();
             -1
         },
@@ -294,21 +297,21 @@ pub unsafe extern "C" fn recv(
 ) -> ssize_t {
     // Check if `buf` is valid.
     if buf.is_null() {
-        ::nvx::error!("recv(): invalid buffer");
+        ::syslog::error!("recv(): invalid buffer");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if `len` is valid.
     if len == 0 {
-        ::nvx::error!("recv(): invalid buffer length");
+        ::syslog::error!("recv(): invalid buffer length");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if `flags` is valid.
     if flags != 0 {
-        ::nvx::error!("recv(): unsupported flags (flags={:?})", flags);
+        ::syslog::error!("recv(): unsupported flags (flags={:?})", flags);
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -319,7 +322,7 @@ pub unsafe extern "C" fn recv(
     match crate::sys::socket::recv(sockfd, buf, flags) {
         Ok(bytes_received) => bytes_received as ssize_t,
         Err(e) => {
-            ::nvx::error!("recv(): failed to receive data through socket {:?}", e);
+            ::syslog::error!("recv(): failed to receive data through socket {:?}", e);
             *__errno_location() = e.code.get();
             -1
         },
@@ -336,21 +339,21 @@ pub unsafe extern "C" fn send(
 ) -> ssize_t {
     // Check if `buf` is valid.
     if buf.is_null() {
-        ::nvx::error!("send(): invalid buffer");
+        ::syslog::error!("send(): invalid buffer");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if `len` is valid.
     if len == 0 {
-        ::nvx::error!("send(): invalid buffer length");
+        ::syslog::error!("send(): invalid buffer length");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if `flags` is valid.
     if flags != 0 {
-        ::nvx::error!("send(): unsupported flags (flags={:?})", flags);
+        ::syslog::error!("send(): unsupported flags (flags={:?})", flags);
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -361,7 +364,7 @@ pub unsafe extern "C" fn send(
     match crate::sys::socket::send(sockfd, buf, flags) {
         Ok(bytes_sent) => bytes_sent as ssize_t,
         Err(e) => {
-            ::nvx::error!("send(): failed to send data through socket {:?}", e);
+            ::syslog::error!("send(): failed to send data through socket {:?}", e);
             *__errno_location() = e.code.get();
             -1
         },
@@ -371,12 +374,12 @@ pub unsafe extern "C" fn send(
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c_int {
-    ::nvx::trace!("socket(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
+    ::syslog::trace!("socket(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
     // Attempt to convert socket address family.
     let domain: AddressFamily = match AddressFamily::try_from(domain) {
         Ok(domain) => domain,
         Err(_error) => {
-            ::nvx::error!("socket(): invalid socket address family (domain={:?})", domain);
+            ::syslog::error!("socket(): invalid socket address family (domain={:?})", domain);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -386,7 +389,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     let typ: SocketType = match SocketType::try_from(typ) {
         Ok(typ) => typ,
         Err(_error) => {
-            ::nvx::error!("socket(): invalid socket type (type={:?})", typ);
+            ::syslog::error!("socket(): invalid socket type (type={:?})", typ);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -396,7 +399,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     let protocol: Protocol = match Protocol::try_from(protocol) {
         Ok(protocol) => protocol,
         Err(_error) => {
-            ::nvx::error!("socket(): invalid socket protocol (protocol={:?})", protocol);
+            ::syslog::error!("socket(): invalid socket protocol (protocol={:?})", protocol);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -406,7 +409,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     match crate::sys::socket::socket(domain, typ, protocol) {
         Ok(sockfd) => sockfd,
         Err(error) => {
-            ::nvx::error!("socket(): failed to create socket (error={:?})", error);
+            ::syslog::error!("socket(): failed to create socket (error={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -415,13 +418,13 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
 
 #[no_mangle]
 pub extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
-    ::nvx::trace!("shutdown(): sockfd={:?}, how={:?}", sockfd, how);
+    ::syslog::trace!("shutdown(): sockfd={:?}, how={:?}", sockfd, how);
 
     // Attempt to convert shutdown mode.
     let how: Shutdown = match Shutdown::try_from(how) {
         Ok(how) => how,
         Err(_error) => {
-            ::nvx::error!("shutdown(): invalid shutdown mode (how={:?})", how);
+            ::syslog::error!("shutdown(): invalid shutdown mode (how={:?})", how);
             unsafe { *__errno_location() = ErrorCode::InvalidArgument.get() };
             return -1;
         },
@@ -430,7 +433,7 @@ pub extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
     match crate::sys::socket::shutdown(sockfd, how) {
         Ok(_) => 0,
         Err(e) => {
-            ::nvx::error!("shutdown(): failed to shutdown socket {:?}", e);
+            ::syslog::error!("shutdown(): failed to shutdown socket {:?}", e);
             unsafe { *__errno_location() = e.code.get() };
             -1
         },

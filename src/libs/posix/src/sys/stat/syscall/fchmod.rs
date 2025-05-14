@@ -42,7 +42,7 @@ use ::nvx::{
 /// Upon successful completion, `fchmod()` returns empty. Otherwise, it returns an error.
 ///
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
-    ::nvx::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
+    ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
@@ -55,13 +55,13 @@ pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!("fchmod(): syscall failed (fd={:?}, mode={:o}, status={:?})", fd, mode, {
+        ::syslog::error!("fchmod(): syscall failed (fd={:?}, mode={:o}, status={:?})", fd, mode, {
             response.status
         });
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "fchmod(): syscall failed (fd={:?}, mode={:o}, error_code={:?})",
                     fd,
                     mode,
@@ -70,7 +70,7 @@ pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
                 Err(Error::new(error_code, "system call failed"))
             },
             Err(error) => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "fchmod(): syscall failed (fd={:?}, mode={:o}, error={:?})",
                     fd,
                     mode,
@@ -87,7 +87,7 @@ pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
             LinuxDaemonMessageHeader::FileChmodResponse => Ok(()),
             // Invalid response.
             header => {
-                ::nvx::error!(
+                ::syslog::error!(
                     "fchmod(): invalid response (fd={:?}, mode={:o}, header={:?})",
                     fd,
                     mode,

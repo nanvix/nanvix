@@ -47,7 +47,7 @@ use ::nvx::{
 /// past. Otherwise, an error code is returned.
 ///
 pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
-    ::nvx::trace!("times(): {:?}", buffer);
+    ::syslog::trace!("times(): {:?}", buffer);
 
     let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
 
@@ -60,12 +60,12 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
 
     // Check wether system call succeeded or not.
     if response.status != 0 {
-        ::nvx::error!("times(): failed (buffer={:?}, status={:?})", buffer, { response.status });
+        ::syslog::error!("times(): failed (buffer={:?}, status={:?})", buffer, { response.status });
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => Err(Error::new(error_code, "times() failed")),
             Err(error) => {
-                ::nvx::error!("times(): failed to parse error code (error={:?})", error);
+                ::syslog::error!("times(): failed to parse error code (error={:?})", error);
                 Err(Error::new(ErrorCode::TryAgain, "times() failed"))
             },
         }
@@ -90,7 +90,7 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
                 Ok(elapsed)
             },
             header => {
-                ::nvx::error!("times(): failed (buffer={:?}, header={:?})", buffer, header);
+                ::syslog::error!("times(): failed (buffer={:?}, header={:?})", buffer, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "times() failed"))
             },
         }

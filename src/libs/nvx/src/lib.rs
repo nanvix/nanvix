@@ -16,8 +16,6 @@
 //==================================================================================================
 
 #[cfg(target_os = "none")]
-pub mod logging;
-#[cfg(target_os = "none")]
 mod panic;
 
 //==================================================================================================
@@ -60,76 +58,6 @@ pub mod pm;
 /// Execution scheduling kernel calls.
 pub mod sched;
 
-#[macro_export]
-#[cfg(target_os = "none")]
-macro_rules! trace{
-    ( $($arg:tt)* ) => ({
-		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Trace {
-            use core::fmt::Write;
-            let _ = writeln!(
-                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Trace),
-                $($arg)*
-            );
-        }
-    })
-}
-
-#[macro_export]
-#[cfg(target_os = "none")]
-macro_rules! debug{
-    ( $($arg:tt)* ) => ({
-		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Debug{
-            use core::fmt::Write;
-            let _ = writeln!(
-                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Debug),
-                $($arg)*
-            );
-        }
-    })
-}
-
-#[macro_export]
-#[cfg(target_os = "none")]
-macro_rules! info{
-    ( $($arg:tt)* ) => ({
-		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Info {
-            use core::fmt::Write;
-            let _ = writeln!(
-                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Info),
-                $($arg)*
-            );
-        }
-    })
-}
-
-#[macro_export]
-#[cfg(target_os = "none")]
-macro_rules! warn{
-    ( $($arg:tt)* ) => ({
-		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Warn{
-            use core::fmt::Write;
-            let _ = writeln!(
-                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Warn),
-                $($arg)*
-            );
-        }
-    })
-}
-
-#[macro_export]
-#[cfg(target_os = "none")]
-macro_rules! error{
-    ( $($arg:tt)* ) => ({
-		if $crate::logging::MAX_LEVEL >= $crate::logging::LogLevel::Error{
-            use core::fmt::Write;
-            let _ = writeln!(
-                &mut $crate::logging::Logger::get(module_path!(), $crate::logging::LogLevel::Error),
-                $($arg)*
-            );
-        }
-    })
-}
-
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -137,7 +65,7 @@ macro_rules! error{
 #[no_mangle]
 #[cfg(target_os = "none")]
 pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
-    crate::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
+    syslog::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
 
     // Initializes the system runtime.
     init();
@@ -194,7 +122,7 @@ unsafe fn build_string_table(string: *mut i8) -> ::alloc::vec::Vec<*mut i8> {
     current = string;
     for _ in 0..count {
         // Print the current entry.
-        crate::trace!(
+        ::syslog::trace!(
             "build_string_table(): entry[{}]: {:?}",
             result.len(),
             // Convert to CStr for printing.

@@ -129,7 +129,7 @@ impl File {
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
         match unistd::read(self.rawfd.0, buf) {
             Err(error) => {
-                ::nvx::error!("read(): failed to read from file descriptor (error={:?})", error);
+                ::syslog::error!("read(): failed to read from file descriptor (error={:?})", error);
                 Err(Error {
                     errno: error.code.get(),
                 })
@@ -142,7 +142,7 @@ impl File {
     pub fn seek(&mut self, offset: FileOffset, whence: FileWhence) -> Result<off_t, Error> {
         match unistd::lseek(self.rawfd.0, offset.value(), whence as c_int) {
             Err(error) => {
-                ::nvx::error!("seek(): failed to move file offset (error={:?})", error);
+                ::syslog::error!("seek(): failed to move file offset (error={:?})", error);
                 Err(Error {
                     errno: error.code.get(),
                 })
@@ -155,7 +155,7 @@ impl File {
     pub fn tell(&self) -> Result<off_t, Error> {
         match unistd::lseek(self.rawfd.0, 0, unistd::SEEK_CUR) {
             Err(error) => {
-                ::nvx::error!("tell(): failed to get file offset (error={:?})", error);
+                ::syslog::error!("tell(): failed to get file offset (error={:?})", error);
                 Err(Error {
                     errno: error.code.get(),
                 })
@@ -168,7 +168,7 @@ impl File {
     pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
         match unistd::write(self.rawfd.0, buf) {
             Err(error) => {
-                ::nvx::error!("write(): failed to write to file descriptor (error={:?})", error);
+                ::syslog::error!("write(): failed to write to file descriptor (error={:?})", error);
                 Err(Error {
                     errno: error.code.get(),
                 })
@@ -195,7 +195,7 @@ impl Drop for File {
             Err(error) => {
                 // Get `errno` and reset it.
                 let errno: c_int = error.code.get();
-                ::nvx::error!("failed to close file descriptor (errno={:?})", errno);
+                ::syslog::error!("failed to close file descriptor (errno={:?})", errno);
                 // NOTE: We ignore errors on close, as the standard library does.
             },
         }
@@ -262,7 +262,7 @@ impl OpenOptions {
         } else if self.write {
             flags.exclusive = ExclusiveOpenFlags::WriteOnly;
         } else {
-            ::nvx::error!("openat(): invalid file mode");
+            ::syslog::error!("openat(): invalid file mode");
             return Err(Error {
                 errno: ErrorCode::InvalidArgument.get(),
             });

@@ -42,7 +42,7 @@ use ::time::NANOSECONDS_PER_SECOND;
 /// Upon successful completion, `clock_getres()` returns empty. Otherwise, it returns an error.
 ///
 pub fn clock_getres(clock_id: clockid_t, res: &mut Option<&mut timespec>) -> Result<(), Error> {
-    ::nvx::error!("clock_getres(): clock_id={:?}, res={:?}", clock_id, res);
+    ::syslog::error!("clock_getres(): clock_id={:?}, res={:?}", clock_id, res);
 
     match clock_id {
         // Check if the clock ID is valid.
@@ -55,12 +55,12 @@ pub fn clock_getres(clock_id: clockid_t, res: &mut Option<&mut timespec>) -> Res
         },
         CLOCK_PROCESS_CPUTIME_ID | CLOCK_THREAD_CPUTIME_ID => {
             let reason: &str = "unsupported clock id";
-            ::nvx::error!("clock_getres(): {} (clock_id={:?}, res={:?})", reason, clock_id, res);
+            ::syslog::error!("clock_getres(): {} (clock_id={:?}, res={:?})", reason, clock_id, res);
             Err(Error::new(ErrorCode::OperationNotSupported, "clock_getres() failed"))
         },
         clock_id => {
             let reason: &str = "invalid clock id";
-            ::nvx::error!("clock_getres(): {} (clock_id={:?}, res={:?})", reason, clock_id, res);
+            ::syslog::error!("clock_getres(): {} (clock_id={:?}, res={:?})", reason, clock_id, res);
             Err(Error::new(ErrorCode::InvalidArgument, "clock_getres() failed"))
         },
     }

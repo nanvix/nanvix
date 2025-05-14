@@ -67,7 +67,7 @@ pub fn pthread_cond_broadcast(cond: &pthread_cond_t) -> Result<(), Error> {
             entry.insert(pthread_condattr_t::default());
         } else {
             let reason: &str = "condition variable is not initialized";
-            ::nvx::error!("pthread_cond_broadcast(): {}", reason);
+            ::syslog::error!("pthread_cond_broadcast(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -88,7 +88,7 @@ pub fn pthread_cond_init(
         .contains_key(&(cond as *const pthread_cond_t as usize))
     {
         let reason: &str = "condition variable is already initialized";
-        ::nvx::error!("pthread_cond_init(): {}", reason);
+        ::syslog::error!("pthread_cond_init(): {}", reason);
         return Err(Error::new(ErrorCode::ResourceBusy, reason));
     }
 
@@ -111,7 +111,7 @@ pub fn pthread_cond_destroy(cond: &mut pthread_cond_t) -> Result<(), Error> {
             return Ok(());
         } else {
             let reason: &str = "condition variable is not initialized";
-            ::nvx::error!("pthread_cond_destroy(): {}", reason);
+            ::syslog::error!("pthread_cond_destroy(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -137,7 +137,7 @@ pub fn pthread_cond_signal(cond: &pthread_cond_t) -> Result<(), Error> {
                 .insert(cond as *const pthread_cond_t as usize, pthread_condattr_t::default());
         } else {
             let reason: &str = "condition variable is not initialized";
-            ::nvx::error!("pthread_cond_signal(): {}", reason);
+            ::syslog::error!("pthread_cond_signal(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -164,7 +164,7 @@ pub fn pthread_cond_timedwait(
             entry.insert(pthread_condattr_t::default());
         } else {
             let reason: &str = "condition variable is not initialized";
-            ::nvx::error!("pthread_wait_cond(): {}", reason);
+            ::syslog::error!("pthread_wait_cond(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -180,7 +180,7 @@ pub fn pthread_cond_timedwait(
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::nvx::error!("pthread_wait_cond(): {}", reason);
+            ::syslog::error!("pthread_wait_cond(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -204,7 +204,7 @@ pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Resu
             entry.insert(pthread_condattr_t::default());
         } else {
             let reason: &str = "condition variable is not initialized";
-            ::nvx::error!("pthread_wait_cond(): {}", reason);
+            ::syslog::error!("pthread_wait_cond(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -220,7 +220,7 @@ pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Resu
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::nvx::error!("pthread_wait_cond(): {}", reason);
+            ::syslog::error!("pthread_wait_cond(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }

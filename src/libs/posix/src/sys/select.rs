@@ -60,7 +60,7 @@ mod bindings {
         _timeout: *mut c_int,
     ) -> c_int {
         // TODO: https://github.com/nanvix/nanvix/issues/468
-        ::nvx::error!("select(): not implemented");
+        ::syslog::error!("select(): not implemented");
         unsafe {
             *__errno_location() = ErrorCode::InvalidSysCall.get();
         }

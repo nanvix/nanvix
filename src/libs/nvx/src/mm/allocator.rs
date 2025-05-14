@@ -7,12 +7,12 @@
 
 // The following imports are used only when any logging feature is enabled.
 #[allow(unused_imports)]
-use crate::logging::{
+use ::core::fmt::Write;
+#[allow(unused_imports)]
+use ::syslog::{
     LogLevel,
     Logger,
 };
-#[allow(unused_imports)]
-use ::core::fmt::Write;
 
 use crate::mm::heap::Heap;
 use ::alloc::alloc::{

@@ -33,7 +33,7 @@ pub fn test() {
         fcntl::S_IRUSR | fcntl::S_IWUSR,
     ) {
         Ok(fd) => {
-            ::nvx::info!("opened file foo.tmp with fd {}", fd);
+            ::syslog::info!("opened file foo.tmp with fd {}", fd);
             fd
         },
         Err(error) => {
@@ -45,7 +45,7 @@ pub fn test() {
     let buffer: [u8; 128] = [1; 128];
     match unistd::write(fd, &buffer) {
         Ok(128) => {
-            ::nvx::info!("wrote 128 bytes to file foo.tmp");
+            ::syslog::info!("wrote 128 bytes to file foo.tmp");
         },
         Ok(n) => {
             panic!("failed to write 128 bytes to file foo.tmp: (n={:?})", n);
@@ -59,7 +59,7 @@ pub fn test() {
     let buffer: [u8; 64] = [1; 64];
     match unistd::pwrite(fd, &buffer, 128) {
         Ok(64) => {
-            ::nvx::info!("wrote 64 bytes to file foo.tmp");
+            ::syslog::info!("wrote 64 bytes to file foo.tmp");
         },
         Ok(n) => {
             panic!("failed to write 64 bytes to file foo.tmp: (n={:?})", n);
@@ -72,7 +72,7 @@ pub fn test() {
     // Move seek offset start of file.
     match unistd::lseek(fd, 0, unistd::SEEK_SET) {
         Ok(0) => {
-            ::nvx::info!("seek file foo.tmp to 1024 bytes");
+            ::syslog::info!("seek file foo.tmp to 1024 bytes");
         },
         Ok(offset) => {
             panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
@@ -86,7 +86,7 @@ pub fn test() {
     let mut buffer: [u8; 64] = [0; 64];
     match unistd::pread(fd, &mut buffer, 0) {
         Ok(64) => {
-            ::nvx::info!("read 64 bytes from file foo.tmp");
+            ::syslog::info!("read 64 bytes from file foo.tmp");
             (0..64).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
@@ -105,7 +105,7 @@ pub fn test() {
     let mut buffer: [u8; 64] = [0; 64];
     match unistd::pread(fd, &mut buffer, 64) {
         Ok(64) => {
-            ::nvx::info!("read 64 bytes from file foo.tmp");
+            ::syslog::info!("read 64 bytes from file foo.tmp");
             (0..64).for_each(|i| {
                 if buffer[i] != 1 {
                     panic!("file foo.tmp is not filled with ones");
@@ -123,7 +123,7 @@ pub fn test() {
     // Advance seek offset as partial reads do not change it.
     match unistd::lseek(fd, 128, unistd::SEEK_SET) {
         Ok(128) => {
-            ::nvx::info!("seek file foo.tmp to 128 bytes");
+            ::syslog::info!("seek file foo.tmp to 128 bytes");
         },
         Ok(offset) => {
             panic!("failed to seek file foo.tmp to 128 bytes: {:?}", offset);
@@ -136,7 +136,7 @@ pub fn test() {
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
     match unistd::lseek(fd, 64, unistd::SEEK_END) {
         Ok(256) => {
-            ::nvx::info!("seek file foo.tmp to 1024 bytes");
+            ::syslog::info!("seek file foo.tmp to 1024 bytes");
         },
         Ok(offset) => {
             panic!("failed to seek file foo.tmp to 1024 bytes: {:?}", offset);
@@ -149,7 +149,7 @@ pub fn test() {
     // Attempt to allocate space.
     match fcntl::posix_fallocate(fd, 512, 512) {
         Ok(()) => {
-            ::nvx::info!("allocated space for file foo.tmp");
+            ::syslog::info!("allocated space for file foo.tmp");
         },
         Err(error) => {
             panic!("failed to allocate space for file foo.tmp: {:?}", error);
@@ -159,7 +159,7 @@ pub fn test() {
     // Synchronize changes to a file.
     match unistd::fsync(fd) {
         Ok(()) => {
-            ::nvx::info!("synchronized file foo.tmp with storage device");
+            ::syslog::info!("synchronized file foo.tmp with storage device");
         },
         Err(e) => {
             panic!("failed to synchronize file foo.tmp with storage device ({:?})", e);
@@ -170,21 +170,21 @@ pub fn test() {
     let mut st: stat = stat::default();
     match sys::stat::fstat(fd, &mut st) {
         Ok(()) => {
-            ::nvx::info!("got status of file foo.tmp");
-            ::nvx::info!("file statistics:");
-            ::nvx::info!("  st_dev: {}", { st.st_dev });
-            ::nvx::info!("  st_ino: {}", { st.st_ino });
-            ::nvx::info!("  st_mode: {}", { st.st_mode });
-            ::nvx::info!("  st_nlink: {}", { st.st_nlink });
-            ::nvx::info!("  st_uid: {}", { st.st_uid });
-            ::nvx::info!("  st_gid: {}", { st.st_gid });
-            ::nvx::info!("  st_rdev: {}", { st.st_rdev });
-            ::nvx::info!("  st_size: {}", { st.st_size });
-            ::nvx::info!("  st_blksize: {}", { st.st_blksize });
-            ::nvx::info!("  st_blocks: {}", { st.st_blocks });
-            ::nvx::info!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
-            ::nvx::info!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
-            ::nvx::info!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
+            ::syslog::info!("got status of file foo.tmp");
+            ::syslog::info!("file statistics:");
+            ::syslog::info!("  st_dev: {}", { st.st_dev });
+            ::syslog::info!("  st_ino: {}", { st.st_ino });
+            ::syslog::info!("  st_mode: {}", { st.st_mode });
+            ::syslog::info!("  st_nlink: {}", { st.st_nlink });
+            ::syslog::info!("  st_uid: {}", { st.st_uid });
+            ::syslog::info!("  st_gid: {}", { st.st_gid });
+            ::syslog::info!("  st_rdev: {}", { st.st_rdev });
+            ::syslog::info!("  st_size: {}", { st.st_size });
+            ::syslog::info!("  st_blksize: {}", { st.st_blksize });
+            ::syslog::info!("  st_blocks: {}", { st.st_blocks });
+            ::syslog::info!("  st_atime: {}s {}ns", { st.st_atim.tv_sec }, { st.st_atim.tv_nsec });
+            ::syslog::info!("  st_mtime: {}s {}ns", { st.st_mtim.tv_sec }, { st.st_mtim.tv_nsec });
+            ::syslog::info!("  st_ctime: {}s {}ns", { st.st_ctim.tv_sec }, { st.st_ctim.tv_nsec });
         },
         Err(error) => {
             panic!("failed to get status of file foo.tmp: {:?}", error);
@@ -199,7 +199,7 @@ pub fn test() {
     // Close file.
     match unistd::close(fd) {
         Ok(()) => {
-            ::nvx::info!("closed file foo.tmp");
+            ::syslog::info!("closed file foo.tmp");
         },
         Err(error) => {
             panic!("failed to close file foo.tmp: {:?}", error);
@@ -211,25 +211,25 @@ pub fn test() {
     let mut foo_tmp: stat = stat::default();
     match sys::stat::stat(path, &mut foo_tmp) {
         Ok(()) => {
-            ::nvx::info!("got status of file {}", path);
-            ::nvx::info!("file statistics:");
-            ::nvx::info!("  st_dev: {}", { foo_tmp.st_dev });
-            ::nvx::info!("  st_ino: {}", { foo_tmp.st_ino });
-            ::nvx::info!("  st_mode: {}", { foo_tmp.st_mode });
-            ::nvx::info!("  st_nlink: {}", { foo_tmp.st_nlink });
-            ::nvx::info!("  st_uid: {}", { foo_tmp.st_uid });
-            ::nvx::info!("  st_gid: {}", { foo_tmp.st_gid });
-            ::nvx::info!("  st_rdev: {}", { foo_tmp.st_rdev });
-            ::nvx::info!("  st_size: {}", { foo_tmp.st_size });
-            ::nvx::info!("  st_blksize: {}", { foo_tmp.st_blksize });
-            ::nvx::info!("  st_blocks: {}", { foo_tmp.st_blocks });
-            ::nvx::info!("  st_atime: {}s {}ns", { foo_tmp.st_atim.tv_sec }, {
+            ::syslog::info!("got status of file {}", path);
+            ::syslog::info!("file statistics:");
+            ::syslog::info!("  st_dev: {}", { foo_tmp.st_dev });
+            ::syslog::info!("  st_ino: {}", { foo_tmp.st_ino });
+            ::syslog::info!("  st_mode: {}", { foo_tmp.st_mode });
+            ::syslog::info!("  st_nlink: {}", { foo_tmp.st_nlink });
+            ::syslog::info!("  st_uid: {}", { foo_tmp.st_uid });
+            ::syslog::info!("  st_gid: {}", { foo_tmp.st_gid });
+            ::syslog::info!("  st_rdev: {}", { foo_tmp.st_rdev });
+            ::syslog::info!("  st_size: {}", { foo_tmp.st_size });
+            ::syslog::info!("  st_blksize: {}", { foo_tmp.st_blksize });
+            ::syslog::info!("  st_blocks: {}", { foo_tmp.st_blocks });
+            ::syslog::info!("  st_atime: {}s {}ns", { foo_tmp.st_atim.tv_sec }, {
                 foo_tmp.st_atim.tv_nsec
             });
-            ::nvx::info!("  st_mtime: {}s {}ns", { foo_tmp.st_mtim.tv_sec }, {
+            ::syslog::info!("  st_mtime: {}s {}ns", { foo_tmp.st_mtim.tv_sec }, {
                 foo_tmp.st_mtim.tv_nsec
             });
-            ::nvx::info!("  st_ctime: {}s {}ns", { foo_tmp.st_ctim.tv_sec }, {
+            ::syslog::info!("  st_ctime: {}s {}ns", { foo_tmp.st_ctim.tv_sec }, {
                 foo_tmp.st_ctim.tv_nsec
             });
         },
@@ -242,25 +242,25 @@ pub fn test() {
     let mut bar_tmp: stat = stat::default();
     match sys::stat::fstatat(fcntl::AT_FDCWD, "foo.tmp", &mut bar_tmp, 0) {
         Ok(()) => {
-            ::nvx::info!("got status of file foo.tmp");
-            ::nvx::info!("file statistics:");
-            ::nvx::info!("  st_dev: {}", { bar_tmp.st_dev });
-            ::nvx::info!("  st_ino: {}", { bar_tmp.st_ino });
-            ::nvx::info!("  st_mode: {}", { bar_tmp.st_mode });
-            ::nvx::info!("  st_nlink: {}", { bar_tmp.st_nlink });
-            ::nvx::info!("  st_uid: {}", { bar_tmp.st_uid });
-            ::nvx::info!("  st_gid: {}", { bar_tmp.st_gid });
-            ::nvx::info!("  st_rdev: {}", { bar_tmp.st_rdev });
-            ::nvx::info!("  st_size: {}", { bar_tmp.st_size });
-            ::nvx::info!("  st_blksize: {}", { bar_tmp.st_blksize });
-            ::nvx::info!("  st_blocks: {}", { bar_tmp.st_blocks });
-            ::nvx::info!("  st_atime: {}s {}ns", { bar_tmp.st_atim.tv_sec }, {
+            ::syslog::info!("got status of file foo.tmp");
+            ::syslog::info!("file statistics:");
+            ::syslog::info!("  st_dev: {}", { bar_tmp.st_dev });
+            ::syslog::info!("  st_ino: {}", { bar_tmp.st_ino });
+            ::syslog::info!("  st_mode: {}", { bar_tmp.st_mode });
+            ::syslog::info!("  st_nlink: {}", { bar_tmp.st_nlink });
+            ::syslog::info!("  st_uid: {}", { bar_tmp.st_uid });
+            ::syslog::info!("  st_gid: {}", { bar_tmp.st_gid });
+            ::syslog::info!("  st_rdev: {}", { bar_tmp.st_rdev });
+            ::syslog::info!("  st_size: {}", { bar_tmp.st_size });
+            ::syslog::info!("  st_blksize: {}", { bar_tmp.st_blksize });
+            ::syslog::info!("  st_blocks: {}", { bar_tmp.st_blocks });
+            ::syslog::info!("  st_atime: {}s {}ns", { bar_tmp.st_atim.tv_sec }, {
                 bar_tmp.st_atim.tv_nsec
             });
-            ::nvx::info!("  st_mtime: {}s {}ns", { bar_tmp.st_mtim.tv_sec }, {
+            ::syslog::info!("  st_mtime: {}s {}ns", { bar_tmp.st_mtim.tv_sec }, {
                 bar_tmp.st_mtim.tv_nsec
             });
-            ::nvx::info!("  st_ctime: {}s {}ns", { bar_tmp.st_ctim.tv_sec }, {
+            ::syslog::info!("  st_ctime: {}s {}ns", { bar_tmp.st_ctim.tv_sec }, {
                 bar_tmp.st_ctim.tv_nsec
             });
         },
@@ -277,7 +277,7 @@ pub fn test() {
     // Unlink file named `foo.tmp`.
     match fcntl::unlinkat(fcntl::AT_FDCWD, "foo.tmp", 0) {
         Ok(()) => {
-            ::nvx::info!("unlinked file foo.tmp");
+            ::syslog::info!("unlinked file foo.tmp");
         },
         Err(error) => {
             panic!("failed to unlink file foo.tmp (error={:?})", error);
@@ -290,7 +290,7 @@ pub fn test() {
 fn test_pipe() {
     let [read_fd, write_fd]: [i32; 2] = match unistd::pipe() {
         Ok(fds) => {
-            ::nvx::info!("created pipe with fds ({}, {})", fds[0], fds[1]);
+            ::syslog::info!("created pipe with fds ({}, {})", fds[0], fds[1]);
             fds
         },
         Err(e) => {
@@ -302,7 +302,7 @@ fn test_pipe() {
     let write_buffer: [u8; 128] = [1; 128];
     match unistd::write(write_fd, &write_buffer) {
         Ok(128) => {
-            ::nvx::info!("wrote 128 bytes to pipe");
+            ::syslog::info!("wrote 128 bytes to pipe");
         },
         Ok(n) => {
             panic!("failed to write 128 bytes to pipe: (n={:?})", n);
@@ -316,7 +316,7 @@ fn test_pipe() {
     let mut read_buffer: [u8; 128] = [0; 128];
     match unistd::read(read_fd, &mut read_buffer) {
         Ok(128) => {
-            ::nvx::info!("read 128 bytes from pipe");
+            ::syslog::info!("read 128 bytes from pipe");
         },
         Ok(n) => {
             panic!("failed to read 128 bytes from pipe: (n={:?})", n);
@@ -336,7 +336,7 @@ fn test_pipe() {
     // Close read end of pipe.
     match unistd::close(read_fd) {
         Ok(()) => {
-            ::nvx::info!("closed read end of pipe");
+            ::syslog::info!("closed read end of pipe");
         },
         Err(error) => {
             panic!("failed to close read end of pipe: {:?}", error);
@@ -346,7 +346,7 @@ fn test_pipe() {
     // Close write end of pipe.
     match unistd::close(write_fd) {
         Ok(()) => {
-            ::nvx::info!("closed write end of pipe");
+            ::syslog::info!("closed write end of pipe");
         },
         Err(error) => {
             panic!("failed to close write end of pipe: {:?}", error);
@@ -356,7 +356,7 @@ fn test_pipe() {
     // Get current working directory.
     match unistd::getcwd() {
         Ok(cwd) => {
-            ::nvx::info!("got current working directory: {}", cwd);
+            ::syslog::info!("got current working directory: {}", cwd);
         },
         Err(e) => {
             panic!("failed to get current working directory: {:?}", e);
@@ -366,7 +366,7 @@ fn test_pipe() {
     // Open directory.
     let dir_fd: i32 = match fcntl::openat(fcntl::AT_FDCWD, ".", OpenFlags::O_DIRECTORY.into(), 0) {
         Ok(fd) => {
-            ::nvx::info!("opened directory with fd {}", fd);
+            ::syslog::info!("opened directory with fd {}", fd);
             fd
         },
         Err(error) => {
@@ -377,7 +377,7 @@ fn test_pipe() {
     match dirent::posix_getdents(dir_fd, 1) {
         Ok(buffer) => {
             for d in buffer.iter() {
-                ::nvx::info!("directory entry: {:?}", d);
+                ::syslog::info!("directory entry: {:?}", d);
             }
         },
         Err(error) => {
@@ -388,7 +388,7 @@ fn test_pipe() {
     // Close directory.
     match unistd::close(dir_fd) {
         Ok(()) => {
-            ::nvx::info!("closed directory");
+            ::syslog::info!("closed directory");
         },
         Err(error) => {
             panic!("failed to close directory: {:?}", error);
@@ -398,7 +398,7 @@ fn test_pipe() {
     // Open directory stream.
     let mut dir: Box<DirectoryStream> = match dirent::opendir(".") {
         Ok(dir) => {
-            ::nvx::info!("opened directory");
+            ::syslog::info!("opened directory");
             dir
         },
         Err(error) => {
@@ -410,7 +410,7 @@ fn test_pipe() {
     loop {
         match dirent::readdir(&mut dir) {
             Ok(Some(dirent)) => {
-                ::nvx::info!("directory entry: {:?}", dirent);
+                ::syslog::info!("directory entry: {:?}", dirent);
             },
             Ok(None) => {
                 break;
@@ -424,7 +424,7 @@ fn test_pipe() {
     // Close directory stream.
     match dirent::closedir(&mut dir) {
         Ok(()) => {
-            ::nvx::info!("closed directory");
+            ::syslog::info!("closed directory");
         },
         Err(error) => {
             panic!("failed to close directory: {:?}", error);

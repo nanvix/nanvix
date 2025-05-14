@@ -124,7 +124,7 @@ pub fn pthread_key_delete(key: pthread_key_t) -> Result<(), Error> {
         Some(Some(tda)) => {
             for (tid, ptr) in tda.value.iter() {
                 // Warn if we are leaking data.
-                ::nvx::debug!(
+                ::syslog::debug!(
                     "pthread_key_delete(): leaking thread data (tid={:?}, ptr={:#x?})",
                     tid,
                     ptr
@@ -135,7 +135,7 @@ pub fn pthread_key_delete(key: pthread_key_t) -> Result<(), Error> {
         },
         Some(None) | None => {
             let reason: &str = "key not found";
-            ::nvx::error!("pthread_key_delete(): {:?}", reason);
+            ::syslog::error!("pthread_key_delete(): {:?}", reason);
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
         },
     }
@@ -171,7 +171,7 @@ pub fn pthread_getspecific(key: pthread_key_t) -> Result<Pointer, Error> {
         // Key not found.
         Some(None) | None => {
             let reason: &str = "key not found";
-            ::nvx::error!("pthread_getspecific(): {:?}", reason);
+            ::syslog::error!("pthread_getspecific(): {:?}", reason);
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
         },
     }
@@ -205,7 +205,7 @@ pub fn pthread_setspecific(key: pthread_key_t, value: Pointer) -> Result<(), Err
         // Key not found.
         Some(None) | None => {
             let reason: &str = "key not found";
-            ::nvx::error!("pthread_setspecific(): {:?}", reason);
+            ::syslog::error!("pthread_setspecific(): {:?}", reason);
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
         },
     }

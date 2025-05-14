@@ -35,13 +35,13 @@ pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
         },
     };
 
-    ::nvx::trace!("opendir(): dirname={:?}", dirname);
+    ::syslog::trace!("opendir(): dirname={:?}", dirname);
 
     // Open directory stream and check for errors.
     let dirp: Box<DirectoryStream> = match dirent::opendir(dirname) {
         Ok(dirp) => dirp,
         Err(error) => {
-            ::nvx::error!("opendir(): failed to open directory stream: {:?}", error);
+            ::syslog::error!("opendir(): failed to open directory stream: {:?}", error);
             *__errno_location() = error.code.get();
             return ptr::null_mut();
         },
