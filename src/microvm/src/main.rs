@@ -36,9 +36,10 @@ use ::microvm::{
     Gateway,
     Vmm,
 };
-use ::std::{
-    env,
-    os::unix::net::UnixStream,
+use ::std::env;
+use ::syscomm::{
+    SocketStream,
+    SocketType,
 };
 
 //==================================================================================================
@@ -59,10 +60,10 @@ fn main() -> Result<()> {
     logging::initialize(args.log_to_file());
 
     let gateway: Option<Gateway> = match &gateway_addr {
-        Some(addr) => match UnixStream::connect(addr.clone()) {
-            Ok(conn) => {
-                conn.set_nonblocking(true)?;
-                Some(Gateway::UnixStream(conn))
+        Some(addr) => match SocketStream::connect(SocketType::Unix, addr.clone()) {
+            Ok(stream) => {
+                stream.set_nonblocking(true)?;
+                Some(Gateway::new(stream))
             },
             Err(e) => {
                 let reason: String = format!(
