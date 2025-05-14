@@ -61,6 +61,7 @@ use ::std::{
     env,
     fs,
     os::unix::net::UnixStream,
+    str::FromStr,
     sync::Once,
     thread,
 };
@@ -72,6 +73,13 @@ use ::syscomm::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default socket bind type.
+const DEFAULT_BIND_SOCKET_TYPE: SocketType = SocketType::Unix;
+
+//==================================================================================================
 // Implementations
 //==================================================================================================
 
@@ -81,7 +89,18 @@ pub fn main() -> Result<()> {
     let sockaddr: String = args.bind_sockaddr();
     initialize(args.log_to_file());
 
-    let listener: SocketListener = match Socket::bind(SocketType::Unix, sockaddr.clone()) {
+    let bind_socket_type: SocketType = match args.bind_socket_type() {
+        Some(typ) => match SocketType::from_str(typ.as_str()) {
+            Ok(typ) => typ,
+            Err(error) => {
+                error!("{error} (type={:?})", typ);
+                anyhow::bail!("failed to parse socket address type");
+            },
+        },
+        None => DEFAULT_BIND_SOCKET_TYPE,
+    };
+
+    let listener: SocketListener = match Socket::bind(bind_socket_type, sockaddr.clone()) {
         Ok(listener) => listener,
         Err(e) => {
             error!("failed to bind to socket address (error={:?})", e);
@@ -90,14 +109,19 @@ pub fn main() -> Result<()> {
     };
 
     // Install signal handler.
-    let path: String = sockaddr.clone();
+    let path: Option<String> = match bind_socket_type {
+        SocketType::Tcp => None,
+        SocketType::Unix => Some(sockaddr.clone()),
+    };
     let mut signals: SignalsInfo = Signals::new([SIGINT])?;
     thread::spawn(move || {
         #[allow(clippy::never_loop)]
         for sig in signals.forever() {
             println!("Received signal {:?}", sig);
-            if let Err(e) = fs::remove_file(path.clone()) {
-                error!("failed to remove socket file (error={:?})", e);
+            if let Some(path) = path {
+                if let Err(e) = fs::remove_file(path.clone()) {
+                    error!("failed to remove socket file (error={:?})", e);
+                }
             }
             // Exit process.
             std::process::exit(0);
