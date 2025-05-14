@@ -27,6 +27,7 @@ profiler = { workspace = true, features = ["auto-calibrate"] }
 sys = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true, features = ["microvm"] }
+syscomm = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 kvm-bindings = { workspace = true }
