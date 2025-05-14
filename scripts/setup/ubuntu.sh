@@ -14,13 +14,16 @@ if [[ "$1" == "--extra" ]]; then
     # Install additional packages.
     apt-get install -y   \
         bison            \
+        bridge-utils     \
         clang-format     \
+        dosfstools       \
         doxygen          \
         flex             \
         gcc-multilib     \
         g++-multilib     \
         graphviz         \
         grub2            \
+        kpartx           \
         libglib2.0-dev   \
         libgmp-dev       \
         libgmp3-dev      \
