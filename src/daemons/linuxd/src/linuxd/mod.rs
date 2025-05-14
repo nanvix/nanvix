@@ -114,6 +114,7 @@ use ::std::{
     mem,
     os::unix::net::UnixStream,
 };
+use ::syscomm::SocketStream;
 
 //==================================================================================================
 // Structures
@@ -122,7 +123,7 @@ use ::std::{
 pub struct LinuxDaemon<'a> {
     pid: ProcessIdentifier,
     assembler: RequestAssembler,
-    stream: UnixStream,
+    stream: SocketStream,
     gateway_conn: &'a mut Option<UnixStream>,
     venv: VirtualEnviromentDirectory,
 }
@@ -133,7 +134,7 @@ pub struct LinuxDaemon<'a> {
 
 impl<'a> LinuxDaemon<'a> {
     pub fn init(
-        stream: UnixStream,
+        stream: SocketStream,
         gateway_conn: &'a mut Option<UnixStream>,
     ) -> Result<Self, Error> {
         Ok(Self {
@@ -541,7 +542,7 @@ impl<'a> LinuxDaemon<'a> {
     fn recv(&mut self) -> Result<Option<Message>> {
         let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
             [0u8; config::kernel::IPC_MESSAGE_SIZE];
-        let mut buf_reader: &UnixStream = &self.stream;
+        let buf_reader: &mut SocketStream = &mut self.stream;
         if let Err(e) = buf_reader.read_exact(&mut buf) {
             match e.kind() {
                 ErrorKind::UnexpectedEof => return Ok(None),

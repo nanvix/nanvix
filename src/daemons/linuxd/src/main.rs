@@ -60,12 +60,15 @@ use ::signal_hook::{
 use ::std::{
     env,
     fs,
-    os::unix::net::{
-        UnixListener,
-        UnixStream,
-    },
+    os::unix::net::UnixStream,
     sync::Once,
     thread,
+};
+use ::syscomm::{
+    Socket,
+    SocketListener,
+    SocketStream,
+    SocketType,
 };
 
 //==================================================================================================
@@ -78,7 +81,7 @@ pub fn main() -> Result<()> {
     let sockaddr: String = args.bind_sockaddr();
     initialize(args.log_to_file());
 
-    let listener: UnixListener = match UnixListener::bind(sockaddr.clone()) {
+    let listener: SocketListener = match Socket::bind(SocketType::Unix, sockaddr.clone()) {
         Ok(listener) => listener,
         Err(e) => {
             error!("failed to bind to socket address (error={:?})", e);
@@ -116,9 +119,9 @@ pub fn main() -> Result<()> {
         };
 
         info!("Listening on: {:?}", sockaddr);
-        let stream: UnixStream = match listener.accept() {
-            Ok((stream, sockaddr)) => {
-                info!("Connected to: {:?}", sockaddr);
+        let stream: SocketStream = match listener.accept() {
+            Ok(stream) => {
+                info!("Connected to: {:?}", stream.peer_addr());
                 stream
             },
             Err(error) => {

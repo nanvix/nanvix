@@ -19,3 +19,4 @@ log = { workspace = true }
 flexi_logger = { workspace = true }
 libc = { workspace = true }
 signal-hook = { workspace = true }
+syscomm = { workspace = true }
