@@ -19,6 +19,8 @@ use ::anyhow::Result;
 pub struct Args {
     /// Server socket address.
     bind_sockaddr: String,
+    /// Server socket address type.
+    bind_sockaddr_type: Option<String>,
     /// Gateway socket address.
     gateway_sockaddr: Option<String>,
     /// Log to file?
@@ -34,6 +36,8 @@ impl Args {
     const OPT_HELP: &'static str = "-help";
     /// Command-line option for setting bind socket address.
     const OPT_BIND_SOCKADDR: &'static str = "-bind-addr";
+    /// Command-line option for setting the socket address type of the bind socket.
+    const OPT_BIND_SOCKET_TYPE: &'static str = "-bind-socket-type";
     /// Command-line option for setting socket address of gateway.
     const OPT_GATEWAY_SOCKADDR: &'static str = "-gateway-addr";
     /// Command-line option for log redirecting.
@@ -55,6 +59,7 @@ impl Args {
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut bind_sockaddr: String = String::new();
+        let mut bind_sockaddr_type: Option<String> = None;
         let mut gateway_sockaddr: Option<String> = None;
         let mut log_to_file: bool = false;
 
@@ -72,6 +77,10 @@ impl Args {
                 Self::OPT_GATEWAY_SOCKADDR => {
                     i += 1;
                     gateway_sockaddr = Some(args[i].clone());
+                },
+                Self::OPT_BIND_SOCKET_TYPE => {
+                    i += 1;
+                    bind_sockaddr_type = Some(args[i].clone());
                 },
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
@@ -92,6 +101,7 @@ impl Args {
         Ok(Self {
             bind_sockaddr,
             gateway_sockaddr,
+            bind_sockaddr_type,
             log_to_file,
         })
     }
@@ -126,6 +136,19 @@ impl Args {
     ///
     pub fn bind_sockaddr(&self) -> String {
         self.bind_sockaddr.to_string()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket address type of the bind socket.
+    ///
+    /// # Returns
+    ///
+    /// The socket address type of the bind socket.
+    ///
+    pub fn bind_socket_type(&self) -> Option<String> {
+        self.bind_sockaddr_type.clone()
     }
 
     ///

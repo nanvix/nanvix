@@ -40,6 +40,8 @@ pub struct Args {
     vm_stderr: Option<String>,
     /// Gateway address.
     gateway_addr: Option<String>,
+    /// Gateway socket type.
+    gateway_socket_type: Option<String>,
     /// Log to file?
     log_to_file: bool,
 }
@@ -61,6 +63,8 @@ impl Args {
     const OPT_STDERR: &'static str = "-stderr";
     /// Command-line option for gateway address.
     const OPT_GATEWAY: &'static str = "-gateway";
+    /// Command-line option for the gateway socket type.
+    const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-socket-type";
     /// Command-line option for specifying arguments to be passed to the initrd.
     const OPT_INITRD_ARGS: &'static str = "-initrd_args";
     /// Log to file.
@@ -83,6 +87,7 @@ impl Args {
         let mut memory_size: usize = ::config::kernel::MEMORY_SIZE;
         let mut vm_stderr: Option<String> = None;
         let mut gateway_addr: Option<String> = None;
+        let mut gateway_socket_type: Option<String> = None;
         let mut log_to_file: bool = false;
 
         // Parse command-line arguments.
@@ -148,6 +153,11 @@ impl Args {
                     gateway_addr = Some(args[i + 1].clone());
                     i += 1;
                 },
+                // Set gateway socket type.
+                Self::OPT_GATEWAY_SOCKET_TYPE if i + 1 < args.len() => {
+                    gateway_socket_type = Some(args[i + 1].clone());
+                    i += 1;
+                },
                 // Set log to file flag.
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
@@ -181,6 +191,7 @@ impl Args {
             memory_size,
             vm_stderr,
             gateway_addr,
+            gateway_socket_type,
             log_to_file,
         })
     }
@@ -285,6 +296,21 @@ impl Args {
     ///
     pub fn gateway_addr(&mut self) -> Option<String> {
         self.gateway_addr.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket address type of the gateway socket that was passed as a command-line
+    /// argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The socket address type of the gateway socket that was passed as a command-line argument to
+    /// the program.
+    ///
+    pub fn gateway_socket_type(&mut self) -> Option<String> {
+        self.gateway_socket_type.take()
     }
 
     ///
