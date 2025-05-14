@@ -121,8 +121,9 @@ pub fn main() -> Result<()> {
                 info!("Connected to: {:?}", sockaddr);
                 stream
             },
-            Err(e) => {
-                anyhow::bail!("Failed to connect: {}", e);
+            Err(error) => {
+                error!("Failed to accept connection: {:?}", error);
+                continue;
             },
         };
 
