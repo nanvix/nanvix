@@ -52,27 +52,7 @@ pub enum OutBAction {
     _Log = 99,
     CallFunction = 101,
     _Abort = 102,
-    Magic = 103,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(C, packed)]
-pub struct HostFunctionDefinitions {
-    pub fbHostFunctionDetailsSize: u64,
-    pub fbHostFunctionDetails: u64,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(C, packed)]
-pub struct HostException {
-    pub hostExceptionSize: u64,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(C, packed)]
-struct GuestErrorData {
-    pub guestErrorSize: u64,
-    pub guestErrorBuffer: u64,
+    DebugPrint = 103,
 }
 
 #[repr(u64)]
@@ -103,26 +83,15 @@ struct GuestStackData {
 
 #[derive(Debug, Copy, Clone)]
 #[repr(C, packed)]
-struct GuestPanicContextData {
-    pub guestPanicContextDataSize: u64,
-    pub guestPanicContextDataBuffer: u64,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(C, packed)]
 pub struct HyperlightPEB {
     security_cookie_seed: u64,
     guest_function_dispatch_ptr: u64,
-    hostFunctionDefinitions: HostFunctionDefinitions,
-    hostException: HostException,
-    guestErrorData: GuestErrorData,
     pCode: u64,
     pOutb: u64,
     pOutbContext: u64,
     runMode: RunMode,
     inputdata: InputData,
     outputdata: OutputData,
-    guestPanicContextData: GuestPanicContextData,
     guestheapData: GuestHeapData,
     gueststackData: GuestStackData,
 }
@@ -196,15 +165,15 @@ impl ProcessEnvironmentBlock {
     }
 
     fn print(&mut self, message: &str) -> Result<(), Error> {
-        self.print_with_magic_port(message)
+        self.debug_print(message)
         // self.print_with_host_fn(message)
     }
 
     #[allow(dead_code)]
-    fn print_with_magic_port(&mut self, message: &str) -> Result<(), Error> {
+    fn debug_print(&mut self, message: &str) -> Result<(), Error> {
         for byte in message.bytes() {
             unsafe {
-                ::arch::io::out8(OutBAction::Magic as u16, byte);
+                ::arch::io::out32(OutBAction::DebugPrint as u16, byte as u32);
             }
         }
 
@@ -287,7 +256,7 @@ impl ProcessEnvironmentBlock {
         self.push_shared_output_data(host_function_call_buffer)?;
 
         unsafe {
-            ::arch::io::out8(OutBAction::CallFunction as u16, 0);
+            ::arch::io::out32(OutBAction::CallFunction as u16, 0);
         }
 
         Ok(())

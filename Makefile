@@ -17,7 +17,7 @@ export MACHINE ?= microvm
 export RELEASE ?= no
 
 # Timeout
-export TIMEOUT ?= 90
+export TIMEOUT ?= 300
 
 # Enable Microvm profiler?
 export PROFILER ?= no
