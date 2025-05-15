@@ -41,7 +41,7 @@ use ::nvx::sys::error::ErrorCode;
 /// - `res` points to a valid `timespec` structure.
 /// - This function is not called by multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -> c_int {
     ::syslog::trace!("clock_getres(): clock_id={:?}, res={:?}", clock_id, res);
 
@@ -85,7 +85,7 @@ pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -
 ///
 /// This function is unsafe because it may deference raw pointers.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -> c_int {
     ::syslog::trace!("clock_gettime(): clock_id={:?}, tp={:?}", clock_id, tp);
     let mut tp: Option<&mut timespec> = if tp.is_null() {
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn nanosleep(_req: *const u8, _rem: *mut u8) -> c_int {
     ::syslog::trace!("nanosleep(): not implemented");

@@ -16,7 +16,7 @@ mod bindings {
     use crate::ffi::c_int;
 
     #[allow(clippy::missing_safety_doc)]
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn ioctl(_fd: c_int, _request: c_int, _arg: *mut c_int) -> c_int {
         // TODO: https://github.com/nanvix/nanvix/issues/351
         ::syslog::error!("ioctl(): not implemented, ignoring");

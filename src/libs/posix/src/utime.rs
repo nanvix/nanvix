@@ -67,7 +67,7 @@ mod bindings {
     /// - `filename` points to a valid null-terminated C string.
     /// - `times` points to a valid `utimbuf` structures.
     ///
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn utime(filename: *const c_char, times: *const utimbuf) -> c_int {
         ::syslog::trace!("utime(): filename={:?}, times={:?}", filename, times);
 

@@ -17,7 +17,7 @@ use ::proc::ProcessDaemon;
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
     let mut procd: ProcessDaemon = match ProcessDaemon::init() {
         Ok(procd) => procd,

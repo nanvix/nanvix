@@ -20,7 +20,7 @@ use ::nvx::sys::error::ErrorCode;
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_key_create(
     key_ptr: *mut pthread_key_t,
     destructor: Option<extern "C" fn(*mut c_void)>,
@@ -55,7 +55,7 @@ pub unsafe extern "C" fn pthread_key_create(
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
     match syscall::pthread_key_delete(key) {
         Ok(()) => 0,
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_getspecific(key: pthread_key_t) -> *mut c_void {
     match syscall::pthread_getspecific(key) {
         Ok(value) => value.into(),
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn pthread_getspecific(key: pthread_key_t) -> *mut c_void 
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_setspecific(key: pthread_key_t, value: *const c_void) -> c_int {
     match syscall::pthread_setspecific(key, value.into()) {
         Ok(()) => 0,

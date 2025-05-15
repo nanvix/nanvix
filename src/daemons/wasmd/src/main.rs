@@ -44,7 +44,7 @@ use ::posix::{
     sys::socket::SocketAddr,
 };
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn fminf(a: f32, b: f32) -> f32 {
     if a < b {
         a
@@ -53,7 +53,7 @@ fn fminf(a: f32, b: f32) -> f32 {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn fmax(a: f64, b: f64) -> f64 {
     if a > b {
         a
@@ -62,7 +62,7 @@ fn fmax(a: f64, b: f64) -> f64 {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn fmin(a: f64, b: f64) -> f64 {
     if a < b {
         a
@@ -71,7 +71,7 @@ fn fmin(a: f64, b: f64) -> f64 {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn fmaxf(a: f32, b: f32) -> f32 {
     if a > b {
         a
@@ -80,12 +80,12 @@ fn fmaxf(a: f32, b: f32) -> f32 {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn fmod(a: f64, b: f64) -> f64 {
     a % b
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn fmodf(a: f32, b: f32) -> f32 {
     a % b
 }
@@ -203,7 +203,7 @@ impl WasmBinary {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn main() -> Result<(), Error> {
     ::syslog::info!("initializing wasm daemon...");
 

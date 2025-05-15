@@ -45,7 +45,7 @@ use ::time::SystemTime;
 ///
 /// - `cond` points to a valid `pthread_cond_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_cond_broadcast(cond: *const pthread_cond_t) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
@@ -85,7 +85,7 @@ pub unsafe extern "C" fn pthread_cond_broadcast(cond: *const pthread_cond_t) -> 
 ///
 /// - `cond` points to a valid `pthread_cond_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_cond_init(
     cond: *mut pthread_cond_t,
     attr: *const pthread_condattr_t,
@@ -137,7 +137,7 @@ pub unsafe extern "C" fn pthread_cond_init(
 ///
 /// - `cond` points to a valid `pthread_cond_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
@@ -176,7 +176,7 @@ pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_in
 ///
 /// - `cond` points to a valid `pthread_cond_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_cond_signal(cond: *const pthread_cond_t) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
@@ -218,7 +218,7 @@ pub unsafe extern "C" fn pthread_cond_signal(cond: *const pthread_cond_t) -> c_i
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 /// - `abstime` points to a valid `timespec` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_cond_timedwait(
     cond: *const pthread_cond_t,
     mutex: *mut pthread_mutex_t,
@@ -301,7 +301,7 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
 /// - `cond` points to a valid `pthread_cond_t` structure.
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_cond_wait(
     cond: *const pthread_cond_t,
     mutex: *mut pthread_mutex_t,
