@@ -62,10 +62,34 @@ impl TryFrom<ThreadIdentifier> for i32 {
     }
 }
 
+impl TryFrom<ThreadIdentifier> for i64 {
+    type Error = Error;
+
+    fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
+        if tid.0 > i64::MAX as usize {
+            Err(Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+        } else {
+            Ok(tid.0 as i64)
+        }
+    }
+}
+
 impl TryFrom<i32> for ThreadIdentifier {
     type Error = Error;
 
     fn try_from(raw_tid: i32) -> Result<Self, Self::Error> {
+        if raw_tid < 0 {
+            Err(Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+        } else {
+            Ok(ThreadIdentifier(raw_tid as usize))
+        }
+    }
+}
+
+impl TryFrom<i64> for ThreadIdentifier {
+    type Error = Error;
+
+    fn try_from(raw_tid: i64) -> Result<Self, Self::Error> {
         if raw_tid < 0 {
             Err(Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
         } else {

@@ -41,7 +41,7 @@ use ::time::SystemTime;
 /// failure, an error is returned instead.
 ///
 pub fn getpid() -> Result<ProcessIdentifier, Error> {
-    let result: i32 = kcall0!(KcallNumber::GetPid.into());
+    let result: i64 = kcall0!(KcallNumber::GetPid.into());
 
     ProcessIdentifier::try_from(result)
 }
@@ -61,7 +61,7 @@ pub fn getpid() -> Result<ProcessIdentifier, Error> {
 /// failure, an error is returned instead.
 ///
 pub fn gettid() -> Result<ThreadIdentifier, Error> {
-    let result: i32 = kcall0!(KcallNumber::GetTid.into());
+    let result: i64 = kcall0!(KcallNumber::GetTid.into());
 
     ThreadIdentifier::try_from(result)
 }
@@ -85,7 +85,7 @@ pub fn gettid() -> Result<ThreadIdentifier, Error> {
 /// instead.
 ///
 pub fn exit(status: i32) -> Result<!, Error> {
-    let result: i32 = kcall1!(KcallNumber::Exit.into(), status as u32);
+    let result: i64 = kcall1!(KcallNumber::Exit.into(), status as u32);
     Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate process"))
 }
 
@@ -94,7 +94,7 @@ pub fn exit(status: i32) -> Result<!, Error> {
 //==================================================================================================
 
 pub fn capctl(capability: Capability, value: bool) -> Result<(), Error> {
-    let result: i32 = kcall2!(KcallNumber::CapCtl.into(), capability as u32, value as u32);
+    let result: i64 = kcall2!(KcallNumber::CapCtl.into(), capability as u32, value as u32);
 
     if result == 0 {
         Ok(())
@@ -108,7 +108,7 @@ pub fn capctl(capability: Capability, value: bool) -> Result<(), Error> {
 //==================================================================================================
 
 pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
-    let result: i32 = kcall1!(KcallNumber::Terminate.into(), usize::from(pid) as u32);
+    let result: i64 = kcall1!(KcallNumber::Terminate.into(), usize::from(pid) as u32);
 
     if result == 0 {
         Ok(())
@@ -149,7 +149,7 @@ pub fn create_thread(
         fn _do_start_thread() -> !;
     }
 
-    let result: i32 = kcall3!(
+    let result: i64 = kcall3!(
         KcallNumber::CreateThread.into(),
         _do_start_thread as usize as u32,
         user_fn as usize as u32,
@@ -164,7 +164,7 @@ pub fn create_thread(
 //==================================================================================================
 
 pub fn exit_thread(status: usize) -> Result<!, Error> {
-    let result: i32 = kcall1!(KcallNumber::ExitThread.into(), status as u32);
+    let result: i64 = kcall1!(KcallNumber::ExitThread.into(), status as u32);
 
     Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate thread"))
 }
@@ -173,8 +173,8 @@ pub fn exit_thread(status: usize) -> Result<!, Error> {
 // Join Thread
 //==================================================================================================
 
-pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i32, Error> {
-    let result: i32 = kcall2!(
+pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i64, Error> {
+    let result: i64 = kcall2!(
         KcallNumber::JoinThread.into(),
         usize::from(tid) as u32,
         retval as *mut usize as u32
@@ -204,7 +204,7 @@ pub fn lock_mutex(mutex_addr: MutexAddress, timeout: Option<SystemTime>) -> Resu
         None => (u32::MAX, u32::MAX),
     };
 
-    let result: i32 = kcall3!(
+    let result: i64 = kcall3!(
         KcallNumber::MutexLock.into(),
         usize::from(mutex_addr) as u32,
         seconds,
@@ -223,7 +223,7 @@ pub fn lock_mutex(mutex_addr: MutexAddress, timeout: Option<SystemTime>) -> Resu
 //==================================================================================================
 
 pub fn unlock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
-    let result: i32 = kcall1!(KcallNumber::MutexUnlock.into(), usize::from(mutex_addr) as u32);
+    let result: i64 = kcall1!(KcallNumber::MutexUnlock.into(), usize::from(mutex_addr) as u32);
 
     if result == 0 {
         Ok(())
@@ -237,7 +237,7 @@ pub fn unlock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
 //==================================================================================================
 
 pub fn signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<usize, Error> {
-    let result: i32 = kcall4!(
+    let result: i64 = kcall4!(
         KcallNumber::CondSignal.into(),
         usize::from(cond_addr) as u32,
         broadcast as u32,
@@ -273,7 +273,7 @@ pub fn wait_cond(
         None => (u32::MAX, u32::MAX),
     };
 
-    let result: i32 = kcall4!(
+    let result: i64 = kcall4!(
         KcallNumber::CondWait.into(),
         usize::from(cond_addr) as u32,
         usize::from(mutex_addr) as u32,
@@ -307,7 +307,7 @@ pub fn wait_cond(
 /// indicate the error.
 ///
 pub fn gettime(buffer: &mut SystemTime) -> Result<(), Error> {
-    let result: i32 =
+    let result: i64 =
         kcall1!(KcallNumber::GetTime.into(), buffer as *mut SystemTime as usize as u32);
 
     if result == 0 {

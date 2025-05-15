@@ -32,7 +32,7 @@ use crate::{
 /// Upon success, empty is returned. Upon failure, an error is returned instead.
 ///
 pub fn debug(buf: *const u8, size: usize) -> Result<(), Error> {
-    let result: i32 = kcall2!(KcallNumber::Debug.into(), buf as u32, size as u32);
+    let result: i64 = kcall2!(KcallNumber::Debug.into(), buf as u32, size as u32);
 
     if result == 0 {
         Ok(())

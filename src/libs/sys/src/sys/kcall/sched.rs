@@ -18,7 +18,7 @@ use crate::{
 //==================================================================================================
 
 pub fn sched_yield() -> Result<(), Error> {
-    let result: i32 = kcall0!(KcallNumber::SchedulerYield.into());
+    let result: i64 = kcall0!(KcallNumber::SchedulerYield.into());
 
     if result == 0 {
         Ok(())
