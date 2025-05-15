@@ -60,7 +60,7 @@ pub fn init(
     ioaddresses: &mut IoMemoryAllocator,
     madt: &Option<MadtInfo>,
 ) -> Result<(Gdt, GdtPtr, TssRef, Option<InterruptController>), Error> {
-    extern "C" {
+    unsafe extern "C" {
         static kstack: u8;
     }
 
