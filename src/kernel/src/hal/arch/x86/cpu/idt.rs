@@ -18,7 +18,7 @@ use ::arch::cpu::{
 };
 use ::core::mem;
 
-extern "C" {
+unsafe extern "C" {
     /// Division-by-Zero Error.
     fn _do_excp0();
     /// Debug Exception.

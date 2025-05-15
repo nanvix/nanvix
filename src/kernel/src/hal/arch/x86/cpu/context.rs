@@ -79,7 +79,7 @@ impl ContextInformation {
     /// When this function returns another execution context is loaded.
     ///
     pub unsafe fn switch(from: *mut ContextInformation, to: *mut ContextInformation) {
-        extern "C" {
+        unsafe extern "C" {
             pub fn __context_switch(
                 from: *mut ContextInformation,
                 to: *mut ContextInformation,

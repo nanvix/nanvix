@@ -145,7 +145,7 @@ pub fn create_thread(
     user_fn: extern "C" fn(usize) -> usize,
     arg: usize,
 ) -> Result<ThreadIdentifier, Error> {
-    extern "C" {
+    unsafe extern "C" {
         fn _do_start_thread() -> !;
     }
 

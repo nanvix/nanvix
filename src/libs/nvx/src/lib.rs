@@ -182,7 +182,7 @@ unsafe fn parse_envp(envp: *mut i8) -> ::alloc::vec::Vec<*mut i8> {
 ///
 #[cfg(all(target_os = "none", not(feature = "staticlib")))]
 fn rust_trampoline(_argp: *mut i8) -> i32 {
-    extern "Rust" {
+    unsafe extern "Rust" {
         fn main() -> Result<(), ::sys::error::Error>;
     }
 
