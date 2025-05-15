@@ -45,10 +45,7 @@ use ::sys::ipc::{
     MessageType,
 };
 use hyperlight_host::{
-    func::{
-        HostFunction0,
-        HostFunction1,
-    },
+    func::HostFunction,
     sandbox::uninitialized::GuestInitrd,
     HyperlightError,
 };
@@ -106,8 +103,8 @@ impl Vmm {
             initrd_filename.map(GuestInitrd::FilePath),
             Some(config),
             None, // Use default run options.
-            Some(&Arc::new(Mutex::new(writer_fn))),
         )?;
+        sandbox.register_print(writer_fn)?;
 
         let vmbus_write = move |data: Vec<u8>| -> Result<i32, HyperlightError> {
             let bytes = data.as_slice();
