@@ -20,7 +20,7 @@ use crate::{
 //==================================================================================================
 
 pub fn send(message: &Message) -> Result<(), Error> {
-    let result: i32 = kcall1!(KcallNumber::Send.into(), message as *const Message as usize as u32);
+    let result: i64 = kcall1!(KcallNumber::Send.into(), message as *const Message as usize as u32);
 
     if result == 0 {
         Ok(())
@@ -36,7 +36,7 @@ pub fn send(message: &Message) -> Result<(), Error> {
 pub fn recv() -> Result<Message, Error> {
     let mut message: Message = Default::default();
 
-    let result: i32 =
+    let result: i64 =
         kcall1!(KcallNumber::Recv.into(), &mut message as *mut Message as usize as u32);
 
     if result == 0 {

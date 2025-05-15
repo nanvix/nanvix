@@ -335,3 +335,14 @@ impl From<ErrorCode> for u32 {
         errno as u32
     }
 }
+
+impl TryFrom<i64> for ErrorCode {
+    type Error = Error;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        match ErrorCode::try_from_primitive(value as i32) {
+            Ok(code) => Ok(code),
+            Err(_) => Err(Error::new(ErrorCode::InvalidArgument, "invalid error code")),
+        }
+    }
+}
