@@ -34,3 +34,9 @@ impl From<KcallError> for i32 {
         result.0
     }
 }
+
+impl From<KcallError> for i64 {
+    fn from(result: KcallError) -> Self {
+        result.0 as i64
+    }
+}

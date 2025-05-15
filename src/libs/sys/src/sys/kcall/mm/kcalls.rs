@@ -30,7 +30,7 @@ pub fn mmap(
     vaddr: VirtualAddress,
     access: AccessPermission,
 ) -> Result<(), Error> {
-    let result: i32 = kcall3!(
+    let result: i64 = kcall3!(
         KcallNumber::MemoryMap.into(),
         pid.into(),
         vaddr.into_raw_value() as u32,
@@ -49,7 +49,7 @@ pub fn mmap(
 //==================================================================================================
 
 pub fn munmap(pid: ProcessIdentifier, vaddr: VirtualAddress) -> Result<(), Error> {
-    let result: i32 =
+    let result: i64 =
         kcall2!(KcallNumber::MemoryUnmap.into(), pid.into(), vaddr.into_raw_value() as u32);
 
     if result == 0 {

@@ -88,3 +88,15 @@ impl TryFrom<i32> for ProcessIdentifier {
         }
     }
 }
+
+impl TryFrom<i64> for ProcessIdentifier {
+    type Error = Error;
+
+    fn try_from(raw_pid: i64) -> Result<Self, Self::Error> {
+        if raw_pid < 0 {
+            Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"))
+        } else {
+            Ok(ProcessIdentifier(raw_pid as u32))
+        }
+    }
+}
