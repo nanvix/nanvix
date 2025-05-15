@@ -38,8 +38,19 @@ use ::microvm::{
 };
 use ::std::{
     env,
-    os::unix::net::UnixStream,
+    str::FromStr,
 };
+use ::syscomm::{
+    SocketStream,
+    SocketType,
+};
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default socket bind type.
+const DEFAULT_BIND_SOCKET_TYPE: SocketType = SocketType::Unix;
 
 //==================================================================================================
 // Standalone Functions
@@ -55,14 +66,25 @@ fn main() -> Result<()> {
     let stderr: Option<String> = args.take_vm_stderr();
     let gateway_addr: Option<String> = args.gateway_addr();
 
+    let gateway_socket_type: SocketType = match args.gateway_socket_type() {
+        Some(typ) => match SocketType::from_str(typ.as_str()) {
+            Ok(typ) => typ,
+            Err(error) => {
+                error!("{error} (type={:?})", typ);
+                anyhow::bail!("failed to parse socket address type");
+            },
+        },
+        None => DEFAULT_BIND_SOCKET_TYPE,
+    };
+
     // Initialize logger. If this fails, the program will panic.
     logging::initialize(args.log_to_file());
 
     let gateway: Option<Gateway> = match &gateway_addr {
-        Some(addr) => match UnixStream::connect(addr.clone()) {
-            Ok(conn) => {
-                conn.set_nonblocking(true)?;
-                Some(Gateway::UnixStream(conn))
+        Some(addr) => match SocketStream::connect(gateway_socket_type, addr.clone()) {
+            Ok(stream) => {
+                stream.set_nonblocking(true)?;
+                Some(Gateway::new(stream))
             },
             Err(e) => {
                 let reason: String = format!(
