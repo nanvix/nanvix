@@ -44,3 +44,9 @@ impl From<KcallSuccess> for i32 {
         result.0
     }
 }
+
+impl From<KcallSuccess> for i64 {
+    fn from(result: KcallSuccess) -> Self {
+        result.0 as i64
+    }
+}

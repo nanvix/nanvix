@@ -33,6 +33,15 @@ impl From<KcallResult> for i32 {
     }
 }
 
+impl From<KcallResult> for i64 {
+    fn from(result: KcallResult) -> Self {
+        match result {
+            KcallResult::Success(success) => success.into(),
+            KcallResult::Error(error) => error.into(),
+        }
+    }
+}
+
 impl KcallResult {
     pub fn ok() -> Self {
         KcallResult::Success(KcallSuccess::default())
