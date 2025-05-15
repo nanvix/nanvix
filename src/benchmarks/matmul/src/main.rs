@@ -42,7 +42,7 @@ impl Default for Parameters {
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn main() -> Result<(), Error> {
     let raw_content: Option<&str> = option_env!("CONFIG");
 

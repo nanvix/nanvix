@@ -52,7 +52,7 @@ macro_rules! test {
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() {
     ::syslog::info!("Running test server...");
 

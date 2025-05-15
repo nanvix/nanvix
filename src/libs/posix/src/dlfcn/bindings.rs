@@ -138,7 +138,7 @@ static DL_LAST_ERROR: Mutex<DlError> = Mutex::new(DlError::new());
 /// - `addr` points to a valid address.
 /// - No other thread modifies the error state while this function is being executed.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
     ::syslog::trace!("dladdr(): addr = {:?}, dlip = {:?}", addr, dlip);
 
@@ -196,7 +196,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
 /// - `handle` points to a valid dynamic library handle.
 /// - No other thread modifies the error state while this function is being executed.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
     ::syslog::trace!("dlclose(): handle = {:?}", handle);
     // Check if handle is not valid.
@@ -236,7 +236,7 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
 /// It is safe to use this function if the caller ensures that:
 /// - No other thread modifies the error state while this function is being executed.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dlerror() -> *mut c_char {
     // Get the last error message.
     match DL_LAST_ERROR.lock().take() {
@@ -270,7 +270,7 @@ pub unsafe extern "C" fn dlerror() -> *mut c_char {
 /// - `filename` points to a valid C-style string.
 /// - No other thread modifies the error state while this function is being executed.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_void {
     ::syslog::trace!("dlopen(): filename = {:?}, mode = {}", filename, mode);
 
@@ -349,7 +349,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
 /// - `symbol` points to a valid C-style string.
 /// - No other thread modifies the error state while this function is being executed.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void {
     ::syslog::trace!("dlsym(): handle = {:?}, symbol = {:?}", handle, symbol);
 

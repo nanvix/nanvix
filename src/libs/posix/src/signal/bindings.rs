@@ -17,7 +17,7 @@ use crate::{
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn kill(_pid: pid_t, _signal: c_int) -> c_int {
     ::syslog::trace!("kill(): pid = {}, signal = {}", _pid, _signal);
     // TODO: Implement this system call.

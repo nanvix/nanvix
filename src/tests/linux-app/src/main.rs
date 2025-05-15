@@ -24,7 +24,7 @@ use ::posix::unistd;
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
     // Run tests.
     identity::test();

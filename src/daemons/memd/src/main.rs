@@ -84,7 +84,7 @@ fn handle_ipc_request(message: Message) -> Result<bool, Error> {
     Ok(false)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() {
     let mypid: ProcessIdentifier = match ::nvx::pm::getpid() {
         Ok(pid) => pid,

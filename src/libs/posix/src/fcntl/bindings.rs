@@ -42,7 +42,7 @@ use ::nvx::sys::error::ErrorCode;
 /// - [`crate::fcntl::open()`]
 ///
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/280
     ::syslog::error!(
@@ -111,7 +111,7 @@ pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
 /// It is safe to call this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn posix_fallocate(fd: c_int, offset: i64, len: i64) -> c_int {
     ::syslog::trace!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
 
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn posix_fallocate(fd: c_int, offset: i64, len: i64) -> c_
 /// It is safe to call this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn posix_fadvise(fd: c_int, offset: i64, len: i64, advice: c_int) -> c_int {
     ::syslog::trace!(
         "posix_fadvise(): fd={:?}, offset={:?}, len={:?}, advice={:?}",
@@ -210,7 +210,7 @@ pub unsafe extern "C" fn posix_fadvise(fd: c_int, offset: i64, len: i64, advice:
 /// - `oldpath` points to a valid null-terminated C string.
 /// - `newpath` points to a valid null-terminated C string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn renameat(
     olddirfd: c_int,
     oldpath: *const c_char,
@@ -289,7 +289,7 @@ pub unsafe extern "C" fn renameat(
 ///
 /// - `pathname` points to a valid null-terminated C string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
     ::syslog::trace!("unlinkat(): dirfd={:?}, pathname={:?}, flags={:?}", dirfd, pathname, flags);
 

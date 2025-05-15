@@ -15,7 +15,7 @@ use ::nvx::sys::error::Error;
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
     Ok(())
 }

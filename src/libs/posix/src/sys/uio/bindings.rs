@@ -56,7 +56,7 @@ use ::nvx::sys::error::{
 /// - The `iov` pointer is valid and points to an array of `iovec` structures.
 /// - This function is called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pwritev(
     fd: i32,
     iov: *const iovec,
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn pwritev(
 /// // - The `iov` pointer is valid and points to an array of `iovec` structures.
 /// // - This function is called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset: off_t) -> ssize_t {
     ::syslog::trace!("preadv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
 
@@ -306,7 +306,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
 /// - The `iov` pointer is valid and points to an array of `iovec` structures.
 /// - This function is called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize_t {
     ::syslog::trace!("readv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
 
@@ -418,7 +418,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
 /// - The `iov` pointer is valid and points to an array of `iovec` structures.
 /// - This function is called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t {
     ::syslog::trace!("writev(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
 
