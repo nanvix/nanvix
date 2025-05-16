@@ -112,7 +112,6 @@ use ::std::{
         Write,
     },
     mem,
-    os::unix::net::UnixStream,
 };
 use ::syscomm::SocketStream;
 
@@ -124,7 +123,7 @@ pub struct LinuxDaemon<'a> {
     pid: ProcessIdentifier,
     assembler: RequestAssembler,
     stream: SocketStream,
-    gateway_conn: &'a mut Option<UnixStream>,
+    gateway_conn: &'a mut Option<SocketStream>,
     venv: VirtualEnviromentDirectory,
 }
 
@@ -135,7 +134,7 @@ pub struct LinuxDaemon<'a> {
 impl<'a> LinuxDaemon<'a> {
     pub fn init(
         stream: SocketStream,
-        gateway_conn: &'a mut Option<UnixStream>,
+        gateway_conn: &'a mut Option<SocketStream>,
     ) -> Result<Self, Error> {
         Ok(Self {
             pid: ProcessIdentifier::from(0),
