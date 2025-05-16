@@ -202,7 +202,7 @@ impl Address for VirtualAddress {
 }
 
 impl core::fmt::Debug for VirtualAddress {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{:#010x}", self.0)
     }
 }
