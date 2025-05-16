@@ -6,15 +6,12 @@
 //==================================================================================================
 
 // The following imports are used only when any logging feature is enabled.
+use ::arch::mem::PAGE_SIZE;
 #[allow(unused_imports)]
 use ::core::fmt::Write;
-#[allow(unused_imports)]
-use ::syslog::{
-    LogLevel,
-    Logger,
-};
+use ::sys::config::memory_layout::USER_HEAP_BASE;
 
-use crate::mm::heap::Heap;
+use crate::heap::Heap;
 use ::alloc::alloc::{
     GlobalAlloc,
     Layout,
@@ -26,6 +23,7 @@ use ::sys::{
         Error,
         ErrorCode,
     },
+    kcall,
     mm::{
         self,
         Address,
@@ -34,6 +32,27 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::talc::*;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "staticlib")] {
+        /// Heap size for Rust runtime.
+        const RUST_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE/2;
+        /// Heap size for C runtime.
+        pub const C_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE/2;
+    } else  {
+        /// Heap size for Rust runtime.
+        const RUST_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE;
+        /// Heap size for C runtime.
+        pub const C_HEAP_SIZE: usize = 0;
+    }
+}
+
+/// Based address for break address.
+pub const BREAK_BASE_RAW: usize = config::memory_layout::USER_HEAP_BASE_RAW + RUST_HEAP_SIZE;
 
 //==================================================================================================
 //  Allocator
@@ -153,30 +172,26 @@ impl OomHandler for NanvixOomHandler {
 ///
 /// Initializes the heap.
 ///
-/// # Parameters
-///
-/// - `pid` - ID of the current process.
-/// - `addr` - Start address of the heap.
-/// - `size` - Size of the heap.
-/// - `capacity` - Capacity of the heap.
-///
 /// # Returns
 ///
 /// Upon success, empty is returned. Upon failure, an error is returned instead
 ///
 #[allow(static_mut_refs)]
-pub unsafe fn init(
-    pid: ProcessIdentifier,
-    addr: VirtualAddress,
-    size: usize,
-    capacity: usize,
-) -> Result<(), Error> {
-    // Check if the heap was already initialized.
-    if HEAP.is_some() {
-        return Err(Error::new(ErrorCode::ResourceBusy, "heap already initialized"));
-    }
+pub fn init() -> Result<(), Error> {
+    let pid: ProcessIdentifier = kcall::pm::getpid()?;
 
-    HEAP = Some(NanvixOomHandler::new(pid, addr, size, capacity)?);
+    let addr: VirtualAddress = USER_HEAP_BASE;
+    let size: usize = PAGE_SIZE;
+    let capacity: usize = RUST_HEAP_SIZE;
+
+    unsafe {
+        // Check if the heap was already initialized.
+        if HEAP.is_some() {
+            return Err(Error::new(ErrorCode::ResourceBusy, "heap already initialized"));
+        }
+
+        HEAP = Some(NanvixOomHandler::new(pid, addr, size, capacity)?);
+    }
 
     Ok(())
 }
@@ -203,4 +218,9 @@ unsafe impl GlobalAlloc for Allocator {
             }
         }
     }
+}
+
+/// Cleanups the memory management runtime.
+pub fn cleanup() -> Result<(), Error> {
+    Ok(())
 }

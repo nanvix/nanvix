@@ -10,12 +10,12 @@ use crate::dlfcn::syscall::{
     dynlib::DynamicLibrary,
     DYNAMIC_LIBRARY_REGISTRY,
 };
-use ::nvx::{
-    mm::VirtualAddress,
-    sys::error::{
+use ::nvx::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    mm::VirtualAddress,
 };
 use ::spin::MutexGuard;
 

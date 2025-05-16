@@ -22,18 +22,20 @@ use ::alloc::{
     collections::btree_map::BTreeMap,
     sync::Arc,
 };
-use ::nvx::{
-    mm::VirtualAddress,
-    sys::error::{
+use ::nvx::sys::{
+    error::{
         Error,
         ErrorCode,
+    },
+    mm::{
+        Address,
+        VirtualAddress,
     },
 };
 use ::spin::{
     Mutex,
     MutexGuard,
 };
-use nvx::mm::Address;
 
 //==================================================================================================
 // dladdr()

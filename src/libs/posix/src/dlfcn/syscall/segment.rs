@@ -9,14 +9,6 @@ use ::core::ptr::{
     self,
 };
 use ::nvx::{
-    mm::{
-        self,
-        AccessPermission,
-        Address,
-        VirtualAddress,
-        PAGE_ALIGNMENT,
-        PAGE_SIZE,
-    },
     pm::{
         self,
         ProcessIdentifier,
@@ -24,6 +16,23 @@ use ::nvx::{
     sys::error::{
         Error,
         ErrorCode,
+    },
+};
+use nvx::{
+    mm::{
+        PAGE_ALIGNMENT,
+        PAGE_SIZE,
+    },
+    sys::{
+        kcall::mm::{
+            mmap,
+            munmap,
+        },
+        mm::{
+            AccessPermission,
+            Address,
+            VirtualAddress,
+        },
     },
 };
 
@@ -152,7 +161,7 @@ fn map_range(
 
         // Attempt to map page.
         let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
-        if let Err(error) = mm::mmap(pid, vaddr, AccessPermission::RDWR) {
+        if let Err(error) = mmap(pid, vaddr, AccessPermission::RDWR) {
             // Failed to map page, attempt to rollback.
 
             ::syslog::error!(
@@ -201,7 +210,7 @@ fn unmap_range(
 
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
-        if let Err(error) = mm::munmap(pid, vaddr) {
+        if let Err(error) = munmap(pid, vaddr) {
             ::syslog::error!(
                 "unmap_range(): failed to unmap page at {:X?}, skipping (error={:?})",
                 vaddr,

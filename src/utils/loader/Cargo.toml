@@ -10,7 +10,6 @@ authors.workspace = true
 homepage.workspace = true
 
 [dependencies]
-nvx = { workspace = true, features = ["std"] }
 anyhow = { workspace = true }
 log = { workspace = true }
 flexi_logger = { workspace = true }

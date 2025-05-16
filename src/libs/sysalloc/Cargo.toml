@@ -2,32 +2,25 @@
 # Licensed under the MIT License.
 
 [package]
-name = "nvx"
+name = "sysalloc"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Nanvix Runtime Library"
+description = "System Allocator"
 homepage.workspace = true
-
-[lib]
-crate-type = ["lib", "staticlib"]
 
 [dependencies]
 arch = { workspace = true }
+talc = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
 syslog = { workspace = true, default-features = true }
-sysalloc = { workspace = true, optional = true }
 sys = { workspace = true, features = ["kcall"] }
-static_assert = { workspace = true }
 
 [features]
-default = ["allocator", "staticlib"]
-allocator = ["dep:sysalloc"]
-std = ["syslog/std"]
-sysalloc = ["syslog/std"]
-staticlib = ["allocator"]
+default = []
+staticlib = []
 
 # Logging Features
 trace = ["syslog/trace"]
