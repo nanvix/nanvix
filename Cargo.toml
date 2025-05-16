@@ -27,6 +27,7 @@ members = [
         "src/libs/raw-array",
         "src/libs/slab",
         "src/libs/static_assert",
+        "src/libs/sysalloc",
         "src/libs/syscomm",
         "src/libs/syslog",
         "src/libs/sys",
@@ -85,6 +86,7 @@ signal-hook = "0.3.17"
 slab = { path = "src/libs/slab", default-features = false }
 spin = { version = "0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
+sysalloc = { path = "src/libs/sysalloc", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
 time = { path = "src/libs/time", default-features = false }

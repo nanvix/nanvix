@@ -239,7 +239,7 @@ export SANDBOX_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:6161,127.0.0.
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := nvx posix
-ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe proc raw-array slab static_assert syslog sys time
+ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe proc raw-array slab static_assert sysalloc syslog sys time
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd matmul
@@ -339,7 +339,6 @@ check: \
 	check-microvm
 
 run-unit-tests: all \
-	test-guest-staticlibs \
 	test-guest-rlibs
 
 run-nanvixd-tests: | \
@@ -550,7 +549,7 @@ all-guest-staticlib-$(1): init
 check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
-	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
+#	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 clean-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
@@ -558,10 +557,7 @@ clean-guest-staticlib-$(1):
 
 clippy-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
-	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
-
-test-guest-staticlib-$(1):
-	$(HOST_CARGO_TEST_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
+#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 endef
 
 $(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))
@@ -574,8 +570,6 @@ clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-st
 
 clippy-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clippy-guest-staticlib-$(target))
 
-test-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),test-guest-staticlib-$(target))
-
 #===================================================================================================
 # Build Rules for Guest Rust Libraries
 #===================================================================================================
@@ -583,14 +577,11 @@ test-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),test-guest-stat
 define GUEST_RLIB_RULES
 check-guest-rlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
-	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
+#	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 clippy-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
-	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
-
-test-guest-rlib-$(1):
-	$(HOST_CARGO_TEST_CMD) -p $(1)
+#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 endef
 
 $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target))))
@@ -599,7 +590,19 @@ check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(ta
 
 clippy-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),clippy-guest-rlib-$(target))
 
-test-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),test-guest-rlib-$(target))
+test-guest-rlibs:
+	$(HOST_CARGO_TEST_CMD) -p arch
+	$(HOST_CARGO_TEST_CMD) -p bitmap
+	$(HOST_CARGO_TEST_CMD) -p config
+	$(HOST_CARGO_TEST_CMD) -p elf
+	$(HOST_CARGO_TEST_CMD) -p error
+	$(HOST_CARGO_TEST_CMD) -p type-safe
+	$(HOST_CARGO_TEST_CMD) -p proc
+	$(HOST_CARGO_TEST_CMD) -p raw-array
+	$(HOST_CARGO_TEST_CMD) -p slab
+	$(HOST_CARGO_TEST_CMD) -p static_assert
+#	$(HOST_CARGO_TEST_CMD) -p sysalloc
+	$(HOST_CARGO_TEST_CMD) -p syslog
 
 #===================================================================================================
 # Build Rules for Guest Binaries

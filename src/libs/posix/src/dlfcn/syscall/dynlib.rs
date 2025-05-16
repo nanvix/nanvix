@@ -44,17 +44,17 @@ use ::goblin::elf::{
     SectionHeader,
 };
 use ::nvx::{
-    mm::{
-        self,
-        Address,
-        VirtualAddress,
-        PAGE_ALIGNMENT,
-    },
+    mm::PAGE_ALIGNMENT,
     sys::{
         config::memory_layout::USER_LIBS_BASE,
         error::{
             Error,
             ErrorCode,
+        },
+        mm::{
+            self,
+            Address,
+            VirtualAddress,
         },
     },
 };

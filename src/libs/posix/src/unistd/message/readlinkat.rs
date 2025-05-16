@@ -25,6 +25,7 @@ use ::core::{
 };
 use ::nvx::{
     ipc::Message,
+    mm::PAGE_SIZE,
     pm::ProcessIdentifier,
     sys::error::{
         Error,
@@ -239,7 +240,7 @@ impl ReadLinkAtResponse {
 
     /// Maximum size of buffer.
     // FIXME: this should be SSIZE_MAX.
-    pub const BUFFER_SIZE_MAX: usize = nvx::mm::PAGE_SIZE / 2;
+    pub const BUFFER_SIZE_MAX: usize = PAGE_SIZE / 2;
 
     /// Maximum size of the message.
     pub const MAX_SIZE: usize = Self::SIZE_OF_BUFFER_LENGTH + Self::BUFFER_SIZE_MAX;

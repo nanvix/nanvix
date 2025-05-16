@@ -5,16 +5,16 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{
-    mm::{
+use ::nvx::pm::{
+    Capability,
+    ProcessIdentifier,
+};
+use nvx::{
+    mm::PAGE_SIZE,
+    sys::mm::{
         AccessPermission,
         Address,
         VirtualAddress,
-        PAGE_SIZE,
-    },
-    pm::{
-        Capability,
-        ProcessIdentifier,
     },
 };
 

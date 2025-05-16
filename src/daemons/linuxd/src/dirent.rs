@@ -126,8 +126,8 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
         -1 => {
             let errno = unsafe { *libc::__errno_location() };
             error!("libc::getdents(): errno={}", { errno });
-            let error: ErrorCode = ErrorCode::try_from(errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            let error: ErrorCode =
+                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
             return vec![crate::build_error(pid, error)];
         },
         // Success.

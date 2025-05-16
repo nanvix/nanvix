@@ -29,20 +29,21 @@ num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
 time = { workspace = true }
+sysalloc = { workspace = true, optional = true }
 syslog = { workspace = true }
 type-safe = { workspace = true }
 
 [features]
 default = ["syscall", "allocator", "staticlib"]
-allocator = ["nvx/allocator"]
+allocator = ["dep:sysalloc", "nvx/allocator"]
 syscall = []
 std = ["nvx/std"]
-staticlib = ["nvx/staticlib"]
+staticlib = ["nvx/staticlib", "sysalloc/staticlib"]
 
 # Logging
-trace = ["nvx/trace"]
-debug = ["nvx/debug"]
-info = ["nvx/info"]
-warn = ["nvx/warn"]
-error = ["nvx/error"]
-panic = ["nvx/panic"]
+trace = ["nvx/trace", "syslog/trace"]
+debug = ["nvx/debug", "syslog/debug"]
+info = ["nvx/info", "syslog/info"]
+warn = ["nvx/warn", "syslog/warn"]
+error = ["nvx/error", "syslog/error"]
+panic = ["nvx/panic", "syslog/panic"]
