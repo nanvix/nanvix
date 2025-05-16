@@ -190,7 +190,7 @@ impl ProcessManagerInner {
             enable_interrupts
         );
 
-        extern "C" {
+        unsafe extern "C" {
             pub fn __leave_kernel_to_user_mode();
         }
 
@@ -420,7 +420,7 @@ impl ProcessManagerInner {
         args: &str,
         env: &str,
     ) -> Result<ProcessIdentifier, Error> {
-        extern "C" {
+        unsafe extern "C" {
             pub fn __leave_kernel_to_user_mode();
         }
 

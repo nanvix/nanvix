@@ -41,7 +41,7 @@ use crate::{
 /// - `buffer` points to a valid `tms` structure.
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn times(buffer: *mut tms) -> clock_t {
     ::syslog::trace!("times(): {:?}", buffer);
 

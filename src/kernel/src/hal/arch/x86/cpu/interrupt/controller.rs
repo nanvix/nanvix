@@ -47,7 +47,7 @@ pub const INTERRUPT_VECTOR_LENGTH: usize = 256;
 ///
 pub type InterruptHandler = unsafe fn(InterruptNumber);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 static mut INTERRUPT_VECTOR: [Option<InterruptHandler>; INTERRUPT_VECTOR_LENGTH] =
     [None; INTERRUPT_VECTOR_LENGTH];
 

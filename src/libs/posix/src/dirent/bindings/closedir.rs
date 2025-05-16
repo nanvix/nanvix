@@ -21,7 +21,7 @@ use nvx::sys::error::ErrorCode;
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn closedir(dirp: *mut DirectoryStream) -> c_int {
     // Check if directory stream is invalid.
     if dirp.is_null() {

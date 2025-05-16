@@ -210,7 +210,7 @@ fn spawn_servers(
     count
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn kmain(kargs: &KernelArguments) {
     info!("initializing the kernel...");
 
@@ -399,7 +399,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     kernel_magic_string(status);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "smp")]
 pub extern "C" fn do_ap_start(coreid: u32) {
     // Load address of the kernel stack from the red zone.
@@ -429,7 +429,7 @@ pub extern "C" fn do_ap_start(coreid: u32) {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(not(feature = "smp"))]
 pub extern "C" fn do_ap_start(_coreid: u32) {
     unreachable!("application cores are not supported");

@@ -28,7 +28,7 @@ mod bindings {
     use ::nvx::sys::error::ErrorCode;
 
     #[allow(clippy::missing_safety_doc)]
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn getrlimit(_resource: c_int, _rlim: *mut rlimit) -> c_int {
         // TODO: https://github.com/nanvix/nanvix/issues/459
         ::syslog::error!("getrlimit(): not implemented");
@@ -39,7 +39,7 @@ mod bindings {
     }
 
     #[allow(clippy::missing_safety_doc)]
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn setrlimit(_resource: c_int, _rlim: *const rlimit) -> c_int {
         // TODO: https://github.com/nanvix/nanvix/issues/469
         ::syslog::error!("setrlimit(): not implemented");

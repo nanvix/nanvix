@@ -16,7 +16,7 @@ mod bindings {
     use crate::errno::__errno_location;
     use ::nvx::sys::error::ErrorCode;
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn mmap(
         _addr: *mut u8,
         _length: usize,
@@ -33,7 +33,7 @@ mod bindings {
     }
 
     /// Dummy implementation of `munmap`.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn munmap(_addr: *mut u8, _length: usize) -> isize {
         ::syslog::error!("munmap(): not implemented");
         unsafe {

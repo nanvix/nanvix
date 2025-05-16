@@ -24,7 +24,7 @@ use ::nvx::sys::error::ErrorCode;
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
     // Convert C string to Rust string.
     let dirname: &str = match ffi::CStr::from_ptr(dirname).to_str() {

@@ -80,7 +80,7 @@ core::arch::global_asm!(
     "#
 );
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "none")]
 pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     syslog::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
@@ -182,7 +182,7 @@ unsafe fn parse_envp(envp: *mut i8) -> ::alloc::vec::Vec<*mut i8> {
 ///
 #[cfg(all(target_os = "none", not(feature = "staticlib")))]
 fn rust_trampoline(_argp: *mut i8) -> i32 {
-    extern "Rust" {
+    unsafe extern "Rust" {
         fn main() -> Result<(), ::sys::error::Error>;
     }
 
@@ -198,14 +198,14 @@ fn rust_trampoline(_argp: *mut i8) -> i32 {
 ///
 #[cfg(all(target_os = "none", feature = "staticlib"))]
 fn c_trampoline(argp: *mut i8, envp: *mut i8) -> i32 {
-    extern "C" {
+    unsafe extern "C" {
         fn main(argc: i32, argv: *const *const u8) -> i32;
         fn _init();
         fn _fini();
     }
 
     #[allow(non_upper_case_globals)]
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     static mut environ: *mut *mut i8 = core::ptr::null_mut();
 
     // Build arguments vector.
@@ -241,7 +241,7 @@ fn cleanup() {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 #[cfg(all(target_os = "none", not(feature = "staticlib")))]
 pub unsafe extern "C" fn memset(ptr: *mut u8, value: i32, num: usize) -> *mut u8 {
@@ -253,7 +253,7 @@ pub unsafe extern "C" fn memset(ptr: *mut u8, value: i32, num: usize) -> *mut u8
     ptr
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 #[cfg(all(target_os = "none", not(feature = "staticlib")))]
 pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, num: usize) -> *mut u8 {
@@ -265,7 +265,7 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, num: usize) -> *m
     dest
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 #[cfg(all(target_os = "none", not(feature = "staticlib")))]
 pub unsafe extern "C" fn memcmp(ptr1: *const u8, ptr2: *const u8, num: usize) -> i32 {
@@ -279,7 +279,7 @@ pub unsafe extern "C" fn memcmp(ptr1: *const u8, ptr2: *const u8, num: usize) ->
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 #[cfg(all(target_os = "none", not(feature = "staticlib")))]
 pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, num: usize) -> *mut u8 {
@@ -295,7 +295,7 @@ pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, num: usize) -> *
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 #[cfg(all(target_os = "none", not(feature = "staticlib")))]
 pub unsafe extern "C" fn strlen(s: *const u8) -> usize {

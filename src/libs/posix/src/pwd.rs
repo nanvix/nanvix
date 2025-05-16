@@ -28,7 +28,7 @@ mod bindings {
     use ::nvx::sys::error::ErrorCode;
 
     #[allow(clippy::missing_safety_doc)]
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn getpwuid(_uid: c_int) -> *mut passwd {
         ::syslog::error!("getpwuid(): not implemented");
         unsafe {

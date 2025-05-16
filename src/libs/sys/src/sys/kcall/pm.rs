@@ -134,7 +134,7 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
     "1: jmp 1b"
 ));
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn _start_thread(func: extern "C" fn(usize) -> usize, arg: usize) -> ! {
     let status = func(arg);
     let _ = exit_thread(status);
@@ -145,7 +145,7 @@ pub fn create_thread(
     user_fn: extern "C" fn(usize) -> usize,
     arg: usize,
 ) -> Result<ThreadIdentifier, Error> {
-    extern "C" {
+    unsafe extern "C" {
         fn _do_start_thread() -> !;
     }
 

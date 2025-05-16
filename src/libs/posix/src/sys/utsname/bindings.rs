@@ -41,7 +41,7 @@ use nvx::sys::error::ErrorCode;
 ///
 /// - The `name` points to a valid [`utsname`] structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn uname(name: *mut utsname) -> c_int {
     // Check if name is not valid.
     if name.is_null() {

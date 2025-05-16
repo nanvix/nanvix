@@ -50,7 +50,7 @@ use ::sys::{
 /// - `arg4`: Fifth kernel call argument.
 /// - `number`: Number of the kernel call.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> i64 {
     let pid: ProcessIdentifier = match unsafe { ProcessManager::get() }.get_pid() {
         Ok(pid) => pid,
