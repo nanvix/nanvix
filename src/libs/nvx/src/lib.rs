@@ -22,7 +22,7 @@ mod panic;
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "allocator")]
+#[cfg(all(target_os = "none", feature = "staticlib"))]
 extern crate alloc;
 
 #[cfg(all(target_os = "none", feature = "staticlib"))]
@@ -40,6 +40,9 @@ pub use ::sys::kcall::arch;
 #[cfg(target_os = "none")]
 pub mod debug;
 
+/// Memory management kernel calls.
+pub mod mm;
+
 /// Event handling kernel calls.
 pub mod event;
 
@@ -48,9 +51,6 @@ pub mod ipc;
 
 /// System configuration.
 pub use ::sys;
-
-/// Memory management kernel calls.
-pub mod mm;
 
 /// Process management kernel calls.
 pub mod pm;
@@ -118,8 +118,7 @@ pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
 /// - A vector of pointers to null-terminated strings.
 ///
 #[cfg(all(target_os = "none", feature = "staticlib"))]
-unsafe fn build_string_table(string: *mut i8) -> ::alloc::vec::Vec<*mut i8> {
-    use alloc::vec::Vec;
+unsafe fn build_string_table(string: *mut i8) -> Vec<*mut i8> {
     use core::ptr;
 
     let mut current = string;
@@ -162,7 +161,7 @@ unsafe fn build_string_table(string: *mut i8) -> ::alloc::vec::Vec<*mut i8> {
 /// Wrapper for parsing `argp`.
 ///
 #[cfg(all(target_os = "none", feature = "staticlib"))]
-unsafe fn parse_argp(argp: *mut i8) -> ::alloc::vec::Vec<*const i8> {
+unsafe fn parse_argp(argp: *mut i8) -> Vec<*const i8> {
     build_string_table(argp)
         .into_iter()
         .map(|ptr| ptr as *const i8)
@@ -173,7 +172,7 @@ unsafe fn parse_argp(argp: *mut i8) -> ::alloc::vec::Vec<*const i8> {
 /// Wrapper for parsing `envp`.
 ///
 #[cfg(all(target_os = "none", feature = "staticlib"))]
-unsafe fn parse_envp(envp: *mut i8) -> ::alloc::vec::Vec<*mut i8> {
+unsafe fn parse_envp(envp: *mut i8) -> Vec<*mut i8> {
     build_string_table(envp)
 }
 
@@ -228,7 +227,8 @@ fn c_trampoline(argp: *mut i8, envp: *mut i8) -> i32 {
 /// Initializes system runtime.
 #[cfg(target_os = "none")]
 fn init() {
-    if let Err(e) = mm::init() {
+    #[cfg(feature = "allocator")]
+    if let Err(e) = sysalloc::init() {
         panic!("failed to initialize memory manager: {:?}", e);
     }
 }
@@ -236,7 +236,8 @@ fn init() {
 /// Cleans up system runtime.
 #[cfg(target_os = "none")]
 fn cleanup() {
-    if let Err(e) = mm::cleanup() {
+    #[cfg(feature = "allocator")]
+    if let Err(e) = sysalloc::cleanup() {
         panic!("failed to cleanup memory manager: {:?}", e);
     }
 }
