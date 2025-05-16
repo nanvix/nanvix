@@ -20,4 +20,3 @@ hyper = { workspace = true, features = ["full"] }
 tokio = { workspace = true, features = ["full"] }
 http-body-util = { workspace = true }
 hyper-util = { workspace = true, features = ["full"] }
-nvx = { workspace = true, features = ["std"] }

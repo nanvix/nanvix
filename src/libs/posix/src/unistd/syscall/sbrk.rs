@@ -6,17 +6,21 @@
 //==================================================================================================
 
 use ::nvx::{
-    mm,
-    mm::{
-        VirtualAddress,
-        PAGE_ALIGNMENT,
-    },
     pm,
     pm::ProcessIdentifier,
     sys::error::{
         Error,
         ErrorCode,
     },
+};
+use ::sysalloc::{
+    map_range,
+    unmap_range,
+    PAGE_ALIGNMENT,
+};
+use nvx::sys::mm::{
+    align_up,
+    VirtualAddress,
 };
 
 //==================================================================================================
@@ -43,7 +47,7 @@ use ::nvx::{
 ///
 pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
     ::syslog::trace!("sbrk(): size = {}", size);
-    static mut END: *mut u8 = mm::BREAK_BASE_RAW as *mut u8;
+    static mut END: *mut u8 = sysalloc::BREAK_BASE_RAW as *mut u8;
 
     // Check if querying the current program break.
     if size == 0 {
@@ -55,21 +59,21 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
         let new_end: *mut u8 = END.offset(size);
 
         // Align the new end.
-        let new_end: *mut u8 = mm::align_up(new_end as usize, PAGE_ALIGNMENT) as *mut u8;
+        let new_end: *mut u8 = align_up(new_end as usize, PAGE_ALIGNMENT) as *mut u8;
 
         // Check wether we should allocate or free memory.
         if size > 0 {
             // Allocate memory.
 
             // Check if we would exceed the heap size.
-            if new_end >= (mm::BREAK_BASE_RAW + mm::C_HEAP_SIZE) as *mut u8 {
+            if new_end >= (sysalloc::BREAK_BASE_RAW + sysalloc::C_HEAP_SIZE) as *mut u8 {
                 return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
             }
 
             let pid: ProcessIdentifier = pm::getpid()?;
 
             // Allocate memory.
-            nvx::mm::heap::map_range(
+            map_range(
                 pid,
                 VirtualAddress::from_raw_value(old_end as usize),
                 VirtualAddress::from_raw_value(new_end as usize),
@@ -78,14 +82,14 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
             // Free memory.
 
             // Check if we would free memory below the heap base address.
-            if new_end < mm::BREAK_BASE_RAW as *mut u8 {
+            if new_end < sysalloc::BREAK_BASE_RAW as *mut u8 {
                 return Err(Error::new(ErrorCode::InvalidArgument, "invalid size"));
             }
 
             let pid: ProcessIdentifier = pm::getpid()?;
 
             // Free memory.
-            nvx::mm::heap::unmap_range(
+            unmap_range(
                 pid,
                 VirtualAddress::from_raw_value(new_end as usize),
                 VirtualAddress::from_raw_value(old_end as usize),
