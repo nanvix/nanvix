@@ -81,7 +81,7 @@ serde = { version = "1.0.219", default-features = false }
 serde_json = { version = "1.0.140", default-features = false, features = [
         "alloc",
 ] }
-signal-hook = "0.3.17"
+signal-hook = "0.3.18"
 slab = { path = "src/libs/slab", default-features = false }
 spin = { version = "0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
