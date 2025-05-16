@@ -9,7 +9,7 @@ use crate::ffi::c_int;
 
 cfg_if::cfg_if! {
     if #[cfg(all(feature = "syscall", feature = "staticlib"))] {
-        extern "C" {
+        unsafe extern "C" {
             pub fn __errno() -> *mut c_int;
         }
 

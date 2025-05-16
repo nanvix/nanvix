@@ -36,7 +36,7 @@ use ::nvx::sys::error::ErrorCode;
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn accept(
     sockfd: c_int,
     sockaddr: *mut sockaddr,
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn accept(
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: socklen_t) -> c_int {
     ::syslog::trace!("bind(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
 
@@ -133,7 +133,7 @@ pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: soc
 ///
 /// This function is unsafe because it may deference raw pointers.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn connect(
     sockfd: c_int,
     sockaddr: *const sockaddr,
@@ -168,7 +168,7 @@ pub unsafe extern "C" fn connect(
 ///
 /// This function is unsafe because it may deference raw pointers.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn getpeername(
     sockfd: c_int,
     sockaddr: *mut sockaddr,
@@ -233,7 +233,7 @@ pub unsafe extern "C" fn getpeername(
 ///
 /// This function is unsafe because it may deference raw pointers.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn getsockname(
     sockfd: c_int,
     sockaddr: *mut sockaddr,
@@ -274,7 +274,7 @@ pub unsafe extern "C" fn getsockname(
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
     ::syslog::trace!("listen(): sockfd={:?}, backlog={:?}", sockfd, backlog);
     match crate::sys::socket::listen(sockfd, backlog) {
@@ -288,7 +288,7 @@ pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn recv(
     sockfd: c_int,
     buf: *mut c_void,
@@ -330,7 +330,7 @@ pub unsafe extern "C" fn recv(
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn send(
     sockfd: c_int,
     buf: *const c_void,
@@ -372,7 +372,7 @@ pub unsafe extern "C" fn send(
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c_int {
     ::syslog::trace!("socket(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
     // Attempt to convert socket address family.
@@ -416,7 +416,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
     ::syslog::trace!("shutdown(): sockfd={:?}, how={:?}", sockfd, how);
 
@@ -461,7 +461,7 @@ pub extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
 ///
 /// This function is unsafe because it may deference raw pointers.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn socketpair(
     domain: c_int,
     typ: c_int,

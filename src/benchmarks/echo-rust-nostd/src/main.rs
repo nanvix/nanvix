@@ -24,7 +24,7 @@ const MAX_REQUEST_SIZE: usize = 4096;
 // Standalone Functions
 //==================================================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
     let stdin: i32 = unistd::STDIN_FILENO;
     let stdout: i32 = unistd::STDOUT_FILENO;

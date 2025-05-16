@@ -50,7 +50,7 @@ use ::nvx::sys::error::ErrorCode;
 /// It is safe to call this function if the following conditions are met:
 /// - `path` points to a valid null-terminated C string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
     ::syslog::trace!("chmod(): path={:?}, mode={}", path, mode);
     fchmodat(fcntl::AT_FDCWD, path, mode, 0)
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
 /// It is safe to call this function if the following conditions are met:
 /// - No other thread calls this function at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
     ::syslog::trace!("fchmod(): fd={}, mode={}", fd, mode);
 
@@ -117,7 +117,7 @@ pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
 /// It is safe to call this function if the following conditions are met:
 /// - `path` points to a valid null-terminated C string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fchmodat(
     dirfd: c_int,
     path: *const c_char,
@@ -171,7 +171,7 @@ pub unsafe extern "C" fn fchmodat(
 ///
 /// This function has undefined behavior if buf points to an invalid memory location.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
     ::syslog::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
     match crate::sys::stat::fstat(fd, &mut *buf) {
@@ -209,7 +209,7 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
 /// - `times` points to an array of `timespec` structures with a length of 2.
 /// - This function is not called by multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
     ::syslog::trace!("futimens(): fd={}, times={:p}", fd, times);
 
@@ -261,7 +261,7 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
 /// - [`crate::unistd::lchmod()`]
 ///
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
     ::syslog::trace!("lchmod(): path={:?}, mode={}", path, mode);
     fchmodat(fcntl::AT_FDCWD, path, mode, fcntl::AT_SYMLINK_NOFOLLOW)
@@ -290,7 +290,7 @@ pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
 ///
 /// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
@@ -342,7 +342,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
 ///
 /// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
@@ -393,7 +393,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
 /// It is safe to call this function if the following conditions are met:
 /// - `pathname` points to a valid null-terminated C string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
     ::syslog::trace!("mkdir(): pathname={:?}, mode={}", pathname, mode);
     mkdirat(fcntl::AT_FDCWD, pathname, mode)
@@ -422,7 +422,7 @@ pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
 /// It is safe to call this function if the following conditions are met:
 /// - `pathname` points to a valid null-terminated C string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int {
     ::syslog::trace!("mkdirat(): dirfd={}, pathname={:?}, mode={}", dirfd, pathname, mode);
 
@@ -454,7 +454,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/454
     ::syslog::error!("truncate(): not implemented");
@@ -487,7 +487,7 @@ pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
 /// - `filename` points to a valid null-terminated C string.
 /// - `times` points to a valid array of length 2 of `timespec` structures.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn utimensat(
     dirfd: c_int,
     filename: *const c_char,

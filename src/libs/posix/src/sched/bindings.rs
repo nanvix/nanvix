@@ -28,7 +28,7 @@ use crate::{
 ///
 /// - [`crate::sched::sched_yield()`]
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sched_yield() -> c_int {
     match crate::sched::sched_yield() {
         Ok(_) => 0,

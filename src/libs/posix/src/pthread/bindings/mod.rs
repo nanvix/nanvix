@@ -61,7 +61,7 @@ pub mod tda;
 ///
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut pthread_attr_t) -> c_int {
     ::syslog::trace!("pthread_attr_destroy(): attr={:?}", attr);
 
@@ -103,7 +103,7 @@ pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut pthread_attr_t) -> c_in
 /// - `attr` points to a valid `pthread_attr_t` structure.
 /// - `detachstate` points to a valid `c_int` variable.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_getdetachstate(
     attr: *const pthread_attr_t,
     detachstate: *mut c_int,
@@ -155,7 +155,7 @@ pub unsafe extern "C" fn pthread_attr_getdetachstate(
 /// - `attr` points to a valid `pthread_attr_t` structure.
 /// - `guardsize` points to a valid `size_t` variable.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_getguardsize(
     attr: *const pthread_attr_t,
     guardsize: *mut size_t,
@@ -207,7 +207,7 @@ pub unsafe extern "C" fn pthread_attr_getguardsize(
 /// - `attr` points to a valid `pthread_attr_t` structure.
 /// - `param` points to a valid `sched_param` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_getschedparam(
     attr: *const pthread_attr_t,
     param: *mut sched_param,
@@ -259,7 +259,7 @@ pub unsafe extern "C" fn pthread_attr_getschedparam(
 /// - `attr` points to a valid `pthread_attr_t` structure.
 /// - `stackaddr` points to a valid `*mut c_void` variable.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_getstackaddr(
     attr: *const pthread_attr_t,
     stackaddr: *mut *mut c_void,
@@ -311,7 +311,7 @@ pub unsafe extern "C" fn pthread_attr_getstackaddr(
 /// - `attr` points to a valid `pthread_attr_t` structure.
 /// - `stacksize` points to a valid `size_t` variable.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_getstacksize(
     attr: *const pthread_attr_t,
     stacksize: *mut size_t,
@@ -365,7 +365,7 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
 /// - `stackaddr` points to a valid `c_void` pointer.
 /// - `stacksize` points to a valid `size_t` variable.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_getstack(
     attr: *const pthread_attr_t,
     stackaddr: *mut *mut c_void,
@@ -428,7 +428,7 @@ pub unsafe extern "C" fn pthread_attr_getstack(
 ///
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int {
     ::syslog::trace!("pthread_attr_init(): attr={:?}", attr);
 
@@ -473,7 +473,7 @@ pub unsafe extern "C" fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int {
 /// - If `attr` is not null, it points to a valid `pthread_attr_t` structure.
 /// - `start_routine` is a valid function pointer.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_create(
     thread: *mut pthread_t,
     attr: *const pthread_attr_t,
@@ -518,7 +518,7 @@ pub unsafe extern "C" fn pthread_create(
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn pthread_detach(_thread: pthread_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/502
     ::syslog::error!("pthread_detach(): not implemented");
@@ -538,7 +538,7 @@ pub extern "C" fn pthread_detach(_thread: pthread_t) -> c_int {
 ///
 /// - `retval`: Return value of the thread.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
     let error: Error = syscall::pthread_exit(retval as usize).unwrap_err();
     panic!("pthread_exit(): {:?}", error);
@@ -563,7 +563,7 @@ pub extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
 /// On success, a non-zero value is returned if the two thread identifiers are equal, and zero otherwise.
 /// If either t1 or t2 is not a valid thread ID and is not equal to `PTHREAD_NULL`, the behavior is undefined.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn pthread_equal(thread1: pthread_t, thread2: pthread_t) -> c_int {
     ::syslog::trace!("pthread_equal(): thread1={:?}, thread2={:?}", thread1, thread2);
 
@@ -600,7 +600,7 @@ pub extern "C" fn pthread_equal(thread1: pthread_t, thread2: pthread_t) -> c_int
 ///
 /// - If `retval_ptr` is not null, it points to a valid pointer.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_join(thread: pthread_t, retval_ptr: *mut *mut c_void) -> c_int {
     ::syslog::trace!(
         "pthread_join(): _thread={:?}, retval_ptr={:?}, *retval={:?}",
@@ -634,7 +634,7 @@ pub unsafe extern "C" fn pthread_join(thread: pthread_t, retval_ptr: *mut *mut c
 ///
 /// The thread identifier of the calling thread.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn pthread_self() -> pthread_t {
     syscall::pthread_self()
 }
@@ -665,7 +665,7 @@ pub extern "C" fn pthread_self() -> pthread_t {
 ///
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_setdetachstate(
     attr: *mut pthread_attr_t,
     detachstate: c_int,
@@ -709,7 +709,7 @@ pub unsafe extern "C" fn pthread_attr_setdetachstate(
 ///
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_setguardsize(
     attr: *mut pthread_attr_t,
     guardsize: size_t,
@@ -754,7 +754,7 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
 ///
 /// - `param` points to a valid `sched_param` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_setschedparam(
     thread: pthread_t,
     policy: c_int,
@@ -805,7 +805,7 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
 ///
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_setstack(
     attr: *mut pthread_attr_t,
     stackaddr: *mut c_void,
@@ -855,7 +855,7 @@ pub unsafe extern "C" fn pthread_attr_setstack(
 ///
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_setstackaddr(
     attr: *mut pthread_attr_t,
     stackaddr: *mut c_void,
@@ -899,7 +899,7 @@ pub unsafe extern "C" fn pthread_attr_setstackaddr(
 ///
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_setstacksize(
     attr: *mut pthread_attr_t,
     stacksize: size_t,
@@ -943,7 +943,7 @@ pub unsafe extern "C" fn pthread_attr_setstacksize(
 ///
 /// - `oldstate` points to a valid `c_int` variable.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_setcancelstate(_state: c_int, oldstate: *mut c_int) -> c_int {
     // Check if `oldstate` is not valid.
     if oldstate.is_null() {
@@ -982,7 +982,7 @@ pub unsafe extern "C" fn pthread_setcancelstate(_state: c_int, oldstate: *mut c_
 ///
 /// - `oldtype` points to a valid `c_int` variable.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_setcanceltype(_type_: c_int, oldtype: *mut c_int) -> c_int {
     // Check if `oldtype` is not valid.
     if oldtype.is_null() {

@@ -151,7 +151,7 @@ impl Drop for ExceptionController {
 /// - It dereferences raw pointers.
 /// - It accesses global variables.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_exception(
     excp: *const ExceptionInformation,
     ctx: *const ContextInformation,

@@ -45,7 +45,7 @@ use ::nvx::sys::error::ErrorCode;
 /// - `filename` points to a valid null-terminated C string.
 /// - `times` points to a valid array of length 2 of `timeval` structures.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) -> c_int {
     ::syslog::trace!("utimes(): filename={:?}, times={:?}", filename, times);
 

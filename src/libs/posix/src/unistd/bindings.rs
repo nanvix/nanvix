@@ -75,7 +75,7 @@ use ::nvx::sys::error::ErrorCode;
 /// It is safe to use this function if the following conditions are met:
 /// - `path` points to a valid null-terminated string.
 /// - This function is not called from multiple threads at the same time.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
     ::syslog::trace!("access(): path={:?}, mode={:?}", path, mode);
     faccessat(fcntl::AT_FDCWD, path, mode, 0)
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
 /// - `path` points to a valid null-terminated string.
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
     ::syslog::error!("chdir(): path={:?}", path);
 
@@ -153,14 +153,14 @@ pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
 /// It is safe to use this function if the following conditions are met:
 /// - `path` points to a valid null-terminated string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
     ::syslog::trace!("chown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
     fchownat(fcntl::AT_FDCWD, path, owner, group, 0)
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn chroot(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/517
     ::syslog::error!("chroot(): not implemented");
@@ -170,7 +170,7 @@ pub extern "C" fn chroot(_path: *const c_char) -> c_int {
     -1
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn close(fd: c_int) -> c_int {
     ::syslog::trace!("close(): fd = {}", fd);
     match crate::unistd::close(fd) {
@@ -185,7 +185,7 @@ pub extern "C" fn close(fd: c_int) -> c_int {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn dup2(_oldfd: c_int, _newfd: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/354
     ::syslog::error!("dup2(): not implemented");
@@ -195,7 +195,7 @@ pub extern "C" fn dup2(_oldfd: c_int, _newfd: c_int) -> c_int {
     -1
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn execve(
     _path: *const c_char,
     _argv: *const *const c_char,
@@ -209,7 +209,7 @@ pub extern "C" fn execve(
     -1
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn _exit(status: c_int) -> ! {
     let Err(e) = nvx::sys::kcall::pm::exit(status);
     panic!("failed to terminate process (error={:?})", e);
@@ -242,7 +242,7 @@ pub extern "C" fn _exit(status: c_int) -> ! {
 /// - `path` points to a valid null-terminated string.
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn faccessat(
     dirfd: c_int,
     path: *const c_char,
@@ -292,7 +292,7 @@ pub unsafe extern "C" fn faccessat(
 /// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
 /// indicate the error.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn fchdir(fd: c_int) -> c_int {
     ::syslog::trace!("fchdir(): fd = {}", fd);
 
@@ -332,7 +332,7 @@ pub extern "C" fn fchdir(fd: c_int) -> c_int {
 /// It is safe to use this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int {
     ::syslog::trace!("fchown(): fd={}, owner={}, group={}", fd, owner, group);
 
@@ -378,7 +378,7 @@ pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int 
 /// It is safe to use this function if the following conditions are met:
 /// - `path` points to a valid null-terminated string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fchownat(
     dirfd: c_int,
     path: *const c_char,
@@ -454,7 +454,7 @@ pub unsafe extern "C" fn fchownat(
 /// It is safe to use this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
     ::syslog::trace!("fdatasync(): fd={}", fd);
 
@@ -469,7 +469,7 @@ pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn fork() -> pid_t {
     // TODO: https://github.com/nanvix/nanvix/issues/321
     ::syslog::error!("fork(): not implemented");
@@ -497,7 +497,7 @@ pub extern "C" fn fork() -> pid_t {
 ///
 /// - [`crate::unistd::fsync()`]
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn fsync(fd: c_int) -> c_int {
     match crate::unistd::fsync(fd) {
         Ok(_) => 0,
@@ -532,7 +532,7 @@ pub extern "C" fn fsync(fd: c_int) -> c_int {
 /// It is safe to use this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
     ::syslog::trace!("ftruncate(): fd={}, length={}", fd, length);
 
@@ -547,7 +547,7 @@ pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
     ::syslog::trace!("getcwd(): buf = {:?}, size = {}", buf, size);
 
@@ -602,7 +602,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
 ///
 /// This function panics if it fails.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn getegid() -> gid_t {
     ::syslog::trace!("getegid()");
 
@@ -636,7 +636,7 @@ pub unsafe extern "C" fn getegid() -> gid_t {
 ///
 /// This function does not panic but returns a fallback value on failure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn geteuid() -> uid_t {
     ::syslog::trace!("geteuid()");
 
@@ -670,7 +670,7 @@ pub unsafe extern "C" fn geteuid() -> uid_t {
 ///
 /// This function does not panic but returns a fallback value on failure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn getgid() -> gid_t {
     ::syslog::trace!("getgid()");
 
@@ -695,7 +695,7 @@ pub unsafe extern "C" fn getgid() -> gid_t {
 ///
 /// The function has undefined behavior if the `path` points to an invalid memory location.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_int {
     ::syslog::trace!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
 
@@ -708,7 +708,7 @@ pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn getpid() -> pid_t {
     match crate::unistd::getpid() {
         Ok(pid) => pid.into(),
@@ -735,7 +735,7 @@ pub extern "C" fn getpid() -> pid_t {
 ///
 /// This function does not panic but returns a fallback value on failure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn getuid() -> uid_t {
     ::syslog::trace!("getuid()");
 
@@ -777,7 +777,7 @@ pub unsafe extern "C" fn getuid() -> uid_t {
 /// - `name` points to a valid null-terminated string.
 /// - `namelen` is a valid size.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_int {
     ::syslog::trace!("gethostname(): name={:?}, namelen={}", name, namelen);
 
@@ -864,7 +864,7 @@ pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_in
 /// It is safe to use this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
     ::syslog::trace!("isatty(): fd={}", fd);
 
@@ -906,7 +906,7 @@ pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
 /// It is safe to use this function if the following conditions are met:
 /// - `path` points to a valid null-terminated string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
     ::syslog::trace!("lchown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
     fchownat(fcntl::AT_FDCWD, path, owner, group, fcntl::AT_SYMLINK_NOFOLLOW)
@@ -935,7 +935,7 @@ pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t)
 /// - `oldpath` points to a valid null-terminated string.
 /// - `newpath` points to a valid null-terminated string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
     ::syslog::trace!("link(): oldpath={:?}, newpath={:?}", oldpath, newpath);
     linkat(fcntl::AT_FDCWD, oldpath, fcntl::AT_FDCWD, newpath, 0)
@@ -967,7 +967,7 @@ pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) ->
 /// - `oldpath` points to a valid null-terminated string.
 /// - `newpath` points to a valid null-terminated string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn linkat(
     olddirfd: c_int,
     oldpath: *const c_char,
@@ -1047,7 +1047,7 @@ pub unsafe extern "C" fn linkat(
 /// It is safe to use this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
     ::syslog::trace!("lseek(): fd={:?}, offset={:?}, whence={:?}", fd, offset, whence);
 
@@ -1084,7 +1084,7 @@ pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
 /// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
 /// indicate the error.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
     ::syslog::trace!("pipe(): fds = {:?}", fds);
 
@@ -1131,7 +1131,7 @@ pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
 /// - `buffer` points to a buffer of `count` bytes.
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pread(
     fd: c_int,
     buffer: *mut c_void,
@@ -1212,7 +1212,7 @@ pub unsafe extern "C" fn pread(
 /// - `buffer` points to a valid memory location.
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pwrite(
     fd: c_int,
     buffer: *const c_void,
@@ -1300,7 +1300,7 @@ pub unsafe extern "C" fn pwrite(
 /// - `buffer` points to a buffer of `count` bytes.
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> ssize_t {
     // Skip logging for stdin to avoid spamming the output.
     if fd != STDIN_FILENO {
@@ -1370,7 +1370,7 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> 
 /// - `path` points to a valid null-terminated string.
 /// - `buf` points to a valid memory location of `bufsize` bytes.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn readlinkat(
     dirfd: c_int,
     path: *const c_char,
@@ -1436,7 +1436,7 @@ pub unsafe extern "C" fn readlinkat(
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/348
     ::syslog::error!("rmdir(): not implemented");
@@ -1468,7 +1468,7 @@ pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
 /// - `path` points to a valid null-terminated string.
 /// - `buf` points to a valid memory location of `bufsize` bytes.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn readlink(
     path: *const c_char,
     buf: *mut c_char,
@@ -1479,7 +1479,7 @@ pub unsafe extern "C" fn readlink(
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn setgroups(_size: size_t, _list: *const gid_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/523
     ::syslog::error!("setgroups(): not implemented");
@@ -1507,7 +1507,7 @@ pub extern "C" fn setgroups(_size: size_t, _list: *const gid_t) -> c_int {
 ///
 /// - [`crate::unistd::syscall::sbrk()`]
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sbrk(size: isize) -> *mut u8 {
     match crate::unistd::sbrk(size) {
         // Succeeded to increment the program break.
@@ -1523,7 +1523,7 @@ pub extern "C" fn sbrk(size: isize) -> *mut u8 {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
     // TODO: https://github.com/nanvix/nanvix/issues/453
     ::syslog::error!("sleep(): not implemented");
@@ -1554,7 +1554,7 @@ pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
 /// This function is safe to use if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn setegid(gid: gid_t) -> c_int {
     ::syslog::error!("setegid(): gid={:?}", gid);
 
@@ -1594,7 +1594,7 @@ pub unsafe extern "C" fn setegid(gid: gid_t) -> c_int {
 /// This function is safe to use if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
     ::syslog::error!("setgid(): gid={:?})", gid);
 
@@ -1634,7 +1634,7 @@ pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
 /// This function is safe to use if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
     ::syslog::error!("seteuid(): uid={:?}", uid);
 
@@ -1674,7 +1674,7 @@ pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
 /// This function is safe to use if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn setuid(uid: uid_t) -> c_int {
     ::syslog::error!("setuid(): uid={:?}", uid);
 
@@ -1712,7 +1712,7 @@ pub unsafe extern "C" fn setuid(uid: uid_t) -> c_int {
 ///
 /// - [`crate::unistd::syscall::symlink()`]
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int {
     // Convert C strings to Rust strings.
@@ -1768,7 +1768,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
 /// - `target` points to a valid null-terminated string.
 /// - `linkpath` points to a valid null-terminated string.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn symlinkat(
     target: *const c_char,
     dirfd: c_int,
@@ -1813,7 +1813,7 @@ pub unsafe extern "C" fn symlinkat(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sysconf(_name: c_int) -> c_long {
     // TODO: https://github.com/nanvix/nanvix/issues/342
     ::syslog::error!("sysconf(): not implemented");
@@ -1838,7 +1838,7 @@ pub extern "C" fn sysconf(_name: c_int) -> c_long {
 ///
 /// - [`crate::unistd::unlink()`]
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
     // Convert C string to Rust string.
@@ -1867,7 +1867,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
 ///
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) -> ssize_t {
     // Skip logging for stdout and stderr to avoid spamming the output.
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {

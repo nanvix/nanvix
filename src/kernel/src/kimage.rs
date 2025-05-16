@@ -14,7 +14,7 @@ use crate::hal::mem::{
 };
 use ::sys::error::Error;
 
-extern "C" {
+unsafe extern "C" {
     static __TEXT_START: u8;
     static __TEXT_END: u8;
     static __RODATA_START: u8;

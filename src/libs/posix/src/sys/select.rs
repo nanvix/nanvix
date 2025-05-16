@@ -51,7 +51,7 @@ mod bindings {
     use ::nvx::sys::error::ErrorCode;
 
     #[allow(clippy::missing_safety_doc)]
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn select(
         _nfds: c_int,
         _readfds: *mut c_int,

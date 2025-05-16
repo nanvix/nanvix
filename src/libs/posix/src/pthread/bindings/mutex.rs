@@ -42,7 +42,7 @@ use ::time::SystemTime;
 ///
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
@@ -83,7 +83,7 @@ pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c
 ///
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_mutex_init(
     mutex: *mut pthread_mutex_t,
     attr: *const pthread_mutexattr_t,
@@ -134,7 +134,7 @@ pub unsafe extern "C" fn pthread_mutex_init(
 ///
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
@@ -177,7 +177,7 @@ pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_in
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 /// - `abstime` points to a valid `timespec` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_mutex_timedlock(
     mutex: *mut pthread_mutex_t,
     abstime: *const timespec,
@@ -242,7 +242,7 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
 ///
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
@@ -284,7 +284,7 @@ pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c
 ///
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
