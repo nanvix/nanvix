@@ -108,7 +108,7 @@ impl Semaphore {
         let value: usize = self.value.load(Ordering::SeqCst);
 
         if value == 0 {
-            return Err(Error::new(ErrorCode::OperationWouldBlock, "semaphore is busy"));
+            return Err(Error::new(ErrorCode::TryAgain, "semaphore is busy"));
         }
 
         self.value.store(value - 1, Ordering::SeqCst);

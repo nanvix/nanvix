@@ -99,7 +99,7 @@ pub fn kcall_handler(
                     kcall_handled = true;
                 },
                 Err(error) => match error.code {
-                    ErrorCode::OperationWouldBlock => {},
+                    ErrorCode::TryAgain => {},
                     _ => {
                         // This condition should never happen because the only error that should
                         // happen for `ScoreBoard::handle()` is `OperationWouldBlock`.

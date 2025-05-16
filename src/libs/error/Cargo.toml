@@ -13,9 +13,6 @@ homepage.workspace = true
 [lib]
 crate-type = ["lib"]
 
-[dependencies]
-num_enum = { workspace = true }
-
 [features]
 default = []
 std = []
