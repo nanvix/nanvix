@@ -88,7 +88,7 @@ static_assert = { path = "src/libs/static_assert", default-features = false }
 sysalloc = { path = "src/libs/sysalloc", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
-tokio = { version = "1.44.1", default-features = false }
+tokio = { version = "1.45.0", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 syscomm = { path = "src/libs/syscomm", default-features = false }
 syslog = { path = "src/libs/syslog", default-features = false }
