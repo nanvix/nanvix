@@ -108,7 +108,11 @@ pub unsafe extern "C" fn pthread_attr_getdetachstate(
     attr: *const pthread_attr_t,
     detachstate: *mut c_int,
 ) -> c_int {
-    ::syslog::trace!("pthread_attr_getdetachstate(): attr={:?}, detachstate={:?}", attr, detachstate);
+    ::syslog::trace!(
+        "pthread_attr_getdetachstate(): attr={:?}, detachstate={:?}",
+        attr,
+        detachstate
+    );
 
     // Check if `attr` is not valid.
     if attr.is_null() {
@@ -670,7 +674,11 @@ pub unsafe extern "C" fn pthread_attr_setdetachstate(
     attr: *mut pthread_attr_t,
     detachstate: c_int,
 ) -> c_int {
-    ::syslog::trace!("pthread_attr_setdetachstate(): attr={:?}, detachstate={:?}", attr, detachstate);
+    ::syslog::trace!(
+        "pthread_attr_setdetachstate(): attr={:?}, detachstate={:?}",
+        attr,
+        detachstate
+    );
 
     // Check if `attr` is not valid.
     if attr.is_null() {

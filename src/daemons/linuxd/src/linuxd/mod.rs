@@ -40,6 +40,8 @@ use ::nvx::{
     },
 };
 use ::posix::{
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
     dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
         FileAdvisoryInformationRequest,
@@ -101,8 +103,6 @@ use ::posix::{
         WriteResponse,
     },
     venv::VirtualEnvironmentIdentifier,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
 };
 use ::std::{
     io,

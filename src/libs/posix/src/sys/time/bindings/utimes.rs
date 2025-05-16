@@ -60,7 +60,11 @@ pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) 
     let times: &[timeval; 2] = match slice::from_raw_parts(times, 2).try_into() {
         Ok(times) => times,
         Err(_) => {
-            ::syslog::error!("utimens(): invalid times (filename={:?}, times={:?})", filename, times);
+            ::syslog::error!(
+                "utimens(): invalid times (filename={:?}, times={:?})",
+                filename,
+                times
+            );
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
