@@ -6,9 +6,13 @@
 //==================================================================================================
 
 use ::std::{
+    collections::HashMap,
     env,
     fs,
-    path::Path,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 //==================================================================================================
@@ -19,62 +23,72 @@ fn main() {
     // Read the TOML file
     let kernel_config_content =
         fs::read_to_string("build/kernel_config.toml").expect("Failed to read kernel_config.toml");
-    let kernel_config: toml::Value = kernel_config_content.parse().expect("Invalid TOML format");
 
     // Prepare the output path
-    let out_dir = env::var("OUT_DIR").unwrap();
-    let dest_path = Path::new(&out_dir).join("kernel_config.rs");
+    let out_dir: String = env::var("OUT_DIR").unwrap();
+    let dest_path: PathBuf = Path::new(&out_dir).join("kernel_config.rs");
 
-    // Generate Rust constants from TOML
+    // Parse the config into a map
+    let mut config: HashMap<String, String> = std::collections::HashMap::new();
+    for line in kernel_config_content.lines() {
+        let line: &str = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            let key: &str = key.trim();
+            let value: &str = value.trim().trim_matches('"');
+            config.insert(key.to_string(), value.to_string());
+        }
+    }
+
+    // Generate Rust constants from config.
     let mut constants = String::new();
     constants.push_str("pub mod kernel {\n");
-    if let Some(memory_size) = kernel_config
-        .get("memory_size")
-        .and_then(|v| v.as_integer())
-    {
-        constants.push_str(&format!("pub const MEMORY_SIZE: usize = {};\n", memory_size));
+    if let Some(memory_size) = config.get("memory_size") {
+        if let Ok(val) = memory_size.parse::<usize>() {
+            constants.push_str(&format!("pub const MEMORY_SIZE: usize = {};\n", val));
+        }
     }
-    if let Some(kpool_size) = kernel_config.get("kpool_size").and_then(|v| v.as_integer()) {
-        constants.push_str(&format!("pub const KPOOL_SIZE: usize = {};\n", kpool_size));
+    if let Some(kpool_size) = config.get("kpool_size") {
+        if let Ok(val) = kpool_size.parse::<usize>() {
+            constants.push_str(&format!("pub const KPOOL_SIZE: usize = {};\n", val));
+        }
     }
-    if let Some(kstack_size) = kernel_config
-        .get("kstack_size")
-        .and_then(|v| v.as_integer())
-    {
-        constants.push_str(&format!("pub const KSTACK_SIZE: usize = {};\n", kstack_size));
+    if let Some(kstack_size) = config.get("kstack_size") {
+        if let Ok(val) = kstack_size.parse::<usize>() {
+            constants.push_str(&format!("pub const KSTACK_SIZE: usize = {};\n", val));
+        }
     }
-    if let Some(timer_freq) = kernel_config.get("timer_freq").and_then(|v| v.as_integer()) {
-        constants.push_str(&format!("pub const TIMER_FREQ: u32 = {};\n", timer_freq));
+    if let Some(timer_freq) = config.get("timer_freq") {
+        if let Ok(val) = timer_freq.parse::<u32>() {
+            constants.push_str(&format!("pub const TIMER_FREQ: u32 = {};\n", val));
+        }
     }
-    if let Some(scheduler_freq) = kernel_config
-        .get("scheduler_freq")
-        .and_then(|v| v.as_integer())
-    {
-        constants.push_str(&format!("pub const SCHEDULER_FREQ: usize = {};\n", scheduler_freq));
+    if let Some(scheduler_freq) = config.get("scheduler_freq") {
+        if let Ok(val) = scheduler_freq.parse::<usize>() {
+            constants.push_str(&format!("pub const SCHEDULER_FREQ: usize = {};\n", val));
+        }
     }
-    if let Some(max_ikc_messages) = kernel_config
-        .get("max_ikc_messages")
-        .and_then(|v| v.as_integer())
-    {
-        constants.push_str(&format!("pub const MAX_IKC_MESSAGES: usize = {};\n", max_ikc_messages));
+    if let Some(max_ikc_messages) = config.get("max_ikc_messages") {
+        if let Ok(val) = max_ikc_messages.parse::<usize>() {
+            constants.push_str(&format!("pub const MAX_IKC_MESSAGES: usize = {};\n", val));
+        }
     }
-    if let Some(ipc_message_size) = kernel_config
-        .get("ipc_message_size")
-        .and_then(|v| v.as_integer())
-    {
-        constants.push_str(&format!("pub const IPC_MESSAGE_SIZE: usize = {};\n", ipc_message_size));
+    if let Some(ipc_message_size) = config.get("ipc_message_size") {
+        if let Ok(val) = ipc_message_size.parse::<usize>() {
+            constants.push_str(&format!("pub const IPC_MESSAGE_SIZE: usize = {};\n", val));
+        }
     }
-    if let Some(max_mutexes) = kernel_config
-        .get("mutex_open_max")
-        .and_then(|v| v.as_integer())
-    {
-        constants.push_str(&format!("pub const MUTEX_OPEN_MAX: usize = {};\n", max_mutexes));
+    if let Some(max_mutexes) = config.get("mutex_open_max") {
+        if let Ok(val) = max_mutexes.parse::<usize>() {
+            constants.push_str(&format!("pub const MUTEX_OPEN_MAX: usize = {};\n", val));
+        }
     }
-    if let Some(max_conditions) = kernel_config
-        .get("cond_open_max")
-        .and_then(|v| v.as_integer())
-    {
-        constants.push_str(&format!("pub const COND_OPEN_MAX: usize = {};\n", max_conditions));
+    if let Some(max_conditions) = config.get("cond_open_max") {
+        if let Ok(val) = max_conditions.parse::<usize>() {
+            constants.push_str(&format!("pub const COND_OPEN_MAX: usize = {};\n", val));
+        }
     }
     constants.push_str("}\n");
 
