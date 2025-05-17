@@ -160,6 +160,7 @@ impl Elf32Fhdr {
 /// - The `source` address is valid.
 /// - The `max_offset` is valid.
 ///
+#[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn load(
     destination: *mut std::ffi::c_void,
     source: *const u8,
@@ -246,10 +247,7 @@ pub unsafe fn load(
 
             trace!(
                 "loading segment: offset={:#010x} vaddr={:#010x} filesz={:#010x} memsz={:#010x}",
-                offset,
-                vaddr,
-                filesz,
-                memsz
+                offset, vaddr, filesz, memsz
             );
 
             // Copy segment to memory.
