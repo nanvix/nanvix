@@ -74,9 +74,9 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    time::SystemTime,
     ExitStatus,
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Global Variables

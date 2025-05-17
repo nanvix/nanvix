@@ -23,8 +23,8 @@ use crate::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    time::SystemTime,
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Get Process Identifier

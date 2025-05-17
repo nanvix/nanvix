@@ -17,11 +17,13 @@ use crate::{
         CLOCK_THREAD_CPUTIME_ID,
     },
 };
-use ::nvx::sys::error::{
-    Error,
-    ErrorCode,
+use ::nvx::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    time::SystemTime,
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Standalone Functions

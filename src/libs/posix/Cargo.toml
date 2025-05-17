@@ -28,7 +28,6 @@ goblin = { workspace = true, features = [
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
-time = { workspace = true }
 sysalloc = { workspace = true, optional = true }
 syslog = { workspace = true }
 type-safe = { workspace = true }

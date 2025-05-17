@@ -25,7 +25,6 @@ slab = { workspace = true }
 sys = { workspace = true }
 hyperlight_common = { workspace = true, optional = true }
 static_assert = { workspace = true }
-time = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

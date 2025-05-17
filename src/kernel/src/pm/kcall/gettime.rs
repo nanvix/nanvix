@@ -19,8 +19,8 @@ use ::sys::{
     error::Error,
     mm::VirtualAddress,
     pm::ProcessIdentifier,
+    time::SystemTime,
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Standalone Functions

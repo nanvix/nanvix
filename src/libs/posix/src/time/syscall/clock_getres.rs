@@ -17,11 +17,13 @@ use crate::{
     },
 };
 use ::config::kernel::TIMER_FREQ;
-use ::nvx::sys::error::{
-    Error,
-    ErrorCode,
+use ::nvx::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    time::NANOSECONDS_PER_SECOND,
 };
-use ::time::NANOSECONDS_PER_SECOND;
 
 //==================================================================================================
 // Standalone Functions
