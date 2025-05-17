@@ -14,8 +14,10 @@ use ::core::sync::atomic::{
     AtomicBool,
     Ordering,
 };
-use ::sys::error::Error;
-use ::time::SystemTime;
+use ::sys::{
+    error::Error,
+    time::SystemTime,
+};
 
 //==================================================================================================
 // Structures

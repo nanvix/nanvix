@@ -29,3 +29,6 @@ pub mod number;
 
 /// Process management.
 pub mod pm;
+
+/// Time management.
+pub mod time;

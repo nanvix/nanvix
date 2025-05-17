@@ -19,8 +19,8 @@ use ::sys::{
         ErrorCode,
     },
     pm::MutexAddress,
+    time::SystemTime,
 };
-use ::time::SystemTime;
 
 //==================================================================================================
 // Standalone Functions
