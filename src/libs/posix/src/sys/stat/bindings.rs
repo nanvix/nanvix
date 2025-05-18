@@ -234,7 +234,12 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
     match crate::sys::stat::futimens(fd, times) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("futimens(): failed (fd={}, times={:?}, error={:?})", fd, times, error);
+            ::syslog::error!(
+                "futimens(): failed (fd={}, times={:?}, error={:?})",
+                fd,
+                times,
+                error
+            );
             *__errno_location() = error.code.get();
             -1
         },
