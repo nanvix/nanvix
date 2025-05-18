@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use ::alloc::boxed::Box;
-use ::posix::{
+use ::syscall::{
     dirent::{
         self,
         DirectoryStream,

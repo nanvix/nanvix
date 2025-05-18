@@ -17,7 +17,7 @@ name = "wasmd"
 wasmi = { workspace = true }
 num_enum = { workspace = true }
 nvx = { workspace = true, features = ["allocator"] }
-posix = { workspace = true, features = ["syscall", "allocator"] }
+syscall = { workspace = true, features = ["syscall", "allocator"] }
 syslog = { workspace = true }
 static_assert = { workspace = true }
 

@@ -40,7 +40,7 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
-use ::posix::sys::socket::SocketAddr;
+use ::syscall::sys::socket::SocketAddr;
 use ::wasmi::{
     errors::ErrorKind,
     Caller,

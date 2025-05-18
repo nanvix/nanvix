@@ -12,7 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 config = { workspace = true }
-posix = { workspace = true, features = ["std"] }
+syscall = { workspace = true, features = ["std"] }
 anyhow = { workspace = true }
 log = { workspace = true }
 flexi_logger = { workspace = true }

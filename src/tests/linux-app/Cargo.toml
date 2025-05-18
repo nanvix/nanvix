@@ -15,7 +15,7 @@ name = "linux-app"
 
 [dependencies]
 nvx = { workspace = true, features = ["allocator"] }
-posix = { workspace = true, features = ["syscall", "allocator"] }
+syscall = { workspace = true, features = ["syscall", "allocator"] }
 syslog = { workspace = true }
 
 [build-dependencies]

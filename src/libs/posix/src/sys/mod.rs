@@ -29,9 +29,6 @@ pub mod time;
 /// File access and modification times structure.
 pub mod times;
 
-/// Types.
-pub mod types;
-
 /// Definitions for vector I/O operations.
 pub mod uio;
 
