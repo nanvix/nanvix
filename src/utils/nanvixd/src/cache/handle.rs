@@ -126,7 +126,7 @@ impl Drop for SandboxHandle {
                 let mut cache: LockedSandboxCache = inner.cache.lock().await;
                 // Update access time of the sandbox and check for errors.
                 if let Err(e) = cache.update_access_time(&inner.tag).await {
-                    warn!("failed to update sandbox access time (error={:?})", e);
+                    warn!("failed to update sandbox access time (error={e:?})");
                 }
             });
         }

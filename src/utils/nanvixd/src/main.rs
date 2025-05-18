@@ -80,7 +80,7 @@ pub async fn main() -> Result<()> {
            result = http_listener.accept() => {
                 match result {
                     Ok((stream, sockaddr)) => {
-                        debug!("accepted connection from {:?}", sockaddr);
+                        debug!("accepted connection from {sockaddr:?}");
                         let linuxd_listener: Arc<UnixListener> = linuxd_listener.clone();
                         let linuxd_sockaddr: String = args.linuxd_sockaddr().to_string();
                         let sandbox_sockaddr: String = sandbox_sockaddr.clone();
@@ -94,12 +94,12 @@ pub async fn main() -> Result<()> {
                                 HttpClient::new(sandboxe_cache, requestid, linuxd_listener, linuxd_sockaddr, sandbox_sockaddr, console_file);
                             let io: TokioIo<TcpStream> = TokioIo::new(stream);
                             if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
-                                error!("failed to serve connection (requestid={:?}, error={:?})", requestid, e);
+                                error!("failed to serve connection (requestid={requestid:?}, error={e:?})");
                             }
                         });
                     },
                     Err(e) => {
-                        error!("failed to accept connection ({:?})", e);
+                        error!("failed to accept connection ({e:?})");
                     },
                 }
             },
@@ -113,7 +113,7 @@ pub async fn main() -> Result<()> {
     }
 
     if let Err(e) = fs::remove_file(&sandbox_sockaddr) {
-        error!("failed to remove socket file ({:?})", e);
+        error!("failed to remove socket file ({e:?})")
     }
 
     Ok(())
