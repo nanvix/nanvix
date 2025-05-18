@@ -192,7 +192,7 @@ impl Profiler {
 impl Drop for Profiler {
     fn drop(&mut self) {
         if let Err(e) = self.write(&mut std::io::stderr(), None) {
-            log::error!("Failed to write profile data (error={})", e);
+            log::error!("Failed to write profile data (error={e})");
         }
     }
 }
