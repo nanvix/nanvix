@@ -39,9 +39,16 @@ use ::nvx::{
         ErrorCode,
     },
 };
-use ::posix::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+use ::std::{
+    io,
+    io::{
+        ErrorKind,
+        Read,
+        Write,
+    },
+    mem,
+};
+use ::syscall::{
     dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
         FileAdvisoryInformationRequest,
@@ -103,15 +110,8 @@ use ::posix::{
         WriteResponse,
     },
     venv::VirtualEnvironmentIdentifier,
-};
-use ::std::{
-    io,
-    io::{
-        ErrorKind,
-        Read,
-        Write,
-    },
-    mem,
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
 };
 use ::syscomm::SocketStream;
 
@@ -155,7 +155,7 @@ impl<'a> LinuxDaemon<'a> {
                 },
 
                 Err(e) => {
-                    error!("failed to receive message (error={:?})", e);
+                    error!("failed to receive message (error={e:?})");
                     continue;
                 },
             };
@@ -173,7 +173,7 @@ impl<'a> LinuxDaemon<'a> {
             if self.venv.get(source).is_none() {
                 // Join a new virtual environment.
                 if let Err(error) = self.venv.join(source, VirtualEnvironmentIdentifier::NEW) {
-                    warn!("failed to join new virtual environment (error={:?})", error);
+                    warn!("failed to join new virtual environment (error={error:?})");
                     let message: Message = crate::build_error(source, error.code);
                     self.send(message).unwrap();
                 }
@@ -270,7 +270,7 @@ impl<'a> LinuxDaemon<'a> {
                             self.send(message).unwrap();
                         },
                         Err(e) => {
-                            error!("failed to parse Linux daemon message (error={:?})", e);
+                            error!("failed to parse Linux daemon message (error={e:?})");
                             continue;
                         },
                     }
@@ -298,7 +298,7 @@ impl<'a> LinuxDaemon<'a> {
             let length_buffer: [u8; mem::size_of::<u32>()] = eof.to_le_bytes();
             if let Err(e) = conn.write_all(&length_buffer) {
                 let reason: &str = "failed to write EOF to the gateway";
-                error!("send_eof(): {:?} (error={:?}", reason, e);
+                error!("send_eof(): {reason:?} (error={e:?}");
                 return Err(Error::new(ErrorCode::ConnectionReset, reason));
             }
         }
@@ -546,8 +546,8 @@ impl<'a> LinuxDaemon<'a> {
             match e.kind() {
                 ErrorKind::UnexpectedEof => return Ok(None),
                 _ => {
-                    let reason: String = format!("failed to read message (error={:?})", e);
-                    unimplemented!("handle: {}", reason);
+                    let reason: String = format!("failed to read message (error={e:?})");
+                    unimplemented!("handle: {reason}");
                 },
             }
         };
@@ -555,7 +555,7 @@ impl<'a> LinuxDaemon<'a> {
         let message = match Message::try_from_bytes(buf) {
             Ok(message) => message,
             Err(e) => {
-                let reason: String = format!("failed to parse message (error={:?})", e);
+                let reason: String = format!("failed to parse message (error={e:?})");
                 unimplemented!("handle: {}", reason);
             },
         };
@@ -569,8 +569,8 @@ impl<'a> LinuxDaemon<'a> {
         match self.stream.write_all(&bytes) {
             Ok(_) => Ok(()),
             Err(e) => {
-                let reason: String = format!("failed to write message (error={:?})", e);
-                unimplemented!("handle: {}", reason);
+                let reason: String = format!("failed to write message (error={e:?})");
+                unimplemented!("handle: {reason}");
             },
         }
     }
@@ -588,9 +588,9 @@ impl<'a> LinuxDaemon<'a> {
         // handle standard file descriptors specially.
         match request.fd {
             // Closing standard file descriptors.
-            ::posix::unistd::STDIN_FILENO
-            | ::posix::unistd::STDOUT_FILENO
-            | ::posix::unistd::STDERR_FILENO => {
+            ::syscall::unistd::STDIN_FILENO
+            | ::syscall::unistd::STDOUT_FILENO
+            | ::syscall::unistd::STDERR_FILENO => {
                 // Perform a fake close, as standard file descriptors
                 // are shared with the current process.
                 CloseResponse::build(source, 0)
@@ -605,9 +605,9 @@ impl<'a> LinuxDaemon<'a> {
         source: ProcessIdentifier,
         request: WriteRequest,
     ) -> Message {
-        trace!("handle_write_request(): source={:?}, request={:?}", source, request);
+        trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
-        if request.fd == ::posix::unistd::STDOUT_FILENO {
+        if request.fd == ::syscall::unistd::STDOUT_FILENO {
             if let Some(conn) = self.gateway_conn {
                 // Check if write size is invalid.
                 if request.count == 0 {
@@ -623,18 +623,18 @@ impl<'a> LinuxDaemon<'a> {
                         Ok(_) => {
                             match conn.write_all(&request.buffer[..count]) {
                                 Ok(_) => {
-                                    debug!("wrote {} bytes to the gateway", count);
+                                    debug!("wrote {count} bytes to the gateway");
                                     WriteResponse::build(source, count as i32)
                                 },
                                 Err(e) => {
-                                    debug!("failed to write buffer to the gateway (error={:?})", e);
+                                    debug!("failed to write buffer to the gateway (error={e:?})");
                                     // TODO: Check error conversion.
                                     build_error(source, ErrorCode::ConnectionReset)
                                 },
                             }
                         },
                         Err(e) => {
-                            debug!("failed to write length to the gateway (error={:?})", e);
+                            debug!("failed to write length to the gateway (error={e:?})");
                             // TODO: Check error conversion.
                             build_error(source, ErrorCode::ConnectionReset)
                         },
@@ -645,7 +645,7 @@ impl<'a> LinuxDaemon<'a> {
                 let count: usize = request.count as usize;
                 let buffer: &[u8] = &request.buffer[..count];
                 let string: String = String::from_utf8_lossy(buffer).to_string();
-                print!("{}", string);
+                print!("{string}");
                 let _ = io::stdout().lock().flush();
                 WriteResponse::build(source, count as ssize_t)
             }
@@ -656,9 +656,9 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     fn handle_read_request(&mut self, source: ProcessIdentifier, request: ReadRequest) -> Message {
-        trace!("handle_read_request(): source={:?}, request={:?}", source, request);
+        trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
-        if request.fd == ::posix::unistd::STDIN_FILENO {
+        if request.fd == ::syscall::unistd::STDIN_FILENO {
             if let Some(conn) = self.gateway_conn {
                 // Check if the process is associated with a virtual environment.
                 let env: &mut VirtualEnvironment = if let Some(env) = self.venv.get_mut(source) {
@@ -689,15 +689,14 @@ impl<'a> LinuxDaemon<'a> {
                             let mut buf: Vec<u8> = vec![0u8; count];
                             match conn.read_exact(&mut buf) {
                                 Ok(_) => {
-                                    debug!("read {} bytes from the gateway", count);
+                                    debug!("read {count} bytes from the gateway");
 
                                     // Truncate read request to fit in the response buffer.
                                     let read_count: usize = if count > request.count as usize {
                                         warn!(
                                             "handle_read_request(): truncating payload \
-                                             (requested={}, actual={})",
+                                             (requested={}, actual={count})",
                                             { request.count },
-                                            count
                                         );
                                         request.count as usize
                                     } else {
@@ -736,7 +735,7 @@ impl<'a> LinuxDaemon<'a> {
                                     ReadResponse::build(source, read_count as ssize_t, response_buf)
                                 },
                                 Err(e) => {
-                                    debug!("failed to read from the gateway (error={:?})", e);
+                                    debug!("failed to read from the gateway (error={e:?})");
                                     // TODO: Check error conversion.
                                     build_error(source, ErrorCode::ConnectionReset)
                                 },
@@ -744,7 +743,7 @@ impl<'a> LinuxDaemon<'a> {
                         }
                     },
                     Err(e) => {
-                        debug!("failed to read length from the gateway (error={:?})", e);
+                        debug!("failed to read length from the gateway (error={e:?})");
                         // TODO: Check error conversion.
                         build_error(source, ErrorCode::ConnectionReset)
                     },
@@ -755,7 +754,7 @@ impl<'a> LinuxDaemon<'a> {
                 let count: usize = match ::std::io::stdin().read(&mut buffer) {
                     Ok(count) => count,
                     Err(e) => {
-                        debug!("failed to read from stdin (error={:?})", e);
+                        debug!("failed to read from stdin (error={e:?})");
                         0
                     },
                 };
@@ -773,7 +772,7 @@ impl<'a> LinuxDaemon<'a> {
         let messages: Vec<Message> = fcntl::do_fstat(source, request);
         for message in messages {
             if let Err(e) = self.send(message) {
-                error!("failed to send message (error={:?})", e);
+                error!("failed to send message (error={e:?})");
             }
         }
     }
@@ -782,7 +781,7 @@ impl<'a> LinuxDaemon<'a> {
         let messages: Vec<Message> = unistd::do_getcwd(source);
         for message in messages {
             if let Err(e) = self.send(message) {
-                error!("failed to send message (error={:?})", e);
+                error!("failed to send message (error={e:?})");
             }
         }
     }
@@ -794,7 +793,7 @@ impl<'a> LinuxDaemon<'a> {
         let messages: Vec<Message> = dirent::do_getdents(source, request);
         for message in messages {
             if let Err(e) = self.send(message) {
-                error!("failed to send message (error={:?})", e);
+                error!("failed to send message (error={e:?})");
             }
         }
     }
@@ -809,15 +808,15 @@ impl<'a> LinuxDaemon<'a> {
             Ok(Some(messages)) => {
                 for message in messages {
                     if let Err(e) = self.send(message) {
-                        error!("failed to send message (error={:?})", e);
+                        error!("failed to send message (error={e:?})");
                     }
                 }
             },
             Ok(None) => {},
             Err(e) => {
-                error!("failed to process request (error={:?})", e);
+                error!("failed to process request (error={e:?})");
                 if let Err(e) = self.send(self.do_error(source, e.code)) {
-                    error!("failed to send error message (error={:?})", e);
+                    error!("failed to send error message (error={e:?})");
                 }
             },
         }

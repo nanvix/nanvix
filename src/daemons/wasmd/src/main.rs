@@ -39,7 +39,7 @@ use ::alloc::{
 };
 use ::core::str::FromStr;
 use ::nvx::sys::error::Error;
-use ::posix::{
+use ::syscall::{
     netinet::in_::SocketAddrV4,
     sys::socket::SocketAddr,
 };
@@ -124,7 +124,7 @@ impl WasmBinary {
     pub fn new() -> Self {
         use ::alloc::string::ToString;
         use ::core::mem;
-        use ::posix::sys::socket::SocketAddr;
+        use ::syscall::sys::socket::SocketAddr;
         use pal::socket::Socket;
 
         let sockaddr: SocketAddr = match WASMD_SOCKET_ADDR {

@@ -10,7 +10,7 @@ use ::nvx::{
     pm::ProcessIdentifier,
     sys::error::ErrorCode,
 };
-use ::posix::sys::times::{
+use ::syscall::sys::times::{
     message::{
         TimesRequest,
         TimesResponse,
@@ -23,7 +23,7 @@ use ::posix::sys::times::{
 //==================================================================================================
 
 pub fn do_times(pid: ProcessIdentifier, _request: TimesRequest) -> Message {
-    trace!("times(): pid={:?}", pid);
+    trace!("times(): pid={pid:?}");
 
     let mut libc_buffer: libc::tms = libc::tms {
         tms_utime: 0,
@@ -37,7 +37,7 @@ pub fn do_times(pid: ProcessIdentifier, _request: TimesRequest) -> Message {
     match unsafe { libc::times(&mut libc_buffer as *mut libc::tms) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
-            error!("libc::clock_getres(): errno={:?}", errno);
+            error!("libc::clock_getres(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
             crate::build_error(pid, error)
         },

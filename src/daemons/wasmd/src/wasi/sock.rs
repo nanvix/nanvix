@@ -5,8 +5,6 @@
 // Imports
 //==================================================================================================
 
-use posix::sys::socket::Shutdown;
-
 use crate::{
     pal::socket::Socket,
     wasi::{
@@ -27,6 +25,7 @@ use crate::{
         WasiCtxInner,
     },
 };
+use ::syscall::sys::socket::Shutdown;
 
 //==================================================================================================
 // Implementations

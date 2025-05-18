@@ -5,18 +5,18 @@
 // Imports
 //==================================================================================================
 
-use crate::{
+use ::alloc::string::{
+    String,
+    ToString,
+};
+use ::core::mem;
+use ::syscall::{
     ffi::c_uchar,
     sys::socket::{
         sa_family_t,
         sockaddr_storage,
     },
 };
-use ::alloc::string::{
-    String,
-    ToString,
-};
-use ::core::mem;
 
 //==================================================================================================
 // C Interface

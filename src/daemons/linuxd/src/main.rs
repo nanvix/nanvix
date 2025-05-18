@@ -95,7 +95,7 @@ pub fn main() -> Result<()> {
         Some(typ) => match SocketType::from_str(typ.as_str()) {
             Ok(typ) => typ,
             Err(error) => {
-                error!("{error} (type={:?})", typ);
+                error!("{error} (type={typ:?})");
                 anyhow::bail!("failed to parse socket address type");
             },
         },
@@ -105,7 +105,7 @@ pub fn main() -> Result<()> {
     let listener: SocketListener = match Socket::bind(bind_socket_type, sockaddr.clone()) {
         Ok(listener) => listener,
         Err(e) => {
-            error!("failed to bind to socket address (error={:?})", e);
+            error!("failed to bind to socket address (error={e:?})");
             anyhow::bail!("failed to bind to socket address");
         },
     };
@@ -119,10 +119,10 @@ pub fn main() -> Result<()> {
     thread::spawn(move || {
         #[allow(clippy::never_loop)]
         for sig in signals.forever() {
-            println!("Received signal {:?}", sig);
+            println!("Received signal {sig:?}");
             if let Some(path) = path {
                 if let Err(e) = fs::remove_file(path.clone()) {
-                    error!("failed to remove socket file (error={:?})", e);
+                    error!("failed to remove socket file (error={e:?})");
                 }
             }
             // Exit process.
@@ -148,7 +148,7 @@ pub fn main() -> Result<()> {
                 match SocketStream::connect(getway_socket_type, sockaddr) {
                     Ok(stream) => Some(stream),
                     Err(e) => {
-                        error!("failed to connect to gateway (error={:?})", e);
+                        error!("failed to connect to gateway (error={e:?})");
                         anyhow::bail!("failed to connect to gateway");
                     },
                 }
@@ -156,21 +156,21 @@ pub fn main() -> Result<()> {
             None => None,
         };
 
-        info!("Listening on: {:?}", sockaddr);
+        info!("Listening on: {sockaddr:?}");
         let stream: SocketStream = match listener.accept() {
             Ok(stream) => {
                 info!("Connected to: {:?}", stream.peer_addr());
                 stream
             },
             Err(error) => {
-                error!("Failed to accept connection: {:?}", error);
+                error!("Failed to accept connection: {error:?}");
                 continue;
             },
         };
 
         let mut procd: LinuxDaemon = match LinuxDaemon::init(stream, &mut gateway_conn) {
             Ok(procd) => procd,
-            Err(e) => panic!("failed to initialize process manager daemon (error={:?})", e),
+            Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
         };
 
         if procd.run().is_err() {
@@ -222,5 +222,11 @@ pub fn initialize(logfile: bool) {
 /// A message with the error response.
 ///
 pub fn build_error(pid: ProcessIdentifier, error: ErrorCode) -> Message {
-    Message::new(::posix::LINUXD, pid, MessageType::Ikc, Some(error), [0u8; Message::PAYLOAD_SIZE])
+    Message::new(
+        ::syscall::LINUXD,
+        pid,
+        MessageType::Ikc,
+        Some(error),
+        [0u8; Message::PAYLOAD_SIZE],
+    )
 }
