@@ -31,10 +31,7 @@ pub fn panic_implementation(info: &::core::panic::PanicInfo) -> ! {
     let m: PanicMessage = info.message();
     let _ = writeln!(
         &mut Logger::get(module_path!(), LogLevel::Trace),
-        "PANIC file='{}', line={} :: {}",
-        file,
-        line,
-        m
+        "PANIC file='{file}', line={line} :: {m}",
     );
 
     loop {
