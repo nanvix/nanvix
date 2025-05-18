@@ -51,15 +51,15 @@ homepage = "https://github.com/nanvix"
 
 [workspace.dependencies]
 arch = { path = "src/libs/arch", default-features = false }
-anyhow = "1.0.97"
+anyhow = "1.0.98"
 bitmap = { path = "src/libs/bitmap", default-features = false }
-cc = "1.2.17"
+cc = "1.2.23"
 cfg-if = "1.0.0"
 config = { path = "src/libs/config", default-features = false }
 elf = { path = "src/libs/elf", default-features = false }
 error = { path = "src/libs/error", default-features = false }
 fastrand = { version = "2.3.0", default-features = false }
-flexi_logger = "0.30.0"
+flexi_logger = "0.30.1"
 goblin = { version = "0.9.3", default-features = false }
 http-body-util = "0.1.3"
 hyperlight_common = { git = "https://github.com/nanvix/hyperlight", rev = "17fd1773ed22b52cf2956a6f0b120da9cda5b62e", default-features = false, package = "hyperlight-common" }
@@ -68,7 +68,7 @@ hyper = { version = "1.6.0", default-features = false }
 hyper-util = { version = "0.1.11", default-features = false }
 kvm-bindings = "0.11.1"
 kvm-ioctls = "0.21.0"
-libc = "0.2.171"
+libc = "0.2.172"
 log = "0.4.27"
 micromath = "2.1.0"
 num_enum = { version = "0.7.3", default-features = false }
@@ -81,18 +81,18 @@ serde = { version = "1.0.219", default-features = false }
 serde_json = { version = "1.0.140", default-features = false, features = [
         "alloc",
 ] }
-signal-hook = "0.3.17"
+signal-hook = "0.3.18"
 slab = { path = "src/libs/slab", default-features = false }
 spin = { version = "0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
 sysalloc = { path = "src/libs/sysalloc", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = "4.4.2"
-tokio = { version = "1.44.1", default-features = false }
+tokio = { version = "1.45.0", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 syscomm = { path = "src/libs/syscomm", default-features = false }
 syslog = { path = "src/libs/syslog", default-features = false }
-wasmi = { version = "0.44.0", default-features = false }
+wasmi = { version = "0.46.0", default-features = false }
 
 [profile.dev]
 opt-level = 0
