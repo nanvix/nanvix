@@ -60,7 +60,6 @@ use ::signal_hook::{
 use ::std::{
     env,
     fs,
-    os::unix::net::UnixStream,
     str::FromStr,
     sync::Once,
     thread,
@@ -78,6 +77,9 @@ use ::syscomm::{
 
 /// Default socket bind type.
 const DEFAULT_BIND_SOCKET_TYPE: SocketType = SocketType::Unix;
+
+/// Default gateway socket type.
+const DEFAULT_GATEWAY_SOCKET_TYPE: SocketType = SocketType::Unix;
 
 //==================================================================================================
 // Implementations
@@ -131,13 +133,25 @@ pub fn main() -> Result<()> {
     loop {
         // Connect to gateway after binding to socket address, as a connection to the gateway will
         // signal we are ready to accept commands.
-        let mut gateway_conn: Option<UnixStream> = match args.gateway_sockaddr() {
-            Some(sockaddr) => match UnixStream::connect(sockaddr) {
-                Ok(stream) => Some(stream),
-                Err(e) => {
-                    error!("failed to connect to gateway (error={:?})", e);
-                    anyhow::bail!("failed to connect to gateway");
-                },
+        let mut gateway_conn: Option<SocketStream> = match args.gateway_sockaddr() {
+            Some(sockaddr) => {
+                let getway_socket_type: SocketType = match args.gateway_socket_type() {
+                    Some(typ) => match SocketType::from_str(typ.as_str()) {
+                        Ok(typ) => typ,
+                        Err(error) => {
+                            error!("{error} (type={typ:?})");
+                            anyhow::bail!("failed to parse socket address type");
+                        },
+                    },
+                    None => DEFAULT_GATEWAY_SOCKET_TYPE,
+                };
+                match SocketStream::connect(getway_socket_type, sockaddr) {
+                    Ok(stream) => Some(stream),
+                    Err(e) => {
+                        error!("failed to connect to gateway (error={:?})", e);
+                        anyhow::bail!("failed to connect to gateway");
+                    },
+                }
             },
             None => None,
         };
