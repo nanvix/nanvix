@@ -10,6 +10,7 @@ toolchain
 # Build artifacts
 bin/
 /lib/
+images/
 target/
 /sysroot-debug/
 /sysroot-release/
@@ -22,7 +23,8 @@ target/
 *.obj
 *.wasm
 Cargo.lock
-linuxd.*
+linuxd.stdout
+linuxd.stderr
 
 # IDEs
 *.swo
