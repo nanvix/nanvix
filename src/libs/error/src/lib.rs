@@ -576,7 +576,7 @@ impl core::error::Error for ErrorCode {}
 
 impl core::fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "error={:?}", self)
+        write!(f, "error={self:?}")
     }
 }
 
