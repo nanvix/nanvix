@@ -122,12 +122,12 @@ impl SandboxCacheInner {
         // Attempt to get the sandbox from the cache.
         if let Some((last_access, sandbox)) = locked_sandboxes.get_mut(tag) {
             // Cache hit, update access time.
-            debug!("get(): found sandbox {:?} in cache, last access {:?}", tag, last_access);
+            debug!("get(): found sandbox {tag:?} in cache, last access {last_access:?}");
             *last_access = Instant::now();
             Ok(sandbox.clone())
         } else {
             // Cache miss, create a new sandbox.
-            debug!("get(): creating sandbox {:?}", tag);
+            debug!("get(): creating sandbox {tag:?}");
             let sandbox: Arc<Mutex<Sandbox>> = Arc::new(Mutex::new(Sandbox::new(config)?));
             locked_sandboxes.insert(tag.clone(), (Instant::now(), sandbox.clone()));
             Ok(sandbox)
@@ -149,8 +149,7 @@ impl SandboxCacheInner {
                 if now - *last_access > self.keep_alive_timeout {
                     if let Err(err) = locked_sandbox.unload() {
                         error!(
-                            "try_cleanup(): failed to unload sandbox {:?} (error={:?})",
-                            tag, err
+                            "try_cleanup(): failed to unload sandbox {tag:?} (error={err:?})",
                         );
                     }
                 }
@@ -183,13 +182,12 @@ impl SandboxCacheInner {
                     Ok(mut locked_sandbox) => {
                         if let Err(err) = locked_sandbox.unload() {
                             error!(
-                                "update_access_time(): failed to unload sandbox {:?} (error={:?})",
-                                tag, err
+                                "update_access_time(): failed to unload sandbox {tag:?} (error={err:?})",
                             );
                         }
                     },
                     Err(_) => {
-                        warn!("update_access_time(): failed to lock sandbox {:?}", tag);
+                        warn!("update_access_time(): failed to lock sandbox {tag:?}");
                     },
                 }
             }
