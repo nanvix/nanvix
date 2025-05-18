@@ -5,7 +5,7 @@
 name = "microvm"
 version.workspace = true
 license-file.workspace = true
-edition.workspace = true
+edition = "2024"
 authors.workspace = true
 homepage.workspace = true
 
