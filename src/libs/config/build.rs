@@ -47,47 +47,47 @@ fn main() {
     constants.push_str("pub mod kernel {\n");
     if let Some(memory_size) = config.get("memory_size") {
         if let Ok(val) = memory_size.parse::<usize>() {
-            constants.push_str(&format!("pub const MEMORY_SIZE: usize = {};\n", val));
+            constants.push_str(&format!("pub const MEMORY_SIZE: usize = {val};\n"));
         }
     }
     if let Some(kpool_size) = config.get("kpool_size") {
         if let Ok(val) = kpool_size.parse::<usize>() {
-            constants.push_str(&format!("pub const KPOOL_SIZE: usize = {};\n", val));
+            constants.push_str(&format!("pub const KPOOL_SIZE: usize = {val};\n"));
         }
     }
     if let Some(kstack_size) = config.get("kstack_size") {
         if let Ok(val) = kstack_size.parse::<usize>() {
-            constants.push_str(&format!("pub const KSTACK_SIZE: usize = {};\n", val));
+            constants.push_str(&format!("pub const KSTACK_SIZE: usize = {val};\n"));
         }
     }
     if let Some(timer_freq) = config.get("timer_freq") {
         if let Ok(val) = timer_freq.parse::<u32>() {
-            constants.push_str(&format!("pub const TIMER_FREQ: u32 = {};\n", val));
+            constants.push_str(&format!("pub const TIMER_FREQ: u32 = {val};\n"));
         }
     }
     if let Some(scheduler_freq) = config.get("scheduler_freq") {
         if let Ok(val) = scheduler_freq.parse::<usize>() {
-            constants.push_str(&format!("pub const SCHEDULER_FREQ: usize = {};\n", val));
+            constants.push_str(&format!("pub const SCHEDULER_FREQ: usize = {val};\n"));
         }
     }
     if let Some(max_ikc_messages) = config.get("max_ikc_messages") {
         if let Ok(val) = max_ikc_messages.parse::<usize>() {
-            constants.push_str(&format!("pub const MAX_IKC_MESSAGES: usize = {};\n", val));
+            constants.push_str(&format!("pub const MAX_IKC_MESSAGES: usize = {val};\n"));
         }
     }
     if let Some(ipc_message_size) = config.get("ipc_message_size") {
         if let Ok(val) = ipc_message_size.parse::<usize>() {
-            constants.push_str(&format!("pub const IPC_MESSAGE_SIZE: usize = {};\n", val));
+            constants.push_str(&format!("pub const IPC_MESSAGE_SIZE: usize = {val};\n"));
         }
     }
     if let Some(max_mutexes) = config.get("mutex_open_max") {
         if let Ok(val) = max_mutexes.parse::<usize>() {
-            constants.push_str(&format!("pub const MUTEX_OPEN_MAX: usize = {};\n", val));
+            constants.push_str(&format!("pub const MUTEX_OPEN_MAX: usize = {val};\n"));
         }
     }
     if let Some(max_conditions) = config.get("cond_open_max") {
         if let Ok(val) = max_conditions.parse::<usize>() {
-            constants.push_str(&format!("pub const COND_OPEN_MAX: usize = {};\n", val));
+            constants.push_str(&format!("pub const COND_OPEN_MAX: usize = {val};\n"));
         }
     }
     constants.push_str("}\n");
