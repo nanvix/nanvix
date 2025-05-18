@@ -23,6 +23,8 @@ pub struct Args {
     bind_sockaddr_type: Option<String>,
     /// Gateway socket address.
     gateway_sockaddr: Option<String>,
+    /// Gateway socket address type.
+    gateway_sockaddr_type: Option<String>,
     /// Log to file?
     log_to_file: bool,
 }
@@ -40,6 +42,8 @@ impl Args {
     const OPT_BIND_SOCKET_TYPE: &'static str = "-bind-socket-type";
     /// Command-line option for setting socket address of gateway.
     const OPT_GATEWAY_SOCKADDR: &'static str = "-gateway-addr";
+    /// Command-line option for setting the socket address type of the gateway socket.
+    const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-socket-type";
     /// Command-line option for log redirecting.
     const OPT_LOGFILE: &'static str = "-log-to-file";
 
@@ -61,6 +65,7 @@ impl Args {
         let mut bind_sockaddr: String = String::new();
         let mut bind_sockaddr_type: Option<String> = None;
         let mut gateway_sockaddr: Option<String> = None;
+        let mut gateway_sockaddr_type: Option<String> = None;
         let mut log_to_file: bool = false;
 
         let mut i: usize = 1;
@@ -77,6 +82,10 @@ impl Args {
                 Self::OPT_GATEWAY_SOCKADDR => {
                     i += 1;
                     gateway_sockaddr = Some(args[i].clone());
+                },
+                Self::OPT_GATEWAY_SOCKET_TYPE => {
+                    i += 1;
+                    gateway_sockaddr_type = Some(args[i].clone());
                 },
                 Self::OPT_BIND_SOCKET_TYPE => {
                     i += 1;
@@ -100,8 +109,9 @@ impl Args {
 
         Ok(Self {
             bind_sockaddr,
-            gateway_sockaddr,
             bind_sockaddr_type,
+            gateway_sockaddr,
+            gateway_sockaddr_type,
             log_to_file,
         })
     }
@@ -162,6 +172,19 @@ impl Args {
     ///
     pub fn gateway_sockaddr(&self) -> Option<String> {
         self.gateway_sockaddr.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket address type of the gateway socket.
+    ///
+    /// # Returns
+    ///
+    /// The socket address type of the gateway socket.
+    ///
+    pub fn gateway_socket_type(&self) -> Option<String> {
+        self.gateway_sockaddr_type.clone()
     }
 
     ///
