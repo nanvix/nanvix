@@ -50,7 +50,7 @@ pub fn kpanic(info: &PanicInfo) -> ! {
 
         // Print panic information.
         let m: PanicMessage = info.message();
-        let _ = write!(klog, "file='{}', line={} :: {}", file, line, m);
+        let _ = write!(klog, "file='{file}', line={line} :: {m}");
     }
 
     platform::shutdown(ExitStatus::from(ErrorCode::UnrecoverableState).into());
