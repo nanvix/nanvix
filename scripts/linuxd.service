@@ -1,0 +1,15 @@
+[Unit]
+Description=Linux Daemon
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/linuxd.elf -bind-addr 192.168.249.2:1234 -bind-socket-type tcp -gateway-addr 192.168.249.3:1234
+StandardOutput=journal
+StandardError=journal
+Restart=always
+RestartSec=5
+User=cloud
+Environment="PATH=/usr/bin:/usr/local/bin" "RUST_LOG=trace"
+
+[Install]
+WantedBy=multi-user.target
