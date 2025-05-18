@@ -151,8 +151,8 @@ impl IoThread {
                     Ok(())
                 } else {
                     let reason: String =
-                        format!("failed to receive message from the gateway (error={:?})", e);
-                    error!("try_receive_from_gateway(): {}", reason);
+                        format!("failed to receive message from the gateway (error={e:?})");
+                    error!("try_receive_from_gateway(): {reason}");
                     anyhow::bail!(reason)
                 }
             },
@@ -177,7 +177,7 @@ impl IoThread {
             Err(TryRecvError::Empty) => Ok(()),
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the microvm has disconnected".to_string();
-                error!("try_receive_from_microvm(): {}", reason);
+                error!("try_receive_from_microvm(): {reason}");
                 anyhow::bail!(reason)
             },
         }
@@ -204,8 +204,8 @@ impl IoThread {
                             Ok(())
                         } else {
                             let reason: String =
-                                format!("failed to send message to the gateway (error={:?})", e);
-                            error!("try_send_to_gateway(): {}", reason);
+                                format!("failed to send message to the gateway (error={e:?})");
+                            error!("try_send_to_gateway(): {reason}");
                             anyhow::bail!(reason)
                         }
                     },

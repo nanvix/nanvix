@@ -25,7 +25,7 @@ pub struct FileMapping {
 impl FileMapping {
     /// Maps a file into memory.
     pub fn mmap(filename: &str) -> Result<Self> {
-        trace!("mmap(): filename={}", filename);
+        trace!("mmap(): filename={filename}");
 
         // Open the file.
         let fd: i32 = unsafe {

@@ -74,7 +74,7 @@ pub struct VirtualProcessor {
 
 impl VirtualProcessor {
     pub fn new(partition: Arc<Mutex<VirtualPartition>>, id: u64) -> Result<Self> {
-        trace!("new(): id={}", id);
+        trace!("new(): id={id}");
         crate::timer!("vcpu_creation");
 
         // Setup interrupt controller.
@@ -84,7 +84,7 @@ impl VirtualProcessor {
 
         let fd: VcpuFd = partition
             .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .vm()
             .create_vcpu(id)?;
 
@@ -123,7 +123,7 @@ impl VirtualProcessor {
     /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
     ///
     pub fn reset(&mut self, rip: u64, rax: u64, rbx: u64) -> Result<()> {
-        trace!("reset(): rip={:#010x}, rax={:#010x}, rbx={:#010x}", rip, rax, rbx);
+        trace!("reset(): rip={rip:#010x}, rax={rax:#010x}, rbx={rbx:#010x}");
         crate::timer!("vcpu_reset");
 
         // Reset system registers.
@@ -156,7 +156,7 @@ impl VirtualProcessor {
     /// - `exit_status`: Exit status code.
     ///
     pub fn poweroff(&mut self, exit_status: u16) {
-        trace!("poweroff(): exit_status={}", exit_status);
+        trace!("poweroff(): exit_status={exit_status}");
         self.online = false;
         self.exit_status = exit_status;
     }
@@ -215,13 +215,13 @@ impl VirtualProcessor {
             // Read from an MMIO region.
             VcpuExit::MmioRead(addr, data) => {
                 // TODO: handle MMIO read.
-                warn!("run(): mmio read (addr={:#010x}, data.len={})", addr, data.len());
+                warn!("run(): mmio read (addr={addr:#010x}, data.len={})", data.len());
                 Ok(VirtualProcessorExitContext::Unknown)
             },
             // Write to a MMIO region.
             VcpuExit::MmioWrite(addr, data) => {
                 // TODO: handle MMIO write.
-                warn!("run(): mmio write (addr={:#010x}, data.len={})", addr, data.len());
+                warn!("run(): mmio write (addr={addr:#010x}, data.len={})", data.len());
                 Ok(VirtualProcessorExitContext::Unknown)
             },
             // Exception occurred.
@@ -253,7 +253,7 @@ impl VirtualProcessor {
             // Fail to run the virtual processor.
             VcpuExit::FailEntry(reason, cpud) => {
                 // TODO: handle fail entry.
-                warn!("run(): fail entry (reason={:?}, cpud={})", reason, cpud);
+                warn!("run(): fail entry (reason={reason:?}, cpud={cpud})");
                 Ok(VirtualProcessorExitContext::Unknown)
             },
             // Non-maskable interrupt occurred.
@@ -271,7 +271,7 @@ impl VirtualProcessor {
             // Unsupported exit reason.
             VcpuExit::Unsupported(reason) => {
                 // TODO: handle unsupported exit reason.
-                warn!("run(): unsupported exit reason ({:?})", reason);
+                warn!("run(): unsupported exit reason ({reason:?})");
                 Ok(VirtualProcessorExitContext::Unknown)
             },
             // Unknown exit reason.
