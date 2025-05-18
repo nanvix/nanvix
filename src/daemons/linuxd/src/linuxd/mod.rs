@@ -40,6 +40,8 @@ use ::nvx::{
     },
 };
 use ::posix::{
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
     dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
         FileAdvisoryInformationRequest,
@@ -101,8 +103,6 @@ use ::posix::{
         WriteResponse,
     },
     venv::VirtualEnvironmentIdentifier,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
 };
 use ::std::{
     io,
@@ -293,7 +293,7 @@ impl<'a> LinuxDaemon<'a> {
     ///
     fn send_eof(&mut self) -> Result<(), Error> {
         trace!("send_eof()");
-        if let Some(ref mut conn) = self.gateway_conn {
+        if let Some(conn) = self.gateway_conn {
             let eof: u32 = 0;
             let length_buffer: [u8; mem::size_of::<u32>()] = eof.to_le_bytes();
             if let Err(e) = conn.write_all(&length_buffer) {
@@ -608,7 +608,7 @@ impl<'a> LinuxDaemon<'a> {
         trace!("handle_write_request(): source={:?}, request={:?}", source, request);
         // Check if writing to gateway.
         if request.fd == ::posix::unistd::STDOUT_FILENO {
-            if let Some(ref mut conn) = self.gateway_conn {
+            if let Some(conn) = self.gateway_conn {
                 // Check if write size is invalid.
                 if request.count == 0 {
                     // Writing zero-bytes to STDOUT is not allowed, as we used this to signal EOF.
@@ -659,7 +659,7 @@ impl<'a> LinuxDaemon<'a> {
         trace!("handle_read_request(): source={:?}, request={:?}", source, request);
         // Check if reading from gateway.
         if request.fd == ::posix::unistd::STDIN_FILENO {
-            if let Some(ref mut conn) = self.gateway_conn {
+            if let Some(conn) = self.gateway_conn {
                 // Check if the process is associated with a virtual environment.
                 let env: &mut VirtualEnvironment = if let Some(env) = self.venv.get_mut(source) {
                     env

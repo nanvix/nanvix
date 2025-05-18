@@ -31,11 +31,15 @@ use ::core::arch;
 pub unsafe fn kcall0(kcall_nr: u32) -> i64 {
     let low_ret: u32;
     let high_ret: u32;
-    arch::asm!("int 0x80",
-        inout("eax") kcall_nr => low_ret,
-        lateout("edx") high_ret,
-        options(nostack, preserves_flags)
-    );
+
+    // SAFETY: this will trigger a kernel call.
+    unsafe {
+        arch::asm!("int 0x80",
+            inout("eax") kcall_nr => low_ret,
+            lateout("edx") high_ret,
+            options(nostack, preserves_flags)
+        );
+    }
 
     ((high_ret as i64) << 32) | (low_ret as i64)
 }
@@ -61,12 +65,16 @@ pub unsafe fn kcall0(kcall_nr: u32) -> i64 {
 pub unsafe fn kcall1(kcall_nr: u32, arg0: u32) -> i64 {
     let low_ret: i32;
     let high_ret: i32;
-    arch::asm!("int 0x80",
-        inout("eax") kcall_nr => low_ret,
-        lateout("edx") high_ret,
-        in("ebx") arg0,
-        options(nostack, preserves_flags)
-    );
+
+    // SAFETY: this will trigger a kernel call.
+    unsafe {
+        arch::asm!("int 0x80",
+            inout("eax") kcall_nr => low_ret,
+            lateout("edx") high_ret,
+            in("ebx") arg0,
+            options(nostack, preserves_flags)
+        );
+    }
 
     ((high_ret as i64) << 32) | (low_ret as i64)
 }
@@ -93,13 +101,17 @@ pub unsafe fn kcall1(kcall_nr: u32, arg0: u32) -> i64 {
 pub unsafe fn kcall2(kcall_nr: u32, arg0: u32, arg1: u32) -> i64 {
     let low_ret: i32;
     let high_ret: i32;
-    arch::asm!("int 0x80",
-        inout("eax") kcall_nr => low_ret,
-        lateout("edx") high_ret,
-        in("ebx") arg0,
-        in("ecx") arg1,
-        options(nostack, preserves_flags)
-    );
+
+    // SAFETY: this will trigger a kernel call.
+    unsafe {
+        arch::asm!("int 0x80",
+            inout("eax") kcall_nr => low_ret,
+            lateout("edx") high_ret,
+            in("ebx") arg0,
+            in("ecx") arg1,
+            options(nostack, preserves_flags)
+        );
+    }
 
     ((high_ret as i64) << 32) | (low_ret as i64)
 }
@@ -128,14 +140,17 @@ pub unsafe fn kcall3(kcall_nr: u32, arg0: u32, arg1: u32, arg2: u32) -> i64 {
     let low_ret: i32;
     let high_ret: i32;
 
-    arch::asm!("int 0x80",
-        inout("eax") kcall_nr => low_ret,
-        lateout("edx") high_ret,
-        in("ebx") arg0,
-        in("ecx") arg1,
-        in("edx") arg2,
-        options(nostack, preserves_flags)
-    );
+    // SAFETY: this will trigger a kernel call.
+    unsafe {
+        arch::asm!("int 0x80",
+            inout("eax") kcall_nr => low_ret,
+            lateout("edx") high_ret,
+            in("ebx") arg0,
+            in("ecx") arg1,
+            in("edx") arg2,
+            options(nostack, preserves_flags)
+        );
+    }
 
     ((high_ret as i64) << 32) | (low_ret as i64)
 }
@@ -165,15 +180,18 @@ pub unsafe fn kcall4(kcall_nr: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) 
     let low_ret: i32;
     let high_ret: i32;
 
-    arch::asm!("int 0x80",
-        inout("eax") kcall_nr => low_ret,
-        lateout("edx") high_ret,
-        in("ebx") arg0,
-        in("ecx") arg1,
-        in("edx") arg2,
-        in("edi") arg3,
-        options(nostack, preserves_flags)
-    );
+    // SAFETY: this will trigger a kernel call.
+    unsafe {
+        arch::asm!("int 0x80",
+            inout("eax") kcall_nr => low_ret,
+            lateout("edx") high_ret,
+            in("ebx") arg0,
+            in("ecx") arg1,
+            in("edx") arg2,
+            in("edi") arg3,
+            options(nostack, preserves_flags)
+        );
+    }
 
     ((high_ret as i64) << 32) | (low_ret as i64)
 }
