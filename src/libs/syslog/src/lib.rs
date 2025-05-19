@@ -152,7 +152,7 @@ impl fmt::Write for Logger {
 impl Logger {
     pub fn get(tag: &str, level: LogLevel) -> Self {
         let mut ret: Self = Self;
-        let _ = write!(&mut ret, "[{:?}][{}] ", level, tag);
+        let _ = write!(&mut ret, "[{level:?}][{tag}] ");
         ret
     }
 }

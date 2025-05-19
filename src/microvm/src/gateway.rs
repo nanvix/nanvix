@@ -65,8 +65,8 @@ impl Gateway {
             Err(e) => {
                 // Print error messages only if it is not a WouldBlock error to avoid spamming the logs.
                 if e.kind() != ErrorKind::WouldBlock {
-                    let reason: String = format!("failed to send message ({:?}", e);
-                    error!("send(): {}", reason);
+                    let reason: String = format!("failed to send message ({e:?}");
+                    error!("send(): {reason}");
                 }
 
                 Err(e)
@@ -90,8 +90,8 @@ impl Gateway {
                 let message: Message = match Message::try_from_bytes(bytes) {
                     Ok(message) => message,
                     Err(e) => {
-                        let reason: String = format!("failed to parse message ({:?})", e);
-                        error!("receive(): {}", reason);
+                        let reason: String = format!("failed to parse message ({e:?})");
+                        error!("receive(): {reason}");
                         return Err(SocketError::new(Error::new(ErrorKind::InvalidData, reason)));
                     },
                 };
@@ -101,8 +101,8 @@ impl Gateway {
             Err(e) => {
                 // Print error messages only if it is not a WouldBlock error to avoid spamming the logs.
                 if e.kind() != ErrorKind::WouldBlock {
-                    let reason: String = format!("failed to receive message ({:?})", e);
-                    error!("receive(): {}", reason);
+                    let reason: String = format!("failed to receive message ({e:?})");
+                    error!("receive(): {reason}");
                 }
 
                 Err(SocketError::new(e))

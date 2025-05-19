@@ -44,11 +44,11 @@ impl Drop for LinuxDaemon {
             tokio::spawn(async move {
                 debug!("killing linux daemon");
                 if let Err(e) = child.kill().await {
-                    error!("failed to kill linux daemon ({:?})", e);
+                    error!("failed to kill linux daemon ({e:?})");
                 }
 
                 if let Err(e) = child.wait().await {
-                    error!("failed to wait for linux daemon ({:?})", e);
+                    error!("failed to wait for linux daemon ({e:?})");
                 }
             });
         }

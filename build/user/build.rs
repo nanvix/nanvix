@@ -43,7 +43,7 @@ fn main() {
         let mut raw_content: String = String::new();
         let _ = file.read_to_string(&mut raw_content);
         let content = raw_content.replace("\n", "").replace(" ", "");
-        println!("cargo:rustc-env=CONFIG={}", content);
+        println!("cargo:rustc-env=CONFIG={content}");
     }
 
     //==============================================================================================
@@ -67,6 +67,6 @@ fn main() {
         let mut raw_content: String = String::new();
         let _ = file.read_to_string(&mut raw_content);
         let content = raw_content.replace("\n", "").replace(" ", "");
-        println!("cargo:rustc-env=CONFIG={}", content);
+        println!("cargo:rustc-env=CONFIG={content}");
     }
 }

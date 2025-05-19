@@ -113,10 +113,10 @@ fn main() {
             .unwrap();
 
         if !status.success() {
-            panic!("failed to compile {}", asm);
+            panic!("failed to compile {asm}");
         }
 
-        println!("cargo::rerun-if-changed={}", asm);
+        println!("cargo::rerun-if-changed={asm}");
         object_files.push(obj);
     }
 
@@ -139,6 +139,6 @@ fn main() {
     //==============================================================================================
 
     println!("cargo::rustc-link-arg=-Tbuild/kernel/linker/x86/kernel.ld");
-    println!("cargo::rustc-link-search=native={}", out_dir);
+    println!("cargo::rustc-link-search=native={out_dir}");
     println!("cargo::rustc-link-lib=static:+whole-archive=kernel");
 }

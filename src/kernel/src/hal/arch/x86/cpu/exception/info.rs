@@ -64,8 +64,7 @@ impl core::fmt::Debug for ExceptionInformation {
         let excp: Exception = num.into();
         write!(
             f,
-            "{:?} (error code={}, faulting addr={:#010x}, faulting instruction={:#010x})",
-            excp, code, addr, instr
+            "{excp:?} (error code={code}, faulting addr={addr:#010x}, faulting instruction={instr:#010x})",
         )
     }
 }

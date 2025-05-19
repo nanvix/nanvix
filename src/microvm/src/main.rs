@@ -70,7 +70,7 @@ fn main() -> Result<()> {
         Some(typ) => match SocketType::from_str(typ.as_str()) {
             Ok(typ) => typ,
             Err(error) => {
-                error!("{error} (type={:?})", typ);
+                error!("{error} (type={typ:?})");
                 anyhow::bail!("failed to parse socket address type");
             },
         },
@@ -88,10 +88,9 @@ fn main() -> Result<()> {
             },
             Err(e) => {
                 let reason: String = format!(
-                    "failed to connect to gateway (gateway_addr={:?}, error={:?})",
-                    addr, e
+                    "failed to connect to gateway (gateway_addr={addr:?}, error={e:?})",
                 );
-                error!("main()(): {}", reason);
+                error!("main()(): {reason}");
                 anyhow::bail!(reason)
             },
         },

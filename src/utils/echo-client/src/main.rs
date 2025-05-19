@@ -99,7 +99,7 @@ async fn main() -> Result<()> {
     let p50 = sorted_latencies[p50_index];
     let p99 = sorted_latencies[p99_index];
 
-    println!("{:?},{:?},{:?},{:?},{:?},{:?}", nthreads, frequency, timeout, nrequests, p50, p99);
+    println!("{nthreads:?},{frequency:?},{timeout:?},{nrequests:?},{p50:?},{p99:?}");
 
     Ok(())
 }
@@ -141,7 +141,7 @@ async fn client(
             debug!("stopping client...");
             for handle in handles {
                 if let Err(e) = handle.await? {
-                    error!("failed to join handle: {}", e);
+                    error!("failed to join handle: {e}");
                 }
             }
             debug!("stopped!");
@@ -175,7 +175,7 @@ async fn client(
                                     let elapsed: u128 = now.elapsed().as_nanos();
 
                                     stream.shutdown().await?;
-                                    debug!("elapsed: {} ns", elapsed);
+                                    debug!("elapsed: {elapsed} ns");
                                     latencies2.lock().await.push(elapsed as u64);
                                     requests2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                     done = true;

@@ -61,7 +61,7 @@ impl Sandbox {
 
                 Err(_) => {
                     let reason: String = "failed to accept connection".to_string();
-                    error!("{}", reason);
+                    error!("{reason}");
                     anyhow::bail!(reason)
                 },
             };
@@ -82,7 +82,7 @@ impl Sandbox {
             },
             Err(_) => {
                 let reason: String = "failed to execute process".to_string();
-                error!("{}", reason);
+                error!("{reason}");
                 anyhow::bail!(reason)
             },
         };
@@ -109,12 +109,12 @@ impl Drop for Sandbox {
             let linuxd_sockaddr: String = self.config.linuxd_sockaddr().to_string();
             tokio::spawn(async move {
                 if let Err(e) = linuxd_socket.shutdown().await {
-                    error!("failed to shutdown socket ({:?})", e);
+                    error!("failed to shutdown socket ({e:?})");
                 }
 
-                debug!("removing socket file {:?}", linuxd_sockaddr);
+                debug!("removing socket file {linuxd_sockaddr:?}");
                 if let Err(e) = fs::remove_file(linuxd_sockaddr) {
-                    error!("failed to remove socket file ({:?})", e);
+                    error!("failed to remove socket file ({e:?})");
                 }
             });
         }

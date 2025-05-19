@@ -41,12 +41,11 @@ pub const MAX_PAYLOAD_SIZE: usize = 32;
 //==================================================================================================
 
 pub fn sandbox_sockaddr_builder(sandbox_sockaddr: &str) -> String {
-    format!("{}/{}{}", TMP_DIRECTORY, sandbox_sockaddr, UNIX_SOCKET_SUFFIX)
+    format!("{TMP_DIRECTORY}/{sandbox_sockaddr}{UNIX_SOCKET_SUFFIX}")
 }
 
 pub fn linuxd_sockaddr_builder(linuxd_sockaddr: &str, clientid: usize, requestid: usize) -> String {
-    format!(
-        "{}/{}:{}:{}{}",
-        TMP_DIRECTORY, linuxd_sockaddr, clientid, requestid, UNIX_SOCKET_SUFFIX
-    )
+        format!(
+          "{TMP_DIRECTORY}/{linuxd_sockaddr}:{clientid}:{requestid}{UNIX_SOCKET_SUFFIX}",
+      )
 }

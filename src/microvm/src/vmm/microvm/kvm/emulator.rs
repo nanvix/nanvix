@@ -97,8 +97,8 @@ impl Emulator {
             // Read from an I/O port.
             VirtualProcessorExitContext::PmioIn(port, _data) => {
                 // Read from an I/O port that is not supported.
-                let reason: String = format!("read from unsupported port i/o (port={:#06x})", port);
-                error!("handle_pmio_access(): {}", reason);
+                let reason: String = format!("read from unsupported port i/o (port={port:#06x})");
+                error!("handle_pmio_access(): {reason}");
                 anyhow::bail!(reason);
             },
             // Write to an I/O port.
@@ -120,14 +120,14 @@ impl Emulator {
                             let status: u16 = (data & 0xffff) as u16;
                             return Ok(Some(status));
                         },
-                        cmd => anyhow::bail!("unknown virtual machine command (cmd=:{:#06x})", cmd),
+                        cmd => anyhow::bail!("unknown virtual machine command (cmd=:{cmd:#06x})"),
                     }
                 },
                 // Write to an I/O port that is not supported.
                 _ => {
                     let reason: String =
-                        format!("write to unsupported port i/o (port={:#06x})", port);
-                    error!("handle_pmio_access(): {}", reason);
+                        format!("write to unsupported port i/o (port={port:#06x})");
+                    error!("handle_pmio_access(): {reason}");
                     anyhow::bail!(reason);
                 },
             },
