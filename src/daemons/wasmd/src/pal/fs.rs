@@ -14,7 +14,7 @@ use ::alloc::string::{
     ToString,
 };
 use ::nvx::sys::error::ErrorCode;
-use ::posix::{
+use ::syscall::{
     fcntl,
     ffi::c_int,
     sys::types::{
@@ -345,13 +345,13 @@ impl From<OpenFlags> for c_int {
         let mut flags: c_int = 0;
 
         match oflags.exclusive {
-            ExclusiveOpenFlags::ReadOnly => flags |= ::posix::fcntl::OpenFlags::O_RDONLY,
-            ExclusiveOpenFlags::ReadWrite => flags |= ::posix::fcntl::OpenFlags::O_RDWR,
-            ExclusiveOpenFlags::WriteOnly => flags |= ::posix::fcntl::OpenFlags::O_WRONLY,
+            ExclusiveOpenFlags::ReadOnly => flags |= ::syscall::fcntl::OpenFlags::O_RDONLY,
+            ExclusiveOpenFlags::ReadWrite => flags |= ::syscall::fcntl::OpenFlags::O_RDWR,
+            ExclusiveOpenFlags::WriteOnly => flags |= ::syscall::fcntl::OpenFlags::O_WRONLY,
         }
 
         if oflags.non_exclusive.append {
-            flags |= posix::fcntl::OpenFlags::O_APPEND;
+            flags |= syscall::fcntl::OpenFlags::O_APPEND;
         }
 
         if oflags.non_exclusive.close_on_exec {
@@ -363,19 +363,19 @@ impl From<OpenFlags> for c_int {
         }
 
         if oflags.non_exclusive.create {
-            flags |= posix::fcntl::OpenFlags::O_CREAT;
+            flags |= syscall::fcntl::OpenFlags::O_CREAT;
         }
 
         if oflags.non_exclusive.directory {
-            flags |= posix::fcntl::OpenFlags::O_DIRECTORY;
+            flags |= syscall::fcntl::OpenFlags::O_DIRECTORY;
         }
 
         if oflags.non_exclusive.dsync {
-            flags |= posix::fcntl::OpenFlags::O_SYNC;
+            flags |= syscall::fcntl::OpenFlags::O_SYNC;
         }
 
         if oflags.non_exclusive.exclusive {
-            flags |= posix::fcntl::OpenFlags::O_EXCL;
+            flags |= syscall::fcntl::OpenFlags::O_EXCL;
         }
 
         if oflags.non_exclusive.no_controlling_terminal {
@@ -387,19 +387,19 @@ impl From<OpenFlags> for c_int {
         }
 
         if oflags.non_exclusive.non_block {
-            flags |= posix::fcntl::OpenFlags::O_NONBLOCK;
+            flags |= syscall::fcntl::OpenFlags::O_NONBLOCK;
         }
 
         if oflags.non_exclusive.rsync {
-            flags |= posix::fcntl::OpenFlags::O_SYNC;
+            flags |= syscall::fcntl::OpenFlags::O_SYNC;
         }
 
         if oflags.non_exclusive.sync {
-            flags |= posix::fcntl::OpenFlags::O_SYNC;
+            flags |= syscall::fcntl::OpenFlags::O_SYNC;
         }
 
         if oflags.non_exclusive.truncate {
-            flags |= posix::fcntl::OpenFlags::O_TRUNC;
+            flags |= syscall::fcntl::OpenFlags::O_TRUNC;
         }
 
         if oflags.non_exclusive.initialize_tty {

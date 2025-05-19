@@ -16,7 +16,7 @@ use ::nvx::{
     pm::ProcessIdentifier,
     sys::error::ErrorCode,
 };
-use ::posix::{
+use ::syscall::{
     dirent::{
         message::{
             GetDirectoryEntriesRequest,
@@ -101,7 +101,7 @@ impl linux_dirent {
 
 /// Handles a getdents() system call request.
 pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) -> Vec<Message> {
-    trace!("do_getdents(): pid={:?}, request,count={:#x?}", pid, { request.count });
+    trace!("do_getdents(): pid={pid:?}, request,count={:#x?}", { request.count });
 
     // Check if `request.count` is not valid.
     if request.count == 0 {
@@ -132,7 +132,7 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
         },
         // Success.
         n => {
-            debug!("libc::getdents(): returned count={}", n);
+            debug!("libc::getdents(): returned count={n}");
 
             let mut bpos: usize = 0;
             while bpos < n as usize {
@@ -152,11 +152,9 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
                 let d_name_len: usize = d_reclen - 2 - linux_dirent::_OFFSET_OF_D_NAME;
                 let d_name: &str = unsafe { str::from_raw_parts(d_name_ptr, d_name_len) };
                 debug!(
-                    "libc::getdents(): d_ino={:#x}, d_off={:#x}, d_reclen={}, d_type={}, d_name={}",
+                    "libc::getdents(): d_ino={:#x}, d_off={:#x}, d_reclen={d_reclen}, d_type={d_type}, d_name={}",
                     { dent.d_ino },
                     { dent.d_off },
-                    d_reclen,
-                    d_type,
                     &d_name,
                 );
 
@@ -190,7 +188,7 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
     match response.into_parts(pid) {
         Ok(messages) => messages,
         Err(error) => {
-            warn!("do_getdents(): failed to build response (error={:?})", error);
+            warn!("do_getdents(): failed to build response (error={error:?})");
             vec![crate::build_error(pid, error.code)]
         },
     }

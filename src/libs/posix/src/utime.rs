@@ -11,7 +11,7 @@
 // Imports
 //==================================================================================================
 
-use crate::time::time_t;
+use ::syscall::time::time_t;
 
 //==================================================================================================
 // Structures
@@ -33,8 +33,9 @@ pub struct utimbuf {
 #[cfg(all(feature = "syscall", feature = "staticlib"))]
 mod bindings {
     use super::*;
-    use crate::{
-        errno::__errno_location,
+    use crate::errno::__errno_location;
+    use ::nvx::sys::error::ErrorCode;
+    use syscall::{
         fcntl::AT_FDCWD,
         ffi::{
             c_char,
@@ -42,7 +43,6 @@ mod bindings {
         },
         time::timespec,
     };
-    use ::nvx::sys::error::ErrorCode;
 
     ///
     /// # Description
@@ -90,6 +90,6 @@ mod bindings {
             },
         ];
 
-        crate::sys::stat::bindings::utimensat(AT_FDCWD, filename, times.as_ptr(), 0)
+        crate::sys::stat::utimensat(AT_FDCWD, filename, times.as_ptr(), 0)
     }
 }

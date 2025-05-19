@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use self::socket::Socket;
-use ::posix::{
+use ::syscall::{
     ffi::c_int,
     sys::socket::SocketAddr,
 };

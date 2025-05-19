@@ -9,7 +9,7 @@ use ::nvx::sys::error::{
     Error,
     ErrorCode,
 };
-use ::posix::time::{
+use ::syscall::time::{
     self,
 };
 

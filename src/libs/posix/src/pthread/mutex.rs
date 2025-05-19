@@ -1,0 +1,304 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::nvx::sys::{
+    error::ErrorCode,
+    time::SystemTime,
+};
+use ::syscall::{
+    ffi::c_int,
+    pthread,
+    sys::types::{
+        pthread_mutex_t,
+        pthread_mutexattr_t,
+    },
+    time::timespec,
+};
+
+//==================================================================================================
+// pthread_mutex_destroy()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Destroys a mutex.
+///
+/// # Parameters
+///
+/// - `mutex`: Mutex object.
+///
+/// # Returns
+///
+/// If successful, zero is returned. Otherwise, an error code is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `mutex` points to a valid `pthread_mutex_t` structure.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int {
+    // Check if `mutex` is not valid.
+    if mutex.is_null() {
+        ::syslog::error!("pthread_mutex_destroy(): invalid mutex pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    if let Err(error) = pthread::pthread_mutex_destroy(&mut *mutex) {
+        return error.code.get();
+    }
+
+    0
+}
+
+//==================================================================================================
+// pthread_mutex_init()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Initializes a mutex.
+///
+/// # Parameters
+///
+/// - `mutex`: Mutex object.
+/// - `attr`: Mutex attributes.
+///
+/// # Returns
+///
+/// If successful, zero is returned. Otherwise, an error code is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `mutex` points to a valid `pthread_mutex_t` structure.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_mutex_init(
+    mutex: *mut pthread_mutex_t,
+    attr: *const pthread_mutexattr_t,
+) -> c_int {
+    // Check if `mutex` is not valid.
+    if mutex.is_null() {
+        ::syslog::error!("pthread_mutex_init(): invalid mutex pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if we should use custom attributes.
+    if !attr.is_null() {
+        ::syslog::warn!("pthread_mutex_init(): custom attributes not supported, ignoring");
+    }
+
+    // TODO: once we support custom attributes, dereference that pointer.
+    let attr: pthread_mutexattr_t = pthread_mutexattr_t::default();
+
+    if let Err(error) = pthread::pthread_mutex_init(&mut *mutex, &attr) {
+        return error.code.get();
+    }
+
+    0
+}
+
+//==================================================================================================
+// pthread_mutex_lock()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Locks a mutex.
+///
+/// # Parameters
+///
+/// - `mutex`: Mutex object.
+///
+/// # Returns
+///
+/// If successful, zero is returned. Otherwise, an error code is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `mutex` points to a valid `pthread_mutex_t` structure.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_int {
+    // Check if `mutex` is not valid.
+    if mutex.is_null() {
+        ::syslog::error!("pthread_mutex_lock(): invalid mutex pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    match pthread::pthread_mutex_lock(&mut *mutex) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::syslog::error!("pthread_mutex_lock(): failed to lock mutex (error={:?})", error);
+            error.code.get()
+        },
+    }
+}
+
+//==================================================================================================
+// pthread_mutex_timedlock()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Locks a mutex with a timeout.
+///
+/// # Parameters
+///
+/// - `mutex`: Mutex object.
+///
+/// # Returns
+///
+/// If successful, zero is returned. Otherwise, an error code is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `mutex` points to a valid `pthread_mutex_t` structure.
+/// - `abstime` points to a valid `timespec` structure.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_mutex_timedlock(
+    mutex: *mut pthread_mutex_t,
+    abstime: *const timespec,
+) -> c_int {
+    // Check if `mutex` is not valid.
+    if mutex.is_null() {
+        ::syslog::error!("pthread_mutex_timedlock(): invalid mutex pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `abstime` is not valid.
+    if abstime.is_null() {
+        ::syslog::error!("pthread_mutex_timedlock(): invalid abstime pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Try to convert the `abstime`.
+    let timeout: SystemTime =
+        match SystemTime::new((*abstime).tv_sec as u64, (*abstime).tv_nsec as u32) {
+            Some(timeout) => timeout,
+            None => {
+                ::syslog::error!(
+                    "pthread_mutex_timedlock(): invalid timeout (abstime={:?})",
+                    abstime
+                );
+                return ErrorCode::InvalidArgument.get();
+            },
+        };
+
+    match pthread::pthread_mutex_timedlock(&mut *mutex, Some(timeout)) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::syslog::error!(
+                "pthread_mutex_timedlock(): failed to lock mutex (abstime={:?}, error={:?})",
+                abstime,
+                error
+            );
+            error.code.get()
+        },
+    }
+}
+
+//==================================================================================================
+// pthread_mutex_trylock()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Tries to lock a mutex.
+///
+/// # Parameters
+///
+/// - `mutex`: Mutex object.
+///
+/// # Returns
+///
+/// If successful, zero is returned. Otherwise, an error code is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `mutex` points to a valid `pthread_mutex_t` structure.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c_int {
+    // Check if `mutex` is not valid.
+    if mutex.is_null() {
+        ::syslog::error!("pthread_mutex_trylock(): invalid mutex pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    match pthread::pthread_mutex_trylock(&mut *mutex) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::syslog::error!("pthread_mutex_trylock(): failed to lock mutex (error={:?})", error);
+            error.code.get()
+        },
+    }
+}
+
+//==================================================================================================
+// pthread_mutex_unlock()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Unlocks a mutex.
+///
+/// # Parameters
+///
+/// - `mutex`: Mutex object.
+///
+/// # Returns
+///
+/// If successful, zero is returned. Otherwise, an error code is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `mutex` points to a valid `pthread_mutex_t` structure.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut pthread_mutex_t) -> c_int {
+    // Check if `mutex` is not valid.
+    if mutex.is_null() {
+        ::syslog::error!("pthread_mutex_unlock(): invalid mutex pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    match pthread::pthread_mutex_unlock(&mut *mutex) {
+        Ok(_) => 0,
+        Err(error) => error.code.get(),
+    }
+}

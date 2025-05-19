@@ -22,7 +22,7 @@ use ::nvx::{
         ErrorCode,
     },
 };
-use ::posix::{
+use ::syscall::{
     fcntl::message::{
         OpenAtRequest,
         RenameAtRequest,

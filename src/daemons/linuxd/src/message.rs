@@ -11,7 +11,7 @@ use ::nvx::{
     pm::ProcessIdentifier,
     sys::error::Error,
 };
-use ::posix::message::{
+use ::syscall::message::{
     LinuxDaemonLongMessage,
     LinuxDaemonMessagePart,
     MessagePartitioner,

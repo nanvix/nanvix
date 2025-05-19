@@ -2,402 +2,568 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-#![allow(non_camel_case_types)]
-
-//==================================================================================================
-// Modules
-//==================================================================================================
-
-pub mod message;
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::{
-    sys::types::{
-        blkcnt_t,
-        blksize_t,
-        dev_t,
-        gid_t,
-        ino_t,
-        mode_t,
-        nlink_t,
-        off_t,
-        uid_t,
+use crate::errno::__errno_location;
+use ::core::{
+    ffi,
+    slice,
+};
+use ::nvx::sys::error::ErrorCode;
+use ::syscall::{
+    fcntl,
+    ffi::{
+        c_char,
+        c_int,
+    },
+    sys::{
+        stat,
+        types::mode_t,
     },
     time::timespec,
 };
-use ::core::mem;
-use ::nvx::sys::error::{
-    Error,
-    ErrorCode,
-};
 
 //==================================================================================================
-// FileMode
+// Standalone Functions
 //==================================================================================================
 
-pub mod file_mode {
-    use crate::sys::types::mode_t;
+///
+/// # Description
+///
+/// Changes the mode of a file.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `chmod()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `path` points to a valid null-terminated C string.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
+    ::syslog::trace!("chmod(): path={:?}, mode={}", path, mode);
+    fchmodat(fcntl::AT_FDCWD, path, mode, 0)
+}
 
-    /// FIFO
-    pub const S_IFIFO: mode_t = 0o0010000;
-    /// Character device
-    pub const S_IFCHR: mode_t = 0o0020000;
-    /// Directory
-    pub const S_IFDIR: mode_t = 0o0040000;
-    /// Block device
-    pub const S_IFBLK: mode_t = 0o0060000;
-    /// Regular file
-    pub const S_IFREG: mode_t = 0o0100000;
-    /// Symbolic link
-    pub const S_IFLNK: mode_t = 0o0120000;
-    /// Socket.
-    pub const S_IFSOCK: mode_t = 0o0140000;
-    /// Mask for the file type bit fields.
-    pub const S_IFMT: mode_t = 0o0170000;
+///
+/// # Description
+///
+/// Changes the mode of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `fchmod()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may modify global state.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - No other thread calls this function at the same time.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
+    ::syslog::trace!("fchmod(): fd={}, mode={}", fd, mode);
 
-    /// Tests if the file type is a FIFO.
-    #[allow(non_snake_case)]
-    pub fn S_ISFIFO(mode: mode_t) -> bool {
-        (mode & S_IFMT) == S_IFIFO
-    }
-
-    /// Tests if the file type is a character device.
-    #[allow(non_snake_case)]
-    pub fn S_ISCHR(mode: mode_t) -> bool {
-        (mode & S_IFMT) == S_IFCHR
-    }
-
-    /// Tests if the file type is a directory.
-    #[allow(non_snake_case)]
-    pub fn S_ISDIR(mode: mode_t) -> bool {
-        (mode & S_IFMT) == S_IFDIR
-    }
-
-    /// Tests if the file type is a block device.
-    #[allow(non_snake_case)]
-    pub fn S_ISBLK(mode: mode_t) -> bool {
-        (mode & S_IFMT) == S_IFBLK
-    }
-
-    /// Tests if the file type is a regular file.
-    #[allow(non_snake_case)]
-    pub fn S_ISREG(mode: mode_t) -> bool {
-        (mode & S_IFMT) == S_IFREG
-    }
-
-    /// Tests if the file type is a symbolic link.
-    #[allow(non_snake_case)]
-    pub fn S_ISLNK(mode: mode_t) -> bool {
-        (mode & S_IFMT) == S_IFLNK
-    }
-
-    /// Tests if the file type is a socket.
-    #[allow(non_snake_case)]
-    pub fn S_ISSOCK(mode: mode_t) -> bool {
-        (mode & S_IFMT) == S_IFSOCK
+    // Attempt to change the mode and parse the result.
+    match stat::fchmod(fd, mode) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::syslog::error!("fchmod(): {:?} (fd={}, mode={})", error, fd, mode);
+            *__errno_location() = error.code.get();
+            -1
+        },
     }
 }
 
-//==================================================================================================
-// Structures
-//==================================================================================================
+///
+/// # Description
+///
+/// Changes the mode of a file relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `path`:  Pathname of the file.
+/// - `mode`:  Mode.
+/// - `flag`:  Flag.
+///
+/// # Returns
+///
+/// Upon successful completion, `fchmodat()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `path` points to a valid null-terminated C string.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fchmodat(
+    dirfd: c_int,
+    path: *const c_char,
+    mode: mode_t,
+    flag: c_int,
+) -> c_int {
+    ::syslog::trace!(
+        "fchmodat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
+        dirfd,
+        path,
+        mode,
+        flag
+    );
 
-/// File status structure.
-#[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
-pub struct stat {
-    /// Device ID.
-    pub st_dev: dev_t,
-    /// File serial number.
-    pub st_ino: ino_t,
-    /// File mode.
-    pub st_mode: mode_t,
-    /// Link count.
-    pub st_nlink: nlink_t,
-    /// User ID.
-    pub st_uid: uid_t,
-    /// Group ID.
-    pub st_gid: gid_t,
-    /// Device ID (if special file).
-    pub st_rdev: dev_t,
-    /// File size.
-    pub st_size: off_t,
-    /// Last access time.
-    pub st_atim: timespec,
-    /// Last modification time.,
-    pub st_mtim: timespec,
-    /// Last status change time.
-    pub st_ctim: timespec,
-    /// Block size.
-    pub st_blksize: blksize_t,
-    /// Number of blocks allocated.
-    pub st_blocks: blkcnt_t,
-}
-::static_assert::assert_eq_size!(stat, stat::SIZE);
+    // Attempt to convert `path`.
+    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
+        Ok(pathname) => pathname,
+        Err(error) => {
+            ::syslog::error!(
+                "fchmodat(): invalid pathname (dirfd={:?}, mode={:?}, flag={:?}, error={:?})",
+                dirfd,
+                mode,
+                flag,
+                error
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
 
-impl stat {
-    /// Size of the device ID field.
-    const SIZE_OF_ST_DEV: usize = mem::size_of::<dev_t>();
-    /// Size of the file serial number field.
-    const SIZE_OF_ST_INO: usize = mem::size_of::<ino_t>();
-    /// Size of the file mode field.
-    const SIZE_OF_ST_MODE: usize = mem::size_of::<mode_t>();
-    /// Size of the link count field.
-    const SIZE_OF_ST_NLINK: usize = mem::size_of::<nlink_t>();
-    /// Size of the user ID field.
-    const SIZE_OF_ST_UID: usize = mem::size_of::<uid_t>();
-    /// Size of the group ID field.
-    const SIZE_OF_ST_GID: usize = mem::size_of::<gid_t>();
-    /// Size of the device ID field (if special file).
-    const SIZE_OF_ST_RDEV: usize = mem::size_of::<dev_t>();
-    /// Size of the file size field.
-    const SIZE_OF_ST_SIZE: usize = mem::size_of::<off_t>();
-    /// Size of the last access time field.
-    const SIZE_OF_ST_ATIM: usize = mem::size_of::<timespec>();
-    /// Size of the last modification time field.
-    const SIZE_OF_ST_MTIM: usize = mem::size_of::<timespec>();
-    /// Size of the last status change time field.
-    const SIZE_OF_ST_CTIM: usize = mem::size_of::<timespec>();
-    /// Size of the block size field.
-    const SIZE_OF_ST_BLKSIZE: usize = mem::size_of::<blksize_t>();
-    /// Size of the number of blocks allocated field.
-    const SIZE_OF_ST_BLOCKS: usize = mem::size_of::<blkcnt_t>();
-    /// Offset of the device ID field.
-    const OFFSET_OF_ST_DEV: usize = 0;
-    /// Offset of the file serial number field.
-    const OFFSET_OF_ST_INO: usize = Self::OFFSET_OF_ST_DEV + Self::SIZE_OF_ST_DEV;
-    /// Offset of the file mode field.
-    const OFFSET_OF_ST_MODE: usize = Self::OFFSET_OF_ST_INO + Self::SIZE_OF_ST_INO;
-    /// Offset of the link count field.
-    const OFFSET_OF_ST_NLINK: usize = Self::OFFSET_OF_ST_MODE + Self::SIZE_OF_ST_MODE;
-    /// Offset of the user ID field.
-    const OFFSET_OF_ST_UID: usize = Self::OFFSET_OF_ST_NLINK + Self::SIZE_OF_ST_NLINK;
-    /// Offset of the group ID field.
-    const OFFSET_OF_ST_GID: usize = Self::OFFSET_OF_ST_UID + Self::SIZE_OF_ST_UID;
-    /// Offset of the device ID field (if special file).
-    const OFFSET_OF_ST_RDEV: usize = Self::OFFSET_OF_ST_GID + Self::SIZE_OF_ST_GID;
-    /// Offset of the file size field.
-    const OFFSET_OF_ST_SIZE: usize = Self::OFFSET_OF_ST_RDEV + Self::SIZE_OF_ST_RDEV;
-    /// Offset of the last access time field.
-    const OFFSET_OF_ST_ATIM: usize = Self::OFFSET_OF_ST_SIZE + Self::SIZE_OF_ST_SIZE;
-    /// Offset of the last modification time field.
-    const OFFSET_OF_ST_MTIM: usize = Self::OFFSET_OF_ST_ATIM + Self::SIZE_OF_ST_ATIM;
-    /// Offset of the last status change time field.
-    const OFFSET_OF_ST_CTIM: usize = Self::OFFSET_OF_ST_MTIM + Self::SIZE_OF_ST_MTIM;
-    /// Offset of the block size field.
-    const OFFSET_OF_ST_BLKSIZE: usize = Self::OFFSET_OF_ST_CTIM + Self::SIZE_OF_ST_CTIM;
-    /// Offset of the number of blocks allocated field.
-    const OFFSET_OF_ST_BLOCKS: usize = Self::OFFSET_OF_ST_BLKSIZE + Self::SIZE_OF_ST_BLKSIZE;
-
-    /// Size of the structure.
-    const SIZE: usize = Self::SIZE_OF_ST_DEV
-        + Self::SIZE_OF_ST_INO
-        + Self::SIZE_OF_ST_MODE
-        + Self::SIZE_OF_ST_NLINK
-        + Self::SIZE_OF_ST_UID
-        + Self::SIZE_OF_ST_GID
-        + Self::SIZE_OF_ST_RDEV
-        + Self::SIZE_OF_ST_SIZE
-        + Self::SIZE_OF_ST_ATIM
-        + Self::SIZE_OF_ST_MTIM
-        + Self::SIZE_OF_ST_CTIM
-        + Self::SIZE_OF_ST_BLKSIZE
-        + Self::SIZE_OF_ST_BLOCKS;
-
-    /// Converts a file status structure to a byte array.
-    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-        let mut bytes: [u8; Self::SIZE] = [0; Self::SIZE];
-
-        // Convert device ID field.
-        bytes[Self::OFFSET_OF_ST_DEV..Self::OFFSET_OF_ST_DEV + Self::SIZE_OF_ST_DEV]
-            .copy_from_slice(&self.st_dev.to_ne_bytes());
-
-        // Convert file serial number field.
-        bytes[Self::OFFSET_OF_ST_INO..Self::OFFSET_OF_ST_INO + Self::SIZE_OF_ST_INO]
-            .copy_from_slice(&self.st_ino.to_ne_bytes());
-
-        // Convert file mode field.
-        bytes[Self::OFFSET_OF_ST_MODE..Self::OFFSET_OF_ST_MODE + Self::SIZE_OF_ST_MODE]
-            .copy_from_slice(&self.st_mode.to_ne_bytes());
-
-        // Convert link count field.
-        bytes[Self::OFFSET_OF_ST_NLINK..Self::OFFSET_OF_ST_NLINK + Self::SIZE_OF_ST_NLINK]
-            .copy_from_slice(&self.st_nlink.to_ne_bytes());
-
-        // Convert user ID field.
-        bytes[Self::OFFSET_OF_ST_UID..Self::OFFSET_OF_ST_UID + Self::SIZE_OF_ST_UID]
-            .copy_from_slice(&self.st_uid.to_ne_bytes());
-
-        // Convert group ID field.
-        bytes[Self::OFFSET_OF_ST_GID..Self::OFFSET_OF_ST_GID + Self::SIZE_OF_ST_GID]
-            .copy_from_slice(&self.st_gid.to_ne_bytes());
-
-        // Convert device ID field (if special file).
-        bytes[Self::OFFSET_OF_ST_RDEV..Self::OFFSET_OF_ST_RDEV + Self::SIZE_OF_ST_RDEV]
-            .copy_from_slice(&self.st_rdev.to_ne_bytes());
-
-        // Convert file size field.
-        bytes[Self::OFFSET_OF_ST_SIZE..Self::OFFSET_OF_ST_SIZE + Self::SIZE_OF_ST_SIZE]
-            .copy_from_slice(&self.st_size.to_ne_bytes());
-
-        // Convert last access time field.
-        bytes[Self::OFFSET_OF_ST_ATIM..Self::OFFSET_OF_ST_ATIM + Self::SIZE_OF_ST_ATIM]
-            .copy_from_slice(&self.st_atim.to_bytes());
-
-        // Convert last modification time field.
-        bytes[Self::OFFSET_OF_ST_MTIM..Self::OFFSET_OF_ST_MTIM + Self::SIZE_OF_ST_MTIM]
-            .copy_from_slice(&self.st_mtim.to_bytes());
-
-        // Convert last status change time field.
-        bytes[Self::OFFSET_OF_ST_CTIM..Self::OFFSET_OF_ST_CTIM + Self::SIZE_OF_ST_CTIM]
-            .copy_from_slice(&self.st_ctim.to_bytes());
-
-        // Convert block size field.
-        bytes[Self::OFFSET_OF_ST_BLKSIZE..Self::OFFSET_OF_ST_BLKSIZE + Self::SIZE_OF_ST_BLKSIZE]
-            .copy_from_slice(&self.st_blksize.to_ne_bytes());
-
-        // Convert number of blocks allocated field.
-        bytes[Self::OFFSET_OF_ST_BLOCKS..Self::OFFSET_OF_ST_BLOCKS + Self::SIZE_OF_ST_BLOCKS]
-            .copy_from_slice(&self.st_blocks.to_ne_bytes());
-
-        bytes
-    }
-
-    /// Tries to convert a file status structure from a byte array.
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        // Check if the array has the correct size.
-        if bytes.len() != Self::SIZE {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid array size"));
-        }
-
-        // Parse device ID field.
-        let st_dev: dev_t = dev_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_DEV..Self::OFFSET_OF_ST_DEV + Self::SIZE_OF_ST_DEV]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_dev"))?,
-        );
-
-        // Parse file serial number field.
-        let st_ino: ino_t = ino_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_INO..Self::OFFSET_OF_ST_INO + Self::SIZE_OF_ST_INO]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_ino"))?,
-        );
-
-        // Parse file mode field.
-        let st_mode: mode_t = mode_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_MODE..Self::OFFSET_OF_ST_MODE + Self::SIZE_OF_ST_MODE]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_mode"))?,
-        );
-
-        // Parse link count field.
-        let st_nlink: nlink_t = nlink_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_NLINK..Self::OFFSET_OF_ST_NLINK + Self::SIZE_OF_ST_NLINK]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_nlink"))?,
-        );
-
-        // Parse user ID field.
-        let st_uid: uid_t = uid_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_UID..Self::OFFSET_OF_ST_UID + Self::SIZE_OF_ST_UID]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_uid"))?,
-        );
-
-        // Parse group ID field.
-        let st_gid: gid_t = gid_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_GID..Self::OFFSET_OF_ST_GID + Self::SIZE_OF_ST_GID]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_gid"))?,
-        );
-
-        // Parse device ID field (if special file).
-        let st_rdev: dev_t = dev_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_RDEV..Self::OFFSET_OF_ST_RDEV + Self::SIZE_OF_ST_RDEV]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_rdev"))?,
-        );
-
-        // Parse file size field.
-        let st_size: off_t = off_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_SIZE..Self::OFFSET_OF_ST_SIZE + Self::SIZE_OF_ST_SIZE]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_size"))?,
-        );
-
-        // Parse last access time field.
-        let st_atim: timespec = timespec::try_from_bytes(
-            &bytes[Self::OFFSET_OF_ST_ATIM..Self::OFFSET_OF_ST_ATIM + Self::SIZE_OF_ST_ATIM],
-        )?;
-
-        // Parse last modification time field.
-        let st_mtim: timespec = timespec::try_from_bytes(
-            &bytes[Self::OFFSET_OF_ST_MTIM..Self::OFFSET_OF_ST_MTIM + Self::SIZE_OF_ST_MTIM],
-        )?;
-
-        // Parse last status change time field.
-        let st_ctim: timespec = timespec::try_from_bytes(
-            &bytes[Self::OFFSET_OF_ST_CTIM..Self::OFFSET_OF_ST_CTIM + Self::SIZE_OF_ST_CTIM],
-        )?;
-
-        // Parse block size field.
-        let st_blksize: blksize_t = blksize_t::from_ne_bytes(
-            bytes
-                [Self::OFFSET_OF_ST_BLKSIZE..Self::OFFSET_OF_ST_BLKSIZE + Self::SIZE_OF_ST_BLKSIZE]
-                .try_into()
-                .map_err(|_| {
-                    Error::new(ErrorCode::InvalidArgument, "failed to parse st_blksize")
-                })?,
-        );
-
-        // Parse number of blocks allocated field.
-        let st_blocks: blkcnt_t = blkcnt_t::from_ne_bytes(
-            bytes[Self::OFFSET_OF_ST_BLOCKS..Self::OFFSET_OF_ST_BLOCKS + Self::SIZE_OF_ST_BLOCKS]
-                .try_into()
-                .map_err(|_| Error::new(ErrorCode::InvalidArgument, "failed to parse st_blocks"))?,
-        );
-
-        Ok(Self {
-            st_dev,
-            st_ino,
-            st_mode,
-            st_nlink,
-            st_uid,
-            st_gid,
-            st_rdev,
-            st_size,
-            st_atim,
-            st_mtim,
-            st_ctim,
-            st_blksize,
-            st_blocks,
-        })
+    // Attempt to change the mode and parse the result.
+    match stat::fchmodat(dirfd, pathname, mode, flag) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::syslog::error!(
+                "fchmodat(): failed (dirfd={}, pathname={:?}, mode={}, flag={}, error={:?})",
+                dirfd,
+                pathname,
+                mode,
+                flag,
+                error
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
     }
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "syscall")] {
-        mod syscall;
-        pub use self::syscall::{
-            fchmod,
-            fchmodat,
-            fstatat,
-            stat,
-            fstat,
-            lstat,
-            futimens,
-            mkdirat,
-            utimensat,
-        };
+///
+/// # Safety
+///
+/// This function has undefined behavior if buf points to an invalid memory location.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
+    ::syslog::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
+    match stat::fstat(fd, &mut *buf) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::syslog::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
+            *__errno_location() = error.code.get();
+            -1
+        },
     }
 }
 
-#[cfg(all(feature = "syscall", feature = "staticlib"))]
-pub mod bindings;
+///
+/// # Description
+///
+/// Sets the access and modification times of a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor.
+/// - `times`: Access and modification times.
+///
+/// # Returns
+///
+/// Upon successful completion, `futimens()` returns `0`. Otherwise, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - It may dereference a raw pointer.
+/// - It may modify global state.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `times` points to an array of `timespec` structures with a length of 2.
+/// - This function is not called by multiple threads at the same time.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
+    ::syslog::trace!("futimens(): fd={}, times={:p}", fd, times);
+
+    // Check if `times` is invalid.
+    if times.is_null() {
+        ::syslog::error!("futimens(): fd={}, times={:p}", fd, times);
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Attempt to convert `times` to a reference to an array of two elements.
+    let times: &[timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
+        Ok(array) => array,
+        Err(_) => {
+            ::syslog::error!("futimens(): invalid times array");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to set the access and modification times and parse the result.
+    match stat::futimens(fd, times) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::syslog::error!(
+                "futimens(): failed (fd={}, times={:?}, error={:?})",
+                fd,
+                times,
+                error
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Changes the mode of a symbolic link.
+///
+/// # Parameters
+///
+/// - `path`: Path to the file.
+/// - `mode`: Mode of the file.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to indicate
+/// the error.
+///
+/// # See Also
+///
+/// - [`crate::unistd::lchmod()`]
+///
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
+    ::syslog::trace!("lchmod(): path={:?}, mode={}", path, mode);
+    fchmodat(fcntl::AT_FDCWD, path, mode, fcntl::AT_SYMLINK_NOFOLLOW)
+}
+
+///
+/// # Description
+///
+/// Obtains information about the file named `pathname`.
+///
+/// # Parameters
+///
+/// - `pathname`: Path to the file.
+/// - `statbuf`: Buffer to store file information.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Upon failure, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::sys::stat::lstat`]
+///
+/// # Safety
+///
+/// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
+    // Convert C string to Rust string.
+    let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::syslog::error!("lstat(): invalid pathname");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    let statbuf: &mut stat::stat = &mut *statbuf;
+
+    match stat::lstat(pathname, statbuf) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::syslog::error!(
+                "lstat(): failed (pathname={}, statbuf={:p}, error={:?})",
+                pathname,
+                statbuf,
+                error
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Obtains information about the file named `pathname`.
+///
+/// # Parameters
+///
+/// - `pathname`: Path to the file.
+/// - `statbuf`: Buffer to store file information.
+///
+/// # Returns
+///
+/// Upon successful completion, `0` is returned. Upon failure, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # See Also
+///
+/// - [`crate::sys::stat::stat`]
+///
+/// # Safety
+///
+/// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
+    // Convert C string to Rust string.
+    let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::syslog::error!("stat(): invalid pathname");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    let statbuf: &mut stat::stat = &mut *statbuf;
+
+    match stat::stat(pathname, statbuf) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::syslog::error!(
+                "stat(): failed (pathname={}, statbuf={:p}, error={:?})",
+                pathname,
+                statbuf,
+                error
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Creates a new directory.
+///
+/// # Parameters
+///
+/// - `pathname`: Pathname of the new directory.
+/// - `mode`: Mode of the new directory.
+///
+/// # Returns
+///
+/// Upon successful completion, `mkdir()` returns zero. Otherwise, it returns -1 and sets `errno`
+/// to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `pathname` points to a valid null-terminated C string.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
+    ::syslog::trace!("mkdir(): pathname={:?}, mode={}", pathname, mode);
+    mkdirat(fcntl::AT_FDCWD, pathname, mode)
+}
+
+///
+/// # Description
+///
+/// Creates a new directory relative to a directory file descriptor.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `pathname`: Pathname of the new directory.
+/// - `mode`: Mode of the new directory.
+///
+/// # Returns
+///
+/// Upon successful completion, `mkdirat()` returns zero. Otherwise, it returns -1 and sets `errno`
+/// to indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `pathname` points to a valid null-terminated C string.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int {
+    ::syslog::trace!("mkdirat(): dirfd={}, pathname={:?}, mode={}", dirfd, pathname, mode);
+
+    // Attempt to convert `pathname`.
+    let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::syslog::error!("mkdirat(): invalid pathname");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to create the directory and parse the result.
+    match stat::mkdirat(dirfd, pathname, mode) {
+        Ok(()) => 0,
+        Err(error) => {
+            ::syslog::error!(
+                "mkdirat(): failed (dirfd={}, pathname={:?}, mode={}, error={:?})",
+                dirfd,
+                pathname,
+                mode,
+                error
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
+    }
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/454
+    ::syslog::error!("truncate(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
+}
+
+///
+/// # Description
+///
+/// Sets file access and modification times.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor.
+/// - `pathname`: Pathname of the file.
+/// - `times`: Access and modification times.
+/// - `flags`: Flags.
+///
+/// # Returns
+///
+/// Upon successful completion, zero is returned. Otherwise, it returns -1 and sets `errno` to
+/// indicate the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `filename` points to a valid null-terminated C string.
+/// - `times` points to a valid array of length 2 of `timespec` structures.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn utimensat(
+    dirfd: c_int,
+    filename: *const c_char,
+    times: *const timespec,
+    flags: c_int,
+) -> c_int {
+    ::syslog::trace!(
+        "utimensat(): dirfd={}, filename={:?}, times={:?}, flags={}",
+        dirfd,
+        filename,
+        times,
+        flags
+    );
+
+    // Convert C string to Rust string.
+    let pathname: &str = match ffi::CStr::from_ptr(filename).to_str() {
+        Ok(pathname) => pathname,
+        Err(_) => {
+            ::syslog::error!(
+                "utimensat(): invalid pathname (dirfd={}, times={:p}, flags={})",
+                dirfd,
+                times,
+                flags
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Check if `times` is invalid.
+    if times.is_null() {
+        ::syslog::error!(
+            "utimensat(): invalid times (dirfd={}, pathname={:?}, times={:p}, flags={})",
+            dirfd,
+            pathname,
+            times,
+            flags
+        );
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Attempt to convert `times` to a reference to an array of two elements.
+    let times: &[timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
+        Ok(array) => array,
+        Err(_) => {
+            ::syslog::error!(
+                "futimens(): invalid times array (dirfd={}, pathname={:?}, times={:p}, flags={})",
+                dirfd,
+                pathname,
+                times,
+                flags
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    match stat::utimensat(dirfd, pathname, times, flags) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::syslog::error!(
+                "utimensat(): failed (dirfd={}, pathname={}, times={:?}, flags={}, error={:?})",
+                dirfd,
+                pathname,
+                times,
+                flags,
+                error
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
+    }
+}
