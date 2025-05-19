@@ -173,7 +173,7 @@ pub unsafe fn load(
     let ehdr: *const Elf32Fhdr = source as *const Elf32Fhdr;
 
     let entry: usize = (*ehdr).e_entry as usize;
-    trace!("entry point: {:#010x}", entry);
+    trace!("entry point: {entry:#010x}");
 
     // Check if ELF magic number is valid.
     if (*ehdr).e_ident[0] != ELFMAG0
@@ -182,42 +182,42 @@ pub unsafe fn load(
         || (*ehdr).e_ident[3] != ELFMAG3 as u8
     {
         let reason: String = "header is null or invalid magic".to_string();
-        error!("load(): {} (e_ident={:?})", reason, (*ehdr).e_ident);
+        error!("load(): {reason} (e_ident={:?})", (*ehdr).e_ident);
         return Err(anyhow::anyhow!(reason));
     }
 
     // Check ELF class.
     if (*ehdr).e_ident[4] != ELFCLASS32 {
         let reason: String = "invalid elf class".to_string();
-        error!("load(): {} (e_ident={:?})", reason, (*ehdr).e_ident);
+        error!("load(): {reason} (e_ident={:?})", (*ehdr).e_ident);
         return Err(anyhow::anyhow!(reason));
     }
 
     // Check data encoding.
     if (*ehdr).e_ident[5] != ELFDATA2LSB {
         let reason: String = "invalid data encoding".to_string();
-        error!("load(): {} (e_ident={:?})", reason, (*ehdr).e_ident);
+        error!("load(): {reason} (e_ident={:?})", (*ehdr).e_ident);
         return Err(anyhow::anyhow!(reason));
     }
 
     // Check version.
     if (*ehdr).e_version != EV_CURRENT {
         let reason: String = "invalid version".to_string();
-        error!("load(): {} (e_version={})", reason, (*ehdr).e_version);
+        error!("load(): {reason} (e_version={})", (*ehdr).e_version);
         return Err(anyhow::anyhow!(reason));
     }
 
     // Check ELF type.
     if (*ehdr).e_type != ET_EXEC {
         let reason: String = "invalid elf type".to_string();
-        error!("load(): {} (e_type={})", reason, (*ehdr).e_type);
+        error!("load(): {reason} (e_type={})", (*ehdr).e_type);
         return Err(anyhow::anyhow!(reason));
     }
 
     // Check ELF machine architecture.
     if (*ehdr).e_machine != EM_386 {
         let reason: String = "invalid machine architecture".to_string();
-        error!("load(): {} (e_machine={})", reason, (*ehdr).e_machine);
+        error!("load(): {reason} (e_machine={})", (*ehdr).e_machine);
         return Err(anyhow::anyhow!(reason));
     }
 
@@ -239,15 +239,13 @@ pub unsafe fn load(
             if vaddr + memsz > max_offset {
                 let reason: String = "segment does not fit in memory".to_string();
                 error!(
-                    "load(): {} (vaddr={:#010x}, memsz={:#010x}, max_offset={:#010x})",
-                    reason, vaddr, memsz, max_offset
+                    "load(): {reason} (vaddr={vaddr:#010x}, memsz={memsz:#010x}, max_offset={max_offset:#010x})",
                 );
                 return Err(anyhow::anyhow!(reason));
             }
 
             trace!(
-                "loading segment: offset={:#010x} vaddr={:#010x} filesz={:#010x} memsz={:#010x}",
-                offset, vaddr, filesz, memsz
+                "loading segment: offset={offset:#010x} vaddr={vaddr:#010x} filesz={filesz:#010x} memsz={memsz:#010x}",
             );
 
             // Copy segment to memory.

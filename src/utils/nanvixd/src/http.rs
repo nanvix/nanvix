@@ -149,7 +149,7 @@ impl HttpClient {
                 buf.len(),
                 config::MAX_PAYLOAD_SIZE
             );
-            error!("serve(): {}", reason);
+            error!("serve(): {reason}");
             anyhow::bail!(reason)
         }
 
@@ -160,7 +160,7 @@ impl HttpClient {
                 buf.len(),
                 config::MAX_PAYLOAD_SIZE
             );
-            error!("serve(): {}", reason);
+            error!("serve(): {reason}");
             anyhow::bail!(reason)
         }
 
@@ -169,20 +169,20 @@ impl HttpClient {
             Ok(length) => length,
             Err(_) => {
                 let reason: String = "failed to convert request length".to_string();
-                error!("serve(): {}", reason);
+                error!("serve(): {reason}");
                 anyhow::bail!(reason)
             },
         };
         if let Err(e) = sandbox_socket.write_all(&length.to_le_bytes()).await {
-            let reason: String = format!("failed to write length byte to sandbox (error={:?})", e);
-            error!("serve(): {}", reason);
+            let reason: String = format!("failed to write length byte to sandbox (error={e:?})");
+            error!("serve(): {reason}");
             anyhow::bail!(reason)
         }
 
         // Forward request to Sandbox.
         if let Err(e) = sandbox_socket.write_all(&buf).await {
-            let reason: String = format!("failed to write bytes to sandbox (error={:?})", e);
-            error!("serve(): {}", reason);
+            let reason: String = format!("failed to write bytes to sandbox (error={e:?})");
+            error!("serve(): {reason}");
             anyhow::bail!(reason)
         }
 
@@ -193,8 +193,8 @@ impl HttpClient {
             let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
             if let Err(e) = sandbox_socket.read_exact(&mut length_buffer).await {
                 let reason: String =
-                    format!("failed to read length byte from sandbox (error={:?})", e);
-                error!("serve(): {}", reason);
+                    format!("failed to read length byte from sandbox (error={e:?})");
+                error!("serve(): {reason}");
                 anyhow::bail!(reason)
             }
 
@@ -209,8 +209,8 @@ impl HttpClient {
             let mut bytes: Vec<u8> = vec![0u8; data_length];
             if let Err(e) = sandbox_socket.read_exact(&mut bytes).await {
                 let reason: String =
-                    format!("failed to read data bytes from sandbox (error={:?})", e);
-                error!("serve(): {}", reason);
+                    format!("failed to read data bytes from sandbox (error={e:?})");
+                error!("serve(): {reason}");
                 anyhow::bail!(reason)
             }
             buf.extend_from_slice(&bytes);
@@ -237,7 +237,7 @@ impl Service<Request<Incoming>> for HttpClient {
                 Ok(body) => body.to_bytes(),
                 Err(_) => {
                     let reason: String = "failed to read body".to_string();
-                    error!("{}", reason);
+                    error!("{reason}");
                     return Ok(Self::internal_server_error());
                 },
             };
@@ -247,13 +247,13 @@ impl Service<Request<Incoming>> for HttpClient {
                 Ok(request) => request,
                 Err(_) => {
                     let reason: String = "failed to deserialize JSON".to_string();
-                    error!("{}", reason);
+                    error!("{reason}");
                     return Ok(Self::bad_request());
                 },
             };
 
             // Print out the deserialized struct
-            debug!("request id: {}", requestid);
+            debug!("request id: {requestid}");
             debug!("client id: {}", request.clientid);
             debug!("program: {}", request.program);
             debug!("args: {:?}", request.args);
@@ -281,7 +281,7 @@ impl Service<Request<Incoming>> for HttpClient {
             {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    warn!("failed to serve request ({:?})", e);
+                    warn!("failed to serve request ({e:?})");
                     return Ok(Self::internal_server_error());
                 },
             };
@@ -295,7 +295,7 @@ impl Service<Request<Incoming>> for HttpClient {
                 Ok(bytes) => Bytes::from(bytes),
                 Err(_) => {
                     let reason: String = "failed to convert JSON to bytes".to_string();
-                    error!("{}", reason);
+                    error!("{reason}");
                     return Ok(Self::internal_server_error());
                 },
             };
@@ -309,7 +309,7 @@ impl Service<Request<Incoming>> for HttpClient {
                 Ok(response) => Ok(response),
                 Err(_) => {
                     let reason: String = "failed to build response".to_string();
-                    error!("{}", reason);
+                    error!("{reason}");
                     Ok(Self::internal_server_error())
                 },
             }

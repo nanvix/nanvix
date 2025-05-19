@@ -86,7 +86,7 @@ impl MicroVm {
     /// returns an error.
     ///
     pub fn new(memory_size: usize, input: Box<InputFn>, output: Box<OutputFn>) -> Result<Self> {
-        trace!("new(): memory_size={}", memory_size);
+        trace!("new(): memory_size={memory_size}");
         crate::timer!("vm_creation");
 
         let partition: Arc<Mutex<VirtualPartition>> =
@@ -123,12 +123,12 @@ impl MicroVm {
     /// loaded into the virtual machine. Otherwise, it returns an error.
     ///
     pub fn load_kernel(&mut self, kernel_filename: &str) -> Result<u64> {
-        trace!("load_kernel(): {}", kernel_filename);
+        trace!("load_kernel(): {kernel_filename}");
         crate::timer!("vm_load_kernel");
         let entry: u64 = self
             .vmem
             .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .load_kernel(kernel_filename)?;
         Ok(entry)
     }
@@ -147,12 +147,12 @@ impl MicroVm {
     /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
     ///
     pub fn load_initrd(&mut self, initrd_filename: &str) -> Result<()> {
-        trace!("load_initrd(): {}", initrd_filename);
+        trace!("load_initrd(): {initrd_filename}");
         crate::timer!("vm_load_initrd");
         let initrd: (u64, usize) = self
             .vmem
             .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .load_initrd(initrd_filename)?;
         self.initrd = Some(initrd);
         Ok(())
@@ -172,7 +172,7 @@ impl MicroVm {
     /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
     ///
     pub fn write_args(&mut self, args: &str) -> Result<()> {
-        trace!("write_args(): args={}", args);
+        trace!("write_args(): args={args}");
         crate::timer!("vm_write_args");
         self.vmem
             .lock()
@@ -195,7 +195,7 @@ impl MicroVm {
     /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
     ///
     pub fn reset(&mut self, rip: u64) -> Result<()> {
-        trace!("reset(): {:#010x}", rip);
+        trace!("reset(): {rip:#010x}");
         crate::timer!("vm_reset");
         let rax: u64 = ::config::microvm::DEFAULT_BOOT_MAGIC as u64;
 
@@ -205,9 +205,7 @@ impl MicroVm {
         if let Some((_, initrd_size)) = self.initrd {
             if initrd_size > max_initrd_size {
                 return Err(anyhow::anyhow!(
-                    "initrd is too large (initrd_size={}, max_initrd_size={:?})",
-                    initrd_size,
-                    max_initrd_size
+                    "initrd is too large (initrd_size={initrd_size}, max_initrd_size={max_initrd_size:?})",
                 ));
             }
         }

@@ -51,19 +51,19 @@ impl VirtualPartition {
         let has_sync_mmu_support: bool = kvm.check_extension(kvm_ioctls::Cap::SyncMmu);
         if !has_sync_mmu_support {
             let reason: &str = "sync mmu is not supported";
-            error!("new(): {}", reason);
+            error!("new(): {reason}");
             anyhow::bail!(reason);
         }
         let has_irqchip_support: bool = kvm.check_extension(kvm_ioctls::Cap::Irqchip);
         if !has_irqchip_support {
             let reason: &str = "irqchip is not supported";
-            error!("new(): {}", reason);
+            error!("new(): {reason}");
             anyhow::bail!(reason);
         }
         let has_pit2_support: bool = kvm.check_extension(kvm_ioctls::Cap::Pit2);
         if !has_pit2_support {
             let reason: &str = "pit2 is not supported";
-            error!("new(): {}", reason);
+            error!("new(): {reason}");
             anyhow::bail!(reason);
         }
 

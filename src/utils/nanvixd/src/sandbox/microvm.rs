@@ -57,8 +57,8 @@ impl Microvm {
                 Ok(Some(status)) => Ok(Some(status)),
                 Ok(None) => Ok(None),
                 Err(e) => {
-                    let reason: String = format!("failed to wait for microvm (error={:?})", e);
-                    error!("peek(): {:?}", reason);
+                    let reason: String = format!("failed to wait for microvm (error={e:?})");
+                    error!("peek(): {reason:?}");
                     Err(anyhow::anyhow!(reason))
                 },
             }

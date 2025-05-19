@@ -121,29 +121,10 @@ impl core::fmt::Debug for ContextInformation {
 
         write!(
             f,
-            "esp0={:#010x}, cr3={:#010x}, gs={:#010x}, fs={:#010x}, es={:#010x}, ds={:#010x}, \
-             edi={:#010x}, esi={:#010x}, ebp={:#010x}, edx={:#010x}, ecx={:#010x}, ebx={:#010x}, \
-             eax={:#010x}, err={:#010x}, eip={:#010x}, cs={:#010x}, eflags={:#010x}, \
-             esp={:#010x}, ss={:#010x}",
-            esp0,
-            cr3,
-            gs,
-            fs,
-            es,
-            ds,
-            edi,
-            esi,
-            ebp,
-            edx,
-            ecx,
-            ebx,
-            eax,
-            err,
-            eip,
-            cs,
-            eflags,
-            esp,
-            ss
+            "esp0={esp0:#010x}, cr3={cr3:#010x}, gs={gs:#010x}, fs={fs:#010x}, es={es:#010x}, ds={ds:#010x}, \
+             edi={edi:#010x}, esi={esi:#010x}, ebp={ebp:#010x}, edx={edx:#010x}, ecx={ecx:#010x}, ebx={ebx:#010x}, \
+             eax={eax:#010x}, err={err:#010x}, eip={eip:#010x}, cs={cs:#010x}, eflags={eflags:#010x}, \
+             esp={esp:#010x}, ss={ss:#010x}",
         )
     }
 }

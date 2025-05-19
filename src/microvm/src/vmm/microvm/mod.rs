@@ -112,7 +112,7 @@ impl Vmm {
 
             // Add initrd arguments if provided.
             if let Some(ref initrd_args) = initrd_args {
-                args.push_str(&format!(" {}", initrd_args));
+                args.push_str(&format!(" {initrd_args}"));
             }
 
             microvm.write_args(&args)?;
@@ -124,11 +124,11 @@ impl Vmm {
 
         let vmem: Arc<Mutex<VirtualMemory>> = microvm
             .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .vmem();
 
         vmem.lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .reset_credits()?;
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
@@ -138,12 +138,12 @@ impl Vmm {
                 match memory_thread_rx.try_recv() {
                     Ok(msg) => {
                         if let Err(e) = memory_thread_tx.send(msg) {
-                            let reason: String = format!("failed to send message: {:?}", e);
-                            error!("memory_thread(): {}", reason);
+                            let reason: String = format!("failed to send message: {e:?}");
+                            error!("memory_thread(): {reason}");
                             continue;
                         }
                         vmem.lock()
-                            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+                            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                             .add_credit()?;
                     },
                     Err(TryRecvError::Disconnected) => {
@@ -180,7 +180,7 @@ impl Vmm {
     pub fn run(&mut self) -> Result<u16> {
         self.microvm
             .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .run()
     }
 
@@ -222,8 +222,8 @@ impl Vmm {
         let input = move |vmem: &Arc<Mutex<VirtualMemory>>, data, size| -> Result<()> {
             // Check for invalid operand size.
             if size != mem::size_of::<u32>() {
-                let reason: String = format!("invalid operand size (size={:?})", size);
-                error!("input(): {}", reason);
+                let reason: String = format!("invalid operand size (size={size:?})");
+                error!("input(): {reason}");
                 anyhow::bail!(reason);
             }
 
@@ -232,14 +232,14 @@ impl Vmm {
                     msg.message_type = MessageType::Ikc;
                     let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem
                         .lock()
-                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?;
+                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
                     locked_vm.write_bytes(data as u64, &msg.to_bytes())?;
                     locked_vm.consume_credit().unwrap();
                 },
                 // Channel has disconnected.
                 Err(RecvError) => {
                     let reason: String = "channel has been disconnected".to_string();
-                    error!("input(): {}", reason);
+                    error!("input(): {reason}");
                     anyhow::bail!(reason);
                 },
             }
@@ -266,8 +266,8 @@ impl Vmm {
                     Some(ch) => ch,
                     // Invalid character.
                     None => {
-                        let reason: String = format!("invalid character (data={:?})", data);
-                        error!("output(): {}", reason);
+                        let reason: String = format!("invalid character (data={data:?})");
+                        error!("output(): {reason}");
                         anyhow::bail!(reason);
                     },
                 };
@@ -281,21 +281,21 @@ impl Vmm {
                 // Write to the standard output device.
                 let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
                 vm.lock()
-                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                     .read_bytes(data as u64, &mut bytes)?;
 
                 let message: Message = match Message::try_from_bytes(bytes) {
                     Ok(message) => message,
                     Err(err) => {
-                        let reason: String = format!("failed to parse message: {:?}", err);
-                        error!("output(): {}", reason);
+                        let reason: String = format!("failed to parse message: {err:?}");
+                        error!("output(): {reason}");
                         anyhow::bail!(reason);
                     },
                 };
 
                 if let Err(e) = queue.send(message) {
-                    let reason: String = format!("failed to send message: {:?}", e);
-                    error!("output(): {}", reason);
+                    let reason: String = format!("failed to send message: {e:?}");
+                    error!("output(): {reason}");
                     anyhow::bail!(reason);
                 }
 

@@ -73,7 +73,7 @@ impl Klog {
     ///
     pub fn get(tag: &str, level: KlogLevel) -> Self {
         let mut ret: Self = Self;
-        let _ = write!(&mut ret, "[{:?}][{}] ", level, tag);
+        let _ = write!(&mut ret, "[{level:?}][{tag}] ");
         ret
     }
 }
