@@ -1,9 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-mod fd;
+mod file;
+mod fs;
 
-pub use fd::{
-    File,
-    RawFileDescriptor,
-};
+pub use file::*;
+pub use fs::*;
