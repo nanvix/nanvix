@@ -46,6 +46,9 @@ int main(int argc, const char *argv[])
     test_setegid();
     test_clock_getres();
     test_clock_gettime();
+#ifndef __hyperlight__
+    test_nanosleep();
+#endif
     test_times();
     test_uname();
     test_gethostname();
