@@ -41,9 +41,9 @@ pub type RawFileDescriptor = c_int;
 /// A structure that represents a file descriptor.
 ///
 #[derive(Debug)]
-pub struct FileDescriptor(RawFileDescriptor);
+pub struct File(RawFileDescriptor);
 
-impl FileDescriptor {
+impl File {
     /// Opens a file descriptor.
     pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> Result<Self, Error> {
         Ok(Self(fcntl::syscall::open(pathname, flags, mode)?))
@@ -67,7 +67,7 @@ impl FileDescriptor {
     }
 }
 
-impl Drop for FileDescriptor {
+impl Drop for File {
     fn drop(&mut self) {
         // Attempt to close underlying file descriptor.
         #[cfg(feature = "syscall")]
