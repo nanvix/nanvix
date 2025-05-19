@@ -15,7 +15,7 @@ name = "echo-rust-nostd"
 
 [dependencies]
 nvx = { workspace = true, features = ["allocator"] }
-posix = { workspace = true, features = ["syscall", "allocator"] }
+syscall = { workspace = true, features = ["syscall", "allocator"] }
 
 [build-dependencies]
 cc = { workspace = true }

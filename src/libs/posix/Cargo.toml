@@ -27,6 +27,7 @@ goblin = { workspace = true, features = [
 ] }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
+syscall = { workspace = true, features = ["syscall"] }
 static_assert = { workspace = true }
 sysalloc = { workspace = true, optional = true }
 syslog = { workspace = true }
@@ -34,10 +35,10 @@ type-safe = { workspace = true }
 
 [features]
 default = ["syscall", "allocator", "staticlib"]
-allocator = ["dep:sysalloc", "nvx/allocator"]
+allocator = ["dep:sysalloc", "nvx/allocator", "syscall/allocator"]
 syscall = []
 std = ["nvx/std"]
-staticlib = ["nvx/staticlib", "sysalloc/staticlib"]
+staticlib = ["nvx/staticlib", "sysalloc/staticlib", "syscall/staticlib"]
 
 # Logging
 trace = ["nvx/trace", "syslog/trace"]

@@ -13,11 +13,11 @@ use ::nvx::{
         ErrorCode,
     },
 };
-use ::posix::venv::VirtualEnvironmentIdentifier;
 use ::std::collections::{
     BTreeMap,
     VecDeque,
 };
+use ::syscall::venv::VirtualEnvironmentIdentifier;
 
 //==================================================================================================
 // Structures
@@ -138,7 +138,7 @@ impl VirtualEnviromentDirectory {
         pid: ProcessIdentifier,
         mut envid: VirtualEnvironmentIdentifier,
     ) -> Result<VirtualEnvironmentIdentifier, Error> {
-        trace!("join(): pid={:?}, envid={:?}", pid, envid);
+        trace!("join(): pid={pid:?}, envid={envid:?}");
 
         // Check if the process is already in an environment.
         if self.processes.contains_key(&pid) {
@@ -155,13 +155,13 @@ impl VirtualEnviromentDirectory {
             envid = self.next_env;
             self.next_env = self.next_env.next();
             self.processes.insert(pid, VirtualEnvironment::new(envid));
-            info!("process {:?} joined new environment {:?}", pid, envid);
+            info!("process {pid:?} joined new environment {envid:?}");
         } else {
             // Process requested to join an existing environment.
 
             // Check if environment exists.
             if !self.processes.values().any(|v| v.id() == envid) {
-                error!("process {:?} requested to join non-existing environment {:?}", pid, envid);
+                error!("process {pid:?} requested to join non-existing environment {envid:?}");
                 return Err(Error::new(
                     ErrorCode::NoSuchEntry,
                     "virtual environment does not exist",
@@ -196,11 +196,11 @@ impl VirtualEnviromentDirectory {
         pid: ProcessIdentifier,
         envid: VirtualEnvironmentIdentifier,
     ) -> Result<VirtualEnvironmentIdentifier, Error> {
-        trace!("leave(): pid={:?}, envid={:?}", pid, envid);
+        trace!("leave(): pid={pid:?}, envid={envid:?}");
 
         // Check if the process has joined an environment.
         if !self.processes.contains_key(&pid) {
-            error!("process {:?} has not joined an environment", pid);
+            error!("process {pid:?} has not joined an environment");
             return Err(Error::new(
                 ErrorCode::NoSuchEntry,
                 "process has not joined an environment",
@@ -209,7 +209,7 @@ impl VirtualEnviromentDirectory {
 
         // Check if the process has previously joined the environment.
         if self.processes[&pid].id() != envid {
-            error!("process {:?} has not previously joined environment {:?}", pid, envid);
+            error!("process {pid:?} has not previously joined environment {envid:?}");
             return Err(Error::new(
                 ErrorCode::InvalidArgument,
                 "process has not previously joined environment",
