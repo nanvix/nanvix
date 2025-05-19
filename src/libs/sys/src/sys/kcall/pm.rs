@@ -25,6 +25,7 @@ use crate::{
     },
     time::SystemTime,
 };
+use ::core::time::Duration;
 
 //==================================================================================================
 // Get Process Identifier
@@ -314,5 +315,38 @@ pub fn gettime(buffer: &mut SystemTime) -> Result<(), Error> {
         Ok(())
     } else {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to get time"))
+    }
+}
+
+//==================================================================================================
+// Sleep
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Puts the calling thread to sleep.
+///
+/// # Parameters
+///
+/// - `timeout`: Sleep duration.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+///
+pub fn sleep(timeout: Duration) -> Result<(), Error> {
+    let seconds: u32 = timeout
+        .as_secs()
+        .try_into()
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "timeout value is too large"))?;
+    let nanoseconds: u32 = timeout.subsec_nanos();
+
+    let result: i64 = kcall2!(KcallNumber::Sleep.into(), seconds, nanoseconds);
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to sleep"))
     }
 }

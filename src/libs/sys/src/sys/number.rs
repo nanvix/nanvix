@@ -71,6 +71,8 @@ pub enum KcallNumber {
     CondWait = KcallNumber::NR_COND_WAIT_SYSCALL,
     /// Gets the current system time.
     GetTime = KcallNumber::NR_GET_TIME_SYSCALL,
+    /// Puts the calling thread to sleep.
+    Sleep = KcallNumber::NR_SLEEP_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -105,6 +107,7 @@ impl KcallNumber {
     const NR_COND_SIGNAL_SYSCALL: u32 = 26;
     const NR_COND_WAIT_SYSCALL: u32 = 27;
     const NR_GET_TIME_SYSCALL: u32 = 28;
+    const NR_SLEEP_SYSCALL: u32 = 29;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -141,6 +144,7 @@ impl From<u32> for KcallNumber {
             Self::NR_COND_SIGNAL_SYSCALL => KcallNumber::CondSignal,
             Self::NR_COND_WAIT_SYSCALL => KcallNumber::CondWait,
             Self::NR_GET_TIME_SYSCALL => KcallNumber::GetTime,
+            Self::NR_SLEEP_SYSCALL => KcallNumber::Sleep,
             _ => KcallNumber::Invalid,
         }
     }
@@ -179,6 +183,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::CondSignal => KcallNumber::NR_COND_SIGNAL_SYSCALL,
             KcallNumber::CondWait => KcallNumber::NR_COND_WAIT_SYSCALL,
             KcallNumber::GetTime => KcallNumber::NR_GET_TIME_SYSCALL,
+            KcallNumber::Sleep => KcallNumber::NR_SLEEP_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }

@@ -71,6 +71,9 @@ extern void test_getuid(void);
 // Tests whether we can get the current time of a clock with `clock_gettime()`.
 extern void test_clock_gettime(void);
 
+// Tests wether we can sleep for a given amount of time with `nanosleep()`.
+extern void test_nanosleep(void);
+
 // Tests whether `setegid()` can be used to set the effective group ID of the calling process.
 extern void test_setegid(void);
 

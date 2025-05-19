@@ -147,6 +147,7 @@ cfg_if::cfg_if! {
         pub use self::syscall::{
             clock_getres,
             clock_gettime,
+            nanosleep,
         };
     }
 }
