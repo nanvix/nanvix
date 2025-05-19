@@ -4,6 +4,6 @@
 mod fd;
 
 pub use fd::{
-    FileDescriptor,
+    File,
     RawFileDescriptor,
 };

@@ -12,7 +12,7 @@ use crate::{
         c_int,
         c_void,
     },
-    safe::FileDescriptor,
+    safe::File,
     sys::stat::{
         self,
         file_mode,
@@ -109,7 +109,7 @@ pub struct DynamicLibrary {
     /// Library name.
     filename: CString,
     /// Underlying file descriptor.
-    fd: FileDescriptor,
+    fd: File,
     /// Load address.
     load_address: VirtualAddress,
     /// Memory segments.
@@ -131,7 +131,7 @@ impl DynamicLibrary {
     pub fn open(filename: &str) -> Result<Self, Error> {
         ::syslog::trace!("open(): filename={}", filename);
         // Attempt to open file.
-        let fd: FileDescriptor = FileDescriptor::open(filename, OpenFlags::O_RDONLY.into(), 0)?;
+        let fd: File = File::open(filename, OpenFlags::O_RDONLY.into(), 0)?;
 
         // Convert filename to a C string.
         let filename: CString = match CString::new(filename) {
