@@ -64,7 +64,10 @@ flexi_logger = "0.30.1"
 goblin = { version = "0.9.3", default-features = false }
 http-body-util = "0.1.3"
 hyperlight_common = { git = "https://github.com/nanvix/hyperlight", rev = "17fd1773ed22b52cf2956a6f0b120da9cda5b62e", default-features = false, package = "hyperlight-common" }
-hyperlight_host = { git = "https://github.com/nanvix/hyperlight/", rev = "17fd1773ed22b52cf2956a6f0b120da9cda5b62e", default-features = false, features = ["kvm", "gdb"], package = "hyperlight-host" } # we use the gdb feature to remove the timeout mechanism
+hyperlight_host = { git = "https://github.com/nanvix/hyperlight/", rev = "17fd1773ed22b52cf2956a6f0b120da9cda5b62e", default-features = false, features = [
+        "kvm",
+        "gdb",
+], package = "hyperlight-host" } # we use the gdb feature to remove the timeout mechanism
 hyper = { version = "1.6.0", default-features = false }
 hyper-util = { version = "0.1.11", default-features = false }
 kvm-bindings = "0.11.1"
