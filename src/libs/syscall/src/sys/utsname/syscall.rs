@@ -13,6 +13,11 @@ use crate::{
     },
 };
 use ::alloc::ffi::CString;
+use ::config::system::{
+    DEFAULT_MACHINE_NAME,
+    DEFAULT_NODE_NAME,
+    DEFAULT_SYSTEM_NAME,
+};
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -76,10 +81,16 @@ fn encode_str<const N: usize>(string: &str) -> Result<[c_char; N], Error> {
 ///
 pub fn uname() -> Result<utsname, Error> {
     Ok(utsname {
-        sysname: encode_str::<UTSNAME_LENGTH>(env!("NANVIX_SYSNAME"))?,
-        nodename: encode_str::<UTSNAME_LENGTH>(env!("NANVIX_NODENAME"))?,
+        sysname: encode_str::<UTSNAME_LENGTH>(
+            option_env!("NANVIX_SYSNAME").unwrap_or(DEFAULT_SYSTEM_NAME),
+        )?,
+        nodename: encode_str::<UTSNAME_LENGTH>(
+            option_env!("NANVIX_NODENAME").unwrap_or(DEFAULT_NODE_NAME),
+        )?,
         release: encode_str::<UTSNAME_LENGTH>(env!("CARGO_PKG_VERSION_MAJOR"))?,
         version: encode_str::<UTSNAME_LENGTH>(env!("CARGO_PKG_VERSION_MINOR"))?,
-        machine: encode_str::<UTSNAME_LENGTH>(env!("NANVIX_MACHINE"))?,
+        machine: encode_str::<UTSNAME_LENGTH>(
+            option_env!("NANVIX_MACHINE").unwrap_or(DEFAULT_MACHINE_NAME),
+        )?,
     })
 }
