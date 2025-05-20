@@ -16,9 +16,6 @@
 // Modules
 //==================================================================================================
 
-// Required for panic handler.
-extern crate nvx;
-
 extern crate alloc;
 
 // Address and routing parameter area.

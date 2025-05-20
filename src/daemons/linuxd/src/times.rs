@@ -5,10 +5,10 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{
+use ::sys::{
+    error::ErrorCode,
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
 };
 use ::syscall::sys::times::{
     message::{

@@ -5,7 +5,7 @@
 // Configuration
 //==================================================================================================
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 
 //==================================================================================================
 // Imports
@@ -141,9 +141,6 @@ impl core::fmt::Debug for LogLevel {
 
 impl fmt::Write for Logger {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        #[cfg(feature = "std")]
-        println!("{s}");
-        #[cfg(not(feature = "std"))]
         let _ = ::sys::kcall::debug::debug(s.as_ptr(), s.len());
         Ok(())
     }

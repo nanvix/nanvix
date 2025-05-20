@@ -19,11 +19,11 @@ use ::num_enum::{
     IntoPrimitive,
     TryFromPrimitive,
 };
-use ::nvx::mm::{
+use ::spin::Mutex;
+use ::sys::mm::{
     Address,
     VirtualAddress,
 };
-use ::spin::Mutex;
 use ::syscall::{
     dlfcn::{
         self,

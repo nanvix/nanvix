@@ -14,7 +14,8 @@ homepage.workspace = true
 name = "hello-rust-nostd"
 
 [dependencies]
-nvx = { workspace = true, features = ["allocator"] }
+sys = { workspace = true }
+nvx = { workspace = true, features = ["sysalloc"] }
 
 [build-dependencies]
 cc = { workspace = true }

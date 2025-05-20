@@ -16,6 +16,8 @@
 // Modules
 //==================================================================================================
 
+extern crate nvx;
+
 extern crate alloc;
 
 // Address and routing parameter area.

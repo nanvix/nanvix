@@ -5,16 +5,16 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::pm::{
-    Capability,
-    ProcessIdentifier,
-};
-use nvx::{
-    mm::PAGE_SIZE,
-    sys::mm::{
+use ::arch::mem::PAGE_SIZE;
+use ::sys::{
+    mm::{
         AccessPermission,
         Address,
         VirtualAddress,
+    },
+    pm::{
+        Capability,
+        ProcessIdentifier,
     },
 };
 
@@ -33,32 +33,32 @@ use nvx::{
 ///
 fn test_mmap_munmap() -> bool {
     // Acquire memory management capability.
-    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match nvx::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
+    let vaddr: VirtualAddress = ::sys::config::memory_layout::USER_HEAP_BASE;
 
     // Map a page.
-    match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+    match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
         Ok(_) => (),
         Err(_) => return false,
     }
 
     // Unmap the page.
-    match nvx::mm::munmap(mypid, vaddr) {
+    match ::sys::kcall::mm::munmap(mypid, vaddr) {
         Ok(_) => (),
         Err(_) => return false,
     }
 
     // Release memory management capability.
-    match nvx::pm::capctl(Capability::MemoryManagement, false) {
+    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
         Ok(()) => (),
         _ => return false,
     }
@@ -77,20 +77,20 @@ fn test_mmap_munmap() -> bool {
 ///
 fn test_mmap_write_munmap() -> bool {
     // Acquire memory management capability.
-    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match nvx::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
+    let vaddr: VirtualAddress = ::sys::config::memory_layout::USER_HEAP_BASE;
 
     // Map a page.
-    match nvx::mm::mmap(mypid, vaddr, AccessPermission::WRONLY) {
+    match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::WRONLY) {
         Ok(_) => (),
         Err(_) => return false,
     }
@@ -112,13 +112,13 @@ fn test_mmap_write_munmap() -> bool {
     }
 
     // Unmap the page.
-    match nvx::mm::munmap(mypid, vaddr) {
+    match ::sys::kcall::mm::munmap(mypid, vaddr) {
         Ok(_) => (),
         Err(_) => return false,
     }
 
     // Release memory management capability.
-    match nvx::pm::capctl(Capability::MemoryManagement, false) {
+    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
         Ok(()) => (),
         _ => return false,
     }
@@ -137,12 +137,12 @@ fn test_mmap_write_munmap() -> bool {
 ///
 fn test_mmap_munmap_many_times_inplace() -> bool {
     // Acquire memory management capability.
-    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match nvx::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -150,23 +150,23 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
     let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / PAGE_SIZE;
 
     for _ in 0..ntimes {
-        let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
+        let vaddr: VirtualAddress = ::sys::config::memory_layout::USER_HEAP_BASE;
 
         // Map a page.
-        match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+        match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
             Ok(_) => (),
             Err(_) => return false,
         }
 
         // Unmap the page.
-        match nvx::mm::munmap(mypid, vaddr) {
+        match ::sys::kcall::mm::munmap(mypid, vaddr) {
             Ok(_) => (),
             Err(_) => return false,
         }
     }
 
     // Release memory management capability.
-    match nvx::pm::capctl(Capability::MemoryManagement, false) {
+    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
         Ok(()) => (),
         _ => return false,
     }
@@ -185,12 +185,12 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
 ///
 fn test_mmap_munmap_many_times_rolling() -> bool {
     // Acquire memory management capability.
-    match nvx::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match nvx::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -201,20 +201,20 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         // Map a page.
-        match nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+        match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
             Ok(_) => (),
             Err(_) => return false,
         }
 
         // Unmap the page.
-        match nvx::mm::munmap(mypid, vaddr) {
+        match ::sys::kcall::mm::munmap(mypid, vaddr) {
             Ok(_) => (),
             Err(_) => return false,
         }
     }
 
     // Release memory management capability.
-    match nvx::pm::capctl(Capability::MemoryManagement, false) {
+    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
         Ok(()) => (),
         _ => return false,
     }
@@ -233,19 +233,19 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
 ///
 fn test_mmap_munmap_return_zeros() -> bool {
     // Acquire memory management capability.
-    if nvx::pm::capctl(Capability::MemoryManagement, true).is_err() {
+    if ::sys::kcall::pm::capctl(Capability::MemoryManagement, true).is_err() {
         return false;
     }
 
-    let mypid: ProcessIdentifier = match nvx::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = ::nvx::sys::config::memory_layout::USER_HEAP_BASE;
+    let vaddr: VirtualAddress = ::sys::config::memory_layout::USER_HEAP_BASE;
 
     // Map a page.
-    if nvx::mm::mmap(mypid, vaddr, AccessPermission::WRONLY).is_err() {
+    if ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::WRONLY).is_err() {
         return false;
     }
 
@@ -257,12 +257,12 @@ fn test_mmap_munmap_return_zeros() -> bool {
     }
 
     // Unmap the page.
-    if nvx::mm::munmap(mypid, vaddr).is_err() {
+    if ::sys::kcall::mm::munmap(mypid, vaddr).is_err() {
         return false;
     }
 
     // Map the page again to read.
-    if nvx::mm::mmap(mypid, vaddr, AccessPermission::RDONLY).is_err() {
+    if ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY).is_err() {
         return false;
     }
 
@@ -277,12 +277,12 @@ fn test_mmap_munmap_return_zeros() -> bool {
     }
 
     // Unmap the page.
-    if nvx::mm::munmap(mypid, vaddr).is_err() {
+    if ::sys::kcall::mm::munmap(mypid, vaddr).is_err() {
         return false;
     }
 
     // Release memory management capability.
-    if nvx::pm::capctl(Capability::MemoryManagement, false).is_err() {
+    if ::sys::kcall::pm::capctl(Capability::MemoryManagement, false).is_err() {
         return false;
     }
 

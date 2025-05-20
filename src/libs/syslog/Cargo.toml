@@ -12,11 +12,10 @@ homepage.workspace = true
 
 [dependencies]
 cfg-if = { workspace = true }
-sys = { workspace = true, optional = true, features = ["kcall"] }
+sys = { workspace = true, features = ["kcall"] }
 
 [features]
-default = ["dep:sys"]
-std = []
+default = []
 
 # Logging Features
 trace = ["debug"]

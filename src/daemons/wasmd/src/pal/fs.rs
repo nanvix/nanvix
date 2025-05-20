@@ -13,7 +13,7 @@ use ::alloc::string::{
     String,
     ToString,
 };
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::{
     fcntl,
     ffi::c_int,

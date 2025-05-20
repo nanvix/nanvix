@@ -5,20 +5,15 @@
 // Modules
 //==================================================================================================
 
-mod message;
+mod kernel;
+mod system;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::message::{
+pub use kernel::Message;
+pub use system::{
     SystemMessage,
     SystemMessageHeader,
-};
-pub use ::sys::ipc::*;
-
-#[cfg(target_os = "none")]
-pub use ::sys::kcall::ipc::{
-    recv,
-    send,
 };
