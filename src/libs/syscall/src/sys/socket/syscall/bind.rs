@@ -15,13 +15,13 @@ use crate::{
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -29,16 +29,16 @@ use ::nvx::{
 //==================================================================================================
 
 pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     let sockaddr: sockaddr = sockaddr::try_from(sockaddr)?;
 
     // Build request and send it.
     let request: Message = BindSocketRequest::build(pid, sockfd, &sockaddr);
-    ::nvx::ipc::send(&request)?;
+    ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = ::nvx::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

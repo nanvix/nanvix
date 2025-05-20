@@ -15,13 +15,13 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
-use ::nvx::sys::error::{
-    Error,
-    ErrorCode,
-};
 use ::spin::{
     Mutex,
     MutexGuard,
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================

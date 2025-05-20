@@ -7,7 +7,7 @@
 
 use crate::time::timespec;
 use ::core::time::Duration;
-use ::nvx::sys::{
+use ::sys::{
     error::{
         Error,
         ErrorCode,
@@ -69,10 +69,10 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
     let duration: Duration = Duration::new(secs, nanos);
 
     let mut now: SystemTime = SystemTime::default();
-    ::nvx::pm::gettime(&mut now)?;
+    ::sys::kcall::pm::gettime(&mut now)?;
 
     // Sleep for the requested time.
-    ::nvx::pm::sleep(duration)?;
+    ::sys::kcall::pm::sleep(duration)?;
 
     // Store the remaining time in the provided timespec structure.
     if let Some(rem) = rem {
@@ -91,7 +91,7 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
         };
 
         let mut now: SystemTime = SystemTime::default();
-        ::nvx::pm::gettime(&mut now)?;
+        ::sys::kcall::pm::gettime(&mut now)?;
 
         if now > later {
             rem.tv_sec = 0;

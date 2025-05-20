@@ -10,16 +10,16 @@ use crate::{
     sys::types::pthread_key_t,
 };
 use ::alloc::collections::btree_map::BTreeMap;
-use ::nvx::{
-    pm::ThreadIdentifier,
-    sys::error::{
-        Error,
-        ErrorCode,
-    },
-};
 use ::spin::{
     Lazy,
     Mutex,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -157,7 +157,7 @@ pub fn pthread_key_delete(key: pthread_key_t) -> Result<(), Error> {
 ///
 pub fn pthread_getspecific(key: pthread_key_t) -> Result<Pointer, Error> {
     // Lookup thread identifier before locking up the table of thread data keys.
-    let tid: ThreadIdentifier = ::nvx::pm::gettid().unwrap();
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid().unwrap();
 
     // Lookup thread-specific data.
     match THREAD_DATA.lock().get(key as usize) {
@@ -193,7 +193,7 @@ pub fn pthread_getspecific(key: pthread_key_t) -> Result<Pointer, Error> {
 ///
 pub fn pthread_setspecific(key: pthread_key_t, value: Pointer) -> Result<(), Error> {
     // Lookup thread identifier before locking up the table of thread data keys.
-    let tid: ThreadIdentifier = ::nvx::pm::gettid().unwrap();
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid().unwrap();
 
     // Lookup thread-specific data.
     match THREAD_DATA.lock().get_mut(key as usize) {

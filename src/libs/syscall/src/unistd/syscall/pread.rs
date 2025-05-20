@@ -19,13 +19,13 @@ use crate::{
     LinuxDaemonMessageHeader,
 };
 use ::core::cmp;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -67,10 +67,10 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
             chunk_size as size_t,
             offset + buffer_offset as off_t,
         );
-        ::nvx::ipc::send(&request)?;
+        ::sys::kcall::ipc::send(&request)?;
 
         // Receive response.
-        let response: Message = ::nvx::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {

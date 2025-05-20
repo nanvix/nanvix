@@ -43,26 +43,24 @@ use ::goblin::elf::{
     Elf,
     SectionHeader,
 };
-use ::nvx::{
-    mm::PAGE_ALIGNMENT,
-    sys::{
-        config::memory_layout::USER_LIBS_BASE,
-        error::{
-            Error,
-            ErrorCode,
-        },
-        mm::{
-            self,
-            Address,
-            VirtualAddress,
-        },
-    },
-};
 use ::spin::{
     Lazy,
     Mutex,
     MutexGuard,
 };
+use ::sys::{
+    config::memory_layout::USER_LIBS_BASE,
+    error::{
+        Error,
+        ErrorCode,
+    },
+    mm::{
+        self,
+        Address,
+        VirtualAddress,
+    },
+};
+use ::sysalloc::PAGE_ALIGNMENT;
 use ::type_safe::UnalignedPointer;
 
 //==================================================================================================

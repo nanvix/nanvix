@@ -24,13 +24,13 @@ use ::core::{
     convert::TryInto,
     mem,
 };
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================

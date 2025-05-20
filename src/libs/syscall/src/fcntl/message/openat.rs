@@ -26,13 +26,13 @@ use ::alloc::{
     vec::Vec,
 };
 use ::core::mem;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -251,7 +251,7 @@ impl OpenAtResponse {
         let message: Message = Message::new(
             crate::LINUXD,
             pid,
-            nvx::ipc::MessageType::Ikc,
+            sys::ipc::MessageType::Ikc,
             None,
             message.into_bytes(),
         );

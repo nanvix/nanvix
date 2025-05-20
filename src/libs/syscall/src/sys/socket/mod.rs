@@ -33,7 +33,7 @@ use ::alloc::string::{
 };
 use ::core::mem;
 use ::num_enum::TryFromPrimitive;
-use ::nvx::sys::error::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

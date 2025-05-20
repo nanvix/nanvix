@@ -12,7 +12,7 @@ use ::alloc::{
         ToString,
     },
 };
-use nvx::sys::error::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

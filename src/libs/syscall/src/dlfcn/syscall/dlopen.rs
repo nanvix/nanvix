@@ -20,11 +20,11 @@ use ::alloc::{
     vec,
     vec::Vec,
 };
-use ::nvx::sys::error::Error;
 use ::spin::{
     Mutex,
     MutexGuard,
 };
+use ::sys::error::Error;
 
 //===================================================================================================
 // dlopen()

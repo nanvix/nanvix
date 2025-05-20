@@ -5,9 +5,9 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{
+use ::sys::{
+    error::Error,
     pm::ProcessIdentifier,
-    sys::error::Error,
 };
 
 //==================================================================================================
@@ -19,5 +19,5 @@ use ::nvx::{
 /// `getpid()` returns the process ID (PID) of the calling process.
 ///
 pub fn getpid() -> Result<ProcessIdentifier, Error> {
-    ::nvx::pm::getpid()
+    ::sys::kcall::pm::getpid()
 }
