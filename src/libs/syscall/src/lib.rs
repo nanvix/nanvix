@@ -52,6 +52,7 @@ pub mod message;
 pub mod netinet;
 
 /// Posix threads.
+#[cfg(feature = "pthread")]
 pub mod pthread;
 
 /// Standard symbolic constants and types.

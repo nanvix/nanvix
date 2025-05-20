@@ -7,13 +7,11 @@
 
 use crate::{
     pthread::{
+        pthread_mutexattr_t,
         syscall::MUTEXES,
         PTHREAD_MUTEX_INITIALIZER,
     },
-    sys::types::{
-        pthread_mutex_t,
-        pthread_mutexattr_t,
-    },
+    sys::types::pthread_mutex_t,
 };
 use ::alloc::collections::btree_map::Entry;
 use ::sys::{

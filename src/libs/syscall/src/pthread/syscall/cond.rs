@@ -7,6 +7,7 @@
 
 use crate::{
     pthread::{
+        pthread_mutexattr_t,
         syscall::MUTEXES,
         PTHREAD_COND_INITIALIZER,
         PTHREAD_MUTEX_INITIALIZER,
@@ -15,7 +16,6 @@ use crate::{
         pthread_cond_t,
         pthread_condattr_t,
         pthread_mutex_t,
-        pthread_mutexattr_t,
     },
 };
 use ::alloc::collections::btree_map::{

@@ -18,9 +18,9 @@ mod tda;
 // Imports
 //==================================================================================================
 
-use crate::{
-    pthread::pthread_t,
-    sys::types::pthread_mutexattr_t,
+use crate::pthread::{
+    pthread_mutexattr_t,
+    pthread_t,
 };
 use ::alloc::collections::btree_map::BTreeMap;
 use ::spin::{
