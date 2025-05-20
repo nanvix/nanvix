@@ -58,7 +58,6 @@ cfg_if::cfg_if! {
             pwrite,
             read,
             readlinkat,
-            sbrk,
             symlink,
             unlink,
             write,
@@ -67,5 +66,11 @@ cfg_if::cfg_if! {
             fchdir,
             isatty,
         };
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(all(feature = "syscall", feature = "sbrk"))] {
+        pub use self::syscall::sbrk;
     }
 }

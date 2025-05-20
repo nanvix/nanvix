@@ -13,7 +13,7 @@ use ::core::{
     fmt,
     mem,
 };
-use ::nvx::{
+use ::sys::{
     ipc::{
         Message,
         MessageType,
@@ -62,7 +62,7 @@ impl CloseRequest {
 }
 
 impl fmt::Debug for CloseRequest {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let fd: i32 = self.fd;
         write!(f, "{{ fd: {fd} }}")
     }

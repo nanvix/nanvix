@@ -13,7 +13,7 @@
 
 use crate::ffi::c_long;
 use ::core::mem;
-use ::nvx::sys::error::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

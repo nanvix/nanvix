@@ -17,13 +17,13 @@ use crate::{
     LinuxDaemonMessageHeader,
 };
 use ::alloc::vec::Vec;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -31,17 +31,17 @@ use ::nvx::{
 //==================================================================================================
 
 pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build request and send it.
     let request: OpenAtRequest = OpenAtRequest::new(dirfd, pathname, flags, mode)?;
     let requests: Vec<Message> = request.into_parts(pid)?;
     for request in requests {
-        ::nvx::ipc::send(&request)?;
+        ::sys::kcall::ipc::send(&request)?;
     }
 
     // Receive response.
-    let response: Message = ::nvx::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

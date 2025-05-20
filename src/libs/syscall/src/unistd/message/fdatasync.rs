@@ -13,7 +13,7 @@ use ::core::{
     fmt,
     mem,
 };
-use ::nvx::{
+use ::sys::{
     ipc::{
         Message,
         MessageType,
@@ -64,7 +64,7 @@ impl FileDataSyncRequest {
 }
 
 impl fmt::Debug for FileDataSyncRequest {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "FdatasyncRequest {{ fd: {} }}", { self.fd })
     }
 }

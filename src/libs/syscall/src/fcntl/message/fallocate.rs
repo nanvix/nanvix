@@ -14,13 +14,13 @@ use ::core::{
     fmt::Debug,
     mem,
 };
-use ::nvx::{
+use ::sys::{
+    error::Error,
     ipc::{
         Message,
         MessageType,
     },
     pm::ProcessIdentifier,
-    sys::error::Error,
 };
 
 //==================================================================================================

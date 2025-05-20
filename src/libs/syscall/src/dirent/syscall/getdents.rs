@@ -23,13 +23,13 @@ use crate::{
     LinuxDaemonMessageHeader,
 };
 use ::alloc::vec::Vec;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -63,7 +63,7 @@ fn posix_getdents_request(fd: c_int, count: usize) -> Result<(), Error> {
 
     let request: Message = GetDirectoryEntriesRequest::build(pid, fd, count)?;
 
-    ::nvx::ipc::send(&request)
+    ::sys::kcall::ipc::send(&request)
 }
 
 /// Processes the response of the `posix_getdents()` system call.
@@ -74,7 +74,7 @@ fn posix_getdents_response() -> Result<Vec<posix_dent>, Error> {
     let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::nvx::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::recv()?;
 
         // Check whether system call succeeded or not
         if response.status != 0 {

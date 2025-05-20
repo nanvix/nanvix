@@ -4,7 +4,7 @@
 
 use crate::message::LinuxDaemonMessagePart;
 use ::alloc::vec::Vec;
-use ::nvx::sys::error::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

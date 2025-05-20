@@ -23,13 +23,13 @@ use ::alloc::{
     string::ToString,
     vec::Vec,
 };
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -55,14 +55,14 @@ use ::nvx::{
 pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Error> {
     ::syslog::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
 
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     let request: ReadLinkAtRequest = ReadLinkAtRequest::new(dirfd, path.to_string(), buf.len())?;
 
     let requests: Vec<Message> = request.into_parts(pid)?;
 
     for request in requests {
-        ::nvx::ipc::send(&request)?;
+        ::sys::kcall::ipc::send(&request)?;
     }
 
     let capacity: usize =
@@ -71,7 +71,7 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Err
     let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::nvx::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {

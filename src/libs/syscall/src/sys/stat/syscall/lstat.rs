@@ -10,7 +10,7 @@ use crate::{
     sys,
     sys::stat,
 };
-use ::nvx::sys::error::Error;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions

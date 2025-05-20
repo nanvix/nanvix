@@ -32,7 +32,7 @@ use crate::{
     time::timespec,
 };
 use ::core::mem;
-use ::nvx::sys::error::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

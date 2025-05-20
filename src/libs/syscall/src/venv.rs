@@ -45,7 +45,7 @@ impl From<u32> for VirtualEnvironmentIdentifier {
 }
 
 impl Debug for VirtualEnvironmentIdentifier {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{{ id: {:?} }}", self.id)
     }
 }

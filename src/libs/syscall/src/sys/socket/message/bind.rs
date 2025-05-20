@@ -15,7 +15,7 @@ use ::core::{
     fmt::Debug,
     mem,
 };
-use ::nvx::{
+use ::sys::{
     ipc::{
         Message,
         MessageType,
@@ -69,7 +69,7 @@ impl BindSocketRequest {
 }
 
 impl Debug for BindSocketRequest {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "BindSocketRequest {{ sockfd: {}, sockaddr: {:?} }}",

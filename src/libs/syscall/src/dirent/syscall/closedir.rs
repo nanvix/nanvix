@@ -10,7 +10,7 @@ use crate::{
     unistd,
 };
 use ::alloc::boxed::Box;
-use ::nvx::sys::error::Error;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions

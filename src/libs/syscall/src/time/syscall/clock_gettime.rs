@@ -17,7 +17,7 @@ use crate::{
         CLOCK_THREAD_CPUTIME_ID,
     },
 };
-use ::nvx::sys::{
+use ::sys::{
     error::{
         Error,
         ErrorCode,
@@ -50,7 +50,7 @@ pub fn clock_gettime(clock_id: clockid_t, tp: &mut Option<&mut timespec>) -> Res
         CLOCK_MONOTONIC | CLOCK_REALTIME => {
             // Get system time and store it in the provided timespec structure.
             let mut now: SystemTime = SystemTime::default();
-            ::nvx::pm::gettime(&mut now)?;
+            ::sys::kcall::pm::gettime(&mut now)?;
             ::syslog::debug!("clock_gettime(): now={:?}", now);
             if let Some(tp) = tp {
                 tp.tv_sec = now.seconds() as time_t;

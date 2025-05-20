@@ -123,7 +123,7 @@ pub enum LogLevel {
 }
 
 impl core::fmt::Debug for LogLevel {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LogLevel::Trace => write!(f, "TRACE"),
             LogLevel::Debug => write!(f, "DEBUG"),

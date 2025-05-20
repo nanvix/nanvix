@@ -7,6 +7,7 @@
 
 use crate::{
     pthread::{
+        pthread_mutexattr_t,
         syscall::MUTEXES,
         PTHREAD_COND_INITIALIZER,
         PTHREAD_MUTEX_INITIALIZER,
@@ -15,33 +16,30 @@ use crate::{
         pthread_cond_t,
         pthread_condattr_t,
         pthread_mutex_t,
-        pthread_mutexattr_t,
     },
 };
 use ::alloc::collections::btree_map::{
     BTreeMap,
     Entry,
 };
-use ::nvx::{
+use ::spin::{
+    Lazy,
+    Mutex,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    kcall::pm::{
+        signal_cond,
+        wait_cond,
+    },
     pm::{
         ConditionAddress,
         MutexAddress,
     },
-    sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
-        kcall::pm::{
-            signal_cond,
-            wait_cond,
-        },
-        time::SystemTime,
-    },
-};
-use ::spin::{
-    Lazy,
-    Mutex,
+    time::SystemTime,
 };
 
 //==================================================================================================

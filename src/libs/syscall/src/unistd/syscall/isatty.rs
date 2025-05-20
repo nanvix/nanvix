@@ -13,7 +13,7 @@ use crate::{
         STDOUT_FILENO,
     },
 };
-use ::nvx::sys::error::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

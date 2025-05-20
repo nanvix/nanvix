@@ -16,13 +16,13 @@ use crate::{
     LinuxDaemonMessageHeader,
 };
 use ::alloc::vec::Vec;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -57,21 +57,21 @@ pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(
 }
 
 fn chmodat_request(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     let request: FileChmodAtRequest = FileChmodAtRequest::new(dirfd, mode, flag, path)?;
 
     let requests: Vec<Message> = request.into_parts(pid)?;
 
     for request in requests {
-        ::nvx::ipc::send(&request)?;
+        ::sys::kcall::ipc::send(&request)?;
     }
 
     Ok(())
 }
 
 fn chmodat_response() -> Result<(), Error> {
-    let response: Message = ::nvx::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

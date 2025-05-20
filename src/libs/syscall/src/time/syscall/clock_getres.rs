@@ -17,7 +17,7 @@ use crate::{
     },
 };
 use ::config::kernel::TIMER_FREQ;
-use ::nvx::sys::{
+use ::sys::{
     error::{
         Error,
         ErrorCode,

@@ -30,11 +30,13 @@ mod pread;
 mod pwrite;
 mod read;
 mod readlinkat;
-mod sbrk;
 mod symlink;
 mod symlinkat;
 mod unlink;
 mod write;
+
+#[cfg(feature = "sbrk")]
+mod sbrk;
 
 //==================================================================================================
 // Exports
@@ -66,9 +68,11 @@ pub use self::{
     pwrite::pwrite,
     read::read,
     readlinkat::readlinkat,
-    sbrk::sbrk,
     symlink::symlink,
     symlinkat::symlinkat,
     unlink::unlink,
     write::write,
 };
+
+#[cfg(feature = "sbrk")]
+pub use self::sbrk::sbrk;
