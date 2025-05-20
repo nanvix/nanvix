@@ -26,7 +26,6 @@ goblin = { workspace = true, optional = true, features = [
     "mach32",
     "mach64",
 ] }
-num_enum = { workspace = true }
 spin = { workspace = true, optional = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
 sysalloc = { workspace = true, optional = true }
