@@ -34,11 +34,12 @@ syslog = { workspace = true }
 type-safe = { workspace = true }
 
 [features]
-default = ["syscall", "allocator", "staticlib", "pthread", "sbrk"]
+default = ["syscall", "allocator", "staticlib", "dlfcn", "pthread", "sbrk"]
 allocator = ["dep:sysalloc", "nvx/allocator"]
 syscall = []
 std = ["nvx/std"]
 staticlib = ["nvx/staticlib", "sysalloc/staticlib"]
+dlfcn = []
 pthread = []
 sbrk = []
 

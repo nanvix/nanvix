@@ -28,6 +28,7 @@ pub mod arpa;
 pub mod dirent;
 
 /// Dynamic linking.
+#[cfg(feature = "dlfcn")]
 pub mod dlfcn;
 
 /// Foreign function interface.
@@ -69,7 +70,7 @@ pub mod sys;
 
 // Safe wrappers.
 #[cfg(feature = "syscall")]
-mod safe;
+pub mod safe;
 
 //==================================================================================================
 // Imports
