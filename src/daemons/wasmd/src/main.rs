@@ -32,13 +32,15 @@ mod wasm_binary;
 
 extern crate alloc;
 
+extern crate nvx;
+
 use self::engine::WasmEngine;
 use ::alloc::{
     string::String,
     vec::Vec,
 };
 use ::core::str::FromStr;
-use ::nvx::sys::error::Error;
+use ::sys::error::Error;
 use ::syscall::{
     netinet::in_::SocketAddrV4,
     sys::socket::SocketAddr,

@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use nvx::{
+use ::sys::{
     event::{
         Event,
         EventCtrlRequest,
@@ -29,7 +29,7 @@ use nvx::{
 ///
 fn test_subscribe_unsubscribe() -> bool {
     // Acquire exception control capability.
-    match nvx::pm::capctl(Capability::ExceptionControl, true) {
+    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
         Ok(()) => (),
         _ => return false,
     }
@@ -38,19 +38,23 @@ fn test_subscribe_unsubscribe() -> bool {
     let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Attempt to subscribe to event.
-    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register) {
+    match ::sys::kcall::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register)
+    {
         Ok(()) => (),
         _ => return false,
     }
 
     // Attempt to unsubscribe from event.
-    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister) {
+    match ::sys::kcall::event::evctrl(
+        Event::Exception(debug_exception),
+        EventCtrlRequest::Unregister,
+    ) {
         Ok(()) => (),
         _ => return false,
     }
 
     // Release exception control capability.
-    matches!(nvx::pm::capctl(Capability::ExceptionControl, false), Ok(()))
+    matches!(::sys::kcall::pm::capctl(Capability::ExceptionControl, false), Ok(()))
 }
 
 ///
@@ -68,7 +72,7 @@ fn test_subscribe_without_capability() -> bool {
 
     // Attempt to subscribe to event.
     !matches!(
-        ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register),
+        ::sys::kcall::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register),
         Ok(())
     )
 }
@@ -84,7 +88,7 @@ fn test_subscribe_without_capability() -> bool {
 ///
 fn test_unsubscribe_without_subscription() -> bool {
     // Acquire exception control capability.
-    match nvx::pm::capctl(Capability::ExceptionControl, true) {
+    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
         Ok(()) => (),
         _ => return false,
     }
@@ -94,13 +98,13 @@ fn test_unsubscribe_without_subscription() -> bool {
 
     // Attempt to unsubscribe from event.
     if let Ok(()) =
-        ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister)
+        ::sys::kcall::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister)
     {
         return false;
     }
 
     // Release exception control capability.
-    matches!(nvx::pm::capctl(Capability::ExceptionControl, false), Ok(()))
+    matches!(::sys::kcall::pm::capctl(Capability::ExceptionControl, false), Ok(()))
 }
 
 ///
@@ -114,7 +118,7 @@ fn test_unsubscribe_without_subscription() -> bool {
 ///
 fn test_unsubscribe_without_capability() -> bool {
     // Acquire exception control capability.
-    match nvx::pm::capctl(Capability::ExceptionControl, true) {
+    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
         Ok(()) => (),
         _ => return false,
     }
@@ -123,20 +127,24 @@ fn test_unsubscribe_without_capability() -> bool {
     let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Subscribe to event.
-    match ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register) {
+    match ::sys::kcall::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register)
+    {
         Ok(()) => (),
         _ => return false,
     }
 
     // Release exception control capability.
-    match nvx::pm::capctl(Capability::ExceptionControl, false) {
+    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, false) {
         Ok(()) => (),
         _ => return false,
     }
 
     // Attempt to unsubscribe from event.
     matches!(
-        ::nvx::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister),
+        ::sys::kcall::event::evctrl(
+            Event::Exception(debug_exception),
+            EventCtrlRequest::Unregister
+        ),
         Ok(())
     )
 }

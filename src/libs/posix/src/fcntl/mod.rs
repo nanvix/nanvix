@@ -7,7 +7,7 @@
 
 use crate::errno::__errno_location;
 use ::core::ffi;
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::{
     fcntl,
     ffi::{

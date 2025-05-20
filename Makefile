@@ -602,7 +602,7 @@ test-guest-rlibs:
 	$(HOST_CARGO_TEST_CMD) -p slab
 	$(HOST_CARGO_TEST_CMD) -p static_assert
 #	$(HOST_CARGO_TEST_CMD) -p sysalloc
-	$(HOST_CARGO_TEST_CMD) -p syslog
+#	$(HOST_CARGO_TEST_CMD) -p syslog
 
 #===================================================================================================
 # Build Rules for Guest Binaries

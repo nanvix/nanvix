@@ -11,7 +11,7 @@ use ::core::{
     ffi,
     ptr,
 };
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::dirent::{
     self,
     DirectoryStream,

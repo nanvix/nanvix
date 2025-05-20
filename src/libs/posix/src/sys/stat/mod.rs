@@ -10,7 +10,7 @@ use ::core::{
     ffi,
     slice,
 };
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::{
     fcntl,
     ffi::{

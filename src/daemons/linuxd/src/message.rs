@@ -6,10 +6,10 @@
 //==================================================================================================
 
 use ::alloc::collections::BTreeMap;
-use ::nvx::{
+use ::sys::{
+    error::Error,
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::Error,
 };
 use ::syscall::message::{
     LinuxDaemonLongMessage,

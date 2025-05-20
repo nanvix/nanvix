@@ -15,7 +15,7 @@ use ::core::{
     ffi,
     slice,
 };
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::{
     fcntl::{
         self,
@@ -212,7 +212,7 @@ pub extern "C" fn execve(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _exit(status: c_int) -> ! {
-    let Err(e) = nvx::sys::kcall::pm::exit(status);
+    let Err(e) = sys::kcall::pm::exit(status);
     panic!("failed to terminate process (error={:?})", e);
 }
 

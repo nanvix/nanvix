@@ -34,7 +34,7 @@ pub struct utimbuf {
 mod bindings {
     use super::*;
     use crate::errno::__errno_location;
-    use ::nvx::sys::error::ErrorCode;
+    use ::sys::error::ErrorCode;
     use syscall::{
         fcntl::AT_FDCWD,
         ffi::{

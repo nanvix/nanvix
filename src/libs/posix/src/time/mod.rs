@@ -5,7 +5,7 @@
 // Imports
 
 use crate::errno::__errno_location;
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::{
     ffi::c_int,
     sys::types::clockid_t,

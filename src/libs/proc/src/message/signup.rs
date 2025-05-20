@@ -13,22 +13,18 @@ use ::core::{
     ffi::CStr,
     mem,
 };
-use ::nvx::{
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::{
+        Message,
+        MessageType,
         SystemMessage,
         SystemMessageHeader,
     },
-    sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
-        ipc::{
-            Message,
-            MessageType,
-        },
-        pm::ProcessIdentifier,
-    },
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================

@@ -14,7 +14,7 @@
 #[cfg(all(feature = "syscall", feature = "staticlib"))]
 mod bindings {
     use crate::errno::__errno_location;
-    use ::nvx::sys::error::ErrorCode;
+    use ::sys::error::ErrorCode;
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn mmap(

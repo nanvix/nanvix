@@ -7,7 +7,7 @@
 
 use crate::errno::__errno_location;
 use ::alloc::boxed::Box;
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::{
     dirent::{
         self,

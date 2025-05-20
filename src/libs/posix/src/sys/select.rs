@@ -17,7 +17,7 @@ mod bindings {
         errno::__errno_location,
         ffi::c_int,
     };
-    use ::nvx::sys::error::ErrorCode;
+    use ::sys::error::ErrorCode;
 
     #[allow(clippy::missing_safety_doc)]
     #[unsafe(no_mangle)]

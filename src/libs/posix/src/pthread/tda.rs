@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::{
     ffi::{
         c_int,

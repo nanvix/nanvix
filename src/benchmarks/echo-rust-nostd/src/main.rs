@@ -8,7 +8,10 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::sys::error::Error;
+extern crate alloc;
+extern crate nvx;
+
+use ::sys::error::Error;
 use ::syscall::{
     sys::types::ssize_t,
     unistd,

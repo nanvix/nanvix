@@ -18,5 +18,5 @@ log = { workspace = true }
 flexi_logger = { workspace = true }
 libc = { workspace = true }
 signal-hook = { workspace = true }
-nvx = { workspace = true, features = ["std"] }
+sys = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }

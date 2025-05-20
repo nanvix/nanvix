@@ -11,10 +11,10 @@ use ::core::{
     mem,
     str,
 };
-use ::nvx::{
+use ::sys::{
+    error::ErrorCode,
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
 };
 use ::syscall::{
     dirent::{
@@ -152,7 +152,8 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
                 let d_name_len: usize = d_reclen - 2 - linux_dirent::_OFFSET_OF_D_NAME;
                 let d_name: &str = unsafe { str::from_raw_parts(d_name_ptr, d_name_len) };
                 debug!(
-                    "libc::getdents(): d_ino={:#x}, d_off={:#x}, d_reclen={d_reclen}, d_type={d_type}, d_name={}",
+                    "libc::getdents(): d_ino={:#x}, d_off={:#x}, d_reclen={d_reclen}, \
+                     d_type={d_type}, d_name={}",
                     { dent.d_ino },
                     { dent.d_off },
                     &d_name,

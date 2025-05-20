@@ -18,7 +18,7 @@ pub mod event;
 pub mod ipc;
 
 /// Kernel calls.
-#[cfg(all(target_os = "none", feature = "kcall"))]
+#[cfg(all(feature = "kcall"))]
 pub mod kcall;
 
 /// Memory management.

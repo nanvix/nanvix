@@ -5,17 +5,17 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
-        Error,
-        ErrorCode,
-    },
-};
 use ::std::collections::{
     BTreeMap,
     VecDeque,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
 

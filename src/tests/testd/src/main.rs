@@ -21,12 +21,12 @@ mod mm;
 // Imports
 //==================================================================================================
 
-use nvx::{
+extern crate nvx;
+
+use ::sys::{
+    config,
+    mm::Address,
     pm::ProcessIdentifier,
-    sys::{
-        config,
-        mm::Address,
-    },
 };
 
 //==================================================================================================
@@ -62,7 +62,7 @@ pub fn main() {
     event::test();
     mm::test();
 
-    let mypid: ProcessIdentifier = match ::nvx::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get process identifier (error={:?})", e),
     };
