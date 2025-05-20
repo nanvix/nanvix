@@ -21,13 +21,13 @@ use crate::{
     LinuxDaemonMessageHeader,
 };
 use ::core::cmp;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -35,7 +35,7 @@ use ::nvx::{
 //==================================================================================================
 
 pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<ssize_t, Error> {
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Check if count is invalid.
     if buffer.is_empty() {
@@ -51,10 +51,10 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<ssize_t, Err
 
         // Build request and send it.
         let request: Message = ReceiveSocketRequest::build(pid, sockfd, recv_len as u32, flags);
-        ::nvx::ipc::send(&request)?;
+        ::sys::kcall::ipc::send(&request)?;
 
         // Receive response.
-        let response: Message = ::nvx::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {

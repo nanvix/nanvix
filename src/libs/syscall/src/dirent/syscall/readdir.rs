@@ -11,9 +11,11 @@ use crate::dirent::{
     posix_getdents,
     DirectoryStream,
 };
-use ::alloc::boxed::Box;
-use ::nvx::sys::error::Error;
-use alloc::vec::Vec;
+use ::alloc::{
+    boxed::Box,
+    vec::Vec,
+};
+use ::sys::error::Error;
 
 //==================================================================================================
 // Constants

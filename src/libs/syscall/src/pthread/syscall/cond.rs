@@ -22,26 +22,24 @@ use ::alloc::collections::btree_map::{
     BTreeMap,
     Entry,
 };
-use ::nvx::{
+use ::spin::{
+    Lazy,
+    Mutex,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    kcall::pm::{
+        signal_cond,
+        wait_cond,
+    },
     pm::{
         ConditionAddress,
         MutexAddress,
     },
-    sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
-        kcall::pm::{
-            signal_cond,
-            wait_cond,
-        },
-        time::SystemTime,
-    },
-};
-use ::spin::{
-    Lazy,
-    Mutex,
+    time::SystemTime,
 };
 
 //==================================================================================================

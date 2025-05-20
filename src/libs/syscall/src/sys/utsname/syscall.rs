@@ -13,7 +13,7 @@ use crate::{
     },
 };
 use ::alloc::ffi::CString;
-use ::nvx::sys::error::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

@@ -16,6 +16,9 @@
 // Modules
 //==================================================================================================
 
+// Required for panic handler.
+extern crate nvx;
+
 extern crate alloc;
 
 // Address and routing parameter area.
@@ -76,13 +79,13 @@ use ::core::{
     mem,
 };
 use ::num_enum::TryFromPrimitive;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================

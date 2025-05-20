@@ -13,7 +13,7 @@ use ::core::{
     fmt,
     mem,
 };
-use ::nvx::{
+use ::sys::{
     ipc::{
         Message,
         MessageType,

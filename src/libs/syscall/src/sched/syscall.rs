@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::sys::error::Error;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -21,5 +21,5 @@ use ::nvx::sys::error::Error;
 /// Upon successful completion, empty is returned. Otherwise an error code is returned instead.
 ///
 pub fn sched_yield() -> Result<(), Error> {
-    nvx::sys::kcall::sched::sched_yield()
+    sys::kcall::sched::sched_yield()
 }

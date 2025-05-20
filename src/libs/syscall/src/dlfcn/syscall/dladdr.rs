@@ -22,7 +22,11 @@ use ::alloc::{
     collections::btree_map::BTreeMap,
     sync::Arc,
 };
-use ::nvx::sys::{
+use ::spin::{
+    Mutex,
+    MutexGuard,
+};
+use ::sys::{
     error::{
         Error,
         ErrorCode,
@@ -31,10 +35,6 @@ use ::nvx::sys::{
         Address,
         VirtualAddress,
     },
-};
-use ::spin::{
-    Mutex,
-    MutexGuard,
 };
 
 //==================================================================================================

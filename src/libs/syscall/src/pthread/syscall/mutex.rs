@@ -16,19 +16,17 @@ use crate::{
     },
 };
 use ::alloc::collections::btree_map::Entry;
-use ::nvx::{
-    pm::MutexAddress,
-    sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
-        kcall::pm::{
-            lock_mutex,
-            unlock_mutex,
-        },
-        time::SystemTime,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
+    kcall::pm::{
+        lock_mutex,
+        unlock_mutex,
+    },
+    pm::MutexAddress,
+    time::SystemTime,
 };
 
 //==================================================================================================

@@ -14,7 +14,7 @@ use crate::{
     LinuxDaemonMessageHeader,
 };
 use ::core::mem;
-use ::nvx::{
+use ::sys::{
     ipc::{
         Message,
         MessageType,

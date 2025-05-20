@@ -5,22 +5,22 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{
-    pm,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    kcall::pm,
+    mm::{
+        align_up,
+        VirtualAddress,
+    },
+    pm::ProcessIdentifier,
 };
 use ::sysalloc::{
     map_range,
     unmap_range,
     PAGE_ALIGNMENT,
-};
-use nvx::sys::mm::{
-    align_up,
-    VirtualAddress,
 };
 
 //==================================================================================================
