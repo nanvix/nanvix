@@ -18,8 +18,8 @@ nvx = { workspace = true }
 sys = { workspace = true }
 config = { workspace = true }
 cfg-if = { workspace = true }
-elf = { workspace = true }
-goblin = { workspace = true, features = [
+elf = { workspace = true, optional = true }
+goblin = { workspace = true, optional = true, features = [
     "elf32",
     "elf64",
     "endian_fd",
@@ -27,7 +27,7 @@ goblin = { workspace = true, features = [
     "mach64",
 ] }
 num_enum = { workspace = true }
-spin = { workspace = true, features = ["lazy", "spin_mutex"] }
+spin = { workspace = true, optional = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
 sysalloc = { workspace = true, optional = true }
 syslog = { workspace = true }
@@ -39,8 +39,8 @@ allocator = ["dep:sysalloc", "nvx/allocator"]
 syscall = []
 std = ["nvx/std"]
 staticlib = ["nvx/staticlib", "sysalloc/staticlib"]
-dlfcn = []
-pthread = []
+dlfcn = ["dep:elf", "dep:goblin", "dep:spin"]
+pthread = ["dep:spin"]
 sbrk = []
 
 # Logging
