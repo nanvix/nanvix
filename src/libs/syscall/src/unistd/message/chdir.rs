@@ -27,16 +27,16 @@ use ::core::{
     fmt::Debug,
     mem,
 };
-use ::nvx::{
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::{
         Message,
         MessageType,
     },
     pm::ProcessIdentifier,
-    sys::error::{
-        Error,
-        ErrorCode,
-    },
 };
 
 //==================================================================================================

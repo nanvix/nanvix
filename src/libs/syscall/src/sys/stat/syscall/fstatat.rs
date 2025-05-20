@@ -16,10 +16,10 @@ use ::alloc::{
     string::ToString,
     vec::Vec,
 };
-use ::nvx::{
+use ::sys::{
+    error::Error,
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::Error,
 };
 
 //==================================================================================================
@@ -69,14 +69,14 @@ pub fn fstatat(dirfd: i32, path: &str, buf: &mut stat, flag: i32) -> Result<(), 
 /// instead.
 ///
 fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag)?;
 
     let requests: Vec<Message> = request.into_parts(pid)?;
 
     for request in requests {
-        ::nvx::ipc::send(&request)?;
+        ::sys::kcall::ipc::send(&request)?;
     }
 
     Ok(())

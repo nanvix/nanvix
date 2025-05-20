@@ -19,13 +19,13 @@ use crate::{
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -49,14 +49,14 @@ use ::nvx::{
 pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
     ::syslog::trace!("times(): {:?}", buffer);
 
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build request and send it.
     let request: Message = TimesRequest::build(pid)?;
-    ::nvx::ipc::send(&request)?;
+    ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = ::nvx::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::recv()?;
 
     // Check wether system call succeeded or not.
     if response.status != 0 {

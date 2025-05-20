@@ -22,13 +22,13 @@ use ::alloc::{
     string::String,
     vec::Vec,
 };
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -51,7 +51,7 @@ fn getcwd_request() -> Result<(), Error> {
     let request: Message = GetCurrentWorkingDirectoryRequest::build(pid);
 
     // Send request.
-    ::nvx::ipc::send(&request)
+    ::sys::kcall::ipc::send(&request)
 }
 
 /// Processes the response of the `getcwd()` system call.
@@ -63,7 +63,7 @@ fn getcwd_response() -> Result<String, Error> {
     let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::nvx::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::recv()?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {

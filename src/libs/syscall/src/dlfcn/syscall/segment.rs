@@ -8,32 +8,26 @@
 use ::core::ptr::{
     self,
 };
-use ::nvx::{
-    pm::{
-        self,
-        ProcessIdentifier,
-    },
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
-};
-use nvx::{
+    kcall,
+    kcall::mm::{
+        mmap,
+        munmap,
+    },
     mm::{
-        PAGE_ALIGNMENT,
-        PAGE_SIZE,
+        AccessPermission,
+        Address,
+        VirtualAddress,
     },
-    sys::{
-        kcall::mm::{
-            mmap,
-            munmap,
-        },
-        mm::{
-            AccessPermission,
-            Address,
-            VirtualAddress,
-        },
-    },
+    pm::ProcessIdentifier,
+};
+use ::sysalloc::{
+    PAGE_ALIGNMENT,
+    PAGE_SIZE,
 };
 
 //==================================================================================================
@@ -81,7 +75,7 @@ impl MemorySegment {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
-        let pid: ProcessIdentifier = pm::getpid()?;
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
 
         map_range(pid, base, VirtualAddress::from_raw_value(base.into_raw_value() + capacity))?;
 

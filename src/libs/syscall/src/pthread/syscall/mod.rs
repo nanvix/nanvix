@@ -18,25 +18,23 @@ mod tda;
 // Imports
 //==================================================================================================
 
-use crate::{
-    pthread::pthread_t,
-    sys::types::pthread_mutexattr_t,
+use crate::pthread::{
+    pthread_mutexattr_t,
+    pthread_t,
 };
 use ::alloc::collections::btree_map::BTreeMap;
-use ::nvx::{
-    pm::ThreadIdentifier,
-    sys::{
-        error::Error,
-        kcall::pm::{
-            create_thread,
-            exit_thread,
-            join_thread,
-        },
-    },
-};
 use ::spin::{
     Lazy,
     Mutex,
+};
+use ::sys::{
+    error::Error,
+    kcall::pm::{
+        create_thread,
+        exit_thread,
+        join_thread,
+    },
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -88,5 +86,5 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
 }
 
 pub fn pthread_self() -> pthread_t {
-    ::nvx::pm::gettid().unwrap().into()
+    ::sys::kcall::pm::gettid().unwrap().into()
 }

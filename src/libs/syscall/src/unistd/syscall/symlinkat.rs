@@ -15,13 +15,13 @@ use ::alloc::{
     string::ToString,
     vec::Vec,
 };
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -51,7 +51,7 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
         linkpath
     );
 
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     let request: SymbolicLinkAtRequest =
         SymbolicLinkAtRequest::new(target.to_string(), dirfd, linkpath.to_string())?;
@@ -60,11 +60,11 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
 
     // Send request.
     for request in requests {
-        ::nvx::ipc::send(&request)?;
+        ::sys::kcall::ipc::send(&request)?;
     }
 
     // Receive response.
-    let response: Message = ::nvx::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

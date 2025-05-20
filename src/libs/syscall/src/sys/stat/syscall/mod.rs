@@ -33,12 +33,12 @@ use crate::{
     LinuxDaemonMessageHeader,
 };
 use ::alloc::vec::Vec;
-use ::nvx::{
-    ipc::Message,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
 };
 
 //==================================================================================================
@@ -75,7 +75,7 @@ fn fstatat_response() -> Result<sys::stat::stat, Error> {
     let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::nvx::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {

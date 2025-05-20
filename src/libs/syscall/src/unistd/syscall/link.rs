@@ -9,7 +9,7 @@ use crate::{
     fcntl,
     unistd,
 };
-use ::nvx::sys::error::Error;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions

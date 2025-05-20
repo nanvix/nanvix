@@ -14,13 +14,13 @@ use crate::{
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -44,10 +44,10 @@ pub fn getegid() -> Result<gid_t, Error> {
 
     // Build request and send it
     let request: Message = GetIdsRequest::build(pid);
-    ::nvx::ipc::send(&request)?;
+    ::sys::kcall::ipc::send(&request)?;
 
     // Receive response
-    let response: Message = ::nvx::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::recv()?;
 
     // Check whether system call succeeded or not
     if response.status != 0 {
@@ -70,7 +70,11 @@ pub fn getegid() -> Result<gid_t, Error> {
             },
             // Invalid response
             header => {
-                ::syslog::error!("getegid(): invalid response (pid={:?}, header={:?})", pid, header);
+                ::syslog::error!(
+                    "getegid(): invalid response (pid={:?}, header={:?})",
+                    pid,
+                    header
+                );
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
             },
         }

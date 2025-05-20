@@ -26,7 +26,7 @@ use crate::{
     },
     unistd,
 };
-use ::nvx::sys::error::Error;
+use ::sys::error::Error;
 
 //==================================================================================================
 // File Descriptor

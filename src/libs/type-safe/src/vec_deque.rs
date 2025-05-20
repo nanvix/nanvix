@@ -195,7 +195,7 @@ impl<T> NonEmptyVecDeque<T> {
         }
     }
 
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             passed_head: false,
             head: Some(&self.head),
@@ -203,7 +203,7 @@ impl<T> NonEmptyVecDeque<T> {
         }
     }
 
-    pub fn iter_mut(&mut self) -> IterMut<T> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             passed_head: false,
             head: Some(&mut self.head),

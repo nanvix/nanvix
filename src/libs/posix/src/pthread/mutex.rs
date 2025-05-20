@@ -12,7 +12,7 @@ use ::nvx::sys::{
 use ::syscall::{
     ffi::c_int,
     pthread,
-    sys::types::{
+    pthread::{
         pthread_mutex_t,
         pthread_mutexattr_t,
     },

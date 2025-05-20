@@ -9,10 +9,10 @@ use crate::sys::stat::{
     self,
     message::FileStatRequest,
 };
-use ::nvx::{
+use ::sys::{
+    error::Error,
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::Error,
 };
 
 //==================================================================================================
@@ -59,9 +59,9 @@ pub fn fstat(fd: i32, buf: &mut stat::stat) -> Result<(), Error> {
 /// instead.
 ///
 fn fstat_request(fd: i32) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     let message: Message = FileStatRequest::build(pid, fd);
 
-    ::nvx::ipc::send(&message)
+    ::sys::kcall::ipc::send(&message)
 }

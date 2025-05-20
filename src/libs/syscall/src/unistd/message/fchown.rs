@@ -18,7 +18,7 @@ use ::core::{
     fmt::Debug,
     mem,
 };
-use ::nvx::{
+use ::sys::{
     ipc::{
         Message,
         MessageType,

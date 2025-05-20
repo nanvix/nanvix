@@ -16,12 +16,14 @@ use crate::{
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::nvx::{
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::Message,
     pm::ProcessIdentifier,
-    sys::error::ErrorCode,
 };
-use nvx::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -34,10 +36,10 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
 
     // Build request and send it.
     let request: Message = SeekRequest::build(pid, fd, offset, whence);
-    ::nvx::ipc::send(&request)?;
+    ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.
-    let response: Message = ::nvx::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

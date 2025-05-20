@@ -14,7 +14,7 @@ use crate::{
     ffi::c_int,
 };
 use ::alloc::boxed::Box;
-use ::nvx::sys::error::Error;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions
