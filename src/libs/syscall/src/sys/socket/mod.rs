@@ -32,7 +32,6 @@ use ::alloc::string::{
     ToString,
 };
 use ::core::mem;
-use ::num_enum::TryFromPrimitive;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -153,7 +152,7 @@ impl sockaddr_storage {
 
 /// Describes protocol family of a socket.
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressFamily {
     /// Internet domain sockets for use with IPv4 addresses.
     Inet = family::AF_INET,
@@ -164,9 +163,27 @@ pub enum AddressFamily {
     /// Unspecified.
     Unspec = family::AF_UNSPEC,
 }
+
+impl TryFrom<i32> for AddressFamily {
+    type Error = Error;
+
+    fn try_from(family: i32) -> Result<Self, Self::Error> {
+        match family {
+            family::AF_INET => Ok(AddressFamily::Inet),
+            family::AF_INET6 => Ok(AddressFamily::Inet6),
+            family::AF_UNIX => Ok(AddressFamily::Unix),
+            family::AF_UNSPEC => Ok(AddressFamily::Unspec),
+            _unsupported_family => {
+                let reason: &str = "unsupported socket address family";
+                Err(Error::new(ErrorCode::AddressFamilyNotSupported, reason))
+            },
+        }
+    }
+}
+
 /// Describes communication semantics of a socket.
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SocketType {
     /// Provides sequenced, reliable, bidirectional, connection-mode byte streams.
     Stream = SOCK_STREAM,
@@ -176,6 +193,23 @@ pub enum SocketType {
     Datagram = SOCK_DGRAM,
     /// Provides sequenced, reliable, bidirectional, connection-mode transmission paths for records.
     SeqPacket = SOCK_SEQPACKET,
+}
+
+impl TryFrom<i32> for SocketType {
+    type Error = Error;
+
+    fn try_from(socket_type: i32) -> Result<Self, Self::Error> {
+        match socket_type {
+            SOCK_STREAM => Ok(SocketType::Stream),
+            SOCK_RAW => Ok(SocketType::Raw),
+            SOCK_DGRAM => Ok(SocketType::Datagram),
+            SOCK_SEQPACKET => Ok(SocketType::SeqPacket),
+            _unsupported_socket_type => {
+                let reason: &str = "unsupported socket type";
+                Err(Error::new(ErrorCode::OperationNotSupportedOnSocket, reason))
+            },
+        }
+    }
 }
 
 /// Describes how a socket should be shutdown.

@@ -17,7 +17,6 @@ use ::core::{
     mem,
     str::FromStr,
 };
-use ::num_enum::TryFromPrimitive;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -80,7 +79,7 @@ pub mod bindings {
 
 /// Describes communication protocol of a socket.
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
     /// Internet Protocol.
     Ip = bindings::ipproto::IPPROTO_IP,
@@ -88,6 +87,19 @@ pub enum Protocol {
     Tcp = bindings::ipproto::IPPROTO_TCP,
     /// User Datagram Protocol.
     Udp = bindings::ipproto::IPPROTO_UDP,
+}
+
+impl TryFrom<i32> for Protocol {
+    type Error = Error;
+
+    fn try_from(proto: i32) -> Result<Self, Self::Error> {
+        match proto {
+            bindings::ipproto::IPPROTO_IP => Ok(Protocol::Ip),
+            bindings::ipproto::IPPROTO_TCP => Ok(Protocol::Tcp),
+            bindings::ipproto::IPPROTO_UDP => Ok(Protocol::Udp),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid protocol number")),
+        }
+    }
 }
 
 /// Represents an IPv4 address.
