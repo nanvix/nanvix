@@ -15,16 +15,7 @@ crate-type = ["lib", "staticlib"]
 
 [dependencies]
 nvx = { workspace = true }
-config = { workspace = true }
 cfg-if = { workspace = true }
-elf = { workspace = true }
-goblin = { workspace = true, features = [
-    "elf32",
-    "elf64",
-    "endian_fd",
-    "mach32",
-    "mach64",
-] }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 syscall = { workspace = true, features = ["syscall"] }
