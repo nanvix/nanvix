@@ -7,15 +7,15 @@
 
 use crate::{
     dlfcn::syscall::segment::MemorySegment,
-    fcntl::OpenFlags,
     ffi::{
         c_int,
         c_void,
     },
-    safe::FileDescriptor,
-    sys::stat::{
-        self,
-        file_mode,
+    safe::{
+        FileSystemAttributes,
+        FileSystemPath,
+        RegularFile,
+        RegularFileOpenFlags,
     },
 };
 use ::alloc::{
@@ -109,7 +109,7 @@ pub struct DynamicLibrary {
     /// Library name.
     filename: CString,
     /// Underlying file descriptor.
-    fd: FileDescriptor,
+    fd: RegularFile,
     /// Load address.
     load_address: VirtualAddress,
     /// Memory segments.
@@ -131,7 +131,11 @@ impl DynamicLibrary {
     pub fn open(filename: &str) -> Result<Self, Error> {
         ::syslog::trace!("open(): filename={}", filename);
         // Attempt to open file.
-        let fd: FileDescriptor = FileDescriptor::open(filename, OpenFlags::O_RDONLY.into(), 0)?;
+        let fd: RegularFile = RegularFile::open(
+            &FileSystemPath::new(filename)?,
+            RegularFileOpenFlags::read_only(),
+            None,
+        )?;
 
         // Convert filename to a C string.
         let filename: CString = match CString::new(filename) {
@@ -144,18 +148,18 @@ impl DynamicLibrary {
         };
 
         // Retrieve file information.
-        let mut buf: stat::stat = stat::stat::default();
-        fd.stat(&mut buf)?;
+        let mut attr: FileSystemAttributes = FileSystemAttributes::empty();
+        fd.attributes(&mut attr)?;
 
         // Check if file is not a regular file.
-        if !file_mode::S_ISREG(buf.st_mode) {
+        if !attr.is_regular_file() {
             let reason: &str = "file is not a regular file";
             ::syslog::error!("open(): {}", reason);
             return Err(Error::new(ErrorCode::BadFile, reason));
         }
 
         // Attempt to load file in one shot.
-        let file_size: usize = buf.st_size as usize;
+        let file_size: usize = attr.size();
         let mut bytes: Vec<u8> = vec![0; file_size];
         fd.read(&mut bytes)?;
 
@@ -303,7 +307,7 @@ impl DynamicLibrary {
 
     /// Returns a handle that uniquely identifies the dynamic library file.
     pub fn handle(&self) -> DlHandle {
-        DlHandle(self.fd.get_raw_fd())
+        DlHandle(self.fd.as_raw_fd())
     }
 
     /// Gets the relocation table for global variables (`.rel.dyn).
