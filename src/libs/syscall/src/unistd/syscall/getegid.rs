@@ -70,7 +70,11 @@ pub fn getegid() -> Result<gid_t, Error> {
             },
             // Invalid response
             header => {
-                ::syslog::error!("getegid(): invalid response (pid={:?}, header={:?})", pid, header);
+                ::syslog::error!(
+                    "getegid(): invalid response (pid={:?}, header={:?})",
+                    pid,
+                    header
+                );
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
             },
         }

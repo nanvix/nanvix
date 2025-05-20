@@ -62,7 +62,7 @@ pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> Result<(), Error> {
                     error
                 );
                 // Return error code.
-              Err(Error::new(ErrorCode::TryAgain, "fcntl() failed"))
+                Err(Error::new(ErrorCode::TryAgain, "fcntl() failed"))
             },
         }
     } else {
