@@ -18,7 +18,7 @@ nvx = { workspace = true }
 cfg-if = { workspace = true }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
-syscall = { workspace = true, features = ["syscall"] }
+syscall = { workspace = true, features = ["syscall", "sbrk"] }
 static_assert = { workspace = true }
 sysalloc = { workspace = true, optional = true }
 syslog = { workspace = true }
