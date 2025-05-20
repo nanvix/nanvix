@@ -16,6 +16,7 @@
 // Modules
 //==================================================================================================
 
+#[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
 // Address and routing parameter area.

@@ -17,10 +17,24 @@ cfg-if = { workspace = true }
 config = { workspace = true }
 syslog = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
+alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+compiler_builtins = { version = "0.1", optional = true }
 
 [features]
 default = []
 staticlib = []
+rustc-dep-of-std = [
+    "alloc",
+    "core",
+    "arch/rustc-dep-of-std",
+    "talc/rustc-dep-of-std",
+    "config/rustc-dep-of-std",
+    "compiler_builtins/rustc-dep-of-std",
+    "sys/rustc-dep-of-std",
+    "syslog/rustc-dep-of-std",
+    "cfg-if/rustc-dep-of-std",
+]
 
 # Logging Features
 trace = ["syslog/trace"]
