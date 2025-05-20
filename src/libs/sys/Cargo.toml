@@ -11,14 +11,9 @@ description = "System Library"
 homepage.workspace = true
 
 [dependencies]
-cfg-if = { workspace = true }
 config = { workspace = true }
 error = { workspace = true }
 static_assert = { workspace = true }
-
-[build-dependencies]
-cc = { workspace = true }
-cfg-if = { workspace = true }
 
 [features]
 std = []
