@@ -9,6 +9,7 @@ use ::alloc::string::{
     String,
     ToString,
 };
+use ::config::system::DEFAULT_NODE_NAME;
 
 //==================================================================================================
 // Standalone Functions
@@ -25,5 +26,7 @@ use ::alloc::string::{
 ///
 pub fn gethostname() -> String {
     ::syslog::trace!("gethostname()");
-    env!("NANVIX_NODENAME").to_string()
+    option_env!("NANVIX_NODENAME")
+        .unwrap_or(DEFAULT_NODE_NAME)
+        .to_string()
 }

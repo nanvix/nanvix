@@ -18,6 +18,34 @@ pub mod constants;
 include!(concat!(env!("OUT_DIR"), "/kernel_config.rs"));
 
 //==================================================================================================
+// System
+//==================================================================================================
+
+pub mod system {
+    /// Default system name.
+    pub const DEFAULT_SYSTEM_NAME: &str = "nanvix";
+
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "microvm")] {
+            /// Default machine name.
+            pub const DEFAULT_MACHINE_NAME: &str = "microvm";
+        } else if #[cfg(feature = "pc")] {
+            /// Default machine name.
+            pub const DEFAULT_MACHINE_NAME: &str = "pc";
+        } else if #[cfg(feature = "hyperlight")] {
+            /// Default machine name.
+            pub const DEFAULT_MACHINE_NAME: &str = "hyperlight";
+        } else {
+            /// Default machine name.
+            pub const DEFAULT_MACHINE_NAME: &str = "unknown";
+        }
+    }
+
+    /// Default node name.
+    pub const DEFAULT_NODE_NAME: &str = "localhost";
+}
+
+//==================================================================================================
 // User Memory Layout
 //==================================================================================================
 
