@@ -44,7 +44,7 @@ impl Gdte {
 }
 
 impl core::fmt::Debug for Gdte {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let base: u32 =
             (self.base_high as u32) << 24 | (self.base_middle as u32) << 16 | self.base_low as u32;
         let limit: u32 = (self.flags_limit as u32 & 0x0f) << 16 | self.limit_low as u32;
