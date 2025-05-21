@@ -11,7 +11,7 @@ pub enum PrivilegeLevel {
 }
 
 impl core::fmt::Debug for PrivilegeLevel {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             PrivilegeLevel::Ring0 => write!(f, "ring 0"),
             PrivilegeLevel::Ring1 => write!(f, "ring 1"),
