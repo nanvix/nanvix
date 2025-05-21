@@ -18,7 +18,6 @@ static_assert = { workspace = true }
 sys = { workspace = true }
 
 [build-dependencies]
-cc = { workspace = true }
 cfg-if = { workspace = true }
 
 [features]
