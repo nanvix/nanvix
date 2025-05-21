@@ -39,7 +39,7 @@ do
             msg="$mode $step $target"
             printf "%-${PADDING}s" "$msg"
             start_time=$(date +%s%3N)
-            python3 scripts/ci.py --${mode} --toolchain-dir=$TOOLCHAIN_DIR --target-arch=x86 --log-level=trace --target-machine=$target --${step} --timeout $TIMEOUT > $TTY
+            python3 scripts/ci.py --${mode} --toolchain-dir=$TOOLCHAIN_DIR --target-arch=x86 --log-level=trace --target-machine=$target --${step} --timeout $TIMEOUT < /dev/null > $TTY
             return_code=$?
             end_time=$(date +%s%3N)
             elapsed_time=$((end_time - start_time))
