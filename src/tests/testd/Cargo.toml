@@ -14,6 +14,8 @@ homepage.workspace = true
 name = "testd"
 
 [dependencies]
+arch = { workspace = true }
+sys = { workspace = true }
 nvx = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }
 config = { workspace = true }

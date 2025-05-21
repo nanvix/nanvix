@@ -42,14 +42,6 @@ use ::flexi_logger::{
     FileSpec,
     Logger,
 };
-use ::nvx::{
-    ipc::{
-        Message,
-        MessageType,
-    },
-    pm::ProcessIdentifier,
-    sys::error::ErrorCode,
-};
 use ::signal_hook::{
     consts::SIGINT,
     iterator::{
@@ -63,6 +55,14 @@ use ::std::{
     str::FromStr,
     sync::Once,
     thread,
+};
+use ::sys::{
+    error::ErrorCode,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::ProcessIdentifier,
 };
 use ::syscomm::{
     Socket,

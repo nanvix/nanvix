@@ -8,14 +8,12 @@
 #![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
-#![cfg_attr(feature = "allocator", feature(allocator_api))]
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-#[cfg(target_os = "none")]
 mod panic;
 
 //==================================================================================================
@@ -29,40 +27,10 @@ extern crate alloc;
 use ::alloc::vec::Vec;
 
 //==================================================================================================
-// Exports
-//==================================================================================================
-
-/// Architecture-specific symbols.
-#[cfg(target_os = "none")]
-pub use ::sys::kcall::arch;
-
-/// Debug facilities.
-#[cfg(target_os = "none")]
-pub mod debug;
-
-/// Memory management kernel calls.
-pub mod mm;
-
-/// Event handling kernel calls.
-pub mod event;
-
-/// Inter-Process Communication (IPC) kernel calls.
-pub mod ipc;
-
-/// System configuration.
-pub use ::sys;
-
-/// Process management kernel calls.
-pub mod pm;
-
-/// Execution scheduling kernel calls.
-pub mod sched;
-
-//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(all(not(feature = "std"), target_os = "none", not(feature = "staticlib")))]
+#[cfg(all(target_os = "none", not(feature = "staticlib")))]
 core::arch::global_asm!(
     r#"
     .extern _start
@@ -227,7 +195,7 @@ fn c_trampoline(argp: *mut i8, envp: *mut i8) -> i32 {
 /// Initializes system runtime.
 #[cfg(target_os = "none")]
 fn init() {
-    #[cfg(feature = "allocator")]
+    #[cfg(feature = "sysalloc")]
     if let Err(e) = sysalloc::init() {
         panic!("failed to initialize memory manager: {:?}", e);
     }
@@ -236,7 +204,7 @@ fn init() {
 /// Cleans up system runtime.
 #[cfg(target_os = "none")]
 fn cleanup() {
-    #[cfg(feature = "allocator")]
+    #[cfg(feature = "sysalloc")]
     if let Err(e) = sysalloc::cleanup() {
         panic!("failed to cleanup memory manager: {:?}", e);
     }

@@ -28,17 +28,6 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::nvx::{
-    ipc::{
-        Message,
-        MessageType,
-    },
-    pm::ProcessIdentifier,
-    sys::error::{
-        Error,
-        ErrorCode,
-    },
-};
 use ::std::{
     io,
     io::{
@@ -47,6 +36,17 @@ use ::std::{
         Write,
     },
     mem,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::ProcessIdentifier,
 };
 use ::syscall::{
     dirent::message::GetDirectoryEntriesRequest,
@@ -181,14 +181,14 @@ impl<'a> LinuxDaemon<'a> {
             }
 
             match message.message_type {
-                nvx::ipc::MessageType::Empty => panic!("received empty message"),
-                nvx::ipc::MessageType::Interrupt => panic!("received interrupt message"),
-                nvx::ipc::MessageType::Exception => panic!("received exception message"),
-                nvx::ipc::MessageType::Ipc => panic!("received IPC message"),
-                nvx::ipc::MessageType::ProcessTerminationEvent => {
+                sys::ipc::MessageType::Empty => panic!("received empty message"),
+                sys::ipc::MessageType::Interrupt => panic!("received interrupt message"),
+                sys::ipc::MessageType::Exception => panic!("received exception message"),
+                sys::ipc::MessageType::Ipc => panic!("received IPC message"),
+                sys::ipc::MessageType::ProcessTerminationEvent => {
                     panic!("received process termination event message")
                 },
-                nvx::ipc::MessageType::Ikc => {
+                sys::ipc::MessageType::Ikc => {
                     match LinuxDaemonMessage::try_from_bytes(message.payload) {
                         Ok(message) => {
                             let message: Message = match message.header {

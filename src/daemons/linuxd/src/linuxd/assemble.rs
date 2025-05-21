@@ -14,13 +14,13 @@ use crate::{
     unistd,
 };
 use ::anyhow::Result;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 use ::syscall::{
     fcntl::message::{

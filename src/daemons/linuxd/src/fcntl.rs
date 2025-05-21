@@ -8,13 +8,13 @@
 use crate::time::LibcTimeSpec;
 use ::alloc::ffi::CString;
 use ::core::ffi;
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 use ::syscall::{
     fcntl,
@@ -143,10 +143,7 @@ pub fn do_unlinkat(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Vec<Mess
         0
     };
 
-    debug!(
-        "libc::unlinkat(): dirfd={:?}, pathname={pathname:?}, flags={flags:?}",
-        dirfd.inner(),
-    );
+    debug!("libc::unlinkat(): dirfd={:?}, pathname={pathname:?}, flags={flags:?}", dirfd.inner(),);
     match unsafe { libc::unlinkat(dirfd.inner(), pathname.as_bytes().as_ptr() as *const i8, flags) }
     {
         ret if ret == 0 => {
@@ -633,10 +630,7 @@ pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest)
     debug!(
         "libc::futimens(): fd={fd:?}, times[0].tv_sec={:?}, times[0].tv_nsec={:?}, \
          times[1].tv_sec={:?}, times[1].tv_nsec={:?}",
-        libc_times[0].tv_sec,
-        libc_times[0].tv_nsec,
-        libc_times[1].tv_sec,
-        libc_times[1].tv_nsec
+        libc_times[0].tv_sec, libc_times[0].tv_nsec, libc_times[1].tv_sec, libc_times[1].tv_nsec
     );
     match unsafe { libc::futimens(fd, libc_times.as_ptr()) } {
         0 => {

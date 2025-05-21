@@ -11,22 +11,18 @@ use crate::message::{
     ProcessManagementMessageHeader,
     SignupResponseMessage,
 };
-use ::nvx::{
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::{
+        Message,
+        MessageType,
         SystemMessage,
         SystemMessageHeader,
     },
-    sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
-        ipc::{
-            Message,
-            MessageType,
-        },
-        pm::ProcessIdentifier,
-    },
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -50,10 +46,10 @@ use ::nvx::{
 pub fn signup(pid: &ProcessIdentifier, name: &str) -> Result<(), Error> {
     // Build signup message and send it.
     let message: Message = message::signup_request(*pid, name)?;
-    ::nvx::ipc::send(&message)?;
+    ::sys::kcall::ipc::send(&message)?;
 
     // Wait unblock message from the process manager daemon.
-    let message: Message = ::nvx::ipc::recv()?;
+    let message: Message = ::sys::kcall::ipc::recv()?;
 
     // Parse message.
     match message.message_type {

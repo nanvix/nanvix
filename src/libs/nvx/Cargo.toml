@@ -14,25 +14,20 @@ homepage.workspace = true
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
-arch = { workspace = true }
-cfg-if = { workspace = true }
-config = { workspace = true }
-syslog = { workspace = true, default-features = true }
 sysalloc = { workspace = true, optional = true }
+cfg-if = { workspace = true }
+syslog = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
-static_assert = { workspace = true }
 
 [features]
-default = ["allocator", "staticlib"]
-allocator = ["dep:sysalloc"]
-std = ["syslog/std"]
-sysalloc = ["syslog/std"]
-staticlib = ["allocator"]
+default = ["staticlib", "sysalloc"]
+staticlib = []
+sysalloc = ["dep:sysalloc"]
 
 # Logging Features
-trace = ["syslog/trace"]
-debug = ["syslog/debug"]
-info = ["syslog/info"]
-warn = ["syslog/warn"]
-error = ["syslog/error"]
-panic = ["syslog/panic"]
+trace = ["syslog/trace", "syslog/trace"]
+debug = ["syslog/debug", "syslog/debug"]
+info = ["syslog/info", "syslog/info"]
+warn = ["syslog/warn", "syslog/warn"]
+error = ["syslog/error", "syslog/error"]
+panic = ["syslog/panic", "syslog/panic"]

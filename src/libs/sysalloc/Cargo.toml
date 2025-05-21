@@ -15,7 +15,7 @@ arch = { workspace = true }
 talc = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
-syslog = { workspace = true, default-features = true }
+syslog = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 
 [features]

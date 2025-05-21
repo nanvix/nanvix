@@ -10,7 +10,7 @@ use crate::{
     sys::stat,
 };
 use ::core::slice;
-use ::nvx::sys::error::ErrorCode;
+use ::sys::error::ErrorCode;
 use ::syscall::{
     fcntl::AT_FDCWD,
     ffi::{

@@ -14,9 +14,10 @@ homepage.workspace = true
 name = "memd"
 
 [dependencies]
-nvx = { workspace = true }
+sys = { workspace = true }
+nvx = { workspace = true, features = ["sysalloc"] }
 proc = { workspace = true, features = ["syscall"] }
-syslog = { workspace = true, default-features = true }
+syslog = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }
@@ -24,9 +25,9 @@ cfg-if = { workspace = true }
 
 [features]
 default = ["panic"]
-trace = ["nvx/trace"]
-debug = ["nvx/debug"]
-info = ["nvx/info"]
-warn = ["nvx/warn"]
-error = ["nvx/error"]
-panic = ["nvx/panic"]
+trace = ["nvx/trace", "syslog/trace"]
+debug = ["nvx/debug", "syslog/debug"]
+info = ["nvx/info", "syslog/info"]
+warn = ["nvx/warn", "syslog/warn"]
+error = ["nvx/error", "syslog/error"]
+panic = ["nvx/panic", "syslog/panic"]

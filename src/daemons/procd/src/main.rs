@@ -8,10 +8,12 @@
 // Imports
 //==================================================================================================
 
+extern crate nvx;
+
 extern crate alloc;
 
-use ::nvx::sys::error::Error;
 use ::proc::ProcessDaemon;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Standalone Functions

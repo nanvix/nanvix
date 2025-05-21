@@ -14,8 +14,10 @@ homepage.workspace = true
 name = "echo-rust-nostd"
 
 [dependencies]
-nvx = { workspace = true, features = ["allocator"] }
-syscall = { workspace = true, features = ["syscall", "allocator"] }
+sys = { workspace = true }
+nvx = { workspace = true, features = ["sysalloc"] }
+syscall = { workspace = true, features = ["syscall"] }
+sysalloc = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

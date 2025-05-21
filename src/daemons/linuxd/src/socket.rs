@@ -9,13 +9,13 @@ use ::core::{
     cmp,
     mem,
 };
-use ::nvx::{
-    ipc::Message,
-    pm::ProcessIdentifier,
-    sys::error::{
+use ::sys::{
+    error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
+    pm::ProcessIdentifier,
 };
 use ::syscall::{
     netinet::in_::Protocol,
@@ -150,7 +150,8 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
     let socklen: socklen_t = mem::size_of_val(&sockaddr) as socklen_t;
 
     debug!(
-        "libc::bind(): sockfd={sockfd:?}, sockaddr.sa_family={:?}, sockaddr.sa_data={:?}, socklen={socklen:?}",
+        "libc::bind(): sockfd={sockfd:?}, sockaddr.sa_family={:?}, sockaddr.sa_data={:?}, \
+         socklen={socklen:?}",
         sockaddr.inner().sa_family,
         sockaddr.inner().sa_data,
     );
