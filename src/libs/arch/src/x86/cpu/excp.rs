@@ -63,7 +63,7 @@ pub enum Exception {
 //==================================================================================================
 
 impl core::fmt::Debug for Exception {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Exception::DivisionByZero => write!(f, "division-by-zero"),
             Exception::Debug => write!(f, "debug"),
