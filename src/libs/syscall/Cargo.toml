@@ -11,10 +11,10 @@ description = "System Call Library"
 homepage.workspace = true
 
 [lib]
-crate-type = ["lib", "staticlib"]
+crate-type = ["lib"]
 
 [dependencies]
-nvx = { workspace = true }
+arch = { workspace = true, optional = true }
 sys = { workspace = true }
 config = { workspace = true }
 cfg-if = { workspace = true }
@@ -28,24 +28,22 @@ goblin = { workspace = true, optional = true, features = [
 ] }
 spin = { workspace = true, optional = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
+syslog = { workspace = true, optional = true }
 sysalloc = { workspace = true, optional = true }
-syslog = { workspace = true }
 type-safe = { workspace = true }
 
 [features]
-default = ["syscall", "allocator", "staticlib", "dlfcn", "pthread", "sbrk"]
-allocator = ["dep:sysalloc", "nvx/allocator"]
-syscall = []
-std = ["nvx/std"]
-staticlib = ["nvx/staticlib", "sysalloc/staticlib"]
-dlfcn = ["dep:elf", "dep:goblin", "dep:spin"]
+default = ["syscall", "dlfcn", "pthread", "sbrk"]
+syscall = ["dep:syslog", "sys/kcall"]
+std = []
+dlfcn = ["dep:sysalloc", "dep:arch", "dep:elf", "dep:goblin", "dep:spin"]
 pthread = ["dep:spin"]
 sbrk = []
 
 # Logging
-trace = ["nvx/trace", "syslog/trace"]
-debug = ["nvx/debug", "syslog/debug"]
-info = ["nvx/info", "syslog/info"]
-warn = ["nvx/warn", "syslog/warn"]
-error = ["nvx/error", "syslog/error"]
-panic = ["nvx/panic", "syslog/panic"]
+error = ["syslog/error"]
+trace = ["syslog/trace"]
+debug = ["syslog/debug"]
+info = ["syslog/info"]
+warn = ["syslog/warn"]
+panic = ["syslog/panic"]

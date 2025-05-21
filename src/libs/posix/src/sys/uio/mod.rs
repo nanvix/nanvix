@@ -7,7 +7,7 @@
 
 use crate::errno::__errno_location;
 use ::core::slice;
-use ::nvx::sys::error::{
+use ::sys::error::{
     Error,
     ErrorCode,
 };

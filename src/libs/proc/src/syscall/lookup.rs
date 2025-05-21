@@ -11,22 +11,18 @@ use crate::message::{
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
 };
-use ::nvx::{
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::{
+        Message,
+        MessageType,
         SystemMessage,
         SystemMessageHeader,
     },
-    sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
-        ipc::{
-            Message,
-            MessageType,
-        },
-        pm::ProcessIdentifier,
-    },
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -49,14 +45,14 @@ use ::nvx::{
 ///
 pub fn lookup(name: &str) -> Result<ProcessIdentifier, Error> {
     // FIXME: this should not be required.
-    let mypid: ProcessIdentifier = ::nvx::pm::getpid()?;
+    let mypid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build lookup message and send it.
     let message: Message = message::lookup_request(name, mypid)?;
-    ::nvx::ipc::send(&message)?;
+    ::sys::kcall::ipc::send(&message)?;
 
     // Wait response from the process manager daemon.
-    let message: Message = ::nvx::ipc::recv()?;
+    let message: Message = ::sys::kcall::ipc::recv()?;
 
     // Parse response.
     match message.message_type {

@@ -8,7 +8,15 @@
 // Imports
 //==================================================================================================
 
-use ::nvx::{
+extern crate nvx;
+
+use ::proc::{
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
+    ShutdownMessage,
+};
+use ::sys::{
+    error::Error,
     event::{
         Event,
         EventCtrlRequest,
@@ -25,12 +33,6 @@ use ::nvx::{
         Capability,
         ProcessIdentifier,
     },
-    sys::error::Error,
-};
-use ::proc::{
-    ProcessManagementMessage,
-    ProcessManagementMessageHeader,
-    ShutdownMessage,
 };
 
 //==================================================================================================
@@ -40,12 +42,12 @@ use ::proc::{
 fn handle_page_fault(info: EventInformation) {
     // Terminate process.
     ::syslog::info!("terminating process (pid={:?})", info.pid);
-    if let Err(e) = ::nvx::pm::terminate(info.pid) {
+    if let Err(e) = ::sys::kcall::pm::terminate(info.pid) {
         panic!("failed to terminate test daemon (error={:?})", e);
     }
 
     // Acknowledge exception event.
-    if let Err(e) = ::nvx::event::resume(info.id) {
+    if let Err(e) = ::sys::kcall::event::resume(info.id) {
         panic!("failed to resume exception event (error={:?})", e);
     }
 }
@@ -86,7 +88,7 @@ fn handle_ipc_request(message: Message) -> Result<bool, Error> {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mypid: ProcessIdentifier = match ::nvx::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get pid (error={:?})", e),
     };
@@ -96,7 +98,7 @@ pub fn main() {
 
     // Acquire exception management capability.
     ::syslog::info!("acquiring exception management capability...");
-    if let Err(e) = ::nvx::pm::capctl(Capability::ExceptionControl, true) {
+    if let Err(e) = ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
         panic!("failed to acquire exception management capability (error={:?})", e);
     }
 
@@ -104,9 +106,10 @@ pub fn main() {
 
     // Subscribe to page faults.
     ::syslog::info!("subscribing to page faults...");
-    if let Err(e) =
-        ::nvx::event::evctrl(Event::Exception(page_fault_exception), EventCtrlRequest::Register)
-    {
+    if let Err(e) = ::sys::kcall::event::evctrl(
+        Event::Exception(page_fault_exception),
+        EventCtrlRequest::Register,
+    ) {
         panic!("failed to subscribe to page faults (error={:?})", e);
     }
 
@@ -116,7 +119,7 @@ pub fn main() {
     }
 
     loop {
-        match ::nvx::ipc::recv() {
+        match ::sys::kcall::ipc::recv() {
             Ok(message) => match message.message_type {
                 MessageType::Exception => handle_page_fault(EventInformation::from(message)),
                 MessageType::Ipc => match handle_ipc_request(message) {
@@ -136,7 +139,7 @@ pub fn main() {
     }
 
     // Shutdown memory management daemon.
-    let e = ::nvx::pm::exit(0);
+    let e = ::sys::kcall::pm::exit(0);
     ::syslog::error!("failed to shutdown memory management daemon (error={:?})", e);
 
     loop {

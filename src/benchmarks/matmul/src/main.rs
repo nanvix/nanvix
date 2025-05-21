@@ -9,15 +9,17 @@
 //==================================================================================================
 
 extern crate alloc;
+extern crate nvx;
+
 use ::alloc::{
     vec,
     vec::Vec,
 };
 use ::fastrand::Rng;
 use ::micromath::F32Ext;
-use ::nvx::sys::error::Error;
 use ::serde::Deserialize;
 use ::serde_json::de::from_str;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Structs

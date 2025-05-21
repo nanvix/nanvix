@@ -14,8 +14,10 @@ homepage.workspace = true
 name = "noop-rust-nostd"
 
 [dependencies]
+sys = { workspace = true }
 cfg-if = { workspace = true }
-nvx = { workspace = true }
+nvx = { workspace = true, features = ["sysalloc"] }
+sysalloc = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

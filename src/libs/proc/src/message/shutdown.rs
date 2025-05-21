@@ -10,7 +10,8 @@ use crate::message::{
     ProcessManagementMessageHeader,
 };
 use ::core::mem;
-use ::nvx::{
+use ::sys::{
+    error::Error,
     ipc::{
         Message,
         MessageType,
@@ -18,7 +19,6 @@ use ::nvx::{
         SystemMessageHeader,
     },
     pm::ProcessIdentifier,
-    sys::error::Error,
 };
 
 //==================================================================================================

@@ -14,7 +14,8 @@ homepage.workspace = true
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
-nvx = { workspace = true }
+nvx = { workspace = true, features = ["sysalloc"] }
+sys = { workspace = true }
 cfg-if = { workspace = true }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
@@ -26,20 +27,20 @@ syscall = { workspace = true, features = [
 ] }
 static_assert = { workspace = true }
 sysalloc = { workspace = true, optional = true }
-syslog = { workspace = true }
+syslog = { workspace = true, optional = true }
 type-safe = { workspace = true }
 
 [features]
 default = ["syscall", "allocator", "staticlib"]
-allocator = ["dep:sysalloc", "nvx/allocator", "syscall/allocator"]
-syscall = []
-std = ["nvx/std"]
-staticlib = ["nvx/staticlib", "sysalloc/staticlib", "syscall/staticlib"]
+allocator = ["dep:sysalloc"]
+syscall = ["syslog"]
+std = []
+staticlib = ["nvx/staticlib", "sysalloc/staticlib"]
 
 # Logging
-trace = ["nvx/trace", "syslog/trace"]
-debug = ["nvx/debug", "syslog/debug"]
-info = ["nvx/info", "syslog/info"]
-warn = ["nvx/warn", "syslog/warn"]
-error = ["nvx/error", "syslog/error"]
-panic = ["nvx/panic", "syslog/panic"]
+trace = ["syslog/trace"]
+debug = ["syslog/debug"]
+info = ["syslog/info"]
+warn = ["syslog/warn"]
+error = ["syslog/error"]
+panic = ["syslog/panic"]

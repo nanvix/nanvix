@@ -18,10 +18,3 @@ static_assert = { workspace = true }
 [features]
 std = []
 kcall = []
-
-# Logging Features
-trace = ["debug"]
-debug = ["info"]
-info = ["warn"]
-warn = ["error"]
-error = []

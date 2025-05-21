@@ -48,7 +48,7 @@ pub use message::{
     SignupResponseMessage,
 };
 
-use nvx::pm::ProcessIdentifier;
+use ::sys::pm::ProcessIdentifier;
 #[cfg(feature = "syscall")]
 pub use syscall::{
     getegid,

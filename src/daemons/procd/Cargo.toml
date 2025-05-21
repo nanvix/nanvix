@@ -11,9 +11,10 @@ description = "Process Management Daemon"
 homepage.workspace = true
 
 [dependencies]
+sys = { workspace = true }
 proc = { workspace = true, features = ["daemon"] }
-nvx = { workspace = true }
-syslog = { workspace = true, default-features = true }
+nvx = { workspace = true, features = ["sysalloc"] }
+syslog = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

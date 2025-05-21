@@ -30,6 +30,7 @@ use ::alloc::{
     vec,
     vec::Vec,
 };
+use ::arch::mem::PAGE_ALIGNMENT;
 use ::core::mem;
 use ::elf::{
     RelocationEntry,
@@ -60,7 +61,6 @@ use ::sys::{
         VirtualAddress,
     },
 };
-use ::sysalloc::PAGE_ALIGNMENT;
 use ::type_safe::UnalignedPointer;
 
 //==================================================================================================
