@@ -15,7 +15,7 @@ This document guides you through testing Nanvix.
 ## Running Full CI Pipeline
 
 ```bash
-make ./scripts/pipeline.sh
+./scripts/pipeline.sh
 ```
 
 ## Running Unit Tests
