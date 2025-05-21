@@ -112,7 +112,10 @@ export TOOLCHAIN_DIR=$PWD/toolchain          # Set the directory for the toolcha
 If you need the JavaScript to WebAssembly (Javy) toolchain:
 
 ```bash
+# Run these commands in a separate directory.
 git clone https://github.com/nanvix/javy
+
+# Building javy requires the `clang` package.
 cargo build -p javy-plugin --target=wasm32-wasip1 -r
 cargo install --path crates/cli
 ```
