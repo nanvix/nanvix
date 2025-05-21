@@ -25,7 +25,7 @@ timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
 MICROVM_EXIT_CODE=$?
 
 # Kill linuxd and remove socket.
-sudo /usr/bin/pkill -e -INT -P $LINUXD_PID
+sudo /usr/bin/kill -s SIGINT $LINUXD_PID
 sudo -E rm -f ${SOCKADDR}
 
 
