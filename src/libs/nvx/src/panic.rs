@@ -20,7 +20,7 @@ use syslog::{
 //==================================================================================================
 
 #[panic_handler]
-pub fn panic_implementation(info: &::core::panic::PanicInfo) -> ! {
+pub fn panic_implementation(info: &::core::panic::PanicInfo<'_>) -> ! {
     // Extract panic information.
     let (file, line) = match info.location() {
         Some(loc) => (loc.file(), loc.line()),
@@ -28,7 +28,7 @@ pub fn panic_implementation(info: &::core::panic::PanicInfo) -> ! {
     };
 
     // Print panic information.
-    let m: PanicMessage = info.message();
+    let m: PanicMessage<'_> = info.message();
     let _ = writeln!(
         &mut Logger::get(module_path!(), LogLevel::Trace),
         "PANIC file='{file}', line={line} :: {m}",

@@ -10,9 +10,6 @@ authors.workspace = true
 description = "Nanvix Runtime Library"
 homepage.workspace = true
 
-[lib]
-crate-type = ["lib", "staticlib"]
-
 [dependencies]
 sysalloc = { workspace = true, optional = true }
 cfg-if = { workspace = true }
