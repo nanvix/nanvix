@@ -18,7 +18,7 @@ pub mod event;
 pub mod ipc;
 
 /// Kernel calls.
-#[cfg(all(feature = "kcall"))]
+#[cfg(feature = "kcall")]
 pub mod kcall;
 
 /// Memory management.
