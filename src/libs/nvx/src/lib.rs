@@ -20,17 +20,17 @@ mod panic;
 // Imports
 //==================================================================================================
 
-#[cfg(all(target_os = "none", feature = "staticlib"))]
+#[cfg(feature = "staticlib")]
 extern crate alloc;
 
-#[cfg(all(target_os = "none", feature = "staticlib"))]
+#[cfg(feature = "staticlib")]
 use ::alloc::vec::Vec;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+#[cfg(not(feature = "staticlib"))]
 core::arch::global_asm!(
     r#"
     .extern _start
@@ -49,7 +49,6 @@ core::arch::global_asm!(
 );
 
 #[unsafe(no_mangle)]
-#[cfg(target_os = "none")]
 pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     syslog::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
 
@@ -85,7 +84,7 @@ pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
 ///
 /// - A vector of pointers to null-terminated strings.
 ///
-#[cfg(all(target_os = "none", feature = "staticlib"))]
+#[cfg(feature = "staticlib")]
 unsafe fn build_string_table(string: *mut i8) -> Vec<*mut i8> {
     use core::ptr;
 
@@ -128,7 +127,7 @@ unsafe fn build_string_table(string: *mut i8) -> Vec<*mut i8> {
 ///
 /// Wrapper for parsing `argp`.
 ///
-#[cfg(all(target_os = "none", feature = "staticlib"))]
+#[cfg(feature = "staticlib")]
 unsafe fn parse_argp(argp: *mut i8) -> Vec<*const i8> {
     build_string_table(argp)
         .into_iter()
@@ -139,7 +138,7 @@ unsafe fn parse_argp(argp: *mut i8) -> Vec<*const i8> {
 ///
 /// Wrapper for parsing `envp`.
 ///
-#[cfg(all(target_os = "none", feature = "staticlib"))]
+#[cfg(feature = "staticlib")]
 unsafe fn parse_envp(envp: *mut i8) -> Vec<*mut i8> {
     build_string_table(envp)
 }
@@ -147,7 +146,7 @@ unsafe fn parse_envp(envp: *mut i8) -> Vec<*mut i8> {
 ///
 /// Trampoline for Rust applications.
 ///
-#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+#[cfg(not(feature = "staticlib"))]
 fn rust_trampoline(_argp: *mut i8) -> i32 {
     unsafe extern "Rust" {
         fn main() -> Result<(), ::sys::error::Error>;
@@ -163,7 +162,7 @@ fn rust_trampoline(_argp: *mut i8) -> i32 {
 ///
 /// Trampoline for C applications.
 ///
-#[cfg(all(target_os = "none", feature = "staticlib"))]
+#[cfg(feature = "staticlib")]
 fn c_trampoline(argp: *mut i8, envp: *mut i8) -> i32 {
     unsafe extern "C" {
         fn main(argc: i32, argv: *const *const u8) -> i32;
@@ -193,7 +192,6 @@ fn c_trampoline(argp: *mut i8, envp: *mut i8) -> i32 {
 }
 
 /// Initializes system runtime.
-#[cfg(target_os = "none")]
 fn init() {
     #[cfg(feature = "sysalloc")]
     if let Err(e) = sysalloc::init() {
@@ -202,7 +200,6 @@ fn init() {
 }
 
 /// Cleans up system runtime.
-#[cfg(target_os = "none")]
 fn cleanup() {
     #[cfg(feature = "sysalloc")]
     if let Err(e) = sysalloc::cleanup() {
@@ -212,7 +209,7 @@ fn cleanup() {
 
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
-#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+#[cfg(not(feature = "staticlib"))]
 pub unsafe extern "C" fn memset(ptr: *mut u8, value: i32, num: usize) -> *mut u8 {
     let mut i: usize = 0;
     while i < num {
@@ -224,7 +221,7 @@ pub unsafe extern "C" fn memset(ptr: *mut u8, value: i32, num: usize) -> *mut u8
 
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
-#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+#[cfg(not(feature = "staticlib"))]
 pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, num: usize) -> *mut u8 {
     let mut i: usize = 0;
     while i < num {
@@ -236,7 +233,7 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, num: usize) -> *m
 
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
-#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+#[cfg(not(feature = "staticlib"))]
 pub unsafe extern "C" fn memcmp(ptr1: *const u8, ptr2: *const u8, num: usize) -> i32 {
     let mut i: usize = 0;
     while i < num {
@@ -250,7 +247,7 @@ pub unsafe extern "C" fn memcmp(ptr1: *const u8, ptr2: *const u8, num: usize) ->
 
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
-#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+#[cfg(not(feature = "staticlib"))]
 pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, num: usize) -> *mut u8 {
     if (dest as *const u8) < src {
         memcpy(dest, src, num)
@@ -266,7 +263,7 @@ pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, num: usize) -> *
 
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
-#[cfg(all(target_os = "none", not(feature = "staticlib")))]
+#[cfg(not(feature = "staticlib"))]
 pub unsafe extern "C" fn strlen(s: *const u8) -> usize {
     let mut i: usize = 0;
     while *s.add(i) != 0 {
