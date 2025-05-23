@@ -27,13 +27,18 @@ kill_children() {
 }
 
 # Run nanvixd.
-timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
+NANVIXD_STDOUT_FILE_NAME="nanvixd-stdout_$(date "+%Y_%m_%d_%H_%M").log"
+NANVIXD_STDERR_FILE_NAME="nanvixd-stderr_$(date "+%Y_%m_%d_%H_%M").log"
+CONSOLE_FILE_NAME="kernel_$(date "+%Y_%m_%d_%H_%M").log"
+RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
     ./bin/nanvixd.elf \
         -http-addr ${NANVIXD_SOCKADDR} \
         -linuxd-addr ${LINUXD_SOCKADDR} \
         -sandbox-addr ${SANDBOX_SOCKADDR} \
+        -console-file ${CONSOLE_FILE_NAME} \
         -keep-alive 0 \
-    2>&1 2> nanvixd.log &
+        1> ${NANVIXD_STDOUT_FILE_NAME} \
+        2> ${NANVIXD_STDERR_FILE_NAME} &
 NANVIXD_PID=$!
 
 # Extract port number from nanvixd.
