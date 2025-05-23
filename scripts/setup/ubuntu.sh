@@ -19,8 +19,8 @@ if [[ "$1" == "--extra" ]]; then
         dosfstools       \
         doxygen          \
         flex             \
-        gcc-multilib     \
         g++-multilib     \
+        gcc-multilib     \
         graphviz         \
         grub2            \
         kpartx           \
@@ -32,10 +32,13 @@ if [[ "$1" == "--extra" ]]; then
         libncurses5-dev  \
         libpixman-1-dev  \
         libsdl2-dev      \
+        libvirt-clients  \
+        libvirt-daemon-system \
         mtools           \
         ninja-build      \
         pkg-config       \
         python3-venv     \
+        qemu-kvm         \
         qemu-system-x86  \
         texinfo          \
         xorriso
