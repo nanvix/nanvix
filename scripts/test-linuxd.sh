@@ -28,13 +28,13 @@ MICROVM_EXIT_CODE=$?
 sudo /usr/bin/kill -s SIGINT $LINUXD_PID
 sudo -E rm -f ${SOCKADDR}
 
-
 # Check microvm status to see if it exited successfully.
 if [ ${MICROVM_EXIT_CODE} -eq 0 ]; then
-        echo "Test passed."
-        exit 0
     # Check if linuxd.stdout contains the expected output.
-    if grep -q "${PROGRAM_EXPECTED_OUTPUT}" linuxd.stdout; then
+    grep -q "${PROGRAM_EXPECTED_OUTPUT}" linuxd.stdout
+    GREP_EXIT_CODE=$?
+
+    if [ ${GREP_EXIT_CODE} -eq 0 ]; then
         echo "Test passed."
         exit 0
     fi
