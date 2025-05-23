@@ -12,7 +12,6 @@ use crate::{
         c_int,
         c_uchar,
     },
-    limits::NAME_MAX,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -145,9 +144,10 @@ impl MessageSerializer for GetDirectoryEntriesResponse {
             bytes.extend_from_slice(&entry.d_ino.to_le_bytes());
             bytes.extend_from_slice(&entry.d_reclen.to_le_bytes());
             bytes.push(entry.d_type);
-            bytes.extend_from_slice(unsafe {
-                mem::transmute::<&[i8], &[u8]>(entry.d_name.as_slice())
-            });
+            let d_name: &[i8] = entry.d_name.as_slice();
+            let d_name_len: u32 = d_name.len() as u32;
+            bytes.extend_from_slice(&d_name_len.to_le_bytes());
+            bytes.extend_from_slice(unsafe { mem::transmute::<&[i8], &[u8]>(d_name) });
         }
 
         bytes
@@ -200,10 +200,22 @@ impl MessageDeserializer for GetDirectoryEntriesResponse {
             entry.d_type = bytes[offset];
             offset += mem::size_of::<c_uchar>();
 
-            entry.d_name.copy_from_slice(unsafe {
-                mem::transmute::<&[u8], &[i8]>(&bytes[offset..offset + NAME_MAX + 1])
+            let d_name_len: usize = u32::from_le_bytes(
+                bytes[offset..offset + mem::size_of::<u32>()]
+                    .try_into()
+                    .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid length of name"))?,
+            ) as usize;
+            offset += mem::size_of::<u32>();
+
+            // Check if the length of the name is valid.
+            if d_name_len > entry.d_name.len() {
+                return Err(Error::new(ErrorCode::InvalidMessage, "invalid length of name"));
+            }
+
+            entry.d_name[..d_name_len].copy_from_slice(unsafe {
+                mem::transmute::<&[u8], &[i8]>(&bytes[offset..offset + d_name_len])
             });
-            offset += (NAME_MAX + 1) * (mem::size_of::<c_char>());
+            offset += d_name_len * mem::size_of::<c_char>();
 
             entries.push(entry);
         }
