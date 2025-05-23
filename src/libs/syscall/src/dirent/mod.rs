@@ -142,7 +142,6 @@ pub type DIR = DirectoryStream;
 ///
 /// A type representing a directory entry.
 ///
-#[derive(Debug)]
 #[repr(C, packed)]
 pub struct dirent {
     /// File serial number.
@@ -167,6 +166,19 @@ impl From<posix_dent> for dirent {
             d_ino: posix_dent.d_ino,
             d_name: posix_dent.d_name,
         }
+    }
+}
+
+impl fmt::Debug for dirent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let d_name = self
+            .d_name
+            .iter()
+            .map(|&c| c as u8 as char)
+            .collect::<String>()
+            .trim_end_matches('\0')
+            .to_string();
+        write!(f, "dirent {{ d_ino: {}, d_name: {:?} }}", { self.d_ino }, d_name)
     }
 }
 
