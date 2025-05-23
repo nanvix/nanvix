@@ -22,7 +22,7 @@ use ::sys::error::Error;
 //==================================================================================================
 
 /// Minimum number of entries to get when refilling buffers.
-const REFILL_COUNT: usize = 8;
+const REFILL_COUNT: usize = 1;
 
 //==================================================================================================
 // Standalone Functions
