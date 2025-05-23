@@ -30,12 +30,12 @@ use crate::{
     },
 };
 use ::alloc::{
+    collections::VecDeque,
     fmt,
     string::{
         String,
         ToString,
     },
-    vec::Vec,
 };
 
 //==================================================================================================
@@ -103,7 +103,7 @@ pub struct DirectoryStream {
     /// File descriptor.
     fd: c_int,
     /// Next entries in the directory.
-    next_entries: Vec<posix_dent>,
+    next_entries: VecDeque<posix_dent>,
 }
 
 impl DirectoryStream {
@@ -111,7 +111,7 @@ impl DirectoryStream {
     pub fn new(fd: c_int) -> Self {
         Self {
             fd,
-            next_entries: Vec::new(),
+            next_entries: VecDeque::new(),
         }
     }
 
@@ -122,12 +122,12 @@ impl DirectoryStream {
 
     /// Pushes an entry into the directory stream.
     pub fn push(&mut self, posix_dent: posix_dent) {
-        self.next_entries.push(posix_dent);
+        self.next_entries.push_back(posix_dent);
     }
 
     /// Pops the next entry from the directory stream.
     pub fn pop(&mut self) -> Option<posix_dent> {
-        self.next_entries.pop()
+        self.next_entries.pop_front()
     }
 }
 

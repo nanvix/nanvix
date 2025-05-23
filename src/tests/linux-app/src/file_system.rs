@@ -374,15 +374,20 @@ fn test_pipe() {
         },
     };
 
-    match dirent::posix_getdents(dir_fd, 1) {
-        Ok(buffer) => {
-            for d in buffer.iter() {
-                ::syslog::info!("directory entry: {:?}", d);
-            }
-        },
-        Err(error) => {
-            panic!("failed to get directory entries: {:?}", error);
-        },
+    loop {
+        match dirent::posix_getdents(dir_fd, 1) {
+            Ok(buffer) => {
+                if buffer.is_empty() {
+                    break;
+                }
+                for d in buffer.iter() {
+                    ::syslog::info!("directory entry: {:?}", d);
+                }
+            },
+            Err(error) => {
+                panic!("failed to get directory entries: {:?}", error);
+            },
+        }
     }
 
     // Close directory.
