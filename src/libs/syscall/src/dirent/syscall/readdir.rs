@@ -44,7 +44,7 @@ pub fn readdir(dir: &mut Box<DirectoryStream>) -> Result<Option<dirent>, Error> 
     };
 
     // Push remaining entries to the directory stream.
-    for entry in entries {
+    while let Some(entry) = entries.pop() {
         dir.push(entry);
     }
 
