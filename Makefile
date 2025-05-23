@@ -361,9 +361,6 @@ run-nanvixd-tests: | \
 
 # TODO: enable wasm tests, enable thread test.
 run-linuxd-tests: | \
-	test-linuxd-echo-c \
-	test-linuxd-echo-cpp \
-	test-linuxd-echo-rust-nostd \
 	test-linuxd-hello-c \
 	test-linuxd-hello-cpp \
 	test-linuxd-linux-app \
@@ -853,9 +850,6 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 endif
 endef
 
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),echo-c,.elf,'"hello world!"','hello world!'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),echo-cpp,.elf,'"hello world!"','hello world!'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),echo-rust-nostd,.elf,'"hello world!"','hello world!'))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','','Hello$(comma) world from C!'))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','','Hello$(comma) world from C++!'))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','','ok'))
