@@ -14,7 +14,16 @@ homepage.workspace = true
 config = { workspace = true }
 error = { workspace = true }
 static_assert = { workspace = true }
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+compiler_builtins = { version = "0.1", optional = true }
 
 [features]
 std = []
 kcall = []
+rustc-dep-of-std = [
+    "core",
+    "config/rustc-dep-of-std",
+    "compiler_builtins/rustc-dep-of-std",
+    "static_assert/rustc-dep-of-std",
+    "error/rustc-dep-of-std",
+]

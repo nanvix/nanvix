@@ -6,19 +6,21 @@
 //==================================================================================================
 
 // The following imports are used only when any logging feature is enabled.
-use ::arch::mem::PAGE_SIZE;
 #[allow(unused_imports)]
 use ::core::fmt::Write;
-use ::sys::config::memory_layout::USER_HEAP_BASE;
+
+#[cfg(not(feature = "rustc-dep-of-std"))]
+use ::core::alloc::GlobalAlloc;
 
 use crate::heap::Heap;
-use ::alloc::alloc::{
-    GlobalAlloc,
-    Layout,
+use ::alloc::alloc::Layout;
+use ::arch::mem::{
+    PAGE_ALIGNMENT,
+    PAGE_SIZE,
 };
-use ::arch::mem::PAGE_ALIGNMENT;
 use ::core::ptr;
 use ::sys::{
+    config::memory_layout::USER_HEAP_BASE,
     error::{
         Error,
         ErrorCode,
@@ -58,11 +60,13 @@ pub const BREAK_BASE_RAW: usize = config::memory_layout::USER_HEAP_BASE_RAW + RU
 //  Allocator
 //==================================================================================================
 
+#[cfg(not(feature = "rustc-dep-of-std"))]
 struct Allocator;
 
 static mut HEAP: Option<Talc<NanvixOomHandler>> = None;
 
-#[global_allocator]
+#[cfg_attr(not(feature = "rustc-dep-of-std"), global_allocator)]
+#[cfg(not(feature = "rustc-dep-of-std"))]
 static mut ALLOCATOR: Allocator = Allocator;
 
 //==================================================================================================
@@ -196,27 +200,38 @@ pub fn init() -> Result<(), Error> {
     Ok(())
 }
 
+#[allow(clippy::missing_safety_doc)]
+pub unsafe fn alloc(layout: Layout) -> *mut u8 {
+    let heap = ptr::addr_of_mut!(HEAP);
+    if let Some(heap) = &mut *heap {
+        match heap.malloc(layout) {
+            Ok(ptr) => ptr.as_ptr(),
+            Err(_) => core::ptr::null_mut(),
+        }
+    } else {
+        // Heap is not initialized.
+        core::ptr::null_mut()
+    }
+}
+
+#[allow(clippy::missing_safety_doc)]
+pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
+    let heap = ptr::addr_of_mut!(HEAP);
+    if let Some(heap) = &mut *heap {
+        if let Some(ptr) = ptr::NonNull::new(ptr) {
+            heap.free(ptr, layout)
+        }
+    }
+}
+
+#[cfg(not(feature = "rustc-dep-of-std"))]
 unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let heap = ptr::addr_of_mut!(HEAP);
-        if let Some(heap) = &mut *heap {
-            match heap.malloc(layout) {
-                Ok(ptr) => ptr.as_ptr(),
-                Err(_) => core::ptr::null_mut(),
-            }
-        } else {
-            // Heap is not initialized.
-            core::ptr::null_mut()
-        }
+        alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let heap = ptr::addr_of_mut!(HEAP);
-        if let Some(heap) = &mut *heap {
-            if let Some(ptr) = ptr::NonNull::new(ptr) {
-                heap.free(ptr, layout)
-            }
-        }
+        dealloc(ptr, layout)
     }
 }
 
