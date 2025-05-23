@@ -9,8 +9,8 @@ use ::alloc::vec::Vec;
 use ::core::{
     cmp,
     mem,
-    str,
 };
+use ::std::ffi::CStr;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -31,10 +31,7 @@ use ::syscall::{
         DT_SOCK,
         DT_UNKNOWN,
     },
-    limits::{
-        NAME_MAX,
-        XOPEN_NAME_MAX,
-    },
+    limits::XOPEN_NAME_MAX,
     message::MessagePartitioner,
     sys::types::reclen_t,
 };
@@ -149,14 +146,13 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
                     unsafe { *rawbuf.get_unchecked(bpos + d_reclen - 1) as libc::c_uchar };
                 let d_name_ptr: *const u8 =
                     unsafe { rawbuf.as_ptr().add(bpos + linux_dirent::_OFFSET_OF_D_NAME) };
-                let d_name_len: usize = d_reclen - 2 - linux_dirent::_OFFSET_OF_D_NAME;
-                let d_name: &str = unsafe { str::from_raw_parts(d_name_ptr, d_name_len) };
+                let d_name: &CStr = unsafe { CStr::from_ptr(d_name_ptr as *const libc::c_char) };
                 debug!(
                     "libc::getdents(): d_ino={:#x}, d_off={:#x}, d_reclen={d_reclen}, \
-                     d_type={d_type}, d_name={}",
+                     d_type={d_type}, d_name={:?}",
                     { dent.d_ino },
                     { dent.d_off },
-                    &d_name,
+                    d_name,
                 );
 
                 let mut nanvix_dent: posix_dent = posix_dent {
@@ -174,8 +170,9 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
                     },
                     ..Default::default()
                 };
-                let d_name_len: usize = d_name.len().min(NAME_MAX + 1);
-                let d_name: &[i8] = unsafe { mem::transmute::<&[u8], &[i8]>(d_name.as_bytes()) };
+                let d_name: &[u8] = d_name.to_bytes_with_nul();
+                let d_name: &[i8] = unsafe { ::core::mem::transmute(d_name) };
+                let d_name_len: usize = d_name.len();
                 nanvix_dent.d_name[..d_name_len].copy_from_slice(&d_name[..d_name_len]);
                 buf.push(nanvix_dent);
 
