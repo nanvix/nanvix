@@ -58,7 +58,9 @@ curl \
     > curl.log
 
 # Check if curl.log contains the expected output.
-if grep -q "${PROGRAM_EXPECTED_OUTPUT}" curl.log; then
+grep -q "${PROGRAM_EXPECTED_OUTPUT}" curl.log
+GREP_EXIT_CODE=$?
+if [ ${GREP_EXIT_CODE} -eq 0 ]; then
     echo "Test passed."
     kill_children $NANVIXD_PID
     sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
@@ -66,7 +68,7 @@ if grep -q "${PROGRAM_EXPECTED_OUTPUT}" curl.log; then
     sudo -E rm -f /tmp/${SANDBOX_SOCKADDR}*.socket
     exit 0
 else
-    echo "Test failed."
+    echo "Test failed: expected output '${PROGRAM_EXPECTED_OUTPUT}' not in program output"
     kill_children $NANVIXD_PID
     sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
     sudo -E rm -f /tmp/${LINUXD_SOCKADDR}*.socket
