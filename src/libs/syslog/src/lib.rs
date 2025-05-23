@@ -141,7 +141,8 @@ impl core::fmt::Debug for LogLevel {
 
 impl fmt::Write for Logger {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let _ = ::sys::kcall::debug::debug(s.as_ptr(), s.len());
+        let slice: &[u8] = s.as_bytes();
+        let _ = ::sys::kcall::debug::debug(slice.as_ptr(), slice.len());
         Ok(())
     }
 }
