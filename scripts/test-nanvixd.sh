@@ -27,13 +27,18 @@ kill_children() {
 }
 
 # Run nanvixd.
-timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
+NANVIXD_STDOUT_FILE_NAME="nanvixd-stdout_$(date "+%Y_%m_%d_%H_%M").log"
+NANVIXD_STDERR_FILE_NAME="nanvixd-stderr_$(date "+%Y_%m_%d_%H_%M").log"
+CONSOLE_FILE_NAME="kernel_$(date "+%Y_%m_%d_%H_%M").log"
+RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
     ./bin/nanvixd.elf \
         -http-addr ${NANVIXD_SOCKADDR} \
         -linuxd-addr ${LINUXD_SOCKADDR} \
         -sandbox-addr ${SANDBOX_SOCKADDR} \
+        -console-file ${CONSOLE_FILE_NAME} \
         -keep-alive 0 \
-    2>&1 2> nanvixd.log &
+        1> ${NANVIXD_STDOUT_FILE_NAME} \
+        2> ${NANVIXD_STDERR_FILE_NAME} &
 NANVIXD_PID=$!
 
 # Extract port number from nanvixd.
@@ -53,7 +58,9 @@ curl \
     > curl.log
 
 # Check if curl.log contains the expected output.
-if grep -q "${PROGRAM_EXPECTED_OUTPUT}" curl.log; then
+grep -q "${PROGRAM_EXPECTED_OUTPUT}" curl.log
+GREP_EXIT_CODE=$?
+if [ ${GREP_EXIT_CODE} -eq 0 ]; then
     echo "Test passed."
     kill_children $NANVIXD_PID
     sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
@@ -61,7 +68,7 @@ if grep -q "${PROGRAM_EXPECTED_OUTPUT}" curl.log; then
     sudo -E rm -f /tmp/${SANDBOX_SOCKADDR}*.socket
     exit 0
 else
-    echo "Test failed."
+    echo "Test failed: expected output '${PROGRAM_EXPECTED_OUTPUT}' not in program output"
     kill_children $NANVIXD_PID
     sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
     sudo -E rm -f /tmp/${LINUXD_SOCKADDR}*.socket
