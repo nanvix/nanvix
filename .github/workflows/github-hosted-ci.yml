@@ -1,0 +1,103 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Nanvix CI/CD (GitHub Hosted)"
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+defaults:
+  run:
+    shell: bash
+
+# Cancel previous running actions for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  setup-toolchain:
+    runs-on: ubuntu-24.04
+    outputs:
+      cache-key: ${{ steps.extract-version.outputs.cache_key }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Extract version"
+        id: extract-version
+        run: |
+          # This uses the MAJOR.MINOR as key in the cache
+          VERSION=$(grep '^version' Cargo.toml | head -n1 | sed 's/.*"\(.*\)".*/\1/')
+          echo $VERSION
+          MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+          echo "cache_key=toolchain-${MAJOR_MINOR}" >> $GITHUB_OUTPUT
+
+      - name: "Restore toolchain cache"
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ./toolchain
+          key: ${{ steps.extract-version.outputs.cache_key }}
+
+      - name: "Prepare build environemnt if not cached"
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup
+
+      - name: "Build toolchain if not cached"
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          export TOOLCHAIN_DIR=$(pwd)/toolchain
+          ./scripts/setup/toolchain.sh ${TOOLCHAIN_DIR}
+
+  tests:
+    needs: setup-toolchain
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        mode: [debug, release]
+        target: [qemu-isapc, qemu-pc, qemu-baremetal, microvm, hyperlight]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Restore toolchain cache"
+        uses: actions/cache@v4
+        with:
+          path: ./toolchain
+          key: ${{ needs.setup-toolchain.outputs.cache-key }}
+          fail-on-cache-miss: 'true'
+
+      - name: "Prepare build environemnt"
+        uses: ./.github/actions/setup
+
+      # Test
+      - name: "Run ${{ matrix.mode }} (test on ${{ matrix.target }})"
+        run: |
+          export TOOLCHAIN_DIR=$(pwd)/toolchain
+          echo "Running '${{ matrix.mode }}' in 'test' mode for '${{ matrix.target }}'"
+
+          # Check if KVM is enabled
+          sudo kvm-ok
+          sudo lsmod | grep kvm
+          # Add user to kvm group
+          sudo usermod -aG kvm $USER
+
+          # Must run tests in sudo to use KVM.
+          sudo -E --user $USER -- python3 scripts/ci.py --${{ matrix.mode }} --toolchain-dir=${TOOLCHAIN_DIR} --target-arch=x86 --log-level=trace --target-machine=${{ matrix.target }} --lint --build --test
+        timeout-minutes: 60
+
+      - name: "Upload logs in case of (test) failures"
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanvix-test-logs-${{ github.event.pull_request.number }}-${{ matrix.mode }}-${{ matrix.target }}
+          # Overwrite to limit the amoutn of storage we use
+          overwrite: 'true'
+          path: |
+            **/*.log
