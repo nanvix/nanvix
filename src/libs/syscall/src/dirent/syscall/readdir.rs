@@ -22,20 +22,28 @@ use ::sys::error::Error;
 //==================================================================================================
 
 /// Minimum number of entries to get when refilling buffers.
-const REFILL_COUNT: usize = 8;
+const REFILL_COUNT: usize = 1;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
 pub fn readdir(dir: &mut Box<DirectoryStream>) -> Result<Option<dirent>, Error> {
+    ::syslog::trace!("readdir(): dir.fd={:?}", dir.fd());
+
     if let Some(posix_dirent) = dir.pop() {
         let dirent: dirent = posix_dirent.into();
         return Ok(Some(dirent));
     }
 
     // Refill buffer.
-    let mut entries: Vec<posix_dent> = posix_getdents(dir.fd, REFILL_COUNT)?;
+    let mut entries: Vec<posix_dent> = match posix_getdents(dir.fd, REFILL_COUNT) {
+        Ok(entries) => entries,
+        Err(error) => {
+            ::syslog::warn!("readdir(): {error:?} (dir.fd={:?})", dir.fd());
+            return Err(error);
+        },
+    };
 
     // Get next entry.
     let dirent: dirent = match entries.pop() {
