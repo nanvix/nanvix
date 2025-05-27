@@ -35,20 +35,23 @@ void test_faccessat(void)
     assert(strlen(filename) <= NAME_MAX);
 
     // Create a test file.
-    int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    int fd = open(filename, O_CREAT | O_RDONLY, S_IRUSR | S_IRGRP | S_IROTH);
     assert(fd != -1);
     assert(close(fd) == 0);
 
     // Check read and write access.
-    assert(faccessat(AT_FDCWD, filename, R_OK | W_OK, 0) == 0);
+    assert(faccessat(AT_FDCWD, filename, R_OK, 0) == 0);
+    assert(faccessat(AT_FDCWD, filename, W_OK, 0) == -1);
+
+    // Add write access and check again.
+    assert(fchmodat(AT_FDCWD, filename, S_IWUSR | S_IRUSR, 0) == 0);
+    assert(faccessat(AT_FDCWD, filename, R_OK, 0) == 0);
+    assert(faccessat(AT_FDCWD, filename, W_OK, 0) == 0);
 
     // Remove write access and check again.
     assert(fchmodat(AT_FDCWD, filename, S_IRUSR, 0) == 0);
+    assert(faccessat(AT_FDCWD, filename, R_OK, 0) == 0);
     assert(faccessat(AT_FDCWD, filename, W_OK, 0) == -1);
-
-    // Restore write access and check again.
-    assert(fchmodat(AT_FDCWD, filename, S_IRUSR | S_IWUSR, 0) == 0);
-    assert(faccessat(AT_FDCWD, filename, W_OK, 0) == 0);
 
     // Close and remove the test file.
     assert(unlinkat(AT_FDCWD, filename, 0) == 0);
