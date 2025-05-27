@@ -8,6 +8,9 @@ PROGRAM_ARGS=$5
 PROGRAM_EXPECTED_OUTPUT=$6
 TIMEOUT=${7:-90}
 
+NANVIX_HOME=`git rev-parse --show-toplevel`
+LOGS_DIR=${NANVIX_HOME}/logs
+
 kill_children() {
     local parent_pid=$1
 
@@ -27,9 +30,9 @@ kill_children() {
 }
 
 # Run nanvixd.
-NANVIXD_STDOUT_FILE_NAME="nanvixd-stdout_$(date "+%Y_%m_%d_%H_%M").log"
-NANVIXD_STDERR_FILE_NAME="nanvixd-stderr_$(date "+%Y_%m_%d_%H_%M").log"
-CONSOLE_FILE_NAME="kernel_$(date "+%Y_%m_%d_%H_%M").log"
+NANVIXD_STDOUT_FILE_NAME="${LOGS_DIR}/nanvixd-stdout_$(date "+%Y_%m_%d_%H_%M").log"
+NANVIXD_STDERR_FILE_NAME="${LOGS_DIR}/nanvixd-stderr_$(date "+%Y_%m_%d_%H_%M").log"
+CONSOLE_FILE_NAME="${LOGS_DIR}/kernel_$(date "+%Y_%m_%d_%H_%M").log"
 RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
     ./bin/nanvixd.elf \
         -http-addr ${NANVIXD_SOCKADDR} \
@@ -57,8 +60,12 @@ curl \
     http://localhost:${NANVIXD_PORT_NUMBER} \
     > curl.log
 
+# Move all Rust logs to the logs directory.
+# FIXME: https://github.com/nanvix/nanvix/issues/543
+mv *.log ${LOGS_DIR}/
+
 # Check if curl.log contains the expected output.
-grep -q "${PROGRAM_EXPECTED_OUTPUT}" curl.log
+grep -q "${PROGRAM_EXPECTED_OUTPUT}" ${LOGS_DIR}/curl.log
 GREP_EXIT_CODE=$?
 if [ ${GREP_EXIT_CODE} -eq 0 ]; then
     echo "Test passed."
