@@ -7,9 +7,12 @@ PROGRAM_ENV=$4
 PROGRAM_EXPECTED_OUTPUT=$5
 TIMEOUT=${6:-90}
 
+NANVIX_HOME=`git rev-parse --show-toplevel`
+LOGS_DIR=${NANVIX_HOME}/logs
+
 # Run linuxd.
-LINUXD_STDOUT_FILE_NAME="linuxd-stdout_$(date "+%Y_%m_%d_%H_%M").log"
-LINUXD_STDERR_FILE_NAME="linuxd-stderr_$(date "+%Y_%m_%d_%H_%M").log"
+LINUXD_STDOUT_FILE_NAME="${LOGS_DIR}/linuxd-stdout_$(date "+%Y_%m_%d_%H_%M").log"
+LINUXD_STDERR_FILE_NAME="${LOGS_DIR}/linuxd-stderr_$(date "+%Y_%m_%d_%H_%M").log"
 RUST_LOG=trace ./bin/linuxd.elf -bind-addr ${SOCKADDR} \
     -log-to-file \
     1> ${LINUXD_STDOUT_FILE_NAME} \
@@ -20,8 +23,8 @@ LINUXD_PID=$!
 sleep 0.1
 
 # Run microvm.
-MICROVM_STDOUT_FILE_NAME="microvm-stdout_$(date "+%Y_%m_%d_%H_%M").log"
-MICROVM_STDERR_FILE_NAME="microvm-stderr_$(date "+%Y_%m_%d_%H_%M").log"
+MICROVM_STDOUT_FILE_NAME="${LOGS_DIR}/microvm-stdout_$(date "+%Y_%m_%d_%H_%M").log"
+MICROVM_STDERR_FILE_NAME="${LOGS_DIR}/microvm-stderr_$(date "+%Y_%m_%d_%H_%M").log"
 RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
     ./bin/microvm.elf \
         -kernel ./bin/kernel.elf \
@@ -36,6 +39,10 @@ MICROVM_EXIT_CODE=$?
 # Kill linuxd and remove socket.
 sudo /usr/bin/kill -s SIGINT $LINUXD_PID
 sudo -E rm -f ${SOCKADDR}
+
+# Move all Rust logs to the logs directory.
+# FIXME: https://github.com/nanvix/nanvix/issues/543
+mv *.log ${LOGS_DIR}/
 
 # Check microvm status to see if it exited successfully.
 if [ ${MICROVM_EXIT_CODE} -eq 0 ]; then
