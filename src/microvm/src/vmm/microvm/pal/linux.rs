@@ -55,7 +55,7 @@ impl FileMapping {
             ::libc::mmap(ptr::null_mut(), size, ::libc::PROT_READ, ::libc::MAP_PRIVATE, fd, 0)
         };
 
-        if ptr == ::libc::MAP_FAILED {
+        if std::ptr::eq(ptr, ::libc::MAP_FAILED) {
             unsafe {
                 if ::libc::close(fd) < 0 {
                     warn!("failed to close file");
