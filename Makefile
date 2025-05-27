@@ -54,6 +54,7 @@ export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
 export IMAGE_DIR     := $(BUILD_DIR)/iso
+export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
@@ -277,6 +278,7 @@ init: init-repo init-opt
 init-repo:
 	$(MKDIR_CMD) $(BINARIES_DIR)
 	$(MKDIR_CMD) $(LIBRARIES_DIR)
+	$(MKDIR_CMD) $(LOGS_DIR)
 	git config --local core.hooksPath .githooks
 
 # Cleans build.
