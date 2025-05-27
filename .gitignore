@@ -10,6 +10,7 @@ toolchain
 # Build artifacts
 bin/
 /lib/
+/logs/
 images/
 target/
 /sysroot-debug/
