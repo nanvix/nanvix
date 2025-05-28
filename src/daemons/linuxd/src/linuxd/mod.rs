@@ -607,7 +607,9 @@ impl<'a> LinuxDaemon<'a> {
     ) -> Message {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
-        if request.fd == ::syscall::unistd::STDOUT_FILENO {
+        if request.fd == ::syscall::unistd::STDOUT_FILENO
+            || request.fd == ::syscall::unistd::STDERR_FILENO
+        {
             if let Some(conn) = self.gateway_conn {
                 // Check if write size is invalid.
                 if request.count == 0 {
@@ -646,7 +648,11 @@ impl<'a> LinuxDaemon<'a> {
                 let buffer: &[u8] = &request.buffer[..count];
                 let string: String = String::from_utf8_lossy(buffer).to_string();
                 print!("{string}");
-                let _ = io::stdout().lock().flush();
+                if request.fd == ::syscall::unistd::STDERR_FILENO {
+                    let _ = io::stderr().lock().flush();
+                } else {
+                    let _ = io::stdout().lock().flush();
+                }
                 WriteResponse::build(source, count as ssize_t)
             }
         } else {
