@@ -7,19 +7,39 @@
 # Script Arguments
 #===================================================================================================
 
-PREFIX=${1:-$PWD/toolchain}
+export PREFIX=${1:-$PWD/toolchain}
 
 #===================================================================================================
 # Environment Variables
 #===================================================================================================
 
-SCRIPTS_DIR=$(dirname $(readlink -f $0))
+export TARGET=i686-nanvix
+export SYSROOT=$PREFIX
+export NANVIX_HOME=`git rev-parse --show-toplevel`
+export CONTRIB_DIR=${NANVIX_HOME}/contrib
+export BINUTILS_HOME=${CONTRIB_DIR}/binutils
 
 #===================================================================================================
-# Main
+# Get Sources
 #===================================================================================================
 
-${SCRIPTS_DIR}/binutils.sh ${PREFIX}
-${SCRIPTS_DIR}/gcc.sh stage0 ${PREFIX}
-${SCRIPTS_DIR}/newlib.sh ${PREFIX}
-${SCRIPTS_DIR}/gcc.sh stage1 ${PREFIX}
+git submodule update --init ${BINUTILS_HOME}
+
+#===================================================================================================
+# Build Binutils for Nanvix
+#===================================================================================================
+
+cd ${BINUTILS_HOME}
+
+git clean -fdx
+
+./configure \
+    --target=$TARGET \
+    --prefix=$PREFIX \
+    --with-sysroot=$SYSROOT \
+    --disable-multilib \
+    --disable-nls \
+    --disable-sim
+
+make -j `nproc` all
+make install
