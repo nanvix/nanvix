@@ -32,9 +32,9 @@ rustc-dep-of-std = [
 ]
 
 # Logging Features
-trace = ["syslog/trace", "syslog/trace"]
-debug = ["syslog/debug", "syslog/debug"]
-info = ["syslog/info", "syslog/info"]
-warn = ["syslog/warn", "syslog/warn"]
-error = ["syslog/error", "syslog/error"]
-panic = ["syslog/panic", "syslog/panic"]
+trace = ["syslog/trace"]
+debug = ["syslog/debug"]
+info = ["syslog/info"]
+warn = ["syslog/warn"]
+error = ["syslog/error"]
+panic = ["syslog/panic"]
