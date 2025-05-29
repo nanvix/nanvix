@@ -147,7 +147,7 @@ unsafe fn parse_envp(envp: *mut i8) -> Vec<*mut i8> {
 ///
 /// Trampoline for Rust applications.
 ///
-#[cfg(not(feature = "staticlib"))]
+#[cfg(all(not(feature = "staticlib"), not(feature = "rustc-dep-of-std")))]
 fn rust_trampoline(_argp: *mut i8) -> i32 {
     unsafe extern "Rust" {
         fn main() -> Result<(), ::sys::error::Error>;
@@ -155,9 +155,24 @@ fn rust_trampoline(_argp: *mut i8) -> i32 {
 
     // Runs the main function.
     match unsafe { main() } {
-        Ok(_) => 0,
+        Ok(()) => 0,
         Err(e) => e.code.get(),
     }
+}
+
+///
+/// Trampoline for Rust applications.
+///
+#[cfg(all(not(feature = "staticlib"), feature = "rustc-dep-of-std"))]
+fn rust_trampoline(_argp: *mut i8) -> i32 {
+    unsafe extern "Rust" {
+        fn main();
+    }
+
+    // Runs the main function.
+    unsafe { main() };
+
+    0
 }
 
 ///
