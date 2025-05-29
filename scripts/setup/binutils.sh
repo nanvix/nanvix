@@ -15,23 +15,24 @@ export PREFIX=${1:-$PWD/toolchain}
 
 export TARGET=i686-nanvix
 export SYSROOT=$PREFIX
-export NANVIX_HOME=`git rev-parse --show-toplevel`
-export CONTRIB_DIR=${NANVIX_HOME}/contrib
+export CONTRIB_DIR=${PREFIX}/src
 export BINUTILS_HOME=${CONTRIB_DIR}/binutils
+export BINUTILS_REPOSITORY=https://github.com/nanvix/binutils
+export BINUTILS_COMMIT=bf7e9ff67059a35c927cc8b598b8d7f974b7d55d
 
 #===================================================================================================
 # Get Sources
 #===================================================================================================
 
-git submodule update --init ${BINUTILS_HOME}
+mkdir -p ${CONTRIB_DIR}
+git clone ${BINUTILS_REPOSITORY} ${BINUTILS_HOME}
+cd ${BINUTILS_HOME}
+git checkout ${BINUTILS_COMMIT}
+git clean -fdx
 
 #===================================================================================================
 # Build Binutils for Nanvix
 #===================================================================================================
-
-cd ${BINUTILS_HOME}
-
-git clean -fdx
 
 ./configure \
     --target=$TARGET \

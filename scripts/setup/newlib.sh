@@ -14,15 +14,20 @@ export PREFIX=${1:-$PWD/toolchain}
 #===================================================================================================
 
 export TARGET=i686-nanvix
-export NANVIX_HOME=`git rev-parse --show-toplevel`
-export CONTRIB_DIR=${NANVIX_HOME}/contrib
+export CONTRIB_DIR=${PREFIX}/src
 export NEWLIB_HOME=${CONTRIB_DIR}/newlib
+export NEWLIB_REPOSITORY=https://github.com/nanvix/newlib
+export NEWLIB_COMMIT=3e6c5f6d86b5fbfb7019f5895f7c5ffd3e8dcbaa
 
 #===================================================================================================
 # Get Sources
 #===================================================================================================
 
-git submodule update --init ${NEWLIB_HOME}
+mkdir -p ${CONTRIB_DIR}
+git clone ${NEWLIB_REPOSITORY} ${NEWLIB_HOME}
+cd ${NEWLIB_HOME}
+git checkout ${NEWLIB_COMMIT}
+git clean -fdx
 
 #===================================================================================================
 # Build Newlib
@@ -31,9 +36,6 @@ git submodule update --init ${NEWLIB_HOME}
 export OLD_PATH=$PATH
 export PATH=$PREFIX/bin:$PATH
 
-cd ${NEWLIB_HOME}
-
-git clean -fdx
 
 ./configure \
     --target=$TARGET \
