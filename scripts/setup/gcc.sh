@@ -16,19 +16,20 @@ export PREFIX=${2:-$PWD/toolchain}
 
 export TARGET=i686-nanvix
 export SYSROOT=$PREFIX
-export NANVIX_HOME=`git rev-parse --show-toplevel`
-export CONTRIB_DIR=${NANVIX_HOME}/contrib
+export CONTRIB_DIR=${PREFIX}/src
 export GCC_HOME=${CONTRIB_DIR}/gcc
+export GCC_REPOSITORY=https://github.com/nanvix/gcc
+export GCC_COMMIT=b0222fe731e2888cb26737e12c528818ec92cb81
 
 #===================================================================================================
 # stage0
 #===================================================================================================
 
 stage0() {
-    git submodule update --init ${GCC_HOME}
-
+    mkdir -p ${CONTRIB_DIR}
+    git clone ${GCC_REPOSITORY} ${GCC_HOME}
     cd ${GCC_HOME}
-
+    git checkout ${GCC_COMMIT}
     git clean -fdx
 
     ./contrib/download_prerequisites
