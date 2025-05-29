@@ -27,9 +27,9 @@ rustc-dep-of-std = [
 ]
 
 # Logging Features
-trace = ["debug"]
-debug = ["info"]
-info = ["warn"]
-warn = ["error"]
-error = ["panic"]
+trace = []
+debug = []
+info = []
+warn = []
+error = []
 panic = []
