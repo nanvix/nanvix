@@ -57,7 +57,7 @@ stage0() {
 
 stage1() {
 
-    # We must rebuild GCC to ahve fix-includes are fixed.
+    # We must rebuild GCC to have fix-includes are fixed.
     # Note this time we also enable libstdc++ compilation.
 
     cd ${GCC_HOME}/build
