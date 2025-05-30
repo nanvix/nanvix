@@ -11,9 +11,8 @@ This guide will help you set up your development environment to build and run Na
 
 ## Table of Contents
 
-- [Clone the Repository](#clone-the-repository)
 - [Installing Dependencies for Development Tools](#installing-dependencies-for-development-tools)
-  - [For Ubuntu 22.04](#for-ubuntu-2204)
+  - [For Ubuntu 24.04](#for-ubuntu-2404)
   - [For Arch Linux](#for-arch-linux)
 - [Setting Up Development Tools](#setting-up-development-tools)
   - [Option 1: Use a Pre-Built Docker Image (Recommended)](#option-1-use-a-pre-built-docker-image-recommended)
@@ -37,9 +36,9 @@ cd nanvix                                       # Navigate to the Nanvix source 
 
 ## Installing Dependencies for Development Tools
 
-### For Ubuntu 22.04
+### For Ubuntu 24.04
 
-To install dependencies on Ubuntu 22.04:
+To install dependencies on Ubuntu 24.04:
 
 ```bash
 # Ensure you are in the project's root directory.
