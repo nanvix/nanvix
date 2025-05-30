@@ -20,15 +20,16 @@ compiler_builtins = { version = "0.1", optional = true }
 default = []
 rustc-dep-of-std = [
     "core",
+    "trace",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
     "sys/rustc-dep-of-std",
 ]
 
 # Logging Features
-trace = ["debug"]
-debug = ["info"]
-info = ["warn"]
-warn = ["error"]
-error = ["panic"]
+trace = []
+debug = []
+info = []
+warn = []
+error = []
 panic = []
