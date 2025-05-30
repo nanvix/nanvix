@@ -42,7 +42,7 @@ export PATH=$PREFIX/bin:$PATH
     --prefix=$PREFIX \
     --disable-multilib
 
-make -j `nproc` all
+make -j $(nproc) all
 make install
 
 export PATH=$OLD_PATH
