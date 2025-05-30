@@ -11,13 +11,14 @@ This guide will help you set up your development environment to build and run Na
 
 ## Table of Contents
 
+- [Clone the Repository](#clone-the-repository)
 - [Installing Dependencies for Development Tools](#installing-dependencies-for-development-tools)
   - [For Ubuntu 24.04](#for-ubuntu-2404)
   - [For Arch Linux](#for-arch-linux)
 - [Setting Up Development Tools](#setting-up-development-tools)
-  - [Option 1: Use a Pre-Built Docker Image (Recommended)](#option-1-use-a-pre-built-docker-image-recommended)
-  - [Option 2: Build a Docker Image](#option-2-build-a-docker-image)
-  - [Option 3: Build Development Tools Locally](#option-3-build-development-tools-locally)
+  - [Option 1: Build Development Tools Locally (Recommended)](#option-1-build-development-tools-locally-recommended)
+  - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
+  - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
 
 ---
 
@@ -62,26 +63,7 @@ sudo -E ./scripts/setup/arch.sh --extra  # Run the script to install dependencie
 
 Choose one of the following methods to set up the development tools for Nanvix.
 
-### Option 1: Use a Pre-Built Docker Image (Recommended)
-
-This is the easiest and fastest way to get started:
-
-```bash
-docker pull nanvix/toolchain
-```
-
-### Option 2: Build a Docker Image
-
-> ⚠️ **Note:** This process may take some time to complete.
-
-To build a Docker image with the required tools:
-
-```bash
-# Ensure you are in the project's root directory.
-docker build --no-cache -t nanvix/toolchain ./scripts/setup/
-```
-
-### Option 3: Build Development Tools Locally
+### Option 1: Build Development Tools Locally (Recommended)
 
 If you prefer to build the tools directly on your system, follow these steps:
 
@@ -129,4 +111,23 @@ If you need a version of QEMU known to work with Nanvix:
 # Ensure you are in the project's root directory.
 export TARGET=x86                # Set the target architecture (e.g., x86).
 ./scripts/setup/qemu.sh $TARGET  # Build QEMU.
+```
+
+### Option 2: Use a Pre-Built Docker Image
+
+This is the easiest and fastest way to get started:
+
+```bash
+docker pull nanvix/toolchain
+```
+
+### Option 3: Build a Docker Image
+
+> ⚠️ **Note:** This process may take some time to complete.
+
+To build a Docker image with the required tools:
+
+```bash
+# Ensure you are in the project's root directory.
+docker build --no-cache -t nanvix/toolchain ./scripts/setup/
 ```
