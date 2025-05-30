@@ -620,23 +620,13 @@ impl<'a> LinuxDaemon<'a> {
                     // NOTE: we don't check if the write operation is too big, because its size is
                     // already bound by the maximum payload size of the message.
                     let count: usize = request.count as usize;
-                    let length_buffer: [u8; mem::size_of::<u32>()] = (count as u32).to_le_bytes();
-                    match conn.write_all(&length_buffer) {
+                    match conn.send_message_to_gateway(&request.buffer[..count]) {
                         Ok(_) => {
-                            match conn.write_all(&request.buffer[..count]) {
-                                Ok(_) => {
-                                    debug!("wrote {count} bytes to the gateway");
-                                    WriteResponse::build(source, count as i32)
-                                },
-                                Err(e) => {
-                                    debug!("failed to write buffer to the gateway (error={e:?})");
-                                    // TODO: Check error conversion.
-                                    build_error(source, ErrorCode::ConnectionReset)
-                                },
-                            }
+                            debug!("wrote {count} bytes to the gateway");
+                            WriteResponse::build(source, count as i32)
                         },
                         Err(e) => {
-                            debug!("failed to write length to the gateway (error={e:?})");
+                            debug!("failed to write buffer to the gateway (error={e:?})");
                             // TODO: Check error conversion.
                             build_error(source, ErrorCode::ConnectionReset)
                         },
@@ -683,73 +673,54 @@ impl<'a> LinuxDaemon<'a> {
                     return message;
                 }
 
-                let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
-                match conn.read_exact(&mut length_buffer) {
-                    Ok(_) => {
-                        let length: u32 = u32::from_le_bytes(length_buffer);
-                        if length == 0 {
-                            debug!("read 0 bytes from the gateway");
-                            ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE])
+                match conn.read_message_from_gateway() {
+                    Ok(message) => {
+                        let count: usize = message.len();
+                        debug!("read {count} bytes from the gateway");
+
+                        // Truncate read request to fit in the response buffer.
+                        let read_count: usize = if count > request.count as usize {
+                            warn!(
+                                "handle_read_request(): truncating payload (requested={}, \
+                                 actual={count})",
+                                { request.count },
+                            );
+                            request.count as usize
                         } else {
-                            let count: usize = length as usize;
-                            let mut buf: Vec<u8> = vec![0u8; count];
-                            match conn.read_exact(&mut buf) {
-                                Ok(_) => {
-                                    debug!("read {count} bytes from the gateway");
+                            count
+                        };
 
-                                    // Truncate read request to fit in the response buffer.
-                                    let read_count: usize = if count > request.count as usize {
-                                        warn!(
-                                            "handle_read_request(): truncating payload \
-                                             (requested={}, actual={count})",
-                                            { request.count },
-                                        );
-                                        request.count as usize
-                                    } else {
-                                        count
-                                    };
+                        let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                            [0u8; ReadResponse::BUFFER_SIZE];
+                        response_buf[..read_count].copy_from_slice(&message[..read_count]);
 
-                                    let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
-                                        [0u8; ReadResponse::BUFFER_SIZE];
-                                    response_buf[..read_count].copy_from_slice(&buf[..read_count]);
-
-                                    // Check if there are any outstanding bytes to be read.
-                                    if count > read_count {
-                                        // Break outstanding bytes into multiple read responses.
-                                        for i in
-                                            (read_count..count).step_by(ReadResponse::BUFFER_SIZE)
-                                        {
-                                            let end: usize = i + ReadResponse::BUFFER_SIZE;
-                                            let end: usize = if end > count { count } else { end };
-                                            let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
-                                                [0u8; ReadResponse::BUFFER_SIZE];
-                                            response_buf[..end - i].copy_from_slice(&buf[i..end]);
-                                            env.push_stdin_message(ReadResponse::build(
-                                                source,
-                                                (end - i) as ssize_t,
-                                                response_buf,
-                                            ));
-                                        }
-                                    }
-                                    // Push EoF message.
-                                    env.push_stdin_message(ReadResponse::build(
-                                        source,
-                                        0,
-                                        [0u8; ReadResponse::BUFFER_SIZE],
-                                    ));
-
-                                    ReadResponse::build(source, read_count as ssize_t, response_buf)
-                                },
-                                Err(e) => {
-                                    debug!("failed to read from the gateway (error={e:?})");
-                                    // TODO: Check error conversion.
-                                    build_error(source, ErrorCode::ConnectionReset)
-                                },
+                        // Check if there are any outstanding bytes to be read.
+                        if count > read_count {
+                            // Break outstanding bytes into multiple read responses.
+                            for i in (read_count..count).step_by(ReadResponse::BUFFER_SIZE) {
+                                let end: usize = i + ReadResponse::BUFFER_SIZE;
+                                let end: usize = if end > count { count } else { end };
+                                let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                                    [0u8; ReadResponse::BUFFER_SIZE];
+                                response_buf[..end - i].copy_from_slice(&message[i..end]);
+                                env.push_stdin_message(ReadResponse::build(
+                                    source,
+                                    (end - i) as ssize_t,
+                                    response_buf,
+                                ));
                             }
                         }
+                        // Push EoF message.
+                        env.push_stdin_message(ReadResponse::build(
+                            source,
+                            0,
+                            [0u8; ReadResponse::BUFFER_SIZE],
+                        ));
+
+                        ReadResponse::build(source, read_count as ssize_t, response_buf)
                     },
                     Err(e) => {
-                        debug!("failed to read length from the gateway (error={e:?})");
+                        debug!("failed to read message from gateway (error={e:?})");
                         // TODO: Check error conversion.
                         build_error(source, ErrorCode::ConnectionReset)
                     },
