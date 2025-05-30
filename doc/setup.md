@@ -1,6 +1,7 @@
 # Setting Up Your Development Environment
 
 > ℹ️ **Note:** Some instructions in this document assume that you have superuser privileges on your system.
+
 > ℹ️ **Note:** Ensure that your system supports KVM (Kernel-based Virtual Machine), and that it is enabled.
 
 This guide will help you set up your development environment to build and run Nanvix. Here's a quick overview of the steps:
@@ -11,7 +12,9 @@ This guide will help you set up your development environment to build and run Na
 
 ## Table of Contents
 
-- [Clone the Repository](#clone-the-repository)
+- [Before You Start](#before-you-start)
+  - [Clone the Repository](#clone-the-repository)
+  - [Setup KVM](#setup-kvm)
 - [Installing Dependencies for Development Tools](#installing-dependencies-for-development-tools)
   - [For Ubuntu 24.04](#for-ubuntu-2404)
   - [For Arch Linux](#for-arch-linux)
@@ -22,7 +25,9 @@ This guide will help you set up your development environment to build and run Na
 
 ---
 
-## Clone the Repository
+## Before You Start
+
+### Clone the Repository
 
 Start by cloning the Nanvix repository:
 
@@ -31,6 +36,21 @@ export WORKDIR=$HOME/nanvix                     # Set the directory for the sour
 mkdir -p $WORKDIR && cd $WORKDIR                # Create the workspace and navigate to it.
 git clone https://github.com/nanvix/nanvix.git  # Clone the repository.
 cd nanvix                                       # Navigate to the Nanvix source tree.
+```
+
+### Setup KVM
+
+```bash
+# Check if KVM is enabled.
+sudo kvm-ok
+sudo lsmod | grep kvm
+
+# Add user to KVM group
+sudo usermod -aG kvm $USER
+
+# Re-login and check if groups changed
+newgrp kvm
+groups
 ```
 
 ---
