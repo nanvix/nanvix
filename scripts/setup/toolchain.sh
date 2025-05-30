@@ -13,13 +13,13 @@ PREFIX=${1:-$PWD/toolchain}
 # Environment Variables
 #===================================================================================================
 
-SCRIPTS_DIR=$(dirname $(readlink -f $0))
+SCRIPTS_DIR=$(dirname $(readlink -f "$0"))
 
 #===================================================================================================
 # Main
 #===================================================================================================
 
-${SCRIPTS_DIR}/binutils.sh ${PREFIX}
-${SCRIPTS_DIR}/gcc.sh stage0 ${PREFIX}
-${SCRIPTS_DIR}/newlib.sh ${PREFIX}
-${SCRIPTS_DIR}/gcc.sh stage1 ${PREFIX}
+"${SCRIPTS_DIR}/binutils.sh" "${PREFIX}"
+"${SCRIPTS_DIR}/gcc.sh" stage0 "${PREFIX}"
+"${SCRIPTS_DIR}/newlib.sh" "${PREFIX}"
+"${SCRIPTS_DIR}/gcc.sh" stage1 "${PREFIX}"
