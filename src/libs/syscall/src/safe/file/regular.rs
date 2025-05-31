@@ -10,26 +10,23 @@ use crate::{
         self,
     },
     safe::{
-        file::RegularFileOpenFlags,
+        file::{
+            offset::RegularFileOffset,
+            whence::RegularFileSeekWhence,
+        },
         fs::{
             FileSystemAttributes,
-            FileSystemPath,
-            FileSystemPermissions,
             RawFileDescriptor,
         },
+        RegularFileAdvice,
     },
-    sys::{
-        stat::{
-            self,
-        },
-        types::mode_t,
-    },
+    sys,
     unistd,
 };
 use ::sys::error::Error;
 
 //==================================================================================================
-// File Descriptor
+// Regular File
 //==================================================================================================
 
 ///
@@ -44,29 +41,40 @@ impl RegularFile {
     ///
     /// # Description
     ///
-    /// Opens a regular file in the file system.
+    /// Creates a new `RegularFile` from a raw file descriptor.
     ///
     /// # Parameters
     ///
-    /// - `pathname`: The path to the file.
-    /// - `flags`: The flags to open the file.
-    /// - `permissions`: File permissions when creating a new file.
+    /// - `fd`: The raw file descriptor.
     ///
     /// # Returns
     ///
-    /// Upon successful completion, a `RegularFile` structure is returned. Otherwise, an error is
-    /// returned instead.
+    /// A new `RegularFile`.
     ///
-    pub fn open(
-        pathname: &FileSystemPath,
-        flags: RegularFileOpenFlags,
-        permissions: Option<FileSystemPermissions>,
-    ) -> Result<Self, Error> {
-        let mode: mode_t = match permissions {
-            Some(permissions) => permissions.into(),
-            None => 0,
-        };
-        Ok(Self(fcntl::syscall::open(pathname.as_str(), flags.into(), mode)?))
+    pub(crate) const fn new(fd: RawFileDescriptor) -> Self {
+        Self(fd)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Allocates bytes in a regular file.
+    ///
+    /// # Parameters
+    ///
+    /// - `offset`: Offset in bytes.
+    /// - `len`: Length in bytes.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    pub fn allocate(
+        &mut self,
+        offset: RegularFileOffset,
+        len: RegularFileOffset,
+    ) -> Result<(), Error> {
+        fcntl::syscall::posix_fallocate(self.0, offset.into(), len.into())
     }
 
     ///
@@ -74,17 +82,39 @@ impl RegularFile {
     ///
     /// Retrieves the attributes of a regular file.
     ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the file attributes are returned. Otherwise, an error is
+    /// returned instead.
+    ///
+    pub fn attributes(&self) -> Result<FileSystemAttributes, Error> {
+        let mut st: sys::stat::stat = sys::stat::stat::default();
+        sys::stat::fstat(self.0, &mut st)?;
+        Ok(FileSystemAttributes::from(st))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Provides advice about the use of a regular file.
+    ///
     /// # Parameters
     ///
-    /// - `attributes`: The structure to store the file attributes.
+    /// - `advice`: The advice to provide.
+    /// - `offset`: The offset in the file where the advice applies.
+    /// - `length`: The length of the region in the file where the advice applies.
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the file attributes are stored in `attributes` and empty is
-    /// returned.  Otherwise, an error is returned instead.
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    pub fn attributes(&self, attributes: &mut FileSystemAttributes) -> Result<(), Error> {
-        stat::fstat(self.0, attributes.as_raw_mut())
+    pub fn advise(
+        &self,
+        offset: RegularFileOffset,
+        length: RegularFileOffset,
+        advice: RegularFileAdvice,
+    ) -> Result<(), Error> {
+        fcntl::syscall::posix_fadvise(self.0, offset.into(), length.into(), advice.into())
     }
 
     ///
@@ -103,6 +133,66 @@ impl RegularFile {
     ///
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
         match unistd::syscall::read(self.0, buf) {
+            Ok(n) => Ok(n as usize),
+            Err(error) => Err(error),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Seeks to a specific position in a regular file.
+    ///
+    /// # Parameters
+    ///
+    /// - `offset`: The offset to seek to.
+    /// - `whence`: The reference point for the offset.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the new offset is returned. Otherwise, an error is returned
+    /// instead.
+    ///
+    pub fn seek(
+        &mut self,
+        offset: RegularFileOffset,
+        whence: RegularFileSeekWhence,
+    ) -> Result<RegularFileOffset, Error> {
+        match unistd::syscall::lseek(self.0, offset.into(), whence.into()) {
+            Ok(new_offset) => Ok(RegularFileOffset::from(new_offset)),
+            Err(error) => Err(error),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Synchronizes a regular file with the underlying storage.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    pub fn synchronize(&self) -> Result<(), Error> {
+        unistd::syscall::fsync(self.0)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes data to a regular file.
+    ///
+    /// # Parameters
+    ///
+    /// - `buf`: The buffer containing the data to write.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the number of bytes written is returned. Otherwise, an error is
+    /// returned instead.
+    ///
+    pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        match unistd::syscall::write(self.0, buf) {
             Ok(n) => Ok(n as usize),
             Err(error) => Err(error),
         }

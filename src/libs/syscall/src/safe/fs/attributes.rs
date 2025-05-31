@@ -5,9 +5,15 @@
 // Imports
 //===================================================================================================
 
-use crate::sys::stat::{
-    self,
-    file_mode,
+use crate::{
+    safe::{
+        FileSystemPermissions,
+        RegularFileOffset,
+    },
+    sys::stat::{
+        self,
+        file_mode,
+    },
 };
 
 //==================================================================================================
@@ -41,8 +47,8 @@ impl FileSystemAttributes {
     ///
     /// The the file size stored in `self`.
     ///
-    pub fn size(&self) -> usize {
-        self.0.st_size as usize
+    pub fn size(&self) -> RegularFileOffset {
+        RegularFileOffset::from(self.0.st_size)
     }
 
     ///
@@ -61,6 +67,19 @@ impl FileSystemAttributes {
     ///
     /// # Description
     ///
+    /// Returns the file permissions stored in `self`.
+    ///
+    /// # Returns
+    ///
+    /// The file permissions stored in `self`.
+    ///
+    pub fn permissions(&self) -> FileSystemPermissions {
+        FileSystemPermissions::from(self.0.st_mode)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Casts `self` to a raw `stat::stat` structure.
     ///
     /// # Returns
@@ -69,6 +88,12 @@ impl FileSystemAttributes {
     ///
     pub fn as_raw_mut(&mut self) -> &mut stat::stat {
         &mut self.0
+    }
+}
+
+impl From<stat::stat> for FileSystemAttributes {
+    fn from(stat: stat::stat) -> FileSystemAttributes {
+        FileSystemAttributes(stat)
     }
 }
 

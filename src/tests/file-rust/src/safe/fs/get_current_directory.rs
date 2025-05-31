@@ -2,27 +2,18 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Imports
 //==================================================================================================
 
-mod advice;
-mod offset;
-mod oflags;
-mod regular;
-mod stdio;
-mod whence;
+use ::syscall::safe::FileSystem;
 
 //==================================================================================================
-// Exports
+// Standalone Functions
 //==================================================================================================
 
-pub use advice::RegularFileAdvice;
-pub use offset::RegularFileOffset;
-pub use oflags::RegularFileOpenFlags;
-pub use regular::RegularFile;
-pub use stdio::{
-    StandardError,
-    StandardInput,
-    StandardOutput,
-};
-pub use whence::RegularFileSeekWhence;
+/// Tests wether we can get the current working directory.
+pub fn test() {
+    if let Err(error) = FileSystem::get_current_directory() {
+        panic!("{error:?}");
+    };
+}
