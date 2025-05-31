@@ -55,7 +55,7 @@ impl<T> UnalignedPointer<T> {
     /// - `self` points to a valid memory location.
     ///
     pub unsafe fn read_unaligned(&self) -> T {
-        self.ptr.read_unaligned()
+        unsafe { self.ptr.read_unaligned() }
     }
 
     ///
@@ -75,7 +75,9 @@ impl<T> UnalignedPointer<T> {
     /// - `self` points to a valid memory location.
     ///
     pub unsafe fn write_unaligned(&mut self, value: T) {
-        self.ptr.write_unaligned(value);
+        unsafe {
+            self.ptr.write_unaligned(value);
+        }
     }
 
     ///
