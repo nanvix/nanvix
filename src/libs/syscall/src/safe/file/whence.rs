@@ -20,17 +20,17 @@ use crate::{
 /// A type representing the whence of a file seek operation.
 ///
 #[repr(i32)]
-pub enum FileSeekWhence {
-    /// The offset is set to `offset`.
-    Set = unistd::SEEK_SET,
+pub enum RegularFileSeekWhence {
+    /// The offset is set to the beginning of the file plus `offset`.
+    Start = unistd::SEEK_SET,
     /// The offset is set to its current location plus `offset`.
-    Cur = unistd::SEEK_CUR,
+    Curent = unistd::SEEK_CUR,
     /// The offset is set to the end of the file plus `offset`.
     End = unistd::SEEK_END,
 }
 
-impl From<FileSeekWhence> for c_int {
-    fn from(whence: FileSeekWhence) -> c_int {
+impl From<RegularFileSeekWhence> for c_int {
+    fn from(whence: RegularFileSeekWhence) -> c_int {
         whence as c_int
     }
 }

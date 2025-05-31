@@ -12,9 +12,11 @@ use crate::{
         c_void,
     },
     safe::{
+        FileSystem,
         FileSystemAttributes,
         FileSystemPath,
         RegularFile,
+        RegularFileOffset,
         RegularFileOpenFlags,
     },
 };
@@ -129,7 +131,7 @@ impl DynamicLibrary {
     pub fn open(filename: &str) -> Result<Self, Error> {
         ::syslog::trace!("open(): filename={}", filename);
         // Attempt to open file.
-        let fd: RegularFile = RegularFile::open(
+        let fd: RegularFile = FileSystem::open_regular_file(
             &FileSystemPath::new(filename)?,
             RegularFileOpenFlags::read_only(),
             None,
@@ -146,8 +148,7 @@ impl DynamicLibrary {
         };
 
         // Retrieve file information.
-        let mut attr: FileSystemAttributes = FileSystemAttributes::empty();
-        fd.attributes(&mut attr)?;
+        let attr: FileSystemAttributes = fd.attributes()?;
 
         // Check if file is not a regular file.
         if !attr.is_regular_file() {
@@ -157,8 +158,8 @@ impl DynamicLibrary {
         }
 
         // Attempt to load file in one shot.
-        let file_size: usize = attr.size();
-        let mut bytes: Vec<u8> = vec![0; file_size];
+        let file_size: RegularFileOffset = attr.size();
+        let mut bytes: Vec<u8> = vec![0; file_size.try_into()?];
         fd.read(&mut bytes)?;
 
         // Lock the base address for libraries to prevent any other thread to modify it while we

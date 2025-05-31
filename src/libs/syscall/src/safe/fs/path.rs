@@ -28,7 +28,7 @@ use crate::limits;
 ///
 /// A structure that represents a path in the file system.
 ///
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FileSystemPath {
     name: String,
 }
