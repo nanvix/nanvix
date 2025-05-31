@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod creat;
 mod fadvise;
 mod fallocate;
 mod fcntl;
@@ -18,6 +19,7 @@ mod unlinkat;
 //==================================================================================================
 
 pub use self::{
+    creat::creat,
     fadvise::posix_fadvise,
     fallocate::posix_fallocate,
     fcntl::fcntl,
