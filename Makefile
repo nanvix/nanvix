@@ -245,7 +245,7 @@ ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd matmul
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd linux-app
+ALL_GUEST_TESTS := testd file-rust linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
@@ -355,6 +355,7 @@ run-nanvixd-tests: | \
 	test-hello-wasm \
 	test-linux-app \
 	test-dlfcn-c \
+	test-file-rust \
 	test-file-c \
 	test-thread-c \
 	test-memory-c \
@@ -367,6 +368,7 @@ run-linuxd-tests: | \
 	test-linuxd-hello-cpp \
 	test-linuxd-linux-app \
 	test-linuxd-dlfcn-c \
+	test-linuxd-file-rust \
 	test-linuxd-file-c \
 	test-linuxd-memory-c \
 	test-linuxd-misc-c \
@@ -812,6 +814,7 @@ $(eval $(call TEST_RULE,hello-cpp,'[]','Hello$(comma) world from C++!'))
 $(eval $(call TEST_RULE,linux-app,'[]','ok'))
 $(eval $(call TEST_RULE,dlfcn-c,'[]','ok'))
 $(eval $(call TEST_RULE,file-c,'[]','ok'))
+$(eval $(call TEST_RULE,file-rust,'[]','ok'))
 $(eval $(call TEST_RULE,thread-c,'[]','ok'))
 $(eval $(call TEST_RULE,network-c,'[]','ok'))
 $(eval $(call TEST_RULE,misc-c,'[]','ok'))
@@ -857,6 +860,7 @@ $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','','Hello$(comm
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','','ok'))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','','ok'))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','','ok'))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','','ok'))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','','ok'))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','','ok'))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','','ok'))

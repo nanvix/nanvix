@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "file-rust"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "Tests for File System Syscalls"
+homepage.workspace = true
+
+[[bin]]
+name = "file-rust"
+
+[dependencies]
+nvx = { workspace = true, features = ["sysalloc"] }
+sys = { workspace = true, features = ["kcall"] }
+syscall = { workspace = true, features = ["syscall"] }
+syslog = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace", "syscall/trace", "syslog/trace"]
+debug = ["nvx/debug", "syscall/debug", "syslog/debug"]
+info = ["nvx/info", "syscall/info", "syslog/info"]
+warn = ["nvx/warn", "syscall/warn", "syslog/warn"]
+error = ["nvx/error", "syscall/error", "syslog/error"]
+panic = ["nvx/panic", "syscall/panic", "syslog/panic"]
