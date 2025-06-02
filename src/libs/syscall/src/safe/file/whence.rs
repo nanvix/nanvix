@@ -24,7 +24,7 @@ pub enum RegularFileSeekWhence {
     /// The offset is set to the beginning of the file plus `offset`.
     Start = unistd::SEEK_SET,
     /// The offset is set to its current location plus `offset`.
-    Curent = unistd::SEEK_CUR,
+    Current = unistd::SEEK_CUR,
     /// The offset is set to the end of the file plus `offset`.
     End = unistd::SEEK_END,
 }
