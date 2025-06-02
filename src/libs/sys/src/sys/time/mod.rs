@@ -33,7 +33,7 @@ pub const NANOSECONDS_PER_SECOND: u32 = 1_000_000_000;
 ///
 /// This structure represents an instant in time.
 ///
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SystemTime {
     // The number of seconds since the epoch.
     seconds: u64,
@@ -200,14 +200,6 @@ impl SystemTime {
         }
     }
 }
-
-impl PartialEq for SystemTime {
-    fn eq(&self, other: &Self) -> bool {
-        self.seconds == other.seconds && self.nanoseconds == other.nanoseconds
-    }
-}
-
-impl Eq for SystemTime {}
 
 impl PartialOrd for SystemTime {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
