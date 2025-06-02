@@ -659,7 +659,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
         Ok(cmd) => cmd,
         Err(e) => return crate::build_error(pid, e.code),
     };
-    let arg: u32 = request.arg;
+    let arg: c_int = request.arg;
 
     debug!("libc::fcntl(): fd={fd:?}, cmd={:?}, arg={arg:?}", cmd.inner());
 
