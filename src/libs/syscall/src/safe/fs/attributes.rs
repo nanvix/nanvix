@@ -25,7 +25,7 @@ use crate::{
 ///
 /// A structure that represents the attributes of a file in the file system.
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileSystemAttributes(stat::stat);
 
 impl FileSystemAttributes {
