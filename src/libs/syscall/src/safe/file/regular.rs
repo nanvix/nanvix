@@ -145,8 +145,8 @@ impl RegularFile {
     ///
     /// # Parameters
     ///
-    /// - `offset`: The offset to seek to.
     /// - `whence`: The reference point for the offset.
+    /// - `offset`: The offset to seek to.
     ///
     /// # Returns
     ///
@@ -155,8 +155,8 @@ impl RegularFile {
     ///
     pub fn seek(
         &mut self,
-        offset: RegularFileOffset,
         whence: RegularFileSeekWhence,
+        offset: RegularFileOffset,
     ) -> Result<RegularFileOffset, Error> {
         match unistd::syscall::lseek(self.0, offset.into(), whence.into()) {
             Ok(new_offset) => Ok(RegularFileOffset::from(new_offset)),
