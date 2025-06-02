@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod chmod;
 mod fchmod;
 mod fchmodat;
 mod fstat;
@@ -45,6 +46,7 @@ use ::sys::{
 // Exports
 //==================================================================================================
 
+pub use chmod::chmod;
 pub use fchmod::fchmod;
 pub use fchmodat::fchmodat;
 pub use fstat::fstat;
