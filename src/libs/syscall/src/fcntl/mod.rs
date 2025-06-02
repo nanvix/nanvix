@@ -31,6 +31,7 @@ cfg_if::cfg_if! {
             creat,
             openat,
             unlinkat,
+            rename,
             renameat,
             posix_fallocate,
             posix_fadvise,
