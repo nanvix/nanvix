@@ -394,6 +394,7 @@ cfg_if::cfg_if! {
             fstat,
             lstat,
             futimens,
+            mkdir,
             mkdirat,
             utimensat,
         };
