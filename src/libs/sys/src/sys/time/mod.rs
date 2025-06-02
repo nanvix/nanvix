@@ -49,6 +49,16 @@ impl SystemTime {
     ///
     /// # Description
     ///
+    /// The epoch (January 1, 1970).
+    ///
+    pub const EPOCH: Self = Self {
+        seconds: 0,
+        nanoseconds: 0,
+    };
+
+    ///
+    /// # Description
+    ///
     /// Creates a new `SystemTime` with the given seconds and nanoseconds.
     ///
     /// # Parameters
