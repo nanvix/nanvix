@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    ffi::c_int,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -30,7 +31,7 @@ use ::sys::{
 pub struct FileControlRequest {
     pub fd: i32,
     pub cmd: i32,
-    pub arg: u32,
+    pub arg: c_int,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(FileControlRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
@@ -39,9 +40,9 @@ impl FileControlRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
         - mem::size_of::<i32>()
-        - mem::size_of::<u32>();
+        - mem::size_of::<c_int>();
 
-    pub fn new(fd: i32, cmd: i32, arg: u32) -> Self {
+    pub fn new(fd: i32, cmd: i32, arg: c_int) -> Self {
         Self {
             fd,
             cmd,
@@ -58,7 +59,7 @@ impl FileControlRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32, cmd: i32, arg: u32) -> Message {
+    pub fn build(pid: ProcessIdentifier, fd: i32, cmd: i32, arg: c_int) -> Message {
         let message: FileControlRequest = FileControlRequest::new(fd, cmd, arg);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::FileControlRequest,
