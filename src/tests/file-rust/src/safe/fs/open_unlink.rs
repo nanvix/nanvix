@@ -27,8 +27,9 @@ pub fn test() {
         },
     };
 
-    let permissions: FileSystemPermissions =
-        FileSystemPermissions::empty().user_read().user_write();
+    let permissions: FileSystemPermissions = FileSystemPermissions::empty()
+        .user_read(true)
+        .user_write(true);
 
     // Create file and assert result.
     {
