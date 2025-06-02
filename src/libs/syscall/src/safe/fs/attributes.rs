@@ -8,16 +8,16 @@
 use crate::{
     safe::{
         FileSystemPermissions,
+        FileType,
         RegularFileOffset,
     },
     sys::stat::{
         self,
-        file_mode,
     },
 };
 
 //==================================================================================================
-// File Attributes
+// File System Attributes
 //==================================================================================================
 
 ///
@@ -54,14 +54,14 @@ impl FileSystemAttributes {
     ///
     /// # Description
     ///
-    /// Returns the file permissions stored in `self`.
+    /// Returns the file type stored in `self`.
     ///
     /// # Returns
     ///
-    /// The file permissions stored in `self`.
+    /// The file type stored in `self`.
     ///
-    pub fn is_regular_file(&self) -> bool {
-        file_mode::S_ISREG(self.0.st_mode)
+    pub fn file_type(&self) -> FileType {
+        FileType::from(self.0.st_mode)
     }
 
     ///

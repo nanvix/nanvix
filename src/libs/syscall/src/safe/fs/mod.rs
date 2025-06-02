@@ -7,6 +7,7 @@
 
 mod attributes;
 mod fd;
+mod file_type;
 mod path;
 mod permissions;
 
@@ -35,6 +36,7 @@ use ::sys::error::Error;
 
 pub use attributes::FileSystemAttributes;
 pub use fd::RawFileDescriptor;
+pub use file_type::FileType;
 pub use path::FileSystemPath;
 pub use permissions::FileSystemPermissions;
 

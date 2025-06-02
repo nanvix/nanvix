@@ -9,6 +9,7 @@ use ::syscall::safe::{
     FileSystem,
     FileSystemPath,
     FileSystemPermissions,
+    FileType,
     RegularFile,
     RegularFileOpenFlags,
 };
@@ -79,7 +80,7 @@ pub fn test() {
     match FileSystem::get_file_attributes(&pathname) {
         Ok(attr) => {
             // Check if the file is a regular file.
-            if !attr.is_regular_file() {
+            if attr.file_type() != FileType::RegularFile {
                 panic!("file is not a regular file");
             }
 
