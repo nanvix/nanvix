@@ -25,7 +25,7 @@ use ::sys::{
 ///
 /// This structure represents an instant in time.
 ///
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Time(SystemTime);
 
 impl Time {
@@ -147,6 +147,15 @@ impl TryFrom<timespec> for Time {
             None => {
                 Err(Error::new(ErrorCode::InvalidArgument, "failed to convert timespec to Time"))
             },
+        }
+    }
+}
+
+impl From<Time> for timespec {
+    fn from(time: Time) -> Self {
+        timespec {
+            tv_sec: time.0.seconds() as i64,
+            tv_nsec: time.0.nanoseconds() as i32,
         }
     }
 }

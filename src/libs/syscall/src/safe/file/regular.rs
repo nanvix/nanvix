@@ -21,8 +21,6 @@ use crate::{
         },
         RegularFileAdvice,
     },
-    sys,
-    unistd,
 };
 use ::sys::error::Error;
 
@@ -89,9 +87,7 @@ impl RegularFile {
     /// returned instead.
     ///
     pub fn attributes(&self) -> Result<FileSystemAttributes, Error> {
-        let mut st: sys::stat::stat = sys::stat::stat::default();
-        sys::stat::fstat(self.0, &mut st)?;
-        Ok(FileSystemAttributes::from(st))
+        file::fstat(self.0)
     }
 
     ///
@@ -207,7 +203,7 @@ impl RegularFile {
 impl Drop for RegularFile {
     fn drop(&mut self) {
         // Attempt to close underlying file descriptor.
-        if let Err(error) = unistd::syscall::close(self.0) {
+        if let Err(error) = file::close(self.0) {
             ::syslog::warn!("drop() failed to close file (error={:?})", error);
         }
     }
