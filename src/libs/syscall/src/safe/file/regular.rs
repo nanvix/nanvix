@@ -11,6 +11,7 @@ use crate::{
     },
     safe::{
         file::{
+            self,
             offset::RegularFileOffset,
             whence::RegularFileSeekWhence,
         },
@@ -132,7 +133,7 @@ impl RegularFile {
     /// returned instead.
     ///
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        read(self.0, buf)
+        file::read(self.0, buf)
     }
 
     ///
@@ -155,7 +156,7 @@ impl RegularFile {
         whence: RegularFileSeekWhence,
         offset: RegularFileOffset,
     ) -> Result<RegularFileOffset, Error> {
-        lseek(self.0, whence, offset)
+        file::lseek(self.0, whence, offset)
     }
 
     ///
@@ -168,7 +169,7 @@ impl RegularFile {
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
     pub fn synchronize(&self) -> Result<(), Error> {
-        fsync(self.0)
+        file::fsync(self.0)
     }
 
     ///
@@ -186,7 +187,7 @@ impl RegularFile {
     /// returned instead.
     ///
     pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        write(self.0, buf)
+        file::write(self.0, buf)
     }
 
     ///
@@ -209,93 +210,5 @@ impl Drop for RegularFile {
         if let Err(error) = unistd::syscall::close(self.0) {
             ::syslog::warn!("drop() failed to close file (error={:?})", error);
         }
-    }
-}
-
-///
-/// # Description
-///
-/// Seeks to a specific position in a regular file.
-///
-/// # Parameters
-///
-/// - `fd`: Raw file descriptor to the regular file which to seek.
-/// - `whence`: The reference point for the offset.
-/// - `offset`: The offset to seek to.
-///
-/// # Returns
-///
-/// Upon successful completion, the new offset is returned. Otherwise, an error is returned
-/// instead.
-///
-pub fn lseek(
-    fd: RawFileDescriptor,
-    whence: RegularFileSeekWhence,
-    offset: RegularFileOffset,
-) -> Result<RegularFileOffset, Error> {
-    match unistd::syscall::lseek(fd, offset.into(), whence.into()) {
-        Ok(new_offset) => Ok(RegularFileOffset::from(new_offset)),
-        Err(error) => Err(error),
-    }
-}
-
-///
-/// # Description
-///
-/// Reads data from a regular file.
-///
-/// # Parameters
-///
-/// - `fd`: Raw file descriptor to the regular file from which to read.
-/// - `buf`: The buffer to store the data.
-///
-/// # Returns
-///
-/// Upon successful completion, the number of bytes read is returned. Otherwise, an error is
-/// returned instead.
-///
-pub fn read(fd: RawFileDescriptor, buf: &mut [u8]) -> Result<usize, Error> {
-    match unistd::syscall::read(fd, buf) {
-        Ok(n) => Ok(n as usize),
-        Err(error) => Err(error),
-    }
-}
-
-///
-/// # Description
-///
-/// Synchronizes a regular file with the underlying storage.
-///
-/// # Parameters
-///
-/// - `fd`: Raw file descriptor to the regular file to synchronize.
-///
-/// # Returns
-///
-/// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
-///
-pub fn fsync(fd: RawFileDescriptor) -> Result<(), Error> {
-    unistd::syscall::fsync(fd)
-}
-
-///
-/// # Description
-///
-/// Writes data to a regular file.
-///
-/// # Parameters
-///
-/// - `fd`: Raw file descriptor to the regular file to which to write.
-/// - `buf`: The buffer containing the data to write.
-///
-/// # Returns
-///
-/// Upon successful completion, the number of bytes written is returned. Otherwise, an error is
-/// returned instead.
-///
-pub fn write(fd: RawFileDescriptor, buf: &[u8]) -> Result<usize, Error> {
-    match unistd::syscall::write(fd, buf) {
-        Ok(n) => Ok(n as usize),
-        Err(error) => Err(error),
     }
 }
