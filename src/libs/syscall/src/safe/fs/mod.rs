@@ -148,12 +148,8 @@ impl FileSystem {
         flags: RegularFileOpenFlags,
         permissions: Option<FileSystemPermissions>,
     ) -> Result<RegularFile, Error> {
-        let mode: mode_t = match permissions {
-            Some(permissions) => permissions.into(),
-            None => 0,
-        };
-        let fd: RawFileDescriptor = fcntl::syscall::open(pathname.as_str(), flags.into(), mode)?;
-        Ok(RegularFile::new(fd))
+        let rawfd: RawFileDescriptor = open(pathname, flags, permissions)?;
+        Ok(RegularFile::new(rawfd))
     }
 
     ///
@@ -176,4 +172,32 @@ impl FileSystem {
             Err(error) => Err(error),
         }
     }
+}
+
+///
+/// # Description
+///
+/// Opens a file in the file system.
+///
+/// # Parameters
+///
+/// - `pathname`: The path to the file.
+/// - `flags`: The flags to open the file.
+/// - `permissions`: File permissions when creating a new file.
+///
+/// # Returns
+///
+/// Upon successful completion, a raw file descriptor is returned. Otherwise, an error is
+/// returned instead.
+///
+pub fn open(
+    pathname: &FileSystemPath,
+    flags: RegularFileOpenFlags,
+    permissions: Option<FileSystemPermissions>,
+) -> Result<RawFileDescriptor, Error> {
+    let mode: mode_t = match permissions {
+        Some(permissions) => permissions.into(),
+        None => 0,
+    };
+    fcntl::syscall::open(pathname.as_str(), flags.into(), mode)
 }
