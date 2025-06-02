@@ -35,7 +35,11 @@ pub fn test() {
     {
         let _file: RegularFile = match FileSystem::create_regular_file(
             &pathname,
-            Some(FileSystemPermissions::empty().user_read().user_write()),
+            Some(
+                FileSystemPermissions::empty()
+                    .user_read(true)
+                    .user_write(true),
+            ),
         ) {
             Ok(file) => file,
             Err(error) => {
