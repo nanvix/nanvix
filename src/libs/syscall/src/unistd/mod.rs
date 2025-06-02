@@ -57,6 +57,7 @@ cfg_if::cfg_if! {
             pread,
             pwrite,
             read,
+            readlink,
             readlinkat,
             symlink,
             unlink,
