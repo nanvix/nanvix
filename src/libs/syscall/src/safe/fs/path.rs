@@ -90,4 +90,31 @@ impl FileSystemPath {
     pub fn as_str(&self) -> &str {
         &self.name
     }
+
+    ///
+    /// # Description
+    ///
+    /// Converts `self` to a byte slice.
+    ///
+    /// # Returns
+    ///
+    /// The path as a byte slice.
+    ///
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        match CString::from_vec_with_nul(bytes.to_vec()) {
+            Ok(name) => match name.into_string() {
+                Ok(name) => FileSystemPath::new(&name),
+                Err(_) => {
+                    let reason: &str = "invalid UTF-8 sequence in path";
+                    ::syslog::error!("try_from_bytes(): {reason}");
+                    Err(Error::new(ErrorCode::InvalidArgument, reason))
+                },
+            },
+            Err(_) => {
+                let reason: &str = "invalid path bytes";
+                ::syslog::error!("try_from_bytes(): {reason}");
+                Err(Error::new(ErrorCode::InvalidArgument, reason))
+            },
+        }
+    }
 }
