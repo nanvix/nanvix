@@ -7,6 +7,7 @@
 
 use crate::{
     safe::{
+        time::Time,
         FileSystemPermissions,
         FileType,
         RegularFileOffset,
@@ -14,6 +15,10 @@ use crate::{
     sys::stat::{
         self,
     },
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================
@@ -29,6 +34,32 @@ use crate::{
 pub struct FileSystemAttributes(stat::stat);
 
 impl FileSystemAttributes {
+    ///
+    /// # Description
+    ///
+    /// Returns the last access time of the file stored in `self`.
+    ///
+    /// # Returns
+    ///
+    /// The last access time of the file stored in `self`.
+    ///
+    pub fn accessed(&self) -> Result<Time, Error> {
+        Time::try_from(self.0.st_atim)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the last creation time of the file stored in `self`.
+    ///
+    /// # Returns
+    ///
+    /// The last creation time of the file stored in `self`.
+    ///
+    pub fn created(&self) -> Result<Time, Error> {
+        Err(Error::new(ErrorCode::OperationNotSupported, "creation time not supported"))
+    }
+
     ///
     /// # Description
     ///
@@ -62,6 +93,19 @@ impl FileSystemAttributes {
     ///
     pub fn file_type(&self) -> FileType {
         FileType::from(self.0.st_mode)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the last modification time of the file stored in `self`.
+    ///
+    /// # Returns
+    ///
+    /// The last modification time of the file stored in `self`.
+    ///
+    pub fn modified(&self) -> Result<Time, Error> {
+        Time::try_from(self.0.st_mtim)
     }
 
     ///
