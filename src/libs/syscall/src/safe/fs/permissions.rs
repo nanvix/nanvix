@@ -235,6 +235,123 @@ impl FileSystemPermissions {
         }
         self
     }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the user has read permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the user has read permission, otherwise `false`.
+    ///
+    pub fn user_can_read(&self) -> bool {
+        self.0 & fcntl::S_IRUSR != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the user has write permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the user has write permission, otherwise `false`.
+    ///
+    pub fn user_can_write(&self) -> bool {
+        self.0 & fcntl::S_IWUSR != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the user has execute permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the user has execute permission, otherwise `false`.
+    ///
+    pub fn user_can_execute(&self) -> bool {
+        self.0 & fcntl::S_IXUSR != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the group has read permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the group has read permission, otherwise `false`.
+    ///
+    pub fn group_can_read(&self) -> bool {
+        self.0 & fcntl::S_IRGRP != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the group has write permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the group has write permission, otherwise `false`.
+    ///
+    pub fn group_can_write(&self) -> bool {
+        self.0 & fcntl::S_IWGRP != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the group has execute permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the group has execute permission, otherwise `false`.
+    ///
+    pub fn group_can_execute(&self) -> bool {
+        self.0 & fcntl::S_IXGRP != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if others have read permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if others have read permission, otherwise `false`.
+    ///
+    pub fn others_can_read(&self) -> bool {
+        self.0 & fcntl::S_IROTH != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if others have write permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if others have write permission, otherwise `false`.
+    ///
+    pub fn others_can_write(&self) -> bool {
+        self.0 & fcntl::S_IWOTH != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if others have execute permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if others have execute permission, otherwise `false`.
+    ///
+    pub fn others_can_execute(&self) -> bool {
+        self.0 & fcntl::S_IXOTH != 0
+    }
 }
 
 impl fmt::Debug for FileSystemPermissions {
