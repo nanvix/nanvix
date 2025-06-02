@@ -989,13 +989,16 @@ impl LibcFileControlCommand {
     fn try_from(cmd: i32) -> Result<LibcFileControlCommand, Error> {
         let libc_cmd: libc::c_int = match cmd {
             fcntl::F_DUPFD => libc::F_DUPFD,
-            fcntl::F_DUPFD_CLOEXEC => libc::F_DUPFD_CLOEXEC,
             fcntl::F_GETFD => libc::F_GETFD,
             fcntl::F_SETFD => libc::F_SETFD,
             fcntl::F_GETFL => libc::F_GETFL,
             fcntl::F_SETFL => libc::F_SETFL,
             fcntl::F_GETOWN => libc::F_GETOWN,
             fcntl::F_SETOWN => libc::F_SETOWN,
+            fcntl::F_GETLK => libc::F_GETLK,
+            fcntl::F_SETLK => libc::F_SETLK,
+            fcntl::F_SETLKW => libc::F_SETLKW,
+            fcntl::F_DUPFD_CLOEXEC => libc::F_DUPFD_CLOEXEC,
             _ => return Err(Error::new(ErrorCode::InvalidArgument, "invalid command")),
         };
 
