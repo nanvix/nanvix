@@ -33,7 +33,7 @@ pub const NANOSECONDS_PER_SECOND: u32 = 1_000_000_000;
 ///
 /// This structure represents an instant in time.
 ///
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SystemTime {
     // The number of seconds since the epoch.
     seconds: u64,
