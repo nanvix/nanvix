@@ -58,6 +58,21 @@ pub const O_SEARCH: i32 = 1 << 17;
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileDescriptorFlags {
+    /// Close-on-exec flag.
+    O_CLOEXEC = 1,
+    /// Non-blocking mode.
+    O_NONBLOCK = 2,
+}
+
+impl From<FileDescriptorFlags> for i32 {
+    fn from(flag: FileDescriptorFlags) -> Self {
+        flag as i32
+    }
+}
+
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OpenFlags {
     /// Set read-only access.
     O_RDONLY = 0,
