@@ -9,7 +9,9 @@ PROGRAM_EXPECTED_OUTPUT=$6
 TIMEOUT=${7:-90}
 
 NANVIX_HOME=`git rev-parse --show-toplevel`
-LOGS_DIR=${NANVIX_HOME}/logs
+LOGS_DIR=${NANVIX_HOME}/logs/nanvixd-$(basename "${PROGRAM_NAME}")
+
+mkdir -p ${LOGS_DIR}
 
 kill_children() {
     local parent_pid=$1
