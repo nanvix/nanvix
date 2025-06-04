@@ -51,6 +51,7 @@ NANVIXD_PORT_NUMBER=$(echo ${NANVIXD_SOCKADDR} | cut -d: -f2)
 sleep 0.1
 
 # Run a client.
+CURL_STDOUT_FILE_NAME="${LOGS_DIR}/curl-stdout_$(date "+%Y_%m_%d_%H_%M").log"
 curl \
     --silent \
     --header \
@@ -58,14 +59,14 @@ curl \
     --request POST \
     --data "{\"clientid\":1, \"program\": \"${PROGRAM_NAME}\", \"args\":${PROGRAM_ARGS}}" \
     http://localhost:${NANVIXD_PORT_NUMBER} \
-    > curl.log
+    > ${CURL_STDOUT_FILE_NAME}
 
 # Move all Rust logs to the logs directory.
 # FIXME: https://github.com/nanvix/nanvix/issues/543
 mv *.log ${LOGS_DIR}/
 
 # Check if curl.log contains the expected output.
-grep -q "${PROGRAM_EXPECTED_OUTPUT}" ${LOGS_DIR}/curl.log
+grep -q "${PROGRAM_EXPECTED_OUTPUT}" ${CURL_STDOUT_FILE_NAME}
 GREP_EXIT_CODE=$?
 if [ ${GREP_EXIT_CODE} -eq 0 ]; then
     echo "Test passed."
