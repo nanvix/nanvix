@@ -595,7 +595,7 @@ impl ProcessManagerInner {
         // Filter out processes that are still sleeping.
         while let Some(process) = self.suspended.pop_front() {
             // Attempt to wake up process.
-            match process.wakeup_alarm(now.clone()) {
+            match process.wakeup_alarm(now) {
                 Ok(interrupted_process) => {
                     self.interrupted.push_back(interrupted_process);
                 },

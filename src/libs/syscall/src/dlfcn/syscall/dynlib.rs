@@ -15,6 +15,7 @@ use crate::{
         FileSystem,
         FileSystemAttributes,
         FileSystemPath,
+        FileType,
         RegularFile,
         RegularFileOffset,
         RegularFileOpenFlags,
@@ -151,7 +152,7 @@ impl DynamicLibrary {
         let attr: FileSystemAttributes = fd.attributes()?;
 
         // Check if file is not a regular file.
-        if !attr.is_regular_file() {
+        if attr.file_type() != FileType::RegularFile {
             let reason: &str = "file is not a regular file";
             ::syslog::error!("open(): {}", reason);
             return Err(Error::new(ErrorCode::BadFile, reason));

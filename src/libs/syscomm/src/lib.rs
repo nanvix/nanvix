@@ -171,11 +171,17 @@ impl SocketStream {
                 Ok(0) => {
                     // Connection closed.
                     if buffer.is_empty() {
-                        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Connection closed"));
+                        return Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            "Connection closed",
+                        ));
                     } else {
-                        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Partial message"));
+                        return Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            "Partial message",
+                        ));
                     }
-                }
+                },
                 Ok(n) => {
                     buffer.extend_from_slice(&tmp[..n]);
 
@@ -183,24 +189,28 @@ impl SocketStream {
                     if buffer.len() >= u32_size {
                         if buffer.len() > u32_size + ::config::kernel::IPC_MESSAGE_SIZE {
                             // Guard against the buffer length growing too much.
-                            return Err(io::Error::new(io::ErrorKind::InvalidData, "Message too large"));
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "Message too large",
+                            ));
                         }
 
-                        let len = u32::from_le_bytes(buffer[..u32_size].try_into().unwrap()) as usize;
+                        let len =
+                            u32::from_le_bytes(buffer[..u32_size].try_into().unwrap()) as usize;
 
                         if buffer.len() >= u32_size + len {
                             // Full message received.
-                            let message = buffer[u32_size..u32_size+len].to_vec();
+                            let message = buffer[u32_size..u32_size + len].to_vec();
                             return Ok(message);
                         }
                     }
 
                     // Otherwise, continue reading.
-                }
+                },
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     // Non-blocking mode: no data yet, return error or retry.
                     return Err(e);
-                }
+                },
                 Err(e) => return Err(e),
             }
         }
@@ -211,12 +221,18 @@ impl SocketStream {
     pub fn send_message_to_gateway(&mut self, buffer: &[u8]) -> Result<(), SocketError> {
         let mut out_buffer = Vec::with_capacity(mem::size_of::<u32>() + buffer.len());
         if buffer.len() > u32::MAX as usize {
-            return Err(SocketError::new(io::Error::new(io::ErrorKind::InvalidInput, "Buffer size exceeds u32::MAX")));
+            return Err(SocketError::new(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Buffer size exceeds u32::MAX",
+            )));
         }
-        let buffer_len: u32 = buffer.len().try_into().expect("Buffer size already validated");
+        let buffer_len: u32 = buffer
+            .len()
+            .try_into()
+            .expect("Buffer size already validated");
 
         out_buffer.extend_from_slice(&buffer_len.to_le_bytes());
-        out_buffer.extend_from_slice(&buffer);
+        out_buffer.extend_from_slice(buffer);
 
         self.write_all(&out_buffer)?;
         Ok(())

@@ -386,6 +386,7 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod syscall;
         pub use self::syscall::{
+            chmod,
             fchmod,
             fchmodat,
             fstatat,
@@ -393,6 +394,7 @@ cfg_if::cfg_if! {
             fstat,
             lstat,
             futimens,
+            mkdir,
             mkdirat,
             utimensat,
         };

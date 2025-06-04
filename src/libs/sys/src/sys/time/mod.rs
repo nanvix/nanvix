@@ -33,7 +33,7 @@ pub const NANOSECONDS_PER_SECOND: u32 = 1_000_000_000;
 ///
 /// This structure represents an instant in time.
 ///
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SystemTime {
     // The number of seconds since the epoch.
     seconds: u64,
@@ -46,6 +46,16 @@ pub struct SystemTime {
 //==================================================================================================
 
 impl SystemTime {
+    ///
+    /// # Description
+    ///
+    /// The epoch (January 1, 1970).
+    ///
+    pub const EPOCH: Self = Self {
+        seconds: 0,
+        nanoseconds: 0,
+    };
+
     ///
     /// # Description
     ///
@@ -109,27 +119,30 @@ impl SystemTime {
     ///
     /// # Returns
     ///
-    /// If `self` is greater than `earlier`, returns the duration between them. Otherwise, returns
-    /// `None`.
+    /// If `self` happened after `earlier`, returns the duration between them as `Ok(Duration)`.
+    /// Otherwise, returns the negative duration as `Err(Duration)`.
     ///
-    pub fn checked_sub_time(&self, earlier: &SystemTime) -> Option<Duration> {
+    pub fn checked_sub(&self, earlier: &SystemTime) -> Result<Duration, Duration> {
         // Check if `self` happened after `earlier`.
         if self.seconds >= earlier.seconds {
             // Compute the difference in seconds using checked subtraction.
-            let seconds: u64 = self.seconds.checked_sub(earlier.seconds)?;
+            let seconds: u64 = self.seconds - earlier.seconds;
 
             // Compute the difference in nanoseconds using checked arithmetic.
             if self.nanoseconds >= earlier.nanoseconds {
-                let nanoseconds: u32 = self.nanoseconds.checked_sub(earlier.nanoseconds)?;
-                Some(Duration::new(seconds, nanoseconds))
+                let nanoseconds: u32 = self.nanoseconds - earlier.nanoseconds;
+                Ok(Duration::new(seconds, nanoseconds))
             } else {
-                let nanoseconds = earlier.nanoseconds.checked_sub(self.nanoseconds)?;
-                let adjusted_seconds: u64 = seconds.checked_sub(1)?;
-                Some(Duration::new(adjusted_seconds, NANOSECONDS_PER_SECOND - nanoseconds))
+                let nanoseconds: u32 = earlier.nanoseconds - self.nanoseconds;
+                let adjusted_seconds: u64 = seconds - 1;
+                Ok(Duration::new(adjusted_seconds, NANOSECONDS_PER_SECOND - nanoseconds))
             }
         } else {
             // `self` happened before `earlier`, so return `None`.
-            None
+            match earlier.checked_sub(self) {
+                Ok(duration) => Err(duration),
+                Err(duration) => Ok(duration),
+            }
         }
     }
 
@@ -190,14 +203,6 @@ impl SystemTime {
         }
     }
 }
-
-impl PartialEq for SystemTime {
-    fn eq(&self, other: &Self) -> bool {
-        self.seconds == other.seconds && self.nanoseconds == other.nanoseconds
-    }
-}
-
-impl Eq for SystemTime {}
 
 impl PartialOrd for SystemTime {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {

@@ -35,7 +35,11 @@ pub fn test() {
     {
         let _file: RegularFile = match FileSystem::create_regular_file(
             &pathname,
-            Some(FileSystemPermissions::empty().user_read().user_write()),
+            Some(
+                FileSystemPermissions::empty()
+                    .user_read(true)
+                    .user_write(true),
+            ),
         ) {
             Ok(file) => file,
             Err(error) => {
@@ -72,7 +76,7 @@ pub fn test() {
         }
 
         // Rewind to the beginning of the file.
-        if let Err(error) = file.seek(RegularFileOffset::from(0), RegularFileSeekWhence::Start) {
+        if let Err(error) = file.seek(RegularFileSeekWhence::Start, RegularFileOffset::from(0)) {
             panic!("{error:?}");
         }
 
@@ -106,7 +110,7 @@ pub fn test() {
         };
 
         // Seek to the end of the file.
-        if let Err(error) = file.seek(RegularFileOffset::from(0), RegularFileSeekWhence::End) {
+        if let Err(error) = file.seek(RegularFileSeekWhence::End, RegularFileOffset::from(0)) {
             panic!("{error:?}");
         }
 
@@ -128,7 +132,7 @@ pub fn test() {
                 panic!("failed to convert length to offset: {error:?}");
             },
         };
-        if let Err(error) = file.seek(offset, RegularFileSeekWhence::End) {
+        if let Err(error) = file.seek(RegularFileSeekWhence::End, offset) {
             panic!("{error:?}");
         }
 

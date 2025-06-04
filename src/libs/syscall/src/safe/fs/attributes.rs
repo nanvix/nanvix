@@ -7,17 +7,22 @@
 
 use crate::{
     safe::{
+        time::Time,
         FileSystemPermissions,
+        FileType,
         RegularFileOffset,
     },
     sys::stat::{
         self,
-        file_mode,
     },
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 //==================================================================================================
-// File Attributes
+// File System Attributes
 //==================================================================================================
 
 ///
@@ -25,10 +30,36 @@ use crate::{
 ///
 /// A structure that represents the attributes of a file in the file system.
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileSystemAttributes(stat::stat);
 
 impl FileSystemAttributes {
+    ///
+    /// # Description
+    ///
+    /// Returns the last access time of the file stored in `self`.
+    ///
+    /// # Returns
+    ///
+    /// The last access time of the file stored in `self`.
+    ///
+    pub fn accessed(&self) -> Result<Time, Error> {
+        Time::try_from(self.0.st_atim)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the last creation time of the file stored in `self`.
+    ///
+    /// # Returns
+    ///
+    /// The last creation time of the file stored in `self`.
+    ///
+    pub fn created(&self) -> Result<Time, Error> {
+        Err(Error::new(ErrorCode::OperationNotSupported, "creation time not supported"))
+    }
+
     ///
     /// # Description
     ///
@@ -54,14 +85,27 @@ impl FileSystemAttributes {
     ///
     /// # Description
     ///
-    /// Returns the file permissions stored in `self`.
+    /// Returns the file type stored in `self`.
     ///
     /// # Returns
     ///
-    /// The file permissions stored in `self`.
+    /// The file type stored in `self`.
     ///
-    pub fn is_regular_file(&self) -> bool {
-        file_mode::S_ISREG(self.0.st_mode)
+    pub fn file_type(&self) -> FileType {
+        FileType::from(self.0.st_mode)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the last modification time of the file stored in `self`.
+    ///
+    /// # Returns
+    ///
+    /// The last modification time of the file stored in `self`.
+    ///
+    pub fn modified(&self) -> Result<Time, Error> {
+        Time::try_from(self.0.st_mtim)
     }
 
     ///

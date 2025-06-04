@@ -11,6 +11,7 @@ use crate::{
     },
     safe::{
         file::{
+            self,
             offset::RegularFileOffset,
             whence::RegularFileSeekWhence,
         },
@@ -20,8 +21,6 @@ use crate::{
         },
         RegularFileAdvice,
     },
-    sys,
-    unistd,
 };
 use ::sys::error::Error;
 
@@ -88,9 +87,7 @@ impl RegularFile {
     /// returned instead.
     ///
     pub fn attributes(&self) -> Result<FileSystemAttributes, Error> {
-        let mut st: sys::stat::stat = sys::stat::stat::default();
-        sys::stat::fstat(self.0, &mut st)?;
-        Ok(FileSystemAttributes::from(st))
+        file::fstat(self.0)
     }
 
     ///
@@ -132,10 +129,7 @@ impl RegularFile {
     /// returned instead.
     ///
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        match unistd::syscall::read(self.0, buf) {
-            Ok(n) => Ok(n as usize),
-            Err(error) => Err(error),
-        }
+        file::read(self.0, buf)
     }
 
     ///
@@ -145,8 +139,8 @@ impl RegularFile {
     ///
     /// # Parameters
     ///
-    /// - `offset`: The offset to seek to.
     /// - `whence`: The reference point for the offset.
+    /// - `offset`: The offset to seek to.
     ///
     /// # Returns
     ///
@@ -155,13 +149,10 @@ impl RegularFile {
     ///
     pub fn seek(
         &mut self,
-        offset: RegularFileOffset,
         whence: RegularFileSeekWhence,
+        offset: RegularFileOffset,
     ) -> Result<RegularFileOffset, Error> {
-        match unistd::syscall::lseek(self.0, offset.into(), whence.into()) {
-            Ok(new_offset) => Ok(RegularFileOffset::from(new_offset)),
-            Err(error) => Err(error),
-        }
+        file::lseek(self.0, whence, offset)
     }
 
     ///
@@ -174,7 +165,7 @@ impl RegularFile {
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
     pub fn synchronize(&self) -> Result<(), Error> {
-        unistd::syscall::fsync(self.0)
+        file::fsync(self.0)
     }
 
     ///
@@ -192,10 +183,7 @@ impl RegularFile {
     /// returned instead.
     ///
     pub fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        match unistd::syscall::write(self.0, buf) {
-            Ok(n) => Ok(n as usize),
-            Err(error) => Err(error),
-        }
+        file::write(self.0, buf)
     }
 
     ///
@@ -215,7 +203,7 @@ impl RegularFile {
 impl Drop for RegularFile {
     fn drop(&mut self) {
         // Attempt to close underlying file descriptor.
-        if let Err(error) = unistd::syscall::close(self.0) {
+        if let Err(error) = file::close(self.0) {
             ::syslog::warn!("drop() failed to close file (error={:?})", error);
         }
     }
