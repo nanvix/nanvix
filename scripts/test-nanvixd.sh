@@ -67,21 +67,18 @@ curl \
 # FIXME: https://github.com/nanvix/nanvix/issues/543
 mv *.log ${LOGS_DIR}/
 
+kill_children $NANVIXD_PID
+sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
+sudo -E rm -f /tmp/${LINUXD_SOCKADDR}*.socket
+sudo -E rm -f /tmp/${SANDBOX_SOCKADDR}*.socket
+
 # Check if curl.log contains the expected output.
 grep -q "${PROGRAM_EXPECTED_OUTPUT}" ${CURL_STDOUT_FILE_NAME}
 GREP_EXIT_CODE=$?
 if [ ${GREP_EXIT_CODE} -eq 0 ]; then
     echo "Test passed."
-    kill_children $NANVIXD_PID
-    sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
-    sudo -E rm -f /tmp/${LINUXD_SOCKADDR}*.socket
-    sudo -E rm -f /tmp/${SANDBOX_SOCKADDR}*.socket
     exit 0
 else
     echo "Test failed: expected output '${PROGRAM_EXPECTED_OUTPUT}' not in program output"
-    kill_children $NANVIXD_PID
-    sudo -E rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
-    sudo -E rm -f /tmp/${LINUXD_SOCKADDR}*.socket
-    sudo -E rm -f /tmp/${SANDBOX_SOCKADDR}*.socket
     exit 1
 fi
