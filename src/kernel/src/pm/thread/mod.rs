@@ -234,7 +234,7 @@ impl SleepingThread {
     }
 
     pub fn alarm(&self) -> Option<SystemTime> {
-        self.alarm.clone()
+        self.alarm
     }
 }
 

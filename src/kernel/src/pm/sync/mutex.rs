@@ -176,7 +176,7 @@ impl Mutex {
                 Ok(guard) => break Ok(guard),
                 // Failed to acquire the mutex.
                 Err(()) => {
-                    self.0.sleeping.wait(timeout.clone())?;
+                    self.0.sleeping.wait(timeout)?;
                 },
             }
         }

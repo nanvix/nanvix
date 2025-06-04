@@ -31,6 +31,7 @@ cfg_if::cfg_if! {
             creat,
             openat,
             unlinkat,
+            rename,
             renameat,
             posix_fallocate,
             posix_fadvise,
@@ -54,6 +55,21 @@ pub const AT_SYMLINK_NOFOLLOW: i32 = 2;
 pub const O_EXEC: i32 = 1 << 16;
 /// Open for search only.
 pub const O_SEARCH: i32 = 1 << 17;
+
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileDescriptorFlags {
+    /// Close-on-exec flag.
+    O_CLOEXEC = 1,
+    /// Non-blocking mode.
+    O_NONBLOCK = 2,
+}
+
+impl From<FileDescriptorFlags> for i32 {
+    fn from(flag: FileDescriptorFlags) -> Self {
+        flag as i32
+    }
+}
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -185,8 +201,6 @@ pub const POSIX_FADV_NOREUSE: i32 = 5;
 
 /// Duplicate the file descriptor.
 pub const F_DUPFD: i32 = 0;
-/// Duplicate the file descriptor and set the close-on-exec flag.
-pub const F_DUPFD_CLOEXEC: i32 = 1030;
 /// Get the file descriptor flags.
 pub const F_GETFD: i32 = 1;
 /// Set the file descriptor flags.
@@ -199,12 +213,16 @@ pub const F_SETFL: i32 = 4;
 pub const F_GETOWN: i32 = 5;
 /// Set owner (process or group) of the file.
 pub const F_SETOWN: i32 = 6;
-// TODO: F_DUPFD_CLOEXEC
 // TODO: Support F_GETOWN_EX
 // TODO: Support F_SETOWN_EX
-// TODO: Support F_GETLK
-// TODO: Support F_SETLK
-// TODO: Support F_SETLKW
+/// Get record-locking information.
+pub const F_GETLK: i32 = 7;
+/// Set or clear a record-lock (non-blocking).
+pub const F_SETLK: i32 = 8;
+/// Set or clear a record-lock (blocking).
+pub const F_SETLKW: i32 = 9;
 // TODO: Support F_OFD_GETLK
 // TODO: Support F_OFD_SETLK
 // TODO: Support F_OFD_SETLKW
+/// Duplicate the file descriptor and set the close-on-exec flag.
+pub const F_DUPFD_CLOEXEC: i32 = 14;

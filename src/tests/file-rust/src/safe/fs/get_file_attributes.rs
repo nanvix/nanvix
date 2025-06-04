@@ -8,6 +8,7 @@
 use ::syscall::safe::{
     FileSystem,
     FileSystemPath,
+    FileType,
 };
 
 //==================================================================================================
@@ -27,7 +28,7 @@ pub fn test() {
     match FileSystem::get_file_attributes(&filename) {
         Ok(attr) => {
             // Check if the file is a regular file.
-            if !attr.is_regular_file() {
+            if attr.file_type() != FileType::RegularFile {
                 panic!("file is not a regular file");
             }
         },

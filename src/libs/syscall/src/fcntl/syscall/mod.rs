@@ -11,6 +11,7 @@ mod fallocate;
 mod fcntl;
 mod open;
 mod openat;
+mod rename;
 mod renameat;
 mod unlinkat;
 
@@ -25,6 +26,7 @@ pub use self::{
     fcntl::fcntl,
     open::open,
     openat::openat,
+    rename::rename,
     renameat::renameat,
     unlinkat::unlinkat,
 };

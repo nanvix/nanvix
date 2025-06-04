@@ -6,7 +6,11 @@
 //==================================================================================================
 
 use crate::{
-    fcntl::message::FileControlRequest,
+    fcntl::message::{
+        FileControlRequest,
+        FileControlResponse,
+    },
+    ffi::c_int,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -23,7 +27,7 @@ use ::sys::{
 // Standalone Functions
 //==================================================================================================
 
-pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> Result<(), Error> {
+pub fn fcntl(fd: i32, cmd: i32, arg: c_int) -> Result<c_int, Error> {
     ::syslog::error!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
 
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
@@ -71,7 +75,11 @@ pub fn fcntl(fd: i32, cmd: i32, arg: u32) -> Result<(), Error> {
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileControlResponse => Ok(()),
+            LinuxDaemonMessageHeader::FileControlResponse => {
+                let message: FileControlResponse = FileControlResponse::from_bytes(message.payload);
+                let ret: c_int = message.ret;
+                Ok(ret)
+            },
             // Response was not successfully parsed.
             header => {
                 ::syslog::error!(

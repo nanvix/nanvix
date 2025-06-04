@@ -3,6 +3,7 @@
 
 mod file;
 mod fs;
+pub mod time;
 
 pub use file::*;
 pub use fs::*;

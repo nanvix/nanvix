@@ -5,12 +5,14 @@
 // Modules
 //==================================================================================================
 
+mod chmod;
 mod fchmod;
 mod fchmodat;
 mod fstat;
 mod fstatat;
 mod futimens;
 mod lstat;
+mod mkdir;
 mod mkdirat;
 mod stat;
 mod utimensat;
@@ -45,12 +47,14 @@ use ::sys::{
 // Exports
 //==================================================================================================
 
+pub use chmod::chmod;
 pub use fchmod::fchmod;
 pub use fchmodat::fchmodat;
 pub use fstat::fstat;
 pub use fstatat::fstatat;
 pub use futimens::futimens;
 pub use lstat::lstat;
+pub use mkdir::mkdir;
 pub use mkdirat::mkdirat;
 pub use stat::stat;
 pub use utimensat::utimensat;

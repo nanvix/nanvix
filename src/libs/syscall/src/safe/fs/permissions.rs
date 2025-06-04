@@ -41,127 +41,316 @@ impl FileSystemPermissions {
     ///
     /// # Description
     ///
-    /// Enables user read permission stored in `self`.
+    /// Sets or clears user read permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with user read permission enabled.
+    /// A new `FileSystemPermissions` structure with user read permission set or cleared.
     ///
-    pub fn user_read(mut self) -> Self {
-        self.0 |= S_IRUSR;
+    pub fn user_read(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= S_IRUSR;
+        } else {
+            self.0 &= !S_IRUSR;
+        }
         self
     }
 
     ///
     /// # Description
     ///
-    /// Enables user write permission stored in `self`.
+    /// Sets or clears user write permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with user write permission enabled.
+    /// A new `FileSystemPermissions` structure with user write permission set or cleared.
     ///
-    pub fn user_write(mut self) -> Self {
-        self.0 |= S_IWUSR;
+    pub fn user_write(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= S_IWUSR;
+        } else {
+            self.0 &= !S_IWUSR;
+        }
         self
     }
 
     ///
     /// # Description
     ///
-    /// Enables user execute permission stored in `self`.
+    /// Sets or clears user execute permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with user execute permission enabled.
+    /// A new `FileSystemPermissions` structure with user execute permission set or cleared.
     ///
-    pub fn user_execute(mut self) -> Self {
-        self.0 |= fcntl::S_IXUSR;
+    pub fn user_execute(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= fcntl::S_IXUSR;
+        } else {
+            self.0 &= !fcntl::S_IXUSR;
+        }
         self
     }
 
     ///
     /// # Description
     ///
-    /// Enables group read permission stored in `self`.
+    /// Sets or clears group read permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with group read permission enabled.
+    /// A new `FileSystemPermissions` structure with group read permission set or cleared.
     ///
-    pub fn group_read(mut self) -> Self {
-        self.0 |= fcntl::S_IRGRP;
+    pub fn group_read(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= fcntl::S_IRGRP;
+        } else {
+            self.0 &= !fcntl::S_IRGRP;
+        }
         self
     }
 
     ///
     /// # Description
     ///
-    /// Enables group write permission stored in `self`.
+    /// Sets or clears group write permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with group write permission enabled.
+    /// A new `FileSystemPermissions` structure with group write permission set or cleared.
     ///
-    pub fn group_write(mut self) -> Self {
-        self.0 |= fcntl::S_IWGRP;
+    pub fn group_write(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= fcntl::S_IWGRP;
+        } else {
+            self.0 &= !fcntl::S_IWGRP;
+        }
         self
     }
 
     ///
     /// # Description
     ///
-    /// Enables group execute permission stored in `self`.
+    /// Sets or clears group execute permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with group execute permission enabled.
+    /// A new `FileSystemPermissions` structure with group execute permission set or cleared.
     ///
-    pub fn group_execute(mut self) -> Self {
-        self.0 |= fcntl::S_IXGRP;
+    pub fn group_execute(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= fcntl::S_IXGRP;
+        } else {
+            self.0 &= !fcntl::S_IXGRP;
+        }
         self
     }
 
     ///
     /// # Description
     ///
-    /// Enables others read permission stored in `self`.
+    /// Sets or clears others read permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with others read permission enabled.
+    /// A new `FileSystemPermissions` structure with others read permission set or cleared.
     ///
-    pub fn others_read(mut self) -> Self {
-        self.0 |= fcntl::S_IROTH;
+    pub fn others_read(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= fcntl::S_IROTH;
+        } else {
+            self.0 &= !fcntl::S_IROTH;
+        }
         self
     }
 
     ///
     /// # Description
     ///
-    /// Enables others write permission stored in `self`.
+    /// Sets or clears others write permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with others write permission enabled.
+    /// A new `FileSystemPermissions` structure with others write permission set or cleared.
     ///
-    pub fn others_write(mut self) -> Self {
-        self.0 |= fcntl::S_IWOTH;
+    pub fn others_write(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= fcntl::S_IWOTH;
+        } else {
+            self.0 &= !fcntl::S_IWOTH;
+        }
         self
     }
 
     ///
     /// # Description
     ///
-    /// Enables others execute permission stored in `self`.
+    /// Sets or clears others execute permission stored in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `enable` - If `true`, enables the permission; if `false`, disables it.
     ///
     /// # Returns
     ///
-    /// A new `FileSystemPermissions` structure with others execute permission enabled.
+    /// A new `FileSystemPermissions` structure with others execute permission set or cleared.
     ///
-    pub fn others_execute(mut self) -> Self {
-        self.0 |= fcntl::S_IXOTH;
+    pub fn others_execute(mut self, enable: bool) -> Self {
+        if enable {
+            self.0 |= fcntl::S_IXOTH;
+        } else {
+            self.0 &= !fcntl::S_IXOTH;
+        }
         self
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the user has read permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the user has read permission, otherwise `false`.
+    ///
+    pub fn user_can_read(&self) -> bool {
+        self.0 & fcntl::S_IRUSR != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the user has write permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the user has write permission, otherwise `false`.
+    ///
+    pub fn user_can_write(&self) -> bool {
+        self.0 & fcntl::S_IWUSR != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the user has execute permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the user has execute permission, otherwise `false`.
+    ///
+    pub fn user_can_execute(&self) -> bool {
+        self.0 & fcntl::S_IXUSR != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the group has read permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the group has read permission, otherwise `false`.
+    ///
+    pub fn group_can_read(&self) -> bool {
+        self.0 & fcntl::S_IRGRP != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the group has write permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the group has write permission, otherwise `false`.
+    ///
+    pub fn group_can_write(&self) -> bool {
+        self.0 & fcntl::S_IWGRP != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the group has execute permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the group has execute permission, otherwise `false`.
+    ///
+    pub fn group_can_execute(&self) -> bool {
+        self.0 & fcntl::S_IXGRP != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if others have read permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if others have read permission, otherwise `false`.
+    ///
+    pub fn others_can_read(&self) -> bool {
+        self.0 & fcntl::S_IROTH != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if others have write permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if others have write permission, otherwise `false`.
+    ///
+    pub fn others_can_write(&self) -> bool {
+        self.0 & fcntl::S_IWOTH != 0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if others have execute permission.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if others have execute permission, otherwise `false`.
+    ///
+    pub fn others_can_execute(&self) -> bool {
+        self.0 & fcntl::S_IXOTH != 0
     }
 }
 

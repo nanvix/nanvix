@@ -220,7 +220,7 @@ impl Condvar {
             .map_err(SleepError::Generic)?;
 
         // Check if alarm has already expired.
-        if let Some(alarm) = alarm.clone() {
+        if let Some(alarm) = alarm {
             let now: SystemTime = clock::now();
             if now >= alarm {
                 error!(
