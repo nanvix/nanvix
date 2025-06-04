@@ -8,7 +8,9 @@ PROGRAM_EXPECTED_OUTPUT=$5
 TIMEOUT=${6:-90}
 
 NANVIX_HOME=`git rev-parse --show-toplevel`
-LOGS_DIR=${NANVIX_HOME}/logs
+LOGS_DIR=${NANVIX_HOME}/logs/linuxd-$(basename "${PROGRAM_NAME}")
+
+mkdir -p ${LOGS_DIR}
 
 # Run linuxd.
 LINUXD_STDOUT_FILE_NAME="${LOGS_DIR}/linuxd-stdout_$(date "+%Y_%m_%d_%H_%M").log"

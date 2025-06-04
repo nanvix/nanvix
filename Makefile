@@ -344,6 +344,7 @@ run-unit-tests: all \
 	test-guest-rlibs
 
 run-nanvixd-tests: | \
+	init-repo \
 	test-echo-c \
 	test-echo-cpp \
 	test-echo-rust-nostd \
@@ -364,6 +365,7 @@ run-nanvixd-tests: | \
 
 # TODO: enable wasm tests, enable thread test.
 run-linuxd-tests: | \
+	init-repo \
 	test-linuxd-hello-c \
 	test-linuxd-hello-cpp \
 	test-linuxd-linux-app \
