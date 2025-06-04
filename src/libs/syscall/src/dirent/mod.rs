@@ -86,8 +86,63 @@ mod file_type {
     pub const DT_SEM: c_uchar = 14;
     /// Shared memory object.
     pub const DT_SHM: c_uchar = 15;
+    /// Typed memory object.
+    pub const DT_TMO: c_uchar = 16; // FIXME: https://github.com/nanvix/nanvix/issues/568
 }
 pub use file_type::*;
+
+#[repr(u8)]
+pub enum DirectoryEntryFileType {
+    /// Unknown file type.
+    Unknown = DT_UNKNOWN,
+    /// FIFO special file.
+    Fifo = DT_FIFO,
+    /// Character special file.
+    CharacterDevice = DT_CHR,
+    /// Directory.
+    Directory = DT_DIR,
+    /// Block special file.
+    BlockDevice = DT_BLK,
+    /// Regular file.
+    RegularFile = DT_REG,
+    /// Symbolic link.
+    SymbolicLink = DT_LNK,
+    /// Socket.
+    Socket = DT_SOCK,
+    /// Message queue.
+    MessageQueue = DT_MQ,
+    /// Semaphore.
+    Semaphore = DT_SEM,
+    /// Shared memory object.
+    SharedMemoryObject = DT_SHM,
+    /// Typed memory object.
+    TypedMemoryObject = DT_TMO,
+}
+
+impl From<c_uchar> for DirectoryEntryFileType {
+    fn from(value: c_uchar) -> Self {
+        match value {
+            DT_FIFO => DirectoryEntryFileType::Fifo,
+            DT_CHR => DirectoryEntryFileType::CharacterDevice,
+            DT_DIR => DirectoryEntryFileType::Directory,
+            DT_BLK => DirectoryEntryFileType::BlockDevice,
+            DT_REG => DirectoryEntryFileType::RegularFile,
+            DT_LNK => DirectoryEntryFileType::SymbolicLink,
+            DT_SOCK => DirectoryEntryFileType::Socket,
+            DT_MQ => DirectoryEntryFileType::MessageQueue,
+            DT_SEM => DirectoryEntryFileType::Semaphore,
+            DT_SHM => DirectoryEntryFileType::SharedMemoryObject,
+            DT_TMO => DirectoryEntryFileType::TypedMemoryObject,
+            _ => DirectoryEntryFileType::Unknown,
+        }
+    }
+}
+
+impl From<DirectoryEntryFileType> for c_uchar {
+    fn from(file_type: DirectoryEntryFileType) -> Self {
+        file_type as c_uchar
+    }
+}
 
 //==================================================================================================
 // Directory Stream Structure
