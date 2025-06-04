@@ -15,12 +15,12 @@ kpool_size = 4194304
 kstack_size = 32768
 
 # Timer frequency (in Hz)
-timer_freq = 100
+timer_freq = 10000
 
 # Scheduler frequency (in ticks)
 # Notes:
 # - This should be a power of two.
-scheduler_freq = 128
+scheduler_freq = 1024
 
 # Maximum number of messages that can be buffered by the kernel
 # Notes:
