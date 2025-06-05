@@ -171,7 +171,6 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
                     ..Default::default()
                 };
                 let d_name: &[u8] = d_name.to_bytes_with_nul();
-                let d_name: &[i8] = unsafe { ::core::mem::transmute(d_name) };
                 let d_name_len: usize = d_name.len();
                 nanvix_dent.d_name[..d_name_len].copy_from_slice(&d_name[..d_name_len]);
                 buf.push(nanvix_dent);

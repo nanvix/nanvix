@@ -202,7 +202,7 @@ pub struct dirent {
     /// File serial number.
     pub d_ino: ino_t,
     /// File name (including null terminator character).
-    pub d_name: [c_char; NAME_MAX + 1],
+    pub d_name: [c_uchar; NAME_MAX + 1],
 }
 ::static_assert::assert_eq_size!(dirent, dirent::_SIZE_OF_DIRENT);
 
@@ -210,7 +210,7 @@ impl dirent {
     /// Size of `d_ino` field, used for static assertions.
     const _SIZE_OF_D_INO: usize = core::mem::size_of::<ino_t>();
     /// Size of `d_name` field, used for static assertions.
-    const _SIZE_OF_D_NAME: usize = core::mem::size_of::<[c_char; NAME_MAX + 1]>();
+    const _SIZE_OF_D_NAME: usize = core::mem::size_of::<[c_uchar; NAME_MAX + 1]>();
     /// Size of `dirent` struct, used for static assertions.
     const _SIZE_OF_DIRENT: usize = Self::_SIZE_OF_D_INO + Self::_SIZE_OF_D_NAME;
 }
@@ -229,7 +229,7 @@ impl fmt::Debug for dirent {
         let d_name = self
             .d_name
             .iter()
-            .map(|&c| c as u8 as char)
+            .map(|&c| c as char)
             .collect::<String>()
             .trim_end_matches('\0')
             .to_string();
@@ -255,7 +255,7 @@ pub struct posix_dent {
     /// File type.
     pub d_type: c_uchar,
     /// File name (including null terminator character).
-    pub d_name: [c_char; NAME_MAX + 1],
+    pub d_name: [c_uchar; NAME_MAX + 1],
     /// Padding.
     pub _padding: [c_char; 1],
 }
@@ -269,7 +269,7 @@ impl posix_dent {
     /// Size of `d_type` field, used for static assertions.
     const _SIZE_OF_D_TYPE: usize = core::mem::size_of::<c_uchar>();
     /// Size of `d_name` field, used for static assertions.
-    const _SIZE_OF_D_NAME: usize = core::mem::size_of::<[c_char; NAME_MAX + 1]>();
+    const _SIZE_OF_D_NAME: usize = core::mem::size_of::<[c_uchar; NAME_MAX + 1]>();
     /// Size of `_padding` field, used for static assertions.
     const _SIZE_OF_PADDING: usize = core::mem::size_of::<[c_char; 1]>();
     /// Size of `posix_dirent` struct, used for static assertions.
@@ -297,7 +297,7 @@ impl fmt::Debug for posix_dent {
         let d_name = self
             .d_name
             .iter()
-            .map(|&c| c as u8 as char)
+            .map(|&c| c as char)
             .collect::<String>()
             .trim_end_matches('\0')
             .to_string();
