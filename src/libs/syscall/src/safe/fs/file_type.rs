@@ -5,9 +5,12 @@
 // Imports
 //===================================================================================================
 
-use crate::sys::{
-    stat::file_mode,
-    types::mode_t,
+use crate::{
+    dirent::DirectoryEntryFileType,
+    sys::{
+        stat::file_mode,
+        types::mode_t,
+    },
 };
 
 //==================================================================================================
@@ -37,6 +40,14 @@ pub enum FileType {
     SymbolicLink,
     /// Socket.
     Socket,
+    /// Message queue.
+    MessageQueue,
+    /// Semaphore.
+    Semaphore,
+    /// Shared memory object.
+    SharedMemoryObject,
+    /// Typed memory object.
+    TypedMemoryObject,
 }
 
 impl From<mode_t> for FileType {
@@ -55,6 +66,14 @@ impl From<mode_t> for FileType {
             FileType::SymbolicLink
         } else if file_mode::S_ISSOCK(mode) {
             FileType::Socket
+        } else if file_mode::S_TYPEISMQ(mode) {
+            FileType::MessageQueue
+        } else if file_mode::S_TYPEISSEM(mode) {
+            FileType::Semaphore
+        } else if file_mode::S_TYPEISSHM(mode) {
+            FileType::SharedMemoryObject
+        } else if file_mode::S_TYPEISTMO(mode) {
+            FileType::TypedMemoryObject
         } else {
             FileType::Unknown
         }
