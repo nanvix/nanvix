@@ -79,3 +79,22 @@ impl From<mode_t> for FileType {
         }
     }
 }
+
+impl From<DirectoryEntryFileType> for FileType {
+    fn from(entry_type: DirectoryEntryFileType) -> Self {
+        match entry_type {
+            DirectoryEntryFileType::Fifo => FileType::Fifo,
+            DirectoryEntryFileType::CharacterDevice => FileType::CharacterDevice,
+            DirectoryEntryFileType::Directory => FileType::Directory,
+            DirectoryEntryFileType::BlockDevice => FileType::BlockDevice,
+            DirectoryEntryFileType::RegularFile => FileType::RegularFile,
+            DirectoryEntryFileType::SymbolicLink => FileType::SymbolicLink,
+            DirectoryEntryFileType::Socket => FileType::Socket,
+            DirectoryEntryFileType::MessageQueue => FileType::MessageQueue,
+            DirectoryEntryFileType::Semaphore => FileType::Semaphore,
+            DirectoryEntryFileType::SharedMemoryObject => FileType::SharedMemoryObject,
+            DirectoryEntryFileType::TypedMemoryObject => FileType::TypedMemoryObject,
+            _ => FileType::Unknown,
+        }
+    }
+}

@@ -11,3 +11,4 @@ pub(super) mod get_current_directory;
 pub(super) mod get_file_attributes;
 pub(super) mod open_close;
 pub(super) mod open_unlink;
+pub(super) mod opendir_closedir;
