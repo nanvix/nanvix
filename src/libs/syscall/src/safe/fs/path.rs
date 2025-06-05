@@ -34,6 +34,9 @@ pub struct FileSystemPath {
 }
 
 impl FileSystemPath {
+    /// File path separator.
+    pub const SEPARATOR: char = '/';
+
     ///
     /// # Description
     ///
@@ -116,5 +119,42 @@ impl FileSystemPath {
                 Err(Error::new(ErrorCode::InvalidArgument, reason))
             },
         }
+    }
+
+    ////
+    /// # Description
+    ///
+    /// Joins two paths into a single path.
+    ///
+    /// # Parameters
+    ///
+    /// - `self`: The first path.
+    /// - `other`: The second path.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, a new `FileSystemPath` structure is returned. Otherwise, an
+    /// error is returned instead.
+    ///
+    pub fn join(&self, other: &FileSystemPath) -> Result<FileSystemPath, Error> {
+        ::syslog::debug!("join(): {} + {}", self.name, other.name);
+        // Check if the other path is empty.
+        if other.name.is_empty() {
+            let reason: &str = "cannot join with an empty path";
+            ::syslog::error!("join(): {reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // Check if resulting path would be too long.
+        let joined_length: usize = self.name.len() + other.name.len() + 1; // +1 for the separator
+        if joined_length > limits::PATH_MAX {
+            let reason: &str = "resulting path is too long";
+            ::syslog::error!("join(): {reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // Join the paths.
+        let joined_name: String = alloc::format!("{}{}{}", self.name, Self::SEPARATOR, other.name);
+        FileSystemPath::new(&joined_name)
     }
 }
