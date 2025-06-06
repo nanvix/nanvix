@@ -102,6 +102,34 @@ pub mod file_mode {
     pub fn S_ISSOCK(mode: mode_t) -> bool {
         (mode & S_IFMT) == S_IFSOCK
     }
+
+    /// Tests if the file type is a message queue.
+    #[allow(non_snake_case)]
+    pub fn S_TYPEISMQ(_mode: mode_t) -> bool {
+        // TODO: https://github.com/nanvix/nanvix/issues/568
+        false
+    }
+
+    /// Tests if the file type is a semaphore.
+    #[allow(non_snake_case)]
+    pub fn S_TYPEISSEM(_mode: mode_t) -> bool {
+        // TODO: https://github.com/nanvix/nanvix/issues/568
+        false
+    }
+
+    /// Tests if the file type is a shared memory object.
+    #[allow(non_snake_case)]
+    pub fn S_TYPEISSHM(_mode: mode_t) -> bool {
+        // TODO: https://github.com/nanvix/nanvix/issues/568
+        false
+    }
+
+    /// Tests if the file type is a typed memory object.
+    #[allow(non_snake_case)]
+    pub fn S_TYPEISTMO(_mode: mode_t) -> bool {
+        // TODO: https://github.com/nanvix/nanvix/issues/568
+        false
+    }
 }
 
 //==================================================================================================

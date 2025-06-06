@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod dir;
 mod file;
 mod fs;
 
@@ -19,9 +20,13 @@ pub fn test() {
     fs::fstatat::test();
     fs::stat::test();
     fs::open_close::test();
+    fs::opendir_closedir::test();
 
     // The following tests depend on `getcwd()`.
     fs::chdir::test();
+
+    // The following test depends on `opendir()` and `closedir()`.
+    dir::readdir::test();
 
     // The following tests depend on `open()` and `close()`.
     file::fstat::test();
