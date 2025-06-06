@@ -20,18 +20,17 @@ use crate::{
         mem::{
             AccessPermission,
             Address,
-            PageAddress,
             PageAligned,
             VirtualAddress,
         },
     },
     mm::{
         elf::Elf32Fhdr,
+        kstack::KernelStack,
         ustack::{
             UserStack,
             UserStackAllocator,
         },
-        KernelPage,
         VirtMemoryManager,
         Vmem,
     },
@@ -70,7 +69,6 @@ use ::alloc::{
     },
     ffi::CString,
     rc::Rc,
-    vec::Vec,
 };
 use ::arch::mem::PAGE_SIZE;
 use ::core::cell::{
@@ -179,7 +177,7 @@ impl ProcessManagerInner {
         arg0: usize,
         arg1: usize,
         enable_interrupts: bool,
-    ) -> Result<ContextInformation, Error> {
+    ) -> Result<(KernelStack, ContextInformation), Error> {
         trace!(
             "forge_user_context(): user_stack={:?}, user_wrapper_fn={:#x?}, arg0={:#x?}, \
              arg1={:#x?}, enable_interrupts={:?}",
@@ -211,17 +209,12 @@ impl ProcessManagerInner {
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
 
         // Alloc kernel pages for the kernel stack.
-        // NOTE: if we fail, kernel pages allocated for the kernel stack are deallocated.
-        let mut kpages: Vec<KernelPage> =
-            mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / PAGE_SIZE)?;
-        let base: PageAddress = kpages[0].base();
-        let kernel_stack: usize =
-            unsafe { (base.into_raw_value() as *mut u8).add(config::kernel::KSTACK_SIZE) } as usize;
+        let kernel_stack: KernelStack = KernelStack::new(mm)?;
 
         let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
         let esp: u32 = unsafe {
             hal::arch::forge_user_stack(
-                kernel_stack as *mut u8,
+                kernel_stack.top().into_raw_value() as *mut u8,
                 user_stack.top().into_raw_value(),
                 user_fn.into_raw_value(),
                 arg0,
@@ -230,7 +223,7 @@ impl ProcessManagerInner {
                 enable_interrupts,
             )
         } as u32;
-        let esp0: u32 = kernel_stack as u32;
+        let esp0: u32 = kernel_stack.top().into_raw_value() as u32;
 
         trace!("forge_context(): cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp, esp0);
         let context: ContextInformation = ContextInformation::new(cr3, esp, esp0);
@@ -245,12 +238,7 @@ impl ProcessManagerInner {
 
         // NOTE: if we fail, beyond this point we must unmap kernel pages from `vmem`.
 
-        // Map kernel stack.
-        while let Some(kpage) = kpages.pop() {
-            vmem.add_private_kernel_page(kpage);
-        }
-
-        Ok(context)
+        Ok((kernel_stack, context))
     }
 
     ///
@@ -323,22 +311,24 @@ impl ProcessManagerInner {
             };
 
             // Create a kernel context.
-            let context: ContextInformation = Self::forge_user_context(
-                mm,
-                process.state_mut().vmem_mut(),
-                &user_stack,
-                user_wrapper_fn,
-                user_fn.into_raw_value(),
-                user_fn_arg,
-                enable_interrupts,
-            )?;
+            let (kernel_stack, context): (KernelStack, ContextInformation) =
+                Self::forge_user_context(
+                    mm,
+                    process.state_mut().vmem_mut(),
+                    &user_stack,
+                    user_wrapper_fn,
+                    user_fn.into_raw_value(),
+                    user_fn_arg,
+                    enable_interrupts,
+                )?;
 
             //==============================================================
             // NOTE: if we fail beyond this point we need to page mappings.
             //==============================================================
 
             // Create a new thread.
-            self.tm.create_thread(Some(user_stack), context)
+            self.tm
+                .create_thread(Some(kernel_stack), Some(user_stack), context)
         };
 
         Ok(self.try_add_thread(pid, ready_thread))
@@ -511,7 +501,7 @@ impl ProcessManagerInner {
         let user_fn: VirtualAddress = entry;
         let argp: usize = args_vaddr.into_raw_value();
         let envp: usize = envp_vaddr.into_raw_value();
-        let context: ContextInformation = Self::forge_user_context(
+        let (kernel_stack, context): (KernelStack, ContextInformation) = Self::forge_user_context(
             mm,
             &mut vmem,
             &user_stack,
@@ -525,7 +515,9 @@ impl ProcessManagerInner {
         // NOTE: if we fail beyond this point we need to page mappings.
         //==============================================================
 
-        let thread: ReadyThread = self.tm.create_thread(Some(user_stack), context);
+        let thread: ReadyThread =
+            self.tm
+                .create_thread(Some(kernel_stack), Some(user_stack), context);
 
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
@@ -1312,7 +1304,7 @@ impl ProcessManager {
         // Traverse the list of zombie threads.
         while let Some(zombie_thread) = zombie_threads.pop_front() {
             // Harvest zombie thread.
-            if let Some(user_stack) = zombie_thread.harvest() {
+            if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
                 // Traverse pages belonging to user stack.
                 let base: usize = user_stack.base().into_raw_value();
                 let top: usize = user_stack.top().into_raw_value();
@@ -1337,6 +1329,9 @@ impl ProcessManager {
                         );
                     }
                 }
+
+                // Frames allocated to the user stack are freed when we exit this scope.
+                // Frames allocated to the kernel stack are freed when we exit this scope.
             }
         }
 

@@ -283,7 +283,7 @@ impl ProcessManager {
                     let status: ExitStatus = zombie_thread.status();
 
                     // Harvest zombie thread.
-                    if let Some(user_stack) = zombie_thread.harvest() {
+                    if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
                         // Traverse pages belonging to user stack.
                         let base: usize = user_stack.base().into_raw_value();
                         let top: usize = user_stack.top().into_raw_value();
@@ -318,6 +318,9 @@ impl ProcessManager {
                                 );
                             }
                         }
+
+                        // Frames allocated to the user stack are freed when we exit this scope.
+                        // Frames allocated to the kernel stack are freed when we exit this scope.
                     }
 
                     break Ok(status);

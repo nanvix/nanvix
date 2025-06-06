@@ -14,6 +14,7 @@ use crate::{
 };
 use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_ALIGNMENT;
+use ::core::fmt;
 use ::sys::{
     error::Error,
     mm::{
@@ -53,12 +54,41 @@ impl KernelStack {
     ///
     /// Upon success, the function returns the new kernel stack. Upon failure, an error is returned.
     ///
-    #[allow(dead_code)] // TODO: Remove this attribute once the function is used.
     pub fn new(mm: &mut VirtMemoryManager) -> Result<Self, Error> {
         let kpages: Vec<KernelPage> =
             mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE)?;
 
         Ok(Self { kpages })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the size of the target kernel stack.
+    ///
+    /// # Returns
+    ///
+    /// The size of the target kernel stack.
+    ///
+    fn size(&self) -> usize {
+        config::kernel::KSTACK_SIZE
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the base address of the target kernel stack.
+    ///
+    /// # Returns
+    ///
+    /// The base address of the target kernel stack.
+    ///
+    /// # Notes
+    ///
+    /// As stacks grow downwards, the base address is the highest address of the stack.
+    ///
+    fn base(&self) -> PageAligned<VirtualAddress> {
+        PageAligned::from_raw_value(self.kpages[0].base().into_raw_value()).unwrap()
     }
 
     ///
@@ -74,7 +104,6 @@ impl KernelStack {
     ///
     /// The top address of the kernel stack is the address of the first byte after the kernel stack.
     ///
-    #[allow(dead_code)] // TODO: Remove this attribute once the function is used.
     pub fn top(&self) -> PageAligned<VirtualAddress> {
         let base: usize = self.kpages[0].base().into_raw_value();
         let size: usize = config::kernel::KSTACK_SIZE;
@@ -90,8 +119,21 @@ impl KernelStack {
 // Trait Implementations
 //==================================================================================================
 
+impl fmt::Debug for KernelStack {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "KernelStack {{ base: {:?}, top: {:?}, size={:?} }}",
+            self.base(),
+            self.top(),
+            self.size()
+        )
+    }
+}
+
 impl Drop for KernelStack {
     fn drop(&mut self) {
+        debug!("drop(): {:?}", &self);
         while let Some(kpage) = self.kpages.pop() {
             drop(kpage);
         }
