@@ -138,27 +138,7 @@ impl Bitmap {
     /// instead.
     ///
     pub fn alloc(&mut self) -> Result<usize, Error> {
-        // TODO: optimize this implementation to traverse the bitmap in a machine word at a time.
-
-        // Traverse the bitmap one word at a time.
-        for (i, word) in self.bits.iter_mut().enumerate() {
-            // Check if this word is not full.
-            if *word != u8::MAX {
-                // Find a free bit.
-                for j in 0..u8::BITS as usize {
-                    // Check if the bit is free.
-                    if *word & (1 << j) == 0 {
-                        // It is, thus allocate it.
-                        *word |= 1 << j;
-                        self.usage += 1;
-                        return Ok(i * u8::BITS as usize + j);
-                    }
-                }
-            }
-        }
-
-        let reason: &str = "bitmap is full";
-        Err(Error::new(ErrorCode::OutOfMemory, reason))
+        self.alloc_range(1)
     }
 
     ///
