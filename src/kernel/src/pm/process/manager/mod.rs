@@ -1568,7 +1568,7 @@ impl ProcessManager {
     pub fn post_message(
         &mut self,
         receiver: MessageReceiver,
-        message: Message,
+        message: Box<Message>,
     ) -> Result<(), Error> {
         let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
         let mut process: ProcessRefMut = match receiver.as_id() {

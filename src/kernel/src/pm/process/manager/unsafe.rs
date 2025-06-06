@@ -52,7 +52,10 @@ use crate::{
     PERF_SCHED_SOFT_CONTEXT_SWITCHES,
     PERF_SCHED_WAKEUP,
 };
-use ::alloc::rc::Rc;
+use ::alloc::{
+    boxed::Box,
+    rc::Rc,
+};
 use ::arch::mem::PAGE_SIZE;
 use ::config::kernel::SCHEDULER_FREQ;
 use ::core::{
@@ -630,7 +633,7 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn try_recv(tid: ThreadIdentifier) -> Result<Option<Message>, Error> {
+    pub unsafe fn try_recv(tid: ThreadIdentifier) -> Result<Option<Box<Message>>, Error> {
         let mut pm: RefMut<ProcessManagerInner> = unsafe { Self::get_mut() }.try_borrow_mut()?;
         let running: &mut RunningProcess = pm.get_running_mut();
         match running.state_mut().receive_message(tid) {

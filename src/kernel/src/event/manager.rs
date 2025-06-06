@@ -21,7 +21,10 @@ use crate::{
         SleepError,
     },
 };
-use ::alloc::collections::LinkedList;
+use ::alloc::{
+    boxed::Box,
+    collections::LinkedList,
+};
 use ::core::{
     cell::{
         RefCell,
@@ -342,7 +345,7 @@ impl EventManagerInner {
         interrupts: usize,
         exceptions: usize,
         scheduling: usize,
-    ) -> Result<Option<Message>, Error> {
+    ) -> Result<Option<Box<Message>>, Error> {
         for i in 0..Self::NUMBER_EVENTS {
             // Check if any interrupts were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 0 {
@@ -357,7 +360,7 @@ impl EventManagerInner {
                                 message_type: MessageType::Interrupt,
                                 ..Message::default()
                             };
-                            return Ok(Some(message));
+                            return Ok(Some(Box::new(message)));
                         }
                     }
                 }
@@ -384,7 +387,7 @@ impl EventManagerInner {
 
                             self.pending_exceptions[idx].push_back(entry);
 
-                            return Ok(Some(message));
+                            return Ok(Some(Box::new(message)));
                         }
                     }
                 }
@@ -409,7 +412,7 @@ impl EventManagerInner {
                                 },
                             };
 
-                            return Ok(Some(message));
+                            return Ok(Some(Box::new(message)));
                         }
                     }
                 }
@@ -601,7 +604,7 @@ impl EventManagerInner {
         &mut self,
         pm: &mut ProcessManager,
         receiver: MessageReceiver,
-        message: Message,
+        message: Box<Message>,
     ) -> Result<(), Error> {
         pm.post_message(receiver, message)?;
 
@@ -736,7 +739,7 @@ impl EventManager {
     pub unsafe fn wait(
         tid: ThreadIdentifier,
         pid: ProcessIdentifier,
-    ) -> Result<Message, SleepError> {
+    ) -> Result<Box<Message>, SleepError> {
         // Get the interrupts that the process owns.
         let mut interrupts: usize = 0;
         for i in 0..usize::BITS {
@@ -792,7 +795,7 @@ impl EventManager {
             .clone();
 
         loop {
-            let message: Option<Message> = EventManager::get()
+            let message: Option<Box<Message>> = EventManager::get()
                 .map_err(SleepError::Generic)?
                 .try_borrow_mut()
                 .map_err(SleepError::Generic)?
@@ -848,7 +851,7 @@ impl EventManager {
     pub fn post_message(
         pm: &mut ProcessManager,
         receiver: MessageReceiver,
-        message: Message,
+        message: Box<Message>,
     ) -> Result<(), Error> {
         Self::get_mut()?
             .try_borrow_mut()?

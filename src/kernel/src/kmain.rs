@@ -23,6 +23,7 @@
 #![no_std]
 #![no_main]
 #![allow(clippy::result_large_err)] // FIXME: introduced by thread manager.
+#![feature(box_as_ptr)] // stdio uses this.
 
 //==================================================================================================
 // Imports

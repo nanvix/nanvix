@@ -5,19 +5,19 @@
 // Imports
 //==================================================================================================
 
-use ::alloc::collections::LinkedList;
+use ::alloc::collections::vec_deque::VecDeque;
 use ::sys::{
     ipc::Message,
     pm::ThreadIdentifier,
 };
+use alloc::boxed::Box;
 
 //==================================================================================================
 //  Structures
 //==================================================================================================
 
-#[derive(Default)]
 pub struct Mailbox {
-    buffer: LinkedList<Message>,
+    buffer: VecDeque<Box<Message>>,
 }
 
 //==================================================================================================
@@ -25,11 +25,17 @@ pub struct Mailbox {
 //==================================================================================================
 
 impl Mailbox {
-    pub fn send(&mut self, message: Message) {
+    pub fn new() -> Self {
+        Self {
+            buffer: VecDeque::with_capacity(1),
+        }
+    }
+
+    pub fn send(&mut self, message: Box<Message>) {
         self.buffer.push_back(message);
     }
 
-    pub fn receive(&mut self, tid: ThreadIdentifier) -> Option<Message> {
+    pub fn receive(&mut self, tid: ThreadIdentifier) -> Option<Box<Message>> {
         // Locate the first message that the given thread received.
         let message_index = self
             .buffer
@@ -38,7 +44,7 @@ impl Mailbox {
 
         // If a message was found, remove it from the buffer and return it.
         if let Some(index) = message_index {
-            return Some(self.buffer.remove(index));
+            return self.buffer.remove(index);
         }
 
         // Locate the first message that the current thread received.
@@ -49,7 +55,7 @@ impl Mailbox {
 
         // If a message was found, remove it from the buffer and return it.
         if let Some(index) = message_index {
-            return Some(self.buffer.remove(index));
+            return self.buffer.remove(index);
         }
 
         None

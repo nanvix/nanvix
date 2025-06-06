@@ -48,9 +48,12 @@ use crate::{
         },
     },
 };
-use ::alloc::collections::{
-    btree_map::BTreeMap,
-    LinkedList,
+use ::alloc::{
+    boxed::Box,
+    collections::{
+        btree_map::BTreeMap,
+        LinkedList,
+    },
 };
 use ::config::kernel::{
     COND_OPEN_MAX,
@@ -169,7 +172,7 @@ impl ProcessState {
             capabilities: Capabilities::default(),
             vmem,
             events: LinkedList::new(),
-            mailbox: Mailbox::default(),
+            mailbox: Mailbox::new(),
             mmio: LinkedList::new(),
             pmio: LinkedList::new(),
             user_stack_allocator,
@@ -228,11 +231,11 @@ impl ProcessState {
         self.events.retain(|o| o.event() != ev)
     }
 
-    pub fn post_message(&mut self, message: Message) {
+    pub fn post_message(&mut self, message: Box<Message>) {
         self.mailbox.send(message)
     }
 
-    pub fn receive_message(&mut self, tid: ThreadIdentifier) -> Option<Message> {
+    pub fn receive_message(&mut self, tid: ThreadIdentifier) -> Option<Box<Message>> {
         self.mailbox.receive(tid)
     }
 

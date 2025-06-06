@@ -17,6 +17,7 @@ use crate::{
         SleepError,
     },
 };
+use ::alloc::boxed::Box;
 use ::sys::{
     error::Error,
     ipc::{
@@ -34,7 +35,7 @@ use ::sys::{
 // Standalone Functions
 //==================================================================================================
 
-fn do_send(pm: &mut ProcessManager, message: Message) -> Result<(), Error> {
+fn do_send(pm: &mut ProcessManager, message: Box<Message>) -> Result<(), Error> {
     trace!("do_send(): src={:?}, dst={:?}", { message.source }, { message.destination });
 
     // TODO: Check if source process has permission to send message to destination process.
@@ -83,6 +84,7 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
         // Local-host communication.
         _ => {
             // Post message.
+            let message: Box<Message> = Box::new(message);
             match do_send(pm, message) {
                 Ok(()) => KcallResult::ok(),
                 Err(e) => KcallResult::Error(e.code.into()),

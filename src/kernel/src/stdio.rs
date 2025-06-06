@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::hal::platform;
+use ::alloc::boxed::Box;
 use ::core::mem;
 use ::sys::{
     error::{
@@ -65,10 +66,7 @@ pub fn write(message: Message) -> Result<(), Error> {
 /// Upon success, this function either returns the message read or `None` if there are no more
 /// messages.  Upon failure, an error is returned instead.
 ///
-pub fn read() -> Result<Option<Message>, Error> {
-    const NBYTES: usize = core::mem::size_of::<Message>();
-    let mut message: [u8; NBYTES] = [0; NBYTES];
-
+pub fn read() -> Result<Option<Box<Message>>, Error> {
     cfg_if::cfg_if! {
         if #[cfg(feature = "microvm")] {
             // Read credits register.
@@ -83,29 +81,19 @@ pub fn read() -> Result<Option<Message>, Error> {
         }
     }
 
+    let mut message: Box<Message> = Box::default();
+
     // Read message from the kernel's standard input.
     // SAFETY: The standard input is present, initialized and thread-safe to read.
     unsafe {
         // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
-        platform::vmbus_read(&mut message as *mut u8);
+        platform::vmbus_read(Box::as_mut_ptr(&mut message) as *mut u8);
     };
 
     // Convert message to Message struct.
-    match Message::try_from_bytes(message) {
-        Ok(message) => {
-            // Check if message is empty.
-            if { message.message_type } == MessageType::Empty {
-                Ok(None)
-            } else {
-                // NOTE: trace command after reading the first byte, to avoid flooding the log.
-                Ok(Some(message))
-            }
-        },
-        // No message available.
-        Err(e) if e.code == ErrorCode::NoMessageAvailable => Ok(None),
-        Err(e) => {
-            warn!("read(): {:?} ", e);
-            Err(e)
-        },
+    if message.message_type == MessageType::Empty {
+        Ok(None)
+    } else {
+        Ok(Some(message))
     }
 }
