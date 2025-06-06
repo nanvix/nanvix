@@ -14,6 +14,7 @@ Nanvix is a microkernel-based research operating system.
 - [doc/build.md](doc/build.md) - Instructions for building Nanvix.
 - [doc/run.md](doc/run.md) - Instructions for running Nanvix.
 - [doc/dev.md](doc/test.md) - Instructions for testing Nanvix.
+- [doc/benchmark.md](doc/benchmark.md) - Instructions for benchmarking Nanvix.
 
 ## Software Ecosystem
 
