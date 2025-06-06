@@ -603,7 +603,7 @@ impl<'a> LinuxDaemon<'a> {
     fn handle_write_request(
         &mut self,
         source: ProcessIdentifier,
-        request: WriteRequest,
+        mut request: WriteRequest,
     ) -> Message {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
@@ -617,6 +617,7 @@ impl<'a> LinuxDaemon<'a> {
                     error!("handle_write_request(): trying to write zero bytes to STDOUT");
                     build_error(source, ErrorCode::InvalidArgument)
                 } else {
+                    profiler::timestamp_message!(&mut request.buffer, 0);
                     // NOTE: we don't check if the write operation is too big, because its size is
                     // already bound by the maximum payload size of the message.
                     let count: usize = request.count as usize;
@@ -693,6 +694,7 @@ impl<'a> LinuxDaemon<'a> {
                         let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
                             [0u8; ReadResponse::BUFFER_SIZE];
                         response_buf[..read_count].copy_from_slice(&message[..read_count]);
+                        profiler::timestamp_message!(&mut response_buf, 0);
 
                         // Check if there are any outstanding bytes to be read.
                         if count > read_count {
@@ -711,6 +713,11 @@ impl<'a> LinuxDaemon<'a> {
                             }
                         }
                         // Push EoF message.
+                        // When timestamping messages as part of data-path profiling, we require
+                        // applications to not expect an EoF when reading from stdin. This is
+                        // because the profiling modifies the payload of all messages, including
+                        // EoFs.
+                        #[cfg(not(feature = "timestamp-messages"))]
                         env.push_stdin_message(ReadResponse::build(
                             source,
                             0,

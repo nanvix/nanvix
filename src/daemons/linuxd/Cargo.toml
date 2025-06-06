@@ -17,6 +17,11 @@ anyhow = { workspace = true }
 log = { workspace = true }
 flexi_logger = { workspace = true }
 libc = { workspace = true }
+profiler = { workspace = true }
 signal-hook = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
+
+[features]
+default = []
+timestamp-messages = ["profiler/timestamp-messages"]
