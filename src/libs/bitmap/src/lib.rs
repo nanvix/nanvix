@@ -180,14 +180,13 @@ impl Bitmap {
         // Traverse the bitmap until the last possible starting bit.
         while start <= self.number_of_bits - size {
             // Check for fast skip/ path.
-            let word: usize = start / u8::BITS as usize;
             let is_aligned: bool = start % u8::BITS as usize == 0;
-            if is_aligned as usize == 0 {
+            if is_aligned {
+                let word: usize = start / u8::BITS as usize;
                 // Fast skip: if the starting word is full, skip to the next word.
                 if self.bits[word] == u8::MAX {
                     // Jump to next byte boundary.
-                    let next_start: usize = (word + 1) * u8::BITS as usize;
-                    start = next_start;
+                    start += u8::BITS as usize;
                     continue;
                 }
             }
