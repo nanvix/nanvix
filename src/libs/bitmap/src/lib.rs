@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(all(test, feature = "std"), feature(random))]
 
 //==================================================================================================
 // Modules
