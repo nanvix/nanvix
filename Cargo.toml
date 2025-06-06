@@ -105,7 +105,7 @@ tokio = { version = "1.45.1", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 syscomm = { path = "src/libs/syscomm", default-features = false }
 syslog = { path = "src/libs/syslog", default-features = false }
-wasmi = { version = "0.46.0", default-features = false }
+wasmi = { version = "0.47.0", default-features = false }
 
 [profile.dev]
 opt-level = 0
