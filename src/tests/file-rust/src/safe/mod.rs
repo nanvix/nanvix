@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod dir;
 mod file;
 mod fs;
 
@@ -18,9 +19,13 @@ pub fn test() {
     fs::get_current_directory::test();
     fs::get_file_attributes::test();
     fs::open_close::test();
+    fs::opendir_closedir::test();
 
     // The following tests depend on `FileSystem::get_current_directory()`.
     fs::change_current_directory::test();
+
+    // The following test depends on `FileSystem::open_directory()` and `Directory::next()`.
+    dir::readdir::test();
 
     // The following tests depend on `FileSystem::open_regular_file()` and `RegularFile::drop()`.
     file::attributes::test();

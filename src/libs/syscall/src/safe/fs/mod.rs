@@ -19,6 +19,11 @@ use crate::{
     fcntl,
     limits,
     safe::{
+        dir::{
+            opendir,
+            Directory,
+            RawDirectory,
+        },
         RegularFile,
         RegularFileOpenFlags,
     },
@@ -161,6 +166,25 @@ impl FileSystem {
     ) -> Result<RegularFile, Error> {
         let rawfd: RawFileDescriptor = open(pathname, flags, permissions)?;
         Ok(RegularFile::new(rawfd))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Opens a directory.
+    ///
+    /// # Parameters
+    ///
+    /// - `directory_name`: The path to the directory to be opened.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, a `Directory` object is returned. Otherwise, an error is
+    /// returned instead.
+    ///
+    pub fn open_directory(directory_name: &FileSystemPath) -> Result<Directory, Error> {
+        let raw_dir: RawDirectory = opendir(directory_name)?;
+        Ok(Directory::new(raw_dir))
     }
 
     ///

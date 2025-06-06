@@ -1,6 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+pub mod dir;
 mod file;
 mod fs;
 pub mod time;

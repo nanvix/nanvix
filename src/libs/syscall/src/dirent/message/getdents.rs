@@ -144,10 +144,10 @@ impl MessageSerializer for GetDirectoryEntriesResponse {
             bytes.extend_from_slice(&entry.d_ino.to_le_bytes());
             bytes.extend_from_slice(&entry.d_reclen.to_le_bytes());
             bytes.push(entry.d_type);
-            let d_name: &[i8] = entry.d_name.as_slice();
+            let d_name: &[u8] = entry.d_name.as_slice();
             let d_name_len: u32 = d_name.len() as u32;
             bytes.extend_from_slice(&d_name_len.to_le_bytes());
-            bytes.extend_from_slice(unsafe { mem::transmute::<&[i8], &[u8]>(d_name) });
+            bytes.extend_from_slice(d_name);
         }
 
         bytes
@@ -212,9 +212,7 @@ impl MessageDeserializer for GetDirectoryEntriesResponse {
                 return Err(Error::new(ErrorCode::InvalidMessage, "invalid length of name"));
             }
 
-            entry.d_name[..d_name_len].copy_from_slice(unsafe {
-                mem::transmute::<&[u8], &[i8]>(&bytes[offset..offset + d_name_len])
-            });
+            entry.d_name[..d_name_len].copy_from_slice(&bytes[offset..offset + d_name_len]);
             offset += d_name_len * mem::size_of::<c_char>();
 
             entries.push(entry);
