@@ -259,7 +259,7 @@ ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := profiler syscomm
-ALL_HOST_UTILS := echo-client loader nanvixd
+ALL_HOST_UTILS := echo-client loader nanvix-bench nanvixd
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
 
@@ -751,7 +751,7 @@ test-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),test-host-rlib-$(target)
 
 define HOST_BINARY_RULES
 all-host-binaries-$(1): init
-ifeq ($(strip $(1)),linuxd)
+ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_BUILD_CMD) $(HOST_CARGO_FEATURES) -p $(1)
 else
 	$(HOST_CARGO_BUILD_CMD) -p $(1)
@@ -759,7 +759,7 @@ endif
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$(1) $(BINARIES_DIR)/$(1).elf
 
 check-host-binaries-$(1):
-ifeq ($(strip $(1)),linuxd)
+ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_CHECK_CMD) $(HOST_CARGO_FEATURES) -p $(1)
 else
 	$(HOST_CARGO_CHECK_CMD) -p $(1)
@@ -770,7 +770,7 @@ clean-host-binaries-$(1):
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 clippy-host-binaries-$(1):
-ifeq ($(strip $(1)),linuxd)
+ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1)
 else
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
