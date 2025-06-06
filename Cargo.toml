@@ -75,8 +75,8 @@ hyperlight_host = { git = "https://github.com/nanvix/hyperlight/", rev = "17fd17
 ], package = "hyperlight-host" } # we use the gdb feature to remove the timeout mechanism
 hyper = { version = "1.6.0", default-features = false }
 hyper-util = { version = "0.1.14", default-features = false }
-kvm-bindings = "0.11.1"
-kvm-ioctls = "0.21.0"
+kvm-bindings = "0.12.0"
+kvm-ioctls = "0.22.0"
 libc = "0.2.172"
 log = "0.4.27"
 micromath = "2.1.0"
