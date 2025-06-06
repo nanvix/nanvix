@@ -83,16 +83,30 @@ impl FrameAllocator {
     /// returned instead.
     ///
     pub fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        let frame_number: usize = self.bitmap.alloc()?;
+        let frame_number: usize = match self.bitmap.alloc() {
+            Ok(frame_number) => frame_number,
+            Err(error) => {
+                error!("alloc(): {error:?}");
+                return Err(error);
+            },
+        };
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
-                return Err(Error::new(ErrorCode::OutOfMemory, "frame number is out of bounds"));
+                let reason: &str = "frame number is out of bounds";
+                error!("alloc(): {reason:?}");
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
 
         // Attempt to convert the frame number to a frame address.
-        FrameAddress::from_frame_number(frame_number)
+        match FrameAddress::from_frame_number(frame_number) {
+            Ok(frame_address) => Ok(frame_address),
+            Err(error) => {
+                error!("alloc(): {error:?}");
+                Err(error)
+            },
+        }
     }
 
     ///
@@ -110,7 +124,13 @@ impl FrameAllocator {
     ///
     pub fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
-        self.bitmap.clear(frame_number)
+        match self.bitmap.clear(frame_number) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                error!("free(): {error:?} (frame={frame:?})");
+                Err(error)
+            },
+        }
     }
 
     ///
@@ -128,8 +148,13 @@ impl FrameAllocator {
     ///
     pub fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
-        self.bitmap.set(frame_number)?;
-        Ok(())
+        match self.bitmap.set(frame_number) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                error!("book(): {error:?} (phys_addr={phys_addr:?})");
+                Err(error)
+            },
+        }
     }
 
     ///
@@ -166,9 +191,9 @@ impl FrameAllocator {
 
         // Book all frames in the range.
         for index in start_frame_number..=end_frame_number {
-            if let Err(e) = self.bitmap.set(index) {
-                warn!("fail to book frame {}, but we should not", index);
-                return Err(e);
+            if let Err(error) = self.bitmap.set(index) {
+                error!("alloc_range(): {error:?} (region={region:?})");
+                return Err(error);
             }
         }
 
