@@ -170,7 +170,8 @@ impl IoThread {
     ///
     fn try_receive_from_microvm(&mut self) -> Result<()> {
         match self.microvm_rx.try_recv() {
-            Ok(message) => {
+            Ok(mut message) => {
+                profiler::timestamp_message!(&mut message.payload, std::mem::offset_of!(syscall::LinuxDaemonMessage, payload) + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer));
                 self.outgoing.push_back(message);
                 Ok(())
             },
@@ -195,7 +196,8 @@ impl IoThread {
     fn try_send_to_gateway(&mut self) -> Result<()> {
         match self.outgoing.pop_front() {
             Some(message) => {
-                let message_clone: Message = message.clone();
+                let mut message_clone: Message = message.clone();
+                profiler::timestamp_message!(&mut message_clone.payload, std::mem::offset_of!(syscall::LinuxDaemonMessage, payload) + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer));
                 match self.gateway.try_send(message_clone) {
                     Ok(_) => Ok(()),
                     Err(e) => {
@@ -226,7 +228,8 @@ impl IoThread {
     ///
     fn try_send_to_microvm(&mut self) -> Result<()> {
         match self.incoming.pop_front() {
-            Some(message) => {
+            Some(mut message) => {
+                profiler::timestamp_message!(&mut message.payload, std::mem::offset_of!(syscall::LinuxDaemonMessage, payload) + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
                 // NOTE: calling `send()` on a channel does not block.
                 self.microvm_tx.send(message)?;
                 Ok(())

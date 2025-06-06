@@ -25,6 +25,7 @@ hyperlight_host = { workspace = true, optional = true }
 log = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 sys = { workspace = true }
+syscall = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true, features = ["microvm"] }
 syscomm = { workspace = true }
@@ -39,3 +40,4 @@ default = []
 hyperlight = ["dep:hyperlight_host"]
 profiler = ["profiler/auto-calibrate"]
 auto-calibrate = []
+timestamp-messages = ["profiler/timestamp-messages"]
