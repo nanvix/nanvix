@@ -8,6 +8,7 @@ members = [
         "src/benchmarks/matmul",
         "src/benchmarks/echo-rust-nostd",
         "src/benchmarks/echo-rust-server-nostd",
+        "src/benchmarks/echo-single-rust-nostd",
         "src/benchmarks/echo-wasm-rust",
         "src/benchmarks/noop-rust-nostd",
         "src/benchmarks/noop-wasm-rust",
