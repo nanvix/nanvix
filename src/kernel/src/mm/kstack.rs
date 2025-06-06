@@ -53,7 +53,6 @@ impl KernelStack {
     ///
     /// Upon success, the function returns the new kernel stack. Upon failure, an error is returned.
     ///
-    #[allow(dead_code)] // TODO: Remove this attribute once the function is used.
     pub fn new(mm: &mut VirtMemoryManager) -> Result<Self, Error> {
         let kpages: Vec<KernelPage> =
             mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE)?;
@@ -74,7 +73,6 @@ impl KernelStack {
     ///
     /// The top address of the kernel stack is the address of the first byte after the kernel stack.
     ///
-    #[allow(dead_code)] // TODO: Remove this attribute once the function is used.
     pub fn top(&self) -> PageAligned<VirtualAddress> {
         let base: usize = self.kpages[0].base().into_raw_value();
         let size: usize = config::kernel::KSTACK_SIZE;
