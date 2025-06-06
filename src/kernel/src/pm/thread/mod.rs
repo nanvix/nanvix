@@ -7,7 +7,10 @@
 
 use crate::{
     hal::arch::ContextInformation,
-    mm::ustack::UserStack,
+    mm::{
+        kstack::KernelStack,
+        ustack::UserStack,
+    },
     pm::sync::{
         condvar::Condvar,
         mutex::MutexGuard,
@@ -39,6 +42,8 @@ use ::sys::{
 struct ThreadState {
     /// Thread identifier.
     id: ThreadIdentifier,
+    /// Kernel stack.
+    kernel_stack: Option<KernelStack>,
     /// User stack.
     user_stack: Option<UserStack>,
     /// Condition variable for join.
@@ -52,12 +57,14 @@ struct ThreadState {
 impl ThreadState {
     fn new(
         id: ThreadIdentifier,
+        kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
         context: ContextInformation,
     ) -> Self {
         Self {
             id,
             context: Box::pin(context),
+            kernel_stack,
             user_stack,
             join_cond: Condvar::new(),
             locked_mutexes: BTreeMap::new(),
@@ -177,10 +184,11 @@ pub struct ReadyThread(ThreadState);
 impl ReadyThread {
     pub fn new(
         id: ThreadIdentifier,
+        kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
         context: ContextInformation,
     ) -> Self {
-        Self(ThreadState::new(id, user_stack, context))
+        Self(ThreadState::new(id, kernel_stack, user_stack, context))
     }
 
     pub fn tid(&self) -> ThreadIdentifier {
@@ -284,8 +292,8 @@ impl ZombieThread {
         self.state.id
     }
 
-    pub fn harvest(mut self) -> Option<UserStack> {
-        self.state.user_stack.take()
+    pub fn harvest(mut self) -> (Option<KernelStack>, Option<UserStack>) {
+        (self.state.kernel_stack.take(), self.state.user_stack.take())
     }
 
     pub fn status(&self) -> ExitStatus {
@@ -304,7 +312,7 @@ pub struct ThreadManager {
 impl ThreadManager {
     fn new() -> (ReadyThread, Self) {
         let kernel: ReadyThread =
-            ReadyThread::new(From::<u32>::from(0), None, ContextInformation::default());
+            ReadyThread::new(From::<u32>::from(0), None, None, ContextInformation::default());
         (
             kernel,
             Self {
@@ -315,13 +323,14 @@ impl ThreadManager {
 
     pub fn create_thread(
         &mut self,
+        kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
         context: ContextInformation,
     ) -> ReadyThread {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(Into::<usize>::into(self.next_id) + 1);
 
-        ReadyThread(ThreadState::new(id, user_stack, context))
+        ReadyThread(ThreadState::new(id, kernel_stack, user_stack, context))
     }
 }
 

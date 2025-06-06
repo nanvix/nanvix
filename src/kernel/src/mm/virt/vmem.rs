@@ -191,11 +191,6 @@ impl Vmem {
         })
     }
 
-    /// Adds a kernel page to the private list of the kernel pages in the target virtual memory space.
-    pub fn add_private_kernel_page(&mut self, kpage: KernelPage) {
-        self.private_kernel_pages.push_back(kpage);
-    }
-
     pub fn load(&self) -> Result<(), Error> {
         let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
         unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
