@@ -43,7 +43,13 @@ struct KpoolInner {
 
 impl KpoolInner {
     fn new(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Self, Error> {
-        let bitmap: Bitmap = Bitmap::new(region.size() / (mem::PAGE_SIZE * u8::BITS as usize))?;
+        trace!("new(): region={region:?}");
+        debug_assert_eq!(
+            region.size() % mem::PAGE_SIZE,
+            0,
+            "kernel pool size must be a multiple of page size"
+        );
+        let bitmap: Bitmap = Bitmap::new(region.size() / (mem::PAGE_SIZE))?;
         Ok(Self { region, bitmap })
     }
 
