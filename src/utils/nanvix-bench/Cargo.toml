@@ -1,0 +1,23 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix-bench"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "Benchmark Utility for Nanvix"
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+flexi_logger = { workspace = true }
+indicatif = { workspace = true }
+log = { workspace = true }
+nix = { workspace = true }
+profiler = { workspace = true }
+
+[features]
+default = []
+timestamp-messages = ["profiler/timestamp-messages"]
