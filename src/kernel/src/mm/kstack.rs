@@ -14,6 +14,7 @@ use crate::{
 };
 use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_ALIGNMENT;
+use ::core::fmt;
 use ::sys::{
     error::Error,
     mm::{
@@ -63,6 +64,36 @@ impl KernelStack {
     ///
     /// # Description
     ///
+    /// Returns the size of the target kernel stack.
+    ///
+    /// # Returns
+    ///
+    /// The size of the target kernel stack.
+    ///
+    fn size(&self) -> usize {
+        config::kernel::KSTACK_SIZE
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the base address of the target kernel stack.
+    ///
+    /// # Returns
+    ///
+    /// The base address of the target kernel stack.
+    ///
+    /// # Notes
+    ///
+    /// As stacks grow downwards, the base address is the highest address of the stack.
+    ///
+    fn base(&self) -> PageAligned<VirtualAddress> {
+        PageAligned::from_raw_value(self.kpages[0].base().into_raw_value()).unwrap()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the top address of the target kernel stack.
     ///
     /// # Returns
@@ -88,8 +119,21 @@ impl KernelStack {
 // Trait Implementations
 //==================================================================================================
 
+impl fmt::Debug for KernelStack {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "KernelStack {{ base: {:?}, top: {:?}, size={:?} }}",
+            self.base(),
+            self.top(),
+            self.size()
+        )
+    }
+}
+
 impl Drop for KernelStack {
     fn drop(&mut self) {
+        debug!("drop(): {:?}", &self);
         while let Some(kpage) = self.kpages.pop() {
             drop(kpage);
         }
