@@ -2,25 +2,21 @@
 # Licensed under the MIT License.
 
 [package]
-name = "linuxd"
+name = "nanvix-bench"
 version.workspace = true
 license-file.workspace = true
-edition.workspace = true
+edition = "2024"
 authors.workspace = true
-description = "Linux Provider Daemon"
+description = "Benchmark Utility for Nanvix"
 homepage.workspace = true
 
 [dependencies]
-config = { workspace = true }
-syscall = { workspace = true, features = ["std"] }
 anyhow = { workspace = true }
-log = { workspace = true }
 flexi_logger = { workspace = true }
-libc = { workspace = true }
+indicatif = { workspace = true }
+log = { workspace = true }
+nix = { workspace = true }
 profiler = { workspace = true }
-signal-hook = { workspace = true }
-sys = { workspace = true, features = ["std"] }
-syscomm = { workspace = true }
 
 [features]
 default = []
