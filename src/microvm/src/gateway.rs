@@ -87,7 +87,7 @@ impl Gateway {
         let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
         match self.stream.read_exact(&mut bytes) {
             Ok(_) => {
-                let message: Message = match Message::try_from_bytes(bytes) {
+                let mut message: Message = match Message::try_from_bytes(bytes) {
                     Ok(message) => message,
                     Err(e) => {
                         let reason: String = format!("failed to parse message ({e:?})");
@@ -95,7 +95,7 @@ impl Gateway {
                         return Err(SocketError::new(Error::new(ErrorKind::InvalidData, reason)));
                     },
                 };
-
+                profiler::timestamp_message!(&mut message.payload, mem::offset_of!(syscall::LinuxDaemonMessage, payload) + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
                 Ok(message)
             },
             Err(e) => {

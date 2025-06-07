@@ -22,6 +22,10 @@ export TIMEOUT ?= 300
 # Enable Microvm profiler?
 export PROFILER ?= no
 
+# Enable message timestamping
+# WARNING: use only with the echo-breakdown benchmark
+export TIMESTAMP_MSG ?= no
+
 # Target Host CPU
 export HOST_CPU ?=
 
@@ -165,8 +169,11 @@ export WASMD_CARGO_FEATURES :=
 
 # Rust flags for host target.
 export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
+export HOST_CARGO_FEATURES := --no-default-features
+export HOST_CARGO_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),--features timestamp-messages,)
 export MICROVM_CARGO_FEATURES := --no-default-features
 export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(PROFILER)),--features profiler,)
+export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),--features timestamp-messages,)
 export MICROVM_CARGO_FEATURES += $(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
 
 # Optimization Flags
@@ -243,7 +250,7 @@ ALL_GUEST_STATIC_LIBS := posix
 ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array slab static_assert syscall sysalloc syslog sys
 
 ALL_GUEST_DAEMONS := memd procd
-ALL_GUEST_BENCHMARKS := echo-rust-nostd echo-rust-server-nostd noop-rust-nostd matmul
+ALL_GUEST_BENCHMARKS := echo-rust-nostd echo-rust-server-nostd echo-single-rust-nostd noop-rust-nostd matmul
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
 ALL_GUEST_TESTS := testd file-rust linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
@@ -252,7 +259,7 @@ ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := profiler syscomm
-ALL_HOST_UTILS := echo-client loader nanvixd
+ALL_HOST_UTILS := echo-client loader nanvix-bench nanvixd
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
 
@@ -744,18 +751,30 @@ test-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),test-host-rlib-$(target)
 
 define HOST_BINARY_RULES
 all-host-binaries-$(1): init
+ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
+	$(HOST_CARGO_BUILD_CMD) $(HOST_CARGO_FEATURES) -p $(1)
+else
 	$(HOST_CARGO_BUILD_CMD) -p $(1)
+endif
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$(1) $(BINARIES_DIR)/$(1).elf
 
 check-host-binaries-$(1):
+ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
+	$(HOST_CARGO_CHECK_CMD) $(HOST_CARGO_FEATURES) -p $(1)
+else
 	$(HOST_CARGO_CHECK_CMD) -p $(1)
+endif
 
 clean-host-binaries-$(1):
 	$(HOST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 clippy-host-binaries-$(1):
+ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
+	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1)
+else
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
+endif
 endef
 
 $(foreach target,$(ALL_HOST_BINARIES),$(eval $(call HOST_BINARY_RULES,$(target))))
