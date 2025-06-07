@@ -58,14 +58,14 @@ homepage = "https://github.com/nanvix"
 arch = { path = "src/libs/arch", default-features = false }
 anyhow = "1.0.98"
 bitmap = { path = "src/libs/bitmap", default-features = false }
-cc = "1.2.23"
+cc = "1.2.26"
 cfg-if = "1.0.0"
 config = { path = "src/libs/config", default-features = false }
 elf = { path = "src/libs/elf", default-features = false }
 error = { path = "src/libs/error", default-features = false }
 fastrand = { version = "2.3.0", default-features = false }
-flexi_logger = "0.30.1"
-goblin = { version = "0.9.3", default-features = false }
+flexi_logger = "0.30.2"
+goblin = { version = "0.10.0", default-features = false }
 indicatif = "0.17.11"
 http-body-util = "0.1.3"
 hyperlight_common = { git = "https://github.com/nanvix/hyperlight", rev = "17fd1773ed22b52cf2956a6f0b120da9cda5b62e", default-features = false, package = "hyperlight-common" }
@@ -74,9 +74,9 @@ hyperlight_host = { git = "https://github.com/nanvix/hyperlight/", rev = "17fd17
         "gdb",
 ], package = "hyperlight-host" } # we use the gdb feature to remove the timeout mechanism
 hyper = { version = "1.6.0", default-features = false }
-hyper-util = { version = "0.1.11", default-features = false }
-kvm-bindings = "0.11.1"
-kvm-ioctls = "0.21.0"
+hyper-util = { version = "0.1.14", default-features = false }
+kvm-bindings = "0.12.0"
+kvm-ioctls = "0.22.0"
 libc = "0.2.172"
 log = "0.4.27"
 micromath = "2.1.0"
@@ -101,11 +101,11 @@ sysalloc = { path = "src/libs/sysalloc", default-features = false }
 syscall = { path = "src/libs/syscall", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
-tokio = { version = "1.45.0", default-features = false }
+tokio = { version = "1.45.1", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 syscomm = { path = "src/libs/syscomm", default-features = false }
 syslog = { path = "src/libs/syslog", default-features = false }
-wasmi = { version = "0.46.0", default-features = false }
+wasmi = { version = "0.47.0", default-features = false }
 
 [profile.dev]
 opt-level = 0
