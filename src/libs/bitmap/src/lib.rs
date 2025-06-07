@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(all(test, feature = "std"), feature(random))]
 
 //==================================================================================================
 // Modules
@@ -51,21 +52,27 @@ impl Bitmap {
     ///
     /// # Parameters
     ///
-    /// - `len`: Length of the bitmap in bits.
+    /// - `number_of_bits`: Length of the bitmap in bits.
     ///
     /// # Returns
     ///
     /// Upon success, a new bitmap is returned. Upon failure, an error is returned instead.
     ///
-    pub fn new(len: usize) -> Result<Self, Error> {
+    pub fn new(number_of_bits: usize) -> Result<Self, Error> {
         // Check if the length is invalid.
-        if len == 0 || len >= i32::MAX as usize {
+        if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
             let reason: &str = "invalid length";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
+        // Check if the length is not a multiple of the number of the bitmap word.
+        if number_of_bits % u8::BITS as usize != 0 {
+            let reason: &str = "length must be a multiple of 8";
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
         // Allocate the bitmap.
-        let mut array: RawArray<u8> = RawArray::new(len)?;
+        let mut array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
 
         // Zero out the bitmap.
         for byte in array.iter_mut() {
@@ -73,7 +80,7 @@ impl Bitmap {
         }
 
         Ok(Self {
-            number_of_bits: array.len() * u8::BITS as usize,
+            number_of_bits,
             bits: array,
             usage: 0,
         })
@@ -132,27 +139,7 @@ impl Bitmap {
     /// instead.
     ///
     pub fn alloc(&mut self) -> Result<usize, Error> {
-        // TODO: optimize this implementation to traverse the bitmap in a machine word at a time.
-
-        // Traverse the bitmap one word at a time.
-        for (i, word) in self.bits.iter_mut().enumerate() {
-            // Check if this word is not full.
-            if *word != u8::MAX {
-                // Find a free bit.
-                for j in 0..u8::BITS as usize {
-                    // Check if the bit is free.
-                    if *word & (1 << j) == 0 {
-                        // It is, thus allocate it.
-                        *word |= 1 << j;
-                        self.usage += 1;
-                        return Ok(i * u8::BITS as usize + j);
-                    }
-                }
-            }
-        }
-
-        let reason: &str = "bitmap is full";
-        Err(Error::new(ErrorCode::OutOfMemory, reason))
+        self.alloc_range(1)
     }
 
     ///
@@ -170,40 +157,60 @@ impl Bitmap {
     /// instead.
     ///
     pub fn alloc_range(&mut self, size: usize) -> Result<usize, Error> {
-        // Check if the size is invalid.
-        if (size == 0) || (size > u8::BITS as usize) {
+        // Check if the size is valid.
+        if size == 0 || size > self.number_of_bits {
             let reason: &str = "invalid size";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        // Check if the size is out of bounds.
-        if size > self.number_of_bits {
-            let reason: &str = "size out of bounds";
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        // Check if allocation exceeds the bitmap capacity.
+        if self.usage > self.number_of_bits - size {
+            let reason: &str = "allocation exceeds bitmap capacity";
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
-        // Compute mask.
-        let mask: u8 = if size == u8::BITS as usize {
-            // Use u8::MAX directly to avoid overflow
-            u8::MAX
-        } else {
-            ((1 << size) - 1) as u8
-        };
+        debug_assert_eq!(
+            self.bits.len() * u8::BITS as usize,
+            self.number_of_bits,
+            "bitmap length must match the number of bits"
+        );
 
-        // Traverse the bitmap one word at a time.
-        for (i, word) in self.bits.iter_mut().enumerate() {
-            // Check if this word is not full.
-            if *word != u8::MAX {
-                // Find a free range of bits.
-                for j in 0..=(u8::BITS as usize - size) {
-                    // Check if the range is free.
-                    if (*word & (mask << j)) == 0 {
-                        // It is, thus allocate it.
-                        *word |= mask << j;
-                        self.usage += size;
-                        return Ok(i * u8::BITS as usize + j);
-                    }
+        let mut start: usize = 0;
+
+        // Traverse the bitmap until the last possible starting bit.
+        while start <= self.number_of_bits - size {
+            // Check for fast skip/ path.
+            let is_aligned: bool = start % u8::BITS as usize == 0;
+            if is_aligned {
+                let word: usize = start / u8::BITS as usize;
+                // Fast skip: if the starting word is full, skip to the next word.
+                if self.bits[word] == u8::MAX {
+                    // Jump to next byte boundary.
+                    start += u8::BITS as usize;
+                    continue;
                 }
+            }
+
+            // Check if all bits in the range are free.
+            let mut free: bool = true;
+            for offset in 0..size {
+                let idx: usize = start + offset;
+                let (w, b): (usize, usize) = self.index_unchecked(idx);
+                if (self.bits[w] & (1 << b)) != 0 {
+                    free = false;
+                    start += offset + 1;
+                    break;
+                }
+            }
+            if free {
+                // Allocate the range
+                for offset in 0..size {
+                    let idx: usize = start + offset;
+                    let (w, b): (usize, usize) = self.index_unchecked(idx);
+                    self.bits[w] |= 1 << b;
+                }
+                self.usage += size;
+                return Ok(start);
             }
         }
 
@@ -301,10 +308,26 @@ impl Bitmap {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
+        Ok(self.index_unchecked(index))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the `(word, bit)` pair of a index without checking bounds.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the bit.
+    ///
+    /// # Returns
+    ///
+    /// The `(word, bit)` pair of the index.
+    ///
+    fn index_unchecked(&self, index: usize) -> (usize, usize) {
         let word: usize = index / u8::BITS as usize;
         let bit: usize = index % u8::BITS as usize;
-
-        Ok((word, bit))
+        (word, bit)
     }
 }
 

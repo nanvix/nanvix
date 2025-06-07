@@ -43,12 +43,24 @@ struct KpoolInner {
 
 impl KpoolInner {
     fn new(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Self, Error> {
-        let bitmap: Bitmap = Bitmap::new(region.size() / (mem::PAGE_SIZE * u8::BITS as usize))?;
+        trace!("new(): region={region:?}");
+        debug_assert_eq!(
+            region.size() % mem::PAGE_SIZE,
+            0,
+            "kernel pool size must be a multiple of page size"
+        );
+        let bitmap: Bitmap = Bitmap::new(region.size() / (mem::PAGE_SIZE))?;
         Ok(Self { region, bitmap })
     }
 
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        let index: usize = self.bitmap.alloc()?;
+        let index: usize = match self.bitmap.alloc() {
+            Ok(index) => index,
+            Err(error) => {
+                error!("alloc(): {error:?}");
+                return Err(error);
+            },
+        };
         let addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
         Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?))
     }
@@ -69,7 +81,13 @@ impl KpoolInner {
     ///
     fn alloc_range(&mut self, count: usize) -> Result<Vec<FrameAddress>, Error> {
         // Attempt to allocate a range of pages.
-        let index: usize = self.bitmap.alloc_range(count)?;
+        let index: usize = match self.bitmap.alloc_range(count) {
+            Ok(index) => index,
+            Err(error) => {
+                error!("alloc_range(): {error:?} (count={count})");
+                return Err(error);
+            },
+        };
 
         // Create a vector of page-aligned addresses.
         let base_addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
@@ -89,7 +107,13 @@ impl KpoolInner {
     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
         let index: usize =
             (addr.into_raw_value() - self.region.start().into_raw_value()) / mem::PAGE_SIZE;
-        self.bitmap.clear(index)
+        match self.bitmap.clear(index) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                error!("free(): {error:?} (addr={addr:?})");
+                Err(error)
+            },
+        }
     }
 }
 

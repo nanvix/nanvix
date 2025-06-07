@@ -372,7 +372,9 @@ impl Vmem {
     ) -> Result<&mut PageTable<PageTableStorage>, Error> {
         // Check if corresponding page table does not exist.
         if !pde.is_present() {
-            return Err(Error::new(ErrorCode::NoSuchEntry, "page table not present"));
+            let reason: &str = "page table not present";
+            error!("lookup_page_table(): {reason:?} (pde={pde:?})");
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
         // Get corresponding page table.
@@ -403,7 +405,9 @@ impl Vmem {
     ) -> Result<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>, Error> {
         // Check if corresponding page table does not exist.
         if !pde.is_present() {
-            return Err(Error::new(ErrorCode::NoSuchEntry, "page table not present"));
+            let reason: &str = "page table not present";
+            error!("lookup_kernel_page_table(): {reason:?} (pde={pde:?})");
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
         // Get corresponding page table.

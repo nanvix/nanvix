@@ -169,6 +169,7 @@ impl RunnableProcessWithReadyThread {
     }
 
     fn add_thread(mut self, ready_thread: ReadyThread) -> Self {
+        trace!("add_thread(): self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
         self.ready_threads.push_back(ready_thread);
 
         self
@@ -297,6 +298,7 @@ impl RunnableProcessWithInterruptedThreads {
         mut self,
         ready_thread: ReadyThread,
     ) -> RunnableProcessWithReadyAndInteruptThread {
+        trace!("add_thread(): self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
         let ready_threads = match self.ready_threads.take() {
             Some(mut ready_threads) => {
                 ready_threads.push_back(ready_thread);
@@ -428,6 +430,7 @@ impl RunnableProcessWithReadyAndInteruptThread {
     }
 
     fn add_thread(mut self, ready_thread: ReadyThread) -> Self {
+        trace!("add_thread(): self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
         self.ready_threads.push_back(ready_thread);
         self
     }
