@@ -680,6 +680,7 @@ impl ProcessManagerInner {
                     self.running = Some(running_process);
                     let reason: &str = "thread not found";
                     error!("wake_up(): {reason} (pid={pid:?}. tid={tid:?})");
+                    return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 },
             }
         }
@@ -716,7 +717,13 @@ impl ProcessManagerInner {
                         }
                         return Some(runnable_process);
                     },
-                    Err(suspended_process) => suspended.push_back(suspended_process),
+                    Err(suspended_process) => {
+                        self.suspended.push_front(suspended_process);
+                        while let Some(process) = suspended.pop_back() {
+                            self.suspended.push_front(process);
+                        }
+                        return None;
+                    },
                 }
             } else {
                 suspended.push_back(process)
@@ -737,7 +744,13 @@ impl ProcessManagerInner {
                         }
                         return Some(runnable_process);
                     },
-                    Err(ready_process) => ready.push_back(ready_process),
+                    Err(ready_process) => {
+                        self.ready.push_front(ready_process);
+                        while let Some(process) = ready.pop_back() {
+                            self.ready.push_front(process);
+                        }
+                        return None;
+                    },
                 }
             } else {
                 ready.push_back(process)
