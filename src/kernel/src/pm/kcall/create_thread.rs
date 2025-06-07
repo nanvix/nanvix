@@ -59,7 +59,10 @@ pub fn create_thread(
     }
 
     match do_create_thread(pm, mm, args.pid, user_wrapper_fn, user_fn, user_fn_arg) {
-        Ok(tid) => KcallResult::Success(Into::<usize>::into(tid).into()),
+        Ok(tid) => {
+            debug!("create_thread(): thread {tid:?} created");
+            KcallResult::Success(Into::<usize>::into(tid).into())
+        },
         Err(e) => KcallResult::Error(e.code.into()),
     }
 }
