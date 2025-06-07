@@ -359,9 +359,7 @@ impl ProcessManagerInner {
             suspended.push_back(process);
         }
         // Process is not in the list of sleeping processes, rollback list to its original state.
-        while let Some(process) = suspended.pop_front() {
-            self.suspended.push_back(process);
-        }
+        self.suspended = suspended;
 
         // Search process in the list of ready processes.
         let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
@@ -380,9 +378,7 @@ impl ProcessManagerInner {
             ready.push_back(process);
         }
         // Process is not in the list of ready processes, rollback list to its original state.
-        while let Some(process) = ready.pop_front() {
-            self.ready.push_back(process);
-        }
+        self.ready = ready;
 
         unreachable!("process must be either sleeping or runnable")
     }
