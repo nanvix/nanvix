@@ -349,8 +349,8 @@ impl ProcessManagerInner {
             if process.state().pid() == pid {
                 let ready_process: RunnableProcess = process.add_thread(ready_thread);
                 // Rollback list to its original state.
-                while let Some(process) = suspended.pop_front() {
-                    self.suspended.push_back(process);
+                while let Some(process) = suspended.pop_back() {
+                    self.suspended.push_front(process);
                 }
                 // Push process to the list of ready processes.
                 self.ready.push_back(ready_process);
@@ -370,8 +370,8 @@ impl ProcessManagerInner {
             if process.state().pid() == pid {
                 let ready_process: RunnableProcess = process.add_thread(ready_thread);
                 // Rollback list to its original state.
-                while let Some(process) = ready.pop_front() {
-                    self.ready.push_back(process);
+                while let Some(process) = ready.pop_back() {
+                    self.ready.push_front(process);
                 }
                 // Push process to the list of ready processes.
                 self.ready.push_back(ready_process);
