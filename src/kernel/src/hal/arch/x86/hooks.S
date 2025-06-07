@@ -547,30 +547,27 @@ __phys_memcpy:
     test %ecx, %ecx
     jz __phys_memcpy.done
 
+    /* Preserve flags before paging is disabled. */
+    pushf
+    popl %edx
+
     /* Disable paging. */
     movl %cr0, %eax
     andl $0x80000000 - 1, %eax
     movl %eax, %cr0
 
-/*
- * Copy memory from a page to another.
- * We cannot use nice instructions such as
- * movsb because we would use segment registers
- * and therefore the GDT, which is only accessible
- * when paging is enabled.
- */
-__phys_memcpy.loop:
-    movb (%esi), %al
-    movb %al, (%edi)
-    inc %esi
-    inc %edi
-    dec %ecx
-    jnz __phys_memcpy.loop
+    /* Use rep movsb while paging is temporarily disabled. */
+    cld
+    rep movsb
 
     /* Re-enable paging. */
     movl %cr0, %eax
     orl $0x80000000, %eax
     movl %eax, %cr0
+
+    /* Restore flags now that paging is enabled again. */
+    pushl %edx
+    popf
 
 __phys_memcpy.done:
 
