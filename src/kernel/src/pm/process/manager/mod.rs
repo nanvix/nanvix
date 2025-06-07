@@ -571,6 +571,9 @@ impl ProcessManagerInner {
             self.running = Some(next_process);
 
             if previous_pid == next_pid {
+                if previous_pid != ProcessIdentifier::KERNEL {
+                    panic!("schedule(): rescheduling non kernel thread (pid={previous_pid:?})");
+                }
                 return None;
             }
 
@@ -590,6 +593,10 @@ impl ProcessManagerInner {
             // Attempt to wake up process.
             match process.wakeup_alarm(now) {
                 Ok(interrupted_process) => {
+                    trace!(
+                        "check_alarm(): process {:?} interrupted at {now:?}",
+                        interrupted_process.state().pid(),
+                    );
                     self.interrupted.push_back(interrupted_process);
                 },
                 Err(suspended_process) => suspended.push_back(suspended_process),
@@ -665,6 +672,7 @@ impl ProcessManagerInner {
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
     pub fn wakeup(&mut self, pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
+        // Check if thread belongs to the running process.
         if self.get_running().state().pid() == pid {
             let running_process: RunningProcess = self.take_running();
             match running_process.wakeup(tid) {
@@ -674,15 +682,18 @@ impl ProcessManagerInner {
                 },
                 Err(running_process) => {
                     self.running = Some(running_process);
+                    let reason: &str = "thread not found";
+                    error!("wake_up(): {reason} (pid={pid:?}. tid={tid:?})");
                 },
             }
         }
 
+        // Check if thread belongs to a suspended process.
         let runnable_process: RunnableProcess = match self.try_wakeup(pid, tid) {
             Some(runnable_process) => runnable_process,
             None => {
                 let reason: &str = "thread not found";
-                error!("wake_up(): {} (pid={:?}. tid={:?})", reason, pid, tid);
+                error!("wake_up(): {reason} (pid={pid:?}, tid={tid:?})");
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             },
         };
