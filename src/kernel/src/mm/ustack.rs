@@ -203,8 +203,7 @@ impl UserStackAllocator {
     pub fn new() -> Result<Self, Error> {
         ::static_assert::assert_eq!(NUM_USER_STACK_ENTRIES % u8::BITS as usize == 0);
 
-        let len: usize = NUM_USER_STACK_ENTRIES / u8::BITS as usize;
-        let bitmap: Bitmap = Bitmap::new(len)?;
+        let bitmap: Bitmap = Bitmap::new(NUM_USER_STACK_ENTRIES)?;
 
         Ok(Self {
             inner: Rc::new(RefCell::new(UserStackAllocatorInner {

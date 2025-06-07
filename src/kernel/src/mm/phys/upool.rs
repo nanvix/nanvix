@@ -205,7 +205,7 @@ impl Upool {
     }
 
     pub fn alloc_many(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
-        trace!("alloc_many(): size={}", nframes);
+        trace!("alloc_many(): nframes={nframes:?}");
 
         // Attempt to allocate pages.
         let mut uframes: Vec<FrameAddress> = self.inner.borrow_mut().alloc_many(nframes)?;

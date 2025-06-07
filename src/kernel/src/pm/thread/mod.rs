@@ -179,6 +179,7 @@ impl RunningThread {
 // Ready Thread
 //==================================================================================================
 
+#[derive(Debug)]
 pub struct ReadyThread(ThreadState);
 
 impl ReadyThread {
