@@ -10,9 +10,12 @@ use crate::pm::{
     sync::condvar::Condvar,
 };
 use ::alloc::sync::Arc;
-use ::core::sync::atomic::{
-    AtomicBool,
-    Ordering,
+use ::core::{
+    fmt,
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
+    },
 };
 use ::sys::{
     error::Error,
@@ -183,11 +186,22 @@ impl Mutex {
     }
 }
 
+impl fmt::Debug for MutexGuard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MutexGuard {{ locked: {:?}, condvar: {:?} }}",
+            self.mutex.locked.load(Ordering::Relaxed),
+            self.mutex.sleeping
+        )
+    }
+}
+
 impl Drop for MutexGuard {
     fn drop(&mut self) {
         // Safety: The lock is ensured to be held by the caller.
-        if let Err(e) = unsafe { self.mutex.unlock_unchecked() } {
-            warn!("failed to unlock mutex: {:?}", e);
+        if let Err(error) = unsafe { self.mutex.unlock_unchecked() } {
+            warn!("drop(): failed to unlock mutex (self={self:?}, error={error:?})");
         }
     }
 }
