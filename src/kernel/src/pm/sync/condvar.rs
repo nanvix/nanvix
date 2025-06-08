@@ -239,7 +239,17 @@ impl Condvar {
 
         self.inner.sleeping.borrow_mut().push_back((pid, tid));
 
-        ProcessManager::sleep(alarm)
+        match ProcessManager::sleep(alarm) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                // Remove the thread from the sleeping queue if it was not woken up.
+                self.inner
+                    .sleeping
+                    .borrow_mut()
+                    .retain(|&(p, t)| p != pid || t != tid);
+                Err(error)
+            },
+        }
     }
 }
 
@@ -247,8 +257,22 @@ unsafe impl Send for CondvarInner {}
 
 unsafe impl Sync for CondvarInner {}
 
+impl fmt::Debug for CondvarInner {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        write!(f, "CondvarInner {{ sleeping: {:?} }}", self.sleeping.borrow())
+    }
+}
+
 impl fmt::Debug for Condvar {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
         write!(f, "Condvar {{ sleeping: {:?} }}", self.inner.sleeping.borrow())
+    }
+}
+
+impl Drop for CondvarInner {
+    fn drop(&mut self) {
+        if !self.sleeping.borrow().is_empty() {
+            panic!("drop(): {self:?}");
+        }
     }
 }
