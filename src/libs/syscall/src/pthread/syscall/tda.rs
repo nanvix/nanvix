@@ -121,19 +121,22 @@ pub fn pthread_key_create() -> Option<pthread_key_t> {
 ///
 pub fn pthread_key_delete(key: pthread_key_t) -> Result<(), Error> {
     match THREAD_DATA.lock().get_mut(key as usize) {
-        Some(Some(tda)) => {
-            for (tid, ptr) in tda.value.iter() {
-                // Warn if we are leaking data.
-                ::syslog::debug!(
-                    "pthread_key_delete(): leaking thread data (tid={:?}, ptr={:#x?})",
-                    tid,
-                    ptr
-                );
+        Some(tda) => {
+            if let Some(tda) = tda {
+                for (tid, ptr) in tda.value.iter() {
+                    // Warn if we are leaking data.
+                    ::syslog::debug!(
+                        "pthread_key_delete(): leaking thread data (tid={:?}, ptr={:#x?})",
+                        tid,
+                        ptr
+                    );
+                }
+                tda.value.clear();
             }
-            tda.value.clear();
+            *tda = None;
             Ok(())
         },
-        Some(None) | None => {
+        None => {
             let reason: &str = "key not found";
             ::syslog::error!("pthread_key_delete(): {:?}", reason);
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
