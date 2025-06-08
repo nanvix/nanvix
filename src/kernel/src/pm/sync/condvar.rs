@@ -14,7 +14,10 @@ use ::alloc::{
     collections::LinkedList,
     sync::Arc,
 };
-use ::core::cell::RefCell;
+use ::core::{
+    cell::RefCell,
+    fmt,
+};
 use ::sys::{
     error::{
         Error,
@@ -243,3 +246,9 @@ impl Condvar {
 unsafe impl Send for CondvarInner {}
 
 unsafe impl Sync for CondvarInner {}
+
+impl fmt::Debug for Condvar {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        write!(f, "Condvar {{ sleeping: {:?} }}", self.inner.sleeping.borrow())
+    }
+}
