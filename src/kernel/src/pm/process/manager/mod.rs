@@ -704,13 +704,15 @@ impl ProcessManagerInner {
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
     ) -> Option<RunnableProcess> {
+        // Search for the process in the list of sleeping processes.
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
         while let Some(process) = self.suspended.pop_front() {
+            // Found.
             if process.state().pid() == pid {
                 match process.wakeup(tid) {
                     Ok(runnable_process) => {
-                        while let Some(process) = suspended.pop_front() {
-                            self.suspended.push_back(process);
+                        while let Some(process) = suspended.pop_back() {
+                            self.suspended.push_front(process);
                         }
                         return Some(runnable_process);
                     },
@@ -724,13 +726,15 @@ impl ProcessManagerInner {
             self.suspended.push_back(process);
         }
 
+        // Search for the process in the list of ready processes.
         let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
         while let Some(process) = self.ready.pop_front() {
+            // Found.
             if process.state().pid() == pid {
                 match process.wakeup(tid) {
                     Ok(runnable_process) => {
-                        while let Some(process) = ready.pop_front() {
-                            self.ready.push_back(process);
+                        while let Some(process) = ready.pop_back() {
+                            self.ready.push_front(process);
                         }
                         return Some(runnable_process);
                     },
