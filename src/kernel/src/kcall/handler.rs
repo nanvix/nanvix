@@ -91,6 +91,7 @@ pub fn kcall_handler(
                             KcallResult::Error(ErrorCode::InvalidSysCall.into())
                         },
                     };
+
                     // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
                     if let Err(e) = unsafe { scoreboard.handled(ret) } {
                         warn!("failed to signal kernel call handled: {:?}", e)

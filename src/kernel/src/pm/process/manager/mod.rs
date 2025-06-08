@@ -349,8 +349,8 @@ impl ProcessManagerInner {
             if process.state().pid() == pid {
                 let ready_process: RunnableProcess = process.add_thread(ready_thread);
                 // Rollback list to its original state.
-                while let Some(process) = suspended.pop_front() {
-                    self.suspended.push_back(process);
+                while let Some(process) = suspended.pop_back() {
+                    self.suspended.push_front(process);
                 }
                 // Push process to the list of ready processes.
                 self.ready.push_back(ready_process);
@@ -359,9 +359,7 @@ impl ProcessManagerInner {
             suspended.push_back(process);
         }
         // Process is not in the list of sleeping processes, rollback list to its original state.
-        while let Some(process) = suspended.pop_front() {
-            self.suspended.push_back(process);
-        }
+        self.suspended = suspended;
 
         // Search process in the list of ready processes.
         let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
@@ -370,8 +368,8 @@ impl ProcessManagerInner {
             if process.state().pid() == pid {
                 let ready_process: RunnableProcess = process.add_thread(ready_thread);
                 // Rollback list to its original state.
-                while let Some(process) = ready.pop_front() {
-                    self.ready.push_back(process);
+                while let Some(process) = ready.pop_back() {
+                    self.ready.push_front(process);
                 }
                 // Push process to the list of ready processes.
                 self.ready.push_back(ready_process);
@@ -380,9 +378,7 @@ impl ProcessManagerInner {
             ready.push_back(process);
         }
         // Process is not in the list of ready processes, rollback list to its original state.
-        while let Some(process) = ready.pop_front() {
-            self.ready.push_back(process);
-        }
+        self.ready = ready;
 
         unreachable!("process must be either sleeping or runnable")
     }
@@ -571,6 +567,9 @@ impl ProcessManagerInner {
             self.running = Some(next_process);
 
             if previous_pid == next_pid {
+                if previous_pid != ProcessIdentifier::KERNEL {
+                    panic!("schedule(): rescheduling non kernel thread (pid={previous_pid:?})");
+                }
                 return None;
             }
 
@@ -590,6 +589,10 @@ impl ProcessManagerInner {
             // Attempt to wake up process.
             match process.wakeup_alarm(now) {
                 Ok(interrupted_process) => {
+                    trace!(
+                        "check_alarm(): process {:?} interrupted at {now:?}",
+                        interrupted_process.state().pid(),
+                    );
                     self.interrupted.push_back(interrupted_process);
                 },
                 Err(suspended_process) => suspended.push_back(suspended_process),
@@ -665,6 +668,7 @@ impl ProcessManagerInner {
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
     pub fn wakeup(&mut self, pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
+        // Check if thread belongs to the running process.
         if self.get_running().state().pid() == pid {
             let running_process: RunningProcess = self.take_running();
             match running_process.wakeup(tid) {
@@ -674,15 +678,19 @@ impl ProcessManagerInner {
                 },
                 Err(running_process) => {
                     self.running = Some(running_process);
+                    let reason: &str = "thread not found";
+                    error!("wake_up(): {reason} (pid={pid:?}. tid={tid:?})");
+                    return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 },
             }
         }
 
+        // Check if thread belongs to a suspended process.
         let runnable_process: RunnableProcess = match self.try_wakeup(pid, tid) {
             Some(runnable_process) => runnable_process,
             None => {
                 let reason: &str = "thread not found";
-                error!("wake_up(): {} (pid={:?}. tid={:?})", reason, pid, tid);
+                error!("wake_up(): {reason} (pid={pid:?}, tid={tid:?})");
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             },
         };
@@ -697,45 +705,59 @@ impl ProcessManagerInner {
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
     ) -> Option<RunnableProcess> {
+        // Search for the process in the list of sleeping processes.
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
         while let Some(process) = self.suspended.pop_front() {
+            // Found.
             if process.state().pid() == pid {
                 match process.wakeup(tid) {
                     Ok(runnable_process) => {
-                        while let Some(process) = suspended.pop_front() {
-                            self.suspended.push_back(process);
+                        while let Some(process) = suspended.pop_back() {
+                            self.suspended.push_front(process);
                         }
                         return Some(runnable_process);
                     },
-                    Err(suspended_process) => suspended.push_back(suspended_process),
+                    Err(suspended_process) => {
+                        self.suspended.push_front(suspended_process);
+                        while let Some(process) = suspended.pop_back() {
+                            self.suspended.push_front(process);
+                        }
+                        return None;
+                    },
                 }
             } else {
                 suspended.push_back(process)
             }
         }
-        while let Some(process) = suspended.pop_front() {
-            self.suspended.push_back(process);
-        }
+        // Process is not in the list of sleeping processes, rollback list to its original state.
+        self.suspended = suspended;
 
+        // Search for the process in the list of ready processes.
         let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
         while let Some(process) = self.ready.pop_front() {
+            // Found.
             if process.state().pid() == pid {
                 match process.wakeup(tid) {
                     Ok(runnable_process) => {
-                        while let Some(process) = ready.pop_front() {
-                            self.ready.push_back(process);
+                        while let Some(process) = ready.pop_back() {
+                            self.ready.push_front(process);
                         }
                         return Some(runnable_process);
                     },
-                    Err(ready_process) => ready.push_back(ready_process),
+                    Err(ready_process) => {
+                        self.ready.push_front(ready_process);
+                        while let Some(process) = ready.pop_back() {
+                            self.ready.push_front(process);
+                        }
+                        return None;
+                    },
                 }
             } else {
                 ready.push_back(process)
             }
         }
-        while let Some(process) = ready.pop_front() {
-            self.ready.push_back(process);
-        }
+        // Process is not in the list of ready processes, rollback list to its original state.
+        self.ready = ready;
 
         None
     }
@@ -745,6 +767,11 @@ impl ProcessManagerInner {
         status: ExitStatus,
     ) -> (*mut ContextInformation, *mut ContextInformation) {
         let running_process: RunningProcess = self.take_running();
+        trace!(
+            "exit(): pid={:?}, tid={:?}, status={status:?}",
+            running_process.state().pid(),
+            running_process.get_tid(),
+        );
 
         // Check if kernel is trying to exit.
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
