@@ -54,6 +54,11 @@ jobs:
           export TOOLCHAIN_DIR=$(pwd)/toolchain
           ./scripts/setup/toolchain.sh ${TOOLCHAIN_DIR}
 
+      - name: "Link Rust Toolchain for Nanvix"
+        run: |
+          cd $(pwd)/toolchain/src/rust
+          rustup toolchain link nanvix-x86 build/host/stage2
+
   tests:
     needs: setup-toolchain
     runs-on: ubuntu-24.04
@@ -75,6 +80,11 @@ jobs:
 
       - name: "Prepare build environemnt"
         uses: ./.github/actions/setup
+
+      - name: "Link Rust Toolchain for Nanvix"
+        run: |
+          cd $(pwd)/toolchain/src/rust
+          rustup toolchain link nanvix-x86 build/host/stage2
 
       # Test
       - name: "Run ${{ matrix.mode }} (test on ${{ matrix.target }})"
