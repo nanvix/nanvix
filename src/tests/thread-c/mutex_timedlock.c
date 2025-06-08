@@ -79,6 +79,8 @@ static void main_thread(void)
     ret = pthread_join(worker_tid, &retval);
     assert(ret == 0);
     assert(retval == (void *)EXPECTED_EXIT_STATUS);
+
+    assert(pthread_mutex_unlock(&mutex_main_thread) == 0);
 }
 
 // Tests if calling `test_pthread_mutex_timedlock() works.
