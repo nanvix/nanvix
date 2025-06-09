@@ -226,10 +226,18 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn exit_thread(status: ExitStatus) -> Result<!, Error> {
-        let (join_cond, from, to): (Condvar, *mut ContextInformation, *mut ContextInformation) =
-            Self::get_mut().try_borrow_mut()?.exit_thread(status);
+        let (from, to): (*mut ContextInformation, *mut ContextInformation) = {
+            // Create a scope so the join condition variable is dropped before we context switch.
+            // If we do not do this, the condition variable the reference count for the condition
+            // variable will not be decremented, causing a memory leak.
 
-        join_cond.notify_all()?;
+            let (join_cond, from, to): (Condvar, *mut ContextInformation, *mut ContextInformation) =
+                Self::get_mut().try_borrow_mut()?.exit_thread(status);
+
+            join_cond.notify_all()?;
+
+            (from, to)
+        };
 
         ContextInformation::switch(from, to);
         core::hint::unreachable_unchecked()
