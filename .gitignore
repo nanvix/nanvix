@@ -13,6 +13,7 @@ bin/
 /logs/
 images/
 target/
+venv/
 /sysroot-debug/
 /sysroot-release/
 *.a
