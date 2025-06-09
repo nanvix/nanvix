@@ -327,14 +327,13 @@ PY_VERBOSE :=
 ifneq ($(VERBOSE),yes)
 PY_VERBOSE += >> /dev/null 2>&1
 endif
+PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/venv
 
 python-lint:
-	@rm -rf /tmp/venv
-	@python3 -m venv /tmp/venv
-	@/tmp/venv/bin/pip3 install "black>=24.0.0" "flake8>=7.0.0" > /dev/null
-	@/tmp/venv/bin/python3 -m black $(PY_CHECK) $(shell git ls-files -- "*.py") $(PY_VERBOSE)
-	@/tmp/venv/bin/python3 -m flake8 $(shell git ls-files -- "*.py") $(PY_VERBOSE)
-	@rm -rf /tmp/venv
+	@if [ ! -d $(PYTHON_VENV_DIRECTORY) ]; then python3 -m venv $(PYTHON_VENV_DIRECTORY); fi
+	@$(PYTHON_VENV_DIRECTORY)/bin/pip3 install "black>=24.0.0" "flake8>=7.0.0" > /dev/null
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(PY_CHECK) $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(shell git ls-files -- "*.py") $(PY_VERBOSE)
 
 check: \
 	check-kernel \
