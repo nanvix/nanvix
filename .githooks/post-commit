@@ -7,6 +7,6 @@ set -euo pipefail
 
 make python-lint > /dev/null
 
-if ! git diff --quiet; then
+if ! git diff --quiet -- "*.py"; then
   echo "Post-commit: python formatting introduced changes, consider ammending your commit"
 fi
