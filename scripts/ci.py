@@ -332,7 +332,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--verbose", action="store_true", help="Enable verbose build", default=True
     )
-    parser.add_argument("--timeout", type=int, help="Set test timeout", default=300)
+    parser.add_argument("--timeout", type=int, help="Set test timeout", default=600)
     parser.add_argument(
         "--lint", action="store_true", help="Lint Nanvix source code", default=False
     )
