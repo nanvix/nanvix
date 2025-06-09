@@ -536,6 +536,7 @@ impl ProcessManagerInner {
         let previous_process: RunningProcess = self.take_running();
 
         let previous_pid: ProcessIdentifier = previous_process.state().pid();
+        let previous_tid: ThreadIdentifier = previous_process.get_tid();
 
         let (previous_process, previous_context) = previous_process.schedule();
         self.ready.push_back(previous_process);
@@ -564,9 +565,10 @@ impl ProcessManagerInner {
 
             self.interrupt_reason = reason;
             let next_pid: ProcessIdentifier = next_process.state().pid();
+            let next_tid: ThreadIdentifier = next_process.get_tid();
             self.running = Some(next_process);
 
-            if previous_pid == next_pid {
+            if previous_tid == next_tid && previous_pid == next_pid {
                 if previous_pid != ProcessIdentifier::KERNEL {
                     panic!("schedule(): rescheduling non kernel thread (pid={previous_pid:?})");
                 }
