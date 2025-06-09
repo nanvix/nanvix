@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        mode: [release]
+        mode: [debug, release]
         target: [qemu-isapc, qemu-pc, qemu-baremetal, microvm, hyperlight]
       fail-fast: false
 
