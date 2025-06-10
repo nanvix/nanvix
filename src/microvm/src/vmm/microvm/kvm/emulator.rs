@@ -16,10 +16,12 @@ use crate::vmm::microvm::{
     },
 };
 use ::anyhow::Result;
-use std::sync::{
+use ::std::sync::{
     Arc,
+    mpsc::Sender,
     Mutex,
 };
+use ::sys::ipc::Message;
 
 //==================================================================================================
 // Structures
@@ -36,6 +38,8 @@ pub struct Emulator {
     input: Box<InputFn>,
     /// Output function used for emulating I/O port writes.
     output: Box<OutputFn>,
+    /// Channel to tell the orchestrator all vcpus have paused.
+    _paused_tx: Sender<Message>,
 }
 
 //==================================================================================================
@@ -62,12 +66,14 @@ impl Emulator {
         vmem: Arc<Mutex<VirtualMemory>>,
         input: Box<InputFn>,
         output: Box<OutputFn>,
+        paused_tx: Sender<Message>,
     ) -> Result<Self> {
         trace!("new()");
         Ok(Self {
             vmem,
             input,
             output,
+            _paused_tx: paused_tx,
         })
     }
 

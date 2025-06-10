@@ -16,6 +16,13 @@ mod microvm;
 mod pal;
 
 //==================================================================================================
+// Exports
+//==================================================================================================
+
+pub use microvm::MicroVm;
+pub use kvm::vcpu::VirtualProcessorHandle;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -28,7 +35,6 @@ use crate::{
     io::IoThread,
     vmm::microvm::{
         kvm::vmem::VirtualMemory,
-        microvm::MicroVm,
     },
     Gateway,
 };
@@ -49,7 +55,10 @@ use ::std::{
         Mutex,
         MutexGuard,
     },
-    thread::JoinHandle,
+    thread::{
+        JoinHandle,
+        self,
+    },
 };
 use ::sys::ipc::{
     Message,
@@ -62,7 +71,6 @@ use ::sys::ipc::{
 
 pub struct Vmm {
     _gateway_tx: Sender<Message>,
-    _io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
     microvm: Arc<Mutex<MicroVm>>,
 }
@@ -79,16 +87,13 @@ impl Vmm {
         initrd_args: Option<String>,
         stderr: Option<String>,
         gateway_conn: Option<Gateway>,
-    ) -> Result<Self> {
+    ) -> Result<u16> {
         crate::timer!("vmm_creation");
 
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
         let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
         let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
-
-        // Spawn I/O thread.
-        let _io_thread: Option<JoinHandle<Result<()>>> =
-            gateway_conn.map(|conn| IoThread::spawn(conn, gateway_rx, gateway_tx.clone()));
+        let (paused_tx, paused_rx) = mpsc::channel::<Message>();
 
         // Input function used for emulating I/O port reads.
         let input: Box<microvm::InputFn> = Self::build_input_fn(vm_rx);
@@ -97,7 +102,7 @@ impl Vmm {
         let output: Box<microvm::OutputFn> =
             Self::build_output_fn(Self::get_stderr_writer(stderr.clone())?, vm_tx);
 
-        let mut microvm: MicroVm = MicroVm::new(memory_size, input, output)?;
+        let mut microvm: MicroVm = MicroVm::new(memory_size, input, output, paused_tx)?;
 
         let rip: u64 = microvm.load_kernel(kernel_filename)?;
         if let Some(ref initrd_filename) = initrd_filename {
@@ -158,12 +163,29 @@ impl Vmm {
                     },
                 }
             });
-        Ok(Self {
-            _gateway_tx: gateway_tx,
-            _io_thread,
-            _memory_thread: memory_thread,
-            microvm,
-        })
+        let microvm_clone = microvm.clone();
+        let gateway_tx_clone = gateway_tx.clone();
+        let vcpu_thread_handle: JoinHandle<Result<u16>> = thread::spawn(move || {
+            Vmm {
+                _gateway_tx: gateway_tx_clone,
+                _memory_thread: memory_thread,
+                microvm: microvm_clone,
+            }.run()
+        });
+
+        // Get the virtual processor handle to pass to the I/O thread.
+        let vcpu_handle: VirtualProcessorHandle = microvm
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .get_vcpu_handle(vcpu_thread_handle); 
+
+        // Spawn I/O thread.
+        let io_thread: Option<JoinHandle<Result<()>>> =
+            gateway_conn.map(move |conn| IoThread::spawn(
+                conn, gateway_rx, gateway_tx, microvm, vcpu_handle, paused_rx));
+
+        io_thread.unwrap().join().unwrap();
+        Ok(0)
     }
 
     ///

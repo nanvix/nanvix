@@ -23,12 +23,18 @@ use crate::vmm::microvm::kvm::{
     },
     vmem::VirtualMemory,
 };
+use crate::vmm::VirtualProcessorHandle;
 
 use ::anyhow::Result;
-use ::std::sync::{
-    Arc,
-    Mutex,
+use ::std::{
+    sync::{
+        Arc,
+        mpsc::Sender,
+        Mutex,
+    },
+    thread::JoinHandle,
 };
+use ::sys::ipc::Message;
 use ::arch::mem::PAGE_SIZE;
 
 //==================================================================================================
@@ -85,7 +91,7 @@ impl MicroVm {
     /// Upon successful completion, this method returns the MicroVM that was created. Otherwise, it
     /// returns an error.
     ///
-    pub fn new(memory_size: usize, input: Box<InputFn>, output: Box<OutputFn>) -> Result<Self> {
+    pub fn new(memory_size: usize, input: Box<InputFn>, output: Box<OutputFn>, paused_tx: Sender<Message>) -> Result<Self> {
         trace!("new(): memory_size={memory_size}");
         crate::timer!("vm_creation");
 
@@ -97,7 +103,7 @@ impl MicroVm {
 
         let vcpu: VirtualProcessor = VirtualProcessor::new(partition.clone(), 0)?;
 
-        let emulator: Emulator = Emulator::new(vmem.clone(), input, output)?;
+        let emulator: Emulator = Emulator::new(vmem.clone(), input, output, paused_tx)?;
 
         Ok(Self {
             _partition: partition,
@@ -283,5 +289,25 @@ impl MicroVm {
     ///
     pub fn vmem(&self) -> Arc<Mutex<VirtualMemory>> {
         self.vmem.clone()
+    }
+
+    ///
+    /// # Description
+    /// 
+    /// Returns the handle to the virtual processor (thread handle and sending channel).
+    /// 
+    /// # Parameters
+    /// 
+    /// - `join_handle`: the handle to the virtual processor's thread.
+    /// 
+    /// # Returns
+    /// 
+    /// A structure with the handle to the virtual processor's thread
+    /// and a channel to send messages to the virtual processor.
+    /// 
+    // NOTE(gribel): for a multiprocessor implementation, join_handle should not be passed.
+    // Instead, a new thread should be spawned for each vcpu.
+    pub fn get_vcpu_handle(&mut self, join_handle: JoinHandle<Result<u16>>) -> VirtualProcessorHandle {
+        self.vcpu.get_handle(join_handle)
     }
 }

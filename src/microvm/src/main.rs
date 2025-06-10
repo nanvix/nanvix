@@ -98,11 +98,8 @@ fn main() -> Result<ExitCode> {
         None => None,
     };
 
-    let mut vmm: Vmm =
-        Vmm::new(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)?;
-
     // Run virtual machine and check exit status code.
-    match vmm.run()? {
+    match Vmm::new(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)? {
         exit_status if exit_status != 0 => {
             let exit_code: u8 = match exit_status.try_into() {
                 Ok(code) => code,

@@ -30,10 +30,19 @@ use ::kvm_ioctls::{
     VcpuExit,
     VcpuFd,
 };
-use ::std::sync::{
-    Arc,
-    Mutex,
+use ::std::{
+    sync::{
+        Arc,
+        mpsc::{
+            Receiver,
+            Sender,
+            self,
+        },
+        Mutex,
+    },
+    thread::JoinHandle,
 };
+use ::sys::ipc::Message; // Placeholder. Will probably be VcpuEvent instead of Message.
 use irqchip::IrqChip;
 use timer::Timer;
 
@@ -70,7 +79,21 @@ pub struct VirtualProcessor {
     online: bool,
     /// Exit status code.
     exit_status: u16,
+    /// The receiving end of events channel owned by the vcpu side.
+    _event_rx: Receiver<Message>, // Probably VcpuEvent instead of Message
+    /// The transmitting end of the events channel which will be given to the handler.
+    event_tx: Option<Sender<Message>>, // Probably VcpuEvent instead of Message
 }
+
+///
+/// # Description
+/// 
+/// A structure that sends messages to pause or resume a virtual processor.
+/// 
+pub struct VirtualProcessorHandle {
+    _event_tx: Sender<Message>,
+    pub vcpu_thread: Option<JoinHandle<Result<u16>>>,
+} 
 
 impl VirtualProcessor {
     pub fn new(partition: Arc<Mutex<VirtualPartition>>, id: u64) -> Result<Self> {
@@ -97,6 +120,8 @@ impl VirtualProcessor {
         };
         fd.set_fpu(&fpu)?;
 
+        let (event_tx, event_rx) = mpsc::channel::<Message>();
+
         Ok(Self {
             _partition: partition,
             fd,
@@ -104,7 +129,29 @@ impl VirtualProcessor {
             _timer: timer,
             online: false,
             exit_status: 0,
+            _event_rx: event_rx,
+            event_tx: Some(event_tx),
         })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets a handle to the virtual processor for snapshotting.
+    ///
+    /// # Returns
+    ///
+    /// If the handle was already taken, this method crashes. Otherwise, it returns the handle.
+    pub fn get_handle(&mut self, join_handle: JoinHandle<Result<u16>>) -> VirtualProcessorHandle {
+        let event_tx = self.event_tx.take().expect("vcpu handle already taken");
+        // NOTE (gribel): for a virtual multiprocessor implementation,
+        // this method will become `start_threaded` or something like it.
+        // A new thread will be spawned for each vcpu, and its handle will be stored here.
+        // Reference: https://github.com/firecracker-microvm/firecracker/blob/e36e774f10a131ff883dec2f03600317d8b856ee/src/vmm/src/vstate/vcpu.rs#L246
+        VirtualProcessorHandle {
+            _event_tx: event_tx,
+            vcpu_thread: Some(join_handle),
+        }
     }
 
     ///
