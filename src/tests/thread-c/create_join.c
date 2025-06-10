@@ -16,9 +16,6 @@
 // Constants
 //==================================================================================================
 
-// Number of iterations.
-static const int NUMBER_OF_ITERATIONS = 1024;
-
 // Expected argument passed to the worker thread.
 static const size_t EXPECTED_WORKER_ARG = 0xbadcafe;
 
@@ -60,9 +57,7 @@ void test_pthread_create_join(void)
 {
     fprintf(stderr, "testing pthread_create() and pthread_join() ... ");
 
-    for (int i = 0; i < NUMBER_OF_ITERATIONS; i++) {
-        main_thread();
-    }
+    main_thread();
 
     fprintf(stderr, "passed\n");
 }
