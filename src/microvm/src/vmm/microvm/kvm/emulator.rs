@@ -16,10 +16,12 @@ use crate::vmm::microvm::{
     },
 };
 use ::anyhow::Result;
-use std::sync::{
+use ::std::sync::{
     Arc,
     Mutex,
+    mpsc::Sender,
 };
+use ::sys::ipc::Message;
 
 //==================================================================================================
 // Structures
@@ -36,6 +38,12 @@ pub struct Emulator {
     input: Box<InputFn>,
     /// Output function used for emulating I/O port writes.
     output: Box<OutputFn>,
+    /// Channel to tell the orchestrator all vcpus have paused and are ready for snapshots.
+    // NOTE: when there are multiple vcpus, there will be a single stdin / stdout.
+    //   Having this channel in the Emulator instead of in each vcpu
+    //   reduces the number of messages between the orchestrator and the vcpus from O(n) to O(1),
+    //   with `n` being the number of vcpus.
+    _paused_tx: Sender<Message>,
 }
 
 //==================================================================================================
@@ -50,8 +58,10 @@ impl Emulator {
     ///
     /// # Parameters
     ///
+    /// - `vmem`: The memory that's written in input and read from in output.
     /// - `input`: Input function used for emulating I/O port reads.
     /// - `output`: Output function used for emulating I/O port writes.
+    /// - `paused_tx`: Channel through which the Emulator tells all vCPUs have paused.
     ///
     /// # Returns
     ///
@@ -62,12 +72,14 @@ impl Emulator {
         vmem: Arc<Mutex<VirtualMemory>>,
         input: Box<InputFn>,
         output: Box<OutputFn>,
+        paused_tx: Sender<Message>,
     ) -> Result<Self> {
         trace!("new()");
         Ok(Self {
             vmem,
             input,
             output,
+            _paused_tx: paused_tx,
         })
     }
 

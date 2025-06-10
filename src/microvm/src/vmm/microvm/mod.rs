@@ -11,6 +11,7 @@
 // Modules
 //==================================================================================================
 
+mod io;
 mod kvm;
 mod microvm;
 mod pal;
@@ -25,12 +26,15 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use crate::{
-    io::IoThread,
+    Gateway,
     vmm::microvm::{
-        kvm::vmem::VirtualMemory,
+        io::IoThread,
+        kvm::{
+            vcpu::VcpuEvent,
+            vmem::VirtualMemory,
+        },
         microvm::MicroVm,
     },
-    Gateway,
 };
 use ::anyhow::Result;
 use ::std::{
@@ -38,6 +42,9 @@ use ::std::{
     io::Write,
     mem,
     sync::{
+        Arc,
+        Mutex,
+        MutexGuard,
         mpsc,
         mpsc::{
             Receiver,
@@ -45,9 +52,6 @@ use ::std::{
             Sender,
             TryRecvError,
         },
-        Arc,
-        Mutex,
-        MutexGuard,
     },
     thread::JoinHandle,
 };
@@ -62,7 +66,7 @@ use ::sys::ipc::{
 
 pub struct Vmm {
     _gateway_tx: Sender<Message>,
-    _io_thread: Option<JoinHandle<Result<()>>>,
+    io_thread: Option<IoThread>,
     _memory_thread: JoinHandle<Result<()>>,
     microvm: Arc<Mutex<MicroVm>>,
 }
@@ -85,10 +89,8 @@ impl Vmm {
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
         let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
         let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
-
-        // Spawn I/O thread.
-        let _io_thread: Option<JoinHandle<Result<()>>> =
-            gateway_conn.map(|conn| IoThread::spawn(conn, gateway_rx, gateway_tx.clone()));
+        let (paused_tx, paused_rx) = mpsc::channel::<Message>();
+        let (event_tx, event_rx) = mpsc::channel::<VcpuEvent>();
 
         // Input function used for emulating I/O port reads.
         let input: Box<microvm::InputFn> = Self::build_input_fn(vm_rx);
@@ -97,7 +99,7 @@ impl Vmm {
         let output: Box<microvm::OutputFn> =
             Self::build_output_fn(Self::get_stderr_writer(stderr.clone())?, vm_tx);
 
-        let mut microvm: MicroVm = MicroVm::new(memory_size, input, output)?;
+        let mut microvm: MicroVm = MicroVm::new(memory_size, input, output, paused_tx, event_rx)?;
 
         let rip: u64 = microvm.load_kernel(kernel_filename)?;
         if let Some(ref initrd_filename) = initrd_filename {
@@ -133,11 +135,15 @@ impl Vmm {
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread_tx: Sender<Message> = memory_thread_tx.clone();
-        let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
-            std::thread::spawn(move || loop {
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = std::thread::spawn(move || {
+            loop {
                 match memory_thread_rx.try_recv() {
                     Ok(mut msg) => {
-                        profiler::timestamp_message!(&mut msg.payload, mem::offset_of!(syscall::LinuxDaemonMessage, payload) + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+                        profiler::timestamp_message!(
+                            &mut msg.payload,
+                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                        );
                         if let Err(e) = memory_thread_tx.send(msg) {
                             let reason: String = format!("failed to send message: {e:?}");
                             error!("memory_thread(): {reason}");
@@ -157,10 +163,38 @@ impl Vmm {
                         // No message available.
                     },
                 }
+            }
+        });
+
+        // The IoThread is not spawned at this point. Only some of its state is saved.
+        let io_thread: Option<IoThread> = gateway_conn.map(|conn| {
+            let microvm_: Arc<Mutex<MicroVm>> = microvm.clone();
+
+            // NOTE: for a virtual multiprocessor implementation,
+            // this method will become `start_threaded` or something like it.
+            // A new thread will be spawned for each vcpu, and its handle will be stored here.
+            // Reference: https://github.com/firecracker-microvm/firecracker/blob/e36e774f10a131ff883dec2f03600317d8b856ee/src/vmm/src/vstate/vcpu.rs#L246
+            let vmm_thread: JoinHandle<Result<u16>> = std::thread::spawn(move || {
+                microvm_
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                    .run()
             });
+
+            IoThread::new(
+                conn,
+                gateway_rx,
+                gateway_tx.clone(),
+                microvm.clone(),
+                event_tx,
+                paused_rx,
+                vmm_thread,
+            )
+        });
+
         Ok(Self {
             _gateway_tx: gateway_tx,
-            _io_thread,
+            io_thread,
             _memory_thread: memory_thread,
             microvm,
         })
@@ -181,10 +215,18 @@ impl Vmm {
     /// Otherwise, it returns an error.
     ///
     pub fn run(&mut self) -> Result<u16> {
-        self.microvm
-            .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-            .run()
+        // Check if a gateway connection exits to decide how to run the VMM.
+        if let Some(io_thread) = self.io_thread.take() {
+            // A gateway connection exists. Run the I/O thread as the main thread, which will join
+            // the VMM thread when it finishes.
+            io_thread.run()
+        } else {
+            // No gateway connection exists. Run the VMM thread as the main thread.
+            self.microvm
+                .lock()
+                .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                .run()
+        }
     }
 
     ///
@@ -232,12 +274,20 @@ impl Vmm {
 
             match input_queue.recv() {
                 Ok(mut msg) => {
-                    profiler::timestamp_message!(&mut msg.payload, mem::offset_of!(syscall::LinuxDaemonMessage, payload) + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+                    profiler::timestamp_message!(
+                        &mut msg.payload,
+                        mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                    );
                     msg.message_type = MessageType::Ikc;
                     let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem
                         .lock()
                         .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
-                    profiler::timestamp_message!(&mut msg.payload, mem::offset_of!(syscall::LinuxDaemonMessage, payload) + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+                    profiler::timestamp_message!(
+                        &mut msg.payload,
+                        mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                    );
                     locked_vm.write_bytes(data as u64, &msg.to_bytes())?;
                     locked_vm.consume_credit().unwrap();
                 },
@@ -297,7 +347,11 @@ impl Vmm {
                         anyhow::bail!(reason);
                     },
                 };
-                profiler::timestamp_message!(&mut message.payload, std::mem::offset_of!(syscall::LinuxDaemonMessage, payload) + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer));
+                profiler::timestamp_message!(
+                    &mut message.payload,
+                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+                );
 
                 if let Err(e) = queue.send(message) {
                     let reason: String = format!("failed to send message: {e:?}");

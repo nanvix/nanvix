@@ -17,6 +17,7 @@ use crate::vmm::microvm::kvm::{
     emulator::Emulator,
     partition::VirtualPartition,
     vcpu::{
+        VcpuEvent,
         VirtualProcessor,
         VirtualProcessorExitContext,
         VirtualProcessorExitReason,
@@ -25,11 +26,16 @@ use crate::vmm::microvm::kvm::{
 };
 
 use ::anyhow::Result;
+use ::arch::mem::PAGE_SIZE;
 use ::std::sync::{
     Arc,
     Mutex,
+    mpsc::{
+        Receiver,
+        Sender,
+    },
 };
-use ::arch::mem::PAGE_SIZE;
+use ::sys::ipc::Message;
 
 //==================================================================================================
 // Structures
@@ -79,13 +85,20 @@ impl MicroVm {
     /// - `memory_size`: Size of the virtual memory of the virtual machine.
     /// - `input`: Input function used for emulating I/O port reads.
     /// - `output`: Output function used for emulating I/O port writes.
+    /// - `paused_tx`: Channel used to tell all vCPUs have paused.
     ///
     /// # Returns
     ///
     /// Upon successful completion, this method returns the MicroVM that was created. Otherwise, it
     /// returns an error.
     ///
-    pub fn new(memory_size: usize, input: Box<InputFn>, output: Box<OutputFn>) -> Result<Self> {
+    pub fn new(
+        memory_size: usize,
+        input: Box<InputFn>,
+        output: Box<OutputFn>,
+        paused_tx: Sender<Message>,
+        event_rx: Receiver<VcpuEvent>,
+    ) -> Result<Self> {
         trace!("new(): memory_size={memory_size}");
         crate::timer!("vm_creation");
 
@@ -95,9 +108,9 @@ impl MicroVm {
         let vmem: Arc<Mutex<VirtualMemory>> =
             Arc::new(Mutex::new(VirtualMemory::new(partition.clone(), memory_size)?));
 
-        let vcpu: VirtualProcessor = VirtualProcessor::new(partition.clone(), 0)?;
+        let vcpu: VirtualProcessor = VirtualProcessor::new(partition.clone(), 0, event_rx)?;
 
-        let emulator: Emulator = Emulator::new(vmem.clone(), input, output)?;
+        let emulator: Emulator = Emulator::new(vmem.clone(), input, output, paused_tx)?;
 
         Ok(Self {
             _partition: partition,
@@ -205,7 +218,8 @@ impl MicroVm {
         if let Some((_, initrd_size)) = self.initrd {
             if initrd_size > max_initrd_size {
                 return Err(anyhow::anyhow!(
-                    "initrd is too large (initrd_size={initrd_size}, max_initrd_size={max_initrd_size:?})",
+                    "initrd is too large (initrd_size={initrd_size}, \
+                     max_initrd_size={max_initrd_size:?})",
                 ));
             }
         }

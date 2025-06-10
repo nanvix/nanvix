@@ -30,9 +30,12 @@ use ::kvm_ioctls::{
     VcpuExit,
     VcpuFd,
 };
-use ::std::sync::{
-    Arc,
-    Mutex,
+use ::std::{
+    sync::{
+        Arc,
+        Mutex,
+        mpsc::Receiver,
+    },
 };
 use irqchip::IrqChip;
 use timer::Timer;
@@ -70,10 +73,23 @@ pub struct VirtualProcessor {
     online: bool,
     /// Exit status code.
     exit_status: u16,
+    /// The receiving end of events channel owned by the vcpu side.
+    _event_rx: Receiver<VcpuEvent>,
 }
 
+///
+/// # Description
+///
+/// A placeholder for future implementations: https://github.com/nanvix/nanvix/issues/686
+///
+pub struct VcpuEvent {}
+
 impl VirtualProcessor {
-    pub fn new(partition: Arc<Mutex<VirtualPartition>>, id: u64) -> Result<Self> {
+    pub fn new(
+        partition: Arc<Mutex<VirtualPartition>>,
+        id: u64,
+        event_rx: Receiver<VcpuEvent>,
+    ) -> Result<Self> {
         trace!("new(): id={id}");
         crate::timer!("vcpu_creation");
 
@@ -104,6 +120,7 @@ impl VirtualProcessor {
             _timer: timer,
             online: false,
             exit_status: 0,
+            _event_rx: event_rx,
         })
     }
 
