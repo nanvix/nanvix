@@ -99,7 +99,7 @@ fn main() -> Result<ExitCode> {
     };
 
     // Run virtual machine and check exit status code.
-    match Vmm::new(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)? {
+    match Vmm::quick_fix(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)? {
         exit_status if exit_status != 0 => {
             let exit_code: u8 = match exit_status.try_into() {
                 Ok(code) => code,

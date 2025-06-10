@@ -80,7 +80,7 @@ pub struct Vmm {
 //==================================================================================================
 
 impl Vmm {
-    pub fn new(
+    pub fn quick_fix(
         memory_size: usize,
         kernel_filename: &str,
         initrd_filename: Option<String>,
