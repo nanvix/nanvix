@@ -20,10 +20,10 @@ use crate::vmm::microvm::kvm::{
         VirtualProcessor,
         VirtualProcessorExitContext,
         VirtualProcessorExitReason,
+        VirtualProcessorHandle
     },
     vmem::VirtualMemory,
 };
-use crate::vmm::VirtualProcessorHandle;
 
 use ::anyhow::Result;
 use ::std::{

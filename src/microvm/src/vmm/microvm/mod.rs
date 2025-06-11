@@ -11,16 +11,10 @@
 // Modules
 //==================================================================================================
 
+mod io;
 mod kvm;
 mod microvm;
 mod pal;
-
-//==================================================================================================
-// Exports
-//==================================================================================================
-
-pub use microvm::MicroVm;
-pub use kvm::vcpu::VirtualProcessorHandle;
 
 //==================================================================================================
 // Imports
@@ -32,9 +26,13 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use crate::{
-    io::IoThread,
     vmm::microvm::{
-        kvm::vmem::VirtualMemory,
+        io::IoThread,
+        microvm::MicroVm,
+        kvm::{
+            vcpu::VirtualProcessorHandle,
+            vmem::VirtualMemory,
+        },
     },
     Gateway,
 };
@@ -55,10 +53,7 @@ use ::std::{
         Mutex,
         MutexGuard,
     },
-    thread::{
-        JoinHandle,
-        self,
-    },
+    thread::JoinHandle,
 };
 use ::sys::ipc::{
     Message,
@@ -165,26 +160,29 @@ impl Vmm {
             });
         let microvm_clone = microvm.clone();
         let gateway_tx_clone = gateway_tx.clone();
-        let vcpu_thread_handle: JoinHandle<Result<u16>> = thread::spawn(move || {
+        let vcpu_thread_handle: JoinHandle<Result<u16>> = std::thread::spawn(move || {
             Vmm {
                 _gateway_tx: gateway_tx_clone,
                 _memory_thread: memory_thread,
                 microvm: microvm_clone,
             }.run()
         });
+        
+        match gateway_conn {
+            Some(conn) => {
+                // Get the virtual processor handle to pass to the I/O thread.
+                let vcpu_handle: VirtualProcessorHandle = microvm
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                    .get_vcpu_handle(vcpu_thread_handle); 
 
-        // Get the virtual processor handle to pass to the I/O thread.
-        let vcpu_handle: VirtualProcessorHandle = microvm
-            .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-            .get_vcpu_handle(vcpu_thread_handle); 
-
-        // Spawn I/O thread.
-        let io_thread: Option<JoinHandle<Result<()>>> =
-            gateway_conn.map(move |conn| IoThread::spawn(
-                conn, gateway_rx, gateway_tx, microvm, vcpu_handle, paused_rx));
-
-        io_thread.unwrap().join().unwrap();
+                // Spawn I/O thread.
+                let io_thread: JoinHandle<Result<()>> = IoThread::spawn(
+                conn, gateway_rx, gateway_tx, microvm, vcpu_handle, paused_rx);
+                io_thread.join().unwrap();
+            }
+            None => {vcpu_thread_handle.join().unwrap();}
+        }
         Ok(0)
     }
 

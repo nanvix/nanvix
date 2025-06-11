@@ -5,15 +5,25 @@
 // Imports
 //==================================================================================================
 
-use crate::Gateway;
+use crate::{
+    Gateway,
+    vmm::microvm::{
+        kvm::vcpu::VirtualProcessorHandle,
+        microvm::MicroVm
+    },
+};
 use ::anyhow::Result;
 use ::std::{
     collections::VecDeque,
     io::ErrorKind,
-    sync::mpsc::{
-        Receiver,
-        Sender,
-        TryRecvError,
+    sync::{
+        Arc,
+        mpsc::{
+            Receiver,
+            Sender,
+            TryRecvError,
+        },
+        Mutex
     },
     thread::{
         self,
@@ -42,6 +52,27 @@ pub struct IoThread {
     incoming: VecDeque<Message>,
     /// Queue of outgoing messages.
     outgoing: VecDeque<Message>,
+    /// Connection to the snapshot interface.
+    //_snapshot_gateway: Gateway, // where snapshot commands come from
+    /// MicroVM handle to issue snapshots.
+    _microvm: Arc<Mutex<MicroVm>>,
+    /// State in the snapshotting protocol.
+    _state: OrchestratorState,
+    /// Handles to issue pause / resume commands.
+    vcpu_handle: VirtualProcessorHandle,
+    /// Channel through which the MicroVM informs it has paused.
+    _paused_rx: Receiver<Message>,
+}
+//==================================================================================================
+// Enums
+//==================================================================================================
+
+enum OrchestratorState {
+    PreBoot,
+    Running,
+    Pausing,
+    PausingAndOutputFlushed,
+    Paused,
 }
 //==================================================================================================
 // Implementations
@@ -67,9 +98,13 @@ impl IoThread {
         gateway: Gateway,
         microvm_rx: Receiver<Message>,
         microvm_tx: Sender<Message>,
+        microvm: Arc<Mutex<MicroVm>>,
+        vcpu_handle: VirtualProcessorHandle,
+        paused_rx: Receiver<Message>,
     ) -> JoinHandle<Result<()>> {
         thread::spawn(move || {
-            let mut io_thread: IoThread = IoThread::new(gateway, microvm_rx, microvm_tx)?;
+            let mut io_thread: IoThread = IoThread::new(
+                gateway, microvm_rx, microvm_tx, microvm, vcpu_handle, paused_rx)?;
             io_thread.run()?;
             Ok(())
         })
@@ -94,6 +129,9 @@ impl IoThread {
         gateway: Gateway,
         microvm_rx: Receiver<Message>,
         microvm_tx: Sender<Message>,
+        microvm: Arc<Mutex<MicroVm>>,
+        vcpu_handle: VirtualProcessorHandle,
+        paused_rx: Receiver<Message>,
     ) -> Result<Self> {
         Ok(Self {
             gateway,
@@ -101,6 +139,10 @@ impl IoThread {
             microvm_tx,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
+            _microvm: microvm,
+            _state: OrchestratorState::PreBoot,
+            vcpu_handle,
+            _paused_rx: paused_rx,
         })
     }
 
@@ -114,21 +156,15 @@ impl IoThread {
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
     fn run(&mut self) -> Result<()> {
-        let mut round: usize = 0;
-
-        // Cycle through actions to avoid starvation.
-        loop {
-            if round % 4 == 0 {
+        if let Some(thread_handle) = self.vcpu_handle.vcpu_thread.take() {
+            while !thread_handle.is_finished() {
                 self.try_receive_from_microvm()?;
-            } else if round % 4 == 1 {
                 self.try_send_to_gateway()?;
-            } else if round % 4 == 2 {
                 self.try_receive_from_gateway()?;
-            } else {
                 self.try_send_to_microvm()?;
             }
-            round += 1;
         }
+        Ok(())
     }
 
     ///
@@ -170,17 +206,14 @@ impl IoThread {
     ///
     fn try_receive_from_microvm(&mut self) -> Result<()> {
         match self.microvm_rx.try_recv() {
-            Ok(mut message) => {
-                profiler::timestamp_message!(&mut message.payload, std::mem::offset_of!(syscall::LinuxDaemonMessage, payload) + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer));
+            Ok(message) => {
                 self.outgoing.push_back(message);
                 Ok(())
             },
             Err(TryRecvError::Empty) => Ok(()),
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the microvm has disconnected".to_string();
-                // When the guest finishes , the vCPU thread will disconnect from this thread. This
-                // situation is normal and should not create an error log.
-                debug!("try_receive_from_microvm(): {reason}");
+                error!("try_receive_from_microvm(): {reason}");
                 anyhow::bail!(reason)
             },
         }
@@ -198,8 +231,7 @@ impl IoThread {
     fn try_send_to_gateway(&mut self) -> Result<()> {
         match self.outgoing.pop_front() {
             Some(message) => {
-                let mut message_clone: Message = message.clone();
-                profiler::timestamp_message!(&mut message_clone.payload, std::mem::offset_of!(syscall::LinuxDaemonMessage, payload) + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer));
+                let message_clone: Message = message.clone();
                 match self.gateway.try_send(message_clone) {
                     Ok(_) => Ok(()),
                     Err(e) => {
@@ -230,8 +262,7 @@ impl IoThread {
     ///
     fn try_send_to_microvm(&mut self) -> Result<()> {
         match self.incoming.pop_front() {
-            Some(mut message) => {
-                profiler::timestamp_message!(&mut message.payload, std::mem::offset_of!(syscall::LinuxDaemonMessage, payload) + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+            Some(message) => {
                 // NOTE: calling `send()` on a channel does not block.
                 self.microvm_tx.send(message)?;
                 Ok(())
