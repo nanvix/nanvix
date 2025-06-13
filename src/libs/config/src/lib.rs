@@ -164,7 +164,7 @@ pub mod memory_layout {
     ///
     /// Size of the user heap.
     ///
-    pub const USER_HEAP_SIZE: usize = 8 * crate::constants::MEGABYTE;
+    pub const USER_HEAP_SIZE: usize = 32 * crate::constants::MEGABYTE;
 }
 
 //==================================================================================================
