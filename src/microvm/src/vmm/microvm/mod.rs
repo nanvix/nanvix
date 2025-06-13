@@ -179,11 +179,15 @@ impl Vmm {
                 // Spawn I/O thread.
                 let io_thread: JoinHandle<Result<()>> = IoThread::spawn(
                 conn, gateway_rx, gateway_tx, microvm, vcpu_handle, paused_rx);
-                io_thread.join().unwrap();
+                io_thread.join()
+                    .map_err(|e| anyhow::anyhow!("failed to join I/O thread {e:?}"))?;
+                Ok(0)
             }
-            None => {vcpu_thread_handle.join().unwrap();}
+            None => {
+                vcpu_thread_handle.join()
+                    .map_err(|e| anyhow::anyhow!("failed to join virtual processor thread {e:?}"))?
+            }
         }
-        Ok(0)
     }
 
     ///
