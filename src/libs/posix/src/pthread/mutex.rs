@@ -20,6 +20,68 @@ use ::syscall::{
 };
 
 //==================================================================================================
+// pthread_mutexattr_init()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Initializes a mutex attributes object with default values.
+///
+/// # Parameters
+///
+/// - `attr`: Pointer to the mutex attributes object to be initialized.
+///
+/// # Returns
+///
+/// The `pthread_mutexattr_init()` function returns `0` on success. On error, it returns an error number.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `attr` points to a valid `pthread_mutexattr_t` object.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_mutexattr_init(attr: *mut pthread_mutexattr_t) -> c_int {
+    ::syslog::trace!("pthread_mutexattr_init(): attr={attr:?}");
+    // TODO: https://github.com/nanvix/nanvix/issues/511.
+    0
+}
+
+//==================================================================================================
+// pthread_mutexattr_destroy()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Destroys a mutex attributes object.
+///
+/// # Parameters
+///
+/// - `attr`: Pointer to the mutex attributes object to be destroyed.
+///
+/// # Returns
+///
+/// The `pthread_mutexattr_destroy()` function returns `0` on success. On error, it returns an error number.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `attr` points to a valid `pthread_mutexattr_t` object.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_mutexattr_destroy(attr: *mut pthread_mutexattr_t) -> c_int {
+    ::syslog::trace!("pthread_mutexattr_destroy(): attr={attr:?}");
+    // TODO: https://github.com/nanvix/nanvix/issues/509
+    0
+}
+
+//==================================================================================================
 // pthread_mutex_destroy()
 //==================================================================================================
 

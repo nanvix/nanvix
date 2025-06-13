@@ -20,7 +20,10 @@ use ::syscall::{
         pthread_t,
     },
     sched::sched_param,
-    sys::types::size_t,
+    sys::types::{
+        pthread_once_t,
+        size_t,
+    },
 };
 
 //==================================================================================================
@@ -623,6 +626,46 @@ pub unsafe extern "C" fn pthread_join(thread: pthread_t, retval_ptr: *mut *mut c
         },
         Err(error) => error.code.get(),
     }
+}
+
+//==================================================================================================
+// pthread_once()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Calls the specified initialization function exactly once, even if called from multiple threads.
+///
+/// # Parameters
+///
+/// - `once_control`: Pointer to a control variable that determines whether the initialization function has been called.
+/// - `init_routine`: Pointer to the initialization function to be called.
+///
+/// # Returns
+///
+/// The `pthread_once()` function always returns `0` on success. On error, it returns an error number.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers and call a function pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `once_control` points to a valid `pthread_once_t` object.
+/// - `init_routine` is a valid function pointer.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pthread_once(
+    once_control: *mut pthread_once_t,
+    init_routine: Option<unsafe extern "C" fn()>,
+) -> c_int {
+    ::syslog::trace!(
+        "pthread_once(): once_control={once_control:?}, init_routine={:?}",
+        init_routine
+    );
+    // TODO: https://github.com/nanvix/nanvix/issues/513
+    ::syslog::error!("pthread_once(): not implemented");
+    0
 }
 
 //==================================================================================================

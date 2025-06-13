@@ -186,8 +186,49 @@ pub extern "C" fn close(fd: c_int) -> c_int {
     }
 }
 
+///
+/// # Description
+///
+/// Duplicates a file descriptor.
+///
+/// # Parameters
+///
+/// - `fd`: File descriptor to duplicate.
+///
+/// # Returns
+///
+/// Upon successful completion, `dup()` returns a new file descriptor that refers to the same open
+/// file description as `fd`. Otherwise, it returns `-1` and sets `errno` to indicate the error.
+///
 #[unsafe(no_mangle)]
-pub extern "C" fn dup2(_oldfd: c_int, _newfd: c_int) -> c_int {
+pub extern "C" fn dup(fd: c_int) -> c_int {
+    ::syslog::trace!("dup(): fd={fd:?}");
+    // TODO: https://github.com/nanvix/nanvix/issues/587
+    ::syslog::error!("dup(): not implemented");
+    unsafe {
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
+    }
+    -1
+}
+
+///
+/// # Description
+///
+/// Duplicates a file descriptor to a specified file descriptor.
+///
+/// # Parameters
+///
+/// - `oldfd`: File descriptor to duplicate.
+/// - `newfd`: File descriptor to duplicate to.
+///
+/// # Returns
+///
+/// Upon successful completion, `dup2()` returns the new file descriptor. Otherwise, it returns
+/// `-1` and sets `errno` to indicate the error.
+///
+#[unsafe(no_mangle)]
+pub extern "C" fn dup2(oldfd: c_int, newfd: c_int) -> c_int {
+    ::syslog::trace!("dup2(): oldfd={oldfd:?}, newfd={newfd:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/354
     ::syslog::error!("dup2(): not implemented");
     unsafe {
@@ -196,12 +237,54 @@ pub extern "C" fn dup2(_oldfd: c_int, _newfd: c_int) -> c_int {
     -1
 }
 
+///
+/// # Description
+///
+/// Executes a program.
+///
+/// # Parameters
+///
+/// - `path`: Path to the executable file.
+/// - `argv`: Argument vector.
+///
+/// # Returns
+///
+/// Upon successful completion, `execv()` does not return. If it fails, it returns `-1` and sets
+/// `errno` to indicate the error.
+#[unsafe(no_mangle)]
+pub extern "C" fn execv(path: *const c_char, argv: *const *const c_char) -> c_int {
+    ::syslog::trace!("execv(): path={path:?}, argv={argv:?}");
+    // TODO:https://github.com/nanvix/nanvix/issues/588
+    ::syslog::error!("execv(): not implemented");
+    unsafe {
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
+    }
+    -1
+}
+
+///
+/// # Description
+///
+/// Executes a program.
+///
+/// # Parameters
+///
+/// - `path`: Path to the executable file.
+/// - `argv`: Argument vector.
+/// - `envp`: Environment variables.
+///
+/// # Returns
+///
+/// Upon successful completion, `execve()` does not return. If it fails, it returns `-1` and sets
+/// `errno` to indicate the error.
+///
 #[unsafe(no_mangle)]
 pub extern "C" fn execve(
-    _path: *const c_char,
-    _argv: *const *const c_char,
-    _envp: *const *const c_char,
+    path: *const c_char,
+    argv: *const *const c_char,
+    envp: *const *const c_char,
 ) -> c_int {
+    ::syslog::trace!("execve(): path={path:?}, argv={argv:?}, envp={envp:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/320
     ::syslog::error!("execve(): not implemented");
     unsafe {
@@ -1861,6 +1944,40 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
             -1
         },
     }
+}
+
+///
+/// # Description
+///
+/// Waits for a process to change state.
+///
+/// # Parameters
+///
+/// - `pid`: Process ID of the process to wait for.
+/// - `status`: Pointer to an integer where the exit status of the process will be stored.
+/// - `options`: Options to control the behavior of the wait operation.
+///
+/// # Returns
+///
+/// Upon successful completion, `waitpid()` returns the process ID of the child process that changed
+/// state. If an error occurs, it returns `-1` and sets `errno` to indicate the error.
+///
+/// # Safety
+///
+/// The function is unsafe because it may dereference pointers.
+///
+/// It is safe to use this function if the following conditions are met:
+/// - `status` points to a valid `c_int`.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn waitpid(pid: pid_t, status: *mut c_int, options: c_int) -> pid_t {
+    ::syslog::trace!("waitpid(): pid={pid:?}, status={status:?}, options={options:?}");
+    // TODO: https://github.com/nanvix/nanvix/issues/336.
+    ::syslog::error!("waitpid(): not implemented");
+    unsafe {
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
+    }
+    -1
 }
 
 ///
