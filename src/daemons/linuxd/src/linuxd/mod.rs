@@ -638,10 +638,11 @@ impl<'a> LinuxDaemon<'a> {
                 let count: usize = request.count as usize;
                 let buffer: &[u8] = &request.buffer[..count];
                 let string: String = String::from_utf8_lossy(buffer).to_string();
-                print!("{string}");
                 if request.fd == ::syscall::unistd::STDERR_FILENO {
+                    eprint!("{string}");
                     let _ = io::stderr().lock().flush();
                 } else {
+                    print!("{string}");
                     let _ = io::stdout().lock().flush();
                 }
                 WriteResponse::build(source, count as ssize_t)
