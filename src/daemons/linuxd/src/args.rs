@@ -21,10 +21,10 @@ pub struct Args {
     user_vm_bind_sockaddr: String,
     /// Server socket address type.
     user_vm_bind_sockaddr_type: Option<String>,
-    /// Gateway socket address.
-    gateway_sockaddr: Option<String>,
+    /// Socket address linuxd listens to for messages from the gateway.
+    gateway_bind_sockaddr: Option<String>,
     /// Gateway socket address type.
-    gateway_sockaddr_type: Option<String>,
+    gateway_bind_sockaddr_type: Option<String>,
     /// Log to file?
     log_to_file: bool,
 }
@@ -41,9 +41,9 @@ impl Args {
     /// Command-line option for setting the socket address type of the bind socket.
     const OPT_USER_VM_BIND_SOCKET_TYPE: &'static str = "-user-vm-bind-socket-type";
     /// Command-line option for setting socket address of gateway.
-    const OPT_GATEWAY_SOCKADDR: &'static str = "-gateway-addr";
+    const OPT_GATEWAY_BIND_SOCKADDR: &'static str = "-gateway-bind-addr";
     /// Command-line option for setting the socket address type of the gateway socket.
-    const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-socket-type";
+    const OPT_GATEWAY_BIND_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for log redirecting.
     const OPT_LOGFILE: &'static str = "-log-to-file";
 
@@ -64,8 +64,8 @@ impl Args {
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut user_vm_bind_sockaddr: String = String::new();
         let mut user_vm_bind_sockaddr_type: Option<String> = None;
-        let mut gateway_sockaddr: Option<String> = None;
-        let mut gateway_sockaddr_type: Option<String> = None;
+        let mut gateway_bind_sockaddr: Option<String> = None;
+        let mut gateway_bind_sockaddr_type: Option<String> = None;
         let mut log_to_file: bool = false;
 
         let mut i: usize = 1;
@@ -79,13 +79,13 @@ impl Args {
                     i += 1;
                     user_vm_bind_sockaddr = args[i].clone();
                 },
-                Self::OPT_GATEWAY_SOCKADDR => {
+                Self::OPT_GATEWAY_BIND_SOCKADDR => {
                     i += 1;
-                    gateway_sockaddr = Some(args[i].clone());
+                    gateway_bind_sockaddr = Some(args[i].clone());
                 },
-                Self::OPT_GATEWAY_SOCKET_TYPE => {
+                Self::OPT_GATEWAY_BIND_SOCKET_TYPE => {
                     i += 1;
-                    gateway_sockaddr_type = Some(args[i].clone());
+                    gateway_bind_sockaddr_type = Some(args[i].clone());
                 },
                 Self::OPT_USER_VM_BIND_SOCKET_TYPE => {
                     i += 1;
@@ -94,8 +94,8 @@ impl Args {
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
                 },
-                _ => {
-                    return Err(anyhow::anyhow!("invalid argument"));
+                invalid_arg => {
+                    return Err(anyhow::anyhow!("invalid argument: {invalid_arg}"));
                 },
             }
 
@@ -110,8 +110,8 @@ impl Args {
         Ok(Self {
             user_vm_bind_sockaddr,
             user_vm_bind_sockaddr_type,
-            gateway_sockaddr,
-            gateway_sockaddr_type,
+            gateway_bind_sockaddr,
+            gateway_bind_sockaddr_type,
             log_to_file,
         })
     }
@@ -132,8 +132,8 @@ impl Args {
             Self::OPT_LOGFILE,
             Self::OPT_USER_VM_BIND_SOCKADDR,
             Self::OPT_USER_VM_BIND_SOCKET_TYPE,
-            Self::OPT_GATEWAY_SOCKADDR,
-            Self::OPT_GATEWAY_SOCKET_TYPE
+            Self::OPT_GATEWAY_BIND_SOCKADDR,
+            Self::OPT_GATEWAY_BIND_SOCKET_TYPE
         );
     }
 
@@ -172,8 +172,8 @@ impl Args {
     ///
     /// The socket address of the gateway.
     ///
-    pub fn gateway_sockaddr(&self) -> Option<String> {
-        self.gateway_sockaddr.clone()
+    pub fn gateway_bind_sockaddr(&self) -> Option<String> {
+        self.gateway_bind_sockaddr.clone()
     }
 
     ///
@@ -185,8 +185,8 @@ impl Args {
     ///
     /// The socket address type of the gateway socket.
     ///
-    pub fn gateway_socket_type(&self) -> Option<String> {
-        self.gateway_sockaddr_type.clone()
+    pub fn gateway_bind_socket_type(&self) -> Option<String> {
+        self.gateway_bind_sockaddr_type.clone()
     }
 
     ///
