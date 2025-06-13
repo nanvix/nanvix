@@ -23,3 +23,4 @@ SCRIPTS_DIR=$(dirname $(readlink -f "$0"))
 "${SCRIPTS_DIR}/gcc.sh" stage0 "${PREFIX}"
 "${SCRIPTS_DIR}/newlib.sh" "${PREFIX}"
 "${SCRIPTS_DIR}/gcc.sh" stage1 "${PREFIX}"
+"${SCRIPTS_DIR}/rust.sh" "${PREFIX}"
