@@ -88,10 +88,10 @@ const DEFAULT_GATEWAY_SOCKET_TYPE: SocketType = SocketType::Unix;
 pub fn main() -> Result<()> {
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    let sockaddr: String = args.bind_sockaddr();
+    let user_vm_sockaddr: String = args.user_vm_bind_sockaddr();
     initialize(args.log_to_file());
 
-    let bind_socket_type: SocketType = match args.bind_socket_type() {
+    let user_vm_bind_socket_type: SocketType = match args.user_vm_bind_socket_type() {
         Some(typ) => match SocketType::from_str(typ.as_str()) {
             Ok(typ) => typ,
             Err(error) => {
@@ -102,18 +102,18 @@ pub fn main() -> Result<()> {
         None => DEFAULT_BIND_SOCKET_TYPE,
     };
 
-    let listener: SocketListener = match Socket::bind(bind_socket_type, sockaddr.clone()) {
+    let user_vm_listener: SocketListener = match Socket::bind(user_vm_bind_socket_type, user_vm_sockaddr.clone()) {
         Ok(listener) => listener,
         Err(e) => {
-            error!("failed to bind to socket address (error={e:?})");
-            anyhow::bail!("failed to bind to socket address");
+            error!("failed to bind to uVM socket address (error={e:?})");
+            anyhow::bail!("failed to bind to uVM socket address");
         },
     };
 
     // Install signal handler.
-    let path: Option<String> = match bind_socket_type {
+    let path: Option<String> = match user_vm_bind_socket_type {
         SocketType::Tcp => None,
-        SocketType::Unix => Some(sockaddr.clone()),
+        SocketType::Unix => Some(user_vm_sockaddr.clone()),
     };
     let mut signals: SignalsInfo = Signals::new([SIGINT])?;
     thread::spawn(move || {
@@ -156,8 +156,8 @@ pub fn main() -> Result<()> {
             None => None,
         };
 
-        info!("Listening on: {sockaddr:?}");
-        let stream: SocketStream = match listener.accept() {
+        info!("Listening to user VMs on: {user_vm_sockaddr:?}");
+        let user_vm_stream: SocketStream = match user_vm_listener.accept() {
             Ok(stream) => {
                 info!("Connected to: {:?}", stream.peer_addr());
                 stream
@@ -168,7 +168,7 @@ pub fn main() -> Result<()> {
             },
         };
 
-        let mut procd: LinuxDaemon = match LinuxDaemon::init(stream, &mut gateway_conn) {
+        let mut procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, &mut gateway_conn) {
             Ok(procd) => procd,
             Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
         };
@@ -178,7 +178,11 @@ pub fn main() -> Result<()> {
         }
     }
 
-    fs::remove_file(sockaddr)?;
+    // We only need to remove the socket file when using a UNIX socket.
+    match user_vm_bind_socket_type {
+        SocketType::Tcp => {},
+        SocketType::Unix => fs::remove_file(user_vm_sockaddr)?,
+    };
 
     Ok(())
 }
