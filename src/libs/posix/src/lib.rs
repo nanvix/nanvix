@@ -21,7 +21,7 @@ extern crate nvx;
 extern crate alloc;
 
 // Address and routing parameter area.
-pub use ::syscall::arpa;
+pub mod arpa;
 
 /// Format of directory entries
 pub mod dirent;
@@ -43,6 +43,12 @@ pub mod venv;
 
 /// File control operations.
 pub mod fcntl;
+
+/// Definitions for network database operations.
+pub mod netdb;
+
+/// Definitions for the poll() function.
+pub mod poll;
 
 /// Posix threads.
 pub mod pthread;
