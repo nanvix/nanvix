@@ -6,5 +6,6 @@
 //==================================================================================================
 
 pub mod closedir;
+pub mod dirfd;
 pub mod opendir;
 pub mod readdir;

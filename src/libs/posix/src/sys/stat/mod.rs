@@ -470,6 +470,31 @@ pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
 ///
 /// # Description
 ///
+/// Sets the calling process's file mode creation mask (umask).
+///
+/// # Parameters
+///
+/// - `mask`: The new file mode creation mask.
+///
+/// # Returns
+///
+/// The `umask()` function returns the previous value of the calling process's file mode creation mask.
+///
+/// # Safety
+///
+/// This function is safe to call with any valid `mask`.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn umask(mask: u16) -> u16 {
+    ::syslog::trace!("umask(): mask={mask:?}");
+    // TODO: https://github.com/nanvix/nanvix/issues/597.
+    ::syslog::error!("umask(): not implemented");
+    0
+}
+
+///
+/// # Description
+///
 /// Sets file access and modification times.
 ///
 /// # Parameters
