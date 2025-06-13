@@ -57,10 +57,7 @@ use std::{
         Write,
     },
     mem,
-    net::{
-        TcpListener,
-        TcpStream,
-    },
+    net::TcpStream,
     process::{
         self,
         Child,
@@ -85,14 +82,16 @@ fn get_proj_root() -> String {
 
 impl Benchmark {
     fn start_gateway(&mut self) -> Result<TcpStream> {
-        debug!("Binding gateway to {}...", &self.gateway_address);
-        let listener = TcpListener::bind(&self.gateway_address)?;
-
-        self.linuxd = Some(self.start_linuxd()?);
-
-        // When connect returns, linuxd is ready to serve requests.
-        let (stream, connect) = listener.accept()?;
-        debug!("Connected gateway to: {connect}");
+        debug!("Connecting gateway to {}...", &self.gateway_address);
+        let stream: TcpStream = loop {
+            match TcpStream::connect(&self.gateway_address) {
+                Ok(stream) => break stream,
+                Err(_) => {
+                    continue;
+                }
+            };
+        };
+        debug!("Connected!");
 
         Ok(stream)
     }
@@ -124,11 +123,11 @@ impl Benchmark {
             "-ac".to_string(),
             self.hwloc.linuxd_core_str.to_string(),
             format!("{}/bin/linuxd.elf", get_proj_root()),
-            "-bind-addr".to_string(),
+            "-user-vm-bind-addr".to_string(),
             self.linuxd_address.clone(),
-            "-gateway-addr".to_string(),
+            "-gateway-bind-addr".to_string(),
             self.gateway_address.to_string(),
-            "-gateway-socket-type".to_string(),
+            "-gateway-bind-socket-type".to_string(),
             "tcp".to_string(),
         ];
 
@@ -184,10 +183,18 @@ impl Benchmark {
     /// linuxd and the nanovm.
     pub fn setup(&mut self) {
         // This starts linuxd under the hood.
+        match self.start_linuxd() {
+            Ok(linuxd) => self.linuxd = Some(linuxd),
+            Err(_) => {
+                error!("error starting up linuxd");
+                self.cleanup();
+                process::exit(1);
+            },
+        }
         match self.start_gateway() {
             Ok(gateway) => self.gateway = Some(gateway),
             Err(_) => {
-                error!("error starting up linuxd and the gateway");
+                error!("error starting up the gateway");
                 self.cleanup();
                 process::exit(1);
             },
