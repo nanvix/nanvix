@@ -179,10 +179,8 @@ impl Benchmark {
         Ok(nanovm_cmd)
     }
 
-    /// Main entrypoint to set-up the benchmark. It starts the gateway,
-    /// linuxd and the nanovm.
+    /// Configures teh set-up by starting linuxd and the gateway server.
     pub fn setup(&mut self) {
-        // This starts linuxd under the hood.
         match self.start_linuxd() {
             Ok(linuxd) => self.linuxd = Some(linuxd),
             Err(_) => {
@@ -199,6 +197,10 @@ impl Benchmark {
                 process::exit(1);
             },
         }
+    }
+
+    /// Starts the Nano VM.
+    pub fn start(&mut self) {
         match self.start_nanovm() {
             Ok(nanovm) => self.nanovm = Some(nanovm),
             Err(_) => {
@@ -281,6 +283,7 @@ impl Benchmark {
             // Start the clock
             let start = Instant::now();
             self.setup();
+            self.start();
             self.gateway.as_mut().unwrap().write_all(&payload)?;
 
             let mut response_payload: Vec<u8> = vec![0u8; mem::size_of::<u32>() + data.len()];
