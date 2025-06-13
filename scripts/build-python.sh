@@ -46,7 +46,7 @@ configure() {
 	LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
 	LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld" \
 	CFLAGS="-static -L $SYSROOT_DIR/lib" \
-	LIBS="-Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a -lsqlite3 -Wl,--end-group" \
+	LIBS="-Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a -lsqlite3 -lssl -lcrypto -Wl,--end-group" \
 	LIBSQLITE3_LIBS="-L $SYSROOT_DIR/lib -lsqlite3" \
 	LIBSQLITE3_CFLAGS="-I $SYSROOT_DIR/include" \
 	ZLIB_LIBS="-L $SYSROOT_DIR/lib -lz" \
@@ -63,6 +63,7 @@ configure() {
 		--exec-prefix=$SYSROOT_DIR \
 		--with-ensurepip=no \
 		--with-pkg-config=no \
+		--with-openssl=$SYSROOT_DIR \
 		--disable-ipv6 \
 		ac_cv_file__dev_ptmx=no \
 		ac_cv_file__dev_ptc=no \

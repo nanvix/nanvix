@@ -465,18 +465,18 @@ endif
 # Build Rules for Python
 #===================================================================================================
 
-all-python: init all-guest-staticlibs all-sqlite all-zlib
+all-python: init all-guest-staticlibs all-sqlite all-openssl all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Python..."
 	bash $(SCRIPTS_DIR)/build-python.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
-clean-python: all-sqlite clean-zlib
+clean-python: clean-sqlite clean-openssl clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
-distclean-python: distclean-sqlite distclean-zlib
+distclean-python: distclean-sqlite distclean-openssl distclean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
