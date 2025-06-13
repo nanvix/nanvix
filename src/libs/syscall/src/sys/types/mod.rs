@@ -25,6 +25,10 @@ use crate::{
         self,
         sched_param,
     },
+    sys::{
+        socket::socklen_t,
+        uio::iovec,
+    },
 };
 use ::core::mem;
 
@@ -200,4 +204,96 @@ impl Default for pthread_condattr_t {
             clock: 0,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct pthread_once_t {
+    /// Whether the `pthread_once` is initialized.
+    is_initialized: c_int,
+    /// Whether the `pthread_once` has been executed.
+    init_executed: c_int,
+}
+::static_assert::assert_eq_size!(pthread_once_t, pthread_once_t::SIZE);
+
+impl pthread_once_t {
+    /// Size of the `is_initialized` field.
+    const SIZE_OF_IS_INITIALIZED: usize = mem::size_of::<c_int>();
+    /// Size of the `init_executed` field.
+    const SIZE_OF_INIT_EXECUTED: usize = mem::size_of::<c_int>();
+
+    /// Size of `pthread_once_t` structure.
+    pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_INIT_EXECUTED;
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct msghdr {
+    /// Optional address.
+    pub msg_name: *mut c_void,
+    // Size of the address.
+    pub msg_namelen: socklen_t,
+    // Scatter/gather array of message blocks
+    pub msg_iov: *mut iovec,
+    /// Number of member in `msg_iov`.
+    pub msg_iovlen: c_int,
+    /// Ancillary data.
+    pub msg_control: *mut c_void,
+    /// Ancillary data buffer length.
+    pub msg_controllen: socklen_t,
+    /// Flags.
+    pub msg_flags: c_int,
+}
+::static_assert::assert_eq_size!(msghdr, msghdr::SIZE);
+
+impl msghdr {
+    /// Size of the `msg_name` field.
+    const SIZE_OF_MSG_NAME: usize = mem::size_of::<*mut c_void>();
+    /// Size of the `msg_namelen` field.
+    const SIZE_OF_MSG_NAMELEN: usize = mem::size_of::<socklen_t>();
+    /// Size of the `msg_iov` field.
+    const SIZE_OF_MSG_IOV: usize = mem::size_of::<*mut iovec>();
+    /// Size of the `msg_iovlen` field.
+    const SIZE_OF_MSG_IOVLEN: usize = mem::size_of::<c_int>();
+    /// Size of the `msg_control` field.
+    const SIZE_OF_MSG_CONTROL: usize = mem::size_of::<*mut c_void>();
+    /// Size of the `msg_controllen` field.
+    const SIZE_OF_MSG_CONTROLLEN: usize = mem::size_of::<socklen_t>();
+    /// Size of the `msg_flags` field.
+    const SIZE_OF_MSG_FLAGS: usize = mem::size_of::<c_int>();
+
+    /// Size of `msghdr` structure.
+    pub const SIZE: usize = Self::SIZE_OF_MSG_NAME
+        + Self::SIZE_OF_MSG_NAMELEN
+        + Self::SIZE_OF_MSG_IOV
+        + Self::SIZE_OF_MSG_IOVLEN
+        + Self::SIZE_OF_MSG_CONTROL
+        + Self::SIZE_OF_MSG_CONTROLLEN
+        + Self::SIZE_OF_MSG_FLAGS;
+}
+
+/// Header for ancililary data data objects in msg_control buffer in `msghdr`.
+#[derive(Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct cmsghdr {
+    /// Data byte count, including the control message header..
+    pub cmsg_len: socklen_t,
+    /// Originating protocol.
+    pub cmsg_level: c_int,
+    /// Protocol-specific type.
+    pub cmsg_type: c_int,
+}
+::static_assert::assert_eq_size!(cmsghdr, cmsghdr::SIZE);
+
+impl cmsghdr {
+    /// Size of the `cmsg_len` field.
+    const SIZE_OF_CMSG_LEN: usize = mem::size_of::<socklen_t>();
+    /// Size of the `cmsg_level` field.
+    const SIZE_OF_CMSG_LEVEL: usize = mem::size_of::<c_int>();
+    /// Size of the `cmsg_type` field.
+    const SIZE_OF_CMSG_TYPE: usize = mem::size_of::<c_int>();
+
+    /// Size of `cmsghdr` structure.
+    pub const SIZE: usize =
+        Self::SIZE_OF_CMSG_LEN + Self::SIZE_OF_CMSG_LEVEL + Self::SIZE_OF_CMSG_TYPE;
 }

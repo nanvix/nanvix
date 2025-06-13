@@ -1,0 +1,380 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Configuration
+//==================================================================================================
+
+#![allow(non_camel_case_types)]
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::ffi::{
+    c_char,
+    c_int,
+    c_void,
+};
+use ::sys::error::ErrorCode;
+use ::syscall::sys::{
+    socket::{
+        sockaddr,
+        socklen_t,
+    },
+    types::size_t,
+};
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+#[repr(C, packed)]
+pub struct hostent {
+    pub h_name: *const c_char,
+    pub h_aliases: *const *const c_char,
+    pub h_addrtype: c_int,
+    pub h_length: c_int,
+    pub h_addr_list: *const *const c_char,
+}
+
+#[repr(C, packed)]
+pub struct netent {
+    pub n_name: *const c_char,
+    pub n_aliases: *const *const c_char,
+    pub n_addrtype: c_int,
+    pub n_net: u32,
+}
+
+#[repr(C, packed)]
+pub struct servent {
+    pub s_name: *const c_char,
+    pub s_aliases: *const *const c_char,
+    pub s_port: c_int,
+    pub s_proto: *const c_char,
+}
+
+#[repr(C, packed)]
+pub struct protoent {
+    pub p_name: *const c_char,
+    pub p_aliases: *const *const c_char,
+    pub p_proto: c_int,
+}
+
+#[repr(C, packed)]
+pub struct addrinfo {
+    pub ai_flags: c_int,
+    pub ai_family: c_int,
+    pub ai_socktype: c_int,
+    pub ai_protocol: c_int,
+    pub ai_addrlen: socklen_t,
+    pub ai_canonname: *const c_char,
+    pub ai_addr: *const sockaddr,
+    pub ai_next: *mut addrinfo,
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Frees the memory allocated for the linked list of addrinfo structures returned by `getaddrinfo()`.
+///
+/// # Parameters
+///
+/// - `res`: Pointer to the linked list of addrinfo structures to be freed.
+///
+/// # Returns
+///
+/// This function does not return a value.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `res` points to a valid linked list of addrinfo structures previously allocated by `getaddrinfo()`.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn freeaddrinfo(res: *mut addrinfo) {
+    ::syslog::trace!("freeaddrinfo(): res={res:?}");
+    ::syslog::error!("freeaddrinfo(): not implemented");
+}
+
+///
+/// # Description
+///
+/// Translates the name of a service location (such as a host name) and/or a service name
+/// into a set of socket addresses.
+///
+/// # Parameters
+///
+/// - `node`: Pointer to a null-terminated string containing a host name or address string.
+/// - `service`: Pointer to a null-terminated string containing a service name or port number.
+/// - `hints`: Pointer to an addrinfo structure that specifies criteria for selecting the socket address structures returned.
+/// - `res`: Pointer to a pointer where the resulting list of addrinfo structures will be stored.
+///
+/// # Returns
+///
+/// The `getaddrinfo()` function returns `0` on success. On error, it returns a nonzero error code.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `node` and `service` are valid null-terminated strings (if not null).
+/// - `hints` points to a valid addrinfo structure (if not null).
+/// - `res` points to a valid pointer to store the result.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn getaddrinfo(
+    node: *const c_char,
+    service: *const c_char,
+    hints: *const addrinfo,
+    res: *mut *mut addrinfo,
+) -> c_int {
+    ::syslog::trace!(
+        "getaddrinfo(): node={node:?}, service={service:?}, hints={hints:?}, res={res:?}"
+    );
+    ::syslog::error!("getaddrinfo(): not implemented");
+    ErrorCode::InvalidSysCall.get()
+}
+
+///
+/// # Description
+///
+/// Retrieves host information corresponding to a network address.
+///
+/// # Parameters
+///
+/// - `addr`: Pointer to the network address.
+/// - `len`: Length of the address.
+/// - `type_`: Address type.
+///
+/// # Returns
+///
+/// Returns a pointer to a hostent structure on success, or null on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `addr` points to a valid network address of length `len`.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gethostbyaddr(
+    addr: *const c_void,
+    len: size_t,
+    type_: c_int,
+) -> *mut c_void {
+    ::syslog::trace!("gethostbyaddr(): addr={addr:?}, len={len:?}, type_={type_:?}");
+    ::syslog::error!("gethostbyaddr(): not implemented");
+    ::core::ptr::null_mut()
+}
+
+///
+/// # Description
+///
+/// Retrieves host information corresponding to a host name.
+///
+/// # Parameters
+///
+/// - `name`: Pointer to a null-terminated string containing the host name.
+///
+/// # Returns
+///
+/// Returns a pointer to a hostent structure on success, or null on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `name` points to a valid null-terminated string.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gethostbyname(name: *const c_char) -> *mut c_void {
+    ::syslog::trace!("gethostbyname(): name={name:?}");
+    ::syslog::error!("gethostbyname(): not implemented");
+    ::core::ptr::null_mut()
+}
+
+///
+/// # Description
+///
+/// Retrieves protocol information corresponding to a protocol name.
+///
+/// # Parameters
+///
+/// - `name`: Pointer to a null-terminated string containing the protocol name.
+///
+/// # Returns
+///
+/// Returns a pointer to a protoent structure on success, or null on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `name` points to a valid null-terminated string.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn getprotobyname(name: *const c_char) -> *mut c_void {
+    ::syslog::trace!("getprotobyname(): name={name:?}");
+    ::syslog::error!("getprotobyname(): not implemented");
+    ::core::ptr::null_mut()
+}
+
+///
+/// # Description
+///
+/// Retrieves service information corresponding to a service name and protocol.
+///
+/// # Parameters
+///
+/// - `name`: Pointer to a null-terminated string containing the service name.
+/// - `proto`: Pointer to a null-terminated string containing the protocol name.
+///
+/// # Returns
+///
+/// Returns a pointer to a servent structure on success, or null on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `name` and `proto` point to valid null-terminated strings.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn getservbyname(name: *const c_char, proto: *const c_char) -> *mut c_void {
+    ::syslog::trace!("getservbyname(): name={name:?}, proto={proto:?}");
+    ::syslog::error!("getservbyname(): not implemented");
+    ::core::ptr::null_mut()
+}
+
+///
+/// # Description
+///
+/// Retrieves service information corresponding to a port and protocol.
+///
+/// # Parameters
+///
+/// - `port`: Port number.
+/// - `proto`: Pointer to a null-terminated string containing the protocol name.
+///
+/// # Returns
+///
+/// Returns a pointer to a servent structure on success, or null on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `proto` points to a valid null-terminated string.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn getservbyport(port: c_int, proto: *const c_char) -> *mut c_void {
+    ::syslog::trace!("getservbyport(): port={port:?}, proto={proto:?}");
+    ::syslog::error!("getservbyport(): not implemented");
+    ::core::ptr::null_mut()
+}
+
+///
+/// # Description
+///
+/// Converts a socket address to a corresponding host and service, in a protocol-independent manner.
+///
+/// # Parameters
+///
+/// - `sa`: Pointer to the socket address structure.
+/// - `salen`: Length of the socket address structure.
+/// - `host`: Pointer to a buffer to store the host name.
+/// - `hostlen`: Length of the host buffer.
+/// - `serv`: Pointer to a buffer to store the service name.
+/// - `servlen`: Length of the service buffer.
+/// - `flags`: Flags to modify function behavior.
+///
+/// # Returns
+///
+/// Returns `0` on success, or a nonzero error code on failure.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `sa` points to a valid socket address structure of length `salen`.
+/// - `host` and `serv` point to valid buffers of length `hostlen` and `servlen`, respectively.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn getnameinfo(
+    sa: *const c_void,
+    salen: socklen_t,
+    host: *mut c_char,
+    hostlen: socklen_t,
+    serv: *mut c_char,
+    servlen: socklen_t,
+    flags: c_int,
+) -> c_int {
+    ::syslog::trace!(
+        "getnameinfo(): sa={sa:?}, salen={salen:?}, host={host:?}, hostlen={hostlen:?}, \
+         serv={serv:?}, servlen={servlen:?}, flags={flags:?}"
+    );
+    ::syslog::error!("getnameinfo(): not implemented");
+    ErrorCode::InvalidSysCall.get()
+}
+
+///
+/// # Description
+///
+/// Returns a string describing a network-related error code.
+///
+/// # Parameters
+///
+/// - `errcode`: The error code to describe.
+///
+/// # Returns
+///
+/// Returns a pointer to a null-terminated string describing the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it may return a pointer to a static string.
+///
+/// It is safe to call this function with any valid error code.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gai_strerror(errcode: c_int) -> *const c_char {
+    ::syslog::trace!("gai_strerror(): errcode={errcode:?}");
+    ::syslog::error!("gai_strerror(): not implemented");
+    ::core::ptr::null()
+}
+
+///
+/// # Description
+///
+/// Returns a pointer to the location where the error code for network database operations is stored.
+///
+/// # Returns
+///
+/// Returns a pointer to an integer containing the error code.
+///
+/// # Safety
+///
+/// This function is unsafe because it returns a raw pointer.
+///
+/// It is safe to call this function if the caller expects a pointer to a thread-local or global error variable.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn __h_errno() -> *mut c_int {
+    ::syslog::trace!("__h_errno()");
+    ::syslog::error!("__h_errno(): not implemented");
+    ::core::ptr::null_mut()
+}

@@ -12,7 +12,7 @@
 //==================================================================================================
 
 use crate::{
-    arpa::inet::bindings::in_addr,
+    arpa::inet::in_addr,
     ffi::c_uchar,
     netinet::in_::{
         bindings::sockaddr_in,

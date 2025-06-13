@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    arpa::inet::bindings::in_addr,
+    arpa::inet::in_addr,
     sys::socket::{
         sa_family_t,
         sockaddr_storage,

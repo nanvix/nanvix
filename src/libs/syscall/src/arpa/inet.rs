@@ -1,31 +1,34 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use core::mem;
+//==================================================================================================
+// Configuration
+//==================================================================================================
+
+#![allow(non_camel_case_types)]
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::core::mem;
 
 //==================================================================================================
 // C Interface
 //==================================================================================================
 
-/// C Bindings for `arpa/inet.h`.
-pub mod bindings {
+/// Used for internet addresses.
+pub type in_addr_t = u32;
 
-    #![allow(non_camel_case_types)]
+/// Describes an internet address.
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct in_addr {
+    pub s_addr: in_addr_t,
+}
+::static_assert::assert_eq_size!(in_addr, in_addr::_SIZE);
 
-    use super::*;
-
-    /// Used for internet addresses.
-    pub type in_addr_t = u32;
-
-    /// Describes an internet address.
-    #[repr(C, packed)]
-    pub struct in_addr {
-        pub s_addr: in_addr_t,
-    }
-    ::static_assert::assert_eq_size!(in_addr, in_addr::_SIZE);
-
-    impl in_addr {
-        /// Size of this structure, used for static assertions.
-        const _SIZE: usize = mem::size_of::<in_addr_t>(); // s_addr
-    }
+impl in_addr {
+    /// Size of this structure, used for static assertions.
+    const _SIZE: usize = mem::size_of::<in_addr_t>(); // s_addr
 }
