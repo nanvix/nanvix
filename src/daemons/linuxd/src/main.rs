@@ -42,19 +42,10 @@ use ::flexi_logger::{
     FileSpec,
     Logger,
 };
-use ::signal_hook::{
-    consts::SIGINT,
-    iterator::{
-        Signals,
-        SignalsInfo,
-    },
-};
 use ::std::{
     env,
-    fs,
     str::FromStr,
     sync::Once,
-    thread,
 };
 use ::sys::{
     error::ErrorCode,
@@ -88,9 +79,13 @@ const DEFAULT_GATEWAY_SOCKET_TYPE: SocketType = SocketType::Unix;
 pub fn main() -> Result<()> {
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    let user_vm_sockaddr: String = args.user_vm_bind_sockaddr();
     initialize(args.log_to_file());
 
+    // Work-out the socket addresses.
+    let user_vm_sockaddr: String = args.user_vm_bind_sockaddr();
+    let gateway_sockaddr: Option<String> = args.gateway_bind_sockaddr();
+
+    // Work-out the socket-types for the user VM and gateway sockets.
     let user_vm_bind_socket_type: SocketType = match args.user_vm_bind_socket_type() {
         Some(typ) => match SocketType::from_str(typ.as_str()) {
             Ok(typ) => typ,
@@ -102,87 +97,85 @@ pub fn main() -> Result<()> {
         None => DEFAULT_BIND_SOCKET_TYPE,
     };
 
+    let gateway_bind_socket_type: SocketType = match args.gateway_bind_socket_type() {
+        Some(typ) => match SocketType::from_str(typ.as_str()) {
+            Ok(typ) => typ,
+            Err(error) => {
+                error!("{error} (type={typ:?})");
+                anyhow::bail!("failed to parse socket address type");
+            },
+        },
+        None => DEFAULT_GATEWAY_SOCKET_TYPE,
+    };
+
     let user_vm_listener: SocketListener = match Socket::bind(user_vm_bind_socket_type, user_vm_sockaddr.clone()) {
         Ok(listener) => listener,
         Err(e) => {
-            error!("failed to bind to uVM socket address (error={e:?})");
-            anyhow::bail!("failed to bind to uVM socket address");
+            error!("failed to bind to user VM socket address (address={}, error={e:?})", user_vm_sockaddr.clone());
+            anyhow::bail!("failed to bind to user VM socket address");
         },
     };
 
-    // Install signal handler.
-    let path: Option<String> = match user_vm_bind_socket_type {
-        SocketType::Tcp => None,
-        SocketType::Unix => Some(user_vm_sockaddr.clone()),
+    let gateway_listener: Option<SocketListener> = match gateway_sockaddr {
+        Some(ref sockaddr) => {
+            match Socket::bind(gateway_bind_socket_type, sockaddr.clone()) {
+                Ok(stream) => Some(stream),
+                Err(e) => {
+                    error!("failed to bind to gateway (address={}, error={e:?})", sockaddr.clone());
+                    anyhow::bail!("failed to bind to gateway");
+                },
+            }
+        },
+        None => None
     };
-    let mut signals: SignalsInfo = Signals::new([SIGINT])?;
-    thread::spawn(move || {
-        #[allow(clippy::never_loop)]
-        for sig in signals.forever() {
-            println!("Received signal {sig:?}");
-            if let Some(path) = path {
-                if let Err(e) = fs::remove_file(path.clone()) {
-                    error!("failed to remove socket file (error={e:?})");
+
+    // Accepct connection from gateway after binding the socket to listen from user VMs,
+    // but before accepting any connection.
+    let mut gateway_stream: Option<SocketStream> = match gateway_listener {
+        Some(gateway_listener) => {
+            info!("Listening to gateway on: {:?}", gateway_sockaddr);
+            loop {
+                match gateway_listener.accept() {
+                    Ok(stream) => {
+                        info!("Connected to gateway in: {:?}", stream.peer_addr());
+                        break Some(stream);
+                    },
+                    Err(error) => {
+                        error!("Failed to accept connection: {error:?}");
+                        continue;
+                    },
                 }
             }
-            // Exit process.
-            std::process::exit(0);
         }
-    });
+        None => None,
+    };
 
-    loop {
-        // Connect to gateway after binding to socket address, as a connection to the gateway will
-        // signal we are ready to accept commands.
-        let mut gateway_conn: Option<SocketStream> = match args.gateway_sockaddr() {
-            Some(sockaddr) => {
-                let getway_socket_type: SocketType = match args.gateway_socket_type() {
-                    Some(typ) => match SocketType::from_str(typ.as_str()) {
-                        Ok(typ) => typ,
-                        Err(error) => {
-                            error!("{error} (type={typ:?})");
-                            anyhow::bail!("failed to parse socket address type");
-                        },
-                    },
-                    None => DEFAULT_GATEWAY_SOCKET_TYPE,
-                };
-                match SocketStream::connect(getway_socket_type, sockaddr) {
-                    Ok(stream) => Some(stream),
-                    Err(e) => {
-                        error!("failed to connect to gateway (error={e:?})");
-                        anyhow::bail!("failed to connect to gateway");
-                    },
-                }
-            },
-            None => None,
-        };
-
-        info!("Listening to user VMs on: {user_vm_sockaddr:?}");
-        let user_vm_stream: SocketStream = match user_vm_listener.accept() {
+    info!("Listening to user VMs on: {user_vm_sockaddr:?}");
+    let user_vm_stream: SocketStream = loop {
+        match user_vm_listener.accept() {
             Ok(stream) => {
-                info!("Connected to: {:?}", stream.peer_addr());
-                stream
+                info!("Connected to user VM in: {:?}", stream.peer_addr());
+                break stream;
             },
             Err(error) => {
                 error!("Failed to accept connection: {error:?}");
                 continue;
             },
         };
-
-        let mut procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, &mut gateway_conn) {
-            Ok(procd) => procd,
-            Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
-        };
-
-        if procd.run().is_err() {
-            break;
-        }
-    }
-
-    // We only need to remove the socket file when using a UNIX socket.
-    match user_vm_bind_socket_type {
-        SocketType::Tcp => {},
-        SocketType::Unix => fs::remove_file(user_vm_sockaddr)?,
     };
+
+    let mut procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, &mut gateway_stream) {
+        Ok(procd) => procd,
+        Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
+    };
+
+    // Run main procd loop.
+    let procd_ret = procd.run();
+
+    // Do not panic here as we have already exitted the loop. Instead, continue with clean-up.
+    if procd_ret.is_err() {
+        error!("error running procd (error={procd_ret:?})");
+    }
 
     Ok(())
 }
