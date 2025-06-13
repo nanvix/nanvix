@@ -17,7 +17,7 @@ export TARGET=i686-nanvix
 export CONTRIB_DIR=${PREFIX}/src
 export NEWLIB_HOME=${CONTRIB_DIR}/newlib
 export NEWLIB_REPOSITORY=https://github.com/nanvix/newlib
-export NEWLIB_COMMIT=3e6c5f6d86b5fbfb7019f5895f7c5ffd3e8dcbaa
+export NEWLIB_COMMIT=2f05dee39c7bbf7f837885ecacfe4d88ec17ecba
 
 #===================================================================================================
 # Get Sources
