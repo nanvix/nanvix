@@ -122,7 +122,7 @@ use ::syscomm::SocketStream;
 pub struct LinuxDaemon<'a> {
     pid: ProcessIdentifier,
     assembler: RequestAssembler,
-    stream: SocketStream,
+    uvm_stream: SocketStream,
     gateway_conn: &'a mut Option<SocketStream>,
     venv: VirtualEnviromentDirectory,
 }
@@ -133,13 +133,13 @@ pub struct LinuxDaemon<'a> {
 
 impl<'a> LinuxDaemon<'a> {
     pub fn init(
-        stream: SocketStream,
+        uvm_stream: SocketStream,
         gateway_conn: &'a mut Option<SocketStream>,
     ) -> Result<Self, Error> {
         Ok(Self {
             pid: ProcessIdentifier::from(0),
             assembler: RequestAssembler::default(),
-            stream,
+            uvm_stream,
             gateway_conn,
             venv: VirtualEnviromentDirectory::new(),
         })
@@ -541,7 +541,7 @@ impl<'a> LinuxDaemon<'a> {
     fn recv(&mut self) -> Result<Option<Message>> {
         let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
             [0u8; config::kernel::IPC_MESSAGE_SIZE];
-        let buf_reader: &mut SocketStream = &mut self.stream;
+        let buf_reader: &mut SocketStream = &mut self.uvm_stream;
         if let Err(e) = buf_reader.read_exact(&mut buf) {
             match e.kind() {
                 ErrorKind::UnexpectedEof => return Ok(None),
@@ -566,7 +566,7 @@ impl<'a> LinuxDaemon<'a> {
     // Send a message to the TCP stream.
     fn send(&mut self, message: Message) -> Result<()> {
         let bytes = message.to_bytes();
-        match self.stream.write_all(&bytes) {
+        match self.uvm_stream.write_all(&bytes) {
             Ok(_) => Ok(()),
             Err(e) => {
                 let reason: String = format!("failed to write message (error={e:?})");
