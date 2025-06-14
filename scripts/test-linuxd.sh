@@ -15,7 +15,7 @@ mkdir -p ${LOGS_DIR}
 # Run linuxd.
 LINUXD_STDOUT_FILE_NAME="${LOGS_DIR}/linuxd-stdout_$(date "+%Y_%m_%d_%H_%M").log"
 LINUXD_STDERR_FILE_NAME="${LOGS_DIR}/linuxd-stderr_$(date "+%Y_%m_%d_%H_%M").log"
-RUST_LOG=trace ./bin/linuxd.elf -bind-addr ${SOCKADDR} \
+RUST_LOG=trace ./bin/linuxd.elf -user-vm-bind-addr ${SOCKADDR} \
     -log-to-file \
     1> ${LINUXD_STDOUT_FILE_NAME} \
     2> ${LINUXD_STDERR_FILE_NAME} &
