@@ -13,3 +13,4 @@ homepage.workspace = true
 [dependencies]
 config = { workspace = true }
 anyhow = { workspace = true }
+log = { workspace = true }
