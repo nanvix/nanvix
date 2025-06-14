@@ -33,7 +33,7 @@ make run
 Open a terminal and run the Linux Daemon:
 
 ```bash
-./bin/linuxd.elf -bind-addr 127.0.0.1:1234
+./bin/linuxd.elf -user-vm-bind-addr 127.0.0.1:1234
 ```
 
 ### Step 2: Run the MicroVM
@@ -53,7 +53,7 @@ To enable logging, set the `RUST_LOG` environment variable to `trace` when runni
 RUST_LOG=trace sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -gateway 127.0.0.1:1234
 
 # Open a scond terminal and run the MicroVM.
-RUST_LOG=trace ./bin/linuxd.elf -bind-addr 127.0.0.1:1234
+RUST_LOG=trace ./bin/linuxd.elf -user-vm-bind-addr 127.0.0.1:1234
 ```
 
 ### Redirecting Standard Error (Optional)
