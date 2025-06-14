@@ -28,9 +28,9 @@ impl LinuxDaemon {
         debug!("spawning linux daemon {linuxd_sockaddr} {sandbox_sockaddr}");
         let child = Command::new(format!("{}/linuxd.elf", config::BINARY_DIRECTORY))
             .arg("-log-to-file")
-            .arg("-bind-addr")
+            .arg("-user-vm-bind-addr")
             .arg(linuxd_sockaddr)
-            .arg("-gateway-addr")
+            .arg("-gateway-bind-addr")
             .arg(sandbox_sockaddr)
             .stdout(Stdio::piped())
             .spawn()?;

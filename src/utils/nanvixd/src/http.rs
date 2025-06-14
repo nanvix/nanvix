@@ -38,17 +38,13 @@ use ::std::{
     future::Future,
     mem,
     pin::Pin,
-    sync::Arc,
 };
 use ::tokio::{
     io::{
         AsyncReadExt,
         AsyncWriteExt,
     },
-    net::{
-        UnixListener,
-        UnixStream,
-    },
+    net::UnixStream,
 };
 
 //==================================================================================================
@@ -65,7 +61,6 @@ struct MessageJson {
 pub struct HttpClient {
     sandboxes: SandboxCache,
     requestid: usize,
-    linuxd_listener: Arc<UnixListener>,
     linuxd_sockaddr: String,
     sandbox_sockaddr: String,
     console_file: String,
@@ -75,7 +70,6 @@ impl HttpClient {
     pub fn new(
         sandboxes: SandboxCache,
         requestid: usize,
-        linuxd_listener: Arc<UnixListener>,
         linuxd_sockaddr: String,
         sandbox_sockaddr: String,
         console_file: String,
@@ -83,7 +77,6 @@ impl HttpClient {
         Self {
             sandboxes,
             requestid,
-            linuxd_listener,
             linuxd_sockaddr,
             sandbox_sockaddr,
             console_file,
@@ -128,14 +121,15 @@ impl HttpClient {
         linuxd_sockaddr: String,
         console_file: String,
         sandbox_sockaddr: String,
-        linuxd_listener: Arc<UnixListener>,
     ) -> Result<Vec<u8>> {
         let linuxd_sockaddr: String =
             config::linuxd_sockaddr_builder(&linuxd_sockaddr, request.clientid, requestid);
+        let sandbox_sockaddr: String =
+            config::sandbox_sockaddr_builder(&sandbox_sockaddr, request.clientid, requestid);
 
         let tag: SandboxTag = SandboxTag::new(request.clientid, &request.program);
         let config: SandboxConfig =
-            SandboxConfig::new(linuxd_listener, &linuxd_sockaddr, &sandbox_sockaddr, &console_file);
+            SandboxConfig::new(&linuxd_sockaddr, &sandbox_sockaddr, &console_file);
         let mut sandbox: SandboxHandle = sandbox_cache.get(&tag, &config).await?;
 
         let mut locked_sandbox: LockedSandbox = sandbox.get_sandbox().await?;
@@ -230,7 +224,6 @@ impl Service<Request<Incoming>> for HttpClient {
         let sandbox_sockaddr: String = self.sandbox_sockaddr.clone();
         let linuxd_sockaddr: String = self.linuxd_sockaddr.clone();
         let nanvix_console: String = self.console_file.clone();
-        let linuxd_listener: Arc<UnixListener> = self.linuxd_listener.clone();
         let sandboxes: SandboxCache = self.sandboxes.clone();
         let future = async move {
             let body: Bytes = match request.collect().await {
@@ -275,7 +268,6 @@ impl Service<Request<Incoming>> for HttpClient {
                 linuxd_sockaddr,
                 nanvix_console,
                 sandbox_sockaddr,
-                linuxd_listener,
             )
             .await
             {

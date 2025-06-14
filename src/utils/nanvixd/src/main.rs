@@ -36,19 +36,14 @@ use crate::{
 use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
-use ::std::{
-    fs,
-    sync::{
-        atomic::AtomicUsize,
-        Arc,
-    },
+use ::std::sync::{
+    atomic::AtomicUsize,
+    Arc,
 };
 use ::tokio::{
     net::{
         TcpListener,
         TcpStream,
-        UnixListener,
-        UnixSocket,
     },
     signal::unix::{
         signal,
@@ -64,14 +59,9 @@ pub async fn main() -> Result<()> {
     logging::initialize();
 
     let args: Args = Args::parse(std::env::args().collect())?;
-    let sandbox_sockaddr: String = config::sandbox_sockaddr_builder(args.sandbox_sockaddr());
 
     let mut signals: Signal = signal(SignalKind::interrupt())?;
     let http_listener: TcpListener = TcpListener::bind(args.http_sockaddr()).await?;
-    let socket: UnixSocket = UnixSocket::new_stream()?;
-    socket.bind(&sandbox_sockaddr)?;
-    let linuxd_listener: Arc<UnixListener> =
-        Arc::new(socket.listen(config::LINUXD_SOCKET_BACKLOG)?);
     let requestid: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     let sandbox_cache: SandboxCache = SandboxCache::new(args.keep_alive_timeout());
 
@@ -81,9 +71,8 @@ pub async fn main() -> Result<()> {
                 match result {
                     Ok((stream, sockaddr)) => {
                         debug!("accepted connection from {sockaddr:?}");
-                        let linuxd_listener: Arc<UnixListener> = linuxd_listener.clone();
                         let linuxd_sockaddr: String = args.linuxd_sockaddr().to_string();
-                        let sandbox_sockaddr: String = sandbox_sockaddr.clone();
+                        let sandbox_sockaddr: String = args.sandbox_sockaddr().to_string();
                         let console_file: String = args.nanvix_console().to_string();
                         let requestid: Arc<AtomicUsize> = requestid.clone();
                         let sandboxe_cache: SandboxCache = sandbox_cache.clone();
@@ -91,7 +80,7 @@ pub async fn main() -> Result<()> {
                             let requestid: usize = requestid
                                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             let client =
-                                HttpClient::new(sandboxe_cache, requestid, linuxd_listener, linuxd_sockaddr, sandbox_sockaddr, console_file);
+                                HttpClient::new(sandboxe_cache, requestid, linuxd_sockaddr, sandbox_sockaddr, console_file);
                             let io: TokioIo<TcpStream> = TokioIo::new(stream);
                             if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
                                 error!("failed to serve connection (requestid={requestid:?}, error={e:?})");
@@ -110,10 +99,6 @@ pub async fn main() -> Result<()> {
                 break;
             },
         }
-    }
-
-    if let Err(e) = fs::remove_file(&sandbox_sockaddr) {
-        error!("failed to remove socket file ({e:?})")
     }
 
     Ok(())
