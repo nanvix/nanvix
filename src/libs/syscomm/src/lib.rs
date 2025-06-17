@@ -8,9 +8,12 @@
 extern crate alloc;
 
 use ::anyhow::Result;
+use ::log::error;
 use ::std::{
+    fs,
     io::{
         self,
+        ErrorKind,
         Read,
         Write,
     },
@@ -45,7 +48,7 @@ impl Socket {
     pub fn bind(typ: SocketType, addr: String) -> Result<SocketListener> {
         match typ {
             SocketType::Tcp => Ok(SocketListener::Tcp(TcpListener::bind(addr)?)),
-            SocketType::Unix => Ok(SocketListener::Unix(UnixListener::bind(addr)?)),
+            SocketType::Unix => Ok(SocketListener::Unix { listener: UnixListener::bind(&addr)?, path: addr.clone() }),
         }
     }
 }
@@ -54,7 +57,10 @@ impl Socket {
 #[derive(Debug)]
 pub enum SocketListener {
     Tcp(TcpListener),
-    Unix(UnixListener),
+    Unix {
+        listener: UnixListener,
+        path: String,
+    },
 }
 
 impl ::std::str::FromStr for SocketType {
@@ -77,11 +83,26 @@ impl SocketListener {
                 let (stream, _sockaddr): (TcpStream, std::net::SocketAddr) = listener.accept()?;
                 Ok(SocketStream::Tcp(stream))
             },
-            SocketListener::Unix(listener) => {
+            SocketListener::Unix { listener, path: _ } => {
                 let (stream, _sockaddr): (UnixStream, std::os::unix::net::SocketAddr) =
                     listener.accept()?;
                 Ok(SocketStream::Unix(stream))
             },
+        }
+    }
+}
+
+impl Drop for SocketListener {
+    fn drop(&mut self) {
+        match self {
+            SocketListener::Tcp(_) => {},
+            SocketListener::Unix { listener: _, path } => {
+                match fs::remove_file(path.clone()) {
+                    Ok(_) => {},
+                    Err(ref e) if e.kind() == ErrorKind::NotFound => {},
+                    Err(e) => error!("error removing UNIX socket (path={path}, error={e:?})"),
+                }
+            }
         }
     }
 }

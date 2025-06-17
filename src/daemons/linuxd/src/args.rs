@@ -17,14 +17,14 @@ use ::anyhow::Result;
 /// This structure packs the command-line arguments that were passed to the program.
 ///
 pub struct Args {
-    /// Server socket address.
-    bind_sockaddr: String,
+    /// Socket address linuxd listens to for messages from User VM.
+    user_vm_bind_sockaddr: String,
     /// Server socket address type.
-    bind_sockaddr_type: Option<String>,
-    /// Gateway socket address.
-    gateway_sockaddr: Option<String>,
+    user_vm_bind_sockaddr_type: Option<String>,
+    /// Socket address linuxd listens to for messages from the gateway.
+    gateway_bind_sockaddr: Option<String>,
     /// Gateway socket address type.
-    gateway_sockaddr_type: Option<String>,
+    gateway_bind_sockaddr_type: Option<String>,
     /// Log to file?
     log_to_file: bool,
 }
@@ -37,13 +37,13 @@ impl Args {
     /// Command-line option for printing the help message.
     const OPT_HELP: &'static str = "-help";
     /// Command-line option for setting bind socket address.
-    const OPT_BIND_SOCKADDR: &'static str = "-bind-addr";
+    const OPT_USER_VM_BIND_SOCKADDR: &'static str = "-user-vm-bind-addr";
     /// Command-line option for setting the socket address type of the bind socket.
-    const OPT_BIND_SOCKET_TYPE: &'static str = "-bind-socket-type";
+    const OPT_USER_VM_BIND_SOCKET_TYPE: &'static str = "-user-vm-bind-socket-type";
     /// Command-line option for setting socket address of gateway.
-    const OPT_GATEWAY_SOCKADDR: &'static str = "-gateway-addr";
+    const OPT_GATEWAY_BIND_SOCKADDR: &'static str = "-gateway-bind-addr";
     /// Command-line option for setting the socket address type of the gateway socket.
-    const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-socket-type";
+    const OPT_GATEWAY_BIND_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for log redirecting.
     const OPT_LOGFILE: &'static str = "-log-to-file";
 
@@ -62,10 +62,10 @@ impl Args {
     /// program. Upon failure, the function returns an error.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
-        let mut bind_sockaddr: String = String::new();
-        let mut bind_sockaddr_type: Option<String> = None;
-        let mut gateway_sockaddr: Option<String> = None;
-        let mut gateway_sockaddr_type: Option<String> = None;
+        let mut user_vm_bind_sockaddr: String = String::new();
+        let mut user_vm_bind_sockaddr_type: Option<String> = None;
+        let mut gateway_bind_sockaddr: Option<String> = None;
+        let mut gateway_bind_sockaddr_type: Option<String> = None;
         let mut log_to_file: bool = false;
 
         let mut i: usize = 1;
@@ -75,27 +75,27 @@ impl Args {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("help message"));
                 },
-                Self::OPT_BIND_SOCKADDR => {
+                Self::OPT_USER_VM_BIND_SOCKADDR => {
                     i += 1;
-                    bind_sockaddr = args[i].clone();
+                    user_vm_bind_sockaddr = args[i].clone();
                 },
-                Self::OPT_GATEWAY_SOCKADDR => {
+                Self::OPT_GATEWAY_BIND_SOCKADDR => {
                     i += 1;
-                    gateway_sockaddr = Some(args[i].clone());
+                    gateway_bind_sockaddr = Some(args[i].clone());
                 },
-                Self::OPT_GATEWAY_SOCKET_TYPE => {
+                Self::OPT_GATEWAY_BIND_SOCKET_TYPE => {
                     i += 1;
-                    gateway_sockaddr_type = Some(args[i].clone());
+                    gateway_bind_sockaddr_type = Some(args[i].clone());
                 },
-                Self::OPT_BIND_SOCKET_TYPE => {
+                Self::OPT_USER_VM_BIND_SOCKET_TYPE => {
                     i += 1;
-                    bind_sockaddr_type = Some(args[i].clone());
+                    user_vm_bind_sockaddr_type = Some(args[i].clone());
                 },
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
                 },
-                _ => {
-                    return Err(anyhow::anyhow!("invalid argument"));
+                invalid_arg => {
+                    return Err(anyhow::anyhow!("invalid argument: {invalid_arg}"));
                 },
             }
 
@@ -103,15 +103,15 @@ impl Args {
         }
 
         // Check if server socket address was set.
-        if bind_sockaddr.is_empty() {
+        if user_vm_bind_sockaddr.is_empty() {
             return Err(anyhow::anyhow!("server socket address not set"));
         }
 
         Ok(Self {
-            bind_sockaddr,
-            bind_sockaddr_type,
-            gateway_sockaddr,
-            gateway_sockaddr_type,
+            user_vm_bind_sockaddr,
+            user_vm_bind_sockaddr_type,
+            gateway_bind_sockaddr,
+            gateway_bind_sockaddr_type,
             log_to_file,
         })
     }
@@ -127,38 +127,40 @@ impl Args {
     ///
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} {} <server-sockaddr> {} <gateway-sockaddr>",
+            "Usage: {} {} {} <user-vm-sockaddr> {} <user-vm-socktype> {} <gateway-sockaddr> {} <gateway-socktype>",
             program_name,
             Self::OPT_LOGFILE,
-            Self::OPT_BIND_SOCKADDR,
-            Self::OPT_GATEWAY_SOCKADDR
+            Self::OPT_USER_VM_BIND_SOCKADDR,
+            Self::OPT_USER_VM_BIND_SOCKET_TYPE,
+            Self::OPT_GATEWAY_BIND_SOCKADDR,
+            Self::OPT_GATEWAY_BIND_SOCKET_TYPE
         );
     }
 
     ///
     /// # Description
     ///
-    /// Returns the bind socket address.
+    /// Returns the bind socket address for the User VM.
     ///
     /// # Returns
     ///
     /// The socket address of the bind socket.
     ///
-    pub fn bind_sockaddr(&self) -> String {
-        self.bind_sockaddr.to_string()
+    pub fn user_vm_bind_sockaddr(&self) -> String {
+        self.user_vm_bind_sockaddr.to_string()
     }
 
     ///
     /// # Description
     ///
-    /// Returns the socket address type of the bind socket.
+    /// Returns the socket address type of the bind socket for the User VM.
     ///
     /// # Returns
     ///
     /// The socket address type of the bind socket.
     ///
-    pub fn bind_socket_type(&self) -> Option<String> {
-        self.bind_sockaddr_type.clone()
+    pub fn user_vm_bind_socket_type(&self) -> Option<String> {
+        self.user_vm_bind_sockaddr_type.clone()
     }
 
     ///
@@ -170,8 +172,8 @@ impl Args {
     ///
     /// The socket address of the gateway.
     ///
-    pub fn gateway_sockaddr(&self) -> Option<String> {
-        self.gateway_sockaddr.clone()
+    pub fn gateway_bind_sockaddr(&self) -> Option<String> {
+        self.gateway_bind_sockaddr.clone()
     }
 
     ///
@@ -183,8 +185,8 @@ impl Args {
     ///
     /// The socket address type of the gateway socket.
     ///
-    pub fn gateway_socket_type(&self) -> Option<String> {
-        self.gateway_sockaddr_type.clone()
+    pub fn gateway_bind_socket_type(&self) -> Option<String> {
+        self.gateway_bind_sockaddr_type.clone()
     }
 
     ///

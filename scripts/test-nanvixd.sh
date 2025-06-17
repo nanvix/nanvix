@@ -49,21 +49,21 @@ NANVIXD_PID=$!
 # Extract port number from nanvixd.
 NANVIXD_PORT_NUMBER=$(echo ${NANVIXD_SOCKADDR} | cut -d: -f2)
 
-# Wait for nanvixd to start by checking sandbox socket exists.
+# Wait for nanvixd to start by checking if the HTTP socket is listening.
 MAX_TRIALS=10
 SLEEP_INTERVAL=0.1
 for i in $(seq 1 $MAX_TRIALS); do
     echo "Waiting for nanvixd to start ... ($(echo "$i * $SLEEP_INTERVAL" | bc) s elapsed)"
     sleep ${SLEEP_INTERVAL}
 
-    if ls /tmp/${SANDBOX_SOCKADDR}*.socket 1>/dev/null 2>&1; then
+    if ss -tln | grep -q ":${NANVIXD_PORT_NUMBER} "; then
         echo "nanvixd started after ${i} ms."
         break
     fi
 done
 
 # Check again after waiting.
-if ! ls /tmp/${SANDBOX_SOCKADDR}*.socket 1>/dev/null 2>&1; then
+if ! ss -tln | grep -q ":${NANVIXD_PORT_NUMBER} "; then
     echo "nanvixd failed to start"
     exit 2 # Error Code 2: No such file or directory (ENOENT)
 fi

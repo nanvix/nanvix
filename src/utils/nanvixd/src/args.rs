@@ -68,8 +68,8 @@ impl Args {
                     i += 1;
                     keep_alive_timeout = Duration::from_secs(args[i].parse::<u64>()?);
                 },
-                _ => {
-                    return Err(anyhow::anyhow!("invalid argument"));
+                arg => {
+                    return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
             }
 
