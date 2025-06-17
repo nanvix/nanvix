@@ -35,7 +35,7 @@ pub use tag::SandboxTag;
 //==================================================================================================
 
 pub struct Sandbox {
-    _linuxd: LinuxDaemon,
+    linuxd: Option<LinuxDaemon>,
     linuxd_socket: Option<UnixStream>,
     microvm: Option<Microvm>,
     config: SandboxConfig,
@@ -44,7 +44,7 @@ pub struct Sandbox {
 impl Sandbox {
     pub fn new(config: &SandboxConfig) -> Result<Self> {
         Ok(Self {
-            _linuxd: LinuxDaemon::spawn(config.linuxd_sockaddr(), config.sandbox_sockaddr())?,
+            linuxd: None,
             linuxd_socket: None,
             microvm: None,
             config: config.clone(),
@@ -52,18 +52,23 @@ impl Sandbox {
     }
 
     pub async fn load(&mut self, program: &str) -> Result<()> {
-        if self.linuxd_socket.is_none() {
-            match self.config.linuxd_listener().accept().await {
-                Ok((socket, _)) => {
-                    debug!("accepted connection from linux daemon {:?}", socket.peer_addr());
-                    self.linuxd_socket = Some(socket);
-                },
+        if self.linuxd.is_none() {
+            self.linuxd = Some(LinuxDaemon::spawn(self.config.linuxd_sockaddr(), self.config.sandbox_sockaddr())?);
+        }
 
-                Err(_) => {
-                    let reason: String = "failed to accept connection".to_string();
-                    error!("{reason}");
-                    anyhow::bail!(reason)
-                },
+        if self.linuxd_socket.is_none() {
+            debug!("connecting to gateway at: {}", self.config.sandbox_sockaddr());
+            loop {
+                match UnixStream::connect(self.config.sandbox_sockaddr()).await {
+                    Ok(socket) => {
+                        self.linuxd_socket = Some(socket);
+                        debug!("connected to linuxd");
+                        break;
+                    }
+                    Err(_) => {
+                        continue;
+                    }
+                }
             };
         }
 
@@ -93,6 +98,7 @@ impl Sandbox {
     pub fn unload(&mut self) -> Result<()> {
         self.microvm.take();
         self.linuxd_socket.take();
+        self.linuxd.take();
         Ok(())
     }
 
