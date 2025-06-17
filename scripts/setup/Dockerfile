@@ -13,7 +13,7 @@ USER $USER
 ARG RUST_VERSION=nightly-2025-03-28
 
 # Nanvix version.
-ARG NANVIX_VERSION=2efdd9aaa7c97c7d7b1576f1b191849afd43df51
+ARG NANVIX_VERSION=99ab1edc540866dc9aa955f9da4b9c353c4eceef
 
 # Update the package list and install dependencies
 RUN apt-get update && \
