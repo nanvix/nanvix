@@ -8,24 +8,50 @@
 #===================================================================================================
 
 RULE=${1:-build}
-NANVIX_HOME=${2:-`git rev-parse --show-toplevel`}
-TOOLCHAIN_DIR=${3:-$PWD/toolchain}
-SYSROOT_DIR=${4:-$PWD/sysroot}
+TOOLCHAIN_DIR=${2:-$PWD/toolchain}
+SYSROOT_DIR=${3:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
-OPT_DIR=${NANVIX_HOME}/opt
-CROSS_DIR=${SYSROOT_DIR}/cross
-CPYTHON_HOME=${OPT_DIR}/cpython
+export CONTRIB_DIR=${SYSROOT_DIR}/src
+export OPENSSL_HOME=${CONTRIB_DIR}/openssl
+export OPENSSL_REPOSITORY=https://github.com/nanvix/openssl
+export OPENSSL_COMMIT=b4773b592552f9d3c77fbd0e36509e3fcd030536
+
+#===================================================================================================
+# Configure
+#===================================================================================================
+
+configure() {
+    CFLAGS="-I $TOOLCHAIN_DIR/usr/include/" \
+    CXX=$TOOLCHAIN_DIR/bin/i686-nanvix-g++ \
+    AR=$TOOLCHAIN_DIR/bin/i686-nanvix-ar \
+    RANLIB=$TOOLCHAIN_DIR/bin/i686-nanvix-ranlib \
+    CC=$TOOLCHAIN_DIR/bin/i686-nanvix-gcc \
+    ./Configure \
+        --openssldir=$SYSROOT_DIR \
+        --prefix=$SYSROOT_DIR \
+        nanvix \
+        no-shared \
+        threads \
+        no-dso \
+        no-apps \
+        no-docs \
+        no-rdrand \
+        no-posix-io \
+        no-asm \
+        no-ui-console
+}
 
 #===================================================================================================
 # Clean
 #===================================================================================================
 
 make_clean() {
-	make clean
+    cd ${OPENSSL_HOME}
+    make clean
 }
 
 #===================================================================================================
@@ -33,64 +59,8 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
+    cd ${OPENSSL_HOME}
 	git clean -fdx
-}
-
-#===================================================================================================
-# Configure
-#===================================================================================================
-
-configure() {
-	CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
-	CXX="$TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
-	LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
-	LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld" \
-	CFLAGS="-static -L $SYSROOT_DIR/lib" \
-	LIBS="-Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a -lsqlite3 -lssl -lcrypto -Wl,--end-group" \
-	LIBSQLITE3_LIBS="-L $SYSROOT_DIR/lib -lsqlite3" \
-	LIBSQLITE3_CFLAGS="-I $SYSROOT_DIR/include" \
-	ZLIB_LIBS="-L $SYSROOT_DIR/lib -lz" \
-	ZLIB_CFLAGS="-I $SYSROOT_DIR/include" \
-	./configure \
-		--disable-shared \
-		--build=x86_64-pc-linux-gnux32 \
-		--host=i686-nanvix \
-		--with-build-python=${CROSS_DIR}/bin/python3 \
-		--disable-test-modules \
-		--with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
-		--with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
-		--prefix=$SYSROOT_DIR \
-		--exec-prefix=$SYSROOT_DIR \
-		--with-ensurepip=no \
-		--with-pkg-config=no \
-		--with-openssl=$SYSROOT_DIR \
-		--disable-ipv6 \
-		ac_cv_file__dev_ptmx=no \
-		ac_cv_file__dev_ptc=no \
-		ac_cv_pthread_is_default=yes \
-		ac_cv_pthread=yes \
-		ac_cv_kthread=no
-}
-
-#===================================================================================================
-# Configure Cross
-#====================================================================================================
-
-configure_cross() {
-	LDFLAGS='-m32' \
-	CFLAGS="-m32" \
-	./configure \
-	 	-build=x86_64-pc-linux-gnux32 \
-		--host=x86_64-pc-linux-gnux32 \
-		--disable-shared \
-		--disable-test-modules \
-		--prefix=${CROSS_DIR} \
-		--exec-prefix=${CROSS_DIR} \
-		--with-ensurepip=no \
-		--with-pkg-config=no \
-		--disable-ipv6 \
-		ac_cv_file__dev_ptmx=no \
-		ac_cv_file__dev_ptc=no
 }
 
 #===================================================================================================
@@ -98,44 +68,29 @@ configure_cross() {
 #===================================================================================================
 
 make_all() {
-	make -j `nproc` all
+    cd ${OPENSSL_HOME}
+
+    make -j $(nproc) all
 }
 
 #===================================================================================================
 # Install
 #===================================================================================================
 
-install() {
-	make install
+make_install() {
+    cd ${OPENSSL_HOME}
+    make install
 }
 
 #===================================================================================================
 # Build
 #===================================================================================================
 
-build_cross() {
-	configure_cross
-
-	make_all
-
-	install
-
-	distclean
-}
 
 build() {
-	# Check if we need to configure or not.
-	if [ ! -f "${CPYTHON_HOME}/Makefile" ]; then
-		configure
-	else
-		# Remove the existing binary to ensure it links with the updated system libraries.
-		# Note: Running 'make clean' would remove all object files, which is unnecessary here.
-		rm -f python
-	fi
-
+    cd ${OPENSSL_HOME}
 	make_all
-
-	install
+	make_install
 }
 
 #===================================================================================================
@@ -143,17 +98,23 @@ build() {
 #===================================================================================================
 
 init() {
-	# Nothing to do here.
-	return
+    mkdir -p ${CONTRIB_DIR}
+    if [ ! -d "${OPENSSL_HOME}/.git" ];
+    then
+        git clone ${OPENSSL_REPOSITORY} ${OPENSSL_HOME}
+        cd ${OPENSSL_HOME}
+    else
+        cd ${OPENSSL_HOME}
+        git fetch origin
+        git reset --hard
+    fi
+    git checkout ${OPENSSL_COMMIT}
+
+    configure
 }
 
 #===================================================================================================
 
-# Fetch submodule if needed.
-git submodule update --init $CPYTHON_HOME
-
-# Switch to submodule directory.
-cd ${CPYTHON_HOME}
 
 # Save current environment variables.
 OLD_AR=$AR
@@ -180,12 +141,6 @@ unset CXXFLAGS
 unset LDFLAGS
 unset LIBC
 unset LIBM
-
-# Check if cross-platform toolchain exists and build it if does not.
-# TODO: improve detection
-if [ ! -f "${CROSS_DIR}/bin/python3" ]; then
-	build_cross
-fi
 
 case $RULE in
 	build)
