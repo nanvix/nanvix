@@ -6,14 +6,14 @@
 //==================================================================================================
 
 use ::sys::error::ErrorCode;
-use ::syscall::{
+use ::sysapi::{
     ffi::{
         c_int,
         c_void,
     },
-    pthread,
-    sys::types::pthread_key_t,
+    sys_types::pthread_key_t,
 };
+use ::syscall::pthread;
 
 //==================================================================================================
 //pthread_key_create()

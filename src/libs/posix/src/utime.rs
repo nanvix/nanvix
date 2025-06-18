@@ -2,46 +2,22 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-#![allow(non_camel_case_types)]
-
-//==================================================================================================
-// Imports
-//==================================================================================================
-
-use ::syscall::time::time_t;
-
-//==================================================================================================
-// Structures
-//==================================================================================================
-
-#[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
-pub struct utimbuf {
-    /// Access time.
-    pub actime: time_t,
-    /// Modification time.
-    pub modtime: time_t,
-}
-
-//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
 #[cfg(all(feature = "syscall", feature = "staticlib"))]
 mod bindings {
-    use super::*;
     use crate::errno::__errno_location;
     use ::sys::error::ErrorCode;
-    use syscall::{
-        fcntl::AT_FDCWD,
+    use ::sysapi::{
+        fcntl::atflags::AT_FDCWD,
         ffi::{
             c_char,
             c_int,
         },
+        sys_types::time_t,
         time::timespec,
+        utime::utimbuf,
     };
 
     ///

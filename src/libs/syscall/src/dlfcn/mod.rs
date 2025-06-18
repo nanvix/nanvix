@@ -5,18 +5,18 @@
 // Imports
 //==================================================================================================
 
-use crate::ffi::{
+use ::core::mem;
+use ::sysapi::ffi::{
     c_char,
     c_void,
 };
-use ::core::mem;
 
 //==================================================================================================
 // Modules
 //==================================================================================================
 
 cfg_if::cfg_if! {
-    if #[cfg(feature = "syscall")] {
+    if #[cfg(all(feature = "syscall", feature = "dlfcn"))] {
         mod syscall;
         pub use syscall::DlHandle;
         pub use syscall::dlclose;

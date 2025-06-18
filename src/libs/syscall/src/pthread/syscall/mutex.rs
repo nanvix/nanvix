@@ -5,14 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    pthread::{
-        pthread_mutexattr_t,
-        syscall::MUTEXES,
-        PTHREAD_MUTEX_INITIALIZER,
-    },
-    sys::types::pthread_mutex_t,
-};
+use crate::pthread::syscall::MUTEXES;
 use ::alloc::collections::btree_map::Entry;
 use ::sys::{
     error::{
@@ -25,6 +18,13 @@ use ::sys::{
     },
     pm::MutexAddress,
     time::SystemTime,
+};
+use ::sysapi::{
+    pthread::{
+        pthread_mutexattr_t,
+        PTHREAD_MUTEX_INITIALIZER,
+    },
+    sys_types::pthread_mutex_t,
 };
 
 //==================================================================================================

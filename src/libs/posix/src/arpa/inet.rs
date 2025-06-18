@@ -5,21 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    errno::__errno_location,
+use crate::errno::__errno_location;
+use ::sys::error::ErrorCode;
+use ::sysapi::{
     ffi::{
         c_char,
         c_int,
         c_void,
     },
-};
-use ::sys::error::ErrorCode;
-use ::syscall::{
-    arpa::inet::{
-        in_addr,
-        in_addr_t,
-    },
-    sys::socket::socklen_t,
+    netinet_in::in_addr_t,
+    sys_socket::socklen_t,
 };
 
 //==================================================================================================
@@ -74,7 +69,7 @@ pub unsafe extern "C" fn inet_addr(cp: *const c_char) -> in_addr_t {
 /// This function is unsafe because it may return a pointer to a static buffer and does not guarantee thread safety.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn inet_ntoa(in_addr: in_addr) -> *const c_char {
+pub unsafe extern "C" fn inet_ntoa(in_addr: in_addr_t) -> *const c_char {
     ::syslog::trace!("inet_ntoa(): in_addr={in_addr:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/595.
     ::syslog::error!("inet_ntoa(): not implemented");

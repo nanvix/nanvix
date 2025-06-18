@@ -5,12 +5,17 @@
 // Imports
 //==================================================================================================
 
+use ::sysapi::{
+    ffi::c_int,
+    sys_stat::{
+        self,
+        file_type::S_ISREG,
+    },
+};
 use ::syscall::{
     fcntl,
     fcntl::OpenFlags,
-    ffi::c_int,
     sys,
-    sys::stat::file_mode,
     unistd,
 };
 
@@ -23,7 +28,7 @@ pub fn test() {
     let filename: &str = "README.md";
 
     // Open a file and assert result.
-    let fd: c_int = match fcntl::open(filename, OpenFlags::O_RDONLY.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, OpenFlags::Readonly.into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");
@@ -31,11 +36,11 @@ pub fn test() {
     };
 
     // Get file status and assert result.
-    let mut st: sys::stat::stat = sys::stat::stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     match sys::stat::fstat(fd, &mut st) {
         Ok(()) => {
             // Check if the file is a regular file.
-            if !file_mode::S_ISREG(st.st_mode) {
+            if !S_ISREG(st.st_mode) {
                 panic!("file is not a regular file");
             }
         },

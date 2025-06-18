@@ -5,11 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    errno::__errno_location,
-    ffi::c_int,
-};
+use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
+use ::sysapi::ffi::c_int;
 use ::syscall::dirent::DirectoryStream;
 
 //==================================================================================================

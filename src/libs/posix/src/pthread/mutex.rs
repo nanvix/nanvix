@@ -9,15 +9,13 @@ use ::sys::{
     error::ErrorCode,
     time::SystemTime,
 };
-use ::syscall::{
+use ::sysapi::{
     ffi::c_int,
-    pthread,
-    pthread::{
-        pthread_mutex_t,
-        pthread_mutexattr_t,
-    },
+    pthread::pthread_mutexattr_t,
+    sys_types::pthread_mutex_t,
     time::timespec,
 };
+use ::syscall::pthread;
 
 //==================================================================================================
 // pthread_mutexattr_init()

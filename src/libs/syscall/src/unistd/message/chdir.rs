@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -38,6 +37,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use sysapi::limits::PATH_MAX;
 
 //==================================================================================================
 // ChdirRequest
@@ -58,7 +58,7 @@ impl ChangeDirectoryRequest {
     pub const OFFSET_OF_PATH: usize = Self::OFFSET_OF_PATH_LENGTH + Self::SIZE_OF_PATH_LENGTH;
 
     /// Maximum size of the message.
-    pub const MAX_SIZE: usize = Self::SIZE_OF_PATH_LENGTH + limits::PATH_MAX;
+    pub const MAX_SIZE: usize = Self::SIZE_OF_PATH_LENGTH + PATH_MAX;
 
     ///
     /// # Description
@@ -76,7 +76,7 @@ impl ChangeDirectoryRequest {
     ///
     pub fn new(path: &str) -> Result<Self, Error> {
         // Check if path is too long.
-        if path.len() > limits::PATH_MAX {
+        if path.len() > PATH_MAX {
             #[cfg(target_os = "none")]
             ::syslog::error!("new(): path too long (path.len={:?})", path.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "path too long"));

@@ -5,21 +5,17 @@
 // Imports
 //===================================================================================================
 
-use crate::{
-    safe::{
-        time::Time,
-        FileSystemPermissions,
-        FileType,
-        RegularFileOffset,
-    },
-    sys::stat::{
-        self,
-    },
+use crate::safe::{
+    time::Time,
+    FileSystemPermissions,
+    FileType,
+    RegularFileOffset,
 };
 use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::sysapi::sys_stat;
 
 //==================================================================================================
 // File System Attributes
@@ -31,7 +27,7 @@ use ::sys::error::{
 /// A structure that represents the attributes of a file in the file system.
 ///
 #[derive(Debug, Clone, Copy)]
-pub struct FileSystemAttributes(stat::stat);
+pub struct FileSystemAttributes(sys_stat::stat);
 
 impl FileSystemAttributes {
     ///
@@ -66,7 +62,7 @@ impl FileSystemAttributes {
     /// Creates an empty `FileSystemAttributes` structure.
     ///
     pub fn empty() -> Self {
-        FileSystemAttributes(stat::stat::default())
+        FileSystemAttributes(sys_stat::stat::default())
     }
 
     ///
@@ -124,25 +120,38 @@ impl FileSystemAttributes {
     ///
     /// # Description
     ///
-    /// Casts `self` to a raw `stat::stat` structure.
+    /// Casts `self` to a raw mutable `stat::stat` structure.
     ///
     /// # Returns
     ///
     /// A mutable reference to the raw `stat::stat` structure.
     ///
-    pub fn as_raw_mut(&mut self) -> &mut stat::stat {
+    pub fn as_raw_mut(&mut self) -> &mut sys_stat::stat {
         &mut self.0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Casts `self` to a raw `stat::stat` structure.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the raw `stat::stat` structure.
+    ///
+    pub fn as_raw(&self) -> &sys_stat::stat {
+        &self.0
     }
 }
 
-impl From<stat::stat> for FileSystemAttributes {
-    fn from(stat: stat::stat) -> FileSystemAttributes {
+impl From<sys_stat::stat> for FileSystemAttributes {
+    fn from(stat: sys_stat::stat) -> FileSystemAttributes {
         FileSystemAttributes(stat)
     }
 }
 
-impl From<FileSystemAttributes> for stat::stat {
-    fn from(attributes: FileSystemAttributes) -> stat::stat {
+impl From<FileSystemAttributes> for sys_stat::stat {
+    fn from(attributes: FileSystemAttributes) -> sys_stat::stat {
         attributes.0
     }
 }

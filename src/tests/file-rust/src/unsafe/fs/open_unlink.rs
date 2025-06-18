@@ -5,20 +5,30 @@
 // Imports
 //==================================================================================================
 
+use ::sysapi::ffi::c_int;
 use ::syscall::{
     fcntl,
-    fcntl::{
-        OpenFlags,
-        S_IRUSR,
-        S_IWUSR,
-    },
-    ffi::c_int,
     sys,
-    sys::{
-        stat::file_mode,
-        types::mode_t,
-    },
     unistd,
+};
+use sysapi::{
+    fcntl::open_flags::{
+        O_CREAT,
+        O_RDWR,
+        O_TRUNC,
+    },
+    sys_stat::{
+        self,
+        file_access_mode::{
+            S_IRUSR,
+            S_IRWXG,
+            S_IRWXO,
+            S_IRWXU,
+            S_IWUSR,
+        },
+        file_type::S_ISREG,
+    },
+    sys_types::mode_t,
 };
 
 //==================================================================================================
@@ -31,11 +41,7 @@ pub fn test() {
     let mode: mode_t = S_IRUSR | S_IWUSR;
 
     // Create file and assert result.
-    let fd: c_int = match fcntl::open(
-        filename,
-        OpenFlags::O_CREAT | OpenFlags::O_RDWR | OpenFlags::O_TRUNC,
-        mode,
-    ) {
+    let fd: c_int = match fcntl::open(filename, O_CREAT | O_RDWR | O_TRUNC, mode) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");
@@ -48,18 +54,18 @@ pub fn test() {
     }
 
     // Check if the file exists.
-    let mut st: sys::stat::stat = sys::stat::stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     match sys::stat::stat(filename, &mut st) {
         Ok(()) => {
             // Check if the file is a regular file.
-            if !file_mode::S_ISREG(st.st_mode) {
+            if !S_ISREG(st.st_mode) {
                 panic!("file is not a regular file");
             }
 
             // Check if file permissions match expected permissions.
-            if st.st_mode & fcntl::S_IRWXU != mode
-                && st.st_mode & fcntl::S_IRWXG != 0
-                && st.st_mode & fcntl::S_IRWXO != 0
+            if st.st_mode & S_IRWXU != mode
+                && st.st_mode & S_IRWXG != 0
+                && st.st_mode & S_IRWXO != 0
             {
                 panic!(
                     "file permissions do not match expected permissions (expected: {mode:?}, got: \

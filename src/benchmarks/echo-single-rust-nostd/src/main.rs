@@ -12,10 +12,15 @@ extern crate alloc;
 extern crate nvx;
 
 use ::sys::error::Error;
-use ::syscall::{
-    sys::types::ssize_t,
-    unistd,
+use ::sysapi::{
+    ffi::c_int,
+    sys_types::ssize_t,
+    unistd::{
+        STDIN_FILENO,
+        STDOUT_FILENO,
+    },
 };
+use ::syscall::unistd;
 
 //==================================================================================================
 // Constants
@@ -29,8 +34,8 @@ const MAX_REQUEST_SIZE: usize = 4096;
 
 #[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
-    let stdin: i32 = unistd::STDIN_FILENO;
-    let stdout: i32 = unistd::STDOUT_FILENO;
+    let stdin: c_int = STDIN_FILENO;
+    let stdout: c_int = STDOUT_FILENO;
     let mut buffer: [u8; MAX_REQUEST_SIZE] = [0; MAX_REQUEST_SIZE];
     let mut n: usize = 0;
 

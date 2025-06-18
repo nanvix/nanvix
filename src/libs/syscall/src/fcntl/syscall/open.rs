@@ -4,12 +4,13 @@
 // Modules
 //==================================================================================================
 
-use crate::{
-    fcntl,
-    ffi::c_int,
-    sys::types::mode_t,
-};
+use crate::fcntl;
 use ::sys::error::Error;
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    ffi::c_int,
+    sys_types::mode_t,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -33,5 +34,5 @@ use ::sys::error::Error;
 ///
 pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
-    fcntl::openat(fcntl::AT_FDCWD, pathname, flags, mode)
+    fcntl::openat(AT_FDCWD, pathname, flags, mode)
 }

@@ -5,9 +5,13 @@
 // Imports
 //===================================================================================================
 
-use crate::{
+use ::sysapi::{
     ffi::c_int,
-    unistd,
+    unistd::file_seek::{
+        SEEK_CUR,
+        SEEK_END,
+        SEEK_SET,
+    },
 };
 
 //==================================================================================================
@@ -22,11 +26,11 @@ use crate::{
 #[repr(i32)]
 pub enum RegularFileSeekWhence {
     /// The offset is set to the beginning of the file plus `offset`.
-    Start = unistd::SEEK_SET,
+    Start = SEEK_SET,
     /// The offset is set to its current location plus `offset`.
-    Current = unistd::SEEK_CUR,
+    Current = SEEK_CUR,
     /// The offset is set to the end of the file plus `offset`.
-    End = unistd::SEEK_END,
+    End = SEEK_END,
 }
 
 impl From<RegularFileSeekWhence> for c_int {

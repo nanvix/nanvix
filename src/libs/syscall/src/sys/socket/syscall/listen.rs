@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     sys::socket::message::ListenSocketRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -19,6 +18,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
@@ -26,6 +26,16 @@ use ::sys::{
 
 pub fn listen(sockfd: c_int, backlog: c_int) -> Result<(), Error> {
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+
+    // Attempt to coerce `backlog`.
+    let backlog: c_int = match backlog.try_into() {
+        Ok(backlog) => backlog,
+        Err(_error) => {
+            let reason: &str = "invalid backlog";
+            ::syslog::error!("listen(): {reason:?}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        },
+    };
 
     // Build request and send it.
     let request: Message = ListenSocketRequest::build(pid, sockfd, backlog);

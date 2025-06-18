@@ -5,17 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    safe::RawFileDescriptor,
-    unistd::{
-        STDERR_FILENO,
-        STDIN_FILENO,
-        STDOUT_FILENO,
-    },
-};
+use crate::safe::RawFileDescriptor;
 use ::sys::error::{
     Error,
     ErrorCode,
+};
+use ::sysapi::unistd::{
+    STDERR_FILENO,
+    STDIN_FILENO,
+    STDOUT_FILENO,
 };
 
 //==================================================================================================

@@ -6,10 +6,10 @@
 //==================================================================================================
 
 use crate::errno::__errno_location;
-use ::syscall::sys::{
-    times,
-    times::tms,
-    types::clock_t,
+use ::syscall::sys::times;
+use sysapi::{
+    sys_times::tms,
+    sys_types::clock_t,
 };
 
 //==================================================================================================

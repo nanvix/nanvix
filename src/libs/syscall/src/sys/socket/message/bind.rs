@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     sys::socket::sockaddr,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -22,6 +21,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // BindSocketRequest
@@ -42,7 +42,7 @@ impl BindSocketRequest {
     pub fn new(sockfd: c_int, sockaddr: &sockaddr) -> Self {
         Self {
             sockfd,
-            sockaddr: sockaddr.clone(),
+            sockaddr: *sockaddr,
             _padding: [0; Self::PADDING_SIZE],
         }
     }

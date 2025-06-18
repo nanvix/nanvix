@@ -7,10 +7,8 @@
 
 use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
-use ::syscall::{
-    ffi::c_int,
-    sys::utsname,
-};
+use ::sysapi::ffi::c_int;
+use ::syscall::sys::utsname;
 
 //==================================================================================================
 // Standalone Functions

@@ -5,19 +5,25 @@
 // Imports
 //==================================================================================================
 
+use ::sysapi::ffi::c_int;
 use ::syscall::{
     fcntl,
-    fcntl::{
+    unistd,
+};
+use sysapi::{
+    sys_stat::file_access_mode::{
         S_IRUSR,
         S_IWUSR,
     },
-    ffi::c_int,
-    sys::types::{
+    sys_types::{
         mode_t,
         off_t,
+        size_t,
     },
-    time::size_t,
-    unistd,
+    unistd::file_seek::{
+        SEEK_END,
+        SEEK_SET,
+    },
 };
 
 //==================================================================================================
@@ -44,7 +50,7 @@ pub fn test() {
     }
 
     // Open file for reading and writing and assert result.
-    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::O_RDWR.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::ReadWrite.into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");
@@ -63,7 +69,7 @@ pub fn test() {
     }
 
     // Seek to the beginning of the file and assert result.
-    if let Err(error) = unistd::lseek(fd, 0, unistd::SEEK_SET) {
+    if let Err(error) = unistd::lseek(fd, 0, SEEK_SET) {
         panic!("{error:?}");
     }
 
@@ -89,7 +95,7 @@ pub fn test() {
     }
 
     // Open file for reading and writing again and assert result.
-    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::O_RDWR.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::ReadWrite.into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");
@@ -97,7 +103,7 @@ pub fn test() {
     };
 
     // Seek to the end of the file and assert result.
-    if let Err(error) = unistd::lseek(fd, 0, unistd::SEEK_END) {
+    if let Err(error) = unistd::lseek(fd, 0, SEEK_END) {
         panic!("{error:?}");
     }
 
@@ -119,7 +125,7 @@ pub fn test() {
             panic!("failed to convert length to i32");
         },
     };
-    if let Err(error) = unistd::lseek(fd, offset, unistd::SEEK_END) {
+    if let Err(error) = unistd::lseek(fd, offset, SEEK_END) {
         panic!("{error:?}");
     }
 
