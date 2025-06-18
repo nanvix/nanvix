@@ -11,18 +11,16 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-use ::syscall::{
-    ffi::c_int,
-    limits,
-    sys::{
-        types::{
-            off_t,
-            ssize_t,
-        },
-        uio::iovec,
+use ::sysapi::ffi::c_int;
+use ::syscall::unistd;
+use sysapi::{
+    limits::IOV_MAX,
+    sys_types::{
+        off_t,
+        size_t,
+        ssize_t,
     },
-    time::size_t,
-    unistd,
+    sys_uio::iovec,
 };
 
 //==================================================================================================
@@ -193,7 +191,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
     ::syslog::trace!("preadv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
 
     // Check if number of elements in the vector is valid.
-    if (iovcnt < 0) || (iovcnt > limits::IOV_MAX as i32) {
+    if (iovcnt < 0) || (iovcnt > IOV_MAX as i32) {
         ::syslog::error!("preadv(): invalid iovcnt {iovcnt}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
@@ -311,7 +309,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> ssize
     ::syslog::trace!("readv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
 
     // Check if number of elements in the vector is valid.
-    if (iovcnt < 0) || (iovcnt > limits::IOV_MAX as i32) {
+    if (iovcnt < 0) || (iovcnt > IOV_MAX as i32) {
         ::syslog::error!("readv(): invalid iovcnt {iovcnt}");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;

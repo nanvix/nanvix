@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     sys::socket::message::ListenSocketRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -19,6 +18,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions

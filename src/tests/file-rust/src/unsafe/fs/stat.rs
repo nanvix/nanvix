@@ -5,9 +5,10 @@
 // Imports
 //==================================================================================================
 
-use ::syscall::{
-    sys,
-    sys::stat::file_mode,
+use ::syscall::sys;
+use sysapi::sys_stat::{
+    self,
+    file_type::S_ISREG,
 };
 
 //==================================================================================================
@@ -19,11 +20,11 @@ pub fn test() {
     let filename: &str = "README.md";
 
     // Get file status and assert result.
-    let mut st: sys::stat::stat = sys::stat::stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     match sys::stat::stat(filename, &mut st) {
         Ok(()) => {
             // Check if the file is a regular file.
-            if !file_mode::S_ISREG(st.st_mode) {
+            if !S_ISREG(st.st_mode) {
                 panic!("file is not a regular file");
             }
         },

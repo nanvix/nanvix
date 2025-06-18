@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     netinet::in_::Protocol,
     sys::socket::{
         AddressFamily,
@@ -26,6 +25,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // CreateSocketPairRequest

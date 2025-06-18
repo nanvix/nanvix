@@ -8,14 +8,14 @@
 use crate::errno::__errno_location;
 use ::core::ffi;
 use ::sys::error::ErrorCode;
-use ::syscall::{
-    fcntl,
+use ::sysapi::{
     ffi::{
         c_char,
         c_int,
     },
-    sys::types::mode_t,
+    sys_types::mode_t,
 };
+use ::syscall::fcntl;
 
 //==================================================================================================
 // Standalone Functions
@@ -77,17 +77,8 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     }
 }
 
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/280
-    ::syslog::error!(
-        "fcntl(): not implemented, ignoring (fd={:?}, cmd={:?}, _op={:?})",
-        _fd,
-        _cmd,
-        _op
-    );
-    0
+unsafe extern "C" {
+    pub fn fcntl(_fd: c_int, _cmd: c_int, _op: ...);
 }
 
 ///

@@ -24,16 +24,14 @@ use ::sys::mm::{
     Address,
     VirtualAddress,
 };
-use ::syscall::{
-    dlfcn::{
-        self,
-        DlHandle,
-        DlInfo,
-    },
-    ffi::{
-        c_char,
-        c_void,
-    },
+use ::sysapi::ffi::{
+    c_char,
+    c_void,
+};
+use ::syscall::dlfcn::{
+    self,
+    DlHandle,
+    DlInfo,
 };
 
 //==================================================================================================

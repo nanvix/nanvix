@@ -13,7 +13,6 @@
 use crate::{
     dirent::{
         self,
-        posix_dent,
         DirectoryEntryFileType,
     },
     fcntl::{
@@ -21,6 +20,7 @@ use crate::{
         OpenFlags,
     },
     safe::{
+        fs::InodeNumber,
         FileSystemPath,
         FileType,
         RawFileDescriptor,
@@ -28,10 +28,6 @@ use crate::{
     unistd,
 };
 use ::core::{
-    cell::{
-        RefCell,
-        RefMut,
-    },
     ffi::CStr,
     fmt,
 };
@@ -39,13 +35,18 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::sysapi::dirent::posix_dent;
 use alloc::{
-    rc::Rc,
     string::{
         String,
         ToString,
     },
+    sync::Arc,
     vec::Vec,
+};
+use spin::{
+    Mutex,
+    MutexGuard,
 };
 
 //==================================================================================================
@@ -68,7 +69,7 @@ pub struct RawDirectoryEntry {
     /// The underlying directory entry.
     entry: posix_dent,
     /// Root directory of the entry.
-    root: Rc<RefCell<RawDirectoryInner>>,
+    root: Arc<Mutex<RawDirectoryInner>>,
 }
 
 impl RawDirectoryEntry {
@@ -83,6 +84,39 @@ impl RawDirectoryEntry {
     ///
     pub fn file_type(&self) -> FileType {
         FileType::from(DirectoryEntryFileType::from(self.entry.d_type))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the inode number of the directory entry.
+    ///
+    /// # Returns
+    ///
+    /// The inode number of the directory entry.
+    ///
+    pub fn inode_number(&self) -> InodeNumber {
+        InodeNumber::from(self.entry.d_ino)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the name of the directory entry as a byte slice.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the name of the directory entry as a byte slice is returned.
+    ///
+    pub fn file_name_bytes(&self) -> Result<&[u8], Error> {
+        // Coerce the byte slice to a C string.
+        match CStr::from_bytes_until_nul(&self.entry.d_name) {
+            Ok(cstr) => Ok(cstr.to_bytes()),
+            Err(_error) => {
+                let reason: &str = "invalid C string in directory entry name";
+                Err(Error::new(ErrorCode::ValueOutOfRange, reason))
+            },
+        }
     }
 
     ///
@@ -126,7 +160,7 @@ impl RawDirectoryEntry {
     /// Otherwise, an error is returned instead.
     ///
     pub fn directory_name(&self) -> String {
-        let inner: RefMut<'_, RawDirectoryInner> = self.root.borrow_mut();
+        let inner: MutexGuard<'_, RawDirectoryInner> = self.root.lock();
         inner.directory_name.to_string()
     }
 
@@ -181,7 +215,7 @@ struct RawDirectoryInner {
 /// This structure represents a direcotry in a filesystem.
 ///
 pub struct RawDirectory {
-    inner: Rc<RefCell<RawDirectoryInner>>,
+    inner: Arc<Mutex<RawDirectoryInner>>,
 }
 
 impl RawDirectory {
@@ -201,7 +235,7 @@ impl RawDirectory {
     ///
     pub fn new(fd: RawFileDescriptor, path: &str) -> Self {
         RawDirectory {
-            inner: Rc::new(RefCell::new(RawDirectoryInner {
+            inner: Arc::new(Mutex::new(RawDirectoryInner {
                 fd,
                 directory_name: path.to_string(),
                 entries: Vec::new(),
@@ -212,7 +246,7 @@ impl RawDirectory {
 
 impl fmt::Debug for RawDirectory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let inner: RefMut<'_, RawDirectoryInner> = self.inner.borrow_mut();
+        let inner: MutexGuard<'_, RawDirectoryInner> = self.inner.lock();
         write!(f, "RawDirectory {{ fd: {}, path: {:?} }}", inner.fd, inner.directory_name)
     }
 }
@@ -287,7 +321,7 @@ impl Drop for DirectoryInner {
 /// This structure represents a directory in a filesystem.
 ///
 pub struct Directory {
-    inner: Rc<RefCell<DirectoryInner>>,
+    inner: Arc<Mutex<DirectoryInner>>,
 }
 
 impl Directory {
@@ -306,7 +340,7 @@ impl Directory {
     ///
     pub fn new(raw_dir: RawDirectory) -> Self {
         Directory {
-            inner: Rc::new(RefCell::new(DirectoryInner { dir: raw_dir })),
+            inner: Arc::new(Mutex::new(DirectoryInner { dir: raw_dir })),
         }
     }
 }
@@ -315,7 +349,7 @@ impl Iterator for Directory {
     type Item = Result<DirectoryEntry, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut dir: RefMut<'_, DirectoryInner> = self.inner.borrow_mut();
+        let mut dir: MutexGuard<'_, DirectoryInner> = self.inner.lock();
         match readdir(&mut dir.dir) {
             Ok(Some(raw_entry)) => Some(Ok(DirectoryEntry { entry: raw_entry })),
             Ok(None) => None,
@@ -342,7 +376,7 @@ impl Iterator for Directory {
 /// Upon successful completion, `Ok(())` is returned. Otherwise, an error is returned.
 ///
 pub fn closedir(dir: &RawDirectory) -> Result<(), Error> {
-    unistd::close(dir.inner.borrow_mut().fd)
+    unistd::close(dir.inner.lock().fd)
 }
 
 ///
@@ -360,7 +394,7 @@ pub fn closedir(dir: &RawDirectory) -> Result<(), Error> {
 ///
 pub fn opendir(directory_name: &FileSystemPath) -> Result<RawDirectory, Error> {
     let fd: RawFileDescriptor =
-        fcntl::open(directory_name.as_str(), OpenFlags::O_RDONLY | OpenFlags::O_DIRECTORY, 0)?;
+        fcntl::open(directory_name.as_str(), OpenFlags::Readonly | OpenFlags::Directory, 0)?;
     Ok(RawDirectory::new(fd, directory_name.as_str()))
 }
 
@@ -379,8 +413,8 @@ pub fn opendir(directory_name: &FileSystemPath) -> Result<RawDirectory, Error> {
 /// `None` is returned..  If an error occurs, an error is returned instead
 ///
 pub fn readdir(dir: &mut RawDirectory) -> Result<Option<RawDirectoryEntry>, Error> {
-    let dir_clone: Rc<RefCell<RawDirectoryInner>> = dir.inner.clone();
-    let mut inner: RefMut<'_, RawDirectoryInner> = dir.inner.borrow_mut();
+    let dir_clone: Arc<Mutex<RawDirectoryInner>> = dir.inner.clone();
+    let mut inner: MutexGuard<'_, RawDirectoryInner> = dir.inner.lock();
 
     if let Some(entry) = inner.entries.pop() {
         return Ok(Some(entry));

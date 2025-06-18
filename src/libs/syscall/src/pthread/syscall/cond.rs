@@ -5,19 +5,6 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    pthread::{
-        pthread_mutexattr_t,
-        syscall::MUTEXES,
-        PTHREAD_COND_INITIALIZER,
-        PTHREAD_MUTEX_INITIALIZER,
-    },
-    sys::types::{
-        pthread_cond_t,
-        pthread_condattr_t,
-        pthread_mutex_t,
-    },
-};
 use ::alloc::collections::btree_map::{
     BTreeMap,
     Entry,
@@ -41,6 +28,22 @@ use ::sys::{
     },
     time::SystemTime,
 };
+use ::sysapi::{
+    pthread::PTHREAD_COND_INITIALIZER,
+    sys_types::pthread_cond_t,
+};
+use sysapi::{
+    pthread::{
+        pthread_mutexattr_t,
+        PTHREAD_MUTEX_INITIALIZER,
+    },
+    sys_types::{
+        pthread_condattr_t,
+        pthread_mutex_t,
+    },
+};
+
+use crate::pthread::syscall::MUTEXES;
 
 //==================================================================================================
 // Globals

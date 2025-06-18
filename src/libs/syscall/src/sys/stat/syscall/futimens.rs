@@ -8,7 +8,6 @@
 use crate::{
     safe::RawFileDescriptor,
     sys::stat::message::UpdateFileAccessTimeRequest,
-    time::timespec,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -20,6 +19,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::time::timespec;
 
 //==================================================================================================
 // Standalone Functions

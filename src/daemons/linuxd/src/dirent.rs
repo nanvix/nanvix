@@ -17,23 +17,28 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::syscall::{
+    dirent::message::{
+        GetDirectoryEntriesRequest,
+        GetDirectoryEntriesResponse,
+    },
+    message::MessagePartitioner,
+};
+use sysapi::{
     dirent::{
-        message::{
-            GetDirectoryEntriesRequest,
-            GetDirectoryEntriesResponse,
+        file_type::{
+            DT_BLK,
+            DT_CHR,
+            DT_DIR,
+            DT_FIFO,
+            DT_LNK,
+            DT_REG,
+            DT_SOCK,
+            DT_UNKNOWN,
         },
         posix_dent,
-        DT_BLK,
-        DT_CHR,
-        DT_DIR,
-        DT_LNK,
-        DT_REG,
-        DT_SOCK,
-        DT_UNKNOWN,
     },
     limits::XOPEN_NAME_MAX,
-    message::MessagePartitioner,
-    sys::types::reclen_t,
+    sys_types::reclen_t,
 };
 
 //==================================================================================================
@@ -159,7 +164,7 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
                     d_ino: dent.d_ino,
                     d_reclen: mem::size_of::<posix_dent>() as reclen_t,
                     d_type: match d_type {
-                        libc::DT_FIFO => DT_CHR,
+                        libc::DT_FIFO => DT_FIFO,
                         libc::DT_CHR => DT_CHR,
                         libc::DT_DIR => DT_DIR,
                         libc::DT_BLK => DT_BLK,

@@ -5,8 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::{
+use crate::safe::{
+    FileDescriptorFlags,
+    FileStatusFlags,
+    RawFileDescriptor,
+};
+use ::sysapi::{
+    fcntl::file_control_request::{
         F_DUPFD,
         F_DUPFD_CLOEXEC,
         F_GETFD,
@@ -17,11 +22,6 @@ use crate::{
         F_SETOWN,
     },
     ffi::c_int,
-    safe::{
-        FileDescriptorFlags,
-        FileStatusFlags,
-        RawFileDescriptor,
-    },
 };
 
 //==================================================================================================

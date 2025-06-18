@@ -5,12 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    ffi::c_char,
-    sys::utsname::{
-        utsname,
-        UTSNAME_LENGTH,
-    },
+use crate::sys::utsname::{
+    utsname,
+    UTSNAME_LENGTH,
 };
 use ::alloc::ffi::CString;
 use ::config::system::{
@@ -22,6 +19,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::sysapi::ffi::c_char;
 
 //==================================================================================================
 // Standalone Functions

@@ -6,11 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    sys::types::{
-        gid_t,
-        uid_t,
-    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -24,6 +19,11 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use ::sysapi::ffi::c_int;
+use sysapi::sys_types::{
+    gid_t,
+    uid_t,
 };
 
 //==================================================================================================
