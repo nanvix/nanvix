@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -21,6 +20,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // FileControlRequest

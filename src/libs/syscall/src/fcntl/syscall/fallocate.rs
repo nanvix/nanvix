@@ -8,7 +8,6 @@
 use crate::{
     fcntl::message::FileSpaceControlRequest,
     safe::RawFileDescriptor,
-    sys::types::off_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -20,6 +19,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use sysapi::sys_types::off_t;
 
 //==================================================================================================
 // Standalone Functions

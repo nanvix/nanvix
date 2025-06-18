@@ -6,15 +6,12 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
     },
-    sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -39,6 +36,11 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    ffi::c_int,
+    limits::PATH_MAX,
+    sys_types::mode_t,
 };
 
 //==================================================================================================
@@ -82,7 +84,7 @@ impl FileChmodAtRequest {
         + Self::SIZE_OF_MODE
         + Self::SIZE_OF_FLAG
         + Self::SIZE_OF_PATH_LENGTH
-        + limits::PATH_MAX;
+        + PATH_MAX;
 
     ///
     /// # Description
@@ -103,7 +105,7 @@ impl FileChmodAtRequest {
     ///
     pub fn new(dirfd: c_int, mode: mode_t, flag: c_int, path: &str) -> Result<Self, Error> {
         // Check if path is too long.
-        if path.len() > limits::PATH_MAX {
+        if path.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "old path too long"));
         }
 

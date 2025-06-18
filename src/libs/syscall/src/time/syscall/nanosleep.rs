@@ -5,7 +5,6 @@
 // Modules
 //==================================================================================================
 
-use crate::time::timespec;
 use ::core::time::Duration;
 use ::sys::{
     error::{
@@ -14,6 +13,7 @@ use ::sys::{
     },
     time::SystemTime,
 };
+use sysapi::time::timespec;
 
 //==================================================================================================
 // Standalone Functions

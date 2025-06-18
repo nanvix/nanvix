@@ -6,16 +6,9 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    sys::{
-        socket::message::{
-            SendSocketRequest,
-            SendSocketResponse,
-        },
-        types::{
-            size_t,
-            ssize_t,
-        },
+    sys::socket::message::{
+        SendSocketRequest,
+        SendSocketResponse,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -29,12 +22,16 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::{
+    ffi::c_int,
+    sys_types::size_t,
+};
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<ssize_t, Error> {
+pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<usize, Error> {
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Check if count is invalid.
@@ -42,7 +39,7 @@ pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<ssize_t, Error
         return Err(Error::new(ErrorCode::InvalidArgument, "buffer length is zero"));
     }
 
-    let mut total_written: ssize_t = 0;
+    let mut total_written: usize = 0;
     let mut offset: usize = 0;
 
     while offset < buffer.len() {
@@ -79,7 +76,7 @@ pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<ssize_t, Error
                             SendSocketResponse::from_bytes(message.payload);
 
                         // Update total written count.
-                        total_written += response.count;
+                        total_written += response.count as usize;
                         offset += chunk_size;
                     },
                     _ => {

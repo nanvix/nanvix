@@ -5,10 +5,17 @@
 // Imports
 //==================================================================================================
 
+use ::sysapi::{
+    ffi::c_int,
+    unistd::{
+        STDERR_FILENO,
+        STDIN_FILENO,
+        STDOUT_FILENO,
+    },
+};
 use ::syscall::{
     fcntl,
     fcntl::OpenFlags,
-    ffi::c_int,
     unistd,
 };
 
@@ -19,7 +26,7 @@ use ::syscall::{
 /// Tests wether we can test if a file descriptor is a terminal using `isatty`.
 pub fn test() {
     // Check if STDIN is a terminal.
-    match unistd::isatty(unistd::STDIN_FILENO) {
+    match unistd::isatty(STDIN_FILENO) {
         Ok(true) => {},
         Ok(false) => {
             panic!("expected STDIN to be a terminal, but it is not");
@@ -30,7 +37,7 @@ pub fn test() {
     }
 
     // Check if STDOUT is a terminal.
-    match unistd::isatty(unistd::STDOUT_FILENO) {
+    match unistd::isatty(STDOUT_FILENO) {
         Ok(true) => {},
         Ok(false) => {
             panic!("expected STDOUT to be a terminal, but it is not");
@@ -41,7 +48,7 @@ pub fn test() {
     }
 
     // Check if STDERR is a terminal.
-    match unistd::isatty(unistd::STDERR_FILENO) {
+    match unistd::isatty(STDERR_FILENO) {
         Ok(true) => {},
         Ok(false) => {
             panic!("expected STDERR to be a terminal, but it is not");
@@ -56,7 +63,7 @@ pub fn test() {
         let filename: &str = "README.md";
 
         // Open file and assert result.
-        let fd: c_int = match fcntl::open(filename, OpenFlags::O_RDONLY.into(), 0) {
+        let fd: c_int = match fcntl::open(filename, OpenFlags::Readonly.into(), 0) {
             Ok(fd) => fd,
             Err(error) => {
                 panic!("{error:?}");

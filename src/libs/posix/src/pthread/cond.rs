@@ -9,17 +9,17 @@ use ::sys::{
     error::ErrorCode,
     time::SystemTime,
 };
-use ::syscall::{
+use ::sysapi::{
     ffi::c_int,
-    pthread::{
-        self,
-        pthread_mutex_t,
-    },
-    sys::types::{
+    sys_types::{
         pthread_cond_t,
         pthread_condattr_t,
+        pthread_mutex_t,
     },
     time::timespec,
+};
+use ::syscall::pthread::{
+    self,
 };
 
 //==================================================================================================

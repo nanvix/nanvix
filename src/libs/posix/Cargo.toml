@@ -19,13 +19,9 @@ sys = { workspace = true }
 cfg-if = { workspace = true }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
-syscall = { workspace = true, features = [
-    "syscall",
-    "dlfcn",
-    "pthread",
-    "sbrk",
-] }
+syscall = { workspace = true, features = ["syscall", "dlfcn", "sbrk"] }
 static_assert = { workspace = true }
+sysapi = { workspace = true }
 sysalloc = { workspace = true, optional = true }
 syslog = { workspace = true, optional = true }
 type-safe = { workspace = true }

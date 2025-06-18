@@ -6,12 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     message::MessagePartitioner,
-    sys::{
-        stat::message::FileChmodAtRequest,
-        types::mode_t,
-    },
+    sys::stat::message::FileChmodAtRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -23,6 +19,10 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    ffi::c_int,
+    sys_types::mode_t,
 };
 
 //==================================================================================================

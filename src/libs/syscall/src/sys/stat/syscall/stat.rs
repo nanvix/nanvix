@@ -5,12 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl,
-    sys,
-    sys::stat,
-};
+use crate::sys;
 use ::sys::error::Error;
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    sys_stat,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -31,7 +31,7 @@ use ::sys::error::Error;
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-pub fn stat(pathname: &str, statbuf: &mut stat::stat) -> Result<(), Error> {
+pub fn stat(pathname: &str, statbuf: &mut sys_stat::stat) -> Result<(), Error> {
     ::syslog::trace!("stat(): pathname = {:?}", pathname);
-    sys::stat::fstatat(fcntl::AT_FDCWD, pathname, statbuf, 0)
+    sys::stat::fstatat(AT_FDCWD, pathname, statbuf, 0)
 }

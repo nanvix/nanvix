@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    sys::types::uid_t,
     unistd::message::{
         GetIdsRequest,
         GetIdsResponse,
@@ -22,6 +21,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::sys_types::uid_t;
 
 //==================================================================================================
 // Standalone Functions

@@ -16,6 +16,67 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::{
+    fcntl::{
+        atflags::AT_FDCWD,
+        file_access_mode::{
+            AT_EACCESS,
+            AT_REMOVEDIR,
+            AT_SYMLINK_NOFOLLOW,
+            O_ACCMODE,
+        },
+        file_advice::{
+            POSIX_FADV_DONTNEED,
+            POSIX_FADV_NOREUSE,
+            POSIX_FADV_NORMAL,
+            POSIX_FADV_RANDOM,
+            POSIX_FADV_SEQUENTIAL,
+            POSIX_FADV_WILLNEED,
+        },
+        file_control_request::{
+            F_DUPFD,
+            F_DUPFD_CLOEXEC,
+            F_GETFD,
+            F_GETFL,
+            F_GETLK,
+            F_GETOWN,
+            F_SETFD,
+            F_SETFL,
+            F_SETLK,
+            F_SETLKW,
+            F_SETOWN,
+        },
+        open_flags::{
+            O_RDONLY,
+            O_RDWR,
+            O_WRONLY,
+        },
+    },
+    ffi::c_int,
+    limits::PATH_MAX,
+    sys_stat::{
+        file_access_mode::{
+            S_IRGRP,
+            S_IROTH,
+            S_IRUSR,
+            S_IRWXG,
+            S_IRWXO,
+            S_IRWXU,
+            S_IWGRP,
+            S_IWOTH,
+            S_IWUSR,
+            S_IXGRP,
+            S_IXOTH,
+            S_IXUSR,
+        },
+        stat,
+    },
+    sys_types::{
+        mode_t,
+        off_t,
+    },
+    time::timespec,
+};
 use ::syscall::{
     fcntl,
     fcntl::{
@@ -34,36 +95,23 @@ use ::syscall::{
             UnlinkAtResponse,
         },
         OpenFlags,
-        AT_REMOVEDIR,
     },
-    ffi::c_int,
-    limits::PATH_MAX,
     message::MessagePartitioner,
-    sys::{
-        stat::{
-            message::{
-                FileChmodAtRequest,
-                FileChmodAtResponse,
-                FileChmodRequest,
-                FileChmodResponse,
-                FileStatAtRequest,
-                FileStatAtResponse,
-                FileStatRequest,
-                MakeDirectoryAtRequest,
-                MakeDirectoryAtResponse,
-                UpdateFileAccessTimeAtRequest,
-                UpdateFileAccessTimeAtResponse,
-                UpdateFileAccessTimeRequest,
-                UpdateFileAccessTimeResponse,
-            },
-            stat,
-        },
-        types::{
-            mode_t,
-            off_t,
-        },
+    sys::stat::message::{
+        FileChmodAtRequest,
+        FileChmodAtResponse,
+        FileChmodRequest,
+        FileChmodResponse,
+        FileStatAtRequest,
+        FileStatAtResponse,
+        FileStatRequest,
+        MakeDirectoryAtRequest,
+        MakeDirectoryAtResponse,
+        UpdateFileAccessTimeAtRequest,
+        UpdateFileAccessTimeAtResponse,
+        UpdateFileAccessTimeRequest,
+        UpdateFileAccessTimeResponse,
     },
-    time::timespec,
     unistd::message::{
         FileChownAtRequest,
         FileChownAtResponse,
@@ -848,11 +896,11 @@ struct LibcFileFlags(libc::c_int);
 
 impl LibcFileFlags {
     const FLAG_MAPPINGS: [(OpenFlags, ffi::c_int); 5] = [
-        (fcntl::OpenFlags::O_APPEND, libc::O_APPEND),
-        (fcntl::OpenFlags::O_CREAT, libc::O_CREAT),
-        (fcntl::OpenFlags::O_EXCL, libc::O_EXCL),
-        (fcntl::OpenFlags::O_TRUNC, libc::O_TRUNC),
-        (fcntl::OpenFlags::O_DIRECTORY, libc::O_DIRECTORY),
+        (fcntl::OpenFlags::Append, libc::O_APPEND),
+        (fcntl::OpenFlags::Create, libc::O_CREAT),
+        (fcntl::OpenFlags::Exclusive, libc::O_EXCL),
+        (fcntl::OpenFlags::Truncate, libc::O_TRUNC),
+        (fcntl::OpenFlags::Directory, libc::O_DIRECTORY),
     ];
 
     fn inner(&self) -> libc::c_int {
@@ -864,11 +912,11 @@ impl LibcFileFlags {
         let mut libc_flags: libc::c_int = 0;
 
         // Set access mode.
-        if flags & fcntl::O_ACCMODE == fcntl::OpenFlags::O_RDONLY.into() {
+        if flags & O_ACCMODE == O_RDONLY {
             libc_flags |= libc::O_RDONLY;
-        } else if flags & fcntl::O_ACCMODE == fcntl::OpenFlags::O_WRONLY.into() {
+        } else if flags & O_ACCMODE == O_WRONLY {
             libc_flags |= libc::O_WRONLY;
-        } else if flags & fcntl::O_ACCMODE == fcntl::OpenFlags::O_RDWR.into() {
+        } else if flags & O_ACCMODE == O_RDWR {
             libc_flags |= libc::O_RDWR;
         }
 
@@ -886,9 +934,9 @@ impl LibcFileFlags {
 
         // Set access mode.
         match self.0 & libc::O_ACCMODE {
-            libc::O_RDONLY => flags |= fcntl::OpenFlags::O_RDONLY,
-            libc::O_WRONLY => flags |= fcntl::OpenFlags::O_WRONLY,
-            libc::O_RDWR => flags |= fcntl::OpenFlags::O_RDWR,
+            libc::O_RDONLY => flags |= O_RDONLY,
+            libc::O_WRONLY => flags |= O_WRONLY,
+            libc::O_RDWR => flags |= O_RDWR,
             _ => {},
         }
 
@@ -911,18 +959,18 @@ impl LibcFileMode {
 
     fn try_from(mode: mode_t) -> Result<LibcFileMode, Error> {
         let mode_mappings: [(mode_t, u32); 12] = [
-            (fcntl::S_IRWXU, libc::S_IRWXU),
-            (fcntl::S_IRUSR, libc::S_IRUSR),
-            (fcntl::S_IWUSR, libc::S_IWUSR),
-            (fcntl::S_IXUSR, libc::S_IXUSR),
-            (fcntl::S_IRWXG, libc::S_IRWXG),
-            (fcntl::S_IRGRP, libc::S_IRGRP),
-            (fcntl::S_IWGRP, libc::S_IWGRP),
-            (fcntl::S_IXGRP, libc::S_IXGRP),
-            (fcntl::S_IRWXO, libc::S_IRWXO),
-            (fcntl::S_IROTH, libc::S_IROTH),
-            (fcntl::S_IWOTH, libc::S_IWOTH),
-            (fcntl::S_IXOTH, libc::S_IXOTH),
+            (S_IRWXU, libc::S_IRWXU),
+            (S_IRUSR, libc::S_IRUSR),
+            (S_IWUSR, libc::S_IWUSR),
+            (S_IXUSR, libc::S_IXUSR),
+            (S_IRWXG, libc::S_IRWXG),
+            (S_IRGRP, libc::S_IRGRP),
+            (S_IWGRP, libc::S_IWGRP),
+            (S_IXGRP, libc::S_IXGRP),
+            (S_IRWXO, libc::S_IRWXO),
+            (S_IROTH, libc::S_IROTH),
+            (S_IWOTH, libc::S_IWOTH),
+            (S_IXOTH, libc::S_IXOTH),
         ];
 
         // TODO: check for unsupported flags.
@@ -947,9 +995,9 @@ impl LibcAtFlags {
 
     pub fn from(flags: ffi::c_int) -> LibcAtFlags {
         let libc_flags: libc::c_int = match flags {
-            fcntl::AT_FDCWD => libc::AT_FDCWD,
-            fcntl::AT_SYMLINK_NOFOLLOW => libc::AT_SYMLINK_NOFOLLOW,
-            fcntl::AT_EACCESS => libc::AT_EACCESS,
+            AT_FDCWD => libc::AT_FDCWD,
+            AT_SYMLINK_NOFOLLOW => libc::AT_SYMLINK_NOFOLLOW,
+            AT_EACCESS => libc::AT_EACCESS,
             flags => flags,
         };
 
@@ -966,12 +1014,12 @@ impl LibcFileAdvice {
 
     fn try_from(advice: i32) -> Result<LibcFileAdvice, Error> {
         let libc_advice: libc::c_int = match advice {
-            fcntl::POSIX_FADV_NORMAL => libc::POSIX_FADV_NORMAL,
-            fcntl::POSIX_FADV_RANDOM => libc::POSIX_FADV_RANDOM,
-            fcntl::POSIX_FADV_SEQUENTIAL => libc::POSIX_FADV_SEQUENTIAL,
-            fcntl::POSIX_FADV_WILLNEED => libc::POSIX_FADV_WILLNEED,
-            fcntl::POSIX_FADV_DONTNEED => libc::POSIX_FADV_DONTNEED,
-            fcntl::POSIX_FADV_NOREUSE => libc::POSIX_FADV_NOREUSE,
+            POSIX_FADV_NORMAL => libc::POSIX_FADV_NORMAL,
+            POSIX_FADV_RANDOM => libc::POSIX_FADV_RANDOM,
+            POSIX_FADV_SEQUENTIAL => libc::POSIX_FADV_SEQUENTIAL,
+            POSIX_FADV_WILLNEED => libc::POSIX_FADV_WILLNEED,
+            POSIX_FADV_DONTNEED => libc::POSIX_FADV_DONTNEED,
+            POSIX_FADV_NOREUSE => libc::POSIX_FADV_NOREUSE,
             _ => return Err(Error::new(ErrorCode::InvalidArgument, "invalid advice")),
         };
 
@@ -988,17 +1036,17 @@ impl LibcFileControlCommand {
 
     fn try_from(cmd: i32) -> Result<LibcFileControlCommand, Error> {
         let libc_cmd: libc::c_int = match cmd {
-            fcntl::F_DUPFD => libc::F_DUPFD,
-            fcntl::F_GETFD => libc::F_GETFD,
-            fcntl::F_SETFD => libc::F_SETFD,
-            fcntl::F_GETFL => libc::F_GETFL,
-            fcntl::F_SETFL => libc::F_SETFL,
-            fcntl::F_GETOWN => libc::F_GETOWN,
-            fcntl::F_SETOWN => libc::F_SETOWN,
-            fcntl::F_GETLK => libc::F_GETLK,
-            fcntl::F_SETLK => libc::F_SETLK,
-            fcntl::F_SETLKW => libc::F_SETLKW,
-            fcntl::F_DUPFD_CLOEXEC => libc::F_DUPFD_CLOEXEC,
+            F_DUPFD => libc::F_DUPFD,
+            F_GETFD => libc::F_GETFD,
+            F_SETFD => libc::F_SETFD,
+            F_GETFL => libc::F_GETFL,
+            F_SETFL => libc::F_SETFL,
+            F_GETOWN => libc::F_GETOWN,
+            F_SETOWN => libc::F_SETOWN,
+            F_GETLK => libc::F_GETLK,
+            F_SETLK => libc::F_SETLK,
+            F_SETLKW => libc::F_SETLKW,
+            F_DUPFD_CLOEXEC => libc::F_DUPFD_CLOEXEC,
             _ => return Err(Error::new(ErrorCode::InvalidArgument, "invalid command")),
         };
 

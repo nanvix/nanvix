@@ -5,16 +5,25 @@
 // Imports
 //===================================================================================================
 
-use crate::{
-    fcntl::{
-        self,
-        S_IRUSR,
-        S_IWUSR,
-    },
-    sys::types::mode_t,
-};
 use ::alloc::string::String;
 use ::core::fmt;
+use sysapi::{
+    sys_stat::file_access_mode::{
+        S_IRGRP,
+        S_IROTH,
+        S_IRUSR,
+        S_IRWXG,
+        S_IRWXO,
+        S_IRWXU,
+        S_IWGRP,
+        S_IWOTH,
+        S_IWUSR,
+        S_IXGRP,
+        S_IXOTH,
+        S_IXUSR,
+    },
+    sys_types::mode_t,
+};
 
 //==================================================================================================
 // File Permissions
@@ -97,9 +106,9 @@ impl FileSystemPermissions {
     ///
     pub fn user_execute(mut self, enable: bool) -> Self {
         if enable {
-            self.0 |= fcntl::S_IXUSR;
+            self.0 |= S_IXUSR;
         } else {
-            self.0 &= !fcntl::S_IXUSR;
+            self.0 &= !S_IXUSR;
         }
         self
     }
@@ -119,9 +128,9 @@ impl FileSystemPermissions {
     ///
     pub fn group_read(mut self, enable: bool) -> Self {
         if enable {
-            self.0 |= fcntl::S_IRGRP;
+            self.0 |= S_IRGRP;
         } else {
-            self.0 &= !fcntl::S_IRGRP;
+            self.0 &= !S_IRGRP;
         }
         self
     }
@@ -141,9 +150,9 @@ impl FileSystemPermissions {
     ///
     pub fn group_write(mut self, enable: bool) -> Self {
         if enable {
-            self.0 |= fcntl::S_IWGRP;
+            self.0 |= S_IWGRP;
         } else {
-            self.0 &= !fcntl::S_IWGRP;
+            self.0 &= !S_IWGRP;
         }
         self
     }
@@ -163,9 +172,9 @@ impl FileSystemPermissions {
     ///
     pub fn group_execute(mut self, enable: bool) -> Self {
         if enable {
-            self.0 |= fcntl::S_IXGRP;
+            self.0 |= S_IXGRP;
         } else {
-            self.0 &= !fcntl::S_IXGRP;
+            self.0 &= !S_IXGRP;
         }
         self
     }
@@ -185,9 +194,9 @@ impl FileSystemPermissions {
     ///
     pub fn others_read(mut self, enable: bool) -> Self {
         if enable {
-            self.0 |= fcntl::S_IROTH;
+            self.0 |= S_IROTH;
         } else {
-            self.0 &= !fcntl::S_IROTH;
+            self.0 &= !S_IROTH;
         }
         self
     }
@@ -207,9 +216,9 @@ impl FileSystemPermissions {
     ///
     pub fn others_write(mut self, enable: bool) -> Self {
         if enable {
-            self.0 |= fcntl::S_IWOTH;
+            self.0 |= S_IWOTH;
         } else {
-            self.0 &= !fcntl::S_IWOTH;
+            self.0 &= !S_IWOTH;
         }
         self
     }
@@ -229,9 +238,9 @@ impl FileSystemPermissions {
     ///
     pub fn others_execute(mut self, enable: bool) -> Self {
         if enable {
-            self.0 |= fcntl::S_IXOTH;
+            self.0 |= S_IXOTH;
         } else {
-            self.0 &= !fcntl::S_IXOTH;
+            self.0 &= !S_IXOTH;
         }
         self
     }
@@ -246,7 +255,7 @@ impl FileSystemPermissions {
     /// Returns `true` if the user has read permission, otherwise `false`.
     ///
     pub fn user_can_read(&self) -> bool {
-        self.0 & fcntl::S_IRUSR != 0
+        self.0 & S_IRUSR != 0
     }
 
     ///
@@ -259,7 +268,7 @@ impl FileSystemPermissions {
     /// Returns `true` if the user has write permission, otherwise `false`.
     ///
     pub fn user_can_write(&self) -> bool {
-        self.0 & fcntl::S_IWUSR != 0
+        self.0 & S_IWUSR != 0
     }
 
     ///
@@ -272,7 +281,7 @@ impl FileSystemPermissions {
     /// Returns `true` if the user has execute permission, otherwise `false`.
     ///
     pub fn user_can_execute(&self) -> bool {
-        self.0 & fcntl::S_IXUSR != 0
+        self.0 & S_IXUSR != 0
     }
 
     ///
@@ -285,7 +294,7 @@ impl FileSystemPermissions {
     /// Returns `true` if the group has read permission, otherwise `false`.
     ///
     pub fn group_can_read(&self) -> bool {
-        self.0 & fcntl::S_IRGRP != 0
+        self.0 & S_IRGRP != 0
     }
 
     ///
@@ -298,7 +307,7 @@ impl FileSystemPermissions {
     /// Returns `true` if the group has write permission, otherwise `false`.
     ///
     pub fn group_can_write(&self) -> bool {
-        self.0 & fcntl::S_IWGRP != 0
+        self.0 & S_IWGRP != 0
     }
 
     ///
@@ -311,7 +320,7 @@ impl FileSystemPermissions {
     /// Returns `true` if the group has execute permission, otherwise `false`.
     ///
     pub fn group_can_execute(&self) -> bool {
-        self.0 & fcntl::S_IXGRP != 0
+        self.0 & S_IXGRP != 0
     }
 
     ///
@@ -324,7 +333,7 @@ impl FileSystemPermissions {
     /// Returns `true` if others have read permission, otherwise `false`.
     ///
     pub fn others_can_read(&self) -> bool {
-        self.0 & fcntl::S_IROTH != 0
+        self.0 & S_IROTH != 0
     }
 
     ///
@@ -337,7 +346,7 @@ impl FileSystemPermissions {
     /// Returns `true` if others have write permission, otherwise `false`.
     ///
     pub fn others_can_write(&self) -> bool {
-        self.0 & fcntl::S_IWOTH != 0
+        self.0 & S_IWOTH != 0
     }
 
     ///
@@ -350,7 +359,7 @@ impl FileSystemPermissions {
     /// Returns `true` if others have execute permission, otherwise `false`.
     ///
     pub fn others_can_execute(&self) -> bool {
-        self.0 & fcntl::S_IXOTH != 0
+        self.0 & S_IXOTH != 0
     }
 }
 
@@ -364,9 +373,9 @@ impl fmt::Debug for FileSystemPermissions {
                 if mode & exec != 0 { 'x' } else { '-' },
             ]
         };
-        let user: [char; 3] = to_rwx(fcntl::S_IRUSR, fcntl::S_IWUSR, fcntl::S_IXUSR);
-        let group: [char; 3] = to_rwx(fcntl::S_IRGRP, fcntl::S_IWGRP, fcntl::S_IXGRP);
-        let other: [char; 3] = to_rwx(fcntl::S_IROTH, fcntl::S_IWOTH, fcntl::S_IXOTH);
+        let user: [char; 3] = to_rwx(S_IRUSR, S_IWUSR, S_IXUSR);
+        let group: [char; 3] = to_rwx(S_IRGRP, S_IWGRP, S_IXGRP);
+        let other: [char; 3] = to_rwx(S_IROTH, S_IWOTH, S_IXOTH);
 
         write!(
             f,
@@ -380,9 +389,9 @@ impl fmt::Debug for FileSystemPermissions {
 
 impl PartialEq for FileSystemPermissions {
     fn eq(&self, other: &Self) -> bool {
-        self.0 & fcntl::S_IRWXU == other.0 & fcntl::S_IRWXU
-            && self.0 & fcntl::S_IRWXG == other.0 & fcntl::S_IRWXG
-            && self.0 & fcntl::S_IRWXO == other.0 & fcntl::S_IRWXO
+        self.0 & S_IRWXU == other.0 & S_IRWXU
+            && self.0 & S_IRWXG == other.0 & S_IRWXG
+            && self.0 & S_IRWXO == other.0 & S_IRWXO
     }
 }
 

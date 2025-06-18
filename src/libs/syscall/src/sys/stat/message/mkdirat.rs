@@ -6,14 +6,12 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
     },
-    sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -35,6 +33,10 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use sysapi::{
+    limits::PATH_MAX,
+    sys_types::mode_t,
 };
 
 //==================================================================================================
@@ -74,7 +76,7 @@ impl MakeDirectoryAtRequest {
 
     /// Maximum size of the message.
     pub const MAX_SIZE: usize =
-        Self::SIZE_OF_DIRFD + Self::SIZE_OF_PATH_LENGTH + Self::SIZE_OF_MODE + limits::PATH_MAX;
+        Self::SIZE_OF_DIRFD + Self::SIZE_OF_PATH_LENGTH + Self::SIZE_OF_MODE + PATH_MAX;
 
     ///
     /// # Description
@@ -93,7 +95,7 @@ impl MakeDirectoryAtRequest {
     ///
     pub fn new(dirfd: i32, pathname: String, mode: mode_t) -> Result<Self, Error> {
         // Check if the path is too long.
-        if pathname.len() > limits::PATH_MAX {
+        if pathname.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "path too long"));
         }
 
@@ -189,7 +191,7 @@ impl MessageDeserializer for MakeDirectoryAtRequest {
         }
 
         // Check if path is too long.
-        if path_length > limits::PATH_MAX {
+        if path_length > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "path too long"));
         }
 

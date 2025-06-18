@@ -19,18 +19,19 @@
 #[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
-// Address and routing parameter area.
-pub mod arpa;
+#[cfg(feature = "rustc-dep-of-std")]
+pub use ::syslog;
+
+#[cfg(feature = "rustc-dep-of-std")]
+pub use ::sysapi;
+
+pub mod errno;
 
 /// Format of directory entries
 pub mod dirent;
 
 /// Dynamic linking.
-#[cfg(feature = "dlfcn")]
 pub mod dlfcn;
-
-/// Foreign function interface.
-pub mod ffi;
 
 /// Time types.
 pub mod time;
@@ -41,9 +42,6 @@ pub mod venv;
 /// File control operations.
 pub mod fcntl;
 
-/// Implementation-defined constants.
-pub mod limits;
-
 /// Messages.
 pub mod message;
 
@@ -51,20 +49,19 @@ pub mod message;
 pub mod netinet;
 
 /// Posix threads.
-#[cfg(feature = "pthread")]
 pub mod pthread;
 
 /// Standard symbolic constants and types.
 pub mod unistd;
-
-/// File last access and modification times.
-pub mod utime;
 
 /// Execution scheduling.
 pub mod sched;
 
 /// System-specific headers.
 pub mod sys;
+
+/// Definitions for I/O polling.
+pub mod poll;
 
 // Safe wrappers.
 #[cfg(feature = "syscall")]

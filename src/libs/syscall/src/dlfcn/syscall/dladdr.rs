@@ -5,18 +5,15 @@
 // Imports
 //===================================================================================================
 
-use crate::{
-    dlfcn::{
-        syscall::{
-            dynlib::{
-                DlHandle,
-                DynamicLibrary,
-            },
-            DYNAMIC_LIBRARY_REGISTRY,
+use crate::dlfcn::{
+    syscall::{
+        dynlib::{
+            DlHandle,
+            DynamicLibrary,
         },
-        DlInfo,
+        DYNAMIC_LIBRARY_REGISTRY,
     },
-    ffi::c_void,
+    DlInfo,
 };
 use ::alloc::{
     collections::btree_map::BTreeMap,
@@ -36,6 +33,7 @@ use ::sys::{
         VirtualAddress,
     },
 };
+use ::sysapi::ffi::c_void;
 
 //==================================================================================================
 // dladdr()

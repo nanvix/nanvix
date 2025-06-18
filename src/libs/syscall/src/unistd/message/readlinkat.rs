@@ -6,10 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    limits::{
-        self,
-        PATH_MAX,
-    },
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -33,6 +29,10 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use ::sysapi::limits::{
+    PATH_MAX,
+    SSIZE_MAX,
 };
 
 //==================================================================================================
@@ -72,7 +72,7 @@ impl ReadLinkAtRequest {
 
     /// Maximum size of the message.
     pub const MAX_SIZE: usize =
-        Self::SIZE_OF_DIRFD + Self::SIZE_OF_PATH_LENGTH + Self::SIZE_OF_BUFSIZ + limits::PATH_MAX;
+        Self::SIZE_OF_DIRFD + Self::SIZE_OF_PATH_LENGTH + Self::SIZE_OF_BUFSIZ + PATH_MAX;
 
     ///
     /// # Description
@@ -92,7 +92,7 @@ impl ReadLinkAtRequest {
     ///
     pub fn new(dirfd: i32, path: String, bufsiz: usize) -> Result<Self, Error> {
         // Check if the path is too long.
-        if path.len() > limits::PATH_MAX {
+        if path.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "old path too long"));
         }
 
@@ -266,7 +266,7 @@ impl ReadLinkAtResponse {
             return Err(Error::new(ErrorCode::InvalidMessage, "buffer too short"));
         }
         // Check if the buffer is too long.
-        if buffer.len() > limits::SSIZE_MAX as usize {
+        if buffer.len() > SSIZE_MAX as usize {
             return Err(Error::new(ErrorCode::InvalidMessage, "buffer too long"));
         }
 

@@ -5,13 +5,13 @@
 // Imports
 //==================================================================================================
 
+use ::sysapi::{
+    fcntl::file_advice::POSIX_FADV_SEQUENTIAL,
+    ffi::c_int,
+};
 use ::syscall::{
     fcntl,
-    fcntl::{
-        OpenFlags,
-        POSIX_FADV_SEQUENTIAL,
-    },
-    ffi::c_int,
+    fcntl::OpenFlags,
     unistd,
 };
 
@@ -24,7 +24,7 @@ pub fn test() {
     let filename: &str = "README.md";
 
     // Open file and assert result.
-    let fd: c_int = match fcntl::open(filename, OpenFlags::O_RDONLY.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, OpenFlags::Readonly.into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");

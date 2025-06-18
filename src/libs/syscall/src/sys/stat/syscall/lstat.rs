@@ -5,12 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl,
-    sys,
-    sys::stat,
-};
+use crate::sys;
 use ::sys::error::Error;
+use ::sysapi::{
+    fcntl::{
+        atflags::AT_FDCWD,
+        file_access_mode::AT_SYMLINK_NOFOLLOW,
+    },
+    sys_stat,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -33,7 +36,7 @@ use ::sys::error::Error;
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-pub fn lstat(pathname: &str, buf: &mut stat::stat) -> Result<(), Error> {
+pub fn lstat(pathname: &str, buf: &mut sys_stat::stat) -> Result<(), Error> {
     ::syslog::trace!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, buf);
-    sys::stat::fstatat(fcntl::AT_FDCWD, pathname, buf, fcntl::AT_SYMLINK_NOFOLLOW)
+    sys::stat::fstatat(AT_FDCWD, pathname, buf, AT_SYMLINK_NOFOLLOW)
 }

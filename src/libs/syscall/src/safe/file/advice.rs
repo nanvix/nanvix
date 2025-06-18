@@ -5,8 +5,8 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::{
+use ::sysapi::{
+    fcntl::file_advice::{
         POSIX_FADV_DONTNEED,
         POSIX_FADV_NOREUSE,
         POSIX_FADV_NORMAL,

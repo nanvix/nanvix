@@ -6,21 +6,21 @@
 //==================================================================================================
 
 use crate::{
-    sys::{
-        times::tms,
-        types::clock_t,
-    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
 use ::core::mem;
 use ::sys::{
+    error::Error,
     ipc::{
         Message,
         MessageType,
     },
     pm::ProcessIdentifier,
-    sys::error::Error,
+};
+use ::sysapi::{
+    sys_times::tms,
+    sys_types::clock_t,
 };
 
 //==================================================================================================

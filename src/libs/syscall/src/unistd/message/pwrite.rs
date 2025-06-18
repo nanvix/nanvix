@@ -6,11 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    sys::types::{
-        off_t,
-        size_t,
-        ssize_t,
-    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -22,6 +17,11 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::sys_types::{
+    off_t,
+    size_t,
+};
+use sysapi::sys_types::ssize_t;
 
 //==================================================================================================
 // PartialWriteRequest

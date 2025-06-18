@@ -2,76 +2,20 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-#![allow(non_camel_case_types)]
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::ffi::{
-    c_char,
-    c_int,
-    c_void,
-};
 use ::sys::error::ErrorCode;
-use ::syscall::sys::{
-    socket::{
-        sockaddr,
-        socklen_t,
+use ::sysapi::{
+    ffi::{
+        c_char,
+        c_int,
+        c_void,
     },
-    types::size_t,
+    netdb::addrinfo,
+    sys_socket::socklen_t,
+    sys_types::size_t,
 };
-
-//==================================================================================================
-// Structures
-//==================================================================================================
-
-#[repr(C, packed)]
-pub struct hostent {
-    pub h_name: *const c_char,
-    pub h_aliases: *const *const c_char,
-    pub h_addrtype: c_int,
-    pub h_length: c_int,
-    pub h_addr_list: *const *const c_char,
-}
-
-#[repr(C, packed)]
-pub struct netent {
-    pub n_name: *const c_char,
-    pub n_aliases: *const *const c_char,
-    pub n_addrtype: c_int,
-    pub n_net: u32,
-}
-
-#[repr(C, packed)]
-pub struct servent {
-    pub s_name: *const c_char,
-    pub s_aliases: *const *const c_char,
-    pub s_port: c_int,
-    pub s_proto: *const c_char,
-}
-
-#[repr(C, packed)]
-pub struct protoent {
-    pub p_name: *const c_char,
-    pub p_aliases: *const *const c_char,
-    pub p_proto: c_int,
-}
-
-#[repr(C, packed)]
-pub struct addrinfo {
-    pub ai_flags: c_int,
-    pub ai_family: c_int,
-    pub ai_socktype: c_int,
-    pub ai_protocol: c_int,
-    pub ai_addrlen: socklen_t,
-    pub ai_canonname: *const c_char,
-    pub ai_addr: *const sockaddr,
-    pub ai_next: *mut addrinfo,
-}
 
 //==================================================================================================
 // Standalone Functions
