@@ -389,14 +389,14 @@ run-linuxd-tests: | \
 
 ifneq ($(strip $(filter yes,$(BUILD_OPT))),)
 
-all-opt: init all-openblas all-python all-sqlite all-zlib
+all-opt: init all-openblas all-openssl all-python all-sqlite all-zlib
 
-clean-opt: clean-openblas clean-python clean-sqlite clean-zlib
+clean-opt: clean-openblas clean-openssl clean-python clean-sqlite clean-zlib
 
-distclean-opt: distclean-openblas distclean-python distclean-sqlite distclean-zlib
+distclean-opt: distclean-openblas distclean-openssl distclean-python distclean-sqlite distclean-zlib
 	$(FORCE_RM_CMD) $(SYSROOT_DIR)
 
-init-opt: init-openblas init-python init-zlib
+init-opt: init-openblas init-openssl init-python init-zlib
 
 else
 
@@ -437,21 +437,46 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 endif
 
 #===================================================================================================
+# Build Rules for OpenSSL
+#===================================================================================================
+
+all-openssl: init
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	echo "Building openssl..."
+	bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+clean-openssl:
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-openssl.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+distclean-openssl:
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-openssl.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+init-openssl: init-repo
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-openssl.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+endif
+
+#===================================================================================================
 # Build Rules for Python
 #===================================================================================================
 
-all-python: init all-guest-staticlibs all-sqlite all-zlib
+all-python: init all-guest-staticlibs all-sqlite all-openssl all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Python..."
 	bash $(SCRIPTS_DIR)/build-python.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
-clean-python: all-sqlite clean-zlib
+clean-python: clean-sqlite clean-openssl clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
-distclean-python: distclean-sqlite distclean-zlib
+distclean-python: distclean-sqlite distclean-openssl distclean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
