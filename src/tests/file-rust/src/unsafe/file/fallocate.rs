@@ -5,22 +5,28 @@
 // Imports
 //==================================================================================================
 
+use ::sysapi::ffi::c_int;
 use ::syscall::{
     fcntl,
-    fcntl::{
-        S_IRUSR,
-        S_IWUSR,
-    },
-    ffi::c_int,
     sys,
-    sys::{
-        stat::file_mode,
-        types::{
-            mode_t,
-            off_t,
-        },
-    },
     unistd,
+};
+use sysapi::{
+    sys_stat::{
+        self,
+        file_access_mode::{
+            S_IRUSR,
+            S_IRWXG,
+            S_IRWXO,
+            S_IRWXU,
+            S_IWUSR,
+        },
+        file_type::S_ISREG,
+    },
+    sys_types::{
+        mode_t,
+        off_t,
+    },
 };
 
 //==================================================================================================
@@ -53,18 +59,18 @@ pub fn test() {
     }
 
     // Check if the file exists.
-    let mut st: sys::stat::stat = sys::stat::stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     match sys::stat::stat(filename, &mut st) {
         Ok(()) => {
             // Check if the file is a regular file.
-            if !file_mode::S_ISREG(st.st_mode) {
+            if !S_ISREG(st.st_mode) {
                 panic!("file is not a regular file");
             }
 
             // Check if file permissions match expected permissions.
-            if st.st_mode & fcntl::S_IRWXU != mode
-                && st.st_mode & fcntl::S_IRWXG != 0
-                && st.st_mode & fcntl::S_IRWXO != 0
+            if st.st_mode & S_IRWXU != mode
+                && st.st_mode & S_IRWXG != 0
+                && st.st_mode & S_IRWXO != 0
             {
                 panic!(
                     "file permissions do not match expected permissions (expected: {mode:?}, got: \

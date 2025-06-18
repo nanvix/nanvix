@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::dirent::{
-    dirent,
     posix_dent,
     posix_getdents,
     DirectoryStream,
@@ -16,6 +15,7 @@ use ::alloc::{
     vec::Vec,
 };
 use ::sys::error::Error;
+use sysapi::dirent::dirent;
 
 //==================================================================================================
 // Constants

@@ -29,9 +29,7 @@ use crate::{
     },
     sys::{
         self,
-        types::mode_t,
     },
-    time::timespec,
     unistd,
 };
 use ::core::ffi::c_int;
@@ -52,6 +50,11 @@ pub use stdio::{
     StandardError,
     StandardInput,
     StandardOutput,
+};
+use sysapi::{
+    sys_stat,
+    sys_types::mode_t,
+    time::timespec,
 };
 pub use whence::RegularFileSeekWhence;
 
@@ -147,7 +150,7 @@ pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
 /// returned instead.
 ///
 pub fn fstat(fd: RawFileDescriptor) -> Result<FileSystemAttributes, Error> {
-    let mut st: sys::stat::stat = sys::stat::stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     sys::stat::fstat(fd, &mut st)?;
     Ok(FileSystemAttributes::from(st))
 }

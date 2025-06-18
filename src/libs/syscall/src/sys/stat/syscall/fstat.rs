@@ -5,15 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::sys::stat::{
-    self,
-    message::FileStatRequest,
-};
+use crate::sys::stat::message::FileStatRequest;
 use ::sys::{
     error::Error,
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use sysapi::sys_stat;
 
 //==================================================================================================
 // Standalone Functions
@@ -34,7 +32,7 @@ use ::sys::{
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-pub fn fstat(fd: i32, buf: &mut stat::stat) -> Result<(), Error> {
+pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
     // Send request.
     fstat_request(fd)?;
 

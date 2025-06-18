@@ -11,13 +11,13 @@ use crate::{
 };
 use ::core::slice;
 use ::sys::error::ErrorCode;
-use ::syscall::{
-    fcntl::AT_FDCWD,
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
     ffi::{
         c_char,
         c_int,
     },
-    sys::time::timeval,
+    sys_select::timeval,
     time::timespec,
 };
 

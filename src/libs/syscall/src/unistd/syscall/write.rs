@@ -7,14 +7,9 @@
 
 use crate::{
     safe::RawFileDescriptor,
-    sys::types::size_t,
-    unistd::{
-        message::{
-            WriteRequest,
-            WriteResponse,
-        },
-        STDERR_FILENO,
-        STDOUT_FILENO,
+    unistd::message::{
+        WriteRequest,
+        WriteResponse,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -27,6 +22,13 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    sys_types::size_t,
+    unistd::{
+        STDERR_FILENO,
+        STDOUT_FILENO,
+    },
 };
 
 //==================================================================================================

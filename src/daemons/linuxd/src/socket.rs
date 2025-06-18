@@ -17,45 +17,54 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::{
+    netinet_in::message_flags::{
+        MSG_EOR,
+        MSG_NOSIGNAL,
+        MSG_OOB,
+        MSG_PEEK,
+        MSG_WAITALL,
+    },
+    sys_socket::{
+        sockaddr,
+        socklen_t,
+    },
+    sys_types::{
+        size_t,
+        ssize_t,
+    },
+};
 use ::syscall::{
     netinet::in_::Protocol,
-    sys::{
-        socket::{
-            message::{
-                AcceptSocketRequest,
-                AcceptSocketResponse,
-                BindSocketRequest,
-                BindSocketResponse,
-                ConnectSocketRequest,
-                ConnectSocketResponse,
-                CreateSocketPairRequest,
-                CreateSocketPairResponse,
-                CreateSocketRequest,
-                CreateSocketResponse,
-                GetPeerNameRequest,
-                GetPeerNameResponse,
-                GetSockNameRequest,
-                GetSockNameResponse,
-                ListenSocketRequest,
-                ListenSocketResponse,
-                ReceiveSocketRequest,
-                ReceiveSocketResponse,
-                SendSocketRequest,
-                SendSocketResponse,
-                ShutdownSocketRequest,
-                ShutdownSocketResponse,
-            },
-            sockaddr,
-            socklen_t,
-            AddressFamily,
-            Shutdown,
-            SocketAddr,
-            SocketType,
+    sys::socket::{
+        message::{
+            AcceptSocketRequest,
+            AcceptSocketResponse,
+            BindSocketRequest,
+            BindSocketResponse,
+            ConnectSocketRequest,
+            ConnectSocketResponse,
+            CreateSocketPairRequest,
+            CreateSocketPairResponse,
+            CreateSocketRequest,
+            CreateSocketResponse,
+            GetPeerNameRequest,
+            GetPeerNameResponse,
+            GetSockNameRequest,
+            GetSockNameResponse,
+            ListenSocketRequest,
+            ListenSocketResponse,
+            ReceiveSocketRequest,
+            ReceiveSocketResponse,
+            SendSocketRequest,
+            SendSocketResponse,
+            ShutdownSocketRequest,
+            ShutdownSocketResponse,
         },
-        types::{
-            size_t,
-            ssize_t,
-        },
+        AddressFamily,
+        Shutdown,
+        SocketAddr,
+        SocketType,
     },
 };
 
@@ -202,7 +211,7 @@ pub fn do_connect(pid: ProcessIdentifier, request: ConnectSocketRequest) -> Mess
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
             crate::build_error(pid, error)
         },
-        sockfd => ConnectSocketResponse::build(pid, sockfd),
+        _ => ConnectSocketResponse::build(pid),
     }
 }
 
@@ -510,7 +519,7 @@ impl TryFrom<SocketAddr> for LibcSocketAddress {
     type Error = Error;
 
     fn try_from(sockaddr: SocketAddr) -> Result<Self, Self::Error> {
-        let sockaddr: sockaddr = sockaddr::try_from(&sockaddr)?;
+        let sockaddr: sockaddr = sockaddr::from(&sockaddr);
         LibcSocketAddress::try_from(sockaddr)
     }
 }
@@ -545,11 +554,11 @@ impl LibcMessageFlags {
         let mut libc_flags = 0;
 
         let flag_mappings: [(i32, libc::c_int); 5] = [
-            (::syscall::sys::socket::MSG_PEEK, libc::MSG_PEEK),
-            (::syscall::sys::socket::MSG_OOB, libc::MSG_OOB),
-            (::syscall::sys::socket::MSG_WAITALL, libc::MSG_WAITALL),
-            (::syscall::sys::socket::MSG_EOR, libc::MSG_EOR),
-            (::syscall::sys::socket::MSG_NOSIGNAL, libc::MSG_NOSIGNAL),
+            (MSG_PEEK, libc::MSG_PEEK),
+            (MSG_OOB, libc::MSG_OOB),
+            (MSG_WAITALL, libc::MSG_WAITALL),
+            (MSG_EOR, libc::MSG_EOR),
+            (MSG_NOSIGNAL, libc::MSG_NOSIGNAL),
         ];
 
         for (posix_flag, libc_flag) in &flag_mappings {

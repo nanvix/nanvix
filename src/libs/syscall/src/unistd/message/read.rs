@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    sys::types::size_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -18,6 +17,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::sys_types::size_t;
 
 //==================================================================================================
 // ReadRequest

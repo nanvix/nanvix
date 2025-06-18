@@ -6,8 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -35,6 +33,10 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    ffi::c_int,
+    limits::NAME_MAX,
 };
 
 //==================================================================================================
@@ -71,7 +73,7 @@ impl UnlinkAtRequest {
 
     /// Maximum size of the message.
     pub const MAX_SIZE: usize =
-        Self::SIZE_OF_DIRFD + Self::SIZE_OF_FLAGS + Self::SIZE_OF_PATHNAME_LEN + limits::NAME_MAX;
+        Self::SIZE_OF_DIRFD + Self::SIZE_OF_FLAGS + Self::SIZE_OF_PATHNAME_LEN + NAME_MAX;
 
     ///
     /// # Description
@@ -91,7 +93,7 @@ impl UnlinkAtRequest {
     ///
     pub fn new(dirfd: i32, pathname: &str, flags: c_int) -> Result<Self, Error> {
         // Check if pathname is too long.
-        if pathname.len() > limits::NAME_MAX {
+        if pathname.len() > NAME_MAX {
             #[cfg(target_os = "none")]
             ::syslog::error!(
                 "new(): pathname is too long (dirfd={:?}, pathname={:?}, flags={:?})",
@@ -180,7 +182,7 @@ impl MessageDeserializer for UnlinkAtRequest {
         }
 
         // Check if `pathname` is too long.
-        if pathname_len > limits::NAME_MAX {
+        if pathname_len > NAME_MAX {
             #[cfg(target_os = "none")]
             ::syslog::error!("try_from_bytes(): pathname is too long (len={:?})", pathname_len);
             return Err(Error::new(ErrorCode::InvalidArgument, "pathname is too long"));

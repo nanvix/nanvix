@@ -2,27 +2,31 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-#![allow(non_camel_case_types)]
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::sys::types::size_t;
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
+// Global Variables
+//==================================================================================================
+
+#[allow(non_upper_case_globals)]
+static mut errno: c_int = 0;
 
 ///
 /// # Description
 ///
-/// This structure represents an I/O vector.
+/// Returns a pointer to `errno` variable.
 ///
-pub struct iovec {
-    /// Base address of a memory region for input or output.
-    pub iov_base: *mut u8,
-    /// The size of the memory pointer to by `iov_base`.
-    pub iov_len: size_t,
+/// # Returns
+///
+/// A mutable pointer to the `errno` variable.
+///
+/// # Safety
+///
+/// This function is unsafe because it may interoperate with external code.
+///
+pub unsafe fn __errno_location() -> *mut c_int {
+    &raw mut errno as *mut c_int
 }

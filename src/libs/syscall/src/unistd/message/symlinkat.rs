@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -35,6 +34,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use sysapi::limits::PATH_MAX;
 
 //==================================================================================================
 // SymbolicLinkAtRequest
@@ -72,11 +72,8 @@ impl SymbolicLinkAtRequest {
     const OFFSET_TARGET: usize = Self::OFFSET_LINKPATH_LENGTH + Self::SIZE_OF_LINKPATH;
 
     /// Maximum size of the message.
-    pub const MAX_SIZE: usize = Self::SIZE_OF_DIRFD
-        + Self::SIZE_OF_TARGET
-        + Self::SIZE_OF_LINKPATH
-        + limits::PATH_MAX
-        + limits::PATH_MAX;
+    pub const MAX_SIZE: usize =
+        Self::SIZE_OF_DIRFD + Self::SIZE_OF_TARGET + Self::SIZE_OF_LINKPATH + PATH_MAX + PATH_MAX;
 
     ///
     /// # Description
@@ -85,12 +82,12 @@ impl SymbolicLinkAtRequest {
     ///
     pub fn new(target: String, dirfd: i32, linkpath: String) -> Result<Self, Error> {
         // Check if the target is too long.
-        if target.len() > limits::PATH_MAX {
+        if target.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "target too long"));
         }
 
         // Check if the link path is too long.
-        if linkpath.len() > limits::PATH_MAX {
+        if linkpath.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "link path too long"));
         }
 

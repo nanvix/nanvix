@@ -9,21 +9,21 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-use ::syscall::{
+use ::sysapi::{
     ffi::{
         c_int,
         c_void,
     },
-    pthread::{
-        self,
-        pthread_attr_t,
-        pthread_t,
-    },
     sched::sched_param,
-    sys::types::{
+    sys_types::{
+        pthread_attr_t,
         pthread_once_t,
+        pthread_t,
         size_t,
     },
+};
+use ::syscall::pthread::{
+    self,
 };
 
 //==================================================================================================

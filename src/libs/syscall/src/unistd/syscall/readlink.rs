@@ -5,12 +5,12 @@
 // Modules
 //==================================================================================================
 
-use crate::{
-    fcntl,
-    sys::types::ssize_t,
-    unistd,
-};
+use crate::unistd;
 use ::sys::error::Error;
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    sys_types::ssize_t,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -33,5 +33,5 @@ use ::sys::error::Error;
 ///
 pub fn readlink(path: &str, buf: &mut [u8]) -> Result<ssize_t, Error> {
     ::syslog::trace!("readlinkat(): path={path:?}, buf.len={}", buf.len());
-    unistd::readlinkat(fcntl::AT_FDCWD, path, buf)
+    unistd::readlinkat(AT_FDCWD, path, buf)
 }

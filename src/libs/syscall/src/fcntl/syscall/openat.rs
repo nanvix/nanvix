@@ -10,9 +10,7 @@ use crate::{
         OpenAtRequest,
         OpenAtResponse,
     },
-    ffi::c_int,
     message::MessagePartitioner,
-    sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -24,6 +22,10 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    ffi::c_int,
+    sys_types::mode_t,
 };
 
 //==================================================================================================

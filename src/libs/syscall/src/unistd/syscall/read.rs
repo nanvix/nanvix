@@ -7,14 +7,9 @@
 
 use crate::{
     safe::RawFileDescriptor,
-    sys::types::size_t,
-    unistd::{
-        self,
-        message::{
-            ReadRequest,
-            ReadResponse,
-        },
-        STDIN_FILENO,
+    unistd::message::{
+        ReadRequest,
+        ReadResponse,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -28,6 +23,10 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use sysapi::{
+    sys_types::size_t,
+    unistd::STDIN_FILENO,
 };
 
 //==================================================================================================
@@ -104,7 +103,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
                     let response: ReadResponse = ReadResponse::from_bytes(message.payload);
 
                     // Display progress if not STDIN.
-                    if fd != unistd::STDIN_FILENO && total_read % KILOBYTE as size_t == 0 {
+                    if fd != STDIN_FILENO && total_read % KILOBYTE as size_t == 0 {
                         let percentage = (total_read as f64 / buffer.len() as f64) * 100.0;
                         ::syslog::trace!(
                             "read(): {:?}/{:?} bytes read from fd={} ({:.2}%)",

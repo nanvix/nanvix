@@ -7,15 +7,15 @@
 
 use crate::{
     safe::RegularFile,
-    unistd::{
-        syscall,
-        STDERR_FILENO,
-        STDIN_FILENO,
-        STDOUT_FILENO,
-    },
+    unistd::syscall,
 };
 use ::core::mem::ManuallyDrop;
 use ::sys::error::Error;
+use ::sysapi::unistd::{
+    STDERR_FILENO,
+    STDIN_FILENO,
+    STDOUT_FILENO,
+};
 
 //==================================================================================================
 // Standard Input

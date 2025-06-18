@@ -7,9 +7,7 @@
 
 use crate::{
     fcntl::message::FileAdvisoryInformationRequest,
-    ffi::c_int,
     safe::RawFileDescriptor,
-    sys::types::off_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -21,6 +19,8 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
+use sysapi::sys_types::off_t;
 
 //==================================================================================================
 // Standalone Functions

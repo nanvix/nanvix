@@ -11,18 +11,20 @@ use ::core::{
     slice,
 };
 use ::sys::error::ErrorCode;
-use ::syscall::{
-    fcntl,
+use ::sysapi::{
+    fcntl::{
+        atflags::AT_FDCWD,
+        file_access_mode::AT_SYMLINK_NOFOLLOW,
+    },
     ffi::{
         c_char,
         c_int,
     },
-    sys::{
-        stat,
-        types::mode_t,
-    },
+    sys_stat,
+    sys_types::mode_t,
     time::timespec,
 };
+use ::syscall::sys::stat;
 
 //==================================================================================================
 // Standalone Functions
@@ -53,7 +55,7 @@ use ::syscall::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
     ::syslog::trace!("chmod(): path={:?}, mode={}", path, mode);
-    fchmodat(fcntl::AT_FDCWD, path, mode, 0)
+    fchmodat(AT_FDCWD, path, mode, 0)
 }
 
 ///
@@ -172,7 +174,7 @@ pub unsafe extern "C" fn fchmodat(
 /// This function has undefined behavior if buf points to an invalid memory location.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut stat::stat) -> c_int {
+pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut sys_stat::stat) -> c_int {
     ::syslog::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
     match stat::fstat(fd, &mut *buf) {
         Ok(_) => 0,
@@ -269,7 +271,7 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
     ::syslog::trace!("lchmod(): path={:?}, mode={}", path, mode);
-    fchmodat(fcntl::AT_FDCWD, path, mode, fcntl::AT_SYMLINK_NOFOLLOW)
+    fchmodat(AT_FDCWD, path, mode, AT_SYMLINK_NOFOLLOW)
 }
 
 ///
@@ -296,7 +298,7 @@ pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
 /// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
+pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::stat) -> c_int {
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
@@ -307,7 +309,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
         },
     };
 
-    let statbuf: &mut stat::stat = &mut *statbuf;
+    let statbuf: &mut sys_stat::stat = &mut *statbuf;
 
     match stat::lstat(pathname, statbuf) {
         Ok(_) => 0,
@@ -348,7 +350,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut stat::stat
 /// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat) -> c_int {
+pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut sys_stat::stat) -> c_int {
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
@@ -359,7 +361,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
         },
     };
 
-    let statbuf: &mut stat::stat = &mut *statbuf;
+    let statbuf: &mut sys_stat::stat = &mut *statbuf;
 
     match stat::stat(pathname, statbuf) {
         Ok(_) => 0,
@@ -401,7 +403,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut stat::stat)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
     ::syslog::trace!("mkdir(): pathname={:?}, mode={}", pathname, mode);
-    mkdirat(fcntl::AT_FDCWD, pathname, mode)
+    mkdirat(AT_FDCWD, pathname, mode)
 }
 
 ///

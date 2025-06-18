@@ -10,12 +10,10 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
-use ::syscall::sys::times::{
-    message::{
-        TimesRequest,
-        TimesResponse,
-    },
-    tms,
+use ::sysapi::sys_times::tms;
+use ::syscall::sys::times::message::{
+    TimesRequest,
+    TimesResponse,
 };
 
 //==================================================================================================

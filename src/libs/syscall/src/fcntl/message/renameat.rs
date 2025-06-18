@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -35,6 +34,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use sysapi::limits::NAME_MAX;
 
 //==================================================================================================
 // RenameAtRequest
@@ -78,8 +78,8 @@ impl RenameAtRequest {
         + Self::SIZE_OF_NEWDIRFD
         + Self::SIZE_OF_OLDPATH_LEN
         + Self::SIZEO_OF_NEWPATH_LEN
-        + limits::NAME_MAX
-        + limits::NAME_MAX;
+        + NAME_MAX
+        + NAME_MAX;
 
     ///
     /// # Description
@@ -100,7 +100,7 @@ impl RenameAtRequest {
     ///
     pub fn new(olddirfd: i32, oldpath: &str, newdirfd: i32, newpath: &str) -> Result<Self, Error> {
         // Check if `oldpath` is too long.
-        if oldpath.len() > limits::NAME_MAX {
+        if oldpath.len() > NAME_MAX {
             #[cfg(target_os = "none")]
             ::syslog::error!(
                 "renameat(): oldpath is too long (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, \
@@ -114,7 +114,7 @@ impl RenameAtRequest {
         }
 
         // Check if `newpath` is too long.
-        if newpath.len() > limits::NAME_MAX {
+        if newpath.len() > NAME_MAX {
             #[cfg(target_os = "none")]
             ::syslog::error!(
                 "renameat(): newpath is too long (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, \
@@ -217,7 +217,7 @@ impl MessageDeserializer for RenameAtRequest {
         }
 
         // Check if `oldpath` is too long.
-        if oldpath_len as usize > limits::NAME_MAX {
+        if oldpath_len as usize > NAME_MAX {
             #[cfg(target_os = "none")]
             ::syslog::error!(
                 "try_from_bytes(): oldpath is too long (olddirfd={:?}, oldpath={:?}, \
@@ -244,7 +244,7 @@ impl MessageDeserializer for RenameAtRequest {
         }
 
         // Check if `newpath` is too long.
-        if newpath_len as usize > limits::NAME_MAX {
+        if newpath_len as usize > NAME_MAX {
             #[cfg(target_os = "none")]
             ::syslog::error!(
                 "try_from_bytes(): newpath is too long (olddirfd={:?}, oldpath={:?}, \

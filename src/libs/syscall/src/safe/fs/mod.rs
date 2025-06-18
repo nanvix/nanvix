@@ -8,6 +8,7 @@
 mod attributes;
 mod fd;
 mod file_type;
+mod inode_number;
 mod path;
 mod permissions;
 
@@ -17,7 +18,6 @@ mod permissions;
 
 use crate::{
     fcntl,
-    limits,
     safe::{
         dir::{
             opendir,
@@ -30,10 +30,6 @@ use crate::{
     sys::{
         self,
         stat,
-        types::{
-            mode_t,
-            ssize_t,
-        },
     },
     unistd,
 };
@@ -53,8 +49,17 @@ use ::sys::error::{
 pub use attributes::FileSystemAttributes;
 pub use fd::RawFileDescriptor;
 pub use file_type::FileType;
+pub use inode_number::InodeNumber;
 pub use path::FileSystemPath;
 pub use permissions::FileSystemPermissions;
+use sysapi::{
+    limits::PATH_MAX,
+    sys_stat,
+    sys_types::{
+        mode_t,
+        ssize_t,
+    },
+};
 
 //==================================================================================================
 // File System
@@ -138,7 +143,7 @@ impl FileSystem {
     /// error is returned instead.
     ///
     pub fn get_file_attributes(filename: &FileSystemPath) -> Result<FileSystemAttributes, Error> {
-        let mut st: sys::stat::stat = sys::stat::stat::default();
+        let mut st: sys_stat::stat = sys_stat::stat::default();
         sys::stat::stat(filename.as_str(), &mut st)?;
         Ok(FileSystemAttributes::from(st))
     }
@@ -274,7 +279,7 @@ pub fn link(oldpath: &FileSystemPath, newpath: &FileSystemPath) -> Result<(), Er
 /// error is returned instead.
 ///
 pub fn lstat(pathname: &FileSystemPath) -> Result<FileSystemAttributes, Error> {
-    let mut st: sys::stat::stat = sys::stat::stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     stat::lstat(pathname.as_str(), &mut st)?;
     Ok(FileSystemAttributes::from(st))
 }
@@ -342,7 +347,7 @@ pub fn open(
 /// an error.
 ///
 pub fn readlink(path: &FileSystemPath) -> Result<FileSystemPath, Error> {
-    let mut buf: Vec<u8> = Vec::with_capacity(limits::PATH_MAX);
+    let mut buf: Vec<u8> = Vec::with_capacity(PATH_MAX);
 
     let num_bytes_read: ssize_t = unistd::readlink(path.as_str(), &mut buf)?;
 
@@ -387,7 +392,7 @@ pub fn rename(oldpath: &FileSystemPath, newpath: &FileSystemPath) -> Result<(), 
 /// error is returned instead.
 ///
 pub fn stat(pathname: &FileSystemPath) -> Result<FileSystemAttributes, Error> {
-    let mut st: sys::stat::stat = sys::stat::stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     sys::stat::stat(pathname.as_str(), &mut st)?;
     Ok(FileSystemAttributes::from(st))
 }

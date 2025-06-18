@@ -83,7 +83,8 @@ log = "0.4.27"
 micromath = "2.1.0"
 microvm = { path = "src/microvm", default-features = false }
 nix = { version = "0.30.1", default-features = false, features = [
-        "process", "signal",
+        "process",
+        "signal",
 ] }
 num_enum = { version = "0.7.3", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
@@ -97,7 +98,7 @@ serde_json = { version = "1.0.140", default-features = false, features = [
 ] }
 signal-hook = "0.3.18"
 slab = { path = "src/libs/slab", default-features = false }
-spin = { version = "0.10.0", default-features = false }
+spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
 sysapi = { path = "src/libs/sysapi", default-features = false }
 sysalloc = { path = "src/libs/sysalloc", default-features = false }

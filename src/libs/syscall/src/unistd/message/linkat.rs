@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -35,6 +34,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use sysapi::limits::PATH_MAX;
 
 //==================================================================================================
 // LinkAtRequest
@@ -86,10 +86,10 @@ impl LinkAtRequest {
     /// Maximum size of the message.
     pub const MAX_SIZE: usize = Self::SIZE_OF_OLDDIRFD
         + Self::SIZE_OF_OLDPATH_LENGTH
-        + limits::PATH_MAX
+        + PATH_MAX
         + Self::SIZE_OF_NEWDIRFD
         + Self::SIZE_OF_NEWPATH_LENGTH
-        + limits::PATH_MAX
+        + PATH_MAX
         + Self::SIZE_OF_FLAGS;
 
     ///
@@ -105,12 +105,12 @@ impl LinkAtRequest {
         flags: i32,
     ) -> Result<Self, Error> {
         // Check if the old path is too long.
-        if oldpath.len() > limits::PATH_MAX {
+        if oldpath.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "old path too long"));
         }
 
         // Check if the new path is too long.
-        if newpath.len() > limits::PATH_MAX {
+        if newpath.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "new path too long"));
         }
 

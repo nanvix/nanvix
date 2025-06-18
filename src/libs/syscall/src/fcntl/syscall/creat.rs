@@ -4,15 +4,16 @@
 // Modules
 //==================================================================================================
 
-use crate::{
-    fcntl::{
-        self,
-        OpenFlags,
-    },
-    ffi::c_int,
-    sys::types::mode_t,
+use crate::fcntl::{
+    self,
+    OpenFlags,
 };
 use ::sys::error::Error;
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    ffi::c_int,
+    sys_types::mode_t,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -36,9 +37,9 @@ use ::sys::error::Error;
 pub fn creat(filename: &str, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!("creat(): pathname={filename:?}, mode={mode:?}");
     fcntl::openat(
-        fcntl::AT_FDCWD,
+        AT_FDCWD,
         filename,
-        OpenFlags::O_CREAT | OpenFlags::O_RDWR | OpenFlags::O_TRUNC,
+        OpenFlags::Create | OpenFlags::ReadWrite | OpenFlags::Truncate,
         mode,
     )
 }

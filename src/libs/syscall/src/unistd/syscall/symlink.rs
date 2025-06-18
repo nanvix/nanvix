@@ -7,6 +7,7 @@
 
 use crate::unistd;
 use ::sys::error::Error;
+use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
 // Standalone Functions
@@ -42,5 +43,5 @@ use ::sys::error::Error;
 ///
 pub fn symlink(target: &str, linkpath: &str) -> Result<(), Error> {
     ::syslog::trace!("symlink(): target = {:?}, linkpath = {:?}", target, linkpath);
-    unistd::symlinkat(target, crate::fcntl::AT_FDCWD, linkpath)
+    unistd::symlinkat(target, AT_FDCWD, linkpath)
 }

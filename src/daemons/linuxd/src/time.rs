@@ -9,9 +9,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-use ::syscall::time::{
-    self,
-};
+use ::sysapi::time::timespec;
 
 //==================================================================================================
 // LibcTimeSpec
@@ -35,11 +33,11 @@ impl From<LibcTimeSpec> for libc::timespec {
     }
 }
 
-impl TryFrom<LibcTimeSpec> for time::timespec {
+impl TryFrom<LibcTimeSpec> for timespec {
     type Error = Error;
 
     fn try_from(tp: LibcTimeSpec) -> Result<Self, Self::Error> {
-        Ok(time::timespec {
+        Ok(timespec {
             tv_sec: tp.0.tv_sec,
             tv_nsec: match tp.0.tv_nsec.try_into() {
                 Ok(tv_nsec) => tv_nsec,
@@ -49,8 +47,8 @@ impl TryFrom<LibcTimeSpec> for time::timespec {
     }
 }
 
-impl From<time::timespec> for LibcTimeSpec {
-    fn from(tp: time::timespec) -> Self {
+impl From<timespec> for LibcTimeSpec {
+    fn from(tp: timespec) -> Self {
         LibcTimeSpec(libc::timespec {
             tv_sec: tp.tv_sec,
             tv_nsec: tp.tv_nsec.into(),

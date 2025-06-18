@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     sys::socket::{
         message::{
             ConnectSocketRequest,
@@ -14,6 +13,7 @@ use crate::{
         },
         sockaddr,
         socklen_t,
+        SocketAddr,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -26,6 +26,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
@@ -40,18 +41,19 @@ use ::sys::{
 ///
 /// - `sockfd`: File descriptor of the socket.
 /// - `sockaddr`: Address of the socket.
-/// - `len`: Size of the address.
 ///
 /// # Returns
 ///
-/// The `connect()` function returns the file descriptor of the socket on success. On error, it returns an error.
+/// The `connect()` function returns empty on success. On error, it returns an error.
 ///
-pub fn connect(sockfd: c_int, sockaddr: &sockaddr, len: socklen_t) -> Result<c_int, Error> {
-    ::syslog::trace!("connect(): fd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
+    ::syslog::trace!("connect(): fd={:?}, sockaddr={:?}", sockfd, sockaddr);
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
+    let (sockaddr, socklen): (sockaddr, socklen_t) = From::<&SocketAddr>::from(sockaddr);
+
     // Build request and send it.
-    let request: Message = ConnectSocketRequest::build(pid, sockfd, sockaddr.clone(), len);
+    let request: Message = ConnectSocketRequest::build(pid, sockfd, &sockaddr, socklen);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.
@@ -70,9 +72,9 @@ pub fn connect(sockfd: c_int, sockaddr: &sockaddr, len: socklen_t) -> Result<c_i
         match message.header {
             // Response was successfully parsed.
             LinuxDaemonMessageHeader::ConnectSocketResponse => {
-                let response: ConnectSocketResponse =
+                let _response: ConnectSocketResponse =
                     ConnectSocketResponse::from_bytes(message.payload);
-                Ok(response.sockfd)
+                Ok(())
             },
             // Invalid response.
             _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),

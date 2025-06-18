@@ -11,15 +11,16 @@ description = "Linux Provider Daemon"
 homepage.workspace = true
 
 [dependencies]
-config = { workspace = true }
-syscall = { workspace = true, features = ["std"] }
 anyhow = { workspace = true }
-log = { workspace = true }
+config = { workspace = true }
 flexi_logger = { workspace = true }
 libc = { workspace = true }
+log = { workspace = true }
 profiler = { workspace = true }
 signal-hook = { workspace = true }
 sys = { workspace = true, features = ["std"] }
+sysapi = { workspace = true, features = ["std"] }
+syscall = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
 
 [features]

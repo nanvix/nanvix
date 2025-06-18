@@ -6,10 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    sys::types::{
-        size_t,
-        ssize_t,
-    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -20,6 +16,10 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use ::sysapi::sys_types::{
+    size_t,
+    ssize_t,
 };
 
 //==================================================================================================
