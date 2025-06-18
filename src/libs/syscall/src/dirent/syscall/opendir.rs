@@ -11,10 +11,10 @@ use crate::{
         self,
         OpenFlags,
     },
-    ffi::c_int,
 };
 use ::alloc::boxed::Box;
 use ::sys::error::Error;
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
@@ -22,7 +22,7 @@ use ::sys::error::Error;
 
 /// Opens a directory stream.
 pub fn opendir(dirname: &str) -> Result<Box<DirectoryStream>, Error> {
-    let fd: c_int = fcntl::open(dirname, OpenFlags::O_RDONLY | OpenFlags::O_DIRECTORY, 0)?;
+    let fd: c_int = fcntl::open(dirname, OpenFlags::Readonly | OpenFlags::Directory, 0)?;
     let dir: DirectoryStream = DirectoryStream::new(fd);
     Ok(Box::new(dir))
 }

@@ -6,17 +6,11 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
-    },
-    sys::types::{
-        gid_t,
-        uid_t,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -42,6 +36,14 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    ffi::c_int,
+    limits::PATH_MAX,
+    sys_types::{
+        gid_t,
+        uid_t,
+    },
 };
 
 //==================================================================================================
@@ -92,7 +94,7 @@ impl FileChownAtRequest {
         + Self::SIZE_OF_GROUP
         + Self::SIZE_OF_FLAG
         + Self::SIZE_OF_PATH_LENGTH
-        + limits::PATH_MAX;
+        + PATH_MAX;
 
     ///
     /// # Description
@@ -120,7 +122,7 @@ impl FileChownAtRequest {
         path: &str,
     ) -> Result<Self, Error> {
         // Check if path is too long.
-        if path.len() > limits::PATH_MAX {
+        if path.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "old path too long"));
         }
 

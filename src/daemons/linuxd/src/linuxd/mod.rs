@@ -48,6 +48,14 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::{
+    sys_types::ssize_t,
+    unistd::{
+        STDERR_FILENO,
+        STDIN_FILENO,
+        STDOUT_FILENO,
+    },
+};
 use ::syscall::{
     dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
@@ -83,7 +91,6 @@ use ::syscall::{
             UpdateFileAccessTimeRequest,
         },
         times::message::TimesRequest,
-        types::ssize_t,
     },
     unistd::message::{
         ChangeDirectoryRequest,
@@ -588,9 +595,7 @@ impl<'a> LinuxDaemon<'a> {
         // handle standard file descriptors specially.
         match request.fd {
             // Closing standard file descriptors.
-            ::syscall::unistd::STDIN_FILENO
-            | ::syscall::unistd::STDOUT_FILENO
-            | ::syscall::unistd::STDERR_FILENO => {
+            STDIN_FILENO | STDOUT_FILENO | STDERR_FILENO => {
                 // Perform a fake close, as standard file descriptors
                 // are shared with the current process.
                 CloseResponse::build(source, 0)
@@ -607,9 +612,7 @@ impl<'a> LinuxDaemon<'a> {
     ) -> Message {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
-        if request.fd == ::syscall::unistd::STDOUT_FILENO
-            || request.fd == ::syscall::unistd::STDERR_FILENO
-        {
+        if request.fd == STDOUT_FILENO || request.fd == STDERR_FILENO {
             if let Some(conn) = self.gateway_conn {
                 // Check if write size is invalid.
                 if request.count == 0 {
@@ -638,7 +641,7 @@ impl<'a> LinuxDaemon<'a> {
                 let count: usize = request.count as usize;
                 let buffer: &[u8] = &request.buffer[..count];
                 let string: String = String::from_utf8_lossy(buffer).to_string();
-                if request.fd == ::syscall::unistd::STDERR_FILENO {
+                if request.fd == STDERR_FILENO {
                     eprint!("{string}");
                     let _ = io::stderr().lock().flush();
                 } else {
@@ -656,7 +659,7 @@ impl<'a> LinuxDaemon<'a> {
     fn handle_read_request(&mut self, source: ProcessIdentifier, request: ReadRequest) -> Message {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
-        if request.fd == ::syscall::unistd::STDIN_FILENO {
+        if request.fd == STDIN_FILENO {
             if let Some(conn) = self.gateway_conn {
                 // Check if the process is associated with a virtual environment.
                 let env: &mut VirtualEnvironment = if let Some(env) = self.venv.get_mut(source) {

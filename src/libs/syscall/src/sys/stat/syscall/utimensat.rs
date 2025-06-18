@@ -8,7 +8,6 @@
 use crate::{
     message::MessagePartitioner,
     sys::stat::message::UpdateFileAccessTimeAtRequest,
-    time::timespec,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -24,6 +23,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::time::timespec;
 
 //==================================================================================================
 // Standalone Functions

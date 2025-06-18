@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     sys::socket::{
         message::{
             AcceptSocketRequest,
@@ -25,12 +24,13 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn accept(sockfd: c_int, sockaddr: Option<&mut SocketAddr>) -> Result<c_int, Error> {
+pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build request and send it.
@@ -57,11 +57,7 @@ pub fn accept(sockfd: c_int, sockaddr: Option<&mut SocketAddr>) -> Result<c_int,
                     let response: AcceptSocketResponse =
                         AcceptSocketResponse::from_bytes(message.payload);
 
-                    // Save socket address, if requested.
-                    if let Some(sockaddr) = sockaddr {
-                        *sockaddr = SocketAddr::try_from(&response.sockaddr)?;
-                    }
-                    Ok(response.sockfd)
+                    Ok((response.sockfd, SocketAddr::try_from(&response.sockaddr)?))
                 },
                 // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),

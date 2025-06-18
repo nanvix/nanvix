@@ -5,24 +5,26 @@
 // Modules
 //==================================================================================================
 
-use crate::{
-    ffi::c_long,
-    time::{
-        clockid_t,
-        time_t,
-        timespec,
-        CLOCK_MONOTONIC,
-        CLOCK_PROCESS_CPUTIME_ID,
-        CLOCK_REALTIME,
-        CLOCK_THREAD_CPUTIME_ID,
-    },
-};
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
     time::SystemTime,
+};
+use ::sysapi::{
+    ffi::c_long,
+    sys_types::{
+        clockid_t,
+        time_t,
+    },
+    time::{
+        timespec,
+        CLOCK_MONOTONIC,
+        CLOCK_PROCESS_CPUTIME_ID,
+        CLOCK_REALTIME,
+        CLOCK_THREAD_CPUTIME_ID,
+    },
 };
 
 //==================================================================================================

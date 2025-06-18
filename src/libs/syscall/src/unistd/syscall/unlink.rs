@@ -7,6 +7,7 @@
 
 use crate::fcntl;
 use ::sys::error::Error;
+use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
 // Standalone Functions
@@ -36,5 +37,5 @@ use ::sys::error::Error;
 ///
 pub fn unlink(path: &str) -> Result<(), Error> {
     ::syslog::trace!("unlink(): path = {:?}", path);
-    fcntl::unlinkat(crate::fcntl::AT_FDCWD, path, 0)
+    fcntl::unlinkat(AT_FDCWD, path, 0)
 }

@@ -8,12 +8,10 @@
 use crate::errno::__errno_location;
 use ::alloc::boxed::Box;
 use ::sys::error::ErrorCode;
-use ::syscall::{
-    dirent::{
-        self,
-        DirectoryStream,
-    },
-    ffi::c_int,
+use ::sysapi::ffi::c_int;
+use ::syscall::dirent::{
+    self,
+    DirectoryStream,
 };
 
 //==================================================================================================

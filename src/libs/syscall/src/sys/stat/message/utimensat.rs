@@ -6,14 +6,12 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
     },
-    time::timespec,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -35,6 +33,10 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use sysapi::{
+    limits::PATH_MAX,
+    time::timespec,
 };
 
 //==================================================================================================
@@ -82,7 +84,7 @@ impl UpdateFileAccessTimeAtRequest {
     pub const MAX_SIZE: usize = Self::SIZE_OF_DIRFD
         + Self::SIZE_OF_FLAG
         + Self::SIZE_OF_PATH_LENGTH
-        + limits::PATH_MAX
+        + PATH_MAX
         + Self::SIZE_OF_TIMES;
 
     ///
@@ -103,7 +105,7 @@ impl UpdateFileAccessTimeAtRequest {
     ///
     pub fn new(dirfd: i32, path: String, flag: i32, times: &[timespec; 2]) -> Result<Self, Error> {
         // Check if path is too long.
-        if path.len() > limits::PATH_MAX {
+        if path.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "path too long"));
         }
 
@@ -211,7 +213,7 @@ impl MessageDeserializer for UpdateFileAccessTimeAtRequest {
         }
 
         // Check if path is too long.
-        if path_length > limits::PATH_MAX {
+        if path_length > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "path too long"));
         }
 

@@ -5,10 +5,8 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::OpenFlags,
-    ffi::c_int,
-};
+use crate::fcntl::OpenFlags;
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // File Control Request
@@ -25,10 +23,10 @@ impl FileStatusFlags {
 
     pub fn set_append(mut self, enable: bool) -> Self {
         if enable {
-            let flag: c_int = OpenFlags::O_APPEND.into();
+            let flag: c_int = OpenFlags::Append.into();
             self.flags |= flag;
         } else {
-            let flag: c_int = OpenFlags::O_APPEND.into();
+            let flag: c_int = OpenFlags::Append.into();
             self.flags &= !flag;
         }
         self
@@ -36,10 +34,10 @@ impl FileStatusFlags {
 
     pub fn set_synchronized_writes(mut self, enable: bool) -> Self {
         if enable {
-            let flag: c_int = OpenFlags::O_SYNC.into();
+            let flag: c_int = OpenFlags::Sync.into();
             self.flags |= flag;
         } else {
-            let flag: c_int = OpenFlags::O_SYNC.into();
+            let flag: c_int = OpenFlags::Sync.into();
             self.flags &= !flag;
         }
         self
@@ -47,10 +45,10 @@ impl FileStatusFlags {
 
     pub fn set_non_blocking(mut self, enable: bool) -> Self {
         if enable {
-            let flag: c_int = OpenFlags::O_NONBLOCK.into();
+            let flag: c_int = OpenFlags::NonBlocking.into();
             self.flags |= flag;
         } else {
-            let flag: c_int = OpenFlags::O_NONBLOCK.into();
+            let flag: c_int = OpenFlags::NonBlocking.into();
             self.flags &= !flag;
         }
         self
@@ -58,10 +56,10 @@ impl FileStatusFlags {
 
     pub fn set_synchronized_reads(mut self, enable: bool) -> Self {
         if enable {
-            let flag: c_int = OpenFlags::O_SYNC.into();
+            let flag: c_int = OpenFlags::Sync.into();
             self.flags |= flag;
         } else {
-            let flag: c_int = OpenFlags::O_SYNC.into();
+            let flag: c_int = OpenFlags::Sync.into();
             self.flags &= !flag;
         }
         self

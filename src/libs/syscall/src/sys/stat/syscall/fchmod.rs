@@ -7,10 +7,7 @@
 
 use crate::{
     safe::RawFileDescriptor,
-    sys::{
-        stat::message::FileChmodRequest,
-        types::mode_t,
-    },
+    sys::stat::message::FileChmodRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -22,6 +19,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use sysapi::sys_types::mode_t;
 
 //==================================================================================================
 // Standalone Functions

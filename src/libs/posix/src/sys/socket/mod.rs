@@ -8,27 +8,31 @@
 use crate::errno::__errno_location;
 use ::core::slice;
 use ::sys::error::ErrorCode;
+use ::sysapi::ffi::{
+    c_int,
+    c_void,
+};
 use ::syscall::{
-    ffi::{
-        c_int,
-        c_void,
-    },
     netinet::in_::Protocol,
     sys::{
         socket,
         socket::{
-            sockaddr,
-            socklen_t,
             AddressFamily,
             Shutdown,
             SocketAddr,
             SocketType,
         },
-        types::{
-            msghdr,
-            size_t,
-            ssize_t,
-        },
+    },
+};
+use sysapi::{
+    sys_socket::{
+        sockaddr,
+        socklen_t,
+    },
+    sys_types::{
+        msghdr,
+        size_t,
+        ssize_t,
     },
 };
 
@@ -43,33 +47,19 @@ pub unsafe extern "C" fn accept(
     sockaddr: *mut sockaddr,
     len: *mut socklen_t,
 ) -> c_int {
-    ::syslog::trace!("accept(): sockfd={:?}, sockaddr={:?}, len={:?}", sockfd, sockaddr, len);
+    ::syslog::trace!("accept(): sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?}");
 
-    let mut sockaddr_: SocketAddr = SocketAddr::V4(Default::default());
-
-    match socket::accept(sockfd, Some(&mut sockaddr_)) {
-        Ok(sockfd) => {
+    match socket::syscall::accept(sockfd) {
+        Ok((sockfd, sockaddr_)) => {
             // Store socket address, if requested.
-            match sockaddr_.try_into() {
-                // Succeeded to convert socket address.
-                Ok((sockaddr_, len_)) => {
-                    if !sockaddr.is_null() {
-                        *sockaddr = sockaddr_;
-                    }
+            let (sockaddr_, len_) = From::<&SocketAddr>::from(&sockaddr_);
+            if !sockaddr.is_null() {
+                *sockaddr = sockaddr_;
+            }
 
-                    if !len.is_null() {
-                        *len = len_;
-                    }
-                },
-                // Failed to convert socket address.
-                Err(error) => {
-                    // Warn and continue, as the socket descriptor was successfully created.
-                    ::syslog::warn!(
-                        "accept(): failed to convert socket address (error={:?})",
-                        error
-                    );
-                },
-            };
+            if !len.is_null() {
+                *len = len_;
+            }
 
             sockfd
         },
@@ -105,7 +95,7 @@ pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: soc
         },
     };
 
-    match socket::bind(sockfd, &sockaddr) {
+    match socket::syscall::bind(sockfd, &sockaddr) {
         Ok(_) => 0,
         Err(e) => {
             *__errno_location() = e.code.get();
@@ -140,8 +130,33 @@ pub unsafe extern "C" fn connect(
     sockaddr: *const sockaddr,
     len: socklen_t,
 ) -> c_int {
-    match socket::connect(sockfd, unsafe { &*sockaddr }, len) {
-        Ok(sockfd) => sockfd,
+    // Check if `sockaddr` is valid.
+    if sockaddr.is_null() {
+        let reason: &str = "invalid socket address";
+        ::syslog::error!("connect(): {reason}");
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Check if `len` is valid.
+    if len == 0 {
+        let reason: &str = "invalid socket address length";
+        ::syslog::error!("connect(): {reason}");
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    let sockaddr: SocketAddr = match TryFrom::<&sockaddr>::try_from(unsafe { &*sockaddr }) {
+        Ok(sockaddr) => sockaddr,
+        Err(error) => {
+            ::syslog::error!("connect(): failed to convert socket address ({error:?})");
+            *__errno_location() = error.code.get();
+            return -1;
+        },
+    };
+
+    match socket::syscall::connect(sockfd, &sockaddr) {
+        Ok(()) => 0,
         Err(e) => {
             *__errno_location() = e.code.get();
             -1
@@ -189,22 +204,11 @@ pub unsafe extern "C" fn getpeername(
 
     let mut sockaddr_: SocketAddr = SocketAddr::V4(Default::default());
 
-    match socket::getpeername(sockfd, &mut sockaddr_) {
-        Ok(_) => {
-            match sockaddr_.try_into() {
-                Ok((sockaddr_, len_)) => {
-                    *sockaddr = sockaddr_;
-                    *len = len_;
-                },
-                Err(error) => {
-                    ::syslog::error!(
-                        "getpeername(): failed to convert socket address (error={:?})",
-                        error
-                    );
-                    *__errno_location() = error.code.get();
-                    return -1;
-                },
-            };
+    match socket::syscall::getpeername(sockfd, &mut sockaddr_) {
+        Ok(()) => {
+            let (sockaddr_, len_): (sockaddr, socklen_t) = From::<&SocketAddr>::from(&sockaddr_);
+            *sockaddr = sockaddr_;
+            *len = len_;
             0
         },
         Err(e) => {
@@ -254,17 +258,13 @@ pub unsafe extern "C" fn getsockname(
 
     let mut sockaddr_: SocketAddr = SocketAddr::V4(Default::default());
 
-    match socket::getsockname(sockfd, &mut sockaddr_) {
+    match socket::syscall::getsockname(sockfd, &mut sockaddr_) {
         Ok(_) => {
-            let (sockaddr_, len_): (sockaddr, socklen_t) = match sockaddr_.try_into() {
-                Ok((sockaddr_, len_)) => (sockaddr_, len_),
-                Err(e) => {
-                    *__errno_location() = e.code.get();
-                    return -1;
-                },
-            };
-            unsafe { *sockaddr = sockaddr_ };
-            unsafe { *len = len_ };
+            let (sockaddr_, len_): (sockaddr, socklen_t) = From::<&SocketAddr>::from(&sockaddr_);
+            unsafe {
+                *sockaddr = sockaddr_;
+                *len = len_;
+            }
             0
         },
         Err(e) => {
@@ -324,7 +324,18 @@ pub unsafe extern "C" fn getsockopt(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
     ::syslog::trace!("listen(): sockfd={:?}, backlog={:?}", sockfd, backlog);
-    match socket::listen(sockfd, backlog) {
+
+    // Attempt to convert backlog.
+    let backlog: usize = match usize::try_from(backlog) {
+        Ok(backlog) => backlog,
+        Err(_error) => {
+            ::syslog::error!("listen(): invalid backlog (backlog={backlog:?})");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    match socket::syscall::listen(sockfd, backlog) {
         Ok(_) => 0,
         Err(e) => {
             ::syslog::error!("listen(): failed to listen on socket {:?}", e);
@@ -366,7 +377,7 @@ pub unsafe extern "C" fn recv(
     // Attempt to convert buffer.
     let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len as usize) };
 
-    match socket::recv(sockfd, buf, flags) {
+    match socket::syscall::recv(sockfd, buf, flags) {
         Ok(bytes_received) => bytes_received as ssize_t,
         Err(e) => {
             ::syslog::error!("recv(): failed to receive data through socket {:?}", e);
@@ -488,7 +499,7 @@ pub unsafe extern "C" fn send(
     // Attempt to convert buffer.
     let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len as usize) };
 
-    match socket::send(sockfd, buf, flags) {
+    match socket::syscall::send(sockfd, buf, flags) {
         Ok(bytes_sent) => bytes_sent as ssize_t,
         Err(e) => {
             ::syslog::error!("send(): failed to send data through socket {:?}", e);
@@ -660,7 +671,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     };
 
     // Create socket.
-    match socket::socket(domain, typ, protocol) {
+    match socket::syscall::socket(domain, typ, protocol) {
         Ok(sockfd) => sockfd,
         Err(error) => {
             ::syslog::error!("socket(): failed to create socket (error={:?})", error);
@@ -684,7 +695,7 @@ pub extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
         },
     };
 
-    match socket::shutdown(sockfd, how) {
+    match socket::syscall::shutdown(sockfd, how) {
         Ok(_) => 0,
         Err(e) => {
             ::syslog::error!("shutdown(): failed to shutdown socket {:?}", e);
@@ -758,7 +769,7 @@ pub unsafe extern "C" fn socketpair(
         },
     };
 
-    match socket::socketpair(domain, typ, protocol, socket_fds) {
+    match socket::syscall::socketpair(domain, typ, protocol, socket_fds) {
         Ok(_) => 0,
         Err(e) => {
             *__errno_location() = e.code.get();

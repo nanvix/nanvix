@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    sys::socket::sockaddr,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -21,6 +20,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use sysapi::sys_socket::sockaddr;
 
 //==================================================================================================
 // AcceptSocketRequest
@@ -84,7 +84,7 @@ impl AcceptSocketResponse {
     pub fn new(sockfd: i32, sockaddr: &sockaddr) -> Self {
         Self {
             sockfd,
-            sockaddr: sockaddr.clone(),
+            sockaddr: *sockaddr,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -112,11 +112,10 @@ impl AcceptSocketResponse {
 
 impl Debug for AcceptSocketResponse {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "AcceptSocketResponse {{ sockfd: {}, sockaddr: {:?} }}",
-            { self.sockfd },
-            &self.sockaddr
-        )
+        write!(f, "AcceptSocketResponse {{ sockfd: {:?}, sockaddr: {:?} }}", { self.sockfd }, {
+            {
+                self.sockaddr
+            }
+        })
     }
 }

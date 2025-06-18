@@ -5,11 +5,14 @@
 // Imports
 //==================================================================================================
 
-use ::syscall::{
-    fcntl::AT_FDCWD,
-    sys,
-    sys::stat::file_mode,
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    sys_stat::{
+        self,
+        file_type::S_ISREG,
+    },
 };
+use ::syscall::sys;
 
 //==================================================================================================
 // Standalone Functions
@@ -19,11 +22,11 @@ use ::syscall::{
 pub fn test() {
     let filename: &str = "README.md";
 
-    let mut st: sys::stat::stat = sys::stat::stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     match sys::stat::fstatat(AT_FDCWD, filename, &mut st, 0) {
         Ok(()) => {
             // Check if the file is a regular file.
-            if !file_mode::S_ISREG(st.st_mode) {
+            if !S_ISREG(st.st_mode) {
                 panic!("file is not a regular file");
             }
         },

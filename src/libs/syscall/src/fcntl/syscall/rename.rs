@@ -5,11 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::fcntl::{
-    renameat,
-    AT_FDCWD,
-};
+use crate::fcntl::renameat;
 use ::sys::error::Error;
+use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
 // Standalone Functions

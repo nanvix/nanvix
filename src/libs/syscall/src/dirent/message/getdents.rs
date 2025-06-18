@@ -7,21 +7,11 @@
 
 use crate::{
     dirent::posix_dent,
-    ffi::{
-        c_char,
-        c_int,
-        c_uchar,
-    },
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
-    },
-    sys::types::{
-        ino_t,
-        reclen_t,
-        size_t,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -38,6 +28,18 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    ffi::{
+        c_char,
+        c_int,
+        c_uchar,
+    },
+    sys_types::{
+        ino_t,
+        reclen_t,
+        size_t,
+    },
 };
 
 //==================================================================================================

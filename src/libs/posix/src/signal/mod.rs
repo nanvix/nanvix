@@ -7,9 +7,9 @@
 
 use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
-use ::syscall::{
+use ::sysapi::{
     ffi::c_int,
-    sys::types::pid_t,
+    sys_types::pid_t,
 };
 
 //==================================================================================================
