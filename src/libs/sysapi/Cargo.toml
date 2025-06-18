@@ -1,0 +1,25 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "sysapi"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "System Application Programming Interface"
+homepage.workspace = true
+
+[dependencies]
+compiler_builtins = { version = "0.1", optional = true }
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+static_assert = { workspace = true }
+
+[features]
+default = []
+std = []
+rustc-dep-of-std = [
+    "core",
+    "compiler_builtins/rustc-dep-of-std",
+    "static_assert/rustc-dep-of-std",
+]

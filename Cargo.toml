@@ -30,6 +30,7 @@ members = [
         "src/libs/slab",
         "src/libs/static_assert",
         "src/libs/sysalloc",
+        "src/libs/sysapi",
         "src/libs/syscall",
         "src/libs/syscomm",
         "src/libs/syslog",
@@ -98,6 +99,7 @@ signal-hook = "0.3.18"
 slab = { path = "src/libs/slab", default-features = false }
 spin = { version = "0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
+sysapi = { path = "src/libs/sysapi", default-features = false }
 sysalloc = { path = "src/libs/sysalloc", default-features = false }
 syscall = { path = "src/libs/syscall", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
