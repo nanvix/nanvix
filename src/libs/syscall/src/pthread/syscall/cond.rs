@@ -33,13 +33,11 @@ use ::sysapi::{
     sys_types::pthread_cond_t,
 };
 use sysapi::{
-    pthread::{
-        pthread_mutexattr_t,
-        PTHREAD_MUTEX_INITIALIZER,
-    },
+    pthread::PTHREAD_MUTEX_INITIALIZER,
     sys_types::{
         pthread_condattr_t,
         pthread_mutex_t,
+        pthread_mutexattr_t,
     },
 };
 

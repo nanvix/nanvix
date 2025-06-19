@@ -20,11 +20,11 @@ use ::sys::{
     time::SystemTime,
 };
 use ::sysapi::{
-    pthread::{
+    pthread::PTHREAD_MUTEX_INITIALIZER,
+    sys_types::{
+        pthread_mutex_t,
         pthread_mutexattr_t,
-        PTHREAD_MUTEX_INITIALIZER,
     },
-    sys_types::pthread_mutex_t,
 };
 
 //==================================================================================================
