@@ -8,35 +8,45 @@
 #===================================================================================================
 
 RULE=${1:-build}
-NANVIX_HOME=${2:-`git rev-parse --show-toplevel`}
-TOOLCHAIN_DIR=${3:-$PWD/toolchain}
-SYSROOT_DIR=${4:-$PWD/sysroot}
+TOOLCHAIN_DIR=${2:-$PWD/toolchain}
+SYSROOT_DIR=${3:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
-OPT_DIR=${NANVIX_HOME}/opt
-OPENBLAS_HOME=${OPT_DIR}/openblas
-OPENBLAS_MAKE_OPTIONS="\
-    CC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gcc \
-    FC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gfortran \
-    PREFIX=${SYSROOT_DIR} \
-    HOSTCC=gcc \
-    TARGET=P2 \
-    BINARY=32 \
-    CROSS=1 \
-    NO_SHARED=1 \
-    USE_OPENMP=0 \
-    USE_THREAD=0 \
-    USE_LOCKING=1 \
-    USE_TLS=0"
+export CONTRIB_DIR=${SYSROOT_DIR}/src
+export OPENBLAS_HOME=${CONTRIB_DIR}/openblas
+export OPENBLAS_REPOSITORY=https://github.com/nanvix/openblas
+export OPENBLAS_BRANCH=nanvix/v0.3.29
+
+#===================================================================================================
+# Configure
+#===================================================================================================
+
+configure() {
+    # OpenBLAS uses make variables instead of configure script
+    export OPENBLAS_MAKE_OPTIONS="\
+        CC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gcc \
+        FC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gfortran \
+        PREFIX=${SYSROOT_DIR} \
+        HOSTCC=gcc \
+        TARGET=P2 \
+        BINARY=32 \
+        CROSS=1 \
+        NO_SHARED=1 \
+        USE_OPENMP=0 \
+        USE_THREAD=0 \
+        USE_LOCKING=1 \
+        USE_TLS=0"
+}
 
 #===================================================================================================
 # Clean
 #===================================================================================================
 
 make_clean() {
+    cd ${OPENBLAS_HOME}
     make ${OPENBLAS_MAKE_OPTIONS} clean
 }
 
@@ -45,6 +55,7 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
+    cd ${OPENBLAS_HOME}
 	git clean -fdx
 }
 
@@ -53,6 +64,7 @@ distclean() {
 #===================================================================================================
 
 make_all() {
+    cd ${OPENBLAS_HOME}
     make ${OPENBLAS_MAKE_OPTIONS} all
 }
 
@@ -61,6 +73,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
+    cd ${OPENBLAS_HOME}
     make ${OPENBLAS_MAKE_OPTIONS} install
 }
 
@@ -70,8 +83,8 @@ make_install() {
 
 
 build() {
+    cd ${OPENBLAS_HOME}
 	make_all
-
 	make_install
 }
 
@@ -80,17 +93,22 @@ build() {
 #===================================================================================================
 
 init() {
-	# Nothing to do here.
-	return
+    mkdir -p ${CONTRIB_DIR}
+    if [ ! -d "${OPENBLAS_HOME}/.git" ];
+    then
+        git clone ${OPENBLAS_REPOSITORY} ${OPENBLAS_HOME}
+        cd ${OPENBLAS_HOME}
+    else
+        cd ${OPENBLAS_HOME}
+        git fetch origin
+        git reset --hard
+    fi
+    git checkout ${OPENBLAS_BRANCH}
+
+    configure
 }
 
 #===================================================================================================
-
-# Fetch submodule if needed.
-git submodule update --init $OPENBLAS_HOME
-
-# Switch to submodule directory.
-cd ${OPENBLAS_HOME}
 
 # Save current environment variables.
 OLD_AR=$AR
