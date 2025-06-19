@@ -11,15 +11,11 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    ffi::c_int,
-    sys_types::{
-        pthread_cond_t,
-        pthread_mutex_t,
-        pthread_t,
-    },
+use crate::sys_types::{
+    pthread_cond_t,
+    pthread_mutex_t,
+    pthread_t,
 };
-use ::core::mem::size_of;
 
 //==================================================================================================
 // Constants
@@ -64,44 +60,4 @@ pub mod pthread_mutex_type {
     /// mutex of this type which is not locked results in undefined behavior. An implementation may
     /// map this mutex to one of the other mutex types.
     pub const PTHREAD_MUTEX_DEFAULT: c_int = 3;
-}
-
-///
-/// # Description
-///
-/// Mutex attributes.
-///
-#[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
-pub struct pthread_mutexattr_t {
-    /// Whether the mutex attributes are initialized.
-    is_initialized: c_int,
-    /// Type of mutex.
-    type_: c_int,
-    /// Whether the mutex is recursive.
-    recursive: c_int,
-}
-::static_assert::assert_eq_size!(pthread_mutexattr_t, pthread_mutexattr_t::_SIZE);
-
-impl pthread_mutexattr_t {
-    /// Size of the `is_initialized` field.
-    const SIZE_OF_IS_INITIALIZED: usize = size_of::<c_int>();
-    /// Size of the `type_` field.
-    const SIZE_OF_TYPE: usize = size_of::<c_int>();
-    /// Size of the `recursive` field.
-    const SIZE_OF_RECURSIVE: usize = size_of::<c_int>();
-
-    /// Size of `pthread_mutexattr_t` structure.
-    pub const _SIZE: usize =
-        Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_TYPE + Self::SIZE_OF_RECURSIVE;
-}
-
-impl Default for pthread_mutexattr_t {
-    fn default() -> Self {
-        Self {
-            is_initialized: 1,
-            type_: pthread_mutex_type::PTHREAD_MUTEX_NORMAL,
-            recursive: 0,
-        }
-    }
 }
