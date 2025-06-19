@@ -51,6 +51,7 @@ rustc-dep-of-std = [
     "sys/rustc-dep-of-std",
     "static_assert/rustc-dep-of-std",
     "sysapi/rustc-dep-of-std",
+    "sysalloc/rustc-dep-of-std",
     "syslog/rustc-dep-of-std",
     "type-safe/rustc-dep-of-std",
     "spin/rustc-dep-of-std",

@@ -29,6 +29,9 @@ pub use ::syslog;
 #[cfg(feature = "rustc-dep-of-std")]
 pub use ::sysapi;
 
+#[cfg(feature = "rustc-dep-of-std")]
+pub use ::sysalloc;
+
 pub mod errno;
 
 /// Format of directory entries
