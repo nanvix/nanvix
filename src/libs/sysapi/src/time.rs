@@ -13,10 +13,7 @@
 
 use crate::{
     ffi::c_long,
-    sys_types::{
-        clockid_t,
-        time_t,
-    },
+    sys_types::time_t,
 };
 use ::core::mem::size_of;
 
@@ -24,21 +21,26 @@ use ::core::mem::size_of;
 // Types
 //==================================================================================================
 
-/// The identifier of the system-wide clock measuring real time.
-// TODO: gate this behind the CX extension.
-pub const CLOCK_REALTIME: clockid_t = 1;
+/// Clock IDs to be used with the `clock_gettime()` and `clock_getres()` system calls.
+pub mod clock_ids {
+    use crate::sys_types::clockid_t;
 
-/// The identifier of the CPU-time clock associated with the process.
-// TODO: gate this behind the CPT extension.
-pub const CLOCK_PROCESS_CPUTIME_ID: clockid_t = 2;
+    /// The identifier of the system-wide clock measuring real time.
+    // TODO: gate this behind the CX extension.
+    pub const CLOCK_REALTIME: clockid_t = 1;
 
-/// The identifier of the CPU-time clock associated with the thread.
-/// TODO: gate this behind the TCT extension.
-pub const CLOCK_THREAD_CPUTIME_ID: clockid_t = 3;
+    /// The identifier of the CPU-time clock associated with the process.
+    // TODO: gate this behind the CPT extension.
+    pub const CLOCK_PROCESS_CPUTIME_ID: clockid_t = 2;
 
-/// The identifier for the system-wide monotonic clock.
-// TODO: gate this behind the CX extension.
-pub const CLOCK_MONOTONIC: clockid_t = 4;
+    /// The identifier of the CPU-time clock associated with the thread.
+    /// TODO: gate this behind the TCT extension.
+    pub const CLOCK_THREAD_CPUTIME_ID: clockid_t = 3;
+
+    /// The identifier for the system-wide monotonic clock.
+    // TODO: gate this behind the CX extension.
+    pub const CLOCK_MONOTONIC: clockid_t = 4;
+}
 
 //==================================================================================================
 // Structures
