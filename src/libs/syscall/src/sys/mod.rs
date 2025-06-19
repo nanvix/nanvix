@@ -11,9 +11,6 @@ pub mod socket;
 /// File status.
 pub mod stat;
 
-/// Definitions for resource operations.
-pub mod resource;
-
 /// Time types.
 pub mod time;
 
