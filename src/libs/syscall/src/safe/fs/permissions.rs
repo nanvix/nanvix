@@ -8,7 +8,7 @@
 use ::alloc::string::String;
 use ::core::fmt;
 use ::sysapi::{
-    sys_stat::file_access_mode::{
+    sys_stat::file_mode::{
         S_IRGRP,
         S_IROTH,
         S_IRUSR,

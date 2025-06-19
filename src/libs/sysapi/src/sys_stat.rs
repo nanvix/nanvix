@@ -32,8 +32,8 @@ use ::core::mem::size_of;
 // Constants
 //==================================================================================================
 
-/// File access modes.
-pub mod file_access_mode {
+/// File mode.
+pub mod file_mode {
     use crate::sys_types::mode_t;
 
     pub const S_IRWXU: mode_t = 0o700;
