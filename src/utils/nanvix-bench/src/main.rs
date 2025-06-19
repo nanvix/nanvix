@@ -480,6 +480,7 @@ fn main() -> Result<()> {
 
     print!("Setting up {} benchmark...", benchmark.flavour);
     benchmark.setup();
+    benchmark.start();
     println!("done!");
 
     let result = match benchmark.flavour {
