@@ -55,7 +55,7 @@ use ::sysapi::{
     ffi::c_int,
     limits::PATH_MAX,
     sys_stat::{
-        file_access_mode::{
+        file_mode::{
             S_IRGRP,
             S_IROTH,
             S_IRUSR,
