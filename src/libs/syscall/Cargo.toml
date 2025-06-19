@@ -26,6 +26,7 @@ goblin = { workspace = true, optional = true, features = [
     "mach32",
     "mach64",
 ] }
+nvx = { workspace = true, optional = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
 syslog = { workspace = true, optional = true }
@@ -46,6 +47,7 @@ rustc-dep-of-std = [
     "alloc",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
+    "nvx/rustc-dep-of-std",
     "sys/rustc-dep-of-std",
     "static_assert/rustc-dep-of-std",
     "sysapi/rustc-dep-of-std",
