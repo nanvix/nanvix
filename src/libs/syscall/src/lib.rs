@@ -30,6 +30,9 @@ pub use ::syslog;
 pub use ::sysapi;
 
 #[cfg(feature = "rustc-dep-of-std")]
+pub use ::sys::error;
+
+#[cfg(feature = "rustc-dep-of-std")]
 pub use ::sysalloc;
 
 pub mod errno;
