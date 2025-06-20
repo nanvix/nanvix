@@ -85,15 +85,15 @@ impl SendSocketRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct SendSocketResponse {
-    pub count: ssize_t,
+    pub count: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(SendSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl SendSocketResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<ssize_t>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    pub fn new(count: ssize_t) -> Self {
+    pub fn new(count: i32) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],
