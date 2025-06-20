@@ -497,7 +497,14 @@ pub unsafe extern "C" fn send(
     let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len as usize) };
 
     match socket::syscall::send(sockfd, buf, flags) {
-        Ok(bytes_sent) => bytes_sent as c_ssize_t,
+        Ok(bytes_sent) => match bytes_sent.try_into() {
+            Ok(bytes_sent) => bytes_sent,
+            Err(_error) => {
+                ::syslog::error!("send(): failed to convert bytes sent");
+                *__errno_location() = ErrorCode::ValueOutOfRange.get();
+                -1
+            },
+        },
         Err(e) => {
             ::syslog::error!("send(): failed to send data through socket {:?}", e);
             *__errno_location() = e.code.get();
