@@ -14,10 +14,18 @@
 use crate::ffi::{
     c_int,
     c_uchar,
+    c_void,
 };
 use ::core::{
     fmt,
     mem::size_of,
+};
+
+#[cfg(target_pointer_width = "32")]
+use crate::sys_types::{
+    msghdr,
+    size_t,
+    ssize_t,
 };
 
 //==================================================================================================
@@ -184,4 +192,59 @@ pub struct linger {
     pub l_onoff: c_int,
     ///Linger  time, in seconds.
     pub l_linger: c_int,
+}
+
+//==================================================================================================
+// Function Prototypes
+//==================================================================================================
+
+unsafe extern "C" {
+    pub fn accept(sockfd: c_int, sockaddr: *mut sockaddr, len: *mut socklen_t) -> c_int;
+    pub fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: socklen_t) -> c_int;
+    pub fn connect(sockfd: c_int, sockaddr: *const sockaddr, len: socklen_t) -> c_int;
+    pub fn getpeername(sockfd: c_int, sockaddr: *mut sockaddr, len: *mut socklen_t) -> c_int;
+    pub fn getsockname(sockfd: c_int, sockaddr: *mut sockaddr, len: *mut socklen_t) -> c_int;
+    pub fn getsockopt(
+        sockfd: c_int,
+        level: c_int,
+        optname: c_int,
+        optval: *mut c_void,
+        optlen: *mut socklen_t,
+    ) -> c_int;
+    pub fn listen(sockfd: c_int, backlog: c_int) -> c_int;
+    #[cfg(target_pointer_width = "32")]
+    pub fn recv(sockfd: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t;
+    #[cfg(target_pointer_width = "32")]
+    pub fn recvfrom(
+        sockfd: c_int,
+        buf: *mut c_void,
+        len: size_t,
+        flags: c_int,
+        sockaddr: *mut sockaddr,
+        socklen: *mut socklen_t,
+    ) -> ssize_t;
+    #[cfg(target_pointer_width = "32")]
+    pub fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t;
+    #[cfg(target_pointer_width = "32")]
+    pub fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t;
+    #[cfg(target_pointer_width = "32")]
+    pub fn sendto(
+        sockfd: c_int,
+        buf: *const c_void,
+        len: size_t,
+        flags: c_int,
+        sockaddr: *const sockaddr,
+        addrlen: socklen_t,
+    ) -> ssize_t;
+    #[cfg(target_pointer_width = "32")]
+    pub fn setsockopt(
+        sockfd: c_int,
+        level: c_int,
+        optname: c_int,
+        optval: *const c_void,
+        optlen: socklen_t,
+    ) -> c_int;
+    pub fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c_int;
+    pub fn shutdown(sockfd: c_int, how: c_int) -> c_int;
+    pub fn socketpair(domain: c_int, typ: c_int, protocol: c_int, socket_fds: *mut c_int) -> c_int;
 }
