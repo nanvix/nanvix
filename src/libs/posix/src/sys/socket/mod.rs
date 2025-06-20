@@ -30,9 +30,9 @@ use sysapi::{
         socklen_t,
     },
     sys_types::{
-        msghdr,
         c_size_t,
         c_ssize_t,
+        msghdr,
     },
 };
 
@@ -368,7 +368,14 @@ pub unsafe extern "C" fn recv(
     let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len as usize) };
 
     match socket::syscall::recv(sockfd, buf, flags) {
-        Ok(bytes_received) => bytes_received as c_ssize_t,
+        Ok(bytes_received) => match bytes_received.try_into() {
+            Ok(bytes_received) => bytes_received,
+            Err(_error) => {
+                ::syslog::error!("recv(): failed to convert bytes received");
+                *__errno_location() = ErrorCode::ValueOutOfRange.get();
+                -1
+            },
+        },
         Err(e) => {
             ::syslog::error!("recv(): failed to receive data through socket {:?}", e);
             *__errno_location() = e.code.get();
