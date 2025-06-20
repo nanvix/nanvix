@@ -12,11 +12,16 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+config = { workspace = true }
 flexi_logger = { workspace = true }
 indicatif = { workspace = true }
 log = { workspace = true }
+microvm = { workspace = true }
 nix = { workspace = true }
 profiler = { workspace = true }
+sys = { workspace = true, features = ["std"] }
+syscall = { workspace = true, features = ["std"] }
+syscomm = { workspace = true }
 
 [features]
 default = []
