@@ -36,9 +36,9 @@ use ::sysapi::{
         c_uchar,
     },
     sys_types::{
+        c_size_t,
         ino_t,
         reclen_t,
-        size_t,
     },
 };
 
@@ -80,7 +80,7 @@ impl GetDirectoryEntriesRequest {
 
         Ok(Self {
             fd,
-            count: count as size_t,
+            count: count as c_size_t,
             _padding: [0; Self::PADDING_SIZE],
         })
     }

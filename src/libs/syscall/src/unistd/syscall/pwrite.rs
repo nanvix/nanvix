@@ -25,7 +25,7 @@ use ::sys::{
 };
 use ::sysapi::sys_types::{
     off_t,
-    size_t,
+    c_size_t,
 };
 
 //==================================================================================================
@@ -48,10 +48,10 @@ use ::sysapi::sys_types::{
 /// Upon successful completion, `pwrite()` returns the number of bytes written. Otherwise, it
 /// returns an error.
 ///
-pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<size_t, Error> {
+pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    let mut total_written: size_t = 0;
+    let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
@@ -67,7 +67,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<siz
         let request: Message = PartialWriteRequest::build(
             pid,
             fd,
-            chunk_size as size_t,
+            chunk_size as c_size_t,
             offset + buffer_offset as off_t,
             chunk,
         );
@@ -106,7 +106,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<siz
                         PartialWriteResponse::from_bytes(message.payload);
 
                     // Update total written count.
-                    total_written += message.count as size_t;
+                    total_written += message.count as c_size_t;
                     buffer_offset += message.count as usize;
                 },
                 // Response was not expected.

@@ -23,8 +23,8 @@ use ::sysapi::{
     ffi::c_int,
     limits::PATH_MAX,
     sys_types::{
+        c_size_t,
         off_t,
-        size_t,
         ssize_t,
     },
     unistd::file_seek::{
@@ -344,7 +344,7 @@ pub fn do_write(pid: ProcessIdentifier, request: WriteRequest) -> Message {
     trace!("write(): pid={pid:?}, request={request:?}");
 
     // Check if count is invalid.
-    if request.count > WriteRequest::BUFFER_SIZE as size_t {
+    if request.count > WriteRequest::BUFFER_SIZE as c_size_t {
         return crate::build_error(pid, ErrorCode::InvalidArgument);
     }
     let fd: i32 = request.fd;
@@ -375,7 +375,7 @@ pub fn do_read(pid: ProcessIdentifier, request: ReadRequest) -> Message {
     trace!("read(): pid={pid:?}, request={request:?}");
 
     // Check if count is invalid.
-    if request.count > ReadResponse::BUFFER_SIZE as size_t {
+    if request.count > ReadResponse::BUFFER_SIZE as c_size_t {
         return crate::build_error(pid, ErrorCode::InvalidArgument);
     }
     let fd: i32 = request.fd;
@@ -406,7 +406,7 @@ pub fn do_pwrite(pid: ProcessIdentifier, request: PartialWriteRequest) -> Messag
     trace!("pwrite(): pid={pid:?}, request={request:?}");
 
     // Check if count is invalid.
-    if request.count > PartialWriteRequest::BUFFER_SIZE as size_t {
+    if request.count > PartialWriteRequest::BUFFER_SIZE as c_size_t {
         return crate::build_error(pid, ErrorCode::InvalidArgument);
     }
     let fd: i32 = request.fd;
@@ -438,7 +438,7 @@ pub fn do_pread(pid: ProcessIdentifier, request: PartialReadRequest) -> Message 
     trace!("pread(): pid={pid:?}, request={request:?}");
 
     // Check if count is invalid.
-    if request.count > PartialReadResponse::BUFFER_SIZE as size_t {
+    if request.count > PartialReadResponse::BUFFER_SIZE as c_size_t {
         return crate::build_error(pid, ErrorCode::InvalidArgument);
     }
     let fd: i32 = request.fd;

@@ -18,7 +18,7 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::sysapi::sys_types::{
-    size_t,
+    c_size_t,
     ssize_t,
 };
 
@@ -42,7 +42,7 @@ impl SendSocketRequest {
         - mem::size_of::<u32>()
         - mem::size_of::<i32>();
 
-    pub fn new(sockfd: i32, count: u32, flags: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    pub fn new(sockfd: i32, count: c_size_t, flags: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self {
             sockfd,
             count,
@@ -62,7 +62,7 @@ impl SendSocketRequest {
     pub fn build(
         pid: ProcessIdentifier,
         sockfd: i32,
-        count: size_t,
+        count: c_size_t,
         flags: i32,
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {

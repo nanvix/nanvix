@@ -18,8 +18,8 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::sysapi::sys_types::{
+    c_size_t,
     off_t,
-    size_t,
     ssize_t,
 };
 
@@ -43,7 +43,7 @@ impl PartialReadRequest {
         - mem::size_of::<u32>()
         - mem::size_of::<off_t>();
 
-    fn new(fd: i32, count: u32, offset: off_t) -> Self {
+    fn new(fd: i32, count: c_size_t, offset: off_t) -> Self {
         Self {
             fd,
             count,
@@ -60,7 +60,7 @@ impl PartialReadRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32, count: size_t, offset: off_t) -> Message {
+    pub fn build(pid: ProcessIdentifier, fd: i32, count: c_size_t, offset: off_t) -> Message {
         let message: PartialReadRequest = PartialReadRequest::new(fd, count, offset);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::PartialReadRequest,

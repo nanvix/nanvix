@@ -25,7 +25,7 @@ use ::sys::{
 };
 use sysapi::sys_types::{
     off_t,
-    size_t,
+    c_size_t,
 };
 
 //==================================================================================================
@@ -48,12 +48,12 @@ use sysapi::sys_types::{
 /// Upon successful completion, `pread()` returns the number of bytes read. Otherwise, it
 /// returns an error.
 ///
-pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<size_t, Error> {
+pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pread(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
-    let mut total_read: size_t = 0;
+    let mut total_read: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
     while buffer_offset < buffer.len() {
@@ -64,7 +64,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
         let request: Message = PartialReadRequest::build(
             pid,
             fd,
-            chunk_size as size_t,
+            chunk_size as c_size_t,
             offset + buffer_offset as off_t,
         );
         ::sys::kcall::ipc::send(&request)?;
@@ -110,7 +110,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
                     // Copy response buffer to user buffer.
                     buffer[buffer_offset..buffer_offset + chunk_size]
                         .copy_from_slice(&response.buffer[..chunk_size]);
-                    total_read += response.count as size_t;
+                    total_read += response.count as c_size_t;
                     buffer_offset += chunk_size;
 
                     // Check for partial read.
