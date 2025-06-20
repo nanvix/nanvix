@@ -28,7 +28,7 @@ pub type nfds_t = c_uint;
 // Structures
 //==================================================================================================
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct pollfd {
     /// The following descriptor being polled.
@@ -37,4 +37,12 @@ pub struct pollfd {
     pub events: c_short,
     /// Output event flags.
     pub revents: c_short,
+}
+::static_assert::assert_eq_size!(pollfd, pollfd::_SIZE);
+
+impl pollfd {
+    /// Size of the `pollfd` structure.
+    pub const _SIZE: usize = ::core::mem::size_of::<c_int>() + // fd
+        ::core::mem::size_of::<c_short>() + // events
+        ::core::mem::size_of::<c_short>(); // revents
 }
