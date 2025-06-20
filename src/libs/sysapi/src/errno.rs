@@ -255,3 +255,7 @@ pub const ENOTRECOVERABLE: c_int = 141;
 pub const EOWNERDEAD: c_int = 142;
 /// Streams pipe error.
 pub const ESTRPIPE: c_int = 143;
+
+unsafe extern "C" {
+    pub unsafe fn __errno_location() -> *mut c_int;
+}
