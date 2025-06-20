@@ -364,8 +364,18 @@ pub unsafe extern "C" fn recv(
         return -1;
     }
 
+    // Attempt to convert `len` to `usize`.
+    let len: usize = match len.try_into() {
+        Ok(len) => len,
+        Err(_error) => {
+            ::syslog::error!("recv(): failed to convert length to usize");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
     // Attempt to convert buffer.
-    let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len as usize) };
+    let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len) };
 
     match socket::syscall::recv(sockfd, buf, flags) {
         Ok(bytes_received) => match bytes_received.try_into() {
@@ -493,8 +503,18 @@ pub unsafe extern "C" fn send(
         return -1;
     }
 
+    // Attempt to convert `len` to `usize`.
+    let len: usize = match len.try_into() {
+        Ok(len) => len,
+        Err(_error) => {
+            ::syslog::error!("send(): failed to convert length to usize");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
     // Attempt to convert buffer.
-    let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len as usize) };
+    let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len) };
 
     match socket::syscall::send(sockfd, buf, flags) {
         Ok(bytes_sent) => match bytes_sent.try_into() {
