@@ -34,10 +34,10 @@ use ::sysapi::{
     },
     sys_types::{
         c_size_t,
+        c_ssize_t,
         gid_t,
         off_t,
         pid_t,
-        ssize_t,
         uid_t,
     },
     unistd::{
@@ -1187,7 +1187,7 @@ pub unsafe extern "C" fn pread(
     buffer: *mut c_void,
     count: c_size_t,
     offset: off_t,
-) -> ssize_t {
+) -> c_ssize_t {
     ::syslog::trace!(
         "pread(): fd={}, buffer={:?}, count={:?}, offset={:?}",
         fd,
@@ -1219,7 +1219,7 @@ pub unsafe extern "C" fn pread(
 
     // Attempt to read from the file descriptor and check for errors.
     match ::syscall::unistd::pread(fd, buffer, offset) {
-        Ok(bytes_read) => bytes_read as ssize_t,
+        Ok(bytes_read) => bytes_read as c_ssize_t,
         Err(error) => {
             ::syslog::error!(
                 "pread(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
@@ -1268,7 +1268,7 @@ pub unsafe extern "C" fn pwrite(
     buffer: *const c_void,
     count: c_size_t,
     offset: off_t,
-) -> ssize_t {
+) -> c_ssize_t {
     ::syslog::trace!(
         "pwrite(): fd={}, buffer={:?}, count={:?}, offset={:?}",
         fd,
@@ -1308,7 +1308,7 @@ pub unsafe extern "C" fn pwrite(
 
     // Attempt to write to the file descriptor and check for errors.
     match ::syscall::unistd::pwrite(fd, buffer, offset) {
-        Ok(bytes_written) => bytes_written as ssize_t,
+        Ok(bytes_written) => bytes_written as c_ssize_t,
         Err(error) => {
             ::syslog::error!(
                 "pwrite(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
@@ -1351,7 +1351,7 @@ pub unsafe extern "C" fn pwrite(
 /// - This function is not called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -> ssize_t {
+pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -> c_ssize_t {
     // Skip logging for stdin to avoid spamming the output.
     if fd != STDIN_FILENO {
         ::syslog::trace!("read(): fd={:?}, buffer={:?}, count={:?}", fd, buffer, count);
@@ -1380,7 +1380,7 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -
 
     // Attempt to read from the file descriptor and check for errors.
     match ::syscall::unistd::read(fd, buffer) {
-        Ok(bytes_read) => bytes_read as ssize_t,
+        Ok(bytes_read) => bytes_read as c_ssize_t,
         Err(error) => {
             ::syslog::error!(
                 "read(): failed (fd={}, buffer={:?}, count={:?}, error={:?})",
@@ -1426,7 +1426,7 @@ pub unsafe extern "C" fn readlinkat(
     path: *const c_char,
     buf: *mut c_char,
     bufsize: c_size_t,
-) -> ssize_t {
+) -> c_ssize_t {
     ::syslog::trace!(
         "readlinkat(): dirfd={:?}, path={:?}, buf={:?}, bufsize={:?}",
         dirfd,
@@ -1523,7 +1523,7 @@ pub unsafe extern "C" fn readlink(
     path: *const c_char,
     buf: *mut c_char,
     bufsize: c_size_t,
-) -> ssize_t {
+) -> c_ssize_t {
     ::syslog::trace!("readlink(): path={:?}, buf={:?}, bufsize={:?}", path, buf, bufsize);
     readlinkat(AT_FDCWD, path, buf, bufsize)
 }
@@ -1952,7 +1952,7 @@ pub unsafe extern "C" fn waitpid(pid: pid_t, status: *mut c_int, options: c_int)
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t) -> ssize_t {
+pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t) -> c_ssize_t {
     // Skip logging for stdout and stderr to avoid spamming the output.
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {
         ::syslog::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
@@ -1977,7 +1977,7 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t
 
     // Attempt to write to file descriptor and check for errors.
     match ::syscall::unistd::write(fd, buffer) {
-        Ok(bytes_written) => bytes_written as ssize_t,
+        Ok(bytes_written) => bytes_written as c_ssize_t,
         Err(error) => {
             ::syslog::error!("write(): failed (error={:?})", error);
             *__errno_location() = error.code.get();

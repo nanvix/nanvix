@@ -25,7 +25,7 @@ use ::sysapi::{
     sys_types::{
         c_size_t,
         off_t,
-        ssize_t,
+        c_ssize_t,
     },
     unistd::file_seek::{
         SEEK_CUR,
@@ -417,7 +417,7 @@ pub fn do_pwrite(pid: ProcessIdentifier, request: PartialWriteRequest) -> Messag
 
     debug!("libc::pwrite(): fd={fd:?}, count={count:?}, offset={offset:?}, buffer={buffer:?}",);
     match unsafe { libc::pwrite(fd, buffer.as_ptr() as *const _, count, offset) } {
-        ret if ret >= 0 => PartialWriteResponse::build(pid, ret as ssize_t),
+        ret if ret >= 0 => PartialWriteResponse::build(pid, ret as c_ssize_t),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::pwrite(): errno={errno:?}");
@@ -449,7 +449,7 @@ pub fn do_pread(pid: ProcessIdentifier, request: PartialReadRequest) -> Message 
 
     debug!("libc::pread(): fd={fd:?}, count={count:?}, offset={offset:?}, buffer={buffer:?}",);
     match unsafe { libc::pread(fd, buffer.as_mut_ptr() as *mut _, count, offset) } {
-        ret if ret >= 0 => PartialReadResponse::build(pid, ret as ssize_t, buffer),
+        ret if ret >= 0 => PartialReadResponse::build(pid, ret as c_ssize_t, buffer),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::pread(): errno={errno:?}");

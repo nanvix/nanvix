@@ -19,8 +19,8 @@ use ::sys::{
 };
 use ::sysapi::sys_types::{
     c_size_t,
+    c_ssize_t,
     off_t,
-    ssize_t,
 };
 
 //==================================================================================================
@@ -87,7 +87,7 @@ pub struct PartialReadResponse {
 impl PartialReadResponse {
     pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    fn new(count: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    fn new(count: c_ssize_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { count, buffer }
     }
 
@@ -101,7 +101,7 @@ impl PartialReadResponse {
 
     pub fn build(
         pid: ProcessIdentifier,
-        count: ssize_t,
+        count: c_ssize_t,
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
         let message: PartialReadResponse = PartialReadResponse::new(count, buffer);

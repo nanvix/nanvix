@@ -19,7 +19,7 @@ use ::sys::{
 };
 use ::sysapi::sys_types::{
     c_size_t,
-    ssize_t,
+    c_ssize_t,
 };
 
 //==================================================================================================
@@ -93,7 +93,7 @@ pub struct SendSocketResponse {
 impl SendSocketResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    pub fn new(count: i32) -> Self {
+    pub fn new(count: c_ssize_t) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],
@@ -108,7 +108,7 @@ impl SendSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, count: ssize_t) -> Message {
+    pub fn build(pid: ProcessIdentifier, count: c_ssize_t) -> Message {
         let message: SendSocketResponse = SendSocketResponse::new(count);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::SendSocketResponse,
