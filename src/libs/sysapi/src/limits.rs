@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::sys_types::ssize_t;
+use crate::sys_types::c_ssize_t;
 
 //==================================================================================================
 // Constants
@@ -49,7 +49,7 @@ pub const POSIX_PATH_MAX: usize = 256;
 pub const XOPEN_PATH_MAX: usize = 1024;
 
 /// Maximum value for an object of type [`crate::sys::types::ssize_t`].
-pub const SSIZE_MAX: ssize_t = ssize_t::MAX;
+pub const SSIZE_MAX: c_ssize_t = c_ssize_t::MAX;
 
 /// Maximum number of data keys that can be created by a process.
 pub const PTHREAD_KEYS_MAX: usize = _POSIX_THREAD_KEYS_MAX;

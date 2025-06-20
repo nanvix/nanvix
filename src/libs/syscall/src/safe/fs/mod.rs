@@ -57,7 +57,7 @@ use sysapi::{
     sys_stat,
     sys_types::{
         mode_t,
-        ssize_t,
+        c_ssize_t,
     },
 };
 
@@ -349,7 +349,7 @@ pub fn open(
 pub fn readlink(path: &FileSystemPath) -> Result<FileSystemPath, Error> {
     let mut buf: Vec<u8> = Vec::with_capacity(PATH_MAX);
 
-    let num_bytes_read: ssize_t = unistd::readlink(path.as_str(), &mut buf)?;
+    let num_bytes_read: c_ssize_t = unistd::readlink(path.as_str(), &mut buf)?;
 
     let num_bytes_read: usize = match num_bytes_read.try_into() {
         Ok(n) => n,

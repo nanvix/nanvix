@@ -32,7 +32,7 @@ use sysapi::{
     sys_types::{
         msghdr,
         c_size_t,
-        ssize_t,
+        c_ssize_t,
     },
 };
 
@@ -342,7 +342,7 @@ pub unsafe extern "C" fn recv(
     buf: *mut c_void,
     len: c_size_t,
     flags: c_int,
-) -> ssize_t {
+) -> c_ssize_t {
     // Check if `buf` is valid.
     if buf.is_null() {
         ::syslog::error!("recv(): invalid buffer");
@@ -368,7 +368,7 @@ pub unsafe extern "C" fn recv(
     let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len as usize) };
 
     match socket::syscall::recv(sockfd, buf, flags) {
-        Ok(bytes_received) => bytes_received as ssize_t,
+        Ok(bytes_received) => bytes_received as c_ssize_t,
         Err(e) => {
             ::syslog::error!("recv(): failed to receive data through socket {:?}", e);
             *__errno_location() = e.code.get();
@@ -413,7 +413,7 @@ pub unsafe extern "C" fn recvfrom(
     flags: c_int,
     sockaddr: *mut sockaddr,
     addrlen: *mut socklen_t,
-) -> ssize_t {
+) -> c_ssize_t {
     ::syslog::trace!(
         "recvfrom(): sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?}, \
          sockaddr={sockaddr:?}, addrlen={addrlen:?}"
@@ -449,7 +449,7 @@ pub unsafe extern "C" fn recvfrom(
 /// - `msg` points to a valid `msghdr` structure.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t {
+pub unsafe extern "C" fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) -> c_ssize_t {
     ::syslog::trace!("recvmsg(): sockfd={sockfd:?}, msg={msg:?}, flags={flags:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/600
     ::syslog::error!("recvmsg(): not implemented");
@@ -464,7 +464,7 @@ pub unsafe extern "C" fn send(
     buf: *const c_void,
     len: c_size_t,
     flags: c_int,
-) -> ssize_t {
+) -> c_ssize_t {
     // Check if `buf` is valid.
     if buf.is_null() {
         ::syslog::error!("send(): invalid buffer");
@@ -490,7 +490,7 @@ pub unsafe extern "C" fn send(
     let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len as usize) };
 
     match socket::syscall::send(sockfd, buf, flags) {
-        Ok(bytes_sent) => bytes_sent as ssize_t,
+        Ok(bytes_sent) => bytes_sent as c_ssize_t,
         Err(e) => {
             ::syslog::error!("send(): failed to send data through socket {:?}", e);
             *__errno_location() = e.code.get();
@@ -523,7 +523,7 @@ pub unsafe extern "C" fn send(
 /// - `msg` points to a valid `msghdr` structure.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t {
+pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> c_ssize_t {
     ::syslog::trace!("sendmsg(): sockfd={sockfd:?}, msg={msg:?}, flags={flags:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/599.
     ::syslog::error!("sendmsg(): not implemented");
@@ -568,7 +568,7 @@ pub unsafe extern "C" fn sendto(
     flags: c_int,
     sockaddr: *const sockaddr,
     addrlen: socklen_t,
-) -> ssize_t {
+) -> c_ssize_t {
     ::syslog::trace!(
         "sendto(): sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?}, \
          sockaddr={sockaddr:?}, addrlen={addrlen:?}"

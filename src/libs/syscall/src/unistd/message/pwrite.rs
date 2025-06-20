@@ -21,7 +21,7 @@ use ::sysapi::sys_types::{
     c_size_t,
     off_t,
 };
-use sysapi::sys_types::ssize_t;
+use sysapi::sys_types::c_ssize_t;
 
 //==================================================================================================
 // PartialWriteRequest
@@ -93,7 +93,7 @@ pub struct PartialWriteResponse {
 impl PartialWriteResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    fn new(count: i32) -> Self {
+    fn new(count: c_ssize_t) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],
@@ -108,7 +108,7 @@ impl PartialWriteResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, count: ssize_t) -> Message {
+    pub fn build(pid: ProcessIdentifier, count: c_ssize_t) -> Message {
         let message: PartialWriteResponse = PartialWriteResponse::new(count);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::PartialWriteResponse,

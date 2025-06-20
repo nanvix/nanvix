@@ -31,7 +31,7 @@ use ::sysapi::{
     },
     sys_types::{
         c_size_t,
-        ssize_t,
+        c_ssize_t,
     },
 };
 use ::syscall::{
@@ -420,7 +420,7 @@ pub fn do_send(pid: ProcessIdentifier, request: SendSocketRequest) -> Message {
     } {
         count if count >= 0 => {
             debug!("libc::send(): count={count:?}");
-            SendSocketResponse::build(pid, count as ssize_t)
+            SendSocketResponse::build(pid, count as c_ssize_t)
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };

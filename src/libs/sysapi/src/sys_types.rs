@@ -90,7 +90,7 @@ pub type reclen_t = c_ushort;
 pub type c_size_t = c_uint;
 
 /// Used for a count of bytes or an error indication.
-pub type ssize_t = c_int;
+pub type c_ssize_t = c_int;
 
 /// Used for time in microseconds.
 pub type suseconds_t = c_long;

@@ -30,7 +30,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
-use ::sysapi::sys_types::ssize_t;
+use ::sysapi::sys_types::c_ssize_t;
 
 //==================================================================================================
 // Standalone Functions
@@ -52,7 +52,7 @@ use ::sysapi::sys_types::ssize_t;
 /// Upon successful completion, `readlinkat()` returns the number of bytes read. Otherwise, it
 /// returns an error.
 ///
-pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<ssize_t, Error> {
+pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
 
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
