@@ -31,7 +31,7 @@ use sysapi::{
     },
     sys_types::{
         msghdr,
-        size_t,
+        c_size_t,
         ssize_t,
     },
 };
@@ -340,7 +340,7 @@ pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
 pub unsafe extern "C" fn recv(
     sockfd: c_int,
     buf: *mut c_void,
-    len: size_t,
+    len: c_size_t,
     flags: c_int,
 ) -> ssize_t {
     // Check if `buf` is valid.
@@ -409,7 +409,7 @@ pub unsafe extern "C" fn recv(
 pub unsafe extern "C" fn recvfrom(
     sockfd: c_int,
     buf: *mut c_void,
-    len: size_t,
+    len: c_size_t,
     flags: c_int,
     sockaddr: *mut sockaddr,
     addrlen: *mut socklen_t,
@@ -462,7 +462,7 @@ pub unsafe extern "C" fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) 
 pub unsafe extern "C" fn send(
     sockfd: c_int,
     buf: *const c_void,
-    len: size_t,
+    len: c_size_t,
     flags: c_int,
 ) -> ssize_t {
     // Check if `buf` is valid.
@@ -564,7 +564,7 @@ pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int
 pub unsafe extern "C" fn sendto(
     sockfd: c_int,
     buf: *const c_void,
-    len: size_t,
+    len: c_size_t,
     flags: c_int,
     sockaddr: *const sockaddr,
     addrlen: socklen_t,

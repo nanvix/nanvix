@@ -17,7 +17,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
-use ::sysapi::sys_types::size_t;
+use ::sysapi::sys_types::c_size_t;
 
 //==================================================================================================
 // ReadRequest
@@ -36,7 +36,7 @@ impl ReadRequest {
     pub const PADDING_SIZE: usize =
         LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
 
-    fn new(fd: i32, count: u32) -> Self {
+    fn new(fd: i32, count: c_size_t) -> Self {
         Self {
             fd,
             count,
@@ -52,7 +52,7 @@ impl ReadRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32, count: size_t) -> Message {
+    pub fn build(pid: ProcessIdentifier, fd: i32, count: c_size_t) -> Message {
         let message: ReadRequest = ReadRequest::new(fd, count);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::ReadRequest, message.into_bytes());

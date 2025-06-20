@@ -14,7 +14,7 @@ use ::sysapi::{
     },
     netdb::addrinfo,
     sys_socket::socklen_t,
-    sys_types::size_t,
+    sys_types::c_size_t,
 };
 
 //==================================================================================================
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn getaddrinfo(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gethostbyaddr(
     addr: *const c_void,
-    len: size_t,
+    len: c_size_t,
     type_: c_int,
 ) -> *mut c_void {
     ::syslog::trace!("gethostbyaddr(): addr={addr:?}, len={len:?}, type_={type_:?}");

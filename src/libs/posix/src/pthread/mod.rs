@@ -16,10 +16,10 @@ use ::sysapi::{
     },
     sched::sched_param,
     sys_types::{
+        c_size_t,
         pthread_attr_t,
         pthread_once_t,
         pthread_t,
-        size_t,
     },
 };
 use ::syscall::pthread::{
@@ -165,7 +165,7 @@ pub unsafe extern "C" fn pthread_attr_getdetachstate(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_getguardsize(
     attr: *const pthread_attr_t,
-    guardsize: *mut size_t,
+    guardsize: *mut c_size_t,
 ) -> c_int {
     ::syslog::trace!("pthread_attr_getguardsize(): attr={:?}, guardsize={:?}", attr, guardsize);
 
@@ -321,7 +321,7 @@ pub unsafe extern "C" fn pthread_attr_getstackaddr(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_getstacksize(
     attr: *const pthread_attr_t,
-    stacksize: *mut size_t,
+    stacksize: *mut c_size_t,
 ) -> c_int {
     ::syslog::trace!("pthread_attr_getstacksize(): attr={:?}, stacksize={:?}", attr, stacksize);
 
@@ -376,7 +376,7 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
 pub unsafe extern "C" fn pthread_attr_getstack(
     attr: *const pthread_attr_t,
     stackaddr: *mut *mut c_void,
-    stacksize: *mut size_t,
+    stacksize: *mut c_size_t,
 ) -> c_int {
     ::syslog::trace!(
         "pthread_attr_getstack(): attr={:?}, stackaddr={:?}, stacksize={:?}",
@@ -763,7 +763,7 @@ pub unsafe extern "C" fn pthread_attr_setdetachstate(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_setguardsize(
     attr: *mut pthread_attr_t,
-    guardsize: size_t,
+    guardsize: c_size_t,
 ) -> c_int {
     ::syslog::trace!("pthread_attr_setguardsize(): attr={:?}, guardsize={:?}", attr, guardsize);
 
@@ -860,7 +860,7 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
 pub unsafe extern "C" fn pthread_attr_setstack(
     attr: *mut pthread_attr_t,
     stackaddr: *mut c_void,
-    stacksize: size_t,
+    stacksize: c_size_t,
 ) -> c_int {
     ::syslog::trace!(
         "pthread_attr_setstack(): attr={:?}, stackaddr={:?}, stacksize={:?}",
@@ -953,7 +953,7 @@ pub unsafe extern "C" fn pthread_attr_setstackaddr(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_setstacksize(
     attr: *mut pthread_attr_t,
-    stacksize: size_t,
+    stacksize: c_size_t,
 ) -> c_int {
     ::syslog::trace!("pthread_attr_setstacksize(): attr={:?}, stacksize={:?}", attr, stacksize);
 

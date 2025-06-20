@@ -18,7 +18,7 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::sysapi::sys_types::{
-    size_t,
+    c_size_t,
     ssize_t,
 };
 
@@ -39,7 +39,7 @@ impl WriteRequest {
     pub const BUFFER_SIZE: usize =
         LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
 
-    fn new(fd: i32, count: u32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    fn new(fd: i32, count: c_size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { fd, count, buffer }
     }
 
@@ -54,7 +54,7 @@ impl WriteRequest {
     pub fn build(
         pid: ProcessIdentifier,
         fd: i32,
-        count: size_t,
+        count: c_size_t,
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
         let message: WriteRequest = WriteRequest::new(fd, count, buffer);
