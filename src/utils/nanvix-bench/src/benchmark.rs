@@ -21,6 +21,7 @@ use std::{
 pub enum BenchmarkFlavour {
     ColdStart,
     WarmStart,
+    WarmStartVMM,
     EchoBreakdown,
 }
 
@@ -29,6 +30,7 @@ impl fmt::Display for BenchmarkFlavour {
         let s = match self {
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::WarmStart => "warm-start",
+            BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
             BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
         };
         write!(f, "{}", s)
@@ -42,6 +44,7 @@ impl FromStr for BenchmarkFlavour {
         match s.to_lowercase().as_str() {
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
+            "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
             "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
             _ => Err(format!("Invalid benchmark type: {}", s)),
         }
