@@ -89,8 +89,14 @@ pub type reclen_t = c_ushort;
 /// Used for object sizes.
 pub type c_size_t = c_uint;
 
+/// Used for object sizes (architecture dependent).
+pub type size_t = usize;
+
 /// Used for a count of bytes or an error indication.
 pub type c_ssize_t = c_int;
+
+/// Used for a count of bytes or an error indication (architecture dependent).
+pub type ssize_t = isize;
 
 /// Used for time in microseconds.
 pub type suseconds_t = c_long;
