@@ -31,7 +31,7 @@ use ::sysapi::sys_types::{
 #[repr(C, packed)]
 pub struct PartialReadRequest {
     pub fd: i32,
-    pub count: size_t,
+    pub count: u32,
     pub offset: off_t,
     _padding: [u8; Self::PADDING_SIZE],
 }
@@ -40,10 +40,10 @@ pub struct PartialReadRequest {
 impl PartialReadRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
-        - mem::size_of::<i32>()
+        - mem::size_of::<u32>()
         - mem::size_of::<off_t>();
 
-    fn new(fd: i32, count: size_t, offset: off_t) -> Self {
+    fn new(fd: i32, count: u32, offset: off_t) -> Self {
         Self {
             fd,
             count,

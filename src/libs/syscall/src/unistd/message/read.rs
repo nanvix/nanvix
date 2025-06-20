@@ -27,16 +27,16 @@ use ::sysapi::sys_types::size_t;
 #[repr(C, packed)]
 pub struct ReadRequest {
     pub fd: i32,
-    pub count: size_t,
+    pub count: u32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(ReadRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ReadRequest {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<i32>();
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
 
-    fn new(fd: i32, count: size_t) -> Self {
+    fn new(fd: i32, count: u32) -> Self {
         Self {
             fd,
             count,

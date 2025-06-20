@@ -30,16 +30,16 @@ use ::sysapi::sys_types::{
 #[repr(C, packed)]
 pub struct WriteRequest {
     pub fd: i32,
-    pub count: size_t,
+    pub count: u32,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
 ::static_assert::assert_eq_size!(WriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl WriteRequest {
     pub const BUFFER_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<size_t>();
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
 
-    fn new(fd: i32, count: size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    fn new(fd: i32, count: u32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { fd, count, buffer }
     }
 
