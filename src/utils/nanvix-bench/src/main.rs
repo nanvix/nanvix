@@ -41,6 +41,10 @@ use log::{
     debug,
     error,
 };
+use microvm::{
+    Gateway,
+    Vmm,
+};
 use nix::{
     sys::signal::{
         Signal,
@@ -58,6 +62,7 @@ use std::{
     },
     mem,
     net::TcpStream,
+    os::unix::net::UnixStream,
     process::{
         self,
         Child,
@@ -69,6 +74,15 @@ use std::{
         Duration,
         Instant,
     },
+};
+use sys::ipc::Message;
+use syscall::{
+    unistd::message::{
+        ReadRequest,
+        ReadResponse,
+        WriteResponse,
+    },
+    LinuxDaemonMessage,
 };
 
 //==================================================================================================
@@ -159,7 +173,7 @@ impl Benchmark {
                 BenchmarkFlavour::WarmStart => {
                     format!("{}/bin/echo-rust-server-nostd.elf", get_proj_root())
                 },
-                BenchmarkFlavour::EchoBreakdown => {
+                BenchmarkFlavour::WarmStartVMM | BenchmarkFlavour::EchoBreakdown => {
                     format!("{}/bin/echo-single-rust-nostd.elf", get_proj_root())
                 },
             },
@@ -261,7 +275,7 @@ impl Benchmark {
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
-                .expect("invrs(eval): error creating progress bar")
+                .expect("error creating progress bar")
                 .progress_chars("#>-"),
         );
         pb.set_message("Benchmark progress:");
@@ -326,7 +340,7 @@ impl Benchmark {
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
-                .expect("invrs(eval): error creating progress bar")
+                .expect("error creating progress bar")
                 .progress_chars("#>-"),
         );
         pb.set_message("Benchmark progress:");
@@ -365,6 +379,110 @@ impl Benchmark {
 
         pb.finish();
         println!("First req (includes nano VM boot time): {} us", latencies[0]);
+        latencies.sort();
+        println!("p50: {} us", latencies[(num_iterations as f32 * 0.5) as usize]);
+        println!("p95: {} us", latencies[(num_iterations as f32 * 0.95) as usize]);
+        println!("p99: {} us", latencies[(num_iterations as f32 * 0.99) as usize]);
+
+        Ok(())
+    }
+
+    /// In this micro-benchmark we measure the time for a message to travel
+    /// all the way from the VMM to the guest application and back. To achieve
+    /// this, we connect the user VM to a gateway that emulates linuxd.
+    pub fn run_warm_start_vmm(&mut self) -> Result<()> {
+        // Clean-up deafult set-up.
+        self.cleanup();
+
+        // Display a progress bar.
+        let num_iterations = 1e4 as usize;
+        let pb = ProgressBar::new(num_iterations.try_into().unwrap());
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
+                .expect("error creating progress bar")
+                .progress_chars("#>-"),
+        );
+        pb.set_message("Benchmark progress:");
+
+        const DATA_SIZE: u32 = 10;
+        let data = [7u8; DATA_SIZE as usize];
+
+        // Payload we are sending over the wire.
+        let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
+        payload.extend_from_slice(&DATA_SIZE.to_le_bytes());
+        payload.extend_from_slice(&data);
+        let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+        response_buf[..payload.len()].copy_from_slice(&payload);
+
+        let mut latencies: Vec<u128> = Vec::with_capacity(num_iterations);
+        for _ in 0..num_iterations {
+            // Clean-up the default set-up, and initialize a UNIX pair that is directly connected to the
+            // VMM.
+            let (mut input_stream, vmm_stream) = UnixStream::pair()?;
+
+            // Spawn the VMM in a separate thread.
+            let vmm_handle = std::thread::spawn(move || -> Result<()> {
+                vmm_stream.set_nonblocking(true)?;
+                let mut vmm: Vmm =
+                    Vmm::new(
+                        config::kernel::MEMORY_SIZE,
+                        format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
+                        Some(format!("{}/bin/echo-single-rust-nostd.elf", get_proj_root())),
+                        None,
+                        None,
+                        Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream))))?;
+                debug!("VMM: returned from new!");
+
+                match vmm.run()? {
+                    e if e != 0 => {
+                        error!("error running VMM, exited with status: {e}");
+                        Err(anyhow::anyhow!("VMM error"))
+                    }
+                    _ => {
+                        debug!("VMM: done running");
+                        Ok(())
+                    }
+                }
+            });
+
+            // Before starting the timer, we need to receive the ReadRequest from the user VM.
+            let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
+                [0u8; config::kernel::IPC_MESSAGE_SIZE];
+            input_stream.read_exact(&mut buf)?;
+            let ipc_read_message: Message = match Message::try_from_bytes(buf) {
+                Ok(message) => message,
+                Err(_) => return Err(anyhow::anyhow!("Error parsing buffer to IPC Read message")),
+            };
+            let linuxd_message: LinuxDaemonMessage = match LinuxDaemonMessage::try_from_bytes(ipc_read_message.payload) {
+                Ok(message) => message,
+                Err(_) => return Err(anyhow::anyhow!("Error parsing IPC message to LinuxDaemon message")),
+            };
+            let _read_request: ReadRequest = ReadRequest::from_bytes(linuxd_message.payload);
+            let read_response: Message = ReadResponse::build(ipc_read_message.source, payload.len() as i32, response_buf);
+
+            // Now we are ready to push the ReadResponse, and wait for a WriteRequest as a reply.
+            let start = Instant::now();
+            input_stream.write_all(&read_response.to_bytes())?;
+            input_stream.read_exact(&mut buf)?;
+            latencies.push(start.elapsed().as_micros());
+
+            // After receiving the WriteRequest, we need to acknowledge it by sending a WriteResponse.
+            let write_response: Message = WriteResponse::build(ipc_read_message.source, payload.len() as i32);
+            input_stream.write_all(&write_response.to_bytes())?;
+
+            // Wait for the VMM to exit.
+            match vmm_handle.join() {
+                Ok(_) => {},
+                Err(_) => return Err(anyhow::anyhow!("Error running VMM")),
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(10));
+
+            pb.inc(1);
+        }
+
+        pb.finish();
         latencies.sort();
         println!("p50: {} us", latencies[(num_iterations as f32 * 0.5) as usize]);
         println!("p95: {} us", latencies[(num_iterations as f32 * 0.95) as usize]);
@@ -525,6 +643,20 @@ fn main() -> Result<()> {
             #[cfg(not(feature = "timestamp-messages"))]
             {
                 benchmark.run_warm_start()
+            }
+        },
+        BenchmarkFlavour::WarmStartVMM => {
+            #[cfg(feature = "timestamp-messages")]
+            {
+                error!(
+                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
+                );
+                return Ok(());
+            }
+
+            #[cfg(not(feature = "timestamp-messages"))]
+            {
+                benchmark.run_warm_start_vmm()
             }
         },
     };
