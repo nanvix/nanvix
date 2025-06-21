@@ -178,7 +178,9 @@ impl IoThread {
             Err(TryRecvError::Empty) => Ok(()),
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the microvm has disconnected".to_string();
-                error!("try_receive_from_microvm(): {reason}");
+                // When the guest finishes , the vCPU thread will disconnect from this thread. This
+                // situation is normal and should not create an error log.
+                debug!("try_receive_from_microvm(): {reason}");
                 anyhow::bail!(reason)
             },
         }

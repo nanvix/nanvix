@@ -148,7 +148,9 @@ impl Vmm {
                             .add_credit()?;
                     },
                     Err(TryRecvError::Disconnected) => {
-                        error!("memory_thread(): channel has been disconnected");
+                        // When the guest finishes , the vCPU thread will disconnect from this
+                        // thread. This situation is normal and should not create an error log.
+                        debug!("memory_thread(): channel has been disconnected");
                         break Ok(());
                     },
                     Err(TryRecvError::Empty) => {
