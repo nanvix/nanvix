@@ -62,3 +62,42 @@ pub fn pipe() -> Result<[i32; 2], Error> {
         }
     }
 }
+
+pub mod bindings {
+    use crate::errno::__errno_location;
+    use ::sysapi::ffi::c_int;
+
+    ///
+    /// # Description
+    ///
+    /// Creates a pipe.
+    ///
+    /// # Parameters
+    ///
+    /// - `fds`: Array to store the file descriptors of the pipe.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
+    /// indicate the error.
+    ///
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn pipe(fds: *mut c_int) -> c_int {
+        match super::pipe() {
+            Ok([read_fd, write_fd]) => {
+                unsafe {
+                    *fds.offset(0) = read_fd;
+                    *fds.offset(1) = write_fd;
+                }
+                0
+            },
+            Err(error) => {
+                ::syslog::error!("pipe(): failed (error={error:?})");
+                unsafe {
+                    *__errno_location() = error.code.get();
+                }
+                -1
+            },
+        }
+    }
+}

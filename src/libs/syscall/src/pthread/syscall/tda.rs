@@ -5,10 +5,6 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    limits::PTHREAD_KEYS_MAX,
-    sys::types::pthread_key_t,
-};
 use ::alloc::collections::btree_map::BTreeMap;
 use ::spin::{
     Lazy,
@@ -20,6 +16,10 @@ use ::sys::{
         ErrorCode,
     },
     pm::ThreadIdentifier,
+};
+use ::sysapi::{
+    limits::PTHREAD_KEYS_MAX,
+    sys_types::pthread_key_t,
 };
 
 //==================================================================================================

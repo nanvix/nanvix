@@ -5,26 +5,20 @@
 // Modules
 //==================================================================================================
 
-/// Synchronous I/O multiplexing.
-pub mod select;
-
 /// Sockets.
 pub mod socket;
 
 /// File status.
 pub mod stat;
 
+/// Definitions for resource operations.
+pub mod resource;
+
 /// Time types.
 pub mod time;
 
 /// File access and modification times structure.
 pub mod times;
-
-/// Types.
-pub mod types;
-
-/// Definitions for vector I/O operations.
-pub mod uio;
 
 /// Definitions for UNIX domain sockets.
 pub mod un;

@@ -8,10 +8,7 @@
 use crate::{
     message::MessagePartitioner,
     safe::RawFileDescriptor,
-    sys::{
-        stat::message::MakeDirectoryAtRequest,
-        types::mode_t,
-    },
+    sys::stat::message::MakeDirectoryAtRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -27,6 +24,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::sys_types::mode_t;
 
 //==================================================================================================
 // Standalone Functions

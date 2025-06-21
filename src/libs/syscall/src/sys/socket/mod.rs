@@ -12,29 +12,56 @@
 //==================================================================================================
 
 use crate::{
-    arpa::inet::in_addr,
-    ffi::c_uchar,
     netinet::in_::{
-        bindings::sockaddr_in,
         Ipv4Addr,
         SocketAddrV4,
     },
-    sys::un::{
-        bindings::{
-            sockaddr_un,
-            SUNPATHLEN,
+    sys::{
+        socket::socket_address_family::{
+            AF_INET,
+            AF_UNIX,
         },
-        SocketAddrUnix,
+        un::SocketAddrUnix,
     },
 };
 use ::alloc::string::{
     String,
     ToString,
 };
-use ::core::mem;
+use ::core::{
+    cmp::min,
+    mem,
+};
 use ::sys::error::{
     Error,
     ErrorCode,
+};
+use ::sysapi::{
+    ffi::c_uchar,
+    netinet_in::{
+        in_addr,
+        sockaddr_in,
+    },
+    sys_socket::{
+        sockaddr,
+        socket_address_family,
+        socket_shutdown_how::{
+            SHUT_RD,
+            SHUT_RDWR,
+            SHUT_WR,
+        },
+        socket_types::{
+            SOCK_DGRAM,
+            SOCK_RAW,
+            SOCK_SEQPACKET,
+            SOCK_STREAM,
+        },
+        socklen_t,
+    },
+    sys_un::{
+        sockaddr_un,
+        SUNPATHLEN,
+    },
 };
 
 //==================================================================================================
@@ -43,125 +70,29 @@ use ::sys::error::{
 
 pub mod message;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "syscall")] {
-        mod syscall;
-        pub use self::syscall::{
-            accept,
-            bind,
-            connect,
-            getpeername,
-            getsockname,
-            listen,
-            recv,
-            send,
-            shutdown,
-            socket,
-            socketpair,
-        };
-    }
-}
+#[cfg(feature = "syscall")]
+pub mod syscall;
 
 //==================================================================================================
-
-// Socket address family.
-pub mod family {
-    /// Unspecified.
-    pub const AF_UNSPEC: i32 = 0;
-    /// Unix domain sockets.
-    pub const AF_UNIX: i32 = 1;
-    /// Internet domain sockets for use with IPv4 addresses.
-    pub const AF_INET: i32 = 2;
-    /// Internet domain sockets for use with IPv6 addresses.
-    pub const AF_INET6: i32 = 10;
-}
-
-/// Provides sequenced, reliable, bidirectional, connection-mode byte streams.
-pub const SOCK_STREAM: i32 = 1;
-/// Provides raw network protocol access.
-pub const SOCK_RAW: i32 = 3;
-/// Provides datagrams, which are connectionless-mode, unreliable messages of fixed maximum length.
-pub const SOCK_DGRAM: i32 = 2;
-/// Provides sequenced, reliable, bidirectional, connection-mode transmission paths for records.
-pub const SOCK_SEQPACKET: i32 = 5;
-
-/// Disables further receive operations.
-pub const SHUT_RD: i32 = 0;
-/// Disables further send operations.
-pub const SHUT_WR: i32 = 1;
-/// Disables further send and receive operations.
-pub const SHUT_RDWR: i32 = 2;
-
-/// Peeks at an incoming message.
-pub const MSG_PEEK: i32 = 0x2;
-/// Requests out-of-band data.
-pub const MSG_OOB: i32 = 0x1;
-/// Requests to block until the full amount of data can be returned.
-pub const MSG_WAITALL: i32 = 0x100;
-/// Terminates a record.
-pub const MSG_EOR: i32 = 0x8;
-/// Requests not to send SIGPIPE on errors.
-pub const MSG_NOSIGNAL: i32 = 0x4000;
-
-/// Used for socket length.
-pub type socklen_t = u32;
-
-/// Used for socket address family.
-pub type sa_family_t = u8;
-
-/// Describes the address of a socket.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C, packed)]
-pub struct sockaddr {
-    /// Total length.
-    pub sa_len: c_uchar,
-    /// Address family.
-    pub sa_family: sa_family_t,
-    /// Address data.
-    pub sa_data: [u8; 14],
-}
-::static_assert::assert_eq_size!(sockaddr, sockaddr::_SIZE);
-::static_assert::assert_eq_size!(sockaddr, mem::size_of::<sockaddr_storage>());
-
-impl sockaddr {
-    /// Size of this structure, used in static assertions.
-    const _SIZE: usize = mem::size_of::<c_uchar>() + // sa_len
-        mem::size_of::<sa_family_t>() + // sa_family
-        mem::size_of::<[u8; 14]>(); // sa_data
-}
-
-/// A structure large enough to hold any socket address.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C, packed)]
-pub struct sockaddr_storage {
-    /// Total length.
-    pub ss_len: c_uchar,
-    /// Address family.
-    pub ss_family: sa_family_t,
-    /// Address data.
-    pub ss_data: [u8; 14],
-}
-::static_assert::assert_eq_size!(sockaddr_storage, sockaddr_storage::_SIZE);
-
-impl sockaddr_storage {
-    /// Size of this structure, used in static assertions.
-    const _SIZE: usize = mem::size_of::<c_uchar>() + // ss_len
-        mem::size_of::<sa_family_t>() + // ss_family
-        mem::size_of::<[u8; 14]>(); // ss_data
-}
 
 /// Describes protocol family of a socket.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressFamily {
     /// Internet domain sockets for use with IPv4 addresses.
-    Inet = family::AF_INET,
+    Inet = socket_address_family::AF_INET,
     /// Internet domain sockets for use with IPv6 addresses.
-    Inet6 = family::AF_INET6,
+    Inet6 = socket_address_family::AF_INET6,
     /// Unix domain sockets.
-    Unix = family::AF_UNIX,
+    Unix = socket_address_family::AF_UNIX,
     /// Unspecified.
-    Unspec = family::AF_UNSPEC,
+    Unspec = socket_address_family::AF_UNSPEC,
+}
+
+impl From<AddressFamily> for i32 {
+    fn from(family: AddressFamily) -> i32 {
+        family as i32
+    }
 }
 
 impl TryFrom<i32> for AddressFamily {
@@ -169,10 +100,10 @@ impl TryFrom<i32> for AddressFamily {
 
     fn try_from(family: i32) -> Result<Self, Self::Error> {
         match family {
-            family::AF_INET => Ok(AddressFamily::Inet),
-            family::AF_INET6 => Ok(AddressFamily::Inet6),
-            family::AF_UNIX => Ok(AddressFamily::Unix),
-            family::AF_UNSPEC => Ok(AddressFamily::Unspec),
+            socket_address_family::AF_INET => Ok(AddressFamily::Inet),
+            socket_address_family::AF_INET6 => Ok(AddressFamily::Inet6),
+            socket_address_family::AF_UNIX => Ok(AddressFamily::Unix),
+            socket_address_family::AF_UNSPEC => Ok(AddressFamily::Unspec),
             _unsupported_family => {
                 let reason: &str = "unsupported socket address family";
                 Err(Error::new(ErrorCode::AddressFamilyNotSupported, reason))
@@ -245,7 +176,7 @@ impl TryFrom<&SocketAddrV4> for sockaddr_in {
     fn try_from(addr: &SocketAddrV4) -> Result<Self, Self::Error> {
         Ok(Self {
             sin_len: mem::size_of::<sockaddr_in>() as u8,
-            sin_family: family::AF_INET.try_into().map_err(|_| {
+            sin_family: socket_address_family::AF_INET.try_into().map_err(|_| {
                 Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
             })?,
             sin_port: addr.port().to_be(),
@@ -266,20 +197,16 @@ impl From<&sockaddr_in> for SocketAddrV4 {
     }
 }
 
-impl TryFrom<&SocketAddrV4> for sockaddr {
-    type Error = Error;
-
-    fn try_from(addr: &SocketAddrV4) -> Result<Self, Self::Error> {
+impl From<&SocketAddrV4> for sockaddr {
+    fn from(sockaddr: &SocketAddrV4) -> Self {
         let mut sa_data: [u8; 14] = [0u8; 14];
-        sa_data[0..2].copy_from_slice(&addr.port().to_be_bytes());
-        sa_data[2..6].copy_from_slice(&addr.addr().octets());
-        Ok(Self {
-            sa_len: mem::size_of::<sockaddr_in>() as c_uchar,
-            sa_family: family::AF_INET.try_into().map_err(|_| {
-                Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
-            })?,
+        sa_data[0..2].copy_from_slice(&sockaddr.port().to_be_bytes());
+        sa_data[2..6].copy_from_slice(&sockaddr.addr().octets());
+        sockaddr {
+            sa_len: mem::size_of::<sockaddr_in>() as u8,
+            sa_family: AF_INET as u8,
             sa_data,
-        })
+        }
     }
 }
 
@@ -305,32 +232,24 @@ impl TryFrom<&SocketAddrUnix> for sockaddr_un {
         sun_path[0..path.len()].copy_from_slice(path);
         Ok(Self {
             sun_len: mem::size_of::<sockaddr_un>() as u8,
-            sun_family: family::AF_UNIX.try_into().map_err(|_| {
+            sun_family: socket_address_family::AF_UNIX.try_into().map_err(|_| {
                 Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
             })?,
-            sun_path,
+            sun_path: sun_path.map(|b| b as i8),
         })
     }
 }
-
-impl TryFrom<&SocketAddrUnix> for sockaddr {
-    type Error = Error;
-
-    fn try_from(addr: &SocketAddrUnix) -> Result<Self, Self::Error> {
+impl From<&SocketAddrUnix> for sockaddr {
+    fn from(sockaddr: &SocketAddrUnix) -> Self {
         let mut sa_data: [u8; 14] = [0u8; 14];
-        let path: &str = addr.path();
+        let path: &str = sockaddr.path();
         let path: &[u8] = path.as_bytes();
-        if path.len() > sa_data.len() {
-            return Err(Error::new(ErrorCode::NameTooLong, "path is too long"));
-        }
-        sa_data[0..path.len()].copy_from_slice(path);
-        Ok(Self {
+        sa_data[0..min(path.len(), 14)].copy_from_slice(path);
+        sockaddr {
             sa_len: mem::size_of::<sockaddr>() as c_uchar,
-            sa_family: family::AF_UNIX.try_into().map_err(|_| {
-                Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
-            })?,
+            sa_family: AF_UNIX as u8,
             sa_data,
-        })
+        }
     }
 }
 
@@ -338,7 +257,7 @@ impl TryFrom<&sockaddr_un> for SocketAddrUnix {
     type Error = Error;
 
     fn try_from(addr: &sockaddr_un) -> Result<Self, Self::Error> {
-        let path: String = String::from_utf8(addr.sun_path.to_vec())
+        let path: String = String::from_utf8(addr.sun_path.iter().map(|&b| b as u8).collect())
             .map_err(|_| {
                 Error::new(ErrorCode::InvalidArgument, "failed to convert socket address path")
             })?
@@ -385,8 +304,8 @@ impl TryFrom<&sockaddr> for SocketAddr {
 
     fn try_from(addr: &sockaddr) -> Result<Self, Self::Error> {
         match addr.sa_family as i32 {
-            family::AF_INET => Ok(SocketAddr::V4(SocketAddrV4::from(addr))),
-            family::AF_UNIX => Ok(SocketAddr::Unix(SocketAddrUnix::try_from(addr)?)),
+            socket_address_family::AF_INET => Ok(SocketAddr::V4(SocketAddrV4::from(addr))),
+            socket_address_family::AF_UNIX => Ok(SocketAddr::Unix(SocketAddrUnix::try_from(addr)?)),
             _unsupported => {
                 let reason: &str = "unsupported socket address family";
                 Err(Error::new(ErrorCode::AddressFamilyNotSupported, reason))
@@ -395,26 +314,25 @@ impl TryFrom<&sockaddr> for SocketAddr {
     }
 }
 
-impl TryFrom<&SocketAddr> for sockaddr {
-    type Error = Error;
-
-    fn try_from(addr: &SocketAddr) -> Result<Self, Self::Error> {
+impl From<&SocketAddr> for sockaddr {
+    fn from(addr: &SocketAddr) -> Self {
         match addr {
-            SocketAddr::V4(addr) => addr.try_into(),
-            SocketAddr::Unix(addr) => addr.try_into(),
+            SocketAddr::V4(addr) => From::<&SocketAddrV4>::from(addr),
+            SocketAddr::Unix(addr) => From::<&SocketAddrUnix>::from(addr),
         }
     }
 }
 
-impl TryFrom<SocketAddr> for (sockaddr, socklen_t) {
-    type Error = Error;
-
-    fn try_from(addr: SocketAddr) -> Result<(sockaddr, socklen_t), Self::Error> {
-        let len: socklen_t = match addr {
-            SocketAddr::V4(_) => mem::size_of::<sockaddr>() as socklen_t,
-            SocketAddr::Unix(_) => mem::size_of::<sockaddr>() as socklen_t,
-        };
-        Ok((sockaddr::try_from(&addr)?, len))
+impl From<&SocketAddr> for (sockaddr, socklen_t) {
+    fn from(addr: &SocketAddr) -> (sockaddr, socklen_t) {
+        match addr {
+            SocketAddr::V4(sockaddr) => {
+                (sockaddr::from(sockaddr), mem::size_of::<sockaddr>() as socklen_t)
+            },
+            SocketAddr::Unix(sockaddr) => {
+                (sockaddr::from(sockaddr), mem::size_of::<sockaddr>() as socklen_t)
+            },
+        }
     }
 }
 
@@ -437,7 +355,7 @@ mod test {
     fn test_ipv4_sockaddr_conversion() {
         let test_addr: sockaddr_in = sockaddr_in {
             sin_len: mem::size_of::<sockaddr_in>() as u8,
-            sin_family: family::AF_INET
+            sin_family: socket_address_family::AF_INET
                 .try_into()
                 .expect("converting address family should succeed"),
             sin_port: 80u16.to_be(),
@@ -464,7 +382,7 @@ mod test {
     fn test_ipv4_sockaddr_into_socket_addr() {
         let test_addr: sockaddr = sockaddr {
             sa_len: mem::size_of::<sockaddr>() as u8,
-            sa_family: family::AF_INET
+            sa_family: socket_address_family::AF_INET
                 .try_into()
                 .expect("converting address family should succeed"),
             sa_data: [0, 80, 192, 168, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -496,7 +414,7 @@ mod test {
     fn test_unix_sockaddr_conversion() {
         let test_addr: sockaddr_un = sockaddr_un {
             sun_len: mem::size_of::<sockaddr_un>() as u8,
-            sun_family: family::AF_UNIX
+            sun_family: socket_address_family::AF_UNIX
                 .try_into()
                 .expect("converting address family should succeed"),
             sun_path: {
@@ -524,7 +442,7 @@ mod test {
     fn test_unix_sockaddr_into_socket_addr() {
         let test_addr: sockaddr = sockaddr {
             sa_len: mem::size_of::<sockaddr>() as u8,
-            sa_family: family::AF_UNIX as u8,
+            sa_family: socket_address_family::AF_UNIX as u8,
             sa_data: {
                 let mut data = [0; 14];
                 let bytes = "/tmp/socket".as_bytes();

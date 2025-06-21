@@ -11,24 +11,30 @@
 // Imports
 //==================================================================================================
 
-use ::core::mem;
+use crate::ffi::{
+    c_int,
+    c_short,
+    c_uint,
+};
 
 //==================================================================================================
-// C Interface
+// Types
 //==================================================================================================
 
-/// Used for internet addresses.
-pub type in_addr_t = u32;
+// Used for the number of file descriptors.
+pub type nfds_t = c_uint;
 
-/// Describes an internet address.
-#[derive(Debug)]
+//==================================================================================================
+// Structures
+//==================================================================================================
+
 #[repr(C, packed)]
-pub struct in_addr {
-    pub s_addr: in_addr_t,
-}
-::static_assert::assert_eq_size!(in_addr, in_addr::_SIZE);
-
-impl in_addr {
-    /// Size of this structure, used for static assertions.
-    const _SIZE: usize = mem::size_of::<in_addr_t>(); // s_addr
+#[derive(Debug, Clone, Copy)]
+pub struct pollfd {
+    /// The following descriptor being polled.
+    pub fd: c_int,
+    /// Input event flags.
+    pub events: c_short,
+    /// Output event flags.
+    pub revents: c_short,
 }

@@ -5,10 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    ffi::c_int,
-    unistd::message::FileChdirRequest,
-};
+use crate::unistd::message::FileChdirRequest;
 use ::sys::{
     error::{
         Error,
@@ -17,6 +14,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions

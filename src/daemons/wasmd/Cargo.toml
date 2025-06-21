@@ -14,13 +14,14 @@ homepage.workspace = true
 name = "wasmd"
 
 [dependencies]
-sys = { workspace = true }
-wasmi = { workspace = true }
 num_enum = { workspace = true }
 nvx = { workspace = true, features = ["sysalloc"] }
+static_assert = { workspace = true }
+sys = { workspace = true }
+sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
 syslog = { workspace = true }
-static_assert = { workspace = true }
+wasmi = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

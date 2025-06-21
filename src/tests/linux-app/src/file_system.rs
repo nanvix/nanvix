@@ -6,17 +6,35 @@
 //==================================================================================================
 
 use ::alloc::boxed::Box;
+use ::sysapi::{
+    fcntl::{
+        atflags::AT_FDCWD,
+        open_flags::{
+            O_CREAT,
+            O_DIRECTORY,
+            O_RDWR,
+            O_TRUNC,
+        },
+    },
+    sys_stat::{
+        self,
+        file_access_mode::{
+            S_IRUSR,
+            S_IWUSR,
+        },
+    },
+    unistd::file_seek::{
+        SEEK_END,
+        SEEK_SET,
+    },
+};
 use ::syscall::{
     dirent::{
         self,
         DirectoryStream,
     },
     fcntl,
-    fcntl::OpenFlags,
-    sys::{
-        self,
-        stat::stat,
-    },
+    sys,
     unistd,
 };
 
@@ -26,20 +44,16 @@ use ::syscall::{
 
 pub fn test() {
     // Create a file named `foo.tmp`.
-    let fd: i32 = match fcntl::openat(
-        fcntl::AT_FDCWD,
-        "foo.tmp",
-        OpenFlags::O_CREAT | OpenFlags::O_RDWR | OpenFlags::O_TRUNC,
-        fcntl::S_IRUSR | fcntl::S_IWUSR,
-    ) {
-        Ok(fd) => {
-            ::syslog::info!("opened file foo.tmp with fd {}", fd);
-            fd
-        },
-        Err(error) => {
-            panic!("failed to open file foo.tmp: {:?}", error);
-        },
-    };
+    let fd: i32 =
+        match fcntl::openat(AT_FDCWD, "foo.tmp", O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR) {
+            Ok(fd) => {
+                ::syslog::info!("opened file foo.tmp with fd {}", fd);
+                fd
+            },
+            Err(error) => {
+                panic!("failed to open file foo.tmp: {:?}", error);
+            },
+        };
 
     // Fill first 128 bytes of file with ones.
     let buffer: [u8; 128] = [1; 128];
@@ -70,7 +84,7 @@ pub fn test() {
     }
 
     // Move seek offset start of file.
-    match unistd::lseek(fd, 0, unistd::SEEK_SET) {
+    match unistd::lseek(fd, 0, SEEK_SET) {
         Ok(0) => {
             ::syslog::info!("seek file foo.tmp to 1024 bytes");
         },
@@ -121,7 +135,7 @@ pub fn test() {
     }
 
     // Advance seek offset as partial reads do not change it.
-    match unistd::lseek(fd, 128, unistd::SEEK_SET) {
+    match unistd::lseek(fd, 128, SEEK_SET) {
         Ok(128) => {
             ::syslog::info!("seek file foo.tmp to 128 bytes");
         },
@@ -134,7 +148,7 @@ pub fn test() {
     }
 
     // Move seek offset to the end of the (empty) file plus 1024 bytes.
-    match unistd::lseek(fd, 64, unistd::SEEK_END) {
+    match unistd::lseek(fd, 64, SEEK_END) {
         Ok(256) => {
             ::syslog::info!("seek file foo.tmp to 1024 bytes");
         },
@@ -167,7 +181,7 @@ pub fn test() {
     }
 
     // Get status of file.
-    let mut st: stat = stat::default();
+    let mut st: sys_stat::stat = sys_stat::stat::default();
     match sys::stat::fstat(fd, &mut st) {
         Ok(()) => {
             ::syslog::info!("got status of file foo.tmp");
@@ -208,7 +222,7 @@ pub fn test() {
 
     // Get status of file.
     let path: &str = "foo.tmp";
-    let mut foo_tmp: stat = stat::default();
+    let mut foo_tmp: sys_stat::stat = sys_stat::stat::default();
     match sys::stat::stat(path, &mut foo_tmp) {
         Ok(()) => {
             ::syslog::info!("got status of file {}", path);
@@ -239,8 +253,8 @@ pub fn test() {
     }
 
     // Get status of file named `foo.tmp`.
-    let mut bar_tmp: stat = stat::default();
-    match sys::stat::fstatat(fcntl::AT_FDCWD, "foo.tmp", &mut bar_tmp, 0) {
+    let mut bar_tmp: sys_stat::stat = sys_stat::stat::default();
+    match sys::stat::fstatat(AT_FDCWD, "foo.tmp", &mut bar_tmp, 0) {
         Ok(()) => {
             ::syslog::info!("got status of file foo.tmp");
             ::syslog::info!("file statistics:");
@@ -275,7 +289,7 @@ pub fn test() {
     }
 
     // Unlink file named `foo.tmp`.
-    match fcntl::unlinkat(fcntl::AT_FDCWD, "foo.tmp", 0) {
+    match fcntl::unlinkat(AT_FDCWD, "foo.tmp", 0) {
         Ok(()) => {
             ::syslog::info!("unlinked file foo.tmp");
         },
@@ -364,7 +378,7 @@ fn test_pipe() {
     };
 
     // Open directory.
-    let dir_fd: i32 = match fcntl::openat(fcntl::AT_FDCWD, ".", OpenFlags::O_DIRECTORY.into(), 0) {
+    let dir_fd: i32 = match fcntl::openat(AT_FDCWD, ".", O_DIRECTORY, 0) {
         Ok(fd) => {
             ::syslog::info!("opened directory with fd {}", fd);
             fd

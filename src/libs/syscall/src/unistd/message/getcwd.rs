@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -34,6 +33,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use sysapi::limits::PATH_MAX;
 
 //==================================================================================================
 // GetCurrentWorkingDirectoryRequest
@@ -92,12 +92,12 @@ impl GetCurrentWorkingDirectoryResponse {
     const OFFSET_OF_CWD: usize = Self::OFFSET_OF_CWD_LEN + Self::SIZE_OF_CWD_LEN;
 
     /// Maximum size of the message.
-    pub const MAX_SIZE: usize = Self::SIZE_OF_CWD_LEN + limits::PATH_MAX;
+    pub const MAX_SIZE: usize = Self::SIZE_OF_CWD_LEN + PATH_MAX;
 
     /// Creates a new response for the `getcwd` system call.
     pub fn new(cwd: &str) -> Result<Self, Error> {
         // Check if `cwd` is too long.
-        if cwd.len() > limits::PATH_MAX {
+        if cwd.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidArgument, "cwd is too long"));
         }
 

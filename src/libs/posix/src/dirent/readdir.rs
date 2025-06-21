@@ -9,20 +9,18 @@ use crate::errno::__errno_location;
 use ::alloc::boxed::Box;
 use ::core::ptr;
 use ::sys::error::ErrorCode;
-use ::syscall::{
-    dirent::{
-        self,
-        DirectoryStream,
-    },
+use ::sysapi::{
+    dirent::dirent,
     limits::NAME_MAX,
 };
+use ::syscall::dirent::DirectoryStream;
 
 //==================================================================================================
 // Global Variables
 //==================================================================================================
 
 /// Directory entry returned by `readdir()`.
-static mut DIRENT: dirent::dirent = dirent::dirent {
+static mut DIRENT: dirent = dirent {
     d_ino: 0,
     d_name: [0; NAME_MAX + 1],
 };
@@ -33,7 +31,7 @@ static mut DIRENT: dirent::dirent = dirent::dirent {
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent::dirent {
+pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent {
     // Check if directory stream is invalid.
     if dirp.is_null() {
         ::syslog::error!("closedir(): invalid directory stream");
@@ -46,7 +44,7 @@ pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent::dir
     let mut dirp: Box<DirectoryStream> = Box::from_raw(dirp);
 
     // Read directory entry and check for errors.
-    let direntp: *mut dirent::dirent = match dirent::readdir(&mut dirp) {
+    let direntp: *mut dirent = match syscall::dirent::readdir(&mut dirp) {
         // End of directory.
         Ok(None) => ptr::null_mut(),
         // Directory entry read.

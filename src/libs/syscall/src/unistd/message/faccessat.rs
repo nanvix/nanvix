@@ -6,8 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
@@ -39,6 +37,8 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
+use sysapi::limits::PATH_MAX;
 
 //==================================================================================================
 // AccessAtRequest
@@ -81,7 +81,7 @@ impl FileAccessAtRequest {
         + Self::SIZE_OF_PATH_LENGTH
         + Self::SIZE_OF_MODE
         + Self::SIZE_OF_FLAG
-        + limits::PATH_MAX;
+        + PATH_MAX;
 
     ///
     /// # Description
@@ -102,7 +102,7 @@ impl FileAccessAtRequest {
     ///
     pub fn new(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<Self, Error> {
         // Check if path is too long.
-        if path.len() > limits::PATH_MAX {
+        if path.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidArgument, "path too long"));
         }
 

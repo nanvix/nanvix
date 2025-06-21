@@ -11,7 +11,7 @@
 // Modules
 //==================================================================================================
 
-use crate::ffi::c_char;
+use ::sysapi::ffi::c_char;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {

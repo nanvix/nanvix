@@ -7,12 +7,12 @@
 
 use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
-use ::syscall::{
+use ::sysapi::{
     ffi::{
         c_int,
         c_void,
     },
-    sys::time::timeval,
+    sys_select::timeval,
 };
 
 //==================================================================================================

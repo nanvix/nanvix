@@ -14,13 +14,26 @@ use ::alloc::string::{
     ToString,
 };
 use ::sys::error::ErrorCode;
-use ::syscall::{
-    fcntl,
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
     ffi::c_int,
-    sys::types::{
+    sys_types::{
         mode_t,
         off_t,
     },
+    unistd::{
+        file_seek::{
+            SEEK_CUR,
+            SEEK_END,
+            SEEK_SET,
+        },
+        STDERR_FILENO,
+        STDIN_FILENO,
+        STDOUT_FILENO,
+    },
+};
+use ::syscall::{
+    fcntl,
     unistd,
 };
 
@@ -75,11 +88,11 @@ impl From<off_t> for FileOffset {
 #[repr(i32)]
 pub enum FileWhence {
     /// The offset is set to `offset`.
-    Set = unistd::SEEK_SET,
+    Set = SEEK_SET,
     /// The offset is set to its current location plus `offset`.
-    Cur = unistd::SEEK_CUR,
+    Cur = SEEK_CUR,
     /// The offset is set to the end of the file plus `offset`.
-    End = unistd::SEEK_END,
+    End = SEEK_END,
 }
 
 //==================================================================================================
@@ -94,19 +107,19 @@ pub struct File {
 impl File {
     pub fn stdin() -> File {
         File {
-            rawfd: Fd(unistd::STDIN_FILENO),
+            rawfd: Fd(STDIN_FILENO),
         }
     }
 
     pub fn stdout() -> File {
         File {
-            rawfd: Fd(unistd::STDOUT_FILENO),
+            rawfd: Fd(STDOUT_FILENO),
         }
     }
 
     pub fn stderr() -> File {
         File {
-            rawfd: Fd(unistd::STDERR_FILENO),
+            rawfd: Fd(STDERR_FILENO),
         }
     }
 
@@ -153,7 +166,7 @@ impl File {
 
     /// Returns the current offset of a file descriptor.
     pub fn tell(&self) -> Result<off_t, Error> {
-        match unistd::lseek(self.rawfd.0, 0, unistd::SEEK_CUR) {
+        match unistd::lseek(self.rawfd.0, 0, SEEK_CUR) {
             Err(error) => {
                 ::syslog::error!("tell(): failed to get file offset (error={:?})", error);
                 Err(Error {
@@ -181,9 +194,9 @@ impl File {
 impl Drop for File {
     fn drop(&mut self) {
         // Do not close STDOUT, STDERR, or STDIN as it is shared with the runtime.
-        if self.rawfd.0 == unistd::STDOUT_FILENO
-            || self.rawfd.0 == unistd::STDERR_FILENO
-            || self.rawfd.0 == unistd::STDIN_FILENO
+        if self.rawfd.0 == STDOUT_FILENO
+            || self.rawfd.0 == STDERR_FILENO
+            || self.rawfd.0 == STDIN_FILENO
         {
             return;
         }
@@ -271,7 +284,7 @@ impl OpenOptions {
         let mode: mode_t = 0;
         let dirfd: c_int = match dir {
             Some(dir) => dir.as_raw_fd(),
-            None => fcntl::AT_FDCWD,
+            None => AT_FDCWD,
         };
         match fcntl::openat(dirfd, &path.name, flags.into(), mode) {
             Ok(fd) => Ok(File { rawfd: Fd(fd) }),
@@ -345,13 +358,13 @@ impl From<OpenFlags> for c_int {
         let mut flags: c_int = 0;
 
         match oflags.exclusive {
-            ExclusiveOpenFlags::ReadOnly => flags |= ::syscall::fcntl::OpenFlags::O_RDONLY,
-            ExclusiveOpenFlags::ReadWrite => flags |= ::syscall::fcntl::OpenFlags::O_RDWR,
-            ExclusiveOpenFlags::WriteOnly => flags |= ::syscall::fcntl::OpenFlags::O_WRONLY,
+            ExclusiveOpenFlags::ReadOnly => flags |= ::syscall::fcntl::OpenFlags::Readonly,
+            ExclusiveOpenFlags::ReadWrite => flags |= ::syscall::fcntl::OpenFlags::ReadWrite,
+            ExclusiveOpenFlags::WriteOnly => flags |= ::syscall::fcntl::OpenFlags::WriteOnly,
         }
 
         if oflags.non_exclusive.append {
-            flags |= syscall::fcntl::OpenFlags::O_APPEND;
+            flags |= syscall::fcntl::OpenFlags::Append;
         }
 
         if oflags.non_exclusive.close_on_exec {
@@ -363,19 +376,19 @@ impl From<OpenFlags> for c_int {
         }
 
         if oflags.non_exclusive.create {
-            flags |= syscall::fcntl::OpenFlags::O_CREAT;
+            flags |= syscall::fcntl::OpenFlags::Create;
         }
 
         if oflags.non_exclusive.directory {
-            flags |= syscall::fcntl::OpenFlags::O_DIRECTORY;
+            flags |= syscall::fcntl::OpenFlags::Directory;
         }
 
         if oflags.non_exclusive.dsync {
-            flags |= syscall::fcntl::OpenFlags::O_SYNC;
+            flags |= syscall::fcntl::OpenFlags::Sync;
         }
 
         if oflags.non_exclusive.exclusive {
-            flags |= syscall::fcntl::OpenFlags::O_EXCL;
+            flags |= syscall::fcntl::OpenFlags::Exclusive;
         }
 
         if oflags.non_exclusive.no_controlling_terminal {
@@ -387,19 +400,19 @@ impl From<OpenFlags> for c_int {
         }
 
         if oflags.non_exclusive.non_block {
-            flags |= syscall::fcntl::OpenFlags::O_NONBLOCK;
+            flags |= syscall::fcntl::OpenFlags::NonBlocking;
         }
 
         if oflags.non_exclusive.rsync {
-            flags |= syscall::fcntl::OpenFlags::O_SYNC;
+            flags |= syscall::fcntl::OpenFlags::Sync;
         }
 
         if oflags.non_exclusive.sync {
-            flags |= syscall::fcntl::OpenFlags::O_SYNC;
+            flags |= syscall::fcntl::OpenFlags::Sync;
         }
 
         if oflags.non_exclusive.truncate {
-            flags |= syscall::fcntl::OpenFlags::O_TRUNC;
+            flags |= syscall::fcntl::OpenFlags::Truncate;
         }
 
         if oflags.non_exclusive.initialize_tty {

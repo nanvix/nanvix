@@ -7,12 +7,21 @@
 
 use ::syscall::{
     fcntl,
-    ffi::c_int,
     unistd,
 };
-use syscall::{
-    sys::types::off_t,
-    unistd::SEEK_CUR,
+use sysapi::{
+    fcntl::open_flags::{
+        O_CREAT,
+        O_RDONLY,
+        O_WRONLY,
+    },
+    ffi::c_int,
+    sys_stat::file_access_mode::{
+        S_IRUSR,
+        S_IWUSR,
+    },
+    sys_types::off_t,
+    unistd::file_seek::SEEK_CUR,
 };
 
 //==================================================================================================
@@ -26,11 +35,7 @@ pub fn test() {
     let offset: off_t = 128;
 
     // Create file and assert result.
-    let fd: c_int = match fcntl::open(
-        filename,
-        fcntl::OpenFlags::O_CREAT | fcntl::OpenFlags::O_RDONLY,
-        fcntl::S_IRUSR | fcntl::S_IWUSR,
-    ) {
+    let fd: c_int = match fcntl::open(filename, O_CREAT | O_RDONLY, S_IRUSR | S_IWUSR) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");
@@ -43,7 +48,7 @@ pub fn test() {
     }
 
     // Open file for writing and assert result.
-    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::O_WRONLY.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, O_WRONLY, 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");
@@ -75,7 +80,7 @@ pub fn test() {
     }
 
     // Open file for reading and assert result.
-    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::O_RDONLY.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::Readonly.into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");

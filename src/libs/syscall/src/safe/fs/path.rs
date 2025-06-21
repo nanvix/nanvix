@@ -16,8 +16,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-
-use crate::limits;
+use ::sysapi::limits::PATH_MAX;
 
 //==================================================================================================
 // Path
@@ -70,7 +69,7 @@ impl FileSystemPath {
         };
 
         // Check if path is too long.
-        if name_cstr.as_bytes().len() > limits::PATH_MAX {
+        if name_cstr.as_bytes().len() > PATH_MAX {
             let reason: &str = "path is too long";
             ::syslog::error!("new(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -147,7 +146,7 @@ impl FileSystemPath {
 
         // Check if resulting path would be too long.
         let joined_length: usize = self.name.len() + other.name.len() + 1; // +1 for the separator
-        if joined_length > limits::PATH_MAX {
+        if joined_length > PATH_MAX {
             let reason: &str = "resulting path is too long";
             ::syslog::error!("join(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));

@@ -21,16 +21,15 @@ use crate::{
         c_ushort,
         c_void,
     },
+    pthread::pthread_mutex_type::PTHREAD_MUTEX_NORMAL,
     sched::{
-        self,
         sched_param,
+        sched_policy::SCHED_OTHER,
     },
-    sys::{
-        socket::socklen_t,
-        uio::iovec,
-    },
+    sys_socket::socklen_t,
+    sys_uio::iovec,
 };
-use ::core::mem;
+use ::core::mem::size_of;
 
 //==================================================================================================
 // Types
@@ -81,6 +80,9 @@ pub type pthread_key_t = u32;
 /// Used for mutexes.
 pub type pthread_mutex_t = u32;
 
+/// Used for read-write locks.
+pub type pthread_rwlock_t = u32;
+
 /// Used for directory entry lengths.
 pub type reclen_t = c_ushort;
 
@@ -103,11 +105,7 @@ pub type uid_t = c_uint;
 // Structures
 //==================================================================================================
 
-///
-/// # Description
-///
 /// Thread attributes.
-///
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 pub struct pthread_attr_t {
@@ -121,30 +119,30 @@ pub struct pthread_attr_t {
     pub cputime_clock_allowed: c_int,
     pub detachstate: c_int,
 }
-::static_assert::assert_eq_size!(pthread_attr_t, pthread_attr_t::SIZE);
+::static_assert::assert_eq_size!(pthread_attr_t, pthread_attr_t::_SIZE);
 
 impl pthread_attr_t {
     /// Size of the `is_initialized` field.
-    const SIZE_OF_IS_INITIALIZED: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_IS_INITIALIZED: usize = size_of::<c_int>();
     /// Size of the `stackaddr` field.
-    const SIZE_OF_STACKADDR: usize = core::mem::size_of::<*mut c_void>();
+    const SIZE_OF_STACKADDR: usize = size_of::<*mut c_void>();
     /// Size of the `stacksize` field.
-    const SIZE_OF_STACKSIZE: usize = core::mem::size_of::<size_t>();
+    const SIZE_OF_STACKSIZE: usize = size_of::<size_t>();
     /// Size of the `contentionscope` field.
-    const SIZE_OF_CONTENTIONSCOPE: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_CONTENTIONSCOPE: usize = size_of::<c_int>();
     /// Size of the `inheritsched` field.
-    const SIZE_OF_INHERITSCHED: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_INHERITSCHED: usize = size_of::<c_int>();
     /// Size of the `schedpolicy` field.
-    const SIZE_OF_SCHEDPOLICY: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_SCHEDPOLICY: usize = size_of::<c_int>();
     /// Size of the `schedparam` field.
-    const SIZE_OF_SCHEDPARAM: usize = core::mem::size_of::<sched_param>();
+    const SIZE_OF_SCHEDPARAM: usize = size_of::<sched_param>();
     /// Size of the `cputime_clock_allowed` field.
-    const SIZE_OF_CPUTIME_CLOCK_ALLOWED: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_CPUTIME_CLOCK_ALLOWED: usize = size_of::<c_int>();
     /// Size of the `detachstate` field.
-    const SIZE_OF_DETACHSTATE: usize = core::mem::size_of::<c_int>();
+    const SIZE_OF_DETACHSTATE: usize = size_of::<c_int>();
 
-    /// Size of `pthread_attr_t` structure.
-    pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED
+    /// Size of this structure.
+    pub const _SIZE: usize = Self::SIZE_OF_IS_INITIALIZED
         + Self::SIZE_OF_STACKADDR
         + Self::SIZE_OF_STACKSIZE
         + Self::SIZE_OF_CONTENTIONSCOPE
@@ -164,7 +162,7 @@ impl Default for pthread_attr_t {
             stacksize: 0,
             contentionscope: 0,
             inheritsched: 0,
-            schedpolicy: sched::sched_policy::SCHED_OTHER,
+            schedpolicy: SCHED_OTHER,
             schedparam: sched_param::default(),
             cputime_clock_allowed: 0,
             detachstate: 0,
@@ -189,9 +187,9 @@ pub struct pthread_condattr_t {
 
 impl pthread_condattr_t {
     // Size of the `is_initialized` field.
-    const SIZE_OF_IS_INITIALIZED: usize = mem::size_of::<c_int>();
+    const SIZE_OF_IS_INITIALIZED: usize = size_of::<c_int>();
     // Size of the `clock` field.
-    const SIZE_OF_CLOCK: usize = mem::size_of::<clock_t>();
+    const SIZE_OF_CLOCK: usize = size_of::<clock_t>();
 
     /// Size of `pthread_condattr_t` structure.
     pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_CLOCK;
@@ -203,6 +201,73 @@ impl Default for pthread_condattr_t {
             is_initialized: 1,
             clock: 0,
         }
+    }
+}
+
+///
+/// # Description
+///
+/// Mutex attributes.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct pthread_mutexattr_t {
+    /// Whether the mutex attributes are initialized.
+    is_initialized: c_int,
+    /// Type of mutex.
+    type_: c_int,
+    /// Whether the mutex is recursive.
+    recursive: c_int,
+}
+::static_assert::assert_eq_size!(pthread_mutexattr_t, pthread_mutexattr_t::SIZE);
+
+impl pthread_mutexattr_t {
+    /// Size of the `is_initialized` field.
+    const SIZE_OF_IS_INITIALIZED: usize = size_of::<c_int>();
+    /// Size of the `type_` field.
+    const SIZE_OF_TYPE: usize = size_of::<c_int>();
+    /// Size of the `recursive` field.
+    const SIZE_OF_RECURSIVE: usize = size_of::<c_int>();
+
+    /// Size of `pthread_mutexattr_t` structure.
+    pub const SIZE: usize =
+        Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_TYPE + Self::SIZE_OF_RECURSIVE;
+}
+
+impl Default for pthread_mutexattr_t {
+    fn default() -> Self {
+        Self {
+            is_initialized: 1,
+            type_: PTHREAD_MUTEX_NORMAL,
+            recursive: 0,
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Read-write lock attributes.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct pthread_rwlockattr_t {
+    /// Whether the read-write lock attributes are initialized.
+    is_initialized: c_int,
+}
+::static_assert::assert_eq_size!(pthread_rwlockattr_t, pthread_rwlockattr_t::SIZE);
+
+impl pthread_rwlockattr_t {
+    /// Size of the `is_initialized` field.
+    const SIZE_OF_IS_INITIALIZED: usize = size_of::<c_int>();
+
+    /// Size of `pthread_rwlockattr_t` structure.
+    pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED;
+}
+
+impl Default for pthread_rwlockattr_t {
+    fn default() -> Self {
+        Self { is_initialized: 1 }
     }
 }
 
@@ -218,9 +283,9 @@ pub struct pthread_once_t {
 
 impl pthread_once_t {
     /// Size of the `is_initialized` field.
-    const SIZE_OF_IS_INITIALIZED: usize = mem::size_of::<c_int>();
+    const SIZE_OF_IS_INITIALIZED: usize = size_of::<c_int>();
     /// Size of the `init_executed` field.
-    const SIZE_OF_INIT_EXECUTED: usize = mem::size_of::<c_int>();
+    const SIZE_OF_INIT_EXECUTED: usize = size_of::<c_int>();
 
     /// Size of `pthread_once_t` structure.
     pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_INIT_EXECUTED;
@@ -248,19 +313,19 @@ pub struct msghdr {
 
 impl msghdr {
     /// Size of the `msg_name` field.
-    const SIZE_OF_MSG_NAME: usize = mem::size_of::<*mut c_void>();
+    const SIZE_OF_MSG_NAME: usize = size_of::<*mut c_void>();
     /// Size of the `msg_namelen` field.
-    const SIZE_OF_MSG_NAMELEN: usize = mem::size_of::<socklen_t>();
+    const SIZE_OF_MSG_NAMELEN: usize = size_of::<socklen_t>();
     /// Size of the `msg_iov` field.
-    const SIZE_OF_MSG_IOV: usize = mem::size_of::<*mut iovec>();
+    const SIZE_OF_MSG_IOV: usize = size_of::<*mut iovec>();
     /// Size of the `msg_iovlen` field.
-    const SIZE_OF_MSG_IOVLEN: usize = mem::size_of::<c_int>();
+    const SIZE_OF_MSG_IOVLEN: usize = size_of::<c_int>();
     /// Size of the `msg_control` field.
-    const SIZE_OF_MSG_CONTROL: usize = mem::size_of::<*mut c_void>();
+    const SIZE_OF_MSG_CONTROL: usize = size_of::<*mut c_void>();
     /// Size of the `msg_controllen` field.
-    const SIZE_OF_MSG_CONTROLLEN: usize = mem::size_of::<socklen_t>();
+    const SIZE_OF_MSG_CONTROLLEN: usize = size_of::<socklen_t>();
     /// Size of the `msg_flags` field.
-    const SIZE_OF_MSG_FLAGS: usize = mem::size_of::<c_int>();
+    const SIZE_OF_MSG_FLAGS: usize = size_of::<c_int>();
 
     /// Size of `msghdr` structure.
     pub const SIZE: usize = Self::SIZE_OF_MSG_NAME
@@ -287,11 +352,11 @@ pub struct cmsghdr {
 
 impl cmsghdr {
     /// Size of the `cmsg_len` field.
-    const SIZE_OF_CMSG_LEN: usize = mem::size_of::<socklen_t>();
+    const SIZE_OF_CMSG_LEN: usize = size_of::<socklen_t>();
     /// Size of the `cmsg_level` field.
-    const SIZE_OF_CMSG_LEVEL: usize = mem::size_of::<c_int>();
+    const SIZE_OF_CMSG_LEVEL: usize = size_of::<c_int>();
     /// Size of the `cmsg_type` field.
-    const SIZE_OF_CMSG_TYPE: usize = mem::size_of::<c_int>();
+    const SIZE_OF_CMSG_TYPE: usize = size_of::<c_int>();
 
     /// Size of `cmsghdr` structure.
     pub const SIZE: usize =

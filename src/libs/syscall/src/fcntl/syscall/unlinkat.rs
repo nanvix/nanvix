@@ -7,7 +7,6 @@
 
 use crate::{
     fcntl::message::UnlinkAtRequest,
-    ffi::c_int,
     message::MessagePartitioner,
     safe::RawFileDescriptor,
     LinuxDaemonMessage,
@@ -22,6 +21,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions

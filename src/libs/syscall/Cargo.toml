@@ -26,21 +26,21 @@ goblin = { workspace = true, optional = true, features = [
     "mach32",
     "mach64",
 ] }
-spin = { workspace = true, optional = true, features = ["lazy", "spin_mutex"] }
+spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
 syslog = { workspace = true, optional = true }
 sysalloc = { workspace = true, optional = true }
+sysapi = { workspace = true }
 type-safe = { workspace = true }
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
 core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { version = "0.1", optional = true }
 
 [features]
-default = ["syscall", "dlfcn", "pthread", "sbrk"]
+default = ["syscall", "dlfcn", "sbrk"]
 syscall = ["dep:syslog", "sys/kcall"]
 std = []
-dlfcn = ["dep:sysalloc", "dep:arch", "dep:elf", "dep:goblin", "dep:spin"]
-pthread = ["dep:spin"]
+dlfcn = ["dep:sysalloc", "dep:arch", "dep:elf", "dep:goblin"]
 rustc-dep-of-std = [
     "core",
     "alloc",
@@ -48,8 +48,10 @@ rustc-dep-of-std = [
     "compiler_builtins/rustc-dep-of-std",
     "sys/rustc-dep-of-std",
     "static_assert/rustc-dep-of-std",
+    "sysapi/rustc-dep-of-std",
     "syslog/rustc-dep-of-std",
     "type-safe/rustc-dep-of-std",
+    "spin/rustc-dep-of-std",
 ]
 sbrk = []
 

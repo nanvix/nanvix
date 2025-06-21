@@ -19,16 +19,24 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
-use ::syscall::{
+use ::sysapi::{
     ffi::c_int,
-    limits,
-    message::MessagePartitioner,
-    sys::types::{
+    limits::PATH_MAX,
+    sys_types::{
         off_t,
         size_t,
         ssize_t,
     },
-    unistd,
+    unistd::file_seek::{
+        SEEK_CUR,
+        SEEK_DATA,
+        SEEK_END,
+        SEEK_HOLE,
+        SEEK_SET,
+    },
+};
+use ::syscall::{
+    message::MessagePartitioner,
     unistd::message::{
         ChangeDirectoryRequest,
         ChangeDirectoryResponse,
@@ -207,7 +215,7 @@ pub fn do_getids(pid: ProcessIdentifier, _request: GetIdsRequest) -> Message {
 pub fn do_getcwd(pid: ProcessIdentifier) -> Vec<Message> {
     trace!("getcwd(): pid={pid:?}");
 
-    let mut buf: Vec<u8> = Vec::with_capacity(limits::PATH_MAX as libc::size_t);
+    let mut buf: Vec<u8> = Vec::with_capacity(PATH_MAX as libc::size_t);
 
     // Get current working directory and check for errors.
     debug!("libc::getcwd(): buf={:p}, size={:?}", buf.as_mut_ptr(), buf.capacity());
@@ -587,11 +595,11 @@ impl TryFrom<i32> for LibcSeek {
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            unistd::SEEK_CUR => Ok(LibcSeek(libc::SEEK_CUR)),
-            unistd::SEEK_END => Ok(LibcSeek(libc::SEEK_END)),
-            unistd::SEEK_SET => Ok(LibcSeek(libc::SEEK_SET)),
-            unistd::SEEK_HOLE => Ok(LibcSeek(libc::SEEK_HOLE)),
-            unistd::SEEK_DATA => Ok(LibcSeek(libc::SEEK_DATA)),
+            SEEK_CUR => Ok(LibcSeek(libc::SEEK_CUR)),
+            SEEK_END => Ok(LibcSeek(libc::SEEK_END)),
+            SEEK_SET => Ok(LibcSeek(libc::SEEK_SET)),
+            SEEK_HOLE => Ok(LibcSeek(libc::SEEK_HOLE)),
+            SEEK_DATA => Ok(LibcSeek(libc::SEEK_DATA)),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid whence")),
         }
     }

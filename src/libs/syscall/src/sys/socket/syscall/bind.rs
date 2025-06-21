@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     sys::socket::{
         message::BindSocketRequest,
         sockaddr,
@@ -23,6 +22,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
@@ -31,7 +31,7 @@ use ::sys::{
 pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
-    let sockaddr: sockaddr = sockaddr::try_from(sockaddr)?;
+    let sockaddr: sockaddr = sockaddr::from(sockaddr);
 
     // Build request and send it.
     let request: Message = BindSocketRequest::build(pid, sockfd, &sockaddr);
