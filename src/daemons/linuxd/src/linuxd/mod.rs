@@ -19,6 +19,7 @@ use crate::{
         RequestAssembler,
         RequestAssemblerTrait,
     },
+    poll,
     socket,
     times,
     unistd,
@@ -237,6 +238,7 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::ShutdownSocketRequest
                                 | LinuxDaemonMessageHeader::TimesRequest
                                 | LinuxDaemonMessageHeader::PipeRequest
+                                | LinuxDaemonMessageHeader::PollRequest
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                                     self.handle_short_request_messages(source, message)
                                 },
@@ -428,6 +430,11 @@ impl<'a> LinuxDaemon<'a> {
             LinuxDaemonMessageHeader::PartialWriteRequest => {
                 let request: PartialWriteRequest = PartialWriteRequest::from_bytes(message.payload);
                 unistd::do_pwrite(source, request)
+            },
+            LinuxDaemonMessageHeader::PollRequest => {
+                let request: syscall::poll::message::PollRequest =
+                    syscall::poll::message::PollRequest::from_bytes(message.payload);
+                poll::do_poll(source, request)
             },
             LinuxDaemonMessageHeader::ReceiveSocketRequest => {
                 let request: ReceiveSocketRequest =
