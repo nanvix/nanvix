@@ -47,8 +47,8 @@ stage0() {
         --disable-libquadmath-support \
         --with-newlib
 
-    make -j `nproc` all-gcc all-target-libgcc all-target-libgfortran
-    make install-gcc install-target-libgcc install-target-libgfortran
+    make -j `nproc` all-gcc all-target-libgcc
+    make install-gcc install-target-libgcc
 }
 
 #===================================================================================================
