@@ -8,24 +8,85 @@
 #===================================================================================================
 
 RULE=${1:-build}
-NANVIX_HOME=${2:-`git rev-parse --show-toplevel`}
-TOOLCHAIN_DIR=${3:-$PWD/toolchain}
-SYSROOT_DIR=${4:-$PWD/sysroot}
+TOOLCHAIN_DIR=${2:-$PWD/toolchain}
+SYSROOT_DIR=${3:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
-OPT_DIR=${NANVIX_HOME}/opt
-CROSS_DIR=${SYSROOT_DIR}/cross
-CPYTHON_HOME=${OPT_DIR}/cpython
+export CONTRIB_DIR=${SYSROOT_DIR}/src
+export CPYTHON_HOME=${CONTRIB_DIR}/cpython
+export CPYTHON_REPOSITORY=https://github.com/nanvix/cpython
+export CPYTHON_BRANCH=nanvix/v3.12.3
+
+export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
+export CROSS_DIR=${SYSROOT_DIR}/cross
+
+#===================================================================================================
+# Configure
+#===================================================================================================
+
+configure() {
+    CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
+    CXX="$TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
+    LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
+    LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld" \
+    CFLAGS="-static -L $SYSROOT_DIR/lib" \
+    LIBS="-Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a -lsqlite3 -lssl -lcrypto -Wl,--end-group" \
+    LIBSQLITE3_LIBS="-L $SYSROOT_DIR/lib -lsqlite3" \
+    LIBSQLITE3_CFLAGS="-I $SYSROOT_DIR/include" \
+    ZLIB_LIBS="-L $SYSROOT_DIR/lib -lz" \
+    ZLIB_CFLAGS="-I $SYSROOT_DIR/include" \
+    ./configure \
+        --disable-shared \
+        --build=x86_64-pc-linux-gnux32 \
+        --host=i686-nanvix \
+        --with-build-python=${CROSS_DIR}/bin/python3 \
+        --disable-test-modules \
+        --with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
+        --with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
+        --prefix=$SYSROOT_DIR \
+        --exec-prefix=$SYSROOT_DIR \
+        --with-ensurepip=no \
+        --with-pkg-config=no \
+        --with-openssl=$SYSROOT_DIR \
+        --disable-ipv6 \
+        ac_cv_file__dev_ptmx=no \
+        ac_cv_file__dev_ptc=no \
+        ac_cv_pthread_is_default=yes \
+        ac_cv_pthread=yes \
+        ac_cv_kthread=no
+}
+
+#===================================================================================================
+# Configure Cross
+#===================================================================================================
+
+configure_cross() {
+    LDFLAGS='-m32' \
+    CFLAGS="-m32" \
+    ./configure \
+         --build=x86_64-pc-linux-gnux32 \
+        --host=x86_64-pc-linux-gnux32 \
+        --disable-shared \
+        --disable-test-modules \
+        --prefix=${CROSS_DIR} \
+        --exec-prefix=${CROSS_DIR} \
+        --with-ensurepip=no \
+        --with-pkg-config=no \
+        --disable-ipv6 \
+        ac_cv_file__dev_ptmx=no \
+        ac_cv_file__dev_ptc=no
+}
 
 #===================================================================================================
 # Clean
 #===================================================================================================
 
 make_clean() {
-	make clean
+    cd ${CPYTHON_HOME}
+    make clean
 }
 
 #===================================================================================================
@@ -33,64 +94,8 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
-	git clean -fdx
-}
-
-#===================================================================================================
-# Configure
-#===================================================================================================
-
-configure() {
-	CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
-	CXX="$TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
-	LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
-	LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld" \
-	CFLAGS="-static -L $SYSROOT_DIR/lib" \
-	LIBS="-Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a -lsqlite3 -lssl -lcrypto -Wl,--end-group" \
-	LIBSQLITE3_LIBS="-L $SYSROOT_DIR/lib -lsqlite3" \
-	LIBSQLITE3_CFLAGS="-I $SYSROOT_DIR/include" \
-	ZLIB_LIBS="-L $SYSROOT_DIR/lib -lz" \
-	ZLIB_CFLAGS="-I $SYSROOT_DIR/include" \
-	./configure \
-		--disable-shared \
-		--build=x86_64-pc-linux-gnux32 \
-		--host=i686-nanvix \
-		--with-build-python=${CROSS_DIR}/bin/python3 \
-		--disable-test-modules \
-		--with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
-		--with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
-		--prefix=$SYSROOT_DIR \
-		--exec-prefix=$SYSROOT_DIR \
-		--with-ensurepip=no \
-		--with-pkg-config=no \
-		--with-openssl=$SYSROOT_DIR \
-		--disable-ipv6 \
-		ac_cv_file__dev_ptmx=no \
-		ac_cv_file__dev_ptc=no \
-		ac_cv_pthread_is_default=yes \
-		ac_cv_pthread=yes \
-		ac_cv_kthread=no
-}
-
-#===================================================================================================
-# Configure Cross
-#====================================================================================================
-
-configure_cross() {
-	LDFLAGS='-m32' \
-	CFLAGS="-m32" \
-	./configure \
-	 	-build=x86_64-pc-linux-gnux32 \
-		--host=x86_64-pc-linux-gnux32 \
-		--disable-shared \
-		--disable-test-modules \
-		--prefix=${CROSS_DIR} \
-		--exec-prefix=${CROSS_DIR} \
-		--with-ensurepip=no \
-		--with-pkg-config=no \
-		--disable-ipv6 \
-		ac_cv_file__dev_ptmx=no \
-		ac_cv_file__dev_ptc=no
+    cd ${CPYTHON_HOME}
+    git clean -fdx
 }
 
 #===================================================================================================
@@ -98,15 +103,17 @@ configure_cross() {
 #===================================================================================================
 
 make_all() {
-	make -j `nproc` all
+    cd ${CPYTHON_HOME}
+    make -j `nproc` all
 }
 
 #===================================================================================================
 # Install
 #===================================================================================================
 
-install() {
-	make install
+make_install() {
+    cd ${CPYTHON_HOME}
+    make install
 }
 
 #===================================================================================================
@@ -114,28 +121,27 @@ install() {
 #===================================================================================================
 
 build_cross() {
-	configure_cross
-
-	make_all
-
-	install
-
-	distclean
+    cd ${CPYTHON_HOME}
+    configure_cross
+    make_all
+    make_install
+    distclean
 }
 
 build() {
-	# Check if we need to configure or not.
-	if [ ! -f "${CPYTHON_HOME}/Makefile" ]; then
-		configure
-	else
-		# Remove the existing binary to ensure it links with the updated system libraries.
-		# Note: Running 'make clean' would remove all object files, which is unnecessary here.
-		rm -f python
-	fi
+    cd ${CPYTHON_HOME}
 
-	make_all
+    # Check if we need to configure or not.
+    if [ ! -f "${CPYTHON_HOME}/Makefile" ]; then
+        configure
+    else
+        # Remove the existing binary to ensure it links with the updated system libraries.
+        # Note: Running 'make clean' would remove all object files, which is unnecessary here.
+        rm -f python
+    fi
 
-	install
+    make_all
+    make_install
 }
 
 #===================================================================================================
@@ -143,17 +149,21 @@ build() {
 #===================================================================================================
 
 init() {
-	# Nothing to do here.
-	return
+    mkdir -p ${CONTRIB_DIR}
+    if [ ! -d "${CPYTHON_HOME}/.git" ];
+    then
+        git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
+        git checkout ${CPYTHON_BRANCH}
+        build_cross
+    else
+        cd ${CPYTHON_HOME}
+        git fetch origin
+        git reset --hard
+        git checkout ${CPYTHON_BRANCH}
+    fi
 }
 
 #===================================================================================================
-
-# Fetch submodule if needed.
-git submodule update --init $CPYTHON_HOME
-
-# Switch to submodule directory.
-cd ${CPYTHON_HOME}
 
 # Save current environment variables.
 OLD_AR=$AR
@@ -167,6 +177,7 @@ OLD_CXXFLAGS=$CXXFLAGS
 OLD_LD_FLAGS=$LDFLAGS
 OLD_LIBC=$LIBC
 OLD_LIBM=$LIBM
+OLD_LIBS=$LIBS
 
 # Unset variables that might interfere with the build process.
 unset AR
@@ -180,26 +191,21 @@ unset CXXFLAGS
 unset LDFLAGS
 unset LIBC
 unset LIBM
-
-# Check if cross-platform toolchain exists and build it if does not.
-# TODO: improve detection
-if [ ! -f "${CROSS_DIR}/bin/python3" ]; then
-	build_cross
-fi
+unset LIBS
 
 case $RULE in
-	build)
-		build
-		;;
-	clean)
-		make_clean
-		;;
-	distclean)
-		distclean
-		;;
-	init)
-		init
-		;;
+    build)
+        build
+        ;;
+    clean)
+        make_clean
+        ;;
+    distclean)
+        distclean
+        ;;
+    init)
+        init
+        ;;
 esac
 
 # Restore original environment variables.
@@ -214,3 +220,4 @@ export CXXFLAGS=$OLD_CXXFLAGS
 export LDFLAGS=$OLD_LD_FLAGS
 export LIBC=$OLD_LIBC
 export LIBM=$OLD_LIBM
+export LIBS=$OLD_LIBS
