@@ -7,10 +7,6 @@
 
 use crate::{
     safe::RawFileDescriptor,
-    sys::types::{
-        off_t,
-        size_t,
-    },
     unistd::message::{
         PartialWriteRequest,
         PartialWriteResponse,
@@ -26,6 +22,10 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use ::sysapi::sys_types::{
+    off_t,
+    size_t,
 };
 
 //==================================================================================================

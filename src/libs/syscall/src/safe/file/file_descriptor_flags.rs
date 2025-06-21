@@ -5,10 +5,8 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl,
-    ffi::c_int,
-};
+use crate::fcntl;
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // File Control Request
@@ -25,10 +23,10 @@ impl FileDescriptorFlags {
 
     pub fn set_close_on_exec(mut self, enable: bool) -> Self {
         if enable {
-            let flag: c_int = fcntl::FileDescriptorFlags::O_CLOEXEC.into();
+            let flag: c_int = fcntl::FileDescriptorFlags::CloseOnExec.into();
             self.flags |= flag;
         } else {
-            let flag: c_int = fcntl::FileDescriptorFlags::O_CLOEXEC.into();
+            let flag: c_int = fcntl::FileDescriptorFlags::CloseOnExec.into();
             self.flags &= !flag;
         }
         self

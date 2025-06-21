@@ -11,18 +11,29 @@
 // Imports
 //==================================================================================================
 
-use crate::sys::types::size_t;
+use crate::sys_types::{
+    suseconds_t,
+    time_t,
+};
 
 //==================================================================================================
+// Structures
+//==================================================================================================
 
-///
-/// # Description
-///
-/// This structure represents an I/O vector.
-///
-pub struct iovec {
-    /// Base address of a memory region for input or output.
-    pub iov_base: *mut u8,
-    /// The size of the memory pointer to by `iov_base`.
-    pub iov_len: size_t,
+#[derive(Default, Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct timeval {
+    /// Seconds.
+    pub tv_sec: time_t,
+    /// Nano-seconds.
+    pub tv_nsec: suseconds_t,
+}
+
+impl From<timeval> for crate::time::timespec {
+    fn from(tv: timeval) -> Self {
+        Self {
+            tv_sec: tv.tv_sec,
+            tv_nsec: tv.tv_nsec,
+        }
+    }
 }

@@ -5,11 +5,9 @@
 // Modules
 //==================================================================================================
 
-use crate::{
-    fcntl,
-    unistd,
-};
+use crate::unistd;
 use ::sys::error::Error;
+use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
 // Standalone Functions
@@ -31,5 +29,5 @@ use ::sys::error::Error;
 ///
 pub fn link(oldpath: &str, newpath: &str) -> Result<(), Error> {
     ::syslog::trace!("link(): oldpath = {:?}, newpath = {:?}", oldpath, newpath);
-    unistd::linkat(fcntl::AT_FDCWD, oldpath, fcntl::AT_FDCWD, newpath, 0)
+    unistd::linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
 }

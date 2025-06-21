@@ -6,14 +6,12 @@
 //==================================================================================================
 
 use crate::{
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
     },
-    sys::stat::stat,
     LinuxDaemonMessageHeader,
 };
 use ::alloc::{
@@ -31,6 +29,13 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use sysapi::{
+    limits::PATH_MAX,
+    sys_stat::{
+        stat,
+        StatError,
+    },
 };
 
 //==================================================================================================
@@ -70,7 +75,7 @@ impl FileStatAtRequest {
 
     /// Maximum size of the message.
     pub const MAX_SIZE: usize =
-        Self::SIZE_OF_DIRFD + Self::SIZE_OF_FLAG + Self::SIZE_OF_PATH_LENGTH + limits::PATH_MAX;
+        Self::SIZE_OF_DIRFD + Self::SIZE_OF_FLAG + Self::SIZE_OF_PATH_LENGTH + PATH_MAX;
 
     ///
     /// # Description
@@ -79,7 +84,7 @@ impl FileStatAtRequest {
     ///
     pub fn new(dirfd: i32, path: String, flag: i32) -> Result<Self, Error> {
         // Check if path is too long.
-        if path.len() > limits::PATH_MAX {
+        if path.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "path too long"));
         }
 
@@ -276,7 +281,90 @@ impl MessageDeserializer for FileStatAtResponse {
         }
 
         Ok(FileStatAtResponse {
-            stat: stat::try_from_bytes(bytes)?,
+            stat: match stat::try_from_bytes(bytes) {
+                Ok(stat) => stat,
+                Err(StatError::InvalidSize) => {
+                    return Err(Error::new(ErrorCode::InvalidMessage, "invalid file status size"))
+                },
+                Err(StatError::FailedToParseDev) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse dev in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseIno) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse inode in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseMode) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse mode in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseNlink) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse nlink in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseUid) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse uid in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseGid) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse gid in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseRdev) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse rdev in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseSize) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse size in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseAtim) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse atim in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseMtim) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse mtim in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseCtim) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse ctim in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseBlksize) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse blksize in file status",
+                    ))
+                },
+                Err(StatError::FailedToParseBlocks) => {
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "failed to parse blocks in file status",
+                    ))
+                },
+            },
         })
     }
 }

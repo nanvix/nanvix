@@ -6,8 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    sys::types::off_t,
     unistd::message::FileTruncateRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -19,6 +17,10 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    ffi::c_int,
+    sys_types::off_t,
 };
 
 //==================================================================================================

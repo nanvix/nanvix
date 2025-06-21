@@ -16,9 +16,10 @@ use ::core::{
     slice,
 };
 use ::sys::error::ErrorCode;
-use ::syscall::{
+use ::sysapi::{
     fcntl::{
-        self,
+        atflags::AT_FDCWD,
+        file_access_mode::AT_SYMLINK_NOFOLLOW,
     },
     ffi::{
         c_char,
@@ -31,7 +32,7 @@ use ::syscall::{
         HOST_NAME_MAX,
         PATH_MAX,
     },
-    sys::types::{
+    sys_types::{
         gid_t,
         off_t,
         pid_t,
@@ -40,13 +41,12 @@ use ::syscall::{
         uid_t,
     },
     unistd::{
-        self,
-        syscall,
         STDERR_FILENO,
         STDIN_FILENO,
         STDOUT_FILENO,
     },
 };
+use ::syscall::unistd::syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -79,7 +79,7 @@ use ::syscall::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
     ::syslog::trace!("access(): path={:?}, mode={:?}", path, mode);
-    faccessat(fcntl::AT_FDCWD, path, mode, 0)
+    faccessat(AT_FDCWD, path, mode, 0)
 }
 
 ///
@@ -157,7 +157,7 @@ pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
     ::syslog::trace!("chown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
-    fchownat(fcntl::AT_FDCWD, path, owner, group, 0)
+    fchownat(AT_FDCWD, path, owner, group, 0)
 }
 
 #[allow(clippy::missing_safety_doc)]
@@ -169,21 +169,6 @@ pub extern "C" fn chroot(_path: *const c_char) -> c_int {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn close(fd: c_int) -> c_int {
-    ::syslog::trace!("close(): fd = {}", fd);
-    match ::syscall::unistd::close(fd) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!("close(): failed ({:?})", error);
-            unsafe {
-                *__errno_location() = error.code.get();
-            }
-            -1
-        },
-    }
 }
 
 ///
@@ -993,7 +978,7 @@ pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
     ::syslog::trace!("lchown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
-    fchownat(fcntl::AT_FDCWD, path, owner, group, fcntl::AT_SYMLINK_NOFOLLOW)
+    fchownat(AT_FDCWD, path, owner, group, AT_SYMLINK_NOFOLLOW)
 }
 
 ///
@@ -1022,7 +1007,7 @@ pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
     ::syslog::trace!("link(): oldpath={:?}, newpath={:?}", oldpath, newpath);
-    linkat(fcntl::AT_FDCWD, oldpath, fcntl::AT_FDCWD, newpath, 0)
+    linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
 }
 
 ///
@@ -1146,40 +1131,6 @@ pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
                 whence,
                 error
             );
-            unsafe {
-                *__errno_location() = error.code.get();
-            }
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
-/// Creates a pipe.
-///
-/// # Parameters
-///
-/// - `fds`: Array to store the file descriptors of the pipe.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
-/// indicate the error.
-///
-#[unsafe(no_mangle)]
-pub extern "C" fn pipe(fds: &mut [c_int; 2]) -> c_int {
-    ::syslog::trace!("pipe(): fds = {:?}", fds);
-
-    match ::syscall::unistd::pipe() {
-        Ok([read_fd, write_fd]) => {
-            fds[0] = read_fd;
-            fds[1] = write_fd;
-            0
-        },
-        Err(error) => {
-            ::syslog::error!("pipe(): failed (error={:?})", error);
             unsafe {
                 *__errno_location() = error.code.get();
             }
@@ -1559,7 +1510,7 @@ pub unsafe extern "C" fn readlink(
     bufsize: size_t,
 ) -> ssize_t {
     ::syslog::trace!("readlink(): path={:?}, buf={:?}, bufsize={:?}", path, buf, bufsize);
-    readlinkat(fcntl::AT_FDCWD, path, buf, bufsize)
+    readlinkat(AT_FDCWD, path, buf, bufsize)
 }
 
 #[allow(clippy::missing_safety_doc)]
@@ -1643,7 +1594,7 @@ pub unsafe extern "C" fn setegid(gid: gid_t) -> c_int {
     ::syslog::error!("setegid(): gid={:?}", gid);
 
     // Check wether `gid` equals to the effective group ID of the calling process.
-    match unistd::getegid() {
+    match syscall::getegid() {
         Ok(egid) if gid == egid => 0,
         Ok(egid) => {
             ::syslog::error!("setegid(): operation not permitted (gid={:?}, egid={:?})", gid, egid);
@@ -1683,7 +1634,7 @@ pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
     ::syslog::error!("setgid(): gid={:?})", gid);
 
     // Check wether `gid` equals to the real group ID of the calling process.
-    match unistd::getgid() {
+    match syscall::getgid() {
         Ok(rgid) if gid == rgid => 0,
         Ok(rgid) => {
             ::syslog::error!("setgid(): operation not permitted (gid={:?}, rgid={:?})", gid, rgid);
@@ -1723,7 +1674,7 @@ pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
     ::syslog::error!("seteuid(): uid={:?}", uid);
 
     // Check wether `uid` equals to the effective user ID of the calling process.
-    match unistd::geteuid() {
+    match syscall::geteuid() {
         Ok(euid) if uid == euid => 0,
         Ok(euid) => {
             ::syslog::error!("seteuid(): operation not permitted (uid={:?}, euid={:?})", uid, euid);
@@ -1763,7 +1714,7 @@ pub unsafe extern "C" fn setuid(uid: uid_t) -> c_int {
     ::syslog::error!("setuid(): uid={:?}", uid);
 
     // Check wether `uid` equals to the real user ID of the calling process.
-    match unistd::getuid() {
+    match syscall::getuid() {
         Ok(ruid) if uid == ruid => 0,
         Ok(ruid) => {
             ::syslog::error!("setuid(): operation not permitted (uid={:?}, ruid={:?})", uid, ruid);

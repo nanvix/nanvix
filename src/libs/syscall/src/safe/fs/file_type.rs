@@ -5,12 +5,22 @@
 // Imports
 //===================================================================================================
 
-use crate::{
-    dirent::DirectoryEntryFileType,
-    sys::{
-        stat::file_mode,
-        types::mode_t,
+use crate::dirent::DirectoryEntryFileType;
+use ::sysapi::{
+    sys_stat::file_type::{
+        S_ISBLK,
+        S_ISCHR,
+        S_ISDIR,
+        S_ISFIFO,
+        S_ISLNK,
+        S_ISREG,
+        S_ISSOCK,
+        S_TYPEISMQ,
+        S_TYPEISSEM,
+        S_TYPEISSHM,
+        S_TYPEISTMO,
     },
+    sys_types::mode_t,
 };
 
 //==================================================================================================
@@ -52,27 +62,27 @@ pub enum FileType {
 
 impl From<mode_t> for FileType {
     fn from(mode: mode_t) -> Self {
-        if file_mode::S_ISFIFO(mode) {
+        if S_ISFIFO(mode) {
             FileType::Fifo
-        } else if file_mode::S_ISCHR(mode) {
+        } else if S_ISCHR(mode) {
             FileType::CharacterDevice
-        } else if file_mode::S_ISDIR(mode) {
+        } else if S_ISDIR(mode) {
             FileType::Directory
-        } else if file_mode::S_ISBLK(mode) {
+        } else if S_ISBLK(mode) {
             FileType::BlockDevice
-        } else if file_mode::S_ISREG(mode) {
+        } else if S_ISREG(mode) {
             FileType::RegularFile
-        } else if file_mode::S_ISLNK(mode) {
+        } else if S_ISLNK(mode) {
             FileType::SymbolicLink
-        } else if file_mode::S_ISSOCK(mode) {
+        } else if S_ISSOCK(mode) {
             FileType::Socket
-        } else if file_mode::S_TYPEISMQ(mode) {
+        } else if S_TYPEISMQ(mode) {
             FileType::MessageQueue
-        } else if file_mode::S_TYPEISSEM(mode) {
+        } else if S_TYPEISSEM(mode) {
             FileType::Semaphore
-        } else if file_mode::S_TYPEISSHM(mode) {
+        } else if S_TYPEISSHM(mode) {
             FileType::SharedMemoryObject
-        } else if file_mode::S_TYPEISTMO(mode) {
+        } else if S_TYPEISTMO(mode) {
             FileType::TypedMemoryObject
         } else {
             FileType::Unknown

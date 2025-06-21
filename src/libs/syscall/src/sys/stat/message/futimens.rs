@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    time::timespec,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -18,6 +17,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use sysapi::time::timespec;
 
 //==================================================================================================
 // UpdateFileAccessTimeRequest

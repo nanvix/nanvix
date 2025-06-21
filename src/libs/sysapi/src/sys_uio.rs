@@ -11,17 +11,14 @@
 // Imports
 //==================================================================================================
 
-use crate::time::time_t;
+use crate::sys_types::size_t;
 
 //==================================================================================================
-// Structures
-//==================================================================================================
 
-#[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
-pub struct utimbuf {
-    /// Access time.
-    pub actime: time_t,
-    /// Modification time.
-    pub modtime: time_t,
+/// An I/O vector.
+pub struct iovec {
+    /// Base address of a memory region for input or output.
+    pub iov_base: *mut u8,
+    /// The size of the memory pointer to by `iov_base`.
+    pub iov_len: size_t,
 }

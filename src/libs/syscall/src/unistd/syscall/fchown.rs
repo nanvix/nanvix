@@ -7,10 +7,6 @@
 
 use crate::{
     safe::RawFileDescriptor,
-    sys::types::{
-        gid_t,
-        uid_t,
-    },
     unistd::message::FileChownRequest,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -22,6 +18,10 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use ::sysapi::sys_types::{
+    gid_t,
+    uid_t,
 };
 
 //==================================================================================================

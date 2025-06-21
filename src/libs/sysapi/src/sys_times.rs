@@ -11,29 +11,21 @@
 // Imports
 //==================================================================================================
 
-use crate::sys::{
-    time::time_t,
-    types::suseconds_t,
-};
+use crate::sys_types::clock_t;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
-#[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
-pub struct timeval {
-    /// Seconds.
-    pub tv_sec: time_t,
-    /// Nano-seconds.
-    pub tv_nsec: suseconds_t,
-}
-
-impl From<timeval> for crate::time::timespec {
-    fn from(tv: timeval) -> Self {
-        Self {
-            tv_sec: tv.tv_sec,
-            tv_nsec: tv.tv_nsec,
-        }
-    }
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct tms {
+    /// User CPU time.
+    pub tms_utime: clock_t,
+    /// System CPU time.
+    pub tms_stime: clock_t,
+    /// User CPU time of terminated child processes.
+    pub tms_cutime: clock_t,
+    /// System CPU time of terminated child processes.
+    pub tms_cstime: clock_t,
 }

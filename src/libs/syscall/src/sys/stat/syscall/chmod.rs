@@ -5,14 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::AT_FDCWD,
-    sys::{
-        stat::fchmodat,
-        types::mode_t,
-    },
-};
+use crate::sys::stat::fchmodat;
 use ::sys::error::Error;
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    sys_types::mode_t,
+};
 
 //==================================================================================================
 // Standalone Functions

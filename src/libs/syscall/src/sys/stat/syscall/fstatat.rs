@@ -7,10 +7,7 @@
 
 use crate::{
     message::MessagePartitioner,
-    sys::stat::{
-        message::FileStatAtRequest,
-        stat,
-    },
+    sys::stat::message::FileStatAtRequest,
 };
 use ::alloc::{
     string::ToString,
@@ -21,6 +18,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::sys_stat;
 
 //==================================================================================================
 // Standalone Functions
@@ -42,7 +40,7 @@ use ::sys::{
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-pub fn fstatat(dirfd: i32, path: &str, buf: &mut stat, flag: i32) -> Result<(), Error> {
+pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> Result<(), Error> {
     // Send request.
     fstatat_request(dirfd, path, flag)?;
 

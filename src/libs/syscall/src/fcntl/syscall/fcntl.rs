@@ -10,7 +10,6 @@ use crate::{
         FileControlRequest,
         FileControlResponse,
     },
-    ffi::c_int,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -22,6 +21,7 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
@@ -92,5 +92,22 @@ pub fn fcntl(fd: i32, cmd: i32, arg: c_int) -> Result<c_int, Error> {
                 Err(Error::new(ErrorCode::TryAgain, "fcntl() failed"))
             },
         }
+    }
+}
+
+pub mod binding {
+    use ::sysapi::ffi::c_int;
+
+    #[allow(clippy::missing_safety_doc)]
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
+        // TODO: https://github.com/nanvix/nanvix/issues/280
+        ::syslog::error!(
+            "fcntl(): not implemented, ignoring (fd={:?}, cmd={:?}, _op={:?})",
+            _fd,
+            _cmd,
+            _op
+        );
+        0
     }
 }

@@ -6,16 +6,9 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    sys::{
-        socket::message::{
-            ReceiveSocketRequest,
-            ReceiveSocketResponse,
-        },
-        types::{
-            size_t,
-            ssize_t,
-        },
+    sys::socket::message::{
+        ReceiveSocketRequest,
+        ReceiveSocketResponse,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -29,12 +22,13 @@ use ::sys::{
     ipc::Message,
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<ssize_t, Error> {
+pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error> {
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Check if count is invalid.
@@ -42,7 +36,7 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<ssize_t, Err
         return Err(Error::new(ErrorCode::InvalidArgument, "buffer length is zero"));
     }
 
-    let mut total_read: size_t = 0;
+    let mut total_read: usize = 0;
     let mut buffer_offset: usize = 0;
 
     while buffer_offset < buffer.len() {
@@ -84,7 +78,7 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<ssize_t, Err
                         // Copy response buffer to user buffer.
                         buffer[buffer_offset..buffer_offset + response.count as usize]
                             .copy_from_slice(&response.buffer[..response.count as usize]);
-                        total_read += response.count;
+                        total_read += response.count as usize;
                         buffer_offset += response.count as usize;
 
                         // Check for partial receive.
@@ -105,5 +99,5 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<ssize_t, Err
         }
     }
 
-    Ok(total_read as ssize_t)
+    Ok(total_read)
 }

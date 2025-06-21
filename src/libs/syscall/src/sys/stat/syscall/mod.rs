@@ -27,10 +27,7 @@ use crate::{
         LinuxDaemonMessagePart,
         MessagePartitioner,
     },
-    sys::{
-        self,
-        stat::message::FileStatAtResponse,
-    },
+    sys::stat::message::FileStatAtResponse,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -57,6 +54,7 @@ pub use lstat::lstat;
 pub use mkdir::mkdir;
 pub use mkdirat::mkdirat;
 pub use stat::stat;
+use sysapi::sys_stat;
 pub use utimensat::utimensat;
 
 //==================================================================================================
@@ -73,8 +71,8 @@ pub use utimensat::utimensat;
 /// Upon successful completion, the file information is returned. Upon failure, an error is returned
 /// instead.
 ///
-fn fstatat_response() -> Result<sys::stat::stat, Error> {
-    let capacity: usize = sys::stat::stat::SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+fn fstatat_response() -> Result<sys_stat::stat, Error> {
+    let capacity: usize = sys_stat::stat::SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
 
     let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
 

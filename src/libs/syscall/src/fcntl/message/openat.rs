@@ -6,15 +6,12 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
-    limits,
     message::{
         LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
     },
-    sys::types::mode_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -33,6 +30,11 @@ use ::sys::{
     },
     ipc::Message,
     pm::ProcessIdentifier,
+};
+use ::sysapi::{
+    ffi::c_int,
+    limits::PATH_MAX,
+    sys_types::mode_t,
 };
 
 //==================================================================================================
@@ -74,12 +76,12 @@ impl OpenAtRequest {
         Self::OFFSET_OF_PATHNAME_LEN + Self::SIZEO_OF_PATHNAME_LEN;
 
     /// Maximum size of the message.
-    pub const MAX_SIZE: usize = limits::PATH_MAX
+    pub const MAX_SIZE: usize = PATH_MAX
         + Self::SIZEO_OF_DIRFD
         + Self::SIZEO_OF_FLAGS
         + Self::SIZEO_OF_MODE
         + Self::SIZEO_OF_PATHNAME_LEN
-        + limits::PATH_MAX;
+        + PATH_MAX;
 
     ///
     /// # Description
@@ -100,7 +102,7 @@ impl OpenAtRequest {
     ///
     pub fn new(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<Self, Error> {
         // Check if the path is too long.
-        if pathname.len() > limits::PATH_MAX {
+        if pathname.len() > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidArgument, "path is too long"));
         }
 
@@ -178,7 +180,7 @@ impl MessageDeserializer for OpenAtRequest {
         }
 
         // Check if `pathname` is too long.
-        if pathname_len > limits::PATH_MAX {
+        if pathname_len > PATH_MAX {
             return Err(Error::new(ErrorCode::InvalidMessage, "pathname is too long"));
         }
 

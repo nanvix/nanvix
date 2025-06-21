@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    sys::types::off_t,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -21,6 +20,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::sys_types::off_t;
 
 //==================================================================================================
 // FileAdvisoryInformationRequest

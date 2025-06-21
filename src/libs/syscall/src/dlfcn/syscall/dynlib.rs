@@ -7,10 +7,6 @@
 
 use crate::{
     dlfcn::syscall::segment::MemorySegment,
-    ffi::{
-        c_int,
-        c_void,
-    },
     safe::{
         FileSystem,
         FileSystemAttributes,
@@ -63,6 +59,10 @@ use ::sys::{
         Address,
         VirtualAddress,
     },
+};
+use ::sysapi::ffi::{
+    c_int,
+    c_void,
 };
 use ::type_safe::UnalignedPointer;
 

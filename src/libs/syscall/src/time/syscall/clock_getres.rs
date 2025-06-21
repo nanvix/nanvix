@@ -5,17 +5,6 @@
 // Modules
 //==================================================================================================
 
-use crate::{
-    ffi::c_long,
-    time::{
-        clockid_t,
-        timespec,
-        CLOCK_MONOTONIC,
-        CLOCK_PROCESS_CPUTIME_ID,
-        CLOCK_REALTIME,
-        CLOCK_THREAD_CPUTIME_ID,
-    },
-};
 use ::config::kernel::TIMER_FREQ;
 use ::sys::{
     error::{
@@ -23,6 +12,17 @@ use ::sys::{
         ErrorCode,
     },
     time::NANOSECONDS_PER_SECOND,
+};
+use ::sysapi::ffi::c_long;
+use sysapi::{
+    sys_types::clockid_t,
+    time::{
+        timespec,
+        CLOCK_MONOTONIC,
+        CLOCK_PROCESS_CPUTIME_ID,
+        CLOCK_REALTIME,
+        CLOCK_THREAD_CPUTIME_ID,
+    },
 };
 
 //==================================================================================================

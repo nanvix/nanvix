@@ -5,10 +5,11 @@
 // Imports
 //===================================================================================================
 
-use crate::{
-    fcntl::{
-        self,
-    },
+use crate::fcntl::{
+    self,
+};
+use ::sysapi::{
+    fcntl::file_access_mode::O_EXEC,
     ffi::c_int,
 };
 
@@ -35,7 +36,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with execute-only permissions.
     ///
     pub fn execute_only() -> Self {
-        RegularFileOpenFlags(fcntl::O_EXEC)
+        RegularFileOpenFlags(O_EXEC)
     }
 
     ///
@@ -48,7 +49,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with read-only permissions.
     ///
     pub fn read_only() -> Self {
-        RegularFileOpenFlags(fcntl::OpenFlags::O_RDONLY as i32)
+        RegularFileOpenFlags(fcntl::OpenFlags::Readonly as i32)
     }
 
     ///
@@ -61,7 +62,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with read-write permissions.
     ///
     pub fn read_write() -> Self {
-        RegularFileOpenFlags(fcntl::OpenFlags::O_RDWR as i32)
+        RegularFileOpenFlags(fcntl::OpenFlags::ReadWrite as i32)
     }
 
     ///
@@ -74,7 +75,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with write-only permissions.
     ///
     pub fn write_only() -> Self {
-        RegularFileOpenFlags(fcntl::OpenFlags::O_WRONLY as i32)
+        RegularFileOpenFlags(fcntl::OpenFlags::WriteOnly as i32)
     }
 
     ///
@@ -87,7 +88,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with the append flag set.
     ///
     pub fn append(mut self) -> Self {
-        self.0 |= fcntl::OpenFlags::O_APPEND as i32;
+        self.0 |= fcntl::OpenFlags::Append as i32;
         self
     }
 
@@ -101,7 +102,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with the create flag set.
     ///
     pub fn create(mut self) -> Self {
-        self.0 |= fcntl::OpenFlags::O_CREAT as i32;
+        self.0 |= fcntl::OpenFlags::Create as i32;
         self
     }
 
@@ -115,7 +116,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with the exclusive flag set.
     ///
     pub fn exclusive(mut self) -> Self {
-        self.0 |= fcntl::OpenFlags::O_EXCL as i32;
+        self.0 |= fcntl::OpenFlags::Exclusive as i32;
         self
     }
 
@@ -129,7 +130,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with the truncate flag set.
     ///
     pub fn truncate(mut self) -> Self {
-        self.0 |= fcntl::OpenFlags::O_TRUNC as i32;
+        self.0 |= fcntl::OpenFlags::Truncate as i32;
         self
     }
 
@@ -144,7 +145,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with the sync flag set.
     ///
     pub fn sync(mut self) -> Self {
-        self.0 |= fcntl::OpenFlags::O_SYNC as i32;
+        self.0 |= fcntl::OpenFlags::Sync as i32;
         self
     }
 
@@ -158,7 +159,7 @@ impl RegularFileOpenFlags {
     /// A new `RegularFileOpenFlags` instance with the non-blocking flag set.
     ///
     pub fn non_blocking(mut self) -> Self {
-        self.0 |= fcntl::OpenFlags::O_NONBLOCK as i32;
+        self.0 |= fcntl::OpenFlags::NonBlocking as i32;
         self
     }
 }

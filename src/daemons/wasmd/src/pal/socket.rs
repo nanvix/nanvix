@@ -9,9 +9,11 @@ use crate::pal::{
     Error,
     RawFd,
 };
+use ::sysapi::ffi::c_int;
 use ::syscall::{
     netinet::in_::Protocol,
     sys::socket::{
+        syscall,
         AddressFamily,
         Shutdown,
         SocketAddr,
@@ -32,7 +34,7 @@ pub struct Socket(RawFd);
 
 impl Socket {
     pub fn new() -> Result<Self, Error> {
-        match syscall::sys::socket::socket(AddressFamily::Inet, SocketType::Stream, Protocol::Ip) {
+        match syscall::socket(AddressFamily::Inet, SocketType::Stream, Protocol::Ip) {
             Ok(sockfd) => {
                 ::syslog::info!("created socket with fd {}", sockfd);
                 Ok(Self(sockfd))
@@ -44,7 +46,7 @@ impl Socket {
     }
 
     pub fn bind(&mut self, addr: &SocketAddr) -> Result<(), Error> {
-        match syscall::sys::socket::bind(self.0, addr) {
+        match syscall::bind(self.0, addr) {
             Ok(()) => {
                 ::syslog::info!("bound socket with fd {} to address {:?}", self.0, addr);
                 Ok(())
@@ -55,8 +57,8 @@ impl Socket {
         }
     }
 
-    pub fn listen(&mut self, backlog: i32) -> Result<(), Error> {
-        match syscall::sys::socket::listen(self.0, backlog) {
+    pub fn listen(&mut self, backlog: c_int) -> Result<(), Error> {
+        match syscall::listen(self.0, backlog) {
             Ok(()) => {
                 ::syslog::info!("listening on socket with fd {}", self.0);
                 Ok(())
@@ -68,8 +70,8 @@ impl Socket {
     }
 
     pub fn accept(&self) -> Result<Socket, Error> {
-        match syscall::sys::socket::accept(self.0, None) {
-            Ok(connfd) => {
+        match syscall::accept(self.0) {
+            Ok((connfd, _sockaddr)) => {
                 ::syslog::info!("accepted connection on socket with fd {}", connfd);
                 Ok(Self(connfd))
             },
@@ -80,10 +82,10 @@ impl Socket {
     }
 
     pub fn recv(&self, buffer: &mut [u8]) -> Result<usize, Error> {
-        match syscall::sys::socket::recv(self.0, buffer, 0) {
+        match syscall::recv(self.0, buffer, 0) {
             Ok(len) => {
                 ::syslog::info!("received {} bytes on socket with fd {}", len, self.0);
-                Ok(len as usize)
+                Ok(len)
             },
             Err(e) => Err(Error {
                 errno: e.code.get(),
@@ -92,10 +94,10 @@ impl Socket {
     }
 
     pub fn send(&self, buffer: &[u8]) -> Result<usize, Error> {
-        match syscall::sys::socket::send(self.0, buffer, 0) {
+        match syscall::send(self.0, buffer, 0) {
             Ok(len) => {
                 ::syslog::info!("sent {} bytes on socket with fd {}", len, self.0);
-                Ok(len as usize)
+                Ok(len)
             },
             Err(e) => Err(Error {
                 errno: e.code.get(),
@@ -104,7 +106,7 @@ impl Socket {
     }
 
     pub fn shutdown(&self, how: Shutdown) -> Result<(), Error> {
-        match syscall::sys::socket::shutdown(self.0, how) {
+        match syscall::shutdown(self.0, how) {
             Ok(()) => {
                 ::syslog::info!("shutdown socket with fd {}", self.0);
                 Ok(())

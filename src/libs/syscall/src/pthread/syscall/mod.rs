@@ -18,10 +18,6 @@ mod tda;
 // Imports
 //==================================================================================================
 
-use crate::pthread::{
-    pthread_mutexattr_t,
-    pthread_t,
-};
 use ::alloc::collections::btree_map::BTreeMap;
 use ::spin::{
     Lazy,
@@ -41,6 +37,10 @@ use ::sys::{
 // Exports
 //==================================================================================================
 
+use ::sysapi::{
+    pthread::pthread_mutexattr_t,
+    sys_types::pthread_t,
+};
 pub use cond::*;
 pub use mutex::*;
 pub use tda::*;

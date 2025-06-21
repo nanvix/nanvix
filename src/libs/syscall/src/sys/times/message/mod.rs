@@ -6,10 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    sys::{
-        times::tms,
-        types::clock_t,
-    },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
@@ -21,6 +17,10 @@ use ::sys::{
         MessageType,
     },
     pm::ProcessIdentifier,
+};
+use sysapi::{
+    sys_times::tms,
+    sys_types::clock_t,
 };
 
 //==================================================================================================

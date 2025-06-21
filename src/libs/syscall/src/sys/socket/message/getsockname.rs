@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    ffi::c_int,
     sys::socket::sockaddr,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
@@ -22,6 +21,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // GetSockNameRequest
@@ -81,7 +81,7 @@ impl GetSockNameResponse {
 
     pub fn new(sockaddr: &sockaddr) -> Self {
         Self {
-            sockaddr: sockaddr.clone(),
+            sockaddr: *sockaddr,
             _padding: [0; Self::PADDING_SIZE],
         }
     }

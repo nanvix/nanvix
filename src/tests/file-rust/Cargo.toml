@@ -16,6 +16,7 @@ name = "file-rust"
 [dependencies]
 nvx = { workspace = true, features = ["sysalloc"] }
 sys = { workspace = true, features = ["kcall"] }
+sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
 syslog = { workspace = true }
 
