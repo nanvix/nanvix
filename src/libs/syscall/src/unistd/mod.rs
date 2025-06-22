@@ -22,6 +22,7 @@ cfg_if::cfg_if! {
             faccessat,
             chdir,
             close,
+            _exit,
             fdatasync,
             fchown,
             fchownat,

@@ -278,10 +278,25 @@ pub extern "C" fn execve(
     -1
 }
 
+///
+/// # Description
+///
+/// Exits the calling process.
+///
+/// # Parameters
+///
+/// - `status`: Exit status.
+///
+/// # Return Values
+///
+/// This function does not return.
+///
 #[unsafe(no_mangle)]
 pub extern "C" fn _exit(status: c_int) -> ! {
-    let Err(e) = sys::kcall::pm::exit(status);
-    panic!("failed to terminate process (error={:?})", e);
+    match sys::kcall::pm::exit(status) {
+        Ok(_) => unreachable!("process termination should not successfully return"),
+        Err(error) => panic!("failed to terminate process (error={error:?})"),
+    }
 }
 
 ///
