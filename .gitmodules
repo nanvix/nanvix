@@ -1,7 +1,3 @@
-[submodule "opt/cpython"]
-	path = opt/cpython
-	url = https://github.com/nanvix/cpython
-	branch = dev
 [submodule "opt/zlib"]
 	path = opt/zlib
 	url = https://github.com/nanvix/zlib.git
