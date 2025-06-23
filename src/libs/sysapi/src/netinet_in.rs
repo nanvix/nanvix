@@ -49,8 +49,8 @@ pub mod sockopt_levels {
     pub const IPPROTO_RAW: c_int = 255;
 }
 
-/// Socket option names to be used with `setsockopt()` and `getsockopt()`.
-pub mod sockopt_option_names {
+/// IP option names to be used with `setsockopt()` and `getsockopt()`.
+pub mod ip_option_names {
     use crate::ffi::c_int;
 
     /// buf/ip_opts; set/get IP options
@@ -126,7 +126,7 @@ pub mod socket_flags {
 /// Values for use  for the `msg_flags` field in the `msghdr` structure, or the flags parameter in
 /// `recv()`, `recvfrom()`, `recvmsg()`, `send()`, `sendmsg()`, or `sendto()`.
 pub mod message_flags {
-    pub use crate::ffi::c_int;
+    use crate::ffi::c_int;
 
     /// Requests out-of-band data.
     pub const MSG_OOB: c_int = 0x1;

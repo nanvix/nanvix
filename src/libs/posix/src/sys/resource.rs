@@ -7,8 +7,10 @@
 
 use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
-use ::sysapi::ffi::c_int;
-use ::syscall::sys::resource::rlimit;
+use ::sysapi::{
+    ffi::c_int,
+    sys_resource::rlimit,
+};
 
 //==================================================================================================
 // Standalone Functions

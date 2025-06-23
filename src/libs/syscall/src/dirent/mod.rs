@@ -20,7 +20,7 @@ pub mod message;
 use ::alloc::collections::VecDeque;
 use ::sysapi::{
     dirent::{
-        file_type::{
+        dirent_file_type::{
             DT_BLK,
             DT_CHR,
             DT_DIR,

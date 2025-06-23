@@ -14,7 +14,7 @@ use sysapi::{
     ffi::c_int,
     sys_stat::{
         self,
-        file_access_mode::{
+        file_mode::{
             S_IRUSR,
             S_IRWXG,
             S_IRWXO,

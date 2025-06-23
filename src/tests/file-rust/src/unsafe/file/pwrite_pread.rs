@@ -16,7 +16,7 @@ use sysapi::{
         O_WRONLY,
     },
     ffi::c_int,
-    sys_stat::file_access_mode::{
+    sys_stat::file_mode::{
         S_IRUSR,
         S_IWUSR,
     },

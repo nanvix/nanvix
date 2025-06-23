@@ -55,6 +55,9 @@ pub mod sched;
 /// Standard type definitions.
 pub mod stddef;
 
+/// Definitions for resource operations.
+pub mod sys_resource;
+
 /// Synchronous I/O multiplexing.
 pub mod sys_select;
 

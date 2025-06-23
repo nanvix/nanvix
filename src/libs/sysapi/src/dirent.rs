@@ -29,7 +29,7 @@ use ::core::fmt;
 ///
 /// File types for `d_type` field in `posix_dent` structure.
 ///
-pub mod file_type {
+pub mod dirent_file_type {
     use crate::ffi::c_uchar;
 
     /// Unknown file type.
