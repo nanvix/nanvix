@@ -19,11 +19,13 @@ use ::sysapi::{
         time_t,
     },
     time::{
+        clock_ids::{
+            CLOCK_MONOTONIC,
+            CLOCK_PROCESS_CPUTIME_ID,
+            CLOCK_REALTIME,
+            CLOCK_THREAD_CPUTIME_ID,
+        },
         timespec,
-        CLOCK_MONOTONIC,
-        CLOCK_PROCESS_CPUTIME_ID,
-        CLOCK_REALTIME,
-        CLOCK_THREAD_CPUTIME_ID,
     },
 };
 

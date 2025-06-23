@@ -37,9 +37,9 @@ use ::sys::{
 // Exports
 //==================================================================================================
 
-use ::sysapi::{
-    pthread::pthread_mutexattr_t,
-    sys_types::pthread_t,
+use ::sysapi::sys_types::{
+    pthread_mutexattr_t,
+    pthread_t,
 };
 pub use cond::*;
 pub use mutex::*;

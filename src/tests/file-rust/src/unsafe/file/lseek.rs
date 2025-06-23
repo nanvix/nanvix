@@ -11,7 +11,7 @@ use ::syscall::{
     unistd,
 };
 use sysapi::{
-    sys_stat::file_access_mode::{
+    sys_stat::file_mode::{
         S_IRUSR,
         S_IWUSR,
     },

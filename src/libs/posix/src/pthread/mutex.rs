@@ -11,8 +11,10 @@ use ::sys::{
 };
 use ::sysapi::{
     ffi::c_int,
-    pthread::pthread_mutexattr_t,
-    sys_types::pthread_mutex_t,
+    sys_types::{
+        pthread_mutex_t,
+        pthread_mutexattr_t,
+    },
     time::timespec,
 };
 use ::syscall::pthread;

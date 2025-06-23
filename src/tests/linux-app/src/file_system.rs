@@ -18,7 +18,7 @@ use ::sysapi::{
     },
     sys_stat::{
         self,
-        file_access_mode::{
+        file_mode::{
             S_IRUSR,
             S_IWUSR,
         },
