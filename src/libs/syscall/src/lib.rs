@@ -20,10 +20,20 @@
 extern crate alloc;
 
 #[cfg(feature = "rustc-dep-of-std")]
+#[allow(unused_extern_crates)]
+extern crate nvx;
+
+#[cfg(feature = "rustc-dep-of-std")]
 pub use ::syslog;
 
 #[cfg(feature = "rustc-dep-of-std")]
 pub use ::sysapi;
+
+#[cfg(feature = "rustc-dep-of-std")]
+pub use ::sys::error;
+
+#[cfg(feature = "rustc-dep-of-std")]
+pub use ::sysalloc;
 
 pub mod errno;
 
