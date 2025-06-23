@@ -8,22 +8,25 @@
 #===================================================================================================
 
 RULE=${1:-build}
-NANVIX_HOME=${2:-`git rev-parse --show-toplevel`}
-TOOLCHAIN_DIR=${3:-$PWD/toolchain}
-SYSROOT_DIR=${4:-$PWD/sysroot}
+TOOLCHAIN_DIR=${2:-$PWD/toolchain}
+SYSROOT_DIR=${3:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
-OPT_DIR=${NANVIX_HOME}/opt
-SQLITE_HOME=${OPT_DIR}/sqlite
+export CONTRIB_DIR=${SYSROOT_DIR}/src
+export SQLITE_HOME=${CONTRIB_DIR}/sqlite
+export SQLITE_REPOSITORY=https://github.com/nanvix/sqlite
+export SQLITE_BRANCH=nanvix/v3.49.0
+export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 
 #===================================================================================================
 # Clean
 #===================================================================================================
 
 make_clean() {
+    cd ${SQLITE_HOME}
     make clean
 }
 
@@ -31,7 +34,8 @@ make_clean() {
 # Clean Everything
 #===================================================================================================
 
-make_distclean() {
+distclean() {
+    cd ${SQLITE_HOME}
     git clean -fdx
 }
 
@@ -59,19 +63,21 @@ configure() {
         --disable-threadsafe
 }
 
-#====================================================================================================
+#===================================================================================================
 # Make
 #===================================================================================================
 
 make_all() {
+    cd ${SQLITE_HOME}
     make all
 }
 
 #===================================================================================================
-# Make Install
+# Install
 #===================================================================================================
 
 make_install() {
+    cd ${SQLITE_HOME}
     make install
 }
 
@@ -80,12 +86,8 @@ make_install() {
 #===================================================================================================
 
 build() {
-    make_distclean
-
-    configure
-
+    cd ${SQLITE_HOME}
     make_all
-
     make_install
 }
 
@@ -94,17 +96,22 @@ build() {
 #===================================================================================================
 
 init() {
-	# Nothing to do here.
-	return
+    mkdir -p ${CONTRIB_DIR}
+    if [ ! -d "${SQLITE_HOME}/.git" ];
+    then
+        git clone ${SQLITE_REPOSITORY} ${SQLITE_HOME}
+        cd ${SQLITE_HOME}
+    else
+        cd ${SQLITE_HOME}
+        git fetch origin
+        git reset --hard
+    fi
+    git checkout ${SQLITE_BRANCH}
+
+    configure
 }
 
 #===================================================================================================
-
-# Fetch submodule if needed.
-git submodule update --init ${SQLITE_HOME}
-
-# Switch to submodule directory.
-cd ${SQLITE_HOME}
 
 # Save current environment variables.
 OLD_AR=$AR
@@ -116,8 +123,10 @@ OLD_LD=$LD
 OLD_CFLAGS=$CFLAGS
 OLD_CXXFLAGS=$CXXFLAGS
 OLD_LD_FLAGS=$LDFLAGS
+OLD_LIBC=$LIBC
+OLD_LIBM=$LIBM
 
-# Unset environment variables that might interfere with the build.
+# Unset variables that might interfere with the build process.
 unset AR
 unset AS
 unset CC
@@ -127,6 +136,8 @@ unset LD
 unset CFLAGS
 unset CXXFLAGS
 unset LDFLAGS
+unset LIBC
+unset LIBM
 
 case $RULE in
     build)
@@ -136,12 +147,12 @@ case $RULE in
         make_clean
         ;;
     distclean)
-        make_distclean
+        distclean
         ;;
     init)
         init
         ;;
- esac
+esac
 
 # Restore original environment variables.
 export AR=$OLD_AR
@@ -153,3 +164,5 @@ export LD=$OLD_LD
 export CFLAGS=$OLD_CFLAGS
 export CXXFLAGS=$OLD_CXXFLAGS
 export LDFLAGS=$OLD_LD_FLAGS
+export LIBC=$OLD_LIBC
+export LIBM=$OLD_LIBM
