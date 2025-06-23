@@ -493,22 +493,22 @@ endif
 all-sqlite: init all-guest-staticlibs all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building sqlite..."
-	bash $(SCRIPTS_DIR)/build-sqlite.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 clean-sqlite: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 distclean-sqlite: distclean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 init-sqlite: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh init $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================
