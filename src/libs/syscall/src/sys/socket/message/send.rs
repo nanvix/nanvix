@@ -30,7 +30,7 @@ use ::sysapi::sys_types::{
 #[repr(C, packed)]
 pub struct SendSocketRequest {
     pub sockfd: i32,
-    pub count: size_t,
+    pub count: u32,
     pub flags: i32,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
@@ -39,10 +39,10 @@ pub struct SendSocketRequest {
 impl SendSocketRequest {
     pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
-        - mem::size_of::<size_t>()
+        - mem::size_of::<u32>()
         - mem::size_of::<i32>();
 
-    pub fn new(sockfd: i32, count: size_t, flags: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    pub fn new(sockfd: i32, count: u32, flags: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self {
             sockfd,
             count,
@@ -85,15 +85,15 @@ impl SendSocketRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct SendSocketResponse {
-    pub count: ssize_t,
+    pub count: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(SendSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl SendSocketResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<ssize_t>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    pub fn new(count: ssize_t) -> Self {
+    pub fn new(count: i32) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],

@@ -31,7 +31,7 @@ use sysapi::sys_types::ssize_t;
 #[repr(C, packed)]
 pub struct PartialWriteRequest {
     pub fd: i32,
-    pub count: size_t,
+    pub count: u32,
     pub offset: off_t,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
@@ -40,10 +40,10 @@ pub struct PartialWriteRequest {
 impl PartialWriteRequest {
     pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
-        - mem::size_of::<i32>()
+        - mem::size_of::<u32>()
         - mem::size_of::<off_t>();
 
-    fn new(fd: i32, count: size_t, offset: off_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    fn new(fd: i32, count: u32, offset: off_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self {
             fd,
             count,
@@ -85,15 +85,15 @@ impl PartialWriteRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct PartialWriteResponse {
-    pub count: ssize_t,
+    pub count: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(PartialWriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl PartialWriteResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<ssize_t>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    fn new(count: ssize_t) -> Self {
+    fn new(count: i32) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],
