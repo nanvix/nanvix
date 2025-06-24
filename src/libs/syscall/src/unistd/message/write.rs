@@ -30,16 +30,16 @@ use ::sysapi::sys_types::{
 #[repr(C, packed)]
 pub struct WriteRequest {
     pub fd: i32,
-    pub count: size_t,
+    pub count: u32,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
 ::static_assert::assert_eq_size!(WriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl WriteRequest {
     pub const BUFFER_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<size_t>();
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
 
-    fn new(fd: i32, count: size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    fn new(fd: i32, count: u32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { fd, count, buffer }
     }
 
@@ -74,15 +74,15 @@ impl WriteRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct WriteResponse {
-    pub count: ssize_t,
+    pub count: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(WriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl WriteResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<ssize_t>();
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    fn new(count: ssize_t) -> Self {
+    fn new(count: i32) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],

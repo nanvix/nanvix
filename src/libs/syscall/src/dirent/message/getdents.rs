@@ -57,7 +57,7 @@ const MAX_ENTRIES: usize = 1024;
 #[repr(C, packed)]
 pub struct GetDirectoryEntriesRequest {
     pub fd: c_int,
-    pub count: size_t,
+    pub count: u32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(GetDirectoryEntriesRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
@@ -65,7 +65,7 @@ pub struct GetDirectoryEntriesRequest {
 impl GetDirectoryEntriesRequest {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
         - core::mem::size_of::<c_int>()
-        - core::mem::size_of::<size_t>();
+        - core::mem::size_of::<u32>();
 
     /// Maximum number of entries in the request.
     pub const MAX_ENTRIES: usize = MAX_ENTRIES;
