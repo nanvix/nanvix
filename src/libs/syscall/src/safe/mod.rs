@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 pub mod dir;
-mod file;
-mod fs;
+pub mod file;
+pub mod fs;
 pub mod time;
 
 pub use file::*;

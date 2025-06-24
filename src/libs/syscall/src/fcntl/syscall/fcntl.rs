@@ -27,13 +27,13 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-pub fn fcntl(fd: i32, cmd: i32, arg: c_int) -> Result<c_int, Error> {
-    ::syslog::error!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
+pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
+    ::syslog::trace!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
 
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build request and send it.
-    let request: Message = FileControlRequest::build(pid, fd, cmd, arg);
+    let request: Message = FileControlRequest::build(pid, fd, cmd, arg.unwrap_or(0));
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.
@@ -92,22 +92,5 @@ pub fn fcntl(fd: i32, cmd: i32, arg: c_int) -> Result<c_int, Error> {
                 Err(Error::new(ErrorCode::TryAgain, "fcntl() failed"))
             },
         }
-    }
-}
-
-pub mod binding {
-    use ::sysapi::ffi::c_int;
-
-    #[allow(clippy::missing_safety_doc)]
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn fcntl(_fd: c_int, _cmd: c_int, _op: ...) -> c_int {
-        // TODO: https://github.com/nanvix/nanvix/issues/280
-        ::syslog::error!(
-            "fcntl(): not implemented, ignoring (fd={:?}, cmd={:?}, _op={:?})",
-            _fd,
-            _cmd,
-            _op
-        );
-        0
     }
 }

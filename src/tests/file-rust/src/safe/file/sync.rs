@@ -52,7 +52,7 @@ pub fn test() {
         // Open file and assert result.
         let mut file: RegularFile = match FileSystem::open_regular_file(
             &pathname,
-            RegularFileOpenFlags::write_only(),
+            &RegularFileOpenFlags::write_only(),
             None,
         ) {
             Ok(file) => file,
@@ -80,14 +80,16 @@ pub fn test() {
     // Open file for read and read the data back.
     {
         // Open file and assert result.
-        let file: RegularFile =
-            match FileSystem::open_regular_file(&pathname, RegularFileOpenFlags::read_only(), None)
-            {
-                Ok(file) => file,
-                Err(error) => {
-                    panic!("{error:?}");
-                },
-            };
+        let file: RegularFile = match FileSystem::open_regular_file(
+            &pathname,
+            &RegularFileOpenFlags::read_only(),
+            None,
+        ) {
+            Ok(file) => file,
+            Err(error) => {
+                panic!("{error:?}");
+            },
+        };
 
         // Read from file and assert result.
         let mut expected_data: [u8; DATA.len()] = [0; DATA.len()];

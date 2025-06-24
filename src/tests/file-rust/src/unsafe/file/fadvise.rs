@@ -11,7 +11,7 @@ use ::sysapi::{
 };
 use ::syscall::{
     fcntl,
-    fcntl::OpenFlags,
+    safe::RegularFileOpenFlags,
     unistd,
 };
 
@@ -24,7 +24,7 @@ pub fn test() {
     let filename: &str = "README.md";
 
     // Open file and assert result.
-    let fd: c_int = match fcntl::open(filename, OpenFlags::Readonly.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, RegularFileOpenFlags::read_only().into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");

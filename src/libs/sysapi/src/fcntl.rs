@@ -11,48 +11,68 @@
 // Constants
 //==================================================================================================
 
+/// File access modes for open(), openat(), and fcntl().
 pub mod file_access_mode {
     use crate::ffi::c_int;
 
     /// Mask for file access mode.
     pub const O_ACCMODE: c_int = 0x3;
-    /// Check access using effective user and group IDs.
-    pub const AT_EACCESS: c_int = 1;
-    /// Remove directory instead of file.
-    pub const AT_REMOVEDIR: c_int = 8;
-    /// Do not follow symbolic links.
-    pub const AT_SYMLINK_NOFOLLOW: c_int = 2;
-    /// Open for execute only.
-    pub const O_EXEC: c_int = 1 << 16;
-    /// Open for search only.
-    pub const O_SEARCH: c_int = 1 << 17;
-}
-
-pub mod open_flags {
-    use crate::ffi::c_int;
-
     /// Set read-only access.
     pub const O_RDONLY: c_int = 0;
     /// Set write-only access.
     pub const O_WRONLY: c_int = 1;
     /// Set read-write access.
     pub const O_RDWR: c_int = 2;
-    /// Set append mode.
-    pub const O_APPEND: c_int = 0x0008;
+    /// Open for execute only.
+    pub const O_EXEC: c_int = 0x400000;
+    /// Open for search only.
+    pub const O_SEARCH: c_int = O_EXEC;
+}
+
+/// File descriptor flags for use with `fcntl()`.
+pub mod file_descriptor_flags {
+    use crate::ffi::c_int;
+
+    /// Close-on-exec.
+    pub const FD_CLOEXEC: c_int = 1;
+    /// Close-on-fork.
+    pub const FD_CLOFORK: c_int = 2;
+}
+
+/// File creation flags for use in the oflag value to open() and openat().
+pub mod file_creation_flags {
+    use crate::ffi::c_int;
+
     /// Create file if it does not exist.
     pub const O_CREAT: c_int = 0x0200;
     /// Truncate file to size zero.
     pub const O_TRUNC: c_int = 0x0400;
     /// Fail if not a new file.
     pub const O_EXCL: c_int = 0x0800;
+    /// Do not assign controlling terminal.
+    pub const O_NOCTTY: c_int = 0x8000;
+    /// Do not follow symbolic links.
+    pub const O_NOFOLLOW: c_int = 0x100000;
+    /// Fail if path resolves to a non-directory file.
+    pub const O_DIRECTORY: c_int = 0x200000;
+    /// Close-on-exec flag.
+    pub const O_CLOEXEC: c_int = 0x40000;
+    /// Close-on-fork flag.
+    pub const O_CLOFORK: c_int = 0x80000;
+
+    // TODO: Support O_TTY_INIT
+}
+
+/// File status flags for open(), openat(), and fcntl()
+pub mod file_status_flags {
+    use crate::ffi::c_int;
+
+    /// Set append mode.
+    pub const O_APPEND: c_int = 0x0008;
     /// Write I/O operations on the file descriptor will complete as defined by synchronized I/O data integrity completion.
     pub const O_SYNC: c_int = 0x2000;
     /// Non-blocking mode.
     pub const O_NONBLOCK: c_int = 0x4000;
-    /// Close-on-exec flag.
-    pub const O_CLOEXEC: c_int = 0x40000;
-    /// Fail if path resolves to a non-directory file.
-    pub const O_DIRECTORY: c_int = 0x200000;
 }
 
 /// Constants to be used with `*at()`.
@@ -61,6 +81,12 @@ pub mod atflags {
 
     /// Use the current working directory to determine the target of relative file paths.
     pub const AT_FDCWD: c_int = -100;
+    /// Check access using effective user and group IDs.
+    pub const AT_EACCESS: c_int = 1;
+    /// Remove directory instead of file.
+    pub const AT_REMOVEDIR: c_int = 8;
+    /// Do not follow symbolic links.
+    pub const AT_SYMLINK_NOFOLLOW: c_int = 2;
 }
 
 /// File descriptor flags for use with `posix_fadvise()`.
@@ -112,4 +138,6 @@ pub mod file_control_request {
     // TODO: Support F_OFD_SETLKW
     /// Duplicate the file descriptor and set the close-on-exec flag.
     pub const F_DUPFD_CLOEXEC: c_int = 14;
+    /// Duplicate the file descriptor and set the close-on-fork flag.
+    pub const F_DUPFD_CLOFORK: c_int = 15;
 }

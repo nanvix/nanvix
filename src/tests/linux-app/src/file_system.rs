@@ -9,10 +9,10 @@ use ::alloc::boxed::Box;
 use ::sysapi::{
     fcntl::{
         atflags::AT_FDCWD,
-        open_flags::{
+        file_access_mode::O_RDWR,
+        file_creation_flags::{
             O_CREAT,
             O_DIRECTORY,
-            O_RDWR,
             O_TRUNC,
         },
     },
