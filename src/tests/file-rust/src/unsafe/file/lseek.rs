@@ -16,9 +16,9 @@ use sysapi::{
         S_IWUSR,
     },
     sys_types::{
+        c_size_t,
         mode_t,
         off_t,
-        size_t,
     },
     unistd::file_seek::{
         SEEK_END,
@@ -130,7 +130,7 @@ pub fn test() {
     }
 
     // Read data back and assert result.
-    let expected_size: size_t = match DATA.len().try_into() {
+    let expected_size: c_size_t = match DATA.len().try_into() {
         Ok(size) => size,
         Err(_) => {
             panic!("failed to convert data length to size_t");

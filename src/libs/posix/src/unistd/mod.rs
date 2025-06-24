@@ -33,11 +33,11 @@ use ::sysapi::{
         PATH_MAX,
     },
     sys_types::{
+        c_size_t,
+        c_ssize_t,
         gid_t,
         off_t,
         pid_t,
-        size_t,
-        ssize_t,
         uid_t,
     },
     unistd::{
@@ -632,7 +632,7 @@ pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: size_t) -> *mut c_char {
+pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char {
     ::syslog::trace!("getcwd(): buf = {:?}, size = {}", buf, size);
 
     // Check if the buffer is valid.
@@ -780,7 +780,7 @@ pub unsafe extern "C" fn getgid() -> gid_t {
 /// The function has undefined behavior if the `path` points to an invalid memory location.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: size_t) -> c_int {
+pub unsafe extern "C" fn getentropy(_buffer: *mut c_void, _length: c_size_t) -> c_int {
     ::syslog::trace!("getentropy(): buffer = {:?}, length = {}", _buffer, _length);
 
     // Fill buffer with 1s.
@@ -862,7 +862,7 @@ pub unsafe extern "C" fn getuid() -> uid_t {
 /// - `namelen` is a valid size.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: size_t) -> c_int {
+pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: c_size_t) -> c_int {
     ::syslog::trace!("gethostname(): name={:?}, namelen={}", name, namelen);
 
     // Check if the buffer is valid.
@@ -1185,9 +1185,9 @@ pub extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
 pub unsafe extern "C" fn pread(
     fd: c_int,
     buffer: *mut c_void,
-    count: size_t,
+    count: c_size_t,
     offset: off_t,
-) -> ssize_t {
+) -> c_ssize_t {
     ::syslog::trace!(
         "pread(): fd={}, buffer={:?}, count={:?}, offset={:?}",
         fd,
@@ -1219,7 +1219,7 @@ pub unsafe extern "C" fn pread(
 
     // Attempt to read from the file descriptor and check for errors.
     match ::syscall::unistd::pread(fd, buffer, offset) {
-        Ok(bytes_read) => bytes_read as ssize_t,
+        Ok(bytes_read) => bytes_read as c_ssize_t,
         Err(error) => {
             ::syslog::error!(
                 "pread(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
@@ -1266,9 +1266,9 @@ pub unsafe extern "C" fn pread(
 pub unsafe extern "C" fn pwrite(
     fd: c_int,
     buffer: *const c_void,
-    count: size_t,
+    count: c_size_t,
     offset: off_t,
-) -> ssize_t {
+) -> c_ssize_t {
     ::syslog::trace!(
         "pwrite(): fd={}, buffer={:?}, count={:?}, offset={:?}",
         fd,
@@ -1308,7 +1308,7 @@ pub unsafe extern "C" fn pwrite(
 
     // Attempt to write to the file descriptor and check for errors.
     match ::syscall::unistd::pwrite(fd, buffer, offset) {
-        Ok(bytes_written) => bytes_written as ssize_t,
+        Ok(bytes_written) => bytes_written as c_ssize_t,
         Err(error) => {
             ::syslog::error!(
                 "pwrite(): failed (fd={}, buffer={:?}, count={:?}, offset={:?}, error={:?})",
@@ -1351,7 +1351,7 @@ pub unsafe extern "C" fn pwrite(
 /// - This function is not called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> ssize_t {
+pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -> c_ssize_t {
     // Skip logging for stdin to avoid spamming the output.
     if fd != STDIN_FILENO {
         ::syslog::trace!("read(): fd={:?}, buffer={:?}, count={:?}", fd, buffer, count);
@@ -1380,7 +1380,7 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: size_t) -> 
 
     // Attempt to read from the file descriptor and check for errors.
     match ::syscall::unistd::read(fd, buffer) {
-        Ok(bytes_read) => bytes_read as ssize_t,
+        Ok(bytes_read) => bytes_read as c_ssize_t,
         Err(error) => {
             ::syslog::error!(
                 "read(): failed (fd={}, buffer={:?}, count={:?}, error={:?})",
@@ -1425,8 +1425,8 @@ pub unsafe extern "C" fn readlinkat(
     dirfd: c_int,
     path: *const c_char,
     buf: *mut c_char,
-    bufsize: size_t,
-) -> ssize_t {
+    bufsize: c_size_t,
+) -> c_ssize_t {
     ::syslog::trace!(
         "readlinkat(): dirfd={:?}, path={:?}, buf={:?}, bufsize={:?}",
         dirfd,
@@ -1522,15 +1522,15 @@ pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
 pub unsafe extern "C" fn readlink(
     path: *const c_char,
     buf: *mut c_char,
-    bufsize: size_t,
-) -> ssize_t {
+    bufsize: c_size_t,
+) -> c_ssize_t {
     ::syslog::trace!("readlink(): path={:?}, buf={:?}, bufsize={:?}", path, buf, bufsize);
     readlinkat(AT_FDCWD, path, buf, bufsize)
 }
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub extern "C" fn setgroups(_size: size_t, _list: *const gid_t) -> c_int {
+pub extern "C" fn setgroups(_size: c_size_t, _list: *const gid_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/523
     ::syslog::error!("setgroups(): not implemented");
     unsafe {
@@ -1952,7 +1952,7 @@ pub unsafe extern "C" fn waitpid(pid: pid_t, status: *mut c_int, options: c_int)
 /// The function has undefined behavior if the `buffer` points to an invalid memory location.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) -> ssize_t {
+pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t) -> c_ssize_t {
     // Skip logging for stdout and stderr to avoid spamming the output.
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {
         ::syslog::trace!("write(): fd = {}, buffer = {:?}, count = {}", fd, buffer, count);
@@ -1977,7 +1977,7 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: size_t) 
 
     // Attempt to write to file descriptor and check for errors.
     match ::syscall::unistd::write(fd, buffer) {
-        Ok(bytes_written) => bytes_written as ssize_t,
+        Ok(bytes_written) => bytes_written as c_ssize_t,
         Err(error) => {
             ::syslog::error!("write(): failed (error={:?})", error);
             *__errno_location() = error.code.get();

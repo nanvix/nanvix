@@ -13,7 +13,7 @@ extern crate nvx;
 
 use ::sys::error::Error;
 use ::sysapi::{
-    sys_types::ssize_t,
+    sys_types::c_ssize_t,
     unistd::{
         STDIN_FILENO,
         STDOUT_FILENO,
@@ -39,13 +39,13 @@ pub fn main() -> Result<(), Error> {
     let mut n: usize = 0;
 
     loop {
-        let nread: ssize_t = match unistd::read(stdin, &mut buffer[n..]) {
+        let nread: c_ssize_t = match unistd::read(stdin, &mut buffer[n..]) {
             // Error encountered.
             Err(_error) => break,
             // End of file reached.
             Ok(0) => break,
             // Read some bytes.
-            Ok(n) => n as ssize_t,
+            Ok(n) => n as c_ssize_t,
         };
         n += nread as usize;
     }

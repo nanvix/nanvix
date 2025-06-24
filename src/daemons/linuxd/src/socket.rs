@@ -30,8 +30,8 @@ use ::sysapi::{
         socklen_t,
     },
     sys_types::{
-        size_t,
-        ssize_t,
+        c_size_t,
+        c_ssize_t,
     },
 };
 use ::syscall::{
@@ -359,7 +359,7 @@ pub fn do_recv(pid: ProcessIdentifier, request: ReceiveSocketRequest) -> Message
     } {
         count if count >= 0 => {
             debug!("libc::recv(): count={count:?}");
-            ReceiveSocketResponse::build(pid, count as size_t, buffer)
+            ReceiveSocketResponse::build(pid, count as c_size_t, buffer)
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -404,7 +404,7 @@ pub fn do_send(pid: ProcessIdentifier, request: SendSocketRequest) -> Message {
     trace!("send(): pid={pid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
-    let count: size_t = request.count;
+    let count: c_size_t = request.count;
     let flags: LibcMessageFlags = match LibcMessageFlags::try_from(request.flags) {
         Ok(flags) => flags,
         Err(e) => return crate::build_error(pid, e.code),
@@ -420,7 +420,7 @@ pub fn do_send(pid: ProcessIdentifier, request: SendSocketRequest) -> Message {
     } {
         count if count >= 0 => {
             debug!("libc::send(): count={count:?}");
-            SendSocketResponse::build(pid, count as ssize_t)
+            SendSocketResponse::build(pid, count as c_ssize_t)
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };

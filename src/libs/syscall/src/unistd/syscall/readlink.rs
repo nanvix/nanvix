@@ -9,7 +9,7 @@ use crate::unistd;
 use ::sys::error::Error;
 use ::sysapi::{
     fcntl::atflags::AT_FDCWD,
-    sys_types::ssize_t,
+    sys_types::c_ssize_t,
 };
 
 //==================================================================================================
@@ -31,7 +31,7 @@ use ::sysapi::{
 /// Upon successful completion, `readlink()` returns the number of bytes read. Otherwise, it returns
 /// an error.
 ///
-pub fn readlink(path: &str, buf: &mut [u8]) -> Result<ssize_t, Error> {
+pub fn readlink(path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): path={path:?}, buf.len={}", buf.len());
     unistd::readlinkat(AT_FDCWD, path, buf)
 }

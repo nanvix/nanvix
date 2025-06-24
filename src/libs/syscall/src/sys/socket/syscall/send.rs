@@ -24,7 +24,7 @@ use ::sys::{
 };
 use ::sysapi::{
     ffi::c_int,
-    sys_types::size_t,
+    sys_types::c_size_t,
 };
 
 //==================================================================================================
@@ -49,7 +49,7 @@ pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<usize, Error> 
 
         // Build request and send it.
         let request: Message =
-            SendSocketRequest::build(pid, sockfd, chunk_size as size_t, flags, chunk);
+            SendSocketRequest::build(pid, sockfd, chunk_size as c_size_t, flags, chunk);
         ::sys::kcall::ipc::send(&request)?;
 
         // Receive response.

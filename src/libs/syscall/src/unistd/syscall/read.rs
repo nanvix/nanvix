@@ -25,7 +25,7 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use sysapi::{
-    sys_types::size_t,
+    sys_types::c_size_t,
     unistd::STDIN_FILENO,
 };
 
@@ -48,7 +48,7 @@ use sysapi::{
 /// Upon successful completion, `read()` returns the number of bytes read. Otherwise, it returns an
 /// error.
 ///
-pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
+pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error> {
     // Skip logging for stdin to avoid spamming the output.
     if fd != STDIN_FILENO {
         ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
@@ -56,14 +56,14 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
-    let mut total_read: size_t = 0;
+    let mut total_read: c_size_t = 0;
     let mut offset: usize = 0;
 
     while offset < buffer.len() {
         let chunk_size: usize = cmp::min(ReadResponse::BUFFER_SIZE, buffer.len() - offset);
 
         // Build request and send it.
-        let request: Message = ReadRequest::build(pid, fd, chunk_size as size_t);
+        let request: Message = ReadRequest::build(pid, fd, chunk_size as c_size_t);
         ::sys::kcall::ipc::send(&request)?;
 
         // Receive response.
@@ -103,7 +103,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
                     let response: ReadResponse = ReadResponse::from_bytes(message.payload);
 
                     // Display progress if not STDIN.
-                    if fd != STDIN_FILENO && total_read % KILOBYTE as size_t == 0 {
+                    if fd != STDIN_FILENO && total_read % KILOBYTE as c_size_t == 0 {
                         let percentage = (total_read as f64 / buffer.len() as f64) * 100.0;
                         ::syslog::trace!(
                             "read(): {:?}/{:?} bytes read from fd={} ({:.2}%)",
@@ -122,7 +122,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<size_t, Error> {
                     // Copy response buffer to user buffer.
                     buffer[offset..offset + chunk_size]
                         .copy_from_slice(&response.buffer[..chunk_size]);
-                    total_read += response.count as size_t;
+                    total_read += response.count as c_size_t;
                     offset += chunk_size;
 
                     // Check for partial read.

@@ -24,7 +24,7 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::sysapi::{
-    sys_types::size_t,
+    sys_types::c_size_t,
     unistd::{
         STDERR_FILENO,
         STDOUT_FILENO,
@@ -50,7 +50,7 @@ use ::sysapi::{
 /// Upon successful completion, the `write()` system call returns the number of bytes written.
 /// Otherwise, it returns an error.
 ///
-pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<size_t, Error> {
+pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     // Skip logging for stdout and stderr to avoid spamming the output.
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {
         ::syslog::trace!("write(): fd={:?}, buffer.len={:?}", fd, buffer.len());
@@ -58,7 +58,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<size_t, Error> {
 
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
-    let mut total_written: size_t = 0;
+    let mut total_written: c_size_t = 0;
     let mut offset: usize = 0;
 
     while offset < buffer.len() {
@@ -67,7 +67,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<size_t, Error> {
         chunk[..chunk_size].copy_from_slice(&buffer[offset..offset + chunk_size]);
 
         // Build request and send it.
-        let request: Message = WriteRequest::build(pid, fd, chunk_size as size_t, chunk);
+        let request: Message = WriteRequest::build(pid, fd, chunk_size as c_size_t, chunk);
         ::sys::kcall::ipc::send(&request)?;
 
         // Receive response.
@@ -102,7 +102,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<size_t, Error> {
                     let response: WriteResponse = WriteResponse::from_bytes(message.payload);
 
                     // Update total written count.
-                    total_written += response.count as size_t;
+                    total_written += response.count as c_size_t;
                     offset += chunk_size;
                 },
                 header => {

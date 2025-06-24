@@ -49,7 +49,7 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::sysapi::{
-    sys_types::ssize_t,
+    sys_types::c_ssize_t,
     unistd::{
         STDERR_FILENO,
         STDIN_FILENO,
@@ -648,7 +648,7 @@ impl<'a> LinuxDaemon<'a> {
                     print!("{string}");
                     let _ = io::stdout().lock().flush();
                 }
-                WriteResponse::build(source, count as ssize_t)
+                WriteResponse::build(source, count as c_ssize_t)
             }
         } else {
             // Write to other file descriptor.
@@ -711,7 +711,7 @@ impl<'a> LinuxDaemon<'a> {
                                 response_buf[..end - i].copy_from_slice(&message[i..end]);
                                 env.push_stdin_message(ReadResponse::build(
                                     source,
-                                    (end - i) as ssize_t,
+                                    (end - i) as c_ssize_t,
                                     response_buf,
                                 ));
                             }
@@ -728,7 +728,7 @@ impl<'a> LinuxDaemon<'a> {
                             [0u8; ReadResponse::BUFFER_SIZE],
                         ));
 
-                        ReadResponse::build(source, read_count as ssize_t, response_buf)
+                        ReadResponse::build(source, read_count as c_ssize_t, response_buf)
                     },
                     Err(e) => {
                         debug!("failed to read message from gateway (error={e:?})");
@@ -746,7 +746,7 @@ impl<'a> LinuxDaemon<'a> {
                         0
                     },
                 };
-                ReadResponse::build(source, count as ssize_t, buffer)
+                ReadResponse::build(source, count as c_ssize_t, buffer)
             }
         } else {
             // Read from other file descriptor.
