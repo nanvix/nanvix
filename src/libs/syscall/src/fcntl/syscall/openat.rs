@@ -33,6 +33,10 @@ use ::sysapi::{
 //==================================================================================================
 
 pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
+    ::syslog::trace!(
+        "openat(): dirfd={dirfd:?}, pathname={pathname:?}, flags={flags:?}, mode={mode:?}"
+    );
+
     let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build request and send it.

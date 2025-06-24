@@ -55,7 +55,7 @@ pub fn test() {
         // Open file for reading and writing and assert result.
         let mut file: RegularFile = match FileSystem::open_regular_file(
             &pathname,
-            RegularFileOpenFlags::read_write(),
+            &RegularFileOpenFlags::read_write(),
             None,
         ) {
             Ok(file) => file,
@@ -100,7 +100,7 @@ pub fn test() {
         // Open file for reading and writing and assert result.
         let mut file: RegularFile = match FileSystem::open_regular_file(
             &pathname,
-            RegularFileOpenFlags::read_write(),
+            &RegularFileOpenFlags::read_write(),
             None,
         ) {
             Ok(file) => file,

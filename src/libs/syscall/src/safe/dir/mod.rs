@@ -17,12 +17,12 @@ use crate::{
     },
     fcntl::{
         self,
-        OpenFlags,
     },
     safe::{
         fs::InodeNumber,
         FileSystemPath,
         FileType,
+        OpenFlags,
         RawFileDescriptor,
     },
     unistd,
@@ -35,7 +35,10 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-use ::sysapi::dirent::posix_dent;
+use ::sysapi::{
+    dirent::posix_dent,
+    ffi::c_int,
+};
 use alloc::{
     string::{
         String,
@@ -393,8 +396,8 @@ pub fn closedir(dir: &RawDirectory) -> Result<(), Error> {
 /// Upon successful completion, a directory is returned. Otherwise, an error is returned instead.
 ///
 pub fn opendir(directory_name: &FileSystemPath) -> Result<RawDirectory, Error> {
-    let fd: RawFileDescriptor =
-        fcntl::open(directory_name.as_str(), OpenFlags::Readonly | OpenFlags::Directory, 0)?;
+    let flags: c_int = OpenFlags::read_only().set_directory(true).into();
+    let fd: RawFileDescriptor = fcntl::open(directory_name.as_str(), flags, 0)?;
     Ok(RawDirectory::new(fd, directory_name.as_str()))
 }
 

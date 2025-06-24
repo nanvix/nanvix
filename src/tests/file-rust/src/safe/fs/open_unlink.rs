@@ -35,7 +35,9 @@ pub fn test() {
     {
         let _file: RegularFile = match FileSystem::open_regular_file(
             &pathname,
-            RegularFileOpenFlags::read_write().create().truncate(),
+            &RegularFileOpenFlags::read_write()
+                .set_create(true)
+                .set_truncate(true),
             Some(permissions),
         ) {
             Ok(file) => file,

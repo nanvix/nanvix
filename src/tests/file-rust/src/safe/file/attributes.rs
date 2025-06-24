@@ -28,7 +28,7 @@ pub fn test() {
 
     // Open file and assert result.
     let file: RegularFile =
-        match FileSystem::open_regular_file(&pathname, RegularFileOpenFlags::read_only(), None) {
+        match FileSystem::open_regular_file(&pathname, &RegularFileOpenFlags::read_only(), None) {
             Ok(file) => file,
             Err(error) => {
                 panic!("{error:?}");

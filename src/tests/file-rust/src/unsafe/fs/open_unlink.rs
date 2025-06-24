@@ -12,10 +12,12 @@ use ::syscall::{
     unistd,
 };
 use sysapi::{
-    fcntl::open_flags::{
-        O_CREAT,
-        O_RDWR,
-        O_TRUNC,
+    fcntl::{
+        file_access_mode::O_RDWR,
+        file_creation_flags::{
+            O_CREAT,
+            O_TRUNC,
+        },
     },
     sys_stat::{
         self,
