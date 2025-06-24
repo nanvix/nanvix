@@ -87,10 +87,16 @@ pub type pthread_rwlock_t = u32;
 pub type reclen_t = c_ushort;
 
 /// Used for object sizes.
-pub type size_t = c_uint;
+pub type c_size_t = c_uint;
+
+/// Used for object sizes (architecture dependent).
+pub type size_t = usize;
 
 /// Used for a count of bytes or an error indication.
-pub type ssize_t = c_int;
+pub type c_ssize_t = c_int;
+
+/// Used for a count of bytes or an error indication (architecture dependent).
+pub type ssize_t = isize;
 
 /// Used for time in microseconds.
 pub type suseconds_t = c_long;
@@ -111,7 +117,7 @@ pub type uid_t = c_uint;
 pub struct pthread_attr_t {
     pub is_initialized: c_int,
     pub stackaddr: *mut c_void,
-    pub stacksize: size_t,
+    pub stacksize: c_size_t,
     pub contentionscope: c_int,
     pub inheritsched: c_int,
     pub schedpolicy: c_int,
@@ -127,7 +133,7 @@ impl pthread_attr_t {
     /// Size of the `stackaddr` field.
     const SIZE_OF_STACKADDR: usize = size_of::<*mut c_void>();
     /// Size of the `stacksize` field.
-    const SIZE_OF_STACKSIZE: usize = size_of::<size_t>();
+    const SIZE_OF_STACKSIZE: usize = size_of::<c_size_t>();
     /// Size of the `contentionscope` field.
     const SIZE_OF_CONTENTIONSCOPE: usize = size_of::<c_int>();
     /// Size of the `inheritsched` field.

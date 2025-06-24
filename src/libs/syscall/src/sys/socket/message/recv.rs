@@ -17,7 +17,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
-use ::sysapi::sys_types::size_t;
+use ::sysapi::sys_types::c_size_t;
 
 //==================================================================================================
 // ReceiveSocketRequest
@@ -75,15 +75,15 @@ impl ReceiveSocketRequest {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct ReceiveSocketResponse {
-    pub count: size_t,
+    pub count: c_size_t,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
 ::static_assert::assert_eq_size!(ReceiveSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl ReceiveSocketResponse {
-    pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<size_t>();
+    pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_size_t>();
 
-    pub fn new(count: size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    pub fn new(count: c_size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { count, buffer }
     }
 
@@ -97,7 +97,7 @@ impl ReceiveSocketResponse {
 
     pub fn build(
         pid: ProcessIdentifier,
-        count: size_t,
+        count: c_size_t,
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
         let message: ReceiveSocketResponse = ReceiveSocketResponse::new(count, buffer);

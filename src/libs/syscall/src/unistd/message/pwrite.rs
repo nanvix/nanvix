@@ -18,10 +18,10 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::sysapi::sys_types::{
+    c_size_t,
     off_t,
-    size_t,
 };
-use sysapi::sys_types::ssize_t;
+use sysapi::sys_types::c_ssize_t;
 
 //==================================================================================================
 // PartialWriteRequest
@@ -43,7 +43,7 @@ impl PartialWriteRequest {
         - mem::size_of::<u32>()
         - mem::size_of::<off_t>();
 
-    fn new(fd: i32, count: u32, offset: off_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    fn new(fd: i32, count: c_size_t, offset: off_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self {
             fd,
             count,
@@ -63,7 +63,7 @@ impl PartialWriteRequest {
     pub fn build(
         pid: ProcessIdentifier,
         fd: i32,
-        count: size_t,
+        count: c_size_t,
         offset: off_t,
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
@@ -93,7 +93,7 @@ pub struct PartialWriteResponse {
 impl PartialWriteResponse {
     pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
-    fn new(count: i32) -> Self {
+    fn new(count: c_ssize_t) -> Self {
         Self {
             count,
             _padding: [0; Self::PADDING_SIZE],
@@ -108,7 +108,7 @@ impl PartialWriteResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, count: ssize_t) -> Message {
+    pub fn build(pid: ProcessIdentifier, count: c_ssize_t) -> Message {
         let message: PartialWriteResponse = PartialWriteResponse::new(count);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::PartialWriteResponse,
