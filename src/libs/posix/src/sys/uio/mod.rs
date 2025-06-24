@@ -16,9 +16,10 @@ use ::syscall::unistd;
 use sysapi::{
     limits::IOV_MAX,
     sys_types::{
-        off_t,
         c_size_t,
         c_ssize_t,
+        off_t,
+        size_t,
     },
     sys_uio::iovec,
 };
@@ -97,7 +98,7 @@ pub unsafe extern "C" fn pwritev(
             }
 
             let iov_base: *mut u8 = unsafe { (*iov).iov_base };
-            let iov_len: c_size_t = unsafe { (*iov).iov_len };
+            let iov_len: size_t = unsafe { (*iov).iov_len };
 
             // Check if `iov_base` is invalid.
             if iov_base.is_null() {
@@ -187,7 +188,12 @@ pub unsafe extern "C" fn pwritev(
 /// // - This function is called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset: off_t) -> c_ssize_t {
+pub unsafe extern "C" fn preadv(
+    fd: i32,
+    iov: *const iovec,
+    iovcnt: i32,
+    offset: off_t,
+) -> c_ssize_t {
     ::syslog::trace!("preadv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
 
     // Check if number of elements in the vector is valid.
@@ -224,7 +230,7 @@ pub unsafe extern "C" fn preadv(fd: i32, iov: *const iovec, iovcnt: i32, offset:
             }
 
             let iov_base: *mut u8 = unsafe { (*iov).iov_base };
-            let iov_len: c_size_t = unsafe { (*iov).iov_len };
+            let iov_len: size_t = unsafe { (*iov).iov_len };
 
             // Check if base address is invalid.
             if iov_base.is_null() {
@@ -341,7 +347,7 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> c_ssi
             }
 
             let iov_base: *mut u8 = unsafe { (*iov).iov_base };
-            let iov_len: c_size_t = unsafe { (*iov).iov_len };
+            let iov_len: size_t = unsafe { (*iov).iov_len };
 
             // Check if base address is invalid.
             if iov_base.is_null() {
@@ -453,7 +459,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
             }
 
             let iov_base: *mut u8 = unsafe { (*iov).iov_base };
-            let iov_len: c_size_t = unsafe { (*iov).iov_len };
+            let iov_len: size_t = unsafe { (*iov).iov_len };
 
             // Check if `iov_base` is invalid.
             if iov_base.is_null() {

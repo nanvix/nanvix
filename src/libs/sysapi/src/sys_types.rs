@@ -27,9 +27,11 @@ use crate::{
         sched_policy::SCHED_OTHER,
     },
     sys_socket::socklen_t,
-    sys_uio::iovec,
 };
 use ::core::mem::size_of;
+
+#[cfg(target_pointer_width = "32")]
+use crate::sys_uio::iovec;
 
 //==================================================================================================
 // Types
@@ -299,6 +301,7 @@ impl pthread_once_t {
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
+#[cfg(target_pointer_width = "32")]
 pub struct msghdr {
     /// Optional address.
     pub msg_name: *mut c_void,
@@ -315,8 +318,10 @@ pub struct msghdr {
     /// Flags.
     pub msg_flags: c_int,
 }
+#[cfg(target_pointer_width = "32")]
 ::static_assert::assert_eq_size!(msghdr, msghdr::SIZE);
 
+#[cfg(target_pointer_width = "32")]
 impl msghdr {
     /// Size of the `msg_name` field.
     const SIZE_OF_MSG_NAME: usize = size_of::<*mut c_void>();
