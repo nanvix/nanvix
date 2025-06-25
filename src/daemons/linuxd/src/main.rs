@@ -17,6 +17,7 @@ mod dirent;
 mod fcntl;
 mod linuxd;
 mod message;
+mod poll;
 mod socket;
 mod time;
 mod times;
