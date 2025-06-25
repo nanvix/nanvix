@@ -1190,6 +1190,24 @@ impl ProcessManagerInner {
             Err(Error::new(ErrorCode::NoSuchProcess, reason))
         }
     }
+
+    fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Result<ProcessRefMut, Error> {
+        if self.get_running_mut().has_thread(tid) {
+            Ok(ProcessRefMut::Running(self.get_running_mut()))
+        } else if let Some(process) = self.ready.iter_mut().find(|p| p.has_thread(tid)) {
+            Ok(ProcessRefMut::Runnable(process))
+        } else if let Some(process) = self.suspended.iter_mut().find(|p| p.has_thread(tid)) {
+            Ok(ProcessRefMut::Sleeping(process))
+        } else if let Some(process) = self.interrupted.iter_mut().find(|p| p.has_thread(tid)) {
+            Ok(ProcessRefMut::Interrupted(process))
+        } else if let Some(process) = self.zombies.iter_mut().find(|p| p.has_thread(tid)) {
+            Ok(ProcessRefMut::Zombie(process))
+        } else {
+            let reason: &str = "thread not found";
+            error!("find_process(): {} (tid={:?})", reason, tid);
+            Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        }
+    }
 }
 
 //==================================================================================================
@@ -1500,8 +1518,10 @@ impl ProcessManager {
         message: Message,
     ) -> Result<(), Error> {
         let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let pid: ProcessIdentifier = receiver.into();
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = match receiver.as_id() {
+            Ok(pid) => pm.find_process_mut(pid)?,
+            Err(tid) => pm.find_thread_mut(tid)?,
+        };
         process.state_mut().post_message(message);
         pm.number_buffered_messages += 1;
         Ok(())

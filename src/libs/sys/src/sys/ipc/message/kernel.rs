@@ -11,7 +11,10 @@ use crate::{
         ErrorCode,
     },
     ipc::typ::MessageType,
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::core::mem;
 
@@ -27,20 +30,41 @@ impl MessageSender {
     pub const KERNEL: Self = MessageSender(ProcessIdentifier::KERNEL_RAW);
 }
 
+impl MessageSender {
+    pub fn as_id(&self) -> Result<ProcessIdentifier, ThreadIdentifier> {
+        if self.0 >= 0 {
+            Ok(ProcessIdentifier::from(self.0))
+        } else {
+            Err(ThreadIdentifier::from(-self.0))
+        }
+    }
+}
+
 impl From<ProcessIdentifier> for MessageSender {
     fn from(pid: ProcessIdentifier) -> Self {
         Self(pid.into())
     }
 }
 
-impl From<MessageSender> for ProcessIdentifier {
-    fn from(sender: MessageSender) -> ProcessIdentifier {
-        ProcessIdentifier::from(sender.0)
+impl From<ThreadIdentifier> for MessageSender {
+    fn from(tid: ThreadIdentifier) -> Self {
+        let tid: i32 = tid.into();
+        Self(-tid)
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct MessageReceiver(i32);
+
+impl MessageReceiver {
+    pub fn as_id(&self) -> Result<ProcessIdentifier, ThreadIdentifier> {
+        if self.0 >= 0 {
+            Ok(ProcessIdentifier::from(self.0))
+        } else {
+            Err(ThreadIdentifier::from(-self.0))
+        }
+    }
+}
 
 impl MessageReceiver {
     /// The kernel process is the receiver of the message.
@@ -53,9 +77,10 @@ impl From<ProcessIdentifier> for MessageReceiver {
     }
 }
 
-impl From<MessageReceiver> for ProcessIdentifier {
-    fn from(receiver: MessageReceiver) -> ProcessIdentifier {
-        ProcessIdentifier::from(receiver.0)
+impl From<ThreadIdentifier> for MessageReceiver {
+    fn from(tid: ThreadIdentifier) -> Self {
+        let tid: i32 = tid.into();
+        Self(-tid)
     }
 }
 

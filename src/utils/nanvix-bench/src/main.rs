@@ -31,6 +31,10 @@ use crate::{
     },
     hwloc::HwLoc,
 };
+use ::sys::{
+    ipc::Message,
+    pm::ProcessIdentifier,
+};
 use anyhow::Result;
 use flexi_logger::Logger;
 use indicatif::{
@@ -75,14 +79,13 @@ use std::{
         Instant,
     },
 };
-use sys::ipc::Message;
 use syscall::{
+    LinuxDaemonMessage,
     unistd::message::{
         ReadRequest,
         ReadResponse,
         WriteResponse,
     },
-    LinuxDaemonMessage,
 };
 
 //==================================================================================================
@@ -102,7 +105,7 @@ impl Benchmark {
                 Ok(stream) => break stream,
                 Err(_) => {
                     continue;
-                }
+                },
             };
         };
         debug!("Connected!");
@@ -424,25 +427,25 @@ impl Benchmark {
             // Spawn the VMM in a separate thread.
             let vmm_handle = std::thread::spawn(move || -> Result<()> {
                 vmm_stream.set_nonblocking(true)?;
-                let mut vmm: Vmm =
-                    Vmm::new(
-                        config::kernel::MEMORY_SIZE,
-                        format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
-                        Some(format!("{}/bin/echo-single-rust-nostd.elf", get_proj_root())),
-                        None,
-                        None,
-                        Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream))))?;
+                let mut vmm: Vmm = Vmm::new(
+                    config::kernel::MEMORY_SIZE,
+                    format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
+                    Some(format!("{}/bin/echo-single-rust-nostd.elf", get_proj_root())),
+                    None,
+                    None,
+                    Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream))),
+                )?;
                 debug!("VMM: returned from new!");
 
                 match vmm.run()? {
                     e if e != 0 => {
                         error!("error running VMM, exited with status: {e}");
                         Err(anyhow::anyhow!("VMM error"))
-                    }
+                    },
                     _ => {
                         debug!("VMM: done running");
                         Ok(())
-                    }
+                    },
                 }
             });
 
@@ -454,12 +457,22 @@ impl Benchmark {
                 Ok(message) => message,
                 Err(_) => return Err(anyhow::anyhow!("Error parsing buffer to IPC Read message")),
             };
-            let linuxd_message: LinuxDaemonMessage = match LinuxDaemonMessage::try_from_bytes(ipc_read_message.payload) {
-                Ok(message) => message,
-                Err(_) => return Err(anyhow::anyhow!("Error parsing IPC message to LinuxDaemon message")),
+            let linuxd_message: LinuxDaemonMessage =
+                match LinuxDaemonMessage::try_from_bytes(ipc_read_message.payload) {
+                    Ok(message) => message,
+                    Err(_) => {
+                        return Err(anyhow::anyhow!(
+                            "Error parsing IPC message to LinuxDaemon message"
+                        ));
+                    },
+                };
+            let pid: ProcessIdentifier = match { ipc_read_message.source }.as_id() {
+                Ok(pid) => pid,
+                Err(_tid) => return Err(anyhow::anyhow!("IPC message source is not a PID")),
             };
             let _read_request: ReadRequest = ReadRequest::from_bytes(linuxd_message.payload);
-            let read_response: Message = ReadResponse::build(ipc_read_message.source.into(), payload.len() as i32, response_buf);
+            let read_response: Message =
+                ReadResponse::build(pid, payload.len() as i32, response_buf);
 
             // Now we are ready to push the ReadResponse, and wait for a WriteRequest as a reply.
             let start = Instant::now();
@@ -468,7 +481,7 @@ impl Benchmark {
             latencies.push(start.elapsed().as_micros());
 
             // After receiving the WriteRequest, we need to acknowledge it by sending a WriteResponse.
-            let write_response: Message = WriteResponse::build(ipc_read_message.source.into(), payload.len() as i32);
+            let write_response: Message = WriteResponse::build(pid, payload.len() as i32);
             input_stream.write_all(&write_response.to_bytes())?;
 
             // Wait for the VMM to exit.
