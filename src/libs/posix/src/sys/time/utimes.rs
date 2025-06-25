@@ -54,7 +54,7 @@ pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) 
 
     // Check if `times` is invalid.
     if times.is_null() {
-        ::syslog::error!("utimens(): invalid times (filename={:?}, times={:?})", filename, times);
+        ::syslog::error!("utimes(): invalid times (filename={:?}, times={:?})", filename, times);
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -64,7 +64,7 @@ pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) 
         Ok(times) => times,
         Err(_) => {
             ::syslog::error!(
-                "utimens(): invalid times (filename={:?}, times={:?})",
+                "utimes(): invalid times (filename={:?}, times={:?})",
                 filename,
                 times
             );
@@ -72,7 +72,34 @@ pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) 
             return -1;
         },
     };
-    let times: [timespec; 2] = [timespec::from(times[0]), timespec::from(times[1])];
+
+    // Attempt to convert `times[0]` to `timespec`.
+    let times_0: timespec = match times[0].try_into() {
+        Ok(timespec) => timespec,
+        Err(error) => {
+            ::syslog::error!(
+                "utimes(): failed to convert times[0] (filename={filename:?}, times={times:?}, \
+                 error={error:?})",
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to convert `times[1]` to `timespec`.
+    let times_1: timespec = match times[1].try_into() {
+        Ok(timespec) => timespec,
+        Err(error) => {
+            ::syslog::error!(
+                "utimes(): failed to convert times[1] (filename={filename:?}, times={times:?}, \
+                 error={error:?})",
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    let times: [timespec; 2] = [times_0, times_1];
 
     stat::utimensat(AT_FDCWD, filename, times.as_ptr(), 0)
 }
