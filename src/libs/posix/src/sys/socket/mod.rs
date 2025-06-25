@@ -30,9 +30,9 @@ use sysapi::{
         socklen_t,
     },
     sys_types::{
-        msghdr,
         c_size_t,
         c_ssize_t,
+        msghdr,
     },
 };
 
@@ -364,11 +364,28 @@ pub unsafe extern "C" fn recv(
         return -1;
     }
 
+    // Attempt to convert `len` to `usize`.
+    let len: usize = match len.try_into() {
+        Ok(len) => len,
+        Err(_error) => {
+            ::syslog::error!("recv(): failed to convert length to usize");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
     // Attempt to convert buffer.
-    let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len as usize) };
+    let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len) };
 
     match socket::syscall::recv(sockfd, buf, flags) {
-        Ok(bytes_received) => bytes_received as c_ssize_t,
+        Ok(bytes_received) => match bytes_received.try_into() {
+            Ok(bytes_received) => bytes_received,
+            Err(_error) => {
+                ::syslog::error!("recv(): failed to convert bytes received");
+                *__errno_location() = ErrorCode::ValueOutOfRange.get();
+                -1
+            },
+        },
         Err(e) => {
             ::syslog::error!("recv(): failed to receive data through socket {:?}", e);
             *__errno_location() = e.code.get();
@@ -486,11 +503,28 @@ pub unsafe extern "C" fn send(
         return -1;
     }
 
+    // Attempt to convert `len` to `usize`.
+    let len: usize = match len.try_into() {
+        Ok(len) => len,
+        Err(_error) => {
+            ::syslog::error!("send(): failed to convert length to usize");
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
     // Attempt to convert buffer.
-    let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len as usize) };
+    let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len) };
 
     match socket::syscall::send(sockfd, buf, flags) {
-        Ok(bytes_sent) => bytes_sent as c_ssize_t,
+        Ok(bytes_sent) => match bytes_sent.try_into() {
+            Ok(bytes_sent) => bytes_sent,
+            Err(_error) => {
+                ::syslog::error!("send(): failed to convert bytes sent");
+                *__errno_location() = ErrorCode::ValueOutOfRange.get();
+                -1
+            },
+        },
         Err(e) => {
             ::syslog::error!("send(): failed to send data through socket {:?}", e);
             *__errno_location() = e.code.get();
