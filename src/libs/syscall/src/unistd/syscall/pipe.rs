@@ -27,6 +27,8 @@ use ::sys::{
 //==================================================================================================
 
 pub fn pipe() -> Result<[i32; 2], Error> {
+    ::syslog::trace!("pipe()");
+
     let pid: ProcessIdentifier = crate::unistd::getpid()?;
 
     // Build request and send it.
@@ -52,6 +54,11 @@ pub fn pipe() -> Result<[i32; 2], Error> {
                     // Parse response.
                     let response: PipeResponse = PipeResponse::from_bytes(message.payload);
 
+                    ::syslog::trace!(
+                        "pipe(): read_fd={:?}, write_fd={:?}",
+                        { response.read_fd },
+                        { response.write_fd },
+                    );
                     Ok([response.read_fd, response.write_fd])
                 },
                 // Response was not successfully parsed.
@@ -83,8 +90,11 @@ pub mod bindings {
     ///
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn pipe(fds: *mut c_int) -> c_int {
+        ::syslog::trace!("pipe(): fds={fds:?}");
+
         match super::pipe() {
             Ok([read_fd, write_fd]) => {
+                ::syslog::trace!("pipe(): read_fd={read_fd:?}, write_fd={write_fd:?}");
                 unsafe {
                     *fds.offset(0) = read_fd;
                     *fds.offset(1) = write_fd;
