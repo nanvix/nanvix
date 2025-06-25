@@ -30,6 +30,8 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -309,8 +311,13 @@ impl LinkAtResponse {
         let message: LinkAtResponse = LinkAtResponse::new(ret);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::LinkAtResponse, message.into_bytes());
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(pid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }

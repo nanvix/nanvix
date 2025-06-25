@@ -28,6 +28,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use sys::ipc::MessageSender;
 
 //==================================================================================================
 // Standalone Functions
@@ -52,7 +53,7 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     }
 
     // Sanity check message source.
-    if { message.source } != src {
+    if { message.source } != MessageSender::from(src) {
         let reason: &str = "invalid message source";
         error!("do_send(): {}", reason);
         return KcallResult::Error(ErrorCode::InvalidArgument.into());

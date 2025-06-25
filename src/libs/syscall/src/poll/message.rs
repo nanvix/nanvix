@@ -19,6 +19,8 @@ use ::sys::{
 };
 use sys::ipc::{
     Message,
+    MessageReceiver,
+    MessageSender,
     MessageType,
 };
 
@@ -158,7 +160,15 @@ impl PollRequest {
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::PollRequest, message.into_bytes());
 
-        Ok(Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes()))
+        let message: Message = Message::new(
+            MessageSender::from(pid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
+
+        Ok(message)
     }
 }
 
@@ -258,6 +268,15 @@ impl PollResponse {
         let message: PollResponse = Self::new(nready, fds, revents);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::PollResponse, message.into_bytes());
-        Ok(Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes()))
+
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(pid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
+
+        Ok(message)
     }
 }

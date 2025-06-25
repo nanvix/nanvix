@@ -459,7 +459,7 @@ impl Benchmark {
                 Err(_) => return Err(anyhow::anyhow!("Error parsing IPC message to LinuxDaemon message")),
             };
             let _read_request: ReadRequest = ReadRequest::from_bytes(linuxd_message.payload);
-            let read_response: Message = ReadResponse::build(ipc_read_message.source, payload.len() as i32, response_buf);
+            let read_response: Message = ReadResponse::build(ipc_read_message.source.into(), payload.len() as i32, response_buf);
 
             // Now we are ready to push the ReadResponse, and wait for a WriteRequest as a reply.
             let start = Instant::now();
@@ -468,7 +468,7 @@ impl Benchmark {
             latencies.push(start.elapsed().as_micros());
 
             // After receiving the WriteRequest, we need to acknowledge it by sending a WriteResponse.
-            let write_response: Message = WriteResponse::build(ipc_read_message.source, payload.len() as i32);
+            let write_response: Message = WriteResponse::build(ipc_read_message.source.into(), payload.len() as i32);
             input_stream.write_all(&write_response.to_bytes())?;
 
             // Wait for the VMM to exit.

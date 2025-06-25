@@ -13,15 +13,17 @@ use ::core::mem;
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
 };
 use ::sysapi::sys_types::{
     c_size_t,
+    c_ssize_t,
     off_t,
 };
-use sysapi::sys_types::c_ssize_t;
 
 //==================================================================================================
 // PartialWriteRequest
@@ -72,8 +74,13 @@ impl PartialWriteRequest {
             LinuxDaemonMessageHeader::PartialWriteRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(pid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }
@@ -114,8 +121,13 @@ impl PartialWriteResponse {
             LinuxDaemonMessageHeader::PartialWriteResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(pid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }

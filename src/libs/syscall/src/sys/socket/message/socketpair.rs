@@ -21,6 +21,8 @@ use ::core::{
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -75,8 +77,13 @@ impl CreateSocketPairRequest {
             LinuxDaemonMessageHeader::CreateSocketPairRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(pid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -121,8 +128,13 @@ impl CreateSocketPairResponse {
             LinuxDaemonMessageHeader::CreateSocketPairResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(pid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

@@ -20,6 +20,8 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -161,9 +163,21 @@ impl LinuxDaemonMessagePart {
         let message: LinuxDaemonMessagePart = Self::new(part_number, payload_size, payload)?;
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(header, message.into_bytes());
         if is_response {
-            Ok(Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes()))
+            Ok(Message::new(
+                MessageSender::from(crate::LINUXD),
+                MessageReceiver::from(pid),
+                MessageType::Ikc,
+                None,
+                message.into_bytes(),
+            ))
         } else {
-            Ok(Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes()))
+            Ok(Message::new(
+                MessageSender::from(pid),
+                MessageReceiver::from(crate::LINUXD),
+                MessageType::Ikc,
+                None,
+                message.into_bytes(),
+            ))
         }
     }
 

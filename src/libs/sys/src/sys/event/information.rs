@@ -9,6 +9,8 @@ use crate::{
     event::EventDescriptor,
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -65,7 +67,13 @@ impl From<EventInformation> for Message {
                 .copy_from_slice(&instruction.to_ne_bytes());
         }
 
-        Message::new(info.pid, info.pid, MessageType::Exception, None, payload)
+        Message::new(
+            MessageSender::from(info.pid),
+            MessageReceiver::from(info.pid),
+            MessageType::Exception,
+            None,
+            payload,
+        )
     }
 }
 

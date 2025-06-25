@@ -13,6 +13,8 @@ use ::core::mem;
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -56,8 +58,13 @@ impl ReadRequest {
         let message: ReadRequest = ReadRequest::new(fd, count);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::ReadRequest, message.into_bytes());
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(pid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }
@@ -93,8 +100,13 @@ impl ReadResponse {
         let message: ReadResponse = ReadResponse::new(count, buffer);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::ReadResponse, message.into_bytes());
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(pid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }

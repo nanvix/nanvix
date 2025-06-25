@@ -52,6 +52,8 @@ use ::sys::{
     error::ErrorCode,
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -223,8 +225,8 @@ pub fn initialize(logfile: bool) {
 ///
 pub fn build_error(pid: ProcessIdentifier, error: ErrorCode) -> Message {
     Message::new(
-        ::syscall::LINUXD,
-        pid,
+        MessageSender::from(::syscall::LINUXD),
+        MessageReceiver::from(pid),
         MessageType::Ikc,
         Some(error),
         [0u8; Message::PAYLOAD_SIZE],

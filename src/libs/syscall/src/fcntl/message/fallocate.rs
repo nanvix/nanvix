@@ -17,6 +17,8 @@ use ::sys::{
     error::Error,
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -71,8 +73,13 @@ impl FileSpaceControlRequest {
             LinuxDaemonMessageHeader::FileSpaceControlRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(pid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         Ok(message)
     }
 }
@@ -113,8 +120,13 @@ impl FileSpaceControlResponse {
             LinuxDaemonMessageHeader::FileSpaceControlResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(pid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }

@@ -45,6 +45,8 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -175,7 +177,7 @@ impl<'a> LinuxDaemon<'a> {
                 message.message_type,
             );
 
-            let source: ProcessIdentifier = message.source;
+            let source: ProcessIdentifier = message.source.into();
 
             // Check if process is associated with a virtual environment.
             if self.venv.get(source).is_none() {
@@ -590,7 +592,13 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     fn do_error(&self, source: ProcessIdentifier, code: ErrorCode) -> Message {
-        Message::new(self.pid, source, MessageType::Ikc, Some(code), [0u8; Message::PAYLOAD_SIZE])
+        Message::new(
+            MessageSender::from(self.pid),
+            MessageReceiver::from(source),
+            MessageType::Ikc,
+            Some(code),
+            [0u8; Message::PAYLOAD_SIZE],
+        )
     }
 
     fn handle_close_request(

@@ -25,6 +25,8 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -99,8 +101,13 @@ impl GetDirectoryEntriesRequest {
             LinuxDaemonMessageHeader::GetDirectoryEntriesRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(pid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         Ok(message)
     }

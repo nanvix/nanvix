@@ -13,6 +13,8 @@ use ::core::mem;
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -53,7 +55,13 @@ impl GetIdsRequest {
         let message: GetIdsRequest = GetIdsRequest::new();
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::GetIdsRequest, message.into_bytes());
-        Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes())
+        Message::new(
+            MessageSender::from(pid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        )
     }
 }
 
@@ -104,6 +112,12 @@ impl GetIdsResponse {
         let message: GetIdsResponse = GetIdsResponse::new(uid, gid, euid, egid);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::GetIdsResponse, message.into_bytes());
-        Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes())
+        Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(pid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        )
     }
 }
