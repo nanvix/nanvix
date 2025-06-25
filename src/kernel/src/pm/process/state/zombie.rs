@@ -10,7 +10,10 @@ use crate::pm::{
     thread::ZombieThread,
 };
 use ::alloc::boxed::Box;
-use ::sys::ExitStatus;
+use ::sys::{
+    pm::ThreadIdentifier,
+    ExitStatus,
+};
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -52,5 +55,9 @@ impl ZombieProcess {
 
     pub fn bury(self) -> (NonEmptyVecDeque<ZombieThread>, Box<ProcessState>, ExitStatus) {
         (self.zombie_threads, self.process, self.status)
+    }
+
+    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+        self.zombie_threads.iter().any(|thread| thread.tid() == tid)
     }
 }

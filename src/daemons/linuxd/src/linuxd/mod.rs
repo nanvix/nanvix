@@ -177,7 +177,18 @@ impl<'a> LinuxDaemon<'a> {
                 message.message_type,
             );
 
-            let source: ProcessIdentifier = message.source.into();
+            let source: ProcessIdentifier = match { message.source }.as_id() {
+                Ok (pid) => pid,
+                Err(_tid) => {
+                    error!("invalid source process identifier");
+                    let message: Message = self.do_error(
+                        ProcessIdentifier::from(syscall::LINUXD),
+                        ErrorCode::InvalidMessage,
+                    );
+                    self.send(message).unwrap();
+                    continue;
+                },
+            };
 
             // Check if process is associated with a virtual environment.
             if self.venv.get(source).is_none() {

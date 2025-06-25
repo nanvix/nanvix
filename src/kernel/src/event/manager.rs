@@ -604,10 +604,15 @@ impl EventManagerInner {
     ) -> Result<(), Error> {
         pm.post_message(receiver, message)?;
 
-        let pid: ProcessIdentifier = receiver.into();
-
-        // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
-        unsafe { self.get_wait().notify_process(pid) }
+        match receiver.as_id() {
+            Ok(pid) => {
+                // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
+                unsafe { self.get_wait().notify_process(pid) }
+            },
+            Err(_tid) => {
+                unimplemented!("notify thread");
+            },
+        }
     }
 
     ///
