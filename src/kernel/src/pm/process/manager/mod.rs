@@ -518,7 +518,7 @@ impl ProcessManagerInner {
 
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
-        self.next_pid = ProcessIdentifier::from(Into::<u32>::into(pid) + 1);
+        self.next_pid = ProcessIdentifier::from(i32::from(pid) + 1);
         let process: RunnableProcess =
             RunnableProcess::new(pid, thread, vmem, Some(user_stack_allocator));
 

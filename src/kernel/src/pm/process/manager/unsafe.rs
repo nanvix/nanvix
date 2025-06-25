@@ -61,7 +61,7 @@ use ::core::{
         unlikely,
     },
     sync::atomic::{
-        AtomicU32,
+        AtomicI32,
         Ordering,
     },
 };
@@ -83,7 +83,7 @@ use ::sys::{
 //==================================================================================================
 
 /// PID of the current process.
-static CURRENT_PID: AtomicU32 = AtomicU32::new(ProcessIdentifier::KERNEL_RAW);
+static CURRENT_PID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KERNEL_RAW);
 
 //==================================================================================================
 // Implementations
