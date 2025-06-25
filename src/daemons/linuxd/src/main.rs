@@ -109,25 +109,27 @@ pub fn main() -> Result<()> {
         None => DEFAULT_GATEWAY_SOCKET_TYPE,
     };
 
-    let user_vm_listener: SocketListener = match Socket::bind(user_vm_bind_socket_type, user_vm_sockaddr.clone()) {
-        Ok(listener) => listener,
-        Err(e) => {
-            error!("failed to bind to user VM socket address (address={}, error={e:?})", user_vm_sockaddr.clone());
-            anyhow::bail!("failed to bind to user VM socket address");
-        },
-    };
+    let user_vm_listener: SocketListener =
+        match Socket::bind(user_vm_bind_socket_type, user_vm_sockaddr.clone()) {
+            Ok(listener) => listener,
+            Err(e) => {
+                error!(
+                    "failed to bind to user VM socket address (address={}, error={e:?})",
+                    user_vm_sockaddr.clone()
+                );
+                anyhow::bail!("failed to bind to user VM socket address");
+            },
+        };
 
     let gateway_listener: Option<SocketListener> = match gateway_sockaddr {
-        Some(ref sockaddr) => {
-            match Socket::bind(gateway_bind_socket_type, sockaddr.clone()) {
-                Ok(stream) => Some(stream),
-                Err(e) => {
-                    error!("failed to bind to gateway (address={}, error={e:?})", sockaddr.clone());
-                    anyhow::bail!("failed to bind to gateway");
-                },
-            }
+        Some(ref sockaddr) => match Socket::bind(gateway_bind_socket_type, sockaddr.clone()) {
+            Ok(stream) => Some(stream),
+            Err(e) => {
+                error!("failed to bind to gateway (address={}, error={e:?})", sockaddr.clone());
+                anyhow::bail!("failed to bind to gateway");
+            },
         },
-        None => None
+        None => None,
     };
 
     // Accepct connection from gateway after binding the socket to listen from user VMs,
@@ -147,7 +149,7 @@ pub fn main() -> Result<()> {
                     },
                 }
             }
-        }
+        },
         None => None,
     };
 
