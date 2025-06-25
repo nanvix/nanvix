@@ -175,11 +175,8 @@ pub fn exit_thread(status: usize) -> Result<!, Error> {
 //==================================================================================================
 
 pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i64, Error> {
-    let result: i64 = kcall2!(
-        KcallNumber::JoinThread.into(),
-        usize::from(tid) as u32,
-        retval as *mut usize as u32
-    );
+    let result: i64 =
+        kcall2!(KcallNumber::JoinThread.into(), i32::from(tid) as u32, retval as *mut usize as u32);
 
     if result != 0 {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to join thread"))

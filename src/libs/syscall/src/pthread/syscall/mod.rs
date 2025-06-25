@@ -65,14 +65,20 @@ pub fn pthread_create(
         ::core::ptr::addr_of!(start_routine),
         arg
     );
-    Ok(create_thread(start_routine, arg)?.into())
+    create_thread(start_routine, arg)?.try_into()
 }
 
 pub fn pthread_join(thread: pthread_t) -> Result<isize, Error> {
     ::syslog::trace!("pthread_join(): _thread={:?}", thread);
 
     let mut retval: usize = 0;
-    let thread: ThreadIdentifier = thread.into();
+    let thread: ThreadIdentifier = match thread.try_into() {
+        Ok(tid) => tid,
+        Err(error) => {
+            ::syslog::error!("pthread_join(): {error:?} (thread={thread:?})");
+            return Err(error);
+        },
+    };
 
     match join_thread(thread, &mut retval) {
         Ok(_) => Ok(retval as isize),
@@ -86,5 +92,8 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
 }
 
 pub fn pthread_self() -> pthread_t {
-    ::sys::kcall::pm::gettid().unwrap().into()
+    ::sys::kcall::pm::gettid()
+        .expect("a thread must be able to get its own identifier")
+        .try_into()
+        .expect("thread identifiers returned by the kernel must be valid")
 }

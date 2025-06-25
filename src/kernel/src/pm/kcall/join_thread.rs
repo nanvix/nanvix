@@ -60,7 +60,13 @@ pub unsafe fn join_thread(
     arg1: u32,
 ) -> Result<ExitStatus, SleepError> {
     // Unpack kernel call arguments.
-    let tid: ThreadIdentifier = ThreadIdentifier::from(arg0 as usize);
+    let tid: ThreadIdentifier = match ThreadIdentifier::try_from(arg0) {
+        Ok(tid) => tid,
+        Err(error) => {
+            error!("join_thread(): {error:?}");
+            return Err(SleepError::Generic(error));
+        },
+    };
     let retval: *mut ExitStatus = arg1 as *mut ExitStatus;
 
     let status: ExitStatus = ProcessManager::join_thread(pid, tid)?;
