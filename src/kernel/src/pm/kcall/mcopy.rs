@@ -80,13 +80,25 @@ pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
     }
 
     // Unpack kernel call arguments.
-    let src_pid: ProcessIdentifier = ProcessIdentifier::from(args.arg0);
+    let src_pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg0) {
+        Ok(pid) => pid,
+        Err(error) => {
+            error!("mcopy(): {error:?}");
+            return KcallResult::Error(error.code.into());
+        },
+    };
     let src_vaddr: PageAligned<VirtualAddress> =
         match PageAligned::from_raw_value(args.arg1 as usize) {
             Ok(vaddr) => vaddr,
             Err(e) => return KcallResult::Error(e.code.into()),
         };
-    let dst_pid: ProcessIdentifier = ProcessIdentifier::from(args.arg2);
+    let dst_pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg2) {
+        Ok(pid) => pid,
+        Err(error) => {
+            error!("mcopy(): {error:?}");
+            return KcallResult::Error(error.code.into());
+        },
+    };
     let dst_vaddr: PageAligned<VirtualAddress> =
         match PageAligned::from_raw_value(args.arg3 as usize) {
             Ok(vaddr) => vaddr,

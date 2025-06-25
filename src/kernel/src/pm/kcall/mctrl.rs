@@ -58,7 +58,13 @@ pub fn mctrl(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
     }
 
     // Unpack kernel call arguments.
-    let pid: ProcessIdentifier = ProcessIdentifier::from(args.arg0);
+    let pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg0) {
+        Ok(pid) => pid,
+        Err(error) => {
+            error!("mctrl(): {error:?}");
+            return KcallResult::Error(error.code.into());
+        },
+    };
     let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(args.arg1 as usize) {
         Ok(vaddr) => vaddr,
         Err(e) => return KcallResult::Error(e.code.into()),
