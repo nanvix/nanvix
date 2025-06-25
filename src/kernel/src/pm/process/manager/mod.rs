@@ -94,6 +94,7 @@ use ::sys::{
     ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
+use sys::ipc::MessageReceiver;
 
 //==================================================================================================
 // Sleep Error
@@ -1482,19 +1483,24 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Sends a message to a process.
+    /// Posts a message.
     ///
     /// # Parameters
     ///
-    /// - `pid`: ID of the target process.
+    /// - `receiver`: ID of the receiver.
     /// - `message`: Message to send.
     ///
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn post_message(&mut self, pid: ProcessIdentifier, message: Message) -> Result<(), Error> {
+    pub fn post_message(
+        &mut self,
+        receiver: MessageReceiver,
+        message: Message,
+    ) -> Result<(), Error> {
         let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
+        let pid: ProcessIdentifier = receiver.into();
         let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
         process.state_mut().post_message(message);
         pm.number_buffered_messages += 1;

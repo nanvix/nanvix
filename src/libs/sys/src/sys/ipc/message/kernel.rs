@@ -19,6 +19,46 @@ use ::core::mem;
 // Structures
 //==================================================================================================
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct MessageSender(i32);
+
+impl MessageSender {
+    /// The kernel process is the sender of the message.
+    pub const KERNEL: Self = MessageSender(ProcessIdentifier::KERNEL_RAW);
+}
+
+impl From<ProcessIdentifier> for MessageSender {
+    fn from(pid: ProcessIdentifier) -> Self {
+        Self(pid.into())
+    }
+}
+
+impl From<MessageSender> for ProcessIdentifier {
+    fn from(sender: MessageSender) -> ProcessIdentifier {
+        ProcessIdentifier::from(sender.0)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct MessageReceiver(i32);
+
+impl MessageReceiver {
+    /// The kernel process is the receiver of the message.
+    pub const KERNEL: Self = MessageReceiver(ProcessIdentifier::KERNEL_RAW);
+}
+
+impl From<ProcessIdentifier> for MessageReceiver {
+    fn from(pid: ProcessIdentifier) -> Self {
+        Self(pid.into())
+    }
+}
+
+impl From<MessageReceiver> for ProcessIdentifier {
+    fn from(receiver: MessageReceiver) -> ProcessIdentifier {
+        ProcessIdentifier::from(receiver.0)
+    }
+}
+
 ///
 /// # Description
 ///
@@ -34,9 +74,9 @@ pub struct Message {
     /// Type of the message.
     pub message_type: MessageType,
     /// Process that sent the message.
-    pub source: ProcessIdentifier,
+    pub source: MessageSender,
     /// Process that should receive the message.
-    pub destination: ProcessIdentifier,
+    pub destination: MessageReceiver,
     /// Message status.
     pub status: i32,
     /// Payload of the message.
@@ -62,8 +102,8 @@ impl Message {
     ///
     /// # Parameters
     ///
-    /// - `source`: The source process.
-    /// - `destination`: The destination process.
+    /// - `source`: The sender of the message.
+    /// - `destination`: The recipient of the message.
     /// - `message_type`: The type of the message.
     /// - `status`: Error status of the message (`None` for success).
     /// - `payload`: The message payload.
@@ -73,8 +113,8 @@ impl Message {
     /// The new message.
     ///
     pub fn new(
-        source: ProcessIdentifier,
-        destination: ProcessIdentifier,
+        source: MessageSender,
+        destination: MessageReceiver,
         message_type: MessageType,
         status: Option<ErrorCode>,
         payload: [u8; Self::PAYLOAD_SIZE],
@@ -129,8 +169,8 @@ impl Default for Message {
     fn default() -> Self {
         Self {
             message_type: MessageType::Empty,
-            source: ProcessIdentifier::KERNEL,
-            destination: ProcessIdentifier::KERNEL,
+            source: MessageSender::KERNEL,
+            destination: MessageReceiver::KERNEL,
             status: 0,
             payload: [0; Self::PAYLOAD_SIZE],
         }

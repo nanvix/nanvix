@@ -53,6 +53,10 @@ use ::sys::{
         ProcessIdentifier,
     },
 };
+use sys::ipc::{
+    MessageReceiver,
+    MessageSender,
+};
 
 //==================================================================================================
 // Structures
@@ -347,8 +351,8 @@ impl EventManagerInner {
                         let idx: usize = i as usize;
                         if let Some(_event) = self.pending_interrupts[idx].pop_front() {
                             let message: Message = Message {
-                                source: ProcessIdentifier::KERNEL,
-                                destination: pid,
+                                source: MessageSender::from(ProcessIdentifier::KERNEL),
+                                destination: MessageReceiver::from(pid),
                                 message_type: MessageType::Interrupt,
                                 ..Message::default()
                             };
@@ -374,7 +378,7 @@ impl EventManagerInner {
                             info.instruction = Some(entry.1.info.instruction() as usize);
 
                             let mut message: Message = Message::from(info);
-                            message.destination = pid;
+                            message.destination = MessageReceiver::from(pid);
                             message.message_type = MessageType::Exception;
 
                             self.pending_exceptions[idx].push_back(entry);
@@ -391,8 +395,8 @@ impl EventManagerInner {
                     if (scheduling & (1 << i)) != 0 {
                         if let Some((_ev, info)) = self.pending_scheduling[i].pop_front() {
                             let message: Message = Message {
-                                source: ProcessIdentifier::KERNEL,
-                                destination: pid,
+                                source: MessageSender::from(ProcessIdentifier::KERNEL),
+                                destination: MessageReceiver::from(pid),
                                 message_type: MessageType::ProcessTerminationEvent,
                                 status: 0,
                                 payload: {
@@ -595,10 +599,12 @@ impl EventManagerInner {
     fn post_message(
         &mut self,
         pm: &mut ProcessManager,
-        pid: ProcessIdentifier,
+        receiver: MessageReceiver,
         message: Message,
     ) -> Result<(), Error> {
-        pm.post_message(pid, message)?;
+        pm.post_message(receiver, message)?;
+
+        let pid: ProcessIdentifier = receiver.into();
 
         // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
         unsafe { self.get_wait().notify_process(pid) }
@@ -831,12 +837,12 @@ impl EventManager {
 
     pub fn post_message(
         pm: &mut ProcessManager,
-        pid: ProcessIdentifier,
+        receiver: MessageReceiver,
         message: Message,
     ) -> Result<(), Error> {
         Self::get_mut()?
             .try_borrow_mut()?
-            .post_message(pm, pid, message)
+            .post_message(pm, receiver, message)
     }
 
     ///

@@ -28,7 +28,12 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageReceiver,
+        MessageSender,
+        MessageType,
+    },
     pm::ProcessIdentifier,
 };
 use ::sysapi::{
@@ -251,9 +256,9 @@ impl OpenAtResponse {
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::OpenAtResponse, message.into_bytes());
         let message: Message = Message::new(
-            crate::LINUXD,
-            pid,
-            sys::ipc::MessageType::Ikc,
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(pid),
+            MessageType::Ikc,
             None,
             message.into_bytes(),
         );

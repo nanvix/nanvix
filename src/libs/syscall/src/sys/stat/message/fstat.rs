@@ -13,6 +13,8 @@ use ::core::mem;
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::ProcessIdentifier,
@@ -64,6 +66,12 @@ impl FileStatRequest {
             LinuxDaemonMessageHeader::FileStatRequest,
             message.into_bytes(),
         );
-        Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes())
+        Message::new(
+            MessageSender::from(pid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        )
     }
 }
