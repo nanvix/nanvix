@@ -20,7 +20,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -29,7 +29,7 @@ use ::sysapi::ffi::c_int;
 //==================================================================================================
 
 pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Check if count is invalid.
     if buffer.is_empty() {
@@ -44,7 +44,7 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error
             cmp::min(ReceiveSocketResponse::BUFFER_SIZE, buffer.len() - buffer_offset);
 
         // Build request and send it.
-        let request: Message = ReceiveSocketRequest::build(pid, sockfd, recv_len as u32, flags);
+        let request: Message = ReceiveSocketRequest::build(tid, sockfd, recv_len as u32, flags);
         ::sys::kcall::ipc::send(&request)?;
 
         // Receive response.

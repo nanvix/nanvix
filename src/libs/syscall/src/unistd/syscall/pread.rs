@@ -21,11 +21,11 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::sys_types::{
-    off_t,
     c_size_t,
+    off_t,
 };
 
 //==================================================================================================
@@ -51,7 +51,7 @@ use sysapi::sys_types::{
 pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pread(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_read: c_size_t = 0;
     let mut buffer_offset: usize = 0;
@@ -62,7 +62,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
 
         // Build request and send it.
         let request: Message = PartialReadRequest::build(
-            pid,
+            tid,
             fd,
             chunk_size as c_size_t,
             offset + buffer_offset as off_t,

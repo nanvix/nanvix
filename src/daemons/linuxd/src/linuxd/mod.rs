@@ -49,7 +49,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     sys_types::c_ssize_t,
@@ -177,16 +180,10 @@ impl<'a> LinuxDaemon<'a> {
                 message.message_type,
             );
 
-            let source: ProcessIdentifier = match { message.source }.as_id() {
-                Ok (pid) => pid,
-                Err(_tid) => {
-                    error!("invalid source process identifier");
-                    let message: Message = self.do_error(
-                        ProcessIdentifier::from(syscall::LINUXD),
-                        ErrorCode::InvalidMessage,
-                    );
-                    self.send(message).unwrap();
-                    continue;
+            let source: ThreadIdentifier = match { message.source }.as_id() {
+                Err(tid) => tid,
+                Ok(pid) => {
+                    unimplemented!("received message from process {pid:?} instead of thread");
                 },
             };
 
@@ -330,7 +327,7 @@ impl<'a> LinuxDaemon<'a> {
 
     fn handle_special_messages(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Message {
         match message.header {
@@ -356,7 +353,7 @@ impl<'a> LinuxDaemon<'a> {
 
     fn handle_short_request_messages(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Message {
         match message.header {
@@ -490,7 +487,7 @@ impl<'a> LinuxDaemon<'a> {
 
     fn handle_long_request_messages(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) {
         match message.header {
@@ -543,7 +540,7 @@ impl<'a> LinuxDaemon<'a> {
 
     fn handle_long_response_messages(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) {
         match message.header {
@@ -602,7 +599,7 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn do_error(&self, source: ProcessIdentifier, code: ErrorCode) -> Message {
+    fn do_error(&self, source: ThreadIdentifier, code: ErrorCode) -> Message {
         Message::new(
             MessageSender::from(self.pid),
             MessageReceiver::from(source),
@@ -612,11 +609,7 @@ impl<'a> LinuxDaemon<'a> {
         )
     }
 
-    fn handle_close_request(
-        &mut self,
-        source: ProcessIdentifier,
-        request: CloseRequest,
-    ) -> Message {
+    fn handle_close_request(&mut self, source: ThreadIdentifier, request: CloseRequest) -> Message {
         // Inspect file descriptor that is being closed, as we need to
         // handle standard file descriptors specially.
         match request.fd {
@@ -633,7 +626,7 @@ impl<'a> LinuxDaemon<'a> {
 
     fn handle_write_request(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
         mut request: WriteRequest,
     ) -> Message {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
@@ -682,7 +675,7 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn handle_read_request(&mut self, source: ProcessIdentifier, request: ReadRequest) -> Message {
+    fn handle_read_request(&mut self, source: ThreadIdentifier, request: ReadRequest) -> Message {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
         if request.fd == STDIN_FILENO {
@@ -780,7 +773,7 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn handle_fstat_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
+    fn handle_fstat_request(&mut self, source: ThreadIdentifier, message: LinuxDaemonMessage) {
         let request: FileStatRequest = FileStatRequest::from_bytes(message.payload);
 
         let messages: Vec<Message> = fcntl::do_fstat(source, request);
@@ -791,7 +784,7 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn handle_getcwd_request(&mut self, source: ProcessIdentifier) {
+    fn handle_getcwd_request(&mut self, source: ThreadIdentifier) {
         let messages: Vec<Message> = unistd::do_getcwd(source);
         for message in messages {
             if let Err(e) = self.send(message) {
@@ -800,7 +793,7 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn handle_getdents_request(&mut self, source: ProcessIdentifier, message: LinuxDaemonMessage) {
+    fn handle_getdents_request(&mut self, source: ThreadIdentifier, message: LinuxDaemonMessage) {
         let request: GetDirectoryEntriesRequest =
             GetDirectoryEntriesRequest::from_bytes(message.payload);
 
@@ -812,7 +805,7 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn handle_long_request<T>(&mut self, source: ProcessIdentifier, message: &LinuxDaemonMessage)
+    fn handle_long_request<T>(&mut self, source: ThreadIdentifier, message: &LinuxDaemonMessage)
     where
         T: RequestAssemblerTrait,
     {

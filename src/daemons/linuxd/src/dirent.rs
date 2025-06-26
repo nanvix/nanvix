@@ -14,7 +14,7 @@ use ::std::ffi::CStr;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::syscall::{
     dirent::message::{
@@ -102,16 +102,16 @@ impl linux_dirent {
 //==================================================================================================
 
 /// Handles a getdents() system call request.
-pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) -> Vec<Message> {
-    trace!("do_getdents(): pid={pid:?}, request,count={:#x?}", { request.count });
+pub fn do_getdents(tid: ThreadIdentifier, request: GetDirectoryEntriesRequest) -> Vec<Message> {
+    trace!("do_getdents(): tid={tid:?}, request,count={:#x?}", { request.count });
 
     // Check if `request.count` is not valid.
     if request.count == 0 {
         error!("do_getdents(): invalid buffer count");
-        return vec![crate::build_error(pid, ErrorCode::InvalidArgument)];
+        return vec![crate::build_error(tid, ErrorCode::InvalidArgument)];
     } else if request.count as usize > GetDirectoryEntriesRequest::MAX_ENTRIES {
         error!("do_getdents(): request is too large");
-        return vec![crate::build_error(pid, ErrorCode::TooBig)];
+        return vec![crate::build_error(tid, ErrorCode::TooBig)];
     }
 
     let bufsize: usize =
@@ -130,7 +130,7 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
             error!("libc::getdents(): errno={}", { errno });
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            return vec![crate::build_error(pid, error)];
+            return vec![crate::build_error(tid, error)];
         },
         // Success.
         n => {
@@ -187,11 +187,11 @@ pub fn do_getdents(pid: ProcessIdentifier, request: GetDirectoryEntriesRequest) 
 
     // Build response and check for errors.
     let response: GetDirectoryEntriesResponse = GetDirectoryEntriesResponse::new(buf);
-    match response.into_parts(pid) {
+    match response.into_parts(tid) {
         Ok(messages) => messages,
         Err(error) => {
             warn!("do_getdents(): failed to build response (error={error:?})");
-            vec![crate::build_error(pid, error.code)]
+            vec![crate::build_error(tid, error.code)]
         },
     }
 }

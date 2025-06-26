@@ -19,7 +19,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -30,10 +30,10 @@ use ::sysapi::ffi::c_int;
 pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
     ::syslog::trace!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = FileControlRequest::build(pid, fd, cmd, arg.unwrap_or(0));
+    let request: Message = FileControlRequest::build(tid, fd, cmd, arg.unwrap_or(0));
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

@@ -18,7 +18,7 @@ use ::alloc::vec::Vec;
 use ::sys::{
     error::Error,
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::{
     c_int,
@@ -132,13 +132,13 @@ pub fn poll(
 ) -> Result<Vec<(RawFileDescriptor, PollEvents)>, Error> {
     ::syslog::trace!("poll(): fds={fds:?}, timeout={timeout:?}");
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
     let events: Vec<i16> = fds.iter().map(|fd| fd.events.0).collect();
     let poll_fds: Vec<RawFileDescriptor> = fds.iter().map(|fd| fd.fd).collect();
     let timeout: i32 = timeout.into();
-    let request: Message = PollRequest::build(pid, &poll_fds, &events, timeout)?;
+    let request: Message = PollRequest::build(tid, &poll_fds, &events, timeout)?;
     ipc::send(&request)?;
 
     // Receive response.

@@ -24,7 +24,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -55,7 +55,7 @@ pub fn socketpair(
     socket_fds: &mut [c_int],
 ) -> Result<(), Error> {
     ::syslog::trace!("socketpair(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Check if array of file descriptors has expected length.
     if socket_fds.len() != 2 {
@@ -65,7 +65,7 @@ pub fn socketpair(
     }
 
     // Build request and send it.
-    let request: Message = CreateSocketPairRequest::build(pid, domain, typ, protocol);
+    let request: Message = CreateSocketPairRequest::build(tid, domain, typ, protocol);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

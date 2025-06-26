@@ -22,7 +22,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -31,10 +31,10 @@ use ::sysapi::ffi::c_int;
 //==================================================================================================
 
 pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = AcceptSocketRequest::build(pid, sockfd);
+    let request: Message = AcceptSocketRequest::build(tid, sockfd);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

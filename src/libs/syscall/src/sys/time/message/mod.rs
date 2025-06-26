@@ -18,7 +18,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     sys_times::tms,
@@ -52,12 +52,12 @@ impl TimesRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Result<Message, Error> {
+    pub fn build(tid: ThreadIdentifier) -> Result<Message, Error> {
         let message: TimesRequest = TimesRequest::new();
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::TimesRequest, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -100,13 +100,13 @@ impl TimesResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, elapsed: clock_t, buffer: tms) -> Message {
+    pub fn build(tid: ThreadIdentifier, elapsed: clock_t, buffer: tms) -> Message {
         let message: TimesResponse = TimesResponse::new(elapsed, buffer);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::TimesResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

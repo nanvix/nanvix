@@ -24,7 +24,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -59,7 +59,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `header`: Message header.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
@@ -70,13 +70,13 @@ impl LinuxDaemonMessagePart {
     /// Upon success, the request message is returned. Upon failure, an error is returned instead.
     ///
     pub fn build_request(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         header: LinuxDaemonMessageHeader,
         part_number: u32,
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        Self::build(pid, header, part_number, payload_size, payload, false)
+        Self::build(tid, header, part_number, payload_size, payload, false)
     }
 
     ///
@@ -86,7 +86,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `header`: Message header.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
@@ -97,13 +97,13 @@ impl LinuxDaemonMessagePart {
     /// Upon success, the response message is returned. Upon failure, an error is returned instead.
     ///
     pub fn build_response(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         header: LinuxDaemonMessageHeader,
         part_number: u32,
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        Self::build(pid, header, part_number, payload_size, payload, true)
+        Self::build(tid, header, part_number, payload_size, payload, true)
     }
 
     ///
@@ -143,7 +143,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `header`: Message header.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
@@ -153,7 +153,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// Upon success, the message is returned. Upon failure, an error is returned instead.
     fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         header: LinuxDaemonMessageHeader,
         part_number: u32,
         payload_size: u8,
@@ -165,14 +165,14 @@ impl LinuxDaemonMessagePart {
         if is_response {
             Ok(Message::new(
                 MessageSender::from(crate::LINUXD),
-                MessageReceiver::from(pid),
+                MessageReceiver::from(tid),
                 MessageType::Ikc,
                 None,
                 message.into_bytes(),
             ))
         } else {
             Ok(Message::new(
-                MessageSender::from(pid),
+                MessageSender::from(tid),
                 MessageReceiver::from(crate::LINUXD),
                 MessageType::Ikc,
                 None,

@@ -21,7 +21,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -55,14 +55,14 @@ impl GetSockNameRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: c_int) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: c_int) -> Message {
         let message: Self = Self::new(sockfd);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::GetSockNameRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -101,7 +101,7 @@ impl GetSockNameResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockaddr: &sockaddr) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::GetSockNameResponse,
@@ -109,7 +109,7 @@ impl GetSockNameResponse {
         );
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

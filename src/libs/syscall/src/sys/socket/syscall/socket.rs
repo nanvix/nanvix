@@ -24,7 +24,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -33,10 +33,10 @@ use ::sysapi::ffi::c_int;
 //==================================================================================================
 
 pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Result<c_int, Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = CreateSocketRequest::build(pid, domain, typ, protocol);
+    let request: Message = CreateSocketRequest::build(tid, domain, typ, protocol);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

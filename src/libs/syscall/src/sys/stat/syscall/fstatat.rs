@@ -16,7 +16,7 @@ use ::alloc::{
 use ::sys::{
     error::Error,
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_stat;
 
@@ -67,11 +67,11 @@ pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> R
 /// instead.
 ///
 fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag)?;
 
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
 
     for request in requests {
         ::sys::kcall::ipc::send(&request)?;

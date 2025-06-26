@@ -19,7 +19,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -29,10 +29,10 @@ use ::sys::{
 pub fn pipe() -> Result<[i32; 2], Error> {
     ::syslog::trace!("pipe()");
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = PipeRequest::build(pid);
+    let request: Message = PipeRequest::build(tid);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

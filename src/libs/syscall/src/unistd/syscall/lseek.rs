@@ -20,7 +20,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     ffi::c_int,
@@ -34,10 +34,10 @@ use ::sysapi::{
 pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_t, Error> {
     ::syslog::trace!("lseek(): fd={:?}, offset={}, whence={}", fd, offset, whence);
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = SeekRequest::build(pid, fd, offset, whence);
+    let request: Message = SeekRequest::build(tid, fd, offset, whence);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

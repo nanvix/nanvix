@@ -85,7 +85,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             KcallResult::Error(e.code.into())
         },
         // SAFETY: The calling thread is not the kernel and no resources are held.
-        KcallNumber::Recv => match unsafe { ipc::recv(pid, arg0 as usize) } {
+        KcallNumber::Recv => match unsafe { ipc::recv(tid, pid, arg0 as usize) } {
             Ok(()) => KcallResult::ok(),
             Err(sleep_error) => handle_sleep_error(sleep_error),
         },

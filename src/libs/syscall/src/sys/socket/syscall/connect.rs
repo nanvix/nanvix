@@ -24,7 +24,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -48,12 +48,12 @@ use ::sysapi::ffi::c_int;
 ///
 pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
     ::syslog::trace!("connect(): fd={:?}, sockaddr={:?}", sockfd, sockaddr);
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let (sockaddr, socklen): (sockaddr, socklen_t) = From::<&SocketAddr>::from(sockaddr);
 
     // Build request and send it.
-    let request: Message = ConnectSocketRequest::build(pid, sockfd, &sockaddr, socklen);
+    let request: Message = ConnectSocketRequest::build(tid, sockfd, &sockaddr, socklen);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.
