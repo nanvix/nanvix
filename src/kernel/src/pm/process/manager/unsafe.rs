@@ -571,7 +571,6 @@ impl ProcessManager {
     ///
     /// # Parameters
     ///
-    /// - `pid`: ID of the process to wake up.
     /// - `tid`: ID of the thread to wake up.
     ///
     /// # Safety
@@ -582,8 +581,8 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn wakeup(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
-        Self::get_mut().try_borrow_mut()?.wakeup(pid, tid)
+    pub unsafe fn wakeup(tid: ThreadIdentifier) -> Result<(), Error> {
+        Self::get_mut().try_borrow_mut()?.wakeup(tid)
     }
 
     ///

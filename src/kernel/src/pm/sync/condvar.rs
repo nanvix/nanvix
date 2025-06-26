@@ -112,8 +112,8 @@ impl Condvar {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn notify_first(&self) -> Result<(), Error> {
-        if let Some((pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
-            ProcessManager::wakeup(pid, tid)?;
+        if let Some((_, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+            ProcessManager::wakeup(tid)?;
         }
 
         Ok(())
@@ -151,8 +151,8 @@ impl Condvar {
 
         // Remove process from sleeping queue.
         if let Some(at) = idx {
-            let (pid, tid) = self.inner.sleeping.borrow_mut().remove(at);
-            ProcessManager::wakeup(pid, tid)?;
+            let (_, tid) = self.inner.sleeping.borrow_mut().remove(at);
+            ProcessManager::wakeup(tid)?;
         }
 
         Ok(())
@@ -179,8 +179,8 @@ impl Condvar {
     pub unsafe fn notify_all(&self) -> Result<usize, Error> {
         let mut awakened: usize = 0;
 
-        while let Some((pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
-            ProcessManager::wakeup(pid, tid)?;
+        while let Some((_pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+            ProcessManager::wakeup(tid)?;
             awakened += 1;
         }
 

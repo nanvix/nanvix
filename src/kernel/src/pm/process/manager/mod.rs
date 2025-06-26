@@ -663,16 +663,15 @@ impl ProcessManagerInner {
     ///
     /// # Parameters
     ///
-    /// - `pid`: ID of the process to wake up.
     /// - `tid`: ID of the thread to wake up.
     ///
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn wakeup(&mut self, pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<(), Error> {
+    pub fn wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
         // Check if thread belongs to the running process.
-        if self.get_running().state().pid() == pid {
+        if self.get_running().has_thread(tid) {
             let running_process: RunningProcess = self.take_running();
             match running_process.wakeup(tid) {
                 Ok(running_process) => {
@@ -682,18 +681,18 @@ impl ProcessManagerInner {
                 Err(running_process) => {
                     self.running = Some(running_process);
                     let reason: &str = "thread not found";
-                    error!("wake_up(): {reason} (pid={pid:?}. tid={tid:?})");
+                    error!("wake_up(): {reason} (tid={tid:?})");
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 },
             }
         }
 
         // Check if thread belongs to a suspended process.
-        let runnable_process: RunnableProcess = match self.try_wakeup(pid, tid) {
+        let runnable_process: RunnableProcess = match self.try_wakeup(tid) {
             Some(runnable_process) => runnable_process,
             None => {
                 let reason: &str = "thread not found";
-                error!("wake_up(): {reason} (pid={pid:?}, tid={tid:?})");
+                error!("wake_up(): {reason} (tid={tid:?})");
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             },
         };
@@ -703,16 +702,12 @@ impl ProcessManagerInner {
         Ok(())
     }
 
-    fn try_wakeup(
-        &mut self,
-        pid: ProcessIdentifier,
-        tid: ThreadIdentifier,
-    ) -> Option<RunnableProcess> {
+    fn try_wakeup(&mut self, tid: ThreadIdentifier) -> Option<RunnableProcess> {
         // Search for the process in the list of sleeping processes.
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
         while let Some(process) = self.suspended.pop_front() {
             // Found.
-            if process.state().pid() == pid {
+            if process.has_thread(tid) {
                 match process.wakeup(tid) {
                     Ok(runnable_process) => {
                         while let Some(process) = suspended.pop_back() {
@@ -739,7 +734,7 @@ impl ProcessManagerInner {
         let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
         while let Some(process) = self.ready.pop_front() {
             // Found.
-            if process.state().pid() == pid {
+            if process.has_thread(tid) {
                 match process.wakeup(tid) {
                     Ok(runnable_process) => {
                         while let Some(process) = ready.pop_back() {
