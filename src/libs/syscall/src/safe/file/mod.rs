@@ -7,8 +7,6 @@
 
 mod advice;
 mod file_control_request;
-mod file_descriptor_flags;
-mod file_status_flags;
 mod offset;
 mod oflags;
 mod regular;
@@ -41,8 +39,6 @@ use ::sys::error::Error;
 
 pub use advice::RegularFileAdvice;
 pub use file_control_request::FileControlRequest;
-pub use file_descriptor_flags::FileDescriptorFlags;
-pub use file_status_flags::FileStatusFlags;
 pub use offset::RegularFileOffset;
 pub use oflags::RegularFileOpenFlags;
 pub use regular::RegularFile;
@@ -113,8 +109,8 @@ pub fn fchmod(fd: RawFileDescriptor, permissions: FileSystemPermissions) -> Resu
 ///
 /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
 ///
-pub fn fcntl(fd: RawFileDescriptor, cmd: FileControlRequest) -> Result<c_int, Error> {
-    let (cmd, arg): (c_int, c_int) = cmd.into();
+pub fn fcntl(fd: RawFileDescriptor, cmd: &FileControlRequest) -> Result<c_int, Error> {
+    let (cmd, arg): (c_int, Option<c_int>) = cmd.into();
     fcntl::syscall::fcntl(fd, cmd, arg)
 }
 

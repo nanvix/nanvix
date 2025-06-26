@@ -12,9 +12,9 @@ use ::core::{
 };
 use ::sys::error::ErrorCode;
 use ::sysapi::{
-    fcntl::{
-        atflags::AT_FDCWD,
-        file_access_mode::AT_SYMLINK_NOFOLLOW,
+    fcntl::atflags::{
+        AT_FDCWD,
+        AT_SYMLINK_NOFOLLOW,
     },
     ffi::{
         c_char,

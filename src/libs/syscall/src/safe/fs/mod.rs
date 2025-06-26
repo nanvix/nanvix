@@ -5,12 +5,17 @@
 // Modules
 //==================================================================================================
 
+mod access_mode_flags;
 mod attributes;
+mod creation_flags;
+mod descriptor_flags;
 mod fd;
 mod file_type;
 mod inode_number;
+mod open_flags;
 mod path;
 mod permissions;
+mod status_flags;
 
 //==================================================================================================
 // Imports
@@ -46,18 +51,23 @@ use ::sys::error::{
 // Exports
 //==================================================================================================
 
+pub use access_mode_flags::FileAccessModeFlags;
 pub use attributes::FileSystemAttributes;
+pub use creation_flags::FileCreationFlags;
+pub use descriptor_flags::FileDescriptorFlags;
 pub use fd::RawFileDescriptor;
 pub use file_type::FileType;
 pub use inode_number::InodeNumber;
+pub use open_flags::OpenFlags;
 pub use path::FileSystemPath;
 pub use permissions::FileSystemPermissions;
+pub use status_flags::FileStatusFlags;
 use sysapi::{
     limits::PATH_MAX,
     sys_stat,
     sys_types::{
-        mode_t,
         c_ssize_t,
+        mode_t,
     },
 };
 
@@ -166,7 +176,7 @@ impl FileSystem {
     ///
     pub fn open_regular_file(
         pathname: &FileSystemPath,
-        flags: RegularFileOpenFlags,
+        flags: &RegularFileOpenFlags,
         permissions: Option<FileSystemPermissions>,
     ) -> Result<RegularFile, Error> {
         let rawfd: RawFileDescriptor = open(pathname, flags, permissions)?;
@@ -321,7 +331,7 @@ pub fn mkdir(pathname: &FileSystemPath, permissions: FileSystemPermissions) -> R
 ///
 pub fn open(
     pathname: &FileSystemPath,
-    flags: RegularFileOpenFlags,
+    flags: &RegularFileOpenFlags,
     permissions: Option<FileSystemPermissions>,
 ) -> Result<RawFileDescriptor, Error> {
     let mode: mode_t = match permissions {

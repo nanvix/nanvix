@@ -10,10 +10,12 @@ use ::syscall::{
     unistd,
 };
 use sysapi::{
-    fcntl::open_flags::{
-        O_CREAT,
-        O_RDONLY,
-        O_WRONLY,
+    fcntl::{
+        file_access_mode::{
+            O_RDONLY,
+            O_WRONLY,
+        },
+        file_creation_flags::O_CREAT,
     },
     ffi::c_int,
     sys_stat::file_mode::{
@@ -23,6 +25,7 @@ use sysapi::{
     sys_types::off_t,
     unistd::file_seek::SEEK_CUR,
 };
+use syscall::safe::RegularFileOpenFlags;
 
 //==================================================================================================
 // Standalone Functions
@@ -80,7 +83,7 @@ pub fn test() {
     }
 
     // Open file for reading and assert result.
-    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::Readonly.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, RegularFileOpenFlags::read_only().into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");

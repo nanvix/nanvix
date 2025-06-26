@@ -134,7 +134,7 @@ impl DynamicLibrary {
         // Attempt to open file.
         let fd: RegularFile = FileSystem::open_regular_file(
             &FileSystemPath::new(filename)?,
-            RegularFileOpenFlags::read_only(),
+            &RegularFileOpenFlags::read_only(),
             None,
         )?;
 

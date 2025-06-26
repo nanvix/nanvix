@@ -28,6 +28,7 @@ use sysapi::{
         off_t,
     },
 };
+use syscall::safe::RegularFileOpenFlags;
 
 //==================================================================================================
 // Standalone Functions
@@ -53,7 +54,7 @@ pub fn test() {
     }
 
     // Open file for writing and assert result.
-    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::WriteOnly.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, RegularFileOpenFlags::write_only().into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");

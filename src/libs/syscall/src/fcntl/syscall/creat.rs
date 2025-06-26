@@ -4,9 +4,9 @@
 // Modules
 //==================================================================================================
 
-use crate::fcntl::{
-    self,
-    OpenFlags,
+use crate::{
+    fcntl,
+    safe::OpenFlags,
 };
 use ::sys::error::Error;
 use ::sysapi::{
@@ -36,10 +36,9 @@ use ::sysapi::{
 ///
 pub fn creat(filename: &str, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!("creat(): pathname={filename:?}, mode={mode:?}");
-    fcntl::openat(
-        AT_FDCWD,
-        filename,
-        OpenFlags::Create | OpenFlags::ReadWrite | OpenFlags::Truncate,
-        mode,
-    )
+    let flags: c_int = OpenFlags::read_write()
+        .set_create(true)
+        .set_truncate(true)
+        .into();
+    fcntl::openat(AT_FDCWD, filename, flags, mode)
 }

@@ -18,12 +18,18 @@ use ::sys::{
 };
 use ::sysapi::{
     fcntl::{
-        atflags::AT_FDCWD,
-        file_access_mode::{
+        atflags::{
             AT_EACCESS,
+            AT_FDCWD,
             AT_REMOVEDIR,
             AT_SYMLINK_NOFOLLOW,
-            O_ACCMODE,
+        },
+        file_access_mode::{
+            O_EXEC,
+            O_RDONLY,
+            O_RDWR,
+            O_SEARCH,
+            O_WRONLY,
         },
         file_advice::{
             POSIX_FADV_DONTNEED,
@@ -36,6 +42,7 @@ use ::sysapi::{
         file_control_request::{
             F_DUPFD,
             F_DUPFD_CLOEXEC,
+            F_DUPFD_CLOFORK,
             F_GETFD,
             F_GETFL,
             F_GETLK,
@@ -46,10 +53,20 @@ use ::sysapi::{
             F_SETLKW,
             F_SETOWN,
         },
-        open_flags::{
-            O_RDONLY,
-            O_RDWR,
-            O_WRONLY,
+        file_creation_flags::{
+            O_CLOEXEC,
+            O_CLOFORK,
+            O_CREAT,
+            O_DIRECTORY,
+            O_EXCL,
+            O_NOCTTY,
+            O_NOFOLLOW,
+            O_TRUNC,
+        },
+        file_status_flags::{
+            O_APPEND,
+            O_NONBLOCK,
+            O_SYNC,
         },
     },
     ffi::c_int,
@@ -78,23 +95,19 @@ use ::sysapi::{
     time::timespec,
 };
 use ::syscall::{
-    fcntl,
-    fcntl::{
-        message::{
-            FileAdvisoryInformationRequest,
-            FileAdvisoryInformationResponse,
-            FileControlRequest,
-            FileControlResponse,
-            FileSpaceControlRequest,
-            FileSpaceControlResponse,
-            OpenAtRequest,
-            OpenAtResponse,
-            RenameAtRequest,
-            RenameAtResponse,
-            UnlinkAtRequest,
-            UnlinkAtResponse,
-        },
-        OpenFlags,
+    fcntl::message::{
+        FileAdvisoryInformationRequest,
+        FileAdvisoryInformationResponse,
+        FileControlRequest,
+        FileControlResponse,
+        FileSpaceControlRequest,
+        FileSpaceControlResponse,
+        OpenAtRequest,
+        OpenAtResponse,
+        RenameAtRequest,
+        RenameAtResponse,
+        UnlinkAtRequest,
+        UnlinkAtResponse,
     },
     message::MessagePartitioner,
     sys::stat::message::{
@@ -121,6 +134,10 @@ use ::syscall::{
         SymbolicLinkAtResponse,
     },
 };
+use sysapi::fcntl::file_descriptor_flags::{
+    FD_CLOEXEC,
+    FD_CLOFORK,
+};
 
 //==================================================================================================
 // do_openat
@@ -139,7 +156,7 @@ pub fn do_openat(pid: ProcessIdentifier, request: OpenAtRequest) -> Vec<Message>
     };
 
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
-    let flags: LibcFileFlags = match LibcFileFlags::try_from(flags) {
+    let flags: LibcFileOpenFlags = match LibcFileOpenFlags::try_from_nanvix_flags(flags) {
         Ok(flags) => flags,
         Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
     };
@@ -263,8 +280,11 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
 
     let dirfd: i32 = request.dirfd;
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
-    let flag: i32 = request.flag;
-    let flag: LibcFileFlags = LibcFileFlags(flag);
+    let flag: libc::c_int = if request.flag & AT_SYMLINK_NOFOLLOW != 0 {
+        libc::AT_SYMLINK_NOFOLLOW
+    } else {
+        0
+    };
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(c_string) => c_string,
         Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
@@ -272,10 +292,8 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
 
     let mut st: libc::stat = unsafe { core::mem::zeroed() };
 
-    debug!("libc::fstatat(): dirfd={:?}, path={path:?}, flag={:?}", dirfd.inner(), flag.inner());
-    match unsafe {
-        libc::fstatat(dirfd.inner(), path.as_ptr(), &mut st as *mut libc::stat, flag.inner())
-    } {
+    debug!("libc::fstatat(): dirfd={:?}, path={path:?}, flag={:?}", dirfd.inner(), flag);
+    match unsafe { libc::fstatat(dirfd.inner(), path.as_ptr(), &mut st as *mut libc::stat, flag) } {
         0 => {
             debug!("libc::fstatat(): success");
 
@@ -630,21 +648,23 @@ pub fn do_utimensat(
         Into::<LibcTimeSpec>::into(times[1]).into(),
     ];
 
-    let flag: LibcFileFlags = LibcFileFlags(request.flag);
+    let flag: libc::c_int = if request.flag & AT_SYMLINK_NOFOLLOW != 0 {
+        libc::AT_SYMLINK_FOLLOW
+    } else {
+        0
+    };
 
     debug!(
         "libc::utimensat(): dirfd={:?}, path={path:?}, flag={:?}, times[0].tv_sec={:?}, \
          times[0].tv_nsec={:?}, times[1].tv_sec={:?}, times[1].tv_nsec={:?}",
         dirfd.inner(),
-        flag.inner(),
+        flag,
         libc_times[0].tv_sec,
         libc_times[0].tv_nsec,
         libc_times[1].tv_sec,
         libc_times[1].tv_nsec
     );
-    match unsafe {
-        libc::utimensat(dirfd.inner(), path.as_ptr(), libc_times.as_ptr(), flag.inner())
-    } {
+    match unsafe { libc::utimensat(dirfd.inner(), path.as_ptr(), libc_times.as_ptr(), flag) } {
         0 => {
             debug!("libc::utimensat(): success");
             vec![UpdateFileAccessTimeAtResponse::build(pid, 0)]
@@ -707,77 +727,180 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
         Ok(cmd) => cmd,
         Err(e) => return crate::build_error(pid, e.code),
     };
-    let arg: c_int = request.arg;
 
-    debug!("libc::fcntl(): fd={fd:?}, cmd={:?}, arg={arg:?}", cmd.inner());
+    debug!("libc::fcntl(): fd={fd:?}, cmd={:?}, arg={:?}", cmd.inner(), { request.arg });
 
-    let ret: i32 = unsafe { libc::fcntl(fd, cmd.inner(), arg) };
+    let libc_arg: c_int = match cmd.inner() {
+        libc::F_DUPFD => request.arg,
+        libc::F_DUPFD_CLOEXEC => request.arg,
+        libc::F_GETFD => request.arg,
+        libc::F_SETFD => match LibcFileDescriptorFlags::try_from_nanvix_flags(request.arg) {
+            Ok(flags) => flags.inner(),
+            Err(error) => {
+                error!("do_fcntl(): {error:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
+                return crate::build_error(pid, error.code);
+            },
+        },
+        libc::F_GETFL => 0,
+        libc::F_SETFL => {
+            match LibcFileStatusFlags::try_from_nanvix_flags(
+                request.arg & LibcFileStatusFlags::libc_mask(),
+            ) {
+                Ok(flags) => flags.inner(),
+                Err(error) => {
+                    error!("do_fcntl(): {error:?} (cmd={cmd:#x?}), arg={:?})", { request.arg });
+                    return crate::build_error(pid, error.code);
+                },
+            }
+        },
+        libc::F_GETOWN => 0,
+        libc::F_SETOWN => {
+            let arg: i32 = request.arg;
+            if arg < 0 {
+                if arg == -1 {
+                    error!("do_fcntl(): invalid owner (cmd={cmd:#x?}, arg={arg:?})");
+                    return crate::build_error(pid, ErrorCode::InvalidArgument);
+                } else {
+                    -arg
+                }
+            } else {
+                arg
+            }
+        },
+        libc::F_GETLK => {
+            let reason: &str = "unsupported file lock command";
+            error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
+            return crate::build_error(pid, ErrorCode::InvalidArgument);
+        },
+        libc::F_SETLK => {
+            let reason: &str = "unsupported file lock command";
+            error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
+            return crate::build_error(pid, ErrorCode::InvalidArgument);
+        },
+        libc::F_SETLKW => {
+            let reason: &str = "unsupported file lock command";
+            error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
+            return crate::build_error(pid, ErrorCode::InvalidArgument);
+        },
+        unsupported_cmd => {
+            // The following statement is unreachable because any unsupported commands were already
+            // discarded when converting `request.cmd` to `LibcFileControlCommand`.
+            unreachable!(
+                "do_fcntl(): unsupported file control command \
+                 (unsupported_cmd={unsupported_cmd:#x?}, cmd={cmd:#x?}, arg={:?})",
+                { request.arg }
+            );
+        },
+    };
+
+    let ret: i32 = unsafe { libc::fcntl(fd, cmd.inner(), libc_arg) };
 
     match cmd.inner() {
-        libc::F_GETFD => {
+        libc::F_DUPFD | libc::F_DUPFD_CLOEXEC => {
             if ret >= 0 {
-                debug!("libc::fcntl(): F_GETFD success");
-                todo!("convert file descriptor flags");
-            } else if ret == -1 {
+                debug!("libc::fcntl(): F_DUPFD | F_DUPFD_CLOEXEC success");
+                FileControlResponse::build(pid, ret)
+            } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
-                debug!("libc::fcntl(): errno={errno:?}");
+                error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
                 crate::build_error(pid, error)
+            }
+        },
+        libc::F_GETFD => {
+            if ret != -1 {
+                debug!("libc::fcntl(): F_GETFD success");
+                let nanvix_file_descritor_flags: c_int = LibcFileDescriptorFlags(ret)
+                    .try_into_nanvix_flags()
+                    .unwrap_or_else(|_| panic!("unexpected file descriptor flags: {ret:?}"));
+                FileControlResponse::build(pid, nanvix_file_descritor_flags)
             } else {
-                unreachable!("should not return -1")
+                let errno: i32 = unsafe { *libc::__errno_location() };
+                error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
+                let error: ErrorCode = ErrorCode::try_from(errno)
+                    .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+                crate::build_error(pid, error)
             }
         },
         libc::F_GETFL => {
-            if ret >= 0 {
+            if ret != -1 {
                 debug!("libc::fcntl(): F_GETFL success");
-                let flags: i32 = match LibcFileFlags::try_from(ret) {
-                    Ok(flags) => flags.as_nanvix_flags(),
-                    Err(e) => return crate::build_error(pid, e.code),
-                };
-                FileControlResponse::build(pid, flags)
-            } else if ret == -1 {
+                let libc_file_status_flags: LibcFileStatusFlags =
+                    LibcFileStatusFlags(ret & LibcFileStatusFlags::libc_mask());
+
+                let nanvix_file_status_flags: c_int = libc_file_status_flags
+                    .try_into_nanvix_flags()
+                    .unwrap_or_else(|_| {
+                        panic!("unexpected file status flags: {libc_file_status_flags:?}")
+                    });
+
+                let libc_file_creation_flags: LibcFileCreationFlags =
+                    LibcFileCreationFlags(ret & LibcFileCreationFlags::libc_mask());
+
+                let nanvix_file_creation_flags: c_int = libc_file_creation_flags
+                    .try_into_nanvix_flags()
+                    .unwrap_or_else(|_| {
+                        panic!("unexpected file creation flags: {libc_file_creation_flags:?}")
+                    });
+
+                debug_assert_eq!(
+                    nanvix_file_status_flags & nanvix_file_creation_flags,
+                    0,
+                    "file status flags and file creation flags should not overlap"
+                );
+
+                FileControlResponse::build(
+                    pid,
+                    nanvix_file_status_flags | nanvix_file_creation_flags,
+                )
+            } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
-                debug!("libc::fcntl(): errno={errno:?}");
+                error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
                 crate::build_error(pid, error)
-            } else {
-                unreachable!("should not fail with a value other than -1")
             }
         },
         libc::F_GETOWN => {
-            if ret >= 0 || ret != -1 {
+            if ret != -1 {
                 debug!("libc::fcntl(): F_GETOWN success");
                 FileControlResponse::build(pid, ret)
             } else {
-                unreachable!("should not return -1");
+                // The following statement is unreachable because `libc::fcntl()` should never
+                // return -1 for `F_GETOWN`.
+                unreachable!(
+                    "do_fcntl(): unexpected return for F_GETOWN (cmd={cmd:#x?}, arg={libc_arg}, \
+                     ret={ret:?}"
+                )
             }
         },
         libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN => {
             if ret == 0 {
-                debug!("libc::fcntl(): success");
+                debug!("libc::fcntl(): libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN success");
                 FileControlResponse::build(pid, ret)
             } else if ret == -1 {
                 let errno: i32 = unsafe { *libc::__errno_location() };
-                debug!("libc::fcntl(): errno={errno:?}");
+                error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
                 crate::build_error(pid, error)
             } else {
-                unreachable!("should not fail with a value other than -1")
+                // The following statement is unreachable because `libc::fcntl()` should return
+                // either 0 on success or -1 on error for `F_SETFD`, `F_SETFL`, and `F_SETOWN`.
+                unreachable!(
+                    "do_fcntl(): unexpeted return for F_SETFD | F_SETFL | F_SETOWN \
+                     (cmd={cmd:#x?}, arg={libc_arg}, ret={ret:?}"
+                )
             }
         },
-        libc::F_DUPFD | libc::F_DUPFD_CLOEXEC => {
-            if ret >= 0 {
-                debug!("libc::fcntl(): success");
-                FileControlResponse::build(pid, ret)
-            } else {
-                unreachable!("should not return a negative value");
-            }
-        },
-        _ => {
-            unreachable!("unsupported command");
+        unsupported_cmd => {
+            // The following statement is unreachable because any unsupported were not passed in
+            // to the underlying libc.
+            unreachable!(
+                "do_fcntl(): unsupported file control command \
+                 (unsupported_cmd={unsupported_cmd:#x?}, cmd={cmd:#x?}, arg={libc_arg})"
+            )
         },
     }
 }
@@ -891,64 +1014,361 @@ pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<M
 }
 
 //==================================================================================================
+// LibcFileOpenFlags
+//==================================================================================================
 
-struct LibcFileFlags(libc::c_int);
+struct LibcFileOpenFlags(libc::c_int);
 
-impl LibcFileFlags {
-    const FLAG_MAPPINGS: [(OpenFlags, ffi::c_int); 5] = [
-        (fcntl::OpenFlags::Append, libc::O_APPEND),
-        (fcntl::OpenFlags::Create, libc::O_CREAT),
-        (fcntl::OpenFlags::Exclusive, libc::O_EXCL),
-        (fcntl::OpenFlags::Truncate, libc::O_TRUNC),
-        (fcntl::OpenFlags::Directory, libc::O_DIRECTORY),
-    ];
-
+impl LibcFileOpenFlags {
     fn inner(&self) -> libc::c_int {
         self.0
     }
 
-    fn try_from(flags: ffi::c_int) -> Result<LibcFileFlags, Error> {
-        // TODO: check for unsupported flags.
-        let mut libc_flags: libc::c_int = 0;
-
-        // Set access mode.
-        if flags & O_ACCMODE == O_RDONLY {
-            libc_flags |= libc::O_RDONLY;
-        } else if flags & O_ACCMODE == O_WRONLY {
-            libc_flags |= libc::O_WRONLY;
-        } else if flags & O_ACCMODE == O_RDWR {
-            libc_flags |= libc::O_RDWR;
-        }
-
-        for (nanvix_flag, f) in Self::FLAG_MAPPINGS.iter() {
-            if (flags & nanvix_flag) == nanvix_flag.into() {
-                libc_flags |= *f;
-            }
-        }
-
-        Ok(LibcFileFlags(libc_flags))
+    fn nanvix_mask() -> c_int {
+        LibcFileAccessModeFlags::nanvix_mask()
+            | LibcFileCreationFlags::nanvix_mask()
+            | LibcFileStatusFlags::nanvix_mask()
     }
 
-    fn as_nanvix_flags(&self) -> i32 {
-        let mut flags: i32 = 0;
-
-        // Set access mode.
-        match self.0 & libc::O_ACCMODE {
-            libc::O_RDONLY => flags |= O_RDONLY,
-            libc::O_WRONLY => flags |= O_WRONLY,
-            libc::O_RDWR => flags |= O_RDWR,
-            _ => {},
+    fn try_from_nanvix_flags(flags: c_int) -> Result<Self, Error> {
+        // Check if any unsupported flags are set.
+        if flags & !Self::nanvix_mask() != 0 {
+            let reason: &str = "unsupported file open flags";
+            error!("do_fcntl(): {reason} (flags={flags:#x?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        for (nanvix_flag, f) in Self::FLAG_MAPPINGS.iter() {
-            if (self.0 & f) == *f {
-                flags |= *nanvix_flag;
-            }
-        }
+        let access_mode_flags: LibcFileAccessModeFlags =
+            LibcFileAccessModeFlags::try_from_nanvix_flags(
+                flags & LibcFileAccessModeFlags::nanvix_mask(),
+            )?;
+        let creation_flags: LibcFileCreationFlags = LibcFileCreationFlags::try_from_nanvix_flags(
+            flags & LibcFileCreationFlags::nanvix_mask(),
+        )?;
+        let status_flags: LibcFileStatusFlags =
+            LibcFileStatusFlags::try_from_nanvix_flags(flags & LibcFileStatusFlags::nanvix_mask())?;
 
-        flags
+        Ok(LibcFileOpenFlags(
+            access_mode_flags.inner() | creation_flags.inner() | status_flags.inner(),
+        ))
     }
 }
+
+//==================================================================================================
+// LibcFileAccessModeFlags
+//==================================================================================================
+
+#[derive(Debug)]
+struct LibcFileAccessModeFlags(libc::c_int);
+
+impl LibcFileAccessModeFlags {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn nanvix_mask() -> c_int {
+        O_RDONLY | O_WRONLY | O_RDWR | O_EXEC | O_SEARCH
+    }
+
+    fn try_from_nanvix_flags(flags: c_int) -> Result<Self, Error> {
+        match flags {
+            O_RDONLY => Ok(LibcFileAccessModeFlags(libc::O_RDONLY)),
+            O_WRONLY => Ok(LibcFileAccessModeFlags(libc::O_WRONLY)),
+            O_RDWR => Ok(LibcFileAccessModeFlags(libc::O_RDWR)),
+            O_EXEC => {
+                let reason: &str = "O_EXEC|O_SEARCH are not supported by libc";
+                error!("do_fcntl(): {reason} (flags={flags:#x?})");
+                Err(Error::new(ErrorCode::InvalidArgument, reason))
+            },
+            _ => {
+                let reason: &str = "unsupported file access mode flags";
+                error!("do_fcntl(): {reason} (flags={flags:#x?})");
+                Err(Error::new(ErrorCode::InvalidArgument, reason))
+            },
+        }
+    }
+}
+
+//==================================================================================================
+// LibcFileCreationFlags
+//==================================================================================================
+
+#[derive(Debug)]
+struct LibcFileCreationFlags(libc::c_int);
+
+impl LibcFileCreationFlags {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn nanvix_mask() -> c_int {
+        O_CREAT | O_TRUNC | O_EXCL | O_NOCTTY | O_NOFOLLOW | O_DIRECTORY | O_CLOEXEC | O_CLOFORK
+    }
+
+    fn libc_mask() -> libc::c_int {
+        libc::O_CREAT
+            | libc::O_TRUNC
+            | libc::O_EXCL
+            | libc::O_NOCTTY
+            | libc::O_NOFOLLOW
+            | libc::O_DIRECTORY
+            | libc::O_CLOEXEC
+    }
+
+    fn try_from_nanvix_flags(flags: c_int) -> Result<Self, Error> {
+        // Check if any unsupported flags are set.
+        if flags & !Self::nanvix_mask() != 0 {
+            let reason: &str = "unsupported file creation flags";
+            error!("do_fcntl(): {reason} (flags={flags:#x?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let mut libc_flags: libc::c_int = 0;
+
+        if flags & O_CREAT != 0 {
+            libc_flags |= libc::O_CREAT;
+        }
+        if flags & O_TRUNC != 0 {
+            libc_flags |= libc::O_TRUNC;
+        }
+        if flags & O_EXCL != 0 {
+            libc_flags |= libc::O_EXCL;
+        }
+        if flags & O_NOCTTY != 0 {
+            libc_flags |= libc::O_NOCTTY;
+        }
+        if flags & O_NOFOLLOW != 0 {
+            libc_flags |= libc::O_NOFOLLOW;
+        }
+        if flags & O_DIRECTORY != 0 {
+            libc_flags |= libc::O_DIRECTORY;
+        }
+        if flags & O_CLOEXEC != 0 {
+            libc_flags |= libc::O_CLOEXEC;
+        }
+        if flags & O_CLOFORK != 0 {
+            let reason: &str = "O_CLOFORK is not supported by libc";
+            error!("do_fcntl(): {reason} (flags={flags:#x?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        Ok(LibcFileCreationFlags(libc_flags))
+    }
+
+    fn try_into_nanvix_flags(&self) -> Result<c_int, Error> {
+        // Check if any unsupported flags are set.
+        if self.0 & !Self::libc_mask() != 0 {
+            let reason: &str = "unsupported file creation flags";
+            error!("do_fcntl(): {reason} (flags={:#x?})", self.0);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let mut flags: c_int = 0;
+
+        if self.0 & libc::O_CREAT != 0 {
+            flags |= O_CREAT;
+        }
+        if self.0 & libc::O_TRUNC != 0 {
+            flags |= O_TRUNC;
+        }
+        if self.0 & libc::O_EXCL != 0 {
+            flags |= O_EXCL;
+        }
+        if self.0 & libc::O_NOCTTY != 0 {
+            flags |= O_NOCTTY;
+        }
+        if self.0 & libc::O_NOFOLLOW != 0 {
+            flags |= O_NOFOLLOW;
+        }
+        if self.0 & libc::O_DIRECTORY != 0 {
+            flags |= O_DIRECTORY;
+        }
+        if self.0 & libc::O_CLOEXEC != 0 {
+            flags |= O_CLOEXEC;
+        }
+
+        Ok(flags)
+    }
+}
+
+//==================================================================================================
+// LibcFileStatusFlags
+//==================================================================================================
+
+#[derive(Debug)]
+struct LibcFileStatusFlags(libc::c_int);
+
+impl LibcFileStatusFlags {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn nanvix_mask() -> c_int {
+        O_APPEND | O_NONBLOCK | O_SYNC
+    }
+
+    fn libc_mask() -> libc::c_int {
+        libc::O_APPEND | libc::O_NONBLOCK | libc::O_SYNC | libc::O_DSYNC
+    }
+
+    fn try_from_nanvix_flags(flags: c_int) -> Result<Self, Error> {
+        // Check if any unsupported flags are set.
+        if flags & !Self::nanvix_mask() != 0 {
+            let reason: &str = "unsupported file status flags";
+            error!("do_fcntl(): {reason} (flags={flags:#x?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let mut libc_flags: libc::c_int = 0;
+
+        if flags & O_APPEND != 0 {
+            libc_flags |= libc::O_APPEND;
+        }
+        if flags & O_NONBLOCK != 0 {
+            libc_flags |= libc::O_NONBLOCK;
+        }
+        if flags & O_SYNC != 0 {
+            libc_flags |= libc::O_SYNC;
+        }
+
+        Ok(LibcFileStatusFlags(libc_flags))
+    }
+
+    fn try_into_nanvix_flags(&self) -> Result<c_int, Error> {
+        // Check if any unsupported flags are set.
+        if self.0 & !Self::libc_mask() != 0 {
+            let reason: &str = "unsupported file status flags";
+            error!("do_fcntl(): {reason} (flags={:#x?})", self.0);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let mut flags: c_int = 0;
+
+        if self.0 & libc::O_APPEND != 0 {
+            flags |= O_APPEND;
+        }
+        if self.0 & libc::O_NONBLOCK != 0 {
+            flags |= O_NONBLOCK;
+        }
+        if self.0 & libc::O_SYNC != 0 {
+            flags |= O_SYNC;
+        }
+        if self.0 & libc::O_DSYNC != 0 {
+            let reason: &str = "O_DSYNC is not supported by Nanvix";
+            error!("do_fcntl(): {reason} (flags={:#x?})", self.0);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if self.0 & libc::O_RSYNC != 0 {
+            let reason: &str = "O_RSYNC is not supported by Nanvix";
+            error!("do_fcntl(): {reason} (flags={:#x?})", self.0);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        Ok(flags)
+    }
+}
+
+//==================================================================================================
+// LibcFileControlCommand
+//==================================================================================================
+
+#[derive(Debug)]
+struct LibcFileControlCommand(libc::c_int);
+
+impl LibcFileControlCommand {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn try_from(cmd: i32) -> Result<LibcFileControlCommand, Error> {
+        let libc_cmd: libc::c_int = match cmd {
+            F_DUPFD => libc::F_DUPFD,
+            F_GETFD => libc::F_GETFD,
+            F_SETFD => libc::F_SETFD,
+            F_GETFL => libc::F_GETFL,
+            F_SETFL => libc::F_SETFL,
+            F_GETOWN => libc::F_GETOWN,
+            F_SETOWN => libc::F_SETOWN,
+            F_GETLK => libc::F_GETLK,
+            F_SETLK => libc::F_SETLK,
+            F_SETLKW => libc::F_SETLKW,
+            F_DUPFD_CLOEXEC => libc::F_DUPFD_CLOEXEC,
+            F_DUPFD_CLOFORK => {
+                let reason: &str = "F_DUPFD_CLOFORK is not supported by libc";
+                error!("do_fcntl(): {reason} (cmd={cmd:#x?})");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+            _ => {
+                let reason: &str = "unsupported file control command";
+                error!("do_fcntl(): {reason} (cmd={cmd:#x?})");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
+
+        Ok(LibcFileControlCommand(libc_cmd))
+    }
+}
+
+//==================================================================================================
+// LibcFileDescriptorFlags
+//==================================================================================================
+
+struct LibcFileDescriptorFlags(libc::c_int);
+
+impl LibcFileDescriptorFlags {
+    fn inner(&self) -> libc::c_int {
+        self.0
+    }
+
+    fn nanvix_mask() -> c_int {
+        FD_CLOEXEC | FD_CLOFORK
+    }
+
+    fn libc_mask() -> libc::c_int {
+        libc::FD_CLOEXEC
+    }
+
+    fn try_from_nanvix_flags(flags: c_int) -> Result<Self, Error> {
+        // Check if any unsupported flags are set.
+        if flags & !Self::nanvix_mask() != 0 {
+            let reason: &str = "unsupported file descriptor flags";
+            error!("do_fcntl(): {reason} (flags={flags:#x?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let mut libc_flags: libc::c_int = 0;
+
+        if flags & FD_CLOEXEC != 0 {
+            libc_flags |= libc::FD_CLOEXEC;
+        }
+        if flags & FD_CLOFORK != 0 {
+            let reason: &str = "FD_CLOFORK is not supported by libc";
+            error!("do_fcntl(): {reason} (flags={flags:#x?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        Ok(LibcFileDescriptorFlags(libc_flags))
+    }
+
+    fn try_into_nanvix_flags(&self) -> Result<c_int, Error> {
+        // Check if any unsupported flags are set.
+        if self.0 & !Self::libc_mask() != 0 {
+            let reason: &str = "unsupported file descriptor flags";
+            error!("do_fcntl(): {reason} (flags={:#x?})", self.0);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let mut flags: c_int = 0;
+
+        if self.0 & libc::FD_CLOEXEC != 0 {
+            flags |= FD_CLOEXEC;
+        }
+
+        Ok(flags)
+    }
+}
+
+//==================================================================================================
 
 struct LibcFileMode(libc::mode_t);
 
@@ -1024,32 +1444,5 @@ impl LibcFileAdvice {
         };
 
         Ok(LibcFileAdvice(libc_advice))
-    }
-}
-
-struct LibcFileControlCommand(libc::c_int);
-
-impl LibcFileControlCommand {
-    fn inner(&self) -> libc::c_int {
-        self.0
-    }
-
-    fn try_from(cmd: i32) -> Result<LibcFileControlCommand, Error> {
-        let libc_cmd: libc::c_int = match cmd {
-            F_DUPFD => libc::F_DUPFD,
-            F_GETFD => libc::F_GETFD,
-            F_SETFD => libc::F_SETFD,
-            F_GETFL => libc::F_GETFL,
-            F_SETFL => libc::F_SETFL,
-            F_GETOWN => libc::F_GETOWN,
-            F_SETOWN => libc::F_SETOWN,
-            F_GETLK => libc::F_GETLK,
-            F_SETLK => libc::F_SETLK,
-            F_SETLKW => libc::F_SETLKW,
-            F_DUPFD_CLOEXEC => libc::F_DUPFD_CLOEXEC,
-            _ => return Err(Error::new(ErrorCode::InvalidArgument, "invalid command")),
-        };
-
-        Ok(LibcFileControlCommand(libc_cmd))
     }
 }
