@@ -16,7 +16,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -25,10 +25,10 @@ use ::sysapi::ffi::c_int;
 //==================================================================================================
 
 pub fn listen(sockfd: c_int, backlog: c_int) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = ListenSocketRequest::build(pid, sockfd, backlog);
+    let request: Message = ListenSocketRequest::build(tid, sockfd, backlog);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

@@ -21,7 +21,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -57,7 +57,7 @@ impl ShutdownSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32, how: Shutdown) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32, how: Shutdown) -> Message {
         let message: Self = Self::new(sockfd, how);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ShutdownSocketRequest,
@@ -65,7 +65,7 @@ impl ShutdownSocketRequest {
         );
 
         let message: Message = Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -104,7 +104,7 @@ impl ShutdownSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Message {
+    pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ShutdownSocketResponse,
@@ -112,7 +112,7 @@ impl ShutdownSocketResponse {
         );
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

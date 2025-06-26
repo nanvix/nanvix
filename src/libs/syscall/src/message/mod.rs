@@ -16,7 +16,7 @@ use ::alloc::vec::Vec;
 use ::sys::{
     error::Error,
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -80,7 +80,7 @@ where
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -90,7 +90,7 @@ where
     /// Upon success, the new message part is returned. Upon failure, an error is returned instead.
     ///
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
@@ -103,14 +103,14 @@ where
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     ///
     /// # Returns
     ///
     /// Upon success, a vector containing the message parts is returned. Upon failure, an error is
     /// returned instead.
     ///
-    fn into_parts(self, pid: ProcessIdentifier) -> Result<Vec<Message>, Error> {
+    fn into_parts(self, tid: ThreadIdentifier) -> Result<Vec<Message>, Error> {
         let bytes: Vec<u8> = self.to_bytes();
         let num_parts: usize = bytes.len().div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         let mut parts: Vec<Message> = Vec::with_capacity(num_parts);
@@ -122,7 +122,7 @@ where
             let mut payload = [0; LinuxDaemonMessagePart::PAYLOAD_SIZE];
             payload[..chunk.len()].copy_from_slice(chunk);
             parts.push(Self::new_part(
-                pid,
+                tid,
                 (num_parts - part_number - 1) as u32,
                 chunk.len() as u8,
                 payload,

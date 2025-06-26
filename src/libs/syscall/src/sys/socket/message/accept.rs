@@ -20,7 +20,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_socket::sockaddr;
 
@@ -54,14 +54,14 @@ impl AcceptSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32) -> Message {
         let message: Self = Self::new(sockfd);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::AcceptSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -104,7 +104,7 @@ impl AcceptSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32, sockaddr: &sockaddr) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockfd, sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::AcceptSocketResponse,
@@ -112,7 +112,7 @@ impl AcceptSocketResponse {
         );
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

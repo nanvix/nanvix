@@ -22,7 +22,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::{
     sys_types::c_size_t,
@@ -54,7 +54,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_read: c_size_t = 0;
     let mut offset: usize = 0;
@@ -63,7 +63,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         let chunk_size: usize = cmp::min(ReadResponse::BUFFER_SIZE, buffer.len() - offset);
 
         // Build request and send it.
-        let request: Message = ReadRequest::build(pid, fd, chunk_size as c_size_t);
+        let request: Message = ReadRequest::build(tid, fd, chunk_size as c_size_t);
         ::sys::kcall::ipc::send(&request)?;
 
         // Receive response.

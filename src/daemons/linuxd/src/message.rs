@@ -9,7 +9,7 @@ use ::alloc::collections::BTreeMap;
 use ::sys::{
     error::Error,
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::syscall::message::{
     LinuxDaemonLongMessage,
@@ -23,13 +23,13 @@ use ::syscall::message::{
 
 #[derive(Default)]
 pub struct RequestAssembler {
-    inflight: BTreeMap<ProcessIdentifier, RequestAssemblerType>,
+    inflight: BTreeMap<ThreadIdentifier, RequestAssemblerType>,
 }
 
 impl RequestAssembler {
     pub fn process_message<T: RequestAssemblerTrait>(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
     ) -> Result<Option<Vec<Message>>, Error> {
         match self.process_message_internal::<T>(source, part) {
@@ -43,7 +43,7 @@ impl RequestAssembler {
 
     fn process_message_internal<T: RequestAssemblerTrait>(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
     ) -> Result<Option<Vec<Message>>, Error> {
         let message_complete: bool = {
@@ -67,7 +67,7 @@ impl RequestAssembler {
 
     fn assemble_parts<T: RequestAssemblerTrait>(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
     ) -> Result<bool, Error> {
         let assembler: &mut RequestAssemblerType = self
@@ -80,7 +80,7 @@ impl RequestAssembler {
 
     fn process_request<T: RequestAssemblerTrait>(
         &mut self,
-        source: ProcessIdentifier,
+        source: ThreadIdentifier,
     ) -> Result<Vec<Message>, Error> {
         let assembler: RequestAssemblerType = self
             .inflight
@@ -126,5 +126,5 @@ where
 
     fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart>;
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message>;
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message>;
 }

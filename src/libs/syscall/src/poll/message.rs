@@ -15,7 +15,7 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sys::ipc::{
     Message,
@@ -110,7 +110,7 @@ impl PollRequest {
 
     /// Builds a `Message` from a `PollRequest`.
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         fds: &[i32],
         events: &[i16],
         timeout: i32,
@@ -161,7 +161,7 @@ impl PollRequest {
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::PollRequest, message.into_bytes());
 
         let message: Message = Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -236,7 +236,7 @@ impl PollResponse {
 
     /// Builds a `Message` from a `PollResponse`.
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         nready: u8,
         fds: &[i32],
         revents: &[i16],
@@ -271,7 +271,7 @@ impl PollResponse {
 
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

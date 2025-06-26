@@ -15,7 +15,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     netinet_in::message_flags::{
@@ -72,12 +72,12 @@ use ::syscall::{
 // do_socket
 //==================================================================================================
 
-pub fn do_socket(pid: ProcessIdentifier, request: CreateSocketRequest) -> Message {
-    trace!("socket(): pid={pid:?}, request={request:?}");
+pub fn do_socket(tid: ThreadIdentifier, request: CreateSocketRequest) -> Message {
+    trace!("socket(): tid={tid:?}, request={request:?}");
 
     let domain: LibcSocketDomain = match LibcSocketDomain::try_from(request.domain) {
         Ok(domain) => domain,
-        Err(e) => return crate::build_error(pid, e.code),
+        Err(e) => return crate::build_error(tid, e.code),
     };
 
     let typ: LibcSocketType = LibcSocketType::from(request.typ);
@@ -95,11 +95,11 @@ pub fn do_socket(pid: ProcessIdentifier, request: CreateSocketRequest) -> Messag
             error!("libc::socket(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         sockfd => {
             debug!("libc::socket(): fd={sockfd:?}");
-            CreateSocketResponse::build(pid, sockfd)
+            CreateSocketResponse::build(tid, sockfd)
         },
     }
 }
@@ -108,12 +108,12 @@ pub fn do_socket(pid: ProcessIdentifier, request: CreateSocketRequest) -> Messag
 // do_socketpair
 //==================================================================================================
 
-pub fn do_socketpair(pid: ProcessIdentifier, request: CreateSocketPairRequest) -> Message {
-    trace!("socketpair(): pid={pid:?}, request={request:?}");
+pub fn do_socketpair(tid: ThreadIdentifier, request: CreateSocketPairRequest) -> Message {
+    trace!("socketpair(): tid={tid:?}, request={request:?}");
 
     let domain: LibcSocketDomain = match LibcSocketDomain::try_from(request.domain) {
         Ok(domain) => domain,
-        Err(e) => return crate::build_error(pid, e.code),
+        Err(e) => return crate::build_error(tid, e.code),
     };
 
     let typ: LibcSocketType = LibcSocketType::from(request.typ);
@@ -135,11 +135,11 @@ pub fn do_socketpair(pid: ProcessIdentifier, request: CreateSocketPairRequest) -
             error!("libc::socketpair(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         _ => {
             debug!("libc::socketpair(): fds={sv:?}");
-            CreateSocketPairResponse::build(pid, sv[0], sv[1])
+            CreateSocketPairResponse::build(tid, sv[0], sv[1])
         },
     }
 }
@@ -148,13 +148,13 @@ pub fn do_socketpair(pid: ProcessIdentifier, request: CreateSocketPairRequest) -
 // do_bind
 //==================================================================================================
 
-pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
-    trace!("bind(): pid={pid:?}, request={request:?}");
+pub fn do_bind(tid: ThreadIdentifier, request: BindSocketRequest) -> Message {
+    trace!("bind(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let sockaddr: LibcSocketAddress = match LibcSocketAddress::try_from(request.sockaddr) {
         Ok(sockaddr) => sockaddr,
-        Err(e) => return crate::build_error(pid, e.code),
+        Err(e) => return crate::build_error(tid, e.code),
     };
     let socklen: socklen_t = mem::size_of_val(&sockaddr) as socklen_t;
 
@@ -170,9 +170,9 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
             error!("libc::bind(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
-        _ => BindSocketResponse::build(pid),
+        _ => BindSocketResponse::build(tid),
     }
 }
 
@@ -180,13 +180,13 @@ pub fn do_bind(pid: ProcessIdentifier, request: BindSocketRequest) -> Message {
 // do_connect
 //==================================================================================================
 
-pub fn do_connect(pid: ProcessIdentifier, request: ConnectSocketRequest) -> Message {
-    trace!("connect(): pid={pid:?}, request={request:?}");
+pub fn do_connect(tid: ThreadIdentifier, request: ConnectSocketRequest) -> Message {
+    trace!("connect(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
     let sockaddr: LibcSocketAddress = match LibcSocketAddress::try_from(request.sockaddr) {
         Ok(sockaddr) => sockaddr,
-        Err(e) => return crate::build_error(pid, e.code),
+        Err(e) => return crate::build_error(tid, e.code),
     };
     let socklen: socklen_t = request.socklen;
 
@@ -209,9 +209,9 @@ pub fn do_connect(pid: ProcessIdentifier, request: ConnectSocketRequest) -> Mess
             error!("libc::connect(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
-        _ => ConnectSocketResponse::build(pid),
+        _ => ConnectSocketResponse::build(tid),
     }
 }
 
@@ -219,8 +219,8 @@ pub fn do_connect(pid: ProcessIdentifier, request: ConnectSocketRequest) -> Mess
 // do_listen
 //==================================================================================================
 
-pub fn do_listen(pid: ProcessIdentifier, request: ListenSocketRequest) -> Message {
-    trace!("listen(): pid={pid:?}, request={request:?}");
+pub fn do_listen(tid: ThreadIdentifier, request: ListenSocketRequest) -> Message {
+    trace!("listen(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let backlog: i32 = request.backlog;
@@ -232,9 +232,9 @@ pub fn do_listen(pid: ProcessIdentifier, request: ListenSocketRequest) -> Messag
             error!("libc::listen(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
-        _ => ListenSocketResponse::build(pid),
+        _ => ListenSocketResponse::build(tid),
     }
 }
 
@@ -242,8 +242,8 @@ pub fn do_listen(pid: ProcessIdentifier, request: ListenSocketRequest) -> Messag
 // do_getpeername
 //==================================================================================================
 
-pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Message {
-    trace!("getpeername(): pid={pid:?}, request={request:?}");
+pub fn do_getpeername(tid: ThreadIdentifier, request: GetPeerNameRequest) -> Message {
+    trace!("getpeername(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
     let mut address: libc::sockaddr = unsafe { core::mem::zeroed() };
@@ -257,7 +257,7 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
             error!("libc::getpeername(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         _ => {
             let sockaddr: sockaddr = sockaddr {
@@ -265,7 +265,7 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            GetPeerNameResponse::build(pid, &sockaddr)
+            GetPeerNameResponse::build(tid, &sockaddr)
         },
     }
 }
@@ -274,8 +274,8 @@ pub fn do_getpeername(pid: ProcessIdentifier, request: GetPeerNameRequest) -> Me
 // do_getsockname
 //==================================================================================================
 
-pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Message {
-    trace!("getsockname(): pid={pid:?}, request={request:?}");
+pub fn do_getsockname(tid: ThreadIdentifier, request: GetSockNameRequest) -> Message {
+    trace!("getsockname(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
     let mut address: libc::sockaddr = unsafe { core::mem::zeroed() };
@@ -290,7 +290,7 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
             error!("libc::getsockname(): {error:?}");
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         _ => {
             let sockaddr: sockaddr = sockaddr {
@@ -298,7 +298,7 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            GetSockNameResponse::build(pid, &sockaddr)
+            GetSockNameResponse::build(tid, &sockaddr)
         },
     }
 }
@@ -307,8 +307,8 @@ pub fn do_getsockname(pid: ProcessIdentifier, request: GetSockNameRequest) -> Me
 // do_accept
 //==================================================================================================
 
-pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Message {
-    trace!("accept(): pid={pid:?}, request={request:?}");
+pub fn do_accept(tid: ThreadIdentifier, request: AcceptSocketRequest) -> Message {
+    trace!("accept(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let mut address: libc::sockaddr = unsafe { core::mem::zeroed() };
@@ -322,7 +322,7 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
             error!("libc::accept(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         sockfd => {
             let sockaddr: sockaddr = sockaddr {
@@ -330,7 +330,7 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            AcceptSocketResponse::build(pid, sockfd, &sockaddr)
+            AcceptSocketResponse::build(tid, sockfd, &sockaddr)
         },
     }
 }
@@ -339,13 +339,13 @@ pub fn do_accept(pid: ProcessIdentifier, request: AcceptSocketRequest) -> Messag
 // do_recv
 //==================================================================================================
 
-pub fn do_recv(pid: ProcessIdentifier, request: ReceiveSocketRequest) -> Message {
-    trace!("recv(): pid={pid:?}, request={request:?}");
+pub fn do_recv(tid: ThreadIdentifier, request: ReceiveSocketRequest) -> Message {
+    trace!("recv(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let flags: LibcMessageFlags = match LibcMessageFlags::try_from(request.flags) {
         Ok(flags) => flags,
-        Err(e) => return crate::build_error(pid, e.code),
+        Err(e) => return crate::build_error(tid, e.code),
     };
 
     let recv_len: usize = cmp::min(ReceiveSocketResponse::BUFFER_SIZE, request.count as usize);
@@ -359,14 +359,14 @@ pub fn do_recv(pid: ProcessIdentifier, request: ReceiveSocketRequest) -> Message
     } {
         count if count >= 0 => {
             debug!("libc::recv(): count={count:?}");
-            ReceiveSocketResponse::build(pid, count as c_size_t, buffer)
+            ReceiveSocketResponse::build(tid, count as c_size_t, buffer)
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             error!("libc::recv(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         _ => unreachable!("libc::recv() returned invalid value"),
     }
@@ -376,21 +376,21 @@ pub fn do_recv(pid: ProcessIdentifier, request: ReceiveSocketRequest) -> Message
 // do_shutdown
 //==================================================================================================
 
-pub fn do_shutdown(pid: ProcessIdentifier, request: ShutdownSocketRequest) -> Message {
-    trace!("shutdown(): pid={pid:?}, request={request:?}");
+pub fn do_shutdown(tid: ThreadIdentifier, request: ShutdownSocketRequest) -> Message {
+    trace!("shutdown(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let how: LibcShutdownReason = LibcShutdownReason::from(request.how);
 
     debug!("libc::shutdown(): sockfd={sockfd:?}, how={:?}", how.inner());
     match unsafe { libc::shutdown(sockfd, how.inner()) } {
-        0 => ShutdownSocketResponse::build(pid),
+        0 => ShutdownSocketResponse::build(tid),
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             error!("libc::shutdown(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         ret => unreachable!("libc::shutdown() returned invalid value {ret:?}"),
     }
@@ -400,14 +400,14 @@ pub fn do_shutdown(pid: ProcessIdentifier, request: ShutdownSocketRequest) -> Me
 // do_send
 //==================================================================================================
 
-pub fn do_send(pid: ProcessIdentifier, request: SendSocketRequest) -> Message {
-    trace!("send(): pid={pid:?}, request={request:?}");
+pub fn do_send(tid: ThreadIdentifier, request: SendSocketRequest) -> Message {
+    trace!("send(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let count: c_size_t = request.count;
     let flags: LibcMessageFlags = match LibcMessageFlags::try_from(request.flags) {
         Ok(flags) => flags,
-        Err(e) => return crate::build_error(pid, e.code),
+        Err(e) => return crate::build_error(tid, e.code),
     };
     let buffer: [u8; SendSocketRequest::BUFFER_SIZE] = request.buffer;
 
@@ -420,14 +420,14 @@ pub fn do_send(pid: ProcessIdentifier, request: SendSocketRequest) -> Message {
     } {
         count if count >= 0 => {
             debug!("libc::send(): count={count:?}");
-            SendSocketResponse::build(pid, count as c_ssize_t)
+            SendSocketResponse::build(tid, count as c_ssize_t)
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             error!("libc::send(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         _ => unreachable!("libc::send() returned invalid value"),
     }

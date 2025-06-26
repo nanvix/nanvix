@@ -17,7 +17,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::time::timespec;
 
@@ -46,7 +46,7 @@ impl UpdateFileAccessTimeRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32, times: &[timespec; 2]) -> Message {
+    pub fn build(tid: ThreadIdentifier, fd: i32, times: &[timespec; 2]) -> Message {
         let message: UpdateFileAccessTimeRequest = UpdateFileAccessTimeRequest {
             fd,
             times: *times,
@@ -57,7 +57,7 @@ impl UpdateFileAccessTimeRequest {
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -97,7 +97,7 @@ impl UpdateFileAccessTimeResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, ret: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
         let message: UpdateFileAccessTimeResponse = UpdateFileAccessTimeResponse::new(ret);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::UpdateFileAccessTimeResponse,
@@ -105,7 +105,7 @@ impl UpdateFileAccessTimeResponse {
         );
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

@@ -21,7 +21,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -57,14 +57,14 @@ impl BindSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: c_int, sockaddr: &sockaddr) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: c_int, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockfd, sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::BindSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -114,7 +114,7 @@ impl BindSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Message {
+    pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::BindSocketResponse,
@@ -122,7 +122,7 @@ impl BindSocketResponse {
         );
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

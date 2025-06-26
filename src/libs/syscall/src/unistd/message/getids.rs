@@ -17,7 +17,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::sys_types::{
     gid_t,
@@ -51,12 +51,12 @@ impl GetIdsRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Message {
+    pub fn build(tid: ThreadIdentifier) -> Message {
         let message: GetIdsRequest = GetIdsRequest::new();
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::GetIdsRequest, message.into_bytes());
         Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -103,7 +103,7 @@ impl GetIdsResponse {
     }
 
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         uid: uid_t,
         gid: gid_t,
         euid: uid_t,
@@ -114,7 +114,7 @@ impl GetIdsResponse {
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::GetIdsResponse, message.into_bytes());
         Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

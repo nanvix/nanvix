@@ -22,7 +22,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -63,12 +63,12 @@ pub fn linkat(
         flags
     );
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: LinkAtRequest =
         LinkAtRequest::new(olddirfd, oldpath.to_string(), newdirfd, newpath.to_string(), flags)?;
 
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
 
     // Send request.
     for request in requests {

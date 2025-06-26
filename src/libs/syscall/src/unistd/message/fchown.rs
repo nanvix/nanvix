@@ -20,7 +20,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 use sysapi::sys_types::{
@@ -69,14 +69,14 @@ impl FileChownRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: c_int, owner: uid_t, group: gid_t) -> Message {
+    pub fn build(tid: ThreadIdentifier, fd: c_int, owner: uid_t, group: gid_t) -> Message {
         let message: FileChownRequest = FileChownRequest::new(fd, owner, group);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::FileChownRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(pid),
+            MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
             MessageType::Ikc,
             None,
@@ -112,7 +112,7 @@ impl FileChownResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Message {
+    pub fn build(tid: ThreadIdentifier) -> Message {
         let message: FileChownResponse = FileChownResponse::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::FileChownResponse,
@@ -120,7 +120,7 @@ impl FileChownResponse {
         );
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

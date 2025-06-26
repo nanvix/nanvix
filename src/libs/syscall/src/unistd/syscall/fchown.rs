@@ -17,7 +17,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
     gid_t,
@@ -46,10 +46,10 @@ use ::sysapi::sys_types::{
 pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::syslog::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it
-    let request: Message = FileChownRequest::build(pid, fd, owner, group);
+    let request: Message = FileChownRequest::build(tid, fd, owner, group);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

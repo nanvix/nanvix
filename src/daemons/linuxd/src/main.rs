@@ -56,7 +56,6 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
 };
 use ::syscomm::{
     Socket,
@@ -64,6 +63,7 @@ use ::syscomm::{
     SocketStream,
     SocketType,
 };
+use sys::pm::ThreadIdentifier;
 
 //==================================================================================================
 // Constants
@@ -216,17 +216,17 @@ pub fn initialize(logfile: bool) {
 ///
 /// # Parameters
 ///
-/// - `pid`: Process identifier.
+/// - `tid`: Thread identifier.
 /// - `error`: Error code.
 ///
 /// # Returns
 ///
 /// A message with the error response.
 ///
-pub fn build_error(pid: ProcessIdentifier, error: ErrorCode) -> Message {
+pub fn build_error(tid: ThreadIdentifier, error: ErrorCode) -> Message {
     Message::new(
         MessageSender::from(::syscall::LINUXD),
-        MessageReceiver::from(pid),
+        MessageReceiver::from(tid),
         MessageType::Ikc,
         Some(error),
         [0u8; Message::PAYLOAD_SIZE],

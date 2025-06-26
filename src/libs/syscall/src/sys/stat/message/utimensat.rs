@@ -34,7 +34,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::{
     limits::PATH_MAX,
@@ -242,7 +242,7 @@ impl MessagePartitioner for UpdateFileAccessTimeAtRequest {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -252,13 +252,13 @@ impl MessagePartitioner for UpdateFileAccessTimeAtRequest {
     /// Upon success, the new message partition is returned. Upon failure, an error is returned.
     ///
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart,
             part_number,
             payload_size,
@@ -301,7 +301,7 @@ impl UpdateFileAccessTimeAtResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, ret: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
         let message: UpdateFileAccessTimeAtResponse = UpdateFileAccessTimeAtResponse::new(ret);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::UpdateFileAccessTimeAtResponse,
@@ -309,7 +309,7 @@ impl UpdateFileAccessTimeAtResponse {
         );
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

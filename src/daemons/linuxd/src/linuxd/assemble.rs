@@ -20,7 +20,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::syscall::{
     fcntl::message::{
@@ -84,7 +84,7 @@ impl RequestAssemblerTrait for FileStatAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_fstat_at(source, request)
     }
 }
@@ -121,7 +121,7 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_symlinkat(source, request)
     }
 }
@@ -162,7 +162,7 @@ impl RequestAssemblerTrait for LinkAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         unistd::do_linkat(source, request)
     }
 }
@@ -199,7 +199,7 @@ impl RequestAssemblerTrait for ReadLinkAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_readlinkat(source, request)
     }
 }
@@ -236,7 +236,7 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_mkdirat(source, request)
     }
 }
@@ -279,7 +279,7 @@ impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_utimensat(source, request)
     }
 }
@@ -316,7 +316,7 @@ impl RequestAssemblerTrait for FileChownAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_fchownat(source, request)
     }
 }
@@ -353,7 +353,7 @@ impl RequestAssemblerTrait for FileChmodAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_fchmodat(source, request)
     }
 }
@@ -390,7 +390,7 @@ impl RequestAssemblerTrait for OpenAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_openat(source, request)
     }
 }
@@ -427,7 +427,7 @@ impl RequestAssemblerTrait for RenameAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_renameat(source, request)
     }
 }
@@ -464,7 +464,7 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         fcntl::do_unlinkat(source, request)
     }
 }
@@ -501,7 +501,7 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         unistd::do_chdir(source, request)
     }
 }
@@ -538,7 +538,7 @@ impl RequestAssemblerTrait for FileAccessAtRequest {
         }
     }
 
-    fn process_request(source: ProcessIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
         unistd::do_faccessat(source, request)
     }
 }

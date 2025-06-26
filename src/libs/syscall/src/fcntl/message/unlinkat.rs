@@ -34,7 +34,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     ffi::c_int,
@@ -207,13 +207,13 @@ impl MessageDeserializer for UnlinkAtRequest {
 impl MessagePartitioner for UnlinkAtRequest {
     /// Creates a new message part for the `unlinkat()` system call.
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::UnlinkAtRequestPart,
             part_number,
             payload_size,
@@ -251,7 +251,7 @@ impl UnlinkAtResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, ret: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
         let message: UnlinkAtResponse = UnlinkAtResponse::new(ret);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::UnlinkAtResponse,
@@ -259,7 +259,7 @@ impl UnlinkAtResponse {
         );
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(pid),
+            MessageReceiver::from(tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

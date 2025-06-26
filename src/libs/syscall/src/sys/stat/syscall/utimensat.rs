@@ -21,7 +21,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::time::timespec;
 
@@ -60,12 +60,12 @@ pub fn utimensat(
         flags
     );
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: UpdateFileAccessTimeAtRequest =
         UpdateFileAccessTimeAtRequest::new(dirfd, pathname.to_string(), flags, times)?;
 
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
 
     // Send request.
     for request in requests {
