@@ -15,7 +15,25 @@ use ::alloc::string::{
 };
 use ::sys::error::ErrorCode;
 use ::sysapi::{
-    fcntl::atflags::AT_FDCWD,
+    fcntl::{
+        atflags::AT_FDCWD,
+        file_access_mode::{
+            O_RDONLY,
+            O_RDWR,
+            O_WRONLY,
+        },
+        file_creation_flags::{
+            O_CREAT,
+            O_DIRECTORY,
+            O_EXCL,
+            O_TRUNC,
+        },
+        file_status_flags::{
+            O_APPEND,
+            O_NONBLOCK,
+            O_SYNC,
+        },
+    },
     ffi::c_int,
     sys_types::{
         mode_t,
@@ -358,13 +376,13 @@ impl From<OpenFlags> for c_int {
         let mut flags: c_int = 0;
 
         match oflags.exclusive {
-            ExclusiveOpenFlags::ReadOnly => flags |= ::syscall::fcntl::OpenFlags::Readonly,
-            ExclusiveOpenFlags::ReadWrite => flags |= ::syscall::fcntl::OpenFlags::ReadWrite,
-            ExclusiveOpenFlags::WriteOnly => flags |= ::syscall::fcntl::OpenFlags::WriteOnly,
+            ExclusiveOpenFlags::ReadOnly => flags |= O_RDONLY,
+            ExclusiveOpenFlags::ReadWrite => flags |= O_RDWR,
+            ExclusiveOpenFlags::WriteOnly => flags |= O_WRONLY,
         }
 
         if oflags.non_exclusive.append {
-            flags |= syscall::fcntl::OpenFlags::Append;
+            flags |= O_APPEND;
         }
 
         if oflags.non_exclusive.close_on_exec {
@@ -376,19 +394,19 @@ impl From<OpenFlags> for c_int {
         }
 
         if oflags.non_exclusive.create {
-            flags |= syscall::fcntl::OpenFlags::Create;
+            flags |= O_CREAT;
         }
 
         if oflags.non_exclusive.directory {
-            flags |= syscall::fcntl::OpenFlags::Directory;
+            flags |= O_DIRECTORY;
         }
 
         if oflags.non_exclusive.dsync {
-            flags |= syscall::fcntl::OpenFlags::Sync;
+            flags |= O_SYNC;
         }
 
         if oflags.non_exclusive.exclusive {
-            flags |= syscall::fcntl::OpenFlags::Exclusive;
+            flags |= O_EXCL;
         }
 
         if oflags.non_exclusive.no_controlling_terminal {
@@ -400,19 +418,19 @@ impl From<OpenFlags> for c_int {
         }
 
         if oflags.non_exclusive.non_block {
-            flags |= syscall::fcntl::OpenFlags::NonBlocking;
+            flags |= O_NONBLOCK;
         }
 
         if oflags.non_exclusive.rsync {
-            flags |= syscall::fcntl::OpenFlags::Sync;
+            flags |= O_SYNC;
         }
 
         if oflags.non_exclusive.sync {
-            flags |= syscall::fcntl::OpenFlags::Sync;
+            flags |= O_SYNC;
         }
 
         if oflags.non_exclusive.truncate {
-            flags |= syscall::fcntl::OpenFlags::Truncate;
+            flags |= O_TRUNC;
         }
 
         if oflags.non_exclusive.initialize_tty {

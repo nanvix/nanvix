@@ -7,10 +7,8 @@
 
 use crate::{
     dirent::DirectoryStream,
-    fcntl::{
-        self,
-        OpenFlags,
-    },
+    fcntl,
+    safe::OpenFlags,
 };
 use ::alloc::boxed::Box;
 use ::sys::error::Error;
@@ -22,7 +20,8 @@ use ::sysapi::ffi::c_int;
 
 /// Opens a directory stream.
 pub fn opendir(dirname: &str) -> Result<Box<DirectoryStream>, Error> {
-    let fd: c_int = fcntl::open(dirname, OpenFlags::Readonly | OpenFlags::Directory, 0)?;
+    let flags: c_int = OpenFlags::read_only().set_directory(true).into();
+    let fd: c_int = fcntl::open(dirname, flags, 0)?;
     let dir: DirectoryStream = DirectoryStream::new(fd);
     Ok(Box::new(dir))
 }

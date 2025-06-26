@@ -8,9 +8,9 @@
 use crate::sys;
 use ::sys::error::Error;
 use ::sysapi::{
-    fcntl::{
-        atflags::AT_FDCWD,
-        file_access_mode::AT_SYMLINK_NOFOLLOW,
+    fcntl::atflags::{
+        AT_FDCWD,
+        AT_SYMLINK_NOFOLLOW,
     },
     sys_stat,
 };

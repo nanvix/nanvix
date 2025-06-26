@@ -25,6 +25,7 @@ use sysapi::{
         SEEK_SET,
     },
 };
+use syscall::safe::RegularFileOpenFlags;
 
 //==================================================================================================
 // Standalone Functions
@@ -50,7 +51,7 @@ pub fn test() {
     }
 
     // Open file for reading and writing and assert result.
-    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::ReadWrite.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, RegularFileOpenFlags::read_write().into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");
@@ -95,7 +96,7 @@ pub fn test() {
     }
 
     // Open file for reading and writing again and assert result.
-    let fd: c_int = match fcntl::open(filename, fcntl::OpenFlags::ReadWrite.into(), 0) {
+    let fd: c_int = match fcntl::open(filename, RegularFileOpenFlags::read_write().into(), 0) {
         Ok(fd) => fd,
         Err(error) => {
             panic!("{error:?}");
