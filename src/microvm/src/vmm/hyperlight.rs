@@ -11,43 +11,45 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use crate::{
-    io::IoThread,
     Gateway,
+    io::IoThread,
 };
 use ::anyhow::Result;
 use ::hyperlight_host::{
+    GuestBinary,
+    MultiUseSandbox,
+    UninitializedSandbox,
     sandbox::SandboxConfiguration,
     sandbox_state::{
         sandbox::EvolvableSandbox,
         transition::Noop,
     },
-    GuestBinary,
-    MultiUseSandbox,
-    UninitializedSandbox,
 };
 use ::std::{
     fs::File,
     io::Write,
     sync::{
+        Arc,
+        Mutex,
         mpsc,
         mpsc::{
             Sender,
             TryRecvError,
         },
-        Arc,
-        Mutex,
     },
     thread::JoinHandle,
-    time::Duration,
 };
 use ::sys::ipc::{
     Message,
     MessageType,
 };
 use hyperlight_host::{
-    func::HostFunction,
-    sandbox::uninitialized::GuestInitrd,
     HyperlightError,
+    mem::memory_region::MemoryRegionFlags,
+    sandbox::uninitialized::{
+        GuestBlob,
+        GuestEnvironment,
+    },
 };
 
 //==================================================================================================
@@ -82,12 +84,13 @@ impl Vmm {
         let _io_thread: Option<JoinHandle<Result<()>>> =
             gateway_conn.map(|conn| IoThread::spawn(conn, gateway_rx, gateway_tx.clone()));
 
+        // Required values for heap and stack sizes to be used by the kernel.
+        let heap_size = 4 * 1024 * 1024;
+        let stack_size = 4 * 1024;
+
         let mut config: SandboxConfiguration = SandboxConfiguration::default();
-        config.set_heap_size(4 * 1024 * 1024);
-        config.set_stack_size(4 * 1024);
-        config.set_max_execution_time(Duration::from_secs(10));
-        config.set_max_execution_cancel_wait_time(Duration::from_secs(10));
-        config.set_guest_memory_size(memory_size);
+        config.set_heap_size(heap_size);
+        config.set_stack_size(stack_size);
 
         let file_writer = Self::get_stderr_writer(stderr.clone())?;
 
@@ -97,16 +100,86 @@ impl Vmm {
             Ok(s.len() as i32)
         };
 
+        let guest_env = if let Some(initrd_filename) = initrd_filename {
+            match std::fs::read(&initrd_filename) {
+                Ok(bytes) => {
+                    let actual_size = bytes.len();
+                    log::debug!("initrd: {} bytes", actual_size);
+
+                    let kernel_size = std::fs::metadata(kernel_filename)
+                        .map(|m| m.len() as usize)
+                        .map_err(|e| {
+                            anyhow::anyhow!("failed to read kernel file metadata: {}", e)
+                        })?;
+
+                    let initrd_bytes = std::fs::read(&initrd_filename)?;
+                    let initrd_size = initrd_bytes.len();
+
+                    // PEB, I/O buffers, host fxn defs, guard pages, etc.
+                    let reserved_pages = 11 * 4096;
+
+                    let used_memory =
+                        kernel_size + initrd_size + (heap_size + stack_size) as usize + reserved_pages;
+
+                    if memory_size <= used_memory {
+                        return Err(anyhow::anyhow!(
+                            "Not enough memory ({} bytes used, {} bytes total)",
+                            used_memory,
+                            memory_size
+                        ));
+                    }
+
+                    let padding_size = memory_size - used_memory;
+
+                    // Create a new vector with size header + original data + padding
+                    let mut padded_bytes = Vec::with_capacity(::config::hyperlight::INITRD_SIZE_BYTES + actual_size + padding_size);
+
+                    // Write the actual size as first INITRD_SIZE_BYTES-bytes (little-endian)
+                    padded_bytes.extend_from_slice(&(actual_size as u64).to_le_bytes());
+
+                    // Add the actual initrd data
+                    padded_bytes.extend_from_slice(&bytes);
+
+                    // Fill the rest with padding
+                    padded_bytes.resize(8 + actual_size + padding_size, 0);
+
+                    log::debug!(
+                        "initrd with padding: {} bytes total (8 byte header + {} bytes data + {} \
+                         bytes padding)",
+                        padded_bytes.len(),
+                        actual_size,
+                        padding_size
+                    );
+
+                    // Box the data to extend its lifetime
+                    let boxed_data = padded_bytes.into_boxed_slice();
+                    let data_ref: &'static [u8] = Box::leak(boxed_data);
+
+                    GuestEnvironment {
+                        guest_binary: GuestBinary::FilePath(kernel_filename.to_string()),
+                        init_data: Some(GuestBlob {
+                            data: data_ref,
+                            permissions: MemoryRegionFlags::READ
+                                | MemoryRegionFlags::WRITE
+                                | MemoryRegionFlags::EXECUTE,
+                        }),
+                    }
+                },
+                Err(err) => {
+                    let reason: String = format!("failed to read initrd file: {:?}", err);
+                    error!("initrd(): {}", reason);
+                    return Err(anyhow::anyhow!("initrd(): {}", reason));
+                },
+            }
+        } else {
+            GuestEnvironment::new(GuestBinary::FilePath(kernel_filename.to_string()), None)
+        };
+
         // Creates Hyperlight sandbox.
-        let mut sandbox = UninitializedSandbox::new(
-            GuestBinary::FilePath(kernel_filename.to_string()),
-            initrd_filename.map(GuestInitrd::FilePath),
-            Some(config),
-            None, // Use default run options.
-        )?;
+        let mut sandbox = UninitializedSandbox::new(guest_env, Some(config))?;
         sandbox.register_print(writer_fn)?;
 
-        let vmbus_write = move |data: Vec<u8>| -> Result<i32, HyperlightError> {
+        sandbox.register("VmbusWrite", move |data: Vec<u8>| -> Result<i32, HyperlightError> {
             let bytes = data.as_slice();
             let message: Message = match Message::try_from_bytes(
                 bytes.try_into().expect("slice with incorrect length"),
@@ -126,9 +199,9 @@ impl Vmm {
             }
 
             Ok(data.len() as i32)
-        };
+        })?;
 
-        let vmbus_read = move || -> Result<Vec<u8>, HyperlightError> {
+        sandbox.register("VmbusRead", move || -> Result<Vec<u8>, HyperlightError> {
             match vm_rx.try_recv() {
                 Ok(mut msg) => {
                     msg.message_type = MessageType::Ikc;
@@ -146,14 +219,7 @@ impl Vmm {
                     Err(HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
                 },
             }
-        };
-
-        let vmbus_write_host_fn = Arc::new(Mutex::new(vmbus_write));
-        let vmbus_read_host_fn = Arc::new(Mutex::new(vmbus_read));
-
-        // Register host functions.
-        vmbus_read_host_fn.register(&mut sandbox, "VmbusRead")?;
-        vmbus_write_host_fn.register(&mut sandbox, "VmbusWrite")?;
+        })?;
 
         Ok(Self {
             _gateway_tx: gateway_tx,

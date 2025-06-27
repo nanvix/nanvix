@@ -42,6 +42,7 @@ use ::arch::{
     mem,
     mem::PAGE_ALIGNMENT,
 };
+use ::hyperlight_common::mem::HyperlightPEB;
 use ::sys::{
     config::memory_layout,
     error::{
@@ -55,8 +56,8 @@ use ::sys::{
     },
 };
 use peb::{
-    HyperlightPEB,
     ProcessEnvironmentBlock,
+    GUEST_HANDLE,
 };
 
 //==================================================================================================
@@ -226,22 +227,76 @@ pub fn shutdown(_status: usize) -> ! {
 ///
 /// A new boot information structure.
 ///
-pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
-    // Check if magic number matches what we expect.
-    if magic != ::config::hyperlight::DEFAULT_BOOT_MAGIC {
-        let reason: &str = "invalid boot magic number";
-        error!("parse_bootinfo(): magic={:#010x}, info={:#010x} (error={})", magic, info, reason);
-        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+pub fn parse_bootinfo(_: u32, _: usize) -> Result<BootInfo, Error> {
+    trace!("parse_bootinfo()");
+
+    extern "C" {
+        static __KERNEL_END: u8;
     }
 
-    trace!("parse_bootinfo(): magic={:#010x}, info={:#010x}", magic, info);
+    let peb_base: usize =
+        unsafe { ::sys::mm::align_up(&__KERNEL_END as *const u8 as usize, PAGE_ALIGNMENT) };
 
-    // Retrieve initrd information.
-    // - Lower 12 bits encode the size of the initrd.
-    // - Higher bits encode the base address of the initrd.
-    let nzeros: usize = 12; // TODO: change this to INITRD_BASE.trailing_zeros()
-    let initrd_size: usize = info & ((1 << nzeros) - 1);
-    let initrd_base: usize = info & !((1 << nzeros) - 1);
+    unsafe {
+        ProcessEnvironmentBlock::init(peb_base as *mut HyperlightPEB)?;
+        ProcessEnvironmentBlock::set_guest_function_dispatch_ptr(0xdeadbeef)?;
+    };
+
+    // Read actual size and relocate only that amount
+    let (initrd_base, initrd_size) = unsafe {
+        match GUEST_HANDLE.peb() {
+            Some(peb_ptr) => {
+                let current_data_start = (*peb_ptr).init_data.ptr as usize;
+                let total_size = (*peb_ptr).init_data.size as usize;
+
+                // Read the actual initrd size from the first INITRD_SIZE_BYTES bytes
+                let size_bytes = core::slice::from_raw_parts(
+                    current_data_start as *const u8,
+                    ::config::hyperlight::INITRD_SIZE_BYTES,
+                );
+                let actual_initrd_size = u64::from_le_bytes([
+                    size_bytes[0],
+                    size_bytes[1],
+                    size_bytes[2],
+                    size_bytes[3],
+                    size_bytes[4],
+                    size_bytes[5],
+                    size_bytes[6],
+                    size_bytes[7],
+                ]) as usize;
+
+                // The actual initrd data starts after the INITRD_SIZE_BYTES-byte header
+                let current_initrd_start =
+                    current_data_start + ::config::hyperlight::INITRD_SIZE_BYTES;
+
+                debug!(
+                    "initrd: found at 0x{current_initrd_start:08x}, actual size: \
+                     {actual_initrd_size} bytes (total allocation: {total_size} bytes)"
+                );
+
+                if current_initrd_start != ::config::hyperlight::DEFAULT_INITRD_BASE {
+                    let src_ptr = current_initrd_start as *const u8;
+                    let dst_ptr = ::config::hyperlight::DEFAULT_INITRD_BASE as *mut u8;
+
+                    core::ptr::copy(src_ptr, dst_ptr, actual_initrd_size);
+
+                    debug!(
+                        "parse_bootinfo(): initrd relocated from {current_initrd_start:#010x} to \
+                         {:#010x}",
+                        ::config::hyperlight::DEFAULT_INITRD_BASE
+                    );
+
+                    (::config::hyperlight::DEFAULT_INITRD_BASE, actual_initrd_size)
+                } else {
+                    (current_initrd_start, actual_initrd_size)
+                }
+            },
+            None => {
+                error!("parse_bootinfo(): PEB not initialized");
+                return Err(Error::new(ErrorCode::NoSuchDevice, "PEB not initialized"));
+            },
+        }
+    };
 
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
 
@@ -255,7 +310,7 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         // Add kernel module to the list of kernel modules.
         let module: KernelModule = KernelModule::new(
             PhysicalAddress::from_raw_value(initrd_base)?,
-            initrd_size * mem::PAGE_SIZE,
+            initrd_size,
             "initrd".to_string(),
         );
         kernel_modules.push_back(module);
@@ -288,8 +343,20 @@ pub fn init(
     )?;
     memory_regions.push_back(peb);
 
+    // Register host function definitions
+    let host_function_definitions_base: usize = peb_base + PEB_SIZE;
+    const HOST_FUNCTION_DEFINITIONS_SIZE: usize = mem::PAGE_SIZE;
+    let host_function_definitions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+        "host function definitions",
+        VirtualAddress::from_raw_value(host_function_definitions_base),
+        HOST_FUNCTION_DEFINITIONS_SIZE,
+        MemoryRegionType::Reserved,
+        AccessPermission::RDONLY,
+    )?;
+    memory_regions.push_back(host_function_definitions);
+
     // Register input data buffer.
-    let input_data_base: usize = peb_base + PEB_SIZE;
+    let input_data_base: usize = host_function_definitions_base + HOST_FUNCTION_DEFINITIONS_SIZE;
     const INPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
     let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "input data buffer",
@@ -349,11 +416,6 @@ pub fn init(
         AccessPermission::RDONLY,
     )?;
     memory_regions.push_back(guest_user_stack);
-
-    unsafe {
-        ProcessEnvironmentBlock::init(peb_base as *mut HyperlightPEB)?;
-        ProcessEnvironmentBlock::set_guest_function_dispatch_ptr(0xdeadbeef)?;
-    };
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,

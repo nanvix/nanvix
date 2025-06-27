@@ -217,4 +217,8 @@ pub mod pc {
 pub mod hyperlight {
     /// Magic value that identifies the virtual machine monitor.
     pub const DEFAULT_BOOT_MAGIC: u32 = 0x0c00ffee;
+    /// Base address of the RAM disk.
+    pub const DEFAULT_INITRD_BASE: usize = 0x00802000;
+    /// Number of bytes used to store initrd's size.
+    pub const INITRD_SIZE_BYTES: usize = 8;
 }

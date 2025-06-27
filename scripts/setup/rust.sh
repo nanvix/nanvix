@@ -17,7 +17,7 @@ NANVIX_HOME=`git rev-parse --show-toplevel`
 
 CHANGE_ID=138986
 RUST_VERSION=v1.87.0
-COMMIT_ID=17067e9ac6d7ecb70e50f92c1944e545188d2359
+COMMIT_ID=2691c47ddbb56d329bb131fcbc4e4e490e0714b7
 REPOSITORY_NAME=rust
 REPOSITORY=https://github.com/nanvix/rust.git
 RUST_HOME=${TOOLCHAIN_DIR}/src/rust
@@ -67,4 +67,4 @@ export DESTDIR=${TOOLCHAIN_DIR}
 
 # Set nightly cargo and link toolchain to make it available.
 rustup override set nightly
-rustup toolchain link nanvix-x86 build/host/stage2
+rustup toolchain link nanvix-x86-nightly build/host/stage2
