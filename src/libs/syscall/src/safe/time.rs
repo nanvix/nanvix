@@ -39,6 +39,19 @@ impl Time {
     ///
     /// # Description
     ///
+    /// Converts the `Time` instance into a `SystemTime`.
+    ///
+    /// # Returns
+    ///
+    /// Returns the underlying `SystemTime` instance.
+    ///
+    pub fn into_system_time(self) -> SystemTime {
+        self.0
+    }
+
+    ///
+    /// # Description
+    ///
     /// Gets the current system time.
     ///
     /// # Returns
