@@ -114,7 +114,7 @@ pub mod memory_layout {
     ///
     /// - This size should be a multiple of a page size.
     ///
-    pub const USER_STACK_SIZE: usize = 32 * crate::constants::KILOBYTE;
+    pub const USER_STACK_SIZE: usize = 512 * crate::constants::KILOBYTE;
 
     ///
     /// # Description
