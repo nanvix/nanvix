@@ -744,7 +744,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
         libc::F_GETFL => 0,
         libc::F_SETFL => {
             match LibcFileStatusFlags::try_from_nanvix_flags(
-                request.arg & LibcFileStatusFlags::libc_mask(),
+                request.arg & LibcFileStatusFlags::nanvix_mask(),
             ) {
                 Ok(flags) => flags.inner(),
                 Err(error) => {
