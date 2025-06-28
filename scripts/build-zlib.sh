@@ -8,22 +8,25 @@
 #===================================================================================================
 
 RULE=${1:-build}
-NANVIX_HOME=${2:-`git rev-parse --show-toplevel`}
-TOOLCHAIN_DIR=${3:-$PWD/toolchain}
-SYSROOT_DIR=${4:-$PWD/sysroot}
+TOOLCHAIN_DIR=${2:-$PWD/toolchain}
+SYSROOT_DIR=${3:-$PWD/sysroot}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
 
-OPT_DIR=${NANVIX_HOME}/opt
-ZLIB_HOME=${OPT_DIR}/zlib
+export CONTRIB_DIR=${SYSROOT_DIR}/src
+export ZLIB_HOME=${CONTRIB_DIR}/zlib
+export ZLIB_REPOSITORY=https://github.com/nanvix/zlib
+export ZLIB_BRANCH=nanvix/zlib-1.3.1
+export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 
 #===================================================================================================
 # Clean
 #===================================================================================================
 
 make_clean() {
+    cd ${ZLIB_HOME}
     make clean
 }
 
@@ -32,6 +35,7 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
+    cd ${ZLIB_HOME}
     git clean -fdx
 }
 
@@ -59,14 +63,16 @@ configure() {
 #===================================================================================================
 
 make_all() {
+    cd ${ZLIB_HOME}
     make all
 }
 
 #===================================================================================================
-# Make Install
+# Install
 #===================================================================================================
 
 make_install() {
+    cd ${ZLIB_HOME}
     make install
 }
 
@@ -75,10 +81,9 @@ make_install() {
 #===================================================================================================
 
 build() {
+    cd ${ZLIB_HOME}
     configure
-
     make_all
-
     make_install
 }
 
@@ -87,17 +92,22 @@ build() {
 #===================================================================================================
 
 init() {
-	# Nothing to do here.
-	return
+    mkdir -p ${CONTRIB_DIR}
+    if [ ! -d "${ZLIB_HOME}/.git" ];
+    then
+        git clone ${ZLIB_REPOSITORY} ${ZLIB_HOME}
+        cd ${ZLIB_HOME}
+    else
+        cd ${ZLIB_HOME}
+        git fetch origin
+        git reset --hard
+    fi
+    git checkout ${ZLIB_BRANCH}
+
+    configure
 }
 
 #===================================================================================================
-
-# Fetch submodule if needed.
-git submodule update --init ${ZLIB_HOME}
-
-# Switch to submodule directory.
-cd ${ZLIB_HOME}
 
 # Save current environment variables.
 OLD_AR=$AR
@@ -109,8 +119,10 @@ OLD_LD=$LD
 OLD_CFLAGS=$CFLAGS
 OLD_CXXFLAGS=$CXXFLAGS
 OLD_LD_FLAGS=$LDFLAGS
+OLD_LIBC=$LIBC
+OLD_LIBM=$LIBM
 
-# Unset environment variables that might interfere with the build.
+# Unset variables that might interfere with the build process.
 unset AR
 unset AS
 unset CC
@@ -120,6 +132,8 @@ unset LD
 unset CFLAGS
 unset CXXFLAGS
 unset LDFLAGS
+unset LIBC
+unset LIBM
 
 case $RULE in
     build)
@@ -134,7 +148,7 @@ case $RULE in
     init)
         init
         ;;
- esac
+esac
 
 # Restore original environment variables.
 export AR=$OLD_AR
@@ -146,3 +160,5 @@ export LD=$OLD_LD
 export CFLAGS=$OLD_CFLAGS
 export CXXFLAGS=$OLD_CXXFLAGS
 export LDFLAGS=$OLD_LD_FLAGS
+export LIBC=$OLD_LIBC
+export LIBM=$OLD_LIBM
