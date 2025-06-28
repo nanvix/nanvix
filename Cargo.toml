@@ -5,7 +5,6 @@
 resolver = "2"
 default-members = ["src/microvm"]
 members = [
-        "src/benchmarks/matmul",
         "src/benchmarks/echo-rust-nostd",
         "src/benchmarks/echo-rust-server-nostd",
         "src/benchmarks/echo-single-rust-nostd",
