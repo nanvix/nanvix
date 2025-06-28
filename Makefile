@@ -518,22 +518,22 @@ endif
 all-zlib: init all-guest-staticlibs
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Zlib..."
-	bash $(SCRIPTS_DIR)/build-zlib.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 clean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 distclean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 init-zlib: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh init $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================
