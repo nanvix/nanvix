@@ -84,6 +84,7 @@ make_install() {
 
 build() {
     cd ${OPENBLAS_HOME}
+    configure
 	make_all
 	make_install
 }
@@ -104,8 +105,6 @@ init() {
         git reset --hard
     fi
     git checkout ${OPENBLAS_BRANCH}
-
-    configure
 }
 
 #===================================================================================================
