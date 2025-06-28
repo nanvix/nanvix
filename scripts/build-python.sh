@@ -150,7 +150,7 @@ build() {
 
 init() {
     mkdir -p ${CONTRIB_DIR}
-    if [ ! -d "${CPYTHON_HOME}/.git" ];
+    if [ ! -d "${CROSS_DIR}/bin/python3" ];
     then
         git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
         git checkout ${CPYTHON_BRANCH}
