@@ -109,7 +109,7 @@ pub fn capctl(capability: Capability, value: bool) -> Result<(), Error> {
 //==================================================================================================
 
 pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
-    let result: i64 = kcall1!(KcallNumber::Terminate.into(), usize::from(pid) as u32);
+    let result: i64 = kcall1!(KcallNumber::Terminate.into(), u32::try_from(pid)?);
 
     if result == 0 {
         Ok(())

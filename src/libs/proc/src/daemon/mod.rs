@@ -118,8 +118,15 @@ impl ProcessDaemon {
 
     fn handle_process_termination_event(&mut self, message: Message) -> Result<bool, Error> {
         // Deserialize process identifier.
-        let pid: ProcessIdentifier =
-            ProcessIdentifier::from(u32::from_le_bytes(message.payload[0..4].try_into().unwrap()));
+        let raw_pid_bytes: [u8; 4] = match message.payload[0..4].try_into() {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                let reason: &str = "invalid process termination message payload";
+                ::syslog::error!("handle_process_termination_event(): {reason:?}");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
+        let pid: ProcessIdentifier = ProcessIdentifier::from(i32::from_le_bytes(raw_pid_bytes));
 
         ::syslog::info!("received scheduling event (pid={:?})", pid);
 
@@ -212,7 +219,7 @@ impl ProcessDaemon {
                 Err(_) => {
                     let message: Message = message::lookup_response(
                         destination,
-                        ProcessIdentifier::from(u32::MAX),
+                        ProcessIdentifier::from(i32::MAX),
                         ErrorCode::InvalidArgument.get(),
                     )?;
                     return Ok(message);
@@ -221,7 +228,7 @@ impl ProcessDaemon {
             Err(_) => {
                 let message: Message = message::lookup_response(
                     destination,
-                    ProcessIdentifier::from(u32::MAX),
+                    ProcessIdentifier::from(i32::MAX),
                     ErrorCode::InvalidArgument.get(),
                 )?;
                 return Ok(message);
@@ -239,7 +246,7 @@ impl ProcessDaemon {
         }
         let message: Message = message::lookup_response(
             destination,
-            ProcessIdentifier::from(u32::MAX),
+            ProcessIdentifier::from(i32::MAX),
             ErrorCode::NoSuchEntry.get(),
         )?;
 
@@ -262,7 +269,7 @@ impl ProcessDaemon {
                 Ok(message) => {
                     if message.message_type == MessageType::ProcessTerminationEvent {
                         // Deserialize process identifier.
-                        let pid: ProcessIdentifier = ProcessIdentifier::from(u32::from_le_bytes(
+                        let pid: ProcessIdentifier = ProcessIdentifier::from(i32::from_le_bytes(
                             message.payload[0..4].try_into().unwrap(),
                         ));
 
