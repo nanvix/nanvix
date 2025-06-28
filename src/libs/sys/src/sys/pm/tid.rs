@@ -2,6 +2,23 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![forbid(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::char_lit_as_u8,
+    clippy::fn_to_numeric_cast,
+    clippy::fn_to_numeric_cast_with_truncation,
+    clippy::ptr_as_ptr,
+    clippy::unnecessary_cast,
+    invalid_reference_casting
+)]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -20,69 +37,77 @@ use crate::error::{
 /// A type that represents a thread identifier.
 ///
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ThreadIdentifier(usize);
+#[repr(C)]
+pub struct ThreadIdentifier(i32);
+::static_assert::assert_eq_size!(ThreadIdentifier, 4);
+::static_assert::assert_eq_align!(ThreadIdentifier, 4);
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl From<usize> for ThreadIdentifier {
-    fn from(id: usize) -> ThreadIdentifier {
-        ThreadIdentifier(id)
+impl From<ThreadIdentifier> for isize {
+    fn from(tid: ThreadIdentifier) -> isize {
+        tid.0 as isize
     }
 }
 
-impl From<u32> for ThreadIdentifier {
-    fn from(id: u32) -> ThreadIdentifier {
-        ThreadIdentifier(id as usize)
-    }
-}
-
-impl From<ThreadIdentifier> for usize {
-    fn from(tid: ThreadIdentifier) -> usize {
+impl From<ThreadIdentifier> for i32 {
+    fn from(tid: ThreadIdentifier) -> i32 {
         tid.0
     }
 }
 
-impl From<ThreadIdentifier> for u32 {
-    fn from(tid: ThreadIdentifier) -> u32 {
-        tid.0 as u32
+impl From<ThreadIdentifier> for i64 {
+    fn from(tid: ThreadIdentifier) -> i64 {
+        tid.0 as i64
     }
 }
 
-impl TryFrom<ThreadIdentifier> for i32 {
+impl TryFrom<ThreadIdentifier> for usize {
     type Error = Error;
 
     fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
-        if tid.0 > i32::MAX as usize {
-            Err(Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
-        } else {
-            Ok(tid.0 as i32)
-        }
+        tid.0
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
     }
 }
 
-impl TryFrom<ThreadIdentifier> for i64 {
+impl TryFrom<ThreadIdentifier> for u32 {
     type Error = Error;
 
     fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
-        if tid.0 > i64::MAX as usize {
-            Err(Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
-        } else {
-            Ok(tid.0 as i64)
-        }
+        tid.0
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
     }
 }
 
-impl TryFrom<i32> for ThreadIdentifier {
+impl TryFrom<ThreadIdentifier> for u64 {
     type Error = Error;
 
-    fn try_from(raw_tid: i32) -> Result<Self, Self::Error> {
-        if raw_tid < 0 {
-            Err(Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
-        } else {
-            Ok(ThreadIdentifier(raw_tid as usize))
-        }
+    fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
+        tid.0
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+    }
+}
+
+impl TryFrom<isize> for ThreadIdentifier {
+    type Error = Error;
+
+    fn try_from(raw_tid: isize) -> Result<Self, Self::Error> {
+        raw_tid
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map(ThreadIdentifier)
+    }
+}
+
+impl From<i32> for ThreadIdentifier {
+    fn from(raw_tid: i32) -> ThreadIdentifier {
+        ThreadIdentifier(raw_tid)
     }
 }
 
@@ -90,11 +115,43 @@ impl TryFrom<i64> for ThreadIdentifier {
     type Error = Error;
 
     fn try_from(raw_tid: i64) -> Result<Self, Self::Error> {
-        if raw_tid < 0 {
-            Err(Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
-        } else {
-            Ok(ThreadIdentifier(raw_tid as usize))
-        }
+        raw_tid
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map(ThreadIdentifier)
+    }
+}
+
+impl TryFrom<usize> for ThreadIdentifier {
+    type Error = Error;
+
+    fn try_from(raw_tid: usize) -> Result<Self, Self::Error> {
+        raw_tid
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map(ThreadIdentifier)
+    }
+}
+
+impl TryFrom<u32> for ThreadIdentifier {
+    type Error = Error;
+
+    fn try_from(raw_tid: u32) -> Result<Self, Self::Error> {
+        raw_tid
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map(ThreadIdentifier)
+    }
+}
+
+impl TryFrom<u64> for ThreadIdentifier {
+    type Error = Error;
+
+    fn try_from(raw_tid: u64) -> Result<Self, Self::Error> {
+        raw_tid
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map(ThreadIdentifier)
     }
 }
 

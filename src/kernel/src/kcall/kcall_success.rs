@@ -39,6 +39,12 @@ impl From<u32> for KcallSuccess {
     }
 }
 
+impl From<i32> for KcallSuccess {
+    fn from(code: i32) -> Self {
+        KcallSuccess(code)
+    }
+}
+
 impl From<KcallSuccess> for i32 {
     fn from(result: KcallSuccess) -> Self {
         result.0
