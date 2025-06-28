@@ -1,9 +1,6 @@
 [submodule "opt/zlib"]
 	path = opt/zlib
 	url = https://github.com/nanvix/zlib.git
-[submodule "opt/sqlite"]
-	path = opt/sqlite
-	url = https://github.com/nanvix/sqlite.git
 [submodule "contrib/cloud-hypervisor"]
 	path = contrib/cloud-hypervisor
 	url = https://github.com/nanvix/cloud-hypervisor.git

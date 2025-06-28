@@ -396,7 +396,7 @@ clean-opt: clean-openblas clean-openssl clean-python clean-sqlite clean-zlib
 distclean-opt: distclean-openblas distclean-openssl distclean-python distclean-sqlite distclean-zlib
 	$(FORCE_RM_CMD) $(SYSROOT_DIR)
 
-init-opt: init-openblas init-openssl init-python init-zlib
+init-opt: init-openblas init-openssl init-python init-sqlite init-zlib
 
 else
 
@@ -415,7 +415,7 @@ endif
 # Build Rules for OpenBLAS
 #===================================================================================================
 
-all-openblas: init all-guest-staticlibs
+all-openblas: init-repo all-guest-staticlibs
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building OpenBLAS..."
 	bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
@@ -440,7 +440,7 @@ endif
 # Build Rules for OpenSSL
 #===================================================================================================
 
-all-openssl: init
+all-openssl: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building openssl..."
 	bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
@@ -465,7 +465,7 @@ endif
 # Build Rules for Python
 #===================================================================================================
 
-all-python: init all-guest-staticlibs all-sqlite all-openssl all-zlib
+all-python: init-repo all-guest-staticlibs all-sqlite all-openssl all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Python..."
 	bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
@@ -490,50 +490,50 @@ endif
 # Build Rules for Sqlite
 #===================================================================================================
 
-all-sqlite: init all-guest-staticlibs all-zlib
+all-sqlite: init-repo all-guest-staticlibs all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building sqlite..."
-	bash $(SCRIPTS_DIR)/build-sqlite.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 clean-sqlite: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 distclean-sqlite: distclean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 init-sqlite: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh init $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-sqlite.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================
 # Build Rules for Zlib
 #===================================================================================================
 
-all-zlib: init all-guest-staticlibs
+all-zlib: init-repo all-guest-staticlibs
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Zlib..."
-	bash $(SCRIPTS_DIR)/build-zlib.sh build $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 clean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 distclean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 init-zlib: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh init $(ROOT_DIR) $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-zlib.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 #===================================================================================================
