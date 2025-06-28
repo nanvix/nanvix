@@ -89,6 +89,7 @@ make_install() {
 
 build() {
     cd ${OPENSSL_HOME}
+    configure
 	make_all
 	make_install
 }
@@ -109,8 +110,6 @@ init() {
         git reset --hard
     fi
     git checkout ${OPENSSL_COMMIT}
-
-    configure
 }
 
 #===================================================================================================

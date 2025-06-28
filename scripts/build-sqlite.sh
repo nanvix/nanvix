@@ -87,6 +87,7 @@ make_install() {
 
 build() {
     cd ${SQLITE_HOME}
+    configure
     make_all
     make_install
 }
@@ -107,8 +108,6 @@ init() {
         git reset --hard
     fi
     git checkout ${SQLITE_BRANCH}
-
-    configure
 }
 
 #===================================================================================================
