@@ -396,7 +396,7 @@ clean-opt: clean-openblas clean-openssl clean-python clean-sqlite clean-zlib
 distclean-opt: distclean-openblas distclean-openssl distclean-python distclean-sqlite distclean-zlib
 	$(FORCE_RM_CMD) $(SYSROOT_DIR)
 
-init-opt: init-openblas init-openssl init-python init-zlib
+init-opt: init-openblas init-openssl init-python init-sqlite init-zlib
 
 else
 
