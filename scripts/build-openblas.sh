@@ -56,7 +56,7 @@ make_clean() {
 
 distclean() {
     cd ${OPENBLAS_HOME}
-	git clean -fdx
+    git clean -fdx
 }
 
 #===================================================================================================
@@ -84,8 +84,9 @@ make_install() {
 
 build() {
     cd ${OPENBLAS_HOME}
-	make_all
-	make_install
+    configure
+    make_all
+    make_install
 }
 
 #===================================================================================================
@@ -104,8 +105,6 @@ init() {
         git reset --hard
     fi
     git checkout ${OPENBLAS_BRANCH}
-
-    configure
 }
 
 #===================================================================================================
@@ -137,18 +136,18 @@ unset LIBC
 unset LIBM
 
 case $RULE in
-	build)
-		build
-		;;
-	clean)
-		make_clean
-		;;
-	distclean)
-		distclean
-		;;
-	init)
-		init
-		;;
+    build)
+        build
+        ;;
+    clean)
+        make_clean
+        ;;
+    distclean)
+        distclean
+        ;;
+    init)
+        init
+        ;;
 esac
 
 # Restore original environment variables.
