@@ -16,7 +16,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -38,10 +38,10 @@ use ::sysapi::ffi::c_int;
 /// Upon successful completion, empty is returned. Otherwise, an error is returned.
 ///
 pub fn fsync(fd: c_int) -> Result<(), Error> {
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = FileSyncRequest::build(pid, fd);
+    let request: Message = FileSyncRequest::build(tid, fd);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

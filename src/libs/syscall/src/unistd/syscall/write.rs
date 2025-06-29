@@ -21,7 +21,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     sys_types::c_size_t,
@@ -56,7 +56,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         ::syslog::trace!("write(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_written: c_size_t = 0;
     let mut offset: usize = 0;
@@ -67,7 +67,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         chunk[..chunk_size].copy_from_slice(&buffer[offset..offset + chunk_size]);
 
         // Build request and send it.
-        let request: Message = WriteRequest::build(pid, fd, chunk_size as c_size_t, chunk);
+        let request: Message = WriteRequest::build(tid, fd, chunk_size as c_size_t, chunk);
         ::sys::kcall::ipc::send(&request)?;
 
         // Receive response.

@@ -28,7 +28,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::c_ssize_t;
 
@@ -55,11 +55,11 @@ use ::sysapi::sys_types::c_ssize_t;
 pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: ReadLinkAtRequest = ReadLinkAtRequest::new(dirfd, path.to_string(), buf.len())?;
 
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
 
     for request in requests {
         ::sys::kcall::ipc::send(&request)?;

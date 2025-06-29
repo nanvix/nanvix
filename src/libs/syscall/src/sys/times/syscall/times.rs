@@ -19,7 +19,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::{
     sys_times::tms,
@@ -47,10 +47,10 @@ use sysapi::{
 pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
     ::syslog::trace!("times(): {:?}", buffer);
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = TimesRequest::build(pid)?;
+    let request: Message = TimesRequest::build(tid)?;
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

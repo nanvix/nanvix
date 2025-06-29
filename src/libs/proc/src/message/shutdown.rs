@@ -14,6 +14,8 @@ use ::sys::{
     error::Error,
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
         SystemMessage,
         SystemMessageHeader,
@@ -132,8 +134,13 @@ pub fn shutdown_request(destination: ProcessIdentifier, code: u8) -> Result<Mess
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     // Construct an IPC message.
-    let ipc_message: Message =
-        Message::new(crate::PROCD, destination, MessageType::Ipc, None, sys_message.into_bytes());
+    let ipc_message: Message = Message::new(
+        MessageSender::from(crate::PROCD),
+        MessageReceiver::from(destination),
+        MessageType::Ipc,
+        None,
+        sys_message.into_bytes(),
+    );
 
     Ok(ipc_message)
 }

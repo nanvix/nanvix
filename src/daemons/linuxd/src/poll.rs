@@ -8,7 +8,7 @@
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::poll::{
     poll_errors::{
@@ -36,13 +36,13 @@ use ::syscall::poll::message::{
 // do_poll()
 //==================================================================================================
 
-pub fn do_poll(pid: ProcessIdentifier, request: PollRequest) -> Message {
-    trace!("poll(): pid={pid:?}, request={request:?}");
+pub fn do_poll(tid: ThreadIdentifier, request: PollRequest) -> Message {
+    trace!("poll(): tid={tid:?}, request={request:?}");
 
     // Check if request is not valid.
     if request.nfds == 0 || request.nfds as usize > NFDS_MAX {
         error!("poll(): invalid request ({request:?})");
-        return crate::build_error(pid, ErrorCode::InvalidArgument);
+        return crate::build_error(tid, ErrorCode::InvalidArgument);
     }
 
     // Unpack request.
@@ -77,7 +77,7 @@ pub fn do_poll(pid: ProcessIdentifier, request: PollRequest) -> Message {
                     }
 
                     // Build response.
-                    match PollResponse::build(pid, nready, &ready_fds, &revents) {
+                    match PollResponse::build(tid, nready, &ready_fds, &revents) {
                         Ok(response) => response,
                         Err(error) => {
                             unreachable!("poll(): failed to build response ({error:?})");
@@ -96,7 +96,7 @@ pub fn do_poll(pid: ProcessIdentifier, request: PollRequest) -> Message {
             error!("poll(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
     }
 }

@@ -24,6 +24,7 @@ use ::alloc::{
     boxed::Box,
     collections::vec_deque::VecDeque,
 };
+use ::sys::pm::ThreadIdentifier;
 use ::type_safe::NonEmptyVecDeque;
 
 //==================================================================================================
@@ -94,6 +95,33 @@ impl InterruptedProcess {
             reason,
             ctx,
         )
+    }
+
+    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+        // Search in the list of interrupted threads.
+        if self
+            .interrupted_threads
+            .iter()
+            .any(|thread| thread.tid() == tid)
+        {
+            return true;
+        }
+
+        // Search in the list of sleeping threads.
+        if let Some(sleeping_threads) = &self.sleeping_threads {
+            if sleeping_threads.iter().any(|thread| thread.id() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of zombie threads.
+        if let Some(zombie_threads) = &self.zombie_threads {
+            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 

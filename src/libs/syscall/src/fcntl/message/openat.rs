@@ -28,8 +28,13 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
-    pm::ProcessIdentifier,
+    ipc::{
+        Message,
+        MessageReceiver,
+        MessageSender,
+        MessageType,
+    },
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     ffi::c_int,
@@ -202,13 +207,13 @@ impl MessageDeserializer for OpenAtRequest {
 impl MessagePartitioner for OpenAtRequest {
     /// Creates a new message part for the `openat()` system call.
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::OpenAtRequestPart,
             part_number,
             payload_size,
@@ -246,14 +251,14 @@ impl OpenAtResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, ret: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
         let message: OpenAtResponse = OpenAtResponse::new(ret);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::OpenAtResponse, message.into_bytes());
         let message: Message = Message::new(
-            crate::LINUXD,
-            pid,
-            sys::ipc::MessageType::Ikc,
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
             None,
             message.into_bytes(),
         );

@@ -18,7 +18,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -51,11 +51,11 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
         flag
     );
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileAccessAtRequest = FileAccessAtRequest::new(dirfd, path, mode, flag)?;
 
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
 
     for request in requests {
         ::sys::kcall::ipc::send(&request)?;

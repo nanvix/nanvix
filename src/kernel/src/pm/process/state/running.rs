@@ -410,4 +410,41 @@ impl RunningProcess {
         error!("join_thread(): {:?} (state={:?})", reason, self.state());
         Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
     }
+
+    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+        // Check if the running thread matches.
+        if self.running.id() == tid {
+            return true;
+        }
+
+        // Search in the list of ready threads.
+        if let Some(ready_threads) = &self.ready {
+            if ready_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of interrupted threads.
+        if let Some(interrupted_threads) = &self.interrupted_threads {
+            if interrupted_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of sleeping threads.
+        if let Some(sleeping_threads) = &self.sleeping_threads {
+            if sleeping_threads.iter().any(|thread| thread.id() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of zombie threads.
+        if let Some(zombie_threads) = &self.zombie {
+            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        false
+    }
 }

@@ -16,9 +16,11 @@ use ::core::{
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -50,12 +52,17 @@ impl CloseRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, fd: i32) -> Message {
         let message: CloseRequest = CloseRequest::new(fd);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::CloseRequest, message.into_bytes());
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -97,12 +104,17 @@ impl CloseResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, ret: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
         let message: CloseResponse = CloseResponse::new(ret);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::CloseResponse, message.into_bytes());
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

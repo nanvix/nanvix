@@ -21,11 +21,11 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
-    off_t,
     c_size_t,
+    off_t,
 };
 
 //==================================================================================================
@@ -54,7 +54,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     while buffer_offset < buffer.len() {
         let chunk_size: usize =
@@ -65,7 +65,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
 
         // Build request and send it.
         let request: Message = PartialWriteRequest::build(
-            pid,
+            tid,
             fd,
             chunk_size as c_size_t,
             offset + buffer_offset as off_t,

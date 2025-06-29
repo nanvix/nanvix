@@ -25,9 +25,11 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     ffi::{
@@ -93,14 +95,19 @@ impl GetDirectoryEntriesRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: c_int, count: usize) -> Result<Message, Error> {
+    pub fn build(tid: ThreadIdentifier, fd: c_int, count: usize) -> Result<Message, Error> {
         let message: GetDirectoryEntriesRequest = GetDirectoryEntriesRequest::new(fd, count)?;
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::GetDirectoryEntriesRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         Ok(message)
     }
@@ -232,7 +239,7 @@ impl MessagePartitioner for GetDirectoryEntriesResponse {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -242,13 +249,13 @@ impl MessagePartitioner for GetDirectoryEntriesResponse {
     /// Upon success, the partitioned message is returned. Upon failure, an error is returned.
     ///
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_response(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::GetDirectoryEntriesResponsePart,
             part_number,
             payload_size,

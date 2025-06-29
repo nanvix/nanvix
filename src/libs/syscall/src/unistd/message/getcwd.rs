@@ -29,9 +29,11 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::limits::PATH_MAX;
 
@@ -61,14 +63,19 @@ impl GetCurrentWorkingDirectoryRequest {
         unsafe { core::mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Message {
+    pub fn build(tid: ThreadIdentifier) -> Message {
         let message: GetCurrentWorkingDirectoryRequest = GetCurrentWorkingDirectoryRequest::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             crate::LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -155,13 +162,13 @@ impl MessageDeserializer for GetCurrentWorkingDirectoryResponse {
 
 impl MessagePartitioner for GetCurrentWorkingDirectoryResponse {
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_response(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryResponsePart,
             part_number,
             payload_size,

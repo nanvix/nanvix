@@ -16,9 +16,11 @@ use ::core::{
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -54,14 +56,19 @@ impl ListenSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32, backlog: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32, backlog: i32) -> Message {
         let message: Self = Self::new(sockfd, backlog);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ListenSocketRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -95,14 +102,19 @@ impl ListenSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Message {
+    pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ListenSocketResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

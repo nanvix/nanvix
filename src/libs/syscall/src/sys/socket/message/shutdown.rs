@@ -17,9 +17,11 @@ use ::core::{
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -55,15 +57,20 @@ impl ShutdownSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32, how: Shutdown) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32, how: Shutdown) -> Message {
         let message: Self = Self::new(sockfd, how);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ShutdownSocketRequest,
             message.into_bytes(),
         );
 
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -97,14 +104,19 @@ impl ShutdownSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Message {
+    pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ShutdownSocketResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

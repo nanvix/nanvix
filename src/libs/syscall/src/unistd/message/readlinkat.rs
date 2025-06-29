@@ -28,7 +28,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::limits::{
     PATH_MAX,
@@ -197,7 +197,7 @@ impl MessagePartitioner for ReadLinkAtRequest {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
@@ -207,13 +207,13 @@ impl MessagePartitioner for ReadLinkAtRequest {
     /// Upon success, the partitioned message is returned. Upon failure, an error is returned instead.
     ///
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::ReadLinkAtRequestPart,
             part_number,
             payload_size,
@@ -343,7 +343,7 @@ impl MessagePartitioner for ReadLinkAtResponse {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
@@ -353,13 +353,13 @@ impl MessagePartitioner for ReadLinkAtResponse {
     /// Upon success, the partitioned message is returned. Upon failure, an error is returned instead.
     ///
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_response(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::ReadLinkAtResponsePart,
             part_number,
             payload_size,

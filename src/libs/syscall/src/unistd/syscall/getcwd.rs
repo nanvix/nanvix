@@ -28,7 +28,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -44,17 +44,17 @@ pub fn getcwd() -> Result<String, Error> {
     getcwd_response()
 }
 
-/// Processes the request of the `getcwd()` system call.
+/// Handles the request of the `getcwd()` system call.
 fn getcwd_request() -> Result<(), Error> {
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
-    let request: Message = GetCurrentWorkingDirectoryRequest::build(pid);
+    let request: Message = GetCurrentWorkingDirectoryRequest::build(tid);
 
     // Send request.
     ::sys::kcall::ipc::send(&request)
 }
 
-/// Processes the response of the `getcwd()` system call.
+/// Handles the response of the `getcwd()` system call.
 fn getcwd_response() -> Result<String, Error> {
     // Compute the maximum number of parts in the response.
     let capacity: usize =

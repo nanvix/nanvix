@@ -17,7 +17,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -40,10 +40,10 @@ use ::sys::{
 pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
     ::syslog::trace!("fdatasync(): fd={:?}", fd);
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = FileDataSyncRequest::build(pid, fd);
+    let request: Message = FileDataSyncRequest::build(tid, fd);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

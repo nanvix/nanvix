@@ -16,9 +16,11 @@ use ::core::{
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::off_t;
 
@@ -63,7 +65,7 @@ impl FileAdvisoryInformationRequest {
     }
 
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         fd: i32,
         offset: off_t,
         len: off_t,
@@ -75,8 +77,13 @@ impl FileAdvisoryInformationRequest {
             LinuxDaemonMessageHeader::FileAdvisoryInformationRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -112,14 +119,19 @@ impl FileAdvisoryInformationResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, ret: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
         let message: FileAdvisoryInformationResponse = FileAdvisoryInformationResponse::new(ret);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::FileAdvisoryInformationResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

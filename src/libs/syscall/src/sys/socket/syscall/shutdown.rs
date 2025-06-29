@@ -19,7 +19,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -28,10 +28,10 @@ use ::sysapi::ffi::c_int;
 //==================================================================================================
 
 pub fn shutdown(sockfd: c_int, how: Shutdown) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = ShutdownSocketRequest::build(pid, sockfd, how);
+    let request: Message = ShutdownSocketRequest::build(tid, sockfd, how);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

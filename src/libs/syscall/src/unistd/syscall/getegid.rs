@@ -19,7 +19,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::sys_types::gid_t;
 
@@ -40,10 +40,10 @@ use sysapi::sys_types::gid_t;
 pub fn getegid() -> Result<gid_t, Error> {
     ::syslog::trace!("getegid()");
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it
-    let request: Message = GetIdsRequest::build(pid);
+    let request: Message = GetIdsRequest::build(tid);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response
@@ -51,7 +51,7 @@ pub fn getegid() -> Result<gid_t, Error> {
 
     // Check whether system call succeeded or not
     if response.status != 0 {
-        ::syslog::error!("getegid(): failed (pid={:?}, status={:?})", pid, { response.status });
+        ::syslog::error!("getegid(): failed (tid={:?}, status={:?})", tid, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // System call failed, return error
@@ -71,8 +71,8 @@ pub fn getegid() -> Result<gid_t, Error> {
             // Invalid response
             header => {
                 ::syslog::error!(
-                    "getegid(): invalid response (pid={:?}, header={:?})",
-                    pid,
+                    "getegid(): invalid response (tid={:?}, header={:?})",
+                    tid,
                     header
                 );
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))

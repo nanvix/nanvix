@@ -46,6 +46,25 @@ pub struct ThreadIdentifier(i32);
 // Implementations
 //==================================================================================================
 
+impl ThreadIdentifier {
+    // Raw identifier for the kernel thread.
+    pub const KERNEL_RAW: i32 = 0;
+
+    /// Identifier of the kernel thread.
+    pub const KERNEL: ThreadIdentifier = ThreadIdentifier(Self::KERNEL_RAW);
+
+    /// Identifier of the init daemon thread.
+    pub const INITD: ThreadIdentifier = ThreadIdentifier(1);
+
+    pub fn to_ne_bytes(&self) -> [u8; core::mem::size_of::<i32>()] {
+        self.0.to_ne_bytes()
+    }
+
+    pub fn from_ne_bytes(bytes: [u8; core::mem::size_of::<i32>()]) -> Self {
+        Self(i32::from_ne_bytes(bytes))
+    }
+}
+
 impl From<ThreadIdentifier> for isize {
     fn from(tid: ThreadIdentifier) -> isize {
         tid.0 as isize

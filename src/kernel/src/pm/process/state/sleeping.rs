@@ -182,4 +182,24 @@ impl SleepingProcess {
             self.zombie_threads.take(),
         )
     }
+
+    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+        // Search in the list of sleeping threads.
+        if self
+            .sleeping_threads
+            .iter()
+            .any(|thread| thread.id() == tid)
+        {
+            return true;
+        }
+
+        // Search in the list of zombie threads.
+        if let Some(zombie_threads) = &self.zombie_threads {
+            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        false
+    }
 }

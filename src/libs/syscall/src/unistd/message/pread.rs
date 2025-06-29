@@ -13,9 +13,11 @@ use ::core::mem;
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
     c_size_t,
@@ -60,14 +62,19 @@ impl PartialReadRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32, count: c_size_t, offset: off_t) -> Message {
+    pub fn build(tid: ThreadIdentifier, fd: i32, count: c_size_t, offset: off_t) -> Message {
         let message: PartialReadRequest = PartialReadRequest::new(fd, count, offset);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::PartialReadRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }
@@ -100,7 +107,7 @@ impl PartialReadResponse {
     }
 
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         count: c_ssize_t,
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
@@ -109,8 +116,13 @@ impl PartialReadResponse {
             LinuxDaemonMessageHeader::PartialReadResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }

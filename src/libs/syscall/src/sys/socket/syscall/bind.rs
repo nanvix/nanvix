@@ -20,7 +20,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -29,12 +29,12 @@ use ::sysapi::ffi::c_int;
 //==================================================================================================
 
 pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let sockaddr: sockaddr = sockaddr::from(sockaddr);
 
     // Build request and send it.
-    let request: Message = BindSocketRequest::build(pid, sockfd, &sockaddr);
+    let request: Message = BindSocketRequest::build(tid, sockfd, &sockaddr);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

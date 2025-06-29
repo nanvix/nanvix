@@ -174,6 +174,36 @@ impl RunnableProcessWithReadyThread {
 
         self
     }
+
+    fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+        // Search in the list of ready threads.
+        if self.ready_threads.iter().any(|thread| thread.tid() == tid) {
+            return true;
+        }
+
+        // Search in the list of interrupted threads.
+        if let Some(interrupted_threads) = &self.interrupted_threads {
+            if interrupted_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of sleeping threads.
+        if let Some(sleeping_threads) = &self.sleeping_threads {
+            if sleeping_threads.iter().any(|thread| thread.id() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of zombie threads.
+        if let Some(zombie_threads) = &self.zombie_threads {
+            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 pub struct RunnableProcessWithInterruptedThreads {
@@ -314,6 +344,40 @@ impl RunnableProcessWithInterruptedThreads {
             self.zombie_threads.take(),
         )
     }
+
+    fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+        // Search in the list of interrupted threads.
+        if self
+            .interrupted_threads
+            .iter()
+            .any(|thread| thread.tid() == tid)
+        {
+            return true;
+        }
+
+        // Search in the list of ready threads.
+        if let Some(ready_threads) = &self.ready_threads {
+            if ready_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of sleeping threads.
+        if let Some(sleeping_threads) = &self.sleeping_threads {
+            if sleeping_threads.iter().any(|thread| thread.id() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of zombie threads.
+        if let Some(zombie_threads) = &self.zombie_threads {
+            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 pub struct RunnableProcessWithReadyAndInteruptThread {
@@ -433,6 +497,38 @@ impl RunnableProcessWithReadyAndInteruptThread {
         trace!("add_thread(): self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
         self.ready_threads.push_back(ready_thread);
         self
+    }
+
+    fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+        // Search in the list of ready threads.
+        if self.ready_threads.iter().any(|thread| thread.tid() == tid) {
+            return true;
+        }
+
+        // Search in the list of interrupted threads.
+        if self
+            .interrupted_threads
+            .iter()
+            .any(|thread| thread.tid() == tid)
+        {
+            return true;
+        }
+
+        // Search in the list of sleeping threads.
+        if let Some(sleeping_threads) = &self.sleeping_threads {
+            if sleeping_threads.iter().any(|thread| thread.id() == tid) {
+                return true;
+            }
+        }
+
+        // Search in the list of zombie threads.
+        if let Some(zombie_threads) = &self.zombie_threads {
+            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -579,6 +675,14 @@ impl RunnableProcess {
             RunnableProcess::ReadyAndInteruptThread(process) => {
                 RunnableProcess::ReadyAndInteruptThread(process.add_thread(ready_thread))
             },
+        }
+    }
+
+    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+        match self {
+            RunnableProcess::WithReadyThread(process) => process.has_thread(tid),
+            RunnableProcess::WithInterruptedThreads(process) => process.has_thread(tid),
+            RunnableProcess::ReadyAndInteruptThread(process) => process.has_thread(tid),
         }
     }
 }

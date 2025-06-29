@@ -18,23 +18,24 @@ use crate::{
     },
 };
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+    error::Error,
     ipc::{
         Message,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-fn do_send(pm: &mut ProcessManager, src: ProcessIdentifier, message: Message) -> Result<(), Error> {
-    trace!("do_send(): src={:?}, dst={:?}", src, { message.destination });
+fn do_send(pm: &mut ProcessManager, message: Message) -> Result<(), Error> {
+    trace!("do_send(): src={:?}, dst={:?}", { message.source }, { message.destination });
 
     // TODO: Check if source process has permission to send message to destination process.
 
@@ -43,19 +44,21 @@ fn do_send(pm: &mut ProcessManager, src: ProcessIdentifier, message: Message) ->
 }
 
 pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
-    let src: ProcessIdentifier = args.pid;
+    let src_pid: ProcessIdentifier = args.pid;
+    let src_tid: ThreadIdentifier = args.tid;
 
     // Copy message to kernel space.
     let mut message: Message = Message::default();
-    if let Err(e) = pm::copy_from_user(pm, src, &mut message, args.arg0 as *const Message) {
+    if let Err(e) = pm::copy_from_user(pm, src_pid, &mut message, args.arg0 as *const Message) {
         return KcallResult::Error(e.code.into());
     }
 
-    // Sanity check message source.
-    if { message.source } != src {
+    // Check if message source is invalid.
+    if { message.source } != MessageSender::from(src_tid) && { message.source }
+        != MessageSender::from(src_pid)
+    {
         let reason: &str = "invalid message source";
-        error!("do_send(): {}", reason);
-        return KcallResult::Error(ErrorCode::InvalidArgument.into());
+        error!("do_send(): {reason:?} (message={:?})", message);
     }
 
     // Route message based on its type.
@@ -73,27 +76,31 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
                 } else {
                     // Standard input/output is not available.
                     error!("send(): stdio is not available");
-                    KcallResult::Error(ErrorCode::ProtocolNotSupported.into())
+                    KcallResult::Error(sys::error::ErrorCode::ProtocolNotSupported.into())
                 }
             }
         },
         // Local-host communication.
         _ => {
             // Post message.
-            match do_send(pm, src, message) {
-                Ok(_) => KcallResult::ok(),
+            match do_send(pm, message) {
+                Ok(()) => KcallResult::ok(),
                 Err(e) => KcallResult::Error(e.code.into()),
             }
         },
     }
 }
 
-pub unsafe fn recv(pid: ProcessIdentifier, msg: usize) -> Result<(), SleepError> {
+pub unsafe fn recv(
+    tid: ThreadIdentifier,
+    pid: ProcessIdentifier,
+    msg: usize,
+) -> Result<(), SleepError> {
     if pid != ProcessIdentifier::INITD {
         trace!("do_recv(): pid={:?}", pid);
     }
 
-    match EventManager::wait(pid) {
+    match EventManager::wait(tid, pid) {
         Ok(message) => {
             pm::copy_to_user(ProcessManager::get_mut(), pid, msg as *mut Message, &message)
                 .map_err(SleepError::Generic)

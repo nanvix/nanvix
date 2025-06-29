@@ -112,8 +112,8 @@ impl Condvar {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn notify_first(&self) -> Result<(), Error> {
-        if let Some((pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
-            ProcessManager::wakeup(pid, tid)?;
+        if let Some((_, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+            ProcessManager::wakeup(tid)?;
         }
 
         Ok(())
@@ -151,8 +151,54 @@ impl Condvar {
 
         // Remove process from sleeping queue.
         if let Some(at) = idx {
-            let (pid, tid) = self.inner.sleeping.borrow_mut().remove(at);
-            ProcessManager::wakeup(pid, tid)?;
+            let (_, tid) = self.inner.sleeping.borrow_mut().remove(at);
+            ProcessManager::wakeup(tid)?;
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Wakes up a specific thread that is waiting on the target condition variable.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the target thread.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn notify_thread(&self, tid: ThreadIdentifier) -> Result<(), Error> {
+        // Find thread.
+        let idx: Option<usize> = self
+            .inner
+            .sleeping
+            .borrow()
+            .iter()
+            .position(|&(_p, t)| t == tid);
+
+        // Remove thread from sleeping queue.
+        if let Some(at) = idx {
+            let (_notified_pid, notified_tid): (ProcessIdentifier, ThreadIdentifier) =
+                self.inner.sleeping.borrow_mut().remove(at);
+            debug_assert!(
+                notified_tid == tid,
+                "notify_thread(): pid and tid do not match (expected: tid={:?}, got tid={:?})",
+                tid,
+                notified_tid
+            );
+            ProcessManager::wakeup(tid)?;
         }
 
         Ok(())
@@ -179,8 +225,8 @@ impl Condvar {
     pub unsafe fn notify_all(&self) -> Result<usize, Error> {
         let mut awakened: usize = 0;
 
-        while let Some((pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
-            ProcessManager::wakeup(pid, tid)?;
+        while let Some((_pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+            ProcessManager::wakeup(tid)?;
             awakened += 1;
         }
 

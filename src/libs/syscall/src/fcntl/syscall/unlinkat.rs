@@ -19,7 +19,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -46,11 +46,11 @@ use ::sysapi::ffi::c_int;
 pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
     ::syslog::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
     let request: UnlinkAtRequest = UnlinkAtRequest::new(dirfd, pathname, flags)?;
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
     for request in requests {
         ::sys::kcall::ipc::send(&request)?;
     }

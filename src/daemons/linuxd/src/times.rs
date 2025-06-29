@@ -8,7 +8,7 @@
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_times::tms;
 use ::syscall::sys::times::message::{
@@ -20,8 +20,8 @@ use ::syscall::sys::times::message::{
 // do_times()
 //==================================================================================================
 
-pub fn do_times(pid: ProcessIdentifier, _request: TimesRequest) -> Message {
-    trace!("times(): pid={pid:?}");
+pub fn do_times(tid: ThreadIdentifier, _request: TimesRequest) -> Message {
+    trace!("times(): tid={tid:?}");
 
     let mut libc_buffer: libc::tms = libc::tms {
         tms_utime: 0,
@@ -37,7 +37,7 @@ pub fn do_times(pid: ProcessIdentifier, _request: TimesRequest) -> Message {
             let errno: i32 = unsafe { *libc::__errno_location() };
             error!("libc::clock_getres(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
         elapsed => {
             debug!(
@@ -57,7 +57,7 @@ pub fn do_times(pid: ProcessIdentifier, _request: TimesRequest) -> Message {
                 tms_cstime: libc_buffer.tms_cstime,
             };
 
-            TimesResponse::build(pid, elapsed, nanvix_buffer)
+            TimesResponse::build(tid, elapsed, nanvix_buffer)
         },
     }
 }
