@@ -8,19 +8,23 @@
 #===================================================================================================
 
 RULE=${1:-build}
-NANVIX_HOME=${2:-`git rev-parse --show-toplevel`}
+PREFIX=${2:-$PWD/toolchain}
 
 #===================================================================================================
 # Global Variables
 #===================================================================================================
+
+NANVIX_HOME=`git rev-parse --show-toplevel`
+CONTRIB_DIR=${PREFIX}/src
+CLOUD_HYPERVISOR_HOME=${CONTRIB_DIR}/cloud-hypervisor
+CLOUD_HYPERVISOR_REPOSITORY=https://github.com/nanvix/cloud-hypervisor
+CLOUD_HYPERVISOR_COMMIT=3d88996e5b509b0840b8912142104ddf86a10eeb
 
 BINARIES_DIR=${NANVIX_HOME}/bin
 SCRIPTS_DIR=${NANVIX_HOME}/scripts
 SERVICE_FILE=${SCRIPTS_DIR}/linuxd.service
 SERVICE_ELF_BASENAME=linuxd.elf
 SERVICE_ELF=${BINARIES_DIR}/${SERVICE_ELF_BASENAME}
-CONTRIB_DIR=${NANVIX_HOME}/contrib
-CLOUD_HYPERVISOR_HOME=${CONTRIB_DIR}/cloud-hypervisor
 IMAGES_DIR=${NANVIX_HOME}/images
 # The VM will be configure to use the IP 192.168.249.2 when using this specific MAC Address
 GUEST_MAC_ADDRESS=12:34:56:78:90:ab
@@ -35,6 +39,7 @@ IMAGE_NAME=custom-ubuntu.raw
 #===================================================================================================
 
 distclean() {
+	cd ${CLOUD_HYPERVISOR_HOME}
 	git clean -fdx
 }
 
@@ -43,6 +48,7 @@ distclean() {
 #===================================================================================================
 
 clean() {
+	cd ${CLOUD_HYPERVISOR_HOME}
     cargo clean
 }
 
@@ -51,6 +57,7 @@ clean() {
 #===================================================================================================
 
 build() {
+	cd ${CLOUD_HYPERVISOR_HOME}
 	pushd $PWD
 
 	cd $IMAGES_DIR
@@ -128,6 +135,7 @@ EOF
 #===================================================================================================
 
 run() {
+	cd ${CLOUD_HYPERVISOR_HOME}
 	./target/release/cloud-hypervisor \
 		--kernel $IMAGES_DIR/hypervisor-fw \
 		--disk path=$IMAGES_DIR/$IMAGE_NAME path=$IMAGES_DIR/ubuntu-cloudinit.img \
@@ -141,6 +149,19 @@ run() {
 #===================================================================================================
 
 init() {
+
+	mkdir -p ${CONTRIB_DIR}
+	if [ ! -d "${CLOUD_HYPERVISOR_HOME}" ];
+	then
+		git clone ${CLOUD_HYPERVISOR_REPOSITORY} ${CLOUD_HYPERVISOR_HOME}
+		cd ${CLOUD_HYPERVISOR_HOME}
+	else
+		cd ${CLOUD_HYPERVISOR_HOME}
+		git fetch origin
+		git reset --hard ${CLOUD_HYPERVISOR_COMMIT}
+	fi
+	git checkout ${CLOUD_HYPERVISOR_COMMIT}
+
 	cargo build --release
 
 	sudo setcap cap_net_admin+ep ./target/release/cloud-hypervisor
@@ -156,11 +177,7 @@ init() {
 
 #===================================================================================================
 
-# Fetch submodule if needed.
-git submodule update --init $CLOUD_HYPERVISOR_HOME
-
 # Switch to submodule directory.
-cd ${CLOUD_HYPERVISOR_HOME}
 
 case $RULE in
 	build)
@@ -177,5 +194,10 @@ case $RULE in
 		;;
 	run)
 		run
+		;;
+	*)
+		echo "Usage: $0 {build|clean|distclean|init|run} PREFIX"
+		echo "Default PREFIX is $PWD/toolchain"
+		exit 1
 		;;
 esac
