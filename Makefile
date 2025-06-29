@@ -250,7 +250,7 @@ ALL_GUEST_STATIC_LIBS := posix
 ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog sys
 
 ALL_GUEST_DAEMONS := memd procd
-ALL_GUEST_BENCHMARKS := echo-rust-nostd echo-rust-server-nostd echo-single-rust-nostd noop-rust-nostd matmul
+ALL_GUEST_BENCHMARKS := echo-rust-nostd echo-rust-server-nostd echo-single-rust-nostd noop-rust-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
 ALL_GUEST_TESTS := testd file-rust linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
@@ -259,7 +259,7 @@ ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := profiler syscomm
-ALL_HOST_UTILS := echo-client loader nanvix-bench nanvixd
+ALL_HOST_UTILS := echo-client nanvix-bench nanvixd
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
 
