@@ -12,7 +12,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -37,10 +37,10 @@ use ::sysapi::ffi::c_int;
 pub fn fchdir(fd: c_int) -> Result<(), Error> {
     ::syslog::trace!("fchdir(): fd={:?}", fd);
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it
-    let request: Message = FileChdirRequest::build(pid, fd);
+    let request: Message = FileChdirRequest::build(tid, fd);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

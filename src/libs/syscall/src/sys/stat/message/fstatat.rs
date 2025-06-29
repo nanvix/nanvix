@@ -28,7 +28,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::{
     limits::PATH_MAX,
@@ -186,7 +186,7 @@ impl MessagePartitioner for FileStatAtRequest {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -196,13 +196,13 @@ impl MessagePartitioner for FileStatAtRequest {
     /// Upon success, the new message partition is returned. Upon failure, an error is returned.
     ///
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::FileStatAtRequestPart,
             part_number,
             payload_size,
@@ -377,7 +377,7 @@ impl MessagePartitioner for FileStatAtResponse {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -387,13 +387,13 @@ impl MessagePartitioner for FileStatAtResponse {
     /// Upon success, the new message partition is returned. Upon failure, an error is returned.
     ///
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_response(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::FileStatAtResponsePart,
             part_number,
             payload_size,

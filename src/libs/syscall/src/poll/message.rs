@@ -15,10 +15,12 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sys::ipc::{
     Message,
+    MessageReceiver,
+    MessageSender,
     MessageType,
 };
 
@@ -108,7 +110,7 @@ impl PollRequest {
 
     /// Builds a `Message` from a `PollRequest`.
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         fds: &[i32],
         events: &[i16],
         timeout: i32,
@@ -158,7 +160,15 @@ impl PollRequest {
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::PollRequest, message.into_bytes());
 
-        Ok(Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes()))
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
+
+        Ok(message)
     }
 }
 
@@ -226,7 +236,7 @@ impl PollResponse {
 
     /// Builds a `Message` from a `PollResponse`.
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         nready: u8,
         fds: &[i32],
         revents: &[i16],
@@ -258,6 +268,15 @@ impl PollResponse {
         let message: PollResponse = Self::new(nready, fds, revents);
         let message: LinuxDaemonMessage =
             LinuxDaemonMessage::new(LinuxDaemonMessageHeader::PollResponse, message.into_bytes());
-        Ok(Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes()))
+
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
+
+        Ok(message)
     }
 }

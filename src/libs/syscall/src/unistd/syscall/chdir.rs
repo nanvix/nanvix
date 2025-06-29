@@ -18,7 +18,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -42,11 +42,11 @@ use ::sys::{
 pub fn chdir(path: &str) -> Result<(), Error> {
     ::syslog::trace!("chdir(): path={:?}", path);
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
     let request: ChangeDirectoryRequest = ChangeDirectoryRequest::new(path)?;
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
     for request in requests {
         ::sys::kcall::ipc::send(&request)?;
     }

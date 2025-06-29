@@ -28,7 +28,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -57,16 +57,16 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
     posix_getdents_response()
 }
 
-/// Processes the request of the `posix_getdents()` system call.
+/// Handles the request of the `posix_getdents()` system call.
 fn posix_getdents_request(fd: c_int, count: usize) -> Result<(), Error> {
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
-    let request: Message = GetDirectoryEntriesRequest::build(pid, fd, count)?;
+    let request: Message = GetDirectoryEntriesRequest::build(tid, fd, count)?;
 
     ::sys::kcall::ipc::send(&request)
 }
 
-/// Processes the response of the `posix_getdents()` system call.
+/// Handles the response of the `posix_getdents()` system call.
 fn posix_getdents_response() -> Result<Vec<posix_dent>, Error> {
     let capacity: usize =
         GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);

@@ -14,7 +14,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     fcntl::{
@@ -143,8 +143,8 @@ use sysapi::fcntl::file_descriptor_flags::{
 // do_openat
 //==================================================================================================
 
-pub fn do_openat(pid: ProcessIdentifier, request: OpenAtRequest) -> Vec<Message> {
-    trace!("openat(): pid={pid:?}, request={request:?}");
+pub fn do_openat(tid: ThreadIdentifier, request: OpenAtRequest) -> Vec<Message> {
+    trace!("openat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
     let flags: ffi::c_int = request.flags;
@@ -152,17 +152,17 @@ pub fn do_openat(pid: ProcessIdentifier, request: OpenAtRequest) -> Vec<Message>
 
     let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
     let flags: LibcFileOpenFlags = match LibcFileOpenFlags::try_from_nanvix_flags(flags) {
         Ok(flags) => flags,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
     let mode: LibcFileMode = match LibcFileMode::try_from(mode) {
         Ok(mode) => mode,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     debug!(
@@ -174,14 +174,14 @@ pub fn do_openat(pid: ProcessIdentifier, request: OpenAtRequest) -> Vec<Message>
     match unsafe { libc::openat(dirfd.inner(), pathname.as_ptr(), flags.inner(), mode.inner()) } {
         fd if fd >= 0 => {
             debug!("libc::openat(): fd={fd:?}");
-            vec![OpenAtResponse::build(pid, fd)]
+            vec![OpenAtResponse::build(tid, fd)]
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::openat(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -190,15 +190,15 @@ pub fn do_openat(pid: ProcessIdentifier, request: OpenAtRequest) -> Vec<Message>
 // do_unlink_at
 //==================================================================================================
 
-pub fn do_unlinkat(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Vec<Message> {
-    trace!("unlinkat(): pid={pid:?}, request={request:?}");
+pub fn do_unlinkat(tid: ThreadIdentifier, request: UnlinkAtRequest) -> Vec<Message> {
+    trace!("unlinkat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
     let flags: c_int = request.flags;
 
     let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
@@ -213,12 +213,12 @@ pub fn do_unlinkat(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Vec<Mess
     {
         ret if ret == 0 => {
             debug!("libc::unlinkat(): success");
-            vec![UnlinkAtResponse::build(pid, ret)]
+            vec![UnlinkAtResponse::build(tid, ret)]
         },
         errno => {
             debug!("libc::unlinkat(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -227,20 +227,20 @@ pub fn do_unlinkat(pid: ProcessIdentifier, request: UnlinkAtRequest) -> Vec<Mess
 // do_rename_at
 //==================================================================================================
 
-pub fn do_renameat(pid: ProcessIdentifier, request: RenameAtRequest) -> Vec<Message> {
-    trace!("renameat(): pid={pid:?}, request={request:?}");
+pub fn do_renameat(tid: ThreadIdentifier, request: RenameAtRequest) -> Vec<Message> {
+    trace!("renameat(): tid={tid:?}, request={request:?}");
 
     let olddirfd: i32 = request.olddirfd;
     let newdirfd: i32 = request.newdirfd;
 
     let oldpath: CString = match CString::new(request.oldpath.as_str()) {
         Ok(oldpath) => oldpath,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let newpath: CString = match CString::new(request.newpath.as_str()) {
         Ok(newpath) => newpath,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let olddirfd: LibcAtFlags = LibcAtFlags::from(olddirfd);
@@ -261,12 +261,12 @@ pub fn do_renameat(pid: ProcessIdentifier, request: RenameAtRequest) -> Vec<Mess
     } {
         ret if ret == 0 => {
             debug!("libc::renameat(): success");
-            vec![RenameAtResponse::build(pid, ret)]
+            vec![RenameAtResponse::build(tid, ret)]
         },
         errno => {
             debug!("libc::renameat(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -275,8 +275,8 @@ pub fn do_renameat(pid: ProcessIdentifier, request: RenameAtRequest) -> Vec<Mess
 // do_fstatat
 //==================================================================================================
 
-pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Message> {
-    trace!("fstatat(): pid={pid:?}, request={request:?}");
+pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Message> {
+    trace!("fstatat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
@@ -287,7 +287,7 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
     };
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(c_string) => c_string,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let mut st: libc::stat = unsafe { core::mem::zeroed() };
@@ -311,7 +311,7 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
                     tv_nsec: match st.st_atime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
                         },
                     },
                 },
@@ -320,7 +320,7 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
                     tv_nsec: match st.st_mtime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
                         },
                     },
                 },
@@ -329,7 +329,7 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
                     tv_nsec: match st.st_ctime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
                         },
                     },
                 },
@@ -341,9 +341,9 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
             debug!("libc::fstatat(): size of stat={:?}", core::mem::size_of::<stat>());
             let response = FileStatAtResponse::new(stat);
 
-            match response.into_parts(pid) {
+            match response.into_parts(tid) {
                 Ok(messages) => messages,
-                Err(e) => vec![crate::build_error(pid, e.code)],
+                Err(e) => vec![crate::build_error(tid, e.code)],
             }
         },
         _ => {
@@ -351,7 +351,7 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
             debug!("libc::fstatat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -360,8 +360,8 @@ pub fn do_fstat_at(pid: ProcessIdentifier, request: FileStatAtRequest) -> Vec<Me
 // do_posix_fallocate
 //==================================================================================================
 
-pub fn do_posix_fallocate(pid: ProcessIdentifier, request: FileSpaceControlRequest) -> Message {
-    trace!("posix_fallocate(): pid={pid:?}, request={request:?}");
+pub fn do_posix_fallocate(tid: ThreadIdentifier, request: FileSpaceControlRequest) -> Message {
+    trace!("posix_fallocate(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
     let offset: off_t = request.offset;
@@ -371,13 +371,13 @@ pub fn do_posix_fallocate(pid: ProcessIdentifier, request: FileSpaceControlReque
     match unsafe { libc::posix_fallocate(fd, offset, len) } {
         0 => {
             debug!("libc::posix_fallocate(): success");
-            FileSpaceControlResponse::build(pid, 0)
+            FileSpaceControlResponse::build(tid, 0)
         },
         errno => {
             debug!("libc::posix_fallocate(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
     }
 }
@@ -386,18 +386,15 @@ pub fn do_posix_fallocate(pid: ProcessIdentifier, request: FileSpaceControlReque
 // do_posix_fadvise
 //==================================================================================================
 
-pub fn do_posix_fadvise(
-    pid: ProcessIdentifier,
-    request: FileAdvisoryInformationRequest,
-) -> Message {
-    trace!("posix_fadvise(): pid={pid:?}, request={request:?}");
+pub fn do_posix_fadvise(tid: ThreadIdentifier, request: FileAdvisoryInformationRequest) -> Message {
+    trace!("posix_fadvise(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
     let offset: off_t = request.offset;
     let len: off_t = request.len;
     let advice: LibcFileAdvice = match LibcFileAdvice::try_from(request.advice) {
         Ok(advice) => advice,
-        Err(e) => return crate::build_error(pid, e.code),
+        Err(e) => return crate::build_error(tid, e.code),
     };
 
     debug!(
@@ -407,13 +404,13 @@ pub fn do_posix_fadvise(
     match unsafe { libc::posix_fadvise(fd, offset, len, advice.inner()) } {
         0 => {
             debug!("libc::posix_fadvise(): success");
-            FileAdvisoryInformationResponse::build(pid, 0)
+            FileAdvisoryInformationResponse::build(tid, 0)
         },
         errno => {
             debug!("libc::posix_fadvise(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
     }
 }
@@ -422,8 +419,8 @@ pub fn do_posix_fadvise(
 // do_fstat()
 //==================================================================================================
 
-pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message> {
-    trace!("fstatat(): pid={pid:?}, request={request:?}");
+pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Vec<Message> {
+    trace!("fstatat(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
 
@@ -448,7 +445,7 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
                     tv_nsec: match st.st_atime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
                         },
                     },
                 },
@@ -457,7 +454,7 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
                     tv_nsec: match st.st_mtime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
                         },
                     },
                 },
@@ -466,7 +463,7 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
                     tv_nsec: match st.st_ctime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(pid, ErrorCode::ValueOutOfRange)];
+                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
                         },
                     },
                 },
@@ -478,9 +475,9 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
             debug!("libc::fstatat(): size of stat={:?}", core::mem::size_of::<stat>());
             let response = FileStatAtResponse::new(stat);
 
-            match response.into_parts(pid) {
+            match response.into_parts(tid) {
                 Ok(messages) => messages,
-                Err(e) => vec![crate::build_error(pid, e.code)],
+                Err(e) => vec![crate::build_error(tid, e.code)],
             }
         },
         _ => {
@@ -488,7 +485,7 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
             debug!("libc::fstatat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -497,12 +494,12 @@ pub fn do_fstat(pid: ProcessIdentifier, request: FileStatRequest) -> Vec<Message
 // do_symlinkat()
 //==================================================================================================
 
-pub fn do_symlinkat(pid: ProcessIdentifier, request: SymbolicLinkAtRequest) -> Vec<Message> {
-    trace!("symlinkat(): pid={pid:?}, request={request:?}");
+pub fn do_symlinkat(tid: ThreadIdentifier, request: SymbolicLinkAtRequest) -> Vec<Message> {
+    trace!("symlinkat(): tid={tid:?}, request={request:?}");
 
     let target: CString = match CString::new(request.target.as_str()) {
         Ok(target) => target,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let newdirfd: i32 = request.dirfd;
@@ -510,7 +507,7 @@ pub fn do_symlinkat(pid: ProcessIdentifier, request: SymbolicLinkAtRequest) -> V
 
     let linkpath: CString = match CString::new(request.linkpath.as_str()) {
         Ok(linkpath) => linkpath,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     debug!(
@@ -520,14 +517,14 @@ pub fn do_symlinkat(pid: ProcessIdentifier, request: SymbolicLinkAtRequest) -> V
     match unsafe { libc::symlinkat(target.as_ptr(), newdirfd.inner(), linkpath.as_ptr()) } {
         0 => {
             debug!("libc::symlinkat(): success");
-            vec![SymbolicLinkAtResponse::build(pid, 0)]
+            vec![SymbolicLinkAtResponse::build(tid, 0)]
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::symlinkat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -536,15 +533,15 @@ pub fn do_symlinkat(pid: ProcessIdentifier, request: SymbolicLinkAtRequest) -> V
 // do_readlinkat()
 //==================================================================================================
 
-pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<Message> {
-    trace!("readlinkat(): pid={pid:?}, request={request:?}");
+pub fn do_readlinkat(tid: ThreadIdentifier, request: ReadLinkAtRequest) -> Vec<Message> {
+    trace!("readlinkat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     // TODO: Have a system-wide constant for this.
@@ -565,12 +562,12 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
 
             let response: ReadLinkAtResponse = match ReadLinkAtResponse::new(buf) {
                 Ok(response) => response,
-                Err(e) => return vec![crate::build_error(pid, e.code)],
+                Err(e) => return vec![crate::build_error(tid, e.code)],
             };
 
-            match response.into_parts(pid) {
+            match response.into_parts(tid) {
                 Ok(messages) => messages,
-                Err(e) => vec![crate::build_error(pid, e.code)],
+                Err(e) => vec![crate::build_error(tid, e.code)],
             }
         },
         _ => {
@@ -578,7 +575,7 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
             debug!("libc::readlinkat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -587,20 +584,20 @@ pub fn do_readlinkat(pid: ProcessIdentifier, request: ReadLinkAtRequest) -> Vec<
 // do_mkdirat()
 //==================================================================================================
 
-pub fn do_mkdirat(pid: ProcessIdentifier, request: MakeDirectoryAtRequest) -> Vec<Message> {
-    trace!("mkdirat(): pid={pid:?}, request={request:?}");
+pub fn do_mkdirat(tid: ThreadIdentifier, request: MakeDirectoryAtRequest) -> Vec<Message> {
+    trace!("mkdirat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
 
     let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let mode: LibcFileMode = match LibcFileMode::try_from(request.mode) {
         Ok(mode) => mode,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     debug!(
@@ -611,14 +608,14 @@ pub fn do_mkdirat(pid: ProcessIdentifier, request: MakeDirectoryAtRequest) -> Ve
     match unsafe { libc::mkdirat(dirfd.inner(), pathname.as_ptr(), mode.inner()) } {
         0 => {
             debug!("libc::mkdirat(): success");
-            vec![MakeDirectoryAtResponse::build(pid, 0)]
+            vec![MakeDirectoryAtResponse::build(tid, 0)]
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::mkdirat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -627,18 +624,15 @@ pub fn do_mkdirat(pid: ProcessIdentifier, request: MakeDirectoryAtRequest) -> Ve
 // do_utimensat()
 //==================================================================================================
 
-pub fn do_utimensat(
-    pid: ProcessIdentifier,
-    request: UpdateFileAccessTimeAtRequest,
-) -> Vec<Message> {
-    trace!("utimensat(): pid={pid:?}, request={request:?}");
+pub fn do_utimensat(tid: ThreadIdentifier, request: UpdateFileAccessTimeAtRequest) -> Vec<Message> {
+    trace!("utimensat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let times: [timespec; 2] = request.times;
@@ -667,14 +661,14 @@ pub fn do_utimensat(
     match unsafe { libc::utimensat(dirfd.inner(), path.as_ptr(), libc_times.as_ptr(), flag) } {
         0 => {
             debug!("libc::utimensat(): success");
-            vec![UpdateFileAccessTimeAtResponse::build(pid, 0)]
+            vec![UpdateFileAccessTimeAtResponse::build(tid, 0)]
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::utimensat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -683,8 +677,8 @@ pub fn do_utimensat(
 // do_futimens()
 //==================================================================================================
 
-pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest) -> Message {
-    trace!("futimens(): pid={pid:?}, request={request:?}");
+pub fn do_futimens(tid: ThreadIdentifier, request: UpdateFileAccessTimeRequest) -> Message {
+    trace!("futimens(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
 
@@ -703,14 +697,14 @@ pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest)
     match unsafe { libc::futimens(fd, libc_times.as_ptr()) } {
         0 => {
             debug!("libc::futimens(): success");
-            UpdateFileAccessTimeResponse::build(pid, 0)
+            UpdateFileAccessTimeResponse::build(tid, 0)
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::futimens(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            crate::build_error(pid, error)
+            crate::build_error(tid, error)
         },
     }
 }
@@ -719,13 +713,13 @@ pub fn do_futimens(pid: ProcessIdentifier, request: UpdateFileAccessTimeRequest)
 // do_fcntl()
 //==================================================================================================
 
-pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message {
-    trace!("fcntl(): pid={pid:?}, request={request:?}");
+pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
+    trace!("fcntl(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
     let cmd: LibcFileControlCommand = match LibcFileControlCommand::try_from(request.cmd) {
         Ok(cmd) => cmd,
-        Err(e) => return crate::build_error(pid, e.code),
+        Err(e) => return crate::build_error(tid, e.code),
     };
 
     debug!("libc::fcntl(): fd={fd:?}, cmd={:?}, arg={:?}", cmd.inner(), { request.arg });
@@ -738,7 +732,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
             Ok(flags) => flags.inner(),
             Err(error) => {
                 error!("do_fcntl(): {error:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
-                return crate::build_error(pid, error.code);
+                return crate::build_error(tid, error.code);
             },
         },
         libc::F_GETFL => 0,
@@ -749,7 +743,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
                 Ok(flags) => flags.inner(),
                 Err(error) => {
                     error!("do_fcntl(): {error:?} (cmd={cmd:#x?}), arg={:?})", { request.arg });
-                    return crate::build_error(pid, error.code);
+                    return crate::build_error(tid, error.code);
                 },
             }
         },
@@ -759,7 +753,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
             if arg < 0 {
                 if arg == -1 {
                     error!("do_fcntl(): invalid owner (cmd={cmd:#x?}, arg={arg:?})");
-                    return crate::build_error(pid, ErrorCode::InvalidArgument);
+                    return crate::build_error(tid, ErrorCode::InvalidArgument);
                 } else {
                     -arg
                 }
@@ -770,17 +764,17 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
         libc::F_GETLK => {
             let reason: &str = "unsupported file lock command";
             error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
-            return crate::build_error(pid, ErrorCode::InvalidArgument);
+            return crate::build_error(tid, ErrorCode::InvalidArgument);
         },
         libc::F_SETLK => {
             let reason: &str = "unsupported file lock command";
             error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
-            return crate::build_error(pid, ErrorCode::InvalidArgument);
+            return crate::build_error(tid, ErrorCode::InvalidArgument);
         },
         libc::F_SETLKW => {
             let reason: &str = "unsupported file lock command";
             error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
-            return crate::build_error(pid, ErrorCode::InvalidArgument);
+            return crate::build_error(tid, ErrorCode::InvalidArgument);
         },
         unsupported_cmd => {
             // The following statement is unreachable because any unsupported commands were already
@@ -799,13 +793,13 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
         libc::F_DUPFD | libc::F_DUPFD_CLOEXEC => {
             if ret >= 0 {
                 debug!("libc::fcntl(): F_DUPFD | F_DUPFD_CLOEXEC success");
-                FileControlResponse::build(pid, ret)
+                FileControlResponse::build(tid, ret)
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
-                crate::build_error(pid, error)
+                crate::build_error(tid, error)
             }
         },
         libc::F_GETFD => {
@@ -814,13 +808,13 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
                 let nanvix_file_descritor_flags: c_int = LibcFileDescriptorFlags(ret)
                     .try_into_nanvix_flags()
                     .unwrap_or_else(|_| panic!("unexpected file descriptor flags: {ret:?}"));
-                FileControlResponse::build(pid, nanvix_file_descritor_flags)
+                FileControlResponse::build(tid, nanvix_file_descritor_flags)
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
-                crate::build_error(pid, error)
+                crate::build_error(tid, error)
             }
         },
         libc::F_GETFL => {
@@ -851,7 +845,7 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
                 );
 
                 FileControlResponse::build(
-                    pid,
+                    tid,
                     nanvix_file_status_flags | nanvix_file_creation_flags,
                 )
             } else {
@@ -859,13 +853,13 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
-                crate::build_error(pid, error)
+                crate::build_error(tid, error)
             }
         },
         libc::F_GETOWN => {
             if ret != -1 {
                 debug!("libc::fcntl(): F_GETOWN success");
-                FileControlResponse::build(pid, ret)
+                FileControlResponse::build(tid, ret)
             } else {
                 // The following statement is unreachable because `libc::fcntl()` should never
                 // return -1 for `F_GETOWN`.
@@ -878,13 +872,13 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
         libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN => {
             if ret == 0 {
                 debug!("libc::fcntl(): libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN success");
-                FileControlResponse::build(pid, ret)
+                FileControlResponse::build(tid, ret)
             } else if ret == -1 {
                 let errno: i32 = unsafe { *libc::__errno_location() };
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
-                crate::build_error(pid, error)
+                crate::build_error(tid, error)
             } else {
                 // The following statement is unreachable because `libc::fcntl()` should return
                 // either 0 on success or -1 on error for `F_SETFD`, `F_SETFL`, and `F_SETOWN`.
@@ -909,15 +903,15 @@ pub fn do_fcntl(pid: ProcessIdentifier, request: FileControlRequest) -> Message 
 // do_fchownat()
 //==================================================================================================
 
-pub fn do_fchownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<Message> {
-    trace!("fchownat(): pid={pid:?}, request={request:?}");
+pub fn do_fchownat(tid: ThreadIdentifier, request: FileChownAtRequest) -> Vec<Message> {
+    trace!("fchownat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let owner: u32 = request.owner;
@@ -932,14 +926,14 @@ pub fn do_fchownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<M
     match unsafe { libc::fchownat(dirfd.inner(), path.as_ptr(), owner, group, flag.inner()) } {
         0 => {
             debug!("libc::fchownat(): success");
-            vec![FileChownAtResponse::build(pid)]
+            vec![FileChownAtResponse::build(tid)]
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fchownat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }
@@ -948,19 +942,19 @@ pub fn do_fchownat(pid: ProcessIdentifier, request: FileChownAtRequest) -> Vec<M
 // do_fchmod
 //==================================================================================================
 
-pub fn do_fchmod(pid: ProcessIdentifier, request: FileChmodRequest) -> Message {
-    trace!("fchmod(): pid={pid:?}, request={request:?}");
+pub fn do_fchmod(tid: ThreadIdentifier, request: FileChmodRequest) -> Message {
+    trace!("fchmod(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
     let mode: u32 = request.mode;
 
     debug!("libc::fchmod(): fd={fd:?}, mode={mode:?}");
     match unsafe { libc::fchmod(fd, mode) } {
-        0 => FileChmodResponse::build(pid),
+        0 => FileChmodResponse::build(tid),
         ret if ret == -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
             crate::build_error(
-                pid,
+                tid,
                 ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("invalid error code: {ret:?}")),
             )
@@ -973,20 +967,20 @@ pub fn do_fchmod(pid: ProcessIdentifier, request: FileChmodRequest) -> Message {
 // do_fchmodat()
 //==================================================================================================
 
-pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<Message> {
-    trace!("fchmodat(): pid={pid:?}, request={request:?}");
+pub fn do_fchmodat(tid: ThreadIdentifier, request: FileChmodAtRequest) -> Vec<Message> {
+    trace!("fchmodat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let mode: LibcFileMode = match LibcFileMode::try_from(request.mode) {
         Ok(mode) => mode,
-        Err(_) => return vec![crate::build_error(pid, ErrorCode::InvalidMessage)],
+        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
     };
 
     let flag: LibcAtFlags = LibcAtFlags::from(request.flag);
@@ -1001,14 +995,14 @@ pub fn do_fchmodat(pid: ProcessIdentifier, request: FileChmodAtRequest) -> Vec<M
     match unsafe { libc::fchmodat(dirfd.inner(), path.as_ptr(), mode.inner(), flag.inner()) } {
         0 => {
             debug!("libc::fchmodat(): success");
-            vec![FileChmodAtResponse::build(pid)]
+            vec![FileChmodAtResponse::build(tid)]
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
             debug!("libc::fchmodat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(pid, error)]
+            vec![crate::build_error(tid, error)]
         },
     }
 }

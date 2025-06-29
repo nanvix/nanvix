@@ -21,9 +21,11 @@ use ::core::{
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -64,7 +66,7 @@ impl CreateSocketRequest {
     }
 
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         domain: AddressFamily,
         typ: SocketType,
         protocol: Protocol,
@@ -74,8 +76,13 @@ impl CreateSocketRequest {
             LinuxDaemonMessageHeader::CreateSocketRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -111,14 +118,19 @@ impl CreateSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32) -> Message {
         let message: Self = Self::new(sockfd);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::CreateSocketResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

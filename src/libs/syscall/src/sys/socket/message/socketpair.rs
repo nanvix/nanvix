@@ -21,9 +21,11 @@ use ::core::{
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -65,7 +67,7 @@ impl CreateSocketPairRequest {
     }
 
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         domain: AddressFamily,
         typ: SocketType,
         protocol: Protocol,
@@ -75,8 +77,13 @@ impl CreateSocketPairRequest {
             LinuxDaemonMessageHeader::CreateSocketPairRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -115,14 +122,19 @@ impl CreateSocketPairResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd_0: c_int, sockfd_1: c_int) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd_0: c_int, sockfd_1: c_int) -> Message {
         let message: Self = Self::new(sockfd_0, sockfd_1);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::CreateSocketPairResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

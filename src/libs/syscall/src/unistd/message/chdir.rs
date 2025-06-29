@@ -33,9 +33,11 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::limits::PATH_MAX;
 
@@ -160,7 +162,7 @@ impl MessagePartitioner for ChangeDirectoryRequest {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
@@ -170,13 +172,13 @@ impl MessagePartitioner for ChangeDirectoryRequest {
     /// Upon success, the partitioned message is returned. Upon failure, an error is returned instead.
     ///
     fn new_part(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         part_number: u32,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
-            pid,
+            tid,
             LinuxDaemonMessageHeader::ChangeDirectoryRequestPart,
             part_number,
             payload_size,
@@ -209,14 +211,19 @@ impl ChangeDirectoryResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier) -> Message {
+    pub fn build(tid: ThreadIdentifier) -> Message {
         let message: ChangeDirectoryResponse = ChangeDirectoryResponse::new();
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ChangeDirectoryResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

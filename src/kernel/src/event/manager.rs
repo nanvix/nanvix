@@ -46,11 +46,14 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::{
         Capability,
         ProcessIdentifier,
+        ThreadIdentifier,
     },
 };
 
@@ -313,6 +316,7 @@ impl EventManagerInner {
     ///
     /// # Parameters
     ///
+    /// - `tid`: Identifier of the target thread.
     /// - `pid`: Identifier of the target process.
     /// - `interrupts`: Bit mask of interrupts.
     /// - `exceptions`: Bit mask of exceptions.
@@ -333,6 +337,7 @@ impl EventManagerInner {
     ///
     pub unsafe fn try_wait(
         &mut self,
+        tid: ThreadIdentifier,
         pid: ProcessIdentifier,
         interrupts: usize,
         exceptions: usize,
@@ -347,8 +352,8 @@ impl EventManagerInner {
                         let idx: usize = i as usize;
                         if let Some(_event) = self.pending_interrupts[idx].pop_front() {
                             let message: Message = Message {
-                                source: ProcessIdentifier::KERNEL,
-                                destination: pid,
+                                source: MessageSender::from(ProcessIdentifier::KERNEL),
+                                destination: MessageReceiver::from(pid),
                                 message_type: MessageType::Interrupt,
                                 ..Message::default()
                             };
@@ -374,7 +379,7 @@ impl EventManagerInner {
                             info.instruction = Some(entry.1.info.instruction() as usize);
 
                             let mut message: Message = Message::from(info);
-                            message.destination = pid;
+                            message.destination = MessageReceiver::from(pid);
                             message.message_type = MessageType::Exception;
 
                             self.pending_exceptions[idx].push_back(entry);
@@ -391,8 +396,8 @@ impl EventManagerInner {
                     if (scheduling & (1 << i)) != 0 {
                         if let Some((_ev, info)) = self.pending_scheduling[i].pop_front() {
                             let message: Message = Message {
-                                source: ProcessIdentifier::KERNEL,
-                                destination: pid,
+                                source: MessageSender::from(ProcessIdentifier::KERNEL),
+                                destination: MessageReceiver::from(pid),
                                 message_type: MessageType::ProcessTerminationEvent,
                                 status: 0,
                                 payload: {
@@ -414,7 +419,7 @@ impl EventManagerInner {
         // FIXME: Delivery of IPC messages will starve if exception / interrupt rate is to high.
 
         // Check if any messages were delivered.
-        match ProcessManager::try_recv() {
+        match ProcessManager::try_recv(tid) {
             Ok(Some(message)) => Ok(Some(message)),
             Ok(None) => Ok(None),
             Err(e) => Err(e),
@@ -595,13 +600,21 @@ impl EventManagerInner {
     fn post_message(
         &mut self,
         pm: &mut ProcessManager,
-        pid: ProcessIdentifier,
+        receiver: MessageReceiver,
         message: Message,
     ) -> Result<(), Error> {
-        pm.post_message(pid, message)?;
+        pm.post_message(receiver, message)?;
 
-        // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
-        unsafe { self.get_wait().notify_process(pid) }
+        match receiver.as_id() {
+            Ok(pid) => {
+                // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
+                unsafe { self.get_wait().notify_process(pid) }
+            },
+            Err(tid) => {
+                // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
+                unsafe { self.get_wait().notify_thread(tid) }
+            },
+        }
     }
 
     ///
@@ -720,7 +733,10 @@ impl EventManager {
     /// - The calling process is not the kernel process.
     /// - This function is invoked without holding any resources.
     ///
-    pub unsafe fn wait(pid: ProcessIdentifier) -> Result<Message, SleepError> {
+    pub unsafe fn wait(
+        tid: ThreadIdentifier,
+        pid: ProcessIdentifier,
+    ) -> Result<Message, SleepError> {
         // Get the interrupts that the process owns.
         let mut interrupts: usize = 0;
         for i in 0..usize::BITS {
@@ -780,7 +796,7 @@ impl EventManager {
                 .map_err(SleepError::Generic)?
                 .try_borrow_mut()
                 .map_err(SleepError::Generic)?
-                .try_wait(pid, interrupts, exceptions, scheduling)
+                .try_wait(tid, pid, interrupts, exceptions, scheduling)
                 .map_err(SleepError::Generic)?;
 
             if let Some(message) = message {
@@ -831,12 +847,12 @@ impl EventManager {
 
     pub fn post_message(
         pm: &mut ProcessManager,
-        pid: ProcessIdentifier,
+        receiver: MessageReceiver,
         message: Message,
     ) -> Result<(), Error> {
         Self::get_mut()?
             .try_borrow_mut()?
-            .post_message(pm, pid, message)
+            .post_message(pm, receiver, message)
     }
 
     ///

@@ -15,7 +15,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
 
@@ -45,7 +45,7 @@ pub struct VirtualEnviromentDirectory {
     /// Next environment identifier.
     next_env: VirtualEnvironmentIdentifier,
     /// Virtual environments.
-    processes: BTreeMap<ProcessIdentifier, VirtualEnvironment>,
+    processes: BTreeMap<ThreadIdentifier, VirtualEnvironment>,
 }
 
 //==================================================================================================
@@ -125,7 +125,7 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `envid`: Virtual environment identifier.
     ///
     /// # Returns
@@ -135,14 +135,14 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn join(
         &mut self,
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         mut envid: VirtualEnvironmentIdentifier,
     ) -> Result<VirtualEnvironmentIdentifier, Error> {
-        trace!("join(): pid={pid:?}, envid={envid:?}");
+        trace!("join(): tid={tid:?}, envid={envid:?}");
 
         // Check if the process is already in an environment.
-        if self.processes.contains_key(&pid) {
-            error!("process {:?} is previously joined environment {:?}", pid, self.processes[&pid]);
+        if self.processes.contains_key(&tid) {
+            error!("process {:?} is previously joined environment {:?}", tid, self.processes[&tid]);
             return Err(Error::new(
                 ErrorCode::ResourceBusy,
                 "process is already in an environment",
@@ -151,17 +151,17 @@ impl VirtualEnviromentDirectory {
 
         // Check wether the process requested to join a new environment or an existing one.
         if envid == VirtualEnvironmentIdentifier::NEW {
-            // Process requested to join a new environment.
+            // Thread requested to join a new environment.
             envid = self.next_env;
             self.next_env = self.next_env.next();
-            self.processes.insert(pid, VirtualEnvironment::new(envid));
-            info!("process {pid:?} joined new environment {envid:?}");
+            self.processes.insert(tid, VirtualEnvironment::new(envid));
+            info!("process {tid:?} joined new environment {envid:?}");
         } else {
-            // Process requested to join an existing environment.
+            // Thread requested to join an existing environment.
 
             // Check if environment exists.
             if !self.processes.values().any(|v| v.id() == envid) {
-                error!("process {pid:?} requested to join non-existing environment {envid:?}");
+                error!("process {tid:?} requested to join non-existing environment {envid:?}");
                 return Err(Error::new(
                     ErrorCode::NoSuchEntry,
                     "virtual environment does not exist",
@@ -169,7 +169,7 @@ impl VirtualEnviromentDirectory {
             }
 
             // Join environment.
-            self.processes.insert(pid, VirtualEnvironment::new(envid));
+            self.processes.insert(tid, VirtualEnvironment::new(envid));
         }
 
         Ok(envid)
@@ -182,7 +182,7 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     /// - `envid`: Virtual environment identifier.
     ///
     /// # Returns
@@ -193,14 +193,14 @@ impl VirtualEnviromentDirectory {
     #[allow(dead_code)]
     pub fn leave(
         &mut self,
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         envid: VirtualEnvironmentIdentifier,
     ) -> Result<VirtualEnvironmentIdentifier, Error> {
-        trace!("leave(): pid={pid:?}, envid={envid:?}");
+        trace!("leave(): tid={tid:?}, envid={envid:?}");
 
         // Check if the process has joined an environment.
-        if !self.processes.contains_key(&pid) {
-            error!("process {pid:?} has not joined an environment");
+        if !self.processes.contains_key(&tid) {
+            error!("process {tid:?} has not joined an environment");
             return Err(Error::new(
                 ErrorCode::NoSuchEntry,
                 "process has not joined an environment",
@@ -208,8 +208,8 @@ impl VirtualEnviromentDirectory {
         }
 
         // Check if the process has previously joined the environment.
-        if self.processes[&pid].id() != envid {
-            error!("process {pid:?} has not previously joined environment {envid:?}");
+        if self.processes[&tid].id() != envid {
+            error!("process {tid:?} has not previously joined environment {envid:?}");
             return Err(Error::new(
                 ErrorCode::InvalidArgument,
                 "process has not previously joined environment",
@@ -217,7 +217,7 @@ impl VirtualEnviromentDirectory {
         }
 
         // Leave environment.
-        self.processes.remove(&pid);
+        self.processes.remove(&tid);
 
         Ok(envid)
     }
@@ -229,15 +229,15 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     ///
     /// # Returns
     ///
     /// If there is a virtual environment associated with the process, the function returns a
     /// reference to the virtual environment. Otherwise, it returns `None`.
     ///
-    pub fn get(&self, pid: ProcessIdentifier) -> Option<&VirtualEnvironment> {
-        self.processes.get(&pid)
+    pub fn get(&self, tid: ThreadIdentifier) -> Option<&VirtualEnvironment> {
+        self.processes.get(&tid)
     }
 
     ///
@@ -247,14 +247,14 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
     ///
     /// # Returns
     ///
     /// If there is a virtual environment associated with the process, the function returns a
     /// mutable reference to the virtual environment. Otherwise, it returns `None`.
     ///
-    pub fn get_mut(&mut self, pid: ProcessIdentifier) -> Option<&mut VirtualEnvironment> {
-        self.processes.get_mut(&pid)
+    pub fn get_mut(&mut self, tid: ThreadIdentifier) -> Option<&mut VirtualEnvironment> {
+        self.processes.get_mut(&tid)
     }
 }

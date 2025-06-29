@@ -22,7 +22,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 
@@ -46,10 +46,10 @@ use ::sysapi::ffi::c_int;
 ///
 pub fn getpeername(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error> {
     ::syslog::trace!("getpeername(): sockfd={:?}, sockaddr={:?}", sockfd, sockaddr);
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = GetPeerNameRequest::build(pid, sockfd);
+    let request: Message = GetPeerNameRequest::build(tid, sockfd);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

@@ -14,6 +14,7 @@ use ::sys::{
 // Standalone Functions
 //==================================================================================================///
 
+///
 /// # Description
 ///
 /// `getpid()` returns the process ID (PID) of the calling process.

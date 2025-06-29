@@ -13,9 +13,11 @@ use ::core::mem;
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -58,12 +60,18 @@ impl FileStatRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, fd: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, fd: i32) -> Message {
         let message: FileStatRequest = FileStatRequest::new(fd);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::FileStatRequest,
             message.into_bytes(),
         );
-        Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes())
+        Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        )
     }
 }

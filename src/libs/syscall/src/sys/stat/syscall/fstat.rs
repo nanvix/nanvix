@@ -9,7 +9,7 @@ use crate::sys::stat::message::FileStatRequest;
 use ::sys::{
     error::Error,
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::sys_stat;
 
@@ -57,9 +57,9 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
 /// instead.
 ///
 fn fstat_request(fd: i32) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
-    let message: Message = FileStatRequest::build(pid, fd);
+    let message: Message = FileStatRequest::build(tid, fd);
 
     ::sys::kcall::ipc::send(&message)
 }

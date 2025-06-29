@@ -19,7 +19,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -57,11 +57,11 @@ pub fn renameat(
         newpath
     );
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
     let request: RenameAtRequest = RenameAtRequest::new(olddirfd, oldpath, newdirfd, newpath)?;
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
     for request in requests {
         ::sys::kcall::ipc::send(&request)?;
     }

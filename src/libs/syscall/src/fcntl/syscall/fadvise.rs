@@ -17,7 +17,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 use sysapi::sys_types::off_t;
@@ -56,10 +56,10 @@ pub fn posix_fadvise(
         advice
     );
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = FileAdvisoryInformationRequest::build(pid, fd, offset, len, advice);
+    let request: Message = FileAdvisoryInformationRequest::build(tid, fd, offset, len, advice);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

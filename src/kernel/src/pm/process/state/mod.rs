@@ -68,6 +68,7 @@ use ::sys::{
         ConditionAddress,
         MutexAddress,
         ProcessIdentifier,
+        ThreadIdentifier,
     },
 };
 
@@ -231,8 +232,8 @@ impl ProcessState {
         self.mailbox.send(message)
     }
 
-    pub fn receive_message(&mut self) -> Option<Message> {
-        self.mailbox.receive()
+    pub fn receive_message(&mut self, tid: ThreadIdentifier) -> Option<Message> {
+        self.mailbox.receive(tid)
     }
 
     pub fn add_mmio(&mut self, region: IoMemoryRegion) {

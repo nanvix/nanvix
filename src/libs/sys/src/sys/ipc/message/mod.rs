@@ -12,7 +12,11 @@ mod system;
 // Exports
 //==================================================================================================
 
-pub use kernel::Message;
+pub use kernel::{
+    Message,
+    MessageReceiver,
+    MessageSender,
+};
 pub use system::{
     SystemMessage,
     SystemMessageHeader,

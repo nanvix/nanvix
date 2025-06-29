@@ -17,7 +17,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::sys_types::mode_t;
 
@@ -42,10 +42,10 @@ use sysapi::sys_types::mode_t;
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it
-    let request: Message = FileChmodRequest::build(pid, fd, mode);
+    let request: Message = FileChmodRequest::build(tid, fd, mode);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

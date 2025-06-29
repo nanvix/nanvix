@@ -13,9 +13,11 @@ use ::core::mem;
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::c_size_t;
 
@@ -56,14 +58,19 @@ impl ReceiveSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32, count: u32, flags: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32, count: u32, flags: i32) -> Message {
         let message: ReceiveSocketRequest = ReceiveSocketRequest::new(sockfd, count, flags);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::ReceiveSocketRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }
@@ -96,7 +103,7 @@ impl ReceiveSocketResponse {
     }
 
     pub fn build(
-        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         count: c_size_t,
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
@@ -105,8 +112,13 @@ impl ReceiveSocketResponse {
             LinuxDaemonMessageHeader::ReceiveSocketResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
         message
     }
 }

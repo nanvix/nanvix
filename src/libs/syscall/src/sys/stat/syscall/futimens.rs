@@ -17,7 +17,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::time::timespec;
 
@@ -42,10 +42,10 @@ use ::sysapi::time::timespec;
 pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     ::syslog::error!("futimens(): fd={:?}, times={:?}", fd, times);
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = UpdateFileAccessTimeRequest::build(pid, fd, times);
+    let request: Message = UpdateFileAccessTimeRequest::build(tid, fd, times);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

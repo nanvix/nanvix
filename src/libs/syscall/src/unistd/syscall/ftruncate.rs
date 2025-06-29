@@ -16,7 +16,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     ffi::c_int,
@@ -44,10 +44,10 @@ use ::sysapi::{
 pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
     ::syslog::debug!("ftruncate(): fd={}, length={}", fd, length);
 
-    let pid: ProcessIdentifier = crate::unistd::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = FileTruncateRequest::build(pid, fd, length);
+    let request: Message = FileTruncateRequest::build(tid, fd, length);
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

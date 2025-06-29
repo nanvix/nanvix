@@ -16,11 +16,13 @@ use ::core::{
 use ::sys::{
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
-use sysapi::sys_socket::sockaddr;
+use ::sysapi::sys_socket::sockaddr;
 
 //==================================================================================================
 // AcceptSocketRequest
@@ -52,14 +54,19 @@ impl AcceptSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32) -> Message {
         let message: Self = Self::new(sockfd);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::AcceptSocketRequest,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(pid, crate::LINUXD, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }
@@ -97,14 +104,19 @@ impl AcceptSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(pid: ProcessIdentifier, sockfd: i32, sockaddr: &sockaddr) -> Message {
+    pub fn build(tid: ThreadIdentifier, sockfd: i32, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockfd, sockaddr);
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::AcceptSocketResponse,
             message.into_bytes(),
         );
-        let message: Message =
-            Message::new(crate::LINUXD, pid, MessageType::Ikc, None, message.into_bytes());
+        let message: Message = Message::new(
+            MessageSender::from(crate::LINUXD),
+            MessageReceiver::from(tid),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
 
         message
     }

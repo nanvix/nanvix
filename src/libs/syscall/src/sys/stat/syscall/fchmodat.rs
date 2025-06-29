@@ -18,7 +18,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     ffi::c_int,
@@ -57,11 +57,11 @@ pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(
 }
 
 fn chmodat_request(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileChmodAtRequest = FileChmodAtRequest::new(dirfd, mode, flag, path)?;
 
-    let requests: Vec<Message> = request.into_parts(pid)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
 
     for request in requests {
         ::sys::kcall::ipc::send(&request)?;

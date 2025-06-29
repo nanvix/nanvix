@@ -17,7 +17,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::Message,
-    pm::ProcessIdentifier,
+    pm::ThreadIdentifier,
 };
 use sysapi::sys_types::off_t;
 
@@ -43,10 +43,10 @@ use sysapi::sys_types::off_t;
 pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
     ::syslog::error!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
 
-    let pid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
-    let request: Message = FileSpaceControlRequest::build(pid, fd, offset, len)?;
+    let request: Message = FileSpaceControlRequest::build(tid, fd, offset, len)?;
     ::sys::kcall::ipc::send(&request)?;
 
     // Receive response.

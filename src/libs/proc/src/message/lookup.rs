@@ -20,6 +20,8 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
         SystemMessage,
         SystemMessageHeader,
@@ -241,8 +243,13 @@ pub fn lookup_request(name: &str, pid: ProcessIdentifier) -> Result<Message, Err
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     // Construct an IPC  message.
-    let ipc_message: Message =
-        Message::new(pid, crate::PROCD, MessageType::Ipc, None, system_message.into_bytes());
+    let ipc_message: Message = Message::new(
+        MessageSender::from(pid),
+        MessageReceiver::from(crate::PROCD),
+        MessageType::Ipc,
+        None,
+        system_message.into_bytes(),
+    );
 
     Ok(ipc_message)
 }
@@ -282,8 +289,8 @@ pub fn lookup_response(
 
     // Construct an IPC  message.
     let ipc_message: Message = Message::new(
-        crate::PROCD,
-        destination,
+        MessageSender::from(crate::PROCD),
+        MessageReceiver::from(destination),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),
