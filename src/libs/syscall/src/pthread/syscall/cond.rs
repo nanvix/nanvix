@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::pthread::syscall::MUTEXES;
 use ::alloc::collections::btree_map::{
     BTreeMap,
     Entry,
@@ -12,6 +13,7 @@ use ::alloc::collections::btree_map::{
 use ::spin::{
     Lazy,
     Mutex,
+    MutexGuard,
 };
 use ::sys::{
     error::{
@@ -40,8 +42,6 @@ use sysapi::{
         pthread_mutexattr_t,
     },
 };
-
-use crate::pthread::syscall::MUTEXES;
 
 //==================================================================================================
 // Globals
@@ -98,14 +98,13 @@ pub fn pthread_cond_init(
 }
 
 pub fn pthread_cond_destroy(cond: &mut pthread_cond_t) -> Result<(), Error> {
+    let mut conditions: MutexGuard<'_, BTreeMap<usize, pthread_condattr_t>> = CONDITIONS.lock();
+
     // Check if condition variable is not initialized.
-    if !CONDITIONS
-        .lock()
-        .contains_key(&(cond as *const pthread_cond_t as usize))
-    {
+    if !conditions.contains_key(&(cond as *const pthread_cond_t as usize)) {
         // Check if condition variable was statically initialized.
         if *cond == PTHREAD_COND_INITIALIZER {
-            // No ned to remove in this case, as it was not lazily registered.
+            // No need to remove in this case, as it was not lazily registered.
             return Ok(());
         } else {
             let reason: &str = "condition variable is not initialized";
@@ -114,9 +113,7 @@ pub fn pthread_cond_destroy(cond: &mut pthread_cond_t) -> Result<(), Error> {
         }
     }
 
-    CONDITIONS
-        .lock()
-        .remove(&(cond as *const pthread_cond_t as usize));
+    conditions.remove(&(cond as *const pthread_cond_t as usize));
 
     Ok(())
 }
