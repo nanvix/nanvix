@@ -124,10 +124,11 @@ impl MessageSerializer for UnlinkAtRequest {
         buffer.extend_from_slice(&self.dirfd.to_le_bytes());
         // Serialize `flags` field.
         buffer.extend_from_slice(&self.flags.to_le_bytes());
+        let pathname_bytes: &[u8] = self.pathname.as_bytes();
         // Serialize `pathname.len()` field.
-        buffer.extend_from_slice(&(self.pathname.len() as u32).to_le_bytes());
+        buffer.extend_from_slice(&(pathname_bytes.len() as u32).to_le_bytes());
         // Serialize `pathname` field.
-        buffer.extend_from_slice(self.pathname.as_bytes());
+        buffer.extend_from_slice(pathname_bytes);
 
         buffer
     }
