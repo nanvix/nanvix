@@ -71,8 +71,8 @@ pub fn fchownat(
 
     let requests: Vec<Message> = request.into_parts(tid)?;
 
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     let response: Message = ::sys::kcall::ipc::recv()?;

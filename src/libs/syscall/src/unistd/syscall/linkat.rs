@@ -71,8 +71,8 @@ pub fn linkat(
     let requests: Vec<Message> = request.into_parts(tid)?;
 
     // Send request.
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     // Receive response.
