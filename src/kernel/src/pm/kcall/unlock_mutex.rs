@@ -28,7 +28,7 @@ use ::sys::{
 ///
 /// - `pid`: Process identifier.
 /// - `tid`: Thread identifier.
-/// - `arg0`: Address of the mutex to unlock.
+/// - `mutex_addr`: Address of the mutex to unlock.
 ///
 /// # Return
 ///
@@ -46,10 +46,12 @@ use ::sys::{
 pub unsafe fn unlock_mutex(
     pid: ProcessIdentifier,
     tid: ThreadIdentifier,
-    arg0: usize,
+    mutex_addr: usize,
 ) -> Result<(), Error> {
+    trace!("unlock_mutex(): pid={pid:?}, tid={tid:?}, mutex_addr={mutex_addr:?}");
+
     // Unpack kernel call arguments.
-    let mutex_addr: MutexAddress = MutexAddress::from(arg0);
+    let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);
 
     ProcessManager::take_mutex_guard(pid, tid, mutex_addr)?;
     // The mutex guard is dropped, causing threads to be notified.
