@@ -11,14 +11,27 @@ use crate::pm::{
 };
 use ::sys::{
     error::Error,
-    pm::ConditionAddress,
+    pm::{
+        ConditionAddress,
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub unsafe fn signal_cond(cond_addr: usize, broadcast: bool) -> Result<usize, Error> {
+pub unsafe fn signal_cond(
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    cond_addr: usize,
+    broadcast: bool,
+) -> Result<usize, Error> {
+    trace!(
+        "signal_cond(): pid={pid:?}, tid={tid:?}, cond_addr={cond_addr:x?}, broadcast={broadcast}"
+    );
+
     // Unpack kernel call arguments.
     let cond_addr: ConditionAddress = ConditionAddress::from(cond_addr);
 
