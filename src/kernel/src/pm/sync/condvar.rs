@@ -155,7 +155,13 @@ impl Condvar {
 
         // Remove process from sleeping queue.
         if let Some(at) = idx {
-            let (_, tid) = self.inner.sleeping.borrow_mut().remove(at);
+            let (_notified_pid, tid) = self.inner.sleeping.borrow_mut().remove(at);
+            debug_assert!(
+                _notified_pid == pid,
+                "notify_process(): pid and tid do not match (expected: pid={:?}, got pid={:?})",
+                pid,
+                _notified_pid
+            );
             ProcessManager::wakeup(tid)?;
         }
 
