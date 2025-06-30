@@ -136,7 +136,7 @@ pub fn main() -> Result<()> {
 
     // Accepct connection from gateway after binding the socket to listen from user VMs,
     // but before accepting any connection.
-    let mut gateway_stream: Option<SocketStream> = match gateway_listener {
+    let gateway_stream: Option<SocketStream> = match gateway_listener {
         Some(gateway_listener) => {
             info!("Listening to gateway on: {:?}", gateway_sockaddr);
             loop {
@@ -169,7 +169,7 @@ pub fn main() -> Result<()> {
         };
     };
 
-    let mut procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, &mut gateway_stream) {
+    let mut procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, gateway_stream) {
         Ok(procd) => procd,
         Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
     };
