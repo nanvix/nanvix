@@ -124,16 +124,14 @@ pub fn pthread_cond_destroy(cond: &mut pthread_cond_t) -> Result<(), Error> {
 
 pub fn pthread_cond_signal(cond: &pthread_cond_t) -> Result<(), Error> {
     // Check if condition variable is not initialized.
-    if let Entry::Vacant(_) = CONDITIONS
+    if let Entry::Vacant(entry) = CONDITIONS
         .lock()
         .entry(cond as *const pthread_cond_t as usize)
     {
         // Check if condition variable was statically initialized.
         if *cond == PTHREAD_COND_INITIALIZER {
             // Lazily register condition variable.
-            CONDITIONS
-                .lock()
-                .insert(cond as *const pthread_cond_t as usize, pthread_condattr_t::default());
+            entry.insert(pthread_condattr_t::default());
         } else {
             let reason: &str = "condition variable is not initialized";
             ::syslog::error!("pthread_cond_signal(): {}", reason);
