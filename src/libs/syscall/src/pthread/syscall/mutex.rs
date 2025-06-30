@@ -6,7 +6,11 @@
 //==================================================================================================
 
 use crate::pthread::syscall::MUTEXES;
-use ::alloc::collections::btree_map::Entry;
+use ::alloc::collections::btree_map::{
+    BTreeMap,
+    Entry,
+};
+use ::spin::MutexGuard;
 use ::sys::{
     error::{
         Error,
@@ -51,26 +55,22 @@ pub fn pthread_mutex_init(
 }
 
 pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
+    let mut mutexes: MutexGuard<'_, BTreeMap<usize, pthread_mutexattr_t>> = MUTEXES.lock();
+
     // Check if mutex is not initialized.
-    if !MUTEXES
-        .lock()
-        .contains_key(&(mutex as *const pthread_mutex_t as usize))
-    {
+    if !mutexes.contains_key(&(mutex as *const pthread_mutex_t as usize)) {
         // Check if mutex was statically initialized.
         if *mutex == PTHREAD_MUTEX_INITIALIZER {
-            // No ned to remove in this case, as it was not lazily registered.
+            // No need to remove in this case, as it was not lazily registered.
             return Ok(());
         } else {
-            // Check if mutex was statically initialized.
             let reason: &str = "mutex is not initialized";
             ::syslog::error!("pthread_mutex_destroy(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
 
-    MUTEXES
-        .lock()
-        .remove(&(mutex as *const pthread_mutex_t as usize));
+    mutexes.remove(&(mutex as *const pthread_mutex_t as usize));
 
     Ok(())
 }
