@@ -6,7 +6,11 @@
 //==================================================================================================
 
 use crate::pthread::syscall::MUTEXES;
-use ::alloc::collections::btree_map::Entry;
+use ::alloc::collections::btree_map::{
+    BTreeMap,
+    Entry,
+};
+use ::spin::MutexGuard;
 use ::sys::{
     error::{
         Error,
@@ -35,44 +39,38 @@ pub fn pthread_mutex_init(
     mutex: &mut pthread_mutex_t,
     attr: &pthread_mutexattr_t,
 ) -> Result<(), Error> {
-    // Check if mutex is already initialized.
-    if MUTEXES
+    // Check if mutex is not initialized.
+    if let Entry::Vacant(entry) = MUTEXES
         .lock()
-        .contains_key(&(mutex as *const pthread_mutex_t as usize))
+        .entry(mutex as *const pthread_mutex_t as usize)
     {
-        let reason: &str = "mutex is already initialized";
+        // Mutex was is not initialized.
+        entry.insert(*attr);
+        Ok(())
+    } else {
+        let reason: &str = "mutex is not initialized";
         ::syslog::error!("pthread_mutex_init(): {}", reason);
-        return Err(Error::new(ErrorCode::ResourceBusy, reason));
+        Err(Error::new(ErrorCode::InvalidArgument, reason))
     }
-
-    MUTEXES
-        .lock()
-        .insert(mutex as *const pthread_mutex_t as usize, *attr);
-
-    Ok(())
 }
 
 pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
+    let mut mutexes: MutexGuard<'_, BTreeMap<usize, pthread_mutexattr_t>> = MUTEXES.lock();
+
     // Check if mutex is not initialized.
-    if !MUTEXES
-        .lock()
-        .contains_key(&(mutex as *const pthread_mutex_t as usize))
-    {
+    if !mutexes.contains_key(&(mutex as *const pthread_mutex_t as usize)) {
         // Check if mutex was statically initialized.
         if *mutex == PTHREAD_MUTEX_INITIALIZER {
-            // No ned to remove in this case, as it was not lazily registered.
+            // No need to remove in this case, as it was not lazily registered.
             return Ok(());
         } else {
-            // Check if mutex was statically initialized.
             let reason: &str = "mutex is not initialized";
             ::syslog::error!("pthread_mutex_destroy(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
 
-    MUTEXES
-        .lock()
-        .remove(&(mutex as *const pthread_mutex_t as usize));
+    mutexes.remove(&(mutex as *const pthread_mutex_t as usize));
 
     Ok(())
 }
@@ -161,18 +159,14 @@ pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
 }
 
 pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
-    // Check if mutex is not initialized.
-    if *mutex != PTHREAD_MUTEX_INITIALIZER
-        && !MUTEXES
-            .lock()
-            .contains_key(&(mutex as *const pthread_mutex_t as usize))
+    if let Entry::Vacant(entry) = MUTEXES
+        .lock()
+        .entry(mutex as *const pthread_mutex_t as usize)
     {
         // Check if mutex was statically initialized.
         if *mutex == PTHREAD_MUTEX_INITIALIZER {
             // Lazily register mutex.
-            MUTEXES
-                .lock()
-                .insert(mutex as *const pthread_mutex_t as usize, pthread_mutexattr_t::default());
+            entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
             ::syslog::error!("pthread_mutex_unlock(): {}", reason);
