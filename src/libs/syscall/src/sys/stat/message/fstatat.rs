@@ -109,10 +109,11 @@ impl MessageSerializer for FileStatAtRequest {
         bytes.extend_from_slice(&self.dirfd.to_le_bytes());
         // Serialize flags.
         bytes.extend_from_slice(&self.flag.to_le_bytes());
+        let path_bytes: &[u8] = self.path.as_bytes();
         // Serialize path length.
-        bytes.extend_from_slice(&(self.path.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&(path_bytes.len() as u32).to_le_bytes());
         // Serialize path.
-        bytes.extend_from_slice(self.path.as_bytes());
+        bytes.extend_from_slice(path_bytes);
 
         bytes
     }

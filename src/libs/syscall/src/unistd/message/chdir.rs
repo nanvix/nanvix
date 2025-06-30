@@ -103,8 +103,9 @@ impl MessageSerializer for ChangeDirectoryRequest {
     fn to_bytes(&self) -> Vec<u8> {
         let mut buffer: Vec<u8> = Vec::new();
 
-        buffer.extend_from_slice(&(self.path.len() as u32).to_ne_bytes());
-        buffer.extend_from_slice(self.path.as_bytes());
+        let path_bytes: &[u8] = self.path.as_bytes();
+        buffer.extend_from_slice(&(path_bytes.len() as u32).to_ne_bytes());
+        buffer.extend_from_slice(path_bytes);
 
         buffer
     }

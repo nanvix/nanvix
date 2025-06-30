@@ -137,18 +137,20 @@ impl MessageSerializer for LinkAtRequest {
 
         // Serialize 'old directory file descriptor' field.
         bytes.extend_from_slice(&self.olddirfd.to_ne_bytes());
+        let oldpath_bytes: &[u8] = self.oldpath.as_bytes();
+        let newpath_bytes: &[u8] = self.newpath.as_bytes();
         // Serialize 'old path length' field.
-        bytes.extend_from_slice(&(self.oldpath.len() as u32).to_ne_bytes());
+        bytes.extend_from_slice(&(oldpath_bytes.len() as u32).to_ne_bytes());
         // Serialize 'new directory file descriptor' field.
         bytes.extend_from_slice(&self.newdirfd.to_ne_bytes());
         // Serialize 'new path length' field.
-        bytes.extend_from_slice(&(self.newpath.len() as u32).to_ne_bytes());
+        bytes.extend_from_slice(&(newpath_bytes.len() as u32).to_ne_bytes());
         // Serialize 'flags' field.
         bytes.extend_from_slice(&self.flags.to_ne_bytes());
         // Serialize 'old path' field.
-        bytes.extend_from_slice(self.oldpath.as_bytes());
+        bytes.extend_from_slice(oldpath_bytes);
         // Serialize 'new path' field.
-        bytes.extend_from_slice(self.newpath.as_bytes());
+        bytes.extend_from_slice(newpath_bytes);
 
         bytes
     }

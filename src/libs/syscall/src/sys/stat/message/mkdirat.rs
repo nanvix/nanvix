@@ -129,12 +129,13 @@ impl MessageSerializer for MakeDirectoryAtRequest {
 
         // Serialize directory file descriptor.
         buffer.extend_from_slice(&self.dirfd.to_ne_bytes());
+        let pathname_bytes: &[u8] = self.pathname.as_bytes();
         // Serialize path length.
-        buffer.extend_from_slice(&(self.pathname.len() as u32).to_ne_bytes());
+        buffer.extend_from_slice(&(pathname_bytes.len() as u32).to_ne_bytes());
         // Serialize mode.
         buffer.extend_from_slice(&self.mode.to_ne_bytes());
         // Serialize path.
-        buffer.extend_from_slice(self.pathname.as_bytes());
+        buffer.extend_from_slice(pathname_bytes);
 
         buffer
     }

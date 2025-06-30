@@ -155,8 +155,9 @@ impl MessageSerializer for FileChownAtRequest {
         buffer.extend_from_slice(&self.owner.to_ne_bytes());
         buffer.extend_from_slice(&self.group.to_ne_bytes());
         buffer.extend_from_slice(&self.flag.to_ne_bytes());
-        buffer.extend_from_slice(&(self.path.len() as u32).to_ne_bytes());
-        buffer.extend_from_slice(self.path.as_bytes());
+        let path_bytes: &[u8] = self.path.as_bytes();
+        buffer.extend_from_slice(&(path_bytes.len() as u32).to_ne_bytes());
+        buffer.extend_from_slice(path_bytes);
 
         buffer
     }

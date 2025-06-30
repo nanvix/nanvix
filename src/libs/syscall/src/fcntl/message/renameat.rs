@@ -148,14 +148,16 @@ impl MessageSerializer for RenameAtRequest {
         buffer.extend_from_slice(&self.olddirfd.to_le_bytes());
         // Serialize `newdirfd` field.
         buffer.extend_from_slice(&self.newdirfd.to_le_bytes());
+        let old_path_bytes: &[u8] = self.oldpath.as_bytes();
+        let new_path_bytes: &[u8] = self.newpath.as_bytes();
         // Serialize `oldpath.len()` field.
-        buffer.extend_from_slice(&(self.oldpath.len() as u32).to_le_bytes());
+        buffer.extend_from_slice(&(old_path_bytes.len() as u32).to_le_bytes());
         // Serialize `newpath.len()` field.
-        buffer.extend_from_slice(&(self.newpath.len() as u32).to_le_bytes());
+        buffer.extend_from_slice(&(new_path_bytes.len() as u32).to_le_bytes());
         // Serialize `oldpath` field.
-        buffer.extend_from_slice(self.oldpath.as_bytes());
+        buffer.extend_from_slice(old_path_bytes);
         // Serialize `newpath` field.
-        buffer.extend_from_slice(self.newpath.as_bytes());
+        buffer.extend_from_slice(new_path_bytes);
 
         buffer
     }
