@@ -59,8 +59,8 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
     let requests: Vec<Message> = request.into_parts(tid)?;
 
     // Send request.
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     // Receive response.

@@ -47,8 +47,8 @@ pub fn chdir(path: &str) -> Result<(), Error> {
     // Build request and send it.
     let request: ChangeDirectoryRequest = ChangeDirectoryRequest::new(path)?;
     let requests: Vec<Message> = request.into_parts(tid)?;
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     // Receive response.
