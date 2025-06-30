@@ -81,21 +81,20 @@ pub fn pthread_cond_init(
     cond: &mut pthread_cond_t,
     attr: &pthread_condattr_t,
 ) -> Result<(), Error> {
-    // Check if condition variable is already initialized.
-    if CONDITIONS
+    // Check if condition variable is not initialized.
+    if let Entry::Vacant(entry) = CONDITIONS
         .lock()
-        .contains_key(&(cond as *const pthread_cond_t as usize))
+        .entry(cond as *const pthread_cond_t as usize)
     {
+        // Condition variable is not initialized.
+        entry.insert(*attr);
+        Ok(())
+    } else {
+        // Condition variable is already initialized.
         let reason: &str = "condition variable is already initialized";
         ::syslog::error!("pthread_cond_init(): {}", reason);
-        return Err(Error::new(ErrorCode::ResourceBusy, reason));
+        Err(Error::new(ErrorCode::ResourceBusy, reason))
     }
-
-    CONDITIONS
-        .lock()
-        .insert(cond as *const pthread_cond_t as usize, *attr);
-
-    Ok(())
 }
 
 pub fn pthread_cond_destroy(cond: &mut pthread_cond_t) -> Result<(), Error> {
