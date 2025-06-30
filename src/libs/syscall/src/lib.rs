@@ -101,7 +101,6 @@ use ::sys::{
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u16)]
 pub enum LinuxDaemonMessageHeader {
-    OpenAtRequest,
     OpenAtRequestPart,
     OpenAtResponse,
     UnlinkAtRequestPart,
@@ -206,7 +205,6 @@ impl TryFrom<u16> for LinuxDaemonMessageHeader {
     fn try_from(value: u16) -> Result<Self, Self::Error> {
         use LinuxDaemonMessageHeader::*;
         match value {
-            x if x == OpenAtRequest as u16 => Ok(OpenAtRequest),
             x if x == OpenAtRequestPart as u16 => Ok(OpenAtRequestPart),
             x if x == OpenAtResponse as u16 => Ok(OpenAtResponse),
             x if x == UnlinkAtRequestPart as u16 => Ok(UnlinkAtRequestPart),

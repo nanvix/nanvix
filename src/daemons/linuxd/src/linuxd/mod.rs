@@ -239,7 +239,6 @@ impl<'a> LinuxDaemon<'a> {
                                 | LinuxDaemonMessageHeader::GetPeerNameRequest
                                 | LinuxDaemonMessageHeader::GetSockNameRequest
                                 | LinuxDaemonMessageHeader::ListenSocketRequest
-                                | LinuxDaemonMessageHeader::OpenAtRequest
                                 | LinuxDaemonMessageHeader::PartialReadRequest
                                 | LinuxDaemonMessageHeader::PartialWriteRequest
                                 | LinuxDaemonMessageHeader::ReceiveSocketRequest
