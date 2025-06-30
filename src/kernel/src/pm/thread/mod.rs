@@ -98,6 +98,7 @@ impl Drop for ThreadState {
 // Running Thread
 //==================================================================================================
 
+#[derive(Debug)]
 pub struct RunningThread(ThreadState);
 
 impl RunningThread {
@@ -229,6 +230,7 @@ impl ReadyThread {
 // Sleeping Thread
 //==================================================================================================
 
+#[derive(Debug)]
 pub struct SleepingThread {
     thread: ThreadState,
     alarm: Option<SystemTime>,
@@ -270,6 +272,8 @@ pub enum InterruptReason {
     /// Timer expired.
     TimedOut,
 }
+
+#[derive(Debug)]
 pub struct InterruptedThread {
     thread: ThreadState,
     reason: InterruptReason,
@@ -294,7 +298,7 @@ impl InterruptedThread {
 // Zombie Thread
 //==================================================================================================
 
-#[allow(unused)]
+#[derive(Debug)]
 pub struct ZombieThread {
     status: ExitStatus,
     state: ThreadState,
