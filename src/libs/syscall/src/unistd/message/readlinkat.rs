@@ -199,6 +199,7 @@ impl MessagePartitioner for ReadLinkAtRequest {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
@@ -209,13 +210,15 @@ impl MessagePartitioner for ReadLinkAtRequest {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::ReadLinkAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,
@@ -345,6 +348,7 @@ impl MessagePartitioner for ReadLinkAtResponse {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
@@ -355,13 +359,15 @@ impl MessagePartitioner for ReadLinkAtResponse {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_response(
             tid,
             LinuxDaemonMessageHeader::ReadLinkAtResponsePart,
+            total_parts,
             part_number,
             payload_size,
             payload,

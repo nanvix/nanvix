@@ -282,13 +282,15 @@ impl MessagePartitioner for RenameAtRequest {
     /// Creates a new message for the `renameat()` system call.
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::RenameAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,

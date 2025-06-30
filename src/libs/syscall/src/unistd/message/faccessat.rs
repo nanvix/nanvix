@@ -220,6 +220,7 @@ impl MessagePartitioner for FileAccessAtRequest {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
@@ -230,13 +231,15 @@ impl MessagePartitioner for FileAccessAtRequest {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::FileAccessAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,

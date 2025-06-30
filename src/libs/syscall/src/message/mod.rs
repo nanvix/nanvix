@@ -81,6 +81,7 @@ where
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -91,7 +92,8 @@ where
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error>;
@@ -112,8 +114,17 @@ where
     ///
     fn into_parts(self, tid: ThreadIdentifier) -> Result<Vec<Message>, Error> {
         let bytes: Vec<u8> = self.to_bytes();
-        let num_parts: usize = bytes.len().div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-        let mut parts: Vec<Message> = Vec::with_capacity(num_parts);
+        let num_parts: u16 = bytes
+            .len()
+            .div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE)
+            .try_into()
+            .map_err(|_| {
+                Error::new(
+                    ::sys::error::ErrorCode::InvalidMessage,
+                    "message is too large to be partitioned",
+                )
+            })?;
+        let mut parts: Vec<Message> = Vec::with_capacity(num_parts as usize);
 
         for (part_number, chunk) in bytes
             .chunks(LinuxDaemonMessagePart::PAYLOAD_SIZE)
@@ -123,7 +134,8 @@ where
             payload[..chunk.len()].copy_from_slice(chunk);
             parts.push(Self::new_part(
                 tid,
-                (num_parts - part_number - 1) as u32,
+                num_parts,
+                part_number as u16,
                 chunk.len() as u8,
                 payload,
             )?);
