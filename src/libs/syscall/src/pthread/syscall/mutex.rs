@@ -159,18 +159,14 @@ pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
 }
 
 pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
-    // Check if mutex is not initialized.
-    if *mutex != PTHREAD_MUTEX_INITIALIZER
-        && !MUTEXES
-            .lock()
-            .contains_key(&(mutex as *const pthread_mutex_t as usize))
+    if let Entry::Vacant(entry) = MUTEXES
+        .lock()
+        .entry(mutex as *const pthread_mutex_t as usize)
     {
         // Check if mutex was statically initialized.
         if *mutex == PTHREAD_MUTEX_INITIALIZER {
             // Lazily register mutex.
-            MUTEXES
-                .lock()
-                .insert(mutex as *const pthread_mutex_t as usize, pthread_mutexattr_t::default());
+            entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
             ::syslog::error!("pthread_mutex_unlock(): {}", reason);
