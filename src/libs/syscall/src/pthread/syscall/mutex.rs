@@ -35,21 +35,19 @@ pub fn pthread_mutex_init(
     mutex: &mut pthread_mutex_t,
     attr: &pthread_mutexattr_t,
 ) -> Result<(), Error> {
-    // Check if mutex is already initialized.
-    if MUTEXES
+    // Check if mutex is not initialized.
+    if let Entry::Vacant(entry) = MUTEXES
         .lock()
-        .contains_key(&(mutex as *const pthread_mutex_t as usize))
+        .entry(mutex as *const pthread_mutex_t as usize)
     {
-        let reason: &str = "mutex is already initialized";
+        // Mutex was is not initialized.
+        entry.insert(*attr);
+        Ok(())
+    } else {
+        let reason: &str = "mutex is not initialized";
         ::syslog::error!("pthread_mutex_init(): {}", reason);
-        return Err(Error::new(ErrorCode::ResourceBusy, reason));
+        Err(Error::new(ErrorCode::InvalidArgument, reason))
     }
-
-    MUTEXES
-        .lock()
-        .insert(mutex as *const pthread_mutex_t as usize, *attr);
-
-    Ok(())
 }
 
 pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
