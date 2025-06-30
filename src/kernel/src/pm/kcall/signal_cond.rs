@@ -27,8 +27,7 @@ pub unsafe fn signal_cond(cond_addr: usize, broadcast: bool) -> Result<usize, Er
         if broadcast {
             cond.notify_all()?
         } else {
-            cond.notify_first()?;
-            1
+            cond.notify_first()?
         }
         // The condition variable is dropped, causing its reference count to decrease.
     };
