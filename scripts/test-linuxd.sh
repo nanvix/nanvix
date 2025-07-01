@@ -5,7 +5,8 @@ PROGRAM_NAME=$2
 PROGRAM_ARGS=$3
 PROGRAM_ENV=$4
 PROGRAM_EXPECTED_OUTPUT=$5
-TIMEOUT=${6:-90}
+PROGRAM_EXPECTED_EXIT_CODE=$6
+TIMEOUT=${7:-90}
 
 NANVIX_HOME=`git rev-parse --show-toplevel`
 LOGS_DIR=${NANVIX_HOME}/logs/linuxd-$(basename "${PROGRAM_NAME}")
@@ -47,7 +48,7 @@ sudo -E rm -f ${SOCKADDR}
 mv *.log ${LOGS_DIR}/
 
 # Check microvm status to see if it exited successfully.
-if [ ${MICROVM_EXIT_CODE} -eq 0 ]; then
+if [ ${MICROVM_EXIT_CODE} -eq ${PROGRAM_EXPECTED_EXIT_CODE} ]; then
     # Check if LINUXD_STDOUT_FILE_NAME contains the expected output.
     grep -q "${PROGRAM_EXPECTED_OUTPUT}" ${LINUXD_STDOUT_FILE_NAME}
     GREP_EXIT_CODE=$?
