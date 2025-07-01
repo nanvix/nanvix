@@ -18,7 +18,7 @@ SYSROOT_DIR=${3:-$PWD/sysroot}
 export CONTRIB_DIR=${SYSROOT_DIR}/src
 export CPYTHON_HOME=${CONTRIB_DIR}/cpython
 export CPYTHON_REPOSITORY=https://github.com/nanvix/cpython
-export CPYTHON_BRANCH=nanvix/v3.12.3
+export CPYTHON_COMMIT=8efd04f0457041f3d56a6a634e8fca73eddad2d0
 
 export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 export CROSS_DIR=${SYSROOT_DIR}/cross
@@ -155,14 +155,14 @@ init() {
         if [ ! -d "${CPYTHON_HOME}/.git" ];
         then
             git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
-            git checkout ${CPYTHON_BRANCH}
+            git checkout ${CPYTHON_COMMIT}
         fi
         build_cross
     else
         cd ${CPYTHON_HOME}
         git fetch origin
         git reset --hard
-        git checkout ${CPYTHON_BRANCH}
+        git checkout ${CPYTHON_COMMIT}
     fi
 }
 
