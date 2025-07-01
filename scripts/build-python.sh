@@ -21,7 +21,6 @@ export CPYTHON_REPOSITORY=https://github.com/nanvix/cpython
 export CPYTHON_COMMIT=8efd04f0457041f3d56a6a634e8fca73eddad2d0
 
 export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
-export CROSS_DIR=${SYSROOT_DIR}/cross
 
 #===================================================================================================
 # Configure
@@ -42,7 +41,7 @@ configure() {
         --disable-shared \
         --build=x86_64-pc-linux-gnux32 \
         --host=i686-nanvix \
-        --with-build-python=${CROSS_DIR}/bin/python3 \
+        --with-build-python=${TOOLCHAIN_DIR}/bin/python3 \
         --disable-test-modules \
         --with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
         --with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
@@ -57,27 +56,6 @@ configure() {
         ac_cv_pthread_is_default=yes \
         ac_cv_pthread=yes \
         ac_cv_kthread=no
-}
-
-#===================================================================================================
-# Configure Cross
-#===================================================================================================
-
-configure_cross() {
-    LDFLAGS='-m32' \
-    CFLAGS="-m32" \
-    ./configure \
-         --build=x86_64-pc-linux-gnux32 \
-        --host=x86_64-pc-linux-gnux32 \
-        --disable-shared \
-        --disable-test-modules \
-        --prefix=${CROSS_DIR} \
-        --exec-prefix=${CROSS_DIR} \
-        --with-ensurepip=no \
-        --with-pkg-config=no \
-        --disable-ipv6 \
-        ac_cv_file__dev_ptmx=no \
-        ac_cv_file__dev_ptc=no
 }
 
 #===================================================================================================
@@ -120,14 +98,6 @@ make_install() {
 # Build
 #===================================================================================================
 
-build_cross() {
-    cd ${CPYTHON_HOME}
-    configure_cross
-    make_all
-    make_install
-    distclean
-}
-
 build() {
     cd ${CPYTHON_HOME}
 
@@ -149,21 +119,17 @@ build() {
 #===================================================================================================
 
 init() {
-    mkdir -p ${CONTRIB_DIR}
-    if [ ! -f "${CROSS_DIR}/bin/python3" ];
+mkdir -p ${CONTRIB_DIR}
+    if [ ! -d "${CPYTHON_HOME}/.git" ];
     then
-        if [ ! -d "${CPYTHON_HOME}/.git" ];
-        then
-            git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
-            git checkout ${CPYTHON_COMMIT}
-        fi
-        build_cross
+        git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
+        cd ${CPYTHON_HOME}
     else
         cd ${CPYTHON_HOME}
         git fetch origin
         git reset --hard
-        git checkout ${CPYTHON_COMMIT}
     fi
+    git checkout ${CPYTHON_COMMIT}
 }
 
 #===================================================================================================
