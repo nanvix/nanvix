@@ -51,8 +51,8 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
     // Build request and send it.
     let request: UnlinkAtRequest = UnlinkAtRequest::new(dirfd, pathname, flags)?;
     let requests: Vec<Message> = request.into_parts(tid)?;
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     // Receive response.

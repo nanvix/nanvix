@@ -163,13 +163,15 @@ impl MessageDeserializer for GetCurrentWorkingDirectoryResponse {
 impl MessagePartitioner for GetCurrentWorkingDirectoryResponse {
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_response(
             tid,
             LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryResponsePart,
+            total_parts,
             part_number,
             payload_size,
             payload,

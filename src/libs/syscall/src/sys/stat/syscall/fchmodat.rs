@@ -63,8 +63,8 @@ fn chmodat_request(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Resul
 
     let requests: Vec<Message> = request.into_parts(tid)?;
 
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     Ok(())

@@ -38,8 +38,10 @@ use ::sys::{
 ///
 #[repr(C, packed)]
 pub struct LinuxDaemonMessagePart {
+    /// Total parts.
+    pub total_parts: u16,
     /// Part number.
-    pub part_number: u32,
+    pub part_number: u16,
     /// Payload size.
     pub payload_size: u8,
     /// Payload.
@@ -49,8 +51,10 @@ pub struct LinuxDaemonMessagePart {
 
 impl LinuxDaemonMessagePart {
     /// Maximum size of the payload.
-    pub const PAYLOAD_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<u8>() - mem::size_of::<u32>();
+    pub const PAYLOAD_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+        - mem::size_of::<u8>()
+        - mem::size_of::<u16>()
+        - mem::size_of::<u16>();
 
     ///
     /// # Description
@@ -61,6 +65,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// - `tid`: Thread identifier.
     /// - `header`: Message header.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -72,11 +77,12 @@ impl LinuxDaemonMessagePart {
     pub fn build_request(
         tid: ThreadIdentifier,
         header: LinuxDaemonMessageHeader,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        Self::build(tid, header, part_number, payload_size, payload, false)
+        Self::build(tid, header, total_parts, part_number, payload_size, payload, false)
     }
 
     ///
@@ -88,6 +94,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// - `tid`: Thread identifier.
     /// - `header`: Message header.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -99,11 +106,12 @@ impl LinuxDaemonMessagePart {
     pub fn build_response(
         tid: ThreadIdentifier,
         header: LinuxDaemonMessageHeader,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        Self::build(tid, header, part_number, payload_size, payload, true)
+        Self::build(tid, header, total_parts, part_number, payload_size, payload, true)
     }
 
     ///
@@ -145,6 +153,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// - `tid`: Thread identifier.
     /// - `header`: Message header.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -155,12 +164,22 @@ impl LinuxDaemonMessagePart {
     fn build(
         tid: ThreadIdentifier,
         header: LinuxDaemonMessageHeader,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
         is_response: bool,
     ) -> Result<Message, Error> {
-        let message: LinuxDaemonMessagePart = Self::new(part_number, payload_size, payload)?;
+        // Check if part number is valid.
+        if part_number >= total_parts {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "part number is greater than or equal to total parts",
+            ));
+        }
+
+        let message: LinuxDaemonMessagePart =
+            Self::new(total_parts, part_number, payload_size, payload)?;
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(header, message.into_bytes());
         if is_response {
             Ok(Message::new(
@@ -188,12 +207,14 @@ impl LinuxDaemonMessagePart {
     ///
     /// # Parameters
     ///
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
     ///
     fn new(
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
     ) -> Result<Self, Error> {
@@ -203,6 +224,7 @@ impl LinuxDaemonMessagePart {
         }
 
         Ok(Self {
+            total_parts,
             part_number,
             payload_size,
             payload,
@@ -214,8 +236,9 @@ impl Debug for LinuxDaemonMessagePart {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "LinuxDaemonMessagePart {{ part_number: {}, payload_size: {} }}",
+            "LinuxDaemonMessagePart {{ part_number: {}, total_parts={},  payload_size: {} }}",
             { self.part_number },
+            { self.total_parts },
             { self.payload_size }
         )
     }

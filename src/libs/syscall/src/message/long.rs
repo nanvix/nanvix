@@ -19,8 +19,6 @@ use ::sys::error::{
 /// This structure represents a long message that is split into multiple parts.
 ///
 pub struct LinuxDaemonLongMessage {
-    /// Indicates if the message contains all its parts.
-    is_complete: bool,
     /// Maximum number of parts that the message can contain.
     capacity: usize,
     /// Parts of the message.
@@ -52,7 +50,6 @@ impl LinuxDaemonLongMessage {
         }
 
         Ok(Self {
-            is_complete: false,
             capacity,
             parts: Vec::with_capacity(capacity),
         })
@@ -78,18 +75,15 @@ impl LinuxDaemonLongMessage {
         }
 
         // Check if message is already complete.
-        if self.is_complete {
+        if self.is_complete() {
             return Err(Error::new(ErrorCode::InvalidMessage, "message is already complete"));
         }
 
-        let part_number: u32 = part.part_number;
-        self.check_out_of_order(part_number)?;
         self.parts.push(part);
 
-        // Check if received all parts.
-        if part_number == 0 {
-            self.is_complete = true;
-        }
+        // Keep parts sorted by part number. As vector is almost sorted, this has a linear performance.
+        // TODO: reduce number of copies by manually keeping this property using a linked list.
+        self.parts.sort_by_key(|part| part.part_number);
 
         Ok(())
     }
@@ -104,7 +98,13 @@ impl LinuxDaemonLongMessage {
     /// Returns `true` if the message is complete. Otherwise, it returns `false`.
     ///
     pub fn is_complete(&self) -> bool {
-        self.is_complete
+        if let Some(last) = self.parts.last() {
+            // Check if the last part is the last part of the message.
+            if last.total_parts == self.parts.len() as u16 {
+                return true;
+            }
+        }
+        false
     }
 
     ///
@@ -118,28 +118,5 @@ impl LinuxDaemonLongMessage {
     ///
     pub fn take_parts(self) -> Vec<LinuxDaemonMessagePart> {
         self.parts
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Checks if the part number is out of order.
-    ///
-    /// # Parameters
-    ///
-    /// - `part_number`: Part number.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, the function returns empty. Otherwise, it returns an error.
-    ///
-    fn check_out_of_order(&self, part_number: u32) -> Result<(), Error> {
-        if let Some(last) = self.parts.last() {
-            if last.part_number != part_number + 1 {
-                return Err(Error::new(ErrorCode::InvalidMessage, "out of order segment"));
-            }
-        }
-
-        Ok(())
     }
 }

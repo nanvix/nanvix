@@ -136,8 +136,9 @@ impl MessageSerializer for FileChmodAtRequest {
         buffer.extend_from_slice(&self.dirfd.to_ne_bytes());
         buffer.extend_from_slice(&self.mode.to_ne_bytes());
         buffer.extend_from_slice(&self.flag.to_ne_bytes());
-        buffer.extend_from_slice(&(self.path.len() as u32).to_ne_bytes());
-        buffer.extend_from_slice(self.path.as_bytes());
+        let path_bytes: &[u8] = self.path.as_bytes();
+        buffer.extend_from_slice(&(path_bytes.len() as u32).to_ne_bytes());
+        buffer.extend_from_slice(path_bytes);
 
         buffer
     }
@@ -222,6 +223,7 @@ impl MessagePartitioner for FileChmodAtRequest {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
@@ -232,13 +234,15 @@ impl MessagePartitioner for FileChmodAtRequest {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::FileChmodAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,

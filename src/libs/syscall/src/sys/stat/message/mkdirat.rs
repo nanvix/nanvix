@@ -129,12 +129,13 @@ impl MessageSerializer for MakeDirectoryAtRequest {
 
         // Serialize directory file descriptor.
         buffer.extend_from_slice(&self.dirfd.to_ne_bytes());
+        let pathname_bytes: &[u8] = self.pathname.as_bytes();
         // Serialize path length.
-        buffer.extend_from_slice(&(self.pathname.len() as u32).to_ne_bytes());
+        buffer.extend_from_slice(&(pathname_bytes.len() as u32).to_ne_bytes());
         // Serialize mode.
         buffer.extend_from_slice(&self.mode.to_ne_bytes());
         // Serialize path.
-        buffer.extend_from_slice(self.pathname.as_bytes());
+        buffer.extend_from_slice(pathname_bytes);
 
         buffer
     }
@@ -222,6 +223,7 @@ impl MessagePartitioner for MakeDirectoryAtRequest {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -232,13 +234,15 @@ impl MessagePartitioner for MakeDirectoryAtRequest {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,

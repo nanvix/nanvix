@@ -112,14 +112,16 @@ impl MessageSerializer for SymbolicLinkAtRequest {
 
         // Serialize the 'directory file descriptor' field.
         buffer.extend_from_slice(&self.dirfd.to_ne_bytes());
+        let target_bytes: &[u8] = self.target.as_bytes();
         // Serialize the 'target length' field.
-        buffer.extend_from_slice(&(self.target.len() as u32).to_ne_bytes());
+        buffer.extend_from_slice(&(target_bytes.len() as u32).to_ne_bytes());
+        let linkpath_bytes: &[u8] = self.linkpath.as_bytes();
         // Serialize the 'link path length' field.
-        buffer.extend_from_slice(&(self.linkpath.len() as u32).to_ne_bytes());
+        buffer.extend_from_slice(&(linkpath_bytes.len() as u32).to_ne_bytes());
         // Serialize the 'target' field.
-        buffer.extend_from_slice(self.target.as_bytes());
+        buffer.extend_from_slice(target_bytes);
         // Serialize the 'link path' field.
-        buffer.extend_from_slice(self.linkpath.as_bytes());
+        buffer.extend_from_slice(linkpath_bytes);
 
         buffer
     }
@@ -208,6 +210,7 @@ impl MessagePartitioner for SymbolicLinkAtRequest {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -218,13 +221,15 @@ impl MessagePartitioner for SymbolicLinkAtRequest {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,
