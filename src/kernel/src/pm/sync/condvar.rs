@@ -101,7 +101,8 @@ impl Condvar {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    /// Upon successful completion, the number of threads that were awakened is returned. Otherwise,
+    /// an error is returned instead.
     ///
     /// # Safety
     ///
@@ -111,12 +112,15 @@ impl Condvar {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn notify_first(&self) -> Result<(), Error> {
+    pub unsafe fn notify_first(&self) -> Result<usize, Error> {
+        let mut awakened: usize = 0;
+
         if let Some((_, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(tid)?;
+            awakened += 1;
         }
 
-        Ok(())
+        Ok(awakened)
     }
 
     ///
@@ -151,7 +155,13 @@ impl Condvar {
 
         // Remove process from sleeping queue.
         if let Some(at) = idx {
-            let (_, tid) = self.inner.sleeping.borrow_mut().remove(at);
+            let (_notified_pid, tid) = self.inner.sleeping.borrow_mut().remove(at);
+            debug_assert!(
+                _notified_pid == pid,
+                "notify_process(): pid and tid do not match (expected: pid={:?}, got pid={:?})",
+                pid,
+                _notified_pid
+            );
             ProcessManager::wakeup(tid)?;
         }
 
