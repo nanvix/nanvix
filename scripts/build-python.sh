@@ -63,7 +63,11 @@ configure() {
 #===================================================================================================
 
 make_clean() {
-    cd ${CPYTHON_HOME}
+    if [ ! -d "${CPYTHON_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${CPYTHON_HOME}"
     make clean
 }
 
@@ -72,7 +76,11 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
-    cd ${CPYTHON_HOME}
+    if [ ! -d "${CPYTHON_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${CPYTHON_HOME}"
     git clean -fdx
 }
 
@@ -81,7 +89,7 @@ distclean() {
 #===================================================================================================
 
 make_all() {
-    cd ${CPYTHON_HOME}
+    cd "${CPYTHON_HOME}"
     make -j `nproc` all
 }
 
@@ -90,7 +98,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd ${CPYTHON_HOME}
+    cd "${CPYTHON_HOME}"
     make install
 }
 
@@ -99,7 +107,7 @@ make_install() {
 #===================================================================================================
 
 build() {
-    cd ${CPYTHON_HOME}
+    cd "${CPYTHON_HOME}"
 
     # Check if we need to configure or not.
     if [ ! -f "${CPYTHON_HOME}/Makefile" ]; then
@@ -123,9 +131,9 @@ mkdir -p ${CONTRIB_DIR}
     if [ ! -d "${CPYTHON_HOME}/.git" ];
     then
         git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
-        cd ${CPYTHON_HOME}
+        cd "${CPYTHON_HOME}"
     else
-        cd ${CPYTHON_HOME}
+        cd "${CPYTHON_HOME}"
         git fetch origin
         git reset --hard
     fi
