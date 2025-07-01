@@ -18,7 +18,7 @@ SYSROOT_DIR=${3:-$PWD/sysroot}
 export CONTRIB_DIR=${SYSROOT_DIR}/src
 export OPENBLAS_HOME=${CONTRIB_DIR}/openblas
 export OPENBLAS_REPOSITORY=https://github.com/nanvix/openblas
-export OPENBLAS_BRANCH=nanvix/v0.3.29
+export OPENBLAS_COMMIT=f6026cdcc72df936edee97c9b3e628f9735a0a14
 
 #===================================================================================================
 # Configure
@@ -104,7 +104,7 @@ init() {
         git fetch origin
         git reset --hard
     fi
-    git checkout ${OPENBLAS_BRANCH}
+    git checkout ${OPENBLAS_COMMIT}
 }
 
 #===================================================================================================

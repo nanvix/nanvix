@@ -18,7 +18,7 @@ SYSROOT_DIR=${3:-$PWD/sysroot}
 export CONTRIB_DIR=${SYSROOT_DIR}/src
 export SQLITE_HOME=${CONTRIB_DIR}/sqlite
 export SQLITE_REPOSITORY=https://github.com/nanvix/sqlite
-export SQLITE_BRANCH=nanvix/v3.49.0
+export SQLITE_COMMIT=eefd69769fef1cb3d29d63e89a62a8b2d0ef8b0d
 export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 
 #===================================================================================================
@@ -107,7 +107,7 @@ init() {
         git fetch origin
         git reset --hard
     fi
-    git checkout ${SQLITE_BRANCH}
+    git checkout ${SQLITE_COMMIT}
 }
 
 #===================================================================================================
