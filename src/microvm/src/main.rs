@@ -37,7 +37,9 @@ use ::microvm::{
     Vmm,
 };
 use ::std::{
+    convert::TryInto,
     env,
+    process::ExitCode,
     str::FromStr,
 };
 use ::syscomm::{
@@ -56,7 +58,7 @@ const DEFAULT_BIND_SOCKET_TYPE: SocketType = SocketType::Unix;
 // Standalone Functions
 //==================================================================================================
 
-fn main() -> Result<()> {
+fn main() -> Result<ExitCode> {
     // Parse command-line arguments.
     let mut args: Args = args::Args::parse(env::args().collect())?;
     let kernel_filename: String = args.kernel_filename().to_string();
@@ -87,10 +89,9 @@ fn main() -> Result<()> {
                 Some(Gateway::new(stream))
             },
             Err(e) => {
-                let reason: String = format!(
-                    "failed to connect to gateway (gateway_addr={addr:?}, error={e:?})",
-                );
-                error!("main()(): {reason}");
+                let reason: String =
+                    format!("failed to connect to gateway (gateway_addr={addr:?}, error={e:?})",);
+                error!("main(): {reason}");
                 anyhow::bail!(reason)
             },
         },
@@ -103,9 +104,16 @@ fn main() -> Result<()> {
     // Run virtual machine and check exit status code.
     match vmm.run()? {
         exit_status if exit_status != 0 => {
-            error!("main(): virtual machine exited with status {}", (exit_status as i16));
-            Err(anyhow::anyhow!("virtual machine exited with status {}", exit_status))
+            let exit_code: u8 = match exit_status.try_into() {
+                Ok(code) => code,
+                Err(_) => {
+                    let reason: &str = "failed to convert exit status";
+                    error!("main(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+            Ok(ExitCode::from(exit_code))
         },
-        _ => Ok(()),
+        _ => Ok(ExitCode::from(0)),
     }
 }
