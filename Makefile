@@ -378,6 +378,7 @@ run-linuxd-tests: | \
 	test-linuxd-dlfcn-c \
 	test-linuxd-file-rust \
 	test-linuxd-file-c \
+	test-linuxd-thread-c \
 	test-linuxd-memory-c \
 	test-linuxd-misc-c \
 	test-linuxd-network-c \
@@ -906,6 +907,7 @@ $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','','ok',0))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','','ok',0))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','','ok',0))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','','ok',0))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','','ok',4))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','','ok',0))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','','ok',0))
 $(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','','ok',0))
