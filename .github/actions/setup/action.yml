@@ -9,7 +9,7 @@ runs:
   - name: "Install APT dependencies"
     shell: bash
     run: |
-      sudo -E ./scripts/setup/ubuntu.sh --extra
+      sudo -E ./scripts/setup/ubuntu.sh
 
   - name: "Install Rust"
     shell: bash

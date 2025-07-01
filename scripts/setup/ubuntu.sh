@@ -7,39 +7,40 @@
 apt-get update
 
 # Install build-essential by default.
-apt-get install -y build-essential
+apt-get install -y build-essential --no-install-recommends
 
-# Check if the --extra parameter is supplied.
-if [[ "$1" == "--extra" ]]; then
-    # Install additional packages.
-    apt-get install -y   \
-        bison            \
-        bridge-utils     \
-        clang-format     \
-        dosfstools       \
-        doxygen          \
-        flex             \
-        g++-multilib     \
-        gcc-multilib     \
-        graphviz         \
-        grub2            \
-        kpartx           \
-        libglib2.0-dev   \
-        libgmp-dev       \
-        libgmp3-dev      \
-        libmpc-dev       \
-        libmpfr-dev      \
-        libncurses5-dev  \
-        libpixman-1-dev  \
-        libsdl2-dev      \
-        libvirt-clients  \
-        libvirt-daemon-system \
-        mtools           \
-        ninja-build      \
-        pkg-config       \
-        python3-venv     \
-        qemu-kvm         \
-        qemu-system-x86  \
-        texinfo          \
-        xorriso
-fi
+# Install additional packages.
+# Keep the following list of packages sorted alphabetically.
+apt-get install -y        \
+    bison                 \
+    bridge-utils          \
+    build-essential       \
+    clang-format          \
+    curl                  \
+    dosfstools            \
+    doxygen               \
+    flex                  \
+    g++-multilib          \
+    gcc-multilib          \
+    git                   \
+    graphviz              \
+    grub2                 \
+    kpartx                \
+    libglib2.0-dev        \
+    libgmp-dev            \
+    libgmp3-dev           \
+    libmpc-dev            \
+    libmpfr-dev           \
+    libncurses5-dev       \
+    libpixman-1-dev       \
+    libsdl2-dev           \
+    libvirt-clients       \
+    libvirt-daemon-system \
+    mtools                \
+    ninja-build           \
+    pkg-config            \
+    python3-venv          \
+    qemu-kvm              \
+    qemu-system-x86       \
+    texinfo               \
+    xorriso
