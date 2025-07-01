@@ -18,7 +18,7 @@ SYSROOT_DIR=${3:-$PWD/sysroot}
 export CONTRIB_DIR=${SYSROOT_DIR}/src
 export ZLIB_HOME=${CONTRIB_DIR}/zlib
 export ZLIB_REPOSITORY=https://github.com/nanvix/zlib
-export ZLIB_BRANCH=nanvix/zlib-1.3.1
+export ZLIB_COMMIT=1780482083a52ff172f661658801fa34f1541fe7
 export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 
 #===================================================================================================
@@ -102,7 +102,7 @@ init() {
         git fetch origin
         git reset --hard
     fi
-    git checkout ${ZLIB_BRANCH}
+    git checkout ${ZLIB_COMMIT}
 }
 
 #===================================================================================================
