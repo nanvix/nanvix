@@ -63,8 +63,8 @@ To install dependencies on Ubuntu 24.04:
 
 ```bash
 # Ensure you are in the project's root directory.
-cat ./scripts/setup/ubuntu.sh              # Review the installation script.
-sudo -E ./scripts/setup/ubuntu.sh --extra  # Run the script to install dependencies.
+cat ./scripts/setup/ubuntu.sh      # Review the installation script.
+sudo -E ./scripts/setup/ubuntu.sh  # Run the script to install dependencies.
 ```
 
 ### For Arch Linux
