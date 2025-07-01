@@ -37,6 +37,11 @@ use ::std::{
         Write,
     },
     mem,
+    sync::{
+        Arc,
+        Mutex,
+        MutexGuard,
+    },
 };
 use ::sys::{
     error::{
@@ -49,10 +54,7 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::{
-        ProcessIdentifier,
-        ThreadIdentifier,
-    },
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     sys_types::c_ssize_t,
@@ -125,6 +127,7 @@ use ::syscall::{
     venv::VirtualEnvironmentIdentifier,
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
+    LINUXD,
 };
 use ::syscomm::SocketStream;
 
@@ -132,171 +135,214 @@ use ::syscomm::SocketStream;
 // Structures
 //==================================================================================================
 
-pub struct LinuxDaemon<'a> {
-    pid: ProcessIdentifier,
-    assembler: RequestAssembler,
-    uvm_stream: SocketStream,
-    gateway_conn: &'a mut Option<SocketStream>,
-    venv: VirtualEnviromentDirectory,
+pub struct LinuxDaemon {
+    assembler: Arc<Mutex<RequestAssembler>>,
+    uvm_stream: Arc<Mutex<SocketStream>>,
+    gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+    venv: Arc<Mutex<VirtualEnviromentDirectory>>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<'a> LinuxDaemon<'a> {
+impl LinuxDaemon {
     pub fn init(
         uvm_stream: SocketStream,
-        gateway_conn: &'a mut Option<SocketStream>,
+        gateway_conn: Option<SocketStream>,
     ) -> Result<Self, Error> {
+        if let Err(error) = uvm_stream.set_nonblocking(true) {
+            let reason: &str = "failed to set UVM stream to non-blocking mode";
+            error!("init(): {reason:?} (error={error:?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
         Ok(Self {
-            pid: ProcessIdentifier::from(0),
-            assembler: RequestAssembler::default(),
-            uvm_stream,
-            gateway_conn,
-            venv: VirtualEnviromentDirectory::new(),
+            assembler: Arc::new(Mutex::new(RequestAssembler::default())),
+            uvm_stream: Arc::new(Mutex::new(uvm_stream)),
+            gateway_conn: Arc::new(Mutex::new(gateway_conn)),
+            venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
         })
     }
 
     pub fn run(&mut self) -> Result<(), Error> {
         loop {
-            let message: Message = match self.recv() {
-                Ok(Some(message)) => message,
-                Ok(None) => {
-                    info!("connection closed");
-                    break;
-                },
+            let uvm_stream: Arc<Mutex<SocketStream>> = self.uvm_stream.clone();
+            let gateway_conn: Arc<Mutex<Option<SocketStream>>> = self.gateway_conn.clone();
+            let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
+            let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
 
-                Err(e) => {
-                    error!("failed to receive message (error={e:?})");
-                    continue;
-                },
-            };
+            let message: Message = match Self::recv(uvm_stream.clone()) {
+                Ok(message) => message,
 
-            trace!(
-                "message.source={:?}, message.destination={:?}, message.type={:?}",
-                { message.source },
-                { message.destination },
-                message.message_type,
-            );
-
-            let source: ThreadIdentifier = match { message.source }.as_id() {
-                Err(tid) => tid,
-                Ok(pid) => {
-                    unimplemented!("received message from process {pid:?} instead of thread");
+                Err(error_kind) => match error_kind {
+                    ErrorKind::WouldBlock => continue,
+                    ErrorKind::UnexpectedEof => {
+                        info!("connection closed");
+                        break;
+                    },
+                    _ => {
+                        let reason: String =
+                            format!("failed to read message (error={error_kind:?})");
+                        unimplemented!("handle: {reason}");
+                    },
                 },
             };
 
-            // Check if process is associated with a virtual environment.
-            if self.venv.get(source).is_none() {
+            // Spawn a thread to handle the message.
+            let _ = std::thread::spawn(move || {
+                Self::handle_message(uvm_stream, gateway_conn, venv, assembler, message);
+            });
+        }
+
+        // TODO: https://github.com/nanvix/nanvix/issues/639
+
+        self.send_eof()
+    }
+
+    fn handle_message(
+        uvm_stream: Arc<Mutex<SocketStream>>,
+        gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+        assembler: Arc<Mutex<RequestAssembler>>,
+        message: Message,
+    ) {
+        trace!(
+            "message.source={:?}, message.destination={:?}, message.type={:?}",
+            { message.source },
+            { message.destination },
+            message.message_type,
+        );
+
+        let source: ThreadIdentifier = match { message.source }.as_id() {
+            Err(tid) => tid,
+            Ok(pid) => {
+                unimplemented!("received message from process {pid:?} instead of thread");
+            },
+        };
+
+        // Check if process is associated with a virtual environment.
+        {
+            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
+            if venv.get(source).is_none() {
                 // Join a new virtual environment.
-                if let Err(error) = self.venv.join(source, VirtualEnvironmentIdentifier::NEW) {
+                if let Err(error) = venv.join(source, VirtualEnvironmentIdentifier::NEW) {
                     warn!("failed to join new virtual environment (error={error:?})");
                     let message: Message = crate::build_error(source, error.code);
-                    self.send(message).unwrap();
+                    Self::send(uvm_stream.clone(), message).unwrap();
                 }
                 // TODO: leave environment on process exit.
             }
-
-            match message.message_type {
-                sys::ipc::MessageType::Empty => panic!("received empty message"),
-                sys::ipc::MessageType::Interrupt => panic!("received interrupt message"),
-                sys::ipc::MessageType::Exception => panic!("received exception message"),
-                sys::ipc::MessageType::Ipc => panic!("received IPC message"),
-                sys::ipc::MessageType::ProcessTerminationEvent => {
-                    panic!("received process termination event message")
-                },
-                sys::ipc::MessageType::Ikc => {
-                    match LinuxDaemonMessage::try_from_bytes(message.payload) {
-                        Ok(message) => {
-                            let message: Message = match message.header {
-                                // The system calls are interposed before being forwarded to the
-                                // backend provider.
-                                LinuxDaemonMessageHeader::CloseRequest
-                                | LinuxDaemonMessageHeader::ReadRequest
-                                | LinuxDaemonMessageHeader::WriteRequest => {
-                                    self.handle_special_messages(source, message)
-                                },
-
-                                // The following system calls have their request and response
-                                // data fit in a single message. Thus, they can be immediately
-                                // forwarded to the backend provider.
-                                LinuxDaemonMessageHeader::AcceptSocketRequest
-                                | LinuxDaemonMessageHeader::BindSocketRequest
-                                | LinuxDaemonMessageHeader::ConnectSocketRequest
-                                | LinuxDaemonMessageHeader::CreateSocketPairRequest
-                                | LinuxDaemonMessageHeader::CreateSocketRequest
-                                | LinuxDaemonMessageHeader::FileAdvisoryInformationRequest
-                                | LinuxDaemonMessageHeader::FileChdirRequest
-                                | LinuxDaemonMessageHeader::FileChmodRequest
-                                | LinuxDaemonMessageHeader::FileChownRequest
-                                | LinuxDaemonMessageHeader::FileControlRequest
-                                | LinuxDaemonMessageHeader::FileDataSyncRequest
-                                | LinuxDaemonMessageHeader::FileSpaceControlRequest
-                                | LinuxDaemonMessageHeader::FileSyncRequest
-                                | LinuxDaemonMessageHeader::FileTruncateRequest
-                                | LinuxDaemonMessageHeader::GetIdsRequest
-                                | LinuxDaemonMessageHeader::GetPeerNameRequest
-                                | LinuxDaemonMessageHeader::GetSockNameRequest
-                                | LinuxDaemonMessageHeader::ListenSocketRequest
-                                | LinuxDaemonMessageHeader::PartialReadRequest
-                                | LinuxDaemonMessageHeader::PartialWriteRequest
-                                | LinuxDaemonMessageHeader::ReceiveSocketRequest
-                                | LinuxDaemonMessageHeader::SeekRequest
-                                | LinuxDaemonMessageHeader::SendSocketRequest
-                                | LinuxDaemonMessageHeader::ShutdownSocketRequest
-                                | LinuxDaemonMessageHeader::TimesRequest
-                                | LinuxDaemonMessageHeader::PipeRequest
-                                | LinuxDaemonMessageHeader::PollRequest
-                                | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
-                                    self.handle_short_request_messages(source, message)
-                                },
-
-                                // The following system calls have their request data fit in a
-                                // single message, but their response data is too large to fit in a
-                                // single message. Thus, their response is split into multiple
-                                // messages.
-                                LinuxDaemonMessageHeader::FileStatRequest
-                                | LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest
-                                | LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
-                                    self.handle_long_response_messages(source, message);
-                                    continue;
-                                },
-
-                                // The following system calls have request data that is too large to
-                                // fit in a single message. Thus, their request is split into multiple
-                                // messages.
-                                LinuxDaemonMessageHeader::ChangeDirectoryRequestPart
-                                | LinuxDaemonMessageHeader::FileStatAtRequestPart
-                                | LinuxDaemonMessageHeader::FileAccessAtRequestPart
-                                | LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart
-                                | LinuxDaemonMessageHeader::LinkAtRequestPart
-                                | LinuxDaemonMessageHeader::ReadLinkAtRequestPart
-                                | LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart
-                                | LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart
-                                | LinuxDaemonMessageHeader::FileChownAtRequestPart
-                                | LinuxDaemonMessageHeader::FileChmodAtRequestPart
-                                | LinuxDaemonMessageHeader::OpenAtRequestPart
-                                | LinuxDaemonMessageHeader::RenameAtRequestPart
-                                | LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
-                                    self.handle_long_request_messages(source, message);
-                                    continue;
-                                },
-
-                                _ => self.do_error(source, ErrorCode::InvalidMessage),
-                            };
-                            self.send(message).unwrap();
-                        },
-                        Err(e) => {
-                            error!("failed to parse Linux daemon message (error={e:?})");
-                            continue;
-                        },
-                    }
-                },
-            }
         }
+        match message.message_type {
+            sys::ipc::MessageType::Empty => panic!("received empty message"),
+            sys::ipc::MessageType::Interrupt => panic!("received interrupt message"),
+            sys::ipc::MessageType::Exception => panic!("received exception message"),
+            sys::ipc::MessageType::Ipc => panic!("received IPC message"),
+            sys::ipc::MessageType::ProcessTerminationEvent => {
+                panic!("received process termination event message")
+            },
+            sys::ipc::MessageType::Ikc => {
+                match LinuxDaemonMessage::try_from_bytes(message.payload) {
+                    Ok(message) => {
+                        let message: Message = match message.header {
+                            // The system calls are interposed before being forwarded to the
+                            // backend provider.
+                            LinuxDaemonMessageHeader::CloseRequest
+                            | LinuxDaemonMessageHeader::ReadRequest
+                            | LinuxDaemonMessageHeader::WriteRequest => {
+                                Self::handle_special_messages(
+                                    gateway_conn.clone(),
+                                    venv.clone(),
+                                    source,
+                                    message,
+                                )
+                            },
 
-        self.send_eof()
+                            // The following system calls have their request and response
+                            // data fit in a single message. Thus, they can be immediately
+                            // forwarded to the backend provider.
+                            LinuxDaemonMessageHeader::AcceptSocketRequest
+                            | LinuxDaemonMessageHeader::BindSocketRequest
+                            | LinuxDaemonMessageHeader::ConnectSocketRequest
+                            | LinuxDaemonMessageHeader::CreateSocketPairRequest
+                            | LinuxDaemonMessageHeader::CreateSocketRequest
+                            | LinuxDaemonMessageHeader::FileAdvisoryInformationRequest
+                            | LinuxDaemonMessageHeader::FileChdirRequest
+                            | LinuxDaemonMessageHeader::FileChmodRequest
+                            | LinuxDaemonMessageHeader::FileChownRequest
+                            | LinuxDaemonMessageHeader::FileControlRequest
+                            | LinuxDaemonMessageHeader::FileDataSyncRequest
+                            | LinuxDaemonMessageHeader::FileSpaceControlRequest
+                            | LinuxDaemonMessageHeader::FileSyncRequest
+                            | LinuxDaemonMessageHeader::FileTruncateRequest
+                            | LinuxDaemonMessageHeader::GetIdsRequest
+                            | LinuxDaemonMessageHeader::GetPeerNameRequest
+                            | LinuxDaemonMessageHeader::GetSockNameRequest
+                            | LinuxDaemonMessageHeader::ListenSocketRequest
+                            | LinuxDaemonMessageHeader::PartialReadRequest
+                            | LinuxDaemonMessageHeader::PartialWriteRequest
+                            | LinuxDaemonMessageHeader::ReceiveSocketRequest
+                            | LinuxDaemonMessageHeader::SeekRequest
+                            | LinuxDaemonMessageHeader::SendSocketRequest
+                            | LinuxDaemonMessageHeader::ShutdownSocketRequest
+                            | LinuxDaemonMessageHeader::TimesRequest
+                            | LinuxDaemonMessageHeader::PipeRequest
+                            | LinuxDaemonMessageHeader::PollRequest
+                            | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
+                                Self::handle_short_request_messages(source, message)
+                            },
+
+                            // The following system calls have their request data fit in a
+                            // single message, but their response data is too large to fit in a
+                            // single message. Thus, their response is split into multiple
+                            // messages.
+                            LinuxDaemonMessageHeader::FileStatRequest
+                            | LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest
+                            | LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
+                                Self::handle_long_response_messages(
+                                    uvm_stream.clone(),
+                                    source,
+                                    message,
+                                );
+                                return;
+                            },
+
+                            // The following system calls have request data that is too large to
+                            // fit in a single message. Thus, their request is split into multiple
+                            // messages.
+                            LinuxDaemonMessageHeader::ChangeDirectoryRequestPart
+                            | LinuxDaemonMessageHeader::FileStatAtRequestPart
+                            | LinuxDaemonMessageHeader::FileAccessAtRequestPart
+                            | LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart
+                            | LinuxDaemonMessageHeader::LinkAtRequestPart
+                            | LinuxDaemonMessageHeader::ReadLinkAtRequestPart
+                            | LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart
+                            | LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart
+                            | LinuxDaemonMessageHeader::FileChownAtRequestPart
+                            | LinuxDaemonMessageHeader::FileChmodAtRequestPart
+                            | LinuxDaemonMessageHeader::OpenAtRequestPart
+                            | LinuxDaemonMessageHeader::RenameAtRequestPart
+                            | LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
+                                Self::handle_long_request_messages(
+                                    uvm_stream.clone(),
+                                    assembler.clone(),
+                                    source,
+                                    message,
+                                );
+                                return;
+                            },
+
+                            _ => Self::do_error(source, ErrorCode::InvalidMessage),
+                        };
+                        Self::send(uvm_stream.clone(), message).unwrap();
+                    },
+                    Err(e) => {
+                        error!("failed to parse Linux daemon message (error={e:?})");
+                    },
+                }
+            },
+        }
     }
 
     ///
@@ -311,7 +357,9 @@ impl<'a> LinuxDaemon<'a> {
     ///
     fn send_eof(&mut self) -> Result<(), Error> {
         trace!("send_eof()");
-        if let Some(conn) = self.gateway_conn {
+        let mut gateway_conn: MutexGuard<'_, Option<SocketStream>> =
+            self.gateway_conn.lock().unwrap();
+        if let Some(conn) = &mut *gateway_conn {
             let eof: u32 = 0;
             let length_buffer: [u8; mem::size_of::<u32>()] = eof.to_le_bytes();
             if let Err(e) = conn.write_all(&length_buffer) {
@@ -325,22 +373,23 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     fn handle_special_messages(
-        &mut self,
+        gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Message {
         match message.header {
             LinuxDaemonMessageHeader::CloseRequest => {
                 let request: CloseRequest = CloseRequest::from_bytes(message.payload);
-                self.handle_close_request(source, request)
+                Self::handle_close_request(source, request)
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
-                self.handle_read_request(source, request)
+                Self::handle_read_request(gateway_conn, venv, source, request)
             },
             LinuxDaemonMessageHeader::WriteRequest => {
                 let request: WriteRequest = WriteRequest::from_bytes(message.payload);
-                self.handle_write_request(source, request)
+                Self::handle_write_request(gateway_conn, source, request)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -351,7 +400,6 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     fn handle_short_request_messages(
-        &mut self,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Message {
@@ -485,49 +533,72 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     fn handle_long_request_messages(
-        &mut self,
+        uvm_stream: Arc<Mutex<SocketStream>>,
+        assembler: Arc<Mutex<RequestAssembler>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) {
         match message.header {
             LinuxDaemonMessageHeader::ChangeDirectoryRequestPart => {
-                self.handle_long_request::<ChangeDirectoryRequest>(source, &message);
+                Self::handle_long_request::<ChangeDirectoryRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::FileAccessAtRequestPart => {
-                self.handle_long_request::<FileAccessAtRequest>(source, &message);
+                Self::handle_long_request::<FileAccessAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::FileStatAtRequestPart => {
-                self.handle_long_request::<FileStatAtRequest>(source, &message);
+                Self::handle_long_request::<FileStatAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart => {
-                self.handle_long_request::<SymbolicLinkAtRequest>(source, &message);
+                Self::handle_long_request::<SymbolicLinkAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::LinkAtRequestPart => {
-                self.handle_long_request::<LinkAtRequest>(source, &message);
+                Self::handle_long_request::<LinkAtRequest>(uvm_stream, assembler, source, &message);
             },
             LinuxDaemonMessageHeader::ReadLinkAtRequestPart => {
-                self.handle_long_request::<ReadLinkAtRequest>(source, &message);
+                Self::handle_long_request::<ReadLinkAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart => {
-                self.handle_long_request::<MakeDirectoryAtRequest>(source, &message);
+                Self::handle_long_request::<MakeDirectoryAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart => {
-                self.handle_long_request::<UpdateFileAccessTimeAtRequest>(source, &message);
+                Self::handle_long_request::<UpdateFileAccessTimeAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::FileChownAtRequestPart => {
-                self.handle_long_request::<FileChownAtRequest>(source, &message);
+                Self::handle_long_request::<FileChownAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
-                self.handle_long_request::<FileChmodAtRequest>(source, &message);
+                Self::handle_long_request::<FileChmodAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::OpenAtRequestPart => {
-                self.handle_long_request::<OpenAtRequest>(source, &message);
+                Self::handle_long_request::<OpenAtRequest>(uvm_stream, assembler, source, &message);
             },
             LinuxDaemonMessageHeader::RenameAtRequestPart => {
-                self.handle_long_request::<RenameAtRequest>(source, &message);
+                Self::handle_long_request::<RenameAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
-                self.handle_long_request::<UnlinkAtRequest>(source, &message);
+                Self::handle_long_request::<UnlinkAtRequest>(
+                    uvm_stream, assembler, source, &message,
+                );
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -538,19 +609,19 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     fn handle_long_response_messages(
-        &mut self,
+        uvm_stream: Arc<Mutex<SocketStream>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) {
         match message.header {
             LinuxDaemonMessageHeader::FileStatRequest => {
-                self.handle_fstat_request(source, message);
+                Self::handle_fstat_request(uvm_stream, source, message);
             },
             LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
-                self.handle_getcwd_request(source);
+                Self::handle_getcwd_request(uvm_stream, source);
             },
             LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
-                self.handle_getdents_request(source, message);
+                Self::handle_getdents_request(uvm_stream, source, message);
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -561,21 +632,17 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     // Read a message from the TCP stream.
-    fn recv(&mut self) -> Result<Option<Message>> {
+    fn recv(uvm_stream: Arc<Mutex<SocketStream>>) -> Result<Message, ErrorKind> {
         let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
             [0u8; config::kernel::IPC_MESSAGE_SIZE];
-        let buf_reader: &mut SocketStream = &mut self.uvm_stream;
-        if let Err(e) = buf_reader.read_exact(&mut buf) {
-            match e.kind() {
-                ErrorKind::UnexpectedEof => return Ok(None),
-                _ => {
-                    let reason: String = format!("failed to read message (error={e:?})");
-                    unimplemented!("handle: {reason}");
-                },
-            }
+
+        let mut locked_uvm_stream: MutexGuard<'_, SocketStream> = uvm_stream.lock().unwrap();
+
+        if let Err(e) = locked_uvm_stream.read_exact(&mut buf) {
+            return Err(e.kind());
         };
 
-        let message = match Message::try_from_bytes(buf) {
+        let message: Message = match Message::try_from_bytes(buf) {
             Ok(message) => message,
             Err(e) => {
                 let reason: String = format!("failed to parse message (error={e:?})");
@@ -583,24 +650,38 @@ impl<'a> LinuxDaemon<'a> {
             },
         };
 
-        Ok(Some(message))
+        Ok(message)
     }
 
     // Send a message to the TCP stream.
-    fn send(&mut self, message: Message) -> Result<()> {
+    fn send(uvm_stream: Arc<Mutex<SocketStream>>, message: Message) -> Result<()> {
         let bytes = message.to_bytes();
-        match self.uvm_stream.write_all(&bytes) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                let reason: String = format!("failed to write message (error={e:?})");
-                unimplemented!("handle: {reason}");
-            },
+
+        loop {
+            let mut locked_uvm_stream = uvm_stream.lock().unwrap();
+
+            match locked_uvm_stream.write_all(&bytes) {
+                Ok(_) => break Ok(()),
+                Err(e) => {
+                    match e.kind() {
+                        ErrorKind::WouldBlock => {
+                            // The stream is not ready to write, retry.
+                            continue;
+                        },
+                        error_kind => {
+                            unimplemented!(
+                                "handle: failed to write message (error={error_kind:?})"
+                            );
+                        },
+                    }
+                },
+            }
         }
     }
 
-    fn do_error(&self, source: ThreadIdentifier, code: ErrorCode) -> Message {
+    fn do_error(source: ThreadIdentifier, code: ErrorCode) -> Message {
         Message::new(
-            MessageSender::from(self.pid),
+            MessageSender::from(LINUXD),
             MessageReceiver::from(source),
             MessageType::Ikc,
             Some(code),
@@ -608,7 +689,7 @@ impl<'a> LinuxDaemon<'a> {
         )
     }
 
-    fn handle_close_request(&mut self, source: ThreadIdentifier, request: CloseRequest) -> Message {
+    fn handle_close_request(source: ThreadIdentifier, request: CloseRequest) -> Message {
         // Inspect file descriptor that is being closed, as we need to
         // handle standard file descriptors specially.
         match request.fd {
@@ -624,14 +705,16 @@ impl<'a> LinuxDaemon<'a> {
     }
 
     fn handle_write_request(
-        &mut self,
+        gateway_conn: Arc<Mutex<Option<SocketStream>>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
     ) -> Message {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
         if request.fd == STDOUT_FILENO || request.fd == STDERR_FILENO {
-            if let Some(conn) = self.gateway_conn {
+            let mut gateway_conn: MutexGuard<'_, Option<SocketStream>> =
+                gateway_conn.lock().unwrap();
+            if let Some(conn) = &mut *gateway_conn {
                 // Check if write size is invalid.
                 if request.count == 0 {
                     // Writing zero-bytes to STDOUT is not allowed, as we used this to signal EOF.
@@ -674,13 +757,21 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn handle_read_request(&mut self, source: ThreadIdentifier, request: ReadRequest) -> Message {
+    fn handle_read_request(
+        gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+        source: ThreadIdentifier,
+        request: ReadRequest,
+    ) -> Message {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
         if request.fd == STDIN_FILENO {
-            if let Some(conn) = self.gateway_conn {
+            let mut gateway_conn: MutexGuard<'_, Option<SocketStream>> =
+                gateway_conn.lock().unwrap();
+            if let Some(conn) = &mut *gateway_conn {
+                let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
                 // Check if the process is associated with a virtual environment.
-                let env: &mut VirtualEnvironment = if let Some(env) = self.venv.get_mut(source) {
+                let env: &mut VirtualEnvironment = if let Some(env) = venv.get_mut(source) {
                     env
                 } else {
                     warn!(
@@ -772,48 +863,64 @@ impl<'a> LinuxDaemon<'a> {
         }
     }
 
-    fn handle_fstat_request(&mut self, source: ThreadIdentifier, message: LinuxDaemonMessage) {
+    fn handle_fstat_request(
+        uvm_stream: Arc<Mutex<SocketStream>>,
+        source: ThreadIdentifier,
+        message: LinuxDaemonMessage,
+    ) {
         let request: FileStatRequest = FileStatRequest::from_bytes(message.payload);
-
         let messages: Vec<Message> = fcntl::do_fstat(source, request);
         for message in messages {
-            if let Err(e) = self.send(message) {
+            if let Err(e) = Self::send(uvm_stream.clone(), message) {
                 error!("failed to send message (error={e:?})");
             }
         }
     }
 
-    fn handle_getcwd_request(&mut self, source: ThreadIdentifier) {
+    fn handle_getcwd_request(uvm_stream: Arc<Mutex<SocketStream>>, source: ThreadIdentifier) {
         let messages: Vec<Message> = unistd::do_getcwd(source);
         for message in messages {
-            if let Err(e) = self.send(message) {
+            if let Err(e) = Self::send(uvm_stream.clone(), message) {
                 error!("failed to send message (error={e:?})");
             }
         }
     }
 
-    fn handle_getdents_request(&mut self, source: ThreadIdentifier, message: LinuxDaemonMessage) {
+    fn handle_getdents_request(
+        uvm_stream: Arc<Mutex<SocketStream>>,
+        source: ThreadIdentifier,
+        message: LinuxDaemonMessage,
+    ) {
         let request: GetDirectoryEntriesRequest =
             GetDirectoryEntriesRequest::from_bytes(message.payload);
 
         let messages: Vec<Message> = dirent::do_getdents(source, request);
         for message in messages {
-            if let Err(e) = self.send(message) {
+            if let Err(e) = Self::send(uvm_stream.clone(), message) {
                 error!("failed to send message (error={e:?})");
             }
         }
     }
 
-    fn handle_long_request<T>(&mut self, source: ThreadIdentifier, message: &LinuxDaemonMessage)
-    where
+    fn handle_long_request<T>(
+        uvm_stream: Arc<Mutex<SocketStream>>,
+        assembler: Arc<Mutex<RequestAssembler>>,
+        source: ThreadIdentifier,
+        message: &LinuxDaemonMessage,
+    ) where
         T: RequestAssemblerTrait,
     {
         let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
 
-        match self.assembler.process_message::<T>(source, part) {
+        trace!("handle_long_request(): source={source:?}, part={part:?}");
+
+        let result: Result<Option<Vec<Message>>, Error> =
+            assembler.lock().unwrap().process_message::<T>(source, part);
+
+        match result {
             Ok(Some(messages)) => {
                 for message in messages {
-                    if let Err(e) = self.send(message) {
+                    if let Err(e) = Self::send(uvm_stream.clone(), message) {
                         error!("failed to send message (error={e:?})");
                     }
                 }
@@ -821,7 +928,7 @@ impl<'a> LinuxDaemon<'a> {
             Ok(None) => {},
             Err(e) => {
                 error!("failed to process request (error={e:?})");
-                if let Err(e) = self.send(self.do_error(source, e.code)) {
+                if let Err(e) = Self::send(uvm_stream.clone(), Self::do_error(source, e.code)) {
                     error!("failed to send error message (error={e:?})");
                 }
             },

@@ -128,7 +128,6 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
 
 impl RequestAssemblerTrait for LinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        debug!("creating linkat request assembler");
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::LinkAtRequest(
             LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
@@ -139,7 +138,6 @@ impl RequestAssemblerTrait for LinkAtRequest {
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
     ) -> Result<(), Error> {
-        debug!("adding part to linkat request");
         match assembler {
             RequestAssemblerType::LinkAtRequest(assembler) => assembler.add_part(part),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
@@ -147,7 +145,6 @@ impl RequestAssemblerTrait for LinkAtRequest {
     }
 
     fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
-        debug!("checking if linkat request is complete");
         match assembler {
             RequestAssemblerType::LinkAtRequest(assembler) => Ok(assembler.is_complete()),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
@@ -155,7 +152,6 @@ impl RequestAssemblerTrait for LinkAtRequest {
     }
 
     fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
-        debug!("taking parts from linkat request");
         match assembler {
             RequestAssemblerType::LinkAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
