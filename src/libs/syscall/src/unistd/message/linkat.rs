@@ -137,18 +137,20 @@ impl MessageSerializer for LinkAtRequest {
 
         // Serialize 'old directory file descriptor' field.
         bytes.extend_from_slice(&self.olddirfd.to_ne_bytes());
+        let oldpath_bytes: &[u8] = self.oldpath.as_bytes();
+        let newpath_bytes: &[u8] = self.newpath.as_bytes();
         // Serialize 'old path length' field.
-        bytes.extend_from_slice(&(self.oldpath.len() as u32).to_ne_bytes());
+        bytes.extend_from_slice(&(oldpath_bytes.len() as u32).to_ne_bytes());
         // Serialize 'new directory file descriptor' field.
         bytes.extend_from_slice(&self.newdirfd.to_ne_bytes());
         // Serialize 'new path length' field.
-        bytes.extend_from_slice(&(self.newpath.len() as u32).to_ne_bytes());
+        bytes.extend_from_slice(&(newpath_bytes.len() as u32).to_ne_bytes());
         // Serialize 'flags' field.
         bytes.extend_from_slice(&self.flags.to_ne_bytes());
         // Serialize 'old path' field.
-        bytes.extend_from_slice(self.oldpath.as_bytes());
+        bytes.extend_from_slice(oldpath_bytes);
         // Serialize 'new path' field.
-        bytes.extend_from_slice(self.newpath.as_bytes());
+        bytes.extend_from_slice(newpath_bytes);
 
         bytes
     }
@@ -254,6 +256,7 @@ impl MessagePartitioner for LinkAtRequest {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -264,13 +267,15 @@ impl MessagePartitioner for LinkAtRequest {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::LinkAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,

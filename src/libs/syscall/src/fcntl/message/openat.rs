@@ -132,10 +132,11 @@ impl MessageSerializer for OpenAtRequest {
         buffer.extend_from_slice(&self.flags.to_le_bytes());
         // Serialize `mode` field.
         buffer.extend_from_slice(&self.mode.to_le_bytes());
+        let pathname_bytes: &[u8] = self.pathname.as_bytes();
         // Serialize `pathname.len()` field.
-        buffer.extend_from_slice(&(self.pathname.len() as u32).to_le_bytes());
+        buffer.extend_from_slice(&(pathname_bytes.len() as u32).to_le_bytes());
         // Serialize `pathname` field.
-        buffer.extend_from_slice(self.pathname.as_bytes());
+        buffer.extend_from_slice(pathname_bytes);
 
         buffer
     }
@@ -208,13 +209,15 @@ impl MessagePartitioner for OpenAtRequest {
     /// Creates a new message part for the `openat()` system call.
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::OpenAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,

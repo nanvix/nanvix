@@ -62,8 +62,8 @@ pub fn renameat(
     // Build request and send it.
     let request: RenameAtRequest = RenameAtRequest::new(olddirfd, oldpath, newdirfd, newpath)?;
     let requests: Vec<Message> = request.into_parts(tid)?;
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     // Receive response.

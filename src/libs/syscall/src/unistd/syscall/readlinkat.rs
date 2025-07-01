@@ -61,8 +61,8 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, E
 
     let requests: Vec<Message> = request.into_parts(tid)?;
 
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     let capacity: usize =

@@ -73,8 +73,8 @@ fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> Result<(), Error> {
 
     let requests: Vec<Message> = request.into_parts(tid)?;
 
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     Ok(())

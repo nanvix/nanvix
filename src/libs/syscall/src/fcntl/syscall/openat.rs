@@ -42,8 +42,8 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     // Build request and send it.
     let request: OpenAtRequest = OpenAtRequest::new(dirfd, pathname, flags, mode)?;
     let requests: Vec<Message> = request.into_parts(tid)?;
-    for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+    for request in &requests {
+        ::sys::kcall::ipc::send(request)?;
     }
 
     // Receive response.

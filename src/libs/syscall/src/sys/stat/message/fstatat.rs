@@ -109,10 +109,11 @@ impl MessageSerializer for FileStatAtRequest {
         bytes.extend_from_slice(&self.dirfd.to_le_bytes());
         // Serialize flags.
         bytes.extend_from_slice(&self.flag.to_le_bytes());
+        let path_bytes: &[u8] = self.path.as_bytes();
         // Serialize path length.
-        bytes.extend_from_slice(&(self.path.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&(path_bytes.len() as u32).to_le_bytes());
         // Serialize path.
-        bytes.extend_from_slice(self.path.as_bytes());
+        bytes.extend_from_slice(path_bytes);
 
         bytes
     }
@@ -187,6 +188,7 @@ impl MessagePartitioner for FileStatAtRequest {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -197,13 +199,15 @@ impl MessagePartitioner for FileStatAtRequest {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_request(
             tid,
             LinuxDaemonMessageHeader::FileStatAtRequestPart,
+            total_parts,
             part_number,
             payload_size,
             payload,
@@ -378,6 +382,7 @@ impl MessagePartitioner for FileStatAtResponse {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `total_parts`: Total number of parts.
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
@@ -388,13 +393,15 @@ impl MessagePartitioner for FileStatAtResponse {
     ///
     fn new_part(
         tid: ThreadIdentifier,
-        part_number: u32,
+        total_parts: u16,
+        part_number: u16,
         payload_size: u8,
         payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
         LinuxDaemonMessagePart::build_response(
             tid,
             LinuxDaemonMessageHeader::FileStatAtResponsePart,
+            total_parts,
             part_number,
             payload_size,
             payload,
