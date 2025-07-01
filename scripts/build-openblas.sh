@@ -46,7 +46,11 @@ configure() {
 #===================================================================================================
 
 make_clean() {
-    cd ${OPENBLAS_HOME}
+    if [ ! -d "${OPENBLAS_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${OPENBLAS_HOME}"
     make ${OPENBLAS_MAKE_OPTIONS} clean
 }
 
@@ -55,7 +59,11 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
-    cd ${OPENBLAS_HOME}
+    if [ ! -d "${OPENBLAS_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${OPENBLAS_HOME}"
     git clean -fdx
 }
 
@@ -64,7 +72,7 @@ distclean() {
 #===================================================================================================
 
 make_all() {
-    cd ${OPENBLAS_HOME}
+    cd "${OPENBLAS_HOME}"
     make ${OPENBLAS_MAKE_OPTIONS} all
 }
 
@@ -73,7 +81,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd ${OPENBLAS_HOME}
+    cd "${OPENBLAS_HOME}"
     make ${OPENBLAS_MAKE_OPTIONS} install
 }
 
@@ -83,7 +91,7 @@ make_install() {
 
 
 build() {
-    cd ${OPENBLAS_HOME}
+    cd "${OPENBLAS_HOME}"
     configure
     make_all
     make_install
@@ -98,9 +106,9 @@ init() {
     if [ ! -d "${OPENBLAS_HOME}/.git" ];
     then
         git clone ${OPENBLAS_REPOSITORY} ${OPENBLAS_HOME}
-        cd ${OPENBLAS_HOME}
+        cd "${OPENBLAS_HOME}"
     else
-        cd ${OPENBLAS_HOME}
+        cd "${OPENBLAS_HOME}"
         git fetch origin
         git reset --hard
     fi

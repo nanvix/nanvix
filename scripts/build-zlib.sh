@@ -26,7 +26,11 @@ export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 #===================================================================================================
 
 make_clean() {
-    cd ${ZLIB_HOME}
+    if [ ! -d "${ZLIB_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${ZLIB_HOME}"
     make clean
 }
 
@@ -35,7 +39,11 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
-    cd ${ZLIB_HOME}
+    if [ ! -d "${ZLIB_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${ZLIB_HOME}"
     git clean -fdx
 }
 
@@ -63,7 +71,7 @@ configure() {
 #===================================================================================================
 
 make_all() {
-    cd ${ZLIB_HOME}
+    cd "${ZLIB_HOME}"
     make all
 }
 
@@ -72,7 +80,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd ${ZLIB_HOME}
+    cd "${ZLIB_HOME}"
     make install
 }
 
@@ -81,7 +89,7 @@ make_install() {
 #===================================================================================================
 
 build() {
-    cd ${ZLIB_HOME}
+    cd "${ZLIB_HOME}"
     configure
     make_all
     make_install
@@ -96,9 +104,9 @@ init() {
     if [ ! -d "${ZLIB_HOME}/.git" ];
     then
         git clone ${ZLIB_REPOSITORY} ${ZLIB_HOME}
-        cd ${ZLIB_HOME}
+        cd "${ZLIB_HOME}"
     else
-        cd ${ZLIB_HOME}
+        cd "${ZLIB_HOME}"
         git fetch origin
         git reset --hard
     fi
