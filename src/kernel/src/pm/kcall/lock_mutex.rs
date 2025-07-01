@@ -18,7 +18,11 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    pm::MutexAddress,
+    pm::{
+        MutexAddress,
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
     time::SystemTime,
 };
 
@@ -33,7 +37,9 @@ use ::sys::{
 ///
 /// # Parameters
 ///
-/// - `raw_addr`: Address of the mutex to lock.
+/// - `pid`: Identifier of the process that is locking the mutex.
+/// - `tid`: Identifier of the thread that is locking the mutex.
+/// - `mutex_addr`: Address of the mutex to lock.
 /// - `timeout_s`: Timeout in seconds.
 /// - `timeout_ns`: Timeout in nanoseconds.
 ///
@@ -55,12 +61,18 @@ use ::sys::{
 /// - The calling process does not hold a reference to the process manager.
 ///
 pub unsafe fn lock_mutex(
-    raw_addr: usize,
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    mutex_addr: usize,
     timeout_s: usize,
     timeout_ns: usize,
 ) -> Result<(), SleepError> {
+    trace!(
+        "lock_mutex(): pid={pid:?}, tid={tid:?},  mutex_addr={mutex_addr:x?}, \
+         timeout_s={timeout_s:?}, timeout_ns={timeout_ns:?}"
+    );
     // Unpack kernel call arguments.
-    let mutex_addr: MutexAddress = MutexAddress::from(raw_addr);
+    let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);
     let timeout: Option<SystemTime> = if timeout_s == usize::MAX && timeout_ns == usize::MAX {
         None
     } else {
@@ -71,8 +83,8 @@ pub unsafe fn lock_mutex(
                 if timeout_s != 0 || timeout_ns != 0 {
                     let reason: &str = "timeout not supported";
                     error!(
-                        "lock_mutex(): {} (raw_addr={:x?}, timeout_s={:?}, timeout_ns={:?})",
-                        reason, raw_addr, timeout_s, timeout_ns
+                        "lock_mutex(): {} (mutex_addr={:x?}, timeout_s={:?}, timeout_ns={:?})",
+                        reason, mutex_addr, timeout_s, timeout_ns
                     );
                     return Err(SleepError::Generic(Error::new(
                         ErrorCode::OperationNotSupported,
@@ -84,8 +96,8 @@ pub unsafe fn lock_mutex(
             None => {
                 let reason: &str = "invalid timeout";
                 error!(
-                    "lock_mutex(): {} (raw_addr={:x?}, timeout_s={:?}, timeout_ns={:?})",
-                    reason, raw_addr, timeout_s, timeout_ns
+                    "lock_mutex(): {} (mutex_addr={:x?}, timeout_s={:?}, timeout_ns={:?})",
+                    reason, mutex_addr, timeout_s, timeout_ns
                 );
                 return Err(SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason)));
             },
