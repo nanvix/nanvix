@@ -47,13 +47,22 @@ WASI_OS=linux
 WASI_ARCH=x86_64
 WASI_VERSION=25
 WASI_VERSION_FULL=${WASI_VERSION}.0
-wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
+WASI_SDK_FILE=wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
 
-if [ ! -d "wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}" ]; then
-    tar xvf wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
+# Get WASI SDK.
+if [ ! -f "${WASI_SDK_FILE}" ]; then
+    wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/${WASI_SDK_FILE}
 fi
 
-export WASI_SDK_PATH=$(pwd)/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}
+# Check file was downloaded successfully.
+if [ ! -f "${WASI_SDK_FILE}" ]; then
+    echo -e "\033[0;31mError: Failed to download ${WASI_SDK_FILE}.\033[0m"
+    exit 1
+fi
+
+if [ ! -d "wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}" ]; then
+    tar xvf "${WASI_SDK_FILE}"
+fi
 
 # Clone repository.
 if [ !  -d "${REPOSITORY_NAME}" ];
