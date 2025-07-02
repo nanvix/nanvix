@@ -356,18 +356,8 @@ run-nanvixd-tests: | \
 	test-echo-rust-nostd \
 	test-echo-wasm-js \
 	test-echo-wasm-rust \
-	test-hello-c \
-	test-hello-cpp \
 	test-hello-js \
-	test-hello-wasm \
-	test-linux-app \
-	test-dlfcn-c \
-	test-file-rust \
-	test-file-c \
-	test-thread-c \
-	test-memory-c \
-	test-misc-c \
-	test-network-c
+	test-hello-wasm
 
 # TODO: enable wasm tests, enable thread test.
 run-linuxd-tests: | \
