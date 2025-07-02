@@ -21,49 +21,6 @@ use ::syscall::fcntl;
 ///
 /// # Description
 ///
-/// Ensures that the file space is allocated for a file descriptor.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor.
-/// - `offset`: Offset in bytes.
-/// - `len`: Length in bytes.
-///
-/// # Returns
-///
-/// Upon success, `posix_fallocate()` empty. Otherwise, it returns an error.
-///
-/// # Safety
-///
-/// This function is unsafe because it may access global variables.
-///
-/// It is safe to call this function if the following conditions are met:
-/// - This function is not called from multiple threads at the same time.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn posix_fallocate(fd: c_int, offset: i64, len: i64) -> c_int {
-    ::syslog::trace!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
-
-    // Run system call and check for errors.
-    match fcntl::posix_fallocate(fd, offset, len) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!(
-                "posix_fallocate(): failed (fd={:?}, offset={:?}, len={:?}, error={:?})",
-                fd,
-                offset,
-                len,
-                error
-            );
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Provides advice about the use of a file descriptor.
 ///
 /// # Parameters
