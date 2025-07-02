@@ -88,7 +88,7 @@ def make(
     log_level: str = None,
     verbose: bool = False,
     timeout: int = None,
-    build_opt=True,
+    build_opt=False,
 ) -> None:
     """
     Runs make command.
@@ -174,7 +174,9 @@ def build(
         verbose (bool, optional): Verbose build. Defaults to False.
     """
 
-    make("all", machine, arch, release, toolchain_dir, log_level, verbose)
+    make(
+        "all", machine, arch, release, toolchain_dir, log_level, verbose, build_opt=True
+    )
 
 
 def test(
@@ -208,7 +210,6 @@ def test(
         log_level,
         verbose,
         timeout,
-        build_opt=False,
     )
 
     make(
@@ -220,7 +221,6 @@ def test(
         log_level,
         verbose,
         timeout,
-        build_opt=False,
     )
 
     # Check if last line of "test-stdout.log" contains the magic string.
@@ -245,7 +245,6 @@ def test(
             log_level,
             verbose,
             timeout,
-            build_opt=False,
         )
 
     # Check if nanvixd tests are supported.
@@ -259,7 +258,6 @@ def test(
             log_level,
             verbose,
             timeout,
-            build_opt=False,
         )
 
 
