@@ -64,7 +64,7 @@ export DESTDIR=${TOOLCHAIN_DIR}
     --disable-compiler-docs \
     --set llvm.download-ci-llvm=true \
     --enable-cargo-native-static \
-    --target=x86_64-unknown-linux-gnu,wasm32-wasip1 \
+    --target=x86_64-unknown-linux-gnu,wasm32-wasip1,i686-unknown-nanvix \
     --set change-id=$CHANGE_ID
 
 # Build the toolchain.
