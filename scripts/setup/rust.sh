@@ -76,7 +76,9 @@ export DESTDIR=${TOOLCHAIN_DIR}
 # Build the toolchain.
 ./x build --incremental --target x86_64-unknown-linux-gnu,wasm32-wasip1,i686-unknown-nanvix
 
-# Set nightly cargo and link toolchain to make it available.
-rustup install nightly
+# Install nightly toolchain if not installed and set it as the default.
+if ! rustup toolchain list | grep -q '^nightly'; then
+    rustup install nightly
+fi
 rustup override set nightly
 rustup toolchain link nanvix-x86 build/host/stage2
