@@ -8,6 +8,18 @@
 #![allow(non_camel_case_types)]
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::{
+    ffi::{
+        c_char,
+        c_int,
+    },
+    sys_types::mode_t,
+};
+
+//==================================================================================================
 // Constants
 //==================================================================================================
 
@@ -140,4 +152,9 @@ pub mod file_control_request {
     pub const F_DUPFD_CLOEXEC: c_int = 14;
     /// Duplicate the file descriptor and set the close-on-fork flag.
     pub const F_DUPFD_CLOFORK: c_int = 15;
+}
+
+unsafe extern "C" {
+    pub fn fcntl(fd: c_int, cmd: c_int, _op: ...);
+    pub fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int;
 }

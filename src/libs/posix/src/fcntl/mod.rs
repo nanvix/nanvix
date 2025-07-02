@@ -8,78 +8,15 @@
 use crate::errno::__errno_location;
 use ::core::ffi;
 use ::sys::error::ErrorCode;
-use ::sysapi::{
-    ffi::{
-        c_char,
-        c_int,
-    },
-    sys_types::mode_t,
+use ::sysapi::ffi::{
+    c_char,
+    c_int,
 };
 use ::syscall::fcntl;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Opens the file specified by `pathname`.
-///
-/// # Parameters
-///
-/// - `path`:  Pathname of the file to open.
-/// - `flags`: Flags to open the file.
-/// - `mode`:  Mode of the file.
-///
-/// # Returns
-///
-/// Upon successful completion, the `open()` system call returns a non-negative integer representing
-/// the lowest numbered unused file descriptor. Otherwise, it returns -1 and sets `errno` to indicate
-/// the error.
-///
-/// # See Also
-///
-/// - [`crate::fcntl::open()`]
-///
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
-    // Convert C string to Rust string.
-    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::syslog::error!(
-                "open(): invalid pathname (path={:?}, flags={:?}, mode={:?})",
-                path,
-                flags,
-                mode
-            );
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Run system call and check for errors.
-    match fcntl::open(pathname, flags, mode) {
-        Ok(fd) => fd,
-        Err(error) => {
-            ::syslog::error!(
-                "open(): failed (path={:?}, flags={:?}, mode={:?}, error={:?})",
-                pathname,
-                flags,
-                mode,
-                error
-            );
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-unsafe extern "C" {
-    pub fn fcntl(fd: c_int, cmd: c_int, _op: ...);
-}
 
 ///
 /// # Description
