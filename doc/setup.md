@@ -22,6 +22,8 @@ This guide will help you set up your development environment to build and run Na
   - [Option 1: Build Development Tools Locally (Recommended)](#option-1-build-development-tools-locally-recommended)
   - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
   - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
+- [Setup Your IDE (Optional)](#setup-your-ide-optional)
+  - [Visual Studio Code](#visual-studio-code)
 
 ---
 
@@ -150,4 +152,15 @@ To build a Docker image with the required tools:
 ```bash
 # Ensure you are in the project's root directory.
 docker build --no-cache -t nanvix/toolchain ./scripts/setup/
+```
+
+## Setup Your IDE (Optional)
+
+Choose one of the following options to set up your IDE for Nanvix development.
+
+### Visual Studio Code
+
+```bash
+mkdir -p .vscode && cd .vscode
+ln -s ../scripts/setup/vscode/settings.json settings.json
 ```
