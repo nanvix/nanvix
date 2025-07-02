@@ -34,6 +34,12 @@ then
     exit 1
 fi
 
+# Check if rustup is installed.
+if ! command -v rustup >/dev/null 2>&1; then
+    echo -e "\033[0;31mError: rustup is not installed. Please install rustup before running this script.\033[0m"
+    exit 1
+fi
+
 mkdir -p "${TOOLCHAIN_DIR}"/src
 cd "${TOOLCHAIN_DIR}"/src
 
