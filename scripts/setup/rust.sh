@@ -35,7 +35,8 @@ then
 fi
 
 # Check if rustup is installed.
-if ! command -v rustup >/dev/null 2>&1; then
+if ! command -v rustup >/dev/null 2>&1;
+then
     echo -e "\033[0;31mError: rustup is not installed. Please install rustup before running this script.\033[0m"
     exit 1
 fi
@@ -50,22 +51,25 @@ WASI_VERSION_FULL=${WASI_VERSION}.0
 WASI_SDK_FILE=wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
 
 # Get WASI SDK.
-if [ ! -f "${WASI_SDK_FILE}" ]; then
+if [ ! -f "${WASI_SDK_FILE}" ];
+then
     wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/${WASI_SDK_FILE}
 fi
 
 # Check file was downloaded successfully.
-if [ ! -f "${WASI_SDK_FILE}" ]; then
+if [ ! -f "${WASI_SDK_FILE}" ];
+then
     echo -e "\033[0;31mError: Failed to download ${WASI_SDK_FILE}.\033[0m"
     exit 1
 fi
 
-if [ ! -d "wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}" ]; then
+if [ ! -d "wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}" ];
+then
     tar xvf "${WASI_SDK_FILE}"
 fi
 
 # Clone repository.
-if [ !  -d "${REPOSITORY_NAME}" ];
+if [ ! -d "${REPOSITORY_NAME}" ];
 then
     git clone "${REPOSITORY}" "${REPOSITORY_NAME}"
 fi
