@@ -78,7 +78,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
 }
 
 unsafe extern "C" {
-    pub fn fcntl(_fd: c_int, _cmd: c_int, _op: ...);
+    pub fn fcntl(fd: c_int, cmd: c_int, _op: ...);
 }
 
 ///
