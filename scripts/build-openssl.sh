@@ -50,7 +50,11 @@ configure() {
 #===================================================================================================
 
 make_clean() {
-    cd ${OPENSSL_HOME}
+    if [ ! -d "${OPENSSL_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${OPENSSL_HOME}"
     make clean
 }
 
@@ -59,7 +63,11 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
-    cd ${OPENSSL_HOME}
+    if [ ! -d "${OPENSSL_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${OPENSSL_HOME}"
     git clean -fdx
 }
 
@@ -68,8 +76,7 @@ distclean() {
 #===================================================================================================
 
 make_all() {
-    cd ${OPENSSL_HOME}
-
+    cd "${OPENSSL_HOME}"
     make -j $(nproc) all
 }
 
@@ -78,7 +85,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd ${OPENSSL_HOME}
+    cd "${OPENSSL_HOME}"
     make install
 }
 
@@ -88,7 +95,7 @@ make_install() {
 
 
 build() {
-    cd ${OPENSSL_HOME}
+    cd "${OPENSSL_HOME}"
     configure
     make_all
     make_install
@@ -103,9 +110,9 @@ init() {
     if [ ! -d "${OPENSSL_HOME}/.git" ];
     then
         git clone ${OPENSSL_REPOSITORY} ${OPENSSL_HOME}
-        cd ${OPENSSL_HOME}
+        cd "${OPENSSL_HOME}"
     else
-        cd ${OPENSSL_HOME}
+        cd "${OPENSSL_HOME}"
         git fetch origin
         git reset --hard
     fi
