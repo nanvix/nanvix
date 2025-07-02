@@ -26,7 +26,11 @@ export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 #===================================================================================================
 
 make_clean() {
-    cd ${SQLITE_HOME}
+    if [ ! -d "${SQLITE_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${SQLITE_HOME}"
     make clean
 }
 
@@ -35,7 +39,11 @@ make_clean() {
 #===================================================================================================
 
 distclean() {
-    cd ${SQLITE_HOME}
+    if [ ! -d "${SQLITE_HOME}" ];
+    then
+        return 0
+    fi
+    cd "${SQLITE_HOME}"
     git clean -fdx
 }
 
@@ -68,7 +76,7 @@ configure() {
 #===================================================================================================
 
 make_all() {
-    cd ${SQLITE_HOME}
+    cd "${SQLITE_HOME}"
     make all
 }
 
@@ -77,7 +85,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd ${SQLITE_HOME}
+    cd "${SQLITE_HOME}"
     make install
 }
 
@@ -86,7 +94,7 @@ make_install() {
 #===================================================================================================
 
 build() {
-    cd ${SQLITE_HOME}
+    cd "${SQLITE_HOME}"
     configure
     make_all
     make_install
@@ -101,9 +109,9 @@ init() {
     if [ ! -d "${SQLITE_HOME}/.git" ];
     then
         git clone ${SQLITE_REPOSITORY} ${SQLITE_HOME}
-        cd ${SQLITE_HOME}
+        cd "${SQLITE_HOME}"
     else
-        cd ${SQLITE_HOME}
+        cd "${SQLITE_HOME}"
         git fetch origin
         git reset --hard
     fi
