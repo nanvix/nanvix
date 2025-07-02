@@ -34,22 +34,27 @@ then
     exit 1
 fi
 
-mkdir -p ${TOOLCHAIN_DIR}/src
-cd ${TOOLCHAIN_DIR}/src
+mkdir -p "${TOOLCHAIN_DIR}"/src
+cd "${TOOLCHAIN_DIR}"/src
 
 WASI_OS=linux
 WASI_ARCH=x86_64
 WASI_VERSION=25
 WASI_VERSION_FULL=${WASI_VERSION}.0
 wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
-tar xvf wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
+
+if [ ! -d "wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}" ]; then
+    tar xvf wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
+fi
 
 export WASI_SDK_PATH=$(pwd)/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}
 
 # Clone repository.
-git clone ${REPOSITORY} && cd ${REPOSITORY_NAME}
-git checkout ${COMMIT_ID}
-
+if [ !  -d "${REPOSITORY_NAME}" ];
+then
+    git clone "${REPOSITORY}" "${REPOSITORY_NAME}"
+fi
+cd "${REPOSITORY_NAME}"
 export DESTDIR=${TOOLCHAIN_DIR}
 
 # Configure the build.
