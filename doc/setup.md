@@ -104,8 +104,9 @@ rustup target add wasm32-wasip1
 
 ```bash
 # Ensure you are in the project's root directory.
-export TOOLCHAIN_DIR=$PWD/toolchain          # Set the directory for the toolchain.
+export TOOLCHAIN_DIR=$HOME/toolchain         # Set the directory for the toolchain (must be outside the source tree).
 ./scripts/setup/toolchain.sh $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
+ln -s $TOOLCHAIN_DIR toolchain               # Create symbolic link for toolchain for convenience.
 ```
 
 #### Step 3: Build the JavaScript to WebAssembly Toolchain (Optional)
