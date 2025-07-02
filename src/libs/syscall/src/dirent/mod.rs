@@ -53,6 +53,8 @@ cfg_if::cfg_if! {
         pub use self::syscall::opendir;
         pub use self::syscall::closedir;
         pub use self::syscall::readdir;
+
+        pub mod bindings;
     }
 }
 
