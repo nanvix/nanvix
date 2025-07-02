@@ -13,7 +13,7 @@ TOOLCHAIN_DIR=${1:-$PWD/toolchain}
 # Global Variables
 #===================================================================================================
 
-NANVIX_HOME=`git rev-parse --show-toplevel`
+NANVIX_HOME=$(git rev-parse --show-toplevel)
 
 CHANGE_ID=138986
 RUST_VERSION=v1.87.0
@@ -44,7 +44,7 @@ WASI_VERSION_FULL=${WASI_VERSION}.0
 wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
 tar xvf wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}.tar.gz
 
-export WASI_SDK_PATH=`pwd`/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}
+export WASI_SDK_PATH=$(pwd)/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}
 
 # Clone repository.
 git clone ${REPOSITORY} && cd ${REPOSITORY_NAME}
