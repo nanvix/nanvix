@@ -16,7 +16,10 @@ use crate::{
         c_char,
         c_int,
     },
-    sys_types::mode_t,
+    sys_types::{
+        mode_t,
+        off_t,
+    },
 };
 
 //==================================================================================================
@@ -157,4 +160,5 @@ pub mod file_control_request {
 unsafe extern "C" {
     pub fn fcntl(fd: c_int, cmd: c_int, _op: ...);
     pub fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int;
+    pub fn posix_fallocate(fd: c_int, offset: off_t, len: off_t) -> c_int;
 }
