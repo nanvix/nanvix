@@ -1,0 +1,12 @@
+{
+    "editor.formatOnType": false,
+    "rust-analyzer.cargo.allTargets": false,
+    "rust-analyzer.checkOnSave": true,
+    // NOTE: Use 'make check' instead of 'cargo check', as this project requires custom build steps.
+    "rust-analyzer.check.overrideCommand": [
+        "make",
+        "check"
+    ],
+    // NOTE: Assuming that you have a symbolic link to the toolchain in your workspace folder.
+    "C_Cpp.default.compilerPath": "${workspaceFolder}/toolchain/bin/i686-nanvix-gcc"
+}
