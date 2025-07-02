@@ -74,6 +74,7 @@ then
     git clone "${REPOSITORY}" "${REPOSITORY_NAME}"
 fi
 cd "${REPOSITORY_NAME}"
+git checkout ${COMMIT_ID}
 export DESTDIR=${TOOLCHAIN_DIR}
 
 # Configure the build.
