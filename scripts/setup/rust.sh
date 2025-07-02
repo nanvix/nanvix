@@ -81,4 +81,11 @@ if ! rustup toolchain list | grep -q '^nightly'; then
     rustup install nightly
 fi
 rustup override set nightly
-rustup toolchain link nanvix-x86 build/host/stage2
+
+# Check if the toolchain was built successfully.
+if [ -d "build/host/stage2" ]; then
+    rustup toolchain link nanvix-x86 build/host/stage2
+else
+    echo -e "\033[0;31mError: build/host/stage2 directory does not exist. Toolchain link skipped.\033[0m"
+    exit 1
+fi
