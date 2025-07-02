@@ -27,9 +27,8 @@ RUST_HOME=${TOOLCHAIN_DIR}/src/rust
 #===================================================================================================
 
 # Check if $TOOLCHAIN_DIR is within the current repository.
-if [[ ${TOOLCHAIN_DIR} =~ ${NANVIX_HOME} ]]; then
-
-    echo -e "\033[0;31mError: Build the Rust toolchain inside the Nanvix repository is not supported.\033[0m"
+if [[ "${TOOLCHAIN_DIR}" == "${NANVIX_HOME}"/* || "${TOOLCHAIN_DIR}" == "${NANVIX_HOME}" ]];
+    echo -e "\033[0;31mError: Building the Rust toolchain inside the Nanvix repository is not supported.\033[0m"
     echo -e "\033[0;31m       The toolchain directory must be outside the Nanvix repository.\033[0m"
     exit 1
 fi
