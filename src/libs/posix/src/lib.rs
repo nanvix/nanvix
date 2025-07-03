@@ -62,6 +62,9 @@ pub mod utime;
 /// Execution scheduling.
 pub mod sched;
 
+/// Standard library definitions.
+pub mod stdlib;
+
 /// Signals
 pub mod signal;
 
