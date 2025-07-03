@@ -52,6 +52,9 @@ pub mod pwd;
 /// Execution scheduling.
 pub mod sched;
 
+/// Signal handling.
+pub mod signal;
+
 /// Standard type definitions.
 pub mod stddef;
 

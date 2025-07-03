@@ -73,6 +73,9 @@ pub mod sys;
 /// Definitions for I/O polling.
 pub mod poll;
 
+/// Signal handling.
+pub mod signal;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;
