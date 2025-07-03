@@ -50,6 +50,7 @@ cfg_if::cfg_if! {
             fchdir,
             isatty,
         };
+       pub mod bindings;
     }
 }
 
