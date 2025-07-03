@@ -5,5 +5,6 @@
 // Modules
 //==================================================================================================
 
-pub mod socketpair;
+pub mod bind;
 pub mod socket;
+pub mod socketpair;
