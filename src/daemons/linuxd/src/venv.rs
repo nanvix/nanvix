@@ -5,9 +5,16 @@
 // Imports
 //==================================================================================================
 
-use ::std::collections::{
-    BTreeMap,
-    VecDeque,
+use ::std::{
+    collections::{
+        BTreeMap,
+        VecDeque,
+    },
+    sync::mpsc::{
+        channel,
+        Receiver,
+        Sender,
+    },
 };
 use ::sys::{
     error::{
@@ -34,6 +41,8 @@ pub struct VirtualEnvironment {
     id: VirtualEnvironmentIdentifier,
     /// Standard input messages not yet consumed.
     stdin_messages: VecDeque<Message>,
+    /// Input channel to this virtual environment.
+    channel_tx: Sender<Message>,
 }
 
 ///
@@ -58,10 +67,11 @@ impl VirtualEnvironment {
     ///
     /// Creates a new virtual environment.
     ///
-    fn new(id: VirtualEnvironmentIdentifier) -> Self {
+    fn new(id: VirtualEnvironmentIdentifier, channel_tx: Sender<Message>) -> Self {
         Self {
             id,
             stdin_messages: VecDeque::new(),
+            channel_tx,
         }
     }
 
@@ -100,6 +110,19 @@ impl VirtualEnvironment {
     pub fn pop_stdin_message(&mut self) -> Option<Message> {
         self.stdin_messages.pop_front()
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a cloned transmitter channel for the virtual environment.
+    ///
+    /// # Returns
+    ///
+    /// A transmitter channel for the virtual environment.
+    ///
+    pub fn get_channel_tx(&self) -> Sender<Message> {
+        self.channel_tx.clone()
+    }
 }
 
 impl PartialEq for VirtualEnvironment {
@@ -130,49 +153,40 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Returns
     ///
-    /// On success, an identifier to the virtual environment which the process joined is returned.
-    /// Otherwise, an error is returned.
+    /// On success, a tuple containing the identifier of the virtual environment which the process
+    /// joined and a receiver for messages is returned. Otherwise, an error is returned.
     ///
     pub fn join(
         &mut self,
         tid: ThreadIdentifier,
         mut envid: VirtualEnvironmentIdentifier,
-    ) -> Result<VirtualEnvironmentIdentifier, Error> {
+    ) -> Result<(VirtualEnvironmentIdentifier, Sender<Message>, Receiver<Message>), Error> {
         trace!("join(): tid={tid:?}, envid={envid:?}");
 
         // Check if the process is already in an environment.
-        if self.processes.contains_key(&tid) {
-            error!("process {:?} is previously joined environment {:?}", tid, self.processes[&tid]);
-            return Err(Error::new(
-                ErrorCode::ResourceBusy,
-                "process is already in an environment",
-            ));
+        if let Some(env) = self.processes.get(&tid) {
+            let reason: &str = "process is already in an environment";
+            error!("join(): {reason:?} (tid={tid:?}, envid={envid:?}, env={env:?})");
+            return Err(Error::new(ErrorCode::ResourceBusy, reason));
         };
 
-        // Check wether the process requested to join a new environment or an existing one.
-        if envid == VirtualEnvironmentIdentifier::NEW {
-            // Thread requested to join a new environment.
-            envid = self.next_env;
-            self.next_env = self.next_env.next();
-            self.processes.insert(tid, VirtualEnvironment::new(envid));
-            info!("process {tid:?} joined new environment {envid:?}");
-        } else {
-            // Thread requested to join an existing environment.
-
-            // Check if environment exists.
-            if !self.processes.values().any(|v| v.id() == envid) {
-                error!("process {tid:?} requested to join non-existing environment {envid:?}");
-                return Err(Error::new(
-                    ErrorCode::NoSuchEntry,
-                    "virtual environment does not exist",
-                ));
-            }
-
-            // Join environment.
-            self.processes.insert(tid, VirtualEnvironment::new(envid));
+        // Check whether the process requested to join a new environment or an existing one.
+        if envid != VirtualEnvironmentIdentifier::NEW {
+            let reason: &str = "joining existing environments is not supported";
+            error!("join(): {reason:?} (tid={tid:?}, envid={envid:?})");
+            return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
-        Ok(envid)
+        let (channel_tx, channel_rx): (Sender<Message>, Receiver<Message>) = channel::<Message>();
+
+        // Thread requested to join a new environment.
+        envid = self.next_env;
+        self.next_env = self.next_env.next();
+        let env = VirtualEnvironment::new(envid, channel_tx.clone());
+        self.processes.insert(tid, env);
+        info!("process {tid:?} joined new environment {envid:?}");
+
+        Ok((envid, channel_tx, channel_rx))
     }
 
     ///
@@ -183,43 +197,27 @@ impl VirtualEnviromentDirectory {
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
-    /// - `envid`: Virtual environment identifier.
     ///
     /// # Returns
     ///
     /// On success, an identifier to the virtual environment which the process left is returned.
     /// Otherwise, an error is returned.
     ///
-    #[allow(dead_code)]
-    pub fn leave(
-        &mut self,
-        tid: ThreadIdentifier,
-        envid: VirtualEnvironmentIdentifier,
-    ) -> Result<VirtualEnvironmentIdentifier, Error> {
-        trace!("leave(): tid={tid:?}, envid={envid:?}");
-
-        // Check if the process has joined an environment.
-        if !self.processes.contains_key(&tid) {
-            error!("process {tid:?} has not joined an environment");
-            return Err(Error::new(
-                ErrorCode::NoSuchEntry,
-                "process has not joined an environment",
-            ));
-        }
-
-        // Check if the process has previously joined the environment.
-        if self.processes[&tid].id() != envid {
-            error!("process {tid:?} has not previously joined environment {envid:?}");
-            return Err(Error::new(
-                ErrorCode::InvalidArgument,
-                "process has not previously joined environment",
-            ));
-        }
+    pub fn leave(&mut self, tid: ThreadIdentifier) -> Result<VirtualEnvironmentIdentifier, Error> {
+        trace!("leave(): tid={tid:?}");
 
         // Leave environment.
-        self.processes.remove(&tid);
-
-        Ok(envid)
+        match self.processes.remove(&tid) {
+            Some(env) => {
+                info!("process {tid:?} left environment {env:?}");
+                Ok(env.id())
+            },
+            None => {
+                let reason: &str = "process has not joined an environment";
+                error!("leave(): {reason:?} (tid={tid:?})");
+                Err(Error::new(ErrorCode::NoSuchEntry, reason))
+            },
+        }
     }
 
     ///
