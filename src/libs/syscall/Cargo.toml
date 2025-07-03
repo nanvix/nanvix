@@ -39,6 +39,8 @@ compiler_builtins = { version = "0.1", optional = true }
 
 [features]
 default = ["syscall", "dlfcn", "sbrk"]
+# Enable this, if this library is to be used as a static library.
+staticlib = []
 syscall = ["dep:syslog", "sys/kcall"]
 std = []
 dlfcn = ["dep:sysalloc", "dep:arch", "dep:elf", "dep:goblin"]
