@@ -378,6 +378,7 @@ run-linuxd-tests: | \
 	test-linuxd-dlfcn-c \
 	test-linuxd-file-rust \
 	test-linuxd-file-c \
+	test-linuxd-thread-c \
 	test-linuxd-memory-c \
 	test-linuxd-misc-c \
 	test-linuxd-network-c \
@@ -896,17 +897,18 @@ define LINUXD_TEST_RULE
 test-linuxd-$(2): all
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@echo "Running Linuxd test $(2)..."
-	$(SCRIPTS_DIR)/test-linuxd.sh $(LINUXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT)
+	$(SCRIPTS_DIR)/test-linuxd.sh $(LINUXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(7) $(TIMEOUT)
 endif
 endef
 
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','','Hello$(comma) world from C!'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','','Hello$(comma) world from C++!'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','','ok'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','','ok'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','','ok'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','','ok'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','','ok'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','','ok'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','','ok'))
-$(eval $(call LINUXD_TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!'))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','','Hello$(comma) world from C!',0))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','','Hello$(comma) world from C++!,0'))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','','ok',0))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','','ok',0))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','','ok',0))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','','ok',0))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','','ok',4))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','','ok',0))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','','ok',0))
+$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','','ok',0))
+$(eval $(call LINUXD_TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!',0))
