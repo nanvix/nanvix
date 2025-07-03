@@ -55,3 +55,13 @@ cfg_if::cfg_if! {
         }
     }
 }
+
+#[cfg(all(feature = "syscall"))]
+mod bindings {
+    use ::sysapi::ffi::c_int;
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn __errno_location() -> *mut c_int {
+        crate::errno::__errno_location()
+    }
+}
