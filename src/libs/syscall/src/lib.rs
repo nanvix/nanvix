@@ -76,6 +76,9 @@ pub mod poll;
 /// Signal handling.
 pub mod signal;
 
+/// Standard library functions.
+pub mod stdlib;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;
