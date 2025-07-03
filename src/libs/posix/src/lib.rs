@@ -38,9 +38,6 @@ pub mod time;
 /// Virtual environments.
 pub mod venv;
 
-/// File control operations.
-pub mod fcntl;
-
 /// Definitions for network database operations.
 pub mod netdb;
 
