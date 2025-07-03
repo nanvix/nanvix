@@ -70,8 +70,12 @@ use ::sysapi::{
 
 pub mod message;
 
-#[cfg(feature = "syscall")]
-pub mod syscall;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "syscall")] {
+        pub mod syscall;
+        pub mod bindings;
+    }
+}
 
 //==================================================================================================
 
