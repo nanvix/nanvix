@@ -1,6 +1,19 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+#![forbid(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::char_lit_as_u8,
+    clippy::fn_to_numeric_cast,
+    clippy::fn_to_numeric_cast_with_truncation,
+    clippy::ptr_as_ptr,
+    clippy::unnecessary_cast,
+    invalid_reference_casting
+)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -13,7 +26,10 @@ use ::core::sync::atomic::{
     AtomicU32,
     Ordering,
 };
-use ::sys::time::SystemTime;
+use ::sys::time::{
+    SystemTime,
+    NANOSECONDS_PER_SECOND,
+};
 
 //==================================================================================================
 // Global Variables
@@ -45,10 +61,8 @@ impl TimerTicks {
     }
 
     /// Returns the number of ticks since the system started.
-    fn get(&self) -> u64 {
-        let minor: u32 = self.minor.load(Ordering::SeqCst);
-        let major: u32 = self.major.load(Ordering::SeqCst);
-        minor as u64 + ((major as u64) << 32)
+    fn get(&self) -> (u32, u32) {
+        (self.major.load(Ordering::SeqCst), self.minor.load(Ordering::SeqCst))
     }
 
     /// Increments the number of ticks and returns the minor tick.
@@ -105,24 +119,24 @@ pub unsafe fn timer_handler(_intnum: InterruptNumber) {
 ///
 /// Returns the number of timer ticks since the system started.
 ///
-/// # Safety
-///
-/// This function is unsafe because:
-/// - It reads global variables.
-///
 pub fn now() -> SystemTime {
-    let ticks: u64 = TIMER_TICKS.get();
-
     #[cfg(feature = "pit")]
     let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
     #[cfg(not(feature = "pit"))]
     let timer_freq: u32 = 1;
 
-    match SystemTime::new(ticks / timer_freq as u64, (ticks % timer_freq as u64) as u32) {
+    let (major_ticks, minor_ticks): (u32, u32) = TIMER_TICKS.get();
+    let seconds: u64 = (((major_ticks as u64) << 32) + (minor_ticks as u64)) / (timer_freq as u64);
+    let nanoseconds: u32 = (minor_ticks % timer_freq) * (NANOSECONDS_PER_SECOND / timer_freq);
+
+    match SystemTime::new(seconds, nanoseconds) {
         Some(time) => time,
         None => {
             // SAFETY: This should not happen because `ticks` should be always in a valid range of `SystemTime`.
-            unreachable!("now(): failed to get system time");
+            unreachable!(
+                "now(): failed to get system time (major_ticks={major_ticks:?}, \
+                 minor_ticks={minor_ticks:?}, timer_freq={timer_freq:?})"
+            )
         },
     }
 }
