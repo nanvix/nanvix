@@ -11,15 +11,16 @@ description = "System Allocator"
 homepage.workspace = true
 
 [dependencies]
-arch = { workspace = true }
-talc = { workspace = true }
-cfg-if = { workspace = true }
-config = { workspace = true }
-syslog = { workspace = true }
-sys = { workspace = true, features = ["kcall"] }
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
-core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+arch = { workspace = true }
+cfg-if = { workspace = true }
 compiler_builtins = { version = "0.1", optional = true }
+config = { workspace = true }
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+spin = { workspace = true, features = ["lazy", "spin_mutex"] }
+sys = { workspace = true, features = ["kcall"] }
+syslog = { workspace = true }
+talc = { workspace = true }
 
 [features]
 default = []
