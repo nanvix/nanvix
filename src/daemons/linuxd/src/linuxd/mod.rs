@@ -798,12 +798,11 @@ impl LinuxDaemon {
                 // Not connected to the gateway, print to stdout.
                 let count: usize = request.count as usize;
                 let buffer: &[u8] = &request.buffer[..count];
-                let string: String = String::from_utf8_lossy(buffer).to_string();
                 if request.fd == STDERR_FILENO {
-                    eprint!("{string}");
+                    let _ = io::stderr().write_all(buffer);
                     let _ = io::stderr().lock().flush();
                 } else {
-                    print!("{string}");
+                    let _ = io::stdout().write_all(buffer);
                     let _ = io::stdout().lock().flush();
                 }
                 WriteResponse::build(source, count as c_ssize_t)
