@@ -26,6 +26,7 @@ use ::type_safe::NonEmptyVecDeque;
 /// A type that represents a process that finished its execution and is waiting for its parent
 /// to collect its exit status and release its resources.
 ///
+#[derive(Debug)]
 pub struct ZombieProcess {
     zombie_threads: NonEmptyVecDeque<ZombieThread>,
     process: Box<ProcessState>,
