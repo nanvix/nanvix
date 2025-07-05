@@ -19,6 +19,10 @@ use ::arch::mem::{
     PAGE_SIZE,
 };
 use ::core::ptr;
+use ::spin::{
+    Mutex,
+    MutexGuard,
+};
 use ::sys::{
     config::memory_layout::USER_HEAP_BASE,
     error::{
@@ -63,7 +67,7 @@ pub const BREAK_BASE_RAW: usize = config::memory_layout::USER_HEAP_BASE_RAW + RU
 #[cfg(not(feature = "rustc-dep-of-std"))]
 struct Allocator;
 
-static mut HEAP: Option<Talc<NanvixOomHandler>> = None;
+static HEAP: Mutex<Option<Talc<NanvixOomHandler>>> = Mutex::new(None);
 
 #[cfg_attr(not(feature = "rustc-dep-of-std"), global_allocator)]
 #[cfg(not(feature = "rustc-dep-of-std"))]
@@ -188,22 +192,21 @@ pub fn init() -> Result<(), Error> {
     let size: usize = PAGE_SIZE;
     let capacity: usize = RUST_HEAP_SIZE;
 
-    unsafe {
-        // Check if the heap was already initialized.
-        if HEAP.is_some() {
-            return Err(Error::new(ErrorCode::ResourceBusy, "heap already initialized"));
-        }
-
-        HEAP = Some(NanvixOomHandler::new(pid, addr, size, capacity)?);
+    let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
+    // Check if the heap was already initialized.
+    if locked_heap.is_some() {
+        return Err(Error::new(ErrorCode::ResourceBusy, "heap already initialized"));
     }
+
+    *locked_heap = Some(NanvixOomHandler::new(pid, addr, size, capacity)?);
 
     Ok(())
 }
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn alloc(layout: Layout) -> *mut u8 {
-    let heap = ptr::addr_of_mut!(HEAP);
-    if let Some(heap) = &mut *heap {
+    let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
+    if let Some(heap) = locked_heap.as_mut() {
         match heap.malloc(layout) {
             Ok(ptr) => ptr.as_ptr(),
             Err(_) => core::ptr::null_mut(),
@@ -216,8 +219,8 @@ pub unsafe fn alloc(layout: Layout) -> *mut u8 {
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
-    let heap = ptr::addr_of_mut!(HEAP);
-    if let Some(heap) = &mut *heap {
+    let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
+    if let Some(heap) = locked_heap.as_mut() {
         if let Some(ptr) = ptr::NonNull::new(ptr) {
             heap.free(ptr, layout)
         }
