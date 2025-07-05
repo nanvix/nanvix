@@ -36,6 +36,7 @@ use ::type_safe::NonEmptyVecDeque;
 ///
 /// A type that represents a process that was interrupted.
 ///
+#[derive(Debug)]
 pub struct InterruptedProcess {
     state: Box<ProcessState>,
     sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
