@@ -46,6 +46,7 @@ use ::type_safe::NonEmptyVecDeque;
 ///
 /// A type that represents a process that is running.
 ///
+#[derive(Debug)]
 pub struct RunningProcess {
     /// Process state.
     state: Box<ProcessState>,

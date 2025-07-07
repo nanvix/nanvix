@@ -39,6 +39,7 @@ use sys::{
 // Runnable Process
 //==================================================================================================
 
+#[derive(Debug)]
 pub struct RunnableProcessWithReadyThread {
     state: Box<ProcessState>,
     ready_threads: NonEmptyVecDeque<ReadyThread>,
@@ -206,6 +207,7 @@ impl RunnableProcessWithReadyThread {
     }
 }
 
+#[derive(Debug)]
 pub struct RunnableProcessWithInterruptedThreads {
     state: Box<ProcessState>,
     ready_threads: Option<NonEmptyVecDeque<ReadyThread>>,
@@ -380,6 +382,7 @@ impl RunnableProcessWithInterruptedThreads {
     }
 }
 
+#[derive(Debug)]
 pub struct RunnableProcessWithReadyAndInteruptThread {
     state: Box<ProcessState>,
     ready_threads: NonEmptyVecDeque<ReadyThread>,
@@ -537,6 +540,7 @@ impl RunnableProcessWithReadyAndInteruptThread {
 ///
 /// A type that represents a process that is ready to run.
 ///
+#[derive(Debug)]
 pub enum RunnableProcess {
     WithReadyThread(RunnableProcessWithReadyThread),
     WithInterruptedThreads(RunnableProcessWithInterruptedThreads),
