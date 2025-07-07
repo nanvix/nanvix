@@ -52,6 +52,8 @@ struct ThreadState {
     context: Pin<Box<ContextInformation>>,
     /// Lookup table of locked mutexes.
     locked_mutexes: BTreeMap<MutexAddress, MutexGuard>,
+    /// Interrupt reason, if any.
+    interrupt_reason: Option<InterruptReason>,
 }
 
 impl ThreadState {
@@ -68,6 +70,7 @@ impl ThreadState {
             user_stack,
             join_cond: Condvar::new(),
             locked_mutexes: BTreeMap::new(),
+            interrupt_reason: None,
         }
     }
 
@@ -209,9 +212,10 @@ impl ReadyThread {
         self.0.id
     }
 
-    pub fn resume(mut self) -> (RunningThread, *mut ContextInformation) {
+    pub fn resume(mut self) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.0.context_mut();
-        (RunningThread(self.0), ctx)
+        let interrupt_reason: Option<InterruptReason> = self.0.interrupt_reason.take();
+        (RunningThread(self.0), interrupt_reason, ctx)
     }
 
     pub fn terminate(self) -> ZombieThread {
@@ -284,9 +288,9 @@ impl InterruptedThread {
         self.thread.id
     }
 
-    pub fn resume(mut self) -> (RunningThread, InterruptReason, *mut ContextInformation) {
-        let ctx: *mut ContextInformation = self.thread.context_mut();
-        (RunningThread(self.thread), self.reason, ctx)
+    pub fn resume(mut self) -> ReadyThread {
+        self.thread.interrupt_reason = Some(self.reason);
+        ReadyThread(self.thread)
     }
 
     pub fn join_cond(&self) -> Condvar {

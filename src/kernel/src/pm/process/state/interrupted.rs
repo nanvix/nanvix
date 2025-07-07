@@ -5,19 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    hal::arch::ContextInformation,
-    pm::{
-        process::state::{
-            ProcessState,
-            RunningProcess,
-        },
-        thread::{
-            InterruptReason,
-            InterruptedThread,
-            SleepingThread,
-            ZombieThread,
-        },
+use crate::pm::{
+    process::state::{
+        ProcessState,
+        RunnableProcess,
+    },
+    thread::{
+        InterruptReason,
+        InterruptedThread,
+        SleepingThread,
+        ZombieThread,
     },
 };
 use ::alloc::{
@@ -80,22 +77,28 @@ impl InterruptedProcess {
         &mut self.state
     }
 
-    pub fn resume(mut self) -> (RunningProcess, InterruptReason, *mut ContextInformation) {
+    pub fn resume(mut self) -> RunnableProcess {
         let (interrupted_threads, next_thread): (VecDeque<InterruptedThread>, InterruptedThread) =
             self.interrupted_threads.pop_front();
-        let (thread, reason, ctx) = next_thread.resume();
-        (
-            RunningProcess::new(
+        let ready_thread = next_thread.resume();
+
+        if let Some(interrupted_threads) = NonEmptyVecDeque::from(interrupted_threads) {
+            RunnableProcess::from_state_with_ready_and_interrupted_threads(
                 self.state,
-                thread,
-                None,
-                NonEmptyVecDeque::from(interrupted_threads),
+                NonEmptyVecDeque::new(ready_thread),
+                interrupted_threads,
                 self.sleeping_threads.take(),
                 self.zombie_threads.take(),
-            ),
-            reason,
-            ctx,
-        )
+            )
+        } else {
+            RunnableProcess::from_state_with_ready_thread(
+                self.state,
+                NonEmptyVecDeque::new(ready_thread),
+                None,
+                self.sleeping_threads.take(),
+                self.zombie_threads.take(),
+            )
+        }
     }
 
     pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
