@@ -554,15 +554,14 @@ impl ProcessManagerInner {
 
         self.check_alarm();
 
+        // Process all interrupted processes.
+        while let Some(interrupted_process) = self.interrupted.pop_front() {
+            let ready_process: RunnableProcess = interrupted_process.resume();
+            self.ready.push_back(ready_process);
+        }
+
         // Select next process to run.
-        let next_process: RunnableProcess = if let Some(next_process) = self.interrupted.pop_front()
-        {
-            // Schedule a thread from an interrupted process.
-            next_process.resume()
-        } else {
-            // Schedule a thread from a ready process.
-            self.take_ready()
-        };
+        let next_process: RunnableProcess = self.take_ready();
 
         let (next_process, reason, next_context): (
             RunningProcess,
