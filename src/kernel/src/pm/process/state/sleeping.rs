@@ -38,6 +38,7 @@ use ::type_safe::NonEmptyVecDeque;
 ///
 /// A type that represents a process that is waiting for a condition to be satisfied.
 ///
+#[derive(Debug)]
 pub struct SleepingProcess {
     state: Box<ProcessState>,
     sleeping_threads: NonEmptyVecDeque<SleepingThread>,
