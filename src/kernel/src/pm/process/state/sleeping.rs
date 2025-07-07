@@ -87,7 +87,7 @@ impl SleepingProcess {
         match sleeping_threads.remove_if(|thread| thread.id() == tid) {
             Ok((sleeping_threads, sleeping_thread)) => {
                 let ready_thread: ReadyThread = sleeping_thread.wakeup();
-                Ok(RunnableProcess::from_state_with_ready_thread(
+                Ok(RunnableProcess::from_state(
                     self.state,
                     NonEmptyVecDeque::new(ready_thread),
                     None,
@@ -175,7 +175,7 @@ impl SleepingProcess {
 
     pub fn add_thread(mut self, ready_thread: ReadyThread) -> RunnableProcess {
         trace!("add_thread(): self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
-        RunnableProcess::from_state_with_ready_thread(
+        RunnableProcess::from_state(
             self.state,
             NonEmptyVecDeque::new(ready_thread),
             None,

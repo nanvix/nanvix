@@ -11,6 +11,7 @@ use crate::{
         process::state::{
             interrupted::interrupt,
             sleeping::SleepingProcess,
+            InterruptedProcess,
             ProcessState,
             RunnableProcess,
             ZombieProcess,
@@ -119,7 +120,7 @@ impl RunningProcess {
         };
 
         (
-            RunnableProcess::from_state_with_ready_thread(
+            RunnableProcess::from_state(
                 self.state,
                 ready_threads,
                 self.interrupted_threads.take(),
@@ -151,7 +152,7 @@ impl RunningProcess {
         // Check if there are ready threads.
         if let Some(ready_threads) = self.ready.take() {
             return Ok((
-                RunnableProcess::from_state_with_ready_thread(
+                RunnableProcess::from_state(
                     self.state,
                     ready_threads,
                     self.interrupted_threads.take(),
@@ -164,16 +165,14 @@ impl RunningProcess {
 
         // Check if there are interrupted threads.
         if let Some(interrupted_threads) = self.interrupted_threads.take() {
-            return Ok((
-                RunnableProcess::from_state_with_interrupted_threads(
-                    self.state,
-                    None,
-                    interrupted_threads,
-                    Some(sleeping_threads),
-                    self.zombie.take(),
-                ),
-                ctx,
-            ));
+            let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
+                self.state,
+                Some(sleeping_threads),
+                interrupted_threads,
+                self.zombie.take(),
+            );
+
+            return Ok((interrupted_process.resume(), ctx));
         }
 
         Err((SleepingProcess::new(self.state, sleeping_threads, self.zombie.take()), ctx))
@@ -213,16 +212,14 @@ impl RunningProcess {
         }
 
         if let Some(interrupted_threads) = interrupted_threads {
-            Ok((
-                RunnableProcess::from_state_with_interrupted_threads(
-                    self.state,
-                    None,
-                    interrupted_threads,
-                    None,
-                    Some(zombie_threads),
-                ),
-                ctx,
-            ))
+            let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
+                self.state,
+                self.sleeping_threads.take(),
+                interrupted_threads,
+                self.zombie.take(),
+            );
+
+            Ok((interrupted_process.resume(), ctx))
         } else {
             Err((ZombieProcess::new(self.state, zombie_threads, status), ctx))
         }
@@ -268,43 +265,26 @@ impl RunningProcess {
         };
 
         if let Some(ready_threads) = self.ready.take() {
-            if let Some(interrupted_threads) = self.interrupted_threads.take() {
-                Ok((
-                    join_cond,
-                    RunnableProcess::from_state_with_ready_and_interrupted_threads(
-                        self.state,
-                        ready_threads,
-                        interrupted_threads,
-                        self.sleeping_threads.take(),
-                        Some(zombie_threads),
-                    ),
-                    ctx,
-                ))
-            } else {
-                Ok((
-                    join_cond,
-                    RunnableProcess::from_state_with_ready_thread(
-                        self.state,
-                        ready_threads,
-                        self.interrupted_threads.take(),
-                        self.sleeping_threads.take(),
-                        Some(zombie_threads),
-                    ),
-                    ctx,
-                ))
-            }
-        } else if let Some(interrupted_threads) = self.interrupted_threads.take() {
             Ok((
                 join_cond,
-                RunnableProcess::from_state_with_interrupted_threads(
+                RunnableProcess::from_state(
                     self.state,
-                    self.ready.take(),
-                    interrupted_threads,
+                    ready_threads,
+                    self.interrupted_threads.take(),
                     self.sleeping_threads.take(),
                     Some(zombie_threads),
                 ),
                 ctx,
             ))
+        } else if let Some(interrupted_threads) = self.interrupted_threads.take() {
+            let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
+                self.state,
+                self.sleeping_threads.take(),
+                interrupted_threads,
+                self.zombie.take(),
+            );
+
+            Ok((join_cond, interrupted_process.resume(), ctx))
         } else if let Some(sleeping_threads) = self.sleeping_threads.take() {
             Err(Ok((
                 join_cond,

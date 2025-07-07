@@ -934,7 +934,8 @@ impl ProcessManagerInner {
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
             let process: RunnableProcess = self.ready.remove(process);
             match process.terminate() {
-                Ok(runnable_process) => {
+                Ok(interrupted_process) => {
+                    let runnable_process: RunnableProcess = interrupted_process.resume();
                     self.ready.push_back(runnable_process);
                     return Ok(());
                 },

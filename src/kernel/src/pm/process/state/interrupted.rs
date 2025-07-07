@@ -82,23 +82,13 @@ impl InterruptedProcess {
             self.interrupted_threads.pop_front();
         let ready_thread = next_thread.resume();
 
-        if let Some(interrupted_threads) = NonEmptyVecDeque::from(interrupted_threads) {
-            RunnableProcess::from_state_with_ready_and_interrupted_threads(
-                self.state,
-                NonEmptyVecDeque::new(ready_thread),
-                interrupted_threads,
-                self.sleeping_threads.take(),
-                self.zombie_threads.take(),
-            )
-        } else {
-            RunnableProcess::from_state_with_ready_thread(
-                self.state,
-                NonEmptyVecDeque::new(ready_thread),
-                None,
-                self.sleeping_threads.take(),
-                self.zombie_threads.take(),
-            )
-        }
+        RunnableProcess::from_state(
+            self.state,
+            NonEmptyVecDeque::new(ready_thread),
+            NonEmptyVecDeque::from(interrupted_threads),
+            self.sleeping_threads.take(),
+            self.zombie_threads.take(),
+        )
     }
 
     pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
