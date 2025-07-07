@@ -212,7 +212,7 @@ impl ReadyThread {
         self.0.id
     }
 
-    pub fn resume(mut self) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation) {
+    pub fn run(mut self) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.0.context_mut();
         let interrupt_reason: Option<InterruptReason> = self.0.interrupt_reason.take();
         (RunningThread(self.0), interrupt_reason, ctx)
