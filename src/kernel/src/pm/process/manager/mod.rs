@@ -637,34 +637,28 @@ impl ProcessManagerInner {
             panic!("sleep(): kernel process cannot sleep");
         }
 
-        // Suspend the execution of the calling thread and schedule another thread to run.
-        let (next_process, reason, previous_context, next_context): (
+        // Suspend the execution of the calling thread.
+        let previous_context: *mut ContextInformation = match running_process.sleep(alarm) {
+            // The calling process still has runnable threads, put it in the list of ready processes.
+            Ok((runnable_process, previous_context)) => {
+                self.ready.push_back(runnable_process);
+                previous_context
+            },
+            // The calling process has only sleeping threads left, put it in the list of suspended processes.
+            Err((suspended_process, previous_context)) => {
+                self.suspended.push_back(suspended_process);
+                previous_context
+            },
+        };
+
+        // Schedule another thread to run.
+        let next_process: RunnableProcess = self.take_ready();
+
+        let (next_process, reason, next_context): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
-            *mut ContextInformation,
-        ) = match running_process.sleep(alarm) {
-            // The calling process still has runnable threads, schedule one of them.
-            Ok((runnable_process, previous_context)) => {
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = runnable_process.run();
-                (next_process, reason, previous_context, next_context)
-            },
-            // The calling process has only sleeping threads left, schedule a thread from another process.
-            Err((suspended_process, previous_context)) => {
-                self.suspended.push_back(suspended_process);
-                let next_process: RunnableProcess = self.take_ready();
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = next_process.run();
-                (next_process, reason, previous_context, next_context)
-            },
-        };
+        ) = next_process.run();
 
         let next_pid: ProcessIdentifier = next_process.state().pid();
         let next_tid: ThreadIdentifier = next_process.get_tid();
@@ -811,34 +805,28 @@ impl ProcessManagerInner {
             panic!("kernel process cannot exit");
         }
 
-        // Terminate the calling thread and schedule another thread to run.
-        let (next_process, reason, previous_context, next_context): (
+        // Terminate the calling thread.
+        let previous_context: *mut ContextInformation = match running_process.exit(status) {
+            // The calling process still has runnable threads, put it in the list of ready processes.
+            Ok((runnable_process, previous_context)) => {
+                self.ready.push_back(runnable_process);
+                previous_context
+            },
+            // The calling process has only sleeping threads left, put it in the list of zombies processes.
+            Err((zombie_process, previous_context)) => {
+                self.zombies.push_back(zombie_process);
+                previous_context
+            },
+        };
+
+        // Schedule another thread to run.
+        let next_process: RunnableProcess = self.take_ready();
+
+        let (next_process, reason, next_context): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
-            *mut ContextInformation,
-        ) = match running_process.exit(status) {
-            // The calling process still has runnable threads, schedule one of them.
-            Ok((runnable_process, previous_context)) => {
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = runnable_process.run();
-                (next_process, reason, previous_context, next_context)
-            },
-            // The calling process has only sleeping threads left, schedule a thread from another process.
-            Err((zombie_process, previous_context)) => {
-                self.zombies.push_back(zombie_process);
-                let next_process: RunnableProcess = self.take_ready();
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = next_process.run();
-                (next_process, reason, previous_context, next_context)
-            },
-        };
+        ) = next_process.run();
 
         let next_pid: ProcessIdentifier = next_process.state().pid();
         let next_tid: ThreadIdentifier = next_process.get_tid();
@@ -897,50 +885,33 @@ impl ProcessManagerInner {
         }
 
         // Terminate the calling thread and schedule another thread to run.
-        let (join_cond, next_process, reason, previous_context, next_context): (
-            Condvar,
+        let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
+            match running_process.exit_thread(status) {
+                // The calling process still has runnable threads, put it in the list of ready processes.
+                Ok((join_cond, runnable_process, previous_context)) => {
+                    self.ready.push_back(runnable_process);
+                    (join_cond, previous_context)
+                },
+                // The calling process has only sleeping threads left, put it in the list of suspended processes.
+                Err(Ok((join_cond, sleeping_process, previous_context))) => {
+                    self.suspended.push_back(sleeping_process);
+                    (join_cond, previous_context)
+                },
+                // The calling process has only zombie threads left, put it in the list of zombies processes.
+                Err(Err((join_cond, zombie_process, previous_context))) => {
+                    self.zombies.push_back(zombie_process);
+                    (join_cond, previous_context)
+                },
+            };
+
+        // Schedule another thread to run.
+        let next_process: RunnableProcess = self.take_ready();
+
+        let (next_process, reason, next_context): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
-            *mut ContextInformation,
-        ) = match running_process.exit_thread(status) {
-            // The calling process still has runnable threads, schedule one of them.
-            Ok((join_cond, runnable_process, previous_context)) => {
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = runnable_process.run();
-                (join_cond, next_process, reason, previous_context, next_context)
-            },
-            // The calling process has only sleeping threads left, schedule a thread from another process.
-            Err(Ok((join_cond, sleeping_process, previous_context))) => {
-                self.suspended.push_back(sleeping_process);
-
-                let next_process: RunnableProcess = self.take_ready();
-
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = next_process.run();
-                (join_cond, next_process, reason, previous_context, next_context)
-            },
-            // The calling process has only zombie threads left, schedule a thread from another process.
-            Err(Err((join_cond, zombie_process, previous_context))) => {
-                self.zombies.push_back(zombie_process);
-
-                let next_process: RunnableProcess = self.take_ready();
-
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = next_process.run();
-
-                (join_cond, next_process, reason, previous_context, next_context)
-            },
-        };
+        ) = next_process.run();
 
         let next_pid: ProcessIdentifier = next_process.state().pid();
         let next_tid: ThreadIdentifier = next_process.get_tid();
