@@ -18,9 +18,7 @@ kstack_size = 32768
 timer_freq = 10000
 
 # Scheduler frequency (in ticks)
-# Notes:
-# - This should be a power of two.
-scheduler_freq = 1024
+scheduler_freq = 1000
 
 # Maximum number of messages that can be buffered by the kernel
 # Notes:

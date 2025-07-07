@@ -120,7 +120,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             }
         },
         // SAFETY: The calling thread does not hold any resources.
-        KcallNumber::SchedulerYield => match unsafe { ProcessManager::switch() } {
+        KcallNumber::SchedulerYield => match unsafe { ProcessManager::giveup() } {
             Ok(()) => KcallResult::ok(),
             Err(e) => KcallResult::Error(e.code.into()),
         },
