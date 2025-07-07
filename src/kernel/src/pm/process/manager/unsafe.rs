@@ -2,12 +2,6 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Global Variables
-//==================================================================================================
-
-static mut PROCESS_MANAGER: Option<ProcessManager> = None;
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -47,10 +41,12 @@ use crate::{
             ZombieThread,
         },
         SleepError,
+        ORDER,
     },
 };
 use ::alloc::rc::Rc;
 use ::arch::mem::PAGE_SIZE;
+use ::config::kernel::SCHEDULER_FREQ;
 use ::core::{
     cell::{
         RefCell,
@@ -62,7 +58,7 @@ use ::core::{
     },
     sync::atomic::{
         AtomicI32,
-        Ordering,
+        AtomicUsize,
     },
 };
 use ::sys::{
@@ -82,8 +78,17 @@ use ::sys::{
 // Global Variables
 //==================================================================================================
 
-/// PID of the current process.
+/// Process manager.
+static mut PROCESS_MANAGER: Option<ProcessManager> = None;
+
+/// ID of the current process.
 static CURRENT_PID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KERNEL_RAW);
+
+// ID of the current thread.
+static CURRENT_TID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KERNEL_RAW);
+
+/// Remaining quantum for the current thread.
+static REMAINING_QUANTUM: AtomicUsize = AtomicUsize::new(SCHEDULER_FREQ);
 
 //==================================================================================================
 // Implementations
@@ -177,35 +182,7 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Exits the calling process.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this function does not return. Otherwise, an error code is
-    /// returned instead.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it may cause the calling process to exit.
-    ///
-    /// This function is safe to use if an only if the following conditions are met:
-    ///
-    /// - The calling process is not the kernel process.
-    ///
-    pub unsafe fn exit(status: ExitStatus) -> Result<!, Error> {
-        trace!("exit(): status={:?}", status);
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) =
-            unsafe { Self::get_mut() }.try_borrow_mut()?.exit(status);
-
-        ContextInformation::switch(from, to);
-        core::hint::unreachable_unchecked()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Exits the calling thread.
+    /// Terminates the calling process.
     ///
     /// # Parameters
     ///
@@ -213,33 +190,100 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, this function does not return. Otherwise, an error code is
-    /// returned instead.
+    /// Upon successful completion, this function does not return. The current thread terminates,
+    /// and any other threads in the calling process are scheduled for termination. Once all threads
+    /// in the process have terminated, the kernel will clean up any resources associated with the
+    /// process.  If an error occurs, an error code is returned instead.
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it operates on global variables and it may panic.
+    /// This function is unsafe because it may terminate the calling thread.
     ///
-    /// This function is safe to use if and only if the following conditions are met:
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - The calling thread is not a kernel thread.
+    /// - The process manager is initialized.
+    /// - The calling thread does not hold a reference to the process manager.
+    /// - Access to the process manager is synchronized.
     ///
-    /// - The calling process is not the kernel process.
-    /// - The calling process does not hold a reference to the process manager.
+    pub unsafe fn exit(status: ExitStatus) -> Result<!, Error> {
+        trace!("exit(): status={status:?}");
+
+        // Terminate the calling process and select another process to run next.
+        let (next_pid, next_tid, from, to): (
+            ProcessIdentifier,
+            ThreadIdentifier,
+            *mut ContextInformation,
+            *mut ContextInformation,
+        ) = Self::get_mut().try_borrow_mut()?.exit(status);
+
+        // SAFETY: `from` and `to` point to valid context information structures, and the processor
+        // is running with interrupts disabled.
+        Self::switch(next_pid, next_tid, from, to);
+
+        // SAFETY: Self::switch() performs a context switch and never returns. If this line is ever
+        // reached, it indicates a critical bug and undefined behavior. This is considered
+        // unreachable by design.
+        core::hint::unreachable_unchecked()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Terminates the calling thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: Exit status.
+    ///
+    /// # Returns
+    ///
+    /// This function does not return on success: the current thread is terminated, and its exit
+    /// status is made available to any threads waiting for it. If the calling thread is the last
+    /// thread in its process, the process is also terminated and all associated resources are
+    /// cleaned up. If an error occurs, an error code is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it may terminate the calling thread.
+    ///
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - The calling thread is not a kernel thread.
+    /// - The process manager is initialized.
+    /// - The calling thread does not hold a reference to the process manager.
+    /// - Access to the process manager is synchronized.
     ///
     pub unsafe fn exit_thread(status: ExitStatus) -> Result<!, Error> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) = {
+        // Terminate the calling thread and select another thread to run next.
+        let (next_pid, next_tid, from, to): (
+            ProcessIdentifier,
+            ThreadIdentifier,
+            *mut ContextInformation,
+            *mut ContextInformation,
+        ) = {
             // Create a scope so the join condition variable is dropped before we context switch.
             // If we do not do this, the condition variable the reference count for the condition
             // variable will not be decremented, causing a memory leak.
 
-            let (join_cond, from, to): (Condvar, *mut ContextInformation, *mut ContextInformation) =
-                Self::get_mut().try_borrow_mut()?.exit_thread(status);
+            let (next_pid, next_tid, join_cond, from, to): (
+                ProcessIdentifier,
+                ThreadIdentifier,
+                Condvar,
+                *mut ContextInformation,
+                *mut ContextInformation,
+            ) = Self::get_mut().try_borrow_mut()?.exit_thread(status);
 
             join_cond.notify_all()?;
 
-            (from, to)
+            (next_pid, next_tid, from, to)
         };
 
-        ContextInformation::switch(from, to);
+        // SAFETY: `from` and `to` point to valid context information structures, and the processor
+        // is running with interrupts disabled.
+        Self::switch(next_pid, next_tid, from, to);
+
+        // SAFETY: Self::switch() performs a context switch and never returns. If this line is ever
+        // reached, it indicates a critical bug and undefined behavior. This is considered
+        // unreachable by design.
         core::hint::unreachable_unchecked()
     }
 
@@ -346,7 +390,8 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Puts the calling thread to sleep.
+    /// Suspends the execution of the calling thread until it is woken up by another thread or until
+    /// the specified alarm time is reached.
     ///
     /// # Parameters
     ///
@@ -358,28 +403,41 @@ impl ProcessManager {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it performs a context switch, causing the current thread to
-    /// block until it is woken up by another thread.
+    /// This function is unsafe because it performs a context switch, suspending the execution of
+    /// the current thread until it is woken up by another thread or until the specified alarm time
+    /// is reached.
     ///
-    /// This function is safe to use if and only if the following conditions are met:
-    ///
-    /// - The calling process is not the kernel process.
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - The calling thread is not a kernel thread.
+    /// - The process manager is initialized.
+    /// - The calling thread does not hold a reference to the process manager.
+    /// - Access to the process manager is synchronized.
     ///
     pub unsafe fn sleep(alarm: Option<SystemTime>) -> Result<(), SleepError> {
-        let (from, to): (*mut ContextInformation, *mut ContextInformation) = Self::get_mut()
+        // Suspend the execution of the calling thread and select another thread to run next.
+        let (next_pid, next_tid, from, to): (
+            ProcessIdentifier,
+            ThreadIdentifier,
+            *mut ContextInformation,
+            *mut ContextInformation,
+        ) = Self::get_mut()
             .try_borrow_mut()
             .map_err(SleepError::Generic)?
             .sleep(alarm);
 
-        ContextInformation::switch(from, to);
+        // SAFETY: `from` and `to` point to valid context information structures, and the processor
+        // is running with interrupts disabled.
+        Self::switch(next_pid, next_tid, from, to);
 
+        // Check the reason why the thread was woken up.
         let interrupt_reason: Option<InterruptReason> = Self::get_mut()
             .try_borrow_mut()
             .map_err(SleepError::Generic)?
             .interrupt_reason();
 
+        // Check if the thread was interrupted.
         if let Some(reason) = interrupt_reason {
-            error!("sleep(): interrupted (reason={:?})", reason);
+            warn!("sleep(): interrupted (reason={:?})", reason);
             return Err(SleepError::Interrupted(reason));
         }
 
@@ -389,39 +447,47 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Switches the context of the calling thread with the next ready thread.
+    /// Gives up the processor and schedules another ready thread to run.
     ///
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    /// This function may not return immediately, as the scheduler algorithm may select another
+    /// thread to run before of the calling thread.
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it performs a context switch, causing the current thread to
-    /// block until it is woken up by another thread.
+    /// This function is unsafe because it performs a context switch, suspending the execution of
+    /// the current thread until it is re-scheduled for execution.
     ///
-    pub unsafe fn switch() -> Result<(), Error> {
-        // Schedule the next thread within a limited scope to ensure the process manager is
-        // properly released before performing the context switch.
-        let result: Option<(ProcessIdentifier, *mut ContextInformation, *mut ContextInformation)> =
-            { Self::get_mut().try_borrow_mut()?.schedule() };
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - The calling thread does not hold a reference to the process manager.
+    /// - Access to the process manager is synchronized.
+    ///
+    pub unsafe fn giveup() -> Result<(), Error> {
+        // Check the remaining quantum for the current thread to decide whether to perform a context switch.
+        let remaining_ticks: usize = REMAINING_QUANTUM.load(ORDER);
+        if remaining_ticks > 1 {
+            // The current thread still has remaining quantum, no context switch is required.
+            REMAINING_QUANTUM.store(remaining_ticks - 1, ORDER);
+        } else {
+            // The current thread has no remaining quantum, perform a context switch.
 
-        match result {
-            Some((next_pid, from, to)) => {
-                // SAFETY: `from` and `to` point to valid context information structures. The
-                // processor is running with interrupts disabled.
-                CURRENT_PID.store(next_pid.into(), Ordering::SeqCst);
-                ContextInformation::switch(from, to);
-            },
-            None => {
-                // SAFETY: Enabling interrupts in this scope will not cause unwanted side effects.
-                let interrupts: Interrupts = Interrupts::enable();
+            cold_path();
 
-                // SAFETY: Waiting for interrupts will not cause unwanted side effects.
-                interrupts.wait();
+            // Re-schedule the calling thread and select another thread to run next.
+            let (next_pid, next_tid, from, to): (
+                ProcessIdentifier,
+                ThreadIdentifier,
+                *mut ContextInformation,
+                *mut ContextInformation,
+            ) = Self::get_mut().try_borrow_mut()?.schedule();
 
-                // Interrupts are automatically disabled when we leave this scope.
-            },
+            // Switch to the next thread and updating the remaining quantum accordingly.
+            // SAFETY: `from` and `to` point to valid context information structures, and the
+            // processor is running with interrupts disabled.
+            Self::switch(next_pid, next_tid, from, to);
         }
 
         Ok(())
@@ -628,11 +694,70 @@ impl ProcessManager {
     ///
     /// Returns true if the kernel is running, false otherwise.
     ///
+    pub fn is_kernel_running() -> bool {
+        CURRENT_TID.load(ORDER) == ThreadIdentifier::KERNEL_RAW
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Switches the execution to another thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `next_pid`: Process identifier of the next thread to run.
+    /// - `next_tid`: Thread identifier of the next thread to run.
+    /// - `from`: Pointer to the context information of the current thread.
+    /// - `to`: Pointer to the context information of the next thread.
+    ///
     /// # Safety
     ///
-    /// This function is unsafe because it access global variables.
+    /// This function is unsafe because it performs a context switch.
     ///
-    pub unsafe fn is_kernel_running() -> bool {
-        CURRENT_PID.load(Ordering::SeqCst) == ProcessIdentifier::KERNEL_RAW
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - `from` and `to` point to valid context information structures.
+    /// - The processor is running with interrupts disabled.
+    ///
+    #[inline(always)]
+    unsafe fn switch(
+        next_pid: ProcessIdentifier,
+        next_tid: ThreadIdentifier,
+        from: *mut ContextInformation,
+        to: *mut ContextInformation,
+    ) {
+        let previous_pid: ProcessIdentifier = ProcessIdentifier::from(CURRENT_PID.load(ORDER));
+        let previous_tid: ThreadIdentifier = ThreadIdentifier::from(CURRENT_TID.load(ORDER));
+
+        // Check if we need to perform a context switch.
+        if next_tid != previous_tid {
+            // We need to perform a context switch.
+
+            // Check whether we need to reset the quantum for the next thread.
+            if next_pid != previous_pid {
+                REMAINING_QUANTUM.store(SCHEDULER_FREQ, ORDER);
+                CURRENT_PID.store(next_pid.into(), ORDER);
+            }
+            CURRENT_TID.store(next_tid.into(), ORDER);
+
+            ContextInformation::switch(from, to);
+        } else {
+            // We do not need to perform a context switch, the same thread will continue running.
+
+            // Check if the kernel thread will continue running.
+            if next_tid == ThreadIdentifier::KERNEL {
+                // The kernel thread will continue running. This means there are no other ready
+                // threads to run, and the kernel has no work to do at the moment. Enable interrupts
+                // and wait for an external event (such as a timer or hardware interrupt) to wake up
+                // the kernel.
+
+                // SAFETY: Enabling interrupts in this scope will not cause unwanted side effects.
+                let interrupts: Interrupts = Interrupts::enable();
+
+                // SAFETY: Waiting for interrupts will not cause unwanted side effects.
+                interrupts.wait();
+
+                // Interrupts are automatically disabled when we leave this scope.
+            }
+        }
     }
 }

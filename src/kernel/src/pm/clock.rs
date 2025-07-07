@@ -20,12 +20,12 @@
 
 use crate::{
     hal::arch::InterruptNumber,
-    pm::ProcessManager,
+    pm::{
+        ProcessManager,
+        ORDER,
+    },
 };
-use ::core::sync::atomic::{
-    AtomicU32,
-    Ordering,
-};
+use ::core::sync::atomic::AtomicU32;
 use ::sys::time::{
     SystemTime,
     NANOSECONDS_PER_SECOND,
@@ -62,21 +62,21 @@ impl TimerTicks {
 
     /// Returns the number of ticks since the system started.
     fn get(&self) -> (u32, u32) {
-        (self.major.load(Ordering::SeqCst), self.minor.load(Ordering::SeqCst))
+        (self.major.load(ORDER), self.minor.load(ORDER))
     }
 
     /// Increments the number of ticks and returns the minor tick.
     fn increment(&self) -> u32 {
         // Safely increment `TIMER_TICKS`, assuming single-writer.
-        let minor: u32 = self.minor.load(Ordering::SeqCst);
+        let minor: u32 = self.minor.load(ORDER);
         let new_minor: u32 = minor.wrapping_add(1);
-        self.minor.store(new_minor, Ordering::SeqCst);
+        self.minor.store(new_minor, ORDER);
 
         // Check if the minor tick overflowed.
         if new_minor == 0 {
             // Safely increment `TIMER_TICKS_MAJOR`, assuming single-writer.
-            let major: u32 = self.major.load(Ordering::SeqCst);
-            self.major.store(major.wrapping_add(1), Ordering::SeqCst);
+            let major: u32 = self.major.load(ORDER);
+            self.major.store(major.wrapping_add(1), ORDER);
         }
 
         new_minor
@@ -103,12 +103,12 @@ impl TimerTicks {
 /// - It modifies global variables.
 ///
 pub unsafe fn timer_handler(_intnum: InterruptNumber) {
-    let timer_ticks: usize = TIMER_TICKS.increment() as usize;
+    TIMER_TICKS.increment();
 
     // Determine if a context switch is required. The kernel's running state is checked first to
     // prevent reentrant calls to the scheduler, which could lead to undefined behavior.
-    if !ProcessManager::is_kernel_running() && timer_ticks % config::kernel::SCHEDULER_FREQ == 0 {
-        if let Err(error) = ProcessManager::switch() {
+    if !ProcessManager::is_kernel_running() {
+        if let Err(error) = ProcessManager::giveup() {
             error!("context switch failed: {:?}", error);
         }
     }
