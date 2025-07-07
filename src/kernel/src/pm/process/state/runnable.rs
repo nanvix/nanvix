@@ -90,7 +90,7 @@ impl RunnableProcessWithReadyThread {
 
     fn run(mut self) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation) {
         let (ready_threads, next_thread) = self.ready_threads.pop_front();
-        let (running_thread, interrupt_reason, next_context) = next_thread.resume();
+        let (running_thread, interrupt_reason, next_context) = next_thread.run();
         (
             RunningProcess::new(
                 self.state,
@@ -244,7 +244,7 @@ impl RunnableProcessWithInterruptedThreads {
     fn run(mut self) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation) {
         let (interrupted_threads, next_thread) = self.interrupted_threads.pop_front();
         let ready_thread: ReadyThread = next_thread.resume();
-        let (running_thread, interrupt_reason, next_context) = ready_thread.resume();
+        let (running_thread, interrupt_reason, next_context) = ready_thread.run();
         (
             RunningProcess::new(
                 self.state,
@@ -419,7 +419,7 @@ impl RunnableProcessWithReadyAndInteruptThread {
 
     fn run(mut self) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation) {
         let (ready_threads, next_thread) = self.ready_threads.pop_front();
-        let (running_thread, interrupt_reason, next_context) = next_thread.resume();
+        let (running_thread, interrupt_reason, next_context) = next_thread.run();
         (
             RunningProcess::new(
                 self.state,
