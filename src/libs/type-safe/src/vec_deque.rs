@@ -212,6 +212,17 @@ impl<T> NonEmptyVecDeque<T> {
     }
 }
 
+impl<T> From<NonEmptyVecDeque<T>> for VecDeque<T> {
+    fn from(vec_deque: NonEmptyVecDeque<T>) -> Self {
+        let mut vec = VecDeque::new();
+        vec.push_front(vec_deque.head);
+        if let Some(tail) = vec_deque.tail {
+            vec.extend(tail);
+        }
+        vec
+    }
+}
+
 //==================================================================================================
 // Iterator
 //==================================================================================================
@@ -458,6 +469,15 @@ mod test {
         }
         assert_eq!(vec_deque.head, 1);
         assert_eq!(vec_deque.tail, Some(VecDeque::from([2])));
+    }
+
+    #[test]
+    fn test_into_vec_deque() {
+        let mut vec_deque: NonEmptyVecDeque<i32> = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        vec_deque.push_back(2);
+        let converted: VecDeque<i32> = VecDeque::from(vec_deque);
+        assert_eq!(converted, VecDeque::from([0, 1, 2]));
     }
 }
 
